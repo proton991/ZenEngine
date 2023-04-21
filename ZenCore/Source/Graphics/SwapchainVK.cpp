@@ -1,18 +1,12 @@
 #include "Graphics/Vulkan/SwapchainVK.h"
 #include "Graphics/Vulkan/ContextVK.h"
-#include "Graphics/Vulkan/WSIPlatform.h"
+#include "Platform/NativeWindow.h"
 
 namespace zen::vulkan {
 SwapChain::SwapChain(const Context& context, vk::SurfaceKHR surface, Desc desc)
-    : m_desc(std::move(desc)) {
+    : m_context(context), m_desc(std::move(desc)) {
   m_surface = surface;
-  Setup(context.GetGPU(), context.GetLogicalDevice());
-}
-
-SwapChain::SwapChain(const Context& context, const WSIPlatform& wsiPlatform, Desc desc)
-    : m_desc(std::move(desc)) {
-  m_surface = wsiPlatform.CreateSurface(context.GetInstance(), context.GetGPU());
-  Setup(context.GetGPU(), context.GetLogicalDevice());
+  Setup(m_context.GetGPU(), m_context.GetLogicalDevice());
 }
 
 void SwapChain::Setup(vk::PhysicalDevice gpu, vk::Device device) {
@@ -43,9 +37,9 @@ void SwapChain::Setup(vk::PhysicalDevice gpu, vk::Device device) {
                                  .setOldSwapchain(nullptr);
   // use same queue for graphics and present
   swapchainCreateInfo.setImageSharingMode(vk::SharingMode::eExclusive);
-  m_swapchain = device.createSwapchainKHRUnique(swapchainCreateInfo);
+  m_swapchain = device.createSwapchainKHR(swapchainCreateInfo);
   // get swapchain images and image views
-  m_images = device.getSwapchainImagesKHR(m_swapchain.get());
+  m_images = device.getSwapchainImagesKHR(m_swapchain);
   m_imageViews.resize(m_images.size());
   assert(m_images.empty() == false);
 
@@ -112,4 +106,14 @@ vk::PresentModeKHR SwapChain::ChoosePresentMode(
   }
   return vk::PresentModeKHR::eFifo;
 }
+
+SwapChain::~SwapChain() {
+  if (m_swapchain) {
+    m_context.GetLogicalDevice().destroySwapchainKHR(m_swapchain);
+  }
+  if (m_surface) {
+    m_context.GetInstance().destroySurfaceKHR(m_surface);
+  }
+}
+
 }  // namespace zen::vulkan

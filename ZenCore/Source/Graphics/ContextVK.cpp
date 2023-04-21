@@ -1,12 +1,19 @@
 #include "Graphics/Vulkan/ContextVK.h"
-#include <iostream>
+#include "Common/Logging.h"
 
 namespace zen::vulkan {
 VKAPI_ATTR VkBool32 VKAPI_CALL
 DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                      VkDebugUtilsMessageTypeFlagsEXT messageType,
                      const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
-  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+  if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    LOGW("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
+         pCallbackData->pMessage);
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+    LOGE("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
+         pCallbackData->pMessage);
+  }
+  return VK_FALSE;
 
   return VK_FALSE;
 }
@@ -49,11 +56,11 @@ Context::CreateDebugUtilsMessenger(vk::Instance instance,
 
 vk::PhysicalDevice Context::SelectPhysicalDevice(vk::Instance instance) {
   std::vector<vk::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
-  std::cout << "Found " << physicalDevices.size() << " physical device(s)\n";
+  LOGI("Found {} physical device(s)", physicalDevices.size());
   vk::PhysicalDevice physicalDevice = nullptr;
   for (const auto& device : physicalDevices) {
     vk::PhysicalDeviceProperties deviceProperties = device.getProperties();
-    std::cout << "  Physical device found: " << deviceProperties.deviceName << "\n";
+    LOGI("\tPhysical device found: {}", deviceProperties.deviceName);
     vk::PhysicalDeviceFeatures deviceFeatures = device.getFeatures();
 
     if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu) {
@@ -62,7 +69,7 @@ vk::PhysicalDevice Context::SelectPhysicalDevice(vk::Instance instance) {
   }
   if (!physicalDevice)
     throw std::runtime_error("Failed to find physical device");
-  std::cout << "Using: " << physicalDevice.getProperties().deviceName << "\n";
+  LOGI("Using: {}", physicalDevice.getProperties().deviceName);
   return physicalDevice;
 }
 
@@ -186,9 +193,7 @@ void Context::SetupDevice(const char** extensions, uint32_t extensionsCount,
   m_gpu       = SelectPhysicalDevice(m_instance.get());
   m_queueInfo = GetDeviceQueueInfo(m_gpu, surface);
   std::vector<const char*> deviceExtensions(extensions, extensions + extensionsCount);
-  if (surface) {
-    deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-  }
+
   m_device = CreateDevice(m_gpu, m_queueInfo, deviceExtensions);
   // get queues
   m_graphicsQueue = m_device.get().getQueue(m_queueInfo.familyIndices[QUEUE_INDEX_GRAPHICS],

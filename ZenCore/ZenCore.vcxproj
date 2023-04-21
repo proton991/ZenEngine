@@ -20,11 +20,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Include\Common\Base.h" />
+    <ClInclude Include="Include\Common\Error.h" />
+    <ClInclude Include="Include\Common\Logging.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ContextVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\SwapchainVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\RenderPassBuilder.h" />
-    <ClInclude Include="Include\Graphics\Vulkan\WSIPlatform.h" />
+    <ClInclude Include="Include\Platform\GlfwWindow.h" />
+    <ClInclude Include="Include\Platform\InputController.h" />
+    <ClInclude Include="Include\Platform\NativeWindow.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ZenVulkan.h" />
   </ItemGroup>
   <ItemGroup>
@@ -32,6 +36,8 @@
     <ClCompile Include="Source\Graphics\DeviceVK.cpp" />
     <ClCompile Include="Source\Graphics\SwapchainVK.cpp" />
     <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp" />
+    <ClCompile Include="Source\Platform\GlfwWindow.cpp" />
+    <ClCompile Include="Source\Platform\InputController.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -128,7 +134,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;ZEN_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;$(SolutionDir)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -144,7 +150,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;$(SolutionDir)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>

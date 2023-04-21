@@ -1,10 +1,10 @@
 #pragma once
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include "Platform/NativeWindow.h"
+
 namespace zen::vulkan {
 class Context;
-class WSIPlatform;
-
 class SwapChain {
 public:
   struct Desc {
@@ -14,7 +14,7 @@ public:
     bool enableVsync;
   };
   SwapChain(const Context& context, vk::SurfaceKHR surface, Desc desc);
-  SwapChain(const Context& context, const WSIPlatform& wsiPlatform, Desc desc);
+  ~SwapChain();
 
 private:
   void Setup(vk::PhysicalDevice gpu, vk::Device device);
@@ -24,8 +24,9 @@ private:
   vk::PresentModeKHR ChoosePresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes,
                                        bool enableVsync);
 
+  const Context& m_context;
   Desc m_desc;
-  vk::UniqueSwapchainKHR m_swapchain;
+  vk::SwapchainKHR m_swapchain;
   vk::SurfaceKHR m_surface;
   vk::SurfaceFormatKHR m_surfaceFormat;
   vk::PresentModeKHR m_presentMode;
