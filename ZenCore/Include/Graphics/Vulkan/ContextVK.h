@@ -31,7 +31,7 @@ public:
 
   auto GetInstance() const { return m_instance.get(); }
   auto GetGPU() const { return m_gpu; }
-  auto GetDevice() const { return m_device.get(); }
+  auto GetLogicalDevice() const { return m_device.get(); }
   auto GetQueueFamliyIndex(QueueIndices index) const { return m_queueInfo.familyIndices[index]; }
 
 private:
@@ -56,5 +56,7 @@ private:
   vk::Queue m_graphicsQueue;
   vk::Queue m_presentQueue;
   vk::Queue m_transferQueue;
+
+  friend class Device;
 };
 }  // namespace zen::vulkan

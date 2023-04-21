@@ -6,13 +6,13 @@ namespace zen::vulkan {
 SwapChain::SwapChain(const Context& context, vk::SurfaceKHR surface, Desc desc)
     : m_desc(std::move(desc)) {
   m_surface = surface;
-  Setup(context.GetGPU(), context.GetDevice());
+  Setup(context.GetGPU(), context.GetLogicalDevice());
 }
 
 SwapChain::SwapChain(const Context& context, const WSIPlatform& wsiPlatform, Desc desc)
     : m_desc(std::move(desc)) {
   m_surface = wsiPlatform.CreateSurface(context.GetInstance(), context.GetGPU());
-  Setup(context.GetGPU(), context.GetDevice());
+  Setup(context.GetGPU(), context.GetLogicalDevice());
 }
 
 void SwapChain::Setup(vk::PhysicalDevice gpu, vk::Device device) {

@@ -19,14 +19,19 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Include\Common\Base.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ContextVK.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\SwapchainVK.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\RenderPassBuilder.h" />
     <ClInclude Include="Include\Graphics\Vulkan\WSIPlatform.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ZenVulkan.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\ContextVK.cpp" />
-    <ClCompile Include="Source\SwapchainVK.cpp" />
+    <ClCompile Include="Source\Graphics\ContextVK.cpp" />
+    <ClCompile Include="Source\Graphics\DeviceVK.cpp" />
+    <ClCompile Include="Source\Graphics\SwapchainVK.cpp" />
+    <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -121,7 +126,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;ZEN_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
