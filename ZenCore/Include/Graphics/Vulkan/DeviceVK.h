@@ -7,6 +7,8 @@ class Device {
 public:
   Device(const Context& context);
 
+  vk::Device GetHandle() const { return m_logicalDevice; }
+
   template <typename Handle>
   void SetDebugObjName(Handle objHandle, std::string name);
 

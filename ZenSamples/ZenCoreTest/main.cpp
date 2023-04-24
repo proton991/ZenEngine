@@ -1,4 +1,6 @@
 #include <iostream>
+#include "Common/SharedPtr.h"
+#include "Common/UniquePtr.h"
 #include "Graphics/Vulkan/ZenVulkan.h"
 #include "Platform/GlfwWindow.h"
 
@@ -7,6 +9,15 @@ using namespace zen::platform;
 int main(int argc, char** argv) {
   WindowConfig windowConfig;
   GlfwWindowImpl* window = new GlfwWindowImpl(windowConfig);
+  {
+    UniquePtr<int> a = UniquePtr<int>(new int(2));
+    auto b           = UniquePtr<int>(std::move(a));
+
+    SharedPtr<int> c = MakeShared<int>(4);
+    auto d           = SharedPtr(std::move(c));
+
+    int f = 1;
+  }
 
   Context context{};
   auto instanceExts = window->GetInstanceExtensions();
