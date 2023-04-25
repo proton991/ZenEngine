@@ -1,21 +1,16 @@
 #include "Graphics/Vulkan/DeviceVK.h"
-#include "Graphics/Vulkan/ContextVK.h"
 
 namespace zen::vulkan {
-template <typename Handle>
-void Device::SetDebugObjName(Handle objHandle, std::string name) {
 
-  auto objNameInfo = vk::DebugUtilsObjectNameInfoEXT()
-                         .setObjectHandle(uint64_t(Handle::CType(objHandle)))
-                         .setObjectType(objHandle.objectType)
-                         .setPObjectName(name.c_str());
-  if (m_context.m_loader.vkSetDebugUtilsObjectNameEXT) {
-    m_logicalDevice.setDebugUtilsObjectNameEXT(objNameInfo, m_context.m_loader);
-  }
+Device::Device(const Context& context) {
+  m_loader    = context.m_loader;
+  m_gpu       = context.GetGPU();
+  m_handle    = context.GetLogicalDevice();
+  m_queueInfo = context.m_queueInfo;
 }
 
-Device::Device(const Context& context) : m_context(context) {
-  m_gpu           = m_context.GetGPU();
-  m_logicalDevice = m_context.GetLogicalDevice();
+uint32_t Device::GetQueueFamliyIndex(QueueIndices index) const {
+  return m_queueInfo.familyIndices[index];
 }
+
 }  // namespace zen::vulkan

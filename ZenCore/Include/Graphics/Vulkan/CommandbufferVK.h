@@ -1,10 +1,13 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
+#include "Common/Base.h"
+#include "DeviceResource.h"
 
 namespace zen::vulkan {
 class CommandPool;
-class CommandBuffer {
+class CommandBuffer : public DeviceResource<vk::CommandBuffer> {
 public:
+  ZEN_NO_COPY(CommandBuffer)
   CommandBuffer(const CommandPool& cmdPool, vk::CommandBufferLevel level);
   ~CommandBuffer();
 

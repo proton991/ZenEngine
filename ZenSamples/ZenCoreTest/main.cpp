@@ -25,6 +25,12 @@ int main(int argc, char** argv) {
   context.SetupInstance(instanceExts.data(), instanceExts.size(), nullptr, 0);
   vk::SurfaceKHR surface = window->CreateSurface(context.GetInstance());
   context.SetupDevice(deviceExts.data(), deviceExts.size(), surface);
+
+  UniquePtr<Device> device       = MakeUnique<Device>(context);
+  auto graphicsQFIndex           = device->GetQueueFamliyIndex(QueueIndices::QUEUE_INDEX_GRAPHICS);
+  UniquePtr<CommandPool> cmdPool = MakeUnique<CommandPool>(*device, graphicsQFIndex);
+
+  cmdPool->SetDebugName("Graphics Command Pool");
   SwapChain::Desc swapChainDesc{windowConfig.width, windowConfig.height, 2, true};
   SwapChain swapChain{context, surface, swapChainDesc};
   while (!window->ShouldClose()) {

@@ -60,6 +60,9 @@
     <ClInclude Include="Include\Common\SharedPtr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Graphics\Vulkan\DeviceResource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Graphics\ContextVK.cpp">

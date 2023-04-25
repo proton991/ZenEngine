@@ -4,11 +4,12 @@
 namespace zen::vulkan {
 
 CommandBuffer::CommandBuffer(const CommandPool& cmdPool, vk::CommandBufferLevel level)
-    : m_cmdPool(cmdPool), m_level(level) {
+    : DeviceResource(cmdPool.GetDevice()), m_cmdPool(cmdPool), m_level(level) {
   auto cmdBufferAllocInfo = vk::CommandBufferAllocateInfo()
                                 .setCommandPool(m_cmdPool.GetHandle())
                                 .setLevel(level)
                                 .setCommandBufferCount(1);
+  SetHanlde(GetDeviceHandle().allocateCommandBuffers(cmdBufferAllocInfo).front());
 }
 
 CommandBuffer::~CommandBuffer() {}
