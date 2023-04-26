@@ -45,6 +45,7 @@
     <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp" />
     <ClCompile Include="Source\Platform\GlfwWindow.cpp" />
     <ClCompile Include="Source\Platform\InputController.cpp" />
+    <ClCompile Include="Source\vk_mem_alloc.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

@@ -12,6 +12,10 @@ CommandBuffer::CommandBuffer(const CommandPool& cmdPool, vk::CommandBufferLevel 
   SetHanlde(GetDeviceHandle().allocateCommandBuffers(cmdBufferAllocInfo).front());
 }
 
-CommandBuffer::~CommandBuffer() {}
+CommandBuffer::~CommandBuffer() {
+  if (GetHandle()) {
+    GetDeviceHandle().freeCommandBuffers(m_cmdPool.GetHandle(), GetHandle());
+  }
+}
 
 }  // namespace zen::vulkan

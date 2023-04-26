@@ -1,12 +1,14 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 #include "ContextVK.h"
+#include "vma/vk_mem_alloc.h"
 
 namespace zen::vulkan {
 class Context;
 class Device {
 public:
   Device(const Context& context);
+  ~Device();
 
   vk::Device GetHandle() const { return m_handle; }
 
@@ -15,10 +17,15 @@ public:
 
   uint32_t GetQueueFamliyIndex(QueueIndices index) const;
 
+  auto GetMemAllocator() const { return m_allocator; }
+
 private:
+  void InitVma();
+  vk::Instance m_instance;
   vk::DispatchLoaderDynamic m_loader;
   vk::PhysicalDevice m_gpu;
   vk::Device m_handle;
+  VmaAllocator m_allocator;
   DeviceQueueInfo m_queueInfo{};
 };
 

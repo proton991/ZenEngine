@@ -89,5 +89,8 @@
     <ClCompile Include="Source\Graphics\CommandbufferVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\vk_mem_alloc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -120,6 +120,7 @@
     <ClInclude Include="spdlog\stopwatch.h" />
     <ClInclude Include="spdlog\tweakme.h" />
     <ClInclude Include="spdlog\version.h" />
+    <ClInclude Include="vma\vk_mem_alloc.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
