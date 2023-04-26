@@ -1,6 +1,4 @@
 #pragma once
-#include <vulkan/vulkan.hpp>
-#include "Common/Base.h"
 #include "Common/UniquePtr.h"
 #include "DeviceResource.h"
 
@@ -22,11 +20,7 @@ public:
 
   CommandBuffer& RequestCommandBuffer(vk::CommandBufferLevel = vk::CommandBufferLevel::ePrimary);
 
-  //const Device& GetDevice() const { return m_device; }
-
 private:
-  //const Device& m_device;
-  //vk::CommandPool m_handle{nullptr};
   size_t m_threadIndex{0};
   uint32_t m_queueFamilyIndex{0};
 

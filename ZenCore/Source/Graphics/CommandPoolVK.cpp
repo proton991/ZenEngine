@@ -15,7 +15,7 @@ CommandPool::CommandPool(const Device& device, uint32_t queueFamilyIndex,
 }
 
 CommandPool::CommandPool(CommandPool&& other) noexcept
-    : DeviceResource(other.GetDevice(), other.GetHandle()),
+    : DeviceResource(std::move(other)),
       m_threadIndex(std::exchange(other.m_threadIndex, {})),
       m_queueFamilyIndex(std::exchange(other.m_queueFamilyIndex, {})) {}
 

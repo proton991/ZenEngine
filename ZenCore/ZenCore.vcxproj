@@ -29,6 +29,7 @@
     <ClInclude Include="Include\Graphics\Vulkan\ContextVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\DeviceResource.h" />
     <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\ImageVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\SwapchainVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\RenderPassBuilder.h" />
     <ClInclude Include="Include\Platform\GlfwWindow.h" />
@@ -41,6 +42,7 @@
     <ClCompile Include="Source\Graphics\CommandPoolVK.cpp" />
     <ClCompile Include="Source\Graphics\ContextVK.cpp" />
     <ClCompile Include="Source\Graphics\DeviceVK.cpp" />
+    <ClCompile Include="Source\Graphics\ImageVK.cpp" />
     <ClCompile Include="Source\Graphics\SwapchainVK.cpp" />
     <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp" />
     <ClCompile Include="Source\Platform\GlfwWindow.cpp" />

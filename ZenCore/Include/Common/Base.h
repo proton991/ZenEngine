@@ -12,3 +12,8 @@
 #define ZEN_NO_MOVE(ClassName)                \
   ClassName(ClassName&&)            = delete; \
   ClassName& operator=(ClassName&&) = delete;
+
+#define ZEN_MOVE_CONSTRUCTOR_ONLY(ClassName)       \
+  ClassName(const ClassName&)            = delete; \
+  ClassName& operator=(const ClassName&) = delete; \
+  ClassName& operator=(ClassName&&)      = delete;

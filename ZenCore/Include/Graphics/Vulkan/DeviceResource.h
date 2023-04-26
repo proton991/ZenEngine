@@ -23,7 +23,9 @@ public:
     SetDebugName(other.m_debugName);
   }
 
-  VkHandle GetHandle() const { return m_handle; }
+  inline const VkHandle& GetHandle() const { return m_handle; }
+
+  inline VkHandle& GetHandle() { return m_handle; }
 
   void SetHanlde(VkHandle handle) { m_handle = handle; }
 

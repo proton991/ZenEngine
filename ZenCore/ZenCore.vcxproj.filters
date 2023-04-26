@@ -63,6 +63,9 @@
     <ClInclude Include="Include\Graphics\Vulkan\DeviceResource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Graphics\Vulkan\ImageVK.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Graphics\ContextVK.cpp">
@@ -90,6 +93,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\vk_mem_alloc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\ImageVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
