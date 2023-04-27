@@ -33,6 +33,9 @@ int main(int argc, char** argv) {
   cmdPool->SetDebugName("Graphics Command Pool");
   SwapChain::Desc swapChainDesc{windowConfig.width, windowConfig.height, 2, true};
   SwapChain swapChain{context, surface, swapChainDesc};
+
+  Buffer stageBuffer(*device, 1024, vk::BufferUsageFlagBits::eTransferSrc,
+                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, "test staging buffer");
   while (!window->ShouldClose()) {
     window->Update();
   }

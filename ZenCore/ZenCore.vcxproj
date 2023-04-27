@@ -24,6 +24,7 @@
     <ClInclude Include="Include\Common\Logging.h" />
     <ClInclude Include="Include\Common\SharedPtr.h" />
     <ClInclude Include="Include\Common\UniquePtr.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\BufferVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\CommandbufferVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\CommandPoolVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ContextVK.h" />
@@ -38,6 +39,7 @@
     <ClInclude Include="Include\Graphics\Vulkan\ZenVulkan.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Source\Graphics\BufferVK.cpp" />
     <ClCompile Include="Source\Graphics\CommandbufferVK.cpp" />
     <ClCompile Include="Source\Graphics\CommandPoolVK.cpp" />
     <ClCompile Include="Source\Graphics\ContextVK.cpp" />

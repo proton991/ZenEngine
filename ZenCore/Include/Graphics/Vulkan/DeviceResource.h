@@ -38,6 +38,8 @@ public:
 
   vk::Device GetDeviceHandle() { return m_device.GetHandle(); }
 
+  VmaAllocator GetVmaAllocator() const { return m_device.GetMemAllocator(); }
+
 private:
   const Device& m_device;
   VkHandle m_handle;

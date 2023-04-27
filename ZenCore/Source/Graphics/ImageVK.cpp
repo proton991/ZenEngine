@@ -39,8 +39,8 @@ Image::Image(const Device& device, const ImageSpec& spec)
   vmaAllocCI.usage    = VMA_MEMORY_USAGE_AUTO;
   vmaAllocCI.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
   vmaAllocCI.priority = 1.0f;
-  VK_CHECK(vmaCreateImage(GetDevice().GetMemAllocator(),
-                          reinterpret_cast<VkImageCreateInfo const*>(&imageCI), &vmaAllocCI,
+  VK_CHECK(vmaCreateImage(GetVmaAllocator(), reinterpret_cast<VkImageCreateInfo const*>(&imageCI),
+                          &vmaAllocCI,
                           const_cast<VkImage*>(reinterpret_cast<VkImage const*>(&GetHandle())),
                           &m_allocation, nullptr),
            "vmaCreateImage");
@@ -67,7 +67,7 @@ Image::Image(Image&& other) noexcept
 Image::~Image() {
   if (GetHandle() && m_allocation) {
     GetDeviceHandle().destroyImageView(m_view);
-    vmaDestroyImage(GetDevice().GetMemAllocator(), GetHandle(), m_allocation);
+    vmaDestroyImage(GetVmaAllocator(), GetHandle(), m_allocation);
   }
 }
 
