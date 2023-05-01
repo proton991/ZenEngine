@@ -1,4 +1,4 @@
-#include "Graphics/Vulkan/RenderPassBuilder.h"
+#include "Graphics/Vulkan/RenderPassVK.h"
 #include "Graphics/Vulkan/DeviceVK.h"
 
 namespace zen::vulkan {
@@ -153,10 +153,21 @@ RenderPassBuilder& RenderPassBuilder::SetSubpassDeps(const SubpassDepInfo& info)
   return *this;
 }
 
-vk::UniqueRenderPass RenderPassBuilder::Build() {
+UniquePtr<RenderPass> RenderPassBuilder::Build() {
+  return MakeUnique<RenderPass>(m_device, m_attachments, m_subpassInfos, m_subpassDeps);
+}
+
+RenderPass::RenderPass(const Device& device,
+                       const std::vector<vk::AttachmentDescription>& attachments,
+                       const std::vector<SubpassInfo>& subpassInfos,
+                       const std::vector<vk::SubpassDependency>& subpassDeps)
+    : DeviceResource(device, nullptr) {
   std::vector<vk::SubpassDescription> subpassDescriptions;
-  for (const auto& subpassInfo : m_subpassInfos) {
-    auto subpass = vk::SubpassDescription()
+  m_colorOutputCount.resize(subpassInfos.size());
+  for (auto i = 0u; i < subpassInfos.size(); i++) {
+    const auto& subpassInfo = subpassInfos[i];
+    m_colorOutputCount[i++] = static_cast<uint32_t>(subpassInfo.colorRefs.size());
+    auto subpass            = vk::SubpassDescription()
                        .setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
                        .setInputAttachmentCount(static_cast<uint32_t>(subpassInfo.inputRefs.size()))
                        .setPInputAttachments(
@@ -169,13 +180,13 @@ vk::UniqueRenderPass RenderPassBuilder::Build() {
   }
   auto renderPassCI =
       vk::RenderPassCreateInfo()
-          .setAttachmentCount(static_cast<uint32_t>(m_attachments.size()))
-          .setPAttachments(m_attachments.empty() ? nullptr : m_attachments.data())
+          .setAttachmentCount(static_cast<uint32_t>(attachments.size()))
+          .setPAttachments(attachments.empty() ? nullptr : attachments.data())
           .setSubpassCount(static_cast<uint32_t>(subpassDescriptions.size()))
           .setPSubpasses(subpassDescriptions.empty() ? nullptr : subpassDescriptions.data())
-          .setDependencyCount(static_cast<uint32_t>(m_subpassDeps.size()))
-          .setPDependencies(m_subpassDeps.empty() ? nullptr : m_subpassDeps.data());
-
-  return m_logicalDevice.createRenderPassUnique(renderPassCI);
+          .setDependencyCount(static_cast<uint32_t>(subpassDeps.size()))
+          .setPDependencies(subpassDeps.empty() ? nullptr : subpassDeps.data());
+  SetHanlde(GetDeviceHandle().createRenderPass(renderPassCI));
 }
+
 }  // namespace zen::vulkan

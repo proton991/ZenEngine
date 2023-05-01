@@ -24,6 +24,7 @@
     <ClInclude Include="Include\Common\Logging.h" />
     <ClInclude Include="Include\Common\SharedPtr.h" />
     <ClInclude Include="Include\Common\UniquePtr.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\Framebuffer.h" />
     <ClInclude Include="Include\Graphics\Vulkan\BufferVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\CommandbufferVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\CommandPoolVK.h" />
@@ -32,7 +33,7 @@
     <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ImageVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\SwapchainVK.h" />
-    <ClInclude Include="Include\Graphics\Vulkan\RenderPassBuilder.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\RenderPassVK.h" />
     <ClInclude Include="Include\Platform\GlfwWindow.h" />
     <ClInclude Include="Include\Platform\InputController.h" />
     <ClInclude Include="Include\Platform\NativeWindow.h" />
@@ -44,9 +45,10 @@
     <ClCompile Include="Source\Graphics\CommandPoolVK.cpp" />
     <ClCompile Include="Source\Graphics\ContextVK.cpp" />
     <ClCompile Include="Source\Graphics\DeviceVK.cpp" />
+    <ClCompile Include="Source\Graphics\Framebuffer.cpp" />
     <ClCompile Include="Source\Graphics\ImageVK.cpp" />
     <ClCompile Include="Source\Graphics\SwapchainVK.cpp" />
-    <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp" />
+    <ClCompile Include="Source\Graphics\RenderPassVK.cpp" />
     <ClCompile Include="Source\Platform\GlfwWindow.cpp" />
     <ClCompile Include="Source\Platform\InputController.cpp" />
     <ClCompile Include="Source\vk_mem_alloc.cpp" />
@@ -148,6 +150,7 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;$(ProjectDir)Include;$(SolutionDir)3rdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

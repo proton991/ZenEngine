@@ -30,7 +30,7 @@
     <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Include\Graphics\Vulkan\RenderPassBuilder.h">
+    <ClInclude Include="Include\Graphics\Vulkan\RenderPassVK.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Include\Common\Base.h">
@@ -69,6 +69,9 @@
     <ClInclude Include="Include\Graphics\Vulkan\BufferVK.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Graphics\Vulkan\Framebuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\Graphics\ContextVK.cpp">
@@ -80,7 +83,7 @@
     <ClCompile Include="Source\Graphics\DeviceVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\RenderPassBuilder.cpp">
+    <ClCompile Include="Source\Graphics\RenderPassVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Platform\GlfwWindow.cpp">
@@ -102,6 +105,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Graphics\BufferVK.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Framebuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

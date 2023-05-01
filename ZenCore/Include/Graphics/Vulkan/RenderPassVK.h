@@ -1,8 +1,12 @@
 #pragma once
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include "Common/UniquePtr.h"
+#include "DeviceResource.h"
+
 namespace zen::vulkan {
 class Device;
+class RenderPass;
 struct SubpassDepInfo {
   uint32_t inputAttRead{0};
   uint32_t colorAttReadWrite{0};
@@ -22,7 +26,7 @@ struct SubpassInfo {
 
 class RenderPassBuilder {
 public:
-  explicit RenderPassBuilder(vk::Device logicalDevice) : m_logicalDevice(logicalDevice) {}
+  explicit RenderPassBuilder(const Device& device) : m_device(device) {}
   ~RenderPassBuilder() = default;
 
   RenderPassBuilder& AddPresentAttachment(vk::Format format);
@@ -34,12 +38,22 @@ public:
 
   RenderPassBuilder& SetSubpassDeps(const SubpassDepInfo& info);
 
-  vk::UniqueRenderPass Build();
+  UniquePtr<RenderPass> Build();
 
 private:
-  vk::Device m_logicalDevice;
+  const Device& m_device;
   std::vector<vk::AttachmentDescription> m_attachments;
   std::vector<SubpassInfo> m_subpassInfos;
   std::vector<vk::SubpassDependency> m_subpassDeps;
+};
+
+class RenderPass : public DeviceResource<vk::RenderPass> {
+public:
+  RenderPass(const Device& device, const std::vector<vk::AttachmentDescription>& attachments,
+             const std::vector<SubpassInfo>& subpassInfos,
+             const std::vector<vk::SubpassDependency>& subpassDeps);
+
+private:
+  std::vector<uint32_t> m_colorOutputCount;  // num of color attachments for each subpass
 };
 }  // namespace zen::vulkan

@@ -6,4 +6,5 @@
 #include "./ContextVK.h"
 #include "./DeviceVK.h"
 #include "./ImageVK.h"
+#include "./RenderPassVK.h"
 #include "./SwapchainVK.h"
