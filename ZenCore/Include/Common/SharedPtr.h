@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 
+namespace zen {
 class RefCounter {
 public:
   RefCounter() { m_count.store(1, std::memory_order_relaxed); }
@@ -127,3 +128,4 @@ inline bool operator>(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept  //
 {
   return (l.Get() > r.Get());
 }
+}  // namespace zen

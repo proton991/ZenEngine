@@ -21,9 +21,12 @@
   <ItemGroup>
     <ClInclude Include="Include\Common\Base.h" />
     <ClInclude Include="Include\Common\Error.h" />
+    <ClInclude Include="Include\Common\Exception.h" />
     <ClInclude Include="Include\Common\Logging.h" />
     <ClInclude Include="Include\Common\SharedPtr.h" />
     <ClInclude Include="Include\Common\UniquePtr.h" />
+    <ClInclude Include="Include\Graphics\Utils\GLSLCompiler.h" />
+    <ClInclude Include="Include\Graphics\Utils\SpirvReflection.h" />
     <ClInclude Include="Include\Graphics\Vulkan\Framebuffer.h" />
     <ClInclude Include="Include\Graphics\Vulkan\BufferVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\CommandbufferVK.h" />
@@ -32,23 +35,29 @@
     <ClInclude Include="Include\Graphics\Vulkan\DeviceResource.h" />
     <ClInclude Include="Include\Graphics\Vulkan\DeviceVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ImageVK.h" />
+    <ClInclude Include="Include\Graphics\Vulkan\ShaderModuleVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\SwapchainVK.h" />
     <ClInclude Include="Include\Graphics\Vulkan\RenderPassVK.h" />
+    <ClInclude Include="Include\Platform\FileSystem.h" />
     <ClInclude Include="Include\Platform\GlfwWindow.h" />
     <ClInclude Include="Include\Platform\InputController.h" />
     <ClInclude Include="Include\Platform\NativeWindow.h" />
     <ClInclude Include="Include\Graphics\Vulkan\ZenVulkan.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\Graphics\BufferVK.cpp" />
-    <ClCompile Include="Source\Graphics\CommandbufferVK.cpp" />
-    <ClCompile Include="Source\Graphics\CommandPoolVK.cpp" />
-    <ClCompile Include="Source\Graphics\ContextVK.cpp" />
-    <ClCompile Include="Source\Graphics\DeviceVK.cpp" />
-    <ClCompile Include="Source\Graphics\Framebuffer.cpp" />
-    <ClCompile Include="Source\Graphics\ImageVK.cpp" />
-    <ClCompile Include="Source\Graphics\SwapchainVK.cpp" />
-    <ClCompile Include="Source\Graphics\RenderPassVK.cpp" />
+    <ClCompile Include="Source\Graphics\Utils\GLSLCompiler.cpp" />
+    <ClCompile Include="Source\Graphics\Utils\SpirvReflection.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\BufferVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\CommandbufferVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\CommandPoolVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\ContextVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\DeviceVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\Framebuffer.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\ImageVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\ShaderModuleVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\SwapchainVK.cpp" />
+    <ClCompile Include="Source\Graphics\Vulkan\RenderPassVK.cpp" />
+    <ClCompile Include="Source\Platform\FileSystem.cpp" />
     <ClCompile Include="Source\Platform\GlfwWindow.cpp" />
     <ClCompile Include="Source\Platform\InputController.cpp" />
     <ClCompile Include="Source\vk_mem_alloc.cpp" />

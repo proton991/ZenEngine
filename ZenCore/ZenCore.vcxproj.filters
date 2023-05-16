@@ -72,18 +72,33 @@
     <ClInclude Include="Include\Graphics\Vulkan\Framebuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Include\Graphics\Vulkan\ShaderModuleVK.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Platform\FileSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Common\Exception.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Graphics\Utils\GLSLCompiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Graphics\Utils\SpirvReflection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\Graphics\ContextVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\ContextVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\SwapchainVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\SwapchainVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\DeviceVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\DeviceVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\RenderPassVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\RenderPassVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Platform\GlfwWindow.cpp">
@@ -92,22 +107,34 @@
     <ClCompile Include="Source\Platform\InputController.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\CommandPoolVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\CommandPoolVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\CommandbufferVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\CommandbufferVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\vk_mem_alloc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\ImageVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\ImageVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\BufferVK.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\BufferVK.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Graphics\Framebuffer.cpp">
+    <ClCompile Include="Source\Graphics\Vulkan\Framebuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Platform\FileSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Vulkan\ShaderModuleVK.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Utils\GLSLCompiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\Utils\SpirvReflection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

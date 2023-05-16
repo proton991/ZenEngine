@@ -6,6 +6,7 @@
 
 using namespace zen::vulkan;
 using namespace zen::platform;
+using namespace zen;
 int main(int argc, char** argv) {
   WindowConfig windowConfig;
   GlfwWindowImpl* window = new GlfwWindowImpl(windowConfig);

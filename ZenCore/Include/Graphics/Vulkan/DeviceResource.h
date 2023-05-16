@@ -27,7 +27,7 @@ public:
 
   inline VkHandle& GetHandle() { return m_handle; }
 
-  void SetHanlde(VkHandle handle) { m_handle = handle; }
+  void SetHandle(VkHandle handle) { m_handle = handle; }
 
   void SetDebugName(const std::string& name) {
     m_debugName = name;

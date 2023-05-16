@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <cassert>
+
+namespace zen {
 template <class T>
 class UniquePtr {
 public:
@@ -112,3 +114,4 @@ inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  //
 {
   return (l.Get() > r.Get());
 }
+}  // namespace zen
