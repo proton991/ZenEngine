@@ -1,8 +1,8 @@
 #include "Graphics/Utils/GLSLCompiler.h"
 
 ZEN_DISABLE_WARNINGS()
-#include "Glslang/SPIRV/GlslangToSpv.h"
-#include "Glslang/glslang/Include/ResourceLimits.h"
+#include "glslang/Include/ResourceLimits.h"
+#include "glslang/SPIRV/GlslangToSpv.h"
 ZEN_ENABLE_WARNINGS()
 
 namespace zen {

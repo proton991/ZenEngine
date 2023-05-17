@@ -2,7 +2,7 @@
 #include "Common/Base.h"
 
 ZEN_DISABLE_WARNINGS()
-#include "Glslang/glslang/Public/ShaderLang.h"
+#include <glslang/Public/ShaderLang.h>
 ZEN_ENABLE_WARNINGS()
 #include "Graphics/Vulkan/ShaderModuleVK.h"
 
