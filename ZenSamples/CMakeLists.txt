@@ -1,0 +1,2 @@
+add_executable(ZenCoreTest ZenCoreTest/main.cpp)
+target_link_libraries(ZenCoreTest ZenCore)
