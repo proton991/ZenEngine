@@ -37,6 +37,9 @@ int main(int argc, char** argv) {
 
   Buffer stageBuffer(*device, 1024, vk::BufferUsageFlagBits::eTransferSrc,
                      VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, "test staging buffer");
+  ShaderSource glslSource{"gbuffer.vert"};
+  ShaderVariant shaderVariant;
+  ShaderModule testShader{*device, vk::ShaderStageFlagBits::eVertex, glslSource, shaderVariant};
   while (!window->ShouldClose()) {
     window->Update();
   }

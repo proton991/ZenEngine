@@ -107,6 +107,7 @@ public:
   ShaderModule(const Device& device, vk::ShaderStageFlagBits stage, const ShaderSource& source,
                const ShaderVariant& shaderVariant, std::string entryPoint = "main");
   ShaderModule(ShaderModule&& other);
+  ~ShaderModule();
 
   size_t GetId() const { return m_id; }
   auto GetStage() const { return m_stage; }

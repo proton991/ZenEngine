@@ -5,7 +5,7 @@
 #include "Common/Base.h"
 
 ZEN_DISABLE_WARNINGS()
-#include <spirv_cross/spirv_glsl.hpp>
+#include "SpirvCross/spirv_glsl.hpp"
 ZEN_ENABLE_WARNINGS()
 #include "Graphics/Vulkan/ShaderModuleVK.h"
 namespace zen {

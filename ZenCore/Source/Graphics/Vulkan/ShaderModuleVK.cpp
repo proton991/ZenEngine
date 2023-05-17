@@ -124,7 +124,6 @@ ShaderModule::ShaderModule(const Device& device, vk::ShaderStageFlagBits stage,
     : DeviceResource(device, nullptr), m_stage(stage), m_entryPoint(std::move(entryPoint)) {
   const auto debugName = fmt::format("{} [variant {:X}] [entrypoint {}]", source.GetName(),
                                      shaderVariant.GetId(), m_entryPoint);
-  SetDebugName(debugName);
 
   auto& sourceCode = source.GetSourceCode();
   if (sourceCode.empty()) {
@@ -155,6 +154,7 @@ ShaderModule::ShaderModule(const Device& device, vk::ShaderStageFlagBits stage,
   // set shader module handle
   auto shaderModuleCI = vk::ShaderModuleCreateInfo().setCode(m_spirv);
   SetHandle(GetDeviceHandle().createShaderModule(shaderModuleCI));
+  SetDebugName(debugName);
 }
 
 ShaderModule::ShaderModule(ShaderModule&& other)
@@ -165,5 +165,11 @@ ShaderModule::ShaderModule(ShaderModule&& other)
       m_spirv(std::move(other.m_spirv)),
       m_resources(std::move(other.m_resources)),
       m_infoLog(std::move(other.m_infoLog)) {}
+
+ShaderModule::~ShaderModule() {
+  if (GetHandle()) {
+    GetDeviceHandle().destroyShaderModule(GetHandle());
+  }
+}
 
 }  // namespace zen::vulkan

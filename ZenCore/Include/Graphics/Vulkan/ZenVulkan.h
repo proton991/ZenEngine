@@ -7,4 +7,5 @@
 #include "./DeviceVK.h"
 #include "./ImageVK.h"
 #include "./RenderPassVK.h"
+#include "./ShaderModuleVK.h"
 #include "./SwapchainVK.h"

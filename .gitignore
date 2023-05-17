@@ -1,3 +1,4 @@
 bin/
 lib/
+!3rdParty/Lib
 .vs/

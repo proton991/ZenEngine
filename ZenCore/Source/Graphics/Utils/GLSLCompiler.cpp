@@ -1,11 +1,8 @@
 #include "Graphics/Utils/GLSLCompiler.h"
 
 ZEN_DISABLE_WARNINGS()
-#include <glslang/SPIRV/GLSL.std.450.h>
-#include <glslang/SPIRV/GlslangToSpv.h>
-#include <glslang/StandAlone/ResourceLimits.h>
-#include <glslang/glslang/Include/ShHandle.h>
-#include <glslang/glslang/OSDependent/osinclude.h>
+#include "Glslang/SPIRV/GlslangToSpv.h"
+#include "Glslang/glslang/Include/ResourceLimits.h"
 ZEN_ENABLE_WARNINGS()
 
 namespace zen {
@@ -101,8 +98,8 @@ bool GLSLCompiler::CompileToSpirv(vk::ShaderStageFlagBits stage,
   if (GLSLCompiler::envTargetLanguage != glslang::EShTargetLanguage::EShTargetNone) {
     shader.setEnvTarget(GLSLCompiler::envTargetLanguage, GLSLCompiler::envTargetLanguageVersion);
   }
-
-  if (!shader.parse(&glslang::DefaultTBuiltInResource, 100, false, messages)) {
+  TBuiltInResource defaultTBuiltInResource{};
+  if (!shader.parse(&defaultTBuiltInResource, 100, false, messages)) {
     infoLog = std::string(shader.getInfoLog()) + "\n" + std::string(shader.getInfoDebugLog());
     return false;
   }
