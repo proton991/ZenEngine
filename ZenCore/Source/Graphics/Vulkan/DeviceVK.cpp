@@ -1,14 +1,15 @@
 #include "Graphics/Vulkan/DeviceVK.h"
 #include "Common/Error.h"
-
+#include "Graphics/Utils/ResourceCache.h"
 namespace zen::vulkan {
 
 Device::Device(const Context& context) {
-  m_instance  = context.GetInstance();
-  m_loader    = context.m_loader;
-  m_gpu       = context.GetGPU();
-  m_handle    = context.GetLogicalDevice();
-  m_queueInfo = context.m_queueInfo;
+  m_instance      = context.GetInstance();
+  m_loader        = context.m_loader;
+  m_gpu           = context.GetGPU();
+  m_handle        = context.GetLogicalDevice();
+  m_queueInfo     = context.m_queueInfo;
+  m_resourceCache = MakeUnique<ResourceCache>(*this);
 
   InitVma();
 }

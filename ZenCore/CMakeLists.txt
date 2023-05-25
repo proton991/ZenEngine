@@ -5,9 +5,12 @@ set(ZEN_CORE_HEADERS
     Include/Common/Logging.h
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
+    Include/Common/Helpers.h
 
     Include/Graphics/Utils/GLSLCompiler.h
     Include/Graphics/Utils/SpirvReflection.h
+    Include/Graphics/Utils/ResourceHashing.h
+    Include/Graphics/Utils/ResourceCache.h
 
     Include/Graphics/Vulkan/BufferVK.h
     Include/Graphics/Vulkan/CommandbufferVK.h
@@ -20,6 +23,10 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Vulkan/RenderPassVK.h
     Include/Graphics/Vulkan/ShaderModuleVK.h
     Include/Graphics/Vulkan/SwapchainVK.h
+    Include/Graphics/Vulkan/PipelineVK.h
+    Include/Graphics/Vulkan/PipelineState.h
+    Include/Graphics/Vulkan/DescriptorSetLayoutVK.h
+    Include/Graphics/Vulkan/PipelineLayoutVK.h
     Include/Graphics/Vulkan/ZenVulkan.h
 
     Include/Platform/FileSystem.h
@@ -31,6 +38,7 @@ set(ZEN_CORE_HEADERS
 set(ZEN_CORE_SOURCES
     Source/Graphics/Utils/GLSLCompiler.cpp
     Source/Graphics/Utils/SpirvReflection.cpp
+    Source/Graphics/Utils/ResourceCache.cpp
 
     Source/Graphics/Vulkan/BufferVK.cpp
     Source/Graphics/Vulkan/CommandbufferVK.cpp
@@ -42,6 +50,9 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Vulkan/RenderPassVK.cpp
     Source/Graphics/Vulkan/ShaderModuleVK.cpp
     Source/Graphics/Vulkan/SwapchainVK.cpp
+    Source/Graphics/Vulkan/PipelineVK.cpp
+    Source/Graphics/Vulkan/DescriptorSetLayoutVK.cpp
+    Source/Graphics/Vulkan/PipelineLayoutVK.cpp
 
     Source/Platform/FileSystem.cpp
     Source/Platform/GlfwWindow.cpp

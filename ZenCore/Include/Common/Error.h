@@ -9,14 +9,14 @@
     }                                                     \
   } while (0)
 // clang-format off
-#define VK_CHECK(x, op)                  \
-  do {                                   \
-    VkResult err = x;                    \
-    if (err != VK_SUCCESS) {             \
-      LOGE("Failed to {}", op);          \
-      abort();                           \
-    }                                    \
-  }                                      \
+#define VK_CHECK(x, op)                       \
+  do {                                        \
+    VkResult err = static_cast<VkResult>(x);  \
+    if (err != VK_SUCCESS) {                  \
+      LOGE("Failed to {}", op);               \
+      abort();                                \
+    }                                         \
+  }                                           \
   while (0)
 #else
 #define VK_ASSERT(x) ((void)0)

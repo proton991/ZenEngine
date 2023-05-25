@@ -157,7 +157,7 @@ ShaderModule::ShaderModule(const Device& device, vk::ShaderStageFlagBits stage,
   SetDebugName(debugName);
 }
 
-ShaderModule::ShaderModule(ShaderModule&& other)
+ShaderModule::ShaderModule(ShaderModule&& other) noexcept
     : DeviceResource(std::move(other)),
       m_id(other.m_id),
       m_stage(other.m_stage),

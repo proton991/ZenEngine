@@ -70,7 +70,7 @@ struct ShaderResourceQualifiers {
 /// Store shader resource data.
 /// Used by the shader module.
 struct ShaderResource {
-  vk::ShaderStageFlagBits stages;
+  vk::ShaderStageFlags stages;
 
   ShaderResourceType type;
 
@@ -106,7 +106,7 @@ public:
   ZEN_MOVE_CONSTRUCTOR_ONLY(ShaderModule)
   ShaderModule(const Device& device, vk::ShaderStageFlagBits stage, const ShaderSource& source,
                const ShaderVariant& shaderVariant, std::string entryPoint = "main");
-  ShaderModule(ShaderModule&& other);
+  ShaderModule(ShaderModule&& other) noexcept;
   ~ShaderModule();
 
   size_t GetId() const { return m_id; }

@@ -13,6 +13,12 @@ target_link_libraries(glfw INTERFACE glfw3)
 ###########################
 add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/glm/Include)
+target_compile_definitions(glm INTERFACE
+    GLM_FORCE_SWIZZLE
+    GLM_FORCE_RADIANS
+    GLM_FORCE_CTOR_INIT
+    GLM_ENABLE_EXPERIMENTAL
+    )
 
 
 ###########################

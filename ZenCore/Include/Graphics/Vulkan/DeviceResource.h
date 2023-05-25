@@ -23,6 +23,7 @@ public:
     SetDebugName(other.m_debugName);
   }
 
+  inline VkHandle::CType GetCHandle() const { return m_handle; }
   inline const VkHandle& GetHandle() const { return m_handle; }
 
   inline VkHandle& GetHandle() { return m_handle; }
@@ -35,6 +36,8 @@ public:
   }
 
   const Device& GetDevice() const { return m_device; }
+
+  Device& GetDevice() { return const_cast<Device&>(m_device); }
 
   vk::Device GetDeviceHandle() { return m_device.GetHandle(); }
 
