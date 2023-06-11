@@ -1,4 +1,4 @@
-#include "Graphics/Vulkan/ContextVK.h"
+#include "Graphics/Vulkan/DeviceContextVK.h"
 #include "Common/Logging.h"
 
 namespace zen::vulkan {
@@ -18,8 +18,8 @@ DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   return VK_FALSE;
 }
 
-vk::UniqueInstance Context::CreateInstance(const std::vector<const char*>& extensions,
-                                           const std::vector<const char*>& layers) {
+vk::UniqueInstance DeviceContext::CreateInstance(const std::vector<const char*>& extensions,
+                                                 const std::vector<const char*>& layers) {
   auto appInfo = vk::ApplicationInfo()
                      .setApiVersion(VK_API_VERSION_1_2)
                      .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
@@ -37,9 +37,9 @@ vk::UniqueInstance Context::CreateInstance(const std::vector<const char*>& exten
 }
 
 vk::UniqueHandle<vk::DebugUtilsMessengerEXT, vk::DispatchLoaderDynamic>
-Context::CreateDebugUtilsMessenger(vk::Instance instance,
-                                   PFN_vkDebugUtilsMessengerCallbackEXT debugCallback,
-                                   vk::DispatchLoaderDynamic& loader) {
+DeviceContext::CreateDebugUtilsMessenger(vk::Instance instance,
+                                         PFN_vkDebugUtilsMessengerCallbackEXT debugCallback,
+                                         vk::DispatchLoaderDynamic& loader) {
   auto messengerCreateInfo =
       vk::DebugUtilsMessengerCreateInfoEXT()
           .setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
@@ -54,7 +54,7 @@ Context::CreateDebugUtilsMessenger(vk::Instance instance,
   return instance.createDebugUtilsMessengerEXTUnique(messengerCreateInfo, nullptr, loader);
 }
 
-vk::PhysicalDevice Context::SelectPhysicalDevice(vk::Instance instance) {
+vk::PhysicalDevice DeviceContext::SelectPhysicalDevice(vk::Instance instance) {
   std::vector<vk::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
   LOGI("Found {} physical device(s)", physicalDevices.size());
   vk::PhysicalDevice physicalDevice = nullptr;
@@ -84,7 +84,7 @@ vk::PhysicalDevice Context::SelectPhysicalDevice(vk::Instance instance) {
   return physicalDevice;
 }
 
-DeviceQueueInfo Context::GetDeviceQueueInfo(vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
+DeviceQueueInfo DeviceContext::GetDeviceQueueInfo(vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
 
   DeviceQueueInfo info{};
   std::vector<vk::QueueFamilyProperties> queueFamilyProps = gpu.getQueueFamilyProperties();
@@ -150,8 +150,9 @@ DeviceQueueInfo Context::GetDeviceQueueInfo(vk::PhysicalDevice gpu, vk::SurfaceK
   return info;
 }
 
-vk::UniqueDevice Context::CreateDevice(vk::PhysicalDevice gpu, const DeviceQueueInfo& queueInfo,
-                                       const std::vector<const char*>& deviceExtensions) {
+vk::UniqueDevice DeviceContext::CreateDevice(vk::PhysicalDevice gpu,
+                                             const DeviceQueueInfo& queueInfo,
+                                             const std::vector<const char*>& deviceExtensions) {
   std::vector<vk::DeviceQueueCreateInfo> queueCreateInfos;
   for (uint32_t familyIndex = 0; familyIndex < QUEUE_INDEX_COUNT; familyIndex++) {
     if (queueInfo.queueOffsets[familyIndex] != 0) {
@@ -182,8 +183,8 @@ vk::UniqueDevice Context::CreateDevice(vk::PhysicalDevice gpu, const DeviceQueue
   return gpu.createDeviceUnique(chain.get<vk::DeviceCreateInfo>());
 }
 
-void Context::SetupInstance(const char** extensions, uint32_t extensionsCount, const char** layers,
-                            uint32_t layersCount) {
+void DeviceContext::SetupInstance(const char** extensions, uint32_t extensionsCount,
+                                  const char** layers, uint32_t layersCount) {
   std::vector<const char*> resIntanceExtensions(extensions, extensions + extensionsCount);
   std::vector<const char*> instanceLayers(layers, layers + layersCount);
 #ifdef ZEN_DEBUG
@@ -199,8 +200,8 @@ void Context::SetupInstance(const char** extensions, uint32_t extensionsCount, c
 #endif  // ZEN_DEBUG
 }
 
-void Context::SetupDevice(const char** extensions, uint32_t extensionsCount,
-                          vk::SurfaceKHR surface) {
+void DeviceContext::SetupDevice(const char** extensions, uint32_t extensionsCount,
+                                vk::SurfaceKHR surface) {
   m_gpu       = SelectPhysicalDevice(m_instance.get());
   m_queueInfo = GetDeviceQueueInfo(m_gpu, surface);
   std::vector<const char*> deviceExtensions(extensions, extensions + extensionsCount);

@@ -1,9 +1,9 @@
 #include "Graphics/Vulkan/SwapchainVK.h"
-#include "Graphics/Vulkan/ContextVK.h"
+#include "Graphics/Vulkan/DeviceContextVK.h"
 #include "Platform/NativeWindow.h"
 
 namespace zen::vulkan {
-SwapChain::SwapChain(const Context& context, vk::SurfaceKHR surface, Desc desc)
+SwapChain::SwapChain(const DeviceContext& context, vk::SurfaceKHR surface, Desc desc)
     : m_context(context), m_desc(std::move(desc)) {
   m_surface = surface;
   Setup(m_context.GetGPU(), m_context.GetLogicalDevice());

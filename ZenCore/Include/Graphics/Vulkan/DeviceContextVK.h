@@ -22,9 +22,9 @@ struct DeviceQueueInfo {
   std::vector<uint32_t> queueOffsets;
   std::vector<std::vector<float>> queuePriorites;
 };
-class Context {
+class DeviceContext {
 public:
-  Context() = default;
+  DeviceContext() = default;
   void SetupInstance(const char** extensions, uint32_t extensionsCount, const char** layers,
                      uint32_t layersCount);
   void SetupDevice(const char** extensions, uint32_t extensionsCount, vk::SurfaceKHR surface);

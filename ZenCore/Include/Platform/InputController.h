@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <array>
 #include <shared_mutex>
+#include <mutex>
 
 namespace zen::platform {
 class KeyboardMouseInput {

@@ -4,7 +4,7 @@
 #include "Platform/NativeWindow.h"
 
 namespace zen::vulkan {
-class Context;
+class DeviceContext;
 class SwapChain {
 public:
   struct Desc {
@@ -13,7 +13,7 @@ public:
     uint32_t imageCount;
     bool enableVsync;
   };
-  SwapChain(const Context& context, vk::SurfaceKHR surface, Desc desc);
+  SwapChain(const DeviceContext& context, vk::SurfaceKHR surface, Desc desc);
   ~SwapChain();
 
 private:
@@ -24,7 +24,7 @@ private:
   vk::PresentModeKHR ChoosePresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes,
                                        bool enableVsync);
 
-  const Context& m_context;
+  const DeviceContext& m_context;
   Desc m_desc;
   vk::SwapchainKHR m_swapchain;
   vk::SurfaceKHR m_surface;

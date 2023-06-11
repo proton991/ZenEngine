@@ -6,6 +6,9 @@ set(GLFW_DIR ${CMAKE_CURRENT_SOURCE_DIR}/glfw)
 target_include_directories(glfw INTERFACE ${GLFW_DIR}/Include)
 target_link_directories(glfw INTERFACE ${GLFW_DIR}/Lib)
 target_link_libraries(glfw INTERFACE glfw3)
+if (UNIX)
+    target_link_libraries(glfw INTERFACE X11)
+endif (UNIX)
 
 
 ###########################
@@ -14,11 +17,11 @@ target_link_libraries(glfw INTERFACE glfw3)
 add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/glm/Include)
 target_compile_definitions(glm INTERFACE
-    GLM_FORCE_SWIZZLE
-    GLM_FORCE_RADIANS
-    GLM_FORCE_CTOR_INIT
-    GLM_ENABLE_EXPERIMENTAL
-    )
+        GLM_FORCE_SWIZZLE
+        GLM_FORCE_RADIANS
+        GLM_FORCE_CTOR_INIT
+        GLM_ENABLE_EXPERIMENTAL
+        )
 
 
 ###########################
@@ -48,23 +51,23 @@ option(BUILD_EXTERNAL OFF)
 add_subdirectory(glslang)
 
 if (NOT TARGET glslang-default-resource-limits)
-  add_library(glslang-default-resource-limits
-      glslang/StandAlone/ResourceLimits.cpp)
+    add_library(glslang-default-resource-limits
+            glslang/StandAlone/ResourceLimits.cpp)
 
-  set_target_properties(glslang-default-resource-limits PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
+    set_target_properties(glslang-default-resource-limits PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
-  target_include_directories(glslang-default-resource-limits
-      PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang)
+    target_include_directories(glslang-default-resource-limits
+            PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glslang)
 endif ()
 
 if (NOT MSVC)
-  target_compile_options(glslang PRIVATE
-      "-Wno-logical-op-parentheses"
-      "-Wno-unused-parameter")
+    target_compile_options(glslang PRIVATE
+            "-Wno-logical-op-parentheses"
+            "-Wno-unused-parameter")
 
-  target_compile_options(SPIRV PRIVATE
-      "-Wno-logical-op-parentheses"
-      "-Wno-unused-parameter")
+    target_compile_options(SPIRV PRIVATE
+            "-Wno-logical-op-parentheses"
+            "-Wno-unused-parameter")
 endif ()
 
 set_target_properties(glslang PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)

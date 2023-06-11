@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     int f = 1;
   }
 
-  Context context{};
+  DeviceContext context{};
   auto instanceExts = window->GetInstanceExtensions();
   auto deviceExts   = window->GetDeviceExtensions();
   context.SetupInstance(instanceExts.data(), instanceExts.size(), nullptr, 0);

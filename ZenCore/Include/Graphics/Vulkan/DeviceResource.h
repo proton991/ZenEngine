@@ -1,4 +1,5 @@
 #pragma once
+#include <utility>
 #include <vulkan/vulkan.hpp>
 #include "Common/Base.h"
 #include "DeviceVK.h"
@@ -23,7 +24,7 @@ public:
     SetDebugName(other.m_debugName);
   }
 
-  inline VkHandle::CType GetCHandle() const { return m_handle; }
+  inline typename VkHandle::CType GetCHandle() const { return m_handle; }
   inline const VkHandle& GetHandle() const { return m_handle; }
 
   inline VkHandle& GetHandle() { return m_handle; }

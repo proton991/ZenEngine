@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 #include "Common/UniquePtr.h"
-#include "ContextVK.h"
+#include "DeviceContextVK.h"
 #include "vma/vk_mem_alloc.h"
 
 namespace zen::vulkan {
@@ -9,7 +9,7 @@ class Context;
 class ResourceCache;
 class Device {
 public:
-  Device(const Context& context);
+  Device(const DeviceContext& context);
   ~Device();
 
   vk::Device GetHandle() const { return m_handle; }
@@ -38,7 +38,7 @@ template <typename Handle>
 void Device::SetDebugObjName(Handle objHandle, std::string name) const {
 
   auto objNameInfo = vk::DebugUtilsObjectNameInfoEXT()
-                         .setObjectHandle(uint64_t(static_cast<Handle::CType>(objHandle)))
+                         .setObjectHandle(uint64_t(static_cast<typename Handle::CType>(objHandle)))
                          .setObjectType(objHandle.objectType)
                          .setPObjectName(name.c_str());
   if (m_loader.vkSetDebugUtilsObjectNameEXT) {

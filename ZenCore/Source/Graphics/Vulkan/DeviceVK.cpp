@@ -3,7 +3,7 @@
 #include "Graphics/Utils/ResourceCache.h"
 namespace zen::vulkan {
 
-Device::Device(const Context& context) {
+Device::Device(const DeviceContext& context) {
   m_instance      = context.GetInstance();
   m_loader        = context.m_loader;
   m_gpu           = context.GetGPU();

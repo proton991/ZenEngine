@@ -76,7 +76,7 @@ void GLSLCompiler::ResetTargetEnvironment() {
 bool GLSLCompiler::CompileToSpirv(vk::ShaderStageFlagBits stage,
                                   const std::vector<uint8_t>& glslSource,
                                   const std::string& entryPoint, const ShaderVariant& shaderVariant,
-                                  std::vector<std::uint32_t>& spirv, std::string& infoLog) {
+                                  std::vector<uint32_t>& spirv, std::string& infoLog) {
   // Initialize glslang library.
   glslang::InitializeProcess();
 

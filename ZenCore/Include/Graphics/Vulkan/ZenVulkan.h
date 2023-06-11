@@ -3,7 +3,7 @@
 #include "./BufferVK.h"
 #include "./CommandPoolVK.h"
 #include "./CommandbufferVK.h"
-#include "./ContextVK.h"
+#include "./DeviceContextVK.h"
 #include "./DeviceVK.h"
 #include "./ImageVK.h"
 #include "./RenderPassVK.h"
