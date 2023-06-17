@@ -15,11 +15,12 @@ set(ZEN_CORE_HEADERS
         Include/Graphics/Vulkan/BufferVK.h
         Include/Graphics/Vulkan/CommandbufferVK.h
         Include/Graphics/Vulkan/CommandPoolVK.h
-        Include/Graphics/Vulkan/DeviceContextVK.h
+        Include/Graphics/Vulkan/DeviceContext.h
         Include/Graphics/Vulkan/DeviceResource.h
         Include/Graphics/Vulkan/DeviceVK.h
         Include/Graphics/Vulkan/Framebuffer.h
         Include/Graphics/Vulkan/ImageVK.h
+        Include/Graphics/Vulkan/InstanceVK.h
         Include/Graphics/Vulkan/RenderPassVK.h
         Include/Graphics/Vulkan/ShaderModuleVK.h
         Include/Graphics/Vulkan/SwapchainVK.h
@@ -43,10 +44,11 @@ set(ZEN_CORE_SOURCES
         Source/Graphics/Vulkan/BufferVK.cpp
         Source/Graphics/Vulkan/CommandbufferVK.cpp
         Source/Graphics/Vulkan/CommandPoolVK.cpp
-        Source/Graphics/Vulkan/DeviceContextVK.cpp
+        Source/Graphics/Vulkan/DeviceContext.cpp
         Source/Graphics/Vulkan/DeviceVK.cpp
         Source/Graphics/Vulkan/Framebuffer.cpp
         Source/Graphics/Vulkan/ImageVK.cpp
+        Source/Graphics/Vulkan/InstanceVK.cpp
         Source/Graphics/Vulkan/RenderPassVK.cpp
         Source/Graphics/Vulkan/ShaderModuleVK.cpp
         Source/Graphics/Vulkan/SwapchainVK.cpp

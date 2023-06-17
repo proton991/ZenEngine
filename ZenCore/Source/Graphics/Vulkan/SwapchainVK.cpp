@@ -1,5 +1,5 @@
 #include "Graphics/Vulkan/SwapchainVK.h"
-#include "Graphics/Vulkan/DeviceContextVK.h"
+#include "Graphics/Vulkan/DeviceContext.h"
 #include "Platform/NativeWindow.h"
 
 namespace zen::vulkan {

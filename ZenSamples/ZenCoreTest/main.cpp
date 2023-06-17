@@ -9,7 +9,7 @@ using namespace zen::platform;
 using namespace zen;
 int main(int argc, char** argv) {
   WindowConfig windowConfig;
-  GlfwWindowImpl* window = new GlfwWindowImpl(windowConfig);
+  auto* window = new GlfwWindowImpl(windowConfig);
   {
     UniquePtr<int> a = UniquePtr<int>(new int(2));
     auto b           = UniquePtr<int>(std::move(a));
@@ -20,15 +20,15 @@ int main(int argc, char** argv) {
     int f = 1;
   }
 
-  DeviceContext context{};
   auto instanceExts = window->GetInstanceExtensions();
   auto deviceExts   = window->GetDeviceExtensions();
-  context.SetupInstance(instanceExts.data(), instanceExts.size(), nullptr, 0);
+  Instance instance{{}, instanceExts};
+  DeviceContext context{instance};
   vk::SurfaceKHR surface = window->CreateSurface(context.GetInstance());
   context.SetupDevice(deviceExts.data(), deviceExts.size(), surface);
 
   UniquePtr<Device> device       = MakeUnique<Device>(context);
-  auto graphicsQFIndex           = device->GetQueueFamliyIndex(QueueIndices::QUEUE_INDEX_GRAPHICS);
+  auto graphicsQFIndex           = device->GetQueueFamilyIndex(QueueIndices::QUEUE_INDEX_GRAPHICS);
   UniquePtr<CommandPool> cmdPool = MakeUnique<CommandPool>(*device, graphicsQFIndex);
 
   cmdPool->SetDebugName("Graphics Command Pool");

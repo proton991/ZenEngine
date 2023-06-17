@@ -5,7 +5,7 @@ namespace zen::vulkan {
 
 Device::Device(const DeviceContext& context) {
   m_instance      = context.GetInstance();
-  m_loader        = context.m_loader;
+  m_dl            = context.m_instance.GetDL();
   m_gpu           = context.GetGPU();
   m_handle        = context.GetLogicalDevice();
   m_queueInfo     = context.m_queueInfo;
@@ -14,7 +14,7 @@ Device::Device(const DeviceContext& context) {
   InitVma();
 }
 
-uint32_t Device::GetQueueFamliyIndex(QueueIndices index) const {
+uint32_t Device::GetQueueFamilyIndex(QueueIndices index) const {
   return m_queueInfo.familyIndices[index];
 }
 

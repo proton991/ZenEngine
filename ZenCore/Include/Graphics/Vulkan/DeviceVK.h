@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 #include "Common/UniquePtr.h"
-#include "DeviceContextVK.h"
+#include "DeviceContext.h"
 #include "vma/vk_mem_alloc.h"
 
 namespace zen::vulkan {
@@ -17,7 +17,7 @@ public:
   template <typename Handle>
   void SetDebugObjName(Handle objHandle, std::string name) const;
 
-  uint32_t GetQueueFamliyIndex(QueueIndices index) const;
+  uint32_t GetQueueFamilyIndex(QueueIndices index) const;
 
   auto GetMemAllocator() const { return m_allocator; }
 
@@ -26,7 +26,7 @@ public:
 private:
   void InitVma();
   vk::Instance m_instance;
-  vk::DispatchLoaderDynamic m_loader;
+  vk::DispatchLoaderDynamic m_dl;
   vk::PhysicalDevice m_gpu;
   vk::Device m_handle;
   VmaAllocator m_allocator;
@@ -41,8 +41,8 @@ void Device::SetDebugObjName(Handle objHandle, std::string name) const {
                          .setObjectHandle(uint64_t(static_cast<typename Handle::CType>(objHandle)))
                          .setObjectType(objHandle.objectType)
                          .setPObjectName(name.c_str());
-  if (m_loader.vkSetDebugUtilsObjectNameEXT) {
-    m_handle.setDebugUtilsObjectNameEXT(objNameInfo, m_loader);
+  if (m_dl.vkSetDebugUtilsObjectNameEXT) {
+    m_handle.setDebugUtilsObjectNameEXT(objNameInfo, m_dl);
   }
 }
 }  // namespace zen::vulkan

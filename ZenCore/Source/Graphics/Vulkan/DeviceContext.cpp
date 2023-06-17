@@ -1,59 +1,7 @@
-#include "Graphics/Vulkan/DeviceContextVK.h"
+#include "Graphics/Vulkan/DeviceContext.h"
 #include "Common/Logging.h"
 
 namespace zen::vulkan {
-VKAPI_ATTR VkBool32 VKAPI_CALL
-DebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                     VkDebugUtilsMessageTypeFlagsEXT messageType,
-                     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
-  if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-    LOGW("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
-         pCallbackData->pMessage);
-  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
-    LOGE("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
-         pCallbackData->pMessage);
-  }
-  return VK_FALSE;
-
-  return VK_FALSE;
-}
-
-vk::UniqueInstance DeviceContext::CreateInstance(const std::vector<const char*>& extensions,
-                                                 const std::vector<const char*>& layers) {
-  auto appInfo = vk::ApplicationInfo()
-                     .setApiVersion(VK_API_VERSION_1_2)
-                     .setApplicationVersion(VK_MAKE_VERSION(1, 0, 0))
-                     .setPApplicationName("ZenApp")
-                     .setEngineVersion(VK_MAKE_VERSION(1, 0, 0))
-                     .setPEngineName("ZenEngine");
-  vk::InstanceCreateInfo instanceCI = vk::InstanceCreateInfo()
-                                          .setPApplicationInfo(&appInfo)
-                                          .setEnabledExtensionCount(extensions.size())
-                                          .setPpEnabledExtensionNames(extensions.data())
-                                          .setEnabledLayerCount(layers.size())
-                                          .setPpEnabledLayerNames(layers.data());
-
-  return vk::createInstanceUnique(instanceCI);
-}
-
-vk::UniqueHandle<vk::DebugUtilsMessengerEXT, vk::DispatchLoaderDynamic>
-DeviceContext::CreateDebugUtilsMessenger(vk::Instance instance,
-                                         PFN_vkDebugUtilsMessengerCallbackEXT debugCallback,
-                                         vk::DispatchLoaderDynamic& loader) {
-  auto messengerCreateInfo =
-      vk::DebugUtilsMessengerCreateInfoEXT()
-          .setMessageSeverity(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                              vk::DebugUtilsMessageSeverityFlagBitsEXT::
-                                  eError /* | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo*/)
-          .setMessageType(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                          vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
-                          vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation)
-          .setPfnUserCallback(debugCallback)
-          .setPUserData(nullptr);  // Optional
-
-  return instance.createDebugUtilsMessengerEXTUnique(messengerCreateInfo, nullptr, loader);
-}
-
 vk::PhysicalDevice DeviceContext::SelectPhysicalDevice(vk::Instance instance) {
   std::vector<vk::PhysicalDevice> physicalDevices = instance.enumeratePhysicalDevices();
   LOGI("Found {} physical device(s)", physicalDevices.size());
@@ -183,26 +131,9 @@ vk::UniqueDevice DeviceContext::CreateDevice(vk::PhysicalDevice gpu,
   return gpu.createDeviceUnique(chain.get<vk::DeviceCreateInfo>());
 }
 
-void DeviceContext::SetupInstance(const char** extensions, uint32_t extensionsCount,
-                                  const char** layers, uint32_t layersCount) {
-  std::vector<const char*> resIntanceExtensions(extensions, extensions + extensionsCount);
-  std::vector<const char*> instanceLayers(layers, layers + layersCount);
-#ifdef ZEN_DEBUG
-  instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
-  resIntanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif  // ZEN_DEBUG
-
-  m_instance = CreateInstance(resIntanceExtensions, instanceLayers);
-  m_loader   = vk::DispatchLoaderDynamic(m_instance.get(), vkGetInstanceProcAddr);
-#ifdef ZEN_DEBUG
-  m_debugUtilsMessenger =
-      CreateDebugUtilsMessenger(m_instance.get(), DebugMessageCallback, m_loader);
-#endif  // ZEN_DEBUG
-}
-
 void DeviceContext::SetupDevice(const char** extensions, uint32_t extensionsCount,
                                 vk::SurfaceKHR surface) {
-  m_gpu       = SelectPhysicalDevice(m_instance.get());
+  m_gpu       = SelectPhysicalDevice(m_instance.GetHandle());
   m_queueInfo = GetDeviceQueueInfo(m_gpu, surface);
   std::vector<const char*> deviceExtensions(extensions, extensions + extensionsCount);
 

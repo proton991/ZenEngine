@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include "InstanceVK.h"
 
 namespace zen::vulkan {
 enum QueueIndices {
@@ -24,31 +25,21 @@ struct DeviceQueueInfo {
 };
 class DeviceContext {
 public:
-  DeviceContext() = default;
-  void SetupInstance(const char** extensions, uint32_t extensionsCount, const char** layers,
-                     uint32_t layersCount);
+  DeviceContext(const Instance& instance) : m_instance(instance) {}
   void SetupDevice(const char** extensions, uint32_t extensionsCount, vk::SurfaceKHR surface);
 
-  auto GetInstance() const { return m_instance.get(); }
+  auto GetInstance() const { return m_instance.GetHandle(); }
   auto GetGPU() const { return m_gpu; }
   auto GetLogicalDevice() const { return m_device.get(); }
-  auto GetQueueFamliyIndex(QueueIndices index) const { return m_queueInfo.familyIndices[index]; }
+  auto GetQueueFamilyIndex(QueueIndices index) const { return m_queueInfo.familyIndices[index]; }
 
 private:
-  static vk::UniqueInstance CreateInstance(const std::vector<const char*>& extensions,
-                                           const std::vector<const char*>& layers);
-  static vk::UniqueHandle<vk::DebugUtilsMessengerEXT, vk::DispatchLoaderDynamic>
-  CreateDebugUtilsMessenger(vk::Instance instance,
-                            PFN_vkDebugUtilsMessengerCallbackEXT debugCallback,
-                            vk::DispatchLoaderDynamic& loader);
   static vk::PhysicalDevice SelectPhysicalDevice(vk::Instance instance);
   static DeviceQueueInfo GetDeviceQueueInfo(vk::PhysicalDevice gpu, vk::SurfaceKHR surface);
   static vk::UniqueDevice CreateDevice(vk::PhysicalDevice gpu, const DeviceQueueInfo& queueInfo,
                                        const std::vector<const char*>& deviceExtensions);
 
-  vk::UniqueInstance m_instance;
-  vk::DispatchLoaderDynamic m_loader;
-  vk::UniqueHandle<vk::DebugUtilsMessengerEXT, vk::DispatchLoaderDynamic> m_debugUtilsMessenger;
+  const Instance& m_instance;
   vk::PhysicalDevice m_gpu;
   DeviceQueueInfo m_queueInfo{};
   vk::UniqueDevice m_device;
