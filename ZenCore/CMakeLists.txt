@@ -15,6 +15,7 @@ set(ZEN_CORE_HEADERS
         Include/Graphics/Vulkan/BufferVK.h
         Include/Graphics/Vulkan/CommandbufferVK.h
         Include/Graphics/Vulkan/CommandPoolVK.h
+        Include/Graphics/Vulkan/DescriptorPoolVK.h
         Include/Graphics/Vulkan/DeviceContext.h
         Include/Graphics/Vulkan/DeviceResource.h
         Include/Graphics/Vulkan/DeviceVK.h
@@ -44,6 +45,7 @@ set(ZEN_CORE_SOURCES
         Source/Graphics/Vulkan/BufferVK.cpp
         Source/Graphics/Vulkan/CommandbufferVK.cpp
         Source/Graphics/Vulkan/CommandPoolVK.cpp
+        Source/Graphics/Vulkan/DescriptorPoolVK.cpp
         Source/Graphics/Vulkan/DeviceContext.cpp
         Source/Graphics/Vulkan/DeviceVK.cpp
         Source/Graphics/Vulkan/Framebuffer.cpp
