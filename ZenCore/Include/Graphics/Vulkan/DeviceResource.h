@@ -24,7 +24,7 @@ public:
     SetDebugName(other.m_debugName);
   }
 
-  inline typename VkHandle::CType GetCHandle() const { return m_handle; }
+  inline typename VkHandle::CType GetCHandle() const { return static_cast<VkHandle::CType>(m_handle); }
   inline const VkHandle& GetHandle() const { return m_handle; }
 
   inline VkHandle& GetHandle() { return m_handle; }
@@ -44,7 +44,7 @@ public:
 
   VmaAllocator GetVmaAllocator() const { return m_device.GetMemAllocator(); }
 
-private:
+protected:
   const Device& m_device;
   VkHandle m_handle;
   std::string m_debugName;

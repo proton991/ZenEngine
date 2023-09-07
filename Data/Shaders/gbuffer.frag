@@ -17,6 +17,7 @@
 #version 450
 
 layout(binding = 1) uniform samplerCube samplerEnvMap;
+layout (binding = 2) uniform sampler2D textures[];
 
 layout(location = 0) in vec3 inUVW;
 layout(location = 1) in vec3 inPos;

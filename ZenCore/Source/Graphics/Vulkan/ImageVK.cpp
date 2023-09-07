@@ -67,7 +67,7 @@ Image::Image(Image&& other) noexcept
 Image::~Image() {
   if (GetHandle() && m_allocation) {
     GetDeviceHandle().destroyImageView(m_view);
-    vmaDestroyImage(GetVmaAllocator(), GetHandle(), m_allocation);
+    vmaDestroyImage(GetVmaAllocator(), GetCHandle(), m_allocation);
   }
 }
 

@@ -36,7 +36,7 @@ Buffer::Buffer(Buffer&& other) noexcept
 Buffer::~Buffer() {
   if (GetHandle() && m_allocation != nullptr) {
     Unmap();
-    vmaDestroyBuffer(GetVmaAllocator(), GetHandle(), m_allocation);
+    vmaDestroyBuffer(GetVmaAllocator(), GetCHandle(), m_allocation);
   }
 }
 
