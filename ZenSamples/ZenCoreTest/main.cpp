@@ -1,46 +1,68 @@
 #include <iostream>
 #include "Common/SharedPtr.h"
 #include "Common/UniquePtr.h"
-#include "Graphics/Vulkan/ZenVulkan.h"
+#include "Graphics/Val/ZenVal.h"
 #include "Platform/GlfwWindow.h"
+#include "Common/Helpers.h"
 
-using namespace zen::vulkan;
+using namespace zen::val;
 using namespace zen::platform;
 using namespace zen;
-int main(int argc, char** argv) {
-  WindowConfig windowConfig;
-  auto* window = new GlfwWindowImpl(windowConfig);
-  {
-    UniquePtr<int> a = UniquePtr<int>(new int(2));
-    auto b           = UniquePtr<int>(std::move(a));
 
-    SharedPtr<int> c = MakeShared<int>(4);
-    auto d           = SharedPtr(std::move(c));
+int main(int argc, char** argv)
+{
+    WindowConfig windowConfig;
+    auto*        window = new GlfwWindowImpl(windowConfig);
+    {
+        UniquePtr<int> a = UniquePtr<int>(new int(2));
+        auto           b = UniquePtr<int>(std::move(a));
 
-    int f = 1;
-  }
+        SharedPtr<int> c = MakeShared<int>(4);
+        auto           d = SharedPtr(std::move(c));
 
-  auto instanceExts = window->GetInstanceExtensions();
-  auto deviceExts   = window->GetDeviceExtensions();
-  Instance instance{{}, instanceExts};
-  DeviceContext context{instance};
-  vk::SurfaceKHR surface = window->CreateSurface(context.GetInstance());
-  context.SetupDevice(deviceExts.data(), deviceExts.size(), surface);
+        int f = 1;
+    }
 
-  UniquePtr<Device> device       = MakeUnique<Device>(context);
-  auto graphicsQFIndex           = device->GetQueueFamilyIndex(QueueIndices::QUEUE_INDEX_GRAPHICS);
-  UniquePtr<CommandPool> cmdPool = MakeUnique<CommandPool>(*device, graphicsQFIndex);
+    auto instanceExts = window->GetInstanceExtensions();
+    auto deviceExts   = window->GetDeviceExtensions();
 
-  cmdPool->SetDebugName("Graphics Command Pool");
-  SwapChain::Desc swapChainDesc{windowConfig.width, windowConfig.height, 2, true};
-  SwapChain swapChain{context, surface, swapChainDesc};
+    val::Instance::CreateInfo instanceCI{};
+    instanceCI.enabledExtensionCount   = ToU32(instanceExts.size());
+    instanceCI.ppEnabledExtensionNames = instanceExts.data();
 
-  Buffer stageBuffer(*device, 1024, vk::BufferUsageFlagBits::eTransferSrc,
-                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, "test staging buffer");
-  ShaderSource glslSource{"gbuffer.frag"};
-  ShaderVariant shaderVariant;
-  ShaderModule testShader{*device, vk::ShaderStageFlagBits::eVertex, glslSource, shaderVariant};
-  while (!window->ShouldClose()) {
-    window->Update();
-  }
+    auto valInstance = val::Instance::Create(instanceCI);
+
+    VkSurfaceKHR surface = window->CreateSurface(valInstance->GetHandle());
+
+    auto valPhysicalDevice = val::PhysicalDevice::Create(*valInstance);
+
+    val::Device::CreateInfo deviceCI{};
+    deviceCI.pPhysicalDevice         = valPhysicalDevice.get();
+    deviceCI.enabledExtensionCount   = ToU32(deviceExts.size());
+    deviceCI.ppEnabledExtensionNames = deviceExts.data();
+
+    auto valDevice = val::Device::Create(deviceCI);
+
+    val::RuntimeArraySizes runtimeArraySizes{{"textures", 4}};
+
+    //    val::ShaderModule testShader{
+    //        *valDevice, VK_SHADER_STAGE_FRAGMENT_BIT, "gbuffer.frag.spv", runtimeArraySizes};
+    //    std::cout << "entry point: " << testShader.GetEntryPoint() << std::endl;
+    //    auto& resources = testShader.GetResources();
+    //    for (auto& resource : resources)
+    //    {
+    //        std::cout << resource.name << ":" << std::endl;
+    //        std::cout << "\tset: " << resource.set << std::endl;
+    //        std::cout << "\tbinding: " << resource.binding << std::endl;
+    //        std::cout << "\tlocation: " << resource.location << std::endl;
+    //        std::cout << "\tarraySize: " << resource.arraySize << std::endl;
+    //        std::cout << "\tsize: " << resource.size << std::endl;
+    //    }
+
+    Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
+
+    while (!window->ShouldClose())
+    {
+        window->Update();
+    }
 }
