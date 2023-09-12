@@ -25,8 +25,8 @@ target_link_libraries(volk PUBLIC vulkan)
 # vma
 add_library(vma INTERFACE)
 set(VMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vma)
-target_sources(vma INTERFACE ${VMA_DIR}/vk_mem_alloc.h)
-target_include_directories(vma INTERFACE ${VMA_DIR})
+target_sources(vma INTERFACE ${VMA_DIR}/include/vk_mem_alloc.h)
+target_include_directories(vma INTERFACE ${VMA_DIR}/include)
 target_link_libraries(vma INTERFACE vulkan)
 
 # spdlog
