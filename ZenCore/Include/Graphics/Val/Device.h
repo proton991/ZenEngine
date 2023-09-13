@@ -8,8 +8,8 @@
 
 namespace zen::val
 {
-class PhysicalDevice;
 class Queue;
+class Instance;
 class Device
 {
 public:
@@ -26,16 +26,18 @@ public:
 
     VkDevice GetHandle() const { return m_handle; }
 
-    VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+    VkPhysicalDevice GetPhysicalDeviceHandle() const { return m_physicalDevice->GetHandle(); }
 
     const Queue& GetQueue(QueueType queueType);
 
     VmaAllocator GetAllocator() const { return m_memAllocator; }
 
+    VkInstance GetInstanceHandle() const { return m_physicalDevice->GetInstanceHandle(); }
+
 private:
     explicit Device(const CreateInfo& CI);
     VkDevice                       m_handle{VK_NULL_HANDLE};
-    VkPhysicalDevice               m_physicalDevice{VK_NULL_HANDLE};
+    PhysicalDevice*                m_physicalDevice{nullptr};
     std::vector<const char*>       m_enabledExtensions;
     std::unordered_map<int, Queue> m_queues;
     VmaAllocator                   m_memAllocator{nullptr};

@@ -226,9 +226,9 @@ Instance::Instance(const Instance::CreateInfo& CI)
     appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pNext              = nullptr; // Pointer to an extension-specific structure.
     appInfo.pApplicationName   = nullptr;
-    appInfo.applicationVersion = 0;       // Developer-supplied version number of the application
+    appInfo.applicationVersion = 0; // Developer-supplied version number of the application
     appInfo.pEngineName        = "Diligent Engine";
-    appInfo.engineVersion      = 1000;    // Developer-supplied version number of the engine used to create the application.
+    appInfo.engineVersion      = 1000; // Developer-supplied version number of the engine used to create the application.
     appInfo.apiVersion         = apiVersion;
 
     VkInstanceCreateInfo vkInstanceCI{};
@@ -255,12 +255,12 @@ Instance::Instance(const Instance::CreateInfo& CI)
     LOGI("Enabled Instance Layers count: {}", enabledLayers.size())
     for (const auto& layer : enabledLayers)
     {
-        LOGI("Instance Layer: {}", layer);
+        LOGI("\tEnabled Instance Layer: {}", layer);
     }
     LOGI("Enabled Instance Extensions count: {}", m_enabledExtensions.size())
     for (const auto& ext : m_enabledExtensions)
     {
-        LOGI("Instance Layer: {}", ext);
+        LOGI("\tEnabled Instance Extension: {}", ext);
     }
     // Enumerate physical devices
     {

@@ -11,17 +11,17 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
     const std::vector<VkSurfaceFormatKHR> surfaceFormatPriorityList = {{VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
                                                                        {VK_FORMAT_B8G8R8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR}};
     VkSurfaceCapabilitiesKHR              surfaceCapabilities{};
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_device.GetPhysicalDevice(), m_surface, &surfaceCapabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_device.GetPhysicalDeviceHandle(), m_surface, &surfaceCapabilities);
 
     uint32_t numSurfaceFormats = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDevice(), m_surface, &numSurfaceFormats, nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface, &numSurfaceFormats, nullptr);
     m_surfaceFormats.resize(numSurfaceFormats);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDevice(), m_surface, &numSurfaceFormats, m_surfaceFormats.data());
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface, &numSurfaceFormats, m_surfaceFormats.data());
 
     uint32_t numPresentModes = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDevice(), m_surface, &numPresentModes, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDeviceHandle(), m_surface, &numPresentModes, nullptr);
     m_presentModes.resize(numPresentModes);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDevice(), m_surface, &numPresentModes, m_presentModes.data());
+    vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDeviceHandle(), m_surface, &numPresentModes, m_presentModes.data());
 
     LOGI("Available surface formats:")
     for (auto& surfaceFormat : m_surfaceFormats)
@@ -78,6 +78,10 @@ Swapchain::~Swapchain()
     if (m_handle != VK_NULL_HANDLE)
     {
         vkDestroySwapchainKHR(m_device.GetHandle(), m_handle, nullptr);
+    }
+    if (m_surface != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(m_device.GetInstanceHandle(), m_surface, nullptr);
     }
 }
 

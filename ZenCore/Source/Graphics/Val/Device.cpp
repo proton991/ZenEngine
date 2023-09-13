@@ -39,7 +39,7 @@ bool Device::IsExtensionEnabled(const char* extension) const
 
 Device::Device(const Device::CreateInfo& CI)
 {
-    m_physicalDevice = CI.pPhysicalDevice->GetHandle();
+    m_physicalDevice = CI.pPhysicalDevice;
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     // fill in queue create info
@@ -81,6 +81,12 @@ Device::Device(const Device::CreateInfo& CI)
     CHECK_VK_ERROR_AND_THROW(vkCreateDevice(CI.pPhysicalDevice->GetHandle(), &deviceCI, nullptr, &m_handle), "Failed to create device!")
     volkLoadDevice(m_handle);
     SetDeviceName(m_handle, "VulkanLogicalDevice");
+
+    LOGI("Enabled Device Extensions count: {}", m_enabledExtensions.size())
+    for (const auto& ext : m_enabledExtensions)
+    {
+        LOGI("\tEnabled Device Extension: {}", ext);
+    }
 
     // get device queues
     for (auto queueType = 0; queueType < QUEUE_INDEX_COUNT; queueType++)
