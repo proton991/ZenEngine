@@ -1,12 +1,10 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include "Graphics/Val/Shader.h"
 
 namespace zen::val
 {
 class Device;
-class ShaderModule;
-class ShaderResource;
-enum class ShaderResourceType;
 class DescriptorSetLayout;
 
 class PipelineLayout

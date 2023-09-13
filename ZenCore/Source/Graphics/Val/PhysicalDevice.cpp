@@ -110,7 +110,7 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
                          VK_QUEUE_TRANSFER_BIT,
                          VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
         !findProperQueue(info.familyIndices[QUEUE_INDEX_TRANSFER],
-                         info.familyIndices[QUEUE_INDEX_TRANSFER], VK_QUEUE_COMPUTE_BIT,
+                         info.indices[QUEUE_INDEX_TRANSFER], VK_QUEUE_COMPUTE_BIT,
                          VK_QUEUE_GRAPHICS_BIT, 0.5f))
     {
         info.familyIndices[QUEUE_INDEX_TRANSFER] = info.familyIndices[QUEUE_INDEX_COMPUTE];

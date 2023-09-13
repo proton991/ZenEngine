@@ -36,7 +36,7 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
 
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swapchainCI.surface          = m_surface;
-    swapchainCI.minImageCount    = std::clamp(imageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount);
+    swapchainCI.minImageCount    = std::max(surfaceCapabilities.minImageCount, std::min(surfaceCapabilities.maxImageCount, imageCount));
     swapchainCI.imageExtent      = m_extent;
     swapchainCI.imageArrayLayers = 1;
     swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;

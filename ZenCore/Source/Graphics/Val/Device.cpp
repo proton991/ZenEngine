@@ -1,9 +1,6 @@
 #include <vector>
-//#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
 #include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
-#include "Graphics/Val/Queue.h"
 #include "Graphics/Val/VulkanDebug.h"
 
 namespace zen::val

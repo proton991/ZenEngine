@@ -1,7 +1,6 @@
 #include "Graphics/Val/Device.h"
 #include "Graphics/Val/PipelineLayout.h"
 #include "Graphics/Val/DescriptorSetLayout.h"
-#include "Graphics/Val/Shader.h"
 #include "Graphics/Val/VulkanStrings.h"
 #include "Common/Errors.h"
 

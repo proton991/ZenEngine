@@ -5,10 +5,10 @@
 #include <vector>
 #include <unordered_map>
 #include "vk_mem_alloc.h"
+#include "Graphics/Val/Queue.h"
 
 namespace zen::val
 {
-class Queue;
 class Instance;
 class Device
 {

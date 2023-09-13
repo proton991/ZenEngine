@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <unordered_map>
 #include <string>
+#include <vector>
 
 namespace zen::val
 {
