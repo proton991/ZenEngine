@@ -5,14 +5,13 @@
 #include "Platform/GlfwWindow.h"
 #include "Common/Helpers.h"
 
-using namespace zen::val;
-using namespace zen::platform;
+//using namespace zen::val;
+//using namespace zen::platform;
 using namespace zen;
-
 int main(int argc, char** argv)
 {
-    WindowConfig windowConfig;
-    auto*        window = new GlfwWindowImpl(windowConfig);
+    platform::WindowConfig windowConfig;
+    auto*                  window = new platform::GlfwWindowImpl(windowConfig);
 
     auto instanceExts = window->GetInstanceExtensions();
     auto deviceExts   = window->GetDeviceExtensions();
@@ -28,7 +27,7 @@ int main(int argc, char** argv)
     auto valPhysicalDevice = val::PhysicalDevice::Create(*valInstance);
 
     val::Device::CreateInfo deviceCI{};
-    deviceCI.pPhysicalDevice         = valPhysicalDevice.get();
+    deviceCI.pPhysicalDevice         = valPhysicalDevice.Get();
     deviceCI.enabledExtensionCount   = ToU32(deviceExts.size());
     deviceCI.ppEnabledExtensionNames = deviceExts.data();
 
@@ -50,10 +49,11 @@ int main(int argc, char** argv)
     //        std::cout << "\tsize: " << resource.size << std::endl;
     //    }
 
-    Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
+    val::Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
 
     while (!window->ShouldClose())
     {
         window->Update();
     }
+    return 0;
 }

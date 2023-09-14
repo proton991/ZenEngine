@@ -43,10 +43,9 @@ static constexpr std::array<const char*, 1> ValidationLayerNames =
         // Unified validation layer used on Desktop and Mobile platforms
         "VK_LAYER_KHRONOS_validation"};
 
-std::shared_ptr<Instance> Instance::Create(const Instance::CreateInfo& createInfo)
+SharedPtr<Instance> Instance::Create(const Instance::CreateInfo& createInfo)
 {
-    auto instance = new Instance(createInfo);
-    return std::shared_ptr<Instance>(instance);
+    return MakeShared<Instance>(createInfo);
 }
 
 Instance::~Instance()

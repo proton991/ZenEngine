@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+using namespace zen;
 struct Struct2
 {
     explicit Struct2(int aVal) :

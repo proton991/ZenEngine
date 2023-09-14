@@ -1,4 +1,5 @@
 #pragma once
+#include "Common/UniquePtr.h"
 #include <memory>
 #include <vulkan/vulkan.h>
 #include <vector>
@@ -36,7 +37,7 @@ class Instance;
 class PhysicalDevice
 {
 public:
-    static std::unique_ptr<PhysicalDevice> Create(Instance& instance);
+    static UniquePtr<PhysicalDevice> Create(Instance& instance);
 
     VkBool32 IsPresentSupported(VkSurfaceKHR surface, uint32_t queueFamilyIndex);
 

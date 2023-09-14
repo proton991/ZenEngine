@@ -1,23 +1,15 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
-
-class Queue
+class Queue : public DeviceObject<VkQueue, VK_OBJECT_TYPE_QUEUE>
 {
 public:
     Queue(Device& device, uint32_t queueFamilyIndex, uint32_t index, bool supportPresent);
-
-    Queue(const Queue&) = default;
-
-    Queue(Queue&& other);
-
-    VkQueue GetHandle() const { return m_handle; }
-
+    
 private:
-    VkQueue  m_handle = nullptr;
     uint32_t m_familyIndex;
     uint32_t m_index;
     bool     m_supportPresent;

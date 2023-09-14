@@ -1,7 +1,6 @@
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/CommandBuffer.h"
 #include "Common/Errors.h"
-#include "Graphics/Val/Device.h"
 
 namespace zen::val
 {
@@ -12,7 +11,7 @@ std::unique_ptr<CommandPool> CommandPool::Create(Device& device, const CommandPo
 }
 
 CommandPool::CommandPool(Device& device, const CommandPool::CreateInfo& CI) :
-    m_device(device), m_threadId(CI.threadId), m_queueFamilyIndex(CI.queueFamilyIndex), m_resetMode(CI.resetMode)
+    DeviceObject(device, CI.debugName), m_threadId(CI.threadId), m_queueFamilyIndex(CI.queueFamilyIndex), m_resetMode(CI.resetMode)
 {
     VkCommandPoolCreateFlags flags;
     switch (m_resetMode)

@@ -1,5 +1,5 @@
 #pragma once
-#include <memory>
+#include "Common/SharedPtr.h"
 #include <vector>
 #include "VulkanHeaders.h"
 
@@ -7,10 +7,7 @@ namespace zen::val
 {
 void PrintInstanceLayers(const std::vector<VkLayerProperties>& layers);
 void PrintInstanceExtensions(const std::vector<VkExtensionProperties>& enabledExtensions);
-} // namespace zen::val
 
-namespace zen::val
-{
 class Instance
 {
 public:
@@ -23,19 +20,22 @@ public:
         const char* const* ppEnabledExtensionNames = nullptr;
     };
 
-    static std::shared_ptr<Instance> Create(const CreateInfo& createInfo);
+    static SharedPtr<Instance> Create(const CreateInfo& createInfo);
+
+    explicit Instance(const CreateInfo& createInfo);
+    ~Instance();
 
     bool IsExtensionSupported(std::vector<VkExtensionProperties>& extensions, const char* extensionName);
     bool IsLayerSupported(const char* layerName, uint32_t& version);
     bool IsExtensionEnabled(const char* name);
-    ~Instance();
+
+
 
     VkInstance GetHandle() const { return m_handle; }
 
     VkPhysicalDevice SelectPhysicalDevice();
 
 private:
-    explicit Instance(const CreateInfo& createInfo);
     bool EnumerateInstanceExtensions(const char* layerName, std::vector<VkExtensionProperties>& extensions);
 
     enum DebugMode

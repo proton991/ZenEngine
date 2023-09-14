@@ -1,12 +1,11 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
-
-class Swapchain
+class Swapchain : public DeviceObject<VkSwapchainKHR, VK_OBJECT_TYPE_SWAPCHAIN_KHR>
 {
 public:
     Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE, uint32_t imageCount = 3, bool vsync = true);
@@ -17,8 +16,6 @@ private:
     VkPresentModeKHR            ChoosePresentMode(bool vsync);
     VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request, VkCompositeAlphaFlagsKHR supported);
 
-    Device&                         m_device;
-    VkSwapchainKHR                  m_handle{VK_NULL_HANDLE};
     VkSurfaceKHR                    m_surface{VK_NULL_HANDLE};
     std::vector<VkSurfaceFormatKHR> m_surfaceFormats{};
     std::vector<VkPresentModeKHR>   m_presentModes{};

@@ -3,11 +3,10 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
-
 std::vector<uint32_t> LoadSpvFile(const std::string& name);
 
 enum class ShaderResourceType
@@ -82,14 +81,12 @@ struct ShaderResource
 
 using RuntimeArraySizes = std::unordered_map<std::string, uint32_t>;
 
-class ShaderModule
+class ShaderModule : public DeviceObject<VkShaderModule, VK_OBJECT_TYPE_SHADER_MODULE>
 {
 public:
     ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes);
 
     ~ShaderModule();
-
-    VkShaderModule GetHandle() const { return m_handle; }
 
     const std::vector<uint32_t>& GetSpvCode() const { return m_spirvCode; };
 
@@ -102,10 +99,8 @@ public:
     VkShaderStageFlagBits GetStage() const { return m_stage; }
 
 private:
-    Device&                     m_device;
     VkShaderStageFlagBits       m_stage{};
     std::vector<uint32_t>       m_spirvCode;
-    VkShaderModule              m_handle{VK_NULL_HANDLE};
     std::vector<ShaderResource> m_resources;
     RuntimeArraySizes           m_runtimeArraySizes;
     std::string                 m_entryPoint;

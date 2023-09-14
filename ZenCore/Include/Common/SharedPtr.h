@@ -1,7 +1,7 @@
 #pragma once
 #include <atomic>
 
-namespace
+namespace zen
 {
 class ThreadSafeCounter
 {
@@ -117,7 +117,7 @@ template <class T, class RefCounterType = SingleThreadCounter>
 class SharedPtr : public SharedPtrBase<RefCounterType>
 {
 public:
-    typedef T ElementType;
+    using ElementType = std::remove_extent_t<T>;
 
     SharedPtr() noexcept :
         SharedPtrBase<RefCounterType>(), m_ptr(nullptr) {}
@@ -224,7 +224,7 @@ private:
         this->m_count.Release(m_ptr);
         m_ptr = nullptr;
     }
-    T* m_ptr;
+    ElementType* m_ptr;
 };
 
 // comparison operators
@@ -282,4 +282,4 @@ SharedPtr<T> MakeShared(Args&&... args_)
     return SharedPtr<T>(new T(std::forward<Args>(args_)...));
 }
 
-} // namespace
+} // namespace zen

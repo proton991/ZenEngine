@@ -1,12 +1,11 @@
 #include "Graphics/Val/Buffer.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 #include "Graphics/Val/VulkanDebug.h"
 
 namespace zen::val
 {
-Buffer::Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags, const std::string& debugName) :
-    m_device(device), m_size(size)
+Buffer::Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags, std::string debugName) :
+    DeviceObject(device, debugName), m_size(size)
 {
     VkBufferCreateInfo bufferCI{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bufferCI.usage       = usage;

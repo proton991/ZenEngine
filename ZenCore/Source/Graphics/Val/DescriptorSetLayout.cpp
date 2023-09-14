@@ -1,5 +1,4 @@
 #include "Graphics/Val/DescriptorSetLayout.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 #include "Graphics/Val/Shader.h"
 
@@ -54,7 +53,7 @@ static VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool 
 }
 
 DescriptorSetLayout::DescriptorSetLayout(Device& device, const uint32_t setIndex, const std::vector<ShaderResource>& shaderResources) :
-    m_device(device), m_setIndex(setIndex)
+    DeviceObject(device), m_setIndex(setIndex)
 {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     for (auto& resource : shaderResources)

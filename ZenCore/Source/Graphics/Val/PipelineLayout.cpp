@@ -1,4 +1,3 @@
-#include "Graphics/Val/Device.h"
 #include "Graphics/Val/PipelineLayout.h"
 #include "Graphics/Val/DescriptorSetLayout.h"
 #include "Graphics/Val/VulkanStrings.h"
@@ -7,7 +6,7 @@
 namespace zen::val
 {
 PipelineLayout::PipelineLayout(Device& device, const std::vector<ShaderModule*>& shaderModules) :
-    m_device(device), m_shaderModules(shaderModules)
+    DeviceObject(device), m_shaderModules(shaderModules)
 {
     for (auto* shaderModule : shaderModules)
     {

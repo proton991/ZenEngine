@@ -1,5 +1,4 @@
 #include "Graphics/Val/SpirvReflection.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 #include "Graphics/Val/Shader.h"
 #include "Graphics/Val/VulkanDebug.h"
@@ -38,7 +37,7 @@ std::vector<uint32_t> LoadSpvFile(const std::string& name)
 }
 
 ShaderModule::ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes) :
-    m_device(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
+    DeviceObject(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
 {
     m_spirvCode = LoadSpvFile(name);
 

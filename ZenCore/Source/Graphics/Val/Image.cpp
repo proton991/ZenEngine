@@ -1,11 +1,10 @@
 #include "Graphics/Val/Image.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 
 namespace zen::val
 {
 Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags) :
-    m_device{device}, m_format{format}
+    DeviceObject{device}, m_format{format}
 {
     if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
     {

@@ -1,0 +1,44 @@
+#pragma once
+#include <utility>
+#include <vulkan/vulkan.hpp>
+#include "Common/ObjectBase.h"
+#include "Common/Errors.h"
+#include "Device.h"
+
+namespace zen::val
+{
+template <class VkHandleType, VkObjectType objectType>
+class DeviceObject
+{
+public:
+    explicit DeviceObject(Device& device, std::string debugName = "") :
+        m_device(device), m_handle(VK_NULL_HANDLE), m_debugName(std::move(debugName)) {}
+
+    DeviceObject(DeviceObject&& other) noexcept :
+        m_device(other.m_device),
+        m_handle(std::exchange(other.m_handle, {})),
+        m_debugName(std::move(other.m_debugName))
+    {
+        SetObjectDebugName();
+    }
+
+    VkHandleType GetHandle() const { return m_handle; }
+
+protected:
+    void SetObjectDebugName()
+    {
+        VkDebugUtilsObjectNameInfoEXT ObjectNameInfo{};
+        ObjectNameInfo.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        ObjectNameInfo.pNext        = nullptr;
+        ObjectNameInfo.objectType   = objectType;
+        ObjectNameInfo.objectHandle = reinterpret_cast<uint64_t>(m_handle);
+        ObjectNameInfo.pObjectName  = m_debugName.data();
+
+        CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(m_device.GetHandle(), &ObjectNameInfo), "Failed to set debug object name");
+    }
+
+    Device&      m_device;
+    VkHandleType m_handle;
+    std::string  m_debugName;
+};
+} // namespace zen::val

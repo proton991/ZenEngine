@@ -1,10 +1,10 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
 class RenderPassBuilder;
 
 struct SubpassInfo
@@ -16,18 +16,14 @@ struct SubpassInfo
     VkAttachmentReference              depthStencilRef;
 };
 
-class RenderPass
+class RenderPass : public DeviceObject<VkRenderPass, VK_OBJECT_TYPE_RENDER_PASS>
 {
 public:
     ~RenderPass();
 
-    VkRenderPass GetHandle() const { return m_handle; }
-
 private:
     RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps);
     friend class RenderPassBuilder;
-    Device&      m_device;
-    VkRenderPass m_handle{VK_NULL_HANDLE};
 };
 
 

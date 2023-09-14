@@ -52,13 +52,13 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
 } // namespace zen
 
 
-#define VERIFY_EXPR(x)                                                   \
-    do {                                                                 \
-        if (!bool(x))                                                    \
-        {                                                                \
-            spdlog::error("Vulkan error at {}:{}.", __FILE__, __LINE__); \
-            abort();                                                     \
-        }                                                                \
+#define VERIFY_EXPR(x)                                            \
+    do {                                                          \
+        if (!bool(x))                                             \
+        {                                                         \
+            spdlog::error("Error at {}:{}.", __FILE__, __LINE__); \
+            abort();                                              \
+        }                                                         \
     } while (0)
 
 #define LOG_ERROR(...)                                                                       \
@@ -98,8 +98,6 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
         LogError<true>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
-namespace val
-{
 #define CHECK_VK_ERROR(err, ...)                                                               \
     {                                                                                          \
         if (err != VK_SUCCESS)                                                                 \
@@ -111,8 +109,6 @@ namespace val
         if (err != VK_SUCCESS)                                                                \
             LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
     }
-
-} // namespace val
 
 #define ASSERT_SIZEOF(Struct, Size, ...) static_assert(sizeof(Struct) == Size, "sizeof(" #Struct ") is expected to be " #Size ". " __VA_ARGS__)
 

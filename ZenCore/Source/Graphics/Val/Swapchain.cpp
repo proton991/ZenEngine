@@ -1,4 +1,3 @@
-#include "Graphics/Val/Device.h"
 #include "Graphics/Val/Swapchain.h"
 #include "Graphics/Val/VulkanStrings.h"
 #include "Common/Errors.h"
@@ -6,7 +5,7 @@
 namespace zen::val
 {
 Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain, uint32_t imageCount, bool vsync) :
-    m_device(device), m_surface(surface), m_extent(extent), m_vsync(vsync)
+    DeviceObject(device), m_surface(surface), m_extent(extent), m_vsync(vsync)
 {
     const std::vector<VkSurfaceFormatKHR> surfaceFormatPriorityList = {{VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
                                                                        {VK_FORMAT_B8G8R8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR}};

@@ -1,5 +1,4 @@
 #include "Graphics/Val/GraphicsPipeline.h"
-#include "Graphics/Val/Device.h"
 #include "Graphics/Val/PipelineLayout.h"
 #include "Graphics/Val/PipelineState.h"
 #include "Graphics/Val/Shader.h"
@@ -9,7 +8,7 @@
 namespace zen::val
 {
 GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, const PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache) :
-    m_device(device)
+    DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
 

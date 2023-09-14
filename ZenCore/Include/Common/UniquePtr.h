@@ -3,7 +3,7 @@
 #include <cassert>
 #define UNIQUE_ASSERT(x) assert(x)
 
-namespace
+namespace zen
 {
 template <class T>
 class UniquePtr
@@ -147,4 +147,4 @@ UniquePtr<T> MakeUnique(Args&&... args_)
 {
     return UniquePtr<T>(new T(std::forward<Args>(args_)...));
 }
-} // namespace
+} // namespace zen

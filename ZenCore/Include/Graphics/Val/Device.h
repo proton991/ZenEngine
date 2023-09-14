@@ -1,14 +1,14 @@
 #pragma once
-#include <memory>
+#include "Common/SharedPtr.h"
 #include "VulkanHeaders.h"
 #include "PhysicalDevice.h"
 #include <vector>
 #include <unordered_map>
 #include "vk_mem_alloc.h"
-#include "Graphics/Val/Queue.h"
 
 namespace zen::val
 {
+class Queue;
 class Instance;
 class Device
 {
@@ -19,7 +19,10 @@ public:
         uint32_t           enabledExtensionCount   = 0;
         const char* const* ppEnabledExtensionNames = nullptr;
     };
-    static std::shared_ptr<Device> Create(const CreateInfo& CI);
+
+    static SharedPtr<Device> Create(const CreateInfo& CI);
+
+    explicit Device(const CreateInfo& CI);
     ~Device();
 
     bool IsExtensionEnabled(const char* extension) const;
@@ -35,7 +38,6 @@ public:
     VkInstance GetInstanceHandle() const { return m_physicalDevice->GetInstanceHandle(); }
 
 private:
-    explicit Device(const CreateInfo& CI);
     VkDevice                       m_handle{VK_NULL_HANDLE};
     PhysicalDevice*                m_physicalDevice{nullptr};
     std::vector<const char*>       m_enabledExtensions;

@@ -3,13 +3,13 @@
 #include <vulkan/vulkan.h>
 #include <memory>
 #include <vector>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
 class CommandBuffer;
 
-class CommandPool
+class CommandPool : public DeviceObject<VkCommandPool, VK_OBJECT_TYPE_COMMAND_POOL>
 {
 public:
     enum class ResetMode
@@ -20,17 +20,16 @@ public:
     };
     struct CreateInfo
     {
-        uint32_t  queueFamilyIndex{0};
-        ResetMode resetMode{ResetMode::ResetPool};
-        uint32_t  threadId{0};
+        uint32_t    queueFamilyIndex{0};
+        ResetMode   resetMode{ResetMode::ResetPool};
+        uint32_t    threadId{0};
+        std::string debugName{};
     };
     static std::unique_ptr<CommandPool> Create(Device& device, const CreateInfo& CI);
 
     ~CommandPool();
 
     Device& GetDevice() { return m_device; }
-
-    VkCommandPool GetHandle() const { return m_handle; }
 
     CommandBuffer& RequestCommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
@@ -41,11 +40,9 @@ private:
     void FreeCmdBuffers();
 
     CommandPool(Device& device, const CreateInfo& CI);
-    Device&       m_device;
-    VkCommandPool m_handle{VK_NULL_HANDLE};
-    uint32_t      m_threadId{0};
-    uint32_t      m_queueFamilyIndex{0};
-    ResetMode     m_resetMode{ResetMode::ResetPool};
+    uint32_t  m_threadId{0};
+    uint32_t  m_queueFamilyIndex{0};
+    ResetMode m_resetMode{ResetMode::ResetPool};
 
     std::vector<std::unique_ptr<CommandBuffer>> m_primaryCmdBuffers;
     std::vector<std::unique_ptr<CommandBuffer>> m_secondaryCmdBuffers;

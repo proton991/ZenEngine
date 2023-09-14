@@ -1,5 +1,6 @@
 #include <vector>
 #include "Graphics/Val/Device.h"
+#include "Graphics/Val/Queue.h"
 #include "Common/Errors.h"
 #include "Graphics/Val/VulkanDebug.h"
 
@@ -23,10 +24,10 @@ Device::~Device()
     }
 }
 
-std::shared_ptr<Device> Device::Create(const Device::CreateInfo& CI)
+SharedPtr<Device> Device::Create(const Device::CreateInfo& CI)
 {
-    auto* valDevice = new Device(CI);
-    return std::shared_ptr<Device>(valDevice);
+    //    auto* valDevice = new Device(CI);
+    return MakeShared<Device>(CI);
 }
 
 bool Device::IsExtensionEnabled(const char* extension) const

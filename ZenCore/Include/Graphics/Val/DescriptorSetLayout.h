@@ -3,23 +3,19 @@
 #include <vector>
 #include <unordered_map>
 #include "Common/ObjectBase.h"
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
 struct ShaderResource;
 
-class DescriptorSetLayout
+class DescriptorSetLayout : public DeviceObject<VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT>
 {
 public:
     DescriptorSetLayout(Device& device, uint32_t setIndex, const std::vector<ShaderResource>& shaderResources);
-
-    VkDescriptorSetLayout GetHandle() const { return m_handle; }
-
+    
 private:
-    Device&               m_device;
-    const uint32_t        m_setIndex;
-    VkDescriptorSetLayout m_handle{VK_NULL_HANDLE};
+    const uint32_t m_setIndex;
 };
 
 class DSLayoutCache

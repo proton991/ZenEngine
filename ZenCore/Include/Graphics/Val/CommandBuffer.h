@@ -1,16 +1,15 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
 class CommandPool;
-class CommandBuffer
+class CommandBuffer : public DeviceObject<VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER>
 {
 public:
-    CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level);
-
-    VkCommandBuffer GetHandle() const { return m_handle; }
-
+    CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level, std::string debugName = "");
+    
     void Reset();
 
 private:

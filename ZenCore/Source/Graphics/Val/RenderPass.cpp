@@ -1,5 +1,4 @@
 #include "Graphics/Val/RenderPass.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 
 namespace zen::val
@@ -32,7 +31,7 @@ RenderPass::~RenderPass()
 }
 
 RenderPass::RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps) :
-    m_device(device)
+    DeviceObject(device)
 {
     std::vector<VkSubpassDescription> subpassDescriptions(subpassInfos.size());
     for (auto i = 0u; i < subpassInfos.size(); i++)

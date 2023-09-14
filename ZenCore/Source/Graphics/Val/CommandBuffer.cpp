@@ -1,12 +1,13 @@
+#include <utility>
+
 #include "Graphics/Val/CommandBuffer.h"
 #include "Graphics/Val/CommandPool.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 
 namespace zen::val
 {
-CommandBuffer::CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level) :
-    m_cmdPool(cmdPool), m_level(level)
+CommandBuffer::CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level, std::string debugName) :
+    DeviceObject(cmdPool.GetDevice(), std::move(debugName)), m_cmdPool(cmdPool), m_level(level)
 {
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 

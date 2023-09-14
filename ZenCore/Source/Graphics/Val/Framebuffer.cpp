@@ -1,4 +1,3 @@
-#include "Graphics/Val/Device.h"
 #include "Graphics/Val/Framebuffer.h"
 #include "Graphics/Val/RenderPass.h"
 #include "Common/Errors.h"
@@ -6,7 +5,7 @@
 namespace zen::val
 {
 Framebuffer::Framebuffer(Device& device, RenderPass& renderPass, const std::vector<VkImageView>& attachments, VkExtent3D extent3D) :
-    m_device(device), m_extent(extent3D)
+    DeviceObject(device), m_extent(extent3D)
 {
     VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     fbCI.renderPass      = renderPass.GetHandle();

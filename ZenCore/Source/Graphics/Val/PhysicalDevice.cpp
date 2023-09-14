@@ -4,10 +4,10 @@
 
 namespace zen::val
 {
-std::unique_ptr<PhysicalDevice> PhysicalDevice::Create(Instance& instance)
+UniquePtr<PhysicalDevice> PhysicalDevice::Create(Instance& instance)
 {
     auto* physicalDevice = new PhysicalDevice(instance);
-    return std::unique_ptr<PhysicalDevice>(physicalDevice);
+    return UniquePtr<PhysicalDevice>(physicalDevice);
 }
 
 PhysicalDevice::PhysicalDevice(Instance& instance) :

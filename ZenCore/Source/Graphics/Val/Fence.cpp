@@ -1,11 +1,10 @@
 #include "Graphics/Val/Fence.h"
-#include "Graphics/Val/Device.h"
 #include "Common/Errors.h"
 
 namespace zen::val
 {
 Fence::Fence(Device& device, bool signaled) :
-    m_device(device), m_signaled(signaled)
+    DeviceObject(device), m_signaled(signaled)
 {
     VkFenceCreateInfo fenceCI{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fenceCI.flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0;

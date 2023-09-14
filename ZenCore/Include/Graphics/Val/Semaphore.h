@@ -1,19 +1,13 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include "DeviceObject.h"
 
 namespace zen::val
 {
-class Device;
-class Semaphore
+class Semaphore : public DeviceObject<VkSemaphore, VK_OBJECT_TYPE_SEMAPHORE>
 {
 public:
     Semaphore(Device& device);
     ~Semaphore();
-
-    VkSemaphore GetHandle() const { return m_handle; }
-
-private:
-    Device&     m_device;
-    VkSemaphore m_handle{VK_NULL_HANDLE};
 };
 } // namespace zen::val
