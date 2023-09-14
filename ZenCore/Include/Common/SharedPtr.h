@@ -30,6 +30,7 @@ public:
     inline void Add() { m_count++; }
     inline bool Release() { return --m_count == 0; }
     inline auto Dec() { m_count--; }
+    inline auto GetValue() const { return m_count; }
 
 private:
     uint32_t m_count = 1;
@@ -112,7 +113,7 @@ protected:
     SharedPtrCount<RefCounterType> m_count;
 };
 
-template <class T, class RefCounterType = ThreadSafeCounter>
+template <class T, class RefCounterType = SingleThreadCounter>
 class SharedPtr : public SharedPtrBase<RefCounterType>
 {
 public:
