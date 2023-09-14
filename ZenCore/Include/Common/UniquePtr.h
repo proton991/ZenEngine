@@ -1,117 +1,150 @@
 #pragma once
 #include <algorithm>
 #include <cassert>
+#define UNIQUE_ASSERT(x) assert(x)
 
-namespace zen {
+namespace
+{
 template <class T>
-class UniquePtr {
+class UniquePtr
+{
 public:
-  UniquePtr() noexcept : m_ptr(nullptr){};
-  explicit UniquePtr(T* ptr) noexcept : m_ptr(ptr) {}
-  // disable copy
-  UniquePtr(const UniquePtr&)            = delete;
-  UniquePtr& operator=(const UniquePtr&) = delete;
-  ~UniquePtr() noexcept { Destroy(); }
+    /// The type of the managed object, aliased as member type
+    typedef T ElementType;
 
-  UniquePtr(UniquePtr&& other) noexcept : m_ptr(other.Release()) {}
-
-  UniquePtr& operator=(UniquePtr&& other) noexcept {
-    Reset(other.Release());
-    return *this;
-  }
-
-  inline void Reset(T* ptr) noexcept {
-    assert((nullptr == ptr) || (ptr != m_ptr));
-    if (m_ptr != ptr) {
-      if (m_ptr) {
-        Destroy();
-      }
-      m_ptr = ptr;
+    /// @brief Default constructor
+    UniquePtr() noexcept : // never throws
+        m_ptr(nullptr)
+    {
     }
-    Destroy();
-  }
+    /// @brief Constructor with the provided pointer to manage
+    explicit UniquePtr(T* p) noexcept : // never throws
+        m_ptr(p)
+    {
+    }
+    /**
+     * @brief Copy constructor to convert from another pointer type
+     */
+    template <class U>
+    UniquePtr(const UniquePtr<U>& ptr) noexcept : // never throws
+        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(ptr.m_ptr))
+    {
+        const_cast<UniquePtr<U>&>(ptr).m_ptr = nullptr; // const-cast to force ownership transfer!
+    }
 
-  T* Release() noexcept {
-    T* orignial = m_ptr;
-    m_ptr       = nullptr;
-    return orignial;
-  }
+    /// @brief Copy constructor (used by the copy-and-swap idiom)
+    UniquePtr(const UniquePtr& ptr) noexcept : // never throws
+        m_ptr(ptr.m_ptr)
+    {
+        const_cast<UniquePtr&>(ptr).m_ptr = nullptr; // const-cast to force ownership transfer!
+    }
+    /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
+    UniquePtr& operator=(UniquePtr ptr) noexcept // never throws
+    {
+        Swap(ptr);
+        return *this;
+    }
+    /// @brief the destructor releases its ownership and Destroy the object
+    inline ~UniquePtr() noexcept // never throws
+    {
+        Destroy();
+    }
+    /// @brief this reset releases its ownership and Destroy the object
+    inline void Reset() noexcept // never throws
+    {
+        Destroy();
+    }
+    /// @brief this reset Release its ownership and re-acquire another one
+    void Reset(T* p) noexcept // never throws
+    {
+        UNIQUE_ASSERT((nullptr == p) || (m_ptr != p)); // auto-reset not allowed
+        Destroy();
+        m_ptr = p;
+    }
 
-  void swap(UniquePtr& rhs) noexcept { std::swap(m_ptr, rhs.ptr); }
+    /// @brief Swap method for the copy-and-swap idiom (copy constructor and swap method)
+    void Swap(UniquePtr& lhs) noexcept // never throws
+    {
+        std::swap(m_ptr, lhs.m_ptr);
+    }
 
-  inline T* operator->() noexcept {
-    assert(m_ptr != nullptr);
-    return m_ptr;
-  }
+    /// @brief Release the ownership of the m_ptr pointer without destroying the object!
+    inline void Release() noexcept // never throws
+    {
+        m_ptr = nullptr;
+    }
 
-  inline const T* operator->() const noexcept {
-    assert(m_ptr != nullptr);
-    return m_ptr;
-  }
+    // reference counter operations :
+    inline operator bool() const noexcept // never throws
+    {
+        return (nullptr != m_ptr);
+    }
 
-  inline T& operator*() noexcept {
-    assert(m_ptr != nullptr);
-    return *m_ptr;
-  }
-
-  inline const T& operator*() const noexcept {
-    assert(m_ptr != nullptr);
-    return *m_ptr;
-  }
-
-  inline operator bool() const noexcept { return m_ptr != nullptr; }
-
-  inline T* Get() noexcept { return m_ptr; }
-
-  inline const T* Get() const noexcept { return m_ptr; }
+    // underlying pointer operations :
+    inline T& operator*() const noexcept // never throws
+    {
+        UNIQUE_ASSERT(nullptr != m_ptr);
+        return *m_ptr;
+    }
+    inline T* operator->() const noexcept // never throws
+    {
+        UNIQUE_ASSERT(nullptr != m_ptr);
+        return m_ptr;
+    }
+    inline T* Get() const noexcept // never throws
+    {
+        // no assert, can return nullptr
+        return m_ptr;
+    }
 
 private:
-  inline void Destroy() noexcept {
-    delete m_ptr;
-    m_ptr = nullptr;
-  }
-  T* m_ptr;
+    /// @brief Release the ownership of the m_ptr pointer and Destroy the object
+    inline void Destroy() noexcept // never throws
+    {
+        delete m_ptr;
+        m_ptr = nullptr;
+    }
+
+    /// @brief hack: const-cast Release the ownership of the m_ptr pointer without destroying the object!
+    inline void Release() const noexcept // never throws
+    {
+        m_ptr = nullptr;
+    }
+
+private:
+    T* m_ptr; //!< Native pointer
 };
 
-template <class T>
-inline void swap(const UniquePtr<T>& lhs, const UniquePtr<T>& rhs) noexcept {
-  lhs.swap(rhs);
+
+// comparison operators
+template <class T, class U> inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() == r.Get());
+}
+template <class T, class U> inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() != r.Get());
+}
+template <class T, class U> inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() <= r.Get());
+}
+template <class T, class U> inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() < r.Get());
+}
+template <class T, class U> inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() >= r.Get());
+}
+template <class T, class U> inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+{
+    return (l.Get() > r.Get());
 }
 
 template <class T, class... Args>
-UniquePtr<T> MakeUnique(Args&&... args_) {
-  return UniquePtr<T>(new T(std::forward<Args>(args_)...));
-}
-
-// comparison operators
-template <class T, class U>
-inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
+UniquePtr<T> MakeUnique(Args&&... args_)
 {
-  return (l.Get() == r.Get());
+    return UniquePtr<T>(new T(std::forward<Args>(args_)...));
 }
-template <class T, class U>
-inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
-{
-  return (l.Get() != r.Get());
-}
-template <class T, class U>
-inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
-{
-  return (l.Get() <= r.Get());
-}
-template <class T, class U>
-inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
-{
-  return (l.Get() < r.Get());
-}
-template <class T, class U>
-inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
-{
-  return (l.Get() >= r.Get());
-}
-template <class T, class U>
-inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept  // never throws
-{
-  return (l.Get() > r.Get());
-}
-}  // namespace zen
+} // namespace
