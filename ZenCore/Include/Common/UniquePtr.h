@@ -26,22 +26,22 @@ public:
      * @brief Copy constructor to convert from another pointer type
      */
     template <class U>
-    UniquePtr(const UniquePtr<U>& ptr) noexcept : // never throws
-        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(ptr.m_ptr))
+    UniquePtr(const UniquePtr<U>& other) noexcept : // never throws
+        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(other.m_ptr))
     {
-        const_cast<UniquePtr<U>&>(ptr).m_ptr = nullptr; // const-cast to force ownership transfer!
+        const_cast<UniquePtr<U>&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
     }
 
     /// @brief Copy constructor (used by the copy-and-swap idiom)
-    UniquePtr(const UniquePtr& ptr) noexcept : // never throws
-        m_ptr(ptr.m_ptr)
+    UniquePtr(const UniquePtr& other) noexcept : // never throws
+        m_ptr(other.m_ptr)
     {
-        const_cast<UniquePtr&>(ptr).m_ptr = nullptr; // const-cast to force ownership transfer!
+        const_cast<UniquePtr&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
     }
     /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
-    UniquePtr& operator=(UniquePtr ptr) noexcept // never throws
+    UniquePtr& operator=(UniquePtr other) noexcept // never throws
     {
-        Swap(ptr);
+        Swap(other);
         return *this;
     }
     /// @brief the destructor releases its ownership and Destroy the object
@@ -55,7 +55,7 @@ public:
         Destroy();
     }
     /// @brief this reset Release its ownership and re-acquire another one
-    void Reset(T* p) noexcept // never throws
+    void Reset(T* p) noexcept                          // never throws
     {
         UNIQUE_ASSERT((nullptr == p) || (m_ptr != p)); // auto-reset not allowed
         Destroy();
