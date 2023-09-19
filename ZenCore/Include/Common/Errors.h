@@ -51,6 +51,7 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
 
 } // namespace zen
 
+#define ASSERT(x) assert(x)
 
 #define VERIFY_EXPR(x)                                            \
     do {                                                          \

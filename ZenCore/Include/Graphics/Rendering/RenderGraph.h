@@ -21,7 +21,7 @@ public:
     };
 
     RDGResource(Index index, Type type, Tag tag) :
-        m_index(index), m_type(type), m_name(std::move(tag)) {}
+        m_index(index), m_type(type), m_tag(std::move(tag)) {}
 
     virtual ~RDGResource() = default;
 
@@ -49,11 +49,13 @@ public:
 
     auto GetType() const { return m_type; }
 
+    auto GetTag() const { return m_tag; }
+
 private:
     Index m_index;
     Index m_physicalIndex;
     Type  m_type;
-    Tag   m_name;
+    Tag   m_tag;
 
     std::unordered_set<Index> m_readInPasses;
     std::unordered_set<Index> m_writtenInPasses;
@@ -84,6 +86,8 @@ public:
 
     const auto& GetInfo() { return m_info; }
 
+    auto GetUsage() const { return m_info.usage; }
+
 private:
     Info m_info{};
 };
@@ -106,10 +110,16 @@ public:
 
     void AddBufferUsage(VkBufferUsageFlags flag) { m_info.usage |= flag; }
 
+    auto GetUsage() const { return m_info.usage; }
+
 private:
     Info m_info{};
 };
 
+struct RDGAccessedTexture
+{
+    RDGImage* registry{nullptr};
+};
 /**
  * @brief A render graph pass in a render graph
  * @note Distinguish between vulkan's render pass
@@ -125,20 +135,24 @@ public:
 
     void WriteToStorageBuffer(const Tag& tag, const RDGBuffer::Info& info);
 
+    void WriteToTransferDstBuffer(const Tag& tag, const RDGBuffer::Info& info);
+
     void ReadFromStorageBuffer(const Tag& tag);
 
     void WriteToDepthStencilImage(const Tag& tag, const RDGImage::Info& info);
 
     void ReadFromDepthStencilImage(const Tag& tag);
 
+    void ReadFromGenericTexture(const Tag& tag);
+
     const auto& GetIndex() const { return m_index; }
-    const auto& GetOutColorImages() const { return m_outColorImages; }
-    const auto& GetOutStorageImages() const { return m_outStorageImages; }
-    const auto& GetOutStorageBuffers() const { return m_outStorageBuffers; }
+    const auto& GetOutImageResources() const { return m_outImageResources; }
+    const auto& GetOutBufferResources() const { return m_outBufferResources; }
     const auto& GetOutDepthStencil() const { return m_outDepthStencil; }
-    const auto& GetInAttachments() const { return m_inAttachments; }
-    const auto& GetInStorageBuffers() const { return m_inStorageBuffers; }
+    const auto& GetInImageResources() const { return m_inImagesResources; }
+    const auto& GetInBufferResources() const { return m_inBuffersResources; }
     const auto& GetInDepthStencil() const { return m_inDepthStencil; }
+    const auto& GetTag() const { return m_tag; }
 
 private:
     RenderGraph&  m_graph;
@@ -146,14 +160,48 @@ private:
     Tag           m_tag;
     RDGQueueFlags m_queueFlags;
     // output resources
-    std::vector<RDGImage*>  m_outColorImages;
-    std::vector<RDGImage*>  m_outStorageImages;
-    std::vector<RDGBuffer*> m_outStorageBuffers;
+    std::vector<RDGImage*>  m_outImageResources;
+    std::vector<RDGBuffer*> m_outBufferResources;
     RDGImage*               m_outDepthStencil{nullptr};
     // input resources
-    std::vector<RDGImage*>  m_inAttachments;
-    std::vector<RDGBuffer*> m_inStorageBuffers;
+    std::vector<RDGImage*>  m_inImagesResources;
+    std::vector<RDGBuffer*> m_inBuffersResources;
     RDGImage*               m_inDepthStencil{nullptr};
+    // input texture resources
+    std::vector<RDGAccessedTexture> m_inTextures;
+    //    std::vector<RDGImage*>  m_outColorImages;
+    //    std::vector<RDGImage*>  m_outStorageImages;
+    //    std::vector<RDGBuffer*> m_outStorageBuffers;
+    //    std::vector<RDGBuffer*> m_outTransferDstBuffers;
+
+    //    // input resources
+    //    std::vector<RDGImage*>  m_inAttachments;
+    //    std::vector<RDGBuffer*> m_inStorageBuffers;
+};
+
+struct ImageTransition
+{
+    VkImageUsageFlags srcUsage;
+    VkImageUsageFlags dstUsage;
+};
+
+struct BufferTransition
+{
+    VkBufferUsageFlags srcUsage;
+    VkBufferUsageFlags dstUsage;
+};
+
+struct ResourceState
+{
+    using ImageTransitionMap  = std::unordered_map<Tag, ImageTransition>;
+    using BufferTransitionMap = std::unordered_map<Tag, BufferTransition>;
+    std::unordered_map<Tag, ImageTransitionMap>  perPassImageState;
+    std::unordered_map<Tag, BufferTransitionMap> perPassBufferState;
+    std::unordered_map<Tag, VkFlags>             totalUsages;
+    std::unordered_map<Tag, Tag>                 imageFirstUsePass;
+    std::unordered_map<Tag, Tag>                 imageLastUsePass;
+    std::unordered_map<Tag, Tag>                 bufferFirstUsePass;
+    std::unordered_map<Tag, Tag>                 bufferLastUsePass;
 };
 
 class RenderGraph
@@ -175,12 +223,16 @@ private:
 
     static void RemoveDuplicates(std::vector<Index>& list);
 
+    void ResolveResourceState();
+
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
     std::vector<UniquePtr<RDGResource>>    m_resources;
     std::vector<UniquePtr<RDGPass>>        m_passes;
     std::vector<std::unordered_set<Index>> m_passDeps;
     std::vector<Index>                     m_sortedPassIndices;
+    // Tracking resource state
+    ResourceState m_resourceState;
 
     Tag m_backBufferTag;
 };

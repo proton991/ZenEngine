@@ -37,7 +37,7 @@ GlfwWindowImpl::~GlfwWindowImpl()
 
 VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
 {
-    VERIFY_EXPR(instance != VK_NULL_HANDLE);
+    ASSERT(instance != VK_NULL_HANDLE);
     VkSurfaceKHR surface;
     CHECK_VK_ERROR_AND_THROW(glfwCreateWindowSurface(instance, m_handle, nullptr, &surface),
                              "glfw create window surface");
