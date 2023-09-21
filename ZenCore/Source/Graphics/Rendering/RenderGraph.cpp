@@ -86,14 +86,14 @@ RDGImage* RenderGraph::GetImageResource(const std::string& tag)
     if (iter != m_resourceToIndex.end())
     {
         ASSERT(m_resources[iter->second]->GetType() == RDGResource::Type::Image);
-        return dynamic_cast<RDGImage*>(m_resources[iter->second].Get());
+        return m_resources[iter->second]->As<RDGImage>();
     }
     else
     {
         Index index = m_resources.size();
         m_resources.emplace_back(new RDGImage(index, tag));
         m_resourceToIndex[tag] = index;
-        return dynamic_cast<RDGImage*>(m_resources.back().Get());
+        return m_resources.back()->As<RDGImage>();
     }
 }
 
@@ -103,15 +103,21 @@ RDGBuffer* RenderGraph::GetBufferResource(const std::string& tag)
     if (iter != m_resourceToIndex.end())
     {
         ASSERT(m_resources[iter->second]->GetType() == RDGResource::Type::Buffer);
-        return dynamic_cast<RDGBuffer*>(m_resources[iter->second].Get());
+        return m_resources[iter->second]->As<RDGBuffer>();
     }
     else
     {
         Index index = m_resources.size();
         m_resources.emplace_back(new RDGImage(index, tag));
         m_resourceToIndex[tag] = index;
-        return dynamic_cast<RDGBuffer*>(m_resources.back().Get());
+        return m_resources.back()->As<RDGBuffer>();
     }
+}
+
+void RenderGraph::SetBackBufferSize(uint32_t width, uint32_t height)
+{
+    m_backBufferExtent.width  = width;
+    m_backBufferExtent.height = height;
 }
 
 RDGPass& RenderGraph::AddPass(const std::string& tag, RDGQueueFlags queueFlags)
@@ -331,5 +337,67 @@ void RenderGraph::ResolveResourceState()
         auto& firstImageTransition    = m_resourceState.perPassImageState[passTag][imageTag];
         firstImageTransition.srcUsage = lastImageUsages[imageTag];
     }
+}
+
+void RenderGraph::BuildPhysicalImage(RDGImage* image)
+{
+    const auto& info = image->GetInfo();
+
+    val::ImageCreateInfo imageCI{};
+    imageCI.usage       = info.usage;
+    imageCI.format      = info.format;
+    imageCI.samples     = static_cast<VkSampleCountFlagBits>(info.samples);
+    imageCI.arrayLayers = info.layers;
+    imageCI.mipLevels   = info.levels;
+    imageCI.vmaFlags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // Is it OK?
+    switch (info.sizeType)
+    {
+        case ImageSizeType::SwapchainRelative:
+            imageCI.extent3D.width  = static_cast<uint32_t>(info.sizeX * m_backBufferExtent.width);
+            imageCI.extent3D.height = static_cast<uint32_t>(info.sizeX * m_backBufferExtent.height);
+            imageCI.extent3D.depth  = 1;
+            break;
+        case ImageSizeType::Absolute:
+            imageCI.extent3D.width  = info.extent3D.width;
+            imageCI.extent3D.height = info.extent3D.height;
+            imageCI.extent3D.depth  = info.extent3D.depth;
+            break;
+    }
+    auto physicalIndex = m_physicalImages.size();
+    image->SetPhysicalIndex(physicalIndex);
+    m_physicalImages.emplace_back(val::Image::CreateUnique(m_valDevice, imageCI));
+}
+
+void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
+{
+    const auto& info = buffer->GetInfo();
+
+    val::BufferCreateInfo bufferCI{};
+    bufferCI.size     = info.size;
+    bufferCI.usage    = info.usage;
+    bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // Choose right vma flags;
+
+    auto physicalIndex = m_physicalBuffers.size();
+    buffer->SetPhysicalIndex(physicalIndex);
+    m_physicalBuffers.emplace_back(val::Buffer::CreateUnique(m_valDevice, bufferCI));
+}
+
+void RenderGraph::BuildPhysicalResources()
+{
+    for (auto& resource : m_resources)
+    {
+        if (resource->GetType() == RDGResource::Type::Image)
+        {
+            BuildPhysicalImage(resource->As<RDGImage>());
+        }
+        else
+        {
+            BuildPhysicalBuffer(resource->As<RDGBuffer>());
+        }
+    }
+}
+
+void RenderGraph::BuildPhysicalPasses()
+{
 }
 } // namespace zen

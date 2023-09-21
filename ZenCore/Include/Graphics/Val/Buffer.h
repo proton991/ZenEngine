@@ -6,13 +6,23 @@
 
 namespace zen::val
 {
+struct BufferCreateInfo
+{
+    VkDeviceSize             size;
+    VkBufferUsageFlags       usage;
+    VmaAllocationCreateFlags vmaFlags;
+};
+
 class Buffer : public DeviceObject<VkBuffer, VK_OBJECT_TYPE_BUFFER>
 {
 public:
+    static SharedPtr<Buffer> Create(Device& device, const BufferCreateInfo& CI);
+    static UniquePtr<Buffer> CreateUnique(Device& device, const BufferCreateInfo& CI);
+
     Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags, std::string debugName);
 
     ~Buffer();
-    
+
 private:
     VmaAllocation m_allocation{nullptr};
     VkDeviceSize  m_size{0};

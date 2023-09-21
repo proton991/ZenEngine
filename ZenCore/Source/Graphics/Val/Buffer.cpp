@@ -4,6 +4,16 @@
 
 namespace zen::val
 {
+SharedPtr<Buffer> Buffer::Create(Device& device, const BufferCreateInfo& CI)
+{
+    return MakeShared<Buffer>(device, CI.size, CI.usage, CI.vmaFlags, "");
+}
+
+UniquePtr<Buffer> Buffer::CreateUnique(Device& device, const BufferCreateInfo& CI)
+{
+    return MakeUnique<Buffer>(device, CI.size, CI.usage, CI.vmaFlags, "");
+}
+
 Buffer::Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags, std::string debugName) :
     DeviceObject(device, debugName), m_size(size)
 {

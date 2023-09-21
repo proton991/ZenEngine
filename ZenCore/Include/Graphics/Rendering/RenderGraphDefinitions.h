@@ -10,7 +10,6 @@ enum ImageSizeType
 {
     Absolute,
     SwapchainRelative,
-    InputRelative
 };
 
 enum RDGQueueFlagBits

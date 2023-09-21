@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 #include <unordered_set>
 #include <unordered_map>
+#include "RenderDevice.h"
 
 namespace zen
 {
@@ -19,6 +20,18 @@ public:
         Buffer,
         Image
     };
+
+    template <typename T>
+    T* As()
+    {
+        return dynamic_cast<T*>(this);
+    }
+
+    template <typename T>
+    const T* As() const
+    {
+        return dynamic_cast<const T*>(this);
+    }
 
     RDGResource(Index index, Type type, Tag tag) :
         m_index(index), m_type(type), m_tag(std::move(tag)) {}
@@ -72,12 +85,13 @@ public:
         VkFormat          format{VK_FORMAT_UNDEFINED};
         uint32_t          samples{1};
         uint32_t          levels{1};
-        uint32_t          layer{1};
+        uint32_t          layers{1};
         VkImageUsageFlags usage{0};
         ImageSizeType     sizeType{ImageSizeType::SwapchainRelative};
         float             sizeX{1.0};
         float             sizeY{1.0};
         float             sizeZ{0.0};
+        VkExtent3D        extent3D{};
     };
 
     void SetInfo(const Info& info) { m_info = info; }
@@ -120,6 +134,7 @@ struct RDGAccessedTexture
 {
     RDGImage* registry{nullptr};
 };
+
 /**
  * @brief A render graph pass in a render graph
  * @note Distinguish between vulkan's render pass
@@ -154,9 +169,12 @@ public:
     const auto& GetInDepthStencil() const { return m_inDepthStencil; }
     const auto& GetTag() const { return m_tag; }
 
+    void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
+
 private:
     RenderGraph&  m_graph;
     Index         m_index;
+    Index         m_physicalIndex;
     Tag           m_tag;
     RDGQueueFlags m_queueFlags;
     // output resources
@@ -169,6 +187,8 @@ private:
     RDGImage*               m_inDepthStencil{nullptr};
     // input texture resources
     std::vector<RDGAccessedTexture> m_inTextures;
+    // clear screen
+    bool m_clearScreen{false};
     //    std::vector<RDGImage*>  m_outColorImages;
     //    std::vector<RDGImage*>  m_outStorageImages;
     //    std::vector<RDGBuffer*> m_outStorageBuffers;
@@ -207,8 +227,13 @@ struct ResourceState
 class RenderGraph
 {
 public:
+    RenderGraph(val::Device& device) :
+        m_valDevice(device) {}
+
     RDGImage*  GetImageResource(const Tag& tag);
     RDGBuffer* GetBufferResource(const Tag& tag);
+
+    void SetBackBufferSize(uint32_t width, uint32_t height);
 
     RDGPass& AddPass(const Tag& tag, RDGQueueFlags queueFlags);
 
@@ -217,6 +242,16 @@ public:
     void Compile();
 
 private:
+    struct PhysicalPass
+    {
+        val::GraphicsPipeline* graphicPipeline;
+        val::RenderPass*       renderPass;
+    };
+
+    struct PhysicalImage
+    {
+        UniquePtr<val::Image> handle;
+    };
     void SortRenderPasses();
 
     void TraversePassDepsRecursive(Index passIndex, uint32_t level);
@@ -224,6 +259,14 @@ private:
     static void RemoveDuplicates(std::vector<Index>& list);
 
     void ResolveResourceState();
+
+    void BuildPhysicalImage(RDGImage* image);
+
+    void BuildPhysicalBuffer(RDGBuffer* buffer);
+
+    void BuildPhysicalResources();
+
+    void BuildPhysicalPasses();
 
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
@@ -233,7 +276,15 @@ private:
     std::vector<Index>                     m_sortedPassIndices;
     // Tracking resource state
     ResourceState m_resourceState;
+    // Actual Physical resources
+    std::vector<UniquePtr<val::Image>>  m_physicalImages;
+    std::vector<UniquePtr<val::Buffer>> m_physicalBuffers;
+    // Actual physical passes
+    std::vector<PhysicalPass> m_physicalPasses;
+    // Swapchain back buffer info
+    Tag        m_backBufferTag;
+    VkExtent2D m_backBufferExtent;
 
-    Tag m_backBufferTag;
+    val::Device& m_valDevice;
 };
 } // namespace zen

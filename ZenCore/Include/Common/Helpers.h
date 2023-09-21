@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <glm/gtx/hash.hpp>
 
-namespace zen
+namespace zen::util
 {
 template <class T>
 inline void HashCombine(size_t& seed, const T& v)
@@ -31,4 +31,4 @@ uint32_t ToU32(T value)
 
     return static_cast<uint32_t>(value);
 }
-} // namespace zen
+} // namespace zen::util

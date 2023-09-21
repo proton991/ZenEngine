@@ -4,6 +4,7 @@
 #include "Graphics/Val/ZenVal.h"
 #include "Platform/GlfwWindow.h"
 #include "Common/Helpers.h"
+#include "Graphics/Rendering/RenderDevice.h"
 
 //using namespace zen::val;
 //using namespace zen::platform;
@@ -17,7 +18,7 @@ int main(int argc, char** argv)
     auto deviceExts   = window->GetDeviceExtensions();
 
     val::Instance::CreateInfo instanceCI{};
-    instanceCI.enabledExtensionCount   = ToU32(instanceExts.size());
+    instanceCI.enabledExtensionCount   = util::ToU32(instanceExts.size());
     instanceCI.ppEnabledExtensionNames = instanceExts.data();
 
     auto valInstance = val::Instance::Create(instanceCI);
@@ -28,7 +29,7 @@ int main(int argc, char** argv)
 
     val::Device::CreateInfo deviceCI{};
     deviceCI.pPhysicalDevice         = valPhysicalDevice.Get();
-    deviceCI.enabledExtensionCount   = ToU32(deviceExts.size());
+    deviceCI.enabledExtensionCount   = util::ToU32(deviceExts.size());
     deviceCI.ppEnabledExtensionNames = deviceExts.data();
 
     auto valDevice = val::Device::Create(deviceCI);
@@ -50,6 +51,24 @@ int main(int argc, char** argv)
     //    }
 
     val::Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
+
+    RenderDevice         renderDevice{*valDevice};
+    val::ImageCreateInfo imageCI{};
+    imageCI.extent3D = {windowConfig.width, windowConfig.height, 1};
+    imageCI.usage    = VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCI.format   = VK_FORMAT_B8G8R8A8_SRGB;
+    imageCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+    auto dummyImage       = val::Image::Create(*valDevice, imageCI);
+    auto dummyImageUnique = val::Image::CreateUnique(*valDevice, imageCI);
+
+    val::BufferCreateInfo bufferCI{};
+    bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    bufferCI.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferCI.size = 1024;
+
+    auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
+    auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);
 
     while (!window->ShouldClose())
     {

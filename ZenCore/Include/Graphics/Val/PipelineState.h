@@ -119,7 +119,7 @@ public:
     void SetConstant(uint32_t id, const T& value)
     {
         auto it    = m_constantTable.find(id);
-        auto bytes = ToBytes(value);
+        auto bytes = util::ToBytes(value);
         if (it != m_constantTable.end() && it->second == bytes)
         {
             return;

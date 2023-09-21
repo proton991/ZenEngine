@@ -1,12 +1,14 @@
 set(ZEN_CORE_HEADERS
     Include/Common/Errors.h
     Include/Common/Helpers.h
+    Include/Common/MemAlloc.h
     Include/Common/ObjectBase.h
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
 
     Include/Graphics/Rendering/RenderGraphDefinitions.h
     Include/Graphics/Rendering/RenderGraph.h
+    Include/Graphics/Rendering/RenderDevice.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -41,6 +43,7 @@ set(ZEN_CORE_HEADERS
 
 set(ZEN_CORE_SOURCES
     Source/Graphics/Rendering/RenderGraph.cpp
+    Source/Graphics/Rendering/RenderDevice.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp

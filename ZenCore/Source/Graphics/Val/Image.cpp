@@ -3,16 +3,26 @@
 
 namespace zen::val
 {
-Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags) :
+SharedPtr<Image> Image::Create(Device& device, const ImageCreateInfo& CI)
+{
+    return MakeShared<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
+}
+
+UniquePtr<Image> Image::CreateUnique(Device& device, const ImageCreateInfo& CI)
+{
+    return MakeUnique<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
+}
+
+Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples) :
     DeviceObject{device}, m_format{format}
 {
-    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-    {
-        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-    else if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
     {
         m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+    else
+    {
+        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     }
     m_subResourceRange.layerCount     = arrayLayers;
     m_subResourceRange.baseArrayLayer = 0;
@@ -29,6 +39,7 @@ Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageF
     imageCI.imageType   = GetImageType(extent3D);
     imageCI.flags       = flags;
     imageCI.tiling      = tiling;
+    imageCI.samples     = samples;
 
     VmaAllocationCreateInfo vmaCI{};
     vmaCI.usage = VMA_MEMORY_USAGE_AUTO;
@@ -81,5 +92,17 @@ VkImageType Image::GetImageType(VkExtent3D& extent)
     }
 
     return result;
+}
+
+Image::~Image()
+{
+    if (m_view != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(m_device.GetHandle(), m_view, nullptr);
+    }
+    if (m_allocation != VK_NULL_HANDLE)
+    {
+        vmaDestroyImage(m_device.GetAllocator(), m_handle, m_allocation);
+    }
 }
 } // namespace zen::val
