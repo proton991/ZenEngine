@@ -14,7 +14,7 @@ UniquePtr<Image> Image::CreateUnique(Device& device, const ImageCreateInfo& CI)
 }
 
 Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples) :
-    DeviceObject{device}, m_format{format}
+    DeviceObject{device}, m_format{format}, m_extent3D(extent3D)
 {
     if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
     {

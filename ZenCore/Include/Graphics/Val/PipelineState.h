@@ -164,7 +164,7 @@ public:
     uint32_t                               GetSubpassIndex() const;
 
 private:
-    VertexInputState            m_vertexInputState{};
+    VertexInputState            m_vertexInputState{}; // TODO: Move this part to shader reflection
     InputAssemblyState          m_inputAssemblyState{};
     ViewportState               m_viewportState{};
     RasterizationState          m_rasterizationState{};

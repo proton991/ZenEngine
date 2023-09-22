@@ -30,10 +30,13 @@ public:
 
     VkImageView GetView() const { return m_view; }
 
+    const VkExtent3D& GetExtent3D() const { return m_extent3D; };
+
 private:
     VmaAllocation           m_allocation{VK_NULL_HANDLE};
     VkImageView             m_view{VK_NULL_HANDLE};
-    VkFormat                m_format;
+    VkFormat                m_format{};
+    VkExtent3D              m_extent3D{};
     VkImageSubresourceRange m_subResourceRange{};
 
     static VkImageType GetImageType(VkExtent3D& extent);

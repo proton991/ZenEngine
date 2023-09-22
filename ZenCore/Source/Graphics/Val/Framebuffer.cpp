@@ -4,11 +4,11 @@
 
 namespace zen::val
 {
-Framebuffer::Framebuffer(Device& device, RenderPass& renderPass, const std::vector<VkImageView>& attachments, VkExtent3D extent3D) :
+Framebuffer::Framebuffer(Device& device, VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D) :
     DeviceObject(device), m_extent(extent3D)
 {
     VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    fbCI.renderPass      = renderPass.GetHandle();
+    fbCI.renderPass      = renderPassHandle;
     fbCI.pAttachments    = attachments.data();
     fbCI.attachmentCount = static_cast<uint32_t>(attachments.size());
     fbCI.width           = m_extent.width;

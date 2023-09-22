@@ -163,10 +163,8 @@ public:
     const auto& GetIndex() const { return m_index; }
     const auto& GetOutImageResources() const { return m_outImageResources; }
     const auto& GetOutBufferResources() const { return m_outBufferResources; }
-    const auto& GetOutDepthStencil() const { return m_outDepthStencil; }
     const auto& GetInImageResources() const { return m_inImagesResources; }
     const auto& GetInBufferResources() const { return m_inBuffersResources; }
-    const auto& GetInDepthStencil() const { return m_inDepthStencil; }
     const auto& GetTag() const { return m_tag; }
 
     void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
@@ -180,11 +178,9 @@ private:
     // output resources
     std::vector<RDGImage*>  m_outImageResources;
     std::vector<RDGBuffer*> m_outBufferResources;
-    RDGImage*               m_outDepthStencil{nullptr};
     // input resources
     std::vector<RDGImage*>  m_inImagesResources;
     std::vector<RDGBuffer*> m_inBuffersResources;
-    RDGImage*               m_inDepthStencil{nullptr};
     // input texture resources
     std::vector<RDGAccessedTexture> m_inTextures;
     // clear screen
@@ -245,7 +241,8 @@ private:
     struct PhysicalPass
     {
         val::GraphicsPipeline* graphicPipeline;
-        val::RenderPass*       renderPass;
+        VkRenderPass           renderPass;
+        val::Framebuffer*      framebuffer;
     };
 
     struct PhysicalImage

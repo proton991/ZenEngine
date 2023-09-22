@@ -1,5 +1,6 @@
 #include "Graphics/Rendering/RenderGraph.h"
 #include "Common/Errors.h"
+#include "Common/Helpers.h"
 #include <queue>
 
 namespace zen
@@ -58,7 +59,7 @@ void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::I
     res->AddImageUsage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
     res->WriteInPass(m_index);
     res->SetInfo(info);
-    m_outDepthStencil = res;
+    m_outImageResources.push_back(res);
 }
 
 void RDGPass::ReadFromDepthStencilImage(const std::string& tag)
@@ -66,7 +67,7 @@ void RDGPass::ReadFromDepthStencilImage(const std::string& tag)
     auto* res = m_graph.GetImageResource(tag);
     res->AddImageUsage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
     res->ReadInPass(m_index);
-    m_inDepthStencil = res;
+    m_inImagesResources.push_back(res);
 }
 
 void RDGPass::ReadFromGenericTexture(const Tag& tag)
@@ -181,13 +182,6 @@ void RenderGraph::TraversePassDepsRecursive(Index passIndex, uint32_t level)
     {
         LOG_ERROR_AND_THROW("Cycle detected in render graph!");
     }
-    if (pass.GetInDepthStencil())
-    {
-        for (auto& dep : pass.GetInDepthStencil()->GetWrittenInPasses())
-        {
-            m_passDeps[pass.GetIndex()].insert(dep);
-        }
-    }
     for (auto& input : pass.GetInImageResources())
     {
         for (auto& dep : input->GetWrittenInPasses())
@@ -294,38 +288,6 @@ void RenderGraph::ResolveResourceState()
 
             m_resourceState.imageLastUsePass[output->GetTag()] = pass->GetTag();
         }
-        if (pass->GetInDepthStencil())
-        {
-            auto* input = pass->GetInDepthStencil();
-            if (lastImageUsages.find(input->GetTag()) == lastImageUsages.end())
-            {
-                m_resourceState.imageFirstUsePass[input->GetTag()] = pass->GetTag();
-                // set at the end
-                lastImageUsages[input->GetTag()] = VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM;
-            }
-            imageTransitions[input->GetTag()].srcUsage = lastImageUsages[input->GetTag()];
-            imageTransitions[input->GetTag()].dstUsage = input->GetUsage();
-            m_resourceState.totalUsages[input->GetTag()] |= input->GetUsage();
-            lastImageUsages[input->GetTag()] = input->GetUsage();
-
-            m_resourceState.imageLastUsePass[input->GetTag()] = pass->GetTag();
-        }
-        if (pass->GetOutDepthStencil())
-        {
-            auto* output = pass->GetOutDepthStencil();
-            if (lastImageUsages.find(output->GetTag()) == lastImageUsages.end())
-            {
-                m_resourceState.imageFirstUsePass[output->GetTag()] = pass->GetTag();
-                // set at the end
-                lastImageUsages[output->GetTag()] = VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM;
-            }
-            imageTransitions[output->GetTag()].srcUsage = lastImageUsages[output->GetTag()];
-            imageTransitions[output->GetTag()].dstUsage = output->GetUsage();
-            m_resourceState.totalUsages[output->GetTag()] |= output->GetUsage();
-            lastImageUsages[output->GetTag()] = output->GetUsage();
-
-            m_resourceState.imageLastUsePass[output->GetTag()] = pass->GetTag();
-        }
     }
     for (const auto& [bufferTag, passTag] : m_resourceState.bufferFirstUsePass)
     {
@@ -349,7 +311,7 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
     imageCI.samples     = static_cast<VkSampleCountFlagBits>(info.samples);
     imageCI.arrayLayers = info.layers;
     imageCI.mipLevels   = info.levels;
-    imageCI.vmaFlags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // Is it OK?
+    imageCI.vmaFlags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // TODO: Is it OK?
     switch (info.sizeType)
     {
         case ImageSizeType::SwapchainRelative:
@@ -375,7 +337,7 @@ void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
     val::BufferCreateInfo bufferCI{};
     bufferCI.size     = info.size;
     bufferCI.usage    = info.usage;
-    bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // Choose right vma flags;
+    bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // TODO: Choose right vma flags;
 
     auto physicalIndex = m_physicalBuffers.size();
     buffer->SetPhysicalIndex(physicalIndex);
@@ -397,7 +359,112 @@ void RenderGraph::BuildPhysicalResources()
     }
 }
 
+static VkImageLayout ImageUsageToImageLayout(VkImageUsageFlags usage)
+{
+    if (usage == 0)
+        return VK_IMAGE_LAYOUT_UNDEFINED;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_IMAGE_LAYOUT_GENERAL;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    return VK_IMAGE_LAYOUT_UNDEFINED;
+}
 void RenderGraph::BuildPhysicalPasses()
 {
+    for (const auto& pass : m_passes)
+    {
+        PhysicalPass physicalPass{};
+
+        std::vector<VkAttachmentDescription> attachmentDescriptions;
+        std::vector<VkAttachmentReference>   attachmentReferences;
+        std::vector<VkImageView>             imageViews;
+        VkAttachmentReference                depthReference{};
+        bool                                 hasDepthRef{false};
+
+        uint32_t framebufferWidth  = 0;
+        uint32_t framebufferHeight = 0;
+
+        auto& rdgImages = pass->GetOutImageResources();
+        if (!rdgImages.empty())
+        {
+            for (uint32_t attIndex = 0; attIndex < rdgImages.size(); attIndex++)
+            {
+                const auto& rdgImage        = rdgImages[attIndex];
+                const auto& phyImage        = m_physicalImages.at(rdgImage->GetPhysicalIndex());
+                const auto& imageTransition = m_resourceState.perPassImageState.at(pass->GetTag());
+
+                auto extent3D     = phyImage->GetExtent3D();
+                framebufferWidth  = std::max(framebufferWidth, extent3D.width);
+                framebufferHeight = std::max(framebufferHeight, extent3D.height);
+                imageViews.push_back(phyImage->GetView());
+
+                VkAttachmentDescription attachmentDescription{};
+                attachmentDescription.format         = rdgImage->GetInfo().format;
+                attachmentDescription.samples        = static_cast<VkSampleCountFlagBits>(rdgImage->GetInfo().samples);
+                attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE; // TODO: set proper load op
+                attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+                attachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                attachmentDescription.initialLayout  = ImageUsageToImageLayout(imageTransition.at(rdgImage->GetTag()).srcUsage);
+                attachmentDescription.finalLayout    = ImageUsageToImageLayout(imageTransition.at(rdgImage->GetTag()).dstUsage);
+                attachmentDescriptions.push_back(attachmentDescription);
+
+                VkAttachmentReference attachmentReference{};
+                attachmentReference.attachment = attIndex;
+                attachmentReference.layout     = attachmentDescription.finalLayout;
+                if (rdgImage->GetUsage() & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                {
+                    depthReference = attachmentReference;
+                    hasDepthRef    = true;
+                }
+                else
+                {
+                    attachmentReferences.push_back(attachmentReference);
+                }
+            }
+        }
+        VkSubpassDescription subpassDescription{};
+        subpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpassDescription.colorAttachmentCount    = util::ToU32(attachmentReferences.size());
+        subpassDescription.pColorAttachments       = attachmentReferences.data();
+        subpassDescription.pDepthStencilAttachment = hasDepthRef ? &depthReference : nullptr;
+
+        std::vector<VkSubpassDependency> subpassDeps(2);
+        subpassDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+        subpassDeps[0].dstSubpass      = 0;
+        subpassDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        subpassDeps[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
+        subpassDeps[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        subpassDeps[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        subpassDeps[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+        subpassDeps[1].srcSubpass      = 0;
+        subpassDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+        subpassDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        subpassDeps[1].srcAccessMask   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        subpassDeps[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
+        subpassDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        subpassDeps[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+        VkRenderPassCreateInfo renderPassCI{};
+        renderPassCI.attachmentCount = util::ToU32(attachmentDescriptions.size());
+        renderPassCI.pAttachments    = attachmentDescriptions.data();
+        renderPassCI.dependencyCount = util::ToU32(subpassDeps.size());
+        renderPassCI.pDependencies   = subpassDeps.data();
+        renderPassCI.subpassCount    = 1;
+        renderPassCI.pSubpasses      = &subpassDescription;
+        vkCreateRenderPass(m_valDevice.GetHandle(), &renderPassCI, nullptr, &physicalPass.renderPass);
+        // Create framebuffer
+        physicalPass.framebuffer = new val::Framebuffer(m_valDevice, physicalPass.renderPass, imageViews, {framebufferWidth, framebufferHeight, 1});
+        // Create pipeline
+    }
 }
 } // namespace zen
