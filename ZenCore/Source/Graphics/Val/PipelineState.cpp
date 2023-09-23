@@ -43,9 +43,9 @@ void PipelineState::SetDynamicState(std::vector<VkDynamicState>&& states)
     m_dynamicStates = std::move(states);
 }
 
-void PipelineState::SetRenderPass(RenderPass* renderPass)
+void PipelineState::SetRenderPass(VkRenderPass renderPass)
 {
-    m_renderPass = renderPass;
+    m_renderPassHandle = renderPass;
 }
 
 void PipelineState::SetSubpassIndex(uint32_t index)
@@ -139,7 +139,7 @@ VkPipelineDynamicStateCreateInfo PipelineState::GetDynamicStateCI() const
 
 VkRenderPass PipelineState::GetRPHandle() const
 {
-    return m_renderPass->GetHandle();
+    return m_renderPassHandle;
 }
 
 uint32_t PipelineState::GetSubpassIndex() const

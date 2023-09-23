@@ -15,8 +15,9 @@ public:
 
     auto& GetShaderModules() const { return m_shaderModules; }
 
+    std::vector<ShaderResource> GetResources(ShaderResourceType type, VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL) const;
+
 private:
-    std::vector<ShaderResource> GetResources(ShaderResourceType type, VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL);
     // The shader modules that this pipeline layout uses
     std::vector<ShaderModule*> m_shaderModules;
     // The shader resources

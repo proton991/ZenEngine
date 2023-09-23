@@ -377,6 +377,8 @@ static VkImageLayout ImageUsageToImageLayout(VkImageUsageFlags usage)
         return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     return VK_IMAGE_LAYOUT_UNDEFINED;
 }
+
+// TODO: implement physical pass resources caching and management (Implementing in RenderDevice is a possible solution)
 void RenderGraph::BuildPhysicalPasses()
 {
     for (const auto& pass : m_passes)
@@ -465,6 +467,9 @@ void RenderGraph::BuildPhysicalPasses()
         // Create framebuffer
         physicalPass.framebuffer = new val::Framebuffer(m_valDevice, physicalPass.renderPass, imageViews, {framebufferWidth, framebufferHeight, 1});
         // Create pipeline
+        // TODO: configure pipeline states
+        physicalPass.pipelineLayout  = new val::PipelineLayout(m_valDevice, pass->GetUsedShaders());
+        physicalPass.graphicPipeline = new val::GraphicsPipeline(m_valDevice, *physicalPass.pipelineLayout, physicalPass.pipelineState, "graphic pipeline for " + pass->GetTag());
     }
 }
 } // namespace zen

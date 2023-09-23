@@ -92,14 +92,83 @@ inline void ReadResourceDecoration<spv::DecorationNonReadable>(
     shaderResource.qualifiers |= ShaderResourceQualifiers::NonReadable;
 }
 
+inline void ReadResourceFormat(const spirv_cross::SPIRType& spirType, ShaderResource& shaderResource)
+{
+    if (spirType.basetype == spirv_cross::SPIRType::BaseType::Float)
+    {
+        switch (shaderResource.vecSize)
+        {
+            case 1:
+                shaderResource.format = VK_FORMAT_R32_SFLOAT;
+                break;
+            case 2:
+                shaderResource.format = VK_FORMAT_R32G32_SFLOAT;
+                break;
+            case 3:
+                shaderResource.format = VK_FORMAT_R32G32B32_SFLOAT;
+                break;
+            case 4:
+                shaderResource.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                break;
+            default:
+                shaderResource.format = VK_FORMAT_UNDEFINED;
+                break;
+        }
+    }
+    else if (spirType.basetype == spirv_cross::SPIRType::BaseType::Int)
+    {
+        switch (shaderResource.vecSize)
+        {
+            case 1:
+                shaderResource.format = VK_FORMAT_R32_SINT;
+                break;
+            case 2:
+                shaderResource.format = VK_FORMAT_R32G32_SINT;
+                break;
+            case 3:
+                shaderResource.format = VK_FORMAT_R32G32B32_SINT;
+                break;
+            case 4:
+                shaderResource.format = VK_FORMAT_R32G32B32A32_SINT;
+                break;
+            default:
+                shaderResource.format = VK_FORMAT_UNDEFINED;
+                break;
+        }
+    }
+    else if (spirType.basetype == spirv_cross::SPIRType::BaseType::Double)
+    {
+        switch (shaderResource.vecSize)
+        {
+            case 1:
+                shaderResource.format = VK_FORMAT_R64_SFLOAT;
+                break;
+            case 2:
+                shaderResource.format = VK_FORMAT_R64G64_SFLOAT;
+                break;
+            case 3:
+                shaderResource.format = VK_FORMAT_R64G64B64_SFLOAT;
+                break;
+            case 4:
+                shaderResource.format = VK_FORMAT_R64G64B64A64_SFLOAT;
+                break;
+            default:
+                shaderResource.format = VK_FORMAT_UNDEFINED;
+                break;
+        }
+    }
+}
+
 inline void ReadResourceVecSize(const spirv_cross::Compiler& compiler,
                                 const spirv_cross::Resource& resource,
                                 ShaderResource&              shaderResource)
 {
-    const auto& spirvType = compiler.get_type_from_variable(resource.id);
+    const auto& spirType = compiler.get_type_from_variable(resource.id);
 
-    shaderResource.vecSize = spirvType.vecsize;
-    shaderResource.columns = spirvType.columns;
+    shaderResource.vecSize = spirType.vecsize;
+    shaderResource.columns = spirType.columns;
+    shaderResource.size    = (spirType.width / 8) * spirType.vecsize;
+    ReadResourceFormat(spirType, shaderResource);
 }
 
 inline void ReadResourceArraySize(const spirv_cross::Compiler& compiler,
@@ -107,7 +176,6 @@ inline void ReadResourceArraySize(const spirv_cross::Compiler& compiler,
                                   ShaderResource&              shaderResource,
                                   const RuntimeArraySizes&     arraySizes)
 {
-    const auto& spirvType = compiler.get_type_from_variable(resource.id);
     if (arraySizes.count(resource.name) != 0)
     {
         shaderResource.arraySize = arraySizes.at(resource.name);

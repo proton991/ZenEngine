@@ -11,7 +11,7 @@ class PipelineLayout;
 class GraphicsPipeline : public DeviceObject<VkPipeline, VK_OBJECT_TYPE_PIPELINE>
 {
 public:
-    GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, const PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache = VK_NULL_HANDLE);
+    GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache = VK_NULL_HANDLE);
 
     ~GraphicsPipeline();
 

@@ -5,6 +5,7 @@
 #include "Platform/GlfwWindow.h"
 #include "Common/Helpers.h"
 #include "Graphics/Rendering/RenderDevice.h"
+#include "Graphics/Val/VulkanStrings.h"
 
 //using namespace zen::val;
 //using namespace zen::platform;
@@ -35,20 +36,22 @@ int main(int argc, char** argv)
     auto valDevice = val::Device::Create(deviceCI);
 
     val::RuntimeArraySizes runtimeArraySizes{{"textures", 4}};
+    val::RuntimeArraySizes runtimeArraySizes2{};
 
-    //    val::ShaderModule testShader{
-    //        *valDevice, VK_SHADER_STAGE_FRAGMENT_BIT, "gbuffer.frag.spv", runtimeArraySizes};
-    //    std::cout << "entry point: " << testShader.GetEntryPoint() << std::endl;
-    //    auto& resources = testShader.GetResources();
-    //    for (auto& resource : resources)
-    //    {
-    //        std::cout << resource.name << ":" << std::endl;
-    //        std::cout << "\tset: " << resource.set << std::endl;
-    //        std::cout << "\tbinding: " << resource.binding << std::endl;
-    //        std::cout << "\tlocation: " << resource.location << std::endl;
-    //        std::cout << "\tarraySize: " << resource.arraySize << std::endl;
-    //        std::cout << "\tsize: " << resource.size << std::endl;
-    //    }
+    val::ShaderModule testShader{
+        *valDevice, VK_SHADER_STAGE_VERTEX_BIT, "gbuffer.vert.spv", runtimeArraySizes2};
+    std::cout << "entry point: " << testShader.GetEntryPoint() << std::endl;
+    auto& resources = testShader.GetResources();
+    for (auto& resource : resources)
+    {
+        std::cout << resource.name << ":" << std::endl;
+        std::cout << "\tset: " << resource.set << std::endl;
+        std::cout << "\tbinding: " << resource.binding << std::endl;
+        std::cout << "\tlocation: " << resource.location << std::endl;
+        std::cout << "\tarraySize: " << resource.arraySize << std::endl;
+        std::cout << "\tsize(in bytes): " << resource.size << std::endl;
+        std::cout << "\tformat: " << val::VkToString(resource.format) << std::endl;
+    }
 
     val::Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
 
@@ -64,8 +67,8 @@ int main(int argc, char** argv)
 
     val::BufferCreateInfo bufferCI{};
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    bufferCI.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferCI.size = 1024;
+    bufferCI.usage    = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferCI.size     = 1024;
 
     auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
     auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);

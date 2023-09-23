@@ -147,7 +147,7 @@ public:
     void SetDepthStencilState(DepthStencilState&& state);
     void SetColorBlendState(ColorBlendState&& state);
     void SetDynamicState(std::vector<VkDynamicState>&& states);
-    void SetRenderPass(RenderPass* state);
+    void SetRenderPass(VkRenderPass state);
     void SetSubpassIndex(uint32_t index);
 
     auto& GetSpecializationState() const { return m_specializationState; }
@@ -174,7 +174,7 @@ private:
     SpecializationState         m_specializationState{};
     std::vector<VkDynamicState> m_dynamicStates;
 
-    uint32_t    m_subpassIndex{0};
-    RenderPass* m_renderPass{nullptr};
+    uint32_t     m_subpassIndex{0};
+    VkRenderPass m_renderPassHandle{VK_NULL_HANDLE};
 };
 } // namespace zen::val

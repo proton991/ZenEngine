@@ -7,7 +7,7 @@
 
 namespace zen::val
 {
-GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, const PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache) :
+GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache) :
     DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
@@ -40,6 +40,39 @@ GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelin
         shaderStageCIs.push_back(shaderStageCI);
     }
 
+    auto vertexInputResources = pipelineLayout.GetResources(ShaderResourceType::Input, VK_SHADER_STAGE_VERTEX_BIT);
+    std::sort(vertexInputResources.begin(), vertexInputResources.end(), [](const ShaderResource& lhs, const ShaderResource& rhs) { return lhs.binding == rhs.binding ? lhs.location < rhs.location : lhs.binding < rhs.binding; });
+
+    std::vector<VkVertexInputBindingDescription>   vertexBindingDescriptions;
+    std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
+
+    uint32_t vertexAttributeOffset = 0;
+    for (auto& input : vertexInputResources)
+    {
+        VkVertexInputAttributeDescription attributeDesc{};
+        attributeDesc.format   = input.format;
+        attributeDesc.binding  = input.binding;
+        attributeDesc.location = input.location;
+        attributeDesc.offset   = vertexAttributeOffset;
+        vertexAttributeOffset += input.size;
+        vertexAttributeDescriptions.push_back(attributeDesc);
+        if (vertexBindingDescriptions.empty())
+        {
+            VkVertexInputBindingDescription desc{};
+            desc.binding   = input.binding;
+            desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // TODO: Support instance draw
+            vertexBindingDescriptions.push_back(desc);
+        }
+        // add new binding
+        if (attributeDesc.binding != vertexAttributeDescriptions.back().binding)
+        {
+            vertexBindingDescriptions.back().stride = vertexAttributeOffset;
+            // reset offset to 0, add new binding
+            vertexAttributeOffset = 0;
+        }
+    }
+    vertexBindingDescriptions.back().stride = vertexAttributeOffset;
+    pipelineState.SetVertexInputState({vertexBindingDescriptions, vertexAttributeDescriptions});
     auto vertexInputStateCI   = pipelineState.GetVIStateCI();
     auto inputAssemblyStateCI = pipelineState.GetIAStateCI();
     auto rasterizationStateCI = pipelineState.GetRasterizationStateCI();

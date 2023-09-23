@@ -169,6 +169,10 @@ public:
 
     void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
 
+    void UseShaders(std::vector<val::ShaderModule*>&& shaders) { m_shaders = std::move(shaders); }
+
+    const auto& GetUsedShaders() const { return m_shaders; }
+
 private:
     RenderGraph&  m_graph;
     Index         m_index;
@@ -185,6 +189,9 @@ private:
     std::vector<RDGAccessedTexture> m_inTextures;
     // clear screen
     bool m_clearScreen{false};
+
+    // used shaders
+    std::vector<val::ShaderModule*> m_shaders;
     //    std::vector<RDGImage*>  m_outColorImages;
     //    std::vector<RDGImage*>  m_outStorageImages;
     //    std::vector<RDGBuffer*> m_outStorageBuffers;
@@ -240,6 +247,8 @@ public:
 private:
     struct PhysicalPass
     {
+        val::PipelineLayout*   pipelineLayout;
+        val::PipelineState     pipelineState{};
         val::GraphicsPipeline* graphicPipeline;
         VkRenderPass           renderPass;
         val::Framebuffer*      framebuffer;

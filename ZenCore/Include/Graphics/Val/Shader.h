@@ -48,6 +48,8 @@ enum class ShaderResourceMode
 // Used by the shader module.
 struct ShaderResource
 {
+    VkFormat format{VK_FORMAT_UNDEFINED};
+
     VkShaderStageFlagBits stages;
 
     ShaderResourceType type;
@@ -63,6 +65,8 @@ struct ShaderResource
     uint32_t inputAttachmentIndex;
 
     uint32_t vecSize;
+
+    //    uint32_t byteSize;
 
     uint32_t columns;
 
