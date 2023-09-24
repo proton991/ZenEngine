@@ -139,6 +139,8 @@ private:
 class PipelineState
 {
 public:
+    PipelineState() = default;
+
     void SetVertexInputState(VertexInputState&& state);
     void SetInputAssemblyState(InputAssemblyState&& state);
     void SetViewportState(ViewportState&& state);
@@ -149,6 +151,14 @@ public:
     void SetDynamicState(std::vector<VkDynamicState>&& states);
     void SetRenderPass(VkRenderPass state);
     void SetSubpassIndex(uint32_t index);
+
+    auto& GetVertexInputState() const { return m_vertexInputState; }
+    auto& GetInputAssemblyState() const { return m_inputAssemblyState; }
+    auto& GetViewportState() const { return m_viewportState; }
+    auto& GetRasterizationState() const { return m_rasterizationState; }
+    auto& GetMultiSampleState() const { return m_multiSampleState; }
+    auto& GetDepthStencilState() const { return m_depthStencilState; }
+    auto& GetColorBlendState() const { return m_colorBlendState; }
 
     auto& GetSpecializationState() const { return m_specializationState; }
 

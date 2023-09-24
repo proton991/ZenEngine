@@ -230,8 +230,8 @@ struct ResourceState
 class RenderGraph
 {
 public:
-    RenderGraph(val::Device& device) :
-        m_valDevice(device) {}
+    explicit RenderGraph(RenderDevice& device) :
+        m_renderDevice(device) {}
 
     RDGImage*  GetImageResource(const Tag& tag);
     RDGBuffer* GetBufferResource(const Tag& tag);
@@ -247,11 +247,11 @@ public:
 private:
     struct PhysicalPass
     {
-        val::PipelineLayout*   pipelineLayout;
-        val::PipelineState     pipelineState{};
-        val::GraphicsPipeline* graphicPipeline;
-        VkRenderPass           renderPass;
-        val::Framebuffer*      framebuffer;
+        val::PipelineLayout*        pipelineLayout{nullptr};
+        val::PipelineState          pipelineState{};
+        val::GraphicsPipeline*      graphicPipeline{nullptr};
+        val::RenderPass*            renderPass{nullptr};
+        UniquePtr<val::Framebuffer> framebuffer;
     };
 
     struct PhysicalImage
@@ -289,8 +289,8 @@ private:
     std::vector<PhysicalPass> m_physicalPasses;
     // Swapchain back buffer info
     Tag        m_backBufferTag;
-    VkExtent2D m_backBufferExtent;
+    VkExtent2D m_backBufferExtent{};
 
-    val::Device& m_valDevice;
+    RenderDevice& m_renderDevice;
 };
 } // namespace zen

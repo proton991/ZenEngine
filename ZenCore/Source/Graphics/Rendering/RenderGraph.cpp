@@ -327,7 +327,7 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
     }
     auto physicalIndex = m_physicalImages.size();
     image->SetPhysicalIndex(physicalIndex);
-    m_physicalImages.emplace_back(val::Image::CreateUnique(m_valDevice, imageCI));
+    m_physicalImages.emplace_back(m_renderDevice.CreateImageUnique(imageCI));
 }
 
 void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
@@ -341,7 +341,7 @@ void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
 
     auto physicalIndex = m_physicalBuffers.size();
     buffer->SetPhysicalIndex(physicalIndex);
-    m_physicalBuffers.emplace_back(val::Buffer::CreateUnique(m_valDevice, bufferCI));
+    m_physicalBuffers.emplace_back(m_renderDevice.CreateBufferUnique(bufferCI));
 }
 
 void RenderGraph::BuildPhysicalResources()
@@ -384,13 +384,15 @@ void RenderGraph::BuildPhysicalPasses()
     for (const auto& pass : m_passes)
     {
         PhysicalPass physicalPass{};
-
+        // Render pass attachments
         std::vector<VkAttachmentDescription> attachmentDescriptions;
-        std::vector<VkAttachmentReference>   attachmentReferences;
-        std::vector<VkImageView>             imageViews;
-        VkAttachmentReference                depthReference{};
-        bool                                 hasDepthRef{false};
-
+        // val::SubpassInfos
+        std::vector<VkAttachmentReference> colorReferences;
+        VkAttachmentReference              depthReference{};
+        uint32_t                           depthRefIndex{UINT32_MAX};
+        // Framebuffer attachments
+        std::vector<VkImageView> imageViews;
+        // Framebuffer size
         uint32_t framebufferWidth  = 0;
         uint32_t framebufferHeight = 0;
 
@@ -425,51 +427,23 @@ void RenderGraph::BuildPhysicalPasses()
                 if (rdgImage->GetUsage() & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
                 {
                     depthReference = attachmentReference;
-                    hasDepthRef    = true;
+                    depthRefIndex  = attIndex;
                 }
                 else
                 {
-                    attachmentReferences.push_back(attachmentReference);
+                    colorReferences.push_back(attachmentReference);
                 }
             }
         }
-        VkSubpassDescription subpassDescription{};
-        subpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpassDescription.colorAttachmentCount    = util::ToU32(attachmentReferences.size());
-        subpassDescription.pColorAttachments       = attachmentReferences.data();
-        subpassDescription.pDepthStencilAttachment = hasDepthRef ? &depthReference : nullptr;
-
-        std::vector<VkSubpassDependency> subpassDeps(2);
-        subpassDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
-        subpassDeps[0].dstSubpass      = 0;
-        subpassDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        subpassDeps[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-        subpassDeps[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        subpassDeps[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        subpassDeps[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-
-        subpassDeps[1].srcSubpass      = 0;
-        subpassDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
-        subpassDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        subpassDeps[1].srcAccessMask   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        subpassDeps[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-        subpassDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        subpassDeps[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-        VkRenderPassCreateInfo renderPassCI{};
-        renderPassCI.attachmentCount = util::ToU32(attachmentDescriptions.size());
-        renderPassCI.pAttachments    = attachmentDescriptions.data();
-        renderPassCI.dependencyCount = util::ToU32(subpassDeps.size());
-        renderPassCI.pDependencies   = subpassDeps.data();
-        renderPassCI.subpassCount    = 1;
-        renderPassCI.pSubpasses      = &subpassDescription;
-        vkCreateRenderPass(m_valDevice.GetHandle(), &renderPassCI, nullptr, &physicalPass.renderPass);
+        // Create RenderPass
+        val::SubpassInfo subpassInfo{colorReferences, {}, depthRefIndex};
+        physicalPass.renderPass = m_renderDevice.RequestRenderPass(attachmentDescriptions, subpassInfo);
         // Create framebuffer
-        physicalPass.framebuffer = new val::Framebuffer(m_valDevice, physicalPass.renderPass, imageViews, {framebufferWidth, framebufferHeight, 1});
+        physicalPass.framebuffer = m_renderDevice.CreateFramebufferUnique(physicalPass.renderPass->GetHandle(), imageViews, {framebufferWidth, framebufferHeight, 1});
         // Create pipeline
         // TODO: configure pipeline states
-        physicalPass.pipelineLayout  = new val::PipelineLayout(m_valDevice, pass->GetUsedShaders());
-        physicalPass.graphicPipeline = new val::GraphicsPipeline(m_valDevice, *physicalPass.pipelineLayout, physicalPass.pipelineState, "graphic pipeline for " + pass->GetTag());
+        physicalPass.pipelineLayout  = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
+        physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
     }
 }
 } // namespace zen

@@ -11,6 +11,8 @@ class PipelineLayout : public DeviceObject<VkPipelineLayout, VK_OBJECT_TYPE_PIPE
 public:
     PipelineLayout(Device& device, const std::vector<ShaderModule*>& shaderModules);
 
+    PipelineLayout(PipelineLayout&& other) noexcept;
+
     ~PipelineLayout();
 
     auto& GetShaderModules() const { return m_shaderModules; }

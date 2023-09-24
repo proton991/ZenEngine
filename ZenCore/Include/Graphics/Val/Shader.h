@@ -102,11 +102,15 @@ public:
 
     VkShaderStageFlagBits GetStage() const { return m_stage; }
 
+    auto GetId() const { return m_id; }
+
 private:
     VkShaderStageFlagBits       m_stage{};
     std::vector<uint32_t>       m_spirvCode;
     std::vector<ShaderResource> m_resources;
     RuntimeArraySizes           m_runtimeArraySizes;
     std::string                 m_entryPoint;
+    // Unique id
+    size_t m_id;
 };
 } // namespace zen::val

@@ -7,7 +7,7 @@
 
 namespace zen::val
 {
-GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, const std::string& debugName, VkPipelineCache pipelineCache) :
+GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, VkPipelineCache pipelineCache) :
     DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
@@ -99,8 +99,11 @@ GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelin
     pipelineCI.subpass             = pipelineState.GetSubpassIndex();
 
     CHECK_VK_ERROR_AND_THROW(vkCreateGraphicsPipelines(m_device.GetHandle(), pipelineCache, 1, &pipelineCI, nullptr, &m_handle), "Failed to create graphics pipeline");
+}
 
-    SetPipelineName(m_device.GetHandle(), m_handle, debugName.c_str());
+GraphicsPipeline::GraphicsPipeline(GraphicsPipeline&& other) noexcept :
+    DeviceObject(std::move(other))
+{
 }
 
 GraphicsPipeline::~GraphicsPipeline()

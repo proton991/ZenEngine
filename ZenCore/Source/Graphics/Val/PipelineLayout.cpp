@@ -71,6 +71,15 @@ PipelineLayout::PipelineLayout(Device& device, const std::vector<ShaderModule*>&
     CHECK_VK_ERROR_AND_THROW(vkCreatePipelineLayout(m_device.GetHandle(), &pipelineCI, nullptr, &m_handle), "Failed to create pipeline layout");
 }
 
+PipelineLayout::PipelineLayout(PipelineLayout&& other) noexcept :
+    DeviceObject(std::move(other))
+{
+    m_perSetResource  = std::move(other.m_perSetResource);
+    m_shaderResources = std::move(other.m_shaderResources);
+    m_shaderModules   = std::move(other.m_shaderModules);
+    m_dsLayouts       = std::move(other.m_dsLayouts);
+}
+
 std::vector<ShaderResource> PipelineLayout::GetResources(ShaderResourceType type, VkShaderStageFlagBits stage) const
 {
     std::vector<ShaderResource> result;

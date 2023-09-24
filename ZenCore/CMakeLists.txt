@@ -9,6 +9,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/RenderGraphDefinitions.h
     Include/Graphics/Rendering/RenderGraph.h
     Include/Graphics/Rendering/RenderDevice.h
+    Include/Graphics/Rendering/ResourceCache.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h

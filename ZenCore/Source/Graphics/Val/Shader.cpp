@@ -57,6 +57,9 @@ ShaderModule::ShaderModule(Device& device, VkShaderStageFlagBits stage, const st
     SpirvReflection::ReflectEntryPoint(m_spirvCode, m_entryPoint);
 
     SpirvReflection::ReflectShaderResources(m_stage, m_spirvCode, m_resources, m_runtimeArraySizes);
+
+    std::hash<std::string> hasher{};
+    m_id = hasher(std::string(reinterpret_cast<const char*>(m_spirvCode.data()), reinterpret_cast<const char*>(m_spirvCode.data() + m_spirvCode.size())));
 }
 
 ShaderModule::~ShaderModule()
