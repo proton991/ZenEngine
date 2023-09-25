@@ -27,6 +27,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Val/PipelineState.h
     Include/Graphics/Val/Queue.h
     Include/Graphics/Val/RenderPass.h
+    Include/Graphics/Val/Sampler.h
     Include/Graphics/Val/Semaphore.h
     Include/Graphics/Val/Shader.h
     Include/Graphics/Val/Swapchain.h
@@ -62,6 +63,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Val/PipelineState.cpp
     Source/Graphics/Val/Queue.cpp
     Source/Graphics/Val/RenderPass.cpp
+    Source/Graphics/Val/Sampler.cpp
     Source/Graphics/Val/Semaphore.cpp
     Source/Graphics/Val/Shader.cpp
     Source/Graphics/Val/Swapchain.cpp
@@ -134,4 +136,4 @@ add_dependencies(ZenCore SpvShaders)
 if (WIN32)
   target_compile_definitions(ZenCore PUBLIC NOMINMAX)
 endif ()
-target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")
+target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH= "${SHADER_SPV_PATH}")
