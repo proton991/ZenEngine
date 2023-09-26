@@ -26,6 +26,9 @@ public:
     static UniquePtr<Image> CreateUnique(Device& device, const ImageCreateInfo& info);
 
     Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples);
+
+    Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format);
+
     ~Image();
 
     VkImageView GetView() const { return m_view; }

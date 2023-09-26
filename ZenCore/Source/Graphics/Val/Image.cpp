@@ -94,6 +94,12 @@ VkImageType Image::GetImageType(VkExtent3D& extent)
     return result;
 }
 
+Image::Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format) :
+    DeviceObject(device), m_extent3D(extent3D), m_format(format)
+{
+    m_handle = handle;
+}
+
 Image::~Image()
 {
     if (m_view != VK_NULL_HANDLE)

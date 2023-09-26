@@ -10,6 +10,9 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/RenderGraph.h
     Include/Graphics/Rendering/RenderDevice.h
     Include/Graphics/Rendering/ResourceCache.h
+    Include/Graphics/Rendering/RenderFrame.h
+    Include/Graphics/Rendering/RenderContext.h
+    Include/Graphics/Rendering/SyncObjPool.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -17,7 +20,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Val/Descriptors.h
     Include/Graphics/Val/DescriptorSetLayout.h
     Include/Graphics/Val/Device.h
-    Include/Graphics/Val/Fence.h
     Include/Graphics/Val/Framebuffer.h
     Include/Graphics/Val/GraphicsPipeline.h
     Include/Graphics/Val/Image.h
@@ -28,7 +30,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Val/Queue.h
     Include/Graphics/Val/RenderPass.h
     Include/Graphics/Val/Sampler.h
-    Include/Graphics/Val/Semaphore.h
     Include/Graphics/Val/Shader.h
     Include/Graphics/Val/Swapchain.h
     Include/Graphics/Val/DeviceObject.h
@@ -46,6 +47,9 @@ set(ZEN_CORE_HEADERS
 set(ZEN_CORE_SOURCES
     Source/Graphics/Rendering/RenderGraph.cpp
     Source/Graphics/Rendering/RenderDevice.cpp
+    Source/Graphics/Rendering/RenderFrame.cpp
+    Source/Graphics/Rendering/RenderContext.cpp
+    Source/Graphics/Rendering/SynObjPool.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp
@@ -53,7 +57,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Val/Descriptors.cpp
     Source/Graphics/Val/DescriptorSetLayout.cpp
     Source/Graphics/Val/Device.cpp
-    Source/Graphics/Val/Fence.cpp
     Source/Graphics/Val/Framebuffer.cpp
     Source/Graphics/Val/GraphicsPipeline.cpp
     Source/Graphics/Val/Image.cpp
@@ -64,7 +67,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Val/Queue.cpp
     Source/Graphics/Val/RenderPass.cpp
     Source/Graphics/Val/Sampler.cpp
-    Source/Graphics/Val/Semaphore.cpp
     Source/Graphics/Val/Shader.cpp
     Source/Graphics/Val/Swapchain.cpp
     Source/Graphics/Val/VulkanDebug.cpp
@@ -136,4 +138,4 @@ add_dependencies(ZenCore SpvShaders)
 if (WIN32)
   target_compile_definitions(ZenCore PUBLIC NOMINMAX)
 endif ()
-target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH= "${SHADER_SPV_PATH}")
+target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")

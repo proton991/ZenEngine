@@ -38,6 +38,13 @@ public:
     {
         const_cast<UniquePtr&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
     }
+
+    UniquePtr(UniquePtr&& other) noexcept :
+        m_ptr(std::move(other.m_ptr))
+    {
+        other.m_ptr = nullptr;
+    }
+
     /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
     UniquePtr& operator=(UniquePtr other) noexcept // never throws
     {
@@ -55,7 +62,7 @@ public:
         Destroy();
     }
     /// @brief this reset Release its ownership and re-acquire another one
-    void Reset(T* p) noexcept                          // never throws
+    void Reset(T* p) noexcept // never throws
     {
         UNIQUE_ASSERT((nullptr == p) || (m_ptr != p)); // auto-reset not allowed
         Destroy();

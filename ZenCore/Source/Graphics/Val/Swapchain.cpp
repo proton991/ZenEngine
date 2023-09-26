@@ -33,6 +33,9 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
         LOGI("  \t{}", VkToString(presentMode));
     }
 
+    m_format = m_surfaceFormats[0].format;
+    m_usage  = ChooseImageUsage(surfaceCapabilities.supportedUsageFlags);
+
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swapchainCI.surface          = m_surface;
     swapchainCI.minImageCount    = std::max(surfaceCapabilities.minImageCount, std::min(surfaceCapabilities.maxImageCount, imageCount));
@@ -40,9 +43,9 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
     swapchainCI.imageArrayLayers = 1;
     swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchainCI.imageFormat      = m_surfaceFormats[0].format;
+    swapchainCI.imageFormat      = m_format;
     swapchainCI.imageColorSpace  = m_surfaceFormats[0].colorSpace;
-    swapchainCI.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    swapchainCI.imageUsage       = m_usage;
     swapchainCI.presentMode      = ChoosePresentMode(vsync);
     swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR, surfaceCapabilities.supportedCompositeAlpha);
     swapchainCI.oldSwapchain     = oldSwapchain;
@@ -54,6 +57,41 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
     vkGetSwapchainImagesKHR(m_device.GetHandle(), m_handle, &numImages, nullptr);
     m_images.resize(numImages);
     vkGetSwapchainImagesKHR(m_device.GetHandle(), m_handle, &numImages, m_images.data());
+}
+
+VkImageUsageFlags Swapchain::ChooseImageUsage(VkImageUsageFlags supportedUsage)
+{
+    static const std::vector<VkImageUsageFlagBits> defaultImageUsageFlags =
+        {VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+         VK_IMAGE_USAGE_STORAGE_BIT,
+         VK_IMAGE_USAGE_SAMPLED_BIT,
+         VK_IMAGE_USAGE_TRANSFER_DST_BIT};
+    VkFormatProperties formatProperties;
+    vkGetPhysicalDeviceFormatProperties(m_device.GetPhysicalDeviceHandle(), m_format, &formatProperties);
+
+    VkImageUsageFlags composedUsage{0};
+    std::string       usageStr;
+
+    auto valid_format_feature = [&](VkImageUsageFlagBits usageFlag) {
+        if (usageFlag == VK_IMAGE_USAGE_STORAGE_BIT)
+        {
+            return (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) != 0;
+        }
+        else
+        {
+            return true;
+        }
+    };
+    for (auto usageFlag : defaultImageUsageFlags)
+    {
+        if ((usageFlag & supportedUsage) && valid_format_feature(usageFlag))
+        {
+            composedUsage |= usageFlag;
+            usageStr += VkToString<VkImageUsageFlagBits>(usageFlag) + " ";
+        }
+    }
+    LOGI("(Swapchain) Image usage flags: {}", usageStr);
+    return composedUsage;
 }
 
 VkPresentModeKHR Swapchain::ChoosePresentMode(bool vsync)

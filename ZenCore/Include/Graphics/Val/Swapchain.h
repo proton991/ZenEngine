@@ -12,7 +12,18 @@ public:
 
     ~Swapchain();
 
+    VkFormat GetFormat() const { return m_format; }
+
+    VkImageUsageFlags GetUsage() const { return m_usage; }
+
+    auto& GetImages() const { return m_images; }
+
+    VkExtent3D GetExtent3D() const { return {m_extent.width, m_extent.height, 1}; }
+
+    VkExtent2D GetExtent2D() const { return m_extent; }
+
 private:
+    VkImageUsageFlags           ChooseImageUsage(VkImageUsageFlags supportedUsage);
     VkPresentModeKHR            ChoosePresentMode(bool vsync);
     VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request, VkCompositeAlphaFlagsKHR supported);
 

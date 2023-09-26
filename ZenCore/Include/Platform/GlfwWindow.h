@@ -24,6 +24,11 @@ public:
 
     void HideCursor() const;
 
+    VkExtent2D GetExtent2D() const
+    {
+        return {static_cast<uint32_t>(m_data.width), static_cast<uint32_t>(m_data.height)};
+    }
+
 private:
     void SetupWindowCallbacks();
     bool CenterWindow();

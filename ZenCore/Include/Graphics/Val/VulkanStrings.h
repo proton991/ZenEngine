@@ -9,6 +9,35 @@ inline std::string VkToString(T value) {}
 
 template <>
 // clang-tidy: disable-next-line
+inline std::string VkToString<VkImageUsageFlagBits>(VkImageUsageFlagBits image_usage)
+{
+    switch (image_usage)
+    {
+        case VK_IMAGE_USAGE_TRANSFER_SRC_BIT:
+            return "VK_IMAGE_USAGE_TRANSFER_SRC_BIT";
+        case VK_IMAGE_USAGE_TRANSFER_DST_BIT:
+            return "VK_IMAGE_USAGE_TRANSFER_DST_BIT";
+        case VK_IMAGE_USAGE_SAMPLED_BIT:
+            return "VK_IMAGE_USAGE_SAMPLED_BIT";
+        case VK_IMAGE_USAGE_STORAGE_BIT:
+            return "VK_IMAGE_USAGE_STORAGE_BIT";
+        case VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT:
+            return "VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT";
+        case VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT:
+            return "VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT";
+        case VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT:
+            return "VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT";
+        case VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT:
+            return "VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT";
+        case VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM:
+            return "VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM";
+        default:
+            return "UNKNOWN IMAGE USAGE FLAG";
+    }
+}
+
+template <>
+// clang-tidy: disable-next-line
 inline std::string VkToString<VkFormat>(VkFormat format)
 {
     switch (format)
