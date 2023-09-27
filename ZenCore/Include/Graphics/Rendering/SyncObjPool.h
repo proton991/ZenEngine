@@ -6,7 +6,7 @@ namespace zen
 class SynObjPool
 {
 public:
-    SynObjPool(val::Device& device) :
+    explicit SynObjPool(val::Device& device) :
         m_valDevice(device) {}
 
     ~SynObjPool();
@@ -14,6 +14,10 @@ public:
     VkFence RequestFence();
 
     VkSemaphore RequestSemaphore();
+
+    VkSemaphore RequestSemaphoreWithOwnership();
+
+    void ReleaseSemaphoreWithOwnership(VkSemaphore semaphore);
 
     void ResetFences();
 
@@ -29,6 +33,6 @@ private:
     // Semaphores
     std::vector<VkSemaphore> m_semaphores;
     std::vector<VkSemaphore> m_releasedSemaphores;
-    uint32_t                 m_numActiveSemaphores;
+    uint32_t                 m_numActiveSemaphores{};
 };
 } // namespace zen

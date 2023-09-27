@@ -17,6 +17,10 @@ public:
 
     VkSemaphore RequestSemaphore() { return m_syncObjPool.RequestSemaphore(); }
 
+    VkSemaphore RequestSemaphoreWithOwnership() { return m_syncObjPool.RequestSemaphoreWithOwnership(); }
+
+    void ReleaseSemaphoreWithOwnership(VkSemaphore sem) { m_syncObjPool.ReleaseSemaphoreWithOwnership(sem); }
+
     VkFence RequestFence() { return m_syncObjPool.RequestFence(); }
 
     void Reset();

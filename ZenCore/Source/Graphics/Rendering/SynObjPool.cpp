@@ -47,6 +47,25 @@ VkSemaphore SynObjPool::RequestSemaphore()
     return m_semaphores.back();
 }
 
+VkSemaphore SynObjPool::RequestSemaphoreWithOwnership()
+{
+    if (m_numActiveSemaphores < m_semaphores.size())
+    {
+        auto sem = m_semaphores.back();
+        m_semaphores.pop_back();
+        return sem;
+    }
+    VkSemaphore           semaphore{VK_NULL_HANDLE};
+    VkSemaphoreCreateInfo semaphoreCI{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    CHECK_VK_ERROR_AND_THROW(vkCreateSemaphore(m_valDevice.GetHandle(), &semaphoreCI, nullptr, &semaphore), "Failed to create semaphore");
+    return semaphore;
+}
+
+void SynObjPool::ReleaseSemaphoreWithOwnership(VkSemaphore semaphore)
+{
+    m_releasedSemaphores.push_back(semaphore);
+}
+
 void SynObjPool::WaitForFences(uint32_t timeout) const
 {
     if (m_numActiveFences < 1 || m_fences.empty())
@@ -69,5 +88,10 @@ void SynObjPool::ResetFences()
 void SynObjPool::ResetSemaphores()
 {
     m_numActiveSemaphores = 0;
+    for (auto& sem : m_releasedSemaphores)
+    {
+        m_semaphores.push_back(sem);
+    }
+    m_releasedSemaphores.clear();
 }
 } // namespace zen

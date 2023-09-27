@@ -22,6 +22,8 @@ public:
 
     VkExtent2D GetExtent2D() const { return m_extent; }
 
+    VkResult AcquireNextImage(uint32_t& imageIndex, VkSemaphore imageAcquiredSem, VkFence fence = VK_NULL_HANDLE);
+
 private:
     VkImageUsageFlags           ChooseImageUsage(VkImageUsageFlags supportedUsage);
     VkPresentModeKHR            ChoosePresentMode(bool vsync);

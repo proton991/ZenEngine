@@ -122,6 +122,11 @@ Swapchain::~Swapchain()
     }
 }
 
+VkResult Swapchain::AcquireNextImage(uint32_t& imageIndex, VkSemaphore imageAcquiredSem, VkFence fence)
+{
+    return vkAcquireNextImageKHR(m_device.GetHandle(), m_handle, std::numeric_limits<uint64_t>::max(), imageAcquiredSem, fence, &imageIndex);
+}
+
 VkCompositeAlphaFlagBitsKHR Swapchain::ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request, VkCompositeAlphaFlagsKHR supported)
 {
     if ((request & supported) != 0)
