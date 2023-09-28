@@ -361,8 +361,6 @@ void RenderGraph::BuildPhysicalResources()
 
 static VkImageLayout ImageUsageToImageLayout(VkImageUsageFlags usage)
 {
-    if (usage == 0)
-        return VK_IMAGE_LAYOUT_UNDEFINED;
     if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
         return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
@@ -377,6 +375,82 @@ static VkImageLayout ImageUsageToImageLayout(VkImageUsageFlags usage)
         return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     return VK_IMAGE_LAYOUT_UNDEFINED;
 }
+
+static VkAccessFlags ImageUsageToAccessFlags(VkImageUsageFlags usage)
+{
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+        return VK_ACCESS_SHADER_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+        return VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    return 0;
+}
+
+static VkAccessFlags BufferUsageToAccessFlags(VkBufferUsageFlags usage)
+{
+    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    if (usage & (VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT))
+        return VK_ACCESS_SHADER_READ_BIT;
+    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
+        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    if (usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+        return VK_ACCESS_INDEX_READ_BIT;
+    if (usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+        return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    return VkAccessFlags{};
+}
+
+
+static VkPipelineStageFlags ImageUsageToPipelineStage(VkImageUsageFlags usage)
+{
+    if (usage == 0)
+        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    return VkPipelineStageFlags{};
+}
+
+static VkPipelineStageFlags BufferUsageToPipelineStage(VkBufferUsageFlags usage)
+{
+    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & (VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
+        return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    if (usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
+        return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if (usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    if (usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    return VkPipelineStageFlags{};
+}
+
 
 // TODO: implement physical pass resources caching and management (Implementing in RenderDevice is a possible solution)
 void RenderGraph::BuildPhysicalPasses()
@@ -445,5 +519,71 @@ void RenderGraph::BuildPhysicalPasses()
         physicalPass.pipelineLayout  = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
         physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
     }
+}
+
+static bool HasImageWriteDependency(VkImageUsageFlags usage)
+{
+    if (usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
+        return true;
+    return false;
+}
+
+static bool HasBufferWriteDependency(VkBufferUsageFlags usage)
+{
+    if (usage & (VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT))
+        return true;
+    return false;
+}
+
+void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const std::unordered_map<Tag, ImageTransition>& imageTransitions, const std::unordered_map<Tag, BufferTransition>& bufferTransitions)
+{
+    VkPipelineStageFlags srcPipelineStageFlags{};
+    VkPipelineStageFlags dstPipelineStageFlags{};
+
+    std::vector<VkBufferMemoryBarrier> bufferMemBarriers;
+    std::vector<VkImageMemoryBarrier>  imageMemBarriers;
+
+    for (const auto& [bufferTag, bufferTransition] : bufferTransitions)
+    {
+        if (!HasBufferWriteDependency(bufferTransition.srcUsage))
+            continue;
+        srcPipelineStageFlags |= BufferUsageToPipelineStage(bufferTransition.srcUsage);
+        dstPipelineStageFlags |= BufferUsageToPipelineStage(bufferTransition.dstUsage);
+        auto physicalIndex = m_resources[m_resourceToIndex[bufferTag]]->GetPhysicalIndex();
+
+        VkBufferMemoryBarrier barrier{};
+        barrier.buffer              = m_physicalBuffers[physicalIndex]->GetHandle();
+        barrier.srcAccessMask       = BufferUsageToAccessFlags(bufferTransition.srcUsage);
+        barrier.dstAccessMask       = BufferUsageToAccessFlags(bufferTransition.dstUsage);
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.size                = VK_WHOLE_SIZE;
+        barrier.offset              = 0;
+        bufferMemBarriers.push_back(barrier);
+    }
+
+    for (const auto& [imageTag, imageTransition] : imageTransitions)
+    {
+        if (!HasBufferWriteDependency(imageTransition.srcUsage))
+            continue;
+        srcPipelineStageFlags |= BufferUsageToPipelineStage(imageTransition.srcUsage);
+        dstPipelineStageFlags |= BufferUsageToPipelineStage(imageTransition.dstUsage);
+        auto physicalIndex = m_resources[m_resourceToIndex[imageTag]]->GetPhysicalIndex();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.image               = m_physicalImages[physicalIndex]->GetHandle();
+        barrier.srcAccessMask       = BufferUsageToAccessFlags(imageTransition.srcUsage);
+        barrier.dstAccessMask       = BufferUsageToAccessFlags(imageTransition.dstUsage);
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.oldLayout           = ImageUsageToImageLayout(imageTransition.srcUsage);
+        barrier.newLayout           = ImageUsageToImageLayout(imageTransition.dstUsage);
+        barrier.subresourceRange    = m_physicalImages[physicalIndex]->GetSubResourceRange();
+        imageMemBarriers.push_back(barrier);
+    }
+    if (bufferMemBarriers.empty() && imageMemBarriers.empty())
+        return;
+
+    commandBuffer->PipelineBarrier(srcPipelineStageFlags, dstPipelineStageFlags, bufferMemBarriers, imageMemBarriers);
 }
 } // namespace zen

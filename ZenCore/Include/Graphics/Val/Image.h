@@ -35,6 +35,8 @@ public:
 
     const VkExtent3D& GetExtent3D() const { return m_extent3D; };
 
+    VkImageSubresourceRange GetSubResourceRange() const { return m_subResourceRange; }
+
 private:
     VmaAllocation           m_allocation{VK_NULL_HANDLE};
     VkImageView             m_view{VK_NULL_HANDLE};

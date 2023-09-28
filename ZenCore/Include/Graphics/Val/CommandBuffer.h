@@ -12,6 +12,8 @@ public:
     
     void Reset();
 
+    void PipelineBarrier(VkPipelineStageFlags srcPipelineStage, VkPipelineStageFlags dstPipelineStage, const std::vector<VkBufferMemoryBarrier>& bufferMemBarriers, const std::vector<VkImageMemoryBarrier>& imageMemBarriers);
+
 private:
     CommandPool&               m_cmdPool;
     const VkCommandBufferLevel m_level;

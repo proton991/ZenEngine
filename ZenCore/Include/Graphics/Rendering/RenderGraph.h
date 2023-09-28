@@ -274,6 +274,8 @@ private:
 
     void BuildPhysicalPasses();
 
+    void EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const std::unordered_map<Tag, ImageTransition>& imageTransitions, const std::unordered_map<Tag, BufferTransition>& bufferTransitions);
+    
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
     std::vector<UniquePtr<RDGResource>>    m_resources;
