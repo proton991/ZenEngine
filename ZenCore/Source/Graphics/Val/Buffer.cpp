@@ -41,4 +41,41 @@ Buffer::~Buffer()
         vmaDestroyBuffer(m_device.GetAllocator(), m_handle, m_allocation);
     }
 }
+
+VkAccessFlags Buffer::UsageToAccessFlags(VkBufferUsageFlags usage)
+{
+    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    if (usage & (VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT))
+        return VK_ACCESS_SHADER_READ_BIT;
+    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
+        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    if (usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+        return VK_ACCESS_INDEX_READ_BIT;
+    if (usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+        return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    return VkAccessFlags{};
+}
+
+VkPipelineStageFlags Buffer::UsageToPipelineStage(VkBufferUsageFlags usage)
+{
+    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & (VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
+        return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    if (usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
+        return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if (usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    if (usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    return VkPipelineStageFlags{};
+}
+
 } // namespace zen::val

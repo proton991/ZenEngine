@@ -37,6 +37,12 @@ public:
 
     VkImageSubresourceRange GetSubResourceRange() const { return m_subResourceRange; }
 
+    static VkImageLayout        UsageToImageLayout(VkImageUsageFlags usage);
+    static VkAccessFlags        UsageToAccessFlags(VkImageUsageFlags usage);
+    static VkPipelineStageFlags UsageToPipelineStage(VkImageUsageFlags usage);
+
+    VkImageSubresourceLayers GetSubresourceLayers() const;
+
 private:
     VmaAllocation           m_allocation{VK_NULL_HANDLE};
     VkImageView             m_view{VK_NULL_HANDLE};

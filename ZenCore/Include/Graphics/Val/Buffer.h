@@ -23,6 +23,9 @@ public:
 
     ~Buffer();
 
+    static VkAccessFlags        UsageToAccessFlags(VkBufferUsageFlags usage);
+    static VkPipelineStageFlags UsageToPipelineStage(VkBufferUsageFlags usage);
+
 private:
     VmaAllocation m_allocation{nullptr};
     VkDeviceSize  m_size{0};

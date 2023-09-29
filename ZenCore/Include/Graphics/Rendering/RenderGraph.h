@@ -192,14 +192,6 @@ private:
 
     // used shaders
     std::vector<val::ShaderModule*> m_shaders;
-    //    std::vector<RDGImage*>  m_outColorImages;
-    //    std::vector<RDGImage*>  m_outStorageImages;
-    //    std::vector<RDGBuffer*> m_outStorageBuffers;
-    //    std::vector<RDGBuffer*> m_outTransferDstBuffers;
-
-    //    // input resources
-    //    std::vector<RDGImage*>  m_inAttachments;
-    //    std::vector<RDGBuffer*> m_inStorageBuffers;
 };
 
 struct ImageTransition
@@ -275,7 +267,11 @@ private:
     void BuildPhysicalPasses();
 
     void EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const std::unordered_map<Tag, ImageTransition>& imageTransitions, const std::unordered_map<Tag, BufferTransition>& bufferTransitions);
-    
+
+    void BeforeExecuteSetup(val::CommandBuffer* commandBuffer);
+
+    void CopyToPresentImage(val::CommandBuffer* commandBuffer, const val::Image& presentImage);
+
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
     std::vector<UniquePtr<RDGResource>>    m_resources;

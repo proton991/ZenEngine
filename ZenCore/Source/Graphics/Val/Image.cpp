@@ -58,6 +58,21 @@ Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageF
     CHECK_VK_ERROR_AND_THROW(vkCreateImageView(m_device.GetHandle(), &viewCI, nullptr, &m_view), "failed create image view");
 }
 
+static inline bool FormatHasDepthStencilAspect(VkFormat format)
+{
+    switch (format)
+    {
+        case VK_FORMAT_D16_UNORM_S8_UINT:
+        case VK_FORMAT_D24_UNORM_S8_UINT:
+        case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        case VK_FORMAT_S8_UINT:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 VkImageType Image::GetImageType(VkExtent3D& extent)
 {
     VkImageType result{};
@@ -98,6 +113,18 @@ Image::Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat forma
     DeviceObject(device), m_extent3D(extent3D), m_format(format)
 {
     m_handle = handle;
+    if (FormatHasDepthStencilAspect(m_format))
+    {
+        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+    else
+    {
+        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+    m_subResourceRange.layerCount     = 1;
+    m_subResourceRange.baseArrayLayer = 0;
+    m_subResourceRange.levelCount     = 1;
+    m_subResourceRange.baseMipLevel   = 0;
 }
 
 Image::~Image()
@@ -110,5 +137,71 @@ Image::~Image()
     {
         vmaDestroyImage(m_device.GetAllocator(), m_handle, m_allocation);
     }
+}
+
+VkImageSubresourceLayers Image::GetSubresourceLayers() const
+{
+    VkImageSubresourceLayers subresourceLayers{};
+    subresourceLayers.aspectMask     = m_subResourceRange.aspectMask;
+    subresourceLayers.baseArrayLayer = m_subResourceRange.baseArrayLayer;
+    subresourceLayers.layerCount     = m_subResourceRange.layerCount;
+    subresourceLayers.mipLevel       = m_subResourceRange.baseMipLevel;
+
+    return subresourceLayers;
+}
+
+VkImageLayout Image::UsageToImageLayout(VkImageUsageFlags usage)
+{
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_IMAGE_LAYOUT_GENERAL;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    return VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
+VkAccessFlags Image::UsageToAccessFlags(VkImageUsageFlags usage)
+{
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+        return VK_ACCESS_SHADER_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)
+        return VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    return 0;
+}
+
+VkPipelineStageFlags Image::UsageToPipelineStage(VkImageUsageFlags usage)
+{
+    if (usage == 0)
+        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    return VkPipelineStageFlags{};
 }
 } // namespace zen::val
