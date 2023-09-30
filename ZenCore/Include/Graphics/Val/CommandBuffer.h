@@ -17,6 +17,14 @@ public:
 
     void BlitImage(const Image& srcImage, VkImageUsageFlags srcUsage, const Image& dstImage, VkImageUsageFlags dstUsage);
 
+    void BeginRenderPass(const VkRenderPassBeginInfo& info, VkSubpassContents subpassContents = VK_SUBPASS_CONTENTS_INLINE);
+
+    void EndRenderPass();
+
+    void BindGraphicPipeline(VkPipeline pipeline);
+
+    void BindDescriptorSets(VkPipelineLayout pipelineLayout, const std::vector<VkDescriptorSet>& descriptorSets);
+
 private:
     CommandPool&               m_cmdPool;
     const VkCommandBufferLevel m_level;

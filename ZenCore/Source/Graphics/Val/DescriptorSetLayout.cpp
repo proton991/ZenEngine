@@ -1,10 +1,25 @@
 #include "Graphics/Val/DescriptorSetLayout.h"
 #include "Common/Errors.h"
+#include "Common/Helpers.h"
 #include "Graphics/Val/Shader.h"
 
 namespace zen::val
 {
-static VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynamic)
+static size_t Hash(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
+{
+    size_t result = std::hash<size_t>()(bindings.size());
+    for (const VkDescriptorSetLayoutBinding& b : bindings)
+    {
+        //pack the binding data into a single int64. Not fully correct but its ok
+        size_t bindingHash = b.binding | b.descriptorType << 8 | b.descriptorCount << 16 | b.stageFlags << 24;
+        //shuffle the packed binding data and xor it with the main hash
+        result ^= std::hash<size_t>()(bindingHash);
+    }
+
+    return result;
+}
+
+VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynamic)
 {
     VkDescriptorType result = VK_DESCRIPTOR_TYPE_MAX_ENUM;
     switch (type)
@@ -76,53 +91,19 @@ DescriptorSetLayout::DescriptorSetLayout(Device& device, const uint32_t setIndex
 
         bindings.emplace_back(layoutBinding);
     }
-    m_handle = DSLayoutCache::GetInstance(m_device).RequestDSLayout(bindings);
+    if (!bindings.empty())
+    {
+        VkDescriptorSetLayoutCreateInfo dsLayoutCI{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        dsLayoutCI.bindingCount = static_cast<uint32_t>(bindings.size());
+        dsLayoutCI.pBindings    = bindings.data();
+        CHECK_VK_ERROR_AND_THROW(vkCreateDescriptorSetLayout(m_device.GetHandle(), &dsLayoutCI, nullptr, &m_handle), "Failed to create descriptor layout");
+        m_hash = Hash(bindings);
+        util::HashCombine(m_hash, m_setIndex);
+    }
 }
 
-VkDescriptorSetLayout DSLayoutCache::RequestDSLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
+DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept :
+    DeviceObject(std::move(other)), m_setIndex(other.m_setIndex)
 {
-    const size_t hashVal = Hash(bindings);
-    auto         it      = m_cache.find(hashVal);
-    if (it != m_cache.end())
-    {
-        return it->second;
-    }
-
-    VkDescriptorSetLayout dsLayout = VK_NULL_HANDLE;
-
-    VkDescriptorSetLayoutCreateInfo dsLayoutCI{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    dsLayoutCI.bindingCount = static_cast<uint32_t>(bindings.size());
-    dsLayoutCI.pBindings    = bindings.data();
-    CHECK_VK_ERROR_AND_THROW(vkCreateDescriptorSetLayout(m_device.GetHandle(), &dsLayoutCI, nullptr, &dsLayout), "Failed to create descriptor layout");
-    if (dsLayout != VK_NULL_HANDLE)
-    {
-        m_cache[hashVal] = dsLayout;
-    }
-    return dsLayout;
 }
-
-DSLayoutCache::~DSLayoutCache()
-{
-    // destroy layouts
-    for (auto& it : m_cache)
-    {
-        vkDestroyDescriptorSetLayout(m_device.GetHandle(), it.second, nullptr);
-    }
-}
-
-size_t DSLayoutCache::Hash(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
-{
-    size_t result = std::hash<size_t>()(bindings.size());
-    for (const VkDescriptorSetLayoutBinding& b : bindings)
-    {
-        //pack the binding data into a single int64. Not fully correct but its ok
-        size_t bindingHash = b.binding | b.descriptorType << 8 | b.descriptorCount << 16 | b.stageFlags << 24;
-        //shuffle the packed binding data and xor it with the main hash
-        result ^= std::hash<size_t>()(bindingHash);
-    }
-
-    return result;
-}
-
-
 } // namespace zen::val

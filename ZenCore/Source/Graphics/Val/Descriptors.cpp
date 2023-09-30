@@ -103,7 +103,7 @@ VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* la
     return set;
 }
 
-bool DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet)
+bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet)
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
     if (m_currentPool == VK_NULL_HANDLE)
@@ -140,49 +140,5 @@ bool DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* layout, uint3
     allocResult = vkAllocateDescriptorSets(m_device.GetHandle(), &allocInfo, outSet);
     // if it still fails then we have big issues
     return allocResult == VK_SUCCESS;
-}
-
-DescriptorWriter::DescriptorWriter(VkDescriptorSet ds)
-{
-    m_descriptorSet = ds;
-}
-
-void DescriptorWriter::BindBuffer(uint32_t binding, VkDescriptorType type, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t descriptorCount)
-{
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = buffer;
-    bufferInfo.offset = offset;
-    bufferInfo.range  = range;
-
-    VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-    newWrite.descriptorCount = descriptorCount;
-    newWrite.descriptorType  = type;
-    newWrite.pBufferInfo     = &bufferInfo;
-    newWrite.dstBinding      = binding;
-    newWrite.dstSet          = m_descriptorSet;
-
-    m_writes.push_back(newWrite);
-}
-
-void DescriptorWriter::BindImage(uint32_t binding, VkDescriptorType type, VkSampler sampler, VkImageView imageView, VkImageLayout imageLayout, uint32_t descriptorCount)
-{
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.imageLayout = imageLayout;
-    imageInfo.imageView   = imageView;
-    imageInfo.sampler     = sampler;
-
-    VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-    newWrite.descriptorCount = descriptorCount;
-    newWrite.descriptorType  = type;
-    newWrite.pImageInfo      = &imageInfo;
-    newWrite.dstBinding      = binding;
-    newWrite.dstSet          = m_descriptorSet;
-
-    m_writes.push_back(newWrite);
-}
-
-void DescriptorWriter::ApplyWrites(VkDevice vkDevice)
-{
-    vkUpdateDescriptorSets(vkDevice, static_cast<uint32_t>(m_writes.size()), m_writes.data(), 0, nullptr);
 }
 } // namespace zen::val

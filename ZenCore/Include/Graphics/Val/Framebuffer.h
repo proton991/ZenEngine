@@ -13,6 +13,14 @@ public:
     Framebuffer(Device& device, VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D);
     ~Framebuffer();
 
+    VkRect2D GetRenderArea() const
+    {
+        VkRect2D rect2D{};
+        rect2D.offset = {0, 0};
+        rect2D.extent = {m_extent.width, m_extent.height};
+        return rect2D;
+    }
+
 private:
     VkExtent3D m_extent;
 };

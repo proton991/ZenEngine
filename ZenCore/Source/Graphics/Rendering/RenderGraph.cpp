@@ -81,6 +81,23 @@ void RDGPass::ReadFromGenericTexture(const Tag& tag)
     m_inTextures.push_back(accTexture);
 }
 
+void RDGPass::BindSRD(const Tag& rdgResourceTag, VkShaderStageFlagBits shaderStage, const std::string& shaderResourceName)
+{
+    for (const auto& shader : m_shaders)
+    {
+        if (shader->GetStage() == shaderStage)
+        {
+            for (const auto& resource : shader->GetResources())
+            {
+                if (resource.name == shaderResourceName)
+                {
+                    m_srdBinding[rdgResourceTag] = resource;
+                }
+            }
+        }
+    }
+}
+
 RDGImage* RenderGraph::GetImageResource(const std::string& tag)
 {
     auto iter = m_resourceToIndex.find(tag);
@@ -145,6 +162,22 @@ void RenderGraph::SetBackBufferTag(const Tag& tag)
 void RenderGraph::Compile()
 {
     SortRenderPasses();
+    ResolveResourceState();
+    BuildPhysicalResources();
+    BuildPhysicalPasses();
+}
+
+void RenderGraph::Execute(val::CommandBuffer* commandBuffer)
+{
+    if (!m_initialized)
+    {
+        BeforeExecuteSetup(commandBuffer);
+        m_initialized = true;
+    }
+    for (auto& physicalPass : m_physicalPasses)
+    {
+        RunPass(physicalPass, commandBuffer);
+    }
 }
 
 void RenderGraph::SortRenderPasses()
@@ -362,6 +395,7 @@ void RenderGraph::BuildPhysicalResources()
 // TODO: implement physical pass resources caching and management (Implementing in RenderDevice is a possible solution)
 void RenderGraph::BuildPhysicalPasses()
 {
+    uint32_t currIndex = 0;
     for (const auto& pass : m_passes)
     {
         PhysicalPass physicalPass{};
@@ -425,6 +459,12 @@ void RenderGraph::BuildPhysicalPasses()
         // TODO: configure pipeline states
         physicalPass.pipelineLayout  = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
         physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
+        for (const auto& dsLayout : physicalPass.pipelineLayout->GetDescriptorSetLayouts())
+        {
+            physicalPass.descriptorSets.push_back(m_renderDevice.RequestDescriptorSet(dsLayout));
+        }
+        physicalPass.index = currIndex;
+        currIndex++;
     }
 }
 
@@ -542,6 +582,87 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer, const va
         barrier.subresourceRange    = backBufferImage->GetSubResourceRange();
 
         commandBuffer->PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, val::Image::UsageToPipelineStage(firstUsage), {}, {barrier});
+    }
+}
+
+void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* commandBuffer)
+{
+    // update descriptors
+    std::vector<VkWriteDescriptorSet>   dsWrites;
+    std::vector<VkDescriptorBufferInfo> dsBufferInfos;
+    std::vector<VkDescriptorImageInfo>  dsImageInfos;
+
+    auto& rdgPass = m_passes[pass.index];
+    for (const auto& [tag, shaderRes] : rdgPass->GetSRDBinding())
+    {
+        auto& rdgResource = m_resources[m_resourceToIndex[tag]];
+        // TODO: add support for more descriptor types
+        if (shaderRes.type == val::ShaderResourceType::ImageSampler)
+        {
+            VkDescriptorImageInfo info{};
+            info.imageLayout = val::Image::UsageToImageLayout(rdgResource->As<RDGImage>()->GetUsage());
+            info.imageView   = m_physicalImages[rdgResource->GetPhysicalIndex()]->GetView();
+            info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
+            dsImageInfos.push_back(info);
+
+            VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            newWrite.descriptorCount = 1;
+            newWrite.descriptorType  = val::ConvertToVkDescriptorType(shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
+            newWrite.pImageInfo      = &dsImageInfos.back();
+            newWrite.dstBinding      = shaderRes.binding;
+            newWrite.dstSet          = pass.descriptorSets[shaderRes.set];
+            dsWrites.push_back(newWrite);
+        }
+        if (shaderRes.type == val::ShaderResourceType::BufferUniform || shaderRes.type == val::ShaderResourceType::BufferStorage)
+        {
+            VkDescriptorBufferInfo info{};
+            info.buffer = m_physicalBuffers[rdgResource->GetPhysicalIndex()]->GetHandle();
+            info.offset = 0;
+            info.range  = m_physicalBuffers[rdgResource->GetPhysicalIndex()]->GetSize();
+            dsBufferInfos.push_back(info);
+
+            VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            newWrite.descriptorCount = 1;
+            newWrite.descriptorType  = val::ConvertToVkDescriptorType(shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
+            newWrite.pBufferInfo     = &dsBufferInfos.back();
+            newWrite.dstBinding      = shaderRes.binding;
+            newWrite.dstSet          = pass.descriptorSets[shaderRes.set];
+            dsWrites.push_back(newWrite);
+        }
+    }
+    m_renderDevice.UpdateDescriptorSets(dsWrites);
+    // Before render
+    EmitPipelineBarrier(commandBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()], m_resourceState.perPassBufferState[rdgPass->GetTag()]);
+    // On render
+    std::vector<VkClearValue> clearValues(1);
+    clearValues[0].color        = {0.0f, 0.0f, 0.0f, 0.0f};
+    clearValues[0].depthStencil = {1.0f, 0};
+    // Begin Pass
+    if (pass.renderPass)
+    {
+        VkRenderPassBeginInfo rpBeginInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+        rpBeginInfo.renderPass      = pass.renderPass->GetHandle();
+        rpBeginInfo.framebuffer     = pass.framebuffer->GetHandle();
+        rpBeginInfo.renderArea      = pass.framebuffer->GetRenderArea();
+        rpBeginInfo.pClearValues    = clearValues.data();
+        rpBeginInfo.clearValueCount = 1;
+
+        commandBuffer->BeginRenderPass(rpBeginInfo);
+    }
+    if (pass.graphicPipeline)
+    {
+        commandBuffer->BindGraphicPipeline(pass.graphicPipeline->GetHandle());
+    }
+    if (!pass.descriptorSets.empty())
+    {
+        commandBuffer->BindDescriptorSets(pass.pipelineLayout->GetHandle(), pass.descriptorSets);
+    }
+    // TODO: call function from outside
+
+    // End Pass
+    if (pass.renderPass)
+    {
+        commandBuffer->EndRenderPass();
     }
 }
 } // namespace zen

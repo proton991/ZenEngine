@@ -173,6 +173,14 @@ public:
 
     const auto& GetUsedShaders() const { return m_shaders; }
 
+    void BindSRD(const Tag& rdgResourceTag, VkShaderStageFlagBits shaderStage, const std::string& shaderResourceName);
+
+    void BindSampler(const Tag& tag, val::Sampler* sampler) { m_samplerBinding[tag] = sampler; }
+
+    auto& GetSRDBinding() const { return m_srdBinding; }
+
+    auto& GetSamplerBinding() const { return m_samplerBinding; }
+
 private:
     RenderGraph&  m_graph;
     Index         m_index;
@@ -192,6 +200,9 @@ private:
 
     // used shaders
     std::vector<val::ShaderModule*> m_shaders;
+
+    std::unordered_map<Tag, val::ShaderResource> m_srdBinding;
+    std::unordered_map<Tag, val::Sampler*>       m_samplerBinding;
 };
 
 struct ImageTransition
@@ -236,20 +247,20 @@ public:
 
     void Compile();
 
+    void Execute(val::CommandBuffer* commandBuffer);
+
 private:
     struct PhysicalPass
     {
-        val::PipelineLayout*        pipelineLayout{nullptr};
-        val::PipelineState          pipelineState{};
-        val::GraphicsPipeline*      graphicPipeline{nullptr};
-        val::RenderPass*            renderPass{nullptr};
-        UniquePtr<val::Framebuffer> framebuffer;
+        val::PipelineLayout*         pipelineLayout{nullptr};
+        val::PipelineState           pipelineState{};
+        val::GraphicsPipeline*       graphicPipeline{nullptr};
+        val::RenderPass*             renderPass{nullptr};
+        std::vector<VkDescriptorSet> descriptorSets;
+        UniquePtr<val::Framebuffer>  framebuffer;
+        uint32_t                     index{0};
     };
 
-    struct PhysicalImage
-    {
-        UniquePtr<val::Image> handle;
-    };
     void SortRenderPasses();
 
     void TraversePassDepsRecursive(Index passIndex, uint32_t level);
@@ -272,6 +283,8 @@ private:
 
     void CopyToPresentImage(val::CommandBuffer* commandBuffer, const val::Image& presentImage);
 
+    void RunPass(PhysicalPass& pass, val::CommandBuffer* commandBuffer);
+
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
     std::vector<UniquePtr<RDGResource>>    m_resources;
@@ -288,6 +301,8 @@ private:
     // Swapchain back buffer info
     Tag        m_backBufferTag;
     VkExtent2D m_backBufferExtent{};
+
+    bool m_initialized{false};
 
     RenderDevice& m_renderDevice;
 };

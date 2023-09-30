@@ -80,4 +80,24 @@ void CommandBuffer::BlitImage(const Image& srcImage, VkImageUsageFlags srcUsage,
 
     vkCmdBlitImage(m_handle, srcImage.GetHandle(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage.GetHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitInfo, VK_FILTER_LINEAR);
 }
+
+void CommandBuffer::BeginRenderPass(const VkRenderPassBeginInfo& info, VkSubpassContents subpassContents)
+{
+    vkCmdBeginRenderPass(m_handle, &info, subpassContents);
+}
+
+void CommandBuffer::EndRenderPass()
+{
+    vkCmdEndRenderPass(m_handle);
+}
+
+void CommandBuffer::BindGraphicPipeline(VkPipeline pipeline)
+{
+    vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+}
+
+void CommandBuffer::BindDescriptorSets(VkPipelineLayout pipelineLayout, const std::vector<VkDescriptorSet>& descriptorSets)
+{
+    vkCmdBindDescriptorSets(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, util::ToU32(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+}
 } // namespace zen::val

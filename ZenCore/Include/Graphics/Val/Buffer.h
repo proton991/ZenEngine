@@ -26,6 +26,8 @@ public:
     static VkAccessFlags        UsageToAccessFlags(VkBufferUsageFlags usage);
     static VkPipelineStageFlags UsageToPipelineStage(VkBufferUsageFlags usage);
 
+    auto GetSize() const { return m_size; }
+
 private:
     VmaAllocation m_allocation{nullptr};
     VkDeviceSize  m_size{0};

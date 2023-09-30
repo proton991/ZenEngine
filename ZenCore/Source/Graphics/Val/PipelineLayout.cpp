@@ -36,17 +36,15 @@ PipelineLayout::PipelineLayout(Device& device, const std::vector<ShaderModule*>&
             m_perSetResource[set].push_back(shaderResource);
         }
     }
+    std::vector<VkDescriptorSetLayout> dsLayoutHandles;
     for (auto& it : m_perSetResource)
     {
-        m_dsLayouts.emplace_back(m_device, it.first, it.second);
-    }
-    // Collect all the descriptor set layout handles, maintaining set order
-    std::vector<VkDescriptorSetLayout> dsLayoutHandles;
-    for (uint32_t i = 0; i < m_dsLayouts.size(); ++i)
-    {
-        if (dsLayoutHandles[i] != VK_NULL_HANDLE)
+        auto dsLayout = DescriptorSetLayout(m_device, it.first, it.second);
+        if (dsLayout.GetHandle() != VK_NULL_HANDLE)
         {
-            dsLayoutHandles.push_back(m_dsLayouts[i].GetHandle());
+            // Collect all the descriptor set layout handles, maintaining set order
+            dsLayoutHandles.push_back(dsLayout.GetHandle());
+            m_dsLayouts.emplace_back(std::move(dsLayout));
         }
     }
 

@@ -41,7 +41,7 @@ public:
 
     VkDescriptorSet Allocate(const VkDescriptorSetLayout* layout);
 
-    bool Allocate(const VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet);
+    bool Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet);
 
 private:
     Device&                m_device;
@@ -49,21 +49,4 @@ private:
     VkDescriptorPool       m_currentPool{VK_NULL_HANDLE};
     std::mutex             m_mutex;
 };
-
-class DescriptorWriter
-{
-public:
-    explicit DescriptorWriter(VkDescriptorSet ds);
-
-    void BindBuffer(uint32_t binding, VkDescriptorType type, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range, uint32_t descriptorCount = 1);
-
-    void BindImage(uint32_t binding, VkDescriptorType type, VkSampler sampler, VkImageView imageView, VkImageLayout imageLayout, uint32_t descriptorCount = 1);
-
-    void ApplyWrites(VkDevice vkDevice);
-
-private:
-    VkDescriptorSet                   m_descriptorSet;
-    std::vector<VkWriteDescriptorSet> m_writes;
-};
-
 } // namespace zen::val

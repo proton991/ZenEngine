@@ -17,6 +17,8 @@ public:
 
     auto& GetShaderModules() const { return m_shaderModules; }
 
+    auto& GetDescriptorSetLayouts() const { return m_dsLayouts; }
+
     std::vector<ShaderResource> GetResources(ShaderResourceType type, VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL) const;
 
 private:

@@ -4,7 +4,7 @@
 namespace zen
 {
 RenderDevice::RenderDevice(val::Device& valDevice) :
-    m_valDevice(valDevice)
+    m_valDevice(valDevice), m_descriptorPoolManager(valDevice, val::MainDescriptorPoolSizes(), false), m_descriptorAllocator(valDevice, m_descriptorPoolManager)
 {
     m_resourceCache = MakeUnique<ResourceCache>(m_valDevice);
 }
@@ -37,5 +37,23 @@ val::PipelineLayout* RenderDevice::RequestPipelineLayout(const std::vector<val::
 val::GraphicsPipeline* RenderDevice::RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout, val::PipelineState& pipelineState)
 {
     return m_resourceCache->RequestGraphicsPipeline(pipelineLayout, pipelineState);
+}
+
+VkDescriptorSet RenderDevice::RequestDescriptorSet(const val::DescriptorSetLayout& layout)
+{
+    auto hash = layout.GetHash();
+    auto it   = m_descriptorSetCache.find(hash);
+    if (it != m_descriptorSetCache.end())
+        return it->second;
+    VkDescriptorSet       descriptorSet;
+    VkDescriptorSetLayout dsLayout = layout.GetHandle();
+    m_descriptorAllocator.Allocate(&dsLayout, 1, &descriptorSet);
+    m_descriptorSetCache.emplace(hash, descriptorSet);
+    return descriptorSet;
+}
+
+void RenderDevice::UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>& writes)
+{
+    vkUpdateDescriptorSets(m_valDevice.GetHandle(), util::ToU32(writes.size()), writes.data(), 0, nullptr);
 }
 } // namespace zen

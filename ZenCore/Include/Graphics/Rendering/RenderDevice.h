@@ -22,8 +22,17 @@ public:
 
     UniquePtr<val::Framebuffer> CreateFramebufferUnique(VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D);
 
+    VkDescriptorSet RequestDescriptorSet(const val::DescriptorSetLayout& layout);
+
+    void UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>& writes);
+    
 private:
     val::Device&             m_valDevice;
     UniquePtr<ResourceCache> m_resourceCache;
+
+    val::DescriptorPoolManager  m_descriptorPoolManager;
+    val::DescriptorSetAllocator m_descriptorAllocator;
+    // cache
+    std::unordered_map<size_t, VkDescriptorSet> m_descriptorSetCache;
 };
 } // namespace zen
