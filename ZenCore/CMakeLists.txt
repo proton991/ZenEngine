@@ -1,4 +1,5 @@
 set(ZEN_CORE_HEADERS
+    Include/Common/ArrayView.h
     Include/Common/Errors.h
     Include/Common/Helpers.h
     Include/Common/MemAlloc.h
@@ -13,6 +14,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/RenderFrame.h
     Include/Graphics/Rendering/RenderContext.h
     Include/Graphics/Rendering/SyncObjPool.h
+    Include/Graphics/Rendering/RenderBuffers.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h

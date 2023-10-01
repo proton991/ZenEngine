@@ -368,7 +368,7 @@ void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
     const auto& info = buffer->GetInfo();
 
     val::BufferCreateInfo bufferCI{};
-    bufferCI.size     = info.size;
+    bufferCI.byteSize = info.size;
     bufferCI.usage    = info.usage;
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // TODO: Choose right vma flags;
 

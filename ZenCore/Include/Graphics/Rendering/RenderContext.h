@@ -14,7 +14,7 @@ public:
 
     val::CommandBuffer* StartFrame(val::CommandPool::ResetMode resetMode);
 
-    void Submit(val::CommandBuffer* cmdBuffer);
+    void Submit();
 
     void EndFrame();
 
@@ -44,5 +44,7 @@ private:
     VkSemaphore m_imageAcquiredSem{VK_NULL_HANDLE};
     // semaphore signaled when commands are submitted
     VkSemaphore m_renderFinished{VK_NULL_HANDLE};
+    // current command buffer provided by RenderFrame
+    val::CommandBuffer* m_commandBuffer{nullptr};
 };
 } // namespace zen

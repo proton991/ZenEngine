@@ -8,7 +8,7 @@ namespace zen::val
 {
 struct BufferCreateInfo
 {
-    VkDeviceSize             size;
+    VkDeviceSize             byteSize;
     VkBufferUsageFlags       usage;
     VmaAllocationCreateFlags vmaFlags;
 };
@@ -19,17 +19,28 @@ public:
     static SharedPtr<Buffer> Create(Device& device, const BufferCreateInfo& CI);
     static UniquePtr<Buffer> CreateUnique(Device& device, const BufferCreateInfo& CI);
 
-    Buffer(Device& device, VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags, std::string debugName);
+    Buffer(Device& device, VkDeviceSize byteSize, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags);
 
     ~Buffer();
 
     static VkAccessFlags        UsageToAccessFlags(VkBufferUsageFlags usage);
     static VkPipelineStageFlags UsageToPipelineStage(VkBufferUsageFlags usage);
 
-    auto GetSize() const { return m_size; }
+    bool IsMemoryMapped() const;
+
+    uint8_t* MapMemory();
+
+    void UnmapMemory();
+
+    void FlushMemory(size_t byteSize, size_t offset);
+
+    void CopyData(const uint8_t* data, size_t byteSize, size_t offset);
+
+    auto GetSize() const { return m_byteSize; }
 
 private:
     VmaAllocation m_allocation{nullptr};
-    VkDeviceSize  m_size{0};
+    VkDeviceSize  m_byteSize{0};
+    uint8_t*      m_mappedMemory{nullptr};
 };
 } // namespace zen::val

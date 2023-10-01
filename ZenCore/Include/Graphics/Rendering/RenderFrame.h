@@ -25,6 +25,8 @@ public:
 
     void Reset();
 
+    val::Image* GetSwapchainImage() const { return m_swapchainImage.Get(); }
+
 private:
     val::CommandPool* GetCommandPool(uint32_t queueFamilyIndex, val::CommandPool::ResetMode resetMode);
 

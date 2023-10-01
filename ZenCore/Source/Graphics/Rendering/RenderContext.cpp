@@ -33,17 +33,17 @@ val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetM
     {
         LOG_ERROR_AND_THROW("Failed to start frame");
     }
-
-    return GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
+    m_commandBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
+    return m_commandBuffer;
 }
 
-void RenderContext::Submit(val::CommandBuffer* cmdBuffer)
+void RenderContext::Submit()
 {
     ASSERT(m_frameActive);
     RenderFrame& currentFrame = GetActiveFrame();
     m_renderFinished          = currentFrame.RequestSemaphore();
 
-    std::vector<VkCommandBuffer> cmdBufferHandles{cmdBuffer->GetHandle()};
+    std::vector<VkCommandBuffer> cmdBufferHandles{m_commandBuffer->GetHandle()};
 
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
@@ -65,6 +65,18 @@ void RenderContext::Submit(val::CommandBuffer* cmdBuffer)
 
 void RenderContext::EndFrame()
 {
+    // change image layout to present
+    VkImageMemoryBarrier transferDstToPresentBarrier{};
+    transferDstToPresentBarrier.srcAccessMask       = val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    transferDstToPresentBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+    transferDstToPresentBarrier.oldLayout           = val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    transferDstToPresentBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    transferDstToPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    transferDstToPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    transferDstToPresentBarrier.image               = GetActiveFrame().GetSwapchainImage()->GetHandle();
+    transferDstToPresentBarrier.subresourceRange    = GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
+    m_commandBuffer->PipelineBarrier(val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
+    
     // present image
     ASSERT(m_frameActive);
     if (m_swapchain)
@@ -91,7 +103,8 @@ void RenderContext::EndFrame()
         m_imageAcquiredSem = VK_NULL_HANDLE;
     }
     GetActiveFrame().Reset();
-    m_frameActive = false;
+    m_frameActive   = false;
+    m_commandBuffer = nullptr;
 }
 
 void RenderContext::StartFrameInternal()

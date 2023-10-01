@@ -68,7 +68,7 @@ int main(int argc, char** argv)
     val::BufferCreateInfo bufferCI{};
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     bufferCI.usage    = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferCI.size     = 1024;
+    bufferCI.byteSize = 1024;
 
     auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
     auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);

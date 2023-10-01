@@ -85,13 +85,13 @@ void CommandPool::ResetPool()
         case ResetMode::ReAllocate:
         {
             FreeCmdBuffers();
-            m_activePrimaryCmdBufferCnt   = 0;
-            m_activeSecondaryCmdBufferCnt = 0;
             m_primaryCmdBuffers.clear();
             m_secondaryCmdBuffers.clear();
             break;
         }
     }
+    m_activePrimaryCmdBufferCnt   = 0;
+    m_activeSecondaryCmdBufferCnt = 0;
 }
 
 void CommandPool::ResetCmdBuffers()
