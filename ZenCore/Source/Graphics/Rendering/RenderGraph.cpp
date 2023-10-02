@@ -541,7 +541,10 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const s
     if (bufferMemBarriers.empty() && imageMemBarriers.empty())
         return;
 
-    commandBuffer->PipelineBarrier(srcPipelineStageFlags, dstPipelineStageFlags, bufferMemBarriers, imageMemBarriers);
+    if (!bufferMemBarriers.empty() || !imageMemBarriers.empty())
+    {
+        commandBuffer->PipelineBarrier(srcPipelineStageFlags, dstPipelineStageFlags, bufferMemBarriers, imageMemBarriers);
+    }
 }
 
 /**
