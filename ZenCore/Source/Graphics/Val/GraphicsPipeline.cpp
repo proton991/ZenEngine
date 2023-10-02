@@ -71,8 +71,27 @@ GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelin
             vertexAttributeOffset = 0;
         }
     }
-    vertexBindingDescriptions.back().stride = vertexAttributeOffset;
-    pipelineState.SetVertexInputState({vertexBindingDescriptions, vertexAttributeDescriptions});
+    if (!vertexBindingDescriptions.empty())
+    {
+        vertexBindingDescriptions.back().stride = vertexAttributeOffset;
+        pipelineState.SetVertexInputState({vertexBindingDescriptions, vertexAttributeDescriptions});
+    }
+
+    VkPipelineColorBlendAttachmentState pcbAtt{};
+    pcbAtt.blendEnable         = true;
+    pcbAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    pcbAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    pcbAtt.colorBlendOp        = VK_BLEND_OP_ADD;
+    pcbAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    pcbAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    pcbAtt.alphaBlendOp        = VK_BLEND_OP_ADD;
+    pcbAtt.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    val::ColorBlendState colorBlendState{};
+    colorBlendState.attachments = {pcbAtt};
+    pipelineState.SetColorBlendState(std::move(colorBlendState));
+
+    pipelineState.SetDynamicState({VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR});
+
     auto vertexInputStateCI   = pipelineState.GetVIStateCI();
     auto inputAssemblyStateCI = pipelineState.GetIAStateCI();
     auto rasterizationStateCI = pipelineState.GetRasterizationStateCI();

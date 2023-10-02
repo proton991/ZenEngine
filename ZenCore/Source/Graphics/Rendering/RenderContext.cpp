@@ -34,20 +34,18 @@ val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetM
         LOG_ERROR_AND_THROW("Failed to start frame");
     }
     m_commandBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
+    m_commandBuffer->Begin();
     return m_commandBuffer;
 }
 
-void RenderContext::Submit()
+void RenderContext::SubmitInternal()
 {
-    ASSERT(m_frameActive);
-    RenderFrame& currentFrame = GetActiveFrame();
-    m_renderFinished          = currentFrame.RequestSemaphore();
+    m_renderFinished = GetActiveFrame().RequestSemaphore();
 
-    std::vector<VkCommandBuffer> cmdBufferHandles{m_commandBuffer->GetHandle()};
-
-    VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkCommandBuffer handle = m_commandBuffer->GetHandle();
+    VkSubmitInfo    submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = cmdBufferHandles.data();
+    submitInfo.pCommandBuffers    = &handle;
 
     VkPipelineStageFlags waitPipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     if (m_imageAcquiredSem != VK_NULL_HANDLE)
@@ -59,14 +57,16 @@ void RenderContext::Submit()
 
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores    = &m_renderFinished;
-
-    m_queue.Submit({submitInfo}, currentFrame.RequestFence());
+    // End command buffer before submit to a queue
+    m_commandBuffer->End();
+    m_queue.Submit({submitInfo}, GetActiveFrame().RequestFence());
 }
 
 void RenderContext::EndFrame()
 {
+    ASSERT(m_frameActive);
     // change image layout to present
-    VkImageMemoryBarrier transferDstToPresentBarrier{};
+    VkImageMemoryBarrier transferDstToPresentBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     transferDstToPresentBarrier.srcAccessMask       = val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     transferDstToPresentBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
     transferDstToPresentBarrier.oldLayout           = val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
@@ -76,7 +76,9 @@ void RenderContext::EndFrame()
     transferDstToPresentBarrier.image               = GetActiveFrame().GetSwapchainImage()->GetHandle();
     transferDstToPresentBarrier.subresourceRange    = GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
     m_commandBuffer->PipelineBarrier(val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
-    
+
+    SubmitInternal();
+
     // present image
     ASSERT(m_frameActive);
     if (m_swapchain)

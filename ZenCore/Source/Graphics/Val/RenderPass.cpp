@@ -23,30 +23,30 @@ RenderPass::RenderPass(Device& device, const std::vector<VkAttachmentDescription
     subpassDescription.pColorAttachments       = subpassInfo.colorRefs.data();
     subpassDescription.pDepthStencilAttachment = subpassInfo.hasDepthStencilRef ? &subpassInfo.depthStencilRef : nullptr;
 
-    std::vector<VkSubpassDependency> subpassDeps(2);
-    subpassDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
-    subpassDeps[0].dstSubpass      = 0;
-    subpassDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    subpassDeps[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-    subpassDeps[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    subpassDeps[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    subpassDeps[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    //    std::vector<VkSubpassDependency> subpassDeps(2);
+    //    subpassDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+    //    subpassDeps[0].dstSubpass      = 0;
+    //    subpassDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    //    subpassDeps[0].srcAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
+    //    subpassDeps[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    //    subpassDeps[0].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    //    subpassDeps[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    //
+    //    subpassDeps[1].srcSubpass      = 0;
+    //    subpassDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+    //    subpassDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    //    subpassDeps[1].srcAccessMask   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    //    subpassDeps[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
+    //    subpassDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    //    subpassDeps[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 
-    subpassDeps[1].srcSubpass      = 0;
-    subpassDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
-    subpassDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    subpassDeps[1].srcAccessMask   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    subpassDeps[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT;
-    subpassDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    subpassDeps[1].dstStageMask    = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-    VkRenderPassCreateInfo renderPassCI{};
+    VkRenderPassCreateInfo renderPassCI{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     renderPassCI.attachmentCount = util::ToU32(attachments.size());
     renderPassCI.pAttachments    = attachments.data();
-    renderPassCI.dependencyCount = util::ToU32(subpassDeps.size());
-    renderPassCI.pDependencies   = subpassDeps.data();
-    renderPassCI.subpassCount    = 1;
-    renderPassCI.pSubpasses      = &subpassDescription;
+    //    renderPassCI.dependencyCount = util::ToU32(subpassDeps.size());
+    //    renderPassCI.pDependencies   = subpassDeps.data();
+    renderPassCI.subpassCount = 1;
+    renderPassCI.pSubpasses   = &subpassDescription;
 
     CHECK_VK_ERROR_AND_THROW(vkCreateRenderPass(m_device.GetHandle(), &renderPassCI, nullptr, &m_handle), "Failed to create RenderPass");
 }

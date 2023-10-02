@@ -1,5 +1,6 @@
 #pragma once
 #include "Common/SharedPtr.h"
+#include "Common/UniquePtr.h"
 #include <vector>
 #include "VulkanHeaders.h"
 
@@ -21,6 +22,7 @@ public:
     };
 
     static SharedPtr<Instance> Create(const CreateInfo& createInfo);
+    static UniquePtr<Instance> CreateUnique(const CreateInfo& createInfo);
 
     explicit Instance(const CreateInfo& createInfo);
     ~Instance();

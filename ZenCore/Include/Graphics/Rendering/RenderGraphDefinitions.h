@@ -14,10 +14,10 @@ enum ImageSizeType
 
 enum RDGQueueFlagBits
 {
-    RENDER_GRAPH_QUEUE_GRAPHICS_BIT       = 1 << 0,
-    RENDER_GRAPH_QUEUE_COMPUTE_BIT        = 1 << 1,
-    RENDER_GRAPH_QUEUE_ASYNC_COMPUTE_BIT  = 1 << 2,
-    RENDER_GRAPH_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 3
+    RDG_QUEUE_GRAPHICS_BIT       = 1 << 0,
+    RDG_QUEUE_COMPUTE_BIT        = 1 << 1,
+    RDG_QUEUE_ASYNC_COMPUTE_BIT  = 1 << 2,
+    RDG_QUEUE_ASYNC_GRAPHICS_BIT = 1 << 3
 };
 using RDGQueueFlags = uint32_t;
 } // namespace zen

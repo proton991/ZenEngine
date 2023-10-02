@@ -7,8 +7,6 @@
 
 namespace zen::val
 {
-std::vector<uint32_t> LoadSpvFile(const std::string& name);
-
 enum class ShaderResourceType
 {
     Input,
@@ -91,6 +89,8 @@ public:
     ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes);
 
     ~ShaderModule();
+
+    ShaderModule(ShaderModule&& other);
 
     const std::vector<uint32_t>& GetSpvCode() const { return m_spirvCode; };
 

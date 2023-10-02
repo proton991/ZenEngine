@@ -47,7 +47,7 @@ Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, Vk
     swapchainCI.imageColorSpace  = m_surfaceFormats[0].colorSpace;
     swapchainCI.imageUsage       = m_usage;
     swapchainCI.presentMode      = ChoosePresentMode(vsync);
-    swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR, surfaceCapabilities.supportedCompositeAlpha);
+    swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, surfaceCapabilities.supportedCompositeAlpha);
     swapchainCI.oldSwapchain     = oldSwapchain;
 
     CHECK_VK_ERROR_AND_THROW(vkCreateSwapchainKHR(m_device.GetHandle(), &swapchainCI, nullptr, &m_handle), "Failed to create swapchain");

@@ -2,44 +2,14 @@
 #include "Common/Errors.h"
 #include "Graphics/Val/Shader.h"
 #include "Graphics/Val/VulkanDebug.h"
-
-#include <fstream>
+#include "Platform/FileSystem.h"
 
 namespace zen::val
 {
-std::vector<uint32_t> LoadSpvFile(const std::string& name)
-{
-    const auto    path = std::string(SPV_SHADER_PATH) + name;
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open())
-    {
-        LOG_FATAL_ERROR("Failed to load shader source");
-    }
-
-    //find what the size of the file is by looking up the location of the cursor
-    //because the cursor is at the end, it gives the size directly in bytes
-    size_t fileSize = (size_t)file.tellg();
-
-    //spir-v expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
-    std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
-
-    //put file cursor at beginning
-    file.seekg(0);
-
-    //load the entire file into the buffer
-    file.read((char*)buffer.data(), fileSize);
-
-    //now that the file is loaded into the buffer, we can close it
-    file.close();
-
-    return buffer;
-}
-
 ShaderModule::ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes) :
     DeviceObject(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
 {
-    m_spirvCode = LoadSpvFile(name);
+    m_spirvCode = platform::FileSystem::LoadSpvFile(name);
 
     // create a new shader module, using the buffer we loaded
     VkShaderModuleCreateInfo createInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -60,6 +30,17 @@ ShaderModule::ShaderModule(Device& device, VkShaderStageFlagBits stage, const st
 
     std::hash<std::string> hasher{};
     m_id = hasher(std::string(reinterpret_cast<const char*>(m_spirvCode.data()), reinterpret_cast<const char*>(m_spirvCode.data() + m_spirvCode.size())));
+}
+
+ShaderModule::ShaderModule(ShaderModule&& other) :
+    DeviceObject(std::move(other))
+{
+    m_stage             = other.m_stage;
+    m_spirvCode         = std::move(other.m_spirvCode);
+    m_resources         = std::move(other.m_resources);
+    m_runtimeArraySizes = std::move(other.m_runtimeArraySizes);
+    m_entryPoint        = std::move(other.m_entryPoint);
+    m_id                = other.m_id;
 }
 
 ShaderModule::~ShaderModule()

@@ -181,6 +181,13 @@ public:
 
     auto& GetSamplerBinding() const { return m_samplerBinding; }
 
+    void SetOnExecute(std::function<void(val::CommandBuffer*)> func)
+    {
+        m_onExecute = std::move(func);
+    }
+
+    auto GetOnExecute() const { return m_onExecute; }
+
 private:
     RenderGraph&  m_graph;
     Index         m_index;
@@ -203,6 +210,9 @@ private:
 
     std::unordered_map<Tag, val::ShaderResource> m_srdBinding;
     std::unordered_map<Tag, val::Sampler*>       m_samplerBinding;
+
+    std::function<void(val::CommandBuffer*)> m_onExecute{[](auto*) {
+    }};
 };
 
 struct ImageTransition
@@ -229,7 +239,7 @@ struct ResourceState
     std::unordered_map<Tag, Tag>                 bufferFirstUsePass;
     std::unordered_map<Tag, Tag>                 bufferLastUsePass;
 };
-
+class RenderContext;
 class RenderGraph
 {
 public:
@@ -241,13 +251,13 @@ public:
 
     void SetBackBufferSize(uint32_t width, uint32_t height);
 
-    RDGPass& AddPass(const Tag& tag, RDGQueueFlags queueFlags);
+    RDGPass* AddPass(const Tag& tag, RDGQueueFlags queueFlags);
 
     void SetBackBufferTag(const Tag& tag);
 
     void Compile();
 
-    void Execute(val::CommandBuffer* commandBuffer);
+    void Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext);
 
 private:
     struct PhysicalPass
@@ -259,6 +269,9 @@ private:
         std::vector<VkDescriptorSet> descriptorSets;
         UniquePtr<val::Framebuffer>  framebuffer;
         uint32_t                     index{0};
+
+        std::function<void(val::CommandBuffer*)> onExecute{[](auto*) {
+        }};
     };
 
     void SortRenderPasses();

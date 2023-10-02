@@ -207,7 +207,6 @@ struct hash<zen::val::PipelineState>
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().minSampleShading);
         zen::util::HashCombine(result, static_cast<std::underlying_type<VkSampleCountFlagBits>::type>(pipelineState.GetMultiSampleState().rasterizationSamples));
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().sampleShadingEnable);
-        zen::util::HashCombine(result, pipelineState.GetMultiSampleState().sampleMask);
 
         // VkPipelineDepthStencilStateCreateInfo
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().back);

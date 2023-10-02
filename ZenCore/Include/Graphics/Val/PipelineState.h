@@ -27,9 +27,10 @@ struct RasterizationState
     VkCullModeFlags cullMode{VK_CULL_MODE_BACK_BIT};
     VkFrontFace     frontFace{VK_FRONT_FACE_COUNTER_CLOCKWISE};
     VkBool32        depthBiasEnable{VK_FALSE};
-    float           depthBiasConstantFactor{1.0f};
-    float           depthBiasClamp{1.0f};
-    float           depthBiasSlopeFactor{1.0f};
+    float           depthBiasConstantFactor{0.0f};
+    float           depthBiasClamp{0.0f};
+    float           depthBiasSlopeFactor{0.0f};
+    float           lineWidth{1.0f};
 };
 
 struct ViewportState
@@ -43,7 +44,6 @@ struct MultisampleState
     VkSampleCountFlagBits rasterizationSamples{VK_SAMPLE_COUNT_1_BIT};
     VkBool32              sampleShadingEnable{VK_FALSE};
     float                 minSampleShading{0.0f};
-    VkSampleMask          sampleMask{0};
     VkBool32              alphaToCoverageEnable{VK_FALSE};
     VkBool32              alphaToOneEnable{VK_FALSE};
 };
@@ -71,10 +71,9 @@ inline VkStencilOpState DefaultStencilOpState()
 
 struct DepthStencilState
 {
-    VkBool32 depthTestEnable{VK_TRUE};
-    VkBool32 depthWriteEnable{VK_TRUE};
-    // Note: Using reversed depth-buffer for increased precision, so Greater depth values are kept
-    VkCompareOp      depthCompareOp{VK_COMPARE_OP_GREATER};
+    VkBool32         depthTestEnable{VK_TRUE};
+    VkBool32         depthWriteEnable{VK_TRUE};
+    VkCompareOp      depthCompareOp{VK_COMPARE_OP_LESS};
     VkBool32         depthBoundsTestEnable{VK_FALSE};
     VkBool32         stencilTestEnable{VK_FALSE};
     VkStencilOpState front{DefaultStencilOpState()};
@@ -149,7 +148,7 @@ public:
     void SetDepthStencilState(DepthStencilState&& state);
     void SetColorBlendState(ColorBlendState&& state);
     void SetDynamicState(std::vector<VkDynamicState>&& states);
-    void SetRenderPass(VkRenderPass state);
+    void SetRenderPass(VkRenderPass renderPass);
     void SetSubpassIndex(uint32_t index);
 
     auto& GetVertexInputState() const { return m_vertexInputState; }

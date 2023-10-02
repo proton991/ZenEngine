@@ -30,6 +30,11 @@ SharedPtr<Device> Device::Create(const Device::CreateInfo& CI)
     return MakeShared<Device>(CI);
 }
 
+UniquePtr<Device> Device::CreateUnique(const Device::CreateInfo& CI)
+{
+    return MakeUnique<Device>(CI);
+}
+
 bool Device::IsExtensionEnabled(const char* extension) const
 {
     return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(), [extension](const char* enabled_extension) { return strcmp(extension, enabled_extension) == 0; }) != m_enabledExtensions.end();

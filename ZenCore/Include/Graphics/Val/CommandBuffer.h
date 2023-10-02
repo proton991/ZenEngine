@@ -9,7 +9,7 @@ class Image;
 class CommandBuffer : public DeviceObject<VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER>
 {
 public:
-    CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level, std::string debugName = "");
+    CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level);
 
     void Reset();
 
@@ -25,9 +25,13 @@ public:
 
     void BindDescriptorSets(VkPipelineLayout pipelineLayout, const std::vector<VkDescriptorSet>& descriptorSets);
 
+    void Begin();
+
+    void End();
+
 private:
-    CommandPool&               m_cmdPool;
+    CommandPool& m_cmdPool;
+
     const VkCommandBufferLevel m_level;
-    VkCommandBuffer            m_handle{VK_NULL_HANDLE};
 };
 } // namespace zen::val

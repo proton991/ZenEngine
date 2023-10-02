@@ -1,5 +1,6 @@
 #pragma once
 #include "Common/SharedPtr.h"
+#include "Common/UniquePtr.h"
 #include "VulkanHeaders.h"
 #include "PhysicalDevice.h"
 #include <vector>
@@ -21,6 +22,7 @@ public:
     };
 
     static SharedPtr<Device> Create(const CreateInfo& CI);
+    static UniquePtr<Device> CreateUnique(const CreateInfo& CI);
 
     explicit Device(const CreateInfo& CI);
     ~Device();

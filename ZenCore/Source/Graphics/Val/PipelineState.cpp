@@ -91,6 +91,7 @@ VkPipelineRasterizationStateCreateInfo PipelineState::GetRasterizationStateCI() 
     info.depthBiasClamp          = m_rasterizationState.depthBiasClamp;
     info.depthBiasSlopeFactor    = m_rasterizationState.depthBiasSlopeFactor;
     info.depthBiasEnable         = m_rasterizationState.depthBiasEnable;
+    info.lineWidth               = m_rasterizationState.lineWidth;
     return info;
 }
 
@@ -102,7 +103,6 @@ VkPipelineMultisampleStateCreateInfo PipelineState::GetMSStateCI() const
     info.minSampleShading      = m_multiSampleState.minSampleShading;
     info.rasterizationSamples  = m_multiSampleState.rasterizationSamples;
     info.sampleShadingEnable   = m_multiSampleState.sampleShadingEnable;
-    info.pSampleMask           = &m_multiSampleState.sampleMask;
     return info;
 }
 
@@ -114,6 +114,8 @@ VkPipelineDepthStencilStateCreateInfo PipelineState::GetDSStateCI() const
     info.depthWriteEnable      = m_depthStencilState.depthWriteEnable;
     info.depthCompareOp        = m_depthStencilState.depthCompareOp;
     info.stencilTestEnable     = m_depthStencilState.stencilTestEnable;
+    info.minDepthBounds        = 0.0f;
+    info.maxDepthBounds        = 1.0f;
     info.front                 = m_depthStencilState.front;
     info.back                  = m_depthStencilState.back;
     return info;

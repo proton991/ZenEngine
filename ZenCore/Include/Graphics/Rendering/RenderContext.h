@@ -14,11 +14,13 @@ public:
 
     val::CommandBuffer* StartFrame(val::CommandPool::ResetMode resetMode);
 
-    void Submit();
-
     void EndFrame();
 
     RenderFrame& GetActiveFrame() { return m_frames[m_activeFrameIndex]; }
+
+    VkFormat GetSwapchainFormat() const { return m_swapchain->GetFormat(); }
+
+    VkExtent2D GetSwapchainExtent2D() const { return m_swapchain->GetExtent2D(); }
 
 private:
     void Init();
@@ -26,6 +28,8 @@ private:
     void StartFrameInternal();
 
     void RecreateSwapchain();
+
+    void SubmitInternal();
 
     val::Device& m_valDevice;
     // queue

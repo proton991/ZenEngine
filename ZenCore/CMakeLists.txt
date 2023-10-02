@@ -15,6 +15,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/RenderContext.h
     Include/Graphics/Rendering/SyncObjPool.h
     Include/Graphics/Rendering/RenderBuffers.h
+    Include/Graphics/Rendering/ShaderManager.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h

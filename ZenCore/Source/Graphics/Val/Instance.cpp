@@ -48,6 +48,11 @@ SharedPtr<Instance> Instance::Create(const Instance::CreateInfo& createInfo)
     return MakeShared<Instance>(createInfo);
 }
 
+UniquePtr<Instance> Instance::CreateUnique(const Instance::CreateInfo& createInfo)
+{
+    return MakeUnique<Instance>(createInfo);
+}
+
 Instance::~Instance()
 {
     if (m_debugMode != DebugMode::Disabled && m_debugUtilsMessenger != VK_NULL_HANDLE)

@@ -1,6 +1,7 @@
 #include "Graphics/Rendering/RenderGraph.h"
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
+#include "Graphics/Rendering/RenderContext.h"
 #include <queue>
 
 namespace zen
@@ -138,25 +139,26 @@ void RenderGraph::SetBackBufferSize(uint32_t width, uint32_t height)
     m_backBufferExtent.height = height;
 }
 
-RDGPass& RenderGraph::AddPass(const std::string& tag, RDGQueueFlags queueFlags)
+RDGPass* RenderGraph::AddPass(const std::string& tag, RDGQueueFlags queueFlags)
 {
     auto iter = m_passToIndex.find(tag);
     if (iter != m_passToIndex.end())
     {
-        return *m_passes[iter->second];
+        return m_passes[iter->second].Get();
     }
     else
     {
         Index index = m_passes.size();
         m_passes.emplace_back(new RDGPass(*this, index, tag, queueFlags));
         m_passToIndex[tag] = index;
-        return *m_passes.back();
+        return m_passes.back().Get();
     }
 }
 
 void RenderGraph::SetBackBufferTag(const Tag& tag)
 {
     m_backBufferTag = tag;
+    m_resourceState.totalUsages[tag] |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 }
 
 void RenderGraph::Compile()
@@ -167,7 +169,7 @@ void RenderGraph::Compile()
     BuildPhysicalPasses();
 }
 
-void RenderGraph::Execute(val::CommandBuffer* commandBuffer)
+void RenderGraph::Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext)
 {
     if (!m_initialized)
     {
@@ -178,6 +180,7 @@ void RenderGraph::Execute(val::CommandBuffer* commandBuffer)
     {
         RunPass(physicalPass, commandBuffer);
     }
+    CopyToPresentImage(commandBuffer, *renderContext->GetActiveFrame().GetSwapchainImage());
 }
 
 void RenderGraph::SortRenderPasses()
@@ -230,10 +233,13 @@ void RenderGraph::TraversePassDepsRecursive(Index passIndex, uint32_t level)
         }
     }
     level++;
-    for (auto& index : m_passDeps[pass.GetIndex()])
+    if (!m_passDeps.empty())
     {
-        m_sortedPassIndices.push_back(index);
-        TraversePassDepsRecursive(index, level);
+        for (auto& index : m_passDeps[pass.GetIndex()])
+        {
+            m_sortedPassIndices.push_back(index);
+            TraversePassDepsRecursive(index, level);
+        }
     }
 }
 
@@ -339,7 +345,7 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
     const auto& info = image->GetInfo();
 
     val::ImageCreateInfo imageCI{};
-    imageCI.usage       = info.usage;
+    imageCI.usage       = m_resourceState.totalUsages[image->GetTag()];
     imageCI.format      = info.format;
     imageCI.samples     = static_cast<VkSampleCountFlagBits>(info.samples);
     imageCI.arrayLayers = info.layers;
@@ -361,6 +367,7 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
     auto physicalIndex = m_physicalImages.size();
     image->SetPhysicalIndex(physicalIndex);
     m_physicalImages.emplace_back(m_renderDevice.CreateImageUnique(imageCI));
+    m_physicalImages.back()->SetObjectDebugName(image->GetTag());
 }
 
 void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
@@ -403,7 +410,6 @@ void RenderGraph::BuildPhysicalPasses()
         std::vector<VkAttachmentDescription> attachmentDescriptions;
         // val::SubpassInfos
         std::vector<VkAttachmentReference> colorReferences;
-        VkAttachmentReference              depthReference{};
         uint32_t                           depthRefIndex{UINT32_MAX};
         // Framebuffer attachments
         std::vector<VkImageView> imageViews;
@@ -428,7 +434,7 @@ void RenderGraph::BuildPhysicalPasses()
                 VkAttachmentDescription attachmentDescription{};
                 attachmentDescription.format         = rdgImage->GetInfo().format;
                 attachmentDescription.samples        = static_cast<VkSampleCountFlagBits>(rdgImage->GetInfo().samples);
-                attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE; // TODO: set proper load op
+                attachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR; // TODO: set proper load op
                 attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
                 attachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -441,8 +447,7 @@ void RenderGraph::BuildPhysicalPasses()
                 attachmentReference.layout     = attachmentDescription.finalLayout;
                 if (rdgImage->GetUsage() & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
                 {
-                    depthReference = attachmentReference;
-                    depthRefIndex  = attIndex;
+                    depthRefIndex = attIndex;
                 }
                 else
                 {
@@ -456,14 +461,19 @@ void RenderGraph::BuildPhysicalPasses()
         // Create framebuffer
         physicalPass.framebuffer = m_renderDevice.CreateFramebufferUnique(physicalPass.renderPass->GetHandle(), imageViews, {framebufferWidth, framebufferHeight, 1});
         // Create pipeline
-        // TODO: configure pipeline states
-        physicalPass.pipelineLayout  = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
+        physicalPass.pipelineLayout = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
+
+        physicalPass.pipelineState.SetRenderPass(physicalPass.renderPass->GetHandle());
+
         physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
         for (const auto& dsLayout : physicalPass.pipelineLayout->GetDescriptorSetLayouts())
         {
             physicalPass.descriptorSets.push_back(m_renderDevice.RequestDescriptorSet(dsLayout));
         }
-        physicalPass.index = currIndex;
+        physicalPass.index     = currIndex;
+        physicalPass.onExecute = std::move(pass->GetOnExecute());
+        pass->SetPhysicalIndex(currIndex);
+        m_physicalPasses.push_back(physicalPass);
         currIndex++;
     }
 }
@@ -492,13 +502,13 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const s
 
     for (const auto& [bufferTag, bufferTransition] : bufferTransitions)
     {
-        if (!HasBufferWriteDependency(bufferTransition.srcUsage))
+        if (bufferTransition.srcUsage == bufferTransition.dstUsage && !HasBufferWriteDependency(bufferTransition.srcUsage))
             continue;
         srcPipelineStageFlags |= val::Buffer::UsageToPipelineStage(bufferTransition.srcUsage);
         dstPipelineStageFlags |= val::Buffer::UsageToPipelineStage(bufferTransition.dstUsage);
         auto physicalIndex = m_resources[m_resourceToIndex[bufferTag]]->GetPhysicalIndex();
 
-        VkBufferMemoryBarrier barrier{};
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.buffer              = m_physicalBuffers[physicalIndex]->GetHandle();
         barrier.srcAccessMask       = val::Buffer::UsageToAccessFlags(bufferTransition.srcUsage);
         barrier.dstAccessMask       = val::Buffer::UsageToAccessFlags(bufferTransition.dstUsage);
@@ -511,13 +521,13 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const s
 
     for (const auto& [imageTag, imageTransition] : imageTransitions)
     {
-        if (!HasImageWriteDependency(imageTransition.srcUsage))
+        if (imageTransition.srcUsage == imageTransition.dstUsage && !HasImageWriteDependency(imageTransition.srcUsage))
             continue;
         srcPipelineStageFlags |= val::Image::UsageToPipelineStage(imageTransition.srcUsage);
         dstPipelineStageFlags |= val::Image::UsageToPipelineStage(imageTransition.dstUsage);
         auto physicalIndex = m_resources[m_resourceToIndex[imageTag]]->GetPhysicalIndex();
 
-        VkImageMemoryBarrier barrier{};
+        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.image               = m_physicalImages[physicalIndex]->GetHandle();
         barrier.srcAccessMask       = val::Image::UsageToAccessFlags(imageTransition.srcUsage);
         barrier.dstAccessMask       = val::Image::UsageToAccessFlags(imageTransition.dstUsage);
@@ -571,7 +581,7 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer, const va
     // In order to use it in the 'next' render pass, we need to transfer the layout back to its first usage TODO: is this right?
     if (firstUsage != VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
     {
-        VkImageMemoryBarrier barrier{};
+        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.image               = backBufferImage->GetHandle();
         barrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         barrier.newLayout           = val::Image::UsageToImageLayout(firstUsage);
@@ -634,9 +644,8 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
     // Before render
     EmitPipelineBarrier(commandBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()], m_resourceState.perPassBufferState[rdgPass->GetTag()]);
     // On render
-    std::vector<VkClearValue> clearValues(1);
-    clearValues[0].color        = {0.0f, 0.0f, 0.0f, 0.0f};
-    clearValues[0].depthStencil = {1.0f, 0};
+    VkClearValue clearValue{};
+    clearValue.color = {{0.2f, 0.2f, 0.2f, 1.0f}};
     // Begin Pass
     if (pass.renderPass)
     {
@@ -644,7 +653,7 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         rpBeginInfo.renderPass      = pass.renderPass->GetHandle();
         rpBeginInfo.framebuffer     = pass.framebuffer->GetHandle();
         rpBeginInfo.renderArea      = pass.framebuffer->GetRenderArea();
-        rpBeginInfo.pClearValues    = clearValues.data();
+        rpBeginInfo.pClearValues    = &clearValue;
         rpBeginInfo.clearValueCount = 1;
 
         commandBuffer->BeginRenderPass(rpBeginInfo);
@@ -657,8 +666,8 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
     {
         commandBuffer->BindDescriptorSets(pass.pipelineLayout->GetHandle(), pass.descriptorSets);
     }
-    // TODO: call function from outside
-
+    // Call function from outside
+    pass.onExecute(commandBuffer);
     // End Pass
     if (pass.renderPass)
     {

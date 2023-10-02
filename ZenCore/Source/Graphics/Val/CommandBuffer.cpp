@@ -1,5 +1,3 @@
-#include <utility>
-
 #include "Graphics/Val/CommandBuffer.h"
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/Image.h"
@@ -8,14 +6,14 @@
 
 namespace zen::val
 {
-CommandBuffer::CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level, std::string debugName) :
-    DeviceObject(cmdPool.GetDevice(), std::move(debugName)), m_cmdPool(cmdPool), m_level(level)
+CommandBuffer::CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level) :
+    DeviceObject(cmdPool.GetDevice()), m_cmdPool(cmdPool), m_level(level)
 {
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 
     allocInfo.commandPool        = m_cmdPool.GetHandle();
     allocInfo.commandBufferCount = 1;
-    allocInfo.level              = level;
+    allocInfo.level              = m_level;
 
     CHECK_VK_ERROR_AND_THROW(vkAllocateCommandBuffers(cmdPool.GetDevice().GetHandle(), &allocInfo, &m_handle), "Failed to allocate command buffer");
 }
@@ -36,25 +34,25 @@ void CommandBuffer::BlitImage(const Image& srcImage, VkImageUsageFlags srcUsage,
 
     uint32_t numBarriers = 0;
 
-    VkImageMemoryBarrier barrier1{};
-    barrier1.srcAccessMask    = Image::UsageToAccessFlags(srcUsage);
-    barrier1.dstAccessMask    = VK_ACCESS_TRANSFER_READ_BIT;
-    barrier1.srcAccessMask    = VK_QUEUE_FAMILY_IGNORED;
-    barrier1.dstAccessMask    = VK_QUEUE_FAMILY_IGNORED;
-    barrier1.oldLayout        = Image::UsageToImageLayout(srcUsage);
-    barrier1.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    barrier1.image            = srcImage.GetHandle();
-    barrier1.subresourceRange = srcImage.GetSubResourceRange();
+    VkImageMemoryBarrier barrier1{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier1.srcAccessMask       = Image::UsageToAccessFlags(srcUsage);
+    barrier1.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier1.oldLayout           = Image::UsageToImageLayout(srcUsage);
+    barrier1.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier1.image               = srcImage.GetHandle();
+    barrier1.subresourceRange    = srcImage.GetSubResourceRange();
 
-    VkImageMemoryBarrier barrier2{};
-    barrier2.srcAccessMask    = Image::UsageToAccessFlags(dstUsage);
-    barrier2.dstAccessMask    = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier2.srcAccessMask    = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.dstAccessMask    = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.oldLayout        = Image::UsageToImageLayout(dstUsage);
-    barrier2.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier2.image            = dstImage.GetHandle();
-    barrier2.subresourceRange = dstImage.GetSubResourceRange();
+    VkImageMemoryBarrier barrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier2.srcAccessMask       = Image::UsageToAccessFlags(dstUsage);
+    barrier2.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier2.oldLayout           = Image::UsageToImageLayout(dstUsage);
+    barrier2.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier2.image               = dstImage.GetHandle();
+    barrier2.subresourceRange    = dstImage.GetSubResourceRange();
 
     if (srcUsage != VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
         barriers[numBarriers++] = barrier1;
@@ -99,5 +97,17 @@ void CommandBuffer::BindGraphicPipeline(VkPipeline pipeline)
 void CommandBuffer::BindDescriptorSets(VkPipelineLayout pipelineLayout, const std::vector<VkDescriptorSet>& descriptorSets)
 {
     vkCmdBindDescriptorSets(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, util::ToU32(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+}
+
+void CommandBuffer::Begin()
+{
+    VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(m_handle, &beginInfo);
+}
+
+void CommandBuffer::End()
+{
+    vkEndCommandBuffer(m_handle);
 }
 } // namespace zen::val

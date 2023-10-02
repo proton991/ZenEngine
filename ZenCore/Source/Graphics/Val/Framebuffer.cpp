@@ -1,5 +1,4 @@
 #include "Graphics/Val/Framebuffer.h"
-#include "Graphics/Val/RenderPass.h"
 #include "Common/Errors.h"
 
 namespace zen::val

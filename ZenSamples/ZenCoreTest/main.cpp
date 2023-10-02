@@ -26,7 +26,7 @@ int main(int argc, char** argv)
 
     VkSurfaceKHR surface = window->CreateSurface(valInstance->GetHandle());
 
-    auto valPhysicalDevice = val::PhysicalDevice::Create(*valInstance);
+    auto valPhysicalDevice = val::PhysicalDevice::CreateUnique(*valInstance);
 
     val::Device::CreateInfo deviceCI{};
     deviceCI.pPhysicalDevice         = valPhysicalDevice.Get();
