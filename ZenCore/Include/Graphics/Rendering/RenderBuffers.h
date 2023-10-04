@@ -2,6 +2,8 @@
 #include "Graphics/Val/Buffer.h"
 #include "Common/ArrayView.h"
 
+#define MAX_STAGING_BUFFER_SIZE (64 * 1024 * 1024)
+
 namespace zen
 {
 class StagingBuffer : public val::Buffer
@@ -30,11 +32,11 @@ public:
         FlushMemory(m_currentOffset, 0);
     }
 
-    void Reset()
+    void ResetOffset()
     {
         m_currentOffset = 0;
     }
-    
+
     SubmitInfo Submit(const uint8_t* data, size_t byteSize)
     {
         ASSERT(m_currentOffset + byteSize <= GetSize());
@@ -49,13 +51,13 @@ public:
     template <typename T>
     SubmitInfo Submit(ArrayView<const T> arrayView)
     {
-        return Submit(static_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
     }
 
     template <typename T>
     SubmitInfo Submit(ArrayView<T> arrayView)
     {
-        return Submit(static_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
     }
 
     template <typename T>

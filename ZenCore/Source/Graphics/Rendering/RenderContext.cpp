@@ -6,7 +6,7 @@
 namespace zen
 {
 RenderContext::RenderContext(val::Device& device, platform::GlfwWindowImpl* window) :
-    m_valDevice(device), m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS))
+    m_valDevice(device), m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)), m_synObjPool(device)
 {
     m_surface   = window->CreateSurface(device.GetInstanceHandle());
     m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, window->GetExtent2D());
@@ -21,6 +21,11 @@ void RenderContext::Init()
         auto frame = RenderFrame(m_valDevice, std::move(image));
         m_frames.push_back(std::move(frame));
     }
+    val::CommandPool::CreateInfo cmdPoolCI{};
+    cmdPoolCI.queueFamilyIndex = m_queue.GetFamilyIndex();
+    cmdPoolCI.resetMode        = val::CommandPool::ResetMode::ResetPool;
+    // create common command pool
+    m_commandPool = MakeUnique<val::CommandPool>(m_valDevice, cmdPoolCI);
 }
 
 val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetMode)
@@ -33,16 +38,16 @@ val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetM
     {
         LOG_ERROR_AND_THROW("Failed to start frame");
     }
-    m_commandBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
-    m_commandBuffer->Begin();
-    return m_commandBuffer;
+    m_activeCmdBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
+    m_activeCmdBuffer->Begin();
+    return m_activeCmdBuffer;
 }
 
 void RenderContext::SubmitInternal()
 {
     m_renderFinished = GetActiveFrame().RequestSemaphore();
 
-    VkCommandBuffer handle = m_commandBuffer->GetHandle();
+    VkCommandBuffer handle = m_activeCmdBuffer->GetHandle();
     VkSubmitInfo    submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &handle;
@@ -58,7 +63,7 @@ void RenderContext::SubmitInternal()
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores    = &m_renderFinished;
     // End command buffer before submit to a queue
-    m_commandBuffer->End();
+    m_activeCmdBuffer->End();
     m_queue.Submit({submitInfo}, GetActiveFrame().RequestFence());
 }
 
@@ -75,7 +80,7 @@ void RenderContext::EndFrame()
     transferDstToPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     transferDstToPresentBarrier.image               = GetActiveFrame().GetSwapchainImage()->GetHandle();
     transferDstToPresentBarrier.subresourceRange    = GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
-    m_commandBuffer->PipelineBarrier(val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
+    m_activeCmdBuffer->PipelineBarrier(val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
 
     SubmitInternal();
 
@@ -105,8 +110,8 @@ void RenderContext::EndFrame()
         m_imageAcquiredSem = VK_NULL_HANDLE;
     }
     GetActiveFrame().Reset();
-    m_frameActive   = false;
-    m_commandBuffer = nullptr;
+    m_frameActive     = false;
+    m_activeCmdBuffer = nullptr;
 }
 
 void RenderContext::StartFrameInternal()
@@ -156,5 +161,16 @@ void RenderContext::RecreateSwapchain()
         m_frames.clear();
         Init();
     }
+}
+
+void RenderContext::SubmitImmediate(val::CommandBuffer* pCmdBuffer)
+{
+    VkCommandBuffer handle = pCmdBuffer->GetHandle();
+    VkSubmitInfo    submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &handle;
+    m_queue.Submit({submitInfo}, m_synObjPool.RequestFence());
+    m_synObjPool.WaitForFences();
+    m_synObjPool.ResetFences();
 }
 } // namespace zen

@@ -22,6 +22,20 @@ public:
 
     VkExtent2D GetSwapchainExtent2D() const { return m_swapchain->GetExtent2D(); }
 
+    StagingBuffer* GetCurrentStagingBuffer() { return GetActiveFrame().GetStagingBuffer(); }
+
+    val::CommandBuffer* GetCommandBuffer()
+    {
+        return m_commandPool->RequestCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    }
+
+    void ResetCommandPool()
+    {
+        m_commandPool.Reset();
+    }
+    
+    void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
+
 private:
     void Init();
 
@@ -49,6 +63,10 @@ private:
     // semaphore signaled when commands are submitted
     VkSemaphore m_renderFinished{VK_NULL_HANDLE};
     // current command buffer provided by RenderFrame
-    val::CommandBuffer* m_commandBuffer{nullptr};
+    val::CommandBuffer* m_activeCmdBuffer{nullptr};
+    // common command pool
+    UniquePtr<val::CommandPool> m_commandPool;
+    // common sync obj pool
+    SynObjPool m_synObjPool;
 };
 } // namespace zen

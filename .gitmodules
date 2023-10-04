@@ -19,3 +19,6 @@
 [submodule "External/googletest"]
 	path = External/googletest
 	url = https://github.com/google/googletest
+[submodule "External/span"]
+	path = External/span
+	url = https://github.com/tcbrindle/span

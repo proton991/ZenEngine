@@ -5,3 +5,4 @@ git submodule add https://github.com/KhronosGroup/SPIRV-Cross External/spirv-cro
 git submodule add https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator External/vma
 git submodule add https://github.com/zeux/volk External/volk
 git submodule add https://github.com/google/googletest External/googletest
+git submodule add https://github.com/tcbrindle/span External/span

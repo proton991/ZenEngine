@@ -1,6 +1,7 @@
 #include "Graphics/Val/CommandBuffer.h"
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/Image.h"
+#include "Graphics/Val/Buffer.h"
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
 
@@ -109,5 +110,39 @@ void CommandBuffer::Begin()
 void CommandBuffer::End()
 {
     vkEndCommandBuffer(m_handle);
+}
+
+void CommandBuffer::CopyBuffer(Buffer* srcBuffer, size_t srcOffset, Buffer* dstBuffer, size_t dstOffset, size_t byteSize)
+{
+    ASSERT(srcOffset + byteSize <= srcBuffer->GetSize());
+    ASSERT(dstOffset + byteSize <= dstBuffer->GetSize());
+    VkBufferCopy bufferCopy{};
+    bufferCopy.srcOffset = srcOffset;
+    bufferCopy.dstOffset = dstOffset;
+    bufferCopy.size      = byteSize;
+    vkCmdCopyBuffer(m_handle, srcBuffer->GetHandle(), dstBuffer->GetHandle(), 1, &bufferCopy);
+}
+
+void CommandBuffer::DrawVertices(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
+{
+    vkCmdDraw(m_handle, vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+void CommandBuffer::SetViewport(float width, float height)
+{
+    VkViewport vp{};
+    vp.width    = width;
+    vp.height   = height;
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    vkCmdSetViewport(m_handle, 0, 1, &vp);
+}
+
+void CommandBuffer::SetScissor(uint32_t width, uint32_t height)
+{
+    VkRect2D scissor{};
+    scissor.extent.width  = width;
+    scissor.extent.height = height;
+    vkCmdSetScissor(m_handle, 0, 1, &scissor);
 }
 } // namespace zen::val

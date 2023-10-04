@@ -2,6 +2,7 @@ set(ZEN_CORE_HEADERS
     Include/Common/ArrayView.h
     Include/Common/Errors.h
     Include/Common/Helpers.h
+    Include/Common/Math.h
     Include/Common/MemAlloc.h
     Include/Common/ObjectBase.h
     Include/Common/SharedPtr.h
@@ -96,6 +97,7 @@ target_link_libraries(ZenCore PUBLIC
     vma
     spirv-cross-glsl
     volk
+    span
     )
 
 ############################################################

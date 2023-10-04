@@ -58,3 +58,8 @@ add_subdirectory(glfw)
 
 # google test
 add_subdirectory(googletest)
+
+add_library(span INTERFACE)
+set(SPAN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/span/include)
+target_sources(span INTERFACE ${SPAN_DIR}/tcb/span.hpp)
+target_include_directories(span INTERFACE ${SPAN_DIR})

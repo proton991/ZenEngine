@@ -39,5 +39,8 @@ void RenderFrame::Reset()
     {
         it.second->ResetPool();
     }
+
+    m_stagingBuffer->ResetOffset();
+    m_stagingBuffer->Flush();
 }
 } // namespace zen

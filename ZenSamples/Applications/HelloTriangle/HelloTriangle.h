@@ -3,11 +3,19 @@
 #include "Graphics/Rendering/RenderGraph.h"
 #include "Graphics/Rendering/RenderContext.h"
 #include "Graphics/Rendering/ShaderManager.h"
+#include "Graphics/Rendering/RenderBuffers.h"
+#include "Common/Math.h"
 
 namespace zen
 {
 class HelloTriangle : public Application
 {
+    struct Vertex
+    {
+        Vec3 position{0.0f, 0.0f, 0.0f};
+        Vec3 color{0.0f, 0.0f, 0.0f};
+    };
+
 public:
     HelloTriangle();
 
@@ -19,6 +27,8 @@ public:
 
     void Run() override;
 
+    void LoadModel();
+
 private:
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
@@ -28,5 +38,7 @@ private:
     uint32_t m_windowHeight{0};
 
     UniquePtr<ShaderManager> m_shaderManager;
+
+    UniquePtr<VertexBuffer> m_vertexBuffer;
 };
 } // namespace zen
