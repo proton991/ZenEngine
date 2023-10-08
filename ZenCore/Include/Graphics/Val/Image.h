@@ -31,6 +31,8 @@ public:
 
     ~Image();
 
+    Image(Image&& other) noexcept;
+    
     VkImageView GetView() const { return m_view; }
 
     const VkExtent3D& GetExtent3D() const { return m_extent3D; };

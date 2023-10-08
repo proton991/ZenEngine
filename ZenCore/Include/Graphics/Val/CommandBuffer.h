@@ -32,6 +32,10 @@ public:
 
     void CopyBuffer(Buffer* srcBuffer, size_t srcOffset, Buffer* dstBuffer, size_t dstOffset, size_t byteSize);
 
+    void CopyBufferToImage(Buffer* srcBuffer, size_t srcOffset, Image* dstImage, uint32_t mipLevel = 0, uint32_t layer = 0);
+
+    void TransferLayout(Image* image, VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage);
+
     template <class... Buffers>
     void BindVertexBuffers(Buffers&... vertexBuffers)
     {
@@ -46,6 +50,8 @@ public:
     void SetViewport(float width, float height);
 
     void SetScissor(uint32_t width, uint32_t height);
+
+    static VkImageMemoryBarrier GetImageBarrier(VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage, val::Image* image);
 
 private:
     CommandPool& m_cmdPool;

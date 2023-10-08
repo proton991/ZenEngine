@@ -22,3 +22,6 @@
 [submodule "External/span"]
 	path = External/span
 	url = https://github.com/tcbrindle/span
+[submodule "External/stb"]
+	path = External/stb
+	url = https://github.com/nothings/stb

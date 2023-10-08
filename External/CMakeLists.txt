@@ -63,3 +63,7 @@ add_library(span INTERFACE)
 set(SPAN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/span/include)
 target_sources(span INTERFACE ${SPAN_DIR}/tcb/span.hpp)
 target_include_directories(span INTERFACE ${SPAN_DIR})
+
+# stb
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/stb")

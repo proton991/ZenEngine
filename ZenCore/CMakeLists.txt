@@ -17,6 +17,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/SyncObjPool.h
     Include/Graphics/Rendering/RenderBuffers.h
     Include/Graphics/Rendering/ShaderManager.h
+    Include/Graphics/Rendering/TextureManager.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -54,6 +55,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Rendering/RenderFrame.cpp
     Source/Graphics/Rendering/RenderContext.cpp
     Source/Graphics/Rendering/SynObjPool.cpp
+    Source/Graphics/Rendering/TextureManager.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp
@@ -98,6 +100,7 @@ target_link_libraries(ZenCore PUBLIC
     spirv-cross-glsl
     volk
     span
+    stb
     )
 
 ############################################################
@@ -144,3 +147,6 @@ if (WIN32)
   target_compile_definitions(ZenCore PUBLIC NOMINMAX)
 endif ()
 target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")
+
+set(ZEN_TEXTURE_PATH ${PROJECT_SOURCE_DIR}/Data/Textures/)
+target_compile_definitions(ZenCore PUBLIC ZEN_TEXTURE_PATH="${ZEN_TEXTURE_PATH}")

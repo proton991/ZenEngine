@@ -123,6 +123,32 @@ void CommandBuffer::CopyBuffer(Buffer* srcBuffer, size_t srcOffset, Buffer* dstB
     vkCmdCopyBuffer(m_handle, srcBuffer->GetHandle(), dstBuffer->GetHandle(), 1, &bufferCopy);
 }
 
+void CommandBuffer::CopyBufferToImage(Buffer* srcBuffer, size_t srcOffset, Image* dstImage, uint32_t mipLevel, uint32_t layer)
+{
+    VkImageMemoryBarrier toTransferDstBarrier = GetImageBarrier(0, VK_IMAGE_USAGE_TRANSFER_DST_BIT, dstImage);
+    PipelineBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, {}, {toTransferDstBarrier});
+
+    auto imageSubresourceLayers           = dstImage->GetSubresourceLayers();
+    imageSubresourceLayers.mipLevel       = mipLevel;
+    imageSubresourceLayers.baseArrayLayer = layer;
+
+    VkBufferImageCopy bufferImageCopy{};
+    bufferImageCopy.bufferOffset      = srcOffset;
+    bufferImageCopy.bufferImageHeight = 0;
+    bufferImageCopy.bufferRowLength   = 0;
+    bufferImageCopy.imageSubresource  = imageSubresourceLayers;
+    bufferImageCopy.imageOffset       = VkOffset3D{0, 0, 0};
+    bufferImageCopy.imageExtent       = dstImage->GetExtent3D();
+
+    vkCmdCopyBufferToImage(m_handle, srcBuffer->GetHandle(), dstImage->GetHandle(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopy);
+}
+
+void CommandBuffer::TransferLayout(Image* image, VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage)
+{
+    VkImageMemoryBarrier barrier = GetImageBarrier(srcUsage, dstUsage, image);
+    PipelineBarrier(Image::UsageToPipelineStage(srcUsage), Image::UsageToPipelineStage(dstUsage), {}, {barrier});
+}
+
 void CommandBuffer::DrawVertices(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
 {
     vkCmdDraw(m_handle, vertexCount, instanceCount, firstVertex, firstInstance);
@@ -144,5 +170,19 @@ void CommandBuffer::SetScissor(uint32_t width, uint32_t height)
     scissor.extent.width  = width;
     scissor.extent.height = height;
     vkCmdSetScissor(m_handle, 0, 1, &scissor);
+}
+
+VkImageMemoryBarrier CommandBuffer::GetImageBarrier(VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage, val::Image* image)
+{
+    VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier.srcAccessMask       = Image::UsageToAccessFlags(srcUsage);
+    barrier.dstAccessMask       = Image::UsageToAccessFlags(dstUsage);
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.oldLayout           = Image::UsageToImageLayout(srcUsage);
+    barrier.newLayout           = Image::UsageToImageLayout(dstUsage);
+    barrier.image               = image->GetHandle();
+    barrier.subresourceRange    = image->GetSubResourceRange();
+    return barrier;
 }
 } // namespace zen::val

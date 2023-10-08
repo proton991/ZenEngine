@@ -127,6 +127,15 @@ Image::Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat forma
     m_subResourceRange.baseMipLevel   = 0;
 }
 
+Image::Image(Image&& other) noexcept :
+    DeviceObject(std::move(other))
+{
+    m_subResourceRange = std::move(other.m_subResourceRange);
+    m_allocation       = std::move(other.m_allocation);
+    m_format           = std::move(other.m_format);
+    m_view             = std::move(other.m_view);
+    m_allocation       = std::move(other.m_allocation);
+}
 Image::~Image()
 {
     if (m_view != VK_NULL_HANDLE)
@@ -195,7 +204,7 @@ VkPipelineStageFlags Image::UsageToPipelineStage(VkImageUsageFlags usage)
     if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         return VK_PIPELINE_STAGE_TRANSFER_BIT;
     if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
-        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
         return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)

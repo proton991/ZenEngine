@@ -31,9 +31,9 @@ public:
 
     void ResetCommandPool()
     {
-        m_commandPool.Reset();
+        m_commandPool->ResetPool();
     }
-    
+
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
 private:

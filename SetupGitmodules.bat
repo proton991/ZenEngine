@@ -6,3 +6,4 @@ git submodule add https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAlloca
 git submodule add https://github.com/zeux/volk External/volk
 git submodule add https://github.com/google/googletest External/googletest
 git submodule add https://github.com/tcbrindle/span External/span
+git submodule add https://github.com/nothings/stb External/stb
