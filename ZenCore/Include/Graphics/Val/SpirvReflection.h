@@ -182,7 +182,7 @@ inline void ReadResourceArraySize(const spirv_cross::Compiler& compiler,
     }
     else
     {
-        shaderResource.arraySize = 1;
+        shaderResource.arraySize = compiler.get_type(resource.type_id).array.empty() ? 1 : compiler.get_type(resource.type_id).array[0];
     }
 }
 

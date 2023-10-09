@@ -39,7 +39,7 @@ int main(int argc, char** argv)
     val::RuntimeArraySizes runtimeArraySizes2{};
 
     val::ShaderModule testShader{
-        *valDevice, VK_SHADER_STAGE_VERTEX_BIT, "gbuffer.vert.spv", runtimeArraySizes2};
+        *valDevice, VK_SHADER_STAGE_FRAGMENT_BIT, "gbuffer.frag.spv", runtimeArraySizes2};
     std::cout << "entry point: " << testShader.GetEntryPoint() << std::endl;
     auto& resources = testShader.GetResources();
     for (auto& resource : resources)

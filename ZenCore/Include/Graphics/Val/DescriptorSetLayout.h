@@ -20,6 +20,8 @@ public:
 
     auto GetHash() const { return m_hash; }
 
+    auto GetSetIndex() const { return m_setIndex; }
+    
 private:
     const uint32_t m_setIndex;
     size_t         m_hash{};

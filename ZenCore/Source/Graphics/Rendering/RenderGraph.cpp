@@ -403,7 +403,7 @@ void RenderGraph::BuildPhysicalResources()
 void RenderGraph::BuildPhysicalPasses()
 {
     uint32_t currIndex = 0;
-    for (const auto& pass : m_passes)
+    for (auto& pass : m_passes)
     {
         PhysicalPass physicalPass{};
         // Render pass attachments
@@ -466,10 +466,14 @@ void RenderGraph::BuildPhysicalPasses()
         physicalPass.pipelineState.SetRenderPass(physicalPass.renderPass->GetHandle());
 
         physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
-        for (const auto& dsLayout : physicalPass.pipelineLayout->GetDescriptorSetLayouts())
+
+        auto& dsLayouts = physicalPass.pipelineLayout->GetDescriptorSetLayouts();
+        physicalPass.descriptorSets.reserve(dsLayouts.size());
+        for (const auto& dsLayout : dsLayouts)
         {
-            physicalPass.descriptorSets.push_back(m_renderDevice.RequestDescriptorSet(dsLayout));
+            physicalPass.descriptorSets[dsLayout.GetSetIndex()] = m_renderDevice.RequestDescriptorSet(dsLayout);
         }
+
         physicalPass.index     = currIndex;
         physicalPass.onExecute = std::move(pass->GetOnExecute());
         pass->SetPhysicalIndex(currIndex);
@@ -613,7 +617,7 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         if (shaderRes.type == val::ShaderResourceType::ImageSampler)
         {
             VkDescriptorImageInfo info{};
-            info.imageLayout = val::Image::UsageToImageLayout(rdgResource->As<RDGImage>()->GetUsage());
+            info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
             info.imageView   = m_physicalImages[rdgResource->GetPhysicalIndex()]->GetView();
             info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
             dsImageInfos.push_back(info);

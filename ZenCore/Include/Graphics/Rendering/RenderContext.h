@@ -36,6 +36,12 @@ public:
 
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
+    template <typename T>
+    void UpdateUniformBuffer(const T* data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer);
+
+    template <typename T>
+    void UpdateUniformBuffer(ArrayView<T> data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer);
+
 private:
     void Init();
 
