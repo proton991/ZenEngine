@@ -18,7 +18,7 @@ public:
 
     void Update();
 
-    [[nodiscard]] auto ShouldClose() const { return m_data.should_close; }
+    [[nodiscard]] auto ShouldClose() const { return m_data.shouldClose; }
 
     void ShowCursor() const;
 
@@ -42,9 +42,9 @@ private:
         int height;
 
         // status
-        bool should_close{false};
-        bool show_cursor{true};
-        bool should_resize{false};
+        bool shouldClose{false};
+        bool showCursor{true};
+        bool shouldResize{false};
     } m_data;
 };
 

@@ -1,101 +1,141 @@
 #include "Platform/InputController.h"
+#include "Common/Errors.h"
 
-namespace zen::platform {
+namespace zen::platform
+{
+void KeyboardMouseInput::PressKey(std::int32_t key)
+{
+    ASSERT(key >= 0);
+    ASSERT(key < GLFW_KEY_LAST);
 
-void KeyboardMouseInput::press_key(const std::int32_t key) {
-
-  std::scoped_lock lock(m_input_mutex);
-  m_key_pressed[key] = true;
-  m_keyboard_updated = true;
+    std::scoped_lock lock(m_inputMutex);
+    m_keyPressed[key] = true;
+    m_keyboardUpdated = true;
 }
 
-void KeyboardMouseInput::release_key(const std::int32_t key) {
-  std::scoped_lock lock(m_input_mutex);
-  m_key_pressed[key] = false;
-  m_keyboard_updated = true;
+void KeyboardMouseInput::ReleaseKey(std::int32_t key)
+{
+    ASSERT(key >= 0);
+    ASSERT(key < GLFW_KEY_LAST);
+
+    std::scoped_lock lock(m_inputMutex);
+    m_keyPressed[key] = false;
+    m_keyboardUpdated = true;
 }
 
-bool KeyboardMouseInput::is_key_pressed(const std::int32_t key) const {
-  std::shared_lock lock(m_input_mutex);
-  return m_key_pressed[key];
+bool KeyboardMouseInput::IsKeyPressed(std::int32_t key) const
+{
+    ASSERT(key >= 0);
+    ASSERT(key < GLFW_KEY_LAST);
+
+    std::shared_lock lock(m_inputMutex);
+    return m_keyPressed[key];
 }
-bool KeyboardMouseInput::was_key_pressed_once(const std::int32_t key) {
-  std::scoped_lock lock(m_input_mutex);
-  if (!m_key_pressed[key] || !m_keyboard_updated) {
-    return false;
-  }
+bool KeyboardMouseInput::WasKeyPressedOnce(std::int32_t key)
+{
+    ASSERT(key >= 0);
+    ASSERT(key < GLFW_KEY_LAST);
 
-  m_key_pressed[key] = false;
-  return true;
-}
+    std::scoped_lock lock(m_inputMutex);
+    if (!m_keyPressed[key] || !m_keyboardUpdated)
+    {
+        return false;
+    }
 
-void KeyboardMouseInput::press_mouse_button(const std::int32_t button) {
-
-  std::scoped_lock lock(m_input_mutex);
-  m_mouse_button_pressed[button] = true;
-  m_mouse_buttons_updated        = true;
-}
-
-void KeyboardMouseInput::release_mouse_button(const std::int32_t button) {
-  std::scoped_lock lock(m_input_mutex);
-  m_mouse_button_pressed[button] = false;
-  m_mouse_buttons_updated        = true;
+    m_keyPressed[key] = false;
+    return true;
 }
 
-bool KeyboardMouseInput::is_mouse_button_pressed(const std::int32_t button) const {
-  std::shared_lock lock(m_input_mutex);
-  return m_mouse_button_pressed[button];
+void KeyboardMouseInput::PressMouseButton(std::int32_t button)
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
+
+    std::scoped_lock lock(m_inputMutex);
+    m_mouseButtonPressed[button] = true;
+    m_mouseButtonsUpdated        = true;
 }
 
-bool KeyboardMouseInput::was_mouse_button_pressed_once(const std::int32_t button) {
-  std::scoped_lock lock(m_input_mutex);
-  if (!m_mouse_button_pressed[button] || !m_mouse_buttons_updated) {
-    return false;
-  }
+void KeyboardMouseInput::ReleaseMouseButton(std::int32_t button)
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
 
-  m_mouse_button_pressed[button] = false;
-  return true;
+    std::scoped_lock lock(m_inputMutex);
+    m_mouseButtonPressed[button] = false;
+    m_mouseButtonsUpdated        = true;
 }
 
-void KeyboardMouseInput::set_cursor_pos(const double pos_x, const double pos_y) {
-  std::scoped_lock lock(m_input_mutex);
-  if (m_first_mouse) {
-    m_previous_cursor_pos[0] = pos_x;
-    m_previous_cursor_pos[1] = pos_y;
-    m_first_mouse            = false;
-  }
-  if (!m_mouse_paused) {
-    m_current_cursor_pos[0] = static_cast<std::int64_t>(pos_x);
-    m_current_cursor_pos[1] = static_cast<std::int64_t>(pos_y);
-  }
+bool KeyboardMouseInput::IsMouseButtonPressed(std::int32_t button) const
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
+
+    std::shared_lock lock(m_inputMutex);
+    return m_mouseButtonPressed[button];
 }
 
-std::array<std::int64_t, 2> KeyboardMouseInput::get_cursor_pos() const {
-  std::shared_lock lock(m_input_mutex);
-  return m_current_cursor_pos;
+bool KeyboardMouseInput::WasMouseButtonPressedOnce(std::int32_t button)
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
+
+    std::scoped_lock lock(m_inputMutex);
+    if (!m_mouseButtonPressed[button] || !m_mouseButtonsUpdated)
+    {
+        return false;
+    }
+
+    m_mouseButtonPressed[button] = false;
+    return true;
 }
 
-std::array<double, 2> KeyboardMouseInput::calculate_cursor_position_delta() {
-  std::scoped_lock lock(m_input_mutex);
-  // Calculate the change in cursor position in x- and y-axis.
-  const std::array m_cursor_pos_delta{
-      static_cast<double>(m_current_cursor_pos[0]) - static_cast<double>(m_previous_cursor_pos[0]),
-      static_cast<double>(m_previous_cursor_pos[1]) - static_cast<double>(m_current_cursor_pos[1])};
-
-  m_previous_cursor_pos = m_current_cursor_pos;
-
-  return m_cursor_pos_delta;
+void KeyboardMouseInput::SetCursorPos(const double pos_x, const double pos_y)
+{
+    std::scoped_lock lock(m_inputMutex);
+    if (m_firstMouse)
+    {
+        m_previousCursorPos[0] = pos_x;
+        m_previousCursorPos[1] = pos_y;
+        m_firstMouse           = false;
+    }
+    if (!m_mousePaused)
+    {
+        m_currentCursorPos[0] = static_cast<std::int64_t>(pos_x);
+        m_currentCursorPos[1] = static_cast<std::int64_t>(pos_y);
+    }
 }
 
-void KeyboardMouseInput::resume() {
-  std::scoped_lock lock(m_input_mutex);
-  m_current_cursor_pos = m_previous_cursor_pos;
-  m_first_mouse        = true;
-  m_mouse_paused       = false;
+std::array<std::int64_t, 2> KeyboardMouseInput::GetCursorPos() const
+{
+    std::shared_lock lock(m_inputMutex);
+    return m_currentCursorPos;
 }
 
-void KeyboardMouseInput::pause() {
-  std::scoped_lock lock(m_input_mutex);
-  m_mouse_paused = true;
+std::array<double, 2> KeyboardMouseInput::CalculateCursorPositionDelta()
+{
+    std::scoped_lock lock(m_inputMutex);
+    // Calculate the change in cursor position in x- and y-axis.
+    const std::array m_cursor_pos_delta{
+        static_cast<double>(m_currentCursorPos[0]) - static_cast<double>(m_previousCursorPos[0]),
+        static_cast<double>(m_previousCursorPos[1]) - static_cast<double>(m_currentCursorPos[1])};
+
+    m_previousCursorPos = m_currentCursorPos;
+
+    return m_cursor_pos_delta;
 }
-}  // namespace zen::platform
+
+void KeyboardMouseInput::Resume()
+{
+    std::scoped_lock lock(m_inputMutex);
+    m_currentCursorPos = m_previousCursorPos;
+    m_firstMouse       = true;
+    m_mousePaused      = false;
+}
+
+void KeyboardMouseInput::Pause()
+{
+    std::scoped_lock lock(m_inputMutex);
+    m_mousePaused = true;
+}
+} // namespace zen::platform

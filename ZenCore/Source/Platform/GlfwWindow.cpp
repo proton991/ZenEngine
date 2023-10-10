@@ -130,10 +130,10 @@ bool GlfwWindowImpl::CenterWindow()
 void GlfwWindowImpl::SetupWindowCallbacks()
 {
     const auto resize_callback = [](GLFWwindow* w, int width, int height) {
-        auto* window_data          = static_cast<WindowData*>(glfwGetWindowUserPointer(w));
-        window_data->width         = width;
-        window_data->height        = height;
-        window_data->should_resize = true;
+        auto* window_data         = static_cast<WindowData*>(glfwGetWindowUserPointer(w));
+        window_data->width        = width;
+        window_data->height       = height;
+        window_data->shouldResize = true;
         LOGI("Window resized to {} x {}", width, height);
     };
     glfwSetWindowSizeCallback(m_handle, resize_callback);
@@ -146,10 +146,10 @@ void GlfwWindowImpl::SetupWindowCallbacks()
         switch (action)
         {
             case GLFW_PRESS:
-                KeyboardMouseInput::GetInstance().press_key(key);
+                KeyboardMouseInput::GetInstance().PressKey(key);
                 break;
             case GLFW_RELEASE:
-                KeyboardMouseInput::GetInstance().release_key(key);
+                KeyboardMouseInput::GetInstance().ReleaseKey(key);
                 break;
             default:
                 break;
@@ -158,7 +158,7 @@ void GlfwWindowImpl::SetupWindowCallbacks()
     glfwSetKeyCallback(m_handle, key_callback);
 
     const auto cursor_pos_callback = [](GLFWwindow* w, auto xPos, auto yPos) {
-        KeyboardMouseInput::GetInstance().set_cursor_pos(xPos, yPos);
+        KeyboardMouseInput::GetInstance().SetCursorPos(xPos, yPos);
     };
     glfwSetCursorPosCallback(m_handle, cursor_pos_callback);
 
@@ -170,10 +170,10 @@ void GlfwWindowImpl::SetupWindowCallbacks()
         switch (action)
         {
             case GLFW_PRESS:
-                KeyboardMouseInput::GetInstance().press_mouse_button(button);
+                KeyboardMouseInput::GetInstance().PressMouseButton(button);
                 break;
             case GLFW_RELEASE:
-                KeyboardMouseInput::GetInstance().release_mouse_button(button);
+                KeyboardMouseInput::GetInstance().ReleaseMouseButton(button);
                 break;
             default:
                 break;
@@ -195,10 +195,10 @@ void GlfwWindowImpl::HideCursor() const
 void GlfwWindowImpl::Update()
 {
     glfwPollEvents();
-    if (KeyboardMouseInput::GetInstance().was_key_pressed_once(GLFW_KEY_TAB))
+    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_TAB))
     {
-        m_data.show_cursor = !m_data.show_cursor;
-        if (m_data.show_cursor)
+        m_data.showCursor = !m_data.showCursor;
+        if (m_data.showCursor)
         {
             ShowCursor();
         }
@@ -207,10 +207,10 @@ void GlfwWindowImpl::Update()
             HideCursor();
         }
     }
-    if (KeyboardMouseInput::GetInstance().is_key_pressed(GLFW_KEY_ESCAPE) ||
+    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE) ||
         glfwWindowShouldClose(m_handle))
     {
-        m_data.should_close = true;
+        m_data.shouldClose = true;
         glfwSetWindowShouldClose(m_handle, GL_TRUE);
     }
 }
