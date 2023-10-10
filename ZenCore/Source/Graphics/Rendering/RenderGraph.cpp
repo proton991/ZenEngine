@@ -71,15 +71,14 @@ void RDGPass::ReadFromDepthStencilImage(const std::string& tag)
     m_inImagesResources.push_back(res);
 }
 
-void RDGPass::ReadFromGenericTexture(const Tag& tag)
+void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* image)
 {
-    auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(VK_IMAGE_USAGE_SAMPLED_BIT);
-    res->ReadInPass(m_index);
+    m_externImageResources[tag] = image;
+}
 
-    RDGAccessedTexture accTexture;
-    accTexture.registry = res;
-    m_inTextures.push_back(accTexture);
+void RDGPass::ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer)
+{
+    m_externBufferResources[tag] = buffer;
 }
 
 void RDGPass::BindSRD(const Tag& rdgResourceTag, VkShaderStageFlagBits shaderStage, const std::string& shaderResourceName)
@@ -602,8 +601,11 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer, const va
     }
 }
 
-void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* commandBuffer)
+void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
 {
+    // do not support dynamic descriptors for now, only update once
+    if (pass.descriptorSetsUpdated)
+        return;
     // update descriptors
     std::vector<VkWriteDescriptorSet>   dsWrites;
     std::vector<VkDescriptorBufferInfo> dsBufferInfos;
@@ -612,14 +614,23 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
     auto& rdgPass = m_passes[pass.index];
     for (const auto& [tag, shaderRes] : rdgPass->GetSRDBinding())
     {
-        auto& rdgResource = m_resources[m_resourceToIndex[tag]];
         // TODO: add support for more descriptor types
         if (shaderRes.type == val::ShaderResourceType::ImageSampler)
         {
+            bool isExternal = rdgPass->GetExternImageResources().count(tag) != 0;
+
             VkDescriptorImageInfo info{};
             info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-            info.imageView   = m_physicalImages[rdgResource->GetPhysicalIndex()]->GetView();
             info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
+            if (isExternal)
+            {
+                info.imageView = rdgPass->GetExternImageResources().at(tag)->GetView();
+            }
+            else
+            {
+                auto physicalIndex = m_resources[m_resourceToIndex[tag]]->GetPhysicalIndex();
+                info.imageView     = m_physicalImages[physicalIndex]->GetView();
+            }
             dsImageInfos.push_back(info);
 
             VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -632,10 +643,23 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         }
         if (shaderRes.type == val::ShaderResourceType::BufferUniform || shaderRes.type == val::ShaderResourceType::BufferStorage)
         {
+            bool isExternal = rdgPass->GetExternBufferResources().count(tag) != 0;
+
             VkDescriptorBufferInfo info{};
-            info.buffer = m_physicalBuffers[rdgResource->GetPhysicalIndex()]->GetHandle();
             info.offset = 0;
-            info.range  = m_physicalBuffers[rdgResource->GetPhysicalIndex()]->GetSize();
+            if (isExternal)
+            {
+                auto* buffer = rdgPass->GetExternBufferResources().at(tag);
+                info.buffer  = buffer->GetHandle();
+                info.range   = buffer->GetSize();
+            }
+            else
+            {
+                auto physicalIndex = m_resources[m_resourceToIndex[tag]]->GetPhysicalIndex();
+                info.buffer        = m_physicalBuffers[physicalIndex]->GetHandle();
+                info.range         = m_physicalBuffers[physicalIndex]->GetSize();
+            }
+
             dsBufferInfos.push_back(info);
 
             VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -648,6 +672,14 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         }
     }
     m_renderDevice.UpdateDescriptorSets(dsWrites);
+    pass.descriptorSetsUpdated = true;
+}
+
+void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* commandBuffer)
+{
+
+    UpdateDescriptorSets(pass);
+    auto& rdgPass = m_passes[pass.index];
     // Before render
     EmitPipelineBarrier(commandBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()], m_resourceState.perPassBufferState[rdgPass->GetTag()]);
     // On render

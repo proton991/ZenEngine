@@ -130,11 +130,6 @@ private:
     Info m_info{};
 };
 
-struct RDGAccessedTexture
-{
-    RDGImage* registry{nullptr};
-};
-
 /**
  * @brief A render graph pass in a render graph
  * @note Distinguish between vulkan's render pass
@@ -158,13 +153,17 @@ public:
 
     void ReadFromDepthStencilImage(const Tag& tag);
 
-    void ReadFromGenericTexture(const Tag& tag);
+    void ReadFromExternalImage(const Tag& tag, val::Image* image);
+
+    void ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer);
 
     const auto& GetIndex() const { return m_index; }
     const auto& GetOutImageResources() const { return m_outImageResources; }
     const auto& GetOutBufferResources() const { return m_outBufferResources; }
     const auto& GetInImageResources() const { return m_inImagesResources; }
     const auto& GetInBufferResources() const { return m_inBuffersResources; }
+    const auto& GetExternImageResources() const { return m_externImageResources; }
+    const auto& GetExternBufferResources() const { return m_externBufferResources; }
     const auto& GetTag() const { return m_tag; }
 
     void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
@@ -200,8 +199,6 @@ private:
     // input resources
     std::vector<RDGImage*>  m_inImagesResources;
     std::vector<RDGBuffer*> m_inBuffersResources;
-    // input texture resources
-    std::vector<RDGAccessedTexture> m_inTextures;
     // clear screen
     bool m_clearScreen{false};
 
@@ -210,6 +207,8 @@ private:
 
     std::unordered_map<Tag, val::ShaderResource> m_srdBinding;
     std::unordered_map<Tag, val::Sampler*>       m_samplerBinding;
+    std::unordered_map<Tag, val::Image*>         m_externImageResources;
+    std::unordered_map<Tag, val::Buffer*>        m_externBufferResources;
 
     std::function<void(val::CommandBuffer*)> m_onExecute{[](auto*) {
     }};
@@ -269,6 +268,7 @@ private:
         std::vector<VkDescriptorSet> descriptorSets;
         UniquePtr<val::Framebuffer>  framebuffer;
         uint32_t                     index{0};
+        bool                         descriptorSetsUpdated{false};
 
         std::function<void(val::CommandBuffer*)> onExecute{[](auto*) {
         }};
@@ -297,6 +297,8 @@ private:
     void CopyToPresentImage(val::CommandBuffer* commandBuffer, const val::Image& presentImage);
 
     void RunPass(PhysicalPass& pass, val::CommandBuffer* commandBuffer);
+
+    void UpdateDescriptorSets(PhysicalPass& pass);
 
     std::unordered_map<Tag, Index>         m_resourceToIndex;
     std::unordered_map<Tag, Index>         m_passToIndex;
