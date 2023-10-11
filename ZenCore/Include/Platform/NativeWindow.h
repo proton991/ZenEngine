@@ -26,5 +26,7 @@ public:
 
     virtual std::vector<const char*> GetInstanceExtensions() = 0;
     virtual std::vector<const char*> GetDeviceExtensions() { return {"VK_KHR_swapchain"}; }
+
+    virtual float GetAspect() = 0;
 };
 } // namespace zen::platform

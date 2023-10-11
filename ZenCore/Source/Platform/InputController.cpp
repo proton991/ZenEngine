@@ -112,13 +112,13 @@ std::array<std::int64_t, 2> KeyboardMouseInput::GetCursorPos() const
     return m_currentCursorPos;
 }
 
-std::array<double, 2> KeyboardMouseInput::CalculateCursorPositionDelta()
+std::array<float, 2> KeyboardMouseInput::CalculateCursorPositionDelta()
 {
     std::scoped_lock lock(m_inputMutex);
     // Calculate the change in cursor position in x- and y-axis.
     const std::array m_cursor_pos_delta{
-        static_cast<double>(m_currentCursorPos[0]) - static_cast<double>(m_previousCursorPos[0]),
-        static_cast<double>(m_previousCursorPos[1]) - static_cast<double>(m_currentCursorPos[1])};
+        static_cast<float>(m_currentCursorPos[0]) - static_cast<float>(m_previousCursorPos[0]),
+        static_cast<float>(m_previousCursorPos[1]) - static_cast<float>(m_currentCursorPos[1])};
 
     m_previousCursorPos = m_currentCursorPos;
 

@@ -63,7 +63,7 @@ public:
     template <typename T>
     SubmitInfo Submit(const T* data)
     {
-        return Submit(static_cast<uint8_t*>(data), uint32_t(sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(data), uint32_t(sizeof(T)));
     }
 
 private:

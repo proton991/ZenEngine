@@ -3,7 +3,7 @@
 #include "Graphics/Val/Swapchain.h"
 #include "Common/UniquePtr.h"
 #include "Platform/GlfwWindow.h"
-
+#include "Graphics/Val/CommandBuffer.h"
 
 namespace zen
 {
@@ -37,10 +37,20 @@ public:
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
     template <typename T>
-    void UpdateUniformBuffer(const T* data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer);
+    void UpdateUniformBuffer(const T* data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
+    {
+        StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
+        auto           submitInfo    = stagingBuffer->Submit(data);
+        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
+    }
 
     template <typename T>
-    void UpdateUniformBuffer(ArrayView<T> data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer);
+    void UpdateUniformBuffer(ArrayView<T> data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
+    {
+        StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
+        auto           submitInfo    = stagingBuffer->Submit(data);
+        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
+    }
 
 private:
     void Init();

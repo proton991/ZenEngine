@@ -467,7 +467,7 @@ void RenderGraph::BuildPhysicalPasses()
         physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(*physicalPass.pipelineLayout, physicalPass.pipelineState);
 
         auto& dsLayouts = physicalPass.pipelineLayout->GetDescriptorSetLayouts();
-        physicalPass.descriptorSets.reserve(dsLayouts.size());
+        physicalPass.descriptorSets.resize(dsLayouts.size());
         for (const auto& dsLayout : dsLayouts)
         {
             physicalPass.descriptorSets[dsLayout.GetSetIndex()] = m_renderDevice.RequestDescriptorSet(dsLayout);

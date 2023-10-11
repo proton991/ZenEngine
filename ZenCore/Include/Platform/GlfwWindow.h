@@ -29,6 +29,8 @@ public:
         return {static_cast<uint32_t>(m_data.width), static_cast<uint32_t>(m_data.height)};
     }
 
+    float GetAspect() override { return static_cast<float>(m_data.width) / static_cast<float>(m_data.height); }
+
 private:
     void SetupWindowCallbacks();
     bool CenterWindow();

@@ -201,10 +201,14 @@ void GlfwWindowImpl::Update()
         if (m_data.showCursor)
         {
             ShowCursor();
+            KeyboardMouseInput::GetInstance().SetDirty(false);
+            KeyboardMouseInput::GetInstance().Pause();
         }
         else
         {
             HideCursor();
+            KeyboardMouseInput::GetInstance().SetDirty(true);
+            KeyboardMouseInput::GetInstance().Resume();
         }
     }
     if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE) ||

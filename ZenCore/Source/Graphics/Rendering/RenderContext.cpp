@@ -174,20 +174,4 @@ void RenderContext::SubmitImmediate(val::CommandBuffer* pCmdBuffer)
     m_synObjPool.WaitForFences();
     m_synObjPool.ResetFences();
 }
-
-template <typename T>
-void RenderContext::UpdateUniformBuffer(const T* data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
-{
-    StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-    auto           submitInfo    = stagingBuffer->Submit(data);
-    pCmdBuffer->CopyBuffer(stagingBuffer->GetHandle(), submitInfo.offset, uniformBuffer, 0, submitInfo.size);
-}
-
-template <typename T>
-void RenderContext::UpdateUniformBuffer(ArrayView<T> data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
-{
-    StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-    auto           submitInfo    = stagingBuffer->Submit(data);
-    pCmdBuffer->CopyBuffer(stagingBuffer->GetHandle(), submitInfo.offset, uniformBuffer, 0, submitInfo.size);
-}
 } // namespace zen

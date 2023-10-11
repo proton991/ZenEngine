@@ -19,6 +19,8 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Rendering/ShaderManager.h
     Include/Graphics/Rendering/TextureManager.h
 
+    Include/Systems/Camera.h
+
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
     Include/Graphics/Val/CommandPool.h
@@ -47,6 +49,7 @@ set(ZEN_CORE_HEADERS
     Include/Platform/GlfwWindow.h
     Include/Platform/InputController.h
     Include/Platform/NativeWindow.h
+    Include/Platform/Timer.h
     )
 
 set(ZEN_CORE_SOURCES
@@ -56,6 +59,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Rendering/RenderContext.cpp
     Source/Graphics/Rendering/SynObjPool.cpp
     Source/Graphics/Rendering/TextureManager.cpp
+
+    Source/Systems/Camera.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp

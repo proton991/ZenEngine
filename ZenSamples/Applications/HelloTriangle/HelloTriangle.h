@@ -4,10 +4,17 @@
 #include "Graphics/Rendering/RenderContext.h"
 #include "Graphics/Rendering/ShaderManager.h"
 #include "Graphics/Rendering/RenderBuffers.h"
+#include "Platform/Timer.h"
+#include "Systems/Camera.h"
 #include "Common/Math.h"
 
 namespace zen
 {
+struct CameraUniformData
+{
+    Mat4 projViewMatrix{1.0f};
+};
+
 class HelloTriangle : public Application
 {
     struct Vertex
@@ -40,5 +47,12 @@ private:
     UniquePtr<ShaderManager> m_shaderManager;
 
     UniquePtr<VertexBuffer> m_vertexBuffer;
+
+    UniquePtr<sys::Camera> m_camera;
+
+    UniquePtr<UniformBuffer> m_cameraUniformBuffer;
+    CameraUniformData        m_cameraUniformData{};
+
+    UniquePtr<platform::Timer> m_timer;
 };
 } // namespace zen

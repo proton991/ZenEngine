@@ -18,14 +18,21 @@ void HelloTriangle::Prepare(const platform::WindowConfig& windowConfig)
     m_windowWidth   = windowConfig.width;
     m_shaderManager = MakeUnique<ShaderManager>(*m_device);
 
+    m_cameraUniformBuffer = UniformBuffer::CreateUnique(*m_device, sizeof(CameraUniformData));
+
     SetupRenderGraph();
 
     LoadModel();
+
+    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, m_window->GetAspect());
+    m_timer  = MakeUnique<platform::Timer>();
 }
 
 void HelloTriangle::Update(float deltaTime)
 {
     Application::Update(deltaTime);
+    m_camera->Update(deltaTime);
+    m_cameraUniformData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
 }
 
 void HelloTriangle::SetupRenderGraph()
@@ -39,6 +46,8 @@ void HelloTriangle::SetupRenderGraph()
     outputImgInfo.format = m_renderContext->GetSwapchainFormat();
     outputImgInfo.usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     mainPass->WriteToColorImage("Output", outputImgInfo);
+    mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUniformBuffer.Get());
+    mainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
     mainPass->SetOnExecute([&](val::CommandBuffer* commandBuffer) {
         auto extent = m_renderContext->GetSwapchainExtent2D();
         commandBuffer->SetViewport(static_cast<float>(extent.width), static_cast<float>(extent.height));
@@ -57,7 +66,9 @@ void HelloTriangle::Run()
     while (!m_window->ShouldClose())
     {
         m_window->Update();
+        Update(m_timer->Tick());
         auto* commandBuffer = m_renderContext->StartFrame(val::CommandPool::ResetMode::ResetPool);
+        m_renderContext->UpdateUniformBuffer<CameraUniformData>(&m_cameraUniformData, m_cameraUniformBuffer.Get(), commandBuffer);
         m_renderGraph->Execute(commandBuffer, m_renderContext.Get());
         m_renderContext->EndFrame();
     }
@@ -66,9 +77,9 @@ void HelloTriangle::Run()
 void HelloTriangle::LoadModel()
 {
     std::vector<Vertex> vertices = {
-        {Vec3(0.5f, 0.5f, 0.0f), Vec3(1.0f, 0.0f, 0.0f)},
-        {Vec3(0.5f, -0.5f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)},
-        {Vec3(-0.5f, 0.5f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)}};
+        {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f)},
+        {Vec3(0.5f, -0.5f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)},
+        {Vec3(-0.5f, 0.5f, 1.0f), Vec3(0.0f, 0.0f, 1.0f)}};
     m_vertexBuffer = MakeUnique<VertexBuffer>(*m_device, GetArrayViewSize(MakeView(vertices)));
 
     auto* stagingBuffer = m_renderContext->GetCurrentStagingBuffer();

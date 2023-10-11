@@ -74,11 +74,15 @@ public:
     /// @brief Calculate the change in x- and y-position of the cursor.
     /// @return a std::array of size 2 which contains the change in x-position in index 0 and the change in y-position
     /// in index 1
-    [[nodiscard]] std::array<double, 2> CalculateCursorPositionDelta();
+    [[nodiscard]] std::array<float, 2> CalculateCursorPositionDelta();
 
     void Resume();
 
     void Pause();
+
+    bool IsDirty() const { return m_dirty; }
+
+    void SetDirty(bool flag) { m_dirty = flag; }
 
 private:
     KeyboardMouseInput() = default;
@@ -91,5 +95,6 @@ private:
     bool                                     m_firstMouse{true};
     mutable std::shared_mutex                m_inputMutex;
     bool                                     m_mousePaused{false};
+    bool                                     m_dirty{false};
 };
 } // namespace zen::platform

@@ -23,8 +23,14 @@ layout(location = 0) out vec3 out_color;
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
 
+layout(set = 0, binding = 0) uniform uCameraData
+{
+    mat4 uProjViewMatrix;
+};
+
 void main()
 {
-    gl_Position = vec4(inPos, 1.0);
+    gl_Position = uProjViewMatrix * vec4(inPos, 1.0);
+    //    gl_Position = vec4(inPos, 1.0);
     out_color = inColor;
 }
