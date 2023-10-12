@@ -149,9 +149,19 @@ void CommandBuffer::TransferLayout(Image* image, VkImageUsageFlags srcUsage, VkI
     PipelineBarrier(Image::UsageToPipelineStage(srcUsage), Image::UsageToPipelineStage(dstUsage), {}, {barrier});
 }
 
+void CommandBuffer::BindIndexBuffer(const Buffer& buffer, VkIndexType indexType)
+{
+    vkCmdBindIndexBuffer(m_handle, buffer.GetHandle(), 0, indexType);
+}
+
 void CommandBuffer::DrawVertices(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
 {
     vkCmdDraw(m_handle, vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+void CommandBuffer::DrawIndices(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
+{
+    vkCmdDrawIndexed(m_handle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
 void CommandBuffer::SetViewport(float width, float height)

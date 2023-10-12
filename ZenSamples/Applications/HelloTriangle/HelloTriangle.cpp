@@ -53,7 +53,8 @@ void HelloTriangle::SetupRenderGraph()
         commandBuffer->SetViewport(static_cast<float>(extent.width), static_cast<float>(extent.height));
         commandBuffer->SetScissor(extent.width, extent.height);
         commandBuffer->BindVertexBuffers(*m_vertexBuffer);
-        commandBuffer->DrawVertices(3, 1);
+        commandBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+        commandBuffer->DrawIndices(m_indexBuffer->GetIndexCount(), 1);
     });
     m_renderGraph->SetBackBufferTag("Output");
     m_renderGraph->SetBackBufferSize(m_windowWidth, m_windowHeight);
@@ -80,13 +81,18 @@ void HelloTriangle::LoadModel()
         {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f)},
         {Vec3(0.5f, -0.5f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)},
         {Vec3(-0.5f, 0.5f, 1.0f), Vec3(0.0f, 0.0f, 1.0f)}};
-    m_vertexBuffer = MakeUnique<VertexBuffer>(*m_device, GetArrayViewSize(MakeView(vertices)));
+    std::vector<uint32_t> indices = {0, 1, 2};
 
-    auto* stagingBuffer = m_renderContext->GetCurrentStagingBuffer();
-    auto  submitInfo    = stagingBuffer->Submit(MakeView(vertices));
-    auto* cmdBuffer     = m_renderContext->GetCommandBuffer();
+    m_vertexBuffer = VertexBuffer::CreateUnique(*m_device, GetArrayViewSize(MakeView(vertices)));
+    m_indexBuffer  = IndexBuffer::CreateUnique(*m_device, MakeView(indices));
+
+    auto* stagingBuffer      = m_renderContext->GetCurrentStagingBuffer();
+    auto  verticesSubmitInfo = stagingBuffer->Submit(MakeView(vertices));
+    auto  indicesSubmitInfo  = stagingBuffer->Submit(MakeView(indices));
+    auto* cmdBuffer          = m_renderContext->GetCommandBuffer();
     cmdBuffer->Begin();
-    cmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, m_vertexBuffer.Get(), 0, submitInfo.size);
+    cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0, verticesSubmitInfo.size);
+    cmdBuffer->CopyBuffer(stagingBuffer, indicesSubmitInfo.offset, m_indexBuffer.Get(), 0, indicesSubmitInfo.size);
     cmdBuffer->End();
     m_renderContext->SubmitImmediate(cmdBuffer);
     m_renderContext->ResetCommandPool();

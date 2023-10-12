@@ -97,12 +97,18 @@ public:
 class IndexBuffer : public val::Buffer
 {
 public:
-    static UniquePtr<IndexBuffer> CreateUnique(val::Device& valDevice, VkDeviceSize byteSize)
+    template <class IndexType>
+    static UniquePtr<IndexBuffer> CreateUnique(val::Device& valDevice, ArrayView<IndexType> indices)
     {
-        return MakeUnique<IndexBuffer>(valDevice, byteSize);
+        return MakeUnique<IndexBuffer>(valDevice, GetArrayViewSize(indices), indices.size());
     }
 
-    IndexBuffer(val::Device& valDevice, VkDeviceSize byteSize) :
-        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0) {}
+    IndexBuffer(val::Device& valDevice, VkDeviceSize byteSize, uint32_t indexCount) :
+        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0), m_indexCount(indexCount) {}
+
+    auto GetIndexCount() const { return m_indexCount; }
+
+private:
+    const uint32_t m_indexCount;
 };
 } // namespace zen
