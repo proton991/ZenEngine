@@ -22,12 +22,12 @@ class RenderPass : public DeviceObject<VkRenderPass, VK_OBJECT_TYPE_RENDER_PASS>
 public:
     ~RenderPass();
     // Single subpass RenderPass
-    RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo);
+    RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo);
 
     RenderPass(RenderPass&& other) noexcept;
 
 private:
-    RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps);
+    RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps);
     friend class RenderPassBuilder;
 };
 

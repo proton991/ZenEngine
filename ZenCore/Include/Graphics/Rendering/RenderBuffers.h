@@ -21,7 +21,7 @@ public:
         return MakeUnique<StagingBuffer>(valDevice, byteSize);
     }
 
-    StagingBuffer(val::Device& valDevice, size_t byteSize) :
+    StagingBuffer(const val::Device& valDevice, size_t byteSize) :
         val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
     {
         MapMemory();

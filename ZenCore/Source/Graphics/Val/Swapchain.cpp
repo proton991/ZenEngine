@@ -4,7 +4,7 @@
 
 namespace zen::val
 {
-Swapchain::Swapchain(Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain, uint32_t imageCount, bool vsync) :
+Swapchain::Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain, uint32_t imageCount, bool vsync) :
     DeviceObject(device), m_surface(surface), m_extent(extent), m_vsync(vsync)
 {
     const std::vector<VkSurfaceFormatKHR> surfaceFormatPriorityList = {{VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},

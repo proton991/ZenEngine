@@ -33,7 +33,7 @@ public:
 
     VkPhysicalDevice GetPhysicalDeviceHandle() const { return m_physicalDevice->GetHandle(); }
 
-    const Queue& GetQueue(QueueType queueType);
+    const Queue& GetQueue(QueueType queueType) const;
 
     VmaAllocator GetAllocator() const { return m_memAllocator; }
 

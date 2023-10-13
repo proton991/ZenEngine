@@ -5,7 +5,7 @@
 
 namespace zen::val
 {
-DescriptorPoolManager::DescriptorPoolManager(Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree) :
+DescriptorPoolManager::DescriptorPoolManager(const Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree) :
     m_device(device), m_maxSets(poolSizes.maxDescriptorSets), m_allowFree(allowFree), m_poolSizes{
                                                                                           {VK_DESCRIPTOR_TYPE_SAMPLER, poolSizes.numSeparateSamplerDescriptors},
                                                                                           {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, poolSizes.numCombinedSamplerDescriptors},
@@ -78,7 +78,7 @@ VkDescriptorPool DescriptorPoolManager::CreatePool()
     return pool;
 }
 
-DescriptorSetAllocator::DescriptorSetAllocator(Device& device, DescriptorPoolManager& poolManager) :
+DescriptorSetAllocator::DescriptorSetAllocator(const Device& device, DescriptorPoolManager& poolManager) :
     m_device(device), m_poolManager(poolManager)
 {
 }

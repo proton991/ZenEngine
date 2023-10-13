@@ -7,7 +7,7 @@
 
 namespace zen::val
 {
-GraphicsPipeline::GraphicsPipeline(Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, VkPipelineCache pipelineCache) :
+GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, VkPipelineCache pipelineCache) :
     DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;

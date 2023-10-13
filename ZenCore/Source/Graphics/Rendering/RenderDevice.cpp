@@ -3,7 +3,7 @@
 
 namespace zen
 {
-RenderDevice::RenderDevice(val::Device& valDevice) :
+RenderDevice::RenderDevice(const val::Device& valDevice) :
     m_valDevice(valDevice), m_descriptorPoolManager(valDevice, val::MainDescriptorPoolSizes(), false), m_descriptorAllocator(valDevice, m_descriptorPoolManager)
 {
     m_resourceCache = MakeUnique<ResourceCache>(m_valDevice);

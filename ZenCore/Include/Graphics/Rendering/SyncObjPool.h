@@ -6,7 +6,7 @@ namespace zen
 class SynObjPool
 {
 public:
-    explicit SynObjPool(val::Device& device) :
+    explicit SynObjPool(const val::Device& device) :
         m_valDevice(device) {}
 
     ~SynObjPool();
@@ -26,7 +26,7 @@ public:
     void WaitForFences(uint32_t timeout = std::numeric_limits<uint32_t>::max()) const;
 
 private:
-    val::Device& m_valDevice;
+    const val::Device& m_valDevice;
     // Fences
     std::vector<VkFence> m_fences;
     uint32_t             m_numActiveFences{0};

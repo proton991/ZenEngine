@@ -139,7 +139,7 @@ Device::Device(const Device::CreateInfo& CI)
     CHECK_VK_ERROR_AND_THROW(vmaCreateAllocator(&vmaCI, &m_memAllocator), "Failed to create VMA");
 }
 
-const Queue& Device::GetQueue(QueueType queueType)
+const Queue& Device::GetQueue(QueueType queueType) const
 {
     if (m_queues.count(queueType))
     {

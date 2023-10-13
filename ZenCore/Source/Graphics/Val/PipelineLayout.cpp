@@ -5,7 +5,7 @@
 
 namespace zen::val
 {
-PipelineLayout::PipelineLayout(Device& device, const std::vector<ShaderModule*>& shaderModules) :
+PipelineLayout::PipelineLayout(const Device& device, const std::vector<ShaderModule*>& shaderModules) :
     DeviceObject(device), m_shaderModules(shaderModules)
 {
     for (auto* shaderModule : shaderModules)

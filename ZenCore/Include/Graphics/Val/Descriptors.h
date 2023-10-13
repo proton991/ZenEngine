@@ -12,7 +12,7 @@ struct VulkanDescriptorPoolSizes;
 class DescriptorPoolManager
 {
 public:
-    DescriptorPoolManager(Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree);
+    DescriptorPoolManager(const Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree);
 
     void Cleanup();
 
@@ -37,14 +37,14 @@ private:
 class DescriptorSetAllocator
 {
 public:
-    DescriptorSetAllocator(Device& device, DescriptorPoolManager& poolManager);
+    DescriptorSetAllocator(const Device& device, DescriptorPoolManager& poolManager);
 
     VkDescriptorSet Allocate(const VkDescriptorSetLayout* layout);
 
     bool Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet);
 
 private:
-    Device&                m_device;
+    const Device&          m_device;
     DescriptorPoolManager& m_poolManager;
     VkDescriptorPool       m_currentPool{VK_NULL_HANDLE};
     std::mutex             m_mutex;

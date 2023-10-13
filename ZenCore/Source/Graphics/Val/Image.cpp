@@ -3,17 +3,17 @@
 
 namespace zen::val
 {
-SharedPtr<Image> Image::Create(Device& device, const ImageCreateInfo& CI)
+SharedPtr<Image> Image::Create(const Device& device, const ImageCreateInfo& CI)
 {
     return MakeShared<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
 }
 
-UniquePtr<Image> Image::CreateUnique(Device& device, const ImageCreateInfo& CI)
+UniquePtr<Image> Image::CreateUnique(const Device& device, const ImageCreateInfo& CI)
 {
     return MakeUnique<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
 }
 
-Image::Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples) :
+Image::Image(const Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples) :
     DeviceObject{device}, m_format{format}, m_extent3D(extent3D)
 {
     if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
@@ -109,7 +109,7 @@ VkImageType Image::GetImageType(VkExtent3D& extent)
     return result;
 }
 
-Image::Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format) :
+Image::Image(const Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format) :
     DeviceObject(device), m_extent3D(extent3D), m_format(format)
 {
     m_handle = handle;

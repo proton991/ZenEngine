@@ -6,7 +6,7 @@
 
 namespace zen
 {
-RenderContext::RenderContext(val::Device& device, platform::GlfwWindowImpl* window) :
+RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl* window) :
     m_valDevice(device), m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)), m_synObjPool(device)
 {
     m_surface   = window->CreateSurface(device.GetInstanceHandle());

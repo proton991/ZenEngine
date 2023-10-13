@@ -6,7 +6,7 @@
 
 namespace zen::val
 {
-ShaderModule::ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes) :
+ShaderModule::ShaderModule(const Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes) :
     DeviceObject(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
 {
     m_spirvCode = platform::FileSystem::LoadSpvFile(name);

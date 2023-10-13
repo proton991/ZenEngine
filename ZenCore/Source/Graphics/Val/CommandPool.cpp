@@ -4,13 +4,13 @@
 
 namespace zen::val
 {
-UniquePtr<CommandPool> CommandPool::Create(Device& device, const CommandPool::CreateInfo& CI)
+UniquePtr<CommandPool> CommandPool::Create(const Device& device, const CommandPool::CreateInfo& CI)
 {
     auto* cmdPool = new CommandPool(device, CI);
     return UniquePtr<CommandPool>(cmdPool);
 }
 
-CommandPool::CommandPool(Device& device, const CommandPool::CreateInfo& CI) :
+CommandPool::CommandPool(const Device& device, const CommandPool::CreateInfo& CI) :
     DeviceObject(device), m_threadId(CI.threadId), m_queueFamilyIndex(CI.queueFamilyIndex), m_resetMode(CI.resetMode)
 {
     VkCommandPoolCreateFlags flags;

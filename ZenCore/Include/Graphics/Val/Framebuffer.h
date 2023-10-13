@@ -10,7 +10,7 @@ class RenderPass;
 class Framebuffer : public DeviceObject<VkFramebuffer, VK_OBJECT_TYPE_FRAMEBUFFER>
 {
 public:
-    Framebuffer(Device& device, VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D);
+    Framebuffer(const Device& device, VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D);
     ~Framebuffer();
 
     VkRect2D GetRenderArea() const

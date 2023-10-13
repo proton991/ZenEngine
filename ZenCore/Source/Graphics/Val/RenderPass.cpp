@@ -14,7 +14,7 @@ SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors, const
     }
 }
 
-RenderPass::RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo) :
+RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo) :
     DeviceObject(device)
 {
     VkSubpassDescription subpassDescription{};
@@ -64,7 +64,7 @@ RenderPass::~RenderPass()
     }
 }
 
-RenderPass::RenderPass(Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps) :
+RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps) :
     DeviceObject(device)
 {
     std::vector<VkSubpassDescription> subpassDescriptions(subpassInfos.size());

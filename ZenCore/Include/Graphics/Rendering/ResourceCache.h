@@ -281,7 +281,7 @@ inline void HashParam<std::vector<val::SubpassInfo>>(
 
 
 template <class T, class... A>
-T& RequestResourceNoLock(val::Device& device, std::unordered_map<std::size_t, T>& resources, A&... args)
+T& RequestResourceNoLock(const val::Device& device, std::unordered_map<std::size_t, T>& resources, A&... args)
 {
     std::size_t hash{0U};
     HashParam(hash, args...);
@@ -326,7 +326,7 @@ T& RequestResourceNoLock(val::Device& device, std::unordered_map<std::size_t, T>
 }
 
 template <class T, class... A>
-T& RequestResource(val::Device& device, std::mutex& resourceMutex, std::unordered_map<std::size_t, T>& resources, A&... args)
+T& RequestResource(const val::Device& device, std::mutex& resourceMutex, std::unordered_map<std::size_t, T>& resources, A&... args)
 {
     std::lock_guard<std::mutex> guard(resourceMutex);
 
@@ -338,7 +338,7 @@ T& RequestResource(val::Device& device, std::mutex& resourceMutex, std::unordere
 class ResourceCache
 {
 public:
-    explicit ResourceCache(val::Device& device) :
+    explicit ResourceCache(const val::Device& device) :
         m_valDevice(device) {}
 
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments, const val::SubpassInfo& subpassInfo)
@@ -362,7 +362,7 @@ public:
 
 
 private:
-    val::Device& m_valDevice;
+    const val::Device& m_valDevice;
     struct MutexTable
     {
         std::mutex descriptorSetLayout;

@@ -4,17 +4,17 @@
 
 namespace zen::val
 {
-SharedPtr<Buffer> Buffer::Create(Device& device, const BufferCreateInfo& CI)
+SharedPtr<Buffer> Buffer::Create(const Device& device, const BufferCreateInfo& CI)
 {
     return MakeShared<Buffer>(device, CI.byteSize, CI.usage, CI.vmaFlags);
 }
 
-UniquePtr<Buffer> Buffer::CreateUnique(Device& device, const BufferCreateInfo& CI)
+UniquePtr<Buffer> Buffer::CreateUnique(const Device& device, const BufferCreateInfo& CI)
 {
     return MakeUnique<Buffer>(device, CI.byteSize, CI.usage, CI.vmaFlags);
 }
 
-Buffer::Buffer(Device& device, VkDeviceSize byteSize, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags) :
+Buffer::Buffer(const Device& device, VkDeviceSize byteSize, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags) :
     DeviceObject(device), m_byteSize(byteSize)
 {
     VkBufferCreateInfo bufferCI{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};

@@ -11,7 +11,7 @@ class ShaderManager
     using ShaderCache = std::unordered_map<std::string, val::ShaderModule>;
 
 public:
-    explicit ShaderManager(val::Device& valDevice) :
+    explicit ShaderManager(const val::Device& valDevice) :
         m_valDevice(valDevice) {}
 
     val::ShaderModule* RequestShader(const std::string& fileName, VkShaderStageFlagBits stage, val::RuntimeArraySizes runtimeArraySizes)
@@ -25,7 +25,7 @@ public:
     }
 
 private:
-    val::Device& m_valDevice;
-    ShaderCache  m_shaderCache;
+    const val::Device& m_valDevice;
+    ShaderCache        m_shaderCache;
 };
 } // namespace zen

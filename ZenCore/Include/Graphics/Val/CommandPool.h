@@ -24,13 +24,13 @@ public:
         ResetMode resetMode{ResetMode::ResetPool};
         uint32_t  threadId{0};
     };
-    static UniquePtr<CommandPool> Create(Device& device, const CreateInfo& CI);
+    static UniquePtr<CommandPool> Create(const Device& device, const CreateInfo& CI);
 
-    CommandPool(Device& device, const CreateInfo& CI);
+    CommandPool(const Device& device, const CreateInfo& CI);
 
     ~CommandPool();
 
-    Device& GetDevice() { return m_device; }
+    const Device& GetDevice() { return m_device; }
 
     CommandBuffer* RequestCommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 

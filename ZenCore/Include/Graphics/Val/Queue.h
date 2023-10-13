@@ -7,7 +7,7 @@ namespace zen::val
 class Queue : public DeviceObject<VkQueue, VK_OBJECT_TYPE_QUEUE>
 {
 public:
-    Queue(Device& device, uint32_t queueFamilyIndex, uint32_t index, bool supportPresent);
+    Queue(const Device& device, uint32_t queueFamilyIndex, uint32_t index, bool supportPresent);
 
     auto GetFamilyIndex() const { return m_familyIndex; }
 

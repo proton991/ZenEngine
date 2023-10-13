@@ -11,7 +11,7 @@ template <class VkHandleType, VkObjectType objectType>
 class DeviceObject
 {
 public:
-    explicit DeviceObject(Device& device) :
+    explicit DeviceObject(const Device& device) :
         m_device(device), m_handle(VK_NULL_HANDLE) {}
 
     DeviceObject(DeviceObject&& other) noexcept :
@@ -37,8 +37,8 @@ public:
         CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(m_device.GetHandle(), &ObjectNameInfo), "Failed to set debug object name");
     }
 
-    Device&      m_device;
-    VkHandleType m_handle;
-    std::string  m_debugName{};
+    const Device& m_device;
+    VkHandleType  m_handle;
+    std::string   m_debugName{};
 };
 } // namespace zen::val

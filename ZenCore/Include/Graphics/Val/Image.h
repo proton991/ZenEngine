@@ -22,17 +22,17 @@ struct ImageCreateInfo
 class Image : public DeviceObject<VkImage, VK_OBJECT_TYPE_IMAGE>
 {
 public:
-    static SharedPtr<Image> Create(Device& device, const ImageCreateInfo& info);
-    static UniquePtr<Image> CreateUnique(Device& device, const ImageCreateInfo& info);
+    static SharedPtr<Image> Create(const Device& device, const ImageCreateInfo& info);
+    static UniquePtr<Image> CreateUnique(const Device& device, const ImageCreateInfo& info);
 
-    Image(Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples);
+    Image(const Device& device, VkFormat format, VkExtent3D extent3D, VkImageUsageFlags usage, VmaAllocationCreateFlags vmaFlags, uint32_t mipLevels, uint32_t arrayLayers, VkImageTiling tiling, VkImageCreateFlags flags, VkSampleCountFlagBits samples);
 
-    Image(Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format);
+    Image(const Device& device, VkImage handle, VkExtent3D extent3D, VkFormat format);
 
     ~Image();
 
     Image(Image&& other) noexcept;
-    
+
     VkImageView GetView() const { return m_view; }
 
     const VkExtent3D& GetExtent3D() const { return m_extent3D; };

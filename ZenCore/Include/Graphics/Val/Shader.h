@@ -86,7 +86,7 @@ using RuntimeArraySizes = std::unordered_map<std::string, uint32_t>;
 class ShaderModule : public DeviceObject<VkShaderModule, VK_OBJECT_TYPE_SHADER_MODULE>
 {
 public:
-    ShaderModule(Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes);
+    ShaderModule(const Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes);
 
     ~ShaderModule();
 

@@ -10,7 +10,7 @@ namespace zen
 class RenderContext
 {
 public:
-    RenderContext(val::Device& device, platform::GlfwWindowImpl* window);
+    RenderContext(const val::Device& device, platform::GlfwWindowImpl* window);
 
     val::CommandBuffer* StartFrame(val::CommandPool::ResetMode resetMode);
 
@@ -61,7 +61,7 @@ private:
 
     void SubmitInternal();
 
-    val::Device& m_valDevice;
+    const val::Device& m_valDevice;
     // queue
     const val::Queue& m_queue;
     // VkSurfaceKHR is created and managed by RenderContext

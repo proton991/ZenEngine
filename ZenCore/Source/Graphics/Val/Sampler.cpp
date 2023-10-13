@@ -3,7 +3,7 @@
 
 namespace zen::val
 {
-Sampler::Sampler(Device& device, VkFilter filter, VkSamplerAddressMode addressMode) :
+Sampler::Sampler(const Device& device, VkFilter filter, VkSamplerAddressMode addressMode) :
     DeviceObject(device)
 {
     VkSamplerCreateInfo samplerCI{};

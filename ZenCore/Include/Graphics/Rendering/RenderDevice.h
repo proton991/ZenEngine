@@ -8,7 +8,7 @@ namespace zen
 class RenderDevice
 {
 public:
-    explicit RenderDevice(val::Device& valDevice);
+    explicit RenderDevice(const val::Device& valDevice);
 
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments, const val::SubpassInfo& subpassInfo);
 
@@ -25,9 +25,9 @@ public:
     VkDescriptorSet RequestDescriptorSet(const val::DescriptorSetLayout& layout);
 
     void UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>& writes);
-    
+
 private:
-    val::Device&             m_valDevice;
+    const val::Device&       m_valDevice;
     UniquePtr<ResourceCache> m_resourceCache;
 
     val::DescriptorPoolManager  m_descriptorPoolManager;

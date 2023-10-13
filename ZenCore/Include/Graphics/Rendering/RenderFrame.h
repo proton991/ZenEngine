@@ -11,7 +11,7 @@ namespace zen
 class RenderFrame
 {
 public:
-    RenderFrame(val::Device& device, UniquePtr<val::Image>&& swapchainImage) :
+    RenderFrame(const val::Device& device, UniquePtr<val::Image>&& swapchainImage) :
         m_valDevice(device), m_syncObjPool(m_valDevice), m_swapchainImage(std::move(swapchainImage))
     {
         m_stagingBuffer = MakeUnique<StagingBuffer>(m_valDevice, MAX_STAGING_BUFFER_SIZE);
@@ -36,7 +36,7 @@ public:
 private:
     val::CommandPool* GetCommandPool(uint32_t queueFamilyIndex, val::CommandPool::ResetMode resetMode);
 
-    val::Device& m_valDevice;
+    const val::Device& m_valDevice;
 
     SynObjPool m_syncObjPool;
 

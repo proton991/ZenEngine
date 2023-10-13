@@ -9,7 +9,7 @@ class DescriptorSetLayout;
 class PipelineLayout : public DeviceObject<VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT>
 {
 public:
-    PipelineLayout(Device& device, const std::vector<ShaderModule*>& shaderModules);
+    PipelineLayout(const Device& device, const std::vector<ShaderModule*>& shaderModules);
 
     PipelineLayout(PipelineLayout&& other) noexcept;
 
