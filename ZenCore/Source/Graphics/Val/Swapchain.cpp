@@ -52,6 +52,10 @@ Swapchain::Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D exte
 
     CHECK_VK_ERROR_AND_THROW(vkCreateSwapchainKHR(m_device.GetHandle(), &swapchainCI, nullptr, &m_handle), "Failed to create swapchain");
 
+    if (oldSwapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(m_device.GetHandle(), oldSwapchain, nullptr);
+    }
     // get images
     uint32_t numImages = 0;
     vkGetSwapchainImagesKHR(m_device.GetHandle(), m_handle, &numImages, nullptr);
@@ -108,18 +112,6 @@ VkPresentModeKHR Swapchain::ChoosePresentMode(bool vsync)
         }
     }
     return VK_PRESENT_MODE_IMMEDIATE_KHR;
-}
-
-Swapchain::~Swapchain()
-{
-    if (m_handle != VK_NULL_HANDLE)
-    {
-        vkDestroySwapchainKHR(m_device.GetHandle(), m_handle, nullptr);
-    }
-    if (m_surface != VK_NULL_HANDLE)
-    {
-        vkDestroySurfaceKHR(m_device.GetInstanceHandle(), m_surface, nullptr);
-    }
 }
 
 VkResult Swapchain::AcquireNextImage(uint32_t& imageIndex, VkSemaphore imageAcquiredSem, VkFence fence)

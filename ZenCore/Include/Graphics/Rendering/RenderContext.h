@@ -12,6 +12,8 @@ class RenderContext
 public:
     RenderContext(const val::Device& device, platform::GlfwWindowImpl* window);
 
+    ~RenderContext();
+
     val::CommandBuffer* StartFrame(val::CommandPool::ResetMode resetMode);
 
     void EndFrame();
@@ -52,12 +54,12 @@ public:
         pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
     }
 
+    void RecreateSwapchain(uint32_t newWidth, uint32_t newHeight);
+
 private:
     void Init();
 
     void StartFrameInternal();
-
-    void RecreateSwapchain();
 
     void SubmitInternal();
 

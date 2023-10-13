@@ -1,6 +1,7 @@
 #pragma once
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <functional>
 #include "NativeWindow.h"
 
 namespace zen::platform
@@ -31,6 +32,11 @@ public:
 
     float GetAspect() override { return static_cast<float>(m_data.width) / static_cast<float>(m_data.height); }
 
+    void SetOnResize(std::function<void(uint32_t, uint32_t)> callback)
+    {
+        m_onResize = std::move(callback);
+    }
+
 private:
     void SetupWindowCallbacks();
     bool CenterWindow();
@@ -48,6 +54,8 @@ private:
         bool showCursor{true};
         bool shouldResize{false};
     } m_data;
+
+    std::function<void(uint32_t, uint32_t)> m_onResize;
 };
 
 } // namespace zen::platform

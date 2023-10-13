@@ -10,7 +10,7 @@ class Swapchain : public DeviceObject<VkSwapchainKHR, VK_OBJECT_TYPE_SWAPCHAIN_K
 public:
     Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE, uint32_t imageCount = 3, bool vsync = true);
 
-    ~Swapchain();
+    ~Swapchain() = default;
 
     VkFormat GetFormat() const { return m_format; }
 

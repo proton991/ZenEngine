@@ -147,4 +147,9 @@ const Queue& Device::GetQueue(QueueType queueType) const
     }
     LOG_ERROR_AND_THROW("Queue not found!");
 }
+
+void Device::WaitIdle() const
+{
+    vkDeviceWaitIdle(m_handle);
+}
 } // namespace zen::val

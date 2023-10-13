@@ -14,8 +14,6 @@ void HelloTriangle::Prepare(const platform::WindowConfig& windowConfig)
     m_renderDevice  = MakeUnique<RenderDevice>(*m_device);
     m_renderContext = MakeUnique<RenderContext>(*m_device, m_window.Get());
     m_renderGraph   = MakeUnique<RenderGraph>(*m_renderDevice);
-    m_windowHeight  = windowConfig.height;
-    m_windowWidth   = windowConfig.width;
     m_shaderManager = MakeUnique<ShaderManager>(*m_device);
 
     m_cameraUniformBuffer = UniformBuffer::CreateUnique(*m_device, sizeof(CameraUniformData));
@@ -26,6 +24,11 @@ void HelloTriangle::Prepare(const platform::WindowConfig& windowConfig)
 
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, m_window->GetAspect());
     m_timer  = MakeUnique<platform::Timer>();
+    m_window->SetOnResize([&](uint32_t width, uint32_t height) {
+        m_renderContext->RecreateSwapchain(width, height);
+        m_renderGraph = MakeUnique<RenderGraph>(*m_renderDevice);
+        SetupRenderGraph();
+    });
 }
 
 void HelloTriangle::Update(float deltaTime)
@@ -57,7 +60,7 @@ void HelloTriangle::SetupRenderGraph()
         commandBuffer->DrawIndices(m_indexBuffer->GetIndexCount(), 1);
     });
     m_renderGraph->SetBackBufferTag("Output");
-    m_renderGraph->SetBackBufferSize(m_windowWidth, m_windowHeight);
+    m_renderGraph->SetBackBufferSize(m_window->GetExtent2D().width, m_window->GetExtent2D().height);
 
     m_renderGraph->Compile();
 }

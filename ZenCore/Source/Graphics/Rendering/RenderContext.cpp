@@ -14,6 +14,18 @@ RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl
     Init();
 }
 
+RenderContext::~RenderContext()
+{
+    if (m_swapchain)
+    {
+        vkDestroySwapchainKHR(m_valDevice.GetHandle(), m_swapchain->GetHandle(), nullptr);
+    }
+    if (m_surface != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(m_valDevice.GetInstanceHandle(), m_surface, nullptr);
+    }
+}
+
 void RenderContext::Init()
 {
     for (auto& imageHandle : m_swapchain->GetImages())
@@ -74,7 +86,7 @@ void RenderContext::EndFrame()
     // change image layout to present
     VkImageMemoryBarrier transferDstToPresentBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     transferDstToPresentBarrier.srcAccessMask       = val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    transferDstToPresentBarrier.srcAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
+    transferDstToPresentBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
     transferDstToPresentBarrier.oldLayout           = val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     transferDstToPresentBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     transferDstToPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -98,11 +110,7 @@ void RenderContext::EndFrame()
         presentInfo.pSwapchains        = &swapchainHandle;
         presentInfo.pImageIndices      = &m_activeFrameIndex;
 
-        VkResult result = m_queue.Present(&presentInfo);
-        if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            RecreateSwapchain();
-        }
+        m_queue.Present(&presentInfo);
     }
     // set frame state
     if (m_imageAcquiredSem != VK_NULL_HANDLE)
@@ -125,10 +133,6 @@ void RenderContext::StartFrameInternal()
     if (m_swapchain)
     {
         auto result = m_swapchain->AcquireNextImage(m_activeFrameIndex, m_imageAcquiredSem);
-        if (result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            RecreateSwapchain();
-        }
         if (result != VK_SUCCESS)
         {
             prevFrame.ReleaseSemaphoreWithOwnership(m_imageAcquiredSem);
@@ -142,8 +146,9 @@ void RenderContext::StartFrameInternal()
 /**
  * @brief Recreate Swapchain due to extent changes
  */
-void RenderContext::RecreateSwapchain()
+void RenderContext::RecreateSwapchain(uint32_t newWidth, uint32_t newHeight)
 {
+    m_valDevice.WaitIdle();
     VkSurfaceCapabilitiesKHR surfaceCaps;
     CHECK_VK_ERROR_AND_THROW(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_valDevice.GetPhysicalDeviceHandle(),
                                                                        m_surface,
@@ -156,11 +161,18 @@ void RenderContext::RecreateSwapchain()
 
     if (surfaceCaps.currentExtent.width != m_swapchain->GetExtent2D().width || surfaceCaps.currentExtent.height != m_swapchain->GetExtent2D().height)
     {
-        VkExtent2D newExtent = {surfaceCaps.currentExtent.width, surfaceCaps.currentExtent.height};
-        m_swapchain          = MakeUnique<val::Swapchain>(m_valDevice, m_surface, newExtent);
+        VkExtent2D newExtent = {std::clamp(newWidth, surfaceCaps.minImageExtent.width, surfaceCaps.maxImageExtent.width),
+                                std::clamp(newHeight, surfaceCaps.minImageExtent.height, surfaceCaps.maxImageExtent.height)};
+
+        m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, newExtent, m_swapchain->GetHandle());
         // recreate images
         m_frames.clear();
-        Init();
+        for (auto& imageHandle : m_swapchain->GetImages())
+        {
+            auto image = MakeUnique<val::Image>(m_valDevice, imageHandle, m_swapchain->GetExtent3D(), m_swapchain->GetFormat());
+            auto frame = RenderFrame(m_valDevice, std::move(image));
+            m_frames.push_back(std::move(frame));
+        }
     }
 }
 

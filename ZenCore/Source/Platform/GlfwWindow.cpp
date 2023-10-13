@@ -25,7 +25,7 @@ GlfwWindowImpl::GlfwWindowImpl(const WindowConfig& config)
     glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
 
     m_handle = glfwCreateWindow(config.width, config.height, config.title.c_str(), NULL, NULL);
-    glfwSetWindowUserPointer(m_handle, &m_data);
+    glfwSetWindowUserPointer(m_handle, (void*)this);
     CenterWindow();
     SetupWindowCallbacks();
 }
@@ -130,10 +130,15 @@ bool GlfwWindowImpl::CenterWindow()
 void GlfwWindowImpl::SetupWindowCallbacks()
 {
     const auto resize_callback = [](GLFWwindow* w, int width, int height) {
-        auto* window_data         = static_cast<WindowData*>(glfwGetWindowUserPointer(w));
-        window_data->width        = width;
-        window_data->height       = height;
-        window_data->shouldResize = true;
+        GlfwWindowImpl* window      = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(w));
+        window->m_data.width        = width;
+        window->m_data.height       = height;
+        window->m_data.shouldResize = true;
+
+        if (window->m_onResize)
+        {
+            window->m_onResize(width, height);
+        }
         LOGI("Window resized to {} x {}", width, height);
     };
     glfwSetWindowSizeCallback(m_handle, resize_callback);

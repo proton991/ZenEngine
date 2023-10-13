@@ -41,9 +41,6 @@ private:
     UniquePtr<RenderContext> m_renderContext;
     UniquePtr<RenderGraph>   m_renderGraph;
 
-    uint32_t m_windowWidth{0};
-    uint32_t m_windowHeight{0};
-
     UniquePtr<ShaderManager> m_shaderManager;
 
     UniquePtr<VertexBuffer> m_vertexBuffer;

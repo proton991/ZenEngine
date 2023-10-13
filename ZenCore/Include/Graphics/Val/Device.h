@@ -39,6 +39,8 @@ public:
 
     VkInstance GetInstanceHandle() const { return m_physicalDevice->GetInstanceHandle(); }
 
+    void WaitIdle() const;
+
 private:
     VkDevice                       m_handle{VK_NULL_HANDLE};
     PhysicalDevice*                m_physicalDevice{nullptr};
