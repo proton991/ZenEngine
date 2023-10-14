@@ -14,30 +14,45 @@ public:
 
     void Reset();
 
-    void PipelineBarrier(VkPipelineStageFlags srcPipelineStage, VkPipelineStageFlags dstPipelineStage, const std::vector<VkBufferMemoryBarrier>& bufferMemBarriers, const std::vector<VkImageMemoryBarrier>& imageMemBarriers);
+    void PipelineBarrier(VkPipelineStageFlags                      srcPipelineStage,
+                         VkPipelineStageFlags                      dstPipelineStage,
+                         const std::vector<VkBufferMemoryBarrier>& bufferMemBarriers,
+                         const std::vector<VkImageMemoryBarrier>&  imageMemBarriers);
 
-    void BlitImage(const Image& srcImage, VkImageUsageFlags srcUsage, const Image& dstImage, VkImageUsageFlags dstUsage);
+    void BlitImage(const Image&      srcImage,
+                   VkImageUsageFlags srcUsage,
+                   const Image&      dstImage,
+                   VkImageUsageFlags dstUsage);
 
-    void BeginRenderPass(const VkRenderPassBeginInfo& info, VkSubpassContents subpassContents = VK_SUBPASS_CONTENTS_INLINE);
+    void BeginRenderPass(const VkRenderPassBeginInfo& info,
+                         VkSubpassContents            subpassContents = VK_SUBPASS_CONTENTS_INLINE);
 
     void EndRenderPass();
 
     void BindGraphicPipeline(VkPipeline pipeline);
 
-    void BindDescriptorSets(VkPipelineLayout pipelineLayout, const std::vector<VkDescriptorSet>& descriptorSets);
+    void BindDescriptorSets(VkPipelineLayout                    pipelineLayout,
+                            const std::vector<VkDescriptorSet>& descriptorSets);
 
     void Begin();
 
     void End();
 
-    void CopyBuffer(Buffer* srcBuffer, size_t srcOffset, Buffer* dstBuffer, size_t dstOffset, size_t byteSize);
+    void CopyBuffer(Buffer* srcBuffer,
+                    size_t  srcOffset,
+                    Buffer* dstBuffer,
+                    size_t  dstOffset,
+                    size_t  byteSize);
 
-    void CopyBufferToImage(Buffer* srcBuffer, size_t srcOffset, Image* dstImage, uint32_t mipLevel = 0, uint32_t layer = 0);
+    void CopyBufferToImage(Buffer*  srcBuffer,
+                           size_t   srcOffset,
+                           Image*   dstImage,
+                           uint32_t mipLevel = 0,
+                           uint32_t layer    = 0);
 
     void TransferLayout(Image* image, VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage);
 
-    template <class... Buffers>
-    void BindVertexBuffers(Buffers&... vertexBuffers)
+    template <class... Buffers> void BindVertexBuffers(Buffers&... vertexBuffers)
     {
         constexpr size_t bufferCount          = sizeof...(Buffers);
         std::array       buffers              = {vertexBuffers.GetHandle()...};
@@ -47,15 +62,24 @@ public:
 
     void BindIndexBuffer(const Buffer& buffer, VkIndexType indexType);
 
-    void DrawVertices(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex = 0, uint32_t firstInstance = 0);
+    void DrawVertices(uint32_t vertexCount,
+                      uint32_t instanceCount,
+                      uint32_t firstVertex   = 0,
+                      uint32_t firstInstance = 0);
 
-    void DrawIndices(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex = 0, int32_t vertexOffset = 0, uint32_t firstInstance = 0);
+    void DrawIndices(uint32_t indexCount,
+                     uint32_t instanceCount,
+                     uint32_t firstIndex    = 0,
+                     int32_t  vertexOffset  = 0,
+                     uint32_t firstInstance = 0);
 
     void SetViewport(float width, float height);
 
     void SetScissor(uint32_t width, uint32_t height);
 
-    static VkImageMemoryBarrier GetImageBarrier(VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage, val::Image* image);
+    static VkImageMemoryBarrier GetImageBarrier(VkImageUsageFlags srcUsage,
+                                                VkImageUsageFlags dstUsage,
+                                                val::Image*       image);
 
 private:
     CommandPool& m_cmdPool;

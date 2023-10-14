@@ -38,8 +38,8 @@ int main(int argc, char** argv)
     val::RuntimeArraySizes runtimeArraySizes{{"textures", 4}};
     val::RuntimeArraySizes runtimeArraySizes2{};
 
-    val::ShaderModule testShader{
-        *valDevice, VK_SHADER_STAGE_FRAGMENT_BIT, "gbuffer.frag.spv", runtimeArraySizes2};
+    val::ShaderModule testShader{*valDevice, VK_SHADER_STAGE_FRAGMENT_BIT, "gbuffer.frag.spv",
+                                 runtimeArraySizes2};
     std::cout << "entry point: " << testShader.GetEntryPoint() << std::endl;
     auto& resources = testShader.GetResources();
     for (auto& resource : resources)
@@ -73,9 +73,6 @@ int main(int argc, char** argv)
     auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
     auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);
 
-    while (!window->ShouldClose())
-    {
-        window->Update();
-    }
+    while (!window->ShouldClose()) { window->Update(); }
     return 0;
 }

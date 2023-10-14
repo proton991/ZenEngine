@@ -17,13 +17,22 @@ public:
         m_stagingBuffer = MakeUnique<StagingBuffer>(m_valDevice, MAX_STAGING_BUFFER_SIZE);
     }
 
-    val::CommandBuffer* RequestCommandBuffer(uint32_t queueFamilyIndex, val::CommandPool::ResetMode resetMode, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    val::CommandBuffer* RequestCommandBuffer(
+        uint32_t                    queueFamilyIndex,
+        val::CommandPool::ResetMode resetMode,
+        VkCommandBufferLevel        level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
     VkSemaphore RequestSemaphore() { return m_syncObjPool.RequestSemaphore(); }
 
-    VkSemaphore RequestSemaphoreWithOwnership() { return m_syncObjPool.RequestSemaphoreWithOwnership(); }
+    VkSemaphore RequestSemaphoreWithOwnership()
+    {
+        return m_syncObjPool.RequestSemaphoreWithOwnership();
+    }
 
-    void ReleaseSemaphoreWithOwnership(VkSemaphore sem) { m_syncObjPool.ReleaseSemaphoreWithOwnership(sem); }
+    void ReleaseSemaphoreWithOwnership(VkSemaphore sem)
+    {
+        m_syncObjPool.ReleaseSemaphoreWithOwnership(sem);
+    }
 
     VkFence RequestFence() { return m_syncObjPool.RequestFence(); }
 
@@ -34,7 +43,8 @@ public:
     StagingBuffer* GetStagingBuffer() const { return m_stagingBuffer.Get(); }
 
 private:
-    val::CommandPool* GetCommandPool(uint32_t queueFamilyIndex, val::CommandPool::ResetMode resetMode);
+    val::CommandPool* GetCommandPool(uint32_t                    queueFamilyIndex,
+                                     val::CommandPool::ResetMode resetMode);
 
     const val::Device& m_valDevice;
 

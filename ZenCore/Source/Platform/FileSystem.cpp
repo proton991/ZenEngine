@@ -8,10 +8,7 @@ std::string FileSystem::LoadTextFile(const std::string& path)
 {
     std::ifstream file;
     file.open(path, std::ios::in);
-    if (!file.is_open())
-    {
-        throw std::runtime_error("Failed to open file: " + path);
-    }
+    if (!file.is_open()) { throw std::runtime_error("Failed to open file: " + path); }
 
     return std::string{(std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>())};
 }
@@ -21,10 +18,7 @@ std::vector<uint32_t> FileSystem::LoadSpvFile(const std::string& name)
     const auto    path = std::string(SPV_SHADER_PATH) + name;
     std::ifstream file(path, std::ios::ate | std::ios::binary);
 
-    if (!file.is_open())
-    {
-        LOG_FATAL_ERROR("Failed to load shader source");
-    }
+    if (!file.is_open()) { LOG_FATAL_ERROR("Failed to load shader source"); }
 
     //find what the size of the file is by looking up the location of the cursor
     //because the cursor is at the end, it gives the size directly in bytes

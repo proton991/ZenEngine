@@ -61,14 +61,8 @@ void Camera::SetProjectionMatrix()
 
 void Camera::UpdatePosition(float velocity)
 {
-    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_UP))
-    {
-        m_speed *= 2;
-    }
-    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_DOWN))
-    {
-        m_speed /= 2;
-    }
+    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_UP)) { m_speed *= 2; }
+    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_DOWN)) { m_speed /= 2; }
     if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_SPACE))
     {
         // reset position
@@ -125,13 +119,7 @@ void Camera::UpdateAspect(float aspect)
     SetProjectionMatrix();
 }
 
-Mat4 Camera::GetViewMatrix() const
-{
-    return glm::lookAt(m_position, m_position + m_front, m_up);
-}
+Mat4 Camera::GetViewMatrix() const { return glm::lookAt(m_position, m_position + m_front, m_up); }
 
-Mat4 Camera::GetProjectionMatrix() const
-{
-    return m_projMatrix;
-}
+Mat4 Camera::GetProjectionMatrix() const { return m_projMatrix; }
 } // namespace zen::sys

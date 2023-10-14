@@ -5,21 +5,18 @@
 
 namespace zen::util
 {
-template <class T>
-inline void HashCombine(size_t& seed, const T& v)
+template <class T> inline void HashCombine(size_t& seed, const T& v)
 {
     std::hash<T> hasher;
     glm::detail::hash_combine(seed, hasher(v));
 }
 
-template <class T>
-inline std::vector<uint8_t> ToBytes(const T& value)
+template <class T> inline std::vector<uint8_t> ToBytes(const T& value)
 {
     return {reinterpret_cast<uint8_t*>(&value), reinterpret_cast<uint8_t*>(&value) + sizeof(T)};
 }
 
-template <class T>
-uint32_t ToU32(T value)
+template <class T> uint32_t ToU32(T value)
 {
     static_assert(std::is_arithmetic<T>::value, "T must be numeric");
 

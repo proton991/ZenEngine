@@ -25,10 +25,7 @@ DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageS
 
 void PrintInstanceLayers(const std::vector<VkLayerProperties>& layers)
 {
-    for (const auto& layer : layers)
-    {
-        LOGI("Instance Layer: {}", layer.layerName);
-    }
+    for (const auto& layer : layers) { LOGI("Instance Layer: {}", layer.layerName); }
 }
 
 void PrintInstanceExtensions(const std::vector<VkExtensionProperties>& extensions)
@@ -38,10 +35,9 @@ void PrintInstanceExtensions(const std::vector<VkExtensionProperties>& extension
         LOGI("Instance Extension: {}", extension.extensionName);
     }
 }
-static constexpr std::array<const char*, 1> ValidationLayerNames =
-    {
-        // Unified validation layer used on Desktop and Mobile platforms
-        "VK_LAYER_KHRONOS_validation"};
+static constexpr std::array<const char*, 1> ValidationLayerNames = {
+    // Unified validation layer used on Desktop and Mobile platforms
+    "VK_LAYER_KHRONOS_validation"};
 
 SharedPtr<Instance> Instance::Create(const Instance::CreateInfo& createInfo)
 {
@@ -59,20 +55,15 @@ Instance::~Instance()
     {
         vkDestroyDebugUtilsMessengerEXT(m_handle, m_debugUtilsMessenger, nullptr);
     }
-    if (m_handle != VK_NULL_HANDLE)
-    {
-        vkDestroyInstance(m_handle, nullptr);
-    }
+    if (m_handle != VK_NULL_HANDLE) { vkDestroyInstance(m_handle, nullptr); }
 }
 
 Instance::Instance(const Instance::CreateInfo& CI)
 {
-    if (volkInitialize() != VK_SUCCESS)
-    {
-        LOG_ERROR_AND_THROW("Failed to initialize volk!");
-    }
+    if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
     uint32_t layerCount = 0;
-    CHECK_VK_ERROR_AND_THROW(vkEnumerateInstanceLayerProperties(&layerCount, nullptr), "Failed to enumerate layer count")
+    CHECK_VK_ERROR_AND_THROW(vkEnumerateInstanceLayerProperties(&layerCount, nullptr),
+                             "Failed to enumerate layer count")
     m_supportedLayers.resize(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, m_supportedLayers.data());
     LOGI("Supported Instance Layer Count: {}", m_supportedLayers.size())
@@ -110,7 +101,8 @@ Instance::Instance(const Instance::CreateInfo& CI)
         enabledExtensions.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
 #endif
     };
-    if (IsExtensionSupported(m_supportedExtensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+    if (IsExtensionSupported(m_supportedExtensions,
+                             VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
     {
         enabledExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     }
@@ -119,8 +111,7 @@ Instance::Instance(const Instance::CreateInfo& CI)
         for (uint32_t ext = 0; ext < CI.enabledExtensionCount; ++ext)
         {
             const auto* extName = CI.ppEnabledExtensionNames[ext];
-            if (extName == nullptr)
-                continue;
+            if (extName == nullptr) continue;
             if (IsExtensionSupported(m_supportedExtensions, extName))
                 enabledExtensions.push_back(extName);
             else
@@ -163,8 +154,11 @@ Instance::Instance(const Instance::CreateInfo& CI)
             if (layerVer < VK_HEADER_VERSION_COMPLETE)
             {
                 LOGW("Layer {} with version {}.{}.{} is less than header version {}.{}.{}",
-                     layerName, VK_API_VERSION_MAJOR(layerVer), VK_API_VERSION_MINOR(layerVer), VK_API_VERSION_PATCH(layerVer),
-                     VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE), VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE), VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE))
+                     layerName, VK_API_VERSION_MAJOR(layerVer), VK_API_VERSION_MINOR(layerVer),
+                     VK_API_VERSION_PATCH(layerVer),
+                     VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
+                     VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
+                     VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE))
             }
 
             enabledLayers.push_back(layerName);
@@ -179,7 +173,8 @@ Instance::Instance(const Instance::CreateInfo& CI)
                     if (IsExtensionSupported(layerExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
                         m_debugMode = DebugMode::Utils;
 
-                    if (m_debugMode == DebugMode::Disabled && IsExtensionSupported(layerExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
+                    if (m_debugMode == DebugMode::Disabled &&
+                        IsExtensionSupported(layerExtensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME))
                         m_debugMode = DebugMode::Report; // Resort to debug report
                 }
                 else
@@ -193,18 +188,18 @@ Instance::Instance(const Instance::CreateInfo& CI)
         else if (m_debugMode == DebugMode::Report)
             enabledExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
         else
-            LOGW("Neither {} nor {} extension is available. Debug tools (validation layer message logging, performance markers, etc.) will be disabled.", VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+            LOGW(
+                "Neither {} nor {} extension is available. Debug tools (validation layer message logging, performance markers, etc.) will be disabled.",
+                VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
     if (CI.ppEnabledLayerNames != nullptr)
     {
         for (size_t i = 0; i < CI.enabledLayerCount; ++i)
         {
             const auto* LayerName = CI.ppEnabledLayerNames[i];
-            if (LayerName == nullptr)
-                return;
+            if (LayerName == nullptr) return;
             uint32_t layerVer = 0;
-            if (IsLayerSupported(LayerName, layerVer))
-                enabledLayers.push_back(LayerName);
+            if (IsLayerSupported(LayerName, layerVer)) enabledLayers.push_back(LayerName);
             else
                 LOGW("Instance layer {} is not available", LayerName);
         }
@@ -232,40 +227,39 @@ Instance::Instance(const Instance::CreateInfo& CI)
     appInfo.pApplicationName   = nullptr;
     appInfo.applicationVersion = 0; // Developer-supplied version number of the application
     appInfo.pEngineName        = "Diligent Engine";
-    appInfo.engineVersion      = 1000; // Developer-supplied version number of the engine used to create the application.
-    appInfo.apiVersion         = apiVersion;
+    appInfo.engineVersion =
+        1000; // Developer-supplied version number of the engine used to create the application.
+    appInfo.apiVersion = apiVersion;
 
     VkInstanceCreateInfo vkInstanceCI{};
-    vkInstanceCI.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    vkInstanceCI.pNext                   = nullptr; // Pointer to an extension-specific structure.
-    vkInstanceCI.flags                   = 0;
-    vkInstanceCI.pApplicationInfo        = &appInfo;
-    vkInstanceCI.enabledExtensionCount   = static_cast<uint32_t>(enabledExtensions.size());
-    vkInstanceCI.ppEnabledExtensionNames = enabledExtensions.empty() ? nullptr : enabledExtensions.data();
-    vkInstanceCI.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
-    vkInstanceCI.ppEnabledLayerNames     = enabledLayers.empty() ? nullptr : enabledLayers.data();
-    vkInstanceCI.pNext                   = &dbgMessengerCI;
+    vkInstanceCI.sType                 = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    vkInstanceCI.pNext                 = nullptr; // Pointer to an extension-specific structure.
+    vkInstanceCI.flags                 = 0;
+    vkInstanceCI.pApplicationInfo      = &appInfo;
+    vkInstanceCI.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+    vkInstanceCI.ppEnabledExtensionNames =
+        enabledExtensions.empty() ? nullptr : enabledExtensions.data();
+    vkInstanceCI.enabledLayerCount   = static_cast<uint32_t>(enabledLayers.size());
+    vkInstanceCI.ppEnabledLayerNames = enabledLayers.empty() ? nullptr : enabledLayers.data();
+    vkInstanceCI.pNext               = &dbgMessengerCI;
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateInstance(&vkInstanceCI, nullptr, &m_handle), "Failed to create Vulkan instance");
+    CHECK_VK_ERROR_AND_THROW(vkCreateInstance(&vkInstanceCI, nullptr, &m_handle),
+                             "Failed to create Vulkan instance");
     volkLoadInstance(m_handle);
     m_enabledExtensions = std::move(enabledExtensions);
 
     // If requested, we enable the default validation layers for debugging
     if (m_debugMode == DebugMode::Utils)
     {
-        CHECK_VK_ERROR_AND_THROW(vkCreateDebugUtilsMessengerEXT(m_handle, &dbgMessengerCI, nullptr, &m_debugUtilsMessenger), "Failed to create debugUtil messenger")
+        CHECK_VK_ERROR_AND_THROW(vkCreateDebugUtilsMessengerEXT(m_handle, &dbgMessengerCI, nullptr,
+                                                                &m_debugUtilsMessenger),
+                                 "Failed to create debugUtil messenger")
     }
     LOGI("VkInstance created!")
     LOGI("Enabled Instance Layers count: {}", enabledLayers.size())
-    for (const auto& layer : enabledLayers)
-    {
-        LOGI("\tEnabled Instance Layer: {}", layer);
-    }
+    for (const auto& layer : enabledLayers) { LOGI("\tEnabled Instance Layer: {}", layer); }
     LOGI("Enabled Instance Extensions count: {}", m_enabledExtensions.size())
-    for (const auto& ext : m_enabledExtensions)
-    {
-        LOGI("\tEnabled Instance Extension: {}", ext);
-    }
+    for (const auto& ext : m_enabledExtensions) { LOGI("\tEnabled Instance Extension: {}", ext); }
     // Enumerate physical devices
     {
         // Physical device
@@ -284,7 +278,8 @@ Instance::Instance(const Instance::CreateInfo& CI)
     }
 }
 
-bool Instance::EnumerateInstanceExtensions(const char* layerName, std::vector<VkExtensionProperties>& extensions)
+bool Instance::EnumerateInstanceExtensions(const char*                         layerName,
+                                           std::vector<VkExtensionProperties>& extensions)
 {
     uint32_t ExtensionCount = 0;
 
@@ -292,7 +287,8 @@ bool Instance::EnumerateInstanceExtensions(const char* layerName, std::vector<Vk
         return false;
 
     extensions.resize(ExtensionCount);
-    if (vkEnumerateInstanceExtensionProperties(layerName, &ExtensionCount, extensions.data()) != VK_SUCCESS)
+    if (vkEnumerateInstanceExtensionProperties(layerName, &ExtensionCount, extensions.data()) !=
+        VK_SUCCESS)
     {
         extensions.clear();
         return false;
@@ -309,20 +305,21 @@ bool Instance::IsLayerSupported(const char* layerName, uint32_t& version)
                                    version = layer.specVersion;
                                    return true;
                                }
-                               else
-                               {
-                                   return false;
-                               }
+                               else { return false; }
                            });
     return it != m_supportedLayers.end();
 }
 
 bool Instance::IsExtensionEnabled(const char* name)
 {
-    return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(), [name](const char* enabledExtension) { return strcmp(name, enabledExtension) == 0; }) != m_enabledExtensions.end();
+    return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(),
+                        [name](const char* enabledExtension) {
+                            return strcmp(name, enabledExtension) == 0;
+                        }) != m_enabledExtensions.end();
 }
 
-bool Instance::IsExtensionSupported(std::vector<VkExtensionProperties>& extensions, const char* extensionName)
+bool Instance::IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
+                                    const char*                         extensionName)
 {
     auto it = std::find_if(extensions.begin(), extensions.end(), [&](VkExtensionProperties& ext) {
         return strcmp(ext.extensionName, extensionName) == 0;

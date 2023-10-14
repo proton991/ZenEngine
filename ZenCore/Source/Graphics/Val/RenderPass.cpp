@@ -4,7 +4,9 @@
 
 namespace zen::val
 {
-SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors, const std::vector<VkAttachmentReference>& inputs, const uint32_t depthStencil) :
+SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors,
+                         const std::vector<VkAttachmentReference>& inputs,
+                         const uint32_t                            depthStencil) :
     colorRefs(colors), inputRefs(inputs)
 {
     if (depthStencil != UINT32_MAX)
@@ -14,14 +16,17 @@ SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors, const
     }
 }
 
-RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo) :
+RenderPass::RenderPass(const Device&                               device,
+                       const std::vector<VkAttachmentDescription>& attachments,
+                       const SubpassInfo&                          subpassInfo) :
     DeviceObject(device)
 {
     VkSubpassDescription subpassDescription{};
-    subpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.colorAttachmentCount    = util::ToU32(subpassInfo.colorRefs.size());
-    subpassDescription.pColorAttachments       = subpassInfo.colorRefs.data();
-    subpassDescription.pDepthStencilAttachment = subpassInfo.hasDepthStencilRef ? &subpassInfo.depthStencilRef : nullptr;
+    subpassDescription.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDescription.colorAttachmentCount = util::ToU32(subpassInfo.colorRefs.size());
+    subpassDescription.pColorAttachments    = subpassInfo.colorRefs.data();
+    subpassDescription.pDepthStencilAttachment =
+        subpassInfo.hasDepthStencilRef ? &subpassInfo.depthStencilRef : nullptr;
 
     //    std::vector<VkSubpassDependency> subpassDeps(2);
     //    subpassDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
@@ -48,13 +53,12 @@ RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescr
     renderPassCI.subpassCount = 1;
     renderPassCI.pSubpasses   = &subpassDescription;
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateRenderPass(m_device.GetHandle(), &renderPassCI, nullptr, &m_handle), "Failed to create RenderPass");
+    CHECK_VK_ERROR_AND_THROW(
+        vkCreateRenderPass(m_device.GetHandle(), &renderPassCI, nullptr, &m_handle),
+        "Failed to create RenderPass");
 }
 
-RenderPass::RenderPass(RenderPass&& other) noexcept :
-    DeviceObject(std::move(other))
-{
-}
+RenderPass::RenderPass(RenderPass&& other) noexcept : DeviceObject(std::move(other)) {}
 
 RenderPass::~RenderPass()
 {
@@ -64,7 +68,10 @@ RenderPass::~RenderPass()
     }
 }
 
-RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps) :
+RenderPass::RenderPass(const Device&                               device,
+                       const std::vector<VkAttachmentDescription>& attachments,
+                       const std::vector<SubpassInfo>&             subpassInfos,
+                       const std::vector<VkSubpassDependency>&     subpassDeps) :
     DeviceObject(device)
 {
     std::vector<VkSubpassDescription> subpassDescriptions(subpassInfos.size());
@@ -72,13 +79,14 @@ RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescr
     {
         const auto& subpassInfo = subpassInfos[i];
         // create subpass description
-        VkSubpassDescription& subpassDesc   = subpassDescriptions[i];
-        subpassDesc.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpassDesc.inputAttachmentCount    = static_cast<uint32_t>(subpassInfo.inputRefs.size());
-        subpassDesc.pInputAttachments       = subpassInfo.inputRefs.data();
-        subpassDesc.colorAttachmentCount    = static_cast<uint32_t>(subpassInfo.colorRefs.size());
-        subpassDesc.pColorAttachments       = subpassInfo.colorRefs.data();
-        subpassDesc.pDepthStencilAttachment = subpassInfo.hasDepthStencilRef ? &subpassInfo.depthStencilRef : nullptr;
+        VkSubpassDescription& subpassDesc = subpassDescriptions[i];
+        subpassDesc.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpassDesc.inputAttachmentCount  = static_cast<uint32_t>(subpassInfo.inputRefs.size());
+        subpassDesc.pInputAttachments     = subpassInfo.inputRefs.data();
+        subpassDesc.colorAttachmentCount  = static_cast<uint32_t>(subpassInfo.colorRefs.size());
+        subpassDesc.pColorAttachments     = subpassInfo.colorRefs.data();
+        subpassDesc.pDepthStencilAttachment =
+            subpassInfo.hasDepthStencilRef ? &subpassInfo.depthStencilRef : nullptr;
     }
     VkRenderPassCreateInfo renderPassCI{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     renderPassCI.attachmentCount = static_cast<uint32_t>(attachments.size());
@@ -87,7 +95,9 @@ RenderPass::RenderPass(const Device& device, const std::vector<VkAttachmentDescr
     renderPassCI.pSubpasses      = subpassDescriptions.data();
     renderPassCI.dependencyCount = static_cast<uint32_t>(subpassDeps.size());
     renderPassCI.pDependencies   = subpassDeps.data();
-    CHECK_VK_ERROR_AND_THROW(vkCreateRenderPass(m_device.GetHandle(), &renderPassCI, nullptr, &m_handle), "Failed to create render pass");
+    CHECK_VK_ERROR_AND_THROW(
+        vkCreateRenderPass(m_device.GetHandle(), &renderPassCI, nullptr, &m_handle),
+        "Failed to create render pass");
 }
 
 //RenderPassBuilder& RenderPassBuilder::AddPresentAttachment(VkFormat format)

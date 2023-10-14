@@ -42,13 +42,12 @@ void ParseSpecializationConstants(const spirv_cross::Compiler& compiler,
 template <>
 inline void ReadResourceDecoration<spv::DecorationLocation>(const spirv_cross::Compiler& compiler,
                                                             const spirv_cross::Resource& resource,
-                                                            ShaderResource&              shaderResource)
+                                                            ShaderResource& shaderResource)
 {
     shaderResource.location = compiler.get_decoration(resource.id, spv::DecorationLocation);
 }
 
-template <>
-inline void ReadResourceDecoration<spv::DecorationDescriptorSet>(
+template <> inline void ReadResourceDecoration<spv::DecorationDescriptorSet>(
     const spirv_cross::Compiler& compiler,
     const spirv_cross::Resource& resource,
     ShaderResource&              shaderResource)
@@ -59,13 +58,12 @@ inline void ReadResourceDecoration<spv::DecorationDescriptorSet>(
 template <>
 inline void ReadResourceDecoration<spv::DecorationBinding>(const spirv_cross::Compiler& compiler,
                                                            const spirv_cross::Resource& resource,
-                                                           ShaderResource&              shaderResource)
+                                                           ShaderResource& shaderResource)
 {
     shaderResource.binding = compiler.get_decoration(resource.id, spv::DecorationBinding);
 }
 
-template <>
-inline void ReadResourceDecoration<spv::DecorationInputAttachmentIndex>(
+template <> inline void ReadResourceDecoration<spv::DecorationInputAttachmentIndex>(
     const spirv_cross::Compiler& compiler,
     const spirv_cross::Resource& resource,
     ShaderResource&              shaderResource)
@@ -74,8 +72,7 @@ inline void ReadResourceDecoration<spv::DecorationInputAttachmentIndex>(
         compiler.get_decoration(resource.id, spv::DecorationInputAttachmentIndex);
 }
 
-template <>
-inline void ReadResourceDecoration<spv::DecorationNonWritable>(
+template <> inline void ReadResourceDecoration<spv::DecorationNonWritable>(
     const spirv_cross::Compiler& compiler,
     const spirv_cross::Resource& resource,
     ShaderResource&              shaderResource)
@@ -83,8 +80,7 @@ inline void ReadResourceDecoration<spv::DecorationNonWritable>(
     shaderResource.qualifiers |= ShaderResourceQualifiers::NonWritable;
 }
 
-template <>
-inline void ReadResourceDecoration<spv::DecorationNonReadable>(
+template <> inline void ReadResourceDecoration<spv::DecorationNonReadable>(
     const spirv_cross::Compiler& compiler,
     const spirv_cross::Resource& resource,
     ShaderResource&              shaderResource)
@@ -92,69 +88,40 @@ inline void ReadResourceDecoration<spv::DecorationNonReadable>(
     shaderResource.qualifiers |= ShaderResourceQualifiers::NonReadable;
 }
 
-inline void ReadResourceFormat(const spirv_cross::SPIRType& spirType, ShaderResource& shaderResource)
+inline void ReadResourceFormat(const spirv_cross::SPIRType& spirType,
+                               ShaderResource&              shaderResource)
 {
     if (spirType.basetype == spirv_cross::SPIRType::BaseType::Float)
     {
         switch (shaderResource.vecSize)
         {
-            case 1:
-                shaderResource.format = VK_FORMAT_R32_SFLOAT;
-                break;
-            case 2:
-                shaderResource.format = VK_FORMAT_R32G32_SFLOAT;
-                break;
-            case 3:
-                shaderResource.format = VK_FORMAT_R32G32B32_SFLOAT;
-                break;
-            case 4:
-                shaderResource.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-                break;
-            default:
-                shaderResource.format = VK_FORMAT_UNDEFINED;
-                break;
+            case 1: shaderResource.format = VK_FORMAT_R32_SFLOAT; break;
+            case 2: shaderResource.format = VK_FORMAT_R32G32_SFLOAT; break;
+            case 3: shaderResource.format = VK_FORMAT_R32G32B32_SFLOAT; break;
+            case 4: shaderResource.format = VK_FORMAT_R32G32B32A32_SFLOAT; break;
+            default: shaderResource.format = VK_FORMAT_UNDEFINED; break;
         }
     }
     else if (spirType.basetype == spirv_cross::SPIRType::BaseType::Int)
     {
         switch (shaderResource.vecSize)
         {
-            case 1:
-                shaderResource.format = VK_FORMAT_R32_SINT;
-                break;
-            case 2:
-                shaderResource.format = VK_FORMAT_R32G32_SINT;
-                break;
-            case 3:
-                shaderResource.format = VK_FORMAT_R32G32B32_SINT;
-                break;
-            case 4:
-                shaderResource.format = VK_FORMAT_R32G32B32A32_SINT;
-                break;
-            default:
-                shaderResource.format = VK_FORMAT_UNDEFINED;
-                break;
+            case 1: shaderResource.format = VK_FORMAT_R32_SINT; break;
+            case 2: shaderResource.format = VK_FORMAT_R32G32_SINT; break;
+            case 3: shaderResource.format = VK_FORMAT_R32G32B32_SINT; break;
+            case 4: shaderResource.format = VK_FORMAT_R32G32B32A32_SINT; break;
+            default: shaderResource.format = VK_FORMAT_UNDEFINED; break;
         }
     }
     else if (spirType.basetype == spirv_cross::SPIRType::BaseType::Double)
     {
         switch (shaderResource.vecSize)
         {
-            case 1:
-                shaderResource.format = VK_FORMAT_R64_SFLOAT;
-                break;
-            case 2:
-                shaderResource.format = VK_FORMAT_R64G64_SFLOAT;
-                break;
-            case 3:
-                shaderResource.format = VK_FORMAT_R64G64B64_SFLOAT;
-                break;
-            case 4:
-                shaderResource.format = VK_FORMAT_R64G64B64A64_SFLOAT;
-                break;
-            default:
-                shaderResource.format = VK_FORMAT_UNDEFINED;
-                break;
+            case 1: shaderResource.format = VK_FORMAT_R64_SFLOAT; break;
+            case 2: shaderResource.format = VK_FORMAT_R64G64_SFLOAT; break;
+            case 3: shaderResource.format = VK_FORMAT_R64G64B64_SFLOAT; break;
+            case 4: shaderResource.format = VK_FORMAT_R64G64B64A64_SFLOAT; break;
+            default: shaderResource.format = VK_FORMAT_UNDEFINED; break;
         }
     }
 }
@@ -182,7 +149,9 @@ inline void ReadResourceArraySize(const spirv_cross::Compiler& compiler,
     }
     else
     {
-        shaderResource.arraySize = compiler.get_type(resource.type_id).array.empty() ? 1 : compiler.get_type(resource.type_id).array[0];
+        shaderResource.arraySize = compiler.get_type(resource.type_id).array.empty() ?
+            1 :
+            compiler.get_type(resource.type_id).array[0];
     }
 }
 
@@ -194,13 +163,10 @@ inline void ReadResourceSize(const spirv_cross::Compiler& compiler,
     const auto& spirvType = compiler.get_type_from_variable(resource.id);
 
     size_t arraySize = 0;
-    if (arraySizes.count(resource.name) != 0)
-    {
-        arraySize = arraySizes.at(resource.name);
-    }
+    if (arraySizes.count(resource.name) != 0) { arraySize = arraySizes.at(resource.name); }
 
-    shaderResource.size =
-        static_cast<uint32_t>(compiler.get_declared_struct_size_runtime_array(spirvType, arraySize));
+    shaderResource.size = static_cast<uint32_t>(
+        compiler.get_declared_struct_size_runtime_array(spirvType, arraySize));
 }
 
 inline void ReadResourceSize(const spirv_cross::Compiler&     compiler,
@@ -216,17 +182,11 @@ inline void ReadResourceSize(const spirv_cross::Compiler&     compiler,
         case spirv_cross::SPIRType::BaseType::Char:
         case spirv_cross::SPIRType::BaseType::Int:
         case spirv_cross::SPIRType::BaseType::UInt:
-        case spirv_cross::SPIRType::BaseType::Float:
-            shaderResource.size = 4;
-            break;
+        case spirv_cross::SPIRType::BaseType::Float: shaderResource.size = 4; break;
         case spirv_cross::SPIRType::BaseType::Int64:
         case spirv_cross::SPIRType::BaseType::UInt64:
-        case spirv_cross::SPIRType::BaseType::Double:
-            shaderResource.size = 8;
-            break;
-        default:
-            shaderResource.size = 0;
-            break;
+        case spirv_cross::SPIRType::BaseType::Double: shaderResource.size = 8; break;
+        default: shaderResource.size = 0; break;
     }
 }
 
@@ -253,8 +213,7 @@ inline void ReadShaderResource<ShaderResourceType::Input>(const spirv_cross::Com
     }
 }
 
-template <>
-inline void ReadShaderResource<ShaderResourceType::InputAttachment>(
+template <> inline void ReadShaderResource<ShaderResourceType::InputAttachment>(
     const spirv_cross::Compiler& compiler,
     VkShaderStageFlagBits /*stage*/,
     std::vector<ShaderResource>& resources,
@@ -270,7 +229,8 @@ inline void ReadShaderResource<ShaderResourceType::InputAttachment>(
         shaderResource.name   = resource.name;
 
         ReadResourceArraySize(compiler, resource, shaderResource, arraySizes);
-        ReadResourceDecoration<spv::DecorationInputAttachmentIndex>(compiler, resource, shaderResource);
+        ReadResourceDecoration<spv::DecorationInputAttachmentIndex>(compiler, resource,
+                                                                    shaderResource);
         ReadResourceDecoration<spv::DecorationDescriptorSet>(compiler, resource, shaderResource);
         ReadResourceDecoration<spv::DecorationBinding>(compiler, resource, shaderResource);
 
@@ -324,8 +284,7 @@ inline void ReadShaderResource<ShaderResourceType::Image>(const spirv_cross::Com
     }
 }
 
-template <>
-inline void ReadShaderResource<ShaderResourceType::ImageSampler>(
+template <> inline void ReadShaderResource<ShaderResourceType::ImageSampler>(
     const spirv_cross::Compiler& compiler,
     VkShaderStageFlagBits        stage,
     std::vector<ShaderResource>& resources,
@@ -348,8 +307,7 @@ inline void ReadShaderResource<ShaderResourceType::ImageSampler>(
     }
 }
 
-template <>
-inline void ReadShaderResource<ShaderResourceType::ImageStorage>(
+template <> inline void ReadShaderResource<ShaderResourceType::ImageStorage>(
     const spirv_cross::Compiler& compiler,
     VkShaderStageFlagBits        stage,
     std::vector<ShaderResource>& resources,
@@ -397,8 +355,7 @@ inline void ReadShaderResource<ShaderResourceType::Sampler>(const spirv_cross::C
     }
 }
 
-template <>
-inline void ReadShaderResource<ShaderResourceType::BufferUniform>(
+template <> inline void ReadShaderResource<ShaderResourceType::BufferUniform>(
     const spirv_cross::Compiler& compiler,
     VkShaderStageFlagBits        stage,
     std::vector<ShaderResource>& resources,
@@ -422,8 +379,7 @@ inline void ReadShaderResource<ShaderResourceType::BufferUniform>(
     }
 }
 
-template <>
-inline void ReadShaderResource<ShaderResourceType::BufferStorage>(
+template <> inline void ReadShaderResource<ShaderResourceType::BufferStorage>(
     const spirv_cross::Compiler& compiler,
     VkShaderStageFlagBits        stage,
     std::vector<ShaderResource>& resources,
@@ -507,7 +463,8 @@ void ParsePushConstants(const spirv_cross::Compiler& compiler,
 
         for (auto i = 0U; i < spirvType.member_types.size(); ++i)
         {
-            auto memOffset = compiler.get_member_decoration(spirvType.self, i, spv::DecorationOffset);
+            auto memOffset =
+                compiler.get_member_decoration(spirvType.self, i, spv::DecorationOffset);
 
             offset = std::min(offset, memOffset);
         }

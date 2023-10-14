@@ -3,7 +3,10 @@
 
 namespace zen::val
 {
-void SetObjectName(VkDevice device, uint64_t objectHandle, VkObjectType objectType, const char* name)
+void SetObjectName(VkDevice     device,
+                   uint64_t     objectHandle,
+                   VkObjectType objectType,
+                   const char*  name)
 {
     // Check for valid function pointer (may not be present if not running in a debug mode)
     VkDebugUtilsObjectNameInfoEXT ObjectNameInfo{};
@@ -93,9 +96,12 @@ void SetFramebufferName(VkDevice device, VkFramebuffer framebuffer, const char* 
     SetObjectName(device, (uint64_t)framebuffer, VK_OBJECT_TYPE_FRAMEBUFFER, name);
 }
 
-void SetDescriptorSetLayoutName(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, const char* name)
+void SetDescriptorSetLayoutName(VkDevice              device,
+                                VkDescriptorSetLayout descriptorSetLayout,
+                                const char*           name)
 {
-    SetObjectName(device, (uint64_t)descriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, name);
+    SetObjectName(device, (uint64_t)descriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+                  name);
 }
 
 void SetDescriptorSetName(VkDevice device, VkDescriptorSet descriptorSet, const char* name)
@@ -166,139 +172,180 @@ enum class VulkanHandleTypeId : uint32_t
 
 
 template <>
-void SetVulkanObjectName<VkCommandPool, VulkanHandleTypeId::CommandPool>(VkDevice device, VkCommandPool cmdPool, const char* name)
+void SetVulkanObjectName<VkCommandPool, VulkanHandleTypeId::CommandPool>(VkDevice      device,
+                                                                         VkCommandPool cmdPool,
+                                                                         const char*   name)
 {
     SetCommandPoolName(device, cmdPool, name);
 }
 
-template <>
-void SetVulkanObjectName<VkCommandBuffer, VulkanHandleTypeId::CommandBuffer>(VkDevice device, VkCommandBuffer cmdBuffer, const char* name)
+template <> void SetVulkanObjectName<VkCommandBuffer, VulkanHandleTypeId::CommandBuffer>(
+    VkDevice        device,
+    VkCommandBuffer cmdBuffer,
+    const char*     name)
 {
     SetCommandBufferName(device, cmdBuffer, name);
 }
 
-template <>
-void SetVulkanObjectName<VkQueue, VulkanHandleTypeId::Queue>(VkDevice device, VkQueue queue, const char* name)
+template <> void SetVulkanObjectName<VkQueue, VulkanHandleTypeId::Queue>(VkDevice    device,
+                                                                         VkQueue     queue,
+                                                                         const char* name)
 {
     SetQueueName(device, queue, name);
 }
 
-template <>
-void SetVulkanObjectName<VkImage, VulkanHandleTypeId::Image>(VkDevice device, VkImage image, const char* name)
+template <> void SetVulkanObjectName<VkImage, VulkanHandleTypeId::Image>(VkDevice    device,
+                                                                         VkImage     image,
+                                                                         const char* name)
 {
     SetImageName(device, image, name);
 }
 
 template <>
-void SetVulkanObjectName<VkImageView, VulkanHandleTypeId::ImageView>(VkDevice device, VkImageView imageView, const char* name)
+void SetVulkanObjectName<VkImageView, VulkanHandleTypeId::ImageView>(VkDevice    device,
+                                                                     VkImageView imageView,
+                                                                     const char* name)
 {
     SetImageViewName(device, imageView, name);
 }
 
-template <>
-void SetVulkanObjectName<VkSampler, VulkanHandleTypeId::Sampler>(VkDevice device, VkSampler sampler, const char* name)
+template <> void SetVulkanObjectName<VkSampler, VulkanHandleTypeId::Sampler>(VkDevice    device,
+                                                                             VkSampler   sampler,
+                                                                             const char* name)
 {
     SetSamplerName(device, sampler, name);
 }
 
-template <>
-void SetVulkanObjectName<VkBuffer, VulkanHandleTypeId::Buffer>(VkDevice device, VkBuffer buffer, const char* name)
+template <> void SetVulkanObjectName<VkBuffer, VulkanHandleTypeId::Buffer>(VkDevice    device,
+                                                                           VkBuffer    buffer,
+                                                                           const char* name)
 {
     SetBufferName(device, buffer, name);
 }
 
 template <>
-void SetVulkanObjectName<VkBufferView, VulkanHandleTypeId::BufferView>(VkDevice device, VkBufferView bufferView, const char* name)
+void SetVulkanObjectName<VkBufferView, VulkanHandleTypeId::BufferView>(VkDevice     device,
+                                                                       VkBufferView bufferView,
+                                                                       const char*  name)
 {
     SetBufferViewName(device, bufferView, name);
 }
 
 template <>
-void SetVulkanObjectName<VkDeviceMemory, VulkanHandleTypeId::DeviceMemory>(VkDevice device, VkDeviceMemory memory, const char* name)
+void SetVulkanObjectName<VkDeviceMemory, VulkanHandleTypeId::DeviceMemory>(VkDevice       device,
+                                                                           VkDeviceMemory memory,
+                                                                           const char*    name)
 {
     SetDeviceMemoryName(device, memory, name);
 }
 
-template <>
-void SetVulkanObjectName<VkShaderModule, VulkanHandleTypeId::ShaderModule>(VkDevice device, VkShaderModule shaderModule, const char* name)
+template <> void SetVulkanObjectName<VkShaderModule, VulkanHandleTypeId::ShaderModule>(
+    VkDevice       device,
+    VkShaderModule shaderModule,
+    const char*    name)
 {
     SetShaderModuleName(device, shaderModule, name);
 }
 
-template <>
-void SetVulkanObjectName<VkPipeline, VulkanHandleTypeId::Pipeline>(VkDevice device, VkPipeline pipeline, const char* name)
+template <> void SetVulkanObjectName<VkPipeline, VulkanHandleTypeId::Pipeline>(VkDevice    device,
+                                                                               VkPipeline  pipeline,
+                                                                               const char* name)
 {
     SetPipelineName(device, pipeline, name);
 }
 
-template <>
-void SetVulkanObjectName<VkPipelineLayout, VulkanHandleTypeId::PipelineLayout>(VkDevice device, VkPipelineLayout pipelineLayout, const char* name)
+template <> void SetVulkanObjectName<VkPipelineLayout, VulkanHandleTypeId::PipelineLayout>(
+    VkDevice         device,
+    VkPipelineLayout pipelineLayout,
+    const char*      name)
 {
     SetPipelineLayoutName(device, pipelineLayout, name);
 }
 
 template <>
-void SetVulkanObjectName<VkRenderPass, VulkanHandleTypeId::RenderPass>(VkDevice device, VkRenderPass renderPass, const char* name)
+void SetVulkanObjectName<VkRenderPass, VulkanHandleTypeId::RenderPass>(VkDevice     device,
+                                                                       VkRenderPass renderPass,
+                                                                       const char*  name)
 {
     SetRenderPassName(device, renderPass, name);
 }
 
 template <>
-void SetVulkanObjectName<VkFramebuffer, VulkanHandleTypeId::Framebuffer>(VkDevice device, VkFramebuffer framebuffer, const char* name)
+void SetVulkanObjectName<VkFramebuffer, VulkanHandleTypeId::Framebuffer>(VkDevice      device,
+                                                                         VkFramebuffer framebuffer,
+                                                                         const char*   name)
 {
     SetFramebufferName(device, framebuffer, name);
 }
 
 template <>
-void SetVulkanObjectName<VkDescriptorSetLayout, VulkanHandleTypeId::DescriptorSetLayout>(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, const char* name)
+void SetVulkanObjectName<VkDescriptorSetLayout, VulkanHandleTypeId::DescriptorSetLayout>(
+    VkDevice              device,
+    VkDescriptorSetLayout descriptorSetLayout,
+    const char*           name)
 {
     SetDescriptorSetLayoutName(device, descriptorSetLayout, name);
 }
 
-template <>
-void SetVulkanObjectName<VkDescriptorSet, VulkanHandleTypeId::DescriptorSet>(VkDevice device, VkDescriptorSet descriptorSet, const char* name)
+template <> void SetVulkanObjectName<VkDescriptorSet, VulkanHandleTypeId::DescriptorSet>(
+    VkDevice        device,
+    VkDescriptorSet descriptorSet,
+    const char*     name)
 {
     SetDescriptorSetName(device, descriptorSet, name);
 }
 
-template <>
-void SetVulkanObjectName<VkDescriptorPool, VulkanHandleTypeId::DescriptorPool>(VkDevice device, VkDescriptorPool descriptorPool, const char* name)
+template <> void SetVulkanObjectName<VkDescriptorPool, VulkanHandleTypeId::DescriptorPool>(
+    VkDevice         device,
+    VkDescriptorPool descriptorPool,
+    const char*      name)
 {
     SetDescriptorPoolName(device, descriptorPool, name);
 }
 
 template <>
-void SetVulkanObjectName<VkSemaphore, VulkanHandleTypeId::Semaphore>(VkDevice device, VkSemaphore semaphore, const char* name)
+void SetVulkanObjectName<VkSemaphore, VulkanHandleTypeId::Semaphore>(VkDevice    device,
+                                                                     VkSemaphore semaphore,
+                                                                     const char* name)
 {
     SetSemaphoreName(device, semaphore, name);
 }
 
-template <>
-void SetVulkanObjectName<VkFence, VulkanHandleTypeId::Fence>(VkDevice device, VkFence fence, const char* name)
+template <> void SetVulkanObjectName<VkFence, VulkanHandleTypeId::Fence>(VkDevice    device,
+                                                                         VkFence     fence,
+                                                                         const char* name)
 {
     SetFenceName(device, fence, name);
 }
 
-template <>
-void SetVulkanObjectName<VkEvent, VulkanHandleTypeId::Event>(VkDevice device, VkEvent _event, const char* name)
+template <> void SetVulkanObjectName<VkEvent, VulkanHandleTypeId::Event>(VkDevice    device,
+                                                                         VkEvent     _event,
+                                                                         const char* name)
 {
     SetEventName(device, _event, name);
 }
 
 template <>
-void SetVulkanObjectName<VkQueryPool, VulkanHandleTypeId::QueryPool>(VkDevice device, VkQueryPool queryPool, const char* name)
+void SetVulkanObjectName<VkQueryPool, VulkanHandleTypeId::QueryPool>(VkDevice    device,
+                                                                     VkQueryPool queryPool,
+                                                                     const char* name)
 {
     SetQueryPoolName(device, queryPool, name);
 }
 
 template <>
-void SetVulkanObjectName<VkAccelerationStructureKHR, VulkanHandleTypeId::AccelerationStructureKHR>(VkDevice device, VkAccelerationStructureKHR accelStruct, const char* name)
+void SetVulkanObjectName<VkAccelerationStructureKHR, VulkanHandleTypeId::AccelerationStructureKHR>(
+    VkDevice                   device,
+    VkAccelerationStructureKHR accelStruct,
+    const char*                name)
 {
     SetAccelStructName(device, accelStruct, name);
 }
 
-template <>
-void SetVulkanObjectName<VkPipelineCache, VulkanHandleTypeId::PipelineCache>(VkDevice device, VkPipelineCache pipeCache, const char* name)
+template <> void SetVulkanObjectName<VkPipelineCache, VulkanHandleTypeId::PipelineCache>(
+    VkDevice        device,
+    VkPipelineCache pipeCache,
+    const char*     name)
 {
     SetPipelineCacheName(device, pipeCache, name);
 }
@@ -349,8 +396,7 @@ const char* VkResultToString(VkResult errorCode)
         STR(PIPELINE_COMPILE_REQUIRED_EXT);
 #undef STR
             // clang-format on
-        default:
-            return "UNKNOWN_ERROR";
+        default: return "UNKNOWN_ERROR";
     }
 }
 
@@ -417,8 +463,7 @@ std::string VkAccessFlagsToString(VkAccessFlags Flags)
     while (Flags != 0)
     {
         auto Bit = Flags & ~(Flags - 1);
-        if (!FlagsString.empty())
-            FlagsString += ", ";
+        if (!FlagsString.empty()) FlagsString += ", ";
         FlagsString += VkAccessFlagBitToString(static_cast<VkAccessFlagBits>(Bit));
         Flags = Flags & (Flags - 1);
     }
@@ -429,7 +474,7 @@ const char* VkObjectTypeToString(VkObjectType ObjectType)
 {
     switch (ObjectType)
     {
-        // clang-format off
+            // clang-format off
         case VK_OBJECT_TYPE_UNKNOWN:                        return "unknown";
         case VK_OBJECT_TYPE_INSTANCE:                       return "instance";
         case VK_OBJECT_TYPE_PHYSICAL_DEVICE:                return "physical device";

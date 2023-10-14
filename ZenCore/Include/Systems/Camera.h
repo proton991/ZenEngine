@@ -17,10 +17,18 @@ constexpr Vec3 DEFAULT_UP{0.0f, -1.0f, 0.0f};
 class Camera
 {
 public:
-    static UniquePtr<Camera> CreateUniqueOnBBox(const Vec3& bboxMin, const Vec3& bboxMax, float aspect);
+    static UniquePtr<Camera> CreateUniqueOnBBox(const Vec3& bboxMin,
+                                                const Vec3& bboxMax,
+                                                float       aspect);
     static UniquePtr<Camera> CreateUnique(const Vec3& eye, const Vec3& target, float aspect);
 
-    Camera(Vec3 eye, Vec3 target, float aspect, float fov = 70.0f, float near = 0.001f, float far = 100.0f, float speed = 2.0f);
+    Camera(Vec3  eye,
+           Vec3  target,
+           float aspect,
+           float fov   = 70.0f,
+           float near  = 0.001f,
+           float far   = 100.0f,
+           float speed = 2.0f);
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;

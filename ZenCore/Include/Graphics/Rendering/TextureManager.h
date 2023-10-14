@@ -21,7 +21,8 @@ class TextureManager
 {
 public:
     TextureManager(const val::Device& valDevice, RenderContext& renderContext) :
-        m_valDevice(valDevice), m_renderContext(renderContext) {}
+        m_valDevice(valDevice), m_renderContext(renderContext)
+    {}
 
     val::Image* RequestTexture2D(const std::string& filename, bool requireMipmap = false);
 

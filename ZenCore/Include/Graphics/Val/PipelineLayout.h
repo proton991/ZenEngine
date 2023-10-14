@@ -19,7 +19,9 @@ public:
 
     auto& GetDescriptorSetLayouts() const { return m_dsLayouts; }
 
-    std::vector<ShaderResource> GetResources(ShaderResourceType type, VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL) const;
+    std::vector<ShaderResource> GetResources(
+        ShaderResourceType    type,
+        VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL) const;
 
 private:
     // The shader modules that this pipeline layout uses
@@ -33,6 +35,5 @@ private:
 };
 
 class PipelineLayoutCache
-{
-};
+{};
 } // namespace zen::val

@@ -49,15 +49,11 @@ public:
 
     bool IsExtensionSupported(const char* extensionName) const;
 
-    template <typename T>
-    T& RequestExtensionFeatures(VkStructureType type);
+    template <typename T> T& RequestExtensionFeatures(VkStructureType type);
 
     VkInstance GetInstanceHandle() const;
 
-    void* GetExtensionFeatureChain() const
-    {
-        return m_featureChainHead;
-    }
+    void* GetExtensionFeatureChain() const { return m_featureChainHead; }
 
     VkPhysicalDeviceFeatures& GetMutableFeatures() { return m_requestedFeatures; }
 

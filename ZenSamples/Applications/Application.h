@@ -40,7 +40,7 @@ public:
     }
 
     virtual void Run() = 0;
-    
+
     virtual void Finish() {}
 
 protected:

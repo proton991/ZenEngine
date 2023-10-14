@@ -5,8 +5,7 @@
 
 namespace std
 {
-template <>
-struct hash<VkAttachmentDescription>
+template <> struct hash<VkAttachmentDescription>
 {
     std::size_t operator()(const VkAttachmentDescription& attachment) const
     {
@@ -23,8 +22,7 @@ struct hash<VkAttachmentDescription>
     }
 };
 
-template <>
-struct hash<zen::val::SubpassInfo>
+template <> struct hash<zen::val::SubpassInfo>
 {
     std::size_t operator()(const zen::val::SubpassInfo& subpassInfo) const
     {
@@ -44,8 +42,7 @@ struct hash<zen::val::SubpassInfo>
     }
 };
 
-template <>
-struct hash<zen::val::ShaderModule>
+template <> struct hash<zen::val::ShaderModule>
 {
     std::size_t operator()(const zen::val::ShaderModule& shaderModule) const
     {
@@ -57,8 +54,7 @@ struct hash<zen::val::ShaderModule>
     }
 };
 
-template <>
-struct hash<zen::val::PipelineLayout>
+template <> struct hash<zen::val::PipelineLayout>
 {
     std::size_t operator()(const zen::val::PipelineLayout& pipelineLayout) const
     {
@@ -70,8 +66,7 @@ struct hash<zen::val::PipelineLayout>
     }
 };
 
-template <>
-struct hash<zen::val::SpecializationState>
+template <> struct hash<zen::val::SpecializationState>
 {
     std::size_t operator()(const zen::val::SpecializationState& state) const
     {
@@ -80,25 +75,22 @@ struct hash<zen::val::SpecializationState>
         for (auto& constants : state.GetConstantTable())
         {
             zen::util::HashCombine(result, constants.first);
-            for (const auto data : constants.second)
-            {
-                zen::util::HashCombine(result, data);
-            }
+            for (const auto data : constants.second) { zen::util::HashCombine(result, data); }
         }
 
         return result;
     }
 };
 
-template <>
-struct hash<VkVertexInputAttributeDescription>
+template <> struct hash<VkVertexInputAttributeDescription>
 {
     std::size_t operator()(const VkVertexInputAttributeDescription& attribute) const
     {
         std::size_t result = 0;
 
         zen::util::HashCombine(result, attribute.binding);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkFormat>::type>(attribute.format));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkFormat>::type>(attribute.format));
         zen::util::HashCombine(result, attribute.location);
         zen::util::HashCombine(result, attribute.offset);
 
@@ -106,59 +98,73 @@ struct hash<VkVertexInputAttributeDescription>
     }
 };
 
-template <>
-struct hash<VkVertexInputBindingDescription>
+template <> struct hash<VkVertexInputBindingDescription>
 {
     std::size_t operator()(const VkVertexInputBindingDescription& vertexBinding) const
     {
         std::size_t result = 0;
 
         zen::util::HashCombine(result, vertexBinding.binding);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkVertexInputRate>::type>(vertexBinding.inputRate));
+        zen::util::HashCombine(
+            result,
+            static_cast<std::underlying_type<VkVertexInputRate>::type>(vertexBinding.inputRate));
         zen::util::HashCombine(result, vertexBinding.stride);
 
         return result;
     }
 };
 
-template <>
-struct hash<VkStencilOpState>
+template <> struct hash<VkStencilOpState>
 {
     std::size_t operator()(const VkStencilOpState& stencil) const
     {
         std::size_t result = 0;
 
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkCompareOp>::type>(stencil.compareOp));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.depthFailOp));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.failOp));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.passOp));
+        zen::util::HashCombine(
+            result, static_cast<std::underlying_type<VkCompareOp>::type>(stencil.compareOp));
+        zen::util::HashCombine(
+            result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.depthFailOp));
+        zen::util::HashCombine(
+            result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.failOp));
+        zen::util::HashCombine(
+            result, static_cast<std::underlying_type<VkStencilOp>::type>(stencil.passOp));
 
         return result;
     }
 };
 
-template <>
-struct hash<VkPipelineColorBlendAttachmentState>
+template <> struct hash<VkPipelineColorBlendAttachmentState>
 {
     std::size_t operator()(const VkPipelineColorBlendAttachmentState& color_blend_attachment) const
     {
         std::size_t result = 0;
 
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendOp>::type>(color_blend_attachment.alphaBlendOp));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendOp>::type>(
+                                   color_blend_attachment.alphaBlendOp));
         zen::util::HashCombine(result, color_blend_attachment.blendEnable);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendOp>::type>(color_blend_attachment.colorBlendOp));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendOp>::type>(
+                                   color_blend_attachment.colorBlendOp));
         zen::util::HashCombine(result, color_blend_attachment.colorWriteMask);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendFactor>::type>(color_blend_attachment.dstAlphaBlendFactor));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendFactor>::type>(color_blend_attachment.dstColorBlendFactor));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendFactor>::type>(color_blend_attachment.srcAlphaBlendFactor));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkBlendFactor>::type>(color_blend_attachment.srcColorBlendFactor));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendFactor>::type>(
+                                   color_blend_attachment.dstAlphaBlendFactor));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendFactor>::type>(
+                                   color_blend_attachment.dstColorBlendFactor));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendFactor>::type>(
+                                   color_blend_attachment.srcAlphaBlendFactor));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkBlendFactor>::type>(
+                                   color_blend_attachment.srcColorBlendFactor));
 
         return result;
     }
 };
 
-template <>
-struct hash<zen::val::PipelineState>
+template <> struct hash<zen::val::PipelineState>
 {
     std::size_t operator()(const zen::val::PipelineState& pipelineState) const
     {
@@ -186,8 +192,11 @@ struct hash<zen::val::PipelineState>
         }
 
         // VkPipelineInputAssemblyStateCreateInfo
-        zen::util::HashCombine(result, pipelineState.GetInputAssemblyState().primitiveRestartEnable);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkPrimitiveTopology>::type>(pipelineState.GetInputAssemblyState().topology));
+        zen::util::HashCombine(result,
+                               pipelineState.GetInputAssemblyState().primitiveRestartEnable);
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkPrimitiveTopology>::type>(
+                                   pipelineState.GetInputAssemblyState().topology));
 
         //VkPipelineViewportStateCreateInfo
         zen::util::HashCombine(result, pipelineState.GetViewportState().viewportCount);
@@ -197,28 +206,39 @@ struct hash<zen::val::PipelineState>
         zen::util::HashCombine(result, pipelineState.GetRasterizationState().cullMode);
         zen::util::HashCombine(result, pipelineState.GetRasterizationState().depthBiasEnable);
         zen::util::HashCombine(result, pipelineState.GetRasterizationState().depthClampEnable);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkFrontFace>::type>(pipelineState.GetRasterizationState().frontFace));
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkPolygonMode>::type>(pipelineState.GetRasterizationState().polygonMode));
-        zen::util::HashCombine(result, pipelineState.GetRasterizationState().rasterizerDiscardEnable);
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkFrontFace>::type>(
+                                   pipelineState.GetRasterizationState().frontFace));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkPolygonMode>::type>(
+                                   pipelineState.GetRasterizationState().polygonMode));
+        zen::util::HashCombine(result,
+                               pipelineState.GetRasterizationState().rasterizerDiscardEnable);
 
         // VkPipelineMultisampleStateCreateInfo
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().alphaToCoverageEnable);
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().alphaToOneEnable);
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().minSampleShading);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkSampleCountFlagBits>::type>(pipelineState.GetMultiSampleState().rasterizationSamples));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkSampleCountFlagBits>::type>(
+                                   pipelineState.GetMultiSampleState().rasterizationSamples));
         zen::util::HashCombine(result, pipelineState.GetMultiSampleState().sampleShadingEnable);
 
         // VkPipelineDepthStencilStateCreateInfo
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().back);
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().depthBoundsTestEnable);
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkCompareOp>::type>(pipelineState.GetDepthStencilState().depthCompareOp));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkCompareOp>::type>(
+                                   pipelineState.GetDepthStencilState().depthCompareOp));
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().depthTestEnable);
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().depthWriteEnable);
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().front);
         zen::util::HashCombine(result, pipelineState.GetDepthStencilState().stencilTestEnable);
 
         // VkPipelineColorBlendStateCreateInfo
-        zen::util::HashCombine(result, static_cast<std::underlying_type<VkLogicOp>::type>(pipelineState.GetColorBlendState().logicOp));
+        zen::util::HashCombine(result,
+                               static_cast<std::underlying_type<VkLogicOp>::type>(
+                                   pipelineState.GetColorBlendState().logicOp));
         zen::util::HashCombine(result, pipelineState.GetColorBlendState().logicOpEnable);
 
         for (auto& attachment : pipelineState.GetColorBlendState().attachments)
@@ -233,8 +253,7 @@ struct hash<zen::val::PipelineState>
 
 namespace zen
 {
-template <typename T>
-inline void HashParam(size_t& seed, const T& value)
+template <typename T> inline void HashParam(size_t& seed, const T& value)
 {
     util::HashCombine(seed, value);
 }
@@ -247,51 +266,38 @@ inline void HashParam(size_t& seed, const T& firstArg, const Args&... args)
 }
 
 template <>
-inline void HashParam<std::vector<val::ShaderModule*>>(
-    size_t&                                seed,
-    const std::vector<val::ShaderModule*>& value)
+inline void HashParam<std::vector<val::ShaderModule*>>(size_t&                                seed,
+                                                       const std::vector<val::ShaderModule*>& value)
 {
-    for (auto& shaderModule : value)
-    {
-        util::HashCombine(seed, shaderModule->GetId());
-    }
+    for (auto& shaderModule : value) { util::HashCombine(seed, shaderModule->GetId()); }
 }
 
-template <>
-inline void HashParam<std::vector<VkAttachmentDescription>>(
+template <> inline void HashParam<std::vector<VkAttachmentDescription>>(
     size_t&                                     seed,
     const std::vector<VkAttachmentDescription>& value)
 {
-    for (auto& attachment : value)
-    {
-        util::HashCombine(seed, attachment);
-    }
+    for (auto& attachment : value) { util::HashCombine(seed, attachment); }
 }
 
 template <>
-inline void HashParam<std::vector<val::SubpassInfo>>(
-    size_t&                              seed,
-    const std::vector<val::SubpassInfo>& value)
+inline void HashParam<std::vector<val::SubpassInfo>>(size_t&                              seed,
+                                                     const std::vector<val::SubpassInfo>& value)
 {
-    for (auto& attachment : value)
-    {
-        util::HashCombine(seed, attachment);
-    }
+    for (auto& attachment : value) { util::HashCombine(seed, attachment); }
 }
 
 
 template <class T, class... A>
-T& RequestResourceNoLock(const val::Device& device, std::unordered_map<std::size_t, T>& resources, A&... args)
+T& RequestResourceNoLock(const val::Device&                  device,
+                         std::unordered_map<std::size_t, T>& resources,
+                         A&... args)
 {
     std::size_t hash{0U};
     HashParam(hash, args...);
 
     auto resIt = resources.find(hash);
 
-    if (resIt != resources.end())
-    {
-        return resIt->second;
-    }
+    if (resIt != resources.end()) { return resIt->second; }
 
     // If we do not have it already, create and cache it
     const char* resType = typeid(T).name();
@@ -325,8 +331,10 @@ T& RequestResourceNoLock(const val::Device& device, std::unordered_map<std::size
     return insertIt->second;
 }
 
-template <class T, class... A>
-T& RequestResource(const val::Device& device, std::mutex& resourceMutex, std::unordered_map<std::size_t, T>& resources, A&... args)
+template <class T, class... A> T& RequestResource(const val::Device&                  device,
+                                                  std::mutex&                         resourceMutex,
+                                                  std::unordered_map<std::size_t, T>& resources,
+                                                  A&... args)
 {
     std::lock_guard<std::mutex> guard(resourceMutex);
 
@@ -338,25 +346,30 @@ T& RequestResource(const val::Device& device, std::mutex& resourceMutex, std::un
 class ResourceCache
 {
 public:
-    explicit ResourceCache(const val::Device& device) :
-        m_valDevice(device) {}
+    explicit ResourceCache(const val::Device& device) : m_valDevice(device) {}
 
-    val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments, const val::SubpassInfo& subpassInfo)
+    val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments,
+                                       const val::SubpassInfo&                     subpassInfo)
     {
-        auto& res = RequestResource<val::RenderPass>(m_valDevice, m_mutexTable.renderPass, m_renderPasses, attachments, subpassInfo);
+        auto& res = RequestResource<val::RenderPass>(m_valDevice, m_mutexTable.renderPass,
+                                                     m_renderPasses, attachments, subpassInfo);
 
         return &res;
     }
 
     val::PipelineLayout* RequestPipelineLayout(const std::vector<val::ShaderModule*>& shaderModules)
     {
-        auto& res = RequestResource<val::PipelineLayout>(m_valDevice, m_mutexTable.pipelineLayout, m_pipelineLayouts, shaderModules);
+        auto& res = RequestResource<val::PipelineLayout>(m_valDevice, m_mutexTable.pipelineLayout,
+                                                         m_pipelineLayouts, shaderModules);
         return &res;
     }
 
-    val::GraphicsPipeline* RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout, val::PipelineState& pipelineState)
+    val::GraphicsPipeline* RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout,
+                                                   val::PipelineState&        pipelineState)
     {
-        auto& res = RequestResource<val::GraphicsPipeline>(m_valDevice, m_mutexTable.graphicsPipeline, m_graphicPipelines, pipelineLayout, pipelineState);
+        auto& res = RequestResource<val::GraphicsPipeline>(
+            m_valDevice, m_mutexTable.graphicsPipeline, m_graphicPipelines, pipelineLayout,
+            pipelineState);
         return &res;
     }
 

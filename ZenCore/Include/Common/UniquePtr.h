@@ -5,8 +5,7 @@
 
 namespace zen
 {
-template <class T>
-class UniquePtr
+template <class T> class UniquePtr
 {
 public:
     /// The type of the managed object, aliased as member type
@@ -15,18 +14,15 @@ public:
     /// @brief Default constructor
     UniquePtr() noexcept : // never throws
         m_ptr(nullptr)
-    {
-    }
+    {}
     /// @brief Constructor with the provided pointer to manage
     explicit UniquePtr(T* p) noexcept : // never throws
         m_ptr(p)
-    {
-    }
+    {}
     /**
      * @brief Copy constructor to convert from another pointer type
      */
-    template <class U>
-    UniquePtr(const UniquePtr<U>& other) noexcept : // never throws
+    template <class U> UniquePtr(const UniquePtr<U>& other) noexcept : // never throws
         m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(other.m_ptr))
     {
         const_cast<UniquePtr<U>&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
@@ -39,11 +35,7 @@ public:
         const_cast<UniquePtr&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
     }
 
-    UniquePtr(UniquePtr&& other) noexcept :
-        m_ptr(std::move(other.m_ptr))
-    {
-        other.m_ptr = nullptr;
-    }
+    UniquePtr(UniquePtr&& other) noexcept : m_ptr(std::move(other.m_ptr)) { other.m_ptr = nullptr; }
 
     /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
     UniquePtr& operator=(UniquePtr other) noexcept // never throws
@@ -124,33 +116,38 @@ private:
 
 
 // comparison operators
-template <class T, class U> inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() == r.Get());
 }
-template <class T, class U> inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() != r.Get());
 }
-template <class T, class U> inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() <= r.Get());
 }
-template <class T, class U> inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() < r.Get());
 }
-template <class T, class U> inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() >= r.Get());
 }
-template <class T, class U> inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U>
+inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() > r.Get());
 }
 
-template <class T, class... Args>
-UniquePtr<T> MakeUnique(Args&&... args_)
+template <class T, class... Args> UniquePtr<T> MakeUnique(Args&&... args_)
 {
     return UniquePtr<T>(new T(std::forward<Args>(args_)...));
 }

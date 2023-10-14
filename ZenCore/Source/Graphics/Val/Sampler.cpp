@@ -18,19 +18,14 @@ Sampler::Sampler(const Device& device, VkFilter filter, VkSamplerAddressMode add
     samplerCI.maxLod        = 1.0f;
     samplerCI.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateSampler(m_device.GetHandle(), &samplerCI, nullptr, &m_handle), "Failed to create sampler");
+    CHECK_VK_ERROR_AND_THROW(vkCreateSampler(m_device.GetHandle(), &samplerCI, nullptr, &m_handle),
+                             "Failed to create sampler");
 }
 
-Sampler::Sampler(Sampler&& other) noexcept :
-    DeviceObject(std::move(other))
-{
-}
+Sampler::Sampler(Sampler&& other) noexcept : DeviceObject(std::move(other)) {}
 
 Sampler::~Sampler()
 {
-    if (m_handle != VK_NULL_HANDLE)
-    {
-        vkDestroySampler(m_device.GetHandle(), m_handle, nullptr);
-    }
+    if (m_handle != VK_NULL_HANDLE) { vkDestroySampler(m_device.GetHandle(), m_handle, nullptr); }
 }
 } // namespace zen::val

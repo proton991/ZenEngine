@@ -12,7 +12,9 @@ struct VulkanDescriptorPoolSizes;
 class DescriptorPoolManager
 {
 public:
-    DescriptorPoolManager(const Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree);
+    DescriptorPoolManager(const Device&                    device,
+                          const VulkanDescriptorPoolSizes& poolSizes,
+                          bool                             allowFree);
 
     void Cleanup();
 

@@ -21,7 +21,8 @@ PhysicalDevice::PhysicalDevice(Instance& instance) :
     if (extensionCount > 0)
     {
         m_supportedExtensions.resize(extensionCount);
-        vkEnumerateDeviceExtensionProperties(m_handle, nullptr, &extensionCount, m_supportedExtensions.data());
+        vkEnumerateDeviceExtensionProperties(m_handle, nullptr, &extensionCount,
+                                             m_supportedExtensions.data());
     }
     //    PrintExtensions();
 }
@@ -40,7 +41,9 @@ VkBool32 PhysicalDevice::IsPresentSupported(VkSurfaceKHR surface, uint32_t queue
     VkBool32 supported{VK_FALSE};
 
     if (surface != VK_NULL_HANDLE)
-        CHECK_VK_ERROR(vkGetPhysicalDeviceSurfaceSupportKHR(m_handle, queueFamilyIndex, surface, &supported), "Failed to get surface support");
+        CHECK_VK_ERROR(
+            vkGetPhysicalDeviceSurfaceSupportKHR(m_handle, queueFamilyIndex, surface, &supported),
+            "Failed to get surface support");
 
     return supported;
 }
@@ -61,14 +64,12 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
                                      VkQueueFlags ignored, float priority) -> bool {
         for (unsigned familyIndex = 0; familyIndex < queueFamilyProps.size(); familyIndex++)
         {
-            if (queueFamilyProps[familyIndex].queueFlags & ignored)
-                continue;
+            if (queueFamilyProps[familyIndex].queueFlags & ignored) continue;
 
             // A graphics queue candidate must support present for us to select it.
             if ((required & VK_QUEUE_GRAPHICS_BIT) && surface)
             {
-                if (!IsPresentSupported(surface, familyIndex))
-                    continue;
+                if (!IsPresentSupported(surface, familyIndex)) continue;
             }
 
             if (queueFamilyProps[familyIndex].queueCount > 0 &&
@@ -84,19 +85,18 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
         return false;
     };
     // find graphics queue
-    if (!findProperQueue(info.familyIndices[QUEUE_INDEX_GRAPHICS], info.indices[QUEUE_INDEX_GRAPHICS],
-                         VK_QUEUE_GRAPHICS_BIT, 0, 1.0f))
+    if (!findProperQueue(info.familyIndices[QUEUE_INDEX_GRAPHICS],
+                         info.indices[QUEUE_INDEX_GRAPHICS], VK_QUEUE_GRAPHICS_BIT, 0, 1.0f))
     {
         throw std::runtime_error("Failed to find a graphics queue");
     }
     // Prefer another graphics queue since we can do async graphics that way.
     // The compute queue is to be treated as high priority since we also do async graphics on it.
     if (!findProperQueue(info.familyIndices[QUEUE_INDEX_COMPUTE], info.indices[QUEUE_INDEX_COMPUTE],
-                         VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
-                         0, 1.0f))
+                         VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
     {
-        if (!findProperQueue(info.familyIndices[QUEUE_INDEX_COMPUTE], info.indices[QUEUE_INDEX_COMPUTE],
-                             VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
+        if (!findProperQueue(info.familyIndices[QUEUE_INDEX_COMPUTE],
+                             info.indices[QUEUE_INDEX_COMPUTE], VK_QUEUE_COMPUTE_BIT, 0, 1.0f))
         {
             // fall back to the graphics queue if we must.
             info.familyIndices[QUEUE_INDEX_COMPUTE] = info.familyIndices[QUEUE_INDEX_GRAPHICS];
@@ -106,8 +106,8 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
     // For transfer, try to find a queue which only supports transfer, e.g. DMA queue.
     // If not, fall back to a dedicated compute queue.
     // Finally, fall back to same queue as compute.
-    if (!findProperQueue(info.familyIndices[QUEUE_INDEX_TRANSFER], info.indices[QUEUE_INDEX_TRANSFER],
-                         VK_QUEUE_TRANSFER_BIT,
+    if (!findProperQueue(info.familyIndices[QUEUE_INDEX_TRANSFER],
+                         info.indices[QUEUE_INDEX_TRANSFER], VK_QUEUE_TRANSFER_BIT,
                          VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0.5f) &&
         !findProperQueue(info.familyIndices[QUEUE_INDEX_TRANSFER],
                          info.indices[QUEUE_INDEX_TRANSFER], VK_QUEUE_COMPUTE_BIT,
@@ -125,37 +125,35 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
 
 bool PhysicalDevice::IsExtensionSupported(const char* extensionName) const
 {
-    auto it = std::find_if(m_supportedExtensions.begin(), m_supportedExtensions.end(), [&](const VkExtensionProperties& extension) {
-        return strcmp(extension.extensionName, extensionName) == 0;
-    });
+    auto it = std::find_if(m_supportedExtensions.begin(), m_supportedExtensions.end(),
+                           [&](const VkExtensionProperties& extension) {
+                               return strcmp(extension.extensionName, extensionName) == 0;
+                           });
     return it != m_supportedExtensions.end();
 }
 
-VkInstance PhysicalDevice::GetInstanceHandle() const
-{
-    return m_instance.GetHandle();
-}
+VkInstance PhysicalDevice::GetInstanceHandle() const { return m_instance.GetHandle(); }
 
-template <typename T>
-T& PhysicalDevice::RequestExtensionFeatures(VkStructureType type)
+template <typename T> T& PhysicalDevice::RequestExtensionFeatures(VkStructureType type)
 {
     // We cannot request extension features if the physical device properties 2 instance extension isn't enabled
     if (!m_instance.IsExtensionEnabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
     {
 
-        throw std::runtime_error("Couldn't request feature from device as " + std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) + " isn't enabled!");
+        throw std::runtime_error(
+            "Couldn't request feature from device as " +
+            std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) +
+            " isn't enabled!");
     }
 
     // If the type already exists in the map, return a casted pointer to get the extension feature struct
     auto it = m_extensionFeatures.find(type);
-    if (it != m_extensionFeatures.end())
-    {
-        return *static_cast<T*>(it->second.get());
-    }
+    if (it != m_extensionFeatures.end()) { return *static_cast<T*>(it->second.get()); }
 
     // Get the extension feature
-    VkPhysicalDeviceFeatures2KHR physicalDeviceFeatures{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR};
-    T                            extension{type};
+    VkPhysicalDeviceFeatures2KHR physicalDeviceFeatures{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR};
+    T extension{type};
     physicalDeviceFeatures.pNext = &extension;
     vkGetPhysicalDeviceFeatures2KHR(m_handle, &physicalDeviceFeatures);
 
@@ -167,10 +165,7 @@ T& PhysicalDevice::RequestExtensionFeatures(VkStructureType type)
 
     // If an extension feature has already been requested, we shift the linked list down by one
     // Making this current extension the new base pointer
-    if (m_featureChainHead)
-    {
-        extensionPtr->pNext = m_featureChainHead;
-    }
+    if (m_featureChainHead) { extensionPtr->pNext = m_featureChainHead; }
     m_featureChainHead = extensionPtr;
 
     return *extensionPtr;

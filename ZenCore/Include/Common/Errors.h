@@ -16,34 +16,31 @@
 namespace zen
 {
 
-template <bool>
-void ThrowIf(std::string&&)
-{
-}
+template <bool> void ThrowIf(std::string&&) {}
 
-template <>
-inline void ThrowIf<true>(std::string&& msg)
-{
-    throw std::runtime_error(msg);
-}
+template <> inline void ThrowIf<true>(std::string&& msg) { throw std::runtime_error(msg); }
 
-template <bool bThrowException, typename... ArgsType>
-void LogError(bool isCritical, const char* function, const char* fullFilePath, int line, const ArgsType&... args)
+template <bool bThrowException, typename... ArgsType> void LogError(bool        isCritical,
+                                                                    const char* function,
+                                                                    const char* fullFilePath,
+                                                                    int         line,
+                                                                    const ArgsType&... args)
 {
     std::string fileName(fullFilePath);
 
     auto LastSlashPos = fileName.find_last_of("/\\");
-    if (LastSlashPos != std::string::npos)
-        fileName.erase(0, LastSlashPos + 1);
+    if (LastSlashPos != std::string::npos) fileName.erase(0, LastSlashPos + 1);
     std::string message;
     if (isCritical)
     {
-        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", function, fileName, line, args...);
+        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", function, fileName, line,
+                              args...);
         spdlog::critical(message);
     }
     else
     {
-        message = fmt::format("ZenEngine: error in {} ({}, {}): {}", function, fileName, line, args...);
+        message =
+            fmt::format("ZenEngine: error in {} ({}, {}): {}", function, fileName, line, args...);
         spdlog::error(message);
     }
     ThrowIf<bThrowException>(std::move(message));
@@ -63,21 +60,18 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
     } while (0)
 
 #define LOG_ERROR(...)                                                                       \
-    do                                                                                       \
-    {                                                                                        \
+    do {                                                                                     \
         LogError<false>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 
 #define LOG_FATAL_ERROR(...)                                                                \
-    do                                                                                      \
-    {                                                                                       \
+    do {                                                                                    \
         LogError<false>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 #define LOG_ERROR_ONCE(...)             \
-    do                                  \
-    {                                   \
+    do {                                \
         static bool IsFirstTime = true; \
         if (IsFirstTime)                \
         {                               \
@@ -88,14 +82,12 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
 
 
 #define LOG_ERROR_AND_THROW(...)                                                            \
-    do                                                                                      \
-    {                                                                                       \
+    do {                                                                                    \
         LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 #define LOG_FATAL_ERROR_AND_THROW(...)                                                     \
-    do                                                                                     \
-    {                                                                                      \
+    do {                                                                                   \
         LogError<true>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
@@ -111,7 +103,9 @@ void LogError(bool isCritical, const char* function, const char* fullFilePath, i
             LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
     }
 
-#define ASSERT_SIZEOF(Struct, Size, ...) static_assert(sizeof(Struct) == Size, "sizeof(" #Struct ") is expected to be " #Size ". " __VA_ARGS__)
+#define ASSERT_SIZEOF(Struct, Size, ...)  \
+    static_assert(sizeof(Struct) == Size, \
+                  "sizeof(" #Struct ") is expected to be " #Size ". " __VA_ARGS__)
 
 #if UINTPTR_MAX == UINT64_MAX
 #    define ASSERT_SIZEOF64 ASSERT_SIZEOF

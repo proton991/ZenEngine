@@ -8,7 +8,12 @@ namespace zen::val
 class Swapchain : public DeviceObject<VkSwapchainKHR, VK_OBJECT_TYPE_SWAPCHAIN_KHR>
 {
 public:
-    Swapchain(const Device& device, VkSurfaceKHR surface, VkExtent2D extent, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE, uint32_t imageCount = 3, bool vsync = true);
+    Swapchain(const Device&  device,
+              VkSurfaceKHR   surface,
+              VkExtent2D     extent,
+              VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE,
+              uint32_t       imageCount   = 3,
+              bool           vsync        = true);
 
     ~Swapchain() = default;
 
@@ -22,12 +27,15 @@ public:
 
     VkExtent2D GetExtent2D() const { return m_extent; }
 
-    VkResult AcquireNextImage(uint32_t& imageIndex, VkSemaphore imageAcquiredSem, VkFence fence = VK_NULL_HANDLE);
+    VkResult AcquireNextImage(uint32_t&   imageIndex,
+                              VkSemaphore imageAcquiredSem,
+                              VkFence     fence = VK_NULL_HANDLE);
 
 private:
     VkImageUsageFlags           ChooseImageUsage(VkImageUsageFlags supportedUsage);
     VkPresentModeKHR            ChoosePresentMode(bool vsync);
-    VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request, VkCompositeAlphaFlagsKHR supported);
+    VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
+                                                     VkCompositeAlphaFlagsKHR    supported);
 
     VkSurfaceKHR                    m_surface{VK_NULL_HANDLE};
     std::vector<VkSurfaceFormatKHR> m_surfaceFormats{};

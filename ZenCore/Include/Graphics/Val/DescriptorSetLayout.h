@@ -11,10 +11,13 @@ struct ShaderResource;
 enum class ShaderResourceType;
 VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynamic);
 
-class DescriptorSetLayout : public DeviceObject<VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT>
+class DescriptorSetLayout :
+    public DeviceObject<VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT>
 {
 public:
-    DescriptorSetLayout(const Device& device, uint32_t setIndex, const std::vector<ShaderResource>& shaderResources);
+    DescriptorSetLayout(const Device&                      device,
+                        uint32_t                           setIndex,
+                        const std::vector<ShaderResource>& shaderResources);
 
     DescriptorSetLayout(DescriptorSetLayout&& other) noexcept;
 

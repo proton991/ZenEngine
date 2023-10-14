@@ -4,7 +4,9 @@
 namespace zen
 {
 RenderDevice::RenderDevice(const val::Device& valDevice) :
-    m_valDevice(valDevice), m_descriptorPoolManager(valDevice, val::MainDescriptorPoolSizes(), false), m_descriptorAllocator(valDevice, m_descriptorPoolManager)
+    m_valDevice(valDevice),
+    m_descriptorPoolManager(valDevice, val::MainDescriptorPoolSizes(), false),
+    m_descriptorAllocator(valDevice, m_descriptorPoolManager)
 {
     m_resourceCache = MakeUnique<ResourceCache>(m_valDevice);
 }
@@ -19,22 +21,30 @@ UniquePtr<val::Buffer> RenderDevice::CreateBufferUnique(const val::BufferCreateI
     return val::Buffer::CreateUnique(m_valDevice, bufferCI);
 }
 
-UniquePtr<val::Framebuffer> RenderDevice::CreateFramebufferUnique(VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D)
+UniquePtr<val::Framebuffer> RenderDevice::CreateFramebufferUnique(
+    VkRenderPass                    renderPassHandle,
+    const std::vector<VkImageView>& attachments,
+    VkExtent3D                      extent3D)
 {
     return MakeUnique<val::Framebuffer>(m_valDevice, renderPassHandle, attachments, extent3D);
 }
 
-val::RenderPass* RenderDevice::RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments, const val::SubpassInfo& subpassInfo)
+val::RenderPass* RenderDevice::RequestRenderPass(
+    const std::vector<VkAttachmentDescription>& attachments,
+    const val::SubpassInfo&                     subpassInfo)
 {
     return m_resourceCache->RequestRenderPass(attachments, subpassInfo);
 }
 
-val::PipelineLayout* RenderDevice::RequestPipelineLayout(const std::vector<val::ShaderModule*>& shaderModules)
+val::PipelineLayout* RenderDevice::RequestPipelineLayout(
+    const std::vector<val::ShaderModule*>& shaderModules)
 {
     return m_resourceCache->RequestPipelineLayout(shaderModules);
 }
 
-val::GraphicsPipeline* RenderDevice::RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout, val::PipelineState& pipelineState)
+val::GraphicsPipeline* RenderDevice::RequestGraphicsPipeline(
+    const val::PipelineLayout& pipelineLayout,
+    val::PipelineState&        pipelineState)
 {
     return m_resourceCache->RequestGraphicsPipeline(pipelineLayout, pipelineState);
 }
@@ -43,8 +53,7 @@ VkDescriptorSet RenderDevice::RequestDescriptorSet(const val::DescriptorSetLayou
 {
     auto hash = layout.GetHash();
     auto it   = m_descriptorSetCache.find(hash);
-    if (it != m_descriptorSetCache.end())
-        return it->second;
+    if (it != m_descriptorSetCache.end()) return it->second;
     VkDescriptorSet       descriptorSet;
     VkDescriptorSetLayout dsLayout = layout.GetHandle();
     m_descriptorAllocator.Allocate(&dsLayout, 1, &descriptorSet);
@@ -54,6 +63,7 @@ VkDescriptorSet RenderDevice::RequestDescriptorSet(const val::DescriptorSetLayou
 
 void RenderDevice::UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>& writes)
 {
-    vkUpdateDescriptorSets(m_valDevice.GetHandle(), util::ToU32(writes.size()), writes.data(), 0, nullptr);
+    vkUpdateDescriptorSets(m_valDevice.GetHandle(), util::ToU32(writes.size()), writes.data(), 0,
+                           nullptr);
 }
 } // namespace zen

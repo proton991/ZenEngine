@@ -18,10 +18,7 @@ Device::~Device()
         vmaDestroyAllocator(m_memAllocator);
     }
 
-    if (m_handle != VK_NULL_HANDLE)
-    {
-        vkDestroyDevice(m_handle, nullptr);
-    }
+    if (m_handle != VK_NULL_HANDLE) { vkDestroyDevice(m_handle, nullptr); }
 }
 
 SharedPtr<Device> Device::Create(const Device::CreateInfo& CI)
@@ -37,7 +34,10 @@ UniquePtr<Device> Device::CreateUnique(const Device::CreateInfo& CI)
 
 bool Device::IsExtensionEnabled(const char* extension) const
 {
-    return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(), [extension](const char* enabled_extension) { return strcmp(extension, enabled_extension) == 0; }) != m_enabledExtensions.end();
+    return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(),
+                        [extension](const char* enabled_extension) {
+                            return strcmp(extension, enabled_extension) == 0;
+                        }) != m_enabledExtensions.end();
 }
 
 Device::Device(const Device::CreateInfo& CI)
@@ -67,29 +67,26 @@ Device::Device(const Device::CreateInfo& CI)
         {
             m_enabledExtensions.push_back(extensionName);
         }
-        else
-        {
-            LOGE("Requested device extension: {} is not supported! (Ignored)", extensionName);
-        }
+        else { LOGE("Requested device extension: {} is not supported! (Ignored)", extensionName); }
     }
     VkDeviceCreateInfo deviceCI{};
-    deviceCI.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceCI.pQueueCreateInfos       = queueCreateInfos.data();
-    deviceCI.queueCreateInfoCount    = queueCreateInfos.size();
-    deviceCI.enabledExtensionCount   = m_enabledExtensions.size();
-    deviceCI.ppEnabledExtensionNames = m_enabledExtensions.empty() ? nullptr : m_enabledExtensions.data();
-    deviceCI.pEnabledFeatures        = &CI.pPhysicalDevice->GetRequestedFeatures();
-    deviceCI.pNext                   = CI.pPhysicalDevice->GetExtensionFeatureChain();
+    deviceCI.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCI.pQueueCreateInfos     = queueCreateInfos.data();
+    deviceCI.queueCreateInfoCount  = queueCreateInfos.size();
+    deviceCI.enabledExtensionCount = m_enabledExtensions.size();
+    deviceCI.ppEnabledExtensionNames =
+        m_enabledExtensions.empty() ? nullptr : m_enabledExtensions.data();
+    deviceCI.pEnabledFeatures = &CI.pPhysicalDevice->GetRequestedFeatures();
+    deviceCI.pNext            = CI.pPhysicalDevice->GetExtensionFeatureChain();
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateDevice(CI.pPhysicalDevice->GetHandle(), &deviceCI, nullptr, &m_handle), "Failed to create device!")
+    CHECK_VK_ERROR_AND_THROW(
+        vkCreateDevice(CI.pPhysicalDevice->GetHandle(), &deviceCI, nullptr, &m_handle),
+        "Failed to create device!")
     volkLoadDevice(m_handle);
     SetDeviceName(m_handle, "VulkanLogicalDevice");
 
     LOGI("Enabled Device Extensions count: {}", m_enabledExtensions.size())
-    for (const auto& ext : m_enabledExtensions)
-    {
-        LOGI("\tEnabled Device Extension: {}", ext);
-    }
+    for (const auto& ext : m_enabledExtensions) { LOGI("\tEnabled Device Extension: {}", ext); }
 
     // get device queues
     for (auto queueType = 0; queueType < QUEUE_INDEX_COUNT; queueType++)
@@ -97,9 +94,11 @@ Device::Device(const Device::CreateInfo& CI)
         const auto familyIndex = queueInfo.familyIndices[queueType];
         if (familyIndex != VK_QUEUE_FAMILY_IGNORED)
         {
-            bool supportPresent = CI.pPhysicalDevice->IsPresentSupported(VK_NULL_HANDLE, familyIndex);
+            bool supportPresent =
+                CI.pPhysicalDevice->IsPresentSupported(VK_NULL_HANDLE, familyIndex);
 
-            m_queues.emplace(queueType, Queue(*this, familyIndex, queueInfo.indices[queueType], supportPresent));
+            m_queues.emplace(
+                queueType, Queue(*this, familyIndex, queueInfo.indices[queueType], supportPresent));
         }
     }
 
@@ -141,15 +140,9 @@ Device::Device(const Device::CreateInfo& CI)
 
 const Queue& Device::GetQueue(QueueType queueType) const
 {
-    if (m_queues.count(queueType))
-    {
-        return m_queues.at(queueType);
-    }
+    if (m_queues.count(queueType)) { return m_queues.at(queueType); }
     LOG_ERROR_AND_THROW("Queue not found!");
 }
 
-void Device::WaitIdle() const
-{
-    vkDeviceWaitIdle(m_handle);
-}
+void Device::WaitIdle() const { vkDeviceWaitIdle(m_handle); }
 } // namespace zen::val

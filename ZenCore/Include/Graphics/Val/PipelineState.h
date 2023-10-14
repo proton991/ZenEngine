@@ -89,7 +89,8 @@ struct ColorBlendAttachmentState
     VkBlendFactor         srcAlphaBlendFactor{VK_BLEND_FACTOR_ONE};
     VkBlendFactor         dstAlphaBlendFactor{VK_BLEND_FACTOR_ZERO};
     VkBlendOp             alphaBlendOp{VK_BLEND_OP_ADD};
-    VkColorComponentFlags colorWriteMask{VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+    VkColorComponentFlags colorWriteMask{VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
 };
 
 struct ColorBlendState
@@ -105,24 +106,17 @@ class SpecializationState
 public:
     void Reset()
     {
-        if (m_dirty)
-        {
-            m_constantTable.clear();
-        }
+        if (m_dirty) { m_constantTable.clear(); }
         m_dirty = false;
     }
 
     bool IsDirty() const { return m_dirty; }
 
-    template <class T>
-    void SetConstant(uint32_t id, const T& value)
+    template <class T> void SetConstant(uint32_t id, const T& value)
     {
         auto it    = m_constantTable.find(id);
         auto bytes = util::ToBytes(value);
-        if (it != m_constantTable.end() && it->second == bytes)
-        {
-            return;
-        }
+        if (it != m_constantTable.end() && it->second == bytes) { return; }
         m_constantTable[id] = bytes;
         m_dirty             = true;
     }

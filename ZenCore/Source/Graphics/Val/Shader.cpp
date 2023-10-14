@@ -6,7 +6,10 @@
 
 namespace zen::val
 {
-ShaderModule::ShaderModule(const Device& device, VkShaderStageFlagBits stage, const std::string& name, RuntimeArraySizes runtimeArraySizes) :
+ShaderModule::ShaderModule(const Device&         device,
+                           VkShaderStageFlagBits stage,
+                           const std::string&    name,
+                           RuntimeArraySizes     runtimeArraySizes) :
     DeviceObject(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
 {
     m_spirvCode = platform::FileSystem::LoadSpvFile(name);
@@ -20,7 +23,9 @@ ShaderModule::ShaderModule(const Device& device, VkShaderStageFlagBits stage, co
     createInfo.codeSize = m_spirvCode.size() * sizeof(uint32_t);
     createInfo.pCode    = m_spirvCode.data();
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateShaderModule(m_device.GetHandle(), &createInfo, nullptr, &m_handle), "Failed to create shader module");
+    CHECK_VK_ERROR_AND_THROW(
+        vkCreateShaderModule(m_device.GetHandle(), &createInfo, nullptr, &m_handle),
+        "Failed to create shader module");
 
     SetShaderModuleName(m_device.GetHandle(), m_handle, name.c_str());
 
@@ -29,11 +34,12 @@ ShaderModule::ShaderModule(const Device& device, VkShaderStageFlagBits stage, co
     SpirvReflection::ReflectShaderResources(m_stage, m_spirvCode, m_resources, m_runtimeArraySizes);
 
     std::hash<std::string> hasher{};
-    m_id = hasher(std::string(reinterpret_cast<const char*>(m_spirvCode.data()), reinterpret_cast<const char*>(m_spirvCode.data() + m_spirvCode.size())));
+    m_id =
+        hasher(std::string(reinterpret_cast<const char*>(m_spirvCode.data()),
+                           reinterpret_cast<const char*>(m_spirvCode.data() + m_spirvCode.size())));
 }
 
-ShaderModule::ShaderModule(ShaderModule&& other) :
-    DeviceObject(std::move(other))
+ShaderModule::ShaderModule(ShaderModule&& other) : DeviceObject(std::move(other))
 {
     m_stage             = other.m_stage;
     m_spirvCode         = std::move(other.m_spirvCode);
@@ -53,34 +59,25 @@ ShaderModule::~ShaderModule()
 
 void ShaderModule::SetResourceMode(const std::string& name, ShaderResourceMode mode)
 {
-    auto it = std::find_if(m_resources.begin(), m_resources.end(), [&name](const ShaderResource& resource) { return resource.name == name; });
+    auto it =
+        std::find_if(m_resources.begin(), m_resources.end(),
+                     [&name](const ShaderResource& resource) { return resource.name == name; });
 
     if (it != m_resources.end())
     {
         if (mode == ShaderResourceMode::Dynamic)
         {
-            if (it->type == ShaderResourceType::BufferUniform || it->type == ShaderResourceType::BufferStorage)
+            if (it->type == ShaderResourceType::BufferUniform ||
+                it->type == ShaderResourceType::BufferStorage)
             {
                 it->mode = mode;
             }
-            else
-            {
-                LOGW("Resource `{}` does not support dynamic.", name);
-            }
+            else { LOGW("Resource `{}` does not support dynamic.", name); }
         }
-        else
-        {
-            it->mode = mode;
-        }
+        else { it->mode = mode; }
     }
-    else
-    {
-        LOGW("Resource `{}` not found for shader.", name);
-    }
+    else { LOGW("Resource `{}` not found for shader.", name); }
 }
 
-std::vector<ShaderResource>& ShaderModule::GetResources()
-{
-    return m_resources;
-}
+std::vector<ShaderResource>& ShaderModule::GetResources() { return m_resources; }
 } // namespace zen::val

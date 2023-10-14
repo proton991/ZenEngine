@@ -32,7 +32,8 @@ public:
 
     const Device& GetDevice() { return m_device; }
 
-    CommandBuffer* RequestCommandBuffer(VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    CommandBuffer* RequestCommandBuffer(
+        VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
     void ResetPool();
 

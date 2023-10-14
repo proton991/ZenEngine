@@ -27,7 +27,8 @@ public:
     explicit Instance(const CreateInfo& createInfo);
     ~Instance();
 
-    bool IsExtensionSupported(std::vector<VkExtensionProperties>& extensions, const char* extensionName);
+    bool IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
+                              const char*                         extensionName);
     bool IsLayerSupported(const char* layerName, uint32_t& version);
     bool IsExtensionEnabled(const char* name);
 
@@ -38,7 +39,8 @@ public:
     VkPhysicalDevice SelectPhysicalDevice();
 
 private:
-    bool EnumerateInstanceExtensions(const char* layerName, std::vector<VkExtensionProperties>& extensions);
+    bool EnumerateInstanceExtensions(const char*                         layerName,
+                                     std::vector<VkExtensionProperties>& extensions);
 
     enum DebugMode
     {

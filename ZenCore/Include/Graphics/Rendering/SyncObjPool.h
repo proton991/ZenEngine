@@ -6,8 +6,7 @@ namespace zen
 class SynObjPool
 {
 public:
-    explicit SynObjPool(const val::Device& device) :
-        m_valDevice(device) {}
+    explicit SynObjPool(const val::Device& device) : m_valDevice(device) {}
 
     ~SynObjPool();
 

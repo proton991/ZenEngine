@@ -31,23 +31,22 @@ public:
         return m_commandPool->RequestCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     }
 
-    void ResetCommandPool()
-    {
-        m_commandPool->ResetPool();
-    }
+    void ResetCommandPool() { m_commandPool->ResetPool(); }
 
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
-    template <typename T>
-    void UpdateUniformBuffer(const T* data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
+    template <typename T> void UpdateUniformBuffer(const T*            data,
+                                                   UniformBuffer*      uniformBuffer,
+                                                   val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
         auto           submitInfo    = stagingBuffer->Submit(data);
         pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
     }
 
-    template <typename T>
-    void UpdateUniformBuffer(ArrayView<T> data, UniformBuffer* uniformBuffer, val::CommandBuffer* pCmdBuffer)
+    template <typename T> void UpdateUniformBuffer(ArrayView<T>        data,
+                                                   UniformBuffer*      uniformBuffer,
+                                                   val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
         auto           submitInfo    = stagingBuffer->Submit(data);

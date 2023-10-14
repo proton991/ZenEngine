@@ -30,7 +30,10 @@ public:
         return {static_cast<uint32_t>(m_data.width), static_cast<uint32_t>(m_data.height)};
     }
 
-    float GetAspect() override { return static_cast<float>(m_data.width) / static_cast<float>(m_data.height); }
+    float GetAspect() override
+    {
+        return static_cast<float>(m_data.width) / static_cast<float>(m_data.height);
+    }
 
     void SetOnResize(std::function<void(uint32_t, uint32_t)> callback)
     {

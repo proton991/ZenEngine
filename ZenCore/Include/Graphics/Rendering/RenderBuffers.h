@@ -22,46 +22,39 @@ public:
     }
 
     StagingBuffer(const val::Device& valDevice, size_t byteSize) :
-        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
+        val::Buffer(valDevice,
+                    byteSize,
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT)
     {
         MapMemory();
     }
 
-    void Flush()
-    {
-        FlushMemory(m_currentOffset, 0);
-    }
+    void Flush() { FlushMemory(m_currentOffset, 0); }
 
-    void ResetOffset()
-    {
-        m_currentOffset = 0;
-    }
+    void ResetOffset() { m_currentOffset = 0; }
 
     SubmitInfo Submit(const uint8_t* data, size_t byteSize)
     {
         ASSERT(m_currentOffset + byteSize <= GetSize());
-        if (data != nullptr)
-        {
-            CopyData(data, byteSize, m_currentOffset);
-        }
+        if (data != nullptr) { CopyData(data, byteSize, m_currentOffset); }
         m_currentOffset += byteSize;
         return SubmitInfo{byteSize, m_currentOffset - byteSize};
     }
 
-    template <typename T>
-    SubmitInfo Submit(ArrayView<const T> arrayView)
+    template <typename T> SubmitInfo Submit(ArrayView<const T> arrayView)
     {
-        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()),
+                      static_cast<uint32_t>(arrayView.size() * sizeof(T)));
     }
 
-    template <typename T>
-    SubmitInfo Submit(ArrayView<T> arrayView)
+    template <typename T> SubmitInfo Submit(ArrayView<T> arrayView)
     {
-        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()), static_cast<uint32_t>(arrayView.size() * sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(arrayView.data()),
+                      static_cast<uint32_t>(arrayView.size() * sizeof(T)));
     }
 
-    template <typename T>
-    SubmitInfo Submit(const T* data)
+    template <typename T> SubmitInfo Submit(const T* data)
     {
         return Submit(reinterpret_cast<const uint8_t*>(data), uint32_t(sizeof(T)));
     }
@@ -79,7 +72,11 @@ public:
     }
 
     UniformBuffer(val::Device& valDevice, VkDeviceSize byteSize) :
-        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0) {}
+        val::Buffer(valDevice,
+                    byteSize,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    0)
+    {}
 };
 
 class VertexBuffer : public val::Buffer
@@ -91,7 +88,11 @@ public:
     }
 
     VertexBuffer(val::Device& valDevice, VkDeviceSize byteSize) :
-        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0) {}
+        val::Buffer(valDevice,
+                    byteSize,
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    0)
+    {}
 };
 
 class IndexBuffer : public val::Buffer
@@ -104,7 +105,12 @@ public:
     }
 
     IndexBuffer(val::Device& valDevice, VkDeviceSize byteSize, uint32_t indexCount) :
-        val::Buffer(valDevice, byteSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 0), m_indexCount(indexCount) {}
+        val::Buffer(valDevice,
+                    byteSize,
+                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    0),
+        m_indexCount(indexCount)
+    {}
 
     auto GetIndexCount() const { return m_indexCount; }
 

@@ -11,26 +11,27 @@ UniquePtr<CommandPool> CommandPool::Create(const Device& device, const CommandPo
 }
 
 CommandPool::CommandPool(const Device& device, const CommandPool::CreateInfo& CI) :
-    DeviceObject(device), m_threadId(CI.threadId), m_queueFamilyIndex(CI.queueFamilyIndex), m_resetMode(CI.resetMode)
+    DeviceObject(device),
+    m_threadId(CI.threadId),
+    m_queueFamilyIndex(CI.queueFamilyIndex),
+    m_resetMode(CI.resetMode)
 {
     VkCommandPoolCreateFlags flags;
     switch (m_resetMode)
     {
         case ResetMode::ResetBuffer:
-        case ResetMode::ReAllocate:
-            flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            break;
+        case ResetMode::ReAllocate: flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; break;
         case ResetMode::ResetPool:
-        default:
-            flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            break;
+        default: flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT; break;
     }
 
     VkCommandPoolCreateInfo cmdPoolCI{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     cmdPoolCI.queueFamilyIndex = m_queueFamilyIndex;
     cmdPoolCI.flags            = flags;
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateCommandPool(m_device.GetHandle(), &cmdPoolCI, nullptr, &m_handle), "Failed to create command pool");
+    CHECK_VK_ERROR_AND_THROW(
+        vkCreateCommandPool(m_device.GetHandle(), &cmdPoolCI, nullptr, &m_handle),
+        "Failed to create command pool");
 }
 
 CommandPool::~CommandPool()
@@ -96,23 +97,21 @@ void CommandPool::ResetPool()
 
 void CommandPool::ResetCmdBuffers()
 {
-    std::for_each(m_primaryCmdBuffers.begin(), m_primaryCmdBuffers.end(), [&](UniquePtr<CommandBuffer>& cmdBuffer) {
-        cmdBuffer->Reset();
-    });
-    std::for_each(m_secondaryCmdBuffers.begin(), m_secondaryCmdBuffers.end(), [&](UniquePtr<CommandBuffer>& cmdBuffer) {
-        cmdBuffer->Reset();
-    });
+    std::for_each(m_primaryCmdBuffers.begin(), m_primaryCmdBuffers.end(),
+                  [&](UniquePtr<CommandBuffer>& cmdBuffer) { cmdBuffer->Reset(); });
+    std::for_each(m_secondaryCmdBuffers.begin(), m_secondaryCmdBuffers.end(),
+                  [&](UniquePtr<CommandBuffer>& cmdBuffer) { cmdBuffer->Reset(); });
 }
 
 void CommandPool::FreeCmdBuffers()
 {
     std::vector<VkCommandBuffer> buffers;
-    std::for_each(m_primaryCmdBuffers.begin(), m_primaryCmdBuffers.end(), [&](UniquePtr<CommandBuffer>& cmdBuffer) {
-        buffers.push_back(cmdBuffer->GetHandle());
-    });
-    std::for_each(m_secondaryCmdBuffers.begin(), m_secondaryCmdBuffers.end(), [&](UniquePtr<CommandBuffer>& cmdBuffer) {
-        buffers.push_back(cmdBuffer->GetHandle());
-    });
+    std::for_each(
+        m_primaryCmdBuffers.begin(), m_primaryCmdBuffers.end(),
+        [&](UniquePtr<CommandBuffer>& cmdBuffer) { buffers.push_back(cmdBuffer->GetHandle()); });
+    std::for_each(
+        m_secondaryCmdBuffers.begin(), m_secondaryCmdBuffers.end(),
+        [&](UniquePtr<CommandBuffer>& cmdBuffer) { buffers.push_back(cmdBuffer->GetHandle()); });
     vkFreeCommandBuffers(m_device.GetHandle(), m_handle, buffers.size(), buffers.data());
 }
 } // namespace zen::val

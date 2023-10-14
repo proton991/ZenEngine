@@ -7,7 +7,9 @@
 namespace zen
 {
 RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl* window) :
-    m_valDevice(device), m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)), m_synObjPool(device)
+    m_valDevice(device),
+    m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)),
+    m_synObjPool(device)
 {
     m_surface   = window->CreateSurface(device.GetInstanceHandle());
     m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, window->GetExtent2D());
@@ -30,7 +32,8 @@ void RenderContext::Init()
 {
     for (auto& imageHandle : m_swapchain->GetImages())
     {
-        auto image = MakeUnique<val::Image>(m_valDevice, imageHandle, m_swapchain->GetExtent3D(), m_swapchain->GetFormat());
+        auto image = MakeUnique<val::Image>(m_valDevice, imageHandle, m_swapchain->GetExtent3D(),
+                                            m_swapchain->GetFormat());
         auto frame = RenderFrame(m_valDevice, std::move(image));
         m_frames.push_back(std::move(frame));
     }
@@ -43,14 +46,8 @@ void RenderContext::Init()
 
 val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetMode)
 {
-    if (!m_frameActive)
-    {
-        StartFrameInternal();
-    }
-    if (!m_frameActive)
-    {
-        LOG_ERROR_AND_THROW("Failed to start frame");
-    }
+    if (!m_frameActive) { StartFrameInternal(); }
+    if (!m_frameActive) { LOG_ERROR_AND_THROW("Failed to start frame"); }
     m_activeCmdBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
     m_activeCmdBuffer->Begin();
     return m_activeCmdBuffer;
@@ -85,15 +82,20 @@ void RenderContext::EndFrame()
     ASSERT(m_frameActive);
     // change image layout to present
     VkImageMemoryBarrier transferDstToPresentBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    transferDstToPresentBarrier.srcAccessMask       = val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    transferDstToPresentBarrier.dstAccessMask       = VK_ACCESS_MEMORY_READ_BIT;
-    transferDstToPresentBarrier.oldLayout           = val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    transferDstToPresentBarrier.srcAccessMask =
+        val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    transferDstToPresentBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    transferDstToPresentBarrier.oldLayout =
+        val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     transferDstToPresentBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     transferDstToPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     transferDstToPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    transferDstToPresentBarrier.image               = GetActiveFrame().GetSwapchainImage()->GetHandle();
-    transferDstToPresentBarrier.subresourceRange    = GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
-    m_activeCmdBuffer->PipelineBarrier(val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
+    transferDstToPresentBarrier.image = GetActiveFrame().GetSwapchainImage()->GetHandle();
+    transferDstToPresentBarrier.subresourceRange =
+        GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
+    m_activeCmdBuffer->PipelineBarrier(
+        val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT),
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
 
     SubmitInternal();
 
@@ -150,26 +152,27 @@ void RenderContext::RecreateSwapchain(uint32_t newWidth, uint32_t newHeight)
 {
     m_valDevice.WaitIdle();
     VkSurfaceCapabilitiesKHR surfaceCaps;
-    CHECK_VK_ERROR_AND_THROW(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_valDevice.GetPhysicalDeviceHandle(),
-                                                                       m_surface,
-                                                                       &surfaceCaps),
+    CHECK_VK_ERROR_AND_THROW(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                                 m_valDevice.GetPhysicalDeviceHandle(), m_surface, &surfaceCaps),
                              "Failed to get physical surface caps");
-    if (surfaceCaps.currentExtent.width == 0xFFFFFFFF)
-    {
-        return;
-    }
+    if (surfaceCaps.currentExtent.width == 0xFFFFFFFF) { return; }
 
-    if (surfaceCaps.currentExtent.width != m_swapchain->GetExtent2D().width || surfaceCaps.currentExtent.height != m_swapchain->GetExtent2D().height)
+    if (surfaceCaps.currentExtent.width != m_swapchain->GetExtent2D().width ||
+        surfaceCaps.currentExtent.height != m_swapchain->GetExtent2D().height)
     {
-        VkExtent2D newExtent = {std::clamp(newWidth, surfaceCaps.minImageExtent.width, surfaceCaps.maxImageExtent.width),
-                                std::clamp(newHeight, surfaceCaps.minImageExtent.height, surfaceCaps.maxImageExtent.height)};
+        VkExtent2D newExtent = {std::clamp(newWidth, surfaceCaps.minImageExtent.width,
+                                           surfaceCaps.maxImageExtent.width),
+                                std::clamp(newHeight, surfaceCaps.minImageExtent.height,
+                                           surfaceCaps.maxImageExtent.height)};
 
-        m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, newExtent, m_swapchain->GetHandle());
+        m_swapchain =
+            MakeUnique<val::Swapchain>(m_valDevice, m_surface, newExtent, m_swapchain->GetHandle());
         // recreate images
         m_frames.clear();
         for (auto& imageHandle : m_swapchain->GetImages())
         {
-            auto image = MakeUnique<val::Image>(m_valDevice, imageHandle, m_swapchain->GetExtent3D(), m_swapchain->GetFormat());
+            auto image = MakeUnique<val::Image>(
+                m_valDevice, imageHandle, m_swapchain->GetExtent3D(), m_swapchain->GetFormat());
             auto frame = RenderFrame(m_valDevice, std::move(image));
             m_frames.push_back(std::move(frame));
         }

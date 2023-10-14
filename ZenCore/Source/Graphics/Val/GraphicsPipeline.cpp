@@ -7,7 +7,10 @@
 
 namespace zen::val
 {
-GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& pipelineLayout, PipelineState& pipelineState, VkPipelineCache pipelineCache) :
+GraphicsPipeline::GraphicsPipeline(const Device&         device,
+                                   const PipelineLayout& pipelineLayout,
+                                   PipelineState&        pipelineState,
+                                   VkPipelineCache       pipelineCache) :
     DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
@@ -32,7 +35,8 @@ GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& p
 
     for (const ShaderModule* shaderModule : pipelineLayout.GetShaderModules())
     {
-        VkPipelineShaderStageCreateInfo shaderStageCI{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        VkPipelineShaderStageCreateInfo shaderStageCI{
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
         shaderStageCI.stage               = shaderModule->GetStage();
         shaderStageCI.pName               = shaderModule->GetEntryPoint().c_str();
         shaderStageCI.module              = shaderModule->GetHandle();
@@ -40,8 +44,13 @@ GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& p
         shaderStageCIs.push_back(shaderStageCI);
     }
 
-    auto vertexInputResources = pipelineLayout.GetResources(ShaderResourceType::Input, VK_SHADER_STAGE_VERTEX_BIT);
-    std::sort(vertexInputResources.begin(), vertexInputResources.end(), [](const ShaderResource& lhs, const ShaderResource& rhs) { return lhs.binding == rhs.binding ? lhs.location < rhs.location : lhs.binding < rhs.binding; });
+    auto vertexInputResources =
+        pipelineLayout.GetResources(ShaderResourceType::Input, VK_SHADER_STAGE_VERTEX_BIT);
+    std::sort(vertexInputResources.begin(), vertexInputResources.end(),
+              [](const ShaderResource& lhs, const ShaderResource& rhs) {
+                  return lhs.binding == rhs.binding ? lhs.location < rhs.location :
+                                                      lhs.binding < rhs.binding;
+              });
 
     std::vector<VkVertexInputBindingDescription>   vertexBindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
@@ -85,7 +94,8 @@ GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& p
     pcbAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     pcbAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     pcbAtt.alphaBlendOp        = VK_BLEND_OP_ADD;
-    pcbAtt.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    pcbAtt.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     val::ColorBlendState colorBlendState{};
     colorBlendState.attachments = {pcbAtt};
     pipelineState.SetColorBlendState(std::move(colorBlendState));
@@ -117,19 +127,17 @@ GraphicsPipeline::GraphicsPipeline(const Device& device, const PipelineLayout& p
     pipelineCI.renderPass          = pipelineState.GetRPHandle();
     pipelineCI.subpass             = pipelineState.GetSubpassIndex();
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateGraphicsPipelines(m_device.GetHandle(), pipelineCache, 1, &pipelineCI, nullptr, &m_handle), "Failed to create graphics pipeline");
+    CHECK_VK_ERROR_AND_THROW(vkCreateGraphicsPipelines(m_device.GetHandle(), pipelineCache, 1,
+                                                       &pipelineCI, nullptr, &m_handle),
+                             "Failed to create graphics pipeline");
 }
 
 GraphicsPipeline::GraphicsPipeline(GraphicsPipeline&& other) noexcept :
     DeviceObject(std::move(other))
-{
-}
+{}
 
 GraphicsPipeline::~GraphicsPipeline()
 {
-    if (m_handle != VK_NULL_HANDLE)
-    {
-        vkDestroyPipeline(m_device.GetHandle(), m_handle, nullptr);
-    }
+    if (m_handle != VK_NULL_HANDLE) { vkDestroyPipeline(m_device.GetHandle(), m_handle, nullptr); }
 }
 } // namespace zen::val

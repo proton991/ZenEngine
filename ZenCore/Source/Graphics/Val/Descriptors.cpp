@@ -5,43 +5,38 @@
 
 namespace zen::val
 {
-DescriptorPoolManager::DescriptorPoolManager(const Device& device, const VulkanDescriptorPoolSizes& poolSizes, bool allowFree) :
-    m_device(device), m_maxSets(poolSizes.maxDescriptorSets), m_allowFree(allowFree), m_poolSizes{
-                                                                                          {VK_DESCRIPTOR_TYPE_SAMPLER, poolSizes.numSeparateSamplerDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, poolSizes.numCombinedSamplerDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, poolSizes.numSampledImageDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, poolSizes.numStorageImageDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, poolSizes.numUniformTexelBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, poolSizes.numStorageTexelBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, poolSizes.numUniformBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, poolSizes.numStorageBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, poolSizes.numUniformBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, poolSizes.numStorageBufferDescriptors},
-                                                                                          {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, poolSizes.numInputAttachmentDescriptors},
-                                                                                      }
-{
-}
+DescriptorPoolManager::DescriptorPoolManager(const Device&                    device,
+                                             const VulkanDescriptorPoolSizes& poolSizes,
+                                             bool                             allowFree) :
+    m_device(device),
+    m_maxSets(poolSizes.maxDescriptorSets),
+    m_allowFree(allowFree),
+    m_poolSizes{
+        {VK_DESCRIPTOR_TYPE_SAMPLER, poolSizes.numSeparateSamplerDescriptors},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, poolSizes.numCombinedSamplerDescriptors},
+        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, poolSizes.numSampledImageDescriptors},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, poolSizes.numStorageImageDescriptors},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, poolSizes.numUniformTexelBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, poolSizes.numStorageTexelBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, poolSizes.numUniformBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, poolSizes.numStorageBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, poolSizes.numUniformBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, poolSizes.numStorageBufferDescriptors},
+        {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, poolSizes.numInputAttachmentDescriptors},
+    }
+{}
 
 void DescriptorPoolManager::Cleanup()
 {
-    for (auto& pool : m_freePools)
-    {
-        vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr);
-    }
+    for (auto& pool : m_freePools) { vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr); }
 
-    for (auto& pool : m_usedPools)
-    {
-        vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr);
-    }
+    for (auto& pool : m_usedPools) { vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr); }
 }
 
 void DescriptorPoolManager::ResetPools()
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
-    for (auto& pool : m_usedPools)
-    {
-        vkResetDescriptorPool(m_device.GetHandle(), pool, 0);
-    }
+    for (auto& pool : m_usedPools) { vkResetDescriptorPool(m_device.GetHandle(), pool, 0); }
     m_freePools = std::move(m_usedPools);
     m_usedPools.clear();
 }
@@ -56,10 +51,7 @@ VkDescriptorPool DescriptorPoolManager::GrabPool()
         pool = m_freePools.back();
         m_freePools.pop_back();
     }
-    else
-    {
-        pool = CreatePool();
-    }
+    else { pool = CreatePool(); }
     m_usedPools.push_back(pool);
     return pool;
 }
@@ -72,24 +64,21 @@ VkDescriptorPool DescriptorPoolManager::CreatePool()
     descriptorPoolCI.maxSets       = m_maxSets;
     descriptorPoolCI.pPoolSizes    = m_poolSizes.data();
     descriptorPoolCI.poolSizeCount = static_cast<uint32_t>(m_poolSizes.size());
-    descriptorPoolCI.flags         = m_allowFree ? VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT : 0;
+    descriptorPoolCI.flags = m_allowFree ? VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT : 0;
     vkCreateDescriptorPool(m_device.GetHandle(), &descriptorPoolCI, nullptr, &pool);
 
     return pool;
 }
 
-DescriptorSetAllocator::DescriptorSetAllocator(const Device& device, DescriptorPoolManager& poolManager) :
+DescriptorSetAllocator::DescriptorSetAllocator(const Device&          device,
+                                               DescriptorPoolManager& poolManager) :
     m_device(device), m_poolManager(poolManager)
-{
-}
+{}
 
 VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* layout)
 {
     VkDescriptorSet set{VK_NULL_HANDLE};
-    if (m_currentPool == VK_NULL_HANDLE)
-    {
-        m_currentPool = m_poolManager.GrabPool();
-    }
+    if (m_currentPool == VK_NULL_HANDLE) { m_currentPool = m_poolManager.GrabPool(); }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
     allocInfo.pSetLayouts        = layout;
@@ -103,13 +92,12 @@ VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* la
     return set;
 }
 
-bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet)
+bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
+                                      uint32_t               count,
+                                      VkDescriptorSet*       outSet)
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
-    if (m_currentPool == VK_NULL_HANDLE)
-    {
-        m_currentPool = m_poolManager.GrabPool();
-    }
+    if (m_currentPool == VK_NULL_HANDLE) { m_currentPool = m_poolManager.GrabPool(); }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
     allocInfo.pSetLayouts        = layout;

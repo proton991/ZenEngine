@@ -20,10 +20,12 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     {
         // generate mipmap
         generateMipmap = true;
-        imageCI.usage  = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        imageCI.usage  = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
-    imageCI.usage     = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageCI.mipLevels = textureInfo.otherLeveData.empty() ? 1 : textureInfo.otherLeveData.size() + 1;
+    imageCI.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCI.mipLevels =
+        textureInfo.otherLeveData.empty() ? 1 : textureInfo.otherLeveData.size() + 1;
     m_cache.emplace(filename, val::Image::CreateUnique(m_valDevice, imageCI));
     val::Image* image = m_cache.at(filename).Get();
     if (generateMipmap)
@@ -33,12 +35,14 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     else
     {
         auto stagingBuffer = m_renderContext.GetCurrentStagingBuffer();
-        auto submitInfo    = stagingBuffer->Submit(textureInfo.baseLevelData.data(), textureInfo.baseLevelData.size());
+        auto submitInfo    = stagingBuffer->Submit(textureInfo.baseLevelData.data(),
+                                                   textureInfo.baseLevelData.size());
         // copy to image
         val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
         commandBuffer->Begin();
         commandBuffer->CopyBufferToImage(stagingBuffer, submitInfo.offset, image);
-        commandBuffer->TransferLayout(image, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_USAGE_SAMPLED_BIT);
+        commandBuffer->TransferLayout(image, VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                      VK_IMAGE_USAGE_SAMPLED_BIT);
         stagingBuffer->Flush();
         stagingBuffer->ResetOffset();
 
@@ -67,6 +71,7 @@ TextureInfo TextureManager::LoadTexture2DFromFile(const std::string& filename)
     std::copy(data, data + vecData.size(), vecData.begin());
     stbi_image_free(data);
 
-    return TextureInfo{(uint32_t)width, (uint32_t)height, VK_FORMAT_R8G8B8A8_UNORM, false, std::move(vecData)};
+    return TextureInfo{(uint32_t)width, (uint32_t)height, VK_FORMAT_R8G8B8A8_UNORM, false,
+                       std::move(vecData)};
 }
 } // namespace zen

@@ -13,10 +13,7 @@ void PipelineState::SetInputAssemblyState(InputAssemblyState&& state)
     m_inputAssemblyState = std::move(state);
 }
 
-void PipelineState::SetViewportState(ViewportState&& state)
-{
-    m_viewportState = std::move(state);
-}
+void PipelineState::SetViewportState(ViewportState&& state) { m_viewportState = std::move(state); }
 
 void PipelineState::SetRasterizationState(RasterizationState&& state)
 {
@@ -43,29 +40,26 @@ void PipelineState::SetDynamicState(std::vector<VkDynamicState>&& states)
     m_dynamicStates = std::move(states);
 }
 
-void PipelineState::SetRenderPass(VkRenderPass renderPass)
-{
-    m_renderPassHandle = renderPass;
-}
+void PipelineState::SetRenderPass(VkRenderPass renderPass) { m_renderPassHandle = renderPass; }
 
-void PipelineState::SetSubpassIndex(uint32_t index)
-{
-    m_subpassIndex = index;
-}
+void PipelineState::SetSubpassIndex(uint32_t index) { m_subpassIndex = index; }
 
 VkPipelineVertexInputStateCreateInfo PipelineState::GetVIStateCI() const
 {
-    VkPipelineVertexInputStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-    info.pVertexAttributeDescriptions    = m_vertexInputState.attributes.data();
-    info.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_vertexInputState.attributes.size());
-    info.pVertexBindingDescriptions      = m_vertexInputState.bindings.data();
-    info.vertexBindingDescriptionCount   = static_cast<uint32_t>(m_vertexInputState.bindings.size());
+    VkPipelineVertexInputStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    info.pVertexAttributeDescriptions = m_vertexInputState.attributes.data();
+    info.vertexAttributeDescriptionCount =
+        static_cast<uint32_t>(m_vertexInputState.attributes.size());
+    info.pVertexBindingDescriptions    = m_vertexInputState.bindings.data();
+    info.vertexBindingDescriptionCount = static_cast<uint32_t>(m_vertexInputState.bindings.size());
     return info;
 }
 
 VkPipelineInputAssemblyStateCreateInfo PipelineState::GetIAStateCI() const
 {
-    VkPipelineInputAssemblyStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     info.primitiveRestartEnable = m_inputAssemblyState.primitiveRestartEnable;
     info.topology               = m_inputAssemblyState.topology;
     return info;
@@ -81,7 +75,8 @@ VkPipelineViewportStateCreateInfo PipelineState::GetVPStateCI() const
 
 VkPipelineRasterizationStateCreateInfo PipelineState::GetRasterizationStateCI() const
 {
-    VkPipelineRasterizationStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    VkPipelineRasterizationStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     info.depthClampEnable        = m_rasterizationState.depthClampEnable;
     info.rasterizerDiscardEnable = m_rasterizationState.rasterizerDiscardEnable;
     info.polygonMode             = m_rasterizationState.polygonMode;
@@ -97,7 +92,8 @@ VkPipelineRasterizationStateCreateInfo PipelineState::GetRasterizationStateCI() 
 
 VkPipelineMultisampleStateCreateInfo PipelineState::GetMSStateCI() const
 {
-    VkPipelineMultisampleStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    VkPipelineMultisampleStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     info.alphaToCoverageEnable = m_multiSampleState.alphaToCoverageEnable;
     info.alphaToOneEnable      = m_multiSampleState.alphaToOneEnable;
     info.minSampleShading      = m_multiSampleState.minSampleShading;
@@ -108,7 +104,8 @@ VkPipelineMultisampleStateCreateInfo PipelineState::GetMSStateCI() const
 
 VkPipelineDepthStencilStateCreateInfo PipelineState::GetDSStateCI() const
 {
-    VkPipelineDepthStencilStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    VkPipelineDepthStencilStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     info.depthBoundsTestEnable = m_depthStencilState.depthBoundsTestEnable;
     info.depthTestEnable       = m_depthStencilState.depthTestEnable;
     info.depthWriteEnable      = m_depthStencilState.depthWriteEnable;
@@ -123,7 +120,8 @@ VkPipelineDepthStencilStateCreateInfo PipelineState::GetDSStateCI() const
 
 VkPipelineColorBlendStateCreateInfo PipelineState::GetCBStateCI() const
 {
-    VkPipelineColorBlendStateCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    VkPipelineColorBlendStateCreateInfo info{
+        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     info.attachmentCount = static_cast<uint32_t>(m_colorBlendState.attachments.size());
     info.pAttachments    = m_colorBlendState.attachments.data();
     info.logicOp         = m_colorBlendState.logicOp;
@@ -139,13 +137,7 @@ VkPipelineDynamicStateCreateInfo PipelineState::GetDynamicStateCI() const
     return info;
 }
 
-VkRenderPass PipelineState::GetRPHandle() const
-{
-    return m_renderPassHandle;
-}
+VkRenderPass PipelineState::GetRPHandle() const { return m_renderPassHandle; }
 
-uint32_t PipelineState::GetSubpassIndex() const
-{
-    return m_subpassIndex;
-}
+uint32_t PipelineState::GetSubpassIndex() const { return m_subpassIndex; }
 } // namespace zen::val

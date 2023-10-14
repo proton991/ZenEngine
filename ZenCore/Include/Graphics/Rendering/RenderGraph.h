@@ -21,32 +21,19 @@ public:
         Image
     };
 
-    template <typename T>
-    T* As()
-    {
-        return dynamic_cast<T*>(this);
-    }
+    template <typename T> T* As() { return dynamic_cast<T*>(this); }
 
-    template <typename T>
-    const T* As() const
-    {
-        return dynamic_cast<const T*>(this);
-    }
+    template <typename T> const T* As() const { return dynamic_cast<const T*>(this); }
 
     RDGResource(Index index, Type type, Tag tag) :
-        m_index(index), m_type(type), m_tag(std::move(tag)) {}
+        m_index(index), m_type(type), m_tag(std::move(tag))
+    {}
 
     virtual ~RDGResource() = default;
 
-    void WriteInPass(Index index)
-    {
-        m_writtenInPasses.insert(index);
-    }
+    void WriteInPass(Index index) { m_writtenInPasses.insert(index); }
 
-    void ReadInPass(Index index)
-    {
-        m_readInPasses.insert(index);
-    }
+    void ReadInPass(Index index) { m_readInPasses.insert(index); }
 
     const auto& GetReadInPasses() const { return m_readInPasses; }
     const auto& GetWrittenInPasses() const { return m_writtenInPasses; }
@@ -78,7 +65,8 @@ class RDGImage : public RDGResource
 {
 public:
     explicit RDGImage(Index index, Tag tag) :
-        RDGResource(index, RDGResource::Type::Image, std::move(tag)) {}
+        RDGResource(index, RDGResource::Type::Image, std::move(tag))
+    {}
 
     struct Info
     {
@@ -110,7 +98,8 @@ class RDGBuffer : public RDGResource
 {
 public:
     explicit RDGBuffer(Index index, Tag tag) :
-        RDGResource(index, RDGResource::Type::Buffer, std::move(tag)) {}
+        RDGResource(index, RDGResource::Type::Buffer, std::move(tag))
+    {}
 
     struct Info
     {
@@ -172,7 +161,9 @@ public:
 
     const auto& GetUsedShaders() const { return m_shaders; }
 
-    void BindSRD(const Tag& rdgResourceTag, VkShaderStageFlagBits shaderStage, const std::string& shaderResourceName);
+    void BindSRD(const Tag&            rdgResourceTag,
+                 VkShaderStageFlagBits shaderStage,
+                 const std::string&    shaderResourceName);
 
     void BindSampler(const Tag& tag, val::Sampler* sampler) { m_samplerBinding[tag] = sampler; }
 
@@ -242,8 +233,7 @@ class RenderContext;
 class RenderGraph
 {
 public:
-    explicit RenderGraph(RenderDevice& device) :
-        m_renderDevice(device) {}
+    explicit RenderGraph(RenderDevice& device) : m_renderDevice(device) {}
 
     RDGImage*  GetImageResource(const Tag& tag);
     RDGBuffer* GetBufferResource(const Tag& tag);
@@ -290,7 +280,9 @@ private:
 
     void BuildPhysicalPasses();
 
-    void EmitPipelineBarrier(val::CommandBuffer* commandBuffer, const std::unordered_map<Tag, ImageTransition>& imageTransitions, const std::unordered_map<Tag, BufferTransition>& bufferTransitions);
+    void EmitPipelineBarrier(val::CommandBuffer*                              commandBuffer,
+                             const std::unordered_map<Tag, ImageTransition>&  imageTransitions,
+                             const std::unordered_map<Tag, BufferTransition>& bufferTransitions);
 
     void BeforeExecuteSetup(val::CommandBuffer* commandBuffer);
 

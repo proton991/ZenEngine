@@ -19,7 +19,10 @@ public:
     static SharedPtr<Buffer> Create(const Device& device, const BufferCreateInfo& CI);
     static UniquePtr<Buffer> CreateUnique(const Device& device, const BufferCreateInfo& CI);
 
-    Buffer(const Device& device, VkDeviceSize byteSize, VkBufferUsageFlags usage, VmaAllocationCreateFlags vmaFlags);
+    Buffer(const Device&            device,
+           VkDeviceSize             byteSize,
+           VkBufferUsageFlags       usage,
+           VmaAllocationCreateFlags vmaFlags);
 
     ~Buffer();
 

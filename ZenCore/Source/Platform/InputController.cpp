@@ -37,10 +37,7 @@ bool KeyboardMouseInput::WasKeyPressedOnce(std::int32_t key)
     ASSERT(key < GLFW_KEY_LAST);
 
     std::scoped_lock lock(m_inputMutex);
-    if (!m_keyPressed[key] || !m_keyboardUpdated)
-    {
-        return false;
-    }
+    if (!m_keyPressed[key] || !m_keyboardUpdated) { return false; }
 
     m_keyPressed[key] = false;
     return true;
@@ -81,10 +78,7 @@ bool KeyboardMouseInput::WasMouseButtonPressedOnce(std::int32_t button)
     ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
 
     std::scoped_lock lock(m_inputMutex);
-    if (!m_mouseButtonPressed[button] || !m_mouseButtonsUpdated)
-    {
-        return false;
-    }
+    if (!m_mouseButtonPressed[button] || !m_mouseButtonsUpdated) { return false; }
 
     m_mouseButtonPressed[button] = false;
     return true;

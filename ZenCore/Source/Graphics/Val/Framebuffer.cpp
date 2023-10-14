@@ -3,7 +3,10 @@
 
 namespace zen::val
 {
-Framebuffer::Framebuffer(const Device& device, VkRenderPass renderPassHandle, const std::vector<VkImageView>& attachments, VkExtent3D extent3D) :
+Framebuffer::Framebuffer(const Device&                   device,
+                         VkRenderPass                    renderPassHandle,
+                         const std::vector<VkImageView>& attachments,
+                         VkExtent3D                      extent3D) :
     DeviceObject(device), m_extent(extent3D)
 {
     VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
@@ -14,7 +17,8 @@ Framebuffer::Framebuffer(const Device& device, VkRenderPass renderPassHandle, co
     fbCI.height          = m_extent.height;
     fbCI.layers          = m_extent.depth;
 
-    CHECK_VK_ERROR_AND_THROW(vkCreateFramebuffer(m_device.GetHandle(), &fbCI, nullptr, &m_handle), "Failed to create framebuffer");
+    CHECK_VK_ERROR_AND_THROW(vkCreateFramebuffer(m_device.GetHandle(), &fbCI, nullptr, &m_handle),
+                             "Failed to create framebuffer");
 }
 
 Framebuffer::~Framebuffer()

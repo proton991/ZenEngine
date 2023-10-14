@@ -7,12 +7,10 @@
 
 namespace zen::val
 {
-template <class VkHandleType, VkObjectType objectType>
-class DeviceObject
+template <class VkHandleType, VkObjectType objectType> class DeviceObject
 {
 public:
-    explicit DeviceObject(const Device& device) :
-        m_device(device), m_handle(VK_NULL_HANDLE) {}
+    explicit DeviceObject(const Device& device) : m_device(device), m_handle(VK_NULL_HANDLE) {}
 
     DeviceObject(DeviceObject&& other) noexcept :
         m_device(other.m_device),
@@ -34,7 +32,8 @@ public:
         ObjectNameInfo.objectHandle = reinterpret_cast<uint64_t>(m_handle);
         ObjectNameInfo.pObjectName  = m_debugName.data();
 
-        CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(m_device.GetHandle(), &ObjectNameInfo), "Failed to set debug object name");
+        CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(m_device.GetHandle(), &ObjectNameInfo),
+                       "Failed to set debug object name");
     }
 
     const Device& m_device;

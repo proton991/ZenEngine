@@ -11,7 +11,8 @@ static size_t Hash(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
     for (const VkDescriptorSetLayoutBinding& b : bindings)
     {
         //pack the binding data into a single int64. Not fully correct but its ok
-        size_t bindingHash = b.binding | b.descriptorType << 8 | b.descriptorCount << 16 | b.stageFlags << 24;
+        size_t bindingHash =
+            b.binding | b.descriptorType << 8 | b.descriptorCount << 16 | b.stageFlags << 24;
         //shuffle the packed binding data and xor it with the main hash
         result ^= std::hash<size_t>()(bindingHash);
     }
@@ -27,47 +28,29 @@ VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynam
         case ShaderResourceType::InputAttachment:
             result = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
             break;
-        case ShaderResourceType::Image:
-            result = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            break;
+        case ShaderResourceType::Image: result = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; break;
         case ShaderResourceType::ImageSampler:
             result = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             break;
-        case ShaderResourceType::ImageStorage:
-            result = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-            break;
-        case ShaderResourceType::Sampler:
-            result = VK_DESCRIPTOR_TYPE_SAMPLER;
-            break;
+        case ShaderResourceType::ImageStorage: result = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; break;
+        case ShaderResourceType::Sampler: result = VK_DESCRIPTOR_TYPE_SAMPLER; break;
         case ShaderResourceType::BufferUniform:
-            if (isDynamic)
-            {
-                result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-            }
-            else
-            {
-                result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            }
+            if (isDynamic) { result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; }
+            else { result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; }
             break;
         case ShaderResourceType::BufferStorage:
-            if (isDynamic)
-            {
-                result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-            }
-            else
-            {
-                result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            }
+            if (isDynamic) { result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC; }
+            else { result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; }
             break;
-        default:
-            LOG_FATAL_ERROR("No conversion possible for the shader resource type.");
-            break;
+        default: LOG_FATAL_ERROR("No conversion possible for the shader resource type."); break;
     }
 
     return result;
 }
 
-DescriptorSetLayout::DescriptorSetLayout(const Device& device, const uint32_t setIndex, const std::vector<ShaderResource>& shaderResources) :
+DescriptorSetLayout::DescriptorSetLayout(const Device&                      device,
+                                         const uint32_t                     setIndex,
+                                         const std::vector<ShaderResource>& shaderResources) :
     DeviceObject(device), m_setIndex(setIndex)
 {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
@@ -86,17 +69,21 @@ DescriptorSetLayout::DescriptorSetLayout(const Device& device, const uint32_t se
 
         layoutBinding.binding         = resource.binding;
         layoutBinding.descriptorCount = resource.arraySize;
-        layoutBinding.descriptorType  = ConvertToVkDescriptorType(resource.type, resource.mode == ShaderResourceMode::Dynamic);
-        layoutBinding.stageFlags      = static_cast<VkShaderStageFlags>(resource.stages);
+        layoutBinding.descriptorType =
+            ConvertToVkDescriptorType(resource.type, resource.mode == ShaderResourceMode::Dynamic);
+        layoutBinding.stageFlags = static_cast<VkShaderStageFlags>(resource.stages);
 
         bindings.emplace_back(layoutBinding);
     }
     if (!bindings.empty())
     {
-        VkDescriptorSetLayoutCreateInfo dsLayoutCI{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        VkDescriptorSetLayoutCreateInfo dsLayoutCI{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         dsLayoutCI.bindingCount = static_cast<uint32_t>(bindings.size());
         dsLayoutCI.pBindings    = bindings.data();
-        CHECK_VK_ERROR_AND_THROW(vkCreateDescriptorSetLayout(m_device.GetHandle(), &dsLayoutCI, nullptr, &m_handle), "Failed to create descriptor layout");
+        CHECK_VK_ERROR_AND_THROW(
+            vkCreateDescriptorSetLayout(m_device.GetHandle(), &dsLayoutCI, nullptr, &m_handle),
+            "Failed to create descriptor layout");
         m_hash = Hash(bindings);
         util::HashCombine(m_hash, m_setIndex);
     }
@@ -104,6 +91,5 @@ DescriptorSetLayout::DescriptorSetLayout(const Device& device, const uint32_t se
 
 DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept :
     DeviceObject(std::move(other)), m_setIndex(other.m_setIndex)
-{
-}
+{}
 } // namespace zen::val

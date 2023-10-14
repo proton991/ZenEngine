@@ -10,7 +10,9 @@ class RenderPassBuilder;
 struct SubpassInfo
 {
     SubpassInfo() = default;
-    SubpassInfo(const std::vector<VkAttachmentReference>& colors, const std::vector<VkAttachmentReference>& inputs, const uint32_t depthStencil = UINT32_MAX);
+    SubpassInfo(const std::vector<VkAttachmentReference>& colors,
+                const std::vector<VkAttachmentReference>& inputs,
+                const uint32_t                            depthStencil = UINT32_MAX);
     std::vector<VkAttachmentReference> colorRefs;
     std::vector<VkAttachmentReference> inputRefs;
     bool                               hasDepthStencilRef{false};
@@ -22,12 +24,17 @@ class RenderPass : public DeviceObject<VkRenderPass, VK_OBJECT_TYPE_RENDER_PASS>
 public:
     ~RenderPass();
     // Single subpass RenderPass
-    RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const SubpassInfo& subpassInfo);
+    RenderPass(const Device&                               device,
+               const std::vector<VkAttachmentDescription>& attachments,
+               const SubpassInfo&                          subpassInfo);
 
     RenderPass(RenderPass&& other) noexcept;
 
 private:
-    RenderPass(const Device& device, const std::vector<VkAttachmentDescription>& attachments, const std::vector<SubpassInfo>& subpassInfos, const std::vector<VkSubpassDependency>& subpassDeps);
+    RenderPass(const Device&                               device,
+               const std::vector<VkAttachmentDescription>& attachments,
+               const std::vector<SubpassInfo>&             subpassInfos,
+               const std::vector<VkSubpassDependency>&     subpassDeps);
     friend class RenderPassBuilder;
 };
 
