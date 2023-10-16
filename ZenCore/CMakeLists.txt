@@ -1,4 +1,6 @@
 set(ZEN_CORE_HEADERS
+    Include/AssetLib/TextureLoader.h
+
     Include/Common/ArrayView.h
     Include/Common/Errors.h
     Include/Common/Helpers.h
@@ -7,6 +9,7 @@ set(ZEN_CORE_HEADERS
     Include/Common/ObjectBase.h
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
+    Include/Common/Types.h
 
     Include/Graphics/Rendering/RenderGraphDefinitions.h
     Include/Graphics/Rendering/RenderGraph.h
@@ -53,6 +56,8 @@ set(ZEN_CORE_HEADERS
     )
 
 set(ZEN_CORE_SOURCES
+    Source/AssetLib/TextureLoader.cpp
+
     Source/Graphics/Rendering/RenderGraph.cpp
     Source/Graphics/Rendering/RenderDevice.cpp
     Source/Graphics/Rendering/RenderFrame.cpp

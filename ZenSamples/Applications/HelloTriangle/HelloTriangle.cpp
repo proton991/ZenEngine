@@ -14,7 +14,11 @@ void HelloTriangle::Prepare(const platform::WindowConfig& windowConfig)
     m_renderGraph   = MakeUnique<RenderGraph>(*m_renderDevice);
     m_shaderManager = MakeUnique<ShaderManager>(*m_device);
 
+    m_textureManager = MakeUnique<TextureManager>(*m_device, *m_renderContext);
+
     m_cameraUniformBuffer = UniformBuffer::CreateUnique(*m_device, sizeof(CameraUniformData));
+
+    LoadTexture();
 
     SetupRenderGraph();
 
@@ -51,8 +55,11 @@ void HelloTriangle::SetupRenderGraph()
     outputImgInfo.format = m_renderContext->GetSwapchainFormat();
     outputImgInfo.usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     mainPass->WriteToColorImage("Output", outputImgInfo);
+    mainPass->ReadFromExternalImage("texture", m_simpleTexture);
     mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUniformBuffer.Get());
     mainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
+    mainPass->BindSRD("texture", VK_SHADER_STAGE_FRAGMENT_BIT, "uTexture");
+    mainPass->BindSampler("texture", m_sampler.Get());
     mainPass->SetOnExecute([&](val::CommandBuffer* commandBuffer) {
         auto extent = m_renderContext->GetSwapchainExtent2D();
         commandBuffer->SetViewport(static_cast<float>(extent.width),
@@ -82,12 +89,19 @@ void HelloTriangle::Run()
     }
 }
 
+void HelloTriangle::LoadTexture()
+{
+    m_simpleTexture = m_textureManager->RequestTexture2D("wood.png");
+    m_sampler       = MakeUnique<val::Sampler>(*m_device);
+}
+
 void HelloTriangle::LoadModel()
 {
-    std::vector<Vertex>   vertices = {{Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f)},
-                                      {Vec3(0.5f, -0.5f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)},
-                                      {Vec3(-0.5f, 0.5f, 1.0f), Vec3(0.0f, 0.0f, 1.0f)}};
-    std::vector<uint32_t> indices  = {0, 1, 2};
+    std::vector<Vertex> vertices = {
+        {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f)},
+        {Vec3(0.5f, -0.5f, 1.0f), Vec3(0.0f, 1.0f, 0.0f), Vec2(1.0f, 1.0f)},
+        {Vec3(-0.5f, 0.5f, 1.0f), Vec3(0.0f, 0.0f, 1.0f), Vec2(0.0f, 0.0f)}};
+    std::vector<uint32_t> indices = {0, 1, 2};
 
     m_vertexBuffer = VertexBuffer::CreateUnique(*m_device, GetArrayViewSize(MakeView(vertices)));
     m_indexBuffer  = IndexBuffer::CreateUnique(*m_device, MakeView(indices));

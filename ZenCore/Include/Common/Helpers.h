@@ -16,7 +16,7 @@ template <class T> inline std::vector<uint8_t> ToBytes(const T& value)
     return {reinterpret_cast<uint8_t*>(&value), reinterpret_cast<uint8_t*>(&value) + sizeof(T)};
 }
 
-template <class T> uint32_t ToU32(T value)
+template <class T> inline uint32_t ToU32(T value)
 {
     static_assert(std::is_arithmetic<T>::value, "T must be numeric");
 
@@ -27,5 +27,10 @@ template <class T> uint32_t ToU32(T value)
     }
 
     return static_cast<uint32_t>(value);
+}
+
+template <class VkType, class Type> inline VkType ToVkType(Type type)
+{
+    return static_cast<VkType>(type);
 }
 } // namespace zen::util

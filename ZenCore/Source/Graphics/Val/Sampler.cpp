@@ -6,7 +6,7 @@ namespace zen::val
 Sampler::Sampler(const Device& device, VkFilter filter, VkSamplerAddressMode addressMode) :
     DeviceObject(device)
 {
-    VkSamplerCreateInfo samplerCI{};
+    VkSamplerCreateInfo samplerCI{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     samplerCI.magFilter     = filter;
     samplerCI.minFilter     = filter;
     samplerCI.addressModeU  = addressMode;
@@ -16,7 +16,7 @@ Sampler::Sampler(const Device& device, VkFilter filter, VkSamplerAddressMode add
     samplerCI.maxAnisotropy = 1.0f;
     samplerCI.minLod        = 0.0f;
     samplerCI.maxLod        = 1.0f;
-    samplerCI.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    samplerCI.borderColor   = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 
     CHECK_VK_ERROR_AND_THROW(vkCreateSampler(m_device.GetHandle(), &samplerCI, nullptr, &m_handle),
                              "Failed to create sampler");

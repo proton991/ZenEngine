@@ -7,6 +7,7 @@
 #include "Platform/Timer.h"
 #include "Systems/Camera.h"
 #include "Common/Math.h"
+#include "Graphics/Rendering/TextureManager.h"
 
 namespace zen
 {
@@ -21,6 +22,7 @@ class HelloTriangle : public Application
     {
         Vec3 position{0.0f, 0.0f, 0.0f};
         Vec3 color{0.0f, 0.0f, 0.0f};
+        Vec2 uv{0.0f, 0.0f};
     };
 
 public:
@@ -36,12 +38,20 @@ public:
 
     void LoadModel();
 
+    void LoadTexture();
+
 private:
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
     UniquePtr<RenderGraph>   m_renderGraph;
 
     UniquePtr<ShaderManager> m_shaderManager;
+
+    UniquePtr<TextureManager> m_textureManager;
+
+    val::Image* m_simpleTexture;
+
+    UniquePtr<val::Sampler> m_sampler;
 
     UniquePtr<VertexBuffer> m_vertexBuffer;
 
