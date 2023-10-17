@@ -53,7 +53,6 @@ void HelloTriangle::SetupRenderGraph()
     mainPass->UseShaders({vertexShader, fragShader});
     RDGImage::Info outputImgInfo{};
     outputImgInfo.format = m_renderContext->GetSwapchainFormat();
-    outputImgInfo.usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     mainPass->WriteToColorImage("Output", outputImgInfo);
     mainPass->ReadFromExternalImage("texture", m_simpleTexture);
     mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUniformBuffer.Get());

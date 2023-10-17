@@ -13,16 +13,16 @@ RDGPass::RDGPass(RenderGraph& graph, Index index, std::string tag, RDGQueueFlags
 void RDGPass::WriteToColorImage(const std::string& tag, const RDGImage::Info& info)
 {
     auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-    res->WriteInPass(m_index);
     res->SetInfo(info);
+    res->AddImageUsage(val::ImageUsage::ColorAttachment);
+    res->WriteInPass(m_index);
     m_outImageResources.push_back(res);
 }
 
 void RDGPass::ReadFromAttachment(const std::string& tag)
 {
     auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+    res->AddImageUsage(val::ImageUsage::InputAttachment);
     res->ReadInPass(m_index);
     m_inImagesResources.push_back(res);
 }
@@ -56,7 +56,7 @@ void RDGPass::ReadFromStorageBuffer(const std::string& tag)
 void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::Info& info)
 {
     auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    res->AddImageUsage(val::ImageUsage::DepthStencilAttachment);
     res->WriteInPass(m_index);
     res->SetInfo(info);
     m_outImageResources.push_back(res);
@@ -65,7 +65,7 @@ void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::I
 void RDGPass::ReadFromDepthStencilImage(const std::string& tag)
 {
     auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    res->AddImageUsage(val::ImageUsage::DepthStencilAttachment);
     res->ReadInPass(m_index);
     m_inImagesResources.push_back(res);
 }
@@ -155,7 +155,7 @@ RDGPass* RenderGraph::AddPass(const std::string& tag, RDGQueueFlags queueFlags)
 void RenderGraph::SetBackBufferTag(const Tag& tag)
 {
     m_backBufferTag = tag;
-    m_resourceState.totalUsages[tag] |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    m_resourceState.totalImageUsages[tag] |= val::ImageUsage::TransferSrc;
 }
 
 void RenderGraph::Compile()
@@ -244,7 +244,7 @@ void RenderGraph::RemoveDuplicates(std::vector<Index>& list)
 void RenderGraph::ResolveResourceState()
 {
     std::unordered_map<Tag, VkBufferUsageFlags> lastBufferUsages;
-    std::unordered_map<Tag, VkImageUsageFlags>  lastImageUsages;
+    std::unordered_map<Tag, val::ImageUsage>    lastImageUsages;
     for (const auto& pass : m_passes)
     {
         auto& bufferTransitions = m_resourceState.perPassBufferState[pass->GetTag()];
@@ -259,7 +259,7 @@ void RenderGraph::ResolveResourceState()
             }
             bufferTransitions[input->GetTag()].srcUsage = lastBufferUsages[input->GetTag()];
             bufferTransitions[input->GetTag()].dstUsage = input->GetUsage();
-            m_resourceState.totalUsages[input->GetTag()] |= input->GetUsage();
+            m_resourceState.totalBufferUsages[input->GetTag()] |= input->GetUsage();
             lastBufferUsages[input->GetTag()] = input->GetUsage();
 
             m_resourceState.bufferLastUsePass[input->GetTag()] = pass->GetTag();
@@ -274,7 +274,7 @@ void RenderGraph::ResolveResourceState()
             }
             bufferTransitions[output->GetTag()].srcUsage = lastBufferUsages[output->GetTag()];
             bufferTransitions[output->GetTag()].dstUsage = output->GetUsage();
-            m_resourceState.totalUsages[output->GetTag()] |= output->GetUsage();
+            m_resourceState.totalBufferUsages[output->GetTag()] |= output->GetUsage();
             lastBufferUsages[output->GetTag()] = output->GetUsage();
 
             m_resourceState.bufferLastUsePass[output->GetTag()] = pass->GetTag();
@@ -285,11 +285,11 @@ void RenderGraph::ResolveResourceState()
             {
                 m_resourceState.imageFirstUsePass[input->GetTag()] = pass->GetTag();
                 // set at the end
-                lastImageUsages[input->GetTag()] = VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM;
+                lastImageUsages[input->GetTag()] = val::ImageUsage::MaxEnum;
             }
             imageTransitions[input->GetTag()].srcUsage = lastImageUsages[input->GetTag()];
             imageTransitions[input->GetTag()].dstUsage = input->GetUsage();
-            m_resourceState.totalUsages[input->GetTag()] |= input->GetUsage();
+            m_resourceState.totalImageUsages[input->GetTag()] |= input->GetUsage();
             lastImageUsages[input->GetTag()] = input->GetUsage();
 
             m_resourceState.imageLastUsePass[input->GetTag()] = pass->GetTag();
@@ -300,11 +300,11 @@ void RenderGraph::ResolveResourceState()
             {
                 m_resourceState.imageFirstUsePass[output->GetTag()] = pass->GetTag();
                 // set at the end
-                lastImageUsages[output->GetTag()] = VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM;
+                lastImageUsages[output->GetTag()] = val::ImageUsage::MaxEnum;
             }
             imageTransitions[output->GetTag()].srcUsage = lastImageUsages[output->GetTag()];
             imageTransitions[output->GetTag()].dstUsage = output->GetUsage();
-            m_resourceState.totalUsages[output->GetTag()] |= output->GetUsage();
+            m_resourceState.totalImageUsages[output->GetTag()] |= output->GetUsage();
             lastImageUsages[output->GetTag()] = output->GetUsage();
 
             m_resourceState.imageLastUsePass[output->GetTag()] = pass->GetTag();
@@ -327,7 +327,7 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
     const auto& info = image->GetInfo();
 
     val::ImageCreateInfo imageCI{};
-    imageCI.usage       = m_resourceState.totalUsages[image->GetTag()];
+    imageCI.usage       = m_resourceState.totalImageUsages[image->GetTag()];
     imageCI.format      = info.format;
     imageCI.samples     = static_cast<VkSampleCountFlagBits>(info.samples);
     imageCI.arrayLayers = info.layers;
@@ -358,7 +358,7 @@ void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
 
     val::BufferCreateInfo bufferCI{};
     bufferCI.byteSize = info.size;
-    bufferCI.usage    = info.usage;
+    bufferCI.usage    = m_resourceState.totalBufferUsages[buffer->GetTag()];
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // TODO: Choose right vma flags;
 
     auto physicalIndex = m_physicalBuffers.size();
@@ -428,7 +428,7 @@ void RenderGraph::BuildPhysicalPasses()
                 VkAttachmentReference attachmentReference{};
                 attachmentReference.attachment = attIndex;
                 attachmentReference.layout     = attachmentDescription.finalLayout;
-                if (rdgImage->GetUsage() & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                if (rdgImage->GetUsage() == val::ImageUsage::DepthStencilAttachment)
                 {
                     depthRefIndex = attIndex;
                 }
@@ -467,12 +467,16 @@ void RenderGraph::BuildPhysicalPasses()
     }
 }
 
-static bool HasImageWriteDependency(VkImageUsageFlags usage)
+static bool HasImageWriteDependency(val::ImageUsage usage)
 {
-    if (usage &
-        (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
-         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
-        return true;
+    switch (usage)
+    {
+        case val::ImageUsage::TransferSrc:
+        case val::ImageUsage::Storage:
+        case val::ImageUsage::ColorAttachment:
+        case val::ImageUsage::DepthStencilAttachment: return true;
+        default: break;
+    }
     return false;
 }
 
@@ -559,7 +563,8 @@ void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* commandBuffer)
                 m_resourceState.perPassImageState[pass->GetTag()][rdgImage->GetTag()];
             if (m_resourceState.imageFirstUsePass.at(rdgImage->GetTag()) == pass->GetTag())
             {
-                imageTransitions[rdgImage->GetTag()] = ImageTransition{0, transition.srcUsage};
+                imageTransitions[rdgImage->GetTag()] =
+                    ImageTransition{val::ImageUsage::Undefined, transition.srcUsage};
             }
         }
     }
@@ -578,10 +583,10 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
 
     auto backBufferImageIndex = m_resources[m_resourceToIndex[m_backBufferTag]]->GetPhysicalIndex();
     auto& backBufferImage     = m_physicalImages.at(backBufferImageIndex);
-    commandBuffer->BlitImage(*backBufferImage, lastUsage, presentImage, 0);
+    commandBuffer->BlitImage(*backBufferImage, lastUsage, presentImage, val::ImageUsage::Undefined);
     // After blit, the back buffer image's layout has been changed
     // In order to use it in the 'next' render pass, we need to transfer the layout back to its first usage TODO: is this right?
-    if (firstUsage != VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+    if (firstUsage != val::ImageUsage::TransferSrc)
     {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.image               = backBufferImage->GetHandle();

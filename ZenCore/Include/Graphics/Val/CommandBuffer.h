@@ -6,6 +6,7 @@ namespace zen::val
 {
 class CommandPool;
 class Image;
+enum ImageUsage : uint32_t;
 class Buffer;
 class CommandBuffer : public DeviceObject<VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER>
 {
@@ -19,10 +20,10 @@ public:
                          const std::vector<VkBufferMemoryBarrier>& bufferMemBarriers,
                          const std::vector<VkImageMemoryBarrier>&  imageMemBarriers);
 
-    void BlitImage(const Image&      srcImage,
-                   VkImageUsageFlags srcUsage,
-                   const Image&      dstImage,
-                   VkImageUsageFlags dstUsage);
+    void BlitImage(const Image& srcImage,
+                   ImageUsage   srcUsage,
+                   const Image& dstImage,
+                   ImageUsage   dstUsage);
 
     void BeginRenderPass(const VkRenderPassBeginInfo& info,
                          VkSubpassContents            subpassContents = VK_SUBPASS_CONTENTS_INLINE);
@@ -50,7 +51,7 @@ public:
                            uint32_t mipLevel = 0,
                            uint32_t layer    = 0);
 
-    void TransferLayout(Image* image, VkImageUsageFlags srcUsage, VkImageUsageFlags dstUsage);
+    void TransferLayout(Image* image, ImageUsage srcUsage, ImageUsage dstUsage);
 
     template <class... Buffers> void BindVertexBuffers(Buffers&... vertexBuffers)
     {
@@ -77,9 +78,9 @@ public:
 
     void SetScissor(uint32_t width, uint32_t height);
 
-    static VkImageMemoryBarrier GetImageBarrier(VkImageUsageFlags srcUsage,
-                                                VkImageUsageFlags dstUsage,
-                                                val::Image*       image);
+    static VkImageMemoryBarrier GetImageBarrier(ImageUsage        srcUsage,
+                                                ImageUsage        dstUsage,
+                                                const val::Image* image);
 
 private:
     CommandPool& m_cmdPool;

@@ -144,48 +144,62 @@ VkImageSubresourceLayers Image::GetSubresourceLayers() const
     return subresourceLayers;
 }
 
-VkImageLayout Image::UsageToImageLayout(VkImageUsageFlags usage)
+VkImageLayout Image::UsageToImageLayout(ImageUsage usage)
 {
-    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
-        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    if (usage & VK_IMAGE_USAGE_STORAGE_BIT) return VK_IMAGE_LAYOUT_GENERAL;
-    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    switch (usage)
+    {
+        case ImageUsage::Undefined: return VK_IMAGE_LAYOUT_UNDEFINED;
+        case ImageUsage::TransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        case ImageUsage::TransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        case ImageUsage::Sampled:
+        case ImageUsage::InputAttachment: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        case ImageUsage::Storage: return VK_IMAGE_LAYOUT_GENERAL;
+        case ImageUsage::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case ImageUsage::DepthStencilAttachment: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        default: break;
+    }
     return VK_IMAGE_LAYOUT_UNDEFINED;
 }
 
-VkAccessFlags Image::UsageToAccessFlags(VkImageUsageFlags usage)
+VkAccessFlags Image::UsageToAccessFlags(ImageUsage usage)
 {
-    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) return VK_ACCESS_TRANSFER_READ_BIT;
-    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) return VK_ACCESS_TRANSFER_WRITE_BIT;
-    if (usage & VK_IMAGE_USAGE_SAMPLED_BIT) return VK_ACCESS_SHADER_READ_BIT;
-    if (usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT) return VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-    if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
-        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    switch (usage)
+    {
+        case ImageUsage::Undefined: return 0;
+        case ImageUsage::TransferSrc: return VK_ACCESS_TRANSFER_READ_BIT;
+        case ImageUsage::TransferDst: return VK_ACCESS_TRANSFER_WRITE_BIT;
+        case ImageUsage::Sampled: return VK_ACCESS_SHADER_READ_BIT;
+        case ImageUsage::InputAttachment: return VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        case ImageUsage::Storage: return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT; ;
+        case ImageUsage::ColorAttachment: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        case ImageUsage::DepthStencilAttachment:
+            return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        default: break;
+    }
     return 0;
 }
 
-VkPipelineStageFlags Image::UsageToPipelineStage(VkImageUsageFlags usage)
+VkPipelineStageFlags Image::UsageToPipelineStage(ImageUsage usage)
 {
-    if (usage == 0) return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    if (usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) return VK_PIPELINE_STAGE_TRANSFER_BIT;
-    if (usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) return VK_PIPELINE_STAGE_TRANSFER_BIT;
-    if (usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT))
-        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    if (usage & VK_IMAGE_USAGE_STORAGE_BIT) return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    return VkPipelineStageFlags{};
+    switch (usage)
+    {
+        case ImageUsage::Undefined: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+        case ImageUsage::TransferSrc:
+        case ImageUsage::TransferDst: return VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+        case ImageUsage::Sampled:
+        case ImageUsage::InputAttachment:
+        case ImageUsage::Storage: return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+        case ImageUsage::ColorAttachment: return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        case ImageUsage::DepthStencilAttachment:
+            return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        default: break;
+    }
+    return 0;
 }
 } // namespace zen::val

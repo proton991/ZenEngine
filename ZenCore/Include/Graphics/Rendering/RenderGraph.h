@@ -70,28 +70,28 @@ public:
 
     struct Info
     {
-        VkFormat          format{VK_FORMAT_UNDEFINED};
-        uint32_t          samples{1};
-        uint32_t          levels{1};
-        uint32_t          layers{1};
-        VkImageUsageFlags usage{0};
-        ImageSizeType     sizeType{ImageSizeType::SwapchainRelative};
-        float             sizeX{1.0};
-        float             sizeY{1.0};
-        float             sizeZ{0.0};
-        VkExtent3D        extent3D{};
+        VkFormat      format{VK_FORMAT_UNDEFINED};
+        uint32_t      samples{1};
+        uint32_t      levels{1};
+        uint32_t      layers{1};
+        ImageSizeType sizeType{ImageSizeType::SwapchainRelative};
+        float         sizeX{1.0};
+        float         sizeY{1.0};
+        float         sizeZ{0.0};
+        VkExtent3D    extent3D{};
     };
 
     void SetInfo(const Info& info) { m_info = info; }
 
-    void AddImageUsage(VkImageUsageFlags flag) { m_info.usage |= flag; }
+    void AddImageUsage(val::ImageUsage flag) { m_usage |= flag; }
 
     const auto& GetInfo() { return m_info; }
 
-    auto GetUsage() const { return m_info.usage; }
+    auto GetUsage() const { return m_usage; }
 
 private:
-    Info m_info{};
+    Info            m_info{};
+    val::ImageUsage m_usage{val::ImageUsage::Undefined};
 };
 
 class RDGBuffer : public RDGResource
@@ -207,8 +207,8 @@ private:
 
 struct ImageTransition
 {
-    VkImageUsageFlags srcUsage;
-    VkImageUsageFlags dstUsage;
+    val::ImageUsage srcUsage;
+    val::ImageUsage dstUsage;
 };
 
 struct BufferTransition
@@ -223,7 +223,8 @@ struct ResourceState
     using BufferTransitionMap = std::unordered_map<Tag, BufferTransition>;
     std::unordered_map<Tag, ImageTransitionMap>  perPassImageState;
     std::unordered_map<Tag, BufferTransitionMap> perPassBufferState;
-    std::unordered_map<Tag, VkFlags>             totalUsages;
+    std::unordered_map<Tag, val::ImageUsage>     totalImageUsages;
+    std::unordered_map<Tag, uint32_t>            totalBufferUsages;
     std::unordered_map<Tag, Tag>                 imageFirstUsePass;
     std::unordered_map<Tag, Tag>                 imageLastUsePass;
     std::unordered_map<Tag, Tag>                 bufferFirstUsePass;

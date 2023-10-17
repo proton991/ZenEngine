@@ -39,37 +39,22 @@ void CommandBuffer::PipelineBarrier(VkPipelineStageFlags                      sr
                          imageMemBarriers.data());
 }
 
-void CommandBuffer::BlitImage(const Image&      srcImage,
-                              VkImageUsageFlags srcUsage,
-                              const Image&      dstImage,
-                              VkImageUsageFlags dstUsage)
+void CommandBuffer::BlitImage(const Image& srcImage,
+                              ImageUsage   srcUsage,
+                              const Image& dstImage,
+                              ImageUsage   dstUsage)
 {
     std::vector<VkImageMemoryBarrier> barriers(2);
 
     uint32_t numBarriers = 0;
 
-    VkImageMemoryBarrier barrier1{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    barrier1.srcAccessMask       = Image::UsageToAccessFlags(srcUsage);
-    barrier1.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
-    barrier1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier1.oldLayout           = Image::UsageToImageLayout(srcUsage);
-    barrier1.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    barrier1.image               = srcImage.GetHandle();
-    barrier1.subresourceRange    = srcImage.GetSubResourceRange();
+    VkImageMemoryBarrier toTransferSrc =
+        GetImageBarrier(srcUsage, ImageUsage::TransferSrc, &srcImage);
+    VkImageMemoryBarrier toTransferDst =
+        GetImageBarrier(dstUsage, ImageUsage::TransferDst, &dstImage);
 
-    VkImageMemoryBarrier barrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    barrier2.srcAccessMask       = Image::UsageToAccessFlags(dstUsage);
-    barrier2.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier2.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier2.oldLayout           = Image::UsageToImageLayout(dstUsage);
-    barrier2.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier2.image               = dstImage.GetHandle();
-    barrier2.subresourceRange    = dstImage.GetSubResourceRange();
-
-    if (srcUsage != VK_IMAGE_USAGE_TRANSFER_SRC_BIT) barriers[numBarriers++] = barrier1;
-    if (dstUsage != VK_IMAGE_USAGE_TRANSFER_DST_BIT) barriers[numBarriers++] = barrier2;
+    if (srcUsage != val::ImageUsage::TransferSrc) barriers[numBarriers++] = toTransferSrc;
+    if (dstUsage != val::ImageUsage::TransferDst) barriers[numBarriers++] = toTransferDst;
     if (numBarriers > 0)
     {
         VkPipelineStageFlags srcPipelineStage =
@@ -148,7 +133,7 @@ void CommandBuffer::CopyBufferToImage(Buffer*  srcBuffer,
                                       uint32_t layer)
 {
     VkImageMemoryBarrier toTransferDstBarrier =
-        GetImageBarrier(0, VK_IMAGE_USAGE_TRANSFER_DST_BIT, dstImage);
+        GetImageBarrier(ImageUsage::Undefined, ImageUsage::TransferDst, dstImage);
     PipelineBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, {},
                     {toTransferDstBarrier});
 
@@ -168,9 +153,7 @@ void CommandBuffer::CopyBufferToImage(Buffer*  srcBuffer,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopy);
 }
 
-void CommandBuffer::TransferLayout(Image*            image,
-                                   VkImageUsageFlags srcUsage,
-                                   VkImageUsageFlags dstUsage)
+void CommandBuffer::TransferLayout(Image* image, ImageUsage srcUsage, ImageUsage dstUsage)
 {
     VkImageMemoryBarrier barrier = GetImageBarrier(srcUsage, dstUsage, image);
     PipelineBarrier(Image::UsageToPipelineStage(srcUsage), Image::UsageToPipelineStage(dstUsage),
@@ -217,9 +200,9 @@ void CommandBuffer::SetScissor(uint32_t width, uint32_t height)
     vkCmdSetScissor(m_handle, 0, 1, &scissor);
 }
 
-VkImageMemoryBarrier CommandBuffer::GetImageBarrier(VkImageUsageFlags srcUsage,
-                                                    VkImageUsageFlags dstUsage,
-                                                    val::Image*       image)
+VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage        srcUsage,
+                                                    ImageUsage        dstUsage,
+                                                    const val::Image* image)
 {
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.srcAccessMask       = Image::UsageToAccessFlags(srcUsage);

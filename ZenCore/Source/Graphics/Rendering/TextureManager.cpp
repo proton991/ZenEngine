@@ -20,10 +20,10 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     {
         // generate mipmap
         generateMipmap = true;
-        imageCI.usage  = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        imageCI.usage =
+            val::ImageUsage::TransferDst | val::ImageUsage::TransferSrc | val::ImageUsage::Sampled;
     }
-    imageCI.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCI.usage = val::ImageUsage::TransferDst | val::ImageUsage::Sampled;
     imageCI.mipLevels =
         textureInfo.otherLeveData.empty() ? 1 : textureInfo.otherLeveData.size() + 1;
     m_cache.emplace(filename, val::Image::CreateUnique(m_valDevice, imageCI));
@@ -41,8 +41,8 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
         val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
         commandBuffer->Begin();
         commandBuffer->CopyBufferToImage(stagingBuffer, submitInfo.offset, image);
-        commandBuffer->TransferLayout(image, VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                                      VK_IMAGE_USAGE_SAMPLED_BIT);
+        commandBuffer->TransferLayout(image, val::ImageUsage::TransferDst,
+                                      val::ImageUsage::Sampled);
         stagingBuffer->Flush();
         stagingBuffer->ResetOffset();
 

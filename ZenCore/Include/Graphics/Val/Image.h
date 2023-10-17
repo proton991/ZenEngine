@@ -6,11 +6,35 @@
 
 namespace zen::val
 {
+enum ImageUsage : uint32_t
+{
+    Undefined              = 0,
+    TransferSrc            = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+    TransferDst            = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+    Sampled                = VK_IMAGE_USAGE_SAMPLED_BIT,
+    Storage                = VK_IMAGE_USAGE_STORAGE_BIT,
+    ColorAttachment        = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+    DepthStencilAttachment = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+    InputAttachment        = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+    MaxEnum                = VK_IMAGE_USAGE_FLAG_BITS_MAX_ENUM,
+};
+
+inline ImageUsage operator|(ImageUsage lhs, ImageUsage rhs)
+{
+    return static_cast<ImageUsage>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+}
+// Bitwise OR assignment (|=) operator overload as a member function
+inline ImageUsage& operator|=(ImageUsage& lhs, ImageUsage rhs)
+{
+    lhs = static_cast<ImageUsage>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+    return lhs;
+}
+
 struct ImageCreateInfo
 {
     VkFormat                 format{};
     VkExtent3D               extent3D{};
-    VkImageUsageFlags        usage{};
+    ImageUsage               usage{};
     VmaAllocationCreateFlags vmaFlags{};
     uint32_t                 mipLevels{1};
     uint32_t                 arrayLayers{1};
@@ -48,9 +72,9 @@ public:
 
     VkImageSubresourceRange GetSubResourceRange() const { return m_subResourceRange; }
 
-    static VkImageLayout        UsageToImageLayout(VkImageUsageFlags usage);
-    static VkAccessFlags        UsageToAccessFlags(VkImageUsageFlags usage);
-    static VkPipelineStageFlags UsageToPipelineStage(VkImageUsageFlags usage);
+    static VkImageLayout        UsageToImageLayout(ImageUsage usage);
+    static VkAccessFlags        UsageToAccessFlags(ImageUsage usage);
+    static VkPipelineStageFlags UsageToPipelineStage(ImageUsage usage);
 
     VkImageSubresourceLayers GetSubresourceLayers() const;
 

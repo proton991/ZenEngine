@@ -83,10 +83,10 @@ void RenderContext::EndFrame()
     // change image layout to present
     VkImageMemoryBarrier transferDstToPresentBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     transferDstToPresentBarrier.srcAccessMask =
-        val::Image::UsageToAccessFlags(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        val::Image::UsageToAccessFlags(val::ImageUsage::TransferDst);
     transferDstToPresentBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
     transferDstToPresentBarrier.oldLayout =
-        val::Image::UsageToImageLayout(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+        val::Image::UsageToImageLayout(val::ImageUsage::TransferDst);
     transferDstToPresentBarrier.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     transferDstToPresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     transferDstToPresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -94,7 +94,7 @@ void RenderContext::EndFrame()
     transferDstToPresentBarrier.subresourceRange =
         GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
     m_activeCmdBuffer->PipelineBarrier(
-        val::Image::UsageToPipelineStage(VK_IMAGE_USAGE_TRANSFER_DST_BIT),
+        val::Image::UsageToPipelineStage(val::ImageUsage::TransferDst),
         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
 
     SubmitInternal();
