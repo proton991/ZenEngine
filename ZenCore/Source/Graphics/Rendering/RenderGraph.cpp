@@ -19,18 +19,22 @@ void RDGPass::WriteToColorImage(const std::string& tag, const RDGImage::Info& in
     m_outImageResources.push_back(res);
 }
 
-void RDGPass::ReadFromAttachment(const std::string& tag)
+void RDGPass::ReadFromInternalImage(const std::string& tag, val::ImageUsage usage)
 {
-    auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(val::ImageUsage::InputAttachment);
-    res->ReadInPass(m_index);
-    m_inImagesResources.push_back(res);
+    ASSERT(m_graph.GetResourceIndexMap().count(tag) && "Depends on image not found in rdg");
+    m_inImagesResources[tag] = usage;
+}
+
+void RDGPass::ReadFromInternalBuffer(const Tag& tag, val::BufferUsage usage)
+{
+    ASSERT(m_graph.GetResourceIndexMap().count(tag) && "Depends on buffer not found in rdg");
+    m_inBufferResources[tag] = usage;
 }
 
 void RDGPass::WriteToStorageBuffer(const std::string& tag, const RDGBuffer::Info& info)
 {
     auto* res = m_graph.GetBufferResource(tag);
-    res->AddBufferUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    res->AddBufferUsage(val::BufferUsage::StorageBuffer);
     res->WriteInPass(m_index);
     res->SetInfo(info);
     m_outBufferResources.push_back(res);
@@ -39,18 +43,10 @@ void RDGPass::WriteToStorageBuffer(const std::string& tag, const RDGBuffer::Info
 void RDGPass::WriteToTransferDstBuffer(const Tag& tag, const RDGBuffer::Info& info)
 {
     auto* res = m_graph.GetBufferResource(tag);
-    res->AddBufferUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+    res->AddBufferUsage(val::BufferUsage::TransferDst);
     res->WriteInPass(m_index);
     res->SetInfo(info);
     m_outBufferResources.push_back(res);
-}
-
-void RDGPass::ReadFromStorageBuffer(const std::string& tag)
-{
-    auto* res = m_graph.GetBufferResource(tag);
-    res->AddBufferUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-    res->ReadInPass(m_index);
-    m_inBuffersResources.push_back(res);
 }
 
 void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::Info& info)
@@ -60,14 +56,6 @@ void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::I
     res->WriteInPass(m_index);
     res->SetInfo(info);
     m_outImageResources.push_back(res);
-}
-
-void RDGPass::ReadFromDepthStencilImage(const std::string& tag)
-{
-    auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(val::ImageUsage::DepthStencilAttachment);
-    res->ReadInPass(m_index);
-    m_inImagesResources.push_back(res);
 }
 
 void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* image)
@@ -206,12 +194,14 @@ void RenderGraph::TraversePassDepsRecursive(Index passIndex, uint32_t level)
 {
     auto& pass = *m_passes[passIndex];
     if (level > m_passes.size()) { LOG_ERROR_AND_THROW("Cycle detected in render graph!"); }
-    for (auto& input : pass.GetInImageResources())
+    for (auto& [tag, _] : pass.GetInImageResources())
     {
+        auto& input = m_resources[m_resourceToIndex[tag]];
         for (auto& dep : input->GetWrittenInPasses()) { m_passDeps[pass.GetIndex()].insert(dep); }
     }
-    for (auto& input : pass.GetInBufferResources())
+    for (auto& [tag, _] : pass.GetInBufferResources())
     {
+        auto& input = m_resources[m_resourceToIndex[tag]];
         for (auto& dep : input->GetWrittenInPasses()) { m_passDeps[pass.GetIndex()].insert(dep); }
     }
     level++;
@@ -243,26 +233,26 @@ void RenderGraph::RemoveDuplicates(std::vector<Index>& list)
 
 void RenderGraph::ResolveResourceState()
 {
-    std::unordered_map<Tag, VkBufferUsageFlags> lastBufferUsages;
-    std::unordered_map<Tag, val::ImageUsage>    lastImageUsages;
+    std::unordered_map<Tag, val::BufferUsage> lastBufferUsages;
+    std::unordered_map<Tag, val::ImageUsage>  lastImageUsages;
     for (const auto& pass : m_passes)
     {
         auto& bufferTransitions = m_resourceState.perPassBufferState[pass->GetTag()];
         auto& imageTransitions  = m_resourceState.perPassImageState[pass->GetTag()];
-        for (auto& input : pass->GetInBufferResources())
+        for (auto& [inputTag, usage] : pass->GetInBufferResources())
         {
-            if (lastBufferUsages.find(input->GetTag()) == lastBufferUsages.end())
+            if (lastBufferUsages.find(inputTag) == lastBufferUsages.end())
             {
-                m_resourceState.bufferFirstUsePass[input->GetTag()] = pass->GetTag();
+                m_resourceState.bufferFirstUsePass[inputTag] = pass->GetTag();
                 // set at the end
-                lastBufferUsages[input->GetTag()] = VK_BUFFER_USAGE_FLAG_BITS_MAX_ENUM;
+                lastBufferUsages[inputTag] = val::BufferUsage::MaxEnum;
             }
-            bufferTransitions[input->GetTag()].srcUsage = lastBufferUsages[input->GetTag()];
-            bufferTransitions[input->GetTag()].dstUsage = input->GetUsage();
-            m_resourceState.totalBufferUsages[input->GetTag()] |= input->GetUsage();
-            lastBufferUsages[input->GetTag()] = input->GetUsage();
+            bufferTransitions[inputTag].srcUsage = lastBufferUsages[inputTag];
+            bufferTransitions[inputTag].dstUsage = usage;
+            m_resourceState.totalBufferUsages[inputTag] |= usage;
+            lastBufferUsages[inputTag] = usage;
 
-            m_resourceState.bufferLastUsePass[input->GetTag()] = pass->GetTag();
+            m_resourceState.bufferLastUsePass[inputTag] = pass->GetTag();
         }
         for (auto& output : pass->GetOutBufferResources())
         {
@@ -270,7 +260,7 @@ void RenderGraph::ResolveResourceState()
             {
                 m_resourceState.bufferFirstUsePass[output->GetTag()] = pass->GetTag();
                 // set at the end
-                lastBufferUsages[output->GetTag()] = VK_BUFFER_USAGE_FLAG_BITS_MAX_ENUM;
+                lastBufferUsages[output->GetTag()] = val::BufferUsage::MaxEnum;
             }
             bufferTransitions[output->GetTag()].srcUsage = lastBufferUsages[output->GetTag()];
             bufferTransitions[output->GetTag()].dstUsage = output->GetUsage();
@@ -279,20 +269,20 @@ void RenderGraph::ResolveResourceState()
 
             m_resourceState.bufferLastUsePass[output->GetTag()] = pass->GetTag();
         }
-        for (auto& input : pass->GetInImageResources())
+        for (auto& [inputTag, usage] : pass->GetInImageResources())
         {
-            if (lastImageUsages.find(input->GetTag()) == lastImageUsages.end())
+            if (lastImageUsages.find(inputTag) == lastImageUsages.end())
             {
-                m_resourceState.imageFirstUsePass[input->GetTag()] = pass->GetTag();
+                m_resourceState.imageFirstUsePass[inputTag] = pass->GetTag();
                 // set at the end
-                lastImageUsages[input->GetTag()] = val::ImageUsage::MaxEnum;
+                lastImageUsages[inputTag] = val::ImageUsage::MaxEnum;
             }
-            imageTransitions[input->GetTag()].srcUsage = lastImageUsages[input->GetTag()];
-            imageTransitions[input->GetTag()].dstUsage = input->GetUsage();
-            m_resourceState.totalImageUsages[input->GetTag()] |= input->GetUsage();
-            lastImageUsages[input->GetTag()] = input->GetUsage();
+            imageTransitions[inputTag].srcUsage = lastImageUsages[inputTag];
+            imageTransitions[inputTag].dstUsage = usage;
+            m_resourceState.totalImageUsages[inputTag] |= usage;
+            lastImageUsages[inputTag] = usage;
 
-            m_resourceState.imageLastUsePass[input->GetTag()] = pass->GetTag();
+            m_resourceState.imageLastUsePass[inputTag] = pass->GetTag();
         }
         for (auto& output : pass->GetOutImageResources())
         {
@@ -480,12 +470,15 @@ static bool HasImageWriteDependency(val::ImageUsage usage)
     return false;
 }
 
-static bool HasBufferWriteDependency(VkBufferUsageFlags usage)
+static bool HasBufferWriteDependency(val::BufferUsage usage)
 {
-    if (usage &
-        (VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT))
-        return true;
+    switch (usage)
+    {
+        case val::BufferUsage::TransferDst:
+        case val::BufferUsage::StorageBuffer:
+        case val::BufferUsage::UniformBuffer: return true;
+        default: break;
+    }
     return false;
 }
 

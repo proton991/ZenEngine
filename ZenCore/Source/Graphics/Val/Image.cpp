@@ -5,14 +5,16 @@ namespace zen::val
 {
 SharedPtr<Image> Image::Create(const Device& device, const ImageCreateInfo& CI)
 {
-    return MakeShared<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels,
-                             CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
+    return MakeShared<Image>(device, CI.format, CI.extent3D, (VkImageUsageFlags)CI.usage,
+                             CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags,
+                             CI.samples);
 }
 
 UniquePtr<Image> Image::CreateUnique(const Device& device, const ImageCreateInfo& CI)
 {
-    return MakeUnique<Image>(device, CI.format, CI.extent3D, CI.usage, CI.vmaFlags, CI.mipLevels,
-                             CI.arrayLayers, CI.tiling, CI.flags, CI.samples);
+    return MakeUnique<Image>(device, CI.format, CI.extent3D, (VkImageUsageFlags)CI.usage,
+                             CI.vmaFlags, CI.mipLevels, CI.arrayLayers, CI.tiling, CI.flags,
+                             CI.samples);
 }
 
 Image::Image(const Device&            device,

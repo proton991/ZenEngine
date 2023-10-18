@@ -6,7 +6,7 @@ namespace zen::val
 {
 class CommandPool;
 class Image;
-enum ImageUsage : uint32_t;
+enum class ImageUsage : uint32_t;
 class Buffer;
 class CommandBuffer : public DeviceObject<VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER>
 {

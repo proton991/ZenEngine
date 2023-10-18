@@ -6,12 +6,12 @@ namespace zen::val
 {
 SharedPtr<Buffer> Buffer::Create(const Device& device, const BufferCreateInfo& CI)
 {
-    return MakeShared<Buffer>(device, CI.byteSize, CI.usage, CI.vmaFlags);
+    return MakeShared<Buffer>(device, CI.byteSize, (VkBufferUsageFlags)CI.usage, CI.vmaFlags);
 }
 
 UniquePtr<Buffer> Buffer::CreateUnique(const Device& device, const BufferCreateInfo& CI)
 {
-    return MakeUnique<Buffer>(device, CI.byteSize, CI.usage, CI.vmaFlags);
+    return MakeUnique<Buffer>(device, CI.byteSize, (VkBufferUsageFlags)CI.usage, CI.vmaFlags);
 }
 
 Buffer::Buffer(const Device&            device,
@@ -45,31 +45,87 @@ Buffer::~Buffer()
     }
 }
 
-VkAccessFlags Buffer::UsageToAccessFlags(VkBufferUsageFlags usage)
+VkAccessFlags Buffer::UsageToAccessFlags(BufferUsage usage)
 {
-    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) return VK_ACCESS_TRANSFER_READ_BIT;
-    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) return VK_ACCESS_TRANSFER_WRITE_BIT;
-    if (usage & (VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT))
-        return VK_ACCESS_SHADER_READ_BIT;
-    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
-        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    if (usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) return VK_ACCESS_INDEX_READ_BIT;
-    if (usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    switch (usage)
+    {
+        case BufferUsage::Undefined: break;
+        case BufferUsage::TransferSrc: return VK_ACCESS_TRANSFER_READ_BIT;
+        case BufferUsage::TransferDst: return VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        case BufferUsage::UniformTexelBuffer:
+        case BufferUsage::UniformBuffer:
+        case BufferUsage::ShaderDeviceAddress:
+        case BufferUsage::ShaderBindingTable: return VK_ACCESS_SHADER_READ_BIT;
+
+        case BufferUsage::StorageTexelBuffer:
+        case BufferUsage::StorageBuffer:
+            return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+
+        case BufferUsage::IndexBuffer: return VK_ACCESS_INDEX_READ_BIT;
+        case BufferUsage::VertexBuffer: return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        case BufferUsage::IndirectBuffer: return VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+
+        case BufferUsage::TransformFeedbackBuffer:
+            return VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT;
+
+        case BufferUsage::TransformFeedbackCounterBuffer:
+            return VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT;
+
+        case BufferUsage::ConditionalRendering: return VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT;
+
+        case BufferUsage::AccelerationStructureBuildInputReadOnly:
+            return VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+
+        case BufferUsage::AccelerationStructureStorage:
+            return VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR |
+                VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+        default: break;
+    }
     return VkAccessFlags{};
 }
 
-VkPipelineStageFlags Buffer::UsageToPipelineStage(VkBufferUsageFlags usage)
+VkPipelineStageFlags Buffer::UsageToPipelineStage(BufferUsage usage)
 {
-    if (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) return VK_PIPELINE_STAGE_TRANSFER_BIT;
-    if (usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) return VK_PIPELINE_STAGE_TRANSFER_BIT;
-    if (usage & (VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
-        return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-    if (usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-    if (usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT))
-        return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    if (usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-    if (usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)
-        return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    switch (usage)
+    {
+        case BufferUsage::Undefined: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
+        case BufferUsage::TransferSrc:
+        case BufferUsage::TransferDst: return VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+        case BufferUsage::UniformTexelBuffer:
+            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT; // TODO: from other shader stages?
+
+        case BufferUsage::StorageTexelBuffer:
+        case BufferUsage::StorageBuffer: return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+        case BufferUsage::UniformBuffer: return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+
+        case BufferUsage::IndexBuffer: return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+
+        case BufferUsage::VertexBuffer: return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+
+        case BufferUsage::IndirectBuffer: return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+
+        case BufferUsage::ShaderDeviceAddress:
+            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // TODO: what should be here?
+
+        case BufferUsage::TransformFeedbackBuffer:
+        case BufferUsage::TransformFeedbackCounterBuffer:
+            return VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT;
+
+        case BufferUsage::ConditionalRendering:
+            return VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT;
+
+        case BufferUsage::AccelerationStructureBuildInputReadOnly:
+            return VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+
+        case BufferUsage::AccelerationStructureStorage:
+        case BufferUsage::ShaderBindingTable: return VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+
+        default: break;
+    }
     return VkPipelineStageFlags{};
 }
 

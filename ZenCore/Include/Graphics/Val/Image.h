@@ -6,7 +6,7 @@
 
 namespace zen::val
 {
-enum ImageUsage : uint32_t
+enum class ImageUsage : uint32_t
 {
     Undefined              = 0,
     TransferSrc            = VK_IMAGE_USAGE_TRANSFER_SRC_BIT,

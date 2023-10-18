@@ -103,20 +103,20 @@ public:
 
     struct Info
     {
-        VkDeviceSize       size{0};
-        VkBufferUsageFlags usage{0};
+        VkDeviceSize size{0};
     };
 
     void SetInfo(const Info& info) { m_info = info; }
 
     const auto& GetInfo() { return m_info; }
 
-    void AddBufferUsage(VkBufferUsageFlags flag) { m_info.usage |= flag; }
+    void AddBufferUsage(val::BufferUsage flag) { m_usage |= flag; }
 
-    auto GetUsage() const { return m_info.usage; }
+    auto GetUsage() const { return m_usage; }
 
 private:
-    Info m_info{};
+    Info             m_info{};
+    val::BufferUsage m_usage{};
 };
 
 /**
@@ -130,17 +130,15 @@ public:
 
     void WriteToColorImage(const Tag& tag, const RDGImage::Info& info);
 
-    void ReadFromAttachment(const Tag& tag);
-
     void WriteToStorageBuffer(const Tag& tag, const RDGBuffer::Info& info);
 
     void WriteToTransferDstBuffer(const Tag& tag, const RDGBuffer::Info& info);
 
-    void ReadFromStorageBuffer(const Tag& tag);
-
     void WriteToDepthStencilImage(const Tag& tag, const RDGImage::Info& info);
 
-    void ReadFromDepthStencilImage(const Tag& tag);
+    void ReadFromInternalImage(const Tag& tag, val::ImageUsage usage);
+
+    void ReadFromInternalBuffer(const Tag& tag, val::BufferUsage usage);
 
     void ReadFromExternalImage(const Tag& tag, val::Image* image);
 
@@ -150,7 +148,7 @@ public:
     const auto& GetOutImageResources() const { return m_outImageResources; }
     const auto& GetOutBufferResources() const { return m_outBufferResources; }
     const auto& GetInImageResources() const { return m_inImagesResources; }
-    const auto& GetInBufferResources() const { return m_inBuffersResources; }
+    const auto& GetInBufferResources() const { return m_inBufferResources; }
     const auto& GetExternImageResources() const { return m_externImageResources; }
     const auto& GetExternBufferResources() const { return m_externBufferResources; }
     const auto& GetTag() const { return m_tag; }
@@ -188,8 +186,8 @@ private:
     std::vector<RDGImage*>  m_outImageResources;
     std::vector<RDGBuffer*> m_outBufferResources;
     // input resources
-    std::vector<RDGImage*>  m_inImagesResources;
-    std::vector<RDGBuffer*> m_inBuffersResources;
+    std::unordered_map<Tag, val::ImageUsage>  m_inImagesResources;
+    std::unordered_map<Tag, val::BufferUsage> m_inBufferResources;
     // clear screen
     bool m_clearScreen{false};
 
@@ -213,8 +211,8 @@ struct ImageTransition
 
 struct BufferTransition
 {
-    VkBufferUsageFlags srcUsage;
-    VkBufferUsageFlags dstUsage;
+    val::BufferUsage srcUsage;
+    val::BufferUsage dstUsage;
 };
 
 struct ResourceState
@@ -224,7 +222,7 @@ struct ResourceState
     std::unordered_map<Tag, ImageTransitionMap>  perPassImageState;
     std::unordered_map<Tag, BufferTransitionMap> perPassBufferState;
     std::unordered_map<Tag, val::ImageUsage>     totalImageUsages;
-    std::unordered_map<Tag, uint32_t>            totalBufferUsages;
+    std::unordered_map<Tag, val::BufferUsage>    totalBufferUsages;
     std::unordered_map<Tag, Tag>                 imageFirstUsePass;
     std::unordered_map<Tag, Tag>                 imageLastUsePass;
     std::unordered_map<Tag, Tag>                 bufferFirstUsePass;
@@ -248,6 +246,8 @@ public:
     void Compile();
 
     void Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext);
+
+    const auto& GetResourceIndexMap() const { return m_resourceToIndex; }
 
 private:
     struct PhysicalPass
