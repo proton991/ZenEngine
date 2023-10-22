@@ -215,4 +215,19 @@ VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage        srcUsage,
     barrier.subresourceRange    = image->GetSubResourceRange();
     return barrier;
 }
+
+void CommandBuffer::PushConstants(VkPipelineLayout   pipelineLayout,
+                                  VkShaderStageFlags shaderStage,
+                                  const uint8_t*     data,
+                                  size_t             size)
+{
+    constexpr size_t MaxPushConstantByteSize = 128;
+
+    std::array<uint8_t, MaxPushConstantByteSize> pushConstants{};
+
+    std::memcpy(pushConstants.data(), data, size);
+
+    vkCmdPushConstants(m_handle, pipelineLayout, shaderStage, 0, pushConstants.size(),
+                       pushConstants.data());
+}
 } // namespace zen::val

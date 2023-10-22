@@ -82,7 +82,20 @@ public:
                                                 ImageUsage        dstUsage,
                                                 const val::Image* image);
 
+    template <class T> void PushConstants(VkPipelineLayout   pipelineLayout,
+                                          VkShaderStageFlags shaderStage,
+                                          const T*           constants)
+    {
+        PushConstants(pipelineLayout, shaderStage, reinterpret_cast<const uint8_t*>(constants),
+                      sizeof(T));
+    }
+
 private:
+    void PushConstants(VkPipelineLayout   pipelineLayout,
+                       VkShaderStageFlags shaderStage,
+                       const uint8_t*     data,
+                       size_t             size);
+
     CommandPool& m_cmdPool;
 
     const VkCommandBufferLevel m_level;

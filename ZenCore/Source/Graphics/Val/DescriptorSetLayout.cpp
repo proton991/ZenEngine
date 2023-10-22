@@ -90,6 +90,6 @@ DescriptorSetLayout::DescriptorSetLayout(const Device&                      devi
 }
 
 DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept :
-    DeviceObject(std::move(other)), m_setIndex(other.m_setIndex)
+    DeviceObject(std::move(other)), m_setIndex(other.m_setIndex), m_hash(other.m_hash)
 {}
 } // namespace zen::val

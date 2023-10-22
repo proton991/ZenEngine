@@ -249,6 +249,20 @@ public:
 
     const auto& GetResourceIndexMap() const { return m_resourceToIndex; }
 
+    const auto& GetPhysicalPass(uint32_t index) const { return m_physicalPasses[index]; }
+
+    auto& GetRDGPass(const Tag& tag) { return m_passes[m_passToIndex[tag]]; }
+
+    void SetOnExecute(uint32_t index, std::function<void(val::CommandBuffer*)> func)
+    {
+        m_physicalPasses[index].onExecute = std::move(func);
+    }
+
+    void SetOnExecute(const Tag& tag, std::function<void(val::CommandBuffer*)> func)
+    {
+        m_physicalPasses[m_passToIndex[tag]].onExecute = std::move(func);
+    }
+
 private:
     struct PhysicalPass
     {
@@ -261,7 +275,7 @@ private:
         uint32_t                     index{0};
         bool                         descriptorSetsUpdated{false};
 
-        std::function<void(val::CommandBuffer*)> onExecute{[](auto*) {
+        std::function<void(val::CommandBuffer*)> onExecute{[this](auto*) {
         }};
     };
 

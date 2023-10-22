@@ -606,6 +606,8 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
     std::vector<VkDescriptorImageInfo>  dsImageInfos;
 
     auto& rdgPass = m_passes[pass.index];
+    dsBufferInfos.reserve(rdgPass->GetSRDBinding().size());
+    dsImageInfos.reserve(rdgPass->GetSRDBinding().size());
     for (const auto& [tag, shaderRes] : rdgPass->GetSRDBinding())
     {
         // TODO: add support for more descriptor types

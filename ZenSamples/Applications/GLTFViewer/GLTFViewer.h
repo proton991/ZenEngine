@@ -8,25 +8,24 @@
 #include "Systems/Camera.h"
 #include "Common/Math.h"
 #include "Graphics/Rendering/TextureManager.h"
+#include "AssetLib/GLTFLoader.h"
 
 namespace zen
 {
-class HelloTriangle : public Application
+class GLTFViewer : public Application
 {
     struct CameraUniformData
     {
         Mat4 projViewMatrix{1.0f};
     };
 
-    struct Vertex
+    struct NodeUniformData
     {
-        Vec3 position{0.0f, 0.0f, 0.0f};
-        Vec3 color{0.0f, 0.0f, 0.0f};
-        Vec2 uv{0.0f, 0.0f};
+        Mat4 modelMatrix{1.0f};
     };
 
 public:
-    HelloTriangle();
+    GLTFViewer();
 
     void Prepare(const platform::WindowConfig& windowConfig) override;
 
@@ -40,6 +39,8 @@ public:
 
     void LoadTexture();
 
+    void RenderGLTFModel(val::CommandBuffer* pCommandBuffer);
+
 private:
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
@@ -50,6 +51,10 @@ private:
     UniquePtr<TextureManager> m_textureManager;
 
     val::Image* m_simpleTexture;
+
+    UniquePtr<gltf::ModelLoader> m_gltfModelLoader;
+
+    gltf::Model m_gltfModel;
 
     UniquePtr<val::Sampler> m_sampler;
 
@@ -62,6 +67,16 @@ private:
     UniquePtr<UniformBuffer> m_cameraUniformBuffer;
     CameraUniformData        m_cameraUniformData{};
 
+    // node uniform buffer and data
+    std::vector<NodeUniformData> m_nodesUniformData;
+    UniquePtr<UniformBuffer>     m_nodesUniformBuffer;
+
     UniquePtr<platform::Timer> m_timer;
+
+    const std::vector<std::string> MODEL_PATHS = {
+        "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf",
+        "../../glTF-Sample-Models/2.0/ToyCar/glTF/ToyCar.gltf",
+        "../../glTF-Sample-Models/2.0/FlightHelmet/glTF/FlightHelmet.gltf",
+    };
 };
 } // namespace zen

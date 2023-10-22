@@ -49,8 +49,8 @@ PipelineLayout::PipelineLayout(const Device&                     device,
     {
         VkPushConstantRange pcr{};
         pcr.stageFlags = resource.stages;
-        pcr.size       = resource.size;
-        pcr.offset     = resource.offset;
+        pcr.size       = 128;
+        pcr.offset     = 0;
         pushConstantRanges.push_back(pcr);
     }
 

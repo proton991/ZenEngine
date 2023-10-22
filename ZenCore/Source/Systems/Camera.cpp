@@ -27,7 +27,13 @@ UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye, const Vec3& target, floa
     return MakeUnique<Camera>(eye, target, aspect);
 }
 
-Camera::Camera(Vec3 eye, Vec3 target, float aspect, float fov, float near, float far, float speed) :
+Camera::Camera(const Vec3& eye,
+               const Vec3& target,
+               float       aspect,
+               float       fov,
+               float       near,
+               float       far,
+               float       speed) :
     m_position{eye}, m_aspect{aspect}, m_fov{fov}, m_near{near}, m_far{far}, m_speed(speed)
 {
     Vec3 direction = glm::normalize(target - m_position);
@@ -116,6 +122,12 @@ void Camera::Update(float deltaTime)
 void Camera::UpdateAspect(float aspect)
 {
     m_aspect = aspect;
+    SetProjectionMatrix();
+}
+
+void Camera::SetFarPlane(float far)
+{
+    m_far = far;
     SetProjectionMatrix();
 }
 

@@ -25,3 +25,6 @@
 [submodule "External/stb"]
 	path = External/stb
 	url = https://github.com/nothings/stb
+[submodule "External/tinygltf"]
+	path = External/tinygltf
+	url = https://github.com/syoyo/tinygltf

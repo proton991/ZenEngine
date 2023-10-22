@@ -67,3 +67,7 @@ target_include_directories(span INTERFACE ${SPAN_DIR})
 # stb
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/stb")
+
+# tinygltf
+add_library(tinygltf INTERFACE)
+target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/tinygltf")

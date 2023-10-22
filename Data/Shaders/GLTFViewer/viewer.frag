@@ -1,4 +1,7 @@
 #version 460
+
+//#extension GL_EXT_nonuniform_qualifier : enable
+
 /* Copyright (c) 2019, Arm Limited and Contributors
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -23,10 +26,9 @@ layout(location = 2) in vec2 vUV;
 
 layout(location = 0) out vec4 outColor;
 
-layout(set = 1, binding = 1) uniform sampler2D uTexture;
+layout(set = 1, binding = 0) uniform sampler2D uTexture;
 
 void main()
 {
-    //    outColor = vec4(vColor, 1.0);
-    outColor = texture(uTexture, vUV);
+    outColor = vec4(vColor, 1.0);
 }

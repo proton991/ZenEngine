@@ -1,5 +1,6 @@
 set(ZEN_CORE_HEADERS
     Include/AssetLib/TextureLoader.h
+    Include/AssetLib/GLTFLoader.h
 
     Include/Common/ArrayView.h
     Include/Common/Errors.h
@@ -57,6 +58,7 @@ set(ZEN_CORE_HEADERS
 
 set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
+    Source/AssetLib/GLTFLoader.cpp
 
     Source/Graphics/Rendering/RenderGraph.cpp
     Source/Graphics/Rendering/RenderDevice.cpp
@@ -111,6 +113,7 @@ target_link_libraries(ZenCore PUBLIC
     volk
     span
     stb
+    tinygltf
     )
 
 ############################################################
@@ -118,7 +121,7 @@ target_link_libraries(ZenCore PUBLIC
 ############################################################
 set(SHADER_SRC_PATH ${PROJECT_SOURCE_DIR}/Data/Shaders/)
 set(SHADER_SPV_PATH ${PROJECT_SOURCE_DIR}/Data/SpvShaders/)
-file(GLOB ZEN_SHADER_FILES
+file(GLOB_RECURSE ZEN_SHADER_FILES
     "${SHADER_SRC_PATH}/*.frag"
     "${SHADER_SRC_PATH}/*.vert"
     "${SHADER_SRC_PATH}/*.comp"

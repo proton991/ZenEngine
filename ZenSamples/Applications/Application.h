@@ -43,6 +43,8 @@ public:
 
     virtual void Finish() {}
 
+    virtual void SetupRenderGraph() = 0;
+
 protected:
     float m_fps{0.0f};
     float m_frameTime{0.0f}; // In ms

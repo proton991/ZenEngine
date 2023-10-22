@@ -10,4 +10,12 @@ add_executable(HelloTriangle
     Applications/HelloTriangle/HelloTriangle.h
     Applications/HelloTriangle/Entry.cpp
 )
+add_executable(GLTFViewer
+    Applications/Application.h
+    Applications/GLTFViewer/GLTFViewer.cpp
+    Applications/GLTFViewer/GLTFViewer.h
+    Applications/GLTFViewer/Entry.cpp
+)
+
 target_link_libraries(HelloTriangle ZenCore)
+target_link_libraries(GLTFViewer ZenCore)

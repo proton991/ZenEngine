@@ -22,13 +22,13 @@ public:
                                                 float       aspect);
     static UniquePtr<Camera> CreateUnique(const Vec3& eye, const Vec3& target, float aspect);
 
-    Camera(Vec3  eye,
-           Vec3  target,
-           float aspect,
-           float fov   = 70.0f,
-           float near  = 0.001f,
-           float far   = 100.0f,
-           float speed = 2.0f);
+    Camera(const Vec3& eye,
+           const Vec3& target,
+           float       aspect,
+           float       fov   = 70.0f,
+           float       near  = 0.001f,
+           float       far   = 100.0f,
+           float       speed = 2.0f);
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;
@@ -37,6 +37,8 @@ public:
 
     void Update(float deltaTime);
     void UpdateAspect(float aspect);
+
+    void SetFarPlane(float far);
 
 private:
     void SetProjectionMatrix();
@@ -71,7 +73,7 @@ private:
     Mat4 m_projMatrix{1.f};
     Mat4 m_viewMatrix{1.f};
 
-    float m_speed{2.f};
+    float m_speed{1.f};
     float m_sensitivity{0.2f};
 };
 } // namespace zen::sys
