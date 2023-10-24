@@ -126,8 +126,9 @@ void GLTFViewer::LoadModel()
     m_nodesUniformBuffer = UniformBuffer::CreateUnique(
         *m_device, sizeof(NodeUniformData) * m_gltfModel.flatNodes.size());
 
-    m_camera->SetFarPlane(m_gltfModel.GetSize() * 100.0f);
-    //    m_camera->SetSpeed(m_gltfModel.GetSize() / 10.0f);
+    const auto modelSize = m_gltfModel.GetSize();
+    m_camera->SetFarPlane(modelSize * 100.0f);
+    m_camera->SetSpeed(modelSize);
 
     const auto& modelVertices = m_gltfModelLoader->GetVertices();
     const auto& modelIndices  = m_gltfModelLoader->GetIndices();

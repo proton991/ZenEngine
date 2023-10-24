@@ -617,12 +617,9 @@ void ModelLoader::GetModelProps(const tinygltf::Node&  node,
 
 void ModelLoader::SetModelBoundingBox(gltf::Model* pModel)
 {
-    for (auto* node : pModel->nodes)
+    for (auto* node : pModel->flatNodes)
     {
-        if (!node->primitives.empty()) { node->bb.Transform(node->matrix); }
-    }
-    for (const auto* node : pModel->flatNodes)
-    {
+        node->bb.Transform(node->GetMatrix());
         pModel->bb.min = glm::min(pModel->bb.min, node->bb.min);
         pModel->bb.max = glm::min(pModel->bb.max, node->bb.max);
     }
