@@ -47,19 +47,14 @@ Model::~Model()
 
 Mat4 Node::GetMatrix() const
 {
-    Mat4  m = GetLocalMatrix();
+    Mat4  m = localMatrix;
     auto* p = parent;
     while (p)
     {
-        m = p->GetLocalMatrix() * m;
+        m = p->localMatrix * m;
         p = p->parent;
     }
     return m;
-}
-Mat4 Node::GetLocalMatrix() const
-{
-    return glm::translate(Mat4(1.0f), translation) * Mat4(rotation) *
-        glm::scale(Mat4(1.0f), scale) * matrix;
 }
 
 float Model::GetSize() const { return glm::distance(bb.min, bb.max); }
@@ -289,29 +284,24 @@ void ModelLoader::LoadNode(gltf::Model*           pOutModel,
     newNode->skinIndex = node.skin;
     newNode->matrix    = Mat4(1.0f);
 
-    // Generate local node matrix
-    Vec3 translation = Vec3(0.0f);
     if (node.translation.size() == 3)
     {
-        translation          = glm::make_vec3(node.translation.data());
-        newNode->translation = translation;
+        newNode->translation = glm::make_vec3(node.translation.data());
     }
-    Mat4 rotation = Mat4(1.0f);
+
     if (node.rotation.size() == 4)
     {
         glm::quat q       = glm::make_quat(node.rotation.data());
         newNode->rotation = Mat4(q);
     }
-    Vec3 scale = Vec3(globalScale);
-    if (node.scale.size() == 3)
-    {
-        scale          = glm::make_vec3(node.scale.data());
-        newNode->scale = scale;
-    }
+
+    newNode->scale = Vec3(globalScale);
+    if (node.scale.size() == 3) { newNode->scale = glm::make_vec3(node.scale.data()); }
+
     if (node.matrix.size() == 16) { newNode->matrix = glm::make_mat4x4(node.matrix.data()); };
 
     // Node with children
-    if (node.children.size() > 0)
+    if (!node.children.empty())
     {
         for (size_t i = 0; i < node.children.size(); i++)
         {
@@ -319,9 +309,9 @@ void ModelLoader::LoadNode(gltf::Model*           pOutModel,
                      globalScale);
         }
     }
-    //    // Combine all transform matrix
-    //    newNode->localMatrix = glm::translate(Mat4(1.0f), translation) * Mat4(rotation) *
-    //        glm::scale(Mat4(1.0f), scale) * newNode->matrix;
+    // Combine all transform matrix
+    newNode->localMatrix = glm::translate(Mat4(1.0f), newNode->translation) *
+        Mat4(newNode->rotation) * glm::scale(Mat4(1.0f), newNode->scale) * newNode->matrix;
 
     // Node contains mesh data
     if (node.mesh > -1)

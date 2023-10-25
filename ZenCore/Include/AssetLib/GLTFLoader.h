@@ -139,7 +139,6 @@ struct Node
     ~Node();
 
     Mat4 GetMatrix() const;
-    Mat4 GetLocalMatrix() const;
 
     Node*       parent{nullptr};
     uint32_t    index{0};
@@ -147,8 +146,8 @@ struct Node
     std::string name;
     // node matrix
     Mat4 matrix{1.0f};
-    //    // combined transform matrix
-    //    Mat4 localMatrix{1.0f};
+    // combined transform matrix
+    Mat4 localMatrix{1.0f};
     // axis aligned bounding box
     BoundingBox bb;
     // contained primitives
