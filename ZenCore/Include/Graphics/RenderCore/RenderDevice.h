@@ -1,6 +1,6 @@
 #pragma once
 #include "Graphics/Val/ZenVal.h"
-#include "Graphics/Rendering/ResourceCache.h"
+#include "Graphics/RenderCore/ResourceCache.h"
 #include "Common/UniquePtr.h"
 
 namespace zen

@@ -4,7 +4,7 @@
 #include "Graphics/Val/ZenVal.h"
 #include "Platform/GlfwWindow.h"
 #include "Common/Helpers.h"
-#include "Graphics/Rendering/RenderDevice.h"
+#include "Graphics/RenderCore/RenderDevice.h"
 #include "Graphics/Val/VulkanStrings.h"
 
 //using namespace zen::val;

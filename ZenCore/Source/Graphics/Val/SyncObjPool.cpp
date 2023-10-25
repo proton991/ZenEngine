@@ -1,8 +1,8 @@
-#include "Graphics/Rendering/SyncObjPool.h"
+#include "Graphics/Val//SyncObjPool.h"
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
 
-namespace zen
+namespace zen::val
 {
 VkFence SynObjPool::RequestFence()
 {
@@ -85,4 +85,4 @@ void SynObjPool::ResetSemaphores()
     for (auto& sem : m_releasedSemaphores) { m_semaphores.push_back(sem); }
     m_releasedSemaphores.clear();
 }
-} // namespace zen
+} // namespace zen::val

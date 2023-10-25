@@ -1,13 +1,13 @@
 #pragma once
 #include "../Application.h"
-#include "Graphics/Rendering/RenderGraph.h"
-#include "Graphics/Rendering/RenderContext.h"
-#include "Graphics/Rendering/ShaderManager.h"
-#include "Graphics/Rendering/RenderBuffers.h"
+#include "Graphics/RenderCore/RenderGraph.h"
+#include "Graphics/RenderCore/RenderContext.h"
+#include "Graphics/RenderCore/ShaderManager.h"
+#include "Graphics/RenderCore/RenderBuffers.h"
 #include "Platform/Timer.h"
 #include "Systems/Camera.h"
 #include "Common/Math.h"
-#include "Graphics/Rendering/TextureManager.h"
+#include "Graphics/RenderCore/TextureManager.h"
 #include "AssetLib/GLTFLoader.h"
 
 namespace zen

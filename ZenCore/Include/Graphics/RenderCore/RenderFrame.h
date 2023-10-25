@@ -1,5 +1,5 @@
 #pragma once
-#include "SyncObjPool.h"
+#include "Graphics/Val/SyncObjPool.h"
 #include "Common/UniquePtr.h"
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/Swapchain.h"
@@ -48,7 +48,7 @@ private:
 
     const val::Device& m_valDevice;
 
-    SynObjPool m_syncObjPool;
+    val::SynObjPool m_syncObjPool;
 
     std::unordered_map<uint32_t, UniquePtr<val::CommandPool>> m_cmdPools;
 

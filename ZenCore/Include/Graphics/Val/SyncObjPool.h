@@ -1,7 +1,7 @@
 #pragma once
 #include "Graphics/Val/Device.h"
 
-namespace zen
+namespace zen::val
 {
 class SynObjPool
 {
@@ -34,4 +34,4 @@ private:
     std::vector<VkSemaphore> m_releasedSemaphores;
     uint32_t                 m_numActiveSemaphores{};
 };
-} // namespace zen
+} // namespace zen::val

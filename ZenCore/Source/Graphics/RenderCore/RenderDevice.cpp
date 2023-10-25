@@ -1,5 +1,5 @@
-#include "Graphics/Rendering/RenderDevice.h"
-#include "Graphics/Rendering/ResourceCache.h"
+#include "Graphics/RenderCore/RenderDevice.h"
+#include "Graphics/RenderCore/ResourceCache.h"
 
 namespace zen
 {

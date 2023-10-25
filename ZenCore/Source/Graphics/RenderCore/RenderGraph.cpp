@@ -1,7 +1,7 @@
-#include "Graphics/Rendering/RenderGraph.h"
+#include "Graphics/RenderCore/RenderGraph.h"
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
-#include "Graphics/Rendering/RenderContext.h"
+#include "Graphics/RenderCore/RenderContext.h"
 #include <queue>
 
 namespace zen

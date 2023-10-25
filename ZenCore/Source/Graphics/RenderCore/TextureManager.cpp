@@ -1,7 +1,7 @@
 #include "AssetLib/TextureLoader.h"
-#include "Graphics/Rendering/TextureManager.h"
-#include "Graphics/Rendering/RenderDevice.h"
-#include "Graphics/Rendering/RenderContext.h"
+#include "Graphics/RenderCore/TextureManager.h"
+#include "Graphics/RenderCore/RenderDevice.h"
+#include "Graphics/RenderCore/RenderContext.h"
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
 

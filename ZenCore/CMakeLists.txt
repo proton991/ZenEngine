@@ -12,16 +12,15 @@ set(ZEN_CORE_HEADERS
     Include/Common/UniquePtr.h
     Include/Common/Types.h
 
-    Include/Graphics/Rendering/RenderGraphDefinitions.h
-    Include/Graphics/Rendering/RenderGraph.h
-    Include/Graphics/Rendering/RenderDevice.h
-    Include/Graphics/Rendering/ResourceCache.h
-    Include/Graphics/Rendering/RenderFrame.h
-    Include/Graphics/Rendering/RenderContext.h
-    Include/Graphics/Rendering/SyncObjPool.h
-    Include/Graphics/Rendering/RenderBuffers.h
-    Include/Graphics/Rendering/ShaderManager.h
-    Include/Graphics/Rendering/TextureManager.h
+    Include/Graphics/RenderCore/RenderGraphDefinitions.h
+    Include/Graphics/RenderCore/RenderGraph.h
+    Include/Graphics/RenderCore/RenderDevice.h
+    Include/Graphics/RenderCore/ResourceCache.h
+    Include/Graphics/RenderCore/RenderFrame.h
+    Include/Graphics/RenderCore/RenderContext.h
+    Include/Graphics/RenderCore/RenderBuffers.h
+    Include/Graphics/RenderCore/ShaderManager.h
+    Include/Graphics/RenderCore/TextureManager.h
 
     Include/Systems/Camera.h
 
@@ -43,6 +42,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Val/Sampler.h
     Include/Graphics/Val/Shader.h
     Include/Graphics/Val/Swapchain.h
+    Include/Graphics/Val/SyncObjPool.h
     Include/Graphics/Val/DeviceObject.h
     Include/Graphics/Val/VulkanConfig.h
     Include/Graphics/Val/VulkanDebug.h
@@ -60,12 +60,11 @@ set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
     Source/AssetLib/GLTFLoader.cpp
 
-    Source/Graphics/Rendering/RenderGraph.cpp
-    Source/Graphics/Rendering/RenderDevice.cpp
-    Source/Graphics/Rendering/RenderFrame.cpp
-    Source/Graphics/Rendering/RenderContext.cpp
-    Source/Graphics/Rendering/SynObjPool.cpp
-    Source/Graphics/Rendering/TextureManager.cpp
+    Source/Graphics/RenderCore/RenderGraph.cpp
+    Source/Graphics/RenderCore/RenderDevice.cpp
+    Source/Graphics/RenderCore/RenderFrame.cpp
+    Source/Graphics/RenderCore/RenderContext.cpp
+    Source/Graphics/RenderCore/TextureManager.cpp
 
     Source/Systems/Camera.cpp
 
@@ -87,6 +86,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Val/Sampler.cpp
     Source/Graphics/Val/Shader.cpp
     Source/Graphics/Val/Swapchain.cpp
+    Source/Graphics/Val/SyncObjPool.cpp
     Source/Graphics/Val/VulkanDebug.cpp
 
     Source/Platform/FileSystem.cpp

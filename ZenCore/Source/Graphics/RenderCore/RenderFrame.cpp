@@ -1,4 +1,4 @@
-#include "Graphics/Rendering/RenderFrame.h"
+#include "Graphics/RenderCore/RenderFrame.h"
 #include "Common/Errors.h"
 
 namespace zen

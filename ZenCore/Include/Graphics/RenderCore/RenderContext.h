@@ -84,6 +84,6 @@ private:
     // common command pool
     UniquePtr<val::CommandPool> m_commandPool;
     // common sync obj pool
-    SynObjPool m_synObjPool;
+    val::SynObjPool m_synObjPool;
 };
 } // namespace zen
