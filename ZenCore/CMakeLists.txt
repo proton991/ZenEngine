@@ -22,6 +22,18 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/ShaderManager.h
     Include/Graphics/RenderCore/TextureManager.h
 
+    Include/SceneGraph/AABB.h
+    Include/SceneGraph/Node.h
+    Include/SceneGraph/Component.h
+    Include/SceneGraph/Material.h
+    Include/SceneGraph/Mesh.h
+    Include/SceneGraph/Node.h
+    Include/SceneGraph/Sampler.h
+    Include/SceneGraph/Scene.h
+    Include/SceneGraph/SubMesh.h
+    Include/SceneGraph/Texture.h
+    Include/SceneGraph/Transform.h
+
     Include/Systems/Camera.h
 
     Include/Graphics/Val/Buffer.h
@@ -65,6 +77,9 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/RenderFrame.cpp
     Source/Graphics/RenderCore/RenderContext.cpp
     Source/Graphics/RenderCore/TextureManager.cpp
+
+    Source/SceneGraph/Scene.cpp
+    Source/SceneGraph/Transform.cpp
 
     Source/Systems/Camera.cpp
 

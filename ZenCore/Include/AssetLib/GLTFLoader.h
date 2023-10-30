@@ -1,10 +1,17 @@
 #pragma once
-#include "Common/Math.h"
-#include "Common/Types.h"
 #include <vector>
 #include <string>
 #include <tiny_gltf.h>
+#include "Common/Math.h"
+#include "Common/Types.h"
+#include "Common/UniquePtr.h"
 
+
+namespace zen::sg
+{
+class Scene;
+class Node;
+} // namespace zen::sg
 namespace zen::gltf
 {
 struct Vertex
@@ -219,5 +226,47 @@ private:
         gltf::TextureInfo metallicRoughness;
         gltf::TextureInfo normal;
     } m_defaultTextures;
+};
+
+
+class GltfLoader
+{
+public:
+    GltfLoader() = default;
+
+    void LoadFromFile(const std::string& path, sg::Scene* scene);
+
+    const auto& GetVertices() const { return m_vertices; }
+    const auto& GetIndices() const { return m_indices; }
+
+private:
+    void LoadGltfSamplers(sg::Scene* scene);
+
+    void LoadGltfTextures(sg::Scene* scene);
+
+    void LoadGltfMaterials(sg::Scene* scene);
+
+    void LoadGltfMeshes(sg::Scene* scene);
+
+    void ParseGltfNodes(sg::Scene* scene);
+
+    void ParseGltfNode(
+        // current node index
+        uint32_t nodeIndex,
+        // parent node
+        sg::Node* parent,
+        // store results
+        std::vector<UniquePtr<sg::Node>>& sgNodes,
+        // access materials
+        sg::Scene* scene);
+
+    tinygltf::Model    m_gltfModel;
+    tinygltf::TinyGLTF m_gltfContext;
+    // counters
+    size_t m_vertexPos{0};
+    size_t m_indexPos{0};
+    // vertices and indices
+    std::vector<gltf::Vertex> m_vertices;
+    std::vector<gltf::Index>  m_indices;
 };
 } // namespace zen::gltf

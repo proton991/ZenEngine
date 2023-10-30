@@ -23,9 +23,15 @@ public:
      * @brief Copy constructor to convert from another pointer type
      */
     template <class U> UniquePtr(const UniquePtr<U>& other) noexcept : // never throws
-        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(other.m_ptr))
+        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(other.Get()))
     {
-        const_cast<UniquePtr<U>&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
+        const_cast<UniquePtr<U>&>(other).Release();
+    }
+
+    template <class U> UniquePtr(UniquePtr<U>&& other) noexcept : // never throws
+        m_ptr(std::move(static_cast<typename UniquePtr<T>::ElementType*>(other.Get())))
+    {
+        other.Release();
     }
 
     /// @brief Copy constructor (used by the copy-and-swap idiom)
