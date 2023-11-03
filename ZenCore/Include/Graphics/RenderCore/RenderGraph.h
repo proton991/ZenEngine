@@ -4,7 +4,7 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 #include <unordered_set>
-#include <unordered_map>
+#include "Common/HashMap.h"
 #include "RenderDevice.h"
 
 namespace zen
@@ -142,6 +142,8 @@ public:
 
     void ReadFromExternalImage(const Tag& tag, val::Image* image);
 
+    void ReadFromExternalImage(const Tag& tag, const std::vector<val::Image*>& images);
+
     void ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer);
 
     const auto& GetIndex() const { return m_index; }
@@ -186,18 +188,19 @@ private:
     std::vector<RDGImage*>  m_outImageResources;
     std::vector<RDGBuffer*> m_outBufferResources;
     // input resources
-    std::unordered_map<Tag, val::ImageUsage>  m_inImagesResources;
-    std::unordered_map<Tag, val::BufferUsage> m_inBufferResources;
+    HashMap<Tag, val::ImageUsage>  m_inImagesResources;
+    HashMap<Tag, val::BufferUsage> m_inBufferResources;
     // clear screen
     bool m_clearScreen{false};
 
     // used shaders
     std::vector<val::ShaderModule*> m_shaders;
 
-    std::unordered_map<Tag, val::ShaderResource> m_srdBinding;
-    std::unordered_map<Tag, val::Sampler*>       m_samplerBinding;
-    std::unordered_map<Tag, val::Image*>         m_externImageResources;
-    std::unordered_map<Tag, val::Buffer*>        m_externBufferResources;
+    HashMap<Tag, val::ShaderResource> m_srdBinding;
+    HashMap<Tag, val::Sampler*>       m_samplerBinding;
+    // external resources
+    HashMap<Tag, std::vector<val::Image*>> m_externImageResources;
+    HashMap<Tag, val::Buffer*>             m_externBufferResources;
 
     std::function<void(val::CommandBuffer*)> m_onExecute{[](auto*) {
     }};
@@ -217,16 +220,16 @@ struct BufferTransition
 
 struct ResourceState
 {
-    using ImageTransitionMap  = std::unordered_map<Tag, ImageTransition>;
-    using BufferTransitionMap = std::unordered_map<Tag, BufferTransition>;
-    std::unordered_map<Tag, ImageTransitionMap>  perPassImageState;
-    std::unordered_map<Tag, BufferTransitionMap> perPassBufferState;
-    std::unordered_map<Tag, val::ImageUsage>     totalImageUsages;
-    std::unordered_map<Tag, val::BufferUsage>    totalBufferUsages;
-    std::unordered_map<Tag, Tag>                 imageFirstUsePass;
-    std::unordered_map<Tag, Tag>                 imageLastUsePass;
-    std::unordered_map<Tag, Tag>                 bufferFirstUsePass;
-    std::unordered_map<Tag, Tag>                 bufferLastUsePass;
+    using ImageTransitionMap  = HashMap<Tag, ImageTransition>;
+    using BufferTransitionMap = HashMap<Tag, BufferTransition>;
+    HashMap<Tag, ImageTransitionMap>  perPassImageState;
+    HashMap<Tag, BufferTransitionMap> perPassBufferState;
+    HashMap<Tag, val::ImageUsage>     totalImageUsages;
+    HashMap<Tag, val::BufferUsage>    totalBufferUsages;
+    HashMap<Tag, Tag>                 imageFirstUsePass;
+    HashMap<Tag, Tag>                 imageLastUsePass;
+    HashMap<Tag, Tag>                 bufferFirstUsePass;
+    HashMap<Tag, Tag>                 bufferLastUsePass;
 };
 class RenderContext;
 class RenderGraph
@@ -295,9 +298,9 @@ private:
 
     void BuildPhysicalPasses();
 
-    void EmitPipelineBarrier(val::CommandBuffer*                              commandBuffer,
-                             const std::unordered_map<Tag, ImageTransition>&  imageTransitions,
-                             const std::unordered_map<Tag, BufferTransition>& bufferTransitions);
+    void EmitPipelineBarrier(val::CommandBuffer*                   commandBuffer,
+                             const HashMap<Tag, ImageTransition>&  imageTransitions,
+                             const HashMap<Tag, BufferTransition>& bufferTransitions);
 
     void BeforeExecuteSetup(val::CommandBuffer* commandBuffer);
 
@@ -307,8 +310,8 @@ private:
 
     void UpdateDescriptorSets(PhysicalPass& pass);
 
-    std::unordered_map<Tag, Index>         m_resourceToIndex;
-    std::unordered_map<Tag, Index>         m_passToIndex;
+    HashMap<Tag, Index>                    m_resourceToIndex;
+    HashMap<Tag, Index>                    m_passToIndex;
     std::vector<UniquePtr<RDGResource>>    m_resources;
     std::vector<UniquePtr<RDGPass>>        m_passes;
     std::vector<std::unordered_set<Index>> m_passDeps;

@@ -60,7 +60,12 @@ void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::I
 
 void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* image)
 {
-    m_externImageResources[tag] = image;
+    m_externImageResources[tag] = {image};
+}
+
+void RDGPass::ReadFromExternalImage(const Tag& tag, const std::vector<val::Image*>& images)
+{
+    m_externImageResources[tag] = images;
 }
 
 void RDGPass::ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer)
@@ -233,8 +238,8 @@ void RenderGraph::RemoveDuplicates(std::vector<Index>& list)
 
 void RenderGraph::ResolveResourceState()
 {
-    std::unordered_map<Tag, val::BufferUsage> lastBufferUsages;
-    std::unordered_map<Tag, val::ImageUsage>  lastImageUsages;
+    HashMap<Tag, val::BufferUsage> lastBufferUsages;
+    HashMap<Tag, val::ImageUsage>  lastImageUsages;
     for (const auto& pass : m_passes)
     {
         auto& bufferTransitions = m_resourceState.perPassBufferState[pass->GetTag()];
@@ -482,10 +487,9 @@ static bool HasBufferWriteDependency(val::BufferUsage usage)
     return false;
 }
 
-void RenderGraph::EmitPipelineBarrier(
-    val::CommandBuffer*                              commandBuffer,
-    const std::unordered_map<Tag, ImageTransition>&  imageTransitions,
-    const std::unordered_map<Tag, BufferTransition>& bufferTransitions)
+void RenderGraph::EmitPipelineBarrier(val::CommandBuffer*                   commandBuffer,
+                                      const HashMap<Tag, ImageTransition>&  imageTransitions,
+                                      const HashMap<Tag, BufferTransition>& bufferTransitions)
 {
     VkPipelineStageFlags srcPipelineStageFlags{};
     VkPipelineStageFlags dstPipelineStageFlags{};
@@ -547,7 +551,7 @@ void RenderGraph::EmitPipelineBarrier(
  */
 void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* commandBuffer)
 {
-    std::unordered_map<Tag, ImageTransition> imageTransitions;
+    HashMap<Tag, ImageTransition> imageTransitions;
     for (const auto& pass : m_passes)
     {
         for (const auto& rdgImage : pass->GetOutImageResources())
@@ -614,20 +618,26 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
         if (shaderRes.type == val::ShaderResourceType::ImageSampler)
         {
             bool isExternal = rdgPass->GetExternImageResources().count(tag) != 0;
-
-            VkDescriptorImageInfo info{};
-            info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-            info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
             if (isExternal)
             {
-                info.imageView = rdgPass->GetExternImageResources().at(tag)->GetView();
+                for (const auto* image : rdgPass->GetExternImageResources().at(tag))
+                {
+                    VkDescriptorImageInfo info{};
+                    info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+                    info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
+                    info.imageView   = image->GetView();
+                    dsImageInfos.push_back(info);
+                }
             }
             else
             {
+                VkDescriptorImageInfo info{};
+                info.imageLayout   = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+                info.sampler       = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
                 auto physicalIndex = m_resources[m_resourceToIndex[tag]]->GetPhysicalIndex();
                 info.imageView     = m_physicalImages[physicalIndex]->GetView();
+                dsImageInfos.push_back(info);
             }
-            dsImageInfos.push_back(info);
 
             VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             newWrite.descriptorCount = 1;

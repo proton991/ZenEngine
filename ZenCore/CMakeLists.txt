@@ -4,6 +4,7 @@ set(ZEN_CORE_HEADERS
 
     Include/Common/ArrayView.h
     Include/Common/Errors.h
+        Include/Common/HashMap.h
     Include/Common/Helpers.h
     Include/Common/Math.h
     Include/Common/MemAlloc.h
