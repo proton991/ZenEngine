@@ -73,7 +73,7 @@ struct DepthStencilState
 {
     VkBool32         depthTestEnable{VK_TRUE};
     VkBool32         depthWriteEnable{VK_TRUE};
-    VkCompareOp      depthCompareOp{VK_COMPARE_OP_LESS};
+    VkCompareOp      depthCompareOp{VK_COMPARE_OP_LESS_OR_EQUAL};
     VkBool32         depthBoundsTestEnable{VK_FALSE};
     VkBool32         stencilTestEnable{VK_FALSE};
     VkStencilOpState front{DefaultStencilOpState()};

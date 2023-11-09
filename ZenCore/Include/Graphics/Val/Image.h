@@ -64,6 +64,8 @@ public:
 
     ~Image();
 
+    Image(const Image& other);
+
     Image(Image&& other) noexcept;
 
     VkImageView GetView() const { return m_view; }

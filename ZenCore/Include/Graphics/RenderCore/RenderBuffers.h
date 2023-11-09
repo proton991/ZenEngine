@@ -79,6 +79,22 @@ public:
     {}
 };
 
+class StorageBuffer : public val::Buffer
+{
+public:
+    static UniquePtr<StorageBuffer> CreateUnique(val::Device& valDevice, VkDeviceSize byteSize)
+    {
+        return MakeUnique<StorageBuffer>(valDevice, byteSize);
+    }
+
+    StorageBuffer(val::Device& valDevice, VkDeviceSize byteSize) :
+        val::Buffer(valDevice,
+                    byteSize,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    0)
+    {}
+};
+
 class VertexBuffer : public val::Buffer
 {
 public:

@@ -142,7 +142,7 @@ public:
 
     void ReadFromExternalImage(const Tag& tag, val::Image* image);
 
-    void ReadFromExternalImage(const Tag& tag, const std::vector<val::Image*>& images);
+    void ReadFromExternalImages(const Tag& tag, const std::vector<val::Image*>& images);
 
     void ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer);
 

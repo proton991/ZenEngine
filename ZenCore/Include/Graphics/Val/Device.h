@@ -41,6 +41,8 @@ public:
 
     void WaitIdle() const;
 
+    auto GetGPUProperties() const { return m_physicalDevice->m_properties; }
+
 private:
     VkDevice                       m_handle{VK_NULL_HANDLE};
     PhysicalDevice*                m_physicalDevice{nullptr};

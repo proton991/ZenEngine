@@ -3,6 +3,11 @@
 
 namespace zen
 {
+namespace sg
+{
+class Scene;
+}
+
 class RenderContext;
 
 class TextureManager
@@ -13,6 +18,8 @@ public:
     {}
 
     val::Image* RequestTexture2D(const std::string& filename, bool requireMipmap = false);
+
+    void RegisterSceneTextures(sg::Scene* scene, bool requireMipmap = false);
 
 private:
     const val::Device& m_valDevice;

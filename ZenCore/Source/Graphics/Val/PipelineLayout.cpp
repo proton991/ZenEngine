@@ -20,6 +20,13 @@ PipelineLayout::PipelineLayout(const Device&                     device,
                 key = VkToString(shaderResource.stages).append("_").append(key);
             }
             if (!m_shaderResources.count(key)) { m_shaderResources.emplace(key, shaderResource); }
+            else
+            {
+                if (m_shaderResources[key].stages != shaderResource.stages)
+                {
+                    m_shaderResources[key].stages |= shaderResource.stages;
+                }
+            }
         }
     }
     for (auto& it : m_shaderResources)

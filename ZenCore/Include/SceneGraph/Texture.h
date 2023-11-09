@@ -9,7 +9,7 @@ class Texture : public Component
 {
 public:
     Texture() = default;
-    
+
     Texture(std::string name) : Component(std::move(name)) {}
 
     Texture(std::string name,
@@ -28,7 +28,7 @@ public:
         width(width),
         height(height),
         format(format),
-        data(std::move(data))
+        bytesData(std::move(data))
     {}
 
     TypeId GetTypeId() const override { return typeid(Texture); }
@@ -39,6 +39,6 @@ public:
     uint32_t height{0};
     Format   format{Format::UNDEFINED};
     // byte data no mipmaps
-    std::vector<uint8_t> data;
+    std::vector<uint8_t> bytesData;
 };
 } // namespace zen::sg

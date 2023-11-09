@@ -54,6 +54,7 @@ DescriptorSetLayout::DescriptorSetLayout(const Device&                      devi
     DeviceObject(device), m_setIndex(setIndex)
 {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
+    std::vector<VkDescriptorBindingFlags>     bindingFlags;
     for (auto& resource : shaderResources)
     {
         // Skip shader resources without a binding point
@@ -74,13 +75,25 @@ DescriptorSetLayout::DescriptorSetLayout(const Device&                      devi
         layoutBinding.stageFlags = static_cast<VkShaderStageFlags>(resource.stages);
 
         bindings.emplace_back(layoutBinding);
+        if (layoutBinding.descriptorCount > 1)
+        {
+            // partial bind for array of descriptors
+            bindingFlags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+        }
+        else { bindingFlags.push_back(0); }
     }
     if (!bindings.empty())
     {
+        VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCreateInfo{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+        bindingFlagsCreateInfo.bindingCount  = util::ToU32(bindingFlags.size());
+        bindingFlagsCreateInfo.pBindingFlags = bindingFlags.data();
+
         VkDescriptorSetLayoutCreateInfo dsLayoutCI{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         dsLayoutCI.bindingCount = static_cast<uint32_t>(bindings.size());
         dsLayoutCI.pBindings    = bindings.data();
+        dsLayoutCI.pNext        = &bindingFlagsCreateInfo;
         CHECK_VK_ERROR_AND_THROW(
             vkCreateDescriptorSetLayout(m_device.GetHandle(), &dsLayoutCI, nullptr, &m_handle),
             "Failed to create descriptor layout");

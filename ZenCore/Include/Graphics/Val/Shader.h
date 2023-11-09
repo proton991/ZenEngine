@@ -48,7 +48,7 @@ struct ShaderResource
 {
     VkFormat format{VK_FORMAT_UNDEFINED};
 
-    VkShaderStageFlagBits stages;
+    VkShaderStageFlags stages;
 
     ShaderResourceType type;
 

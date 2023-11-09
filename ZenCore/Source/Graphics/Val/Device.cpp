@@ -44,6 +44,29 @@ Device::Device(const Device::CreateInfo& CI)
 {
     m_physicalDevice = CI.pPhysicalDevice;
 
+    auto descriptorIndexingFeatures =
+        m_physicalDevice->RequestExtensionFeatures<VkPhysicalDeviceDescriptorIndexingFeatures>(
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES);
+    descriptorIndexingFeatures.runtimeDescriptorArray                             = true;
+    descriptorIndexingFeatures.descriptorBindingPartiallyBound                    = true;
+    descriptorIndexingFeatures.shaderInputAttachmentArrayDynamicIndexing          = true;
+    descriptorIndexingFeatures.shaderUniformTexelBufferArrayDynamicIndexing       = true;
+    descriptorIndexingFeatures.shaderStorageTexelBufferArrayDynamicIndexing       = true;
+    descriptorIndexingFeatures.shaderUniformBufferArrayNonUniformIndexing         = true;
+    descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing          = true;
+    descriptorIndexingFeatures.shaderStorageBufferArrayNonUniformIndexing         = true;
+    descriptorIndexingFeatures.shaderStorageImageArrayNonUniformIndexing          = true;
+    descriptorIndexingFeatures.shaderInputAttachmentArrayNonUniformIndexing       = true;
+    descriptorIndexingFeatures.shaderUniformTexelBufferArrayNonUniformIndexing    = true;
+    descriptorIndexingFeatures.shaderStorageTexelBufferArrayNonUniformIndexing    = true;
+    descriptorIndexingFeatures.descriptorBindingUniformBufferUpdateAfterBind      = true;
+    descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind       = true;
+    descriptorIndexingFeatures.descriptorBindingStorageImageUpdateAfterBind       = true;
+    descriptorIndexingFeatures.descriptorBindingStorageBufferUpdateAfterBind      = true;
+    descriptorIndexingFeatures.descriptorBindingUniformTexelBufferUpdateAfterBind = true;
+    descriptorIndexingFeatures.descriptorBindingStorageTexelBufferUpdateAfterBind = true;
+    m_enabledExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     // fill in queue create info
     auto queueInfo = CI.pPhysicalDevice->GetDeviceQueueInfo(VK_NULL_HANDLE);

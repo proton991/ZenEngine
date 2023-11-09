@@ -64,7 +64,9 @@ VkDescriptorPool DescriptorPoolManager::CreatePool()
     descriptorPoolCI.maxSets       = m_maxSets;
     descriptorPoolCI.pPoolSizes    = m_poolSizes.data();
     descriptorPoolCI.poolSizeCount = static_cast<uint32_t>(m_poolSizes.size());
-    descriptorPoolCI.flags = m_allowFree ? VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT : 0;
+    descriptorPoolCI.flags = m_allowFree ? VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
+            VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT :
+                                           VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
     vkCreateDescriptorPool(m_device.GetHandle(), &descriptorPoolCI, nullptr, &pool);
 
     return pool;

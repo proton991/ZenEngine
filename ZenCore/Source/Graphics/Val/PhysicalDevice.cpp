@@ -133,41 +133,4 @@ bool PhysicalDevice::IsExtensionSupported(const char* extensionName) const
 }
 
 VkInstance PhysicalDevice::GetInstanceHandle() const { return m_instance.GetHandle(); }
-
-template <typename T> T& PhysicalDevice::RequestExtensionFeatures(VkStructureType type)
-{
-    // We cannot request extension features if the physical device properties 2 instance extension isn't enabled
-    if (!m_instance.IsExtensionEnabled(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
-    {
-
-        throw std::runtime_error(
-            "Couldn't request feature from device as " +
-            std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) +
-            " isn't enabled!");
-    }
-
-    // If the type already exists in the map, return a casted pointer to get the extension feature struct
-    auto it = m_extensionFeatures.find(type);
-    if (it != m_extensionFeatures.end()) { return *static_cast<T*>(it->second.get()); }
-
-    // Get the extension feature
-    VkPhysicalDeviceFeatures2KHR physicalDeviceFeatures{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR};
-    T extension{type};
-    physicalDeviceFeatures.pNext = &extension;
-    vkGetPhysicalDeviceFeatures2KHR(m_handle, &physicalDeviceFeatures);
-
-    // Insert the extension feature into the extension feature map so its ownership is held
-    m_extensionFeatures.insert({type, std::make_shared<T>(extension)});
-
-    // Pull out the dereference void pointer, we can assume its type based on the template
-    auto* extensionPtr = static_cast<T*>(m_extensionFeatures.find(type)->second.get());
-
-    // If an extension feature has already been requested, we shift the linked list down by one
-    // Making this current extension the new base pointer
-    if (m_featureChainHead) { extensionPtr->pNext = m_featureChainHead; }
-    m_featureChainHead = extensionPtr;
-
-    return *extensionPtr;
-}
 } // namespace zen::val

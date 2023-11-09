@@ -35,22 +35,20 @@ public:
 
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
-    template <typename T> void UpdateUniformBuffer(const T*            data,
-                                                   UniformBuffer*      uniformBuffer,
-                                                   val::CommandBuffer* pCmdBuffer)
+    template <typename T>
+    void UpdateRenderBuffer(const T* data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
         auto           submitInfo    = stagingBuffer->Submit(data);
-        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
+        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
     }
 
-    template <typename T> void UpdateUniformBuffer(ArrayView<T>        data,
-                                                   UniformBuffer*      uniformBuffer,
-                                                   val::CommandBuffer* pCmdBuffer)
+    template <typename T>
+    void UpdateRenderBuffer(ArrayView<T> data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
         auto           submitInfo    = stagingBuffer->Submit(data);
-        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, uniformBuffer, 0, submitInfo.size);
+        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
     }
 
     void RecreateSwapchain(uint32_t newWidth, uint32_t newHeight);

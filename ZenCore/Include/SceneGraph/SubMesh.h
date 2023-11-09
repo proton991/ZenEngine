@@ -32,6 +32,7 @@ public:
 
     auto GetIndexCount() const { return m_indexCount; }
     auto GetFirstIndex() const { return m_firstIndex; }
+    auto GetMaterial() const { return m_material; }
 
     void SetAABB(const Vec3& min, const Vec3& max)
     {

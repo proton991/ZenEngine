@@ -34,6 +34,8 @@ public:
 
     auto GetIndex() const { return m_index; }
 
+    uint64_t GetHash() const { return *(reinterpret_cast<const uint64_t*>(this)); }
+
 private:
     uint32_t m_index{0};
 

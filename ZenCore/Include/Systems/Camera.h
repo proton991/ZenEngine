@@ -11,7 +11,7 @@ constexpr Vec3 DEFAULT_FRONT{0.0f, 0.0f, 1.0f};
 /// The default value of the camera's right vector.
 constexpr Vec3 DEFAULT_RIGHT{1.0f, 0.0f, 0.0f};
 /// The default value of the camera's up vector.
-constexpr Vec3 DEFAULT_UP{0.0f, -1.0f, 0.0f};
+constexpr Vec3 DEFAULT_UP{0.0f, 1.0f, 0.0f};
 } // namespace directions
 
 class Camera
@@ -39,6 +39,7 @@ public:
     void UpdateAspect(float aspect);
 
     void SetFarPlane(float far);
+    void SetNearPlane(float near);
 
 private:
     void SetProjectionMatrix();

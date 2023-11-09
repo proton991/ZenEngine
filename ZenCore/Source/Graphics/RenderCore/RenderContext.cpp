@@ -38,7 +38,7 @@ void RenderContext::Init()
     }
     val::CommandPool::CreateInfo cmdPoolCI{};
     cmdPoolCI.queueFamilyIndex = m_queue.GetFamilyIndex();
-    cmdPoolCI.resetMode        = val::CommandPool::ResetMode::ResetPool;
+    cmdPoolCI.resetMode        = val::CommandPool::ResetMode::ResetBuffer;
     // create common command pool
     m_commandPool = MakeUnique<val::CommandPool>(m_valDevice, cmdPoolCI);
 }

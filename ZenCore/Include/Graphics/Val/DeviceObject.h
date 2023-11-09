@@ -12,8 +12,12 @@ template <class VkHandleType, VkObjectType objectType> class DeviceObject
 public:
     explicit DeviceObject(const Device& device) : m_device(device), m_handle(VK_NULL_HANDLE) {}
 
+    DeviceObject(const DeviceObject& other) :
+        m_device(other.m_device), m_handle(other.m_handle), m_debugName(other.m_debugName)
+    {}
+
     DeviceObject(DeviceObject&& other) noexcept :
-        m_device(other.m_device),
+        m_device(std::move(other.m_device)),
         m_handle(std::exchange(other.m_handle, {})),
         m_debugName(std::move(other.m_debugName))
     {

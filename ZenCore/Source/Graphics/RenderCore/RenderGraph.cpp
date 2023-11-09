@@ -63,7 +63,7 @@ void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* image)
     m_externImageResources[tag] = {image};
 }
 
-void RDGPass::ReadFromExternalImage(const Tag& tag, const std::vector<val::Image*>& images)
+void RDGPass::ReadFromExternalImages(const Tag& tag, const std::vector<val::Image*>& images)
 {
     m_externImageResources[tag] = images;
 }
@@ -414,8 +414,7 @@ void RenderGraph::BuildPhysicalPasses()
                 attachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
                 attachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                attachmentDescription.initialLayout =
-                    val::Image::UsageToImageLayout(imageTransition.at(rdgImage->GetTag()).srcUsage);
+                attachmentDescription.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
                 attachmentDescription.finalLayout =
                     val::Image::UsageToImageLayout(imageTransition.at(rdgImage->GetTag()).dstUsage);
                 attachmentDescriptions.push_back(attachmentDescription);
@@ -604,14 +603,32 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
 {
     // do not support dynamic descriptors for now, only update once
     if (pass.descriptorSetsUpdated) return;
+    auto& rdgPass = m_passes[pass.index];
     // update descriptors
     std::vector<VkWriteDescriptorSet>   dsWrites;
     std::vector<VkDescriptorBufferInfo> dsBufferInfos;
     std::vector<VkDescriptorImageInfo>  dsImageInfos;
 
-    auto& rdgPass = m_passes[pass.index];
-    dsBufferInfos.reserve(rdgPass->GetSRDBinding().size());
-    dsImageInfos.reserve(rdgPass->GetSRDBinding().size());
+    size_t dsBufferInfoCount = 0;
+    size_t dsImageInfoCount  = 0;
+    for (const auto& [tag, shaderRes] : rdgPass->GetSRDBinding())
+    {
+        if (shaderRes.type == val::ShaderResourceType::ImageSampler ||
+            shaderRes.type == val::ShaderResourceType::Image)
+        {
+            dsImageInfoCount++;
+        }
+        if (shaderRes.type == val::ShaderResourceType::BufferStorage ||
+            shaderRes.type == val::ShaderResourceType::BufferUniform)
+        {
+            dsBufferInfoCount++;
+        }
+    }
+    dsBufferInfos.reserve(dsBufferInfoCount);
+    dsImageInfos.reserve(dsImageInfoCount);
+
+    //    dsBufferInfos.reserve(rdgPass->GetSRDBinding().size());
+    //    dsImageInfos.reserve(rdgPass->GetSRDBinding().size());
     for (const auto& [tag, shaderRes] : rdgPass->GetSRDBinding())
     {
         // TODO: add support for more descriptor types
@@ -638,15 +655,17 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
                 info.imageView     = m_physicalImages[physicalIndex]->GetView();
                 dsImageInfos.push_back(info);
             }
-
-            VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-            newWrite.descriptorCount = 1;
-            newWrite.descriptorType  = val::ConvertToVkDescriptorType(
-                shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
-            newWrite.pImageInfo = &dsImageInfos.back();
-            newWrite.dstBinding = shaderRes.binding;
-            newWrite.dstSet     = pass.descriptorSets[shaderRes.set];
-            dsWrites.push_back(newWrite);
+            if (!dsImageInfos.empty())
+            {
+                VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                newWrite.descriptorCount = dsImageInfos.size();
+                newWrite.descriptorType  = val::ConvertToVkDescriptorType(
+                    shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
+                newWrite.pImageInfo = &dsImageInfos[0];
+                newWrite.dstBinding = shaderRes.binding;
+                newWrite.dstSet     = pass.descriptorSets[shaderRes.set];
+                dsWrites.push_back(newWrite);
+            }
         }
         if (shaderRes.type == val::ShaderResourceType::BufferUniform ||
             shaderRes.type == val::ShaderResourceType::BufferStorage)
@@ -670,14 +689,17 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
 
             dsBufferInfos.push_back(info);
 
-            VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-            newWrite.descriptorCount = 1;
-            newWrite.descriptorType  = val::ConvertToVkDescriptorType(
-                shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
-            newWrite.pBufferInfo = &dsBufferInfos.back();
-            newWrite.dstBinding  = shaderRes.binding;
-            newWrite.dstSet      = pass.descriptorSets[shaderRes.set];
-            dsWrites.push_back(newWrite);
+            if (!dsBufferInfos.empty())
+            {
+                VkWriteDescriptorSet newWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                newWrite.descriptorCount = 1;
+                newWrite.descriptorType  = val::ConvertToVkDescriptorType(
+                    shaderRes.type, shaderRes.mode == val::ShaderResourceMode::Dynamic);
+                newWrite.pBufferInfo = &dsBufferInfos.back();
+                newWrite.dstBinding  = shaderRes.binding;
+                newWrite.dstSet      = pass.descriptorSets[shaderRes.set];
+                dsWrites.push_back(newWrite);
+            }
         }
     }
     m_renderDevice.UpdateDescriptorSets(dsWrites);
@@ -693,8 +715,9 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
     EmitPipelineBarrier(commandBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()],
                         m_resourceState.perPassBufferState[rdgPass->GetTag()]);
     // On render
-    VkClearValue clearValue{};
-    clearValue.color = {{0.2f, 0.2f, 0.2f, 1.0f}};
+    VkClearValue colorClear{{0.2f, 0.2f, 0.2f, 1.0f}};
+    VkClearValue dsClear{1.0f, 0};
+    VkClearValue clearValues[2] = {colorClear, dsClear};
     // Begin Pass
     if (pass.renderPass)
     {
@@ -702,8 +725,8 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         rpBeginInfo.renderPass      = pass.renderPass->GetHandle();
         rpBeginInfo.framebuffer     = pass.framebuffer->GetHandle();
         rpBeginInfo.renderArea      = pass.framebuffer->GetRenderArea();
-        rpBeginInfo.pClearValues    = &clearValue;
-        rpBeginInfo.clearValueCount = 1;
+        rpBeginInfo.pClearValues    = clearValues;
+        rpBeginInfo.clearValueCount = 2;
 
         commandBuffer->BeginRenderPass(rpBeginInfo);
     }

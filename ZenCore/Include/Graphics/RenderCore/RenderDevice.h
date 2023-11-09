@@ -31,6 +31,8 @@ public:
 
     void UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>& writes);
 
+    size_t PadUniformBufferSize(size_t originalSize);
+
 private:
     const val::Device&       m_valDevice;
     UniquePtr<ResourceCache> m_resourceCache;

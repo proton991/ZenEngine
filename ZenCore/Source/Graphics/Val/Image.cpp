@@ -126,13 +126,29 @@ Image::Image(Image&& other) noexcept : DeviceObject(std::move(other))
     m_view             = std::move(other.m_view);
     m_allocation       = std::move(other.m_allocation);
 }
+
 Image::~Image()
 {
-    if (m_view != VK_NULL_HANDLE) { vkDestroyImageView(m_device.GetHandle(), m_view, nullptr); }
+    if (m_view != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(m_device.GetHandle(), m_view, nullptr);
+        m_view = VK_NULL_HANDLE;
+    }
+
     if (m_allocation != VK_NULL_HANDLE)
     {
         vmaDestroyImage(m_device.GetAllocator(), m_handle, m_allocation);
+        m_allocation = VK_NULL_HANDLE;
     }
+}
+
+Image::Image(const Image& other) : DeviceObject(other)
+{
+    m_subResourceRange = other.m_subResourceRange;
+    m_allocation       = other.m_allocation;
+    m_format           = other.m_format;
+    m_view             = other.m_view;
+    m_allocation       = other.m_allocation;
 }
 
 VkImageSubresourceLayers Image::GetSubresourceLayers() const
@@ -157,7 +173,8 @@ VkImageLayout Image::UsageToImageLayout(ImageUsage usage)
         case ImageUsage::InputAttachment: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         case ImageUsage::Storage: return VK_IMAGE_LAYOUT_GENERAL;
         case ImageUsage::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        case ImageUsage::DepthStencilAttachment: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        case ImageUsage::DepthStencilAttachment:
+            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         default: break;
     }
     return VK_IMAGE_LAYOUT_UNDEFINED;

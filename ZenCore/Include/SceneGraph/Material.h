@@ -17,6 +17,11 @@ enum class AlphaMode
 class Material : public Component
 {
 public:
+    static UniquePtr<Material> CreateDefaultUnique()
+    {
+        return MakeUnique<Material>("DefaultMaterial");
+    }
+
     Material(std::string name) : Component(std::move(name)) {}
 
     virtual TypeId GetTypeId() const override { return typeid(Material); }

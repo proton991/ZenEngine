@@ -66,4 +66,11 @@ void RenderDevice::UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>&
     vkUpdateDescriptorSets(m_valDevice.GetHandle(), util::ToU32(writes.size()), writes.data(), 0,
                            nullptr);
 }
+
+size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
+{
+    auto   minUboAlignment = m_valDevice.GetGPUProperties().limits.minUniformBufferOffsetAlignment;
+    size_t alignedSize     = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    return alignedSize;
+}
 } // namespace zen

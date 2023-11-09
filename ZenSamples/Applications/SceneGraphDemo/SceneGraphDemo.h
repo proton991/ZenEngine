@@ -22,6 +22,27 @@ class SceneGraphDemo : public Application
     struct NodeUniformData
     {
         Mat4 modelMatrix{1.0f};
+        Mat4 normalMatrix{1.0f};
+    };
+
+    struct PushConstantsData
+    {
+        uint32_t nodeIndex;
+        uint32_t materialIndex;
+    };
+
+    struct MaterialUniformData
+    {
+        uint32_t bcTexIndex;
+        uint32_t mrTexIndex;
+        uint32_t normalTexIndex;
+        uint32_t aoTexIndex;
+        uint32_t emissiveTexIndex;
+        float    metallicFactor{1.0f};
+        float    roughnessFactor{1.0f};
+        Vec4     baseColorFactor{1.0f};
+        Vec4     emissiveFactor{0.0f};
+        int      padding;
     };
 
 public:
@@ -35,11 +56,15 @@ public:
 
     void Run() override;
 
-    void LoadTexture();
-
     void LoadScene();
 
 private:
+    void FillNodeUniforms();
+
+    void FillMaterialUniforms();
+
+    void FillTextureArray();
+
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
     UniquePtr<RenderGraph>   m_renderGraph;
@@ -58,14 +83,22 @@ private:
 
     UniquePtr<sys::Camera> m_camera;
 
-    UniquePtr<UniformBuffer> m_cameraUniformBuffer;
+    UniquePtr<UniformBuffer> m_cameraUBO;
     CameraUniformData        m_cameraUniformData{};
 
     // node uniform buffer and data
-    std::vector<NodeUniformData> m_nodesUniformData;
-    UniquePtr<UniformBuffer>     m_nodesUniformBuffer;
+    std::vector<NodeUniformData> m_nodesUniforms;
+    UniquePtr<UniformBuffer>     m_nodesUBO;
 
-    std::unordered_map<sg::Node*, uint32_t> m_nodesUniformIndex;
+    // material uniform buffer and data
+    std::vector<MaterialUniformData> m_materialUniforms;
+    UniquePtr<UniformBuffer>         m_materialUBO;
+
+    HashMap<uint64_t, uint32_t> m_nodesUniformIndex;
+
+    PushConstantsData m_pushConstantData;
+
+    std::vector<val::Image*> m_textureArray;
 
     UniquePtr<platform::Timer> m_timer;
 

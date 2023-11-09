@@ -664,27 +664,33 @@ void GltfLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
 
 static struct DefaultTextures
 {
-    sg::Texture baseColor{"DefaultBaseColor"};
-    sg::Texture metallicRoughness{"DefaultMetallicRoughness"};
-    sg::Texture normal{"DefaultNormal"};
+    sg::Texture* baseColor;
+    sg::Texture* metallicRoughness;
+    sg::Texture* normal;
 } sDefaultTextures;
 
 static void LoadDefaultTextures()
 {
-    sDefaultTextures.baseColor.format = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.baseColor.height = 1;
-    sDefaultTextures.baseColor.width  = 1;
-    sDefaultTextures.baseColor.data   = {129, 133, 137, 255};
+    sDefaultTextures.baseColor            = new sg::Texture("DefaultBaseColor");
+    sDefaultTextures.baseColor->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.baseColor->index     = 0;
+    sDefaultTextures.baseColor->height    = 1;
+    sDefaultTextures.baseColor->width     = 1;
+    sDefaultTextures.baseColor->bytesData = {129, 133, 137, 255};
 
-    sDefaultTextures.metallicRoughness.format = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.metallicRoughness.height = 1;
-    sDefaultTextures.metallicRoughness.width  = 1;
-    sDefaultTextures.metallicRoughness.data   = {0, 255, 0, 255};
+    sDefaultTextures.metallicRoughness            = new sg::Texture("DefaultMetallicRoughness");
+    sDefaultTextures.metallicRoughness->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.metallicRoughness->index     = 1;
+    sDefaultTextures.metallicRoughness->height    = 1;
+    sDefaultTextures.metallicRoughness->width     = 1;
+    sDefaultTextures.metallicRoughness->bytesData = {0, 255, 0, 255};
 
-    sDefaultTextures.normal.format = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.normal.height = 1;
-    sDefaultTextures.normal.width  = 1;
-    sDefaultTextures.normal.data   = {127, 127, 255, 255};
+    sDefaultTextures.normal            = new sg::Texture("DefaultNormal");
+    sDefaultTextures.normal->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.normal->index     = 2;
+    sDefaultTextures.normal->height    = 1;
+    sDefaultTextures.normal->width     = 1;
+    sDefaultTextures.normal->bytesData = {127, 127, 255, 255};
 }
 
 
@@ -737,14 +743,20 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
 {
     LoadDefaultTextures();
     std::vector<UniquePtr<sg::Texture>> textures;
-    textures.reserve(m_gltfModel.textures.size());
-    uint32_t textureIndex = 0;
+    //    textures.reserve(m_gltfModel.textures.size() + 3);
+
+    //    textures.emplace_back(sDefaultTextures.baseColor);
+    //    textures.emplace_back(sDefaultTextures.metallicRoughness);
+    //    textures.emplace_back(sDefaultTextures.normal);
+
+    uint32_t textureIndex = textures.size();
     // load textures
     for (const tinygltf::Texture& tex : m_gltfModel.textures)
     {
         const tinygltf::Image& gltfImage = m_gltfModel.images[tex.source];
 
         auto* sgTex = new sg::Texture(tex.name);
+        //        auto* sgTex = textures[textureIndex].Get();
 
         // temp buffer for format conversion
         unsigned char* buffer = nullptr;
@@ -774,10 +786,10 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
                 rgba += 4;
                 rgb += 3;
             }
-            deleteBuffer = true;
-            sgTex->data  = std::move(std::vector<uint8_t>(buffer, buffer + bufferSize));
+            deleteBuffer     = true;
+            sgTex->bytesData = std::move(std::vector<uint8_t>(buffer, buffer + bufferSize));
         }
-        else if (gltfImage.component == 4) { sgTex->data = gltfImage.image; }
+        else if (gltfImage.component == 4) { sgTex->bytesData = gltfImage.image; }
         // free temp buffer
         if (deleteBuffer) { delete[] buffer; }
 
@@ -806,7 +818,7 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->texCoordSets.baseColor = textureInfo.texCoord;
             sgMat->baseColorTexture       = scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->baseColorTexture = &sDefaultTextures.baseColor; }
+        else { sgMat->baseColorTexture = sDefaultTextures.baseColor; }
 
         if (mat.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
         {
@@ -815,7 +827,7 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->metallicRoughnessTexture =
                 scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->metallicRoughnessTexture = &sDefaultTextures.metallicRoughness; }
+        else { sgMat->metallicRoughnessTexture = sDefaultTextures.metallicRoughness; }
 
         if (mat.normalTexture.index != -1)
         {
@@ -823,7 +835,7 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->texCoordSets.normal = textureInfo.texCoord;
             sgMat->normalTexture       = scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->normalTexture = &sDefaultTextures.normal; }
+        else { sgMat->normalTexture = sDefaultTextures.normal; }
 
         if (mat.emissiveTexture.index != -1)
         {
@@ -904,7 +916,7 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
         materials.emplace_back(sgMat);
     }
     // Push a default material at the end of the list for meshes with no material assigned
-    materials.emplace_back();
+    materials.emplace_back(sg::Material::CreateDefaultUnique());
     scene->SetComponents(std::move(materials));
 }
 

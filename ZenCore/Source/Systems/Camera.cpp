@@ -103,8 +103,8 @@ void Camera::UpdatePosition(float velocity)
 void Camera::UpdateView()
 {
     auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
-    m_yaw -= delta[0] * m_sensitivity;
-    m_pitch -= delta[1] * m_sensitivity;
+    m_yaw += delta[0] * m_sensitivity;
+    m_pitch += delta[1] * m_sensitivity;
     m_pitch = std::clamp(m_pitch, m_pitchMin, m_pitchMax);
 }
 
@@ -128,6 +128,12 @@ void Camera::UpdateAspect(float aspect)
 void Camera::SetFarPlane(float far)
 {
     m_far = far;
+    SetProjectionMatrix();
+}
+
+void Camera::SetNearPlane(float near)
+{
+    m_near = near;
     SetProjectionMatrix();
 }
 
