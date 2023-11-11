@@ -117,7 +117,7 @@ void SceneGraphDemo::LoadScene()
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(GLTF_PATHS[1], m_scene.Get());
+    gltfLoader->LoadFromFile(GLTF_PATHS[2], m_scene.Get());
 
     FillNodeUniforms();
 

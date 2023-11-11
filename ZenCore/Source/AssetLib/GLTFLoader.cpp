@@ -755,7 +755,7 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
     {
         const tinygltf::Image& gltfImage = m_gltfModel.images[tex.source];
 
-        auto* sgTex = new sg::Texture(tex.name);
+        auto* sgTex = new sg::Texture(gltfImage.uri);
         //        auto* sgTex = textures[textureIndex].Get();
 
         // temp buffer for format conversion
