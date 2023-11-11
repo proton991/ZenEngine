@@ -12,19 +12,9 @@ Swapchain::Swapchain(const Device&  device,
                      bool           vsync) :
     DeviceObject(device), m_surface(surface), m_extent(extent), m_vsync(vsync)
 {
-    const std::vector<VkSurfaceFormatKHR> surfaceFormatPriorityList = {
-        {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
-        {VK_FORMAT_B8G8R8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR}};
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
                                               &surfaceCapabilities);
-
-    uint32_t numSurfaceFormats = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
-                                         &numSurfaceFormats, nullptr);
-    m_surfaceFormats.resize(numSurfaceFormats);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
-                                         &numSurfaceFormats, m_surfaceFormats.data());
 
     uint32_t numPresentModes = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
@@ -33,13 +23,11 @@ Swapchain::Swapchain(const Device&  device,
     vkGetPhysicalDeviceSurfacePresentModesKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
                                               &numPresentModes, m_presentModes.data());
 
-    LOGI("Available surface formats:")
-    for (auto& surfaceFormat : m_surfaceFormats) { LOGI("  \t{}", VkToString(surfaceFormat)); }
     LOGI("Available present modes:")
     for (auto& presentMode : m_presentModes) { LOGI("  \t{}", VkToString(presentMode)); }
 
-    m_format = m_surfaceFormats[0].format;
-    m_usage  = ChooseImageUsage(surfaceCapabilities.supportedUsageFlags);
+    m_surfaceFormat = ChooseSurfaceFormat();
+    m_usage         = ChooseImageUsage(surfaceCapabilities.supportedUsageFlags);
 
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swapchainCI.surface          = m_surface;
@@ -49,8 +37,8 @@ Swapchain::Swapchain(const Device&  device,
     swapchainCI.imageArrayLayers = 1;
     swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchainCI.imageFormat      = m_format;
-    swapchainCI.imageColorSpace  = m_surfaceFormats[0].colorSpace;
+    swapchainCI.imageFormat      = m_surfaceFormat.format;
+    swapchainCI.imageColorSpace  = m_surfaceFormat.colorSpace;
     swapchainCI.imageUsage       = m_usage;
     swapchainCI.presentMode      = ChoosePresentMode(vsync);
     swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
@@ -75,10 +63,10 @@ Swapchain::Swapchain(const Device&  device,
 VkImageUsageFlags Swapchain::ChooseImageUsage(VkImageUsageFlags supportedUsage)
 {
     static const std::vector<VkImageUsageFlagBits> defaultImageUsageFlags = {
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT};
     VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(m_device.GetPhysicalDeviceHandle(), m_format,
+    vkGetPhysicalDeviceFormatProperties(m_device.GetPhysicalDeviceHandle(), m_surfaceFormat.format,
                                         &formatProperties);
 
     VkImageUsageFlags composedUsage{0};
@@ -102,6 +90,20 @@ VkImageUsageFlags Swapchain::ChooseImageUsage(VkImageUsageFlags supportedUsage)
     }
     LOGI("(Swapchain) Image usage flags: {}", usageStr);
     return composedUsage;
+}
+
+VkSurfaceFormatKHR Swapchain::ChooseSurfaceFormat()
+{
+    uint32_t numSurfaceFormats = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
+                                         &numSurfaceFormats, nullptr);
+    m_surfaceFormats.resize(numSurfaceFormats);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
+                                         &numSurfaceFormats, m_surfaceFormats.data());
+    LOGI("Available surface formats:")
+    for (auto& surfaceFormat : m_surfaceFormats) { LOGI("  \t{}", VkToString(surfaceFormat)); }
+    // return first combination (best)
+    return m_surfaceFormats[0];
 }
 
 VkPresentModeKHR Swapchain::ChoosePresentMode(bool vsync)

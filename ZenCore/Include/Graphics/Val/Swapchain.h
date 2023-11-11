@@ -17,7 +17,7 @@ public:
 
     ~Swapchain() = default;
 
-    VkFormat GetFormat() const { return m_format; }
+    VkFormat GetFormat() const { return m_surfaceFormat.format; }
 
     VkImageUsageFlags GetUsage() const { return m_usage; }
 
@@ -36,11 +36,12 @@ private:
     VkPresentModeKHR            ChoosePresentMode(bool vsync);
     VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
                                                      VkCompositeAlphaFlagsKHR    supported);
+    VkSurfaceFormatKHR          ChooseSurfaceFormat();
 
     VkSurfaceKHR                    m_surface{VK_NULL_HANDLE};
     std::vector<VkSurfaceFormatKHR> m_surfaceFormats{};
     std::vector<VkPresentModeKHR>   m_presentModes{};
-    VkFormat                        m_format;
+    VkSurfaceFormatKHR              m_surfaceFormat;
     VkExtent2D                      m_extent;
     VkImageUsageFlags               m_usage;
     std::vector<VkImage>            m_images;

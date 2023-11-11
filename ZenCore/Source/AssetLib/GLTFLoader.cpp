@@ -669,25 +669,25 @@ static struct DefaultTextures
     sg::Texture* normal;
 } sDefaultTextures;
 
-static void LoadDefaultTextures()
+static void LoadDefaultTextures(uint32_t startIndex)
 {
     sDefaultTextures.baseColor            = new sg::Texture("DefaultBaseColor");
     sDefaultTextures.baseColor->format    = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.baseColor->index     = 0;
+    sDefaultTextures.baseColor->index     = startIndex;
     sDefaultTextures.baseColor->height    = 1;
     sDefaultTextures.baseColor->width     = 1;
     sDefaultTextures.baseColor->bytesData = {129, 133, 137, 255};
 
     sDefaultTextures.metallicRoughness            = new sg::Texture("DefaultMetallicRoughness");
     sDefaultTextures.metallicRoughness->format    = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.metallicRoughness->index     = 1;
+    sDefaultTextures.metallicRoughness->index     = startIndex + 1;
     sDefaultTextures.metallicRoughness->height    = 1;
     sDefaultTextures.metallicRoughness->width     = 1;
     sDefaultTextures.metallicRoughness->bytesData = {0, 255, 0, 255};
 
     sDefaultTextures.normal            = new sg::Texture("DefaultNormal");
     sDefaultTextures.normal->format    = Format::R8G8B8A8_UNORM;
-    sDefaultTextures.normal->index     = 2;
+    sDefaultTextures.normal->index     = startIndex + 2;
     sDefaultTextures.normal->height    = 1;
     sDefaultTextures.normal->width     = 1;
     sDefaultTextures.normal->bytesData = {127, 127, 255, 255};
@@ -741,14 +741,8 @@ void GltfLoader::LoadGltfSamplers(sg::Scene* scene)
 
 void GltfLoader::LoadGltfTextures(sg::Scene* scene)
 {
-    LoadDefaultTextures();
     std::vector<UniquePtr<sg::Texture>> textures;
-    //    textures.reserve(m_gltfModel.textures.size() + 3);
-
-    //    textures.emplace_back(sDefaultTextures.baseColor);
-    //    textures.emplace_back(sDefaultTextures.metallicRoughness);
-    //    textures.emplace_back(sDefaultTextures.normal);
-
+    textures.reserve(m_gltfModel.textures.size() + 3);
     uint32_t textureIndex = textures.size();
     // load textures
     for (const tinygltf::Texture& tex : m_gltfModel.textures)
@@ -756,7 +750,6 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
         const tinygltf::Image& gltfImage = m_gltfModel.images[tex.source];
 
         auto* sgTex = new sg::Texture(gltfImage.uri);
-        //        auto* sgTex = textures[textureIndex].Get();
 
         // temp buffer for format conversion
         unsigned char* buffer = nullptr;
@@ -796,6 +789,10 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
         textures.emplace_back(sgTex);
         textureIndex++;
     }
+    LoadDefaultTextures(textures.size());
+    textures.emplace_back(sDefaultTextures.baseColor);
+    textures.emplace_back(sDefaultTextures.metallicRoughness);
+    textures.emplace_back(sDefaultTextures.normal);
     scene->SetComponents(std::move(textures));
 }
 
