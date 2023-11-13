@@ -33,16 +33,20 @@ class SceneGraphDemo : public Application
 
     struct MaterialUniformData
     {
-        uint32_t bcTexIndex;
-        uint32_t mrTexIndex;
-        uint32_t normalTexIndex;
-        uint32_t aoTexIndex;
-        uint32_t emissiveTexIndex;
-        float    metallicFactor{1.0f};
-        float    roughnessFactor{1.0f};
-        Vec4     baseColorFactor{1.0f};
-        Vec4     emissiveFactor{0.0f};
-        int      padding;
+        int   bcTexIndex{-1};
+        int   mrTexIndex{-1};
+        int   normalTexIndex{-1};
+        int   aoTexIndex{-1};
+        int   emissiveTexIndex{-1};
+        int   bcTexSet{-1};
+        int   mrTexSet{-1};
+        int   normalTexSet{-1};
+        int   aoTexSet{-1};
+        int   emissiveTexSet{-1};
+        float metallicFactor{1.0f};
+        float roughnessFactor{1.0f};
+        Vec4  baseColorFactor{1.0f};
+        Vec4  emissiveFactor{0.0f};
     };
 
 public:

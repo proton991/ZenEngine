@@ -195,20 +195,37 @@ void SceneGraphDemo::FillMaterialUniforms()
     for (const auto* mat : sgMaterials)
     {
         MaterialUniformData matUniformData{};
-        matUniformData.bcTexIndex = mat->baseColorTexture ? mat->baseColorTexture->index : -1;
-        matUniformData.mrTexIndex =
-            mat->metallicRoughnessTexture ? mat->metallicRoughnessTexture->index : -1;
-        matUniformData.normalTexIndex   = mat->normalTexture ? mat->normalTexture->index : -1;
-        matUniformData.aoTexIndex       = mat->occlusionTexture ? mat->occlusionTexture->index : -1;
-        matUniformData.emissiveTexIndex = mat->emissiveTexture ? mat->emissiveTexture->index : -1;
-        matUniformData.metallicFactor   = mat->metallicFactor;
-        matUniformData.roughnessFactor  = mat->roughnessFactor;
-        matUniformData.emissiveFactor   = mat->emissiveFactor;
+        if (mat->baseColorTexture != nullptr)
+        {
+            matUniformData.bcTexIndex = mat->baseColorTexture->index;
+            matUniformData.bcTexSet   = mat->texCoordSets.baseColor;
+        }
+        if (mat->metallicRoughnessTexture != nullptr)
+        {
+            matUniformData.mrTexIndex = mat->metallicRoughnessTexture->index;
+            matUniformData.mrTexSet   = mat->texCoordSets.metallicRoughness;
+        }
+        if (mat->normalTexture != nullptr)
+        {
+            matUniformData.normalTexIndex = mat->normalTexture->index;
+            matUniformData.normalTexSet   = mat->texCoordSets.normal;
+        }
+        if (mat->occlusionTexture != nullptr)
+        {
+            matUniformData.aoTexIndex = mat->occlusionTexture->index;
+            matUniformData.aoTexSet   = mat->texCoordSets.occlusion;
+        }
+        if (mat->emissiveTexture != nullptr)
+        {
+            matUniformData.emissiveTexIndex = mat->emissiveTexture->index;
+            matUniformData.emissiveTexSet   = mat->texCoordSets.emissive;
+        }
+        matUniformData.metallicFactor  = mat->metallicFactor;
+        matUniformData.roughnessFactor = mat->roughnessFactor;
+        matUniformData.emissiveFactor  = mat->emissiveFactor;
         m_materialUniforms.emplace_back(matUniformData);
     }
 
-    //    auto originalSize = sizeof(MaterialUniformData);
-    //
     const auto uboSize = m_renderDevice->PadUniformBufferSize(sizeof(MaterialUniformData)) *
         m_materialUniforms.size();
     m_materialUBO = UniformBuffer::CreateUnique(*m_device, uboSize);

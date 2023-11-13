@@ -21,11 +21,16 @@
 //precision mediump float;
 struct Material
 {
-    uint bcTexIndex;
-    uint mrTexIndex;
-    uint normalTexIndex;
-    uint aoTexIndex;
-    uint emissiveTexIndex;
+    int bcTexIndex;
+    int mrTexIndex;
+    int normalTexIndex;
+    int aoTexIndex;
+    int emissiveTexIndex;
+    int   bcTexSet;
+    int   mrTexSet;
+    int   normalTexSet;
+    int   aoTexSet;
+    int   emissiveTexSet;
     float metallicFactor;
     float roughnessFactor;
     vec4 baseColorFactor;
@@ -59,6 +64,5 @@ void main()
 {
     Material mat = uMaterialArray[uMaterialIndex];
     vec3 baseColor = texture(uTextureArray[mat.bcTexIndex], vUV0).rgb;
-//    vec3 baseColor = vec3(0, 0, 0);
     outColor = vec4(baseColor, 1.0);
 }
