@@ -41,6 +41,7 @@ void SceneGraphDemo::Update(float deltaTime)
     m_camera->Update(deltaTime);
     m_cameraUniformData.projViewMatrix =
         m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
+    m_cameraUniformData.cameraPos = Vec4(m_camera->GetPos(), 1.0f);
 }
 
 void SceneGraphDemo::SetupRenderGraph()
@@ -62,10 +63,12 @@ void SceneGraphDemo::SetupRenderGraph()
     mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUBO.Get());
     mainPass->ReadFromExternalBuffer("nodeUniform", m_nodesUBO.Get());
     mainPass->ReadFromExternalBuffer("materialUniform", m_materialUBO.Get());
+    mainPass->ReadFromExternalBuffer("lightUniform", m_lightUBO.Get());
 
     mainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
     mainPass->BindSRD("materialUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uMaterialData");
     mainPass->BindSRD("nodeUniform", VK_SHADER_STAGE_VERTEX_BIT, "uNodeData");
+    mainPass->BindSRD("lightUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uLightsData");
     mainPass->BindSRD("textures", VK_SHADER_STAGE_FRAGMENT_BIT, "uTextureArray");
     mainPass->BindSampler("textures", m_sampler.Get());
 
@@ -117,13 +120,17 @@ void SceneGraphDemo::LoadScene()
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(GLTF_PATHS[2], m_scene.Get());
+    gltfLoader->LoadFromFile(GLTF_PATHS[1], m_scene.Get());
+
+    AddStaticLights();
 
     FillNodeUniforms();
 
     FillTextureArray();
 
     FillMaterialUniforms();
+
+    FillLightUniforms();
 
     // configure camera
     const auto sceneSize = m_scene->GetSize();
@@ -151,10 +158,19 @@ void SceneGraphDemo::LoadScene()
     // upload material uniforms
     m_renderContext->UpdateRenderBuffer<MaterialUniformData>(MakeView(m_materialUniforms),
                                                              m_materialUBO.Get(), cmdBuffer);
+    // upload static light uniforms
+    m_renderContext->UpdateRenderBuffer<LightUniformData>(MakeView(m_lightUniforms),
+                                                          m_lightUBO.Get(), cmdBuffer);
 
     cmdBuffer->End();
     m_renderContext->SubmitImmediate(cmdBuffer);
     m_renderContext->ResetCommandPool();
+}
+
+void SceneGraphDemo::AddStaticLights()
+{
+    sg::LightProperties props0{Vec4(1.0), Vec4(1.0), Vec4(-1.0)};
+    m_scene->AddComponent(sg::Light::CreatePointLight("light0", props0));
 }
 
 void SceneGraphDemo::FillTextureArray()
@@ -164,6 +180,22 @@ void SceneGraphDemo::FillTextureArray()
     {
         m_textureArray.push_back(m_textureManager->RequestTexture2D(tex->GetName()));
     }
+}
+
+void SceneGraphDemo::FillLightUniforms()
+{
+    auto sgLights = m_scene->GetComponents<sg::Light>();
+    for (const auto* sgLight : sgLights)
+    {
+        const auto& props = sgLight->GetProperties();
+        m_lightUniforms.push_back(
+            {Vec4(props.position, sgLight->GetType()), props.color, props.direction});
+    }
+    auto uboSize =
+        m_renderDevice->PadUniformBufferSize(sizeof(LightUniformData)) * m_lightUniforms.size();
+    m_lightUBO = UniformBuffer::CreateUnique(*m_device, uboSize);
+    m_lightUBO->SetObjectDebugName("LightUniformBuffer");
+    m_pushConstantData.numLights = m_lightUniforms.size();
 }
 
 void SceneGraphDemo::FillNodeUniforms()

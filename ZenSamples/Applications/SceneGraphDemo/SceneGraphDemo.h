@@ -17,6 +17,7 @@ class SceneGraphDemo : public Application
     struct CameraUniformData
     {
         Mat4 projViewMatrix{1.0f};
+        Vec4 cameraPos{0.f};
     };
 
     struct NodeUniformData
@@ -25,10 +26,18 @@ class SceneGraphDemo : public Application
         Mat4 normalMatrix{1.0f};
     };
 
+    struct LightUniformData
+    {
+        Vec4 position;  // (x, y, z, lightType)
+        Vec4 color;     // (r, g, b, intensity)
+        Vec4 direction; // only for direction lights
+    };
+
     struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
+        uint32_t numLights;
     };
 
     struct MaterialUniformData
@@ -63,11 +72,15 @@ public:
     void LoadScene();
 
 private:
+    void AddStaticLights();
+
     void FillNodeUniforms();
 
     void FillMaterialUniforms();
 
     void FillTextureArray();
+
+    void FillLightUniforms();
 
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
@@ -97,6 +110,9 @@ private:
     // material uniform buffer and data
     std::vector<MaterialUniformData> m_materialUniforms;
     UniquePtr<UniformBuffer>         m_materialUBO;
+
+    std::vector<LightUniformData> m_lightUniforms;
+    UniquePtr<UniformBuffer>      m_lightUBO;
 
     HashMap<uint64_t, uint32_t> m_nodesUniformIndex;
 

@@ -4,6 +4,7 @@
 #include "Mesh.h"
 #include "Sampler.h"
 #include "Transform.h"
+#include "Light.h"
 
 namespace zen::sg
 {
@@ -62,6 +63,8 @@ public:
     void UpdateAABB();
 
     auto GetSize() const { return m_aabb.GetScale(); }
+
+    auto GetAABB() const { return m_aabb; }
 
 private:
     std::string m_name;
