@@ -19,9 +19,7 @@ void SceneGraphDemo::Prepare(const platform::WindowConfig& windowConfig)
     m_cameraUBO = UniformBuffer::CreateUnique(*m_device, sizeof(CameraUniformData));
     m_cameraUBO->SetObjectDebugName("CameraUniformBuffer");
 
-    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                         m_window->GetAspect());
-    m_timer  = MakeUnique<platform::Timer>();
+    m_timer = MakeUnique<platform::Timer>();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
         m_renderContext->RecreateSwapchain(width, height);
         m_renderGraph = MakeUnique<RenderGraph>(*m_renderDevice);
@@ -120,7 +118,9 @@ void SceneGraphDemo::LoadScene()
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(GLTF_PATHS[1], m_scene.Get());
+    gltfLoader->LoadFromFile(GLTF_PATHS[3], m_scene.Get());
+
+    TransformScene();
 
     AddStaticLights();
 
@@ -133,10 +133,8 @@ void SceneGraphDemo::LoadScene()
     FillLightUniforms();
 
     // configure camera
-    const auto sceneSize = m_scene->GetSize();
-    m_camera->SetFarPlane(sceneSize * 10.0f);
-    m_camera->SetNearPlane(sceneSize * 0.01f);
-    m_camera->SetSpeed(sceneSize);
+    m_camera = sys::Camera::CreateUniqueOnAABB(m_scene->GetAABB().GetMin(),
+                                               m_scene->GetAABB().GetMax(), m_window->GetAspect());
 
     const auto& modelVertices = gltfLoader->GetVertices();
     const auto& modelIndices  = gltfLoader->GetIndices();
@@ -167,9 +165,28 @@ void SceneGraphDemo::LoadScene()
     m_renderContext->ResetCommandPool();
 }
 
+void SceneGraphDemo::TransformScene()
+{
+    // Center and scale model
+    Vec3 center(0.0f);
+    Vec3 extents = m_scene->GetAABB().GetMax() - m_scene->GetAABB().GetMin();
+    Vec3 scaleFactors(1.0f);
+    scaleFactors.x = glm::abs(extents.x) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.x;
+    scaleFactors.y = glm::abs(extents.y) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.y;
+    scaleFactors.z = glm::abs(extents.z) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.z;
+
+    auto scaleFactorMax = std::max(scaleFactors.x, std::max(scaleFactors.y, scaleFactors.z));
+    Mat4 scaleMat       = glm::scale(Mat4(1.0f), Vec3(scaleFactorMax));
+    Mat4 translateMat   = glm::translate(Mat4(1.0f), center - m_scene->GetAABB().GetCenter());
+
+    m_cameraUniformData.modelMatrix = scaleMat * translateMat;
+
+    m_scene->GetAABB().Transform(m_cameraUniformData.modelMatrix);
+}
+
 void SceneGraphDemo::AddStaticLights()
 {
-    sg::LightProperties props0{Vec4(1.0), Vec4(1.0), Vec4(-1.0)};
+    sg::LightProperties props0{m_scene->GetAABB().GetMax() * 1.2f, Vec4(1.0f), Vec4(-1.0f)};
     m_scene->AddComponent(sg::Light::CreatePointLight("light0", props0));
 }
 

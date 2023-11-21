@@ -17,6 +17,7 @@ class SceneGraphDemo : public Application
     struct CameraUniformData
     {
         Mat4 projViewMatrix{1.0f};
+        Mat4 modelMatrix{1.0f}; // global model matrix
         Vec4 cameraPos{0.f};
     };
 
@@ -72,6 +73,8 @@ public:
     void LoadScene();
 
 private:
+    void TransformScene();
+
     void AddStaticLights();
 
     void FillNodeUniforms();

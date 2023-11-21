@@ -183,7 +183,7 @@ vec3 ApplyDirectionalLight(vec3 L, vec3 normal, uint lightIndex)
 
     float ndotl = clamp(dot(normal, L), 0.0, 1.0);
 
-    return ndotl * uLightInfos[lightIndex].color.rgb;
+    return ndotl * uLightInfos[lightIndex].color.rgb * uLightInfos[lightIndex].color.w;
 }
 
 vec3 ApplyPointLight(vec3 L, vec3 normal, uint lightIndex)

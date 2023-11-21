@@ -66,6 +66,8 @@ public:
 
     auto GetAABB() const { return m_aabb; }
 
+    auto& GetAABB() { return m_aabb; }
+
 private:
     std::string m_name;
 

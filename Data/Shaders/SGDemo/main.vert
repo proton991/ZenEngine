@@ -17,6 +17,7 @@ layout (location = 6) in vec4 inColor;
 layout (set = 0, binding = 0) uniform uCameraData
 {
     mat4 uProjViewMatrix;
+    mat4 uModelMatrix;
     vec4 uCameraPos;
 };
 
@@ -39,9 +40,9 @@ layout (push_constant) uniform uNodePushConstant
 
 void main()
 {
-    vec4 locPos = uNodeArray[uSubMeshIndex].modelMatrix * vec4(inPos, 1.0);
+    vec4 locPos = uModelMatrix * uNodeArray[uSubMeshIndex].modelMatrix * vec4(inPos, 1.0);
     //    locPos.y = -locPos.y;
-    gl_Position = uProjViewMatrix * vec4(locPos.xyz / locPos.w, 1.0);
+    gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
     outNormal = vec3(uNodeArray[uSubMeshIndex].normalMatrix * vec4(inNormal, 0.0));
     outUV0 = inUV0;
     outUV1 = inUV1;

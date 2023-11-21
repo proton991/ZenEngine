@@ -17,8 +17,8 @@ constexpr Vec3 DEFAULT_UP{0.0f, 1.0f, 0.0f};
 class Camera
 {
 public:
-    static UniquePtr<Camera> CreateUniqueOnBBox(const Vec3& bboxMin,
-                                                const Vec3& bboxMax,
+    static UniquePtr<Camera> CreateUniqueOnAABB(const Vec3& minPos,
+                                                const Vec3& maxPos,
                                                 float       aspect);
     static UniquePtr<Camera> CreateUnique(const Vec3& eye, const Vec3& target, float aspect);
 

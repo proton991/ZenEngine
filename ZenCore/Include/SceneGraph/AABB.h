@@ -17,12 +17,6 @@ public:
 
     ~AABB() = default;
 
-    void Update(const Vec3& point)
-    {
-        m_min = glm::min(m_min, point);
-        m_max = glm::min(m_max, point);
-    }
-
     void SetMin(const Vec3& min) { m_min = glm::min(min, m_min); }
 
     void SetMax(const Vec3& max) { m_max = glm::max(max, m_max); }
@@ -37,19 +31,16 @@ public:
 
     void Transform(const Mat4& transform)
     {
-        m_min = m_max = Vec4(m_min, 1.0f) * transform;
-
-        // Update bounding box for the remaining 7 corners of the box
-        Update(Vec4(m_min.x, m_min.y, m_max.z, 1.0f) * transform);
-        Update(Vec4(m_min.x, m_max.y, m_min.z, 1.0f) * transform);
-        Update(Vec4(m_min.x, m_max.y, m_max.z, 1.0f) * transform);
-        Update(Vec4(m_max.x, m_min.y, m_min.z, 1.0f) * transform);
-        Update(Vec4(m_max.x, m_min.y, m_max.z, 1.0f) * transform);
-        Update(Vec4(m_max.x, m_max.y, m_min.z, 1.0f) * transform);
-        Update(Vec4(m_max, 1.0f) * transform);
+        m_min = Vec3(transform * Vec4(m_min, 1.0f));
+        m_max = Vec3(transform * Vec4(m_max, 1.0f));
     }
 
 private:
+    void Update(const Vec3& point)
+    {
+        m_min = glm::min(m_min, point);
+        m_max = glm::min(m_max, point);
+    }
     Vec3 m_min;
     Vec3 m_max;
 };
