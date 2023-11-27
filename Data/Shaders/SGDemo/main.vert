@@ -40,11 +40,13 @@ layout (push_constant) uniform uNodePushConstant
 
 void main()
 {
-    vec4 locPos = uModelMatrix * uNodeArray[uSubMeshIndex].modelMatrix * vec4(inPos, 1.0);
+    mat4 transformMat = uModelMatrix * uNodeArray[uSubMeshIndex].modelMatrix;
+    vec4 locPos = transformMat * vec4(inPos, 1.0);
     //    locPos.y = -locPos.y;
     gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
-    outNormal = vec3(uNodeArray[uSubMeshIndex].normalMatrix * vec4(inNormal, 0.0));
+    outNormal = normalize(transpose(inverse(mat3(transformMat))) * inNormal);
     outUV0 = inUV0;
     outUV1 = inUV1;
     outColor = inColor;
+    outWorldPos = locPos.xyz / locPos.w;
 }

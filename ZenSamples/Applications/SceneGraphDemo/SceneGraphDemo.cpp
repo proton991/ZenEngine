@@ -186,8 +186,19 @@ void SceneGraphDemo::TransformScene()
 
 void SceneGraphDemo::AddStaticLights()
 {
-    sg::LightProperties props0{m_scene->GetAABB().GetMax() * 1.2f, Vec4(1.0f), Vec4(-1.0f)};
+    auto pos0 = m_scene->GetAABB().GetMax();
+    auto pos1 = Vec3(-pos0.x, pos0.y, pos0.z);
+    auto pos2 = Vec3(pos0.x, pos0.y, -pos0.z);
+    auto pos3 = Vec3(-pos0.x, pos0.y, -pos0.z);
+
+    sg::LightProperties props0{pos0, Vec4(1.0f), Vec4(-1.0f)};
+    sg::LightProperties props1{pos1, Vec4(1.0f), Vec4(-1.0f)};
+    sg::LightProperties props2{pos2, Vec4(1.0f), Vec4(-1.0f)};
+    sg::LightProperties props3{pos3, Vec4(1.0f), Vec4(-1.0f)};
     m_scene->AddComponent(sg::Light::CreatePointLight("light0", props0));
+    m_scene->AddComponent(sg::Light::CreatePointLight("light1", props1));
+    m_scene->AddComponent(sg::Light::CreatePointLight("light2", props2));
+    m_scene->AddComponent(sg::Light::CreatePointLight("light3", props3));
 }
 
 void SceneGraphDemo::FillTextureArray()
