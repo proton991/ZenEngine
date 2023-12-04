@@ -67,6 +67,30 @@ Device::Device(const Device::CreateInfo& CI)
     descriptorIndexingFeatures.descriptorBindingStorageTexelBufferUpdateAfterBind = true;
     m_enabledExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 
+    if (CI.enableRaytracing)
+    {
+        auto asFeature =
+            m_physicalDevice
+                ->RequestExtensionFeatures<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR);
+        asFeature.accelerationStructure = true;
+
+        auto rtPipelineFeature =
+            m_physicalDevice
+                ->RequestExtensionFeatures<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
+        rtPipelineFeature.rayTracingPipeline = true;
+
+        auto bufferDeviceAddrFeature =
+            m_physicalDevice->RequestExtensionFeatures<VkPhysicalDeviceBufferDeviceAddressFeatures>(
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR);
+        bufferDeviceAddrFeature.bufferDeviceAddress = true;
+
+        m_enabledExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+        m_enabledExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+        m_enabledExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+        m_enabledExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+    }
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     // fill in queue create info
     auto queueInfo = CI.pPhysicalDevice->GetDeviceQueueInfo(VK_NULL_HANDLE);

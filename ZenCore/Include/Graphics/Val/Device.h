@@ -19,6 +19,8 @@ public:
         PhysicalDevice*    pPhysicalDevice         = nullptr;
         uint32_t           enabledExtensionCount   = 0;
         const char* const* ppEnabledExtensionNames = nullptr;
+        // enable raytracing features and extensions
+        bool enableRaytracing = false;
     };
 
     static SharedPtr<Device> Create(const CreateInfo& CI);
