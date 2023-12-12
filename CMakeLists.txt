@@ -23,3 +23,10 @@ endif ()
 add_subdirectory(ZenCore)
 add_subdirectory(ZenSamples)
 add_subdirectory(External)
+
+# Platform Definitions
+if(WIN32)
+  target_compile_definitions(ZenCore PUBLIC ZEN_WIN32)
+elseif (UNIX)
+  target_compile_definitions(ZenCore PUBLIC ZEN_LINUX)
+endif ()

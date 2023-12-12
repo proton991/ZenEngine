@@ -8,7 +8,11 @@ set(ZEN_CORE_HEADERS
     Include/Common/Helpers.h
     Include/Common/Math.h
     Include/Common/MemAlloc.h
+    Include/Common/Mutex.h
+    Include/Common/ConditionVariable.h
     Include/Common/ObjectBase.h
+    Include/Common/Queue.h
+    Include/Common/ThreadPool.h
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
     Include/Common/Types.h
