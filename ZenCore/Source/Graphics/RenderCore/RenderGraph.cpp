@@ -2,6 +2,7 @@
 #include "Common/Errors.h"
 #include "Common/Helpers.h"
 #include "Graphics/RenderCore/RenderContext.h"
+#include "Graphics/RenderCore/RenderConfig.h"
 #include <queue>
 
 namespace zen
@@ -379,7 +380,7 @@ void RenderGraph::BuildPhysicalPasses()
     uint32_t currIndex = 0;
     for (auto& pass : m_passes)
     {
-        PhysicalPass physicalPass{};
+        RDGPhysicalPass physicalPass{};
         // Render pass attachments
         std::vector<VkAttachmentDescription> attachmentDescriptions;
         // val::SubpassInfos
@@ -599,7 +600,7 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
     }
 }
 
-void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
+void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
 {
     // do not support dynamic descriptors for now, only update once
     if (pass.descriptorSetsUpdated) return;
@@ -706,13 +707,12 @@ void RenderGraph::UpdateDescriptorSets(RenderGraph::PhysicalPass& pass)
     pass.descriptorSetsUpdated = true;
 }
 
-void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* commandBuffer)
+void RenderGraph::RunPass(RDGPhysicalPass& pass, val::CommandBuffer* primaryCmdBuffer)
 {
-
     UpdateDescriptorSets(pass);
     auto& rdgPass = m_passes[pass.index];
     // Before render
-    EmitPipelineBarrier(commandBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()],
+    EmitPipelineBarrier(primaryCmdBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()],
                         m_resourceState.perPassBufferState[rdgPass->GetTag()]);
     // On render
     VkClearValue colorClear{{0.2f, 0.2f, 0.2f, 1.0f}};
@@ -728,19 +728,17 @@ void RenderGraph::RunPass(RenderGraph::PhysicalPass& pass, val::CommandBuffer* c
         rpBeginInfo.pClearValues    = clearValues;
         rpBeginInfo.clearValueCount = 2;
 
-        commandBuffer->BeginRenderPass(rpBeginInfo);
-    }
-    if (pass.graphicPipeline)
-    {
-        commandBuffer->BindGraphicPipeline(pass.graphicPipeline->GetHandle());
-    }
-    if (!pass.descriptorSets.empty())
-    {
-        commandBuffer->BindDescriptorSets(pass.pipelineLayout->GetHandle(), pass.descriptorSets);
+        // hard code subpass content here
+        if (RenderConfig::GetInstance().useSecondaryCmd)
+        {
+            primaryCmdBuffer->BeginRenderPass(rpBeginInfo,
+                                              VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+        }
+        else { primaryCmdBuffer->BeginRenderPass(rpBeginInfo); }
     }
     // Call function from outside
-    pass.onExecute(commandBuffer);
+    pass.onExecute(primaryCmdBuffer);
     // End Pass
-    if (pass.renderPass) { commandBuffer->EndRenderPass(); }
+    if (pass.renderPass) { primaryCmdBuffer->EndRenderPass(); }
 }
 } // namespace zen

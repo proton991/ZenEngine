@@ -17,6 +17,7 @@ set(ZEN_CORE_HEADERS
     Include/Common/UniquePtr.h
     Include/Common/Types.h
 
+    Include/Graphics/RenderCore/RenderConfig.h
     Include/Graphics/RenderCore/RenderGraphDefinitions.h
     Include/Graphics/RenderCore/RenderGraph.h
     Include/Graphics/RenderCore/RenderDevice.h

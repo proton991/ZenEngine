@@ -1,8 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-#include <unordered_map>
 #include "Common/Helpers.h"
+#include "Common/HashMap.h"
 
 namespace zen::val
 {
@@ -126,7 +126,7 @@ public:
 private:
     bool m_dirty{false};
 
-    std::unordered_map<uint32_t, std::vector<uint8_t>> m_constantTable;
+    HashMap<uint32_t, std::vector<uint8_t>> m_constantTable;
 };
 
 class PipelineState

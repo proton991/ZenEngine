@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/RenderContext.h"
+#include "Graphics/RenderCore/RenderConfig.h"
 #include "Graphics/Val/Queue.h"
 #include "Graphics/Val/CommandBuffer.h"
 #include "Common/Errors.h"
@@ -8,10 +9,12 @@ namespace zen
 RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl* window) :
     m_valDevice(device),
     m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)),
-    m_synObjPool(device)
+    m_synObjPool(device),
+    m_threadCount(RenderConfig::GetInstance().threadCount)
 {
     m_surface   = window->CreateSurface(device.GetInstanceHandle());
     m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, window->GetExtent2D());
+    LOGI("Using 4 threads for rendering...")
     Init();
 }
 
@@ -33,8 +36,8 @@ void RenderContext::Init()
     {
         auto image = MakeUnique<val::Image>(m_valDevice, imageHandle, m_swapchain->GetExtent3D(),
                                             m_swapchain->GetFormat());
-        auto frame = RenderFrame(m_valDevice, std::move(image));
-        m_frames.push_back(std::move(frame));
+        m_frames.emplace_back(
+            MakeUnique<RenderFrame>(m_valDevice, std::move(image), m_threadCount));
     }
     val::CommandPool::CreateInfo cmdPoolCI{};
     cmdPoolCI.queueFamilyIndex = m_queue.GetFamilyIndex();
@@ -130,13 +133,13 @@ void RenderContext::StartFrameInternal()
     ASSERT(m_activeFrameIndex < m_frames.size());
 
     auto& prevFrame    = m_frames[m_activeFrameIndex];
-    m_imageAcquiredSem = prevFrame.RequestSemaphoreWithOwnership();
+    m_imageAcquiredSem = prevFrame->RequestSemaphoreWithOwnership();
     if (m_swapchain)
     {
         auto result = m_swapchain->AcquireNextImage(m_activeFrameIndex, m_imageAcquiredSem);
         if (result != VK_SUCCESS)
         {
-            prevFrame.ReleaseSemaphoreWithOwnership(m_imageAcquiredSem);
+            prevFrame->ReleaseSemaphoreWithOwnership(m_imageAcquiredSem);
             prevFrame.Reset();
             return;
         }
@@ -172,8 +175,8 @@ void RenderContext::RecreateSwapchain(uint32_t newWidth, uint32_t newHeight)
         {
             auto image = MakeUnique<val::Image>(
                 m_valDevice, imageHandle, m_swapchain->GetExtent3D(), m_swapchain->GetFormat());
-            auto frame = RenderFrame(m_valDevice, std::move(image));
-            m_frames.push_back(std::move(frame));
+            m_frames.emplace_back(
+                MakeUnique<RenderFrame>(m_valDevice, std::move(image), m_threadCount));
         }
     }
 }

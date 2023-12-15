@@ -79,6 +79,6 @@ private:
 
     Node* m_rootNode{nullptr};
 
-    std::unordered_map<TypeId, std::vector<UniquePtr<Component>>> m_components;
+    HashMap<TypeId, std::vector<UniquePtr<Component>>> m_components;
 };
 } // namespace zen::sg

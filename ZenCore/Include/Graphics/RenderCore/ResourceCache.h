@@ -288,9 +288,7 @@ inline void HashParam<std::vector<val::SubpassInfo>>(size_t&                    
 
 
 template <class T, class... A>
-T& RequestResourceNoLock(const val::Device&                  device,
-                         std::unordered_map<std::size_t, T>& resources,
-                         A&... args)
+T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& resources, A&... args)
 {
     std::size_t hash{0U};
     HashParam(hash, args...);
@@ -331,9 +329,9 @@ T& RequestResourceNoLock(const val::Device&                  device,
     return insertIt->second;
 }
 
-template <class T, class... A> T& RequestResource(const val::Device&                  device,
-                                                  std::mutex&                         resourceMutex,
-                                                  std::unordered_map<std::size_t, T>& resources,
+template <class T, class... A> T& RequestResource(const val::Device&       device,
+                                                  std::mutex&              resourceMutex,
+                                                  HashMap<std::size_t, T>& resources,
                                                   A&... args)
 {
     std::lock_guard<std::mutex> guard(resourceMutex);
@@ -384,8 +382,8 @@ private:
         std::mutex graphicsPipeline;
     } m_mutexTable;
 
-    std::unordered_map<size_t, val::RenderPass>       m_renderPasses;
-    std::unordered_map<size_t, val::PipelineLayout>   m_pipelineLayouts;
-    std::unordered_map<size_t, val::GraphicsPipeline> m_graphicPipelines;
+    HashMap<size_t, val::RenderPass>       m_renderPasses;
+    HashMap<size_t, val::PipelineLayout>   m_pipelineLayouts;
+    HashMap<size_t, val::GraphicsPipeline> m_graphicPipelines;
 };
 } // namespace zen

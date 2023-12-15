@@ -11,6 +11,12 @@ class Buffer;
 class CommandBuffer : public DeviceObject<VkCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER>
 {
 public:
+    struct InheritanceInfo
+    {
+        VkRenderPass  renderPassHandle{VK_NULL_HANDLE};
+        VkFramebuffer framebufferHandle{VK_NULL_HANDLE};
+    };
+
     CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level);
 
     void Reset();
@@ -35,7 +41,22 @@ public:
     void BindDescriptorSets(VkPipelineLayout                    pipelineLayout,
                             const std::vector<VkDescriptorSet>& descriptorSets);
 
-    void Begin();
+    /**
+     * Begin a primary command buffer
+     * @param flags default value VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+     */
+    void Begin(VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+    /**
+      *
+      * @param inheritanceInfo primary buffer's inheritance info
+      * @param flags default value VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+      * @param subpassIndex current subpass index
+      */
+    void Begin(const InheritanceInfo&    inheritanceInfo,
+               VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+               // default 0
+               uint32_t subpassIndex = 0);
 
     void End();
 
@@ -90,6 +111,12 @@ public:
                       sizeof(T));
     }
 
+    void ExecuteCommands(std::vector<val::CommandBuffer*>& secondaryCmdBuffers);
+
+    void ExecuteCommand(val::CommandBuffer* secondaryCmdBuffers);
+
+    const auto& GetInheritanceInfo() const { return m_inheritanceInfo; }
+
 private:
     void PushConstants(VkPipelineLayout   pipelineLayout,
                        VkShaderStageFlags shaderStage,
@@ -99,5 +126,7 @@ private:
     CommandPool& m_cmdPool;
 
     const VkCommandBufferLevel m_level;
+
+    InheritanceInfo m_inheritanceInfo;
 };
 } // namespace zen::val

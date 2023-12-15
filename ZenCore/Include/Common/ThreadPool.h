@@ -1,16 +1,16 @@
 #pragma once
 #include "Queue.h"
 #include <functional>
-#include <memory>
 #include <thread>
 #include <atomic>
 #include <vector>
-#include <memory>
 #include <exception>
 #include <future>
 #include "Mutex.h"
 #include "ConditionVariable.h"
 #include "ObjectBase.h"
+#include "UniquePtr.h"
+#include "SharedPtr.h"
 
 namespace zen
 {
@@ -51,7 +51,7 @@ public:
 
                 for (int i = numOldThreads; i < nThreads; ++i)
                 {
-                    m_flags[i] = std::make_shared<std::atomic<bool>>(false);
+                    m_flags[i] = MakeShared<std::atomic<bool>>(false);
                     this->SetThread(i);
                 }
             }
@@ -87,8 +87,8 @@ public:
         std::function<FuncRetType(FuncArgs...)>* _f = nullptr;
         m_q.Pop(_f);
         // at return, delete the function even if an exception occurred
-        std::unique_ptr<std::function<FuncRetType(FuncArgs...)>> func(_f);
-        std::function<FuncRetType(FuncArgs...)>                  f;
+        UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(_f);
+        std::function<FuncRetType(FuncArgs...)>            f;
         if (_f) f = *_f;
         return f;
     }
@@ -134,7 +134,7 @@ public:
     {
         using ReturnType = std::invoke_result_t<F, Args...>;
 
-        auto task = std::make_shared<std::packaged_task<ReturnType(Args...)>>(
+        auto task = MakeShared<std::packaged_task<ReturnType(Args...)>>(
             std::bind(std::forward<F>(f), std::forward<Args>(args)...));
         auto _f =
             new std::function<ReturnType(Args...)>([task](Args... args) { (*task)(args...); });
@@ -149,9 +149,8 @@ public:
     template <class F> auto Push(F&& f) -> std::future<std::invoke_result_t<F, FuncArgs...>>
     {
         using ReturnType = std::invoke_result_t<F, FuncArgs...>;
-        auto task =
-            std::make_shared<std::packaged_task<ReturnType(FuncArgs...)>>(std::forward<F>(f));
-        auto _f = new std::function<FuncRetType(FuncArgs...)>(
+        auto task = MakeShared<std::packaged_task<ReturnType(FuncArgs...)>>(std::forward<F>(f));
+        auto _f   = new std::function<FuncRetType(FuncArgs...)>(
             [task](FuncArgs... args) { (*task)(args...); });
         m_q.Push(_f);
         LockAuto lock(&m_mutex);
@@ -165,7 +164,7 @@ private:
 
     void SetThread(int i)
     {
-        std::shared_ptr<std::atomic<bool>> flag(m_flags[i]); // a copy of the shared ptr to the flag
+        SharedPtr<std::atomic<bool>> flag(m_flags[i]); // a copy of the shared ptr to the flag
         auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
             std::atomic<bool>&                       _flag = *flag;
             std::function<FuncRetType(FuncArgs...)>* _f;
@@ -175,7 +174,7 @@ private:
             {
                 while (isPop)
                 { // if there is anything in the queue
-                    std::unique_ptr<std::function<FuncRetType(FuncArgs...)>> func(
+                    UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(
                         _f); // at return, delete the function even if an exception occurred
                     (*_f)(i);
                     if (_flag)
@@ -194,8 +193,7 @@ private:
                 if (!isPop) return;
             }
         };
-        m_threads[i] =
-            std::make_unique<std::thread>(f); // compiler may not support std::make_unique()
+        m_threads[i] = MakeUnique<std::thread>(f);
     }
 
     void Init()
@@ -205,11 +203,11 @@ private:
         m_finished = false;
     }
 
-    std::vector<std::unique_ptr<std::thread>> m_threads;
+    std::vector<UniquePtr<std::thread>> m_threads;
     // queue that holds pushed functions
     ThreadSafeQueue<std::function<FuncRetType(FuncArgs...)>*> m_q;
     // per thread status flags
-    std::vector<std::shared_ptr<std::atomic<bool>>> m_flags;
+    std::vector<SharedPtr<std::atomic<bool>>> m_flags;
     // ThreadPool status flags
     std::atomic<bool> m_finished;
     std::atomic<bool> m_stop;

@@ -86,6 +86,8 @@ void CommandBuffer::BeginRenderPass(const VkRenderPassBeginInfo& info,
                                     VkSubpassContents            subpassContents)
 {
     vkCmdBeginRenderPass(m_handle, &info, subpassContents);
+    m_inheritanceInfo.framebufferHandle = info.framebuffer;
+    m_inheritanceInfo.renderPassHandle  = info.renderPass;
 }
 
 void CommandBuffer::EndRenderPass() { vkCmdEndRenderPass(m_handle); }
@@ -102,11 +104,31 @@ void CommandBuffer::BindDescriptorSets(VkPipelineLayout                    pipel
                             util::ToU32(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
 }
 
-void CommandBuffer::Begin()
+void CommandBuffer::Begin(VkCommandBufferUsageFlags flags)
 {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(m_handle, &beginInfo);
+    beginInfo.flags = flags;
+    CHECK_VK_ERROR(vkBeginCommandBuffer(m_handle, &beginInfo), "Failed to begin command buffer!")
+}
+
+void CommandBuffer::Begin(const InheritanceInfo&    inheritanceInfo,
+                          VkCommandBufferUsageFlags flags,
+                          uint32_t                  subpassIndex)
+{
+    VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    // for secondary command buffers
+    VkCommandBufferInheritanceInfo inheritance = {
+        VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO};
+    beginInfo.flags = flags;
+
+    if (m_level == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
+    {
+        inheritance.renderPass  = inheritanceInfo.renderPassHandle;
+        inheritance.framebuffer = inheritanceInfo.framebufferHandle;
+        inheritance.subpass     = subpassIndex;
+    }
+    beginInfo.pInheritanceInfo = &inheritance;
+    CHECK_VK_ERROR(vkBeginCommandBuffer(m_handle, &beginInfo), "Failed to begin command buffer!")
 }
 
 void CommandBuffer::End() { vkEndCommandBuffer(m_handle); }
@@ -229,5 +251,21 @@ void CommandBuffer::PushConstants(VkPipelineLayout   pipelineLayout,
 
     vkCmdPushConstants(m_handle, pipelineLayout, shaderStage, 0, pushConstants.size(),
                        pushConstants.data());
+}
+
+void CommandBuffer::ExecuteCommands(std::vector<val::CommandBuffer*>& secondaryCmdBuffers)
+{
+    std::vector<VkCommandBuffer> secondCmdBufferHandles;
+    std::transform(secondaryCmdBuffers.begin(), secondaryCmdBuffers.end(),
+                   secondCmdBufferHandles.begin(),
+                   [](const CommandBuffer* cmdBuffer) { return cmdBuffer->GetHandle(); });
+    vkCmdExecuteCommands(GetHandle(), util::ToU32(secondaryCmdBuffers.size()),
+                         secondCmdBufferHandles.data());
+}
+
+void CommandBuffer::ExecuteCommand(val::CommandBuffer* secondaryCmdBuffers)
+{
+    VkCommandBuffer secondCmdBufferHandle = secondaryCmdBuffers->GetHandle();
+    vkCmdExecuteCommands(GetHandle(), 1, &secondCmdBufferHandle);
 }
 } // namespace zen::val

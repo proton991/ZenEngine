@@ -27,9 +27,9 @@ private:
     // The shader modules that this pipeline layout uses
     std::vector<ShaderModule*> m_shaderModules;
     // The shader resources
-    std::unordered_map<std::string, ShaderResource> m_shaderResources;
+    HashMap<std::string, ShaderResource> m_shaderResources;
     // A map of each set and the resources it owns used by the pipeline layout
-    std::unordered_map<uint32_t, std::vector<ShaderResource>> m_perSetResource;
+    HashMap<uint32_t, std::vector<ShaderResource>> m_perSetResource;
 
     std::vector<DescriptorSetLayout> m_dsLayouts;
 };

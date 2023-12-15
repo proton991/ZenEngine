@@ -40,6 +40,6 @@ private:
     val::DescriptorPoolManager  m_descriptorPoolManager;
     val::DescriptorSetAllocator m_descriptorAllocator;
     // cache
-    std::unordered_map<size_t, VkDescriptorSet> m_descriptorSetCache;
+    HashMap<size_t, VkDescriptorSet> m_descriptorSetCache;
 };
 } // namespace zen

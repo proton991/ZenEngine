@@ -85,6 +85,14 @@ private:
 
     void FillLightUniforms();
 
+    val::CommandBuffer* RecordDrawCmdsSecondary(val::CommandBuffer*           primaryCmdBuffer,
+                                                const std::vector<sg::Node*>& nodes,
+                                                const RDGPhysicalPass&        physicalPass);
+
+    void RecordDrawCmdsPrimary(val::CommandBuffer*           primaryCmdBuffer,
+                               const std::vector<sg::Node*>& nodes,
+                               const RDGPhysicalPass&        physicalPass);
+
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
     UniquePtr<RenderGraph>   m_renderGraph;

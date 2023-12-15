@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <unordered_map>
+#include "Common/HashMap.h"
 #include "Component.h"
 
 namespace zen::sg
@@ -46,6 +46,6 @@ private:
     std::vector<Node*> m_children;
 
     // One unique instance for each Component
-    std::unordered_map<TypeId, Component*> m_components;
+    HashMap<TypeId, Component*> m_components;
 };
 } // namespace zen::sg

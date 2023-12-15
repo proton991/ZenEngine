@@ -18,7 +18,7 @@ public:
 
     void EndFrame();
 
-    RenderFrame& GetActiveFrame() { return m_frames[m_activeFrameIndex]; }
+    RenderFrame& GetActiveFrame() { return *m_frames[m_activeFrameIndex]; }
 
     VkFormat GetSwapchainFormat() const { return m_swapchain->GetFormat(); }
 
@@ -68,7 +68,7 @@ private:
     // val::Swapchain is created and managed by RenderContext
     UniquePtr<val::Swapchain> m_swapchain;
     // store frames
-    std::vector<RenderFrame> m_frames;
+    std::vector<UniquePtr<RenderFrame>> m_frames;
     // active frame index
     uint32_t m_activeFrameIndex{0};
     // whether a frame is active or not
@@ -83,5 +83,7 @@ private:
     UniquePtr<val::CommandPool> m_commandPool;
     // common sync obj pool
     val::SynObjPool m_synObjPool;
+    // thread count
+    uint32_t m_threadCount;
 };
 } // namespace zen

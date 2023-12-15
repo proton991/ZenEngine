@@ -25,6 +25,6 @@ private:
     const val::Device& m_valDevice;
     RenderContext&     m_renderContext;
 
-    std::unordered_map<std::string, UniquePtr<val::Image>> m_cache;
+    HashMap<std::string, UniquePtr<val::Image>> m_cache;
 };
 } // namespace zen

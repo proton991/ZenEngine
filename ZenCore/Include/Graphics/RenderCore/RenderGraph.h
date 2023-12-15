@@ -231,6 +231,22 @@ struct ResourceState
     HashMap<Tag, Tag>                 bufferFirstUsePass;
     HashMap<Tag, Tag>                 bufferLastUsePass;
 };
+
+struct RDGPhysicalPass
+{
+    val::PipelineLayout*         pipelineLayout{nullptr};
+    val::PipelineState           pipelineState{};
+    val::GraphicsPipeline*       graphicPipeline{nullptr};
+    val::RenderPass*             renderPass{nullptr};
+    std::vector<VkDescriptorSet> descriptorSets;
+    UniquePtr<val::Framebuffer>  framebuffer;
+    uint32_t                     index{0};
+    bool                         descriptorSetsUpdated{false};
+
+    std::function<void(val::CommandBuffer*)> onExecute{[this](auto*) {
+    }};
+};
+
 class RenderContext;
 class RenderGraph
 {
@@ -266,22 +282,9 @@ public:
         m_physicalPasses[m_passToIndex[tag]].onExecute = std::move(func);
     }
 
+
+
 private:
-    struct PhysicalPass
-    {
-        val::PipelineLayout*         pipelineLayout{nullptr};
-        val::PipelineState           pipelineState{};
-        val::GraphicsPipeline*       graphicPipeline{nullptr};
-        val::RenderPass*             renderPass{nullptr};
-        std::vector<VkDescriptorSet> descriptorSets;
-        UniquePtr<val::Framebuffer>  framebuffer;
-        uint32_t                     index{0};
-        bool                         descriptorSetsUpdated{false};
-
-        std::function<void(val::CommandBuffer*)> onExecute{[this](auto*) {
-        }};
-    };
-
     void SortRenderPasses();
 
     void TraversePassDepsRecursive(Index passIndex, uint32_t level);
@@ -306,9 +309,9 @@ private:
 
     void CopyToPresentImage(val::CommandBuffer* commandBuffer, const val::Image& presentImage);
 
-    void RunPass(PhysicalPass& pass, val::CommandBuffer* commandBuffer);
+    void RunPass(RDGPhysicalPass& pass, val::CommandBuffer* primaryCmdBuffer);
 
-    void UpdateDescriptorSets(PhysicalPass& pass);
+    void UpdateDescriptorSets(RDGPhysicalPass& pass);
 
     HashMap<Tag, Index>                    m_resourceToIndex;
     HashMap<Tag, Index>                    m_passToIndex;
@@ -322,7 +325,7 @@ private:
     std::vector<UniquePtr<val::Image>>  m_physicalImages;
     std::vector<UniquePtr<val::Buffer>> m_physicalBuffers;
     // Actual physical passes
-    std::vector<PhysicalPass> m_physicalPasses;
+    std::vector<RDGPhysicalPass> m_physicalPasses;
     // Swapchain back buffer info
     Tag        m_backBufferTag;
     VkExtent2D m_backBufferExtent{};

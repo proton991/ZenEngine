@@ -11,8 +11,13 @@ namespace zen
 class RenderFrame
 {
 public:
-    RenderFrame(const val::Device& device, UniquePtr<val::Image>&& swapchainImage) :
-        m_valDevice(device), m_syncObjPool(m_valDevice), m_swapchainImage(std::move(swapchainImage))
+    RenderFrame(const val::Device&      device,
+                UniquePtr<val::Image>&& swapchainImage,
+                uint32_t                threadCount) :
+        m_valDevice(device),
+        m_syncObjPool(m_valDevice),
+        m_swapchainImage(std::move(swapchainImage)),
+        m_threadCount(threadCount)
     {
         m_stagingBuffer = MakeUnique<StagingBuffer>(m_valDevice, MAX_STAGING_BUFFER_SIZE);
     }
@@ -20,7 +25,8 @@ public:
     val::CommandBuffer* RequestCommandBuffer(
         uint32_t                    queueFamilyIndex,
         val::CommandPool::ResetMode resetMode,
-        VkCommandBufferLevel        level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+        VkCommandBufferLevel        level    = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        uint32_t                    threadId = 0);
 
     VkSemaphore RequestSemaphore() { return m_syncObjPool.RequestSemaphore(); }
 
@@ -43,17 +49,20 @@ public:
     StagingBuffer* GetStagingBuffer() const { return m_stagingBuffer.Get(); }
 
 private:
-    val::CommandPool* GetCommandPool(uint32_t                    queueFamilyIndex,
-                                     val::CommandPool::ResetMode resetMode);
+    std::vector<UniquePtr<val::CommandPool>>& GetCommandPools(
+        uint32_t                    queueFamilyIndex,
+        val::CommandPool::ResetMode resetMode);
 
     const val::Device& m_valDevice;
 
     val::SynObjPool m_syncObjPool;
 
-    std::unordered_map<uint32_t, UniquePtr<val::CommandPool>> m_cmdPools;
+    HashMap<uint32_t, std::vector<UniquePtr<val::CommandPool>>> m_cmdPools;
 
     UniquePtr<val::Image> m_swapchainImage;
 
     UniquePtr<StagingBuffer> m_stagingBuffer;
+
+    uint32_t m_threadCount{1};
 };
 } // namespace zen

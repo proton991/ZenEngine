@@ -36,9 +36,8 @@ CommandPool::CommandPool(const Device& device, const CommandPool::CreateInfo& CI
 
 CommandPool::~CommandPool()
 {
-    // free command buffers
-    FreeCmdBuffers();
-
+    m_primaryCmdBuffers.clear();
+    m_secondaryCmdBuffers.clear();
     if (m_handle != VK_NULL_HANDLE)
     {
         vkDestroyCommandPool(m_device.GetHandle(), m_handle, nullptr);

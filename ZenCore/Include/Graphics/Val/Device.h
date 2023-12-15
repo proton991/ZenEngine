@@ -4,7 +4,7 @@
 #include "VulkanHeaders.h"
 #include "PhysicalDevice.h"
 #include <vector>
-#include <unordered_map>
+#include "Common/HashMap.h"
 #include "vk_mem_alloc.h"
 
 namespace zen::val
@@ -46,10 +46,10 @@ public:
     auto GetGPUProperties() const { return m_physicalDevice->m_properties; }
 
 private:
-    VkDevice                       m_handle{VK_NULL_HANDLE};
-    PhysicalDevice*                m_physicalDevice{nullptr};
-    std::vector<const char*>       m_enabledExtensions;
-    std::unordered_map<int, Queue> m_queues;
-    VmaAllocator                   m_memAllocator{nullptr};
+    VkDevice                 m_handle{VK_NULL_HANDLE};
+    PhysicalDevice*          m_physicalDevice{nullptr};
+    std::vector<const char*> m_enabledExtensions;
+    HashMap<int, Queue>      m_queues;
+    VmaAllocator             m_memAllocator{nullptr};
 };
 } // namespace zen::val

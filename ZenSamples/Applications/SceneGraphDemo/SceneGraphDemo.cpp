@@ -1,9 +1,16 @@
 #include "SceneGraphDemo.h"
 #include "SceneGraph/Scene.h"
+#include "Graphics/RenderCore/RenderConfig.h"
 
 namespace zen
 {
-SceneGraphDemo::SceneGraphDemo() {}
+SceneGraphDemo::SceneGraphDemo()
+{
+    // set global render config
+    RenderConfig& renderConfig   = RenderConfig::GetInstance();
+    renderConfig.useSecondaryCmd = true;
+    renderConfig.threadCount     = 4;
+}
 
 void SceneGraphDemo::Prepare(const platform::WindowConfig& windowConfig)
 {
@@ -76,28 +83,91 @@ void SceneGraphDemo::SetupRenderGraph()
 
     // set execute after compile
     m_renderGraph->SetOnExecute("MainPass", [&](val::CommandBuffer* commandBuffer) {
-        auto extent = m_renderContext->GetSwapchainExtent2D();
-        commandBuffer->SetViewport(static_cast<float>(extent.width),
-                                   static_cast<float>(extent.height));
-        commandBuffer->SetScissor(extent.width, extent.height);
-        commandBuffer->BindVertexBuffers(*m_vertexBuffer);
-        commandBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
-
         auto& physicalPass =
             m_renderGraph->GetPhysicalPass(m_renderGraph->GetRDGPass("MainPass")->GetIndex());
-        for (auto* node : m_scene->GetRenderableNodes())
+        if (RenderConfig::GetInstance().useSecondaryCmd)
         {
-            m_pushConstantData.nodeIndex = m_nodesUniformIndex[node->GetHash()];
-            for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-            {
-                m_pushConstantData.materialIndex = subMesh->GetMaterial()->index;
-                commandBuffer->PushConstants(
-                    physicalPass.pipelineLayout->GetHandle(),
-                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &m_pushConstantData);
-                commandBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
-            }
+            auto* secondaryCmdBuffer =
+                RecordDrawCmdsSecondary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass);
+            commandBuffer->ExecuteCommand(secondaryCmdBuffer);
         }
+        else { RecordDrawCmdsPrimary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass); }
     });
+}
+
+val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
+                                                            const std::vector<sg::Node*>& nodes,
+                                                            const RDGPhysicalPass& physicalPass)
+{
+    auto* secondaryCmdBuffer = m_renderContext->GetActiveFrame().RequestCommandBuffer(
+        m_device->GetQueue(val::QUEUE_INDEX_GRAPHICS).GetFamilyIndex(),
+        val::CommandPool::ResetMode::ResetPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+
+    secondaryCmdBuffer->Begin(primaryCmdBuffer->GetInheritanceInfo(),
+                              VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT |
+                                  VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT);
+    secondaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
+    secondaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+    auto extent = m_renderContext->GetSwapchainExtent2D();
+    secondaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
+                                    static_cast<float>(extent.height));
+    secondaryCmdBuffer->SetScissor(extent.width, extent.height);
+    if (physicalPass.graphicPipeline)
+    {
+        secondaryCmdBuffer->BindGraphicPipeline(physicalPass.graphicPipeline->GetHandle());
+    }
+    if (!physicalPass.descriptorSets.empty())
+    {
+        secondaryCmdBuffer->BindDescriptorSets(physicalPass.pipelineLayout->GetHandle(),
+                                               physicalPass.descriptorSets);
+    }
+    for (auto* node : nodes)
+    {
+        m_pushConstantData.nodeIndex = m_nodesUniformIndex[node->GetHash()];
+        for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
+        {
+            m_pushConstantData.materialIndex = subMesh->GetMaterial()->index;
+            secondaryCmdBuffer->PushConstants(
+                physicalPass.pipelineLayout->GetHandle(),
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &m_pushConstantData);
+            secondaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
+        }
+    }
+    secondaryCmdBuffer->End();
+    return secondaryCmdBuffer;
+}
+
+void SceneGraphDemo::RecordDrawCmdsPrimary(val::CommandBuffer*           primaryCmdBuffer,
+                                           const std::vector<sg::Node*>& nodes,
+                                           const RDGPhysicalPass&        physicalPass)
+{
+    primaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
+    primaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+    auto extent = m_renderContext->GetSwapchainExtent2D();
+    primaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
+                                  static_cast<float>(extent.height));
+    primaryCmdBuffer->SetScissor(extent.width, extent.height);
+    if (physicalPass.graphicPipeline)
+    {
+        primaryCmdBuffer->BindGraphicPipeline(physicalPass.graphicPipeline->GetHandle());
+    }
+    if (!physicalPass.descriptorSets.empty())
+    {
+        primaryCmdBuffer->BindDescriptorSets(physicalPass.pipelineLayout->GetHandle(),
+                                             physicalPass.descriptorSets);
+    }
+    for (auto* node : nodes)
+    {
+        m_pushConstantData.nodeIndex = m_nodesUniformIndex[node->GetHash()];
+        for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
+        {
+            m_pushConstantData.materialIndex = subMesh->GetMaterial()->index;
+            primaryCmdBuffer->PushConstants(
+                physicalPass.pipelineLayout->GetHandle(),
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &m_pushConstantData);
+            primaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
+        }
+    }
 }
 
 void SceneGraphDemo::Run()

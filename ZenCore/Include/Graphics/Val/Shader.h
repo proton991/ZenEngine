@@ -1,6 +1,5 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include <unordered_map>
 #include <string>
 #include <vector>
 #include "DeviceObject.h"

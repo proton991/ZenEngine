@@ -37,6 +37,8 @@ public:
 
     void ResetPool();
 
+    auto GetThreadId() const { return m_threadId; }
+    
 private:
     void ResetCmdBuffers();
     void FreeCmdBuffers();
