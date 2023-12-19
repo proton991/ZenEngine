@@ -436,8 +436,8 @@ void RenderGraph::BuildPhysicalPasses()
             m_renderDevice.RequestRenderPass(attachmentDescriptions, subpassInfo);
         // Create framebuffer
         physicalPass.framebuffer =
-            m_renderDevice.CreateFramebufferUnique(physicalPass.renderPass->GetHandle(), imageViews,
-                                                   {framebufferWidth, framebufferHeight, 1});
+            m_renderDevice.RequestFramebuffer(physicalPass.renderPass->GetHandle(), imageViews,
+                                              {framebufferWidth, framebufferHeight, 1});
         // Create pipeline
         physicalPass.pipelineLayout = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
 

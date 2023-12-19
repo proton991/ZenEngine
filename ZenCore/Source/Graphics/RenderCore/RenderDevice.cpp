@@ -29,6 +29,13 @@ UniquePtr<val::Framebuffer> RenderDevice::CreateFramebufferUnique(
     return MakeUnique<val::Framebuffer>(m_valDevice, renderPassHandle, attachments, extent3D);
 }
 
+val::Framebuffer* RenderDevice::RequestFramebuffer(VkRenderPass                    renderPassHandle,
+                                                   const std::vector<VkImageView>& attachments,
+                                                   VkExtent3D                      extent3D)
+{
+    return m_resourceCache->RequestFramebuffer(renderPassHandle, attachments, extent3D);
+}
+
 val::RenderPass* RenderDevice::RequestRenderPass(
     const std::vector<VkAttachmentDescription>& attachments,
     const val::SubpassInfo&                     subpassInfo)

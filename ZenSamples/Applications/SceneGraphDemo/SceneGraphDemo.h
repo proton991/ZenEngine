@@ -9,9 +9,15 @@
 #include "Common/Math.h"
 #include "Graphics/RenderCore/TextureManager.h"
 #include "AssetLib/GLTFLoader.h"
+#include "Common/ThreadPool.h"
 
 namespace zen
 {
+namespace sg
+{
+class Mesh;
+class SubMesh;
+} // namespace sg
 class SceneGraphDemo : public Application
 {
     struct CameraUniformData
@@ -85,9 +91,19 @@ private:
 
     void FillLightUniforms();
 
-    val::CommandBuffer* RecordDrawCmdsSecondary(val::CommandBuffer*           primaryCmdBuffer,
-                                                const std::vector<sg::Node*>& nodes,
-                                                const RDGPhysicalPass&        physicalPass);
+    void RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBuffer,
+                                 const RDGPhysicalPass& physicalPass);
+
+    val::CommandBuffer* RecordDrawCmdsSecondary(
+        val::CommandBuffer* primaryCmdBuffer,
+        uint32_t            meshStart,
+        uint32_t            meshEnd,
+        // all sub meshes and their nodes
+        const std::vector<std::pair<sg::Node*, sg::SubMesh*>>& subMeshes,
+        // related scene graph physical pass
+        const RDGPhysicalPass& physicalPass,
+        // thread id for command buffer
+        uint32_t threadId = 0);
 
     void RecordDrawCmdsPrimary(val::CommandBuffer*           primaryCmdBuffer,
                                const std::vector<sg::Node*>& nodes,
@@ -96,6 +112,8 @@ private:
     UniquePtr<RenderDevice>  m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
     UniquePtr<RenderGraph>   m_renderGraph;
+
+    UniquePtr<ThreadPool<void, uint32_t>> m_threadPool;
 
     UniquePtr<ShaderManager> m_shaderManager;
 

@@ -40,6 +40,8 @@ public:
         m_aabb.SetMax(max);
     }
 
+    const auto& GetAABB() const { return m_aabb; }
+
     bool HasIndices() const { return m_hasIndices; }
 
 private:

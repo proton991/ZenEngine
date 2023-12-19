@@ -8,7 +8,10 @@
 namespace zen::val
 {
 CommandBuffer::CommandBuffer(CommandPool& cmdPool, VkCommandBufferLevel level) :
-    DeviceObject(cmdPool.GetDevice()), m_cmdPool(cmdPool), m_level(level)
+    DeviceObject(cmdPool.GetDevice()),
+    m_cmdPool(cmdPool),
+    m_level(level),
+    m_maxPushConstantsSize(m_device.GetGPUProperties().limits.maxPushConstantsSize)
 {
     VkCommandBufferAllocateInfo allocInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
 
@@ -243,9 +246,7 @@ void CommandBuffer::PushConstants(VkPipelineLayout   pipelineLayout,
                                   const uint8_t*     data,
                                   size_t             size)
 {
-    constexpr size_t MaxPushConstantByteSize = 128;
-
-    std::array<uint8_t, MaxPushConstantByteSize> pushConstants{};
+    std::vector<uint8_t> pushConstants(size);
 
     std::memcpy(pushConstants.data(), data, size);
 
@@ -255,7 +256,7 @@ void CommandBuffer::PushConstants(VkPipelineLayout   pipelineLayout,
 
 void CommandBuffer::ExecuteCommands(std::vector<val::CommandBuffer*>& secondaryCmdBuffers)
 {
-    std::vector<VkCommandBuffer> secondCmdBufferHandles;
+    std::vector<VkCommandBuffer> secondCmdBufferHandles(secondaryCmdBuffers.size(), VK_NULL_HANDLE);
     std::transform(secondaryCmdBuffers.begin(), secondaryCmdBuffers.end(),
                    secondCmdBufferHandles.begin(),
                    [](const CommandBuffer* cmdBuffer) { return cmdBuffer->GetHandle(); });

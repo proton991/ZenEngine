@@ -13,6 +13,8 @@ struct RenderConfig
 
     bool useSecondaryCmd{false};
     // number of threads
-    unsigned int threadCount{1};
+    unsigned int numThreads{1};
+    // number of secondary command buffers
+    unsigned int numSecondaryCmdBuffers{1};
 };
 } // namespace zen

@@ -10,6 +10,10 @@ class RenderDevice
 public:
     explicit RenderDevice(const val::Device& valDevice);
 
+    val::Framebuffer* RequestFramebuffer(VkRenderPass                    renderPassHandle,
+                                         const std::vector<VkImageView>& attachments,
+                                         VkExtent3D                      extent3D);
+
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments,
                                        const val::SubpassInfo&                     subpassInfo);
 

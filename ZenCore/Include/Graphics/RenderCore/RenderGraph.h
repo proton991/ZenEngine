@@ -239,7 +239,7 @@ struct RDGPhysicalPass
     val::GraphicsPipeline*       graphicPipeline{nullptr};
     val::RenderPass*             renderPass{nullptr};
     std::vector<VkDescriptorSet> descriptorSets;
-    UniquePtr<val::Framebuffer>  framebuffer;
+    val::Framebuffer*            framebuffer;
     uint32_t                     index{0};
     bool                         descriptorSetsUpdated{false};
 

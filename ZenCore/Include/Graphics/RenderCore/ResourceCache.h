@@ -5,6 +5,17 @@
 
 namespace std
 {
+template <> struct hash<VkExtent3D>
+{
+    std::size_t operator()(const VkExtent3D& extent3D) const
+    {
+        std::size_t result = 0;
+        zen::util::HashCombine(result, extent3D.width);
+        zen::util::HashCombine(result, extent3D.height);
+        zen::util::HashCombine(result, extent3D.depth);
+        return result;
+    }
+};
 template <> struct hash<VkAttachmentDescription>
 {
     std::size_t operator()(const VkAttachmentDescription& attachment) const
@@ -264,6 +275,22 @@ inline void HashParam(size_t& seed, const T& firstArg, const Args&... args)
     HashParam(seed, firstArg);
     HashParam(seed, args...);
 }
+template <>
+inline void HashParam<std::vector<uint8_t>>(size_t& seed, const std::vector<uint8_t>& value)
+{
+    util::HashCombine(seed, std::string{value.begin(), value.end()});
+}
+
+template <> inline void HashParam<VkRenderPass>(size_t& seed, const VkRenderPass& value)
+{
+    util::HashCombine(seed, util::VkHandleToU64(value));
+}
+
+template <>
+inline void HashParam<std::vector<VkImageView>>(size_t& seed, const std::vector<VkImageView>& value)
+{
+    for (auto& view : value) { util::HashCombine(seed, view); }
+}
 
 template <>
 inline void HashParam<std::vector<val::ShaderModule*>>(size_t&                                seed,
@@ -346,6 +373,17 @@ class ResourceCache
 public:
     explicit ResourceCache(const val::Device& device) : m_valDevice(device) {}
 
+    val::Framebuffer* RequestFramebuffer(VkRenderPass                    renderPassHandle,
+                                         const std::vector<VkImageView>& attachments,
+                                         VkExtent3D                      extent3D)
+    {
+        auto& res =
+            RequestResource<val::Framebuffer>(m_valDevice, m_mutexTable.framebuffer, m_framebuffers,
+                                              renderPassHandle, attachments, extent3D);
+
+        return &res;
+    }
+
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments,
                                        const val::SubpassInfo&                     subpassInfo)
     {
@@ -378,11 +416,13 @@ private:
     {
         std::mutex descriptorSetLayout;
         std::mutex renderPass;
+        std::mutex framebuffer;
         std::mutex pipelineLayout;
         std::mutex graphicsPipeline;
     } m_mutexTable;
 
     HashMap<size_t, val::RenderPass>       m_renderPasses;
+    HashMap<size_t, val::Framebuffer>      m_framebuffers;
     HashMap<size_t, val::PipelineLayout>   m_pipelineLayouts;
     HashMap<size_t, val::GraphicsPipeline> m_graphicPipelines;
 };

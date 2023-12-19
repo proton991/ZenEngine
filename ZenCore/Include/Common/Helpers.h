@@ -13,7 +13,8 @@ template <class T> inline void HashCombine(size_t& seed, const T& v)
 
 template <class T> inline std::vector<uint8_t> ToBytes(const T& value)
 {
-    return {reinterpret_cast<uint8_t*>(&value), reinterpret_cast<uint8_t*>(&value) + sizeof(T)};
+    return std::vector<uint8_t>{reinterpret_cast<const uint8_t*>(&value),
+                                reinterpret_cast<const uint8_t*>(&value) + sizeof(T)};
 }
 
 template <class T> inline uint32_t ToU32(T value)
@@ -32,5 +33,16 @@ template <class T> inline uint32_t ToU32(T value)
 template <class VkType, class Type> inline VkType ToVkType(Type type)
 {
     return static_cast<VkType>(type);
+}
+
+template <class THandle> uint64_t VkHandleToU64(THandle handle)
+{
+    // See https://github.com/KhronosGroup/Vulkan-Docs/issues/368 .
+    // Dispatchable and non-dispatchable handle types are *not* necessarily binary-compatible!
+    // Non-dispatchable handles _might_ be only 32-bit long. This is because, on 32-bit machines, they might be a typedef to a 32-bit pointer.
+    using UintHandle =
+        typename std::conditional<sizeof(THandle) == sizeof(uint32_t), uint32_t, uint64_t>::type;
+
+    return static_cast<uint64_t>(reinterpret_cast<UintHandle>(handle));
 }
 } // namespace zen::util

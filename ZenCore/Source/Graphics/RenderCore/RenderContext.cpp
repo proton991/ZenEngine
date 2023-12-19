@@ -10,11 +10,10 @@ RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl
     m_valDevice(device),
     m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)),
     m_synObjPool(device),
-    m_threadCount(RenderConfig::GetInstance().threadCount)
+    m_threadCount(RenderConfig::GetInstance().numThreads)
 {
     m_surface   = window->CreateSurface(device.GetInstanceHandle());
     m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, window->GetExtent2D());
-    LOGI("Using 4 threads for rendering...")
     Init();
 }
 

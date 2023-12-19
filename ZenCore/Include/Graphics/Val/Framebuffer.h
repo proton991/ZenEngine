@@ -16,6 +16,8 @@ public:
                 VkExtent3D                      extent3D);
     ~Framebuffer();
 
+    Framebuffer(Framebuffer&& other) noexcept;
+    
     VkRect2D GetRenderArea() const
     {
         VkRect2D rect2D{};

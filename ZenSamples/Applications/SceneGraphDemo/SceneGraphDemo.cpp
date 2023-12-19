@@ -7,9 +7,13 @@ namespace zen
 SceneGraphDemo::SceneGraphDemo()
 {
     // set global render config
-    RenderConfig& renderConfig   = RenderConfig::GetInstance();
-    renderConfig.useSecondaryCmd = true;
-    renderConfig.threadCount     = 4;
+    RenderConfig& renderConfig          = RenderConfig::GetInstance();
+    renderConfig.useSecondaryCmd        = true;
+    renderConfig.numThreads             = 4;
+    renderConfig.numSecondaryCmdBuffers = 4;
+
+    m_threadPool = MakeUnique<ThreadPool<void, uint32_t>>(renderConfig.numThreads);
+    LOGI("Using {} threads for rendering...", renderConfig.numThreads)
 }
 
 void SceneGraphDemo::Prepare(const platform::WindowConfig& windowConfig)
@@ -87,31 +91,86 @@ void SceneGraphDemo::SetupRenderGraph()
             m_renderGraph->GetPhysicalPass(m_renderGraph->GetRDGPass("MainPass")->GetIndex());
         if (RenderConfig::GetInstance().useSecondaryCmd)
         {
-            auto* secondaryCmdBuffer =
-                RecordDrawCmdsSecondary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass);
-            commandBuffer->ExecuteCommand(secondaryCmdBuffer);
+            RecordDrawCmdsSecondary(commandBuffer, physicalPass);
         }
         else { RecordDrawCmdsPrimary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass); }
     });
 }
 
-val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
-                                                            const std::vector<sg::Node*>& nodes,
-                                                            const RDGPhysicalPass& physicalPass)
+void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBuffer,
+                                             const RDGPhysicalPass& physicalPass)
+{
+    auto subMeshes =
+        m_scene->GetSortedSubMeshes(m_camera->GetPos(), m_cameraUniformData.modelMatrix);
+
+    uint32_t num2ndCmdBuffers = RenderConfig::GetInstance().numSecondaryCmdBuffers;
+    uint32_t numMeshes        = util::ToU32(subMeshes.size());
+    uint32_t numDrawPerCmd    = numMeshes / num2ndCmdBuffers;
+    uint32_t numDrawRemained  = numMeshes % num2ndCmdBuffers;
+    uint32_t meshStart        = 0;
+
+    std::vector<std::future<val::CommandBuffer*>> secondaryCmdFutures;
+    std::vector<val::CommandBuffer*>              secondaryCmds;
+    for (auto i = 0u; i < num2ndCmdBuffers; i++)
+    {
+        uint32_t meshEnd = std::min(numMeshes, meshStart + numDrawPerCmd);
+        if (numDrawRemained > 0)
+        {
+            meshEnd++;
+            numDrawRemained--;
+        }
+        if (RenderConfig::GetInstance().numThreads > 1)
+        {
+            auto fut = m_threadPool->Push([this, &primaryCmdBuffer, meshStart, meshEnd, &subMeshes,
+                                           &physicalPass](uint32_t threadId) {
+                return RecordDrawCmdsSecondary(primaryCmdBuffer, meshStart, meshEnd, subMeshes,
+                                               physicalPass, threadId);
+            });
+
+            secondaryCmdFutures.push_back(std::move(fut));
+        }
+        else
+        {
+            secondaryCmds.push_back(RecordDrawCmdsSecondary(primaryCmdBuffer, meshStart, meshEnd,
+                                                            subMeshes, physicalPass));
+        }
+
+        meshStart = meshEnd;
+    }
+    if (RenderConfig::GetInstance().numThreads > 1)
+    {
+        for (auto& fut : secondaryCmdFutures) { secondaryCmds.push_back(fut.get()); }
+    }
+
+    primaryCmdBuffer->ExecuteCommands(secondaryCmds);
+}
+
+val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(
+    val::CommandBuffer* primaryCmdBuffer,
+    uint32_t            meshStart,
+    uint32_t            meshEnd,
+    // all sub meshes and their nodes
+    const std::vector<std::pair<sg::Node*, sg::SubMesh*>>& subMeshes,
+    // related scene graph physical pass
+    const RDGPhysicalPass& physicalPass,
+    // thread id for command buffer
+    uint32_t threadId)
 {
     auto* secondaryCmdBuffer = m_renderContext->GetActiveFrame().RequestCommandBuffer(
         m_device->GetQueue(val::QUEUE_INDEX_GRAPHICS).GetFamilyIndex(),
-        val::CommandPool::ResetMode::ResetPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
+        val::CommandPool::ResetMode::ResetPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY, threadId);
 
     secondaryCmdBuffer->Begin(primaryCmdBuffer->GetInheritanceInfo(),
                               VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT |
                                   VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT);
-    secondaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
-    secondaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
     auto extent = m_renderContext->GetSwapchainExtent2D();
     secondaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
                                     static_cast<float>(extent.height));
     secondaryCmdBuffer->SetScissor(extent.width, extent.height);
+
+    secondaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
+    secondaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+
     if (physicalPass.graphicPipeline)
     {
         secondaryCmdBuffer->BindGraphicPipeline(physicalPass.graphicPipeline->GetHandle());
@@ -121,17 +180,18 @@ val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* 
         secondaryCmdBuffer->BindDescriptorSets(physicalPass.pipelineLayout->GetHandle(),
                                                physicalPass.descriptorSets);
     }
-    for (auto* node : nodes)
+    PushConstantsData pushConstantData = m_pushConstantData;
+    for (auto i = meshStart; i < meshEnd; i++)
     {
-        m_pushConstantData.nodeIndex = m_nodesUniformIndex[node->GetHash()];
-        for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-        {
-            m_pushConstantData.materialIndex = subMesh->GetMaterial()->index;
-            secondaryCmdBuffer->PushConstants(
-                physicalPass.pipelineLayout->GetHandle(),
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &m_pushConstantData);
-            secondaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
-        }
+        auto* node    = subMeshes[i].first;
+        auto* subMesh = subMeshes[i].second;
+
+        pushConstantData.nodeIndex     = m_nodesUniformIndex[node->GetHash()];
+        pushConstantData.materialIndex = subMesh->GetMaterial()->index;
+        secondaryCmdBuffer->PushConstants(physicalPass.pipelineLayout->GetHandle(),
+                                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                          &pushConstantData);
+        secondaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
     }
     secondaryCmdBuffer->End();
     return secondaryCmdBuffer;

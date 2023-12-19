@@ -15,6 +15,9 @@ public:
 
     std::vector<Node*>& GetRenderableNodes() { return m_renderableNodes; }
 
+    std::vector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos,
+                                                               const Mat4& transform);
+
     void AddRenderableNode(Node* node) { m_renderableNodes.push_back(node); }
 
     void AddComponent(UniquePtr<Component>&& component)

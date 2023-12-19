@@ -128,5 +128,7 @@ private:
     const VkCommandBufferLevel m_level;
 
     InheritanceInfo m_inheritanceInfo;
+
+    const size_t m_maxPushConstantsSize;
 };
 } // namespace zen::val

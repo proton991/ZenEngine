@@ -29,4 +29,8 @@ Framebuffer::~Framebuffer()
     }
 }
 
+Framebuffer::Framebuffer(Framebuffer&& other) noexcept :
+    DeviceObject(std::move(other)), m_extent(other.m_extent)
+{}
+
 } // namespace zen::val
