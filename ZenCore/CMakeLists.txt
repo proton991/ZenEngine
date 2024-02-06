@@ -13,6 +13,8 @@ set(ZEN_CORE_HEADERS
     Include/Common/ObjectBase.h
     Include/Common/Queue.h
     Include/Common/ThreadPool.h
+    Include/Common/Counter.h
+    Include/Common/Intrusive.h
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
     Include/Common/Types.h
