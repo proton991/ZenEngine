@@ -1,5 +1,6 @@
 add_executable(ZenCoreTest ZenCoreTest/main.cpp)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
+add_executable(CommonTest CommonTest/SmallVectorTests.cpp)
 add_executable(SmartPtrTest
     SmartPtrTest/SharedPtrTests.cpp
     SmartPtrTest/UniquePtrTests.cpp
@@ -8,6 +9,7 @@ add_executable(SmartPtrTest
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
+target_link_libraries(CommonTest ZenCore gtest_main)
 
 # Applications
 add_executable(HelloTriangle

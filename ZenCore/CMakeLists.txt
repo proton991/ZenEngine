@@ -12,6 +12,7 @@ set(ZEN_CORE_HEADERS
     Include/Common/ConditionVariable.h
     Include/Common/ObjectBase.h
     Include/Common/Queue.h
+    Include/Common/SmallVector.h
     Include/Common/ThreadPool.h
     Include/Common/Counter.h
     Include/Common/Intrusive.h
