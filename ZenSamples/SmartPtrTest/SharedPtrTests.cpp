@@ -443,6 +443,27 @@ TEST(SharedPtr, swap_ptr)
     }
 }
 
+TEST(SharedPtr, assignment_operator)
+{
+    SharedPtr<Struct> xPtr(new Struct(123));
+    SharedPtr<Struct> yPtr;
+
+    yPtr = xPtr;
+    EXPECT_EQ(yPtr.UseCount(), 2);
+    EXPECT_EQ(xPtr.UseCount(), 2);
+
+    SharedPtr<Struct> zPtr;
+    zPtr = std::move(xPtr);
+    EXPECT_EQ(zPtr.UseCount(), 2);
+    EXPECT_EQ(zPtr->mVal, 123);
+}
+
+TEST(SharedPtr, move_constructor)
+{
+    SharedPtr<Struct> xPtr(new Struct(123));
+    SharedPtr<Struct> yPtr = std::move(xPtr);
+    EXPECT_EQ(yPtr.UseCount(), 1);
+}
 
 class A
 {

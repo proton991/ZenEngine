@@ -47,6 +47,8 @@ public:
         }
     }
 
+    void Reset() { m_counter = nullptr; }
+
 private:
     RefCounterType* m_counter;
 };
@@ -92,9 +94,30 @@ public:
         Acquire(other.m_ptr);
     }
 
-    SharedPtr& operator=(SharedPtr ptr) noexcept
+    SharedPtr(SharedPtr&& other) noexcept
     {
-        Swap(ptr);
+        m_ptr         = std::move(other.m_ptr);
+        this->m_count = std::move(other.m_count);
+        other.m_ptr   = nullptr;
+        other.m_count.Reset();
+    }
+
+
+    SharedPtr& operator=(const SharedPtr& other) noexcept
+    {
+        Reset();
+        m_ptr         = other.m_ptr;
+        this->m_count = other.m_count;
+        if (m_ptr != nullptr) { this->m_count.Acquire(other.m_ptr); }
+        return *this;
+    }
+
+    SharedPtr& operator=(SharedPtr&& other) noexcept
+    {
+        m_ptr         = std::move(other.m_ptr);
+        this->m_count = std::move(other.m_count);
+        other.m_ptr   = nullptr;
+        other.m_count.Reset();
         return *this;
     }
 
