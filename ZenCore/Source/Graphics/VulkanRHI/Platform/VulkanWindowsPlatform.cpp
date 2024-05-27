@@ -1,5 +1,7 @@
-#include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
-#include "Graphics/VulkanRHI/VulkanExtension.h"
+#if defined(ZEN_WIN32)
+
+#    include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
+#    include "Graphics/VulkanRHI/VulkanExtension.h"
 
 namespace zen
 {
@@ -12,3 +14,5 @@ void VulkanWindowsPlatform::AddInstanceExtensions(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 } // namespace zen
+
+#endif

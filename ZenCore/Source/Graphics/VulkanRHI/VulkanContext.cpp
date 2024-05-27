@@ -1,6 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
 namespace zen
 {
@@ -147,6 +148,10 @@ void VulkanRHI::CreateInstance()
 
     VkInstanceCreateInfo instanceInfo;
     InitVkStruct(instanceInfo, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
+#if defined(ZEN_MACOS)
+    instanceInfo.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
+
     instanceInfo.pApplicationInfo    = &appInfo;
     instanceInfo.enabledLayerCount   = static_cast<uint32_t>(m_instanceLayers.size());
     instanceInfo.ppEnabledLayerNames = m_instanceLayers.empty() ? nullptr : m_instanceLayers.data();
@@ -197,7 +202,15 @@ void VulkanRHI::SelectGPU()
 
 VulkanRHI::VulkanRHI()
 {
+
+#if defined(ZEN_MACOS)
+    if (!VulkanMacOSPlatform::VolkInitialize())
+    {
+        LOG_ERROR_AND_THROW("Failed to initialize volk!");
+    }
+#else
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
+#endif
 }
 
 void VulkanRHI::Init()

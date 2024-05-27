@@ -1,5 +1,8 @@
 #pragma once
 #include "Counter.h"
+#if defined(ZEN_MACOS)
+#    include <utility>
+#endif
 
 namespace zen
 {

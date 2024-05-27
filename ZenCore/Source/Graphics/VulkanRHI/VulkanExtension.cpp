@@ -2,7 +2,14 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
-#include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
+
+#if defined(ZEN_WIN32)
+#    include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
+#endif
+
+#if defined(ZEN_MACOS)
+#    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
+#endif
 
 namespace zen
 {
@@ -274,8 +281,12 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     //    // debug extensions - use debug utils by default
     //    enabledExtensions.emplace_back(
     //        MakeUnique<VulkanInstanceExtension>(VK_EXT_DEBUG_UTILS_EXTENSION_NAME));
-
+#if defined(ZEN_WIN32)
     VulkanWindowsPlatform::AddInstanceExtensions(enabledExtensions);
+#elif defined(ZEN_MACOS)
+    VulkanMacOSPlatform::AddInstanceExtensions(enabledExtensions);
+#endif
+
 
     FlagExtensionSupported(enabledExtensions,
                            VulkanInstanceExtension::GetSupportedInstanceExtensions());
@@ -316,6 +327,10 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
 #define ADD_ADVANCED_DEVICE_EXTENSION(EXTENSION_CLASS) \
     enabledExtensions.emplace_back(MakeUnique<EXTENSION_CLASS>(device));
+
+#if defined(ZEN_MACOS)
+    ADD_SIMPLE_DEVICE_EXTENSION("VK_KHR_portability_subset");
+#endif
 
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);

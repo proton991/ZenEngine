@@ -7,13 +7,13 @@ add_executable(SmartPtrTest
     SmartPtrTest/IntrusivePtrTests.cpp
     SmartPtrTest/RefCountPtrTests.cpp
 )
-add_executable(VulkanRHITest VulkanRHITest/VulkanRHITest.cpp)
+add_executable(VulkanRHIDemo VulkanRHIDemo/VulkanRHIDemo.cpp)
 
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
 target_link_libraries(CommonTest ZenCore gtest_main)
-target_link_libraries(VulkanRHITest ZenCore gtest_main)
+target_link_libraries(VulkanRHIDemo ZenCore)
 
 # Applications
 add_executable(HelloTriangle

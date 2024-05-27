@@ -25,8 +25,12 @@ add_subdirectory(ZenSamples)
 add_subdirectory(External)
 
 # Platform Definitions
-if(WIN32)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+  message(STATUS "Detected Windows platform")
   target_compile_definitions(ZenCore PUBLIC ZEN_WIN32)
-elseif (UNIX)
-  target_compile_definitions(ZenCore PUBLIC ZEN_LINUX)
-endif ()
+endif()
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+  message(STATUS "Detected MacOS platform")
+  target_compile_definitions(ZenCore PUBLIC ZEN_MACOS)
+endif()

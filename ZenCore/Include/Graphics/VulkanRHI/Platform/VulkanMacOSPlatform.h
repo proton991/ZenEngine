@@ -1,19 +1,20 @@
 #pragma once
-#if defined(ZEN_WIN32)
+#if defined(ZEN_MACOS)
 
 #    include <vector>
 #    include "Common/UniquePtr.h"
-#    define VK_USE_PLATFORM_WIN32_KHR
+#    define VK_USE_PLATFORM_MACOS_MVK
 
 namespace zen
 {
 class VulkanInstanceExtension;
 class InstanceExtensionArray;
 
-class VulkanWindowsPlatform
+class VulkanMacOSPlatform
 {
 public:
     static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
+    static bool VolkInitialize();
 };
 } // namespace zen
 

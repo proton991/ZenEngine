@@ -51,6 +51,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/RHIDefs.h
 
     Include/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h
+    Include/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h
     Include/Graphics/VulkanRHI/VulkanExtension.h
     Include/Graphics/VulkanRHI/VulkanDevice.h
     Include/Graphics/VulkanRHI/VulkanHeaders.h
@@ -106,6 +107,7 @@ set(ZEN_CORE_SOURCES
     Source/Systems/Camera.cpp
 
     Source/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.cpp
+    Source/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.cpp
     Source/Graphics/VulkanRHI/VulkanExtension.cpp
     Source/Graphics/VulkanRHI/VulkanDevice.cpp
     Source/Graphics/VulkanRHI/VulkanContext.cpp
