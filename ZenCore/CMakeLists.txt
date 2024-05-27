@@ -46,6 +46,18 @@ set(ZEN_CORE_HEADERS
 
     Include/Systems/Camera.h
 
+    Include/Graphics/RHI/DynamicRHI.h
+    Include/Graphics/RHI/RHIResource.h
+    Include/Graphics/RHI/RHIDefs.h
+
+    Include/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h
+    Include/Graphics/VulkanRHI/VulkanExtension.h
+    Include/Graphics/VulkanRHI/VulkanDevice.h
+    Include/Graphics/VulkanRHI/VulkanHeaders.h
+    Include/Graphics/VulkanRHI/VulkanRHI.h
+    Include/Graphics/VulkanRHI/VulkanCommon.h
+    Include/Graphics/VulkanRHI/VulkanQueue.h
+
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
     Include/Graphics/Val/CommandPool.h
@@ -76,7 +88,7 @@ set(ZEN_CORE_HEADERS
     Include/Platform/InputController.h
     Include/Platform/NativeWindow.h
     Include/Platform/Timer.h
-    )
+)
 
 set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
@@ -92,6 +104,12 @@ set(ZEN_CORE_SOURCES
     Source/SceneGraph/Transform.cpp
 
     Source/Systems/Camera.cpp
+
+    Source/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.cpp
+    Source/Graphics/VulkanRHI/VulkanExtension.cpp
+    Source/Graphics/VulkanRHI/VulkanDevice.cpp
+    Source/Graphics/VulkanRHI/VulkanContext.cpp
+    Source/Graphics/VulkanRHI/VulkanQueue.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp
@@ -119,7 +137,7 @@ set(ZEN_CORE_SOURCES
     Source/Platform/InputController.cpp
 
     Source/vk_mem_alloc.cpp
-    )
+)
 
 add_library(ZenCore)
 target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
@@ -127,7 +145,7 @@ target_compile_definitions(ZenCore PUBLIC ZEN_DEBUG)
 target_include_directories(ZenCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Include
     ${VULKAN_INCLUDE_DIR}
-    )
+)
 
 target_link_libraries(ZenCore PUBLIC
     glfw
@@ -139,7 +157,7 @@ target_link_libraries(ZenCore PUBLIC
     span
     stb
     tinygltf
-    )
+)
 
 ############################################################
 #                    Build Shaders                         #
@@ -150,19 +168,19 @@ file(GLOB_RECURSE ZEN_SHADER_FILES
     "${SHADER_SRC_PATH}/*.frag"
     "${SHADER_SRC_PATH}/*.vert"
     "${SHADER_SRC_PATH}/*.comp"
-    )
+)
 
 message(STATUS "Spv Shader path: ${SHADER_SPV_PATH}")
 
 foreach (GLSL ${ZEN_SHADER_FILES})
-  get_filename_component(FILE_NAME ${GLSL} NAME)
-  set(SPIRV "${SHADER_SPV_PATH}/${FILE_NAME}.spv")
-  message(STATUS "Compiling shader ${GLSL} -> ${SPIRV}")
-  add_custom_command(
-      OUTPUT ${SPIRV}
-      COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V ${GLSL} -o ${SPIRV}
-      DEPENDS ${GLSL})
-  list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+    get_filename_component(FILE_NAME ${GLSL} NAME)
+    set(SPIRV "${SHADER_SPV_PATH}/${FILE_NAME}.spv")
+    message(STATUS "Compiling shader ${GLSL} -> ${SPIRV}")
+    add_custom_command(
+        OUTPUT ${SPIRV}
+        COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V ${GLSL} -o ${SPIRV}
+        DEPENDS ${GLSL})
+    list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach (GLSL)
 
 add_custom_target(
@@ -182,7 +200,7 @@ add_custom_target(
 
 add_dependencies(ZenCore SpvShaders)
 if (WIN32)
-  target_compile_definitions(ZenCore PUBLIC NOMINMAX)
+    target_compile_definitions(ZenCore PUBLIC NOMINMAX)
 endif ()
 target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")
 
