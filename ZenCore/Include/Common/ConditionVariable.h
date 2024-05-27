@@ -17,11 +17,19 @@ namespace zen
 class ConditionVariable
 {
 public:
-#ifdef ZEN_WIN32
+#if defined(ZEN_WIN32)
     typedef CONDITION_VARIABLE ConditionVariableData;
-    ConditionVariable() : m_osConVar() { InitializeConditionVariable(&m_osConVar); }
+     ConditionVariable() : m_osConVar() { InitializeConditionVariable(&m_osConVar); }
     ~ConditionVariable() {}
 #endif
+
+#if defined(ZEN_MACOS)
+    typedef pthread_cond_t ConditionVariableData;
+
+     ConditionVariable() { pthread_cond_init(&m_osConVar, NULL); }
+    ~ConditionVariable() { pthread_cond_destroy(&m_osConVar); }
+#endif
+
     template <class Predicate>
     void Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds = INF_TIME);
 
@@ -37,7 +45,7 @@ private:
 };
 
 // Win32 Implementation
-#ifdef ZEN_WIN32
+#if defined(ZEN_WIN32)
 inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
 {
     if (pMutex != nullptr)
@@ -56,4 +64,33 @@ void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t millis
 }
 #endif
 
+#if defined(ZEN_MACOS)
+inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
+{
+    if (pMutex != nullptr)
+    {
+        if (milliseconds == INF_TIME) { pthread_cond_wait(&m_osConVar, pMutex->GetMutexData()); }
+        else
+        {
+            auto     now     = std::chrono::system_clock::now();
+            auto     timeout = now + std::chrono::milliseconds(milliseconds);
+            timespec ts;
+            ts.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout.time_since_epoch())
+                            .count();
+            ts.tv_nsec = (timeout.time_since_epoch().count() % 1000000000) * 1000;
+
+            pthread_cond_timedwait(&m_osConVar, pMutex->GetMutexData(), &ts);
+        }
+    }
+}
+inline void ConditionVariable::NotifyOne() { pthread_cond_signal(&m_osConVar); }
+
+inline void ConditionVariable::NotifyAll() { pthread_cond_broadcast(&m_osConVar); }
+
+template <class Predicate>
+void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
+{
+    while (!predicate()) { Wait(pMutex, milliseconds); }
+}
+#endif
 } // namespace zen

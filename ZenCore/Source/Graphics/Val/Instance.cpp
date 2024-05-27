@@ -1,5 +1,8 @@
 #include "Graphics/Val/Instance.h"
 #include "Common/Errors.h"
+#if defined(ZEN_MACOS)
+#    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
+#endif
 #include <array>
 
 namespace zen::val
@@ -60,7 +63,15 @@ Instance::~Instance()
 
 Instance::Instance(const Instance::CreateInfo& CI)
 {
+#if defined(ZEN_MACOS)
+    if (!VulkanMacOSPlatform::VolkInitialize())
+    {
+        LOG_ERROR_AND_THROW("Failed to initialize volk!");
+    }
+#else
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
+#endif
+    // if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
     uint32_t layerCount = 0;
     CHECK_VK_ERROR_AND_THROW(vkEnumerateInstanceLayerProperties(&layerCount, nullptr),
                              "Failed to enumerate layer count")
@@ -98,7 +109,9 @@ Instance::Instance(const Instance::CreateInfo& CI)
         enabledExtensions.push_back(VK_MVK_IOS_SURFACE_EXTENSION_NAME);
 #endif
 #if defined(VK_USE_PLATFORM_MACOS_MVK)
-        enabledExtensions.push_back(VK_MVK_MACOS_SURFACE_EXTENSION_NAME);
+        enabledExtensions.push_back("VK_EXT_metal_surface");
+        enabledExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+
 #endif
     };
     if (IsExtensionSupported(m_supportedExtensions,
@@ -230,11 +243,13 @@ Instance::Instance(const Instance::CreateInfo& CI)
     appInfo.engineVersion =
         1000; // Developer-supplied version number of the engine used to create the application.
     appInfo.apiVersion = apiVersion;
-
+    enabledExtensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
     VkInstanceCreateInfo vkInstanceCI{};
+#if defined(ZEN_MACOS)
+    vkInstanceCI.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
     vkInstanceCI.sType                 = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     vkInstanceCI.pNext                 = nullptr; // Pointer to an extension-specific structure.
-    vkInstanceCI.flags                 = 0;
     vkInstanceCI.pApplicationInfo      = &appInfo;
     vkInstanceCI.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
     vkInstanceCI.ppEnabledExtensionNames =

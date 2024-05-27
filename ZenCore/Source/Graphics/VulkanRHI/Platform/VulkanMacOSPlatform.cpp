@@ -10,8 +10,7 @@ void VulkanMacOSPlatform::AddInstanceExtensions(
 {
     extensions.emplace_back(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME));
-    extensions.emplace_back(
-        MakeUnique<VulkanInstanceExtension>(VK_MVK_MACOS_SURFACE_EXTENSION_NAME));
+    extensions.emplace_back(MakeUnique<VulkanInstanceExtension>("VK_EXT_metal_surface"));
     extensions.emplace_back(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }

@@ -67,6 +67,10 @@ Device::Device(const Device::CreateInfo& CI)
     descriptorIndexingFeatures.descriptorBindingStorageTexelBufferUpdateAfterBind = true;
     m_enabledExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 
+#if defined(ZEN_MACOS)
+    m_enabledExtensions.push_back("VK_KHR_portability_subset");
+#endif
+
     if (CI.enableRaytracing)
     {
         auto asFeature =
