@@ -7,10 +7,12 @@ set(ZEN_CORE_HEADERS
     Include/Common/HashMap.h
     Include/Common/Helpers.h
     Include/Common/Math.h
-    Include/Common/MemAlloc.h
+    Include/Common/Memory.h
     Include/Common/Mutex.h
+    Include/Common/SpinLock.h
     Include/Common/ConditionVariable.h
     Include/Common/ObjectBase.h
+    Include/Common/PagedAllocator.h
     Include/Common/Queue.h
     Include/Common/SmallVector.h
     Include/Common/ThreadPool.h
@@ -50,6 +52,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/RHIResource.h
     Include/Graphics/RHI/RHIDefs.h
 
+    Include/Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h
     Include/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h
     Include/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h
     Include/Graphics/VulkanRHI/VulkanExtension.h
@@ -58,6 +61,8 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanRHI.h
     Include/Graphics/VulkanRHI/VulkanCommon.h
     Include/Graphics/VulkanRHI/VulkanQueue.h
+    Include/Graphics/VulkanRHI/VulkanSwapchain.h
+    Include/Graphics/VulkanRHI/VulkanCommands.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -112,6 +117,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanDevice.cpp
     Source/Graphics/VulkanRHI/VulkanContext.cpp
     Source/Graphics/VulkanRHI/VulkanQueue.cpp
+    Source/Graphics/VulkanRHI/VulkanSwapchain.cpp
+    Source/Graphics/VulkanRHI/VulkanCommands.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp

@@ -1,6 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
 namespace zen
@@ -213,15 +214,26 @@ VulkanRHI::VulkanRHI()
 #endif
 }
 
+VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
+{
+    return m_device->GetPhysicalDeviceHandle();
+}
+
+VkDevice VulkanRHI::GetLogicalDevice() const { return m_device->GetVkHandle(); }
+
 void VulkanRHI::Init()
 {
     CreateInstance();
     SelectGPU();
     m_device->Init();
+
+    m_cmdBufferManager = new VulkanCommandBufferManager(m_device);
 }
 
 void VulkanRHI::Destroy()
 {
+    delete m_cmdBufferManager;
+
     m_device->Destroy();
     delete m_device;
     // destroy debug utils messenger

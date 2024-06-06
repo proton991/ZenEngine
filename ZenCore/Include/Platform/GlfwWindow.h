@@ -40,6 +40,8 @@ public:
         m_onResize = std::move(callback);
     }
 
+    GLFWwindow* GetHandle() const { return m_handle; }
+
 private:
     void SetupWindowCallbacks();
     bool CenterWindow();

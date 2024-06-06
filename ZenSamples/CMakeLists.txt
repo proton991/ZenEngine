@@ -1,6 +1,12 @@
 add_executable(ZenCoreTest ZenCoreTest/main.cpp)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
-add_executable(CommonTest CommonTest/SmallVectorTests.cpp)
+add_executable(CommonTest
+    CommonTest/SmallVectorTests.cpp
+    CommonTest/MemoryTests.cpp
+    CommonTest/LockTests.cpp
+    CommonTest/PagedAllocatorTest.h
+    CommonTest/PagedAllocatorTest.cpp
+)
 add_executable(SmartPtrTest
     SmartPtrTest/SharedPtrTests.cpp
     SmartPtrTest/UniquePtrTests.cpp
