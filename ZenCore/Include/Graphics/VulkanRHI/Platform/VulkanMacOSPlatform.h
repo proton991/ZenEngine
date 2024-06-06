@@ -26,12 +26,13 @@ class VulkanMacOSPlatform
 public:
     static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static bool VolkInitialize();
-
     static SurfaceHandle CreateSurface(VkInstance instance, void* windowData);
 
     static void DestroySurface(VkInstance instance, SurfaceHandle surfaceHandle);
 };
+
+typedef VulkanMacOSPlatform VulkanPlatform;
+typedef MacOSWindowData     WindowData;
 } // namespace zen
 
 #endif

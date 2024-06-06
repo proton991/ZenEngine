@@ -203,15 +203,7 @@ void VulkanRHI::SelectGPU()
 
 VulkanRHI::VulkanRHI()
 {
-
-#if defined(ZEN_MACOS)
-    if (!VulkanMacOSPlatform::VolkInitialize())
-    {
-        LOG_ERROR_AND_THROW("Failed to initialize volk!");
-    }
-#else
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
-#endif
 }
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const

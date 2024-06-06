@@ -63,15 +63,6 @@ Instance::~Instance()
 
 Instance::Instance(const Instance::CreateInfo& CI)
 {
-#if defined(ZEN_MACOS)
-    if (!VulkanMacOSPlatform::VolkInitialize())
-    {
-        LOG_ERROR_AND_THROW("Failed to initialize volk!");
-    }
-#else
-    if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
-#endif
-    // if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
     uint32_t layerCount = 0;
     CHECK_VK_ERROR_AND_THROW(vkEnumerateInstanceLayerProperties(&layerCount, nullptr),
                              "Failed to enumerate layer count")

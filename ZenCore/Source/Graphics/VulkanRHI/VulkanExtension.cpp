@@ -274,19 +274,8 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     SET_INSTANCE_EXTENSION_FLAG(hasGetPhysicalDeviceProperties);
     ADD_INSTANCE_EXTENSION(VK_KHR_SURFACE_EXTENSION_NAME);
     ADD_INSTANCE_EXTENSION(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    //    enabledExtensions.emplace_back(MakeUnique<VulkanInstanceExtension>(
-    //        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME));
-    //    enabledExtensions.emplace_back(
-    //        MakeUnique<VulkanInstanceExtension>(VK_KHR_SURFACE_EXTENSION_NAME));
-    //    // debug extensions - use debug utils by default
-    //    enabledExtensions.emplace_back(
-    //        MakeUnique<VulkanInstanceExtension>(VK_EXT_DEBUG_UTILS_EXTENSION_NAME));
-#if defined(ZEN_WIN32)
-    VulkanWindowsPlatform::AddInstanceExtensions(enabledExtensions);
-#elif defined(ZEN_MACOS)
-    VulkanMacOSPlatform::AddInstanceExtensions(enabledExtensions);
-#endif
 
+    VulkanPlatform::AddInstanceExtensions(enabledExtensions);
 
     FlagExtensionSupported(enabledExtensions,
                            VulkanInstanceExtension::GetSupportedInstanceExtensions());

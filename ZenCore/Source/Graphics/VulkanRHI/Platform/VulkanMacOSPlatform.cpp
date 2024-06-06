@@ -15,15 +15,6 @@ void VulkanMacOSPlatform::AddInstanceExtensions(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 
-bool VulkanMacOSPlatform::VolkInitialize()
-{
-    void* module = dlopen("/usr/local/lib/libvulkan.dylib", RTLD_NOW | RTLD_LOCAL);
-    if (!module) { return false; }
-    auto handle = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
-    volkInitializeCustom(handle);
-    return true;
-}
-
 SurfaceHandle VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
 {
     MacOSWindowData* windowData    = static_cast<MacOSWindowData*>(data);

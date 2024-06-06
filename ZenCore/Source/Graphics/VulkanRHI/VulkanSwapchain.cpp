@@ -164,7 +164,7 @@ SwapchainHandle VulkanRHI::CreateSwapchain(SurfaceHandle surfaceHandle, bool ena
 }
 
 
-Status VulkanRHI::ResizeSwapchain(SwapchainHandle swapchainHandle) {}
+Status VulkanRHI::ResizeSwapchain(SwapchainHandle swapchainHandle) { return Status::eSuccess; }
 
 void VulkanRHI::DestroySwapchain(SwapchainHandle swapchainHandle)
 {

@@ -9,15 +9,15 @@ int main(int argc, char** argv)
     vkRHI.Init();
     platform::WindowConfig windowConfig;
 
-    auto*           window = new platform::GlfwWindowImpl(windowConfig);
-    MacOSWindowData data{window->GetHandle(), windowConfig.width, windowConfig.height};
+    auto*      window = new platform::GlfwWindowImpl(windowConfig);
+    WindowData data{window->GetHandle(), windowConfig.width, windowConfig.height};
 
-    SurfaceHandle   surfaceHandle = VulkanMacOSPlatform::CreateSurface(vkRHI.GetInstance(), &data);
+    SurfaceHandle   surfaceHandle   = VulkanPlatform::CreateSurface(vkRHI.GetInstance(), &data);
     SwapchainHandle swapchainHandle = vkRHI.CreateSwapchain(surfaceHandle, true);
 
     while (!window->ShouldClose()) { window->Update(); }
 
     vkRHI.DestroySwapchain(swapchainHandle);
-    VulkanMacOSPlatform::DestroySurface(vkRHI.GetInstance(), surfaceHandle);
+    VulkanPlatform::DestroySurface(vkRHI.GetInstance(), surfaceHandle);
     vkRHI.Destroy();
 }
