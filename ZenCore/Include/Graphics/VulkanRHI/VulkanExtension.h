@@ -3,7 +3,7 @@
 #include "Common/UniquePtr.h"
 #include <string>
 
-namespace zen
+namespace zen::rhi
 {
 class VulkanDevice;
 
@@ -81,6 +81,8 @@ public:
         VulkanExtension(extensionName, enableMode), m_device(device)
     {}
 
+    virtual ~VulkanDeviceExtension() = default;
+
     static std::vector<VkExtensionProperties> GetSupportedExtensions(VkPhysicalDevice gpu);
 
     static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* device);
@@ -106,4 +108,4 @@ protected:
     VulkanDevice* m_device{nullptr};
 };
 
-} // namespace zen
+} // namespace zen::rhi

@@ -5,7 +5,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
 
-namespace zen
+namespace zen::rhi
 {
 static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
 {
@@ -176,4 +176,4 @@ void VulkanRHI::DestroySwapchain(SwapchainHandle swapchainHandle)
 }
 
 
-} // namespace zen
+} // namespace zen::rhi

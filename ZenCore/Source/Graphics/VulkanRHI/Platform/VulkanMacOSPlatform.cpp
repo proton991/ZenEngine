@@ -3,7 +3,7 @@
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 #    include "Graphics/VulkanRHI/VulkanExtension.h"
 
-namespace zen
+namespace zen::rhi
 {
 void VulkanMacOSPlatform::AddInstanceExtensions(
     std::vector<UniquePtr<VulkanInstanceExtension>>& extensions)
@@ -35,6 +35,6 @@ void VulkanMacOSPlatform::DestroySurface(VkInstance instance, SurfaceHandle surf
         vkDestroySurfaceKHR(instance, vulkanSurface->surface, nullptr);
     }
 }
-} // namespace zen
+} // namespace zen::rhi
 
 #endif

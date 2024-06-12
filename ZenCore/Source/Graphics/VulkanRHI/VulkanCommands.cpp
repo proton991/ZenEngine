@@ -3,7 +3,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 
-namespace zen
+namespace zen::rhi
 {
 VkCommandBuffer VulkanCommandBufferManager::CreateCommandBuffer(VkCommandPool        vkCmdPool,
                                                                 VkCommandBufferLevel level) const
@@ -94,4 +94,4 @@ CommandBufferHandle VulkanRHI::GetOrCreateCommandBuffer(CommandPoolHandle       
     return CommandBufferHandle(vkCmdBuffer);
 }
 
-} // namespace zen
+} // namespace zen::rhi

@@ -4,7 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 
-namespace zen
+namespace zen::rhi
 {
 VulkanDevice::VulkanDevice(VulkanRHI* RHI, VkPhysicalDevice gpu) :
     m_RHI(RHI), m_device(VK_NULL_HANDLE), m_gpu(gpu)
@@ -40,6 +40,8 @@ void VulkanDevice::Init()
 {
     // query base features
     vkGetPhysicalDeviceFeatures(m_gpu, &m_physicalDeviceFeatures);
+    // query gpu properties
+    vkGetPhysicalDeviceProperties(m_gpu, &m_physicalDeviceProperties);
     // query queue properties
     uint32_t count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(m_gpu, &count, nullptr);
@@ -198,4 +200,4 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char*
 }
 
 void VulkanDevice::Destroy() { vkDestroyDevice(m_device, nullptr); }
-} // namespace zen
+} // namespace zen::rhi

@@ -13,7 +13,7 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-namespace zen
+namespace zen::rhi
 {
 class VulkanDevice;
 class VulkanCommandBufferManager;
@@ -52,8 +52,6 @@ public:
     CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle  cmdPoolHandle,
                                                  CommandBufferLevel level) final;
 
-    RHISamplerPtr CreateSampler(const RHISamplerSpec& samplerSpec) final { return nullptr; };
-
     InstanceExtensionFlags& GetInstanceExtensionFlags() { return m_instanceExtensionFlags; }
 
 protected:
@@ -78,4 +76,4 @@ private:
 
     VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
 };
-} // namespace zen
+} // namespace zen::rhi

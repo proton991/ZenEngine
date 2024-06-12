@@ -1,8 +1,8 @@
 #pragma once
 
 #define ZEN_RHI_SWAPCHAIN_IMAGE_COUNT 3
-#include <functional>
-namespace zen
+
+namespace zen::rhi
 {
 enum class Status : uint32_t
 {
@@ -18,22 +18,8 @@ public:
 
     size_t value = 0;
 };
-
-} // namespace zen
-
-namespace std
-{
-template <> struct hash<zen::Handle>
-{
-    size_t operator()(const zen::Handle& handle) const noexcept
-    {
-        return std::hash<size_t>{}(handle.value);
-    }
-};
-} // namespace std
-
 #define RHI_DEFINE_HANDLE(m_name)                                                           \
-    struct m_name##Handle : public zen::Handle                                              \
+    struct m_name##Handle : public Handle                                                   \
     {                                                                                       \
         explicit operator bool() const { return value != 0; }                               \
                                                                                             \
@@ -55,26 +41,41 @@ template <> struct hash<zen::Handle>
         explicit m_name##Handle(void* ptr) : Handle((size_t)ptr) {}                         \
         m_name##Handle() = default;                                                         \
     };
+} // namespace zen::rhi
 
-#define HASH_DEFINE(m_name)                                                 \
-    namespace std                                                           \
-    {                                                                       \
-    template <> struct hash<zen::m_name##Handle>                            \
-    {                                                                       \
-        size_t operator()(const zen::m_name##Handle& handle) const noexcept \
-        {                                                                   \
-            return std::hash<size_t>{}(handle.value);                       \
-        }                                                                   \
-    };                                                                      \
+namespace std
+{
+template <> struct hash<zen::rhi::Handle>
+{
+    size_t operator()(const zen::rhi::Handle& handle) const noexcept
+    {
+        return std::hash<size_t>{}(handle.value);
+    }
+};
+} // namespace std
+
+
+
+#define HASH_DEFINE(m_name)                                                      \
+    namespace std                                                                \
+    {                                                                            \
+    template <> struct hash<zen::rhi::m_name##Handle>                            \
+    {                                                                            \
+        size_t operator()(const zen::rhi::m_name##Handle& handle) const noexcept \
+        {                                                                        \
+            return std::hash<size_t>{}(handle.value);                            \
+        }                                                                        \
+    };                                                                           \
     }
 
-namespace zen
+namespace zen::rhi
 {
 RHI_DEFINE_HANDLE(Surface);
 RHI_DEFINE_HANDLE(Swapchain);
 RHI_DEFINE_HANDLE(CommandPool);
 RHI_DEFINE_HANDLE(CommandBuffer);
-} // namespace zen
+RHI_DEFINE_HANDLE(RawShader);
+} // namespace zen::rhi
 
 HASH_DEFINE(CommandPool);
 HASH_DEFINE(CommandBuffer);

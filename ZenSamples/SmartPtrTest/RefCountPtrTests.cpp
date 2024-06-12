@@ -4,7 +4,7 @@
 
 using namespace zen;
 
-class DummyResource : public RHIResource
+class DummyResource : public rhi::RHIResource
 {};
 
 class DummyResourceChild : public DummyResource
@@ -12,7 +12,7 @@ class DummyResourceChild : public DummyResource
 
 TEST(RefCountPtr, basic)
 {
-    RefCountPtr<DummyResource> res1 = new DummyResource();
+    RefCountPtr<DummyResource> res1 = MakeRefCountPtr<DummyResource>();
 
     EXPECT_EQ(res1.GetRefCount(), 1);
 
@@ -22,14 +22,14 @@ TEST(RefCountPtr, basic)
     RefCountPtr<DummyResource> res3 = std::move(res2);
     EXPECT_EQ(res3.GetRefCount(), 2);
 
-    RefCountPtr<DummyResourceChild> res4 = new DummyResourceChild();
+    RefCountPtr<DummyResourceChild> res4 = MakeRefCountPtr<DummyResourceChild>();
     RefCountPtr<DummyResource>      res5(res4);
     EXPECT_EQ(res5.GetRefCount(), 2);
 }
 
 TEST(RefCountPtr, move)
 {
-    RefCountPtr<DummyResource> res1 = new DummyResource();
+    RefCountPtr<DummyResource> res1 = MakeRefCountPtr<DummyResource>();
 
     auto res2     = res1;
     auto movedRes = std::move(res2);

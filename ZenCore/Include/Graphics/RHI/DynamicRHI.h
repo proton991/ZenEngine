@@ -1,8 +1,7 @@
 #pragma once
-#include "RHIResource.h"
 #include "RHIDefs.h"
 
-namespace zen
+namespace zen::rhi
 {
 enum class GraphicsAPIType
 {
@@ -43,7 +42,5 @@ public:
 
     virtual CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle  cmdPoolHandle,
                                                          CommandBufferLevel level) = 0;
-
-    virtual RHISamplerPtr CreateSampler(const RHISamplerSpec& samplerSpec) = 0;
 };
-} // namespace zen
+} // namespace zen::rhi

@@ -3,7 +3,7 @@
 #include "Common/HashMap.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 
-namespace zen
+namespace zen::rhi
 {
 struct VulkanCommandPool
 {
@@ -31,4 +31,4 @@ private:
     HashMap<CommandPoolHandle, uint32_t> m_activePrimaryCmdBufferCount{};
     HashMap<CommandPoolHandle, uint32_t> m_activeSecondaryCmdBufferCount{};
 };
-} // namespace zen
+} // namespace zen::rhi

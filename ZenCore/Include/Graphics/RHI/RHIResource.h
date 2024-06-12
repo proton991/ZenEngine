@@ -1,148 +1,24 @@
 #pragma once
 #include <atomic>
-#include <cassert>
+#include "Common/RefCountPtr.h"
+#include "RHICommon.h"
+#include "Common/Errors.h"
 
-namespace zen
+namespace zen::rhi
 {
-enum class RHIResourceType
+enum class ResourceType
 {
     eNone,
     eSampler,
-    Count
-};
-
-/**
- * A smart pointer to an object which implements AddRef/Release.
- */
-template <class T> class RefCountPtr
-{
-public:
-    RefCountPtr() : m_rawPtr(nullptr) {}
-
-    RefCountPtr(T* ptr, bool addRef = true)
-    {
-        m_rawPtr = ptr;
-        if (ptr && addRef) { m_rawPtr->AddRef(); }
-    }
-
-    RefCountPtr(const RefCountPtr& other)
-    {
-        m_rawPtr = other.m_rawPtr;
-        if (m_rawPtr) { m_rawPtr->AddRef(); }
-    }
-
-    T* Get() const { return m_rawPtr; }
-
-    template <class U> RefCountPtr(const RefCountPtr<U>& other)
-    {
-        m_rawPtr = static_cast<T*>(other.Get());
-        if (m_rawPtr) { m_rawPtr->AddRef(); }
-    }
-
-    RefCountPtr(RefCountPtr&& other)
-    {
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = nullptr;
-    }
-
-    template <class U> RefCountPtr(RefCountPtr<U>&& other)
-    {
-        m_rawPtr       = static_cast<T*>(other.Get());
-        other.m_rawPtr = nullptr;
-    }
-
-    ~RefCountPtr()
-    {
-        if (m_rawPtr) { m_rawPtr->Release(); }
-    }
-
-    RefCountPtr& operator=(T* ptr)
-    {
-        if (m_rawPtr != ptr)
-        {
-            T* oldPtr = m_rawPtr;
-            m_rawPtr  = ptr;
-            if (m_rawPtr) { m_rawPtr->AddRef(); }
-            if (oldPtr) { oldPtr->Release(); }
-        }
-
-        return *this;
-    }
-
-    RefCountPtr& operator=(const RefCountPtr& other) // NOLINT(bugprone-unhandled-self-assignment)
-    {
-        if (m_rawPtr != other.m_rawPtr) { RefCountPtr(other).Swap(*this); }
-    }
-
-    template <class U> RefCountPtr& operator=(const RefCountPtr<U>& other) noexcept
-    {
-        RefCountPtr(other).Swap(*this);
-        return *this;
-    }
-
-    RefCountPtr& operator=(RefCountPtr&& other) noexcept
-    {
-        if (this != &other)
-        {
-            T* oldPtr      = m_rawPtr;
-            m_rawPtr       = other.m_rawPtr;
-            other.m_rawPtr = nullptr;
-            if (oldPtr) { oldPtr->Release(); }
-        }
-        return *this;
-    }
-
-    template <class U> RefCountPtr& operator=(RefCountPtr<U>&& other) noexcept
-    {
-        T* oldPtr      = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = nullptr;
-        if (oldPtr) { oldPtr->Release(); }
-        return *this;
-    }
-
-    T* operator->() const { return m_rawPtr; }
-
-    operator T*() const { return m_rawPtr; }
-
-    T** operator&() // NOLINT(google-runtime-operator)
-    {
-        return &m_rawPtr;
-    }
-
-    uint32_t GetRefCount()
-    {
-        uint32_t count = 0;
-        if (m_rawPtr)
-        {
-            count = m_rawPtr->GetRefCount();
-            assert(count > 0);
-        }
-        return count;
-    }
-
-    void Swap(RefCountPtr&& other) noexcept
-    {
-        T* tmp         = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = tmp;
-    }
-
-    void Swap(RefCountPtr& other) noexcept
-    {
-        T* tmp         = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = tmp;
-    }
-
-private:
-    T* m_rawPtr;
+    eMax
 };
 
 class RHIResource
 {
 public:
-    explicit RHIResource(RHIResourceType resourceType) : m_resourceType(resourceType) {}
+    RHIResource() = default;
+
+    explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType) {}
 
     uint32_t AddRef()
     {
@@ -181,17 +57,66 @@ private:
         std::atomic_uint m_count{0};
     };
     mutable AtomicCounter m_counter;
-    RHIResourceType       m_resourceType;
+    ResourceType          m_resourceType{ResourceType::eMax};
 };
 
-struct RHISamplerSpec
-{};
-
-class RHISampler : public RHIResource
+class ShaderGroupSource : public RHIResource
 {
 public:
-    RHISampler() : RHIResource(RHIResourceType::eSampler) {}
-};
-using RHISamplerPtr = RefCountPtr<RHISampler>;
+    ShaderGroupSource() = default;
 
-} // namespace zen
+    void SetStageSource(ShaderStage stage, const std::string& source)
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        m_source[ToUnderlying(stage)] = source;
+    }
+
+    const std::string& GetStageSource(ShaderStage stage) const
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        return m_source[ToUnderlying(stage)];
+    }
+
+private:
+    ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
+    std::string    m_source[ToUnderlying(ShaderStage::eMax)];
+};
+
+class ShaderGroupSPIRV : public RHIResource
+{
+public:
+    ShaderGroupSPIRV() = default;
+
+    void SetStageSPIRV(ShaderStage stage, const std::vector<uint8_t>& source)
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        m_spirv[static_cast<uint32_t>(stage)] = source;
+    }
+
+    const std::vector<uint8_t>& GetStageSPIRV(ShaderStage stage) const
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        return m_spirv[ToUnderlying(stage)];
+    }
+
+    void SetStageCompileError(ShaderStage stage, const std::string& error)
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        m_compileErrors[ToUnderlying(stage)] = error;
+    }
+
+    const std::string& GetStageCompileError(ShaderStage stage) const
+    {
+        VERIFY_EXPR(stage < ShaderStage::eMax);
+        return m_compileErrors[ToUnderlying(stage)];
+    }
+
+private:
+    ShaderLanguage       m_shaderLanguage{ShaderLanguage::eGLSL};
+    std::vector<uint8_t> m_spirv[ToUnderlying(ShaderStage::eMax)];
+    std::string          m_compileErrors[ToUnderlying(ShaderStage::eMax)];
+};
+
+using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;
+using ShaderGroupSPIRVPtr  = RefCountPtr<ShaderGroupSPIRV>;
+} // namespace zen::rhi

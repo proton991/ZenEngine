@@ -10,17 +10,19 @@
 
 namespace zen
 {
-class VulkanInstanceExtension;
-class InstanceExtensionArray;
-
 struct MacOSWindowData
 {
     GLFWwindow* glfwWindow{nullptr};
     uint32_t    width{0};
     uint32_t    height{0};
 };
+typedef MacOSWindowData WindowData;
+} // namespace zen
 
-
+namespace zen::rhi
+{
+class VulkanInstanceExtension;
+class InstanceExtensionArray;
 class VulkanMacOSPlatform
 {
 public:
@@ -32,7 +34,6 @@ public:
 };
 
 typedef VulkanMacOSPlatform VulkanPlatform;
-typedef MacOSWindowData     WindowData;
-} // namespace zen
+} // namespace zen::rhi
 
 #endif

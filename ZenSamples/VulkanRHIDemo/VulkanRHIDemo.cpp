@@ -1,6 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 
 using namespace zen;
+using namespace zen::rhi;
 
 
 int main(int argc, char** argv)

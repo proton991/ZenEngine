@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanHeaders.h"
 
-namespace zen
+namespace zen::rhi
 {
 class VulkanDevice;
 
@@ -22,4 +22,4 @@ private:
     uint32_t      m_familyIndex;
     uint32_t      m_queueIndex;
 };
-} // namespace zen
+} // namespace zen::rhi

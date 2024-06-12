@@ -4,7 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
-namespace zen
+namespace zen::rhi
 {
 struct VulkanLayer
 {
@@ -233,4 +233,4 @@ void VulkanRHI::Destroy()
     // destroy instance
     vkDestroyInstance(m_instance, nullptr);
 }
-} // namespace zen
+} // namespace zen::rhi

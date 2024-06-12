@@ -3,10 +3,10 @@
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Common/SmallVector.h"
 
-namespace zen
+namespace zen::rhi
 {
 class VulkanRHI;
-class VulkanSurface;
+struct VulkanSurface;
 
 class VulkanSwapchain
 {
@@ -25,4 +25,4 @@ private:
     VkPresentModeKHR     m_presentMode{VK_PRESENT_MODE_IMMEDIATE_KHR};
     SmallVector<VkImage> m_swapchainImages;
 };
-} // namespace zen
+} // namespace zen::rhi

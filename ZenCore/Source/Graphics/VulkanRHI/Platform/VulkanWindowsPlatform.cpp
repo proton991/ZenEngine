@@ -4,7 +4,7 @@
 #    include "Graphics/VulkanRHI/VulkanExtension.h"
 #    include "Graphics/VulkanRHI/VulkanHeaders.h"
 
-namespace zen
+namespace zen::rhi
 {
 void VulkanWindowsPlatform::AddInstanceExtensions(
     std::vector<UniquePtr<VulkanInstanceExtension>>& extensions)
@@ -33,6 +33,6 @@ void VulkanWindowsPlatform::DestroySurface(VkInstance instance, SurfaceHandle su
         vkDestroySurfaceKHR(instance, vulkanSurface->surface, nullptr);
     }
 }
-} // namespace zen
+} // namespace zen::rhi
 
 #endif

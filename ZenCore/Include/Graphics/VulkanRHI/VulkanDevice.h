@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 
-namespace zen
+namespace zen::rhi
 {
 class VulkanRHI;
 class VulkanDeviceExtension;
@@ -53,6 +53,8 @@ private:
     VkDevice m_device{VK_NULL_HANDLE};
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};
+    // gpu properties
+    VkPhysicalDeviceProperties m_physicalDeviceProperties{};
 
     DeviceExtensionFlags m_extensionFlags{};
 
@@ -65,4 +67,4 @@ private:
     VulkanQueue* m_computeQueue{nullptr};
     VulkanQueue* m_transferQueue{nullptr};
 };
-} // namespace zen
+} // namespace zen::rhi

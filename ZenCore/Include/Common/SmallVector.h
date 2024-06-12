@@ -59,9 +59,13 @@ public:
 
     void operator=(const VectorView&) = delete;
 
-protected:
     VectorView() = default;
 
+    VectorView(const T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
+
+    VectorView(const std::vector<T>& vec) : m_ptr(vec.data()), m_size(vec.size()) {}
+
+protected:
     T*     m_ptr{nullptr};
     size_t m_size{0};
 };
