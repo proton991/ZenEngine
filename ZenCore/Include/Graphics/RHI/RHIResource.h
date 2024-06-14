@@ -3,6 +3,7 @@
 #include "Common/RefCountPtr.h"
 #include "RHICommon.h"
 #include "Common/Errors.h"
+#include "Common/BitField.h"
 
 namespace zen::rhi
 {
@@ -90,6 +91,7 @@ public:
     void SetStageSPIRV(ShaderStage stage, const std::vector<uint8_t>& source)
     {
         VERIFY_EXPR(stage < ShaderStage::eMax);
+        m_stageFlags.SetFlag(static_cast<ShaderStageFlagBits>(1 << ToUnderlying(stage)));
         m_spirv[static_cast<uint32_t>(stage)] = source;
     }
 
@@ -111,10 +113,20 @@ public:
         return m_compileErrors[ToUnderlying(stage)];
     }
 
+    bool HasShaderStage(ShaderStage stage) const
+    {
+        return m_stageFlags.HasFlag(static_cast<ShaderStageFlagBits>(1 << ToUnderlying(stage)));
+    }
+
 private:
-    ShaderLanguage       m_shaderLanguage{ShaderLanguage::eGLSL};
+    // shader flags
+    BitField<ShaderStageFlagBits> m_stageFlags;
+    // shader language
+    ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
+    // spirv code
     std::vector<uint8_t> m_spirv[ToUnderlying(ShaderStage::eMax)];
-    std::string          m_compileErrors[ToUnderlying(ShaderStage::eMax)];
+    // compile errors
+    std::string m_compileErrors[ToUnderlying(ShaderStage::eMax)];
 };
 
 using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;

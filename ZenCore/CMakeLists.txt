@@ -3,6 +3,7 @@ set(ZEN_CORE_HEADERS
     Include/AssetLib/GLTFLoader.h
 
     Include/Common/ArrayView.h
+    Include/Common/BitField.h
     Include/Common/Errors.h
     Include/Common/HashMap.h
     Include/Common/Helpers.h
@@ -166,6 +167,7 @@ target_link_libraries(ZenCore PUBLIC
     spdlog
     glm
     vma
+    spriv-reflect
     spirv-cross-glsl
     volk
     span

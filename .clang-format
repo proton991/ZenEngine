@@ -39,7 +39,7 @@ AlignConsecutiveAssignments: true
 
 
 # If true, aligns consecutive declarations.
-AlignConsecutiveDeclarations: true
+AlignConsecutiveDeclarations: false
 # true:
 # int         aaaa = 12;
 # float       b = 23;

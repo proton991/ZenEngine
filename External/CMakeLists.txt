@@ -34,6 +34,13 @@ add_subdirectory(spdlog)
 #add_library(spdlog INTERFACE)
 #target_include_directories(spdlog INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/spdlog/include)
 
+# spirv-reflect
+set(SPIRV_REFLECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/spirv-reflect")
+set(SPIRV_REFLECT_FILES
+    "${SPIRV_REFLECT_DIR}/spirv_reflect.c"
+    "${SPIRV_REFLECT_DIR}/spirv_reflect.h")
+add_library(spriv-reflect STATIC ${SPIRV_REFLECT_FILES})
+target_include_directories(spriv-reflect PUBLIC ${SPIRV_REFLECT_DIR})
 # spirv-cross
 add_subdirectory(spirv-cross)
 

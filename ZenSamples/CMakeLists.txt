@@ -14,12 +14,14 @@ add_executable(SmartPtrTest
     SmartPtrTest/RefCountPtrTests.cpp
 )
 add_executable(VulkanRHIDemo VulkanRHIDemo/VulkanRHIDemo.cpp)
+add_executable(ShaderUtilDemo VulkanRHIDemo/ShaderUtilDemo.cpp)
 
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
 target_link_libraries(CommonTest ZenCore gtest_main)
 target_link_libraries(VulkanRHIDemo ZenCore)
+target_link_libraries(ShaderUtilDemo ZenCore)
 
 # Applications
 add_executable(HelloTriangle
