@@ -329,6 +329,8 @@ inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSp
         ShaderStage stage = static_cast<ShaderStage>(i);
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
+            shaderGroupInfo.shaderStages.push_back(stage);
+            shaderGroupInfo.sprivCode.push_back(shaderGroupSpirv->GetStageSPIRV(stage));
             SpvReflectShaderModule module;
             std::vector<uint8_t> spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
             SpvReflectResult result =
@@ -374,6 +376,12 @@ inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSp
 inline void ShaderUtil::PrintShaderGroupInfo(const ShaderGroupInfo& sgInfo)
 {
     LOGI("======= Begin Printing ShaderGroupInfo =======")
+    std::string stagesStr;
+    for (const ShaderStage& stage : sgInfo.shaderStages)
+    {
+        stagesStr += ShaderStageToString(stage) + " ";
+    }
+    LOGI("Shader Stages: {}", stagesStr);
     LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name, sgInfo.pushConstants.size);
     LOGI("SRD Set Count={}", sgInfo.SRDs.size());
     for (const auto& setSRD : sgInfo.SRDs)

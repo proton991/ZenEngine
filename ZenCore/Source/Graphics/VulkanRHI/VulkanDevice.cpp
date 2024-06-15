@@ -69,6 +69,8 @@ void VulkanDevice::Init()
 
         VkPhysicalDeviceProperties2 physicalDeviceProperties2;
         InitVkStruct(physicalDeviceProperties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+        InitVkStruct(m_descriptorIndexingProperties,
+                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES);
         for (auto& extension : extensionArray)
         {
             if (extension->IsEnabledAndSupported())
@@ -76,6 +78,7 @@ void VulkanDevice::Init()
                 extension->BeforePhysicalDeviceProperties(physicalDeviceProperties2);
             }
         }
+        physicalDeviceProperties2.pNext = &m_descriptorIndexingProperties;
         vkGetPhysicalDeviceProperties2(m_gpu, &physicalDeviceProperties2);
         for (auto& extension : extensionArray)
         {
@@ -111,7 +114,7 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
          queueFamilyIndex++)
     {
         const auto& queueFamilyProp = m_queueFamilyProps[queueFamilyIndex];
-        bool        isValidQueue    = false;
+        bool isValidQueue           = false;
         if ((queueFamilyProp.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT)
         {
             if (graphicsQueueFamilyIndex == -1)

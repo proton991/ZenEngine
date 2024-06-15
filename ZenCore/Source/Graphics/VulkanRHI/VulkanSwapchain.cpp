@@ -108,7 +108,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI*     vkRHI,
                                  VkSwapchainKHR oldSwapchain)
 {
 
-    VkDevice         device  = vkRHI->GetLogicalDevice();
+    VkDevice         device  = vkRHI->GetVkDevice();
     VkPhysicalDevice gpu     = vkRHI->GetPhysicalDevice();
     VkSurfaceKHR     surface = vulkanSurface->surface;
 

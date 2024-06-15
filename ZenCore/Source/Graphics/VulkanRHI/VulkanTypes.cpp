@@ -46,4 +46,33 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(ShaderResourceType shaderR
     }
     return type;
 }
+
+VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage)
+{
+    switch (stage)
+    {
+        case ShaderStage::eVertex: return VK_SHADER_STAGE_VERTEX_BIT;
+        case ShaderStage::eTesselationConrol: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case ShaderStage::eTesselationEvaluation:
+            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case ShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case ShaderStage::eCompute: return VK_SHADER_STAGE_COMPUTE_BIT;
+        default: return VK_SHADER_STAGE_ALL;
+    }
+}
+
+VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
+    BitField<ShaderStageFlagBits> stageFlags)
+{
+    VkShaderStageFlags flags{};
+    for (uint32_t k = 0; k < ToUnderlying(ShaderStage::eMax); k++)
+    {
+        ShaderStage stage = static_cast<ShaderStage>(k);
+        if (stageFlags.HasFlag(ShaderStageToFlagBits(stage)))
+        {
+            flags |= ShaderStageToVkShaderStageFlagBits(stage);
+        }
+    }
+    return flags;
+}
 } // namespace zen::rhi

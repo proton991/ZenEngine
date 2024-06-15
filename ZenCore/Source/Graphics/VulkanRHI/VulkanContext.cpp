@@ -8,15 +8,15 @@ namespace zen::rhi
 {
 struct VulkanLayer
 {
-    VkLayerProperties                  layerProperties;
+    VkLayerProperties layerProperties;
     std::vector<VkExtensionProperties> layerExtensions;
 };
 
 VKAPI_ATTR VkBool32 VKAPI_CALL
-DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
+DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                            VkDebugUtilsMessageTypeFlagsEXT messageType,
                             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                            void*                                       pUserData)
+                            void* pUserData)
 {
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
@@ -53,7 +53,7 @@ void VulkanRHI::PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfo
 
 static std::vector<VulkanLayer> GetSupportedLayers()
 {
-    std::vector<VulkanLayer>       layers;
+    std::vector<VulkanLayer> layers;
     std::vector<VkLayerProperties> layerProperties;
 
     uint32_t count = 0;
@@ -186,7 +186,7 @@ void VulkanRHI::SelectGPU()
     VKCHECK(vkEnumeratePhysicalDevices(m_instance, &gpuCount, physicalDevices.data()));
     // select first discrete device
     uint32_t index = 0;
-    bool     found = false;
+    bool found     = false;
     for (uint32_t i = 0; i < physicalDevices.size(); i++)
     {
         VkPhysicalDeviceProperties deviceProperties{};
@@ -201,9 +201,13 @@ void VulkanRHI::SelectGPU()
     m_device = new VulkanDevice(this, physicalDevices[index]);
 }
 
-VulkanRHI::VulkanRHI()
+VulkanRHI::VulkanRHI() : m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false)
 {
+#if defined(ZEN_MACOS)
+    setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
+#endif
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
+    m_shaderAllocator.Init();
 }
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
@@ -211,7 +215,7 @@ VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
     return m_device->GetPhysicalDeviceHandle();
 }
 
-VkDevice VulkanRHI::GetLogicalDevice() const { return m_device->GetVkHandle(); }
+VkDevice VulkanRHI::GetVkDevice() const { return m_device->GetVkHandle(); }
 
 void VulkanRHI::Init()
 {

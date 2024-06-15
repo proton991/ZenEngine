@@ -10,4 +10,9 @@ namespace zen::rhi
  * @return Corresponding VkDescriptorType
  */
 VkDescriptorType ShaderResourceTypeToVkDescriptorType(ShaderResourceType shaderResourceType);
+
+VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage);
+
+VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
+    BitField<ShaderStageFlagBits> stageFlags);
 } // namespace zen::rhi

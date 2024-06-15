@@ -74,7 +74,7 @@ RHI_DEFINE_HANDLE(Surface);
 RHI_DEFINE_HANDLE(Swapchain);
 RHI_DEFINE_HANDLE(CommandPool);
 RHI_DEFINE_HANDLE(CommandBuffer);
-RHI_DEFINE_HANDLE(RawShader);
+RHI_DEFINE_HANDLE(Shader);
 } // namespace zen::rhi
 
 HASH_DEFINE(CommandPool);

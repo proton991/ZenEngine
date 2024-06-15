@@ -2,6 +2,7 @@
 #include <vector>
 #include "VulkanHeaders.h"
 #include "VulkanExtension.h"
+#include "Common/PagedAllocator.h"
 #include "Graphics/RHI/DynamicRHI.h"
 #if defined(ZEN_MACOS)
 #    include "Platform/VulkanMacOSPlatform.h"
@@ -17,11 +18,12 @@ namespace zen::rhi
 {
 class VulkanDevice;
 class VulkanCommandBufferManager;
+struct VulkanShader;
 
 class VulkanRHI : public DynamicRHI
 {
 public:
-     VulkanRHI();
+    VulkanRHI();
     ~VulkanRHI() override = default;
 
     void Init() override;
@@ -35,7 +37,7 @@ public:
 
     VkPhysicalDevice GetPhysicalDevice() const;
 
-    VkDevice GetLogicalDevice() const;
+    VkDevice GetVkDevice() const;
 
     SwapchainHandle CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync) final;
 
@@ -49,8 +51,12 @@ public:
 
     void DestroyCommandPool(CommandPoolHandle commandPoolHandle) final;
 
-    CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle  cmdPoolHandle,
+    CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle cmdPoolHandle,
                                                  CommandBufferLevel level) final;
+
+    ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
+
+    void DestroyShader(ShaderHandle shaderHandle) final;
 
     InstanceExtensionFlags& GetInstanceExtensionFlags() { return m_instanceExtensionFlags; }
 
@@ -64,7 +70,7 @@ private:
 
     void SelectGPU();
 
-    VkInstance               m_instance{VK_NULL_HANDLE};
+    VkInstance m_instance{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT m_messenger{VK_NULL_HANDLE};
 
     std::vector<const char*> m_instanceLayers;
@@ -75,5 +81,8 @@ private:
     VulkanDevice* m_device{nullptr};
 
     VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
+
+    // allocators for resrouces
+    PagedAllocator<VulkanShader> m_shaderAllocator;
 };
 } // namespace zen::rhi

@@ -44,4 +44,9 @@ int main(int argc, char** argv)
     ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
     LOGI("Parse finished");
     ShaderUtil::PrintShaderGroupInfo(shaderGroupInfo);
+
+    VulkanRHI vkRHI;
+    vkRHI.Init();
+    ShaderHandle shaderHdl = vkRHI.CreateShader(shaderGroupInfo);
+    vkRHI.DestroyShader(shaderHdl);
 }

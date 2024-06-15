@@ -1,4 +1,5 @@
 #pragma once
+#include "RHICommon.h"
 #include "RHIDefs.h"
 
 namespace zen::rhi
@@ -40,7 +41,11 @@ public:
 
     virtual void DestroyCommandPool(CommandPoolHandle commandPoolHandle) = 0;
 
-    virtual CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle  cmdPoolHandle,
+    virtual CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle cmdPoolHandle,
                                                          CommandBufferLevel level) = 0;
+
+    virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
+
+    virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
 };
 } // namespace zen::rhi

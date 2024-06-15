@@ -41,6 +41,8 @@ public:
 
     void SetObjectName(VkObjectType type, uint64_t handle, const char* name);
 
+    const auto& GetDescriptorIndexingProperties() const { return m_descriptorIndexingProperties; }
+
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
@@ -55,6 +57,8 @@ private:
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};
     // gpu properties
     VkPhysicalDeviceProperties m_physicalDeviceProperties{};
+    // descriptor indexing properties
+    VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties{};
 
     DeviceExtensionFlags m_extensionFlags{};
 

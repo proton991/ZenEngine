@@ -56,7 +56,7 @@ public:
         }
         m_allocsAvailable--;
         T* alloc = m_freePages[GetPageIndex()][GetSlotIndex()];
-        new (alloc) T(std::forward<Args...>(args...));
+        new (alloc) T(args...);
 
         if (m_threadSafe) { m_lock.Unlock(); }
         return alloc;
@@ -80,7 +80,7 @@ private:
     // configurations
     uint32_t m_pageSize{ZEN_DEFAULT_PAGESIZE};
     // thread safe
-    bool     m_threadSafe{false};
+    bool m_threadSafe{false};
     SpinLock m_lock;
     // page pool 2d array
     // pageIndex slot0 slot1 slot2 ... slot_(m_pageSize-1)

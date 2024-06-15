@@ -189,6 +189,8 @@ struct ShaderPushConstants
 // .vert .frag .compute together
 struct ShaderGroupInfo
 {
+    // TODO: store spirv code using some cache strategy, no-copy
+    std::vector<std::vector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
     // vertex input attribute
     std::vector<VertexInputAttribute> vertexInputAttributes;
