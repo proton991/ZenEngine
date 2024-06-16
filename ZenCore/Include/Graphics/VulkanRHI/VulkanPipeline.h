@@ -8,9 +8,14 @@ struct VulkanShader
 {
     VulkanShader() = default;
 
+    struct VertexInputInfo
+    {
+        SmallVector<VkVertexInputBindingDescription> vkBindings;
+        SmallVector<VkVertexInputAttributeDescription> vkAttributes;
+        VkPipelineVertexInputStateCreateInfo stateCI{};
+    } vertexInputInfo;
     std::vector<VkSpecializationMapEntry> entries{};
     VkSpecializationInfo specializationInfo{};
-    VkShaderStageFlags pushConstantStages{0};
     SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
     SmallVector<VkDescriptorSetLayout> descriptorSetLayouts;
     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};

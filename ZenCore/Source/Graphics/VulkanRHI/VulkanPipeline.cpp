@@ -6,9 +6,6 @@
 
 namespace zen::rhi
 {
-#include <vulkan/vulkan.h>
-#include <algorithm> // For std::min
-
 static uint32_t DecideDescriptorCount(
     VkDescriptorType type,
     uint32_t count,
@@ -130,7 +127,24 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
             vkCreateDescriptorSetLayout(GetVkDevice(), &layoutCI, nullptr, &descriptorSetLayout));
         shader->descriptorSetLayouts.push_back(descriptorSetLayout);
     }
-
+    // vertex input state
+    const auto vertexInputCount = sgInfo.vertexInputAttributes.size();
+    shader->vertexInputInfo.vkAttributes.resize(vertexInputCount);
+    // packed data for vertex inputs, only 1 binding
+    VkVertexInputBindingDescription vkBinding{};
+    vkBinding.binding   = 0;
+    vkBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    vkBinding.stride    = sgInfo.vertexBindingStride;
+    shader->vertexInputInfo.vkBindings.emplace_back(vkBinding);
+    // populate attributes
+    for (uint32_t i = 0; i < vertexInputCount; i++)
+    {
+        shader->vertexInputInfo.vkAttributes[i].binding  = sgInfo.vertexInputAttributes[i].binding;
+        shader->vertexInputInfo.vkAttributes[i].location = sgInfo.vertexInputAttributes[i].location;
+        shader->vertexInputInfo.vkAttributes[i].offset   = sgInfo.vertexInputAttributes[i].offset;
+        shader->vertexInputInfo.vkAttributes[i].format =
+            static_cast<VkFormat>(sgInfo.vertexInputAttributes[i].format);
+    }
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutCI;
     InitVkStruct(pipelineLayoutCI, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
