@@ -31,7 +31,7 @@ public:
 
 private:
     std::queue<T> m_q;
-    Mutex         m_mutex;
+    Mutex m_mutex;
 };
 
 template <class T> class Queue

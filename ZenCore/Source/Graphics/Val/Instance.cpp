@@ -8,10 +8,10 @@
 namespace zen::val
 {
 VKAPI_ATTR VkBool32 VKAPI_CALL
-DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
-                            VkDebugUtilsMessageTypeFlagsEXT             messageType,
+DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                            VkDebugUtilsMessageTypeFlagsEXT messageType,
                             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                            void*                                       pUserData)
+                            void* pUserData)
 {
     if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
@@ -284,7 +284,7 @@ Instance::Instance(const Instance::CreateInfo& CI)
     }
 }
 
-bool Instance::EnumerateInstanceExtensions(const char*                         layerName,
+bool Instance::EnumerateInstanceExtensions(const char* layerName,
                                            std::vector<VkExtensionProperties>& extensions)
 {
     uint32_t ExtensionCount = 0;
@@ -325,7 +325,7 @@ bool Instance::IsExtensionEnabled(const char* name)
 }
 
 bool Instance::IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
-                                    const char*                         extensionName)
+                                    const char* extensionName)
 {
     auto it = std::find_if(extensions.begin(), extensions.end(), [&](VkExtensionProperties& ext) {
         return strcmp(ext.extensionName, extensionName) == 0;

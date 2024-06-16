@@ -3,10 +3,10 @@
 
 namespace zen::val
 {
-Framebuffer::Framebuffer(const Device&                   device,
-                         VkRenderPass                    renderPassHandle,
+Framebuffer::Framebuffer(const Device& device,
+                         VkRenderPass renderPassHandle,
                          const std::vector<VkImageView>& attachments,
-                         VkExtent3D                      extent3D) :
+                         VkExtent3D extent3D) :
     DeviceObject(device), m_extent(extent3D)
 {
     VkFramebufferCreateInfo fbCI{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};

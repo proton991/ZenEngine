@@ -9,7 +9,7 @@ template <class T, size_t N> class AlignedBuffer
 {
 public:
     const T* data() const { return reinterpret_cast<T*>(m_alignedChar); }
-    T*       data() { return reinterpret_cast<T*>(m_alignedChar); }
+    T* data() { return reinterpret_cast<T*>(m_alignedChar); }
 
 private:
     alignas(T) char m_alignedChar[sizeof(T) * N];
@@ -19,7 +19,7 @@ template <typename T> class AlignedBuffer<T, 0>
 {
 public:
     const T* data() const { return nullptr; }
-    T*       data() { return nullptr; }
+    T* data() { return nullptr; }
 };
 
 // An immutable version of SmallVector which erases type information about storage.
@@ -66,7 +66,7 @@ public:
     VectorView(const std::vector<T>& vec) : m_ptr(vec.data()), m_size(vec.size()) {}
 
 protected:
-    T*     m_ptr{nullptr};
+    T* m_ptr{nullptr};
     size_t m_size{0};
 };
 
@@ -330,7 +330,7 @@ public:
     }
 
 private:
-    size_t              m_capacity{0};
+    size_t m_capacity{0};
     AlignedBuffer<T, N> m_alignedBuffer;
 };
 } // namespace zen

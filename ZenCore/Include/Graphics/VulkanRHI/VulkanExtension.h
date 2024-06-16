@@ -58,7 +58,7 @@ class VulkanInstanceExtension : public VulkanExtension
 {
 public:
     explicit VulkanInstanceExtension(const char* extensionName,
-                                     EnableMode  enableMode = EnableMode::eAuto) :
+                                     EnableMode enableMode = EnableMode::eAuto) :
         VulkanExtension(extensionName, enableMode)
     {}
 
@@ -76,8 +76,8 @@ class VulkanDeviceExtension : public VulkanExtension
 {
 public:
     explicit VulkanDeviceExtension(VulkanDevice* device,
-                                   const char*   extensionName,
-                                   EnableMode    enableMode = EnableMode::eAuto) :
+                                   const char* extensionName,
+                                   EnableMode enableMode = EnableMode::eAuto) :
         VulkanExtension(extensionName, enableMode), m_device(device)
     {}
 

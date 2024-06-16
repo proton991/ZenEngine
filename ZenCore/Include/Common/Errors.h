@@ -20,10 +20,10 @@ template <bool> void ThrowIf(std::string&&) {}
 
 template <> inline void ThrowIf<true>(std::string&& msg) { throw std::runtime_error(msg); }
 
-template <bool bThrowException, typename... ArgsType> void LogError(bool        isCritical,
+template <bool bThrowException, typename... ArgsType> void LogError(bool isCritical,
                                                                     const char* function,
                                                                     const char* fullFilePath,
-                                                                    int         line,
+                                                                    int line,
                                                                     const ArgsType&... args)
 {
     std::string fileName(fullFilePath);

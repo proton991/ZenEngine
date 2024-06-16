@@ -10,9 +10,9 @@ namespace zen::platform
 struct WindowConfig
 {
     std::string title{"ZenEngine"};
-    bool        resizable{false};
-    uint32_t    width{1280};
-    uint32_t    height{720};
+    bool resizable{false};
+    uint32_t width{1280};
+    uint32_t height{720};
 };
 
 class NativeWindow

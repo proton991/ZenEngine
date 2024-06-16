@@ -22,23 +22,23 @@ UniquePtr<val::Buffer> RenderDevice::CreateBufferUnique(const val::BufferCreateI
 }
 
 UniquePtr<val::Framebuffer> RenderDevice::CreateFramebufferUnique(
-    VkRenderPass                    renderPassHandle,
+    VkRenderPass renderPassHandle,
     const std::vector<VkImageView>& attachments,
-    VkExtent3D                      extent3D)
+    VkExtent3D extent3D)
 {
     return MakeUnique<val::Framebuffer>(m_valDevice, renderPassHandle, attachments, extent3D);
 }
 
-val::Framebuffer* RenderDevice::RequestFramebuffer(VkRenderPass                    renderPassHandle,
+val::Framebuffer* RenderDevice::RequestFramebuffer(VkRenderPass renderPassHandle,
                                                    const std::vector<VkImageView>& attachments,
-                                                   VkExtent3D                      extent3D)
+                                                   VkExtent3D extent3D)
 {
     return m_resourceCache->RequestFramebuffer(renderPassHandle, attachments, extent3D);
 }
 
 val::RenderPass* RenderDevice::RequestRenderPass(
     const std::vector<VkAttachmentDescription>& attachments,
-    const val::SubpassInfo&                     subpassInfo)
+    const val::SubpassInfo& subpassInfo)
 {
     return m_resourceCache->RequestRenderPass(attachments, subpassInfo);
 }
@@ -51,7 +51,7 @@ val::PipelineLayout* RenderDevice::RequestPipelineLayout(
 
 val::GraphicsPipeline* RenderDevice::RequestGraphicsPipeline(
     const val::PipelineLayout& pipelineLayout,
-    val::PipelineState&        pipelineState)
+    val::PipelineState& pipelineState)
 {
     return m_resourceCache->RequestGraphicsPipeline(pipelineLayout, pipelineState);
 }
@@ -61,7 +61,7 @@ VkDescriptorSet RenderDevice::RequestDescriptorSet(const val::DescriptorSetLayou
     auto hash = layout.GetHash();
     auto it   = m_descriptorSetCache.find(hash);
     if (it != m_descriptorSetCache.end()) return it->second;
-    VkDescriptorSet       descriptorSet;
+    VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout dsLayout = layout.GetHandle();
     m_descriptorAllocator.Allocate(&dsLayout, 1, &descriptorSet);
     m_descriptorSetCache.emplace(hash, descriptorSet);
@@ -76,8 +76,8 @@ void RenderDevice::UpdateDescriptorSets(const std::vector<VkWriteDescriptorSet>&
 
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
 {
-    auto   minUboAlignment = m_valDevice.GetGPUProperties().limits.minUniformBufferOffsetAlignment;
-    size_t alignedSize     = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    auto minUboAlignment = m_valDevice.GetGPUProperties().limits.minUniformBufferOffsetAlignment;
+    size_t alignedSize   = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
     return alignedSize;
 }
 } // namespace zen

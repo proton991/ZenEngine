@@ -48,13 +48,13 @@ VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynam
     return result;
 }
 
-DescriptorSetLayout::DescriptorSetLayout(const Device&                      device,
-                                         const uint32_t                     setIndex,
+DescriptorSetLayout::DescriptorSetLayout(const Device& device,
+                                         const uint32_t setIndex,
                                          const std::vector<ShaderResource>& shaderResources) :
     DeviceObject(device), m_setIndex(setIndex)
 {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    std::vector<VkDescriptorBindingFlags>     bindingFlags;
+    std::vector<VkDescriptorBindingFlags> bindingFlags;
     for (auto& resource : shaderResources)
     {
         // Skip shader resources without a binding point

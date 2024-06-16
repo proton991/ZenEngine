@@ -16,8 +16,8 @@ void VulkanWindowsPlatform::AddInstanceExtensions(
 
 SurfaceHandle VulkanWindowsPlatform::CreateSurface(VkInstance instance, void* data)
 {
-    Win32WindowData* windowData    = static_cast<Win32WindowData*>(data);
-    VulkanSurface*   vulkanSurface = new VulkanSurface();
+    Win32WindowData* windowData  = static_cast<Win32WindowData*>(data);
+    VulkanSurface* vulkanSurface = new VulkanSurface();
 
     vulkanSurface->width  = windowData->width;
     vulkanSurface->height = windowData->height;

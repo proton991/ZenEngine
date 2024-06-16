@@ -86,15 +86,15 @@ public:
 
 private:
     KeyboardMouseInput() = default;
-    std::array<std::int64_t, 2>              m_previousCursorPos{0, 0}; // [x, y]
-    std::array<std::int64_t, 2>              m_currentCursorPos{0, 0};  // [x, y]
-    std::array<bool, GLFW_KEY_LAST>          m_keyPressed{false};
+    std::array<std::int64_t, 2> m_previousCursorPos{0, 0}; // [x, y]
+    std::array<std::int64_t, 2> m_currentCursorPos{0, 0};  // [x, y]
+    std::array<bool, GLFW_KEY_LAST> m_keyPressed{false};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST> m_mouseButtonPressed{false};
-    bool                                     m_keyboardUpdated{false};
-    bool                                     m_mouseButtonsUpdated{false};
-    bool                                     m_firstMouse{true};
-    mutable std::shared_mutex                m_inputMutex;
-    bool                                     m_mousePaused{false};
-    bool                                     m_dirty{false};
+    bool m_keyboardUpdated{false};
+    bool m_mouseButtonsUpdated{false};
+    bool m_firstMouse{true};
+    mutable std::shared_mutex m_inputMutex;
+    bool m_mousePaused{false};
+    bool m_dirty{false};
 };
 } // namespace zen::platform

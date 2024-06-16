@@ -215,7 +215,7 @@ private:
     VkPhysicalDeviceRayQueryFeaturesKHR m_rayQueryFeature;
 };
 
-static int FindExtensionIndex(const char*                               extensionName,
+static int FindExtensionIndex(const char* extensionName,
                               const std::vector<VkExtensionProperties>& supported)
 {
     auto it = std::find_if(supported.begin(), supported.end(),
@@ -231,7 +231,7 @@ static int FindExtensionIndex(const char*                               extensio
 }
 
 template <class ExtensionType>
-static void FlagExtensionSupported(std::vector<ExtensionType>&               extensions,
+static void FlagExtensionSupported(std::vector<ExtensionType>& extensions,
                                    const std::vector<VkExtensionProperties>& supported)
 {
     for (ExtensionType& extension : extensions)

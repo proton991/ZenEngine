@@ -14,10 +14,10 @@ class Instance
 public:
     struct CreateInfo
     {
-        bool               enableValidation        = true;
-        uint32_t           enabledLayerCount       = 0;
+        bool enableValidation                      = true;
+        uint32_t enabledLayerCount                 = 0;
         const char* const* ppEnabledLayerNames     = nullptr;
-        uint32_t           enabledExtensionCount   = 0;
+        uint32_t enabledExtensionCount             = 0;
         const char* const* ppEnabledExtensionNames = nullptr;
     };
 
@@ -28,7 +28,7 @@ public:
     ~Instance();
 
     bool IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
-                              const char*                         extensionName);
+                              const char* extensionName);
     bool IsLayerSupported(const char* layerName, uint32_t& version);
     bool IsExtensionEnabled(const char* name);
 
@@ -39,7 +39,7 @@ public:
     VkPhysicalDevice SelectPhysicalDevice();
 
 private:
-    bool EnumerateInstanceExtensions(const char*                         layerName,
+    bool EnumerateInstanceExtensions(const char* layerName,
                                      std::vector<VkExtensionProperties>& extensions);
 
     enum DebugMode
@@ -50,11 +50,11 @@ private:
     };
     DebugMode m_debugMode = DebugMode::Disabled;
 
-    std::vector<VkLayerProperties>     m_supportedLayers;
+    std::vector<VkLayerProperties> m_supportedLayers;
     std::vector<VkExtensionProperties> m_supportedExtensions;
-    std::vector<const char*>           m_enabledExtensions;
-    std::vector<VkPhysicalDevice>      m_physicalDevices;
-    VkInstance                         m_handle              = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT           m_debugUtilsMessenger = VK_NULL_HANDLE;
+    std::vector<const char*> m_enabledExtensions;
+    std::vector<VkPhysicalDevice> m_physicalDevices;
+    VkInstance m_handle                            = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_debugUtilsMessenger = VK_NULL_HANDLE;
 };
 } // namespace zen::val

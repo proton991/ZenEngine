@@ -97,7 +97,7 @@ void SceneGraphDemo::SetupRenderGraph()
     });
 }
 
-void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBuffer,
+void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
                                              const RDGPhysicalPass& physicalPass)
 {
     auto subMeshes =
@@ -110,7 +110,7 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBu
     uint32_t meshStart        = 0;
 
     std::vector<std::future<val::CommandBuffer*>> secondaryCmdFutures;
-    std::vector<val::CommandBuffer*>              secondaryCmds;
+    std::vector<val::CommandBuffer*> secondaryCmds;
     for (auto i = 0u; i < num2ndCmdBuffers; i++)
     {
         uint32_t meshEnd = std::min(numMeshes, meshStart + numDrawPerCmd);
@@ -147,8 +147,8 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBu
 
 val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(
     val::CommandBuffer* primaryCmdBuffer,
-    uint32_t            meshStart,
-    uint32_t            meshEnd,
+    uint32_t meshStart,
+    uint32_t meshEnd,
     // all sub meshes and their nodes
     const std::vector<std::pair<sg::Node*, sg::SubMesh*>>& subMeshes,
     // related scene graph physical pass
@@ -197,9 +197,9 @@ val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(
     return secondaryCmdBuffer;
 }
 
-void SceneGraphDemo::RecordDrawCmdsPrimary(val::CommandBuffer*           primaryCmdBuffer,
+void SceneGraphDemo::RecordDrawCmdsPrimary(val::CommandBuffer* primaryCmdBuffer,
                                            const std::vector<sg::Node*>& nodes,
-                                           const RDGPhysicalPass&        physicalPass)
+                                           const RDGPhysicalPass& physicalPass)
 {
     primaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
     primaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
@@ -273,10 +273,10 @@ void SceneGraphDemo::LoadScene()
         *m_device, GetArrayViewSize(MakeView(gltfLoader->GetVertices())));
     m_indexBuffer = IndexBuffer::CreateUnique(*m_device, MakeView(gltfLoader->GetIndices()));
 
-    auto* stagingBuffer      = m_renderContext->GetCurrentStagingBuffer();
-    auto  verticesSubmitInfo = stagingBuffer->Submit(MakeView(modelVertices));
-    auto  indicesSubmitInfo  = stagingBuffer->Submit(MakeView(modelIndices));
-    auto* cmdBuffer          = m_renderContext->GetCommandBuffer();
+    auto* stagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
+    auto verticesSubmitInfo = stagingBuffer->Submit(MakeView(modelVertices));
+    auto indicesSubmitInfo  = stagingBuffer->Submit(MakeView(modelIndices));
+    auto* cmdBuffer         = m_renderContext->GetCommandBuffer();
     cmdBuffer->Begin();
     cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
                           verticesSubmitInfo.size);

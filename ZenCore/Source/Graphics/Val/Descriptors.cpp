@@ -5,9 +5,9 @@
 
 namespace zen::val
 {
-DescriptorPoolManager::DescriptorPoolManager(const Device&                    device,
+DescriptorPoolManager::DescriptorPoolManager(const Device& device,
                                              const VulkanDescriptorPoolSizes& poolSizes,
-                                             bool                             allowFree) :
+                                             bool allowFree) :
     m_device(device),
     m_maxSets(poolSizes.maxDescriptorSets),
     m_allowFree(allowFree),
@@ -72,7 +72,7 @@ VkDescriptorPool DescriptorPoolManager::CreatePool()
     return pool;
 }
 
-DescriptorSetAllocator::DescriptorSetAllocator(const Device&          device,
+DescriptorSetAllocator::DescriptorSetAllocator(const Device& device,
                                                DescriptorPoolManager& poolManager) :
     m_device(device), m_poolManager(poolManager)
 {}
@@ -95,8 +95,8 @@ VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* la
 }
 
 bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
-                                      uint32_t               count,
-                                      VkDescriptorSet*       outSet)
+                                      uint32_t count,
+                                      VkDescriptorSet* outSet)
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
     if (m_currentPool == VK_NULL_HANDLE) { m_currentPool = m_poolManager.GrabPool(); }

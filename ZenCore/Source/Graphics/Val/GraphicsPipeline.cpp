@@ -7,16 +7,16 @@
 
 namespace zen::val
 {
-GraphicsPipeline::GraphicsPipeline(const Device&         device,
+GraphicsPipeline::GraphicsPipeline(const Device& device,
                                    const PipelineLayout& pipelineLayout,
-                                   PipelineState&        pipelineState,
-                                   VkPipelineCache       pipelineCache) :
+                                   PipelineState& pipelineState,
+                                   VkPipelineCache pipelineCache) :
     DeviceObject(device)
 {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStageCIs;
 
     // Create specialization info from tracked state. This is shared by all shaders.
-    std::vector<uint8_t>                  data{};
+    std::vector<uint8_t> data{};
     std::vector<VkSpecializationMapEntry> mapEntries{};
 
     const auto scState = pipelineState.GetSpecializationState().GetConstantTable();
@@ -52,7 +52,7 @@ GraphicsPipeline::GraphicsPipeline(const Device&         device,
                                                       lhs.binding < rhs.binding;
               });
 
-    std::vector<VkVertexInputBindingDescription>   vertexBindingDescriptions;
+    std::vector<VkVertexInputBindingDescription> vertexBindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
 
     uint32_t vertexAttributeOffset = 0;

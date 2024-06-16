@@ -20,9 +20,9 @@ public:
     };
     struct CreateInfo
     {
-        uint32_t  queueFamilyIndex{0};
+        uint32_t queueFamilyIndex{0};
         ResetMode resetMode{ResetMode::ResetPool};
-        uint32_t  threadId{0};
+        uint32_t threadId{0};
     };
     static UniquePtr<CommandPool> Create(const Device& device, const CreateInfo& CI);
 
@@ -38,13 +38,13 @@ public:
     void ResetPool();
 
     auto GetThreadId() const { return m_threadId; }
-    
+
 private:
     void ResetCmdBuffers();
     void FreeCmdBuffers();
 
-    uint32_t  m_threadId{0};
-    uint32_t  m_queueFamilyIndex{0};
+    uint32_t m_threadId{0};
+    uint32_t m_queueFamilyIndex{0};
     ResetMode m_resetMode{ResetMode::ResetPool};
 
     std::vector<UniquePtr<CommandBuffer>> m_primaryCmdBuffers;

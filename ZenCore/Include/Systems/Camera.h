@@ -19,16 +19,16 @@ class Camera
 public:
     static UniquePtr<Camera> CreateUniqueOnAABB(const Vec3& minPos,
                                                 const Vec3& maxPos,
-                                                float       aspect);
+                                                float aspect);
     static UniquePtr<Camera> CreateUnique(const Vec3& eye, const Vec3& target, float aspect);
 
     Camera(const Vec3& eye,
            const Vec3& target,
-           float       aspect,
-           float       fov   = 70.0f,
-           float       near  = 0.001f,
-           float       far   = 100.0f,
-           float       speed = 2.0f);
+           float aspect,
+           float fov   = 70.0f,
+           float near  = 0.001f,
+           float far   = 100.0f,
+           float speed = 2.0f);
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;

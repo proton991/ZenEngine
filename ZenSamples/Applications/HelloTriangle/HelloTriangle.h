@@ -41,9 +41,9 @@ public:
     void LoadTexture();
 
 private:
-    UniquePtr<RenderDevice>  m_renderDevice;
+    UniquePtr<RenderDevice> m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
-    UniquePtr<RenderGraph>   m_renderGraph;
+    UniquePtr<RenderGraph> m_renderGraph;
 
     UniquePtr<ShaderManager> m_shaderManager;
 
@@ -60,7 +60,7 @@ private:
     UniquePtr<sys::Camera> m_camera;
 
     UniquePtr<UniformBuffer> m_cameraUniformBuffer;
-    CameraUniformData        m_cameraUniformData{};
+    CameraUniformData m_cameraUniformData{};
 
     UniquePtr<platform::Timer> m_timer;
 };

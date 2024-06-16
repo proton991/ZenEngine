@@ -20,7 +20,7 @@ inline constexpr bool IsPowerOfTwo(uint64_t value)
 ///
 /// returns Aligned value.
 template <typename T>
-inline constexpr T Pow2Align(T        value,     ///< Value to align.
+inline constexpr T Pow2Align(T value,            ///< Value to align.
                              uint64_t alignment) ///< Desired alignment (must be a power of 2).
 {
     return ((value + static_cast<T>(alignment) - 1) & ~(static_cast<T>(alignment) - 1));

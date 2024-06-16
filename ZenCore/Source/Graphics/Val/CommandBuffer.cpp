@@ -31,10 +31,10 @@ void CommandBuffer::Reset()
         "Failed to reset command buffer");
 }
 
-void CommandBuffer::PipelineBarrier(VkPipelineStageFlags                      srcPipelineStage,
-                                    VkPipelineStageFlags                      dstPipelineStage,
+void CommandBuffer::PipelineBarrier(VkPipelineStageFlags srcPipelineStage,
+                                    VkPipelineStageFlags dstPipelineStage,
                                     const std::vector<VkBufferMemoryBarrier>& bufferMemBarriers,
-                                    const std::vector<VkImageMemoryBarrier>&  imageMemBarriers)
+                                    const std::vector<VkImageMemoryBarrier>& imageMemBarriers)
 {
     vkCmdPipelineBarrier(m_handle, srcPipelineStage, dstPipelineStage, VK_DEPENDENCY_BY_REGION_BIT,
                          0, nullptr, util::ToU32(bufferMemBarriers.size()),
@@ -43,9 +43,9 @@ void CommandBuffer::PipelineBarrier(VkPipelineStageFlags                      sr
 }
 
 void CommandBuffer::BlitImage(const Image& srcImage,
-                              ImageUsage   srcUsage,
+                              ImageUsage srcUsage,
                               const Image& dstImage,
-                              ImageUsage   dstUsage)
+                              ImageUsage dstUsage)
 {
     std::vector<VkImageMemoryBarrier> barriers(2);
 
@@ -86,7 +86,7 @@ void CommandBuffer::BlitImage(const Image& srcImage,
 }
 
 void CommandBuffer::BeginRenderPass(const VkRenderPassBeginInfo& info,
-                                    VkSubpassContents            subpassContents)
+                                    VkSubpassContents subpassContents)
 {
     vkCmdBeginRenderPass(m_handle, &info, subpassContents);
     m_inheritanceInfo.framebufferHandle = info.framebuffer;
@@ -100,7 +100,7 @@ void CommandBuffer::BindGraphicPipeline(VkPipeline pipeline)
     vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 }
 
-void CommandBuffer::BindDescriptorSets(VkPipelineLayout                    pipelineLayout,
+void CommandBuffer::BindDescriptorSets(VkPipelineLayout pipelineLayout,
                                        const std::vector<VkDescriptorSet>& descriptorSets)
 {
     vkCmdBindDescriptorSets(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,
@@ -114,9 +114,9 @@ void CommandBuffer::Begin(VkCommandBufferUsageFlags flags)
     CHECK_VK_ERROR(vkBeginCommandBuffer(m_handle, &beginInfo), "Failed to begin command buffer!")
 }
 
-void CommandBuffer::Begin(const InheritanceInfo&    inheritanceInfo,
+void CommandBuffer::Begin(const InheritanceInfo& inheritanceInfo,
                           VkCommandBufferUsageFlags flags,
-                          uint32_t                  subpassIndex)
+                          uint32_t subpassIndex)
 {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     // for secondary command buffers
@@ -137,10 +137,10 @@ void CommandBuffer::Begin(const InheritanceInfo&    inheritanceInfo,
 void CommandBuffer::End() { vkEndCommandBuffer(m_handle); }
 
 void CommandBuffer::CopyBuffer(Buffer* srcBuffer,
-                               size_t  srcOffset,
+                               size_t srcOffset,
                                Buffer* dstBuffer,
-                               size_t  dstOffset,
-                               size_t  byteSize)
+                               size_t dstOffset,
+                               size_t byteSize)
 {
     ASSERT(srcOffset + byteSize <= srcBuffer->GetSize());
     ASSERT(dstOffset + byteSize <= dstBuffer->GetSize());
@@ -151,9 +151,9 @@ void CommandBuffer::CopyBuffer(Buffer* srcBuffer,
     vkCmdCopyBuffer(m_handle, srcBuffer->GetHandle(), dstBuffer->GetHandle(), 1, &bufferCopy);
 }
 
-void CommandBuffer::CopyBufferToImage(Buffer*  srcBuffer,
-                                      size_t   srcOffset,
-                                      Image*   dstImage,
+void CommandBuffer::CopyBufferToImage(Buffer* srcBuffer,
+                                      size_t srcOffset,
+                                      Image* dstImage,
                                       uint32_t mipLevel,
                                       uint32_t layer)
 {
@@ -201,7 +201,7 @@ void CommandBuffer::DrawVertices(uint32_t vertexCount,
 void CommandBuffer::DrawIndices(uint32_t indexCount,
                                 uint32_t instanceCount,
                                 uint32_t firstIndex,
-                                int32_t  vertexOffset,
+                                int32_t vertexOffset,
                                 uint32_t firstInstance)
 {
     vkCmdDrawIndexed(m_handle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
@@ -225,8 +225,8 @@ void CommandBuffer::SetScissor(uint32_t width, uint32_t height)
     vkCmdSetScissor(m_handle, 0, 1, &scissor);
 }
 
-VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage        srcUsage,
-                                                    ImageUsage        dstUsage,
+VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage srcUsage,
+                                                    ImageUsage dstUsage,
                                                     const val::Image* image)
 {
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -241,10 +241,10 @@ VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage        srcUsage,
     return barrier;
 }
 
-void CommandBuffer::PushConstants(VkPipelineLayout   pipelineLayout,
+void CommandBuffer::PushConstants(VkPipelineLayout pipelineLayout,
                                   VkShaderStageFlags shaderStage,
-                                  const uint8_t*     data,
-                                  size_t             size)
+                                  const uint8_t* data,
+                                  size_t size)
 {
     std::vector<uint8_t> pushConstants(size);
 

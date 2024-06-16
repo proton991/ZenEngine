@@ -42,9 +42,9 @@ public:
     void RenderGLTFModel(val::CommandBuffer* pCommandBuffer);
 
 private:
-    UniquePtr<RenderDevice>  m_renderDevice;
+    UniquePtr<RenderDevice> m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
-    UniquePtr<RenderGraph>   m_renderGraph;
+    UniquePtr<RenderGraph> m_renderGraph;
 
     UniquePtr<ShaderManager> m_shaderManager;
 
@@ -65,11 +65,11 @@ private:
     UniquePtr<sys::Camera> m_camera;
 
     UniquePtr<UniformBuffer> m_cameraUniformBuffer;
-    CameraUniformData        m_cameraUniformData{};
+    CameraUniformData m_cameraUniformData{};
 
     // node uniform buffer and data
     std::vector<NodeUniformData> m_nodesUniformData;
-    UniquePtr<UniformBuffer>     m_nodesUniformBuffer;
+    UniquePtr<UniformBuffer> m_nodesUniformBuffer;
 
     UniquePtr<platform::Timer> m_timer;
 

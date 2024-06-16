@@ -59,7 +59,7 @@ void RenderContext::SubmitInternal()
     m_renderFinished = GetActiveFrame().RequestSemaphore();
 
     VkCommandBuffer handle = m_activeCmdBuffer->GetHandle();
-    VkSubmitInfo    submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &handle;
 
@@ -183,7 +183,7 @@ void RenderContext::RecreateSwapchain(uint32_t newWidth, uint32_t newHeight)
 void RenderContext::SubmitImmediate(val::CommandBuffer* pCmdBuffer)
 {
     VkCommandBuffer handle = pCmdBuffer->GetHandle();
-    VkSubmitInfo    submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &handle;
     m_queue.Submit({submitInfo}, m_synObjPool.RequestFence());

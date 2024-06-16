@@ -19,14 +19,14 @@ class ConditionVariable
 public:
 #if defined(ZEN_WIN32)
     typedef CONDITION_VARIABLE ConditionVariableData;
-     ConditionVariable() : m_osConVar() { InitializeConditionVariable(&m_osConVar); }
+    ConditionVariable() : m_osConVar() { InitializeConditionVariable(&m_osConVar); }
     ~ConditionVariable() {}
 #endif
 
 #if defined(ZEN_MACOS)
     typedef pthread_cond_t ConditionVariableData;
 
-     ConditionVariable() { pthread_cond_init(&m_osConVar, NULL); }
+    ConditionVariable() { pthread_cond_init(&m_osConVar, NULL); }
     ~ConditionVariable() { pthread_cond_destroy(&m_osConVar); }
 #endif
 
@@ -72,8 +72,8 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         if (milliseconds == INF_TIME) { pthread_cond_wait(&m_osConVar, pMutex->GetMutexData()); }
         else
         {
-            auto     now     = std::chrono::system_clock::now();
-            auto     timeout = now + std::chrono::milliseconds(milliseconds);
+            auto now     = std::chrono::system_clock::now();
+            auto timeout = now + std::chrono::milliseconds(milliseconds);
             timespec ts;
             ts.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout.time_since_epoch())
                             .count();

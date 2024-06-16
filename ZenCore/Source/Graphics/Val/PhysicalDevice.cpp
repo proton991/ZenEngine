@@ -50,14 +50,14 @@ VkBool32 PhysicalDevice::IsPresentSupported(VkSurfaceKHR surface, uint32_t queue
 
 DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
 {
-    DeviceQueueInfo                      info{};
-    uint32_t                             queueFamilyCount = 0;
+    DeviceQueueInfo info{};
+    uint32_t queueFamilyCount = 0;
     std::vector<VkQueueFamilyProperties> queueFamilyProps;
     vkGetPhysicalDeviceQueueFamilyProperties(m_handle, &queueFamilyCount, nullptr);
     queueFamilyProps.resize(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(m_handle, &queueFamilyCount, queueFamilyProps.data());
     VERIFY_EXPR(queueFamilyCount > 0);
-    std::vector<uint32_t>           queueOffsets(queueFamilyProps.size());
+    std::vector<uint32_t> queueOffsets(queueFamilyProps.size());
     std::vector<std::vector<float>> queuePriorities(queueFamilyProps.size());
 
     const auto findProperQueue = [&](uint32_t& family, uint32_t& index, VkQueueFlags required,

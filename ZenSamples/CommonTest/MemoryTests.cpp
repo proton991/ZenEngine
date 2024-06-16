@@ -5,8 +5,8 @@ class DummyClass
 {
 public:
     explicit DummyClass(int data) : m_data(data) {}
-    auto     GetData() const { return m_data; }
-    auto*    GetDataPtr() const { return &m_data; }
+    auto GetData() const { return m_data; }
+    auto* GetDataPtr() const { return &m_data; }
 
 private:
     int m_data;
@@ -20,8 +20,8 @@ using namespace zen;
 TEST(mem_alloc_test, allocator)
 {
     constexpr int numElements = 10;
-    auto          arraySize   = sizeof(int) * numElements;
-    int*          arr         = static_cast<int*>(DefaultAllocator::Alloc(arraySize));
+    auto arraySize            = sizeof(int) * numElements;
+    int* arr                  = static_cast<int*>(DefaultAllocator::Alloc(arraySize));
 
     for (int i = 0; i < numElements; ++i) { arr[i] = i + 1; }
 

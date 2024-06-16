@@ -23,7 +23,7 @@ TEST(RefCountPtr, basic)
     EXPECT_EQ(res3.GetRefCount(), 2);
 
     RefCountPtr<DummyResourceChild> res4 = MakeRefCountPtr<DummyResourceChild>();
-    RefCountPtr<DummyResource>      res5(res4);
+    RefCountPtr<DummyResource> res5(res4);
     EXPECT_EQ(res5.GetRefCount(), 2);
 }
 

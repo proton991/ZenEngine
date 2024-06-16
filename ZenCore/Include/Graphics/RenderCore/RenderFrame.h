@@ -11,9 +11,9 @@ namespace zen
 class RenderFrame
 {
 public:
-    RenderFrame(const val::Device&      device,
+    RenderFrame(const val::Device& device,
                 UniquePtr<val::Image>&& swapchainImage,
-                uint32_t                threadCount) :
+                uint32_t threadCount) :
         m_valDevice(device),
         m_syncObjPool(m_valDevice),
         m_swapchainImage(std::move(swapchainImage)),
@@ -23,10 +23,10 @@ public:
     }
 
     val::CommandBuffer* RequestCommandBuffer(
-        uint32_t                    queueFamilyIndex,
+        uint32_t queueFamilyIndex,
         val::CommandPool::ResetMode resetMode,
-        VkCommandBufferLevel        level    = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        uint32_t                    threadId = 0);
+        VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        uint32_t threadId          = 0);
 
     VkSemaphore RequestSemaphore() { return m_syncObjPool.RequestSemaphore(); }
 
@@ -50,7 +50,7 @@ public:
 
 private:
     std::vector<UniquePtr<val::CommandPool>>& GetCommandPools(
-        uint32_t                    queueFamilyIndex,
+        uint32_t queueFamilyIndex,
         val::CommandPool::ResetMode resetMode);
 
     const val::Device& m_valDevice;

@@ -17,7 +17,7 @@ public:
             uint32_t index,
             uint32_t width,
             uint32_t height,
-            Format   format,
+            Format format,
             // moved
             std::vector<uint8_t> data,
             // optional
@@ -34,10 +34,10 @@ public:
     TypeId GetTypeId() const override { return typeid(Texture); }
 
     uint32_t index{0};
-    int      samplerIndex{-1};
+    int samplerIndex{-1};
     uint32_t width{0};
     uint32_t height{0};
-    Format   format{Format::UNDEFINED};
+    Format format{Format::UNDEFINED};
     // byte data no mipmaps
     std::vector<uint8_t> bytesData;
 };

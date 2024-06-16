@@ -105,10 +105,10 @@ void HelloTriangle::LoadModel()
     m_vertexBuffer = VertexBuffer::CreateUnique(*m_device, GetArrayViewSize(MakeView(vertices)));
     m_indexBuffer  = IndexBuffer::CreateUnique(*m_device, MakeView(indices));
 
-    auto* stagingBuffer      = m_renderContext->GetCurrentStagingBuffer();
-    auto  verticesSubmitInfo = stagingBuffer->Submit(MakeView(vertices));
-    auto  indicesSubmitInfo  = stagingBuffer->Submit(MakeView(indices));
-    auto* cmdBuffer          = m_renderContext->GetCommandBuffer();
+    auto* stagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
+    auto verticesSubmitInfo = stagingBuffer->Submit(MakeView(vertices));
+    auto indicesSubmitInfo  = stagingBuffer->Submit(MakeView(indices));
+    auto* cmdBuffer         = m_renderContext->GetCommandBuffer();
     cmdBuffer->Begin();
     cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
                           verticesSubmitInfo.size);

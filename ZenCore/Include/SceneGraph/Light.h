@@ -54,6 +54,6 @@ public:
 
 private:
     LightProperties m_properties;
-    LightType       m_type;
+    LightType m_type;
 };
 } // namespace zen::sg

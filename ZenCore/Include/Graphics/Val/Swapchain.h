@@ -8,12 +8,12 @@ namespace zen::val
 class Swapchain : public DeviceObject<VkSwapchainKHR, VK_OBJECT_TYPE_SWAPCHAIN_KHR>
 {
 public:
-    Swapchain(const Device&  device,
-              VkSurfaceKHR   surface,
-              VkExtent2D     extent,
+    Swapchain(const Device& device,
+              VkSurfaceKHR surface,
+              VkExtent2D extent,
               VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE,
-              uint32_t       imageCount   = 3,
-              bool           vsync        = true);
+              uint32_t imageCount         = 3,
+              bool vsync                  = true);
 
     ~Swapchain() = default;
 
@@ -27,24 +27,24 @@ public:
 
     VkExtent2D GetExtent2D() const { return m_extent; }
 
-    VkResult AcquireNextImage(uint32_t&   imageIndex,
+    VkResult AcquireNextImage(uint32_t& imageIndex,
                               VkSemaphore imageAcquiredSem,
-                              VkFence     fence = VK_NULL_HANDLE);
+                              VkFence fence = VK_NULL_HANDLE);
 
 private:
-    VkImageUsageFlags           ChooseImageUsage(VkImageUsageFlags supportedUsage);
-    VkPresentModeKHR            ChoosePresentMode(bool vsync);
+    VkImageUsageFlags ChooseImageUsage(VkImageUsageFlags supportedUsage);
+    VkPresentModeKHR ChoosePresentMode(bool vsync);
     VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
-                                                     VkCompositeAlphaFlagsKHR    supported);
-    VkSurfaceFormatKHR          ChooseSurfaceFormat();
+                                                     VkCompositeAlphaFlagsKHR supported);
+    VkSurfaceFormatKHR ChooseSurfaceFormat();
 
-    VkSurfaceKHR                    m_surface{VK_NULL_HANDLE};
+    VkSurfaceKHR m_surface{VK_NULL_HANDLE};
     std::vector<VkSurfaceFormatKHR> m_surfaceFormats{};
-    std::vector<VkPresentModeKHR>   m_presentModes{};
-    VkSurfaceFormatKHR              m_surfaceFormat;
-    VkExtent2D                      m_extent;
-    VkImageUsageFlags               m_usage;
-    std::vector<VkImage>            m_images;
-    bool                            m_vsync;
+    std::vector<VkPresentModeKHR> m_presentModes{};
+    VkSurfaceFormatKHR m_surfaceFormat;
+    VkExtent2D m_extent;
+    VkImageUsageFlags m_usage;
+    std::vector<VkImage> m_images;
+    bool m_vsync;
 };
 } // namespace zen::val

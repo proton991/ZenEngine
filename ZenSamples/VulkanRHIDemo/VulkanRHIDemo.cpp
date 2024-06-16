@@ -10,10 +10,10 @@ int main(int argc, char** argv)
     vkRHI.Init();
     platform::WindowConfig windowConfig;
 
-    auto*      window = new platform::GlfwWindowImpl(windowConfig);
+    auto* window = new platform::GlfwWindowImpl(windowConfig);
     WindowData data{window->GetHandle(), windowConfig.width, windowConfig.height};
 
-    SurfaceHandle   surfaceHandle   = VulkanPlatform::CreateSurface(vkRHI.GetInstance(), &data);
+    SurfaceHandle surfaceHandle     = VulkanPlatform::CreateSurface(vkRHI.GetInstance(), &data);
     SwapchainHandle swapchainHandle = vkRHI.CreateSwapchain(surfaceHandle, true);
 
     while (!window->ShouldClose()) { window->Update(); }

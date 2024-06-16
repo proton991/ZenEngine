@@ -58,7 +58,7 @@ void TextureManager::RegisterSceneTextures(sg::Scene* scene, bool requireMipmap)
 {
     std::vector<sg::Texture*> sgTextures = scene->GetComponents<sg::Texture>();
 
-    StagingBuffer*      stagingBuffer = m_renderContext.GetCurrentStagingBuffer();
+    StagingBuffer* stagingBuffer      = m_renderContext.GetCurrentStagingBuffer();
     val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
 
     //    commandBuffer->Begin();

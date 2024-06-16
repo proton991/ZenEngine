@@ -7,7 +7,7 @@ namespace zen::platform
 class FileSystem
 {
 public:
-    static std::string           LoadTextFile(const std::string& path);
+    static std::string LoadTextFile(const std::string& path);
     static std::vector<uint32_t> LoadSpvFile(const std::string& name);
     ;
 };

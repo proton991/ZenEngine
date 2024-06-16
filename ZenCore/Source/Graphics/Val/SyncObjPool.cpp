@@ -7,7 +7,7 @@ namespace zen::val
 VkFence SynObjPool::RequestFence()
 {
     if (m_numActiveFences < m_fences.size()) { return m_fences[m_numActiveFences++]; }
-    VkFence           fence{VK_NULL_HANDLE};
+    VkFence fence{VK_NULL_HANDLE};
     VkFenceCreateInfo fenceCI{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     CHECK_VK_ERROR_AND_THROW(vkCreateFence(m_valDevice.GetHandle(), &fenceCI, nullptr, &fence),
                              "Failed to create fence");
@@ -31,7 +31,7 @@ VkSemaphore SynObjPool::RequestSemaphore()
     {
         return m_semaphores[m_numActiveSemaphores++];
     }
-    VkSemaphore           semaphore{VK_NULL_HANDLE};
+    VkSemaphore semaphore{VK_NULL_HANDLE};
     VkSemaphoreCreateInfo semaphoreCI{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     CHECK_VK_ERROR_AND_THROW(
         vkCreateSemaphore(m_valDevice.GetHandle(), &semaphoreCI, nullptr, &semaphore),
@@ -49,7 +49,7 @@ VkSemaphore SynObjPool::RequestSemaphoreWithOwnership()
         m_semaphores.pop_back();
         return sem;
     }
-    VkSemaphore           semaphore{VK_NULL_HANDLE};
+    VkSemaphore semaphore{VK_NULL_HANDLE};
     VkSemaphoreCreateInfo semaphoreCI{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     CHECK_VK_ERROR_AND_THROW(
         vkCreateSemaphore(m_valDevice.GetHandle(), &semaphoreCI, nullptr, &semaphore),

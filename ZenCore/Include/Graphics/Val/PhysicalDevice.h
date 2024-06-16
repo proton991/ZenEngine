@@ -26,9 +26,9 @@ struct DeviceQueueInfo
             indices[i]       = uint32_t(-1);
         }
     }
-    uint32_t                        familyIndices[QUEUE_INDEX_COUNT] = {};
-    uint32_t                        indices[QUEUE_INDEX_COUNT]       = {};
-    std::vector<uint32_t>           queueOffsets;
+    uint32_t familyIndices[QUEUE_INDEX_COUNT] = {};
+    uint32_t indices[QUEUE_INDEX_COUNT]       = {};
+    std::vector<uint32_t> queueOffsets;
     std::vector<std::vector<float>> queuePriorities;
 };
 
@@ -98,10 +98,10 @@ private:
 
     void PrintExtensions();
 
-    Instance&                          m_instance;
-    VkPhysicalDevice                   m_handle     = VK_NULL_HANDLE;
-    VkPhysicalDeviceProperties         m_properties = {};
-    VkPhysicalDeviceFeatures           m_features   = {};
+    Instance& m_instance;
+    VkPhysicalDevice m_handle               = VK_NULL_HANDLE;
+    VkPhysicalDeviceProperties m_properties = {};
+    VkPhysicalDeviceFeatures m_features     = {};
     std::vector<VkExtensionProperties> m_supportedExtensions;
 
     VkPhysicalDeviceFeatures m_requestedFeatures{};

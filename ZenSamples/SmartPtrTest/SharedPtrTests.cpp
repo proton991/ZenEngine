@@ -22,7 +22,7 @@ struct Struct
     void incr(void) { ++mVal; }
     void decr(void) { --mVal; }
 
-    int        mVal;
+    int mVal;
     static int _mNbInstances;
 };
 
@@ -330,7 +330,7 @@ TEST(SharedPtr, compare_ptr)
 
     // Copy a SharedPtr
     SharedPtr<Struct> zPtr = xPtr;
-    Struct*           pZ   = zPtr.Get();
+    Struct* pZ             = zPtr.Get();
 
     EXPECT_EQ(pX, pZ);
     EXPECT_EQ(xPtr, zPtr);

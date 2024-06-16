@@ -137,10 +137,10 @@ void GLTFViewer::LoadModel()
         *m_device, GetArrayViewSize(MakeView(m_gltfModelLoader->GetVertices())));
     m_indexBuffer = IndexBuffer::CreateUnique(*m_device, MakeView(m_gltfModelLoader->GetIndices()));
 
-    auto* stagingBuffer      = m_renderContext->GetCurrentStagingBuffer();
-    auto  verticesSubmitInfo = stagingBuffer->Submit(MakeView(modelVertices));
-    auto  indicesSubmitInfo  = stagingBuffer->Submit(MakeView(modelIndices));
-    auto* cmdBuffer          = m_renderContext->GetCommandBuffer();
+    auto* stagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
+    auto verticesSubmitInfo = stagingBuffer->Submit(MakeView(modelVertices));
+    auto indicesSubmitInfo  = stagingBuffer->Submit(MakeView(modelIndices));
+    auto* cmdBuffer         = m_renderContext->GetCommandBuffer();
     cmdBuffer->Begin();
     cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
                           verticesSubmitInfo.size);

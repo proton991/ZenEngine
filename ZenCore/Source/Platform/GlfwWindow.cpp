@@ -40,7 +40,7 @@ VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
 
 std::vector<const char*> GlfwWindowImpl::GetInstanceExtensions()
 {
-    uint32_t     count;
+    uint32_t count;
     const char** ext = glfwGetRequiredInstanceExtensions(&count);
     return {ext, ext + count};
 }

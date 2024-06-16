@@ -10,8 +10,8 @@ struct TextureInfo
 {
     uint32_t width{0};
     uint32_t height{0};
-    Format   format{Format::UNDEFINED};
-    bool     hasMipMap{false};
+    Format format{Format::UNDEFINED};
+    bool hasMipMap{false};
     // level 0 byte data
     std::vector<uint8_t> baseLevelData;
     // other levels

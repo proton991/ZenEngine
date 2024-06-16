@@ -18,6 +18,6 @@ public:
 private:
     uint32_t m_familyIndex;
     uint32_t m_index;
-    bool     m_supportPresent;
+    bool m_supportPresent;
 };
 } // namespace zen::val

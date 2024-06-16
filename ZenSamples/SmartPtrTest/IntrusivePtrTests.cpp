@@ -23,7 +23,7 @@ TEST(IntrusivePtr, basic)
 {
     std::vector<IntrusivePtr<TestA>> as;
     {
-        auto                b = MakeIntrusive<TestB>();
+        auto b = MakeIntrusive<TestB>();
         IntrusivePtr<TestA> a;
         a = b;
         IntrusivePtr<TestA> c;

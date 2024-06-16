@@ -18,8 +18,8 @@ public:
 
 private:
     VulkanDevice* m_device{nullptr};
-    VkQueue       m_handle{VK_NULL_HANDLE};
-    uint32_t      m_familyIndex;
-    uint32_t      m_queueIndex;
+    VkQueue m_handle{VK_NULL_HANDLE};
+    uint32_t m_familyIndex;
+    uint32_t m_queueIndex;
 };
 } // namespace zen::rhi

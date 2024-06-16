@@ -5,7 +5,7 @@
 
 namespace zen::rhi
 {
-VkCommandBuffer VulkanCommandBufferManager::CreateCommandBuffer(VkCommandPool        vkCmdPool,
+VkCommandBuffer VulkanCommandBufferManager::CreateCommandBuffer(VkCommandPool vkCmdPool,
                                                                 VkCommandBufferLevel level) const
 {
     VkCommandBufferAllocateInfo allocInfo;
@@ -78,7 +78,7 @@ void VulkanRHI::DestroyCommandPool(CommandPoolHandle commandPoolHandle)
     vkDestroyCommandPool(m_device->GetVkHandle(), cmdPool->vkHandle, nullptr);
 }
 
-CommandBufferHandle VulkanRHI::GetOrCreateCommandBuffer(CommandPoolHandle        cmdPoolHandle,
+CommandBufferHandle VulkanRHI::GetOrCreateCommandBuffer(CommandPoolHandle cmdPoolHandle,
                                                         const CommandBufferLevel level)
 {
     VkCommandBuffer vkCmdBuffer = VK_NULL_HANDLE;

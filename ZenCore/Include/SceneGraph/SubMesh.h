@@ -51,7 +51,7 @@ private:
 
     AABB m_aabb;
 
-    uint32_t  m_materialIndex{0};
+    uint32_t m_materialIndex{0};
     Material* m_material{nullptr};
 
     bool m_hasIndices{false};

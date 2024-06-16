@@ -9,28 +9,28 @@ namespace zen::val
 class RenderPass;
 struct VertexInputState
 {
-    std::vector<VkVertexInputBindingDescription>   bindings;
+    std::vector<VkVertexInputBindingDescription> bindings;
     std::vector<VkVertexInputAttributeDescription> attributes;
 };
 
 struct InputAssemblyState
 {
     VkPrimitiveTopology topology{VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
-    VkBool32            primitiveRestartEnable{VK_FALSE};
+    VkBool32 primitiveRestartEnable{VK_FALSE};
 };
 
 struct RasterizationState
 {
-    VkBool32        depthClampEnable{VK_FALSE};
-    VkBool32        rasterizerDiscardEnable{VK_FALSE};
-    VkPolygonMode   polygonMode{VK_POLYGON_MODE_FILL};
+    VkBool32 depthClampEnable{VK_FALSE};
+    VkBool32 rasterizerDiscardEnable{VK_FALSE};
+    VkPolygonMode polygonMode{VK_POLYGON_MODE_FILL};
     VkCullModeFlags cullMode{VK_CULL_MODE_NONE};
-    VkFrontFace     frontFace{VK_FRONT_FACE_COUNTER_CLOCKWISE};
-    VkBool32        depthBiasEnable{VK_FALSE};
-    float           depthBiasConstantFactor{0.0f};
-    float           depthBiasClamp{0.0f};
-    float           depthBiasSlopeFactor{0.0f};
-    float           lineWidth{1.0f};
+    VkFrontFace frontFace{VK_FRONT_FACE_COUNTER_CLOCKWISE};
+    VkBool32 depthBiasEnable{VK_FALSE};
+    float depthBiasConstantFactor{0.0f};
+    float depthBiasClamp{0.0f};
+    float depthBiasSlopeFactor{0.0f};
+    float lineWidth{1.0f};
 };
 
 struct ViewportState
@@ -42,10 +42,10 @@ struct ViewportState
 struct MultisampleState
 {
     VkSampleCountFlagBits rasterizationSamples{VK_SAMPLE_COUNT_1_BIT};
-    VkBool32              sampleShadingEnable{VK_FALSE};
-    float                 minSampleShading{0.0f};
-    VkBool32              alphaToCoverageEnable{VK_FALSE};
-    VkBool32              alphaToOneEnable{VK_FALSE};
+    VkBool32 sampleShadingEnable{VK_FALSE};
+    float minSampleShading{0.0f};
+    VkBool32 alphaToCoverageEnable{VK_FALSE};
+    VkBool32 alphaToOneEnable{VK_FALSE};
 };
 
 struct StencilOpState
@@ -71,31 +71,31 @@ inline VkStencilOpState DefaultStencilOpState()
 
 struct DepthStencilState
 {
-    VkBool32         depthTestEnable{VK_TRUE};
-    VkBool32         depthWriteEnable{VK_TRUE};
-    VkCompareOp      depthCompareOp{VK_COMPARE_OP_LESS_OR_EQUAL};
-    VkBool32         depthBoundsTestEnable{VK_FALSE};
-    VkBool32         stencilTestEnable{VK_FALSE};
+    VkBool32 depthTestEnable{VK_TRUE};
+    VkBool32 depthWriteEnable{VK_TRUE};
+    VkCompareOp depthCompareOp{VK_COMPARE_OP_LESS_OR_EQUAL};
+    VkBool32 depthBoundsTestEnable{VK_FALSE};
+    VkBool32 stencilTestEnable{VK_FALSE};
     VkStencilOpState front{DefaultStencilOpState()};
     VkStencilOpState back{DefaultStencilOpState()};
 };
 
 struct ColorBlendAttachmentState
 {
-    VkBool32              blendEnable{VK_FALSE};
-    VkBlendFactor         srcColorBlendFactor{VK_BLEND_FACTOR_ONE};
-    VkBlendFactor         dstColorBlendFactor{VK_BLEND_FACTOR_ZERO};
-    VkBlendOp             colorBlendOp{VK_BLEND_OP_ADD};
-    VkBlendFactor         srcAlphaBlendFactor{VK_BLEND_FACTOR_ONE};
-    VkBlendFactor         dstAlphaBlendFactor{VK_BLEND_FACTOR_ZERO};
-    VkBlendOp             alphaBlendOp{VK_BLEND_OP_ADD};
+    VkBool32 blendEnable{VK_FALSE};
+    VkBlendFactor srcColorBlendFactor{VK_BLEND_FACTOR_ONE};
+    VkBlendFactor dstColorBlendFactor{VK_BLEND_FACTOR_ZERO};
+    VkBlendOp colorBlendOp{VK_BLEND_OP_ADD};
+    VkBlendFactor srcAlphaBlendFactor{VK_BLEND_FACTOR_ONE};
+    VkBlendFactor dstAlphaBlendFactor{VK_BLEND_FACTOR_ZERO};
+    VkBlendOp alphaBlendOp{VK_BLEND_OP_ADD};
     VkColorComponentFlags colorWriteMask{VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
 };
 
 struct ColorBlendState
 {
-    VkBool32  logicOpEnable{VK_FALSE};
+    VkBool32 logicOpEnable{VK_FALSE};
     VkLogicOp logicOp{VK_LOGIC_OP_CLEAR};
 
     std::vector<VkPipelineColorBlendAttachmentState> attachments;
@@ -155,29 +155,29 @@ public:
 
     auto& GetSpecializationState() const { return m_specializationState; }
 
-    VkPipelineVertexInputStateCreateInfo   GetVIStateCI() const;
+    VkPipelineVertexInputStateCreateInfo GetVIStateCI() const;
     VkPipelineInputAssemblyStateCreateInfo GetIAStateCI() const;
-    VkPipelineViewportStateCreateInfo      GetVPStateCI() const;
+    VkPipelineViewportStateCreateInfo GetVPStateCI() const;
     VkPipelineRasterizationStateCreateInfo GetRasterizationStateCI() const;
-    VkPipelineMultisampleStateCreateInfo   GetMSStateCI() const;
-    VkPipelineDepthStencilStateCreateInfo  GetDSStateCI() const;
-    VkPipelineColorBlendStateCreateInfo    GetCBStateCI() const;
-    VkPipelineDynamicStateCreateInfo       GetDynamicStateCI() const;
-    VkRenderPass                           GetRPHandle() const;
-    uint32_t                               GetSubpassIndex() const;
+    VkPipelineMultisampleStateCreateInfo GetMSStateCI() const;
+    VkPipelineDepthStencilStateCreateInfo GetDSStateCI() const;
+    VkPipelineColorBlendStateCreateInfo GetCBStateCI() const;
+    VkPipelineDynamicStateCreateInfo GetDynamicStateCI() const;
+    VkRenderPass GetRPHandle() const;
+    uint32_t GetSubpassIndex() const;
 
 private:
-    VertexInputState            m_vertexInputState{}; // TODO: Move this part to shader reflection
-    InputAssemblyState          m_inputAssemblyState{};
-    ViewportState               m_viewportState{};
-    RasterizationState          m_rasterizationState{};
-    MultisampleState            m_multiSampleState{};
-    DepthStencilState           m_depthStencilState{};
-    ColorBlendState             m_colorBlendState{};
-    SpecializationState         m_specializationState{};
+    VertexInputState m_vertexInputState{}; // TODO: Move this part to shader reflection
+    InputAssemblyState m_inputAssemblyState{};
+    ViewportState m_viewportState{};
+    RasterizationState m_rasterizationState{};
+    MultisampleState m_multiSampleState{};
+    DepthStencilState m_depthStencilState{};
+    ColorBlendState m_colorBlendState{};
+    SpecializationState m_specializationState{};
     std::vector<VkDynamicState> m_dynamicStates;
 
-    uint32_t     m_subpassIndex{0};
+    uint32_t m_subpassIndex{0};
     VkRenderPass m_renderPassHandle{VK_NULL_HANDLE};
 };
 } // namespace zen::val

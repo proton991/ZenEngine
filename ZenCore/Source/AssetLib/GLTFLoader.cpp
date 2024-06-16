@@ -49,7 +49,7 @@ Model::~Model()
 
 Mat4 Node::GetMatrix() const
 {
-    Mat4  m = localMatrix;
+    Mat4 m  = localMatrix;
     auto* p = parent;
     while (p)
     {
@@ -63,13 +63,13 @@ float Model::GetSize() const { return glm::distance(bb.min, bb.max); }
 
 void ModelLoader::LoadFromFile(const std::string& path, gltf::Model* pOutModel, float scale)
 {
-    tinygltf::Model    gltfModel;
+    tinygltf::Model gltfModel;
     tinygltf::TinyGLTF gltfContext;
 
     std::string error;
     std::string warning;
 
-    bool   binary = false;
+    bool binary   = false;
     size_t extPos = path.rfind('.', path.length());
     if (extPos != std::string::npos)
     {
@@ -124,8 +124,8 @@ void ModelLoader::LoadTextures(tinygltf::Model& gltfModel)
         // temp buffer for format conversion
         unsigned char* buffer = nullptr;
         // delete temp buffer?
-        bool   deleteBuffer = false;
-        size_t bufferSize   = 0;
+        bool deleteBuffer = false;
+        size_t bufferSize = 0;
 
         tinygltf::Image& gltfImage = gltfModel.images[texture.source];
         if (gltfImage.component == 3)
@@ -271,12 +271,12 @@ void ModelLoader::LoadMaterials(tinygltf::Model& gltfModel)
     m_materials.emplace_back();
 }
 
-void ModelLoader::LoadNode(gltf::Model*           pOutModel,
-                           gltf::Node*            parent,
-                           const tinygltf::Node&  node,
-                           uint32_t               nodeIndex,
+void ModelLoader::LoadNode(gltf::Model* pOutModel,
+                           gltf::Node* parent,
+                           const tinygltf::Node& node,
+                           uint32_t nodeIndex,
                            const tinygltf::Model& model,
-                           float                  globalScale)
+                           float globalScale)
 
 {
     auto* newNode      = new gltf::Node();
@@ -325,10 +325,10 @@ void ModelLoader::LoadNode(gltf::Model*           pOutModel,
             uint32_t indexStart  = static_cast<uint32_t>(m_indexPos);
             uint32_t indexCount  = 0;
             uint32_t vertexCount = 0;
-            Vec3     posMin{};
-            Vec3     posMax{};
-            bool     hasSkin    = false;
-            bool     hasIndices = primitive.indices > -1;
+            Vec3 posMin{};
+            Vec3 posMax{};
+            bool hasSkin    = false;
+            bool hasIndices = primitive.indices > -1;
             // Vertices
             {
                 const float* bufferPos          = nullptr;
@@ -336,7 +336,7 @@ void ModelLoader::LoadNode(gltf::Model*           pOutModel,
                 const float* bufferTexCoordSet0 = nullptr;
                 const float* bufferTexCoordSet1 = nullptr;
                 const float* bufferColorSet0    = nullptr;
-                const void*  bufferJoints       = nullptr;
+                const void* bufferJoints        = nullptr;
                 const float* bufferWeights      = nullptr;
 
                 int posByteStride;
@@ -578,7 +578,7 @@ void ModelLoader::LoadNode(gltf::Model*           pOutModel,
     if (node.mesh != -1) pOutModel->flatNodes.push_back(newNode);
 }
 
-void ModelLoader::GetModelProps(const tinygltf::Node&  node,
+void ModelLoader::GetModelProps(const tinygltf::Node& node,
                                 const tinygltf::Model& model,
                                 // sum
                                 size_t& vertexCount,
@@ -640,7 +640,7 @@ void GltfLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
     std::string error;
     std::string warning;
 
-    bool   binary = false;
+    bool binary   = false;
     size_t extPos = path.rfind('.', path.length());
     if (extPos != std::string::npos)
     {
@@ -754,7 +754,7 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
         // temp buffer for format conversion
         unsigned char* buffer = nullptr;
         // delete temp buffer?
-        bool   deleteBuffer = false;
+        bool deleteBuffer = false;
         size_t bufferSize;
 
         // set props
@@ -952,10 +952,10 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
             uint32_t indexStart  = static_cast<uint32_t>(m_indexPos);
             uint32_t indexCount  = 0;
             uint32_t vertexCount = 0;
-            Vec3     posMin{};
-            Vec3     posMax{};
-            bool     hasSkin    = false;
-            bool     hasIndices = primitive.indices > -1;
+            Vec3 posMin{};
+            Vec3 posMax{};
+            bool hasSkin    = false;
+            bool hasIndices = primitive.indices > -1;
             // Vertices
             {
                 const float* bufferPos          = nullptr;
@@ -963,7 +963,7 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
                 const float* bufferTexCoordSet0 = nullptr;
                 const float* bufferTexCoordSet1 = nullptr;
                 const float* bufferColorSet0    = nullptr;
-                const void*  bufferJoints       = nullptr;
+                const void* bufferJoints        = nullptr;
                 const float* bufferWeights      = nullptr;
 
                 int posByteStride;

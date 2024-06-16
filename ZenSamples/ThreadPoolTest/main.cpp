@@ -10,7 +10,7 @@ void foo(const string& threadId) { LOGI("foo()! Thread ID: " + threadId); }
 
 int main(int argc, char** argv)
 {
-    std::atomic<int>      value = 0;
+    std::atomic<int> value = 0;
     ThreadPool<void, int> threadPool;
     threadPool.Resize(POOL_SIZE);
     // enqueue and store future

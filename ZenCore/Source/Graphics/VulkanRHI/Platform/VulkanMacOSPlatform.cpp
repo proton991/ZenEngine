@@ -17,8 +17,8 @@ void VulkanMacOSPlatform::AddInstanceExtensions(
 
 SurfaceHandle VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
 {
-    MacOSWindowData* windowData    = static_cast<MacOSWindowData*>(data);
-    VulkanSurface*   vulkanSurface = new VulkanSurface();
+    MacOSWindowData* windowData  = static_cast<MacOSWindowData*>(data);
+    VulkanSurface* vulkanSurface = new VulkanSurface();
 
     vulkanSurface->width  = windowData->width;
     vulkanSurface->height = windowData->height;

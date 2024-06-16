@@ -23,7 +23,7 @@ public:
 
 private:
     const val::Device& m_valDevice;
-    RenderContext&     m_renderContext;
+    RenderContext& m_renderContext;
 
     HashMap<std::string, UniquePtr<val::Image>> m_cache;
 };

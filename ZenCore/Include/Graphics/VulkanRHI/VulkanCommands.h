@@ -8,7 +8,7 @@ namespace zen::rhi
 struct VulkanCommandPool
 {
     VkCommandPool vkHandle{VK_NULL_HANDLE};
-    uint32_t      queueFamilyIndex{};
+    uint32_t queueFamilyIndex{};
 };
 
 class VulkanCommandBufferManager

@@ -4,12 +4,12 @@
 
 namespace zen::val
 {
-Swapchain::Swapchain(const Device&  device,
-                     VkSurfaceKHR   surface,
-                     VkExtent2D     extent,
+Swapchain::Swapchain(const Device& device,
+                     VkSurfaceKHR surface,
+                     VkExtent2D extent,
                      VkSwapchainKHR oldSwapchain,
-                     uint32_t       imageCount,
-                     bool           vsync) :
+                     uint32_t imageCount,
+                     bool vsync) :
     DeviceObject(device), m_surface(surface), m_extent(extent), m_vsync(vsync)
 {
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
@@ -70,7 +70,7 @@ VkImageUsageFlags Swapchain::ChooseImageUsage(VkImageUsageFlags supportedUsage)
                                         &formatProperties);
 
     VkImageUsageFlags composedUsage{0};
-    std::string       usageStr;
+    std::string usageStr;
 
     auto valid_format_feature = [&](VkImageUsageFlagBits usageFlag) {
         if (usageFlag == VK_IMAGE_USAGE_STORAGE_BIT)
@@ -122,9 +122,9 @@ VkPresentModeKHR Swapchain::ChoosePresentMode(bool vsync)
     return VK_PRESENT_MODE_IMMEDIATE_KHR;
 }
 
-VkResult Swapchain::AcquireNextImage(uint32_t&   imageIndex,
+VkResult Swapchain::AcquireNextImage(uint32_t& imageIndex,
                                      VkSemaphore imageAcquiredSem,
-                                     VkFence     fence)
+                                     VkFence fence)
 {
     return vkAcquireNextImageKHR(m_device.GetHandle(), m_handle,
                                  std::numeric_limits<uint64_t>::max(), imageAcquiredSem, fence,
@@ -132,7 +132,7 @@ VkResult Swapchain::AcquireNextImage(uint32_t&   imageIndex,
 }
 
 VkCompositeAlphaFlagBitsKHR Swapchain::ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
-                                                            VkCompositeAlphaFlagsKHR    supported)
+                                                            VkCompositeAlphaFlagsKHR supported)
 {
     if ((request & supported) != 0) { return request; }
 

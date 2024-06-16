@@ -58,7 +58,7 @@ private:
         std::atomic_uint m_count{0};
     };
     mutable AtomicCounter m_counter;
-    ResourceType          m_resourceType{ResourceType::eMax};
+    ResourceType m_resourceType{ResourceType::eMax};
 };
 
 class ShaderGroupSource : public RHIResource
@@ -80,7 +80,7 @@ public:
 
 private:
     ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
-    std::string    m_source[ToUnderlying(ShaderStage::eMax)];
+    std::string m_source[ToUnderlying(ShaderStage::eMax)];
 };
 
 class ShaderGroupSPIRV : public RHIResource

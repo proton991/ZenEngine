@@ -8,13 +8,13 @@ namespace zen::sys
 {
 UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos, const Vec3& maxPos, float aspect)
 {
-    const auto diag        = maxPos - minPos;
-    auto       maxDistance = glm::length(diag);
-    float      near        = 0.001f * maxDistance;
-    float      far         = 100.f * maxDistance;
-    float      fov         = 70.0f;
-    const auto center      = 0.5f * (maxPos + minPos);
-    const auto up          = Vec3(0, 1, 0);
+    const auto diag   = maxPos - minPos;
+    auto maxDistance  = glm::length(diag);
+    float near        = 0.001f * maxDistance;
+    float far         = 100.f * maxDistance;
+    float fov         = 70.0f;
+    const auto center = 0.5f * (maxPos + minPos);
+    const auto up     = Vec3(0, 1, 0);
     //  const auto eye    = diag.z > 0 ? center + 1.5f * diag : center + 2.f * glm::cross(diag, up);
     // place camera at the bbx corner
     const auto eye   = Vec3(maxPos.x, maxPos.y + 0.5f * maxDistance, maxPos.z);
@@ -29,11 +29,11 @@ UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye, const Vec3& target, floa
 
 Camera::Camera(const Vec3& eye,
                const Vec3& target,
-               float       aspect,
-               float       fov,
-               float       near,
-               float       far,
-               float       speed) :
+               float aspect,
+               float fov,
+               float near,
+               float far,
+               float speed) :
     m_position{eye}, m_aspect{aspect}, m_fov{fov}, m_near{near}, m_far{far}, m_speed(speed)
 {
     Vec3 direction = glm::normalize(target - m_position);

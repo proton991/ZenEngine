@@ -27,13 +27,13 @@ public:
     virtual TypeId GetTypeId() const override { return typeid(Material); }
 
     AlphaMode alphaMode{AlphaMode::Opaque};
-    bool      doubleSided{false};
+    bool doubleSided{false};
     // material factors
     float alphaCutoff{1.0f};
     float metallicFactor{1.0f};
     float roughnessFactor{1.0f};
-    Vec4  baseColorFactor{1.0f};
-    Vec4  emissiveFactor{0.0f};
+    Vec4 baseColorFactor{1.0f};
+    Vec4 emissiveFactor{0.0f};
     // textures
     Texture* baseColorTexture{nullptr};
     Texture* metallicRoughnessTexture{nullptr};
@@ -54,8 +54,8 @@ public:
     {
         Texture* specularGlossinessTexture;
         Texture* diffuseTexture;
-        Vec4     diffuseFactor{1.0f};
-        Vec3     specularFactor{0.0f};
+        Vec4 diffuseFactor{1.0f};
+        Vec3 specularFactor{0.0f};
     } extension;
     struct PbrWorkflows
     {
@@ -63,7 +63,7 @@ public:
         bool specularGlossiness{false};
     } pbrWorkflows;
     uint32_t index{0};
-    bool     unlit{false};
-    float    emissiveStrength{1.0f};
+    bool unlit{false};
+    float emissiveStrength{1.0f};
 };
 } // namespace zen::sg

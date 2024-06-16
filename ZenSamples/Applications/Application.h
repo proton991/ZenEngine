@@ -51,8 +51,8 @@ protected:
     // Window
     UniquePtr<platform::GlfwWindowImpl> m_window{nullptr};
     // Vulkan
-    UniquePtr<val::Instance>       m_instance;
+    UniquePtr<val::Instance> m_instance;
     UniquePtr<val::PhysicalDevice> m_physicalDevice;
-    UniquePtr<val::Device>         m_device;
+    UniquePtr<val::Device> m_device;
 };
 } // namespace zen

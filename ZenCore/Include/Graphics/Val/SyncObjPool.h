@@ -28,10 +28,10 @@ private:
     const val::Device& m_valDevice;
     // Fences
     std::vector<VkFence> m_fences;
-    uint32_t             m_numActiveFences{0};
+    uint32_t m_numActiveFences{0};
     // Semaphores
     std::vector<VkSemaphore> m_semaphores;
     std::vector<VkSemaphore> m_releasedSemaphores;
-    uint32_t                 m_numActiveSemaphores{};
+    uint32_t m_numActiveSemaphores{};
 };
 } // namespace zen::val

@@ -54,8 +54,8 @@ public:
 private:
     Index m_index;
     Index m_physicalIndex;
-    Type  m_type;
-    Tag   m_tag;
+    Type m_type;
+    Tag m_tag;
 
     std::unordered_set<Index> m_readInPasses;
     std::unordered_set<Index> m_writtenInPasses;
@@ -70,15 +70,15 @@ public:
 
     struct Info
     {
-        VkFormat      format{VK_FORMAT_UNDEFINED};
-        uint32_t      samples{1};
-        uint32_t      levels{1};
-        uint32_t      layers{1};
+        VkFormat format{VK_FORMAT_UNDEFINED};
+        uint32_t samples{1};
+        uint32_t levels{1};
+        uint32_t layers{1};
         ImageSizeType sizeType{ImageSizeType::SwapchainRelative};
-        float         sizeX{1.0};
-        float         sizeY{1.0};
-        float         sizeZ{0.0};
-        VkExtent3D    extent3D{};
+        float sizeX{1.0};
+        float sizeY{1.0};
+        float sizeZ{0.0};
+        VkExtent3D extent3D{};
     };
 
     void SetInfo(const Info& info) { m_info = info; }
@@ -90,7 +90,7 @@ public:
     auto GetUsage() const { return m_usage; }
 
 private:
-    Info            m_info{};
+    Info m_info{};
     val::ImageUsage m_usage{val::ImageUsage::Undefined};
 };
 
@@ -115,7 +115,7 @@ public:
     auto GetUsage() const { return m_usage; }
 
 private:
-    Info             m_info{};
+    Info m_info{};
     val::BufferUsage m_usage{};
 };
 
@@ -161,9 +161,9 @@ public:
 
     const auto& GetUsedShaders() const { return m_shaders; }
 
-    void BindSRD(const Tag&            rdgResourceTag,
+    void BindSRD(const Tag& rdgResourceTag,
                  VkShaderStageFlagBits shaderStage,
-                 const std::string&    shaderResourceName);
+                 const std::string& shaderResourceName);
 
     void BindSampler(const Tag& tag, val::Sampler* sampler) { m_samplerBinding[tag] = sampler; }
 
@@ -179,16 +179,16 @@ public:
     auto GetOnExecute() const { return m_onExecute; }
 
 private:
-    RenderGraph&  m_graph;
-    Index         m_index;
-    Index         m_physicalIndex;
-    Tag           m_tag;
+    RenderGraph& m_graph;
+    Index m_index;
+    Index m_physicalIndex;
+    Tag m_tag;
     RDGQueueFlags m_queueFlags;
     // output resources
-    std::vector<RDGImage*>  m_outImageResources;
+    std::vector<RDGImage*> m_outImageResources;
     std::vector<RDGBuffer*> m_outBufferResources;
     // input resources
-    HashMap<Tag, val::ImageUsage>  m_inImagesResources;
+    HashMap<Tag, val::ImageUsage> m_inImagesResources;
     HashMap<Tag, val::BufferUsage> m_inBufferResources;
     // clear screen
     bool m_clearScreen{false};
@@ -197,10 +197,10 @@ private:
     std::vector<val::ShaderModule*> m_shaders;
 
     HashMap<Tag, val::ShaderResource> m_srdBinding;
-    HashMap<Tag, val::Sampler*>       m_samplerBinding;
+    HashMap<Tag, val::Sampler*> m_samplerBinding;
     // external resources
     HashMap<Tag, std::vector<val::Image*>> m_externImageResources;
-    HashMap<Tag, val::Buffer*>             m_externBufferResources;
+    HashMap<Tag, val::Buffer*> m_externBufferResources;
 
     std::function<void(val::CommandBuffer*)> m_onExecute{[](auto*) {
     }};
@@ -222,26 +222,26 @@ struct ResourceState
 {
     using ImageTransitionMap  = HashMap<Tag, ImageTransition>;
     using BufferTransitionMap = HashMap<Tag, BufferTransition>;
-    HashMap<Tag, ImageTransitionMap>  perPassImageState;
+    HashMap<Tag, ImageTransitionMap> perPassImageState;
     HashMap<Tag, BufferTransitionMap> perPassBufferState;
-    HashMap<Tag, val::ImageUsage>     totalImageUsages;
-    HashMap<Tag, val::BufferUsage>    totalBufferUsages;
-    HashMap<Tag, Tag>                 imageFirstUsePass;
-    HashMap<Tag, Tag>                 imageLastUsePass;
-    HashMap<Tag, Tag>                 bufferFirstUsePass;
-    HashMap<Tag, Tag>                 bufferLastUsePass;
+    HashMap<Tag, val::ImageUsage> totalImageUsages;
+    HashMap<Tag, val::BufferUsage> totalBufferUsages;
+    HashMap<Tag, Tag> imageFirstUsePass;
+    HashMap<Tag, Tag> imageLastUsePass;
+    HashMap<Tag, Tag> bufferFirstUsePass;
+    HashMap<Tag, Tag> bufferLastUsePass;
 };
 
 struct RDGPhysicalPass
 {
-    val::PipelineLayout*         pipelineLayout{nullptr};
-    val::PipelineState           pipelineState{};
-    val::GraphicsPipeline*       graphicPipeline{nullptr};
-    val::RenderPass*             renderPass{nullptr};
+    val::PipelineLayout* pipelineLayout{nullptr};
+    val::PipelineState pipelineState{};
+    val::GraphicsPipeline* graphicPipeline{nullptr};
+    val::RenderPass* renderPass{nullptr};
     std::vector<VkDescriptorSet> descriptorSets;
-    val::Framebuffer*            framebuffer;
-    uint32_t                     index{0};
-    bool                         descriptorSetsUpdated{false};
+    val::Framebuffer* framebuffer;
+    uint32_t index{0};
+    bool descriptorSetsUpdated{false};
 
     std::function<void(val::CommandBuffer*)> onExecute{[this](auto*) {
     }};
@@ -253,7 +253,7 @@ class RenderGraph
 public:
     explicit RenderGraph(RenderDevice& device) : m_renderDevice(device) {}
 
-    RDGImage*  GetImageResource(const Tag& tag);
+    RDGImage* GetImageResource(const Tag& tag);
     RDGBuffer* GetBufferResource(const Tag& tag);
 
     void SetBackBufferSize(uint32_t width, uint32_t height);
@@ -301,8 +301,8 @@ private:
 
     void BuildPhysicalPasses();
 
-    void EmitPipelineBarrier(val::CommandBuffer*                   commandBuffer,
-                             const HashMap<Tag, ImageTransition>&  imageTransitions,
+    void EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
+                             const HashMap<Tag, ImageTransition>& imageTransitions,
                              const HashMap<Tag, BufferTransition>& bufferTransitions);
 
     void BeforeExecuteSetup(val::CommandBuffer* commandBuffer);
@@ -313,21 +313,21 @@ private:
 
     void UpdateDescriptorSets(RDGPhysicalPass& pass);
 
-    HashMap<Tag, Index>                    m_resourceToIndex;
-    HashMap<Tag, Index>                    m_passToIndex;
-    std::vector<UniquePtr<RDGResource>>    m_resources;
-    std::vector<UniquePtr<RDGPass>>        m_passes;
+    HashMap<Tag, Index> m_resourceToIndex;
+    HashMap<Tag, Index> m_passToIndex;
+    std::vector<UniquePtr<RDGResource>> m_resources;
+    std::vector<UniquePtr<RDGPass>> m_passes;
     std::vector<std::unordered_set<Index>> m_passDeps;
-    std::vector<Index>                     m_sortedPassIndices;
+    std::vector<Index> m_sortedPassIndices;
     // Tracking resource state
     ResourceState m_resourceState;
     // Actual Physical resources
-    std::vector<UniquePtr<val::Image>>  m_physicalImages;
+    std::vector<UniquePtr<val::Image>> m_physicalImages;
     std::vector<UniquePtr<val::Buffer>> m_physicalBuffers;
     // Actual physical passes
     std::vector<RDGPhysicalPass> m_physicalPasses;
     // Swapchain back buffer info
-    Tag        m_backBufferTag;
+    Tag m_backBufferTag;
     VkExtent2D m_backBufferExtent{};
 
     bool m_initialized{false};

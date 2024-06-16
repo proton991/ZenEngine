@@ -30,10 +30,10 @@ using Index = uint32_t;
 struct TextureInfo
 {
     TextureInfo() = default;
-    TextureInfo(int      samplerIndex_,
+    TextureInfo(int samplerIndex_,
                 uint32_t weight_,
                 uint32_t height_,
-                Format   format_,
+                Format format_,
                 // moved
                 std::vector<uint8_t> data_) :
         samplerIndex(samplerIndex_),
@@ -43,10 +43,10 @@ struct TextureInfo
         data(std::move(data_))
     {}
 
-    int      samplerIndex{-1};
+    int samplerIndex{-1};
     uint32_t width{0};
     uint32_t height{0};
-    Format   format{Format::UNDEFINED};
+    Format format{Format::UNDEFINED};
     // byte data no mipmaps
     std::vector<uint8_t> data;
 };
@@ -83,18 +83,18 @@ enum class AlphaMode
 struct Material
 {
 
-    AlphaMode    alphaMode{AlphaMode::Opaque};
-    float        alphaCutoff{1.0f};
-    float        metallicFactor{1.0f};
-    float        roughnessFactor{1.0f};
-    Vec4         baseColorFactor{1.0f};
-    Vec4         emissiveFactor{0.0f};
+    AlphaMode alphaMode{AlphaMode::Opaque};
+    float alphaCutoff{1.0f};
+    float metallicFactor{1.0f};
+    float roughnessFactor{1.0f};
+    Vec4 baseColorFactor{1.0f};
+    Vec4 emissiveFactor{0.0f};
     TextureInfo* baseColorTexture{nullptr};
     TextureInfo* metallicRoughnessTexture{nullptr};
     TextureInfo* normalTexture{nullptr};
     TextureInfo* occlusionTexture{nullptr};
     TextureInfo* emissiveTexture{nullptr};
-    bool         doubleSided{false};
+    bool doubleSided{false};
     struct TexCoordSets
     {
         uint8_t baseColor{0};
@@ -108,8 +108,8 @@ struct Material
     {
         TextureInfo* specularGlossinessTexture;
         TextureInfo* diffuseTexture;
-        Vec4         diffuseFactor{1.0f};
-        Vec3         specularFactor{0.0f};
+        Vec4 diffuseFactor{1.0f};
+        Vec3 specularFactor{0.0f};
     } extension;
     struct PbrWorkflows
     {
@@ -117,8 +117,8 @@ struct Material
         bool specularGlossiness{false};
     } pbrWorkflows;
     uint32_t index{0};
-    bool     unlit{false};
-    float    emissiveStrength{1.0f};
+    bool unlit{false};
+    float emissiveStrength{1.0f};
 };
 
 struct Primitive
@@ -132,12 +132,12 @@ struct Primitive
         bb.min = min;
         bb.max = max;
     }
-    uint32_t    firstIndex{0};
-    uint32_t    indexCount{0};
-    uint32_t    vertexCount{0};
+    uint32_t firstIndex{0};
+    uint32_t indexCount{0};
+    uint32_t vertexCount{0};
     BoundingBox bb;
-    Material*   material{nullptr};
-    bool        hasIndices{false};
+    Material* material{nullptr};
+    bool hasIndices{false};
 };
 
 struct Node
@@ -147,9 +147,9 @@ struct Node
 
     Mat4 GetMatrix() const;
 
-    Node*       parent{nullptr};
-    uint32_t    index{0};
-    int32_t     skinIndex{-1};
+    Node* parent{nullptr};
+    uint32_t index{0};
+    int32_t skinIndex{-1};
     std::string name;
     // node matrix
     Mat4 matrix{1.0f};
@@ -194,13 +194,13 @@ private:
     void LoadSamplers(tinygltf::Model& gltfModel);
     void LoadTextures(tinygltf::Model& gltfModel);
     void LoadMaterials(tinygltf::Model& gltfModel);
-    void LoadNode(gltf::Model*           pOutModel,
-                  gltf::Node*            parent,
-                  const tinygltf::Node&  node,
-                  uint32_t               nodeIndex,
+    void LoadNode(gltf::Model* pOutModel,
+                  gltf::Node* parent,
+                  const tinygltf::Node& node,
+                  uint32_t nodeIndex,
                   const tinygltf::Model& model,
-                  float                  globalScale);
-    void GetModelProps(const tinygltf::Node&  node,
+                  float globalScale);
+    void GetModelProps(const tinygltf::Node& node,
                        const tinygltf::Model& model,
                        // sum
                        size_t& vertexCount,
@@ -213,7 +213,7 @@ private:
     size_t m_indexPos{0};
     // vertices and indices
     std::vector<gltf::Vertex> m_vertices;
-    std::vector<gltf::Index>  m_indices;
+    std::vector<gltf::Index> m_indices;
     // textures
     std::vector<gltf::TextureInfo> m_textureInfos;
     std::vector<gltf::SamplerInfo> m_samplerInfos;
@@ -260,13 +260,13 @@ private:
         // access materials
         sg::Scene* scene);
 
-    tinygltf::Model    m_gltfModel;
+    tinygltf::Model m_gltfModel;
     tinygltf::TinyGLTF m_gltfContext;
     // counters
     size_t m_vertexPos{0};
     size_t m_indexPos{0};
     // vertices and indices
     std::vector<gltf::Vertex> m_vertices;
-    std::vector<gltf::Index>  m_indices;
+    std::vector<gltf::Index> m_indices;
 };
 } // namespace zen::gltf

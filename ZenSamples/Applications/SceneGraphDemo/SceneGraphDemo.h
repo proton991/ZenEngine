@@ -49,20 +49,20 @@ class SceneGraphDemo : public Application
 
     struct MaterialUniformData
     {
-        int   bcTexIndex{-1};
-        int   mrTexIndex{-1};
-        int   normalTexIndex{-1};
-        int   aoTexIndex{-1};
-        int   emissiveTexIndex{-1};
-        int   bcTexSet{-1};
-        int   mrTexSet{-1};
-        int   normalTexSet{-1};
-        int   aoTexSet{-1};
-        int   emissiveTexSet{-1};
+        int bcTexIndex{-1};
+        int mrTexIndex{-1};
+        int normalTexIndex{-1};
+        int aoTexIndex{-1};
+        int emissiveTexIndex{-1};
+        int bcTexSet{-1};
+        int mrTexSet{-1};
+        int normalTexSet{-1};
+        int aoTexSet{-1};
+        int emissiveTexSet{-1};
         float metallicFactor{1.0f};
         float roughnessFactor{1.0f};
-        Vec4  baseColorFactor{1.0f};
-        Vec4  emissiveFactor{0.0f};
+        Vec4 baseColorFactor{1.0f};
+        Vec4 emissiveFactor{0.0f};
     };
 
 public:
@@ -91,13 +91,13 @@ private:
 
     void FillLightUniforms();
 
-    void RecordDrawCmdsSecondary(val::CommandBuffer*    primaryCmdBuffer,
+    void RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
                                  const RDGPhysicalPass& physicalPass);
 
     val::CommandBuffer* RecordDrawCmdsSecondary(
         val::CommandBuffer* primaryCmdBuffer,
-        uint32_t            meshStart,
-        uint32_t            meshEnd,
+        uint32_t meshStart,
+        uint32_t meshEnd,
         // all sub meshes and their nodes
         const std::vector<std::pair<sg::Node*, sg::SubMesh*>>& subMeshes,
         // related scene graph physical pass
@@ -105,13 +105,13 @@ private:
         // thread id for command buffer
         uint32_t threadId = 0);
 
-    void RecordDrawCmdsPrimary(val::CommandBuffer*           primaryCmdBuffer,
+    void RecordDrawCmdsPrimary(val::CommandBuffer* primaryCmdBuffer,
                                const std::vector<sg::Node*>& nodes,
-                               const RDGPhysicalPass&        physicalPass);
+                               const RDGPhysicalPass& physicalPass);
 
-    UniquePtr<RenderDevice>  m_renderDevice;
+    UniquePtr<RenderDevice> m_renderDevice;
     UniquePtr<RenderContext> m_renderContext;
-    UniquePtr<RenderGraph>   m_renderGraph;
+    UniquePtr<RenderGraph> m_renderGraph;
 
     UniquePtr<ThreadPool<void, uint32_t>> m_threadPool;
 
@@ -130,18 +130,18 @@ private:
     UniquePtr<sys::Camera> m_camera;
 
     UniquePtr<UniformBuffer> m_cameraUBO;
-    CameraUniformData        m_cameraUniformData{};
+    CameraUniformData m_cameraUniformData{};
 
     // node uniform buffer and data
     std::vector<NodeUniformData> m_nodesUniforms;
-    UniquePtr<UniformBuffer>     m_nodesUBO;
+    UniquePtr<UniformBuffer> m_nodesUBO;
 
     // material uniform buffer and data
     std::vector<MaterialUniformData> m_materialUniforms;
-    UniquePtr<UniformBuffer>         m_materialUBO;
+    UniquePtr<UniformBuffer> m_materialUBO;
 
     std::vector<LightUniformData> m_lightUniforms;
-    UniquePtr<UniformBuffer>      m_lightUBO;
+    UniquePtr<UniformBuffer> m_lightUBO;
 
     HashMap<uint64_t, uint32_t> m_nodesUniformIndex;
 

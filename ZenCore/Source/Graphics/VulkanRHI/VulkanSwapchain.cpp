@@ -20,9 +20,9 @@ static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR
     return surfaceFormats[0];
 }
 
-static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice  gpu,
+static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
                                           VkImageUsageFlags supportedUsage,
-                                          VkFormat          surfaceFormat)
+                                          VkFormat surfaceFormat)
 {
     static const std::vector<VkImageUsageFlagBits> defaultImageUsageFlags = {
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -31,7 +31,7 @@ static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice  gpu,
     vkGetPhysicalDeviceFormatProperties(gpu, surfaceFormat, &formatProperties);
 
     VkImageUsageFlags composedUsage{0};
-    std::string       usageStr;
+    std::string usageStr;
 
     auto valid_format_feature = [&](VkImageUsageFlagBits usageFlag) {
         if (usageFlag == VK_IMAGE_USAGE_STORAGE_BIT)
@@ -80,7 +80,7 @@ static VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR sur
 }
 
 static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
-                                                        VkCompositeAlphaFlagsKHR    supported)
+                                                        VkCompositeAlphaFlagsKHR supported)
 {
 
     if ((request & supported) != 0) { return request; }
@@ -102,15 +102,15 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
     return VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR;
 }
 
-VulkanSwapchain::VulkanSwapchain(VulkanRHI*     vkRHI,
+VulkanSwapchain::VulkanSwapchain(VulkanRHI* vkRHI,
                                  VulkanSurface* vulkanSurface,
-                                 bool           enableVSync,
+                                 bool enableVSync,
                                  VkSwapchainKHR oldSwapchain)
 {
 
-    VkDevice         device  = vkRHI->GetVkDevice();
-    VkPhysicalDevice gpu     = vkRHI->GetPhysicalDevice();
-    VkSurfaceKHR     surface = vulkanSurface->surface;
+    VkDevice device      = vkRHI->GetVkDevice();
+    VkPhysicalDevice gpu = vkRHI->GetPhysicalDevice();
+    VkSurfaceKHR surface = vulkanSurface->surface;
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surfaceCapabilities);
@@ -157,7 +157,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI*     vkRHI,
 
 SwapchainHandle VulkanRHI::CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync)
 {
-    VulkanSurface*   vulkanSurface   = reinterpret_cast<VulkanSurface*>(surfaceHandle.value);
+    VulkanSurface* vulkanSurface     = reinterpret_cast<VulkanSurface*>(surfaceHandle.value);
     VulkanSwapchain* vulkanSwapchain = new VulkanSwapchain(this, vulkanSurface, enableVSync);
 
     return SwapchainHandle(vulkanSwapchain);

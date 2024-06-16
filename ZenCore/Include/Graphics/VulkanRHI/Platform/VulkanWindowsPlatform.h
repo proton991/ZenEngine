@@ -11,8 +11,8 @@ namespace zen
 struct Win32WindowData
 {
     GLFWwindow* glfwWindow{nullptr};
-    uint32_t    width{0};
-    uint32_t    height{0};
+    uint32_t width{0};
+    uint32_t height{0};
 };
 typedef Win32WindowData WindowData;
 } // namespace zen

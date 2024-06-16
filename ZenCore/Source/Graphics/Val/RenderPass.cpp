@@ -6,7 +6,7 @@ namespace zen::val
 {
 SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors,
                          const std::vector<VkAttachmentReference>& inputs,
-                         const uint32_t                            depthStencil) :
+                         const uint32_t depthStencil) :
     colorRefs(colors), inputRefs(inputs)
 {
     if (depthStencil != UINT32_MAX)
@@ -16,9 +16,9 @@ SubpassInfo::SubpassInfo(const std::vector<VkAttachmentReference>& colors,
     }
 }
 
-RenderPass::RenderPass(const Device&                               device,
+RenderPass::RenderPass(const Device& device,
                        const std::vector<VkAttachmentDescription>& attachments,
-                       const SubpassInfo&                          subpassInfo) :
+                       const SubpassInfo& subpassInfo) :
     DeviceObject(device)
 {
     VkSubpassDescription subpassDescription{};
@@ -68,10 +68,10 @@ RenderPass::~RenderPass()
     }
 }
 
-RenderPass::RenderPass(const Device&                               device,
+RenderPass::RenderPass(const Device& device,
                        const std::vector<VkAttachmentDescription>& attachments,
-                       const std::vector<SubpassInfo>&             subpassInfos,
-                       const std::vector<VkSubpassDependency>&     subpassDeps) :
+                       const std::vector<SubpassInfo>& subpassInfos,
+                       const std::vector<VkSubpassDependency>& subpassDeps) :
     DeviceObject(device)
 {
     std::vector<VkSubpassDescription> subpassDescriptions(subpassInfos.size());

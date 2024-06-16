@@ -31,7 +31,7 @@ public:
     }
 
     void SetLocalMatrix(const Mat4& mat) { m_localMatrix = mat; }
-    
+
     void InvalidateWorldMatrix() { m_updateWorldMatrix = true; }
 
     TypeId GetTypeId() const override { return typeid(Transform); };

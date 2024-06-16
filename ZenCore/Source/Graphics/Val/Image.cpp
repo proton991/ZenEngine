@@ -17,16 +17,16 @@ UniquePtr<Image> Image::CreateUnique(const Device& device, const ImageCreateInfo
                              CI.samples);
 }
 
-Image::Image(const Device&            device,
-             VkFormat                 format,
-             VkExtent3D               extent3D,
-             VkImageUsageFlags        usage,
+Image::Image(const Device& device,
+             VkFormat format,
+             VkExtent3D extent3D,
+             VkImageUsageFlags usage,
              VmaAllocationCreateFlags vmaFlags,
-             uint32_t                 mipLevels,
-             uint32_t                 arrayLayers,
-             VkImageTiling            tiling,
-             VkImageCreateFlags       flags,
-             VkSampleCountFlagBits    samples) :
+             uint32_t mipLevels,
+             uint32_t arrayLayers,
+             VkImageTiling tiling,
+             VkImageCreateFlags flags,
+             VkSampleCountFlagBits samples) :
     DeviceObject{device}, m_format{format}, m_extent3D(extent3D)
 {
     if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
@@ -87,7 +87,7 @@ static inline bool FormatHasDepthStencilAspect(VkFormat format)
 VkImageType Image::GetImageType(VkExtent3D& extent)
 {
     VkImageType result{};
-    uint32_t    dimensions{0};
+    uint32_t dimensions{0};
 
     if (extent.width >= 1) { dimensions++; }
     if (extent.height >= 1) { dimensions++; }

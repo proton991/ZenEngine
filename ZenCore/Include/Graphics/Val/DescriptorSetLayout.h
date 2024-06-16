@@ -14,8 +14,8 @@ class DescriptorSetLayout :
     public DeviceObject<VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT>
 {
 public:
-    DescriptorSetLayout(const Device&                      device,
-                        uint32_t                           setIndex,
+    DescriptorSetLayout(const Device& device,
+                        uint32_t setIndex,
                         const std::vector<ShaderResource>& shaderResources);
 
     DescriptorSetLayout(DescriptorSetLayout&& other) noexcept;
@@ -26,6 +26,6 @@ public:
 
 private:
     const uint32_t m_setIndex;
-    size_t         m_hash{};
+    size_t m_hash{};
 };
 } // namespace zen::val

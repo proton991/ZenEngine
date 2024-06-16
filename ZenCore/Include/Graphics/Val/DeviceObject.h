@@ -41,7 +41,7 @@ public:
     }
 
     const Device& m_device;
-    VkHandleType  m_handle;
-    std::string   m_debugName{};
+    VkHandleType m_handle;
+    std::string m_debugName{};
 };
 } // namespace zen::val

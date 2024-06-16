@@ -20,13 +20,13 @@ public:
 #if defined(ZEN_WIN32)
     typedef CRITICAL_SECTION MutexData;
 
-     Mutex() : m_osMutex() { InitializeCriticalSection(&m_osMutex); }
+    Mutex() : m_osMutex() { InitializeCriticalSection(&m_osMutex); }
     ~Mutex() { DeleteCriticalSection(&m_osMutex); }
 #endif
 
 #if defined(ZEN_MACOS)
     typedef pthread_mutex_t MutexData;
-     Mutex() : m_osMutex(PTHREAD_MUTEX_INITIALIZER) { pthread_mutex_init(&m_osMutex, nullptr); }
+    Mutex() : m_osMutex(PTHREAD_MUTEX_INITIALIZER) { pthread_mutex_init(&m_osMutex, nullptr); }
     ~Mutex() { pthread_mutex_destroy(&m_osMutex); }
 #endif
 

@@ -13,7 +13,7 @@ using namespace zen;
 int main(int argc, char** argv)
 {
     platform::WindowConfig windowConfig;
-    auto*                  window = new platform::GlfwWindowImpl(windowConfig);
+    auto* window = new platform::GlfwWindowImpl(windowConfig);
 
     auto instanceExts = window->GetInstanceExtensions();
     auto deviceExts   = window->GetDeviceExtensions();
@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 
     val::Swapchain swapChain{*valDevice, surface, {windowConfig.width, windowConfig.height}};
 
-    RenderDevice         renderDevice{*valDevice};
+    RenderDevice renderDevice{*valDevice};
     val::ImageCreateInfo imageCI{};
     imageCI.extent3D = {windowConfig.width, windowConfig.height, 1};
     imageCI.usage    = VK_IMAGE_USAGE_SAMPLED_BIT;

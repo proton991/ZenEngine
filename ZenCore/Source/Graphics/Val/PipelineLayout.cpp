@@ -5,7 +5,7 @@
 
 namespace zen::val
 {
-PipelineLayout::PipelineLayout(const Device&                     device,
+PipelineLayout::PipelineLayout(const Device& device,
                                const std::vector<ShaderModule*>& shaderModules) :
     DeviceObject(device), m_shaderModules(shaderModules)
 {
@@ -31,8 +31,8 @@ PipelineLayout::PipelineLayout(const Device&                     device,
     }
     for (auto& it : m_shaderResources)
     {
-        auto&      shaderResource = it.second;
-        const auto set            = shaderResource.set;
+        auto& shaderResource = it.second;
+        const auto set       = shaderResource.set;
         if (!m_perSetResource.count(set))
         {
             m_perSetResource.emplace(set, std::vector<ShaderResource>{shaderResource});
@@ -82,7 +82,7 @@ PipelineLayout::PipelineLayout(PipelineLayout&& other) noexcept : DeviceObject(s
     m_dsLayouts       = std::move(other.m_dsLayouts);
 }
 
-std::vector<ShaderResource> PipelineLayout::GetResources(ShaderResourceType    type,
+std::vector<ShaderResource> PipelineLayout::GetResources(ShaderResourceType type,
                                                          VkShaderStageFlagBits stage) const
 {
     std::vector<ShaderResource> result;

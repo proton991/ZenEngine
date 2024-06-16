@@ -293,21 +293,21 @@ inline void HashParam<std::vector<VkImageView>>(size_t& seed, const std::vector<
 }
 
 template <>
-inline void HashParam<std::vector<val::ShaderModule*>>(size_t&                                seed,
+inline void HashParam<std::vector<val::ShaderModule*>>(size_t& seed,
                                                        const std::vector<val::ShaderModule*>& value)
 {
     for (auto& shaderModule : value) { util::HashCombine(seed, shaderModule->GetId()); }
 }
 
 template <> inline void HashParam<std::vector<VkAttachmentDescription>>(
-    size_t&                                     seed,
+    size_t& seed,
     const std::vector<VkAttachmentDescription>& value)
 {
     for (auto& attachment : value) { util::HashCombine(seed, attachment); }
 }
 
 template <>
-inline void HashParam<std::vector<val::SubpassInfo>>(size_t&                              seed,
+inline void HashParam<std::vector<val::SubpassInfo>>(size_t& seed,
                                                      const std::vector<val::SubpassInfo>& value)
 {
     for (auto& attachment : value) { util::HashCombine(seed, attachment); }
@@ -326,7 +326,7 @@ T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& res
 
     // If we do not have it already, create and cache it
     const char* resType = typeid(T).name();
-    size_t      resId   = resources.size();
+    size_t resId        = resources.size();
 
     LOGD("Building #{} cache object ({})", resId, resType);
 
@@ -356,8 +356,8 @@ T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& res
     return insertIt->second;
 }
 
-template <class T, class... A> T& RequestResource(const val::Device&       device,
-                                                  std::mutex&              resourceMutex,
+template <class T, class... A> T& RequestResource(const val::Device& device,
+                                                  std::mutex& resourceMutex,
                                                   HashMap<std::size_t, T>& resources,
                                                   A&... args)
 {
@@ -373,9 +373,9 @@ class ResourceCache
 public:
     explicit ResourceCache(const val::Device& device) : m_valDevice(device) {}
 
-    val::Framebuffer* RequestFramebuffer(VkRenderPass                    renderPassHandle,
+    val::Framebuffer* RequestFramebuffer(VkRenderPass renderPassHandle,
                                          const std::vector<VkImageView>& attachments,
-                                         VkExtent3D                      extent3D)
+                                         VkExtent3D extent3D)
     {
         auto& res =
             RequestResource<val::Framebuffer>(m_valDevice, m_mutexTable.framebuffer, m_framebuffers,
@@ -385,7 +385,7 @@ public:
     }
 
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments,
-                                       const val::SubpassInfo&                     subpassInfo)
+                                       const val::SubpassInfo& subpassInfo)
     {
         auto& res = RequestResource<val::RenderPass>(m_valDevice, m_mutexTable.renderPass,
                                                      m_renderPasses, attachments, subpassInfo);
@@ -401,7 +401,7 @@ public:
     }
 
     val::GraphicsPipeline* RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout,
-                                                   val::PipelineState&        pipelineState)
+                                                   val::PipelineState& pipelineState)
     {
         auto& res = RequestResource<val::GraphicsPipeline>(
             m_valDevice, m_mutexTable.graphicsPipeline, m_graphicPipelines, pipelineLayout,
@@ -421,9 +421,9 @@ private:
         std::mutex graphicsPipeline;
     } m_mutexTable;
 
-    HashMap<size_t, val::RenderPass>       m_renderPasses;
-    HashMap<size_t, val::Framebuffer>      m_framebuffers;
-    HashMap<size_t, val::PipelineLayout>   m_pipelineLayouts;
+    HashMap<size_t, val::RenderPass> m_renderPasses;
+    HashMap<size_t, val::Framebuffer> m_framebuffers;
+    HashMap<size_t, val::PipelineLayout> m_pipelineLayouts;
     HashMap<size_t, val::GraphicsPipeline> m_graphicPipelines;
 };
 } // namespace zen

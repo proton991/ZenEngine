@@ -22,7 +22,7 @@ struct Struct2
     void incr(void) { ++mVal; }
     void decr(void) { --mVal; }
 
-    int        mVal;
+    int mVal;
     static int _mNbInstances;
 };
 

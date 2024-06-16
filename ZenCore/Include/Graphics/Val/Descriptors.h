@@ -11,9 +11,9 @@ struct VulkanDescriptorPoolSizes;
 class DescriptorPoolManager
 {
 public:
-    DescriptorPoolManager(const Device&                    device,
+    DescriptorPoolManager(const Device& device,
                           const VulkanDescriptorPoolSizes& poolSizes,
-                          bool                             allowFree);
+                          bool allowFree);
 
     void Cleanup();
 
@@ -24,15 +24,15 @@ public:
 private:
     VkDescriptorPool CreatePool();
 
-    const Device&  m_device;
+    const Device& m_device;
     const uint32_t m_maxSets;
-    const bool     m_allowFree;
+    const bool m_allowFree;
 
     const std::vector<VkDescriptorPoolSize> m_poolSizes;
 
     std::vector<VkDescriptorPool> m_freePools;
     std::vector<VkDescriptorPool> m_usedPools;
-    std::mutex                    m_mutex;
+    std::mutex m_mutex;
 };
 
 class DescriptorSetAllocator
@@ -45,9 +45,9 @@ public:
     bool Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet);
 
 private:
-    const Device&          m_device;
+    const Device& m_device;
     DescriptorPoolManager& m_poolManager;
-    VkDescriptorPool       m_currentPool{VK_NULL_HANDLE};
-    std::mutex             m_mutex;
+    VkDescriptorPool m_currentPool{VK_NULL_HANDLE};
+    std::mutex m_mutex;
 };
 } // namespace zen::val

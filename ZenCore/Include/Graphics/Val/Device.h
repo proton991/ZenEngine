@@ -16,8 +16,8 @@ class Device
 public:
     struct CreateInfo
     {
-        PhysicalDevice*    pPhysicalDevice         = nullptr;
-        uint32_t           enabledExtensionCount   = 0;
+        PhysicalDevice* pPhysicalDevice            = nullptr;
+        uint32_t enabledExtensionCount             = 0;
         const char* const* ppEnabledExtensionNames = nullptr;
         // enable raytracing features and extensions
         bool enableRaytracing = false;
@@ -46,10 +46,10 @@ public:
     auto GetGPUProperties() const { return m_physicalDevice->m_properties; }
 
 private:
-    VkDevice                 m_handle{VK_NULL_HANDLE};
-    PhysicalDevice*          m_physicalDevice{nullptr};
+    VkDevice m_handle{VK_NULL_HANDLE};
+    PhysicalDevice* m_physicalDevice{nullptr};
     std::vector<const char*> m_enabledExtensions;
-    HashMap<int, Queue>      m_queues;
-    VmaAllocator             m_memAllocator{nullptr};
+    HashMap<int, Queue> m_queues;
+    VmaAllocator m_memAllocator{nullptr};
 };
 } // namespace zen::val

@@ -14,9 +14,9 @@ UniquePtr<Buffer> Buffer::CreateUnique(const Device& device, const BufferCreateI
     return MakeUnique<Buffer>(device, CI.byteSize, (VkBufferUsageFlags)CI.usage, CI.vmaFlags);
 }
 
-Buffer::Buffer(const Device&            device,
-               VkDeviceSize             byteSize,
-               VkBufferUsageFlags       usage,
+Buffer::Buffer(const Device& device,
+               VkDeviceSize byteSize,
+               VkBufferUsageFlags usage,
                VmaAllocationCreateFlags vmaFlags) :
     DeviceObject(device), m_byteSize(byteSize)
 {

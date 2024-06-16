@@ -74,9 +74,9 @@ void RDGPass::ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer)
     m_externBufferResources[tag] = buffer;
 }
 
-void RDGPass::BindSRD(const Tag&            rdgResourceTag,
+void RDGPass::BindSRD(const Tag& rdgResourceTag,
                       VkShaderStageFlagBits shaderStage,
-                      const std::string&    shaderResourceName)
+                      const std::string& shaderResourceName)
 {
     for (const auto& shader : m_shaders)
     {
@@ -224,7 +224,7 @@ void RenderGraph::TraversePassDepsRecursive(Index passIndex, uint32_t level)
 void RenderGraph::RemoveDuplicates(std::vector<Index>& list)
 {
     std::unordered_set<Index> visited;
-    auto                      tail = list.begin();
+    auto tail = list.begin();
     for (auto it = list.begin(); it != list.end(); ++it)
     {
         if (!visited.count(*it))
@@ -240,7 +240,7 @@ void RenderGraph::RemoveDuplicates(std::vector<Index>& list)
 void RenderGraph::ResolveResourceState()
 {
     HashMap<Tag, val::BufferUsage> lastBufferUsages;
-    HashMap<Tag, val::ImageUsage>  lastImageUsages;
+    HashMap<Tag, val::ImageUsage> lastImageUsages;
     for (const auto& pass : m_passes)
     {
         auto& bufferTransitions = m_resourceState.perPassBufferState[pass->GetTag()];
@@ -385,7 +385,7 @@ void RenderGraph::BuildPhysicalPasses()
         std::vector<VkAttachmentDescription> attachmentDescriptions;
         // val::SubpassInfos
         std::vector<VkAttachmentReference> colorReferences;
-        uint32_t                           depthRefIndex{UINT32_MAX};
+        uint32_t depthRefIndex{UINT32_MAX};
         // Framebuffer attachments
         std::vector<VkImageView> imageViews;
         // Framebuffer size
@@ -487,15 +487,15 @@ static bool HasBufferWriteDependency(val::BufferUsage usage)
     return false;
 }
 
-void RenderGraph::EmitPipelineBarrier(val::CommandBuffer*                   commandBuffer,
-                                      const HashMap<Tag, ImageTransition>&  imageTransitions,
+void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
+                                      const HashMap<Tag, ImageTransition>& imageTransitions,
                                       const HashMap<Tag, BufferTransition>& bufferTransitions)
 {
     VkPipelineStageFlags srcPipelineStageFlags{};
     VkPipelineStageFlags dstPipelineStageFlags{};
 
     std::vector<VkBufferMemoryBarrier> bufferMemBarriers;
-    std::vector<VkImageMemoryBarrier>  imageMemBarriers;
+    std::vector<VkImageMemoryBarrier> imageMemBarriers;
 
     for (const auto& [bufferTag, bufferTransition] : bufferTransitions)
     {
@@ -569,7 +569,7 @@ void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* commandBuffer)
 }
 
 void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
-                                     const val::Image&   presentImage)
+                                     const val::Image& presentImage)
 {
     const auto& firstRenderPassTag = m_resourceState.imageFirstUsePass.at(m_backBufferTag);
     const auto& lastRenderPassTag  = m_resourceState.imageLastUsePass.at(m_backBufferTag);
@@ -606,9 +606,9 @@ void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
     if (pass.descriptorSetsUpdated) return;
     auto& rdgPass = m_passes[pass.index];
     // update descriptors
-    std::vector<VkWriteDescriptorSet>   dsWrites;
+    std::vector<VkWriteDescriptorSet> dsWrites;
     std::vector<VkDescriptorBufferInfo> dsBufferInfos;
-    std::vector<VkDescriptorImageInfo>  dsImageInfos;
+    std::vector<VkDescriptorImageInfo> dsImageInfos;
 
     size_t dsBufferInfoCount = 0;
     size_t dsImageInfoCount  = 0;

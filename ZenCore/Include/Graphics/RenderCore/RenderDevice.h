@@ -10,18 +10,18 @@ class RenderDevice
 public:
     explicit RenderDevice(const val::Device& valDevice);
 
-    val::Framebuffer* RequestFramebuffer(VkRenderPass                    renderPassHandle,
+    val::Framebuffer* RequestFramebuffer(VkRenderPass renderPassHandle,
                                          const std::vector<VkImageView>& attachments,
-                                         VkExtent3D                      extent3D);
+                                         VkExtent3D extent3D);
 
     val::RenderPass* RequestRenderPass(const std::vector<VkAttachmentDescription>& attachments,
-                                       const val::SubpassInfo&                     subpassInfo);
+                                       const val::SubpassInfo& subpassInfo);
 
     val::PipelineLayout* RequestPipelineLayout(
         const std::vector<val::ShaderModule*>& shaderModules);
 
     val::GraphicsPipeline* RequestGraphicsPipeline(const val::PipelineLayout& pipelineLayout,
-                                                   val::PipelineState&        pipelineState);
+                                                   val::PipelineState& pipelineState);
 
     UniquePtr<val::Image> CreateImageUnique(const val::ImageCreateInfo& imageCI);
 
@@ -29,7 +29,7 @@ public:
 
     UniquePtr<val::Framebuffer> CreateFramebufferUnique(VkRenderPass renderPassHandle,
                                                         const std::vector<VkImageView>& attachments,
-                                                        VkExtent3D                      extent3D);
+                                                        VkExtent3D extent3D);
 
     VkDescriptorSet RequestDescriptorSet(const val::DescriptorSetLayout& layout);
 
@@ -38,10 +38,10 @@ public:
     size_t PadUniformBufferSize(size_t originalSize);
 
 private:
-    const val::Device&       m_valDevice;
+    const val::Device& m_valDevice;
     UniquePtr<ResourceCache> m_resourceCache;
 
-    val::DescriptorPoolManager  m_descriptorPoolManager;
+    val::DescriptorPoolManager m_descriptorPoolManager;
     val::DescriptorSetAllocator m_descriptorAllocator;
     // cache
     HashMap<size_t, VkDescriptorSet> m_descriptorSetCache;

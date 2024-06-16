@@ -4,7 +4,7 @@
 namespace zen
 {
 std::vector<UniquePtr<val::CommandPool>>& RenderFrame::GetCommandPools(
-    uint32_t                    queueFamilyIndex,
+    uint32_t queueFamilyIndex,
     val::CommandPool::ResetMode resetMode)
 {
     auto it = m_cmdPools.find(queueFamilyIndex);
@@ -25,10 +25,10 @@ std::vector<UniquePtr<val::CommandPool>>& RenderFrame::GetCommandPools(
     return insertIt->second;
 }
 
-val::CommandBuffer* RenderFrame::RequestCommandBuffer(uint32_t                    queueFamilyIndex,
+val::CommandBuffer* RenderFrame::RequestCommandBuffer(uint32_t queueFamilyIndex,
                                                       val::CommandPool::ResetMode resetMode,
-                                                      VkCommandBufferLevel        level,
-                                                      uint32_t                    threadId)
+                                                      VkCommandBufferLevel level,
+                                                      uint32_t threadId)
 {
     auto& cmdPools = GetCommandPools(queueFamilyIndex, resetMode);
 

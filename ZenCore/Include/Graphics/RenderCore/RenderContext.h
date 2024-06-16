@@ -39,7 +39,7 @@ public:
     void UpdateRenderBuffer(const T* data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-        auto           submitInfo    = stagingBuffer->Submit(data);
+        auto submitInfo              = stagingBuffer->Submit(data);
         pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
     }
 
@@ -47,7 +47,7 @@ public:
     void UpdateRenderBuffer(ArrayView<T> data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
     {
         StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-        auto           submitInfo    = stagingBuffer->Submit(data);
+        auto submitInfo              = stagingBuffer->Submit(data);
         pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
     }
 

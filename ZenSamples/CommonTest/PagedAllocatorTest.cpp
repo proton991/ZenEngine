@@ -36,7 +36,7 @@ TEST_F(PagedAllocatorTest, FreeAndReuseObject)
 
 TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
 {
-    const uint32_t           numObjects = ZEN_DEFAULT_PAGESIZE + 1;
+    const uint32_t numObjects = ZEN_DEFAULT_PAGESIZE + 1;
     std::vector<DummyClass*> objects;
 
     for (uint32_t i = 0; i < numObjects; ++i)

@@ -88,7 +88,7 @@ public:
         m_q.Pop(_f);
         // at return, delete the function even if an exception occurred
         UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(_f);
-        std::function<FuncRetType(FuncArgs...)>            f;
+        std::function<FuncRetType(FuncArgs...)> f;
         if (_f) f = *_f;
         return f;
     }
@@ -168,7 +168,7 @@ private:
     {
         SharedPtr<std::atomic<bool>> flag(m_flags[i]); // a copy of the shared ptr to the flag
         auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
-            std::atomic<bool>&                       _flag = *flag;
+            std::atomic<bool>& _flag = *flag;
             std::function<FuncRetType(FuncArgs...)>* _f;
 
             bool isPop = m_q.Pop(_f);
@@ -211,11 +211,11 @@ private:
     // per thread status flags
     std::vector<SharedPtr<std::atomic<bool>>> m_flags;
     // ThreadPool status flags
-    std::atomic<bool>     m_finished;
-    std::atomic<bool>     m_stop;
+    std::atomic<bool> m_finished;
+    std::atomic<bool> m_stop;
     std::atomic<uint32_t> m_nWaiting; // how many threads are waiting
 
-    Mutex             m_mutex;
+    Mutex m_mutex;
     ConditionVariable m_conVar;
 };
 

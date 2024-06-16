@@ -7,9 +7,9 @@
 class DummyClass
 {
 public:
-             DummyClass() : data(0) {}
+    DummyClass() : data(0) {}
     explicit DummyClass(int d) : data(d) {}
-    int      getData() const { return data; }
+    int getData() const { return data; }
 
 private:
     int data;

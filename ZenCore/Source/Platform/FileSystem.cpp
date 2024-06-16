@@ -15,7 +15,7 @@ std::string FileSystem::LoadTextFile(const std::string& path)
 
 std::vector<uint32_t> FileSystem::LoadSpvFile(const std::string& name)
 {
-    const auto    path = std::string(SPV_SHADER_PATH) + name;
+    const auto path = std::string(SPV_SHADER_PATH) + name;
     std::ifstream file(path, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) { LOG_FATAL_ERROR("Failed to load shader source"); }

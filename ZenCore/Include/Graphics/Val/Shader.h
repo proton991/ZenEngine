@@ -85,10 +85,10 @@ using RuntimeArraySizes = std::unordered_map<std::string, uint32_t>;
 class ShaderModule : public DeviceObject<VkShaderModule, VK_OBJECT_TYPE_SHADER_MODULE>
 {
 public:
-    ShaderModule(const Device&         device,
+    ShaderModule(const Device& device,
                  VkShaderStageFlagBits stage,
-                 const std::string&    name,
-                 RuntimeArraySizes     runtimeArraySizes);
+                 const std::string& name,
+                 RuntimeArraySizes runtimeArraySizes);
 
     ~ShaderModule();
 
@@ -107,11 +107,11 @@ public:
     auto GetId() const { return m_id; }
 
 private:
-    VkShaderStageFlagBits       m_stage{};
-    std::vector<uint32_t>       m_spirvCode;
+    VkShaderStageFlagBits m_stage{};
+    std::vector<uint32_t> m_spirvCode;
     std::vector<ShaderResource> m_resources;
-    RuntimeArraySizes           m_runtimeArraySizes;
-    std::string                 m_entryPoint;
+    RuntimeArraySizes m_runtimeArraySizes;
+    std::string m_entryPoint;
     // Unique id
     size_t m_id;
 };

@@ -13,8 +13,8 @@ class ShaderManager
 public:
     explicit ShaderManager(const val::Device& valDevice) : m_valDevice(valDevice) {}
 
-    val::ShaderModule* RequestShader(const std::string&     fileName,
-                                     VkShaderStageFlagBits  stage,
+    val::ShaderModule* RequestShader(const std::string& fileName,
+                                     VkShaderStageFlagBits stage,
                                      val::RuntimeArraySizes runtimeArraySizes)
     {
         if (!m_shaderCache.count(fileName))
@@ -28,6 +28,6 @@ public:
 
 private:
     const val::Device& m_valDevice;
-    ShaderCache        m_shaderCache;
+    ShaderCache m_shaderCache;
 };
 } // namespace zen
