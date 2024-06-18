@@ -75,4 +75,36 @@ VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
     }
     return flags;
 }
+
+VkPrimitiveTopology ToVkPrimitiveTopology(DrawPrimitiveType type)
+{
+    return static_cast<VkPrimitiveTopology>(type);
+}
+
+VkCullModeFlags ToVkCullModeFlags(PolygonCullMode mode)
+{
+    return static_cast<VkCullModeFlags>(mode);
+}
+
+VkFrontFace ToVkFrontFace(PolygonFrontFace frontFace)
+{
+    return static_cast<VkFrontFace>(frontFace);
+}
+
+VkSampleCountFlagBits ToVkSampleCountFlagBits(SampleCount count)
+{
+    return static_cast<VkSampleCountFlagBits>(count);
+}
+
+VkCompareOp ToVkCompareOp(CompareOperator op) { return static_cast<VkCompareOp>(op); }
+
+VkStencilOp ToVkStencilOp(StencilOperation op) { return static_cast<VkStencilOp>(op); }
+
+VkLogicOp ToVkLogicOp(LogicOperation op) { return static_cast<VkLogicOp>(op); }
+
+VkBlendOp ToVkBlendOp(BlendOperation op) { return static_cast<VkBlendOp>(op); }
+
+VkBlendFactor ToVkBlendFactor(BlendFactor factor) { return static_cast<VkBlendFactor>(factor); }
+
+VkDynamicState ToVkDynamicState(DynamicState state) { return static_cast<VkDynamicState>(state); }
 } // namespace zen::rhi

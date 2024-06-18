@@ -47,5 +47,12 @@ public:
     virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
 
     virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
+
+    virtual PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+                                             const GfxPipelineStates& states,
+                                             RenderPassHandle renderPassHandle,
+                                             uint32_t subpass = 0) = 0;
+
+    virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
 };
 } // namespace zen::rhi

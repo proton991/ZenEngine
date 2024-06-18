@@ -1,7 +1,5 @@
 #pragma once
 #include "Common/BitField.h"
-
-
 #include <vector>
 
 namespace zen::rhi
@@ -203,4 +201,247 @@ struct ShaderGroupInfo
     // shader stages
     std::vector<ShaderStage> shaderStages;
 };
+
+/*****************************/
+/**** Gfx Pipeline States ****/
+/*****************************/
+enum class DrawPrimitiveType : uint32_t
+{
+    ePointList                  = 0,
+    eLineList                   = 1,
+    eLineStrip                  = 2,
+    eTriangleList               = 3,
+    eTriangleStrip              = 4,
+    eTriangleFan                = 5,
+    eLineListWithAdjacency      = 6,
+    eLineStripWithAdjacency     = 7,
+    eTriangleListWithAdjacency  = 8,
+    eTriangleStripWithAdjacency = 9,
+    ePatchList                  = 10,
+    eMax                        = 11
+};
+
+enum class PolygonCullMode : uint32_t
+{
+    eDisabled     = 0,
+    eFront        = 1,
+    eBack         = 2,
+    eFrontAndBack = 3,
+    eMax          = 4
+};
+
+enum class PolygonFrontFace : uint32_t
+{
+    eClockWise        = 0,
+    eCounterClockWise = 1,
+    eMax              = 2,
+};
+
+enum class SampleCount : uint32_t
+{
+    e1   = 0,
+    e2   = 1,
+    e4   = 2,
+    e8   = 3,
+    e16  = 4,
+    e32  = 5,
+    e64  = 6,
+    eMax = 7
+};
+
+enum class CompareOperator : uint32_t
+{
+    eNever          = 0,
+    eLess           = 1,
+    eEqual          = 2,
+    eLessOrEqual    = 3,
+    eGreater        = 4,
+    eNotEqual       = 5,
+    eGreaterOrEqual = 6,
+    eAlways         = 7,
+    eMax            = 8
+};
+
+enum class LogicOperation : uint32_t
+{
+    eClear        = 0,
+    eAnd          = 1,
+    eAndReverse   = 2,
+    eCopy         = 3,
+    eAndInverted  = 4,
+    eNoOp         = 5,
+    eXor          = 6,
+    eOr           = 7,
+    eNor          = 8,
+    eEquivalent   = 9,
+    eInvert       = 10,
+    eOrReverse    = 11,
+    eCopyInverted = 12,
+    eOrInverted   = 13,
+    eNand         = 14,
+    eSet          = 15,
+    eMax          = 16
+};
+
+struct GfxPipelineRasterizationState
+{
+    bool enableDepthClamp{false};
+    bool discardPrimitives{false};
+    bool wireframe{false};
+    PolygonCullMode cullMode{PolygonCullMode::eDisabled};
+    PolygonFrontFace frontFace{PolygonFrontFace::eClockWise};
+    bool enableDepthBias{false};
+    float depthBiasConstantFactor{0.0f};
+    float depthBiasClamp{0.0f};
+    float depthBiasSlopeFactor{0.0f};
+    float lineWidth{1.0f};
+};
+
+struct GfxPipelineMultiSampleState
+{
+    SampleCount sampleCount{SampleCount::e1};
+    bool enableSampleShading{false};
+    float minSampleShading{0.0f};
+    bool enableAlphaToCoverage{false};
+    bool enbaleAlphaToOne{false};
+    std::vector<uint32_t> sampleMasks;
+};
+
+enum class StencilOperation : uint32_t
+{
+    eKeep              = 0,
+    eZero              = 1,
+    eReplace           = 2,
+    eIncrementAndClamp = 3,
+    eDecrementAndClamp = 4,
+    eInvert            = 5,
+    eIncrementAndWrap  = 6,
+    eDecrementAndWrap  = 7,
+    eMax               = 8
+};
+
+struct StencilOperationState
+{
+    StencilOperation fail{StencilOperation::eReplace};
+    StencilOperation pass{StencilOperation::eReplace};
+    StencilOperation depthFail{StencilOperation::eReplace};
+    CompareOperator compare{CompareOperator::eAlways};
+    uint32_t compareMask{0};
+    uint32_t writeMask{0};
+    uint32_t reference{0};
+};
+
+
+struct GfxPipelineDepthStencilState
+{
+    bool enableDepthTest{false};
+    bool enableDepthWrite{false};
+    CompareOperator depthCompareOp{CompareOperator::eNever};
+    bool enableDepthBoundsTest{false};
+    bool enableStencilTest{false};
+    StencilOperationState frontOp{};
+    StencilOperationState backOp{};
+    float minDepthBounds{0.0f};
+    float maxDepthBounds{1.0f};
+};
+
+enum class BlendFactor : uint32_t
+{
+    eZero                  = 0,
+    eOne                   = 1,
+    eSrcColor              = 2,
+    eOneMinusSrcColor      = 3,
+    eDstColor              = 4,
+    eOneMinusDstColor      = 5,
+    eSrcAlpha              = 6,
+    eOneMinusSrcAlpha      = 7,
+    eDstAlpha              = 8,
+    eOneMinusDstAlpha      = 9,
+    eConstantColor         = 10,
+    eOneMinusConstantColor = 11,
+    eConstantAlpha         = 12,
+    eOneMinusConstantAlpha = 13,
+    eSrcAlphaSatuate       = 14,
+    eSrc1Color             = 15,
+    eOneMinusSrc1Color     = 16,
+    eSrc1Alpha             = 17,
+    eOneMinusSrc1Alpha     = 18,
+    eMax                   = 19
+};
+
+enum class BlendOperation : uint32_t
+{
+    eAdd              = 0,
+    eSubstract        = 1,
+    eReverseSubstract = 2,
+    eMinimum          = 3,
+    eMaximum          = 4,
+    eMax              = 5
+};
+
+struct GfxPipelineColorBlendState
+{
+    bool enableLogicOp{false};
+    LogicOperation logicOp{LogicOperation::eClear};
+
+    struct Attachment
+    {
+        bool enableBlend{false};
+        BlendFactor srcColorBlendFactor{BlendFactor::eZero};
+        BlendFactor dstColorBlendFactor{BlendFactor::eZero};
+        BlendOperation colorBlendOp{BlendOperation::eAdd};
+        BlendFactor srcAlphaBlendFactor{BlendFactor::eZero};
+        BlendFactor dstAlphaBlendFactor{BlendFactor::eZero};
+        BlendOperation alphaBlendOp{BlendOperation::eAdd};
+        bool writeR{true};
+        bool writeG{true};
+        bool writeB{true};
+        bool writeA{true};
+    };
+
+    static GfxPipelineColorBlendState create_disabled(int count = 1)
+    {
+        GfxPipelineColorBlendState bs;
+        for (int i = 0; i < count; i++) { bs.attachments.emplace_back(); }
+        return bs;
+    }
+
+    static GfxPipelineColorBlendState createBlend(int count = 1)
+    {
+        GfxPipelineColorBlendState bs;
+        for (int i = 0; i < count; i++)
+        {
+            Attachment ba;
+            ba.enableBlend         = true;
+            ba.srcColorBlendFactor = BlendFactor::eSrcAlpha;
+            ba.dstColorBlendFactor = BlendFactor::eOneMinusSrcAlpha;
+            ba.srcAlphaBlendFactor = BlendFactor::eSrcAlpha;
+            ba.dstAlphaBlendFactor = BlendFactor::eOneMinusSrcAlpha;
+
+            bs.attachments.emplace_back(ba);
+        }
+        return bs;
+    }
+
+    std::vector<Attachment> attachments; // One per render target texture.
+    std::vector<float> blendConstants;
+};
+
+enum class DynamicState : uint32_t
+{
+    eViewPort = 0,
+    eScissor  = 1,
+    eMax      = 2
+};
+
+struct GfxPipelineStates
+{
+    DrawPrimitiveType primitiveType;
+    GfxPipelineRasterizationState rasterizationState;
+    GfxPipelineMultiSampleState multiSampleState;
+    GfxPipelineDepthStencilState depthStencilState;
+    GfxPipelineColorBlendState colorBlendState;
+    std::vector<DynamicState> dynamicStates;
+};
+
 } // namespace zen::rhi

@@ -60,6 +60,13 @@ public:
 
     InstanceExtensionFlags& GetInstanceExtensionFlags() { return m_instanceExtensionFlags; }
 
+    PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+                                     const GfxPipelineStates& states,
+                                     RenderPassHandle renderPassHandle,
+                                     uint32_t subpass) final;
+
+    void DestroyPipeline(PipelineHandle pipelineHandle) final;
+
 protected:
     void CreateInstance();
 
