@@ -1,5 +1,6 @@
 #pragma once
 #include "Common/BitField.h"
+#include <string>
 #include <vector>
 
 namespace zen::rhi

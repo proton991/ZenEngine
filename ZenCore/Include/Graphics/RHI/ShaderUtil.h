@@ -144,12 +144,14 @@ static void ParseSpvSpecializationConstant(ShaderStage stage,
                     if (shaderGroupInfo.specializationConstants[k].type != specConst.type)
                     {
                         LOGE(
-                            "More than one specialization constant used for id={} with different type");
+                            "More than one specialization constant used for id={} with different type",
+                            specConst.constantId);
                     }
                     if (shaderGroupInfo.specializationConstants[k].intValue != specConst.intValue)
                     {
                         LOGE(
-                            "More than one specialization constant used for id={} with different value");
+                            "More than one specialization constant used for id={} with different value",
+                            specConst.constantId);
                     }
                     existed = k;
                     break;

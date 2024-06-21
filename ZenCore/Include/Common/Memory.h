@@ -108,7 +108,7 @@ private:
 #if _POSIX_VERSION >= 20112L || defined(ZEN_MACOS)
         free(pMem);
 #elif _MSC_VER
-        pMem = _aligned_free(pMem);
+        _aligned_free(pMem);
 #else
 #    error "Unsuported Platform"
 #endif

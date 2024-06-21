@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 
 #define ZEN_RHI_SWAPCHAIN_IMAGE_COUNT 3
 
