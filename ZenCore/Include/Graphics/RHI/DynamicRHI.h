@@ -1,5 +1,6 @@
 #pragma once
 #include "RHICommon.h"
+#include "RHIResource.h"
 #include "RHIDefs.h"
 
 namespace zen::rhi
@@ -51,8 +52,21 @@ public:
     virtual PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
                                              const GfxPipelineStates& states,
                                              RenderPassHandle renderPassHandle,
-                                             uint32_t subpass = 0) = 0;
+                                             uint32_t subpass) = 0;
 
     virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
+
+    virtual RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) = 0;
+
+    virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
+
+    virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
+                                                const RenderTargetInfo& RTInfo) = 0;
+
+    virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
+
+    virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
+
+    virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 };
 } // namespace zen::rhi

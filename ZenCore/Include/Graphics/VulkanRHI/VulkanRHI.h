@@ -16,9 +16,14 @@
 
 namespace zen::rhi
 {
+class VulkanMemoryAllocator;
+}
+namespace zen::rhi
+{
 class VulkanDevice;
 class VulkanCommandBufferManager;
 struct VulkanShader;
+struct VulkanTexture;
 
 class VulkanRHI : public DynamicRHI
 {
@@ -67,6 +72,19 @@ public:
 
     void DestroyPipeline(PipelineHandle pipelineHandle) final;
 
+    RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) final;
+
+    void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
+
+    FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
+                                        const RenderTargetInfo& RTInfo) final;
+
+    void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
+
+    TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
+
+    void DestroyTexture(TextureHandle textureHandle) final;
+
 protected:
     void CreateInstance();
 
@@ -89,7 +107,10 @@ private:
 
     VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
 
+    // allocator for memory
+    VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
     // allocators for resrouces
     PagedAllocator<VulkanShader> m_shaderAllocator;
+    PagedAllocator<VulkanTexture> m_textureAllocator;
 };
 } // namespace zen::rhi

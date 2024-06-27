@@ -173,6 +173,7 @@ void VulkanRHI::DestroySwapchain(SwapchainHandle swapchainHandle)
     {
         vkDestroySwapchainKHR(m_device->GetVkHandle(), vulkanSwapchain->GetVkHandle(), nullptr);
     }
+    delete vulkanSwapchain;
 }
 
 

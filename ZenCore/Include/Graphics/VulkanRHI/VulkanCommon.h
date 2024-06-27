@@ -1,7 +1,7 @@
 #pragma once
 #include "Common/Errors.h"
 #include <string>
-#include <vulkan/vulkan_core.h>
+#include "VulkanHeaders.h"
 
 #ifndef VKCHECK
 #    define VKCHECK(result) zen::rhi::CheckVkResult(result, __FILE__, __LINE__);

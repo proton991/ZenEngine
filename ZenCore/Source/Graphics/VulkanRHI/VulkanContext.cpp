@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
+#include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
 namespace zen::rhi
@@ -201,13 +202,16 @@ void VulkanRHI::SelectGPU()
     m_device = new VulkanDevice(this, physicalDevices[index]);
 }
 
-VulkanRHI::VulkanRHI() : m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false)
+VulkanRHI::VulkanRHI() :
+    m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false), m_textureAllocator(ZEN_DEFAULT_PAGESIZE, false)
 {
 #if defined(ZEN_MACOS)
     setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
 #endif
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
     m_shaderAllocator.Init();
+    m_textureAllocator.Init();
+    m_vkMemAllocator = new VulkanMemoryAllocator();
 }
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
@@ -222,6 +226,9 @@ void VulkanRHI::Init()
     CreateInstance();
     SelectGPU();
     m_device->Init();
+
+    m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
+                           m_device->GetVkHandle());
 
     m_cmdBufferManager = new VulkanCommandBufferManager(m_device);
 }

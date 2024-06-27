@@ -35,4 +35,16 @@ VkBlendOp ToVkBlendOp(BlendOperation op);
 VkBlendFactor ToVkBlendFactor(BlendFactor factor);
 
 VkDynamicState ToVkDynamicState(DynamicState state);
+
+VkImageType ToVkImageType(TextureType type);
+
+VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flags);
+
+VkFormat ToVkFormat(DataFormat format);
+
+VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp);
+
+VkAttachmentStoreOp ToVkAttachmentStoreOp(RenderTargetStoreOp storeOp);
+
+VkImageLayout ToVkImageLayout(TextureLayout layout);
 } // namespace zen::rhi

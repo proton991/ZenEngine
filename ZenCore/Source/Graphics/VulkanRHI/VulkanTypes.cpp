@@ -107,4 +107,65 @@ VkBlendOp ToVkBlendOp(BlendOperation op) { return static_cast<VkBlendOp>(op); }
 VkBlendFactor ToVkBlendFactor(BlendFactor factor) { return static_cast<VkBlendFactor>(factor); }
 
 VkDynamicState ToVkDynamicState(DynamicState state) { return static_cast<VkDynamicState>(state); }
+
+VkImageType ToVkImageType(TextureType type) { return static_cast<VkImageType>(type); }
+
+VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flagBits)
+{
+    VkImageUsageFlags flags{};
+    if (flagBits.HasFlag(TextureUsageFlagBits::eTransferSrc))
+    {
+        flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eTransferDst))
+    {
+        flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eSampled)) { flags |= VK_IMAGE_USAGE_SAMPLED_BIT; }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eStorage)) { flags |= VK_IMAGE_USAGE_STORAGE_BIT; }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eColorAttachment))
+    {
+        flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eDepthStencilAttachment))
+    {
+        flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eTransientAttachment))
+    {
+        flags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eInputAttachment))
+    {
+        flags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    }
+    return flags;
+}
+
+VkFormat ToVkFormat(DataFormat format) { return static_cast<VkFormat>(format); }
+
+VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp)
+{
+    return static_cast<VkAttachmentLoadOp>(loadOp);
+}
+
+VkAttachmentStoreOp ToVkAttachmentStoreOp(RenderTargetStoreOp storeOp)
+{
+    return static_cast<VkAttachmentStoreOp>(storeOp);
+}
+
+VkImageLayout ToVkImageLayout(TextureLayout layout)
+{
+    switch (layout)
+    {
+        case TextureLayout::eUndefined: return VK_IMAGE_LAYOUT_UNDEFINED;
+        case TextureLayout::eGeneral: return VK_IMAGE_LAYOUT_GENERAL;
+        case TextureLayout::eColorTarget: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case TextureLayout::eDepthStencilTarget: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        case TextureLayout::eShaderReadOnly: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        case TextureLayout::eTransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        case TextureLayout::eTransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        default: return VK_IMAGE_LAYOUT_UNDEFINED;
+    }
+}
 } // namespace zen::rhi

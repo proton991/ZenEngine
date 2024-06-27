@@ -131,4 +131,43 @@ private:
 
 using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;
 using ShaderGroupSPIRVPtr  = RefCountPtr<ShaderGroupSPIRV>;
+
+/*****************************/
+/********* Textures **********/
+/*****************************/
+struct TextureInfo
+{
+    DataFormat fomrat{DataFormat::eUndefined};
+    SampleCount samples{SampleCount::e1};
+    BitField<TextureUsageFlagBits> usageFlags;
+    TextureType type{TextureType::e1D};
+    uint32_t width{1};
+    uint32_t height{1};
+    uint32_t depth{1};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
+    // memory flags
+    bool cpuReadable{false};
+};
+
+inline uint32_t CalculateTextureSize(const TextureInfo& info)
+{
+    // TODO: Support compressed texture format
+    uint32_t pixelSize = GetTextureFormatPixelSize(info.fomrat);
+
+    uint32_t w = info.width;
+    uint32_t h = info.height;
+    uint32_t d = info.depth;
+
+    uint32_t size = 0;
+    for (uint32_t i = 0; i < info.mipmaps; i++)
+    {
+        uint32_t numPixels = w * h * d;
+        size += numPixels * pixelSize;
+        w >>= 1;
+        h >>= 1;
+        d >>= 1;
+    }
+    return size;
+}
 } // namespace zen::rhi

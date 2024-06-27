@@ -77,7 +77,9 @@ RHI_DEFINE_HANDLE(CommandPool);
 RHI_DEFINE_HANDLE(CommandBuffer);
 RHI_DEFINE_HANDLE(Shader);
 RHI_DEFINE_HANDLE(RenderPass);
+RHI_DEFINE_HANDLE(Framebuffer);
 RHI_DEFINE_HANDLE(Pipeline);
+RHI_DEFINE_HANDLE(Texture);
 } // namespace zen::rhi
 
 HASH_DEFINE(CommandPool);

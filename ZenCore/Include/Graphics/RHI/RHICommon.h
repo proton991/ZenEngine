@@ -1,8 +1,17 @@
 #pragma once
+#include "RHIDefs.h"
 #include "Common/BitField.h"
 #include <string>
 #include <vector>
 
+#define MAX_COLOR_ATTACHMENT_COUNT 8
+#define MAX_SUBPASS_COUNT          8
+
+#define ROUND_UP_ALIGNMENT(m_number, m_alignment) \
+    ((((m_number) + ((m_alignment)-1)) / (m_alignment)) * (m_alignment))
+
+namespace zen::rhi
+{}
 namespace zen::rhi
 {
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
@@ -10,46 +19,98 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
     return static_cast<std::underlying_type_t<E>>(e);
 }
 
-enum DataFormat : uint32_t
+enum class DataFormat : uint32_t
 {
-    DATA_FORMAT_UNDEFINED           = 0,   // = VK_FORMAT_UNDEFINED
-    DATA_FORMAT_R16_UINT            = 74,  // = VK_FORMAT_R16_UINT
-    DATA_FORMAT_R16_SINT            = 75,  // = VK_FORMAT_R16_SINT
-    DATA_FORMAT_R16_SFLOAT          = 76,  // = VK_FORMAT_R16_SFLOAT
-    DATA_FORMAT_R16G16_UINT         = 81,  // = VK_FORMAT_R16G16_UINT
-    DATA_FORMAT_R16G16_SINT         = 82,  // = VK_FORMAT_R16G16_SINT
-    DATA_FORMAT_R16G16_SFLOAT       = 83,  // = VK_FORMAT_R16G16_SFLOAT
-    DATA_FORMAT_R16G16B16_UINT      = 88,  // = VK_FORMAT_R16G16B16_UINT
-    DATA_FORMAT_R16G16B16_SINT      = 89,  // = VK_FORMAT_R16G16B16_SINT
-    DATA_FORMAT_R16G16B16_SFLOAT    = 90,  // = VK_FORMAT_R16G16B16_SFLOAT
-    DATA_FORMAT_R16G16B16A16_UINT   = 95,  // = VK_FORMAT_R16G16B16A16_UINT
-    DATA_FORMAT_R16G16B16A16_SINT   = 96,  // = VK_FORMAT_R16G16B16A16_SINT
-    DATA_FORMAT_R16G16B16A16_SFLOAT = 97,  // = VK_FORMAT_R16G16B16A16_SFLOAT
-    DATA_FORMAT_R32_UINT            = 98,  // = VK_FORMAT_R32_UINT
-    DATA_FORMAT_R32_SINT            = 99,  // = VK_FORMAT_R32_SINT
-    DATA_FORMAT_R32_SFLOAT          = 100, // = VK_FORMAT_R32_SFLOAT
-    DATA_FORMAT_R32G32_UINT         = 101, // = VK_FORMAT_R32G32_UINT
-    DATA_FORMAT_R32G32_SINT         = 102, // = VK_FORMAT_R32G32_SINT
-    DATA_FORMAT_R32G32_SFLOAT       = 103, // = VK_FORMAT_R32G32_SFLOAT
-    DATA_FORMAT_R32G32B32_UINT      = 104, // = VK_FORMAT_R32G32B32_UINT
-    DATA_FORMAT_R32G32B32_SINT      = 105, // = VK_FORMAT_R32G32B32_SINT
-    DATA_FORMAT_R32G32B32_SFLOAT    = 106, // = VK_FORMAT_R32G32B32_SFLOAT
-    DATA_FORMAT_R32G32B32A32_UINT   = 107, // = VK_FORMAT_R32G32B32A32_UINT
-    DATA_FORMAT_R32G32B32A32_SINT   = 108, // = VK_FORMAT_R32G32B32A32_SINT
-    DATA_FORMAT_R32G32B32A32_SFLOAT = 109, // = VK_FORMAT_R32G32B32A32_SFLOAT
-    DATA_FORMAT_R64_UINT            = 110, // = VK_FORMAT_R64_UINT
-    DATA_FORMAT_R64_SINT            = 111, // = VK_FORMAT_R64_SINT
-    DATA_FORMAT_R64_SFLOAT          = 112, // = VK_FORMAT_R64_SFLOAT
-    DATA_FORMAT_R64G64_UINT         = 113, // = VK_FORMAT_R64G64_UINT
-    DATA_FORMAT_R64G64_SINT         = 114, // = VK_FORMAT_R64G64_SINT
-    DATA_FORMAT_R64G64_SFLOAT       = 115, // = VK_FORMAT_R64G64_SFLOAT
-    DATA_FORMAT_R64G64B64_UINT      = 116, // = VK_FORMAT_R64G64B64_UINT
-    DATA_FORMAT_R64G64B64_SINT      = 117, // = VK_FORMAT_R64G64B64_SINT
-    DATA_FORMAT_R64G64B64_SFLOAT    = 118, // = VK_FORMAT_R64G64B64_SFLOAT
-    DATA_FORMAT_R64G64B64A64_UINT   = 119, // = VK_FORMAT_R64G64B64A64_UINT
-    DATA_FORMAT_R64G64B64A64_SINT   = 120, // = VK_FORMAT_R64G64B64A64_SINT
-    DATA_FORMAT_R64G64B64A64_SFLOAT = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
+    eUndefined          = 0,   // = VK_FORMAT_UNDEFINED
+    eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
+    eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
+    eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT
+    eR16G16UInt         = 81,  // = VK_FORMAT_R16G16_UINT
+    eR16G16SInt         = 82,  // = VK_FORMAT_R16G16_SINT
+    eR16G16SFloat       = 83,  // = VK_FORMAT_R16G16_SFLOAT
+    eR16G16B16UInt      = 88,  // = VK_FORMAT_R16G16B16_UINT
+    eR16G16B16SInt      = 89,  // = VK_FORMAT_R16G16B16_SINT
+    eR16G16B16SFloat    = 90,  // = VK_FORMAT_R16G16B16_SFLOAT
+    eR16G16B16A16UInt   = 95,  // = VK_FORMAT_R16G16B16A16_UINT
+    eR16G16B16A16SInt   = 96,  // = VK_FORMAT_R16G16B16A16_SINT
+    eR16G16B16A16SFloat = 97,  // = VK_FORMAT_R16G16B16A16_SFLOAT
+    eR32UInt            = 98,  // = VK_FORMAT_R32_UINT
+    eR32SInt            = 99,  // = VK_FORMAT_R32_SINT
+    eR32SFloat          = 100, // = VK_FORMAT_R32_SFLOAT
+    eR32G32UInt         = 101, // = VK_FORMAT_R32G32_UINT
+    eR32G32SInt         = 102, // = VK_FORMAT_R32G32_SINT
+    eR32G32SFloat       = 103, // = VK_FORMAT_R32G32_SFLOAT
+    eR32G32B32UInt      = 104, // = VK_FORMAT_R32G32B32_UINT
+    eR32G32B32SInt      = 105, // = VK_FORMAT_R32G32B32_SINT
+    eR32G32B32SFloat    = 106, // = VK_FORMAT_R32G32B32_SFLOAT
+    eR32G32B32A32UInt   = 107, // = VK_FORMAT_R32G32B32A32_UINT
+    eR32G32B32A32SInt   = 108, // = VK_FORMAT_R32G32B32A32_SINT
+    eR32G32B32A32SFloat = 109, // = VK_FORMAT_R32G32B32A32_SFLOAT
+    eR64UInt            = 110, // = VK_FORMAT_R64_UINT
+    eR64SInt            = 111, // = VK_FORMAT_R64_SINT
+    eR64SFloat          = 112, // = VK_FORMAT_R64_SFLOAT
+    eR64G64UInt         = 113, // = VK_FORMAT_R64G64_UINT
+    eR64G64SInt         = 114, // = VK_FORMAT_R64G64_SINT
+    eR64G64SFloat       = 115, // = VK_FORMAT_R64G64_SFLOAT
+    eR64G64B64UInt      = 116, // = VK_FORMAT_R64G64B64_UINT
+    eR64G64B64SInt      = 117, // = VK_FORMAT_R64G64B64_SINT
+    eR64G64B64SFloat    = 118, // = VK_FORMAT_R64G64B64_SFLOAT
+    eR64G64B64A64UInt   = 119, // = VK_FORMAT_R64G64B64A64_UINT
+    eR64G64B64A64SInt   = 120, // = VK_FORMAT_R64G64B64A64_SINT
+    eR64G64B64A64SFloat = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
 };
+
+inline uint32_t GetTextureFormatPixelSize(DataFormat format)
+{
+    switch (format)
+    {
+        case DataFormat::eR16UInt:
+        case DataFormat::eR16SInt:
+        case DataFormat::eR16SFloat: return 2;
+
+        case DataFormat::eR16G16UInt:
+        case DataFormat::eR16G16SInt:
+        case DataFormat::eR16G16SFloat:
+        case DataFormat::eR32UInt:
+        case DataFormat::eR32SInt:
+        case DataFormat::eR32SFloat: return 4;
+
+        case DataFormat::eR16G16B16UInt:
+        case DataFormat::eR16G16B16SInt:
+        case DataFormat::eR16G16B16SFloat: return 6;
+
+        case DataFormat::eR16G16B16A16UInt:
+        case DataFormat::eR16G16B16A16SInt:
+        case DataFormat::eR16G16B16A16SFloat:
+        case DataFormat::eR32G32UInt:
+        case DataFormat::eR32G32SInt:
+        case DataFormat::eR32G32SFloat:
+        case DataFormat::eR64UInt:
+        case DataFormat::eR64SInt:
+        case DataFormat::eR64SFloat: return 8;
+
+        case DataFormat::eR32G32B32UInt:
+        case DataFormat::eR32G32B32SInt:
+        case DataFormat::eR32G32B32SFloat: return 12;
+
+        case DataFormat::eR32G32B32A32UInt:
+        case DataFormat::eR32G32B32A32SInt:
+        case DataFormat::eR32G32B32A32SFloat:
+        case DataFormat::eR64G64UInt:
+        case DataFormat::eR64G64SInt:
+        case DataFormat::eR64G64SFloat: return 16;
+
+        case DataFormat::eR64G64B64UInt:
+        case DataFormat::eR64G64B64SInt:
+        case DataFormat::eR64G64B64SFloat: return 24;
+
+        case DataFormat::eR64G64B64A64UInt:
+        case DataFormat::eR64G64B64A64SInt:
+        case DataFormat::eR64G64B64A64SFloat: return 32;
+
+        default: return 0x7fffffff;
+    }
+}
 
 /*******************/
 /**** Shaders ****/
@@ -445,4 +506,181 @@ struct GfxPipelineStates
     std::vector<DynamicState> dynamicStates;
 };
 
+/*****************************/
+/********* Textures **********/
+/*****************************/
+enum class TextureUsageFlagBits : uint32_t
+{
+    eTransferSrc            = 1 << 0,
+    eTransferDst            = 1 << 1,
+    eSampled                = 1 << 2,
+    eStorage                = 1 << 3,
+    eColorAttachment        = 1 << 4,
+    eDepthStencilAttachment = 1 << 5,
+    eTransientAttachment    = 1 << 6,
+    eInputAttachment        = 1 << 7,
+    eMax                    = 0x7FFFFFFF
+};
+
+enum class TextureUsage : uint32_t
+{
+    eTransferSrc            = 0,
+    eTransferDst            = 1,
+    eSampled                = 2,
+    eStorage                = 3,
+    eColorAttachment        = 4,
+    eDepthStencilAttachment = 5,
+    eTransientAttachment    = 6,
+    eInputAttachment        = 7,
+    eMax                    = 8
+};
+
+enum class TextureLayout : uint32_t
+{
+    eUndefined,
+    eGeneral,
+    eColorTarget,
+    eDepthStencilTarget,
+    eShaderReadOnly,
+    eTransferSrc,
+    eTransferDst,
+    eMax
+};
+
+enum class TextureType : uint32_t
+{
+    e1D  = 0,
+    e2D  = 1,
+    e3D  = 2,
+    eMax = 3
+};
+
+inline TextureLayout TextureUsageToLayout(TextureUsage usage)
+{
+    switch (usage)
+    {
+        case TextureUsage::eTransferSrc: return TextureLayout::eTransferSrc;
+        case TextureUsage::eTransferDst: return TextureLayout::eTransferDst;
+        case TextureUsage::eSampled:
+        case TextureUsage::eInputAttachment: return TextureLayout::eTransferSrc;
+        case TextureUsage::eStorage: return TextureLayout::eGeneral;
+        case TextureUsage::eColorAttachment: return TextureLayout::eColorTarget;
+        case TextureUsage::eDepthStencilAttachment: return TextureLayout::eDepthStencilTarget;
+        default: return TextureLayout::eUndefined;
+    }
+}
+
+/*****************************/
+/** Renderpass and subpass ***/
+/*****************************/
+enum class RenderTargetLoadOp : uint32_t
+{
+    eLoad  = 0,
+    eClear = 1,
+    eNone  = 2,
+    eMax   = 3
+};
+
+enum class RenderTargetStoreOp : uint32_t
+{
+    eStore = 0,
+    eClear = 1,
+    eNone  = 2,
+    eMax   = 3
+};
+
+struct RenderTarget
+{
+    RenderTarget() = default;
+
+    RenderTarget(DataFormat format_, TextureUsage usage_) : format(format_), usage(usage_) {}
+
+    DataFormat format{DataFormat::eUndefined};
+    TextureUsage usage{TextureUsage::eMax};
+};
+
+class RenderPassLayout
+{
+public:
+    RenderPassLayout(uint32_t numColorRT, bool hasDepthStencilRT) :
+        m_hasDepthStencilRT(hasDepthStencilRT)
+    {
+        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT) { numColorRT = MAX_COLOR_ATTACHMENT_COUNT; }
+        m_colorRTs.resize(numColorRT);
+    }
+
+    void AddColorRenderTarget(DataFormat format, TextureUsage usage)
+    {
+        if (m_numColorRT < m_colorRTs.size())
+        {
+            RenderTarget renderTarget = {format, usage};
+            m_colorRTs.emplace_back(renderTarget);
+            m_numColorRT++;
+        }
+    }
+
+    void SetDepthStencilRenderTarget(DataFormat format)
+    {
+        if (!m_hasDepthStencilRT)
+        {
+            m_depthStencilRT.format = format;
+            m_depthStencilRT.usage  = TextureUsage::eDepthStencilAttachment;
+            m_hasDepthStencilRT     = true;
+        }
+    }
+
+    void SetColorTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
+    {
+        m_colorRToadOp   = loadOp;
+        m_colorRTStoreOp = storeOp;
+    }
+
+    void SetDepthStencilTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
+    {
+        m_depthStencilRTLoadOp = loadOp;
+        m_depthStenciRTStoreOp = storeOp;
+    }
+
+    void SetNumSamples(SampleCount sampleCount) { m_numSamples = sampleCount; }
+
+    const auto GetNumColorRenderTargets() const { return m_numColorRT; }
+
+    const auto GetNumSamples() const { return m_numSamples; }
+
+    const auto HasDepthStencilRenderTarget() const { return m_hasDepthStencilRT; }
+
+    const auto GetColorRenderTargetLoadOp() const { return m_colorRToadOp; }
+
+    const auto GetDepthStencilRenderTargetLoadOp() const { return m_depthStencilRTLoadOp; }
+
+    const auto GetColorRenderTargetStoreOp() const { return m_colorRTStoreOp; }
+
+    const auto GetDepthStencilRenderTargetStoreOp() const { return m_depthStenciRTStoreOp; }
+
+    const auto& GetColorRenderTargets() const { return m_colorRTs; }
+
+    const auto& GetDepthStencilRenderTarget() const { return m_depthStencilRT; }
+
+private:
+    uint32_t m_numColorRT{0};
+    std::vector<RenderTarget> m_colorRTs;
+    RenderTarget m_depthStencilRT;
+    SampleCount m_numSamples{SampleCount::e1};
+    RenderTargetLoadOp m_colorRToadOp{RenderTargetLoadOp::eNone};
+    RenderTargetStoreOp m_colorRTStoreOp{RenderTargetStoreOp::eNone};
+    RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
+    RenderTargetStoreOp m_depthStenciRTStoreOp{RenderTargetStoreOp::eNone};
+    bool m_hasDepthStencilRT{false};
+};
+
+inline uint64_t GetRenderpassLayoutHash(const RenderPassLayout& layout) { return 0; }
+
+struct RenderTargetInfo
+{
+    uint32_t numRenderTarget{0};
+    TextureHandle* renderTargets{nullptr};
+    uint32_t width{0};
+    uint32_t height{0};
+    uint32_t depth{1};
+};
 } // namespace zen::rhi
