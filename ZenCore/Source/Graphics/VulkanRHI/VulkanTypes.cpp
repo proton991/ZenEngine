@@ -142,6 +142,48 @@ VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flagBits)
     return flags;
 }
 
+VkBufferUsageFlags ToVkBufferUsageFlags(BitField<BufferUsageFlagBits> flags)
+{
+    VkBufferUsageFlags vkFlags{};
+    if (flags.HasFlag(BufferUsageFlagBits::eTransferSrcBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eTransferDstBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eTextureBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eImageBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eUniformBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eStorageBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eIndexBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eVertexBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+    if (flags.HasFlag(BufferUsageFlagBits::eIndirectBuffer))
+    {
+        vkFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    }
+    return vkFlags;
+}
+
 VkFormat ToVkFormat(DataFormat format) { return static_cast<VkFormat>(format); }
 
 VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp)

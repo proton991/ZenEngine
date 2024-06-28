@@ -26,8 +26,8 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 
     const auto textureSize = CalculateTextureSize(info);
 
-    m_vkMemAllocator->CreateImage(&imageCI, info.cpuReadable, &texture->image, &texture->memAlloc,
-                                  textureSize);
+    m_vkMemAllocator->AllocImage(&imageCI, info.cpuReadable, &texture->image, &texture->memAlloc,
+                                 textureSize);
 
     // create image view
     VkImageViewCreateInfo imageViewCI;
@@ -48,7 +48,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 
     if (vkCreateImageView(GetVkDevice(), &imageViewCI, nullptr, &texture->imageView) != VK_SUCCESS)
     {
-        m_vkMemAllocator->DestroyImage(texture->image, texture->memAlloc);
+        m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
         LOGE("vkCreateImageView failed with error");
     }
 
@@ -60,7 +60,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
-    m_vkMemAllocator->DestroyImage(texture->image, texture->memAlloc);
+    m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
     m_textureAllocator.Free(texture);
 }
 

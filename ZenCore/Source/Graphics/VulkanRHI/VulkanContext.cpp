@@ -203,7 +203,9 @@ void VulkanRHI::SelectGPU()
 }
 
 VulkanRHI::VulkanRHI() :
-    m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false), m_textureAllocator(ZEN_DEFAULT_PAGESIZE, false)
+    m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false),
+    m_textureAllocator(ZEN_DEFAULT_PAGESIZE, false),
+    m_bufferAllocator(ZEN_DEFAULT_PAGESIZE, false)
 {
 #if defined(ZEN_MACOS)
     setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
@@ -211,6 +213,7 @@ VulkanRHI::VulkanRHI() :
     if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
     m_shaderAllocator.Init();
     m_textureAllocator.Init();
+    m_bufferAllocator.Init();
     m_vkMemAllocator = new VulkanMemoryAllocator();
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <vk_mem_alloc.h>
 #include "Common/HashMap.h"
+#include "Graphics/RHI/RHICommon.h"
 
 namespace zen::rhi
 {
@@ -19,13 +20,21 @@ public:
 
     void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device);
 
-    void CreateImage(const VkImageCreateInfo* imageCI,
-                     bool cpuReadable,
-                     VkImage* image,
-                     VulkanMemoryAllocation* allocation,
-                     uint32_t size);
+    void AllocImage(const VkImageCreateInfo* imageCI,
+                    bool cpuReadable,
+                    VkImage* image,
+                    VulkanMemoryAllocation* allocation,
+                    uint32_t size);
 
-    void DestroyImage(VkImage image, const VulkanMemoryAllocation& memAlloc);
+    void FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc);
+
+    void AllocBuffer(uint32_t size,
+                     const VkBufferCreateInfo* bufferCI,
+                     BufferAllocateType allocType,
+                     VkBuffer* buffer,
+                     VulkanMemoryAllocation* allocation);
+
+    void FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc);
 
 private:
     VmaPool GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex);

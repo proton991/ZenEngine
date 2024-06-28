@@ -505,6 +505,29 @@ struct GfxPipelineStates
     GfxPipelineColorBlendState colorBlendState;
     std::vector<DynamicState> dynamicStates;
 };
+/*****************************/
+/********* Buffers ***********/
+/*****************************/
+enum class BufferUsageFlagBits
+{
+    eTransferSrcBuffer = 1 << 0,
+    eTransferDstBuffer = 1 << 1,
+    eTextureBuffer     = 1 << 2,
+    eImageBuffer       = 1 << 3,
+    eUniformBuffer     = 1 << 4,
+    eStorageBuffer     = 1 << 5,
+    eIndexBuffer       = 1 << 6,
+    eVertexBuffer      = 1 << 7,
+    eIndirectBuffer    = 1 << 8,
+    eMax               = 0x7FFFFFFF
+};
+
+enum class BufferAllocateType
+{
+    eCPU = 0,
+    eGPU = 1,
+    eMax = 2
+};
 
 /*****************************/
 /********* Textures **********/

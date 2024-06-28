@@ -24,6 +24,7 @@ class VulkanDevice;
 class VulkanCommandBufferManager;
 struct VulkanShader;
 struct VulkanTexture;
+struct VulkanBuffer;
 
 class VulkanRHI : public DynamicRHI
 {
@@ -85,6 +86,12 @@ public:
 
     void DestroyTexture(TextureHandle textureHandle) final;
 
+    BufferHandle CreateBuffer(uint32_t size,
+                              BitField<BufferUsageFlagBits> usageFlags,
+                              BufferAllocateType allocateType) final;
+
+    void DestroyBuffer(BufferHandle bufferHandle) final;
+
 protected:
     void CreateInstance();
 
@@ -112,5 +119,6 @@ private:
     // allocators for resrouces
     PagedAllocator<VulkanShader> m_shaderAllocator;
     PagedAllocator<VulkanTexture> m_textureAllocator;
+    PagedAllocator<VulkanBuffer> m_bufferAllocator;
 };
 } // namespace zen::rhi

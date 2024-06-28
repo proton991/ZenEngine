@@ -40,11 +40,11 @@ void VulkanMemoryAllocator::Init(VkInstance instance, VkPhysicalDevice gpu, VkDe
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
 }
 
-void VulkanMemoryAllocator::CreateImage(const VkImageCreateInfo* imageCI,
-                                        bool cpuReadable,
-                                        VkImage* image,
-                                        VulkanMemoryAllocation* allocation,
-                                        uint32_t size)
+void VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* imageCI,
+                                       bool cpuReadable,
+                                       VkImage* image,
+                                       VulkanMemoryAllocation* allocation,
+                                       uint32_t size)
 {
 
     VmaAllocationCreateInfo vmaAllocationCI{};
@@ -63,9 +63,56 @@ void VulkanMemoryAllocator::CreateImage(const VkImageCreateInfo* imageCI,
                            &allocation->info));
 }
 
-void VulkanMemoryAllocator::DestroyImage(VkImage image, const VulkanMemoryAllocation& memAlloc)
+void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc)
 {
     vmaDestroyImage(m_vmaAllocator, image, memAlloc.handle);
+}
+
+void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
+                                        const VkBufferCreateInfo* bufferCI,
+                                        BufferAllocateType allocType,
+                                        VkBuffer* buffer,
+                                        VulkanMemoryAllocation* allocation)
+{
+    VmaAllocationCreateInfo vmaAllocationCI{};
+    if (allocType == BufferAllocateType::eCPU)
+    {
+        bool isSrc = false;
+        bool isDst = false;
+        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) { isSrc = true; }
+        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) { isDst = true; }
+        if (isSrc && !isDst)
+        {
+            // staging buffer: CPU maps, writes sequentially, then GPU copies to VRAM.
+            vmaAllocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        }
+        if (!isSrc && isDst)
+        {
+            // readback buffer: GPU copies from VRAM, then CPU maps and reads.
+            vmaAllocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        }
+        vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+        vmaAllocationCI.requiredFlags =
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+    }
+    else if (allocType == BufferAllocateType::eGPU)
+    {
+        vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        if (size <= SMALL_VK_ALLOCATION_SIZE)
+        {
+            uint32_t memTypeIndex = 0;
+            vmaFindMemoryTypeIndexForBufferInfo(m_vmaAllocator, bufferCI, &vmaAllocationCI,
+                                                &memTypeIndex);
+            vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
+        }
+    }
+    VKCHECK(vmaCreateBuffer(m_vmaAllocator, bufferCI, &vmaAllocationCI, buffer, &allocation->handle,
+                            &allocation->info));
+}
+
+void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
+{
+    vmaDestroyBuffer(m_vmaAllocator, buffer, memAlloc.handle);
 }
 
 VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex)

@@ -40,6 +40,8 @@ VkImageType ToVkImageType(TextureType type);
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flags);
 
+VkBufferUsageFlags ToVkBufferUsageFlags(BitField<BufferUsageFlagBits> flags);
+
 VkFormat ToVkFormat(DataFormat format);
 
 VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp);

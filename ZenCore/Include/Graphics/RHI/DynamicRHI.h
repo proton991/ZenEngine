@@ -68,5 +68,11 @@ public:
     virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
 
     virtual void DestroyTexture(TextureHandle textureHandle) = 0;
+
+    virtual BufferHandle CreateBuffer(uint32_t size,
+                                      BitField<BufferUsageFlagBits> usageFlags,
+                                      BufferAllocateType allocateType) = 0;
+
+    virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
 };
 } // namespace zen::rhi
