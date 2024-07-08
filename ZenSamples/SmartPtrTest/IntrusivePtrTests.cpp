@@ -15,7 +15,10 @@ public:
 class TestB : public TestA
 {
 public:
-    ~TestB() override { LOGI("Destroying TestB"); }
+    ~TestB() override
+    {
+        LOGI("Destroying TestB");
+    }
     int b = 10;
 };
 

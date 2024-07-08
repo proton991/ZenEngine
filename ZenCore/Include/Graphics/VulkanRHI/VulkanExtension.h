@@ -36,13 +36,25 @@ public:
         m_enabled(enableMode == EnableMode::eAuto)
     {}
 
-    const char* GetName() const { return m_extensionName; }
+    const char* GetName() const
+    {
+        return m_extensionName;
+    }
 
-    void SetSupport() { m_supported = true; }
+    void SetSupport()
+    {
+        m_supported = true;
+    }
 
-    void SetEnable() { m_enabled = true; }
+    void SetEnable()
+    {
+        m_enabled = true;
+    }
 
-    bool IsEnabledAndSupported() const { return m_enabled && m_supported; }
+    bool IsEnabledAndSupported() const
+    {
+        return m_enabled && m_supported;
+    }
 
 private:
     const char* m_extensionName{nullptr};

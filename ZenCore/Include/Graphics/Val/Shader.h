@@ -94,17 +94,29 @@ public:
 
     ShaderModule(ShaderModule&& other);
 
-    const std::vector<uint32_t>& GetSpvCode() const { return m_spirvCode; };
+    const std::vector<uint32_t>& GetSpvCode() const
+    {
+        return m_spirvCode;
+    };
 
-    auto& GetEntryPoint() const { return m_entryPoint; }
+    auto& GetEntryPoint() const
+    {
+        return m_entryPoint;
+    }
 
     std::vector<ShaderResource>& GetResources();
 
     void SetResourceMode(const std::string& name, ShaderResourceMode mode);
 
-    VkShaderStageFlagBits GetStage() const { return m_stage; }
+    VkShaderStageFlagBits GetStage() const
+    {
+        return m_stage;
+    }
 
-    auto GetId() const { return m_id; }
+    auto GetId() const
+    {
+        return m_id;
+    }
 
 private:
     VkShaderStageFlagBits m_stage{};

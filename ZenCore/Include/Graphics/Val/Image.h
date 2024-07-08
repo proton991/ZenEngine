@@ -68,11 +68,20 @@ public:
 
     Image(Image&& other) noexcept;
 
-    VkImageView GetView() const { return m_view; }
+    VkImageView GetView() const
+    {
+        return m_view;
+    }
 
-    const VkExtent3D& GetExtent3D() const { return m_extent3D; };
+    const VkExtent3D& GetExtent3D() const
+    {
+        return m_extent3D;
+    };
 
-    VkImageSubresourceRange GetSubResourceRange() const { return m_subResourceRange; }
+    VkImageSubresourceRange GetSubResourceRange() const
+    {
+        return m_subResourceRange;
+    }
 
     static VkImageLayout UsageToImageLayout(ImageUsage usage);
     static VkAccessFlags UsageToAccessFlags(ImageUsage usage);

@@ -60,7 +60,8 @@ VkDescriptorSet RenderDevice::RequestDescriptorSet(const val::DescriptorSetLayou
 {
     auto hash = layout.GetHash();
     auto it   = m_descriptorSetCache.find(hash);
-    if (it != m_descriptorSetCache.end()) return it->second;
+    if (it != m_descriptorSetCache.end())
+        return it->second;
     VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout dsLayout = layout.GetHandle();
     m_descriptorAllocator.Allocate(&dsLayout, 1, &descriptorSet);

@@ -29,7 +29,10 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
     {
         VulkanFence* fence = m_freeFences.front();
         m_freeFences.pop();
-        if (createSignaled) { fence->m_state = VulkanFence::State::eSignaled; }
+        if (createSignaled)
+        {
+            fence->m_state = VulkanFence::State::eSignaled;
+        }
         return fence;
     }
     VulkanFence* newFence = new VulkanFence(this, createSignaled);
@@ -55,7 +58,10 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
 
 bool VulkanFenceManager::IsFenceSignaled(VulkanFence* fence)
 {
-    if (fence->IsSignaled()) { return true; }
+    if (fence->IsSignaled())
+    {
+        return true;
+    }
     // double check
     VkResult result = vkGetFenceStatus(m_device->GetVkHandle(), fence->m_fence);
     if (result == VK_SUCCESS)
@@ -88,7 +94,10 @@ void VulkanFenceManager::ResetFence(VulkanFence* fence)
 
 void VulkanFenceManager::WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeNS)
 {
-    if (!fence->IsSignaled()) { WaitForFence(fence, timeNS); }
+    if (!fence->IsSignaled())
+    {
+        WaitForFence(fence, timeNS);
+    }
     ResetFence(fence);
     ReleaseFence(fence);
     fence = nullptr;

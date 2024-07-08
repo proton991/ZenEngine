@@ -28,15 +28,24 @@ DescriptorPoolManager::DescriptorPoolManager(const Device& device,
 
 void DescriptorPoolManager::Cleanup()
 {
-    for (auto& pool : m_freePools) { vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr); }
+    for (auto& pool : m_freePools)
+    {
+        vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr);
+    }
 
-    for (auto& pool : m_usedPools) { vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr); }
+    for (auto& pool : m_usedPools)
+    {
+        vkDestroyDescriptorPool(m_device.GetHandle(), pool, nullptr);
+    }
 }
 
 void DescriptorPoolManager::ResetPools()
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
-    for (auto& pool : m_usedPools) { vkResetDescriptorPool(m_device.GetHandle(), pool, 0); }
+    for (auto& pool : m_usedPools)
+    {
+        vkResetDescriptorPool(m_device.GetHandle(), pool, 0);
+    }
     m_freePools = std::move(m_usedPools);
     m_usedPools.clear();
 }
@@ -51,7 +60,10 @@ VkDescriptorPool DescriptorPoolManager::GrabPool()
         pool = m_freePools.back();
         m_freePools.pop_back();
     }
-    else { pool = CreatePool(); }
+    else
+    {
+        pool = CreatePool();
+    }
     m_usedPools.push_back(pool);
     return pool;
 }
@@ -80,7 +92,10 @@ DescriptorSetAllocator::DescriptorSetAllocator(const Device& device,
 VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* layout)
 {
     VkDescriptorSet set{VK_NULL_HANDLE};
-    if (m_currentPool == VK_NULL_HANDLE) { m_currentPool = m_poolManager.GrabPool(); }
+    if (m_currentPool == VK_NULL_HANDLE)
+    {
+        m_currentPool = m_poolManager.GrabPool();
+    }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
     allocInfo.pSetLayouts        = layout;
@@ -99,7 +114,10 @@ bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
                                       VkDescriptorSet* outSet)
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
-    if (m_currentPool == VK_NULL_HANDLE) { m_currentPool = m_poolManager.GrabPool(); }
+    if (m_currentPool == VK_NULL_HANDLE)
+    {
+        m_currentPool = m_poolManager.GrabPool();
+    }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
     allocInfo.pSetLayouts        = layout;

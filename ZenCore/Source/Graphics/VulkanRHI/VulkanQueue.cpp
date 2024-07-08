@@ -53,7 +53,10 @@ void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer, VkSemaphore signalSemap
     Submit(cmdBuffer, 1, &signalSemaphore);
 }
 
-void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer) { Submit(cmdBuffer, 0, nullptr); }
+void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer)
+{
+    Submit(cmdBuffer, 0, nullptr);
+}
 
 void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer)
 {

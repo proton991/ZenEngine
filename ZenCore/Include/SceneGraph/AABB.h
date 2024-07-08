@@ -17,17 +17,35 @@ public:
 
     ~AABB() = default;
 
-    void SetMin(const Vec3& min) { m_min = glm::min(min, m_min); }
+    void SetMin(const Vec3& min)
+    {
+        m_min = glm::min(min, m_min);
+    }
 
-    void SetMax(const Vec3& max) { m_max = glm::max(max, m_max); }
+    void SetMax(const Vec3& max)
+    {
+        m_max = glm::max(max, m_max);
+    }
 
-    auto GetMin() const { return m_min; }
+    auto GetMin() const
+    {
+        return m_min;
+    }
 
-    auto GetMax() const { return m_max; }
+    auto GetMax() const
+    {
+        return m_max;
+    }
 
-    auto GetCenter() const { return (m_min + m_max) * 0.5f; }
+    auto GetCenter() const
+    {
+        return (m_min + m_max) * 0.5f;
+    }
 
-    float GetScale() const { return glm::distance(m_min, m_max); }
+    float GetScale() const
+    {
+        return glm::distance(m_min, m_max);
+    }
 
     void Transform(const Mat4& transform)
     {

@@ -18,20 +18,35 @@ public:
 
     void EndFrame();
 
-    RenderFrame& GetActiveFrame() { return *m_frames[m_activeFrameIndex]; }
+    RenderFrame& GetActiveFrame()
+    {
+        return *m_frames[m_activeFrameIndex];
+    }
 
-    VkFormat GetSwapchainFormat() const { return m_swapchain->GetFormat(); }
+    VkFormat GetSwapchainFormat() const
+    {
+        return m_swapchain->GetFormat();
+    }
 
-    VkExtent2D GetSwapchainExtent2D() const { return m_swapchain->GetExtent2D(); }
+    VkExtent2D GetSwapchainExtent2D() const
+    {
+        return m_swapchain->GetExtent2D();
+    }
 
-    StagingBuffer* GetCurrentStagingBuffer() { return GetActiveFrame().GetStagingBuffer(); }
+    StagingBuffer* GetCurrentStagingBuffer()
+    {
+        return GetActiveFrame().GetStagingBuffer();
+    }
 
     val::CommandBuffer* GetCommandBuffer()
     {
         return m_commandPool->RequestCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY);
     }
 
-    void ResetCommandPool() { m_commandPool->ResetPool(); }
+    void ResetCommandPool()
+    {
+        m_commandPool->ResetPool();
+    }
 
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 

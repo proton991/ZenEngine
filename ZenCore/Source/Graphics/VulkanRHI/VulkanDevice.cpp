@@ -65,7 +65,10 @@ void VulkanDevice::Init()
         vkGetPhysicalDeviceFeatures2(m_gpu, &physicalDeviceFeatures2);
         for (auto& extension : extensionArray)
         {
-            if (extension->IsEnabledAndSupported()) { extension->AfterPhysicalDeviceFeatures(); }
+            if (extension->IsEnabledAndSupported())
+            {
+                extension->AfterPhysicalDeviceFeatures();
+            }
         }
 
         VkPhysicalDeviceProperties2 physicalDeviceProperties2;
@@ -83,7 +86,10 @@ void VulkanDevice::Init()
         vkGetPhysicalDeviceProperties2(m_gpu, &physicalDeviceProperties2);
         for (auto& extension : extensionArray)
         {
-            if (extension->IsEnabledAndSupported()) { extension->AfterPhysicalDeviceProperties(); }
+            if (extension->IsEnabledAndSupported())
+            {
+                extension->AfterPhysicalDeviceProperties();
+            }
         }
     }
 
@@ -185,14 +191,23 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
     VKCHECK(vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device));
     LOGI("Vulkan Device Created");
     // display extension info
-    for (const auto& extension : m_extensions) { LOGI("Enabled Device Extension: {}", extension); }
+    for (const auto& extension : m_extensions)
+    {
+        LOGI("Enabled Device Extension: {}", extension);
+    }
     // load device func
     volkLoadDevice(m_device);
     // setup queues
     m_gfxQueue = new VulkanQueue(this, graphicsQueueFamilyIndex);
-    if (computeQueueFamilyIndex == -1) { computeQueueFamilyIndex = graphicsQueueFamilyIndex; }
+    if (computeQueueFamilyIndex == -1)
+    {
+        computeQueueFamilyIndex = graphicsQueueFamilyIndex;
+    }
     m_computeQueue = new VulkanQueue(this, computeQueueFamilyIndex);
-    if (transferQueueFamilyIndex == -1) { transferQueueFamilyIndex = computeQueueFamilyIndex; }
+    if (transferQueueFamilyIndex == -1)
+    {
+        transferQueueFamilyIndex = computeQueueFamilyIndex;
+    }
     m_transferQueue = new VulkanQueue(this, transferQueueFamilyIndex);
 }
 

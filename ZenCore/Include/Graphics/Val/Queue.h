@@ -9,7 +9,10 @@ class Queue : public DeviceObject<VkQueue, VK_OBJECT_TYPE_QUEUE>
 public:
     Queue(const Device& device, uint32_t queueFamilyIndex, uint32_t index, bool supportPresent);
 
-    auto GetFamilyIndex() const { return m_familyIndex; }
+    auto GetFamilyIndex() const
+    {
+        return m_familyIndex;
+    }
 
     VkResult Submit(const std::vector<VkSubmitInfo>& submitInfos, VkFence fence) const;
 

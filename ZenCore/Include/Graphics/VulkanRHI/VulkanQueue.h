@@ -12,13 +12,25 @@ class VulkanQueue
 public:
     VulkanQueue(VulkanDevice* device, uint32_t familyIndex);
 
-    uint32_t GetFamilyIndex() const { return m_familyIndex; }
+    uint32_t GetFamilyIndex() const
+    {
+        return m_familyIndex;
+    }
 
-    uint32_t GetQueueIndex() const { return m_queueIndex; }
+    uint32_t GetQueueIndex() const
+    {
+        return m_queueIndex;
+    }
 
-    VkQueue GetHandle() const { return m_handle; }
+    VkQueue GetHandle() const
+    {
+        return m_handle;
+    }
 
-    VulkanCommandBuffer* GetLastSubmittedCmdBuffer() const { return m_lastSubmittedCmdBuffer; }
+    VulkanCommandBuffer* GetLastSubmittedCmdBuffer() const
+    {
+        return m_lastSubmittedCmdBuffer;
+    }
 
     void Submit(VulkanCommandBuffer* cmdBuffer,
                 uint32_t numSignalSemaphores,

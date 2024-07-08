@@ -11,7 +11,10 @@ Mat4 Transform::GetWorldMatrix()
 
 void Transform::UpdateWorldMatrix()
 {
-    if (!m_updateWorldMatrix) { return; }
+    if (!m_updateWorldMatrix)
+    {
+        return;
+    }
     m_worldMatrix = GetLocalMatrix();
     auto parent   = m_node.GetParent();
     while (parent)

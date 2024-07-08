@@ -15,10 +15,16 @@ public:
         m_indexCount(indexCount),
         m_vertexCount(vertexCount)
     {
-        if (m_indexCount != 0) { m_hasIndices = true; }
+        if (m_indexCount != 0)
+        {
+            m_hasIndices = true;
+        }
     }
 
-    TypeId GetTypeId() const override { return typeid(SubMesh); }
+    TypeId GetTypeId() const override
+    {
+        return typeid(SubMesh);
+    }
 
     void SetMaterial(uint32_t materialIndex, Material* material)
     {
@@ -26,13 +32,31 @@ public:
         m_materialIndex = materialIndex;
     }
 
-    void SetFirstIndex(uint32_t firstIndex) { m_firstIndex = firstIndex; }
-    void SetIndexCount(uint32_t indexCount) { m_indexCount = indexCount; }
-    void SetVertexCount(uint32_t vertexCount) { m_vertexCount = vertexCount; }
+    void SetFirstIndex(uint32_t firstIndex)
+    {
+        m_firstIndex = firstIndex;
+    }
+    void SetIndexCount(uint32_t indexCount)
+    {
+        m_indexCount = indexCount;
+    }
+    void SetVertexCount(uint32_t vertexCount)
+    {
+        m_vertexCount = vertexCount;
+    }
 
-    auto GetIndexCount() const { return m_indexCount; }
-    auto GetFirstIndex() const { return m_firstIndex; }
-    auto GetMaterial() const { return m_material; }
+    auto GetIndexCount() const
+    {
+        return m_indexCount;
+    }
+    auto GetFirstIndex() const
+    {
+        return m_firstIndex;
+    }
+    auto GetMaterial() const
+    {
+        return m_material;
+    }
 
     void SetAABB(const Vec3& min, const Vec3& max)
     {
@@ -40,9 +64,15 @@ public:
         m_aabb.SetMax(max);
     }
 
-    const auto& GetAABB() const { return m_aabb; }
+    const auto& GetAABB() const
+    {
+        return m_aabb;
+    }
 
-    bool HasIndices() const { return m_hasIndices; }
+    bool HasIndices() const
+    {
+        return m_hasIndices;
+    }
 
 private:
     uint32_t m_firstIndex{0};

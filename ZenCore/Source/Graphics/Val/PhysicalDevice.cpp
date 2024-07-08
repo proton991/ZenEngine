@@ -64,12 +64,14 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
                                      VkQueueFlags ignored, float priority) -> bool {
         for (unsigned familyIndex = 0; familyIndex < queueFamilyProps.size(); familyIndex++)
         {
-            if (queueFamilyProps[familyIndex].queueFlags & ignored) continue;
+            if (queueFamilyProps[familyIndex].queueFlags & ignored)
+                continue;
 
             // A graphics queue candidate must support present for us to select it.
             if ((required & VK_QUEUE_GRAPHICS_BIT) && surface)
             {
-                if (!IsPresentSupported(surface, familyIndex)) continue;
+                if (!IsPresentSupported(surface, familyIndex))
+                    continue;
             }
 
             if (queueFamilyProps[familyIndex].queueCount > 0 &&
@@ -132,5 +134,8 @@ bool PhysicalDevice::IsExtensionSupported(const char* extensionName) const
     return it != m_supportedExtensions.end();
 }
 
-VkInstance PhysicalDevice::GetInstanceHandle() const { return m_instance.GetHandle(); }
+VkInstance PhysicalDevice::GetInstanceHandle() const
+{
+    return m_instance.GetHandle();
+}
 } // namespace zen::val

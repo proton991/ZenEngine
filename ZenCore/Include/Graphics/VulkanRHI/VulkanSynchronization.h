@@ -13,11 +13,20 @@ class VulkanFence
 public:
     explicit VulkanFence(VulkanFenceManager* owner, bool createSignaled = false);
 
-    VkFence GetVkHandle() const { return m_fence; }
+    VkFence GetVkHandle() const
+    {
+        return m_fence;
+    }
 
-    bool IsSignaled() const { return m_state == State::eSignaled; }
+    bool IsSignaled() const
+    {
+        return m_state == State::eSignaled;
+    }
 
-    VulkanFenceManager* GetOwner() const { return m_owner; }
+    VulkanFenceManager* GetOwner() const
+    {
+        return m_owner;
+    }
 
 private:
     ~VulkanFence() = default;
@@ -41,7 +50,10 @@ public:
 
     void Destroy();
 
-    VulkanDevice* GetDevice() const { return m_device; }
+    VulkanDevice* GetDevice() const
+    {
+        return m_device;
+    }
 
     VulkanFence* CreateFence(bool createSignaled = false);
 
@@ -70,7 +82,10 @@ public:
 
     ~VulkanSemaphore();
 
-    VkSemaphore GetVkHandle() const { return m_semaphore; }
+    VkSemaphore GetVkHandle() const
+    {
+        return m_semaphore;
+    }
 
 private:
     VulkanDevice* m_device{nullptr};

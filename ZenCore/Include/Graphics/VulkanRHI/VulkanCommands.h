@@ -29,11 +29,20 @@ public:
 
     void Init(uint32_t queueFamilyIndex);
 
-    VulkanDevice* GetDevice() const { return m_device; }
+    VulkanDevice* GetDevice() const
+    {
+        return m_device;
+    }
 
-    VkCommandPool GetVkCmdPool() const { return m_cmdPool; }
+    VkCommandPool GetVkCmdPool() const
+    {
+        return m_cmdPool;
+    }
 
-    VulkanCommandBufferManager& GetManager() const { return m_owner; }
+    VulkanCommandBufferManager& GetManager() const
+    {
+        return m_owner;
+    }
 
     void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer);
 
@@ -69,20 +78,29 @@ public:
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
                           const std::vector<VulkanSemaphore*>& sems);
 
-    VkCommandBuffer GetVkHandle() const { return m_cmdBuffer; }
+    VkCommandBuffer GetVkHandle() const
+    {
+        return m_cmdBuffer;
+    }
 
     void Begin();
 
     void End();
 
-    bool IsSubmitted() const { return m_state == State::eSubmitted; }
+    bool IsSubmitted() const
+    {
+        return m_state == State::eSubmitted;
+    }
 
     bool HasBegun() const
     {
         return m_state == State::eHasBegun || m_state == State::eInsideRenderPass;
     }
 
-    bool IsOutsideRenderPass() const { return m_state == State::eHasBegun; }
+    bool IsOutsideRenderPass() const
+    {
+        return m_state == State::eHasBegun;
+    }
 
     void EndRenderPass();
 
@@ -147,9 +165,15 @@ public:
 
     void FreeUnusedCmdBuffers();
 
-    bool HasPendingActiveCmdBuffer() { return m_activeCmdBuffer != nullptr; }
+    bool HasPendingActiveCmdBuffer()
+    {
+        return m_activeCmdBuffer != nullptr;
+    }
 
-    bool HasPendingUploadCmdBuffer() { return m_uploadCmdBuffer != nullptr; }
+    bool HasPendingUploadCmdBuffer()
+    {
+        return m_uploadCmdBuffer != nullptr;
+    }
 
     void WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer, float timeInSecondsToWait = 10.0f);
 

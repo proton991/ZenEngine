@@ -5,8 +5,14 @@ class DummyClass
 {
 public:
     explicit DummyClass(int data) : m_data(data) {}
-    auto GetData() const { return m_data; }
-    auto* GetDataPtr() const { return &m_data; }
+    auto GetData() const
+    {
+        return m_data;
+    }
+    auto* GetDataPtr() const
+    {
+        return &m_data;
+    }
 
 private:
     int m_data;
@@ -23,14 +29,20 @@ TEST(mem_alloc_test, allocator)
     auto arraySize            = sizeof(int) * numElements;
     int* arr                  = static_cast<int*>(DefaultAllocator::Alloc(arraySize));
 
-    for (int i = 0; i < numElements; ++i) { arr[i] = i + 1; }
+    for (int i = 0; i < numElements; ++i)
+    {
+        arr[i] = i + 1;
+    }
 
     EXPECT_NE(arr, nullptr);
     EXPECT_EQ(arr[0], 1);
 
     auto newSize    = arraySize * 2;
     int* resizedArr = static_cast<int*>(DefaultAllocator::Realloc(arr, newSize));
-    for (int i = 0; i < numElements; ++i) { EXPECT_EQ(resizedArr[i], i + 1); }
+    for (int i = 0; i < numElements; ++i)
+    {
+        EXPECT_EQ(resizedArr[i], i + 1);
+    }
     EXPECT_NE(resizedArr, nullptr);
     EXPECT_EQ(resizedArr[0], 1);
 

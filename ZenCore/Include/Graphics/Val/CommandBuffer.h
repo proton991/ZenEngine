@@ -115,7 +115,10 @@ public:
 
     void ExecuteCommand(val::CommandBuffer* secondaryCmdBuffers);
 
-    const auto& GetInheritanceInfo() const { return m_inheritanceInfo; }
+    const auto& GetInheritanceInfo() const
+    {
+        return m_inheritanceInfo;
+    }
 
 private:
     void PushConstants(VkPipelineLayout pipelineLayout,

@@ -13,12 +13,18 @@ public:
 
     SharedPtrCount(const SharedPtrCount& other) : m_counter(other.m_counter) {}
 
-    void Swap(SharedPtrCount& other) noexcept { std::swap(m_counter, other.m_counter); }
+    void Swap(SharedPtrCount& other) noexcept
+    {
+        std::swap(m_counter, other.m_counter);
+    }
 
     uint32_t GetValue() const noexcept
     {
         uint32_t count = 0;
-        if (m_counter != nullptr) { count = m_counter->GetValue(); }
+        if (m_counter != nullptr)
+        {
+            count = m_counter->GetValue();
+        }
         return count;
     }
 
@@ -26,8 +32,14 @@ public:
     {
         if (p != nullptr)
         {
-            if (m_counter == nullptr) { m_counter = new RefCounterType(); }
-            else { m_counter->Add(); }
+            if (m_counter == nullptr)
+            {
+                m_counter = new RefCounterType();
+            }
+            else
+            {
+                m_counter->Add();
+            }
         }
     }
 
@@ -50,7 +62,10 @@ public:
         }
     }
 
-    void Reset() { m_counter = nullptr; }
+    void Reset()
+    {
+        m_counter = nullptr;
+    }
 
 private:
     RefCounterType* m_counter;
@@ -73,7 +88,10 @@ public:
 
     SharedPtr() noexcept : SharedPtrBase<RefCounterType>(), m_ptr(nullptr) {}
 
-    explicit SharedPtr(T* p) : SharedPtrBase<RefCounterType>() { Acquire(p); }
+    explicit SharedPtr(T* p) : SharedPtrBase<RefCounterType>()
+    {
+        Acquire(p);
+    }
 
     /**
      * @brief Used for pointer cast
@@ -111,7 +129,10 @@ public:
         Reset();
         m_ptr         = other.m_ptr;
         this->m_count = other.m_count;
-        if (m_ptr != nullptr) { this->m_count.Acquire(other.m_ptr); }
+        if (m_ptr != nullptr)
+        {
+            this->m_count.Acquire(other.m_ptr);
+        }
         return *this;
     }
 
@@ -124,21 +145,45 @@ public:
         return *this;
     }
 
-    T* Get() const noexcept { return m_ptr; }
+    T* Get() const noexcept
+    {
+        return m_ptr;
+    }
 
-    T* operator->() const noexcept { return m_ptr; }
+    T* operator->() const noexcept
+    {
+        return m_ptr;
+    }
 
-    T& operator*() const noexcept { return *m_ptr; }
+    T& operator*() const noexcept
+    {
+        return *m_ptr;
+    }
 
-    operator bool() const noexcept { return this->m_count.GetValue() > 0; }
+    operator bool() const noexcept
+    {
+        return this->m_count.GetValue() > 0;
+    }
 
-    bool Unique() const noexcept { return this->m_count.GetValue() == 1; }
+    bool Unique() const noexcept
+    {
+        return this->m_count.GetValue() == 1;
+    }
 
-    uint32_t UseCount() const noexcept { return this->m_count.GetValue(); }
+    uint32_t UseCount() const noexcept
+    {
+        return this->m_count.GetValue();
+    }
 
-    ~SharedPtr() noexcept { Release(); }
+    ~SharedPtr() noexcept
+    {
+        Release();
+    }
 
-    void Reset() noexcept { Release(); }
+    void Reset() noexcept
+    {
+        Release();
+    }
 
     void Reset(T* p)
     {
@@ -212,8 +257,14 @@ template <class T, class U>
 SharedPtr<T> dynamic_pointer_cast(const SharedPtr<U>& ptr) // never throws
 {
     T* p = dynamic_cast<typename SharedPtr<T>::ElementType*>(ptr.Get());
-    if (nullptr != p) { return SharedPtr<T>(ptr, p); }
-    else { return SharedPtr<T>(); }
+    if (nullptr != p)
+    {
+        return SharedPtr<T>(ptr, p);
+    }
+    else
+    {
+        return SharedPtr<T>();
+    }
 }
 
 template <class T, class... Args> SharedPtr<T> MakeShared(Args&&... args_)

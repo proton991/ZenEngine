@@ -39,7 +39,10 @@ Buffer::~Buffer()
 {
     if (m_handle != VK_NULL_HANDLE && m_allocation != nullptr)
     {
-        if (m_mappedMemory != nullptr) { UnmapMemory(); }
+        if (m_mappedMemory != nullptr)
+        {
+            UnmapMemory();
+        }
         vmaDestroyBuffer(m_device.GetAllocator(), m_handle, m_allocation);
         m_handle = VK_NULL_HANDLE;
     }
@@ -129,7 +132,10 @@ VkPipelineStageFlags Buffer::UsageToPipelineStage(BufferUsage usage)
     return VkPipelineStageFlags{};
 }
 
-bool Buffer::IsMemoryMapped() const { return m_mappedMemory != nullptr; }
+bool Buffer::IsMemoryMapped() const
+{
+    return m_mappedMemory != nullptr;
+}
 
 uint8_t* Buffer::MapMemory()
 {

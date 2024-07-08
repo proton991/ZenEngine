@@ -16,7 +16,10 @@ int main(int argc, char** argv)
     SurfaceHandle surfaceHandle     = VulkanPlatform::CreateSurface(vkRHI.GetInstance(), &data);
     SwapchainHandle swapchainHandle = vkRHI.CreateSwapchain(surfaceHandle, true);
 
-    while (!window->ShouldClose()) { window->Update(); }
+    while (!window->ShouldClose())
+    {
+        window->Update();
+    }
 
     vkRHI.DestroySwapchain(swapchainHandle);
     VulkanPlatform::DestroySurface(vkRHI.GetInstance(), surfaceHandle);

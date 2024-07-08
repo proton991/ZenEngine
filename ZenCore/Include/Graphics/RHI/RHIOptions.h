@@ -16,13 +16,22 @@ public:
         return instance;
     }
 
-    void LoadDefault() { m_VkRHIOptions.uploadCmdBufferSemaphore = false; }
+    void LoadDefault()
+    {
+        m_VkRHIOptions.uploadCmdBufferSemaphore = false;
+    }
 
-    bool VKUploadCmdBufferSemaphore() const { return m_VkRHIOptions.uploadCmdBufferSemaphore; }
+    bool VKUploadCmdBufferSemaphore() const
+    {
+        return m_VkRHIOptions.uploadCmdBufferSemaphore;
+    }
 
 private:
     // Private constructor to prevent instantiation
-    RHIOptions() { LoadDefault(); }
+    RHIOptions()
+    {
+        LoadDefault();
+    }
 
     struct VulkanRHIOptions
     {

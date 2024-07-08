@@ -42,9 +42,15 @@ public:
 
     DeviceQueueInfo GetDeviceQueueInfo(VkSurfaceKHR surface);
 
-    auto GetHandle() { return m_handle; }
+    auto GetHandle()
+    {
+        return m_handle;
+    }
 
-    const VkPhysicalDeviceFeatures& GetFeatures() const { return m_features; }
+    const VkPhysicalDeviceFeatures& GetFeatures() const
+    {
+        return m_features;
+    }
 
     bool IsExtensionSupported(const char* extensionName) const;
 
@@ -62,7 +68,10 @@ public:
 
         // If the type already exists in the map, return a casted pointer to get the extension feature struct
         auto it = m_extensionFeatures.find(type);
-        if (it != m_extensionFeatures.end()) { return *static_cast<T*>(it->second.get()); }
+        if (it != m_extensionFeatures.end())
+        {
+            return *static_cast<T*>(it->second.get());
+        }
 
         // Get the extension feature
         VkPhysicalDeviceFeatures2KHR physicalDeviceFeatures{
@@ -79,7 +88,10 @@ public:
 
         // If an extension feature has already been requested, we shift the linked list down by one
         // Making this current extension the new base pointer
-        if (m_featureChainHead) { extensionPtr->pNext = m_featureChainHead; }
+        if (m_featureChainHead)
+        {
+            extensionPtr->pNext = m_featureChainHead;
+        }
         m_featureChainHead = extensionPtr;
 
         return *extensionPtr;
@@ -87,11 +99,20 @@ public:
 
     VkInstance GetInstanceHandle() const;
 
-    void* GetExtensionFeatureChain() const { return m_featureChainHead; }
+    void* GetExtensionFeatureChain() const
+    {
+        return m_featureChainHead;
+    }
 
-    VkPhysicalDeviceFeatures& GetMutableFeatures() { return m_requestedFeatures; }
+    VkPhysicalDeviceFeatures& GetMutableFeatures()
+    {
+        return m_requestedFeatures;
+    }
 
-    const VkPhysicalDeviceFeatures& GetRequestedFeatures() const { return m_requestedFeatures; }
+    const VkPhysicalDeviceFeatures& GetRequestedFeatures() const
+    {
+        return m_requestedFeatures;
+    }
 
 private:
     explicit PhysicalDevice(Instance& instance);

@@ -15,21 +15,33 @@ public:
     explicit RefCountPtr(T* ptr, bool addRef = true)
     {
         m_rawPtr = ptr;
-        if (ptr && addRef) { m_rawPtr->AddRef(); }
+        if (ptr && addRef)
+        {
+            m_rawPtr->AddRef();
+        }
     }
 
     RefCountPtr(const RefCountPtr& other)
     {
         m_rawPtr = other.m_rawPtr;
-        if (m_rawPtr) { m_rawPtr->AddRef(); }
+        if (m_rawPtr)
+        {
+            m_rawPtr->AddRef();
+        }
     }
 
-    T* Get() const { return m_rawPtr; }
+    T* Get() const
+    {
+        return m_rawPtr;
+    }
 
     template <class U> explicit RefCountPtr(const RefCountPtr<U>& other)
     {
         m_rawPtr = static_cast<T*>(other.Get());
-        if (m_rawPtr) { m_rawPtr->AddRef(); }
+        if (m_rawPtr)
+        {
+            m_rawPtr->AddRef();
+        }
     }
 
     RefCountPtr(RefCountPtr&& other) noexcept
@@ -46,7 +58,10 @@ public:
 
     ~RefCountPtr()
     {
-        if (m_rawPtr) { m_rawPtr->Release(); }
+        if (m_rawPtr)
+        {
+            m_rawPtr->Release();
+        }
     }
 
     RefCountPtr& operator=(T* ptr)
@@ -55,8 +70,14 @@ public:
         {
             T* oldPtr = m_rawPtr;
             m_rawPtr  = ptr;
-            if (m_rawPtr) { m_rawPtr->AddRef(); }
-            if (oldPtr) { oldPtr->Release(); }
+            if (m_rawPtr)
+            {
+                m_rawPtr->AddRef();
+            }
+            if (oldPtr)
+            {
+                oldPtr->Release();
+            }
         }
 
         return *this;
@@ -64,7 +85,10 @@ public:
 
     RefCountPtr& operator=(const RefCountPtr& other) // NOLINT(bugprone-unhandled-self-assignment)
     {
-        if (m_rawPtr != other.m_rawPtr) { RefCountPtr(other).Swap(*this); }
+        if (m_rawPtr != other.m_rawPtr)
+        {
+            RefCountPtr(other).Swap(*this);
+        }
         return *this;
     }
 
@@ -81,7 +105,10 @@ public:
             T* oldPtr      = m_rawPtr;
             m_rawPtr       = other.m_rawPtr;
             other.m_rawPtr = nullptr;
-            if (oldPtr) { oldPtr->Release(); }
+            if (oldPtr)
+            {
+                oldPtr->Release();
+            }
         }
         return *this;
     }
@@ -91,13 +118,22 @@ public:
         T* oldPtr      = m_rawPtr;
         m_rawPtr       = other.m_rawPtr;
         other.m_rawPtr = nullptr;
-        if (oldPtr) { oldPtr->Release(); }
+        if (oldPtr)
+        {
+            oldPtr->Release();
+        }
         return *this;
     }
 
-    T* operator->() const { return m_rawPtr; }
+    T* operator->() const
+    {
+        return m_rawPtr;
+    }
 
-    operator T*() const { return m_rawPtr; }
+    operator T*() const
+    {
+        return m_rawPtr;
+    }
 
     T** operator&() // NOLINT(google-runtime-operator)
     {

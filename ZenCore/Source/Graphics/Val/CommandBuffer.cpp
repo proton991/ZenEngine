@@ -56,8 +56,10 @@ void CommandBuffer::BlitImage(const Image& srcImage,
     VkImageMemoryBarrier toTransferDst =
         GetImageBarrier(dstUsage, ImageUsage::TransferDst, &dstImage);
 
-    if (srcUsage != val::ImageUsage::TransferSrc) barriers[numBarriers++] = toTransferSrc;
-    if (dstUsage != val::ImageUsage::TransferDst) barriers[numBarriers++] = toTransferDst;
+    if (srcUsage != val::ImageUsage::TransferSrc)
+        barriers[numBarriers++] = toTransferSrc;
+    if (dstUsage != val::ImageUsage::TransferDst)
+        barriers[numBarriers++] = toTransferDst;
     if (numBarriers > 0)
     {
         VkPipelineStageFlags srcPipelineStage =
@@ -93,7 +95,10 @@ void CommandBuffer::BeginRenderPass(const VkRenderPassBeginInfo& info,
     m_inheritanceInfo.renderPassHandle  = info.renderPass;
 }
 
-void CommandBuffer::EndRenderPass() { vkCmdEndRenderPass(m_handle); }
+void CommandBuffer::EndRenderPass()
+{
+    vkCmdEndRenderPass(m_handle);
+}
 
 void CommandBuffer::BindGraphicPipeline(VkPipeline pipeline)
 {
@@ -134,7 +139,10 @@ void CommandBuffer::Begin(const InheritanceInfo& inheritanceInfo,
     CHECK_VK_ERROR(vkBeginCommandBuffer(m_handle, &beginInfo), "Failed to begin command buffer!")
 }
 
-void CommandBuffer::End() { vkEndCommandBuffer(m_handle); }
+void CommandBuffer::End()
+{
+    vkEndCommandBuffer(m_handle);
+}
 
 void CommandBuffer::CopyBuffer(Buffer* srcBuffer,
                                size_t srcOffset,

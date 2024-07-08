@@ -72,12 +72,24 @@ void ShaderModule::SetResourceMode(const std::string& name, ShaderResourceMode m
             {
                 it->mode = mode;
             }
-            else { LOGW("Resource `{}` does not support dynamic.", name); }
+            else
+            {
+                LOGW("Resource `{}` does not support dynamic.", name);
+            }
         }
-        else { it->mode = mode; }
+        else
+        {
+            it->mode = mode;
+        }
     }
-    else { LOGW("Resource `{}` not found for shader.", name); }
+    else
+    {
+        LOGW("Resource `{}` not found for shader.", name);
+    }
 }
 
-std::vector<ShaderResource>& ShaderModule::GetResources() { return m_resources; }
+std::vector<ShaderResource>& ShaderModule::GetResources()
+{
+    return m_resources;
+}
 } // namespace zen::val

@@ -24,7 +24,10 @@ public:
 
     Material(std::string name) : Component(std::move(name)) {}
 
-    virtual TypeId GetTypeId() const override { return typeid(Material); }
+    virtual TypeId GetTypeId() const override
+    {
+        return typeid(Material);
+    }
 
     AlphaMode alphaMode{AlphaMode::Opaque};
     bool doubleSided{false};

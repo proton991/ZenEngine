@@ -33,9 +33,15 @@ class VulkanFramebuffer
 public:
     VulkanFramebuffer(VulkanRHI* vkRHI, VkRenderPass renderPass, const RenderTargetInfo& RTInfo);
 
-    VkFramebuffer GetVkHandle() const { return m_framebuffer; }
+    VkFramebuffer GetVkHandle() const
+    {
+        return m_framebuffer;
+    }
 
-    VkRect2D GetRenderArea() const { return m_renderArea; }
+    VkRect2D GetRenderArea() const
+    {
+        return m_renderArea;
+    }
 
 private:
     VkFramebuffer m_framebuffer{VK_NULL_HANDLE};

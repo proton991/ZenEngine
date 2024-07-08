@@ -28,7 +28,10 @@ DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeveri
 
 void PrintInstanceLayers(const std::vector<VkLayerProperties>& layers)
 {
-    for (const auto& layer : layers) { LOGI("Instance Layer: {}", layer.layerName); }
+    for (const auto& layer : layers)
+    {
+        LOGI("Instance Layer: {}", layer.layerName);
+    }
 }
 
 void PrintInstanceExtensions(const std::vector<VkExtensionProperties>& extensions)
@@ -58,7 +61,10 @@ Instance::~Instance()
     {
         vkDestroyDebugUtilsMessengerEXT(m_handle, m_debugUtilsMessenger, nullptr);
     }
-    if (m_handle != VK_NULL_HANDLE) { vkDestroyInstance(m_handle, nullptr); }
+    if (m_handle != VK_NULL_HANDLE)
+    {
+        vkDestroyInstance(m_handle, nullptr);
+    }
 }
 
 Instance::Instance(const Instance::CreateInfo& CI)
@@ -115,7 +121,8 @@ Instance::Instance(const Instance::CreateInfo& CI)
         for (uint32_t ext = 0; ext < CI.enabledExtensionCount; ++ext)
         {
             const auto* extName = CI.ppEnabledExtensionNames[ext];
-            if (extName == nullptr) continue;
+            if (extName == nullptr)
+                continue;
             if (IsExtensionSupported(m_supportedExtensions, extName))
                 enabledExtensions.push_back(extName);
             else
@@ -201,9 +208,11 @@ Instance::Instance(const Instance::CreateInfo& CI)
         for (size_t i = 0; i < CI.enabledLayerCount; ++i)
         {
             const auto* LayerName = CI.ppEnabledLayerNames[i];
-            if (LayerName == nullptr) return;
+            if (LayerName == nullptr)
+                return;
             uint32_t layerVer = 0;
-            if (IsLayerSupported(LayerName, layerVer)) enabledLayers.push_back(LayerName);
+            if (IsLayerSupported(LayerName, layerVer))
+                enabledLayers.push_back(LayerName);
             else
                 LOGW("Instance layer {} is not available", LayerName);
         }
@@ -263,9 +272,15 @@ Instance::Instance(const Instance::CreateInfo& CI)
     }
     LOGI("VkInstance created!")
     LOGI("Enabled Instance Layers count: {}", enabledLayers.size())
-    for (const auto& layer : enabledLayers) { LOGI("\tEnabled Instance Layer: {}", layer); }
+    for (const auto& layer : enabledLayers)
+    {
+        LOGI("\tEnabled Instance Layer: {}", layer);
+    }
     LOGI("Enabled Instance Extensions count: {}", m_enabledExtensions.size())
-    for (const auto& ext : m_enabledExtensions) { LOGI("\tEnabled Instance Extension: {}", ext); }
+    for (const auto& ext : m_enabledExtensions)
+    {
+        LOGI("\tEnabled Instance Extension: {}", ext);
+    }
     // Enumerate physical devices
     {
         // Physical device
@@ -311,7 +326,10 @@ bool Instance::IsLayerSupported(const char* layerName, uint32_t& version)
                                    version = layer.specVersion;
                                    return true;
                                }
-                               else { return false; }
+                               else
+                               {
+                                   return false;
+                               }
                            });
     return it != m_supportedLayers.end();
 }

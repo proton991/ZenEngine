@@ -9,8 +9,14 @@ namespace zen::rhi
 {
 VulkanCommandBufferPool::~VulkanCommandBufferPool()
 {
-    for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers) { delete cmdBuffer; }
-    for (VulkanCommandBuffer* cmdBuffer : m_freeCmdBuffers) { delete cmdBuffer; }
+    for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers)
+    {
+        delete cmdBuffer;
+    }
+    for (VulkanCommandBuffer* cmdBuffer : m_freeCmdBuffers)
+    {
+        delete cmdBuffer;
+    }
     vkDestroyCommandPool(m_device->GetVkHandle(), m_cmdPool, nullptr);
 }
 
@@ -27,7 +33,10 @@ void VulkanCommandBufferPool::RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuf
 {
     for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers)
     {
-        if (cmdBuffer != skipCmdBuffer) { cmdBuffer->RefreshFenceStatus(); }
+        if (cmdBuffer != skipCmdBuffer)
+        {
+            cmdBuffer->RefreshFenceStatus();
+        }
     }
 }
 
@@ -89,9 +98,15 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
         uint64_t timeNS = 33 * 1000 * 1000LL;
         fenceManager->WaitForFence(m_fence, timeNS);
     }
-    else { fenceManager->ReleaseFence(m_fence); }
+    else
+    {
+        fenceManager->ReleaseFence(m_fence);
+    }
 
-    if (m_state != State::eNotAllocated) { FreeMemory(); }
+    if (m_state != State::eNotAllocated)
+    {
+        FreeMemory();
+    }
 }
 
 void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem)
@@ -131,7 +146,10 @@ void VulkanCommandBuffer::RefreshFenceStatus()
         VulkanFenceManager* fenceManager = m_cmdBufferPool->GetDevice()->GetFenceManager();
         if (fenceManager->IsFenceSignaled(m_fence))
         {
-            for (VulkanSemaphore* sem : m_submittedWaitSemaphores) { sem->Release(); }
+            for (VulkanSemaphore* sem : m_submittedWaitSemaphores)
+            {
+                sem->Release();
+            }
             m_submittedWaitSemaphores.clear();
             m_fence->GetOwner()->ResetFence(m_fence);
             m_state = State::eNeedReset;
@@ -153,7 +171,10 @@ void VulkanCommandBuffer::Begin()
     {
         vkResetCommandBuffer(m_cmdBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
     }
-    else { VERIFY_EXPR(m_state == State::eReadyForBegin); }
+    else
+    {
+        VERIFY_EXPR(m_state == State::eReadyForBegin);
+    }
     m_state = State::eHasBegun;
     VkCommandBufferBeginInfo beginInfo;
     InitVkStruct(beginInfo, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
@@ -167,7 +188,10 @@ void VulkanCommandBuffer::End()
     m_state = State::eHasEnded;
 }
 
-void VulkanCommandBuffer::EndRenderPass() { vkCmdEndRenderPass(m_cmdBuffer); }
+void VulkanCommandBuffer::EndRenderPass()
+{
+    vkCmdEndRenderPass(m_cmdBuffer);
+}
 
 VulkanCommandBufferManager::VulkanCommandBufferManager(VulkanDevice* device, VulkanQueue* queue) :
     m_device(device), m_queue(queue), m_pool(device, *this)
@@ -181,11 +205,17 @@ VulkanCommandBufferManager::VulkanCommandBufferManager(VulkanDevice* device, Vul
     }
 }
 
-void VulkanCommandBufferManager::Init() { m_activeCmdBuffer->Begin(); }
+void VulkanCommandBufferManager::Init()
+{
+    m_activeCmdBuffer->Begin();
+}
 
 VulkanCommandBuffer* VulkanCommandBufferManager::GetActiveCommandBuffer()
 {
-    if (m_uploadCmdBuffer != nullptr) { SubmitUploadCmdBuffer(); }
+    if (m_uploadCmdBuffer != nullptr)
+    {
+        SubmitUploadCmdBuffer();
+    }
     return m_activeCmdBuffer;
 }
 
@@ -229,7 +259,10 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
     }
     if (!m_activeCmdBuffer->IsSubmitted() && m_activeCmdBuffer->HasBegun())
     {
-        if (!m_activeCmdBuffer->IsOutsideRenderPass()) { m_activeCmdBuffer->EndRenderPass(); }
+        if (!m_activeCmdBuffer->IsOutsideRenderPass())
+        {
+            m_activeCmdBuffer->EndRenderPass();
+        }
         m_activeCmdBuffer->End();
 
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
@@ -248,7 +281,10 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
             m_uploadCompleteSemaphores.clear();
         }
     }
-    else { m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data()); }
+    else
+    {
+        m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
+    }
     m_activeCmdBuffer = nullptr;
 }
 
@@ -274,15 +310,24 @@ void VulkanCommandBufferManager::SubmitActiveCmdBufferForPresent(VulkanSemaphore
                                          m_activeCmdBufferSemaphore->GetVkHandle()};
             m_queue->Submit(m_activeCmdBuffer, 2, singalSems);
         }
-        else { m_queue->Submit(m_activeCmdBuffer, m_activeCmdBufferSemaphore->GetVkHandle()); }
+        else
+        {
+            m_queue->Submit(m_activeCmdBuffer, m_activeCmdBufferSemaphore->GetVkHandle());
+        }
 
         m_renderCompleteSemaphores.push_back(m_activeCmdBufferSemaphore);
         m_activeCmdBufferSemaphore = nullptr;
     }
     else
     {
-        if (signalSemaphore) { m_queue->Submit(m_activeCmdBuffer, signalSemaphore->GetVkHandle()); }
-        else { m_queue->Submit(m_activeCmdBuffer); }
+        if (signalSemaphore)
+        {
+            m_queue->Submit(m_activeCmdBuffer, signalSemaphore->GetVkHandle());
+        }
+        else
+        {
+            m_queue->Submit(m_activeCmdBuffer);
+        }
     }
 }
 
@@ -306,7 +351,10 @@ void VulkanCommandBufferManager::SubmitUploadCmdBuffer()
 
             m_renderCompleteSemaphores.clear();
         }
-        else { m_queue->Submit(m_uploadCmdBuffer, 0, nullptr); }
+        else
+        {
+            m_queue->Submit(m_uploadCmdBuffer, 0, nullptr);
+        }
     }
     m_uploadCmdBuffer = nullptr;
 }
@@ -330,7 +378,10 @@ void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
                 m_activeCmdBuffer->Begin();
                 return;
             }
-            else { VERIFY_EXPR(cmdBuffer->m_state == VulkanCommandBuffer::State::eSubmitted); }
+            else
+            {
+                VERIFY_EXPR(cmdBuffer->m_state == VulkanCommandBuffer::State::eSubmitted);
+            }
         }
     }
     // create a new one
@@ -338,7 +389,10 @@ void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
     m_activeCmdBuffer->Begin();
 }
 
-void VulkanCommandBufferManager::FreeUnusedCmdBuffers() { m_pool.FreeUnusedCmdBuffers(m_queue); }
+void VulkanCommandBufferManager::FreeUnusedCmdBuffers()
+{
+    m_pool.FreeUnusedCmdBuffers(m_queue);
+}
 
 void VulkanCommandBufferManager::WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer,
                                                   float timeInSecondsToWait)

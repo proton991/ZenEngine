@@ -35,11 +35,20 @@ public:
     void Init() override;
     void Destroy() override;
 
-    GraphicsAPIType GetAPIType() override { return GraphicsAPIType::eVulkan; }
+    GraphicsAPIType GetAPIType() override
+    {
+        return GraphicsAPIType::eVulkan;
+    }
 
-    const char* GetName() override { return "VulkanRHI"; };
+    const char* GetName() override
+    {
+        return "VulkanRHI";
+    };
 
-    VkInstance GetInstance() const { return m_instance; }
+    VkInstance GetInstance() const
+    {
+        return m_instance;
+    }
 
     VkPhysicalDevice GetPhysicalDevice() const;
 
@@ -55,7 +64,10 @@ public:
 
     void DestroyShader(ShaderHandle shaderHandle) final;
 
-    InstanceExtensionFlags& GetInstanceExtensionFlags() { return m_instanceExtensionFlags; }
+    InstanceExtensionFlags& GetInstanceExtensionFlags()
+    {
+        return m_instanceExtensionFlags;
+    }
 
     PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
                                      const GfxPipelineStates& states,

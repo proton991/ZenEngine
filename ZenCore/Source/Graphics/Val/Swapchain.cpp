@@ -24,7 +24,10 @@ Swapchain::Swapchain(const Device& device,
                                               &numPresentModes, m_presentModes.data());
 
     LOGI("Available present modes:")
-    for (auto& presentMode : m_presentModes) { LOGI("  \t{}", VkToString(presentMode)); }
+    for (auto& presentMode : m_presentModes)
+    {
+        LOGI("  \t{}", VkToString(presentMode));
+    }
 
     m_surfaceFormat = ChooseSurfaceFormat();
     m_usage         = ChooseImageUsage(surfaceCapabilities.supportedUsageFlags);
@@ -78,7 +81,10 @@ VkImageUsageFlags Swapchain::ChooseImageUsage(VkImageUsageFlags supportedUsage)
             return (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) !=
                 0;
         }
-        else { return true; }
+        else
+        {
+            return true;
+        }
     };
     for (auto usageFlag : defaultImageUsageFlags)
     {
@@ -101,14 +107,18 @@ VkSurfaceFormatKHR Swapchain::ChooseSurfaceFormat()
     vkGetPhysicalDeviceSurfaceFormatsKHR(m_device.GetPhysicalDeviceHandle(), m_surface,
                                          &numSurfaceFormats, m_surfaceFormats.data());
     LOGI("Available surface formats:")
-    for (auto& surfaceFormat : m_surfaceFormats) { LOGI("  \t{}", VkToString(surfaceFormat)); }
+    for (auto& surfaceFormat : m_surfaceFormats)
+    {
+        LOGI("  \t{}", VkToString(surfaceFormat));
+    }
     // return first combination (best)
     return m_surfaceFormats[0];
 }
 
 VkPresentModeKHR Swapchain::ChoosePresentMode(bool vsync)
 {
-    if (!vsync) return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    if (!vsync)
+        return VK_PRESENT_MODE_IMMEDIATE_KHR;
     static const std::vector<VkPresentModeKHR> presentModePriorityList = {
         VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
     for (const auto& presentMode : presentModePriorityList)
@@ -134,7 +144,10 @@ VkResult Swapchain::AcquireNextImage(uint32_t& imageIndex,
 VkCompositeAlphaFlagBitsKHR Swapchain::ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
                                                             VkCompositeAlphaFlagsKHR supported)
 {
-    if ((request & supported) != 0) { return request; }
+    if ((request & supported) != 0)
+    {
+        return request;
+    }
 
     static const std::vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
         VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,

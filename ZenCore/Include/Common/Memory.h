@@ -32,10 +32,16 @@ inline constexpr T Pow2Align(T value,            ///< Value to align.
 template <typename T> inline T Pow2Pad(T value) ///< Value to pad.
 {
     T ret = 1;
-    if (IsPowerOfTwo(value)) { ret = value; }
+    if (IsPowerOfTwo(value))
+    {
+        ret = value;
+    }
     else
     {
-        while (ret < value) { ret <<= 1; }
+        while (ret < value)
+        {
+            ret <<= 1;
+        }
     }
 
     return ret;
@@ -57,7 +63,10 @@ public:
         return pMemory;
     }
 
-    inline static void Free(void* pMemory) { DefaultFreeImpl(pMemory); }
+    inline static void Free(void* pMemory)
+    {
+        DefaultFreeImpl(pMemory);
+    }
 
     inline static void* Realloc(void* ptr, size_t newSize)
     {
@@ -83,7 +92,10 @@ private:
     inline static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment)
     {
         // nullptr do alloc
-        if (ptr == nullptr) { return DefaultAllocImpl(size, alignment); }
+        if (ptr == nullptr)
+        {
+            return DefaultAllocImpl(size, alignment);
+        }
 
         void* pNewMem;
 #if _POSIX_VERSION >= 200112L || defined(ZEN_MACOS)
@@ -118,7 +130,10 @@ private:
 template <typename T, typename... Args> T* MemNew(Args&&... args)
 {
     void* pMemory = DefaultAllocator::Alloc(sizeof(T));
-    if (!pMemory) { throw std::bad_alloc(); }
+    if (!pMemory)
+    {
+        throw std::bad_alloc();
+    }
     return new (pMemory) T(std::forward<Args>(args)...);
 }
 

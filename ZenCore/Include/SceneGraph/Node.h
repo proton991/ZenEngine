@@ -14,27 +14,54 @@ public:
     void AddComponent(Component* component)
     {
         auto it = m_components.find(component->GetTypeId());
-        if (it != m_components.end()) { it->second = component; }
-        else { m_components.insert({component->GetTypeId(), component}); }
+        if (it != m_components.end())
+        {
+            it->second = component;
+        }
+        else
+        {
+            m_components.insert({component->GetTypeId(), component});
+        }
     }
-    template <class T> bool HasComponent() const { return m_components.count(typeid(T)) > 0; }
+    template <class T> bool HasComponent() const
+    {
+        return m_components.count(typeid(T)) > 0;
+    }
 
     template <class T> inline T* GetComponent()
     {
         return dynamic_cast<T*>(m_components.at(typeid(T)));
     }
 
-    void AddChild(Node* child) { m_children.push_back(child); }
+    void AddChild(Node* child)
+    {
+        m_children.push_back(child);
+    }
 
-    void SetParent(Node* node) { m_parent = node; }
+    void SetParent(Node* node)
+    {
+        m_parent = node;
+    }
 
-    auto GetParent() const { return m_parent; }
+    auto GetParent() const
+    {
+        return m_parent;
+    }
 
-    auto& GetName() const { return m_name; }
+    auto& GetName() const
+    {
+        return m_name;
+    }
 
-    auto GetIndex() const { return m_index; }
+    auto GetIndex() const
+    {
+        return m_index;
+    }
 
-    uint64_t GetHash() const { return *(reinterpret_cast<const uint64_t*>(this)); }
+    uint64_t GetHash() const
+    {
+        return *(reinterpret_cast<const uint64_t*>(this));
+    }
 
 private:
     uint32_t m_index{0};

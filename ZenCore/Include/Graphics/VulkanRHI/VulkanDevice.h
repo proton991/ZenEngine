@@ -33,23 +33,47 @@ public:
 
     void Destroy();
 
-    VkDevice GetVkHandle() const { return m_device; }
+    VkDevice GetVkHandle() const
+    {
+        return m_device;
+    }
 
-    VkPhysicalDeviceProperties GetPhysicalDeviceProperties() const { return m_gpuProps; }
+    VkPhysicalDeviceProperties GetPhysicalDeviceProperties() const
+    {
+        return m_gpuProps;
+    }
 
-    DeviceExtensionFlags& GetExtensionFlags() { return m_extensionFlags; }
+    DeviceExtensionFlags& GetExtensionFlags()
+    {
+        return m_extensionFlags;
+    }
 
-    VkPhysicalDevice GetPhysicalDeviceHandle() const { return m_gpu; }
+    VkPhysicalDevice GetPhysicalDeviceHandle() const
+    {
+        return m_gpu;
+    }
 
     void SetObjectName(VkObjectType type, uint64_t handle, const char* name);
 
-    const auto& GetDescriptorIndexingProperties() const { return m_descriptorIndexingProperties; }
+    const auto& GetDescriptorIndexingProperties() const
+    {
+        return m_descriptorIndexingProperties;
+    }
 
-    VulkanFenceManager* GetFenceManager() const { return m_fenceManager; }
+    VulkanFenceManager* GetFenceManager() const
+    {
+        return m_fenceManager;
+    }
 
-    VulkanSemaphoreManager* GetSemaphoreManager() const { return m_semaphoreManger; }
+    VulkanSemaphoreManager* GetSemaphoreManager() const
+    {
+        return m_semaphoreManger;
+    }
 
-    VulkanQueue* GetGfxQueue() const { return m_gfxQueue; }
+    VulkanQueue* GetGfxQueue() const
+    {
+        return m_gfxQueue;
+    }
 
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);

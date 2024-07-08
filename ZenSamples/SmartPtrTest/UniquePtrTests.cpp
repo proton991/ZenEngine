@@ -17,10 +17,22 @@
 using namespace zen;
 struct Struct2
 {
-    explicit Struct2(int aVal) : mVal(aVal) { ++_mNbInstances; }
-    ~Struct2(void) { --_mNbInstances; }
-    void incr(void) { ++mVal; }
-    void decr(void) { --mVal; }
+    explicit Struct2(int aVal) : mVal(aVal)
+    {
+        ++_mNbInstances;
+    }
+    ~Struct2(void)
+    {
+        --_mNbInstances;
+    }
+    void incr(void)
+    {
+        ++mVal;
+    }
+    void decr(void)
+    {
+        --mVal;
+    }
 
     int mVal;
     static int _mNbInstances;
@@ -38,7 +50,10 @@ TEST(UniquePtr, empty_ptr)
     EXPECT_EQ(false, xPtr);
     EXPECT_EQ((void*)nullptr, xPtr.Get());
 
-    if (xPtr) { GTEST_FATAL_FAILURE_("bool cast operator error"); }
+    if (xPtr)
+    {
+        GTEST_FATAL_FAILURE_("bool cast operator error");
+    }
 
     // Reset to nullptr (ie. do nothing)
     xPtr.Reset();
@@ -124,7 +139,10 @@ TEST(UniquePtr, basic_ptr)
             EXPECT_EQ((void*)nullptr, yPtr.Get());
             EXPECT_EQ(0, Struct2::_mNbInstances);
         }
-        else { GTEST_FATAL_FAILURE_("bool cast operator error"); }
+        else
+        {
+            GTEST_FATAL_FAILURE_("bool cast operator error");
+        }
 
         EXPECT_EQ(false, xPtr);
         EXPECT_EQ((void*)nullptr, xPtr.Get());

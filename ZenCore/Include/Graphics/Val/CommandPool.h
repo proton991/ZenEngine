@@ -30,14 +30,20 @@ public:
 
     ~CommandPool();
 
-    const Device& GetDevice() { return m_device; }
+    const Device& GetDevice()
+    {
+        return m_device;
+    }
 
     CommandBuffer* RequestCommandBuffer(
         VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 
     void ResetPool();
 
-    auto GetThreadId() const { return m_threadId; }
+    auto GetThreadId() const
+    {
+        return m_threadId;
+    }
 
 private:
     void ResetCmdBuffers();

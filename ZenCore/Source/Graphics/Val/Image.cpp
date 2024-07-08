@@ -33,7 +33,10 @@ Image::Image(const Device& device,
     {
         m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
     }
-    else { m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; }
+    else
+    {
+        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
     m_subResourceRange.layerCount     = arrayLayers;
     m_subResourceRange.baseArrayLayer = 0;
     m_subResourceRange.levelCount     = mipLevels;
@@ -89,9 +92,18 @@ VkImageType Image::GetImageType(VkExtent3D& extent)
     VkImageType result{};
     uint32_t dimensions{0};
 
-    if (extent.width >= 1) { dimensions++; }
-    if (extent.height >= 1) { dimensions++; }
-    if (extent.depth > 1) { dimensions++; }
+    if (extent.width >= 1)
+    {
+        dimensions++;
+    }
+    if (extent.height >= 1)
+    {
+        dimensions++;
+    }
+    if (extent.depth > 1)
+    {
+        dimensions++;
+    }
     switch (dimensions)
     {
         case 1: result = VK_IMAGE_TYPE_1D; break;
@@ -111,7 +123,10 @@ Image::Image(const Device& device, VkImage handle, VkExtent3D extent3D, VkFormat
     {
         m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
     }
-    else { m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; }
+    else
+    {
+        m_subResourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
     m_subResourceRange.layerCount     = 1;
     m_subResourceRange.baseArrayLayer = 0;
     m_subResourceRange.levelCount     = 1;

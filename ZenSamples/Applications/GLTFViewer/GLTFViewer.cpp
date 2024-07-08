@@ -122,7 +122,10 @@ void GLTFViewer::LoadTexture()
 void GLTFViewer::LoadModel()
 {
     m_gltfModelLoader->LoadFromFile(MODEL_PATHS[1], &m_gltfModel);
-    for (auto* node : m_gltfModel.flatNodes) { m_nodesUniformData.push_back({node->GetMatrix()}); }
+    for (auto* node : m_gltfModel.flatNodes)
+    {
+        m_nodesUniformData.push_back({node->GetMatrix()});
+    }
     m_nodesUniformBuffer = UniformBuffer::CreateUnique(
         *m_device, sizeof(NodeUniformData) * m_gltfModel.flatNodes.size());
 

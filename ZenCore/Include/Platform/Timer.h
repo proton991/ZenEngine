@@ -50,7 +50,10 @@ public:
 	 */
     template <typename T = DefaultResolution> double Stop()
     {
-        if (!m_running) { return 0; }
+        if (!m_running)
+        {
+            return 0;
+        }
 
         m_running     = false;
         m_lapping     = false;
@@ -68,11 +71,17 @@ public:
 	 */
     template <typename T = DefaultResolution> double Elapsed()
     {
-        if (!m_running) { return 0; }
+        if (!m_running)
+        {
+            return 0;
+        }
 
         Clock::time_point start = m_startTime;
 
-        if (m_lapping) { start = m_lapTime; }
+        if (m_lapping)
+        {
+            start = m_lapTime;
+        }
 
         return std::chrono::duration<double, T>(Clock::now() - start).count();
     }
@@ -92,7 +101,10 @@ public:
     /**
 	 * @brief Check if the timer is running
 	 */
-    bool IsRunning() const { return m_running; }
+    bool IsRunning() const
+    {
+        return m_running;
+    }
 
 private:
     bool m_running{false};

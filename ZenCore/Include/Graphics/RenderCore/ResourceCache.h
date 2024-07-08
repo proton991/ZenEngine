@@ -86,7 +86,10 @@ template <> struct hash<zen::val::SpecializationState>
         for (auto& constants : state.GetConstantTable())
         {
             zen::util::HashCombine(result, constants.first);
-            for (const auto data : constants.second) { zen::util::HashCombine(result, data); }
+            for (const auto data : constants.second)
+            {
+                zen::util::HashCombine(result, data);
+            }
         }
 
         return result;
@@ -289,28 +292,40 @@ template <> inline void HashParam<VkRenderPass>(size_t& seed, const VkRenderPass
 template <>
 inline void HashParam<std::vector<VkImageView>>(size_t& seed, const std::vector<VkImageView>& value)
 {
-    for (auto& view : value) { util::HashCombine(seed, view); }
+    for (auto& view : value)
+    {
+        util::HashCombine(seed, view);
+    }
 }
 
 template <>
 inline void HashParam<std::vector<val::ShaderModule*>>(size_t& seed,
                                                        const std::vector<val::ShaderModule*>& value)
 {
-    for (auto& shaderModule : value) { util::HashCombine(seed, shaderModule->GetId()); }
+    for (auto& shaderModule : value)
+    {
+        util::HashCombine(seed, shaderModule->GetId());
+    }
 }
 
 template <> inline void HashParam<std::vector<VkAttachmentDescription>>(
     size_t& seed,
     const std::vector<VkAttachmentDescription>& value)
 {
-    for (auto& attachment : value) { util::HashCombine(seed, attachment); }
+    for (auto& attachment : value)
+    {
+        util::HashCombine(seed, attachment);
+    }
 }
 
 template <>
 inline void HashParam<std::vector<val::SubpassInfo>>(size_t& seed,
                                                      const std::vector<val::SubpassInfo>& value)
 {
-    for (auto& attachment : value) { util::HashCombine(seed, attachment); }
+    for (auto& attachment : value)
+    {
+        util::HashCombine(seed, attachment);
+    }
 }
 
 
@@ -322,7 +337,10 @@ T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& res
 
     auto resIt = resources.find(hash);
 
-    if (resIt != resources.end()) { return resIt->second; }
+    if (resIt != resources.end())
+    {
+        return resIt->second;
+    }
 
     // If we do not have it already, create and cache it
     const char* resType = typeid(T).name();

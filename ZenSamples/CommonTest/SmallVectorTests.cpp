@@ -41,7 +41,10 @@ TEST(small_vector_tests, constructors)
     EXPECT_EQ(sv2[0], "a");
     EXPECT_EQ(sv2[1], "b");
     EXPECT_EQ(sv2[2], "c");
-    for (const auto& item : sv2) { std::cout << item << std::endl; }
+    for (const auto& item : sv2)
+    {
+        std::cout << item << std::endl;
+    }
 }
 
 TEST(small_vector_tests, operations)

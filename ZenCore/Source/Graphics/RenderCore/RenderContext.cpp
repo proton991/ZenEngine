@@ -47,8 +47,14 @@ void RenderContext::Init()
 
 val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetMode)
 {
-    if (!m_frameActive) { StartFrameInternal(); }
-    if (!m_frameActive) { LOG_ERROR_AND_THROW("Failed to start frame"); }
+    if (!m_frameActive)
+    {
+        StartFrameInternal();
+    }
+    if (!m_frameActive)
+    {
+        LOG_ERROR_AND_THROW("Failed to start frame");
+    }
     m_activeCmdBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
     m_activeCmdBuffer->Begin();
     return m_activeCmdBuffer;
@@ -156,7 +162,10 @@ void RenderContext::RecreateSwapchain(uint32_t newWidth, uint32_t newHeight)
     CHECK_VK_ERROR_AND_THROW(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
                                  m_valDevice.GetPhysicalDeviceHandle(), m_surface, &surfaceCaps),
                              "Failed to get physical surface caps");
-    if (surfaceCaps.currentExtent.width == 0xFFFFFFFF) { return; }
+    if (surfaceCaps.currentExtent.width == 0xFFFFFFFF)
+    {
+        return;
+    }
 
     if (surfaceCaps.currentExtent.width != m_swapchain->GetExtent2D().width ||
         surfaceCaps.currentExtent.height != m_swapchain->GetExtent2D().height)

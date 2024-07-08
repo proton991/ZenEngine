@@ -4,8 +4,14 @@
 using namespace std;
 using namespace zen;
 
-void foo(int threadId) { LOGI("foo()! Thread ID: " + std::to_string(threadId)); }
-void foo(const string& threadId) { LOGI("foo()! Thread ID: " + threadId); }
+void foo(int threadId)
+{
+    LOGI("foo()! Thread ID: " + std::to_string(threadId));
+}
+void foo(const string& threadId)
+{
+    LOGI("foo()! Thread ID: " + threadId);
+}
 #define POOL_SIZE 5
 
 int main(int argc, char** argv)
@@ -23,7 +29,10 @@ int main(int argc, char** argv)
         });
         futures.push_back(std::move(fut));
     }
-    for (auto& fut : futures) { fut.get(); }
+    for (auto& fut : futures)
+    {
+        fut.get();
+    }
 
     LOGI("value is now equal to {}", value)
     LOGI("futures' size: {}", futures.size())

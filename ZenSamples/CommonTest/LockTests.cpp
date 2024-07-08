@@ -34,7 +34,10 @@ TEST(spin_lock_test, basic)
     }
 
     // Join all threads
-    for (auto& t : threads) { t.join(); }
+    for (auto& t : threads)
+    {
+        t.join();
+    }
 
     EXPECT_EQ(sharedCounter, numThreads * incrementsPerThread);
 }

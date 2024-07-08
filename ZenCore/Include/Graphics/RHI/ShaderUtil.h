@@ -81,7 +81,10 @@ static void ParseSpvPushConstants(ShaderStage stage,
         LOG_ERROR_AND_THROW(
             "Only one push constant is supported, which should be the same across shader stages.");
     }
-    else if (pcCount == 0) { return; }
+    else if (pcCount == 0)
+    {
+        return;
+    }
 
     pconstants.resize(pcCount);
     result = spvReflectEnumeratePushConstantBlocks(module, &pcCount, pconstants.data());
@@ -162,7 +165,10 @@ static void ParseSpvSpecializationConstant(ShaderStage stage,
                 shaderGroupInfo.specializationConstants[existed].stages.SetFlag(
                     ShaderStageToFlagBits(stage));
             }
-            else { shaderGroupInfo.specializationConstants.push_back(specConst); }
+            else
+            {
+                shaderGroupInfo.specializationConstants.push_back(specConst);
+            }
         }
     }
 }
@@ -254,7 +260,10 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     {
         srd.name = reflBinding.type_description->type_name;
     }
-    else { srd.name = reflBinding.name; }
+    else
+    {
+        srd.name = reflBinding.name;
+    }
     srd.set       = reflBinding.set;
     srd.binding   = reflBinding.binding;
     srd.arraySize = 1;
@@ -265,7 +274,10 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
             srd.arraySize *= reflBinding.array.dims[i];
         }
     }
-    else if (needBlockSize) { srd.blockSize = reflBinding.block.size; }
+    else if (needBlockSize)
+    {
+        srd.blockSize = reflBinding.block.size;
+    }
     if (writable)
     {
         srd.writable = !(reflBinding.type_description->decoration_flags &
@@ -314,7 +326,10 @@ static void MergeOrAddSRDs(ShaderStage stage,
             break;
         }
     }
-    else { allSRDs.resize(setIndex + 1); }
+    else
+    {
+        allSRDs.resize(setIndex + 1);
+    }
 
     if (!existed)
     {
@@ -368,7 +383,10 @@ inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSp
             // Specialization Constants
             ParseSpvSpecializationConstant(stage, &module, shaderGroupInfo);
             // Parse vertex input
-            if (stage == ShaderStage::eVertex) { ParseSpvVertexInput(&module, shaderGroupInfo); }
+            if (stage == ShaderStage::eVertex)
+            {
+                ParseSpvVertexInput(&module, shaderGroupInfo);
+            }
             // Parse push constants
             ParseSpvPushConstants(stage, &module, shaderGroupInfo);
         }

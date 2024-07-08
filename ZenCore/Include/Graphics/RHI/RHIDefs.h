@@ -19,28 +19,40 @@ public:
 
     size_t value = 0;
 };
-#define RHI_DEFINE_HANDLE(m_name)                                                           \
-    struct m_name##Handle : public Handle                                                   \
-    {                                                                                       \
-        explicit operator bool() const { return value != 0; }                               \
-                                                                                            \
-        m_name##Handle& operator=(const m_name##Handle& other)                              \
-        {                                                                                   \
-            value = other.value;                                                            \
-            return *this;                                                                   \
-        }                                                                                   \
-        m_name##Handle& operator=(m_name##Handle&& other) noexcept                          \
-        {                                                                                   \
-            value = std::move(other.value);                                                 \
-            return *this;                                                                   \
-        }                                                                                   \
-        bool operator<(const m_name##Handle& other) const { return value < other.value; }   \
-        bool operator==(const m_name##Handle& other) const { return value == other.value; } \
-        bool operator!=(const m_name##Handle& other) const { return value != other.value; } \
-        m_name##Handle(const m_name##Handle& other) : Handle(other.value) {}                \
-        explicit m_name##Handle(uint64_t intVal) : Handle(intVal) {}                        \
-        explicit m_name##Handle(void* ptr) : Handle((size_t)ptr) {}                         \
-        m_name##Handle() = default;                                                         \
+#define RHI_DEFINE_HANDLE(m_name)                                            \
+    struct m_name##Handle : public Handle                                    \
+    {                                                                        \
+        explicit operator bool() const                                       \
+        {                                                                    \
+            return value != 0;                                               \
+        }                                                                    \
+                                                                             \
+        m_name##Handle& operator=(const m_name##Handle& other)               \
+        {                                                                    \
+            value = other.value;                                             \
+            return *this;                                                    \
+        }                                                                    \
+        m_name##Handle& operator=(m_name##Handle&& other) noexcept           \
+        {                                                                    \
+            value = std::move(other.value);                                  \
+            return *this;                                                    \
+        }                                                                    \
+        bool operator<(const m_name##Handle& other) const                    \
+        {                                                                    \
+            return value < other.value;                                      \
+        }                                                                    \
+        bool operator==(const m_name##Handle& other) const                   \
+        {                                                                    \
+            return value == other.value;                                     \
+        }                                                                    \
+        bool operator!=(const m_name##Handle& other) const                   \
+        {                                                                    \
+            return value != other.value;                                     \
+        }                                                                    \
+        m_name##Handle(const m_name##Handle& other) : Handle(other.value) {} \
+        explicit m_name##Handle(uint64_t intVal) : Handle(intVal) {}         \
+        explicit m_name##Handle(void* ptr) : Handle((size_t)ptr) {}          \
+        m_name##Handle() = default;                                          \
     };
 } // namespace zen::rhi
 

@@ -151,8 +151,14 @@ static std::string ShaderStageToString(ShaderStage stage)
 static std::string ShaderStageFlagToString(BitField<ShaderStageFlagBits> stageFlags)
 {
     std::string str;
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eVertex)) { str += "Vertex "; }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eFragment)) { str += "Fragment "; }
+    if (stageFlags.HasFlag(ShaderStageFlagBits::eVertex))
+    {
+        str += "Vertex ";
+    }
+    if (stageFlags.HasFlag(ShaderStageFlagBits::eFragment))
+    {
+        str += "Fragment ";
+    }
     if (stageFlags.HasFlag(ShaderStageFlagBits::eTesselationConrol))
     {
         str += "TesselationControl ";
@@ -161,7 +167,10 @@ static std::string ShaderStageFlagToString(BitField<ShaderStageFlagBits> stageFl
     {
         str += "TesselationEvaluation ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eCompute)) { str += "Compute "; }
+    if (stageFlags.HasFlag(ShaderStageFlagBits::eCompute))
+    {
+        str += "Compute ";
+    }
     str.pop_back();
     return str;
 }
@@ -464,7 +473,10 @@ struct GfxPipelineColorBlendState
     static GfxPipelineColorBlendState create_disabled(int count = 1)
     {
         GfxPipelineColorBlendState bs;
-        for (int i = 0; i < count; i++) { bs.attachments.emplace_back(); }
+        for (int i = 0; i < count; i++)
+        {
+            bs.attachments.emplace_back();
+        }
         return bs;
     }
 
@@ -628,7 +640,10 @@ public:
     RenderPassLayout(uint32_t numColorRT, bool hasDepthStencilRT) :
         m_hasDepthStencilRT(hasDepthStencilRT)
     {
-        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT) { numColorRT = MAX_COLOR_ATTACHMENT_COUNT; }
+        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT)
+        {
+            numColorRT = MAX_COLOR_ATTACHMENT_COUNT;
+        }
         m_colorRTs.resize(numColorRT);
     }
 
@@ -664,25 +679,55 @@ public:
         m_depthStenciRTStoreOp = storeOp;
     }
 
-    void SetNumSamples(SampleCount sampleCount) { m_numSamples = sampleCount; }
+    void SetNumSamples(SampleCount sampleCount)
+    {
+        m_numSamples = sampleCount;
+    }
 
-    const auto GetNumColorRenderTargets() const { return m_numColorRT; }
+    const auto GetNumColorRenderTargets() const
+    {
+        return m_numColorRT;
+    }
 
-    const auto GetNumSamples() const { return m_numSamples; }
+    const auto GetNumSamples() const
+    {
+        return m_numSamples;
+    }
 
-    const auto HasDepthStencilRenderTarget() const { return m_hasDepthStencilRT; }
+    const auto HasDepthStencilRenderTarget() const
+    {
+        return m_hasDepthStencilRT;
+    }
 
-    const auto GetColorRenderTargetLoadOp() const { return m_colorRToadOp; }
+    const auto GetColorRenderTargetLoadOp() const
+    {
+        return m_colorRToadOp;
+    }
 
-    const auto GetDepthStencilRenderTargetLoadOp() const { return m_depthStencilRTLoadOp; }
+    const auto GetDepthStencilRenderTargetLoadOp() const
+    {
+        return m_depthStencilRTLoadOp;
+    }
 
-    const auto GetColorRenderTargetStoreOp() const { return m_colorRTStoreOp; }
+    const auto GetColorRenderTargetStoreOp() const
+    {
+        return m_colorRTStoreOp;
+    }
 
-    const auto GetDepthStencilRenderTargetStoreOp() const { return m_depthStenciRTStoreOp; }
+    const auto GetDepthStencilRenderTargetStoreOp() const
+    {
+        return m_depthStenciRTStoreOp;
+    }
 
-    const auto& GetColorRenderTargets() const { return m_colorRTs; }
+    const auto& GetColorRenderTargets() const
+    {
+        return m_colorRTs;
+    }
 
-    const auto& GetDepthStencilRenderTarget() const { return m_depthStencilRT; }
+    const auto& GetDepthStencilRenderTarget() const
+    {
+        return m_depthStencilRT;
+    }
 
 private:
     uint32_t m_numColorRT{0};
@@ -696,7 +741,10 @@ private:
     bool m_hasDepthStencilRT{false};
 };
 
-inline uint64_t GetRenderpassLayoutHash(const RenderPassLayout& layout) { return 0; }
+inline uint64_t GetRenderpassLayoutHash(const RenderPassLayout& layout)
+{
+    return 0;
+}
 
 struct RenderTargetInfo
 {

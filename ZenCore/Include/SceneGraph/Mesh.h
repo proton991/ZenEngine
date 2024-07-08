@@ -10,17 +10,35 @@ class Mesh : public Component
 public:
     Mesh(std::string name) : Component(std::move(name)) {}
 
-    TypeId GetTypeId() const override { return typeid(Mesh); }
+    TypeId GetTypeId() const override
+    {
+        return typeid(Mesh);
+    }
 
-    const auto& GetSubMeshes() const { return m_subMeshes; }
+    const auto& GetSubMeshes() const
+    {
+        return m_subMeshes;
+    }
 
-    const auto& GetAABB() const { return m_aabb; }
+    const auto& GetAABB() const
+    {
+        return m_aabb;
+    }
 
-    const auto& GetNodes() const { return m_nodes; }
+    const auto& GetNodes() const
+    {
+        return m_nodes;
+    }
 
-    void AddNode(Node* node) { m_nodes.push_back(node); }
+    void AddNode(Node* node)
+    {
+        m_nodes.push_back(node);
+    }
 
-    void AddSubMesh(SubMesh* subMesh) { m_subMeshes.push_back(subMesh); }
+    void AddSubMesh(SubMesh* subMesh)
+    {
+        m_subMeshes.push_back(subMesh);
+    }
 
     void SetAABB(const Vec3& min, const Vec3& max)
     {

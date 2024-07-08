@@ -6,7 +6,10 @@ namespace zen::val
 {
 VkFence SynObjPool::RequestFence()
 {
-    if (m_numActiveFences < m_fences.size()) { return m_fences[m_numActiveFences++]; }
+    if (m_numActiveFences < m_fences.size())
+    {
+        return m_fences[m_numActiveFences++];
+    }
     VkFence fence{VK_NULL_HANDLE};
     VkFenceCreateInfo fenceCI{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     CHECK_VK_ERROR_AND_THROW(vkCreateFence(m_valDevice.GetHandle(), &fenceCI, nullptr, &fence),
@@ -19,8 +22,14 @@ VkFence SynObjPool::RequestFence()
 
 SynObjPool::~SynObjPool()
 {
-    for (auto& fence : m_fences) { vkDestroyFence(m_valDevice.GetHandle(), fence, nullptr); }
-    for (auto& sem : m_semaphores) { vkDestroySemaphore(m_valDevice.GetHandle(), sem, nullptr); }
+    for (auto& fence : m_fences)
+    {
+        vkDestroyFence(m_valDevice.GetHandle(), fence, nullptr);
+    }
+    for (auto& sem : m_semaphores)
+    {
+        vkDestroySemaphore(m_valDevice.GetHandle(), sem, nullptr);
+    }
     m_fences.clear();
     m_semaphores.clear();
 }
@@ -64,7 +73,10 @@ void SynObjPool::ReleaseSemaphoreWithOwnership(VkSemaphore semaphore)
 
 void SynObjPool::WaitForFences(uint32_t timeout) const
 {
-    if (m_numActiveFences < 1 || m_fences.empty()) { return; }
+    if (m_numActiveFences < 1 || m_fences.empty())
+    {
+        return;
+    }
     CHECK_VK_ERROR_AND_THROW(vkWaitForFences(m_valDevice.GetHandle(), util::ToU32(m_fences.size()),
                                              m_fences.data(), true, timeout),
                              "Failed to wait for fences");
@@ -72,7 +84,10 @@ void SynObjPool::WaitForFences(uint32_t timeout) const
 
 void SynObjPool::ResetFences()
 {
-    if (m_numActiveFences < 1 || m_fences.empty()) { return; }
+    if (m_numActiveFences < 1 || m_fences.empty())
+    {
+        return;
+    }
     CHECK_VK_ERROR_AND_THROW(
         vkResetFences(m_valDevice.GetHandle(), util::ToU32(m_fences.size()), m_fences.data()),
         "Failed to reset fences");
@@ -82,7 +97,10 @@ void SynObjPool::ResetFences()
 void SynObjPool::ResetSemaphores()
 {
     m_numActiveSemaphores = 0;
-    for (auto& sem : m_releasedSemaphores) { m_semaphores.push_back(sem); }
+    for (auto& sem : m_releasedSemaphores)
+    {
+        m_semaphores.push_back(sem);
+    }
     m_releasedSemaphores.clear();
 }
 } // namespace zen::val

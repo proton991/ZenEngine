@@ -35,12 +35,24 @@ VkDescriptorType ConvertToVkDescriptorType(ShaderResourceType type, bool isDynam
         case ShaderResourceType::ImageStorage: result = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; break;
         case ShaderResourceType::Sampler: result = VK_DESCRIPTOR_TYPE_SAMPLER; break;
         case ShaderResourceType::BufferUniform:
-            if (isDynamic) { result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; }
-            else { result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; }
+            if (isDynamic)
+            {
+                result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            }
+            else
+            {
+                result = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            }
             break;
         case ShaderResourceType::BufferStorage:
-            if (isDynamic) { result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC; }
-            else { result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; }
+            if (isDynamic)
+            {
+                result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            }
+            else
+            {
+                result = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            }
             break;
         default: LOG_FATAL_ERROR("No conversion possible for the shader resource type."); break;
     }
@@ -80,7 +92,10 @@ DescriptorSetLayout::DescriptorSetLayout(const Device& device,
             // partial bind for array of descriptors
             bindingFlags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
         }
-        else { bindingFlags.push_back(0); }
+        else
+        {
+            bindingFlags.push_back(0);
+        }
     }
     if (!bindings.empty())
     {

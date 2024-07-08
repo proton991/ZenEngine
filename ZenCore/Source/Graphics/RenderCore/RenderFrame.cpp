@@ -8,7 +8,10 @@ std::vector<UniquePtr<val::CommandPool>>& RenderFrame::GetCommandPools(
     val::CommandPool::ResetMode resetMode)
 {
     auto it = m_cmdPools.find(queueFamilyIndex);
-    if (it != m_cmdPools.end()) { return it->second; }
+    if (it != m_cmdPools.end())
+    {
+        return it->second;
+    }
     val::CommandPool::CreateInfo cmdPoolCI{};
     cmdPoolCI.queueFamilyIndex = queueFamilyIndex;
     cmdPoolCI.resetMode        = resetMode;
@@ -21,7 +24,10 @@ std::vector<UniquePtr<val::CommandPool>>& RenderFrame::GetCommandPools(
     }
     auto [insertIt, inserted] = m_cmdPools.emplace(queueFamilyIndex, std::move(cmdPools));
 
-    if (!inserted) { LOG_FATAL_ERROR_AND_THROW("Failed to insert command pool in render frame"); }
+    if (!inserted)
+    {
+        LOG_FATAL_ERROR_AND_THROW("Failed to insert command pool in render frame");
+    }
     return insertIt->second;
 }
 

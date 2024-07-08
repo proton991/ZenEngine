@@ -41,7 +41,10 @@ public:
         const_cast<UniquePtr&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
     }
 
-    UniquePtr(UniquePtr&& other) noexcept : m_ptr(std::move(other.m_ptr)) { other.m_ptr = nullptr; }
+    UniquePtr(UniquePtr&& other) noexcept : m_ptr(std::move(other.m_ptr))
+    {
+        other.m_ptr = nullptr;
+    }
 
     /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
     UniquePtr& operator=(UniquePtr other) noexcept // never throws

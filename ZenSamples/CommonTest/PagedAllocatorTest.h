@@ -9,7 +9,10 @@ class DummyClass
 public:
     DummyClass() : data(0) {}
     explicit DummyClass(int d) : data(d) {}
-    int getData() const { return data; }
+    int getData() const
+    {
+        return data;
+    }
 
 private:
     int data;
@@ -19,7 +22,10 @@ private:
 class PagedAllocatorTest : public ::testing::Test
 {
 protected:
-    void SetUp() override { allocator.Init(); }
+    void SetUp() override
+    {
+        allocator.Init();
+    }
 
     zen::PagedAllocator<DummyClass> allocator{4000, false};
 };

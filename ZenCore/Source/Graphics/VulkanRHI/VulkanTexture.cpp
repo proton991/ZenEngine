@@ -44,7 +44,10 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     {
         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     }
-    else { imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; }
+    else
+    {
+        imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
 
     if (vkCreateImageView(GetVkDevice(), &imageViewCI, nullptr, &texture->imageView) != VK_SUCCESS)
     {

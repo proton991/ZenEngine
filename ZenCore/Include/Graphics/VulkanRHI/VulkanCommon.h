@@ -73,7 +73,10 @@ static const char* GetResultString(VkResult result)
 
 static bool CheckVkResult(VkResult result, const char* file, int32_t line)
 {
-    if (result == VK_SUCCESS) { return false; }
+    if (result == VK_SUCCESS)
+    {
+        return false;
+    }
 
     if (result < 0)
     {
@@ -86,7 +89,10 @@ static bool CheckVkResult(VkResult result, const char* file, int32_t line)
     return false;
 }
 
-template <typename T> inline std::string VkToString(T value) { return ""; }
+template <typename T> inline std::string VkToString(T value)
+{
+    return "";
+}
 
 template <>
 // clang-tidy: disable-next-line

@@ -47,7 +47,10 @@ TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
         objects.push_back(obj);
     }
 
-    for (DummyClass* obj : objects) { allocator.Free(obj); }
+    for (DummyClass* obj : objects)
+    {
+        allocator.Free(obj);
+    }
 }
 
 // Main function for Google Test

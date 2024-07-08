@@ -21,9 +21,15 @@ public:
         Image
     };
 
-    template <typename T> T* As() { return dynamic_cast<T*>(this); }
+    template <typename T> T* As()
+    {
+        return dynamic_cast<T*>(this);
+    }
 
-    template <typename T> const T* As() const { return dynamic_cast<const T*>(this); }
+    template <typename T> const T* As() const
+    {
+        return dynamic_cast<const T*>(this);
+    }
 
     RDGResource(Index index, Type type, Tag tag) :
         m_index(index), m_type(type), m_tag(std::move(tag))
@@ -31,15 +37,33 @@ public:
 
     virtual ~RDGResource() = default;
 
-    void WriteInPass(Index index) { m_writtenInPasses.insert(index); }
+    void WriteInPass(Index index)
+    {
+        m_writtenInPasses.insert(index);
+    }
 
-    void ReadInPass(Index index) { m_readInPasses.insert(index); }
+    void ReadInPass(Index index)
+    {
+        m_readInPasses.insert(index);
+    }
 
-    const auto& GetReadInPasses() const { return m_readInPasses; }
-    const auto& GetWrittenInPasses() const { return m_writtenInPasses; }
+    const auto& GetReadInPasses() const
+    {
+        return m_readInPasses;
+    }
+    const auto& GetWrittenInPasses() const
+    {
+        return m_writtenInPasses;
+    }
 
-    void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
-    auto GetPhysicalIndex() const { return m_physicalIndex; }
+    void SetPhysicalIndex(Index index)
+    {
+        m_physicalIndex = index;
+    }
+    auto GetPhysicalIndex() const
+    {
+        return m_physicalIndex;
+    }
 
     void ClearState()
     {
@@ -47,9 +71,15 @@ public:
         m_writtenInPasses.clear();
     }
 
-    auto GetType() const { return m_type; }
+    auto GetType() const
+    {
+        return m_type;
+    }
 
-    auto GetTag() const { return m_tag; }
+    auto GetTag() const
+    {
+        return m_tag;
+    }
 
 private:
     Index m_index;
@@ -81,13 +111,25 @@ public:
         VkExtent3D extent3D{};
     };
 
-    void SetInfo(const Info& info) { m_info = info; }
+    void SetInfo(const Info& info)
+    {
+        m_info = info;
+    }
 
-    void AddImageUsage(val::ImageUsage flag) { m_usage |= flag; }
+    void AddImageUsage(val::ImageUsage flag)
+    {
+        m_usage |= flag;
+    }
 
-    const auto& GetInfo() { return m_info; }
+    const auto& GetInfo()
+    {
+        return m_info;
+    }
 
-    auto GetUsage() const { return m_usage; }
+    auto GetUsage() const
+    {
+        return m_usage;
+    }
 
 private:
     Info m_info{};
@@ -106,13 +148,25 @@ public:
         VkDeviceSize size{0};
     };
 
-    void SetInfo(const Info& info) { m_info = info; }
+    void SetInfo(const Info& info)
+    {
+        m_info = info;
+    }
 
-    const auto& GetInfo() { return m_info; }
+    const auto& GetInfo()
+    {
+        return m_info;
+    }
 
-    void AddBufferUsage(val::BufferUsage flag) { m_usage |= flag; }
+    void AddBufferUsage(val::BufferUsage flag)
+    {
+        m_usage |= flag;
+    }
 
-    auto GetUsage() const { return m_usage; }
+    auto GetUsage() const
+    {
+        return m_usage;
+    }
 
 private:
     Info m_info{};
@@ -146,37 +200,82 @@ public:
 
     void ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer);
 
-    const auto& GetIndex() const { return m_index; }
-    const auto& GetOutImageResources() const { return m_outImageResources; }
-    const auto& GetOutBufferResources() const { return m_outBufferResources; }
-    const auto& GetInImageResources() const { return m_inImagesResources; }
-    const auto& GetInBufferResources() const { return m_inBufferResources; }
-    const auto& GetExternImageResources() const { return m_externImageResources; }
-    const auto& GetExternBufferResources() const { return m_externBufferResources; }
-    const auto& GetTag() const { return m_tag; }
+    const auto& GetIndex() const
+    {
+        return m_index;
+    }
+    const auto& GetOutImageResources() const
+    {
+        return m_outImageResources;
+    }
+    const auto& GetOutBufferResources() const
+    {
+        return m_outBufferResources;
+    }
+    const auto& GetInImageResources() const
+    {
+        return m_inImagesResources;
+    }
+    const auto& GetInBufferResources() const
+    {
+        return m_inBufferResources;
+    }
+    const auto& GetExternImageResources() const
+    {
+        return m_externImageResources;
+    }
+    const auto& GetExternBufferResources() const
+    {
+        return m_externBufferResources;
+    }
+    const auto& GetTag() const
+    {
+        return m_tag;
+    }
 
-    void SetPhysicalIndex(Index index) { m_physicalIndex = index; }
+    void SetPhysicalIndex(Index index)
+    {
+        m_physicalIndex = index;
+    }
 
-    void UseShaders(std::vector<val::ShaderModule*>&& shaders) { m_shaders = std::move(shaders); }
+    void UseShaders(std::vector<val::ShaderModule*>&& shaders)
+    {
+        m_shaders = std::move(shaders);
+    }
 
-    const auto& GetUsedShaders() const { return m_shaders; }
+    const auto& GetUsedShaders() const
+    {
+        return m_shaders;
+    }
 
     void BindSRD(const Tag& rdgResourceTag,
                  VkShaderStageFlagBits shaderStage,
                  const std::string& shaderResourceName);
 
-    void BindSampler(const Tag& tag, val::Sampler* sampler) { m_samplerBinding[tag] = sampler; }
+    void BindSampler(const Tag& tag, val::Sampler* sampler)
+    {
+        m_samplerBinding[tag] = sampler;
+    }
 
-    auto& GetSRDBinding() const { return m_srdBinding; }
+    auto& GetSRDBinding() const
+    {
+        return m_srdBinding;
+    }
 
-    auto& GetSamplerBinding() const { return m_samplerBinding; }
+    auto& GetSamplerBinding() const
+    {
+        return m_samplerBinding;
+    }
 
     void SetOnExecute(std::function<void(val::CommandBuffer*)> func)
     {
         m_onExecute = std::move(func);
     }
 
-    auto GetOnExecute() const { return m_onExecute; }
+    auto GetOnExecute() const
+    {
+        return m_onExecute;
+    }
 
 private:
     RenderGraph& m_graph;
@@ -266,11 +365,20 @@ public:
 
     void Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext);
 
-    const auto& GetResourceIndexMap() const { return m_resourceToIndex; }
+    const auto& GetResourceIndexMap() const
+    {
+        return m_resourceToIndex;
+    }
 
-    const auto& GetPhysicalPass(uint32_t index) const { return m_physicalPasses[index]; }
+    const auto& GetPhysicalPass(uint32_t index) const
+    {
+        return m_physicalPasses[index];
+    }
 
-    auto& GetRDGPass(const Tag& tag) { return m_passes[m_passToIndex[tag]]; }
+    auto& GetRDGPass(const Tag& tag)
+    {
+        return m_passes[m_passToIndex[tag]];
+    }
 
     void SetOnExecute(uint32_t index, std::function<void(val::CommandBuffer*)> func)
     {

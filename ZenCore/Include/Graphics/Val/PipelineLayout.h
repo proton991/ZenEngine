@@ -15,9 +15,15 @@ public:
 
     ~PipelineLayout();
 
-    auto& GetShaderModules() const { return m_shaderModules; }
+    auto& GetShaderModules() const
+    {
+        return m_shaderModules;
+    }
 
-    auto& GetDescriptorSetLayouts() const { return m_dsLayouts; }
+    auto& GetDescriptorSetLayouts() const
+    {
+        return m_dsLayouts;
+    }
 
     std::vector<ShaderResource> GetResources(
         ShaderResourceType type,

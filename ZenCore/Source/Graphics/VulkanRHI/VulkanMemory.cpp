@@ -79,8 +79,14 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
     {
         bool isSrc = false;
         bool isDst = false;
-        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) { isSrc = true; }
-        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) { isDst = true; }
+        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        {
+            isSrc = true;
+        }
+        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        {
+            isDst = true;
+        }
         if (isSrc && !isDst)
         {
             // staging buffer: CPU maps, writes sequentially, then GPU copies to VRAM.
@@ -117,7 +123,10 @@ void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAlloca
 
 VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex)
 {
-    if (m_smallPools.contains(memTypeIndex)) { return m_smallPools[memTypeIndex]; }
+    if (m_smallPools.contains(memTypeIndex))
+    {
+        return m_smallPools[memTypeIndex];
+    }
     // create a new one
     VmaPoolCreateInfo poolCI{};
     poolCI.memoryTypeIndex        = memTypeIndex;

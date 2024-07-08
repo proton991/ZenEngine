@@ -39,7 +39,10 @@ static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
             return (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) !=
                 0;
         }
-        else { return true; }
+        else
+        {
+            return true;
+        }
     };
     for (auto usageFlag : defaultImageUsageFlags)
     {
@@ -65,7 +68,8 @@ static VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR sur
     // LOGI("Available present modes:")
     // for (auto& presentMode : presentModes) { LOGI("  \t{}", VkToString(presentMode)); }
 
-    if (!vsync) return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    if (!vsync)
+        return VK_PRESENT_MODE_IMMEDIATE_KHR;
     static const std::vector<VkPresentModeKHR> presentModePriorityList = {
         VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
     for (const auto& presentMode : presentModePriorityList)
@@ -83,7 +87,10 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
                                                         VkCompositeAlphaFlagsKHR supported)
 {
 
-    if ((request & supported) != 0) { return request; }
+    if ((request & supported) != 0)
+    {
+        return request;
+    }
 
     static const std::vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
         VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
@@ -143,7 +150,10 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* vkRHI,
 
     VKCHECK(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &m_swaphchain));
 
-    if (oldSwapchain != VK_NULL_HANDLE) { vkDestroySwapchainKHR(device, oldSwapchain, nullptr); }
+    if (oldSwapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+    }
 
     LOGI("Swapchain surface format: {}", VkToString(surfaceFormat));
     LOGI("Swapchain present mode: {}", VkToString(m_presentMode));
@@ -164,7 +174,10 @@ SwapchainHandle VulkanRHI::CreateSwapchain(SurfaceHandle surfaceHandle, bool ena
 }
 
 
-Status VulkanRHI::ResizeSwapchain(SwapchainHandle swapchainHandle) { return Status::eSuccess; }
+Status VulkanRHI::ResizeSwapchain(SwapchainHandle swapchainHandle)
+{
+    return Status::eSuccess;
+}
 
 void VulkanRHI::DestroySwapchain(SwapchainHandle swapchainHandle)
 {

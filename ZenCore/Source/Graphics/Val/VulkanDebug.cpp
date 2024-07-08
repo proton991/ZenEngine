@@ -463,7 +463,8 @@ std::string VkAccessFlagsToString(VkAccessFlags Flags)
     while (Flags != 0)
     {
         auto Bit = Flags & ~(Flags - 1);
-        if (!FlagsString.empty()) FlagsString += ", ";
+        if (!FlagsString.empty())
+            FlagsString += ", ";
         FlagsString += VkAccessFlagBitToString(static_cast<VkAccessFlagBits>(Bit));
         Flags = Flags & (Flags - 1);
     }

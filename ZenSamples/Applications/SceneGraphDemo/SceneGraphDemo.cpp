@@ -93,7 +93,10 @@ void SceneGraphDemo::SetupRenderGraph()
         {
             RecordDrawCmdsSecondary(commandBuffer, physicalPass);
         }
-        else { RecordDrawCmdsPrimary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass); }
+        else
+        {
+            RecordDrawCmdsPrimary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass);
+        }
     });
 }
 
@@ -139,7 +142,10 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffe
     }
     if (RenderConfig::GetInstance().numThreads > 1)
     {
-        for (auto& fut : secondaryCmdFutures) { secondaryCmds.push_back(fut.get()); }
+        for (auto& fut : secondaryCmdFutures)
+        {
+            secondaryCmds.push_back(fut.get());
+        }
     }
 
     primaryCmdBuffer->ExecuteCommands(secondaryCmds);

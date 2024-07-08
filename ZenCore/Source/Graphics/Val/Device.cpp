@@ -18,7 +18,10 @@ Device::~Device()
         vmaDestroyAllocator(m_memAllocator);
     }
 
-    if (m_handle != VK_NULL_HANDLE) { vkDestroyDevice(m_handle, nullptr); }
+    if (m_handle != VK_NULL_HANDLE)
+    {
+        vkDestroyDevice(m_handle, nullptr);
+    }
 }
 
 SharedPtr<Device> Device::Create(const Device::CreateInfo& CI)
@@ -118,7 +121,10 @@ Device::Device(const Device::CreateInfo& CI)
         {
             m_enabledExtensions.push_back(extensionName);
         }
-        else { LOGE("Requested device extension: {} is not supported! (Ignored)", extensionName); }
+        else
+        {
+            LOGE("Requested device extension: {} is not supported! (Ignored)", extensionName);
+        }
     }
     VkDeviceCreateInfo deviceCI{};
     deviceCI.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -137,7 +143,10 @@ Device::Device(const Device::CreateInfo& CI)
     SetDeviceName(m_handle, "VulkanLogicalDevice");
 
     LOGI("Enabled Device Extensions count: {}", m_enabledExtensions.size())
-    for (const auto& ext : m_enabledExtensions) { LOGI("\tEnabled Device Extension: {}", ext); }
+    for (const auto& ext : m_enabledExtensions)
+    {
+        LOGI("\tEnabled Device Extension: {}", ext);
+    }
 
     // get device queues
     for (auto queueType = 0; queueType < QUEUE_INDEX_COUNT; queueType++)
@@ -191,9 +200,15 @@ Device::Device(const Device::CreateInfo& CI)
 
 const Queue& Device::GetQueue(QueueType queueType) const
 {
-    if (m_queues.count(queueType)) { return m_queues.at(queueType); }
+    if (m_queues.count(queueType))
+    {
+        return m_queues.at(queueType);
+    }
     LOG_ERROR_AND_THROW("Queue not found!");
 }
 
-void Device::WaitIdle() const { vkDeviceWaitIdle(m_handle); }
+void Device::WaitIdle() const
+{
+    vkDeviceWaitIdle(m_handle);
+}
 } // namespace zen::val

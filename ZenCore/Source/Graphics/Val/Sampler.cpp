@@ -26,6 +26,9 @@ Sampler::Sampler(Sampler&& other) noexcept : DeviceObject(std::move(other)) {}
 
 Sampler::~Sampler()
 {
-    if (m_handle != VK_NULL_HANDLE) { vkDestroySampler(m_device.GetHandle(), m_handle, nullptr); }
+    if (m_handle != VK_NULL_HANDLE)
+    {
+        vkDestroySampler(m_device.GetHandle(), m_handle, nullptr);
+    }
 }
 } // namespace zen::val

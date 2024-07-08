@@ -57,7 +57,10 @@ public:
 
     void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
     {
-        if (IsEnabledAndSupported()) { AddToPNext(DeviceCI, m_descriptorIndexingFeatures); }
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_descriptorIndexingFeatures);
+        }
     }
 
 private:
@@ -95,7 +98,10 @@ public:
 
     void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
     {
-        if (IsEnabledAndSupported()) { AddToPNext(DeviceCI, m_bufferDeviceAddressFeature); }
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_bufferDeviceAddressFeature);
+        }
     }
 
 private:
@@ -133,7 +139,10 @@ public:
 
     void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
     {
-        if (IsEnabledAndSupported()) { AddToPNext(DeviceCI, m_accelerationStructureFeatures); }
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_accelerationStructureFeatures);
+        }
     }
 
 private:
@@ -171,7 +180,10 @@ public:
 
     void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
     {
-        if (IsEnabledAndSupported()) { AddToPNext(DeviceCI, m_rayTracingPipelineFeatures); }
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_rayTracingPipelineFeatures);
+        }
     }
 
 private:
@@ -208,7 +220,10 @@ public:
 
     void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
     {
-        if (IsEnabledAndSupported()) { AddToPNext(DeviceCI, m_rayQueryFeature); }
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_rayQueryFeature);
+        }
     }
 
 private:
@@ -237,7 +252,10 @@ static void FlagExtensionSupported(std::vector<ExtensionType>& extensions,
     for (ExtensionType& extension : extensions)
     {
         int index = FindExtensionIndex(extension->GetName(), supported);
-        if (index != -1) { extension->SetSupport(); }
+        if (index != -1)
+        {
+            extension->SetSupport();
+        }
     }
 }
 

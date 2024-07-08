@@ -18,7 +18,10 @@ namespace zen
 
 template <bool> void ThrowIf(std::string&&) {}
 
-template <> inline void ThrowIf<true>(std::string&& msg) { throw std::runtime_error(msg); }
+template <> inline void ThrowIf<true>(std::string&& msg)
+{
+    throw std::runtime_error(msg);
+}
 
 template <bool bThrowException, typename... ArgsType> void LogError(bool isCritical,
                                                                     const char* function,
@@ -29,7 +32,8 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
     std::string fileName(fullFilePath);
 
     auto LastSlashPos = fileName.find_last_of("/\\");
-    if (LastSlashPos != std::string::npos) fileName.erase(0, LastSlashPos + 1);
+    if (LastSlashPos != std::string::npos)
+        fileName.erase(0, LastSlashPos + 1);
     std::string message;
     if (isCritical)
     {
@@ -51,7 +55,8 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
 #define ASSERT(x) assert(x)
 
 #define VERIFY_EXPR(x)                                            \
-    do {                                                          \
+    do                                                            \
+    {                                                             \
         if (!bool(x))                                             \
         {                                                         \
             spdlog::error("Error at {}:{}.", __FILE__, __LINE__); \
@@ -60,18 +65,21 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
     } while (0)
 
 #define LOG_ERROR(...)                                                                       \
-    do {                                                                                     \
+    do                                                                                       \
+    {                                                                                        \
         LogError<false>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 
 #define LOG_FATAL_ERROR(...)                                                                \
-    do {                                                                                    \
+    do                                                                                      \
+    {                                                                                       \
         LogError<false>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 #define LOG_ERROR_ONCE(...)             \
-    do {                                \
+    do                                  \
+    {                                   \
         static bool IsFirstTime = true; \
         if (IsFirstTime)                \
         {                               \
@@ -82,12 +90,14 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
 
 
 #define LOG_ERROR_AND_THROW(...)                                                            \
-    do {                                                                                    \
+    do                                                                                      \
+    {                                                                                       \
         LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
 #define LOG_FATAL_ERROR_AND_THROW(...)                                                     \
-    do {                                                                                   \
+    do                                                                                     \
+    {                                                                                      \
         LogError<true>(/*IsFatal=*/true, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 

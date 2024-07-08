@@ -106,22 +106,34 @@ class SpecializationState
 public:
     void Reset()
     {
-        if (m_dirty) { m_constantTable.clear(); }
+        if (m_dirty)
+        {
+            m_constantTable.clear();
+        }
         m_dirty = false;
     }
 
-    bool IsDirty() const { return m_dirty; }
+    bool IsDirty() const
+    {
+        return m_dirty;
+    }
 
     template <class T> void SetConstant(uint32_t id, const T& value)
     {
         auto it    = m_constantTable.find(id);
         auto bytes = util::ToBytes(value);
-        if (it != m_constantTable.end() && it->second == bytes) { return; }
+        if (it != m_constantTable.end() && it->second == bytes)
+        {
+            return;
+        }
         m_constantTable[id] = bytes;
         m_dirty             = true;
     }
 
-    auto& GetConstantTable() const { return m_constantTable; }
+    auto& GetConstantTable() const
+    {
+        return m_constantTable;
+    }
 
 private:
     bool m_dirty{false};
@@ -145,15 +157,39 @@ public:
     void SetRenderPass(VkRenderPass renderPass);
     void SetSubpassIndex(uint32_t index);
 
-    auto& GetVertexInputState() const { return m_vertexInputState; }
-    auto& GetInputAssemblyState() const { return m_inputAssemblyState; }
-    auto& GetViewportState() const { return m_viewportState; }
-    auto& GetRasterizationState() const { return m_rasterizationState; }
-    auto& GetMultiSampleState() const { return m_multiSampleState; }
-    auto& GetDepthStencilState() const { return m_depthStencilState; }
-    auto& GetColorBlendState() const { return m_colorBlendState; }
+    auto& GetVertexInputState() const
+    {
+        return m_vertexInputState;
+    }
+    auto& GetInputAssemblyState() const
+    {
+        return m_inputAssemblyState;
+    }
+    auto& GetViewportState() const
+    {
+        return m_viewportState;
+    }
+    auto& GetRasterizationState() const
+    {
+        return m_rasterizationState;
+    }
+    auto& GetMultiSampleState() const
+    {
+        return m_multiSampleState;
+    }
+    auto& GetDepthStencilState() const
+    {
+        return m_depthStencilState;
+    }
+    auto& GetColorBlendState() const
+    {
+        return m_colorBlendState;
+    }
 
-    auto& GetSpecializationState() const { return m_specializationState; }
+    auto& GetSpecializationState() const
+    {
+        return m_specializationState;
+    }
 
     VkPipelineVertexInputStateCreateInfo GetVIStateCI() const;
     VkPipelineInputAssemblyStateCreateInfo GetIAStateCI() const;

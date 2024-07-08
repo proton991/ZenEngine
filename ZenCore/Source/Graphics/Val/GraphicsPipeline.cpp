@@ -138,6 +138,9 @@ GraphicsPipeline::GraphicsPipeline(GraphicsPipeline&& other) noexcept :
 
 GraphicsPipeline::~GraphicsPipeline()
 {
-    if (m_handle != VK_NULL_HANDLE) { vkDestroyPipeline(m_device.GetHandle(), m_handle, nullptr); }
+    if (m_handle != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(m_device.GetHandle(), m_handle, nullptr);
+    }
 }
 } // namespace zen::val

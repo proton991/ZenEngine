@@ -187,8 +187,14 @@ public:
 
     void LoadFromFile(const std::string& path, gltf::Model* pOutModel, float scale = 1.0f);
 
-    const auto& GetVertices() const { return m_vertices; }
-    const auto& GetIndices() const { return m_indices; }
+    const auto& GetVertices() const
+    {
+        return m_vertices;
+    }
+    const auto& GetIndices() const
+    {
+        return m_indices;
+    }
 
 private:
     void LoadSamplers(tinygltf::Model& gltfModel);
@@ -236,8 +242,14 @@ public:
 
     void LoadFromFile(const std::string& path, sg::Scene* scene);
 
-    const auto& GetVertices() const { return m_vertices; }
-    const auto& GetIndices() const { return m_indices; }
+    const auto& GetVertices() const
+    {
+        return m_vertices;
+    }
+    const auto& GetIndices() const
+    {
+        return m_indices;
+    }
 
 private:
     void LoadGltfSamplers(sg::Scene* scene);

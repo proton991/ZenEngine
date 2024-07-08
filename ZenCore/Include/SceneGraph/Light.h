@@ -26,7 +26,10 @@ class Light : public Component
 public:
     Light(std::string name) : Component(std::move(name)) {}
 
-    TypeId GetTypeId() const override { return typeid(Light); }
+    TypeId GetTypeId() const override
+    {
+        return typeid(Light);
+    }
 
     static UniquePtr<Light> CreateDirLight(std::string name, const LightProperties& properties)
     {
@@ -44,13 +47,25 @@ public:
         return light;
     }
 
-    void SetType(LightType type) { m_type = type; }
+    void SetType(LightType type)
+    {
+        m_type = type;
+    }
 
-    void SetProperties(const LightProperties& properties) { m_properties = properties; }
+    void SetProperties(const LightProperties& properties)
+    {
+        m_properties = properties;
+    }
 
-    const LightProperties& GetProperties() const { return m_properties; }
+    const LightProperties& GetProperties() const
+    {
+        return m_properties;
+    }
 
-    const LightType GetType() const { return m_type; }
+    const LightType GetType() const
+    {
+        return m_type;
+    }
 
 private:
     LightProperties m_properties;

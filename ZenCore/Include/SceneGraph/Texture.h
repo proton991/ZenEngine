@@ -31,7 +31,10 @@ public:
         bytesData(std::move(data))
     {}
 
-    TypeId GetTypeId() const override { return typeid(Texture); }
+    TypeId GetTypeId() const override
+    {
+        return typeid(Texture);
+    }
 
     uint32_t index{0};
     int samplerIndex{-1};

@@ -19,7 +19,10 @@ public:
 
     void Update();
 
-    [[nodiscard]] auto ShouldClose() const { return m_data.shouldClose; }
+    [[nodiscard]] auto ShouldClose() const
+    {
+        return m_data.shouldClose;
+    }
 
     void ShowCursor() const;
 
@@ -40,7 +43,10 @@ public:
         m_onResize = std::move(callback);
     }
 
-    GLFWwindow* GetHandle() const { return m_handle; }
+    GLFWwindow* GetHandle() const
+    {
+        return m_handle;
+    }
 
 private:
     void SetupWindowCallbacks();

@@ -96,19 +96,40 @@ VkSampleCountFlagBits ToVkSampleCountFlagBits(SampleCount count)
     return static_cast<VkSampleCountFlagBits>(count);
 }
 
-VkCompareOp ToVkCompareOp(CompareOperator op) { return static_cast<VkCompareOp>(op); }
+VkCompareOp ToVkCompareOp(CompareOperator op)
+{
+    return static_cast<VkCompareOp>(op);
+}
 
-VkStencilOp ToVkStencilOp(StencilOperation op) { return static_cast<VkStencilOp>(op); }
+VkStencilOp ToVkStencilOp(StencilOperation op)
+{
+    return static_cast<VkStencilOp>(op);
+}
 
-VkLogicOp ToVkLogicOp(LogicOperation op) { return static_cast<VkLogicOp>(op); }
+VkLogicOp ToVkLogicOp(LogicOperation op)
+{
+    return static_cast<VkLogicOp>(op);
+}
 
-VkBlendOp ToVkBlendOp(BlendOperation op) { return static_cast<VkBlendOp>(op); }
+VkBlendOp ToVkBlendOp(BlendOperation op)
+{
+    return static_cast<VkBlendOp>(op);
+}
 
-VkBlendFactor ToVkBlendFactor(BlendFactor factor) { return static_cast<VkBlendFactor>(factor); }
+VkBlendFactor ToVkBlendFactor(BlendFactor factor)
+{
+    return static_cast<VkBlendFactor>(factor);
+}
 
-VkDynamicState ToVkDynamicState(DynamicState state) { return static_cast<VkDynamicState>(state); }
+VkDynamicState ToVkDynamicState(DynamicState state)
+{
+    return static_cast<VkDynamicState>(state);
+}
 
-VkImageType ToVkImageType(TextureType type) { return static_cast<VkImageType>(type); }
+VkImageType ToVkImageType(TextureType type)
+{
+    return static_cast<VkImageType>(type);
+}
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flagBits)
 {
@@ -121,8 +142,14 @@ VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flagBits)
     {
         flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     }
-    if (flagBits.HasFlag(TextureUsageFlagBits::eSampled)) { flags |= VK_IMAGE_USAGE_SAMPLED_BIT; }
-    if (flagBits.HasFlag(TextureUsageFlagBits::eStorage)) { flags |= VK_IMAGE_USAGE_STORAGE_BIT; }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eSampled))
+    {
+        flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
+    if (flagBits.HasFlag(TextureUsageFlagBits::eStorage))
+    {
+        flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+    }
     if (flagBits.HasFlag(TextureUsageFlagBits::eColorAttachment))
     {
         flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -184,7 +211,10 @@ VkBufferUsageFlags ToVkBufferUsageFlags(BitField<BufferUsageFlagBits> flags)
     return vkFlags;
 }
 
-VkFormat ToVkFormat(DataFormat format) { return static_cast<VkFormat>(format); }
+VkFormat ToVkFormat(DataFormat format)
+{
+    return static_cast<VkFormat>(format);
+}
 
 VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp)
 {

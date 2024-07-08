@@ -104,10 +104,14 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
             {
                 bindingFlags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
             }
-            else { bindingFlags.push_back(0); }
+            else
+            {
+                bindingFlags.push_back(0);
+            }
             dsBindings[i].push_back(binding);
         }
-        if (dsBindings[i].empty()) continue;
+        if (dsBindings[i].empty())
+            continue;
         // create descriptor set layout for set i
         VkDescriptorSetLayoutCreateInfo layoutCI;
         InitVkStruct(layoutCI, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);

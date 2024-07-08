@@ -17,7 +17,10 @@ namespace zen
 template <class FuncRetType, class... FuncArgs> class ThreadPool
 {
 public:
-    ThreadPool() { this->Init(); }
+    ThreadPool()
+    {
+        this->Init();
+    }
 
     explicit ThreadPool(uint32_t nThreads)
     {
@@ -26,15 +29,27 @@ public:
     }
 
     // the destructor waits for all the functions in the queue to be finished
-    ~ThreadPool() { this->Stop(true); }
+    ~ThreadPool()
+    {
+        this->Stop(true);
+    }
 
     // get the number of running threads in the pool
-    auto GetSize() { return m_threads.size(); }
+    auto GetSize()
+    {
+        return m_threads.size();
+    }
 
     // number of idle threads
-    int GetNIdle() { return m_nWaiting; }
+    int GetNIdle()
+    {
+        return m_nWaiting;
+    }
 
-    std::thread& GetThread(uint32_t i) { return *m_threads[i]; }
+    std::thread& GetThread(uint32_t i)
+    {
+        return *m_threads[i];
+    }
 
     // change the number of threads in the pool
     // should be called from one thread, otherwise be careful to not interleave, also with this->stop()
@@ -78,7 +93,8 @@ public:
     void ClearQueue()
     {
         std::function<FuncRetType(FuncArgs...)>* _f;
-        while (m_q.Pop(_f)) delete _f; // empty the queue
+        while (m_q.Pop(_f))
+            delete _f; // empty the queue
     }
 
     // pops a functional wrapper to the original function
@@ -89,7 +105,8 @@ public:
         // at return, delete the function even if an exception occurred
         UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(_f);
         std::function<FuncRetType(FuncArgs...)> f;
-        if (_f) f = *_f;
+        if (_f)
+            f = *_f;
         return f;
     }
 
@@ -100,7 +117,8 @@ public:
     {
         if (!isWait)
         {
-            if (m_stop) return;
+            if (m_stop)
+                return;
             m_stop = true;
             for (uint32_t i = 0, n = this->GetSize(); i < n; ++i)
             {
@@ -110,7 +128,8 @@ public:
         }
         else
         {
-            if (m_finished || m_stop) return;
+            if (m_finished || m_stop)
+                return;
             m_finished = true; // give the waiting threads a command to finish
         }
         {
@@ -119,7 +138,8 @@ public:
         }
         for (const auto& t : m_threads)
         { // wait for the computing threads to finish
-            if (t->joinable()) t->join();
+            if (t->joinable())
+                t->join();
         }
         // if there were no threads in the pool but some functors in the queue, the functors are not deleted by the threads
         // therefore delete them here
@@ -192,7 +212,8 @@ private:
                     return isPop || m_finished || _flag;
                 });
                 --m_nWaiting;
-                if (!isPop) return;
+                if (!isPop)
+                    return;
             }
         };
         m_threads[i] = MakeUnique<std::thread>(f);

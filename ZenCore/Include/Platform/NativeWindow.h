@@ -25,7 +25,10 @@ public:
     virtual VkSurfaceKHR CreateSurface(VkInstance instance) const = 0;
 
     virtual std::vector<const char*> GetInstanceExtensions() = 0;
-    virtual std::vector<const char*> GetDeviceExtensions() { return {"VK_KHR_swapchain"}; }
+    virtual std::vector<const char*> GetDeviceExtensions()
+    {
+        return {"VK_KHR_swapchain"};
+    }
 
     virtual float GetAspect() = 0;
 };

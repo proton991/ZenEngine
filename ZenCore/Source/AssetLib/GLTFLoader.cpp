@@ -38,13 +38,22 @@ void BoundingBox::Transform(const Mat4& matrix)
 
 Node::~Node()
 {
-    for (auto* primitive : primitives) { delete primitive; }
-    for (auto* child : children) { delete child; }
+    for (auto* primitive : primitives)
+    {
+        delete primitive;
+    }
+    for (auto* child : children)
+    {
+        delete child;
+    }
 }
 
 Model::~Model()
 {
-    for (auto* node : nodes) { delete node; }
+    for (auto* node : nodes)
+    {
+        delete node;
+    }
 }
 
 Mat4 Node::GetMatrix() const
@@ -59,7 +68,10 @@ Mat4 Node::GetMatrix() const
     return m;
 }
 
-float Model::GetSize() const { return glm::distance(bb.min, bb.max); }
+float Model::GetSize() const
+{
+    return glm::distance(bb.min, bb.max);
+}
 
 void ModelLoader::LoadFromFile(const std::string& path, gltf::Model* pOutModel, float scale)
 {
@@ -77,7 +89,10 @@ void ModelLoader::LoadFromFile(const std::string& path, gltf::Model* pOutModel, 
     }
     bool modelLoaded = binary ? gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, path) :
                                 gltfContext.LoadASCIIFromFile(&gltfModel, &error, &warning, path);
-    if (!modelLoaded) { LOG_FATAL_ERROR_AND_THROW("Failed to load GLTF model {}!", path); }
+    if (!modelLoaded)
+    {
+        LOG_FATAL_ERROR_AND_THROW("Failed to load GLTF model {}!", path);
+    }
     size_t vertexCount = 0;
     size_t indexCount  = 0;
     size_t nodeCount   = 0;
@@ -138,7 +153,10 @@ void ModelLoader::LoadTextures(tinygltf::Model& gltfModel)
             unsigned char* rgb  = &gltfImage.image[0];
             for (int32_t i = 0; i < gltfImage.width * gltfImage.height; ++i)
             {
-                for (int32_t j = 0; j < 3; ++j) { rgba[j] = rgb[j]; }
+                for (int32_t j = 0; j < 3; ++j)
+                {
+                    rgba[j] = rgb[j];
+                }
                 rgba += 4;
                 rgb += 3;
             }
@@ -153,7 +171,10 @@ void ModelLoader::LoadTextures(tinygltf::Model& gltfModel)
                                         (uint32_t)gltfImage.height, Format::R8G8B8A8_UNORM,
                                         gltfImage.image);
         }
-        if (deleteBuffer) { delete[] buffer; }
+        if (deleteBuffer)
+        {
+            delete[] buffer;
+        }
     }
 }
 
@@ -174,7 +195,10 @@ void ModelLoader::LoadMaterials(tinygltf::Model& gltfModel)
             material.texCoordSets.baseColor = textureInfo.texCoord;
             material.baseColorTexture       = &m_textureInfos[textureInfo.index];
         }
-        else { material.baseColorTexture = &m_defaultTextures.baseColor; }
+        else
+        {
+            material.baseColorTexture = &m_defaultTextures.baseColor;
+        }
 
         if (mat.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
         {
@@ -182,7 +206,10 @@ void ModelLoader::LoadMaterials(tinygltf::Model& gltfModel)
             material.texCoordSets.metallicRoughness = textureInfo.texCoord;
             material.metallicRoughnessTexture       = &m_textureInfos[textureInfo.index];
         }
-        else { material.metallicRoughnessTexture = &m_defaultTextures.metallicRoughness; }
+        else
+        {
+            material.metallicRoughnessTexture = &m_defaultTextures.metallicRoughness;
+        }
 
         if (mat.normalTexture.index != -1)
         {
@@ -190,7 +217,10 @@ void ModelLoader::LoadMaterials(tinygltf::Model& gltfModel)
             material.texCoordSets.normal = textureInfo.texCoord;
             material.normalTexture       = &m_textureInfos[textureInfo.index];
         }
-        else { material.normalTexture = &m_defaultTextures.normal; }
+        else
+        {
+            material.normalTexture = &m_defaultTextures.normal;
+        }
 
         if (mat.emissiveTexture.index != -1)
         {
@@ -206,8 +236,14 @@ void ModelLoader::LoadMaterials(tinygltf::Model& gltfModel)
             material.occlusionTexture       = &m_textureInfos[textureInfo.index];
         }
 
-        if (mat.alphaMode == "BLEND") { material.alphaMode = gltf::AlphaMode::Blend; }
-        else if (mat.alphaMode == "MASK") { material.alphaMode = gltf::AlphaMode::Mask; }
+        if (mat.alphaMode == "BLEND")
+        {
+            material.alphaMode = gltf::AlphaMode::Blend;
+        }
+        else if (mat.alphaMode == "MASK")
+        {
+            material.alphaMode = gltf::AlphaMode::Mask;
+        }
 
         // Extensions
         // @TODO: Find out if there is a nicer way of reading these properties with recent tinygltf headers
@@ -298,9 +334,15 @@ void ModelLoader::LoadNode(gltf::Model* pOutModel,
     }
 
     newNode->scale = Vec3(globalScale);
-    if (node.scale.size() == 3) { newNode->scale = glm::make_vec3(node.scale.data()); }
+    if (node.scale.size() == 3)
+    {
+        newNode->scale = glm::make_vec3(node.scale.data());
+    }
 
-    if (node.matrix.size() == 16) { newNode->matrix = glm::make_mat4x4(node.matrix.data()); };
+    if (node.matrix.size() == 16)
+    {
+        newNode->matrix = glm::make_mat4x4(node.matrix.data());
+    };
 
     // Node with children
     if (!node.children.empty())
@@ -493,7 +535,10 @@ void ModelLoader::LoadNode(gltf::Model* pOutModel,
                                 break;
                         }
                     }
-                    else { vert.joint0 = Vec4(0.0f); }
+                    else
+                    {
+                        vert.joint0 = Vec4(0.0f);
+                    }
                     vert.weight0 =
                         hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : Vec4(0.0f);
                     // Fix for all zero weights
@@ -573,9 +618,16 @@ void ModelLoader::LoadNode(gltf::Model* pOutModel,
             newNode->bb.max = glm::max(newNode->bb.max, p->bb.max);
         }
     }
-    if (parent) { parent->children.push_back(newNode); }
-    else { pOutModel->nodes.push_back(newNode); }
-    if (node.mesh != -1) pOutModel->flatNodes.push_back(newNode);
+    if (parent)
+    {
+        parent->children.push_back(newNode);
+    }
+    else
+    {
+        pOutModel->nodes.push_back(newNode);
+    }
+    if (node.mesh != -1)
+        pOutModel->flatNodes.push_back(newNode);
 }
 
 void ModelLoader::GetModelProps(const tinygltf::Node& node,
@@ -591,7 +643,8 @@ void ModelLoader::GetModelProps(const tinygltf::Node& node,
     {
         for (int child : node.children)
         {
-            if (model.nodes[child].mesh != -1) nodeCount++;
+            if (model.nodes[child].mesh != -1)
+                nodeCount++;
             GetModelProps(model.nodes[child], model, vertexCount, indexCount, nodeCount);
         }
     }
@@ -602,7 +655,10 @@ void ModelLoader::GetModelProps(const tinygltf::Node& node,
         {
             auto primitive = mesh.primitives[i];
             vertexCount += model.accessors[primitive.attributes.find("POSITION")->second].count;
-            if (primitive.indices > -1) { indexCount += model.accessors[primitive.indices].count; }
+            if (primitive.indices > -1)
+            {
+                indexCount += model.accessors[primitive.indices].count;
+            }
         }
     }
 }
@@ -775,16 +831,25 @@ void GltfLoader::LoadGltfTextures(sg::Scene* scene)
             unsigned char* rgb  = const_cast<unsigned char*>(gltfImage.image.data());
             for (int32_t i = 0; i < gltfImage.width * gltfImage.height; ++i)
             {
-                for (int32_t j = 0; j < 3; ++j) { rgba[j] = rgb[j]; }
+                for (int32_t j = 0; j < 3; ++j)
+                {
+                    rgba[j] = rgb[j];
+                }
                 rgba += 4;
                 rgb += 3;
             }
             deleteBuffer     = true;
             sgTex->bytesData = std::move(std::vector<uint8_t>(buffer, buffer + bufferSize));
         }
-        else if (gltfImage.component == 4) { sgTex->bytesData = gltfImage.image; }
+        else if (gltfImage.component == 4)
+        {
+            sgTex->bytesData = gltfImage.image;
+        }
         // free temp buffer
-        if (deleteBuffer) { delete[] buffer; }
+        if (deleteBuffer)
+        {
+            delete[] buffer;
+        }
 
         textures.emplace_back(sgTex);
         textureIndex++;
@@ -815,7 +880,10 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->texCoordSets.baseColor = textureInfo.texCoord;
             sgMat->baseColorTexture       = scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->baseColorTexture = sDefaultTextures.baseColor; }
+        else
+        {
+            sgMat->baseColorTexture = sDefaultTextures.baseColor;
+        }
 
         if (mat.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
         {
@@ -824,7 +892,10 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->metallicRoughnessTexture =
                 scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->metallicRoughnessTexture = sDefaultTextures.metallicRoughness; }
+        else
+        {
+            sgMat->metallicRoughnessTexture = sDefaultTextures.metallicRoughness;
+        }
 
         if (mat.normalTexture.index != -1)
         {
@@ -832,7 +903,10 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->texCoordSets.normal = textureInfo.texCoord;
             sgMat->normalTexture       = scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
-        else { sgMat->normalTexture = sDefaultTextures.normal; }
+        else
+        {
+            sgMat->normalTexture = sDefaultTextures.normal;
+        }
 
         if (mat.emissiveTexture.index != -1)
         {
@@ -848,8 +922,14 @@ void GltfLoader::LoadGltfMaterials(sg::Scene* scene)
             sgMat->occlusionTexture       = scene->GetComponents<sg::Texture>()[textureInfo.index];
         }
 
-        if (mat.alphaMode == "BLEND") { sgMat->alphaMode = sg::AlphaMode::Blend; }
-        else if (mat.alphaMode == "MASK") { sgMat->alphaMode = sg::AlphaMode::Mask; }
+        if (mat.alphaMode == "BLEND")
+        {
+            sgMat->alphaMode = sg::AlphaMode::Blend;
+        }
+        else if (mat.alphaMode == "MASK")
+        {
+            sgMat->alphaMode = sg::AlphaMode::Mask;
+        }
 
         // Extensions
         // @TODO: Find out if there is a nicer way of reading these properties with recent tinygltf headers
@@ -1124,7 +1204,10 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
                                 break;
                         }
                     }
-                    else { vert.joint0 = Vec4(0.0f); }
+                    else
+                    {
+                        vert.joint0 = Vec4(0.0f);
+                    }
                     vert.weight0 =
                         hasSkin ? glm::make_vec4(&bufferWeights[v * weightByteStride]) : Vec4(0.0f);
                     // Fix for all zero weights
@@ -1251,7 +1334,10 @@ void GltfLoader::ParseGltfNode(
         transform->SetRotation(glm::make_quat(gltfNode.rotation.data()));
     }
 
-    if (gltfNode.scale.size() == 3) { transform->SetScale(glm::make_vec3(gltfNode.scale.data())); }
+    if (gltfNode.scale.size() == 3)
+    {
+        transform->SetScale(glm::make_vec3(gltfNode.scale.data()));
+    }
 
     if (gltfNode.matrix.size() == 16)
     {
@@ -1279,7 +1365,10 @@ void GltfLoader::ParseGltfNode(
         scene->AddRenderableNode(newNode.Get());
     }
 
-    if (parent) { parent->AddChild(newNode.Get()); }
+    if (parent)
+    {
+        parent->AddChild(newNode.Get());
+    }
     sgNodes.push_back(newNode);
 }
 

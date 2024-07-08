@@ -80,9 +80,15 @@ public:
 
     void Pause();
 
-    bool IsDirty() const { return m_dirty; }
+    bool IsDirty() const
+    {
+        return m_dirty;
+    }
 
-    void SetDirty(bool flag) { m_dirty = flag; }
+    void SetDirty(bool flag)
+    {
+        m_dirty = flag;
+    }
 
 private:
     KeyboardMouseInput() = default;

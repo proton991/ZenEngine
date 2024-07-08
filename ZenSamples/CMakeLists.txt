@@ -38,10 +38,10 @@ add_executable(GLTFViewer
 )
 
 add_executable(SceneGraphDemo
-        Applications/Application.h
-        Applications/SceneGraphDemo/SceneGraphDemo.cpp
-        Applications/SceneGraphDemo/SceneGraphDemo.h
-        Applications/SceneGraphDemo/Entry.cpp
+    Applications/Application.h
+    Applications/SceneGraphDemo/SceneGraphDemo.cpp
+    Applications/SceneGraphDemo/SceneGraphDemo.h
+    Applications/SceneGraphDemo/Entry.cpp
 )
 
 target_link_libraries(HelloTriangle ZenCore)

@@ -17,15 +17,30 @@ public:
 
     ~Swapchain() = default;
 
-    VkFormat GetFormat() const { return m_surfaceFormat.format; }
+    VkFormat GetFormat() const
+    {
+        return m_surfaceFormat.format;
+    }
 
-    VkImageUsageFlags GetUsage() const { return m_usage; }
+    VkImageUsageFlags GetUsage() const
+    {
+        return m_usage;
+    }
 
-    auto& GetImages() const { return m_images; }
+    auto& GetImages() const
+    {
+        return m_images;
+    }
 
-    VkExtent3D GetExtent3D() const { return {m_extent.width, m_extent.height, 1}; }
+    VkExtent3D GetExtent3D() const
+    {
+        return {m_extent.width, m_extent.height, 1};
+    }
 
-    VkExtent2D GetExtent2D() const { return m_extent; }
+    VkExtent2D GetExtent2D() const
+    {
+        return m_extent;
+    }
 
     VkResult AcquireNextImage(uint32_t& imageIndex,
                               VkSemaphore imageAcquiredSem,

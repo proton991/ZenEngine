@@ -31,19 +31,34 @@ public:
 
     bool IsExtensionEnabled(const char* extension) const;
 
-    VkDevice GetHandle() const { return m_handle; }
+    VkDevice GetHandle() const
+    {
+        return m_handle;
+    }
 
-    VkPhysicalDevice GetPhysicalDeviceHandle() const { return m_physicalDevice->GetHandle(); }
+    VkPhysicalDevice GetPhysicalDeviceHandle() const
+    {
+        return m_physicalDevice->GetHandle();
+    }
 
     const Queue& GetQueue(QueueType queueType) const;
 
-    VmaAllocator GetAllocator() const { return m_memAllocator; }
+    VmaAllocator GetAllocator() const
+    {
+        return m_memAllocator;
+    }
 
-    VkInstance GetInstanceHandle() const { return m_physicalDevice->GetInstanceHandle(); }
+    VkInstance GetInstanceHandle() const
+    {
+        return m_physicalDevice->GetInstanceHandle();
+    }
 
     void WaitIdle() const;
 
-    auto GetGPUProperties() const { return m_physicalDevice->m_properties; }
+    auto GetGPUProperties() const
+    {
+        return m_physicalDevice->m_properties;
+    }
 
 private:
     VkDevice m_handle{VK_NULL_HANDLE};

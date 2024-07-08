@@ -17,7 +17,10 @@ public:
     bool Pop(T& out)
     {
         LockAuto lock(&m_mutex);
-        if (m_q.empty()) { return false; }
+        if (m_q.empty())
+        {
+            return false;
+        }
         out = m_q.front();
         m_q.pop();
         return true;
@@ -45,13 +48,19 @@ public:
 
     bool Pop(T& out)
     {
-        if (m_q.empty()) { return false; }
+        if (m_q.empty())
+        {
+            return false;
+        }
         out = m_q.front();
         m_q.pop();
         return true;
     }
 
-    bool Empty() { return m_q.empty(); }
+    bool Empty()
+    {
+        return m_q.empty();
+    }
 
 private:
     std::queue<T> m_q;

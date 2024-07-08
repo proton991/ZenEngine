@@ -30,11 +30,17 @@ public:
     uint32_t Release()
     {
         uint32_t newValue = m_counter.Release();
-        if (newValue == 0) { delete this; }
+        if (newValue == 0)
+        {
+            delete this;
+        }
         return newValue;
     }
 
-    uint32_t GetRefCount() const { return m_counter.GetValue(); }
+    uint32_t GetRefCount() const
+    {
+        return m_counter.GetValue();
+    }
 
 private:
     class AtomicCounter
@@ -52,7 +58,10 @@ private:
             return oldValue - 1;
         }
 
-        uint32_t GetValue() { return m_count.load(std::memory_order_relaxed); }
+        uint32_t GetValue()
+        {
+            return m_count.load(std::memory_order_relaxed);
+        }
 
     private:
         std::atomic_uint m_count{0};

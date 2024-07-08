@@ -17,10 +17,22 @@
 using namespace zen;
 struct Struct
 {
-    explicit Struct(int aVal) : mVal(aVal) { ++_mNbInstances; }
-    ~Struct(void) { --_mNbInstances; }
-    void incr(void) { ++mVal; }
-    void decr(void) { --mVal; }
+    explicit Struct(int aVal) : mVal(aVal)
+    {
+        ++_mNbInstances;
+    }
+    ~Struct(void)
+    {
+        --_mNbInstances;
+    }
+    void incr(void)
+    {
+        ++mVal;
+    }
+    void decr(void)
+    {
+        --mVal;
+    }
 
     int mVal;
     static int _mNbInstances;
@@ -40,7 +52,10 @@ TEST(SharedPtr, empty_ptr)
     EXPECT_EQ(0, xPtr.UseCount());
     EXPECT_EQ((void*)nullptr, xPtr.Get());
 
-    if (xPtr) { GTEST_FATAL_FAILURE_("bool cast operator error"); }
+    if (xPtr)
+    {
+        GTEST_FATAL_FAILURE_("bool cast operator error");
+    }
 
     // Reset to nullptr (ie. do nothing)
     xPtr.Reset();
@@ -159,7 +174,10 @@ TEST(SharedPtr, basic_ptr)
             EXPECT_EQ(123, xPtr->mVal);
             EXPECT_EQ(1, Struct::_mNbInstances);
         }
-        else { GTEST_FATAL_FAILURE_("bool cast operator error"); }
+        else
+        {
+            GTEST_FATAL_FAILURE_("bool cast operator error");
+        }
 
         EXPECT_EQ(true, xPtr);
         EXPECT_EQ(true, xPtr.Unique());
@@ -468,8 +486,14 @@ TEST(SharedPtr, move_constructor)
 class A
 {
 public:
-    A() { ++_mNbInstances; };
-    virtual ~A() { --_mNbInstances; };
+    A()
+    {
+        ++_mNbInstances;
+    };
+    virtual ~A()
+    {
+        --_mNbInstances;
+    };
     static int _mNbInstances;
 };
 int A::_mNbInstances = 0;
@@ -477,8 +501,14 @@ int A::_mNbInstances = 0;
 class B : public A
 {
 public:
-    B() { ++_mNbInstances; };
-    virtual ~B() { --_mNbInstances; };
+    B()
+    {
+        ++_mNbInstances;
+    };
+    virtual ~B()
+    {
+        --_mNbInstances;
+    };
     static int _mNbInstances;
 };
 int B::_mNbInstances = 0;

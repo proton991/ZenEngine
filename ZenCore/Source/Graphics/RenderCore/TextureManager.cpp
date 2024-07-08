@@ -10,7 +10,10 @@ namespace zen
 {
 val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool requireMipmap)
 {
-    if (m_cache.count(filename)) { return m_cache[filename].Get(); }
+    if (m_cache.count(filename))
+    {
+        return m_cache[filename].Get();
+    }
     TextureInfo textureInfo = TextureLoader::LoadTexture2DFromFile(filename);
     // Create Image
     val::ImageCreateInfo imageCI{};
@@ -24,7 +27,10 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
         imageCI.usage =
             val::ImageUsage::TransferDst | val::ImageUsage::TransferSrc | val::ImageUsage::Sampled;
     }
-    else { imageCI.usage = val::ImageUsage::TransferDst | val::ImageUsage::Sampled; }
+    else
+    {
+        imageCI.usage = val::ImageUsage::TransferDst | val::ImageUsage::Sampled;
+    }
     imageCI.mipLevels =
         textureInfo.otherLeveData.empty() ? 1 : textureInfo.otherLeveData.size() + 1;
     m_cache.emplace(filename, val::Image::CreateUnique(m_valDevice, imageCI));
@@ -77,7 +83,10 @@ void TextureManager::RegisterSceneTextures(sg::Scene* scene, bool requireMipmap)
             imageCI.usage  = val::ImageUsage::TransferDst | val::ImageUsage::TransferSrc |
                 val::ImageUsage::Sampled;
         }
-        else { imageCI.usage = val::ImageUsage::TransferDst | val::ImageUsage::Sampled; }
+        else
+        {
+            imageCI.usage = val::ImageUsage::TransferDst | val::ImageUsage::Sampled;
+        }
 
         if (generateMipmap)
         {

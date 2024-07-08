@@ -87,7 +87,10 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
     auto flagExtensionSupport = [&](const char* extensionName) {
         for (auto& extension : instanceExtensions)
         {
-            if (strcmp(extension->GetName(), extensionName) == 0) { extension->SetSupport(); }
+            if (strcmp(extension->GetName(), extensionName) == 0)
+            {
+                extension->SetSupport();
+            }
         }
     };
 
@@ -95,7 +98,10 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
         int index = -1;
         for (uint32_t i = 0; i < supportedLayers.size(); i++)
         {
-            if (strcmp(supportedLayers[i].layerProperties.layerName, layerName) == 0) { index = i; }
+            if (strcmp(supportedLayers[i].layerProperties.layerName, layerName) == 0)
+            {
+                index = i;
+            }
         }
         if (index == -1)
         {
@@ -113,7 +119,10 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
     // Add Debug Layer
     const char* debugLayerName = "VK_LAYER_KHRONOS_validation";
     addRequestLayer(debugLayerName);
-    for (auto& layer : m_instanceLayers) { LOGI("Enabled Instance Layer: {}", layer); }
+    for (auto& layer : m_instanceLayers)
+    {
+        LOGI("Enabled Instance Layer: {}", layer);
+    }
 }
 
 void VulkanRHI::SetupInstanceExtensions(VulkanInstanceExtensionArray& instanceExtensions)
@@ -210,7 +219,10 @@ VulkanRHI::VulkanRHI() :
 #if defined(ZEN_MACOS)
     setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
 #endif
-    if (volkInitialize() != VK_SUCCESS) { LOG_ERROR_AND_THROW("Failed to initialize volk!"); }
+    if (volkInitialize() != VK_SUCCESS)
+    {
+        LOG_ERROR_AND_THROW("Failed to initialize volk!");
+    }
     m_shaderAllocator.Init();
     m_textureAllocator.Init();
     m_bufferAllocator.Init();
@@ -222,7 +234,10 @@ VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
     return m_device->GetPhysicalDeviceHandle();
 }
 
-VkDevice VulkanRHI::GetVkDevice() const { return m_device->GetVkHandle(); }
+VkDevice VulkanRHI::GetVkDevice() const
+{
+    return m_device->GetVkHandle();
+}
 
 void VulkanRHI::Init()
 {

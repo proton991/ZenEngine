@@ -13,7 +13,10 @@ void PipelineState::SetInputAssemblyState(InputAssemblyState&& state)
     m_inputAssemblyState = std::move(state);
 }
 
-void PipelineState::SetViewportState(ViewportState&& state) { m_viewportState = std::move(state); }
+void PipelineState::SetViewportState(ViewportState&& state)
+{
+    m_viewportState = std::move(state);
+}
 
 void PipelineState::SetRasterizationState(RasterizationState&& state)
 {
@@ -40,9 +43,15 @@ void PipelineState::SetDynamicState(std::vector<VkDynamicState>&& states)
     m_dynamicStates = std::move(states);
 }
 
-void PipelineState::SetRenderPass(VkRenderPass renderPass) { m_renderPassHandle = renderPass; }
+void PipelineState::SetRenderPass(VkRenderPass renderPass)
+{
+    m_renderPassHandle = renderPass;
+}
 
-void PipelineState::SetSubpassIndex(uint32_t index) { m_subpassIndex = index; }
+void PipelineState::SetSubpassIndex(uint32_t index)
+{
+    m_subpassIndex = index;
+}
 
 VkPipelineVertexInputStateCreateInfo PipelineState::GetVIStateCI() const
 {
@@ -137,7 +146,13 @@ VkPipelineDynamicStateCreateInfo PipelineState::GetDynamicStateCI() const
     return info;
 }
 
-VkRenderPass PipelineState::GetRPHandle() const { return m_renderPassHandle; }
+VkRenderPass PipelineState::GetRPHandle() const
+{
+    return m_renderPassHandle;
+}
 
-uint32_t PipelineState::GetSubpassIndex() const { return m_subpassIndex; }
+uint32_t PipelineState::GetSubpassIndex() const
+{
+    return m_subpassIndex;
+}
 } // namespace zen::val

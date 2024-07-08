@@ -16,7 +16,10 @@ public:
                     bool enableVSync,
                     VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
 
-    VkSwapchainKHR GetVkHandle() const { return m_swaphchain; }
+    VkSwapchainKHR GetVkHandle() const
+    {
+        return m_swaphchain;
+    }
 
 private:
     VkSwapchainKHR m_swaphchain{VK_NULL_HANDLE};

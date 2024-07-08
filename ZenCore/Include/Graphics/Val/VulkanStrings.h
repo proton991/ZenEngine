@@ -4,7 +4,10 @@
 
 namespace zen::val
 {
-template <typename T> inline std::string VkToString(T value) { return ""; }
+template <typename T> inline std::string VkToString(T value)
+{
+    return "";
+}
 
 template <>
 // clang-tidy: disable-next-line

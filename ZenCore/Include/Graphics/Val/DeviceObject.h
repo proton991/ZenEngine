@@ -24,7 +24,10 @@ public:
         SetObjectDebugName(m_debugName);
     }
 
-    VkHandleType GetHandle() const { return m_handle; }
+    VkHandleType GetHandle() const
+    {
+        return m_handle;
+    }
 
     void SetObjectDebugName(std::string name)
     {

@@ -74,7 +74,10 @@ public:
 
     void CopyData(const uint8_t* data, size_t byteSize, size_t offset);
 
-    auto GetSize() const { return m_byteSize; }
+    auto GetSize() const
+    {
+        return m_byteSize;
+    }
 
 private:
     VmaAllocation m_allocation{nullptr};

@@ -136,7 +136,10 @@ void RenderGraph::SetBackBufferSize(uint32_t width, uint32_t height)
 RDGPass* RenderGraph::AddPass(const std::string& tag, RDGQueueFlags queueFlags)
 {
     auto iter = m_passToIndex.find(tag);
-    if (iter != m_passToIndex.end()) { return m_passes[iter->second].Get(); }
+    if (iter != m_passToIndex.end())
+    {
+        return m_passes[iter->second].Get();
+    }
     else
     {
         Index index = m_passes.size();
@@ -167,7 +170,10 @@ void RenderGraph::Execute(val::CommandBuffer* commandBuffer, RenderContext* rend
         BeforeExecuteSetup(commandBuffer);
         m_initialized = true;
     }
-    for (auto& physicalPass : m_physicalPasses) { RunPass(physicalPass, commandBuffer); }
+    for (auto& physicalPass : m_physicalPasses)
+    {
+        RunPass(physicalPass, commandBuffer);
+    }
     CopyToPresentImage(commandBuffer, *renderContext->GetActiveFrame().GetSwapchainImage());
 }
 
@@ -190,7 +196,10 @@ void RenderGraph::SortRenderPasses()
     }
     // use a copy here as TraversePassDepsRecursive() will change the content of m_sortedPassIndices
     auto tmp = m_sortedPassIndices;
-    for (auto& passIndex : tmp) { TraversePassDepsRecursive(passIndex, 0); }
+    for (auto& passIndex : tmp)
+    {
+        TraversePassDepsRecursive(passIndex, 0);
+    }
 
     std::reverse(m_sortedPassIndices.begin(), m_sortedPassIndices.end());
     RemoveDuplicates(m_sortedPassIndices);
@@ -199,16 +208,25 @@ void RenderGraph::SortRenderPasses()
 void RenderGraph::TraversePassDepsRecursive(Index passIndex, uint32_t level)
 {
     auto& pass = *m_passes[passIndex];
-    if (level > m_passes.size()) { LOG_ERROR_AND_THROW("Cycle detected in render graph!"); }
+    if (level > m_passes.size())
+    {
+        LOG_ERROR_AND_THROW("Cycle detected in render graph!");
+    }
     for (auto& [tag, _] : pass.GetInImageResources())
     {
         auto& input = m_resources[m_resourceToIndex[tag]];
-        for (auto& dep : input->GetWrittenInPasses()) { m_passDeps[pass.GetIndex()].insert(dep); }
+        for (auto& dep : input->GetWrittenInPasses())
+        {
+            m_passDeps[pass.GetIndex()].insert(dep);
+        }
     }
     for (auto& [tag, _] : pass.GetInBufferResources())
     {
         auto& input = m_resources[m_resourceToIndex[tag]];
-        for (auto& dep : input->GetWrittenInPasses()) { m_passDeps[pass.GetIndex()].insert(dep); }
+        for (auto& dep : input->GetWrittenInPasses())
+        {
+            m_passDeps[pass.GetIndex()].insert(dep);
+        }
     }
     level++;
     if (!m_passDeps.empty())
@@ -370,7 +388,10 @@ void RenderGraph::BuildPhysicalResources()
         {
             BuildPhysicalImage(resource->As<RDGImage>());
         }
-        else { BuildPhysicalBuffer(resource->As<RDGBuffer>()); }
+        else
+        {
+            BuildPhysicalBuffer(resource->As<RDGBuffer>());
+        }
     }
 }
 
@@ -427,7 +448,10 @@ void RenderGraph::BuildPhysicalPasses()
                 {
                     depthRefIndex = attIndex;
                 }
-                else { colorReferences.push_back(attachmentReference); }
+                else
+                {
+                    colorReferences.push_back(attachmentReference);
+                }
             }
         }
         // Create RenderPass
@@ -537,7 +561,8 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
         barrier.subresourceRange    = m_physicalImages[physicalIndex]->GetSubResourceRange();
         imageMemBarriers.push_back(barrier);
     }
-    if (bufferMemBarriers.empty() && imageMemBarriers.empty()) return;
+    if (bufferMemBarriers.empty() && imageMemBarriers.empty())
+        return;
 
     if (!bufferMemBarriers.empty() || !imageMemBarriers.empty())
     {
@@ -603,7 +628,8 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
 void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
 {
     // do not support dynamic descriptors for now, only update once
-    if (pass.descriptorSetsUpdated) return;
+    if (pass.descriptorSetsUpdated)
+        return;
     auto& rdgPass = m_passes[pass.index];
     // update descriptors
     std::vector<VkWriteDescriptorSet> dsWrites;
@@ -734,11 +760,17 @@ void RenderGraph::RunPass(RDGPhysicalPass& pass, val::CommandBuffer* primaryCmdB
             primaryCmdBuffer->BeginRenderPass(rpBeginInfo,
                                               VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
         }
-        else { primaryCmdBuffer->BeginRenderPass(rpBeginInfo); }
+        else
+        {
+            primaryCmdBuffer->BeginRenderPass(rpBeginInfo);
+        }
     }
     // Call function from outside
     pass.onExecute(primaryCmdBuffer);
     // End Pass
-    if (pass.renderPass) { primaryCmdBuffer->EndRenderPass(); }
+    if (pass.renderPass)
+    {
+        primaryCmdBuffer->EndRenderPass();
+    }
 }
 } // namespace zen

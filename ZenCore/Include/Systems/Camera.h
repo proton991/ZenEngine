@@ -32,8 +32,14 @@ public:
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;
-    auto GetPos() const { return m_position; }
-    void SetSpeed(float speed) { m_speed = speed; }
+    auto GetPos() const
+    {
+        return m_position;
+    }
+    void SetSpeed(float speed)
+    {
+        m_speed = speed;
+    }
 
     void Update(float deltaTime);
     void UpdateAspect(float aspect);

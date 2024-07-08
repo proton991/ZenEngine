@@ -28,7 +28,10 @@ public:
         VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         uint32_t threadId          = 0);
 
-    VkSemaphore RequestSemaphore() { return m_syncObjPool.RequestSemaphore(); }
+    VkSemaphore RequestSemaphore()
+    {
+        return m_syncObjPool.RequestSemaphore();
+    }
 
     VkSemaphore RequestSemaphoreWithOwnership()
     {
@@ -40,13 +43,22 @@ public:
         m_syncObjPool.ReleaseSemaphoreWithOwnership(sem);
     }
 
-    VkFence RequestFence() { return m_syncObjPool.RequestFence(); }
+    VkFence RequestFence()
+    {
+        return m_syncObjPool.RequestFence();
+    }
 
     void Reset();
 
-    val::Image* GetSwapchainImage() const { return m_swapchainImage.Get(); }
+    val::Image* GetSwapchainImage() const
+    {
+        return m_swapchainImage.Get();
+    }
 
-    StagingBuffer* GetStagingBuffer() const { return m_stagingBuffer.Get(); }
+    StagingBuffer* GetStagingBuffer() const
+    {
+        return m_stagingBuffer.Get();
+    }
 
 private:
     std::vector<UniquePtr<val::CommandPool>>& GetCommandPools(

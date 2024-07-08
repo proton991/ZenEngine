@@ -16,7 +16,10 @@ public:
 
     Component(Component&& other) = default;
 
-    const std::string& GetName() const { return m_name; }
+    const std::string& GetName() const
+    {
+        return m_name;
+    }
 
     virtual TypeId GetTypeId() const = 0;
 

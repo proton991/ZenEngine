@@ -13,16 +13,25 @@ class Scene
 public:
     Scene() = default;
 
-    std::vector<Node*>& GetRenderableNodes() { return m_renderableNodes; }
+    std::vector<Node*>& GetRenderableNodes()
+    {
+        return m_renderableNodes;
+    }
 
     std::vector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos,
                                                                const Mat4& transform);
 
-    void AddRenderableNode(Node* node) { m_renderableNodes.push_back(node); }
+    void AddRenderableNode(Node* node)
+    {
+        m_renderableNodes.push_back(node);
+    }
 
     void AddComponent(UniquePtr<Component>&& component)
     {
-        if (component) { m_components[component->GetTypeId()].emplace_back(std::move(component)); }
+        if (component)
+        {
+            m_components[component->GetTypeId()].emplace_back(std::move(component));
+        }
     }
     /**
 	 * @brief Set list of components casted from the given template type
@@ -61,15 +70,27 @@ public:
         return (component != m_components.end() && !component->second.empty());
     }
 
-    void SetNodes(std::vector<UniquePtr<Node>>&& nodes) { m_nodes = std::move(nodes); }
+    void SetNodes(std::vector<UniquePtr<Node>>&& nodes)
+    {
+        m_nodes = std::move(nodes);
+    }
 
     void UpdateAABB();
 
-    auto GetSize() const { return m_aabb.GetScale(); }
+    auto GetSize() const
+    {
+        return m_aabb.GetScale();
+    }
 
-    auto GetAABB() const { return m_aabb; }
+    auto GetAABB() const
+    {
+        return m_aabb;
+    }
 
-    auto& GetAABB() { return m_aabb; }
+    auto& GetAABB()
+    {
+        return m_aabb;
+    }
 
 private:
     std::string m_name;

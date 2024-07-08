@@ -19,15 +19,24 @@ class ConditionVariable
 public:
 #if defined(ZEN_WIN32)
     typedef CONDITION_VARIABLE ConditionVariableData;
-    ConditionVariable() : m_osConVar() { InitializeConditionVariable(&m_osConVar); }
+    ConditionVariable() : m_osConVar()
+    {
+        InitializeConditionVariable(&m_osConVar);
+    }
     ~ConditionVariable() {}
 #endif
 
 #if defined(ZEN_MACOS)
     typedef pthread_cond_t ConditionVariableData;
 
-    ConditionVariable() { pthread_cond_init(&m_osConVar, NULL); }
-    ~ConditionVariable() { pthread_cond_destroy(&m_osConVar); }
+    ConditionVariable()
+    {
+        pthread_cond_init(&m_osConVar, NULL);
+    }
+    ~ConditionVariable()
+    {
+        pthread_cond_destroy(&m_osConVar);
+    }
 #endif
 
     template <class Predicate>
@@ -53,14 +62,23 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         SleepConditionVariableCS(&m_osConVar, pMutex->GetMutexData(), milliseconds);
     }
 }
-inline void ConditionVariable::NotifyOne() { WakeConditionVariable(&m_osConVar); }
+inline void ConditionVariable::NotifyOne()
+{
+    WakeConditionVariable(&m_osConVar);
+}
 
-inline void ConditionVariable::NotifyAll() { WakeAllConditionVariable(&m_osConVar); }
+inline void ConditionVariable::NotifyAll()
+{
+    WakeAllConditionVariable(&m_osConVar);
+}
 
 template <class Predicate>
 void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
 {
-    while (!predicate()) { Wait(pMutex, milliseconds); }
+    while (!predicate())
+    {
+        Wait(pMutex, milliseconds);
+    }
 }
 #endif
 
@@ -69,7 +87,10 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
 {
     if (pMutex != nullptr)
     {
-        if (milliseconds == INF_TIME) { pthread_cond_wait(&m_osConVar, pMutex->GetMutexData()); }
+        if (milliseconds == INF_TIME)
+        {
+            pthread_cond_wait(&m_osConVar, pMutex->GetMutexData());
+        }
         else
         {
             auto now     = std::chrono::system_clock::now();
@@ -83,14 +104,23 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         }
     }
 }
-inline void ConditionVariable::NotifyOne() { pthread_cond_signal(&m_osConVar); }
+inline void ConditionVariable::NotifyOne()
+{
+    pthread_cond_signal(&m_osConVar);
+}
 
-inline void ConditionVariable::NotifyAll() { pthread_cond_broadcast(&m_osConVar); }
+inline void ConditionVariable::NotifyAll()
+{
+    pthread_cond_broadcast(&m_osConVar);
+}
 
 template <class Predicate>
 void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
 {
-    while (!predicate()) { Wait(pMutex, milliseconds); }
+    while (!predicate())
+    {
+        Wait(pMutex, milliseconds);
+    }
 }
 #endif
 } // namespace zen

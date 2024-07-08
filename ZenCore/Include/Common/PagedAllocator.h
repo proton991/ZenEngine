@@ -9,7 +9,10 @@ static uint32_t CalcShiftFromPowerOf2(unsigned int num)
 {
     for (uint32_t i = 0; i < 32; i++)
     {
-        if (num == static_cast<uint32_t>(1 << i)) { return i; }
+        if (num == static_cast<uint32_t>(1 << i))
+        {
+            return i;
+        }
     }
 
     return -1;
@@ -32,7 +35,10 @@ public:
 
     template <typename... Args> T* Alloc(Args&&... args)
     {
-        if (m_threadSafe) { m_lock.Lock(); }
+        if (m_threadSafe)
+        {
+            m_lock.Lock();
+        }
 
         if (m_allocsAvailable == 0)
         {
@@ -58,24 +64,39 @@ public:
         T* alloc = m_freePages[GetPageIndex()][GetSlotIndex()];
         new (alloc) T(args...);
 
-        if (m_threadSafe) { m_lock.Unlock(); }
+        if (m_threadSafe)
+        {
+            m_lock.Unlock();
+        }
         return alloc;
     }
 
     void Free(T* pMemory)
     {
-        if (m_threadSafe) { m_lock.Lock(); }
+        if (m_threadSafe)
+        {
+            m_lock.Lock();
+        }
 
         pMemory->~T();
         m_freePages[GetPageIndex()][GetSlotIndex()] = pMemory;
         m_allocsAvailable++;
 
-        if (m_threadSafe) { m_lock.Unlock(); }
+        if (m_threadSafe)
+        {
+            m_lock.Unlock();
+        }
     }
 
 private:
-    uint32_t GetPageIndex() const { return m_allocsAvailable >> m_pageShift; }
-    uint32_t GetSlotIndex() const { return m_allocsAvailable & m_pageMask; }
+    uint32_t GetPageIndex() const
+    {
+        return m_allocsAvailable >> m_pageShift;
+    }
+    uint32_t GetSlotIndex() const
+    {
+        return m_allocsAvailable & m_pageMask;
+    }
 
     // configurations
     uint32_t m_pageSize{ZEN_DEFAULT_PAGESIZE};

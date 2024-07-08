@@ -30,14 +30,23 @@ public:
         MapMemory();
     }
 
-    void Flush() { FlushMemory(m_currentOffset, 0); }
+    void Flush()
+    {
+        FlushMemory(m_currentOffset, 0);
+    }
 
-    void ResetOffset() { m_currentOffset = 0; }
+    void ResetOffset()
+    {
+        m_currentOffset = 0;
+    }
 
     SubmitInfo Submit(const uint8_t* data, size_t byteSize)
     {
         ASSERT(m_currentOffset + byteSize <= GetSize());
-        if (data != nullptr) { CopyData(data, byteSize, m_currentOffset); }
+        if (data != nullptr)
+        {
+            CopyData(data, byteSize, m_currentOffset);
+        }
         m_currentOffset += byteSize;
         return SubmitInfo{byteSize, m_currentOffset - byteSize};
     }
@@ -128,7 +137,10 @@ public:
         m_indexCount(indexCount)
     {}
 
-    auto GetIndexCount() const { return m_indexCount; }
+    auto GetIndexCount() const
+    {
+        return m_indexCount;
+    }
 
 private:
     const uint32_t m_indexCount;

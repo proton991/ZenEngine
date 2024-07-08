@@ -73,6 +73,9 @@ int main(int argc, char** argv)
     auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
     auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);
 
-    while (!window->ShouldClose()) { window->Update(); }
+    while (!window->ShouldClose())
+    {
+        window->Update();
+    }
     return 0;
 }

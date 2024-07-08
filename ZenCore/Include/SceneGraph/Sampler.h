@@ -25,7 +25,10 @@ class Sampler : public Component
 public:
     Sampler(std::string name) : Component(std::move(name)) {}
 
-    TypeId GetTypeId() const override { return typeid(Sampler); }
+    TypeId GetTypeId() const override
+    {
+        return typeid(Sampler);
+    }
 
     TextureFilter minFilter{TextureFilter::MaxEnum};
     TextureFilter magFilter{TextureFilter::MaxEnum};

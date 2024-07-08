@@ -34,7 +34,10 @@ public:
 
 
 
-    VkInstance GetHandle() const { return m_handle; }
+    VkInstance GetHandle() const
+    {
+        return m_handle;
+    }
 
     VkPhysicalDevice SelectPhysicalDevice();
 

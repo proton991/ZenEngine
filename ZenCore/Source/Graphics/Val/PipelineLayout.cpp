@@ -19,7 +19,10 @@ PipelineLayout::PipelineLayout(const Device& device,
             {
                 key = VkToString(shaderResource.stages).append("_").append(key);
             }
-            if (!m_shaderResources.count(key)) { m_shaderResources.emplace(key, shaderResource); }
+            if (!m_shaderResources.count(key))
+            {
+                m_shaderResources.emplace(key, shaderResource);
+            }
             else
             {
                 if (m_shaderResources[key].stages != shaderResource.stages)
@@ -37,7 +40,10 @@ PipelineLayout::PipelineLayout(const Device& device,
         {
             m_perSetResource.emplace(set, std::vector<ShaderResource>{shaderResource});
         }
-        else { m_perSetResource[set].push_back(shaderResource); }
+        else
+        {
+            m_perSetResource[set].push_back(shaderResource);
+        }
     }
     std::vector<VkDescriptorSetLayout> dsLayoutHandles;
     for (auto& it : m_perSetResource)
