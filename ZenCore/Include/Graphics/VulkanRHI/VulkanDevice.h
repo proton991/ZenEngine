@@ -9,6 +9,8 @@ namespace zen::rhi
 class VulkanRHI;
 class VulkanDeviceExtension;
 class VulkanQueue;
+class VulkanFenceManager;
+class VulkanSemaphoreManager;
 
 struct DeviceExtensionFlags
 {
@@ -43,6 +45,12 @@ public:
 
     const auto& GetDescriptorIndexingProperties() const { return m_descriptorIndexingProperties; }
 
+    VulkanFenceManager* GetFenceManager() const { return m_fenceManager; }
+
+    VulkanSemaphoreManager* GetSemaphoreManager() const { return m_semaphoreManger; }
+
+    VulkanQueue* GetGfxQueue() const { return m_gfxQueue; }
+
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
@@ -70,5 +78,8 @@ private:
     VulkanQueue* m_gfxQueue{nullptr};
     VulkanQueue* m_computeQueue{nullptr};
     VulkanQueue* m_transferQueue{nullptr};
+
+    VulkanFenceManager* m_fenceManager;
+    VulkanSemaphoreManager* m_semaphoreManger;
 };
 } // namespace zen::rhi

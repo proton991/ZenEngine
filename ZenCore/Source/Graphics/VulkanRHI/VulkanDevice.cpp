@@ -3,6 +3,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
+#include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
 namespace zen::rhi
 {
@@ -87,6 +88,9 @@ void VulkanDevice::Init()
     }
 
     SetupDevice(extensionArray);
+
+    m_fenceManager    = new VulkanFenceManager(this);
+    m_semaphoreManger = new VulkanSemaphoreManager(this);
 }
 
 void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions)
@@ -202,5 +206,14 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char*
     vkSetDebugUtilsObjectNameEXT(m_device, &info);
 }
 
-void VulkanDevice::Destroy() { vkDestroyDevice(m_device, nullptr); }
+void VulkanDevice::Destroy()
+{
+    m_fenceManager->Destroy();
+    delete m_fenceManager;
+
+    m_semaphoreManger->Destroy();
+    delete m_semaphoreManger;
+
+    vkDestroyDevice(m_device, nullptr);
+}
 } // namespace zen::rhi

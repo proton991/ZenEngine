@@ -38,3 +38,26 @@ TEST(RefCountPtr, move)
     EXPECT_EQ(res2.GetRefCount(), 0);
     EXPECT_EQ(res2.Get(), nullptr);
 }
+
+void addToVec(std::vector<RefCountPtr<DummyResource>>& vec, RefCountPtr<DummyResource> item)
+{
+    vec.push_back(item);
+}
+
+TEST(RefCountPtr, vector)
+{
+    RefCountPtr<DummyResource> res1 = MakeRefCountPtr<DummyResource>();
+    RefCountPtr<DummyResource> res2 = res1;
+    {
+        std::vector<RefCountPtr<DummyResource>> vec;
+        vec.push_back(res1);
+        vec.push_back(res2);
+        EXPECT_EQ(res1.GetRefCount(), 4);
+    }
+    {
+        std::vector<RefCountPtr<DummyResource>> vec;
+        RefCountPtr<DummyResource> res3 = MakeRefCountPtr<DummyResource>();
+        addToVec(vec, res3);
+        EXPECT_EQ(res3.GetRefCount(), 2);
+    }
+}

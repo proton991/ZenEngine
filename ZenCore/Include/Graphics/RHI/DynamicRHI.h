@@ -36,15 +36,6 @@ public:
 
     virtual void DestroySwapchain(SwapchainHandle swapchainHandle) = 0;
 
-    virtual CommandPoolHandle CreateCommandPool(uint32_t queueFamilyIndex) = 0;
-
-    virtual void ResetCommandPool(CommandPoolHandle commandPoolHandle) = 0;
-
-    virtual void DestroyCommandPool(CommandPoolHandle commandPoolHandle) = 0;
-
-    virtual CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle cmdPoolHandle,
-                                                         CommandBufferLevel level) = 0;
-
     virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
 
     virtual void DestroyShader(ShaderHandle shaderHandle) = 0;

@@ -54,6 +54,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/RHICommon.h
     Include/Graphics/RHI/RHIResource.h
     Include/Graphics/RHI/RHIDefs.h
+    Include/Graphics/RHI/RHIOptions.h
     Include/Graphics/RHI/ShaderUtil.h
 
     Include/Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h
@@ -73,6 +74,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanTexture.h
     Include/Graphics/VulkanRHI/VulkanBuffer.h
     Include/Graphics/VulkanRHI/VulkanMemory.h
+    Include/Graphics/VulkanRHI/VulkanSynchronization.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -135,6 +137,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanTexture.cpp
     Source/Graphics/VulkanRHI/VulkanBuffer.cpp
     Source/Graphics/VulkanRHI/VulkanMemory.cpp
+    Source/Graphics/VulkanRHI/VulkanSynchronization.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp

@@ -51,15 +51,6 @@ public:
 
     void DestroySwapchain(SwapchainHandle swapchainHandle) final;
 
-    CommandPoolHandle CreateCommandPool(uint32_t queueFamilyIndex) final;
-
-    void ResetCommandPool(CommandPoolHandle commandPoolHandle) final;
-
-    void DestroyCommandPool(CommandPoolHandle commandPoolHandle) final;
-
-    CommandBufferHandle GetOrCreateCommandBuffer(CommandPoolHandle cmdPoolHandle,
-                                                 CommandBufferLevel level) final;
-
     ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
 
     void DestroyShader(ShaderHandle shaderHandle) final;

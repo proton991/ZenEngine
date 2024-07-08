@@ -233,7 +233,7 @@ void VulkanRHI::Init()
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());
 
-    m_cmdBufferManager = new VulkanCommandBufferManager(m_device);
+    m_cmdBufferManager = new VulkanCommandBufferManager(m_device, m_device->GetGfxQueue());
 }
 
 void VulkanRHI::Destroy()

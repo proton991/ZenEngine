@@ -5,30 +5,174 @@
 
 namespace zen::rhi
 {
+class VulkanQueue;
+class VulkanDevice;
+class VulkanCommandBufferManager;
+class VulkanCommandBuffer;
+class VulkanFence;
+class VulkanSemaphore;
+
 struct VulkanCommandPool
 {
     VkCommandPool vkHandle{VK_NULL_HANDLE};
     uint32_t queueFamilyIndex{};
 };
 
+class VulkanCommandBufferPool
+{
+public:
+    VulkanCommandBufferPool(VulkanDevice* device, VulkanCommandBufferManager& mgr) :
+        m_device(device), m_owner(mgr)
+    {}
+
+    ~VulkanCommandBufferPool();
+
+    void Init(uint32_t queueFamilyIndex);
+
+    VulkanDevice* GetDevice() const { return m_device; }
+
+    VkCommandPool GetVkCmdPool() const { return m_cmdPool; }
+
+    VulkanCommandBufferManager& GetManager() const { return m_owner; }
+
+    void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer);
+
+private:
+    VulkanCommandBuffer* CreateCmdBuffer(bool isUploadOnly);
+    void FreeUnusedCmdBuffers(VulkanQueue* queue);
+
+    VulkanDevice* m_device{nullptr};
+    VulkanCommandBufferManager& m_owner;
+    VkCommandPool m_cmdPool{VK_NULL_HANDLE};
+    std::vector<VulkanCommandBuffer*> m_usedCmdBuffers;
+    std::vector<VulkanCommandBuffer*> m_freeCmdBuffers;
+
+    friend class VulkanCommandBufferManager;
+};
+
+class VulkanCommandBuffer
+{
+public:
+    enum class State : uint32_t
+    {
+        eReadyForBegin,
+        eHasBegun,
+        eInsideRenderPass,
+        eHasEnded,
+        eSubmitted,
+        eNotAllocated,
+        eNeedReset
+    };
+
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem);
+
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
+                          const std::vector<VulkanSemaphore*>& sems);
+
+    VkCommandBuffer GetVkHandle() const { return m_cmdBuffer; }
+
+    void Begin();
+
+    void End();
+
+    bool IsSubmitted() const { return m_state == State::eSubmitted; }
+
+    bool HasBegun() const
+    {
+        return m_state == State::eHasBegun || m_state == State::eInsideRenderPass;
+    }
+
+    bool IsOutsideRenderPass() const { return m_state == State::eHasBegun; }
+
+    void EndRenderPass();
+
+protected:
+    VulkanCommandBuffer(VulkanCommandBufferPool* pool, bool isUploadOnly);
+    ~VulkanCommandBuffer();
+
+private:
+    void AllocMemory();
+
+    void FreeMemory();
+
+    void RefreshFenceStatus();
+
+    void MarkSemaphoresAsSubmitted()
+    {
+        m_waitFlags.clear();
+        m_submittedWaitSemaphores = m_waitSemaphores;
+        m_waitSemaphores.clear();
+    }
+
+    VulkanCommandBufferPool* m_cmdBufferPool{nullptr};
+    bool m_isUploadOnly{false};
+    VkCommandBuffer m_cmdBuffer{VK_NULL_HANDLE};
+    State m_state{State::eNotAllocated};
+
+    // Sync objects
+    std::vector<VkPipelineStageFlags> m_waitFlags;
+    // DO NOT own the semaphores, only hold reference
+    std::vector<VulkanSemaphore*> m_waitSemaphores;
+    std::vector<VulkanSemaphore*> m_submittedWaitSemaphores;
+    VulkanFence* m_fence;
+
+    friend class VulkanCommandBufferPool;
+    friend class VulkanCommandBufferManager;
+    friend class VulkanQueue;
+};
+
 class VulkanCommandBufferManager
 {
 public:
-    explicit VulkanCommandBufferManager(VulkanDevice* device) : m_device(device) {}
+    VulkanCommandBufferManager(VulkanDevice* device, VulkanQueue* queue);
+    ~VulkanCommandBufferManager() = default;
 
-    VkCommandBuffer RequestCommandBufferPrimary(CommandPoolHandle cmdPoolHandle);
+    void Init();
 
-    VkCommandBuffer RequestCommandBufferSecondary(CommandPoolHandle cmdPoolHandle);
+    VulkanCommandBuffer* GetActiveCommandBuffer();
+
+    VulkanCommandBuffer* GetUploadCommandBuffer();
+
+    void SubmitActiveCmdBuffer(const std::vector<VulkanSemaphore*>& signalSemaphores);
+
+    void SubmitActiveCmdBuffer(VulkanSemaphore* signalSemaphore);
+
+    void SubmitActiveCmdBuffer();
+
+    void SubmitActiveCmdBufferForPresent(VulkanSemaphore* signalSemaphore);
+
+    void SubmitUploadCmdBuffer();
+
+    void SetupNewActiveCmdBuffer();
+
+    void FreeUnusedCmdBuffers();
+
+    bool HasPendingActiveCmdBuffer() { return m_activeCmdBuffer != nullptr; }
+
+    bool HasPendingUploadCmdBuffer() { return m_uploadCmdBuffer != nullptr; }
+
+    void WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer, float timeInSecondsToWait = 10.0f);
+
+    // Update the fences of all cmd buffers except SkipCmdBuffer
+    void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer = nullptr)
+    {
+        m_pool.RefreshFenceStatus(skipCmdBuffer);
+    }
 
 private:
-    VkCommandBuffer CreateCommandBuffer(VkCommandPool vkCmdPool, VkCommandBufferLevel level) const;
-
     VulkanDevice* m_device{nullptr};
+    VulkanQueue* m_queue{nullptr};
+    VulkanCommandBufferPool m_pool;
+    // use dedicated command buffer for upload workloads
+    VulkanCommandBuffer* m_activeCmdBuffer{nullptr};
+    VulkanCommandBuffer* m_uploadCmdBuffer{nullptr};
 
-    HashMap<CommandPoolHandle, std::vector<VkCommandBuffer>> m_primaryCmdBuffers;
-    HashMap<CommandPoolHandle, std::vector<VkCommandBuffer>> m_secondaryCmdBuffers;
-
-    HashMap<CommandPoolHandle, uint32_t> m_activePrimaryCmdBufferCount{};
-    HashMap<CommandPoolHandle, uint32_t> m_activeSecondaryCmdBufferCount{};
+    // semaphores for cmd buffer, configured through RHIOptions
+    VulkanSemaphore* m_activeCmdBufferSemaphore{nullptr};
+    VulkanSemaphore* m_uploadCmdBufferSemaphore{nullptr};
+    // upload cmd buffer semaphores waited by active cmd buffer
+    std::vector<VulkanSemaphore*> m_uploadCompleteSemaphores;
+    // upload cmd buffer semaphores waited by upload cmd buffer
+    std::vector<VulkanSemaphore*> m_renderCompleteSemaphores;
 };
 } // namespace zen::rhi
