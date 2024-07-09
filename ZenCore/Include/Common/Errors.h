@@ -60,8 +60,25 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
         if (!bool(x))                                             \
         {                                                         \
             spdlog::error("Error at {}:{}.", __FILE__, __LINE__); \
-            abort();                                              \
         }                                                         \
+    } while (0)
+
+#define VERIFY_EXPR_MSG(x, msg)                                         \
+    do                                                                  \
+    {                                                                   \
+        if (!(x))                                                       \
+        {                                                               \
+            spdlog::error("Error at {}:{} - " msg, __FILE__, __LINE__); \
+        }                                                               \
+    } while (0)
+
+#define VERIFY_EXPR_MSG_F(x, fmt, ...)                                               \
+    do                                                                               \
+    {                                                                                \
+        if (!(x))                                                                    \
+        {                                                                            \
+            spdlog::error("Error at {}:{} - " fmt, __FILE__, __LINE__, __VA_ARGS__); \
+        }                                                                            \
     } while (0)
 
 #define LOG_ERROR(...)                                                                       \

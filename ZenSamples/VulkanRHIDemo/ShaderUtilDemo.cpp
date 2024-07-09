@@ -10,11 +10,7 @@ std::vector<uint8_t> loadSpirvCode(const std::string& name)
     const auto path = std::string(SPV_SHADER_PATH) + name;
     std::ifstream file(path, std::ios::ate | std::ios::binary);
 
-    if (!file.is_open())
-    {
-        LOG_FATAL_ERROR("Failed to load shader source");
-    }
-
+    VERIFY_EXPR_MSG_F(file.is_open(), "Failed to load shader file {}", path);
     //find what the size of the file is by looking up the location of the cursor
     //because the cursor is at the end, it gives the size directly in bytes
     size_t fileSize = (size_t)file.tellg();
