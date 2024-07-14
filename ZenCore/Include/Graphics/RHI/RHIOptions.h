@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 namespace zen::rhi
 {
@@ -19,11 +20,17 @@ public:
     void LoadDefault()
     {
         m_VkRHIOptions.uploadCmdBufferSemaphore = false;
+        m_VkRHIOptions.maxDescriptorSetPerPool  = 64;
     }
 
     bool VKUploadCmdBufferSemaphore() const
     {
         return m_VkRHIOptions.uploadCmdBufferSemaphore;
+    }
+
+    uint32_t MaxDescriptorSetPerPool() const
+    {
+        return m_VkRHIOptions.maxDescriptorSetPerPool;
     }
 
 private:
@@ -36,6 +43,7 @@ private:
     struct VulkanRHIOptions
     {
         bool uploadCmdBufferSemaphore;
+        uint32_t maxDescriptorSetPerPool;
     } m_VkRHIOptions;
 };
 } // namespace zen::rhi

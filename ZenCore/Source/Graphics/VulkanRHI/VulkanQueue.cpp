@@ -1,7 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
+#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 
 namespace zen::rhi
 {

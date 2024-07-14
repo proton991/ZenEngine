@@ -65,5 +65,10 @@ public:
                                       BufferAllocateType allocateType) = 0;
 
     virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
+
+    virtual DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle,
+                                                    uint32_t setIndex) = 0;
+
+    virtual void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) = 0;
 };
 } // namespace zen::rhi

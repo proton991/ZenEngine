@@ -1,5 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
+
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
@@ -83,6 +85,8 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
 
         shader->stageCreateInfos.push_back(pipelineShaderStageCI);
     }
+    // Create descriptor pool key while createing descriptor set layouts
+    VulkanDescriptorPoolKey descriptorPoolKey{};
     // Create descriptorSetLayouts
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
     const auto setCount = sgInfo.SRDs.size();
@@ -109,6 +113,7 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
                 bindingFlags.push_back(0);
             }
             dsBindings[i].push_back(binding);
+            descriptorPoolKey.descriptorCount[ToUnderlying(srd.type)] += binding.descriptorCount;
         }
         if (dsBindings[i].empty())
             continue;
@@ -164,6 +169,8 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         pipelineLayoutCI.pPushConstantRanges    = &prc;
     }
     vkCreatePipelineLayout(GetVkDevice(), &pipelineLayoutCI, nullptr, &shader->pipelineLayout);
+
+    shader->descriptorPoolKey = descriptorPoolKey;
 
     return ShaderHandle(shader);
 }
@@ -350,5 +357,210 @@ void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
     VkPipeline pipeline = reinterpret_cast<VkPipeline>(pipelineHandle.value);
     vkDestroyPipeline(GetVkDevice(), pipeline, nullptr);
 }
+
+VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
+    const VulkanDescriptorPoolKey& poolKey,
+    VulkanDescriptorPoolsIt* iter)
+{
+    auto existed = m_pools.find(poolKey);
+    if (existed != m_pools.end())
+    {
+        for (auto& kv : existed->second)
+        {
+            uint32_t descriptorCount = kv.second;
+            if (descriptorCount < RHIOptions::GetInstance().MaxDescriptorSetPerPool())
+            {
+                *iter = existed;
+                (*iter)->second[kv.first]++;
+                return kv.first;
+            }
+        }
+    }
+    // create a new descriptor pool
+    VkDescriptorPoolSize poolSizes[ToUnderlying(ShaderResourceType::eMax)];
+    uint32_t poolSizeCount = 0;
+    {
+        const auto MaxDescriptorPerPool = RHIOptions::GetInstance().MaxDescriptorSetPerPool();
+        auto* currPoolSize              = poolSizes;
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eSampler)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLER;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eSampler)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eTexture)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eTexture)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eSamplerWithTexture)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eSamplerWithTexture)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eImage)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eImage)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eTextureBuffer)] ||
+            poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eSamplerWithTextureBuffer)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+            currPoolSize->descriptorCount =
+                (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eTextureBuffer)] +
+                 poolKey.descriptorCount[ToUnderlying(
+                     ShaderResourceType::eSamplerWithTextureBuffer)]) *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eImageBuffer)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eImageBuffer)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eUniformBuffer)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eUniformBuffer)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eStorageBuffer)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eStorageBuffer)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eInputAttachment)])
+        {
+            *currPoolSize      = {};
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            currPoolSize->descriptorCount =
+                poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eInputAttachment)] *
+                MaxDescriptorPerPool;
+            currPoolSize++;
+            poolSizeCount++;
+        }
+        VERIFY_EXPR(poolSizeCount <= ToUnderlying(ShaderResourceType::eMax));
+    }
+
+    VkDescriptorPoolCreateInfo poolCI{};
+    InitVkStruct(poolCI, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
+    // allow free descriptor set
+    poolCI.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
+        VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+    poolCI.maxSets       = RHIOptions::GetInstance().MaxDescriptorSetPerPool();
+    poolCI.pPoolSizes    = poolSizes;
+    poolCI.poolSizeCount = poolSizeCount;
+
+    VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
+    VKCHECK(vkCreateDescriptorPool(m_device->GetVkHandle(), &poolCI, nullptr, &descriptorPool));
+
+    if (existed == m_pools.end())
+    {
+        HashMap<VkDescriptorPool, uint32_t> value{};
+        existed = m_pools.insert({poolKey, value}).first;
+    }
+    HashMap<VkDescriptorPool, uint32_t>& poolDescriptorCount = existed->second;
+    poolDescriptorCount[descriptorPool]++;
+    *iter = existed;
+    return descriptorPool;
+}
+
+void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt poolsIter,
+                                                      VkDescriptorPool pool)
+{
+    auto poolDescriptorIter = poolsIter->second.find(pool);
+    poolDescriptorIter->second--;
+    if (poolDescriptorIter->second == 0)
+    {
+        vkDestroyDescriptorPool(m_device->GetVkHandle(), pool, nullptr);
+        poolsIter->second.erase(pool);
+        if (poolsIter->second.empty())
+        {
+            m_pools.erase(poolsIter);
+        }
+    }
+}
+
+DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex)
+{
+    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanDescriptorPoolsIt iter{};
+    VkDescriptorPool pool =
+        m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->descriptorPoolKey, &iter);
+    VERIFY_EXPR(pool != VK_NULL_HANDLE);
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+    InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
+    descriptorSetAllocateInfo.descriptorPool     = pool;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts        = &shader->descriptorSetLayouts[setIndex];
+
+    VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
+    VkResult result = vkAllocateDescriptorSets(m_device->GetVkHandle(), &descriptorSetAllocateInfo,
+                                               &vkDescriptorSet);
+    if (result != VK_SUCCESS)
+    {
+        m_descriptorPoolManager->UnRefDescriptorPool(iter, pool);
+        LOGE("Failed to allocate descriptor set");
+    }
+
+    VulkanDescriptorSet* descriptorSet = m_descriptorSetAllocator.Alloc();
+    descriptorSet->iter                = iter;
+    descriptorSet->descriptorPool      = pool;
+    descriptorSet->descriptorSet       = vkDescriptorSet;
+
+    return DescriptorSetHandle(descriptorSet);
+}
+
+void VulkanRHI::DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle)
+{
+    VulkanDescriptorSet* descriptorSet =
+        reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
+
+    vkFreeDescriptorSets(m_device->GetVkHandle(), descriptorSet->descriptorPool, 1,
+                         &descriptorSet->descriptorSet);
+
+    m_descriptorPoolManager->UnRefDescriptorPool(descriptorSet->iter,
+                                                 descriptorSet->descriptorPool);
+
+    m_descriptorSetAllocator.Free(descriptorSet);
+}
+
 
 } // namespace zen::rhi

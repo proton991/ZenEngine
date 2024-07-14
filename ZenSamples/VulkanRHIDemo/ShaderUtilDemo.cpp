@@ -47,5 +47,10 @@ int main(int argc, char** argv)
     VulkanRHI vkRHI;
     vkRHI.Init();
     ShaderHandle shaderHdl = vkRHI.CreateShader(shaderGroupInfo);
+
+    DescriptorSetHandle descriptorSetHdl = vkRHI.CreateDescriptorSet(shaderHdl, 0);
+
+    vkRHI.DestroyDescriptorSet(descriptorSetHdl);
+
     vkRHI.DestroyShader(shaderHdl);
 }

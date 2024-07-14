@@ -1,8 +1,9 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
+#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
+#include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
 namespace zen::rhi
@@ -214,7 +215,8 @@ void VulkanRHI::SelectGPU()
 VulkanRHI::VulkanRHI() :
     m_shaderAllocator(ZEN_DEFAULT_PAGESIZE, false),
     m_textureAllocator(ZEN_DEFAULT_PAGESIZE, false),
-    m_bufferAllocator(ZEN_DEFAULT_PAGESIZE, false)
+    m_bufferAllocator(ZEN_DEFAULT_PAGESIZE, false),
+    m_descriptorSetAllocator(ZEN_DEFAULT_PAGESIZE, false)
 {
 #if defined(ZEN_MACOS)
     setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
@@ -226,6 +228,7 @@ VulkanRHI::VulkanRHI() :
     m_shaderAllocator.Init();
     m_textureAllocator.Init();
     m_bufferAllocator.Init();
+    m_descriptorSetAllocator.Init();
     m_vkMemAllocator = new VulkanMemoryAllocator();
 }
 
@@ -248,12 +251,14 @@ void VulkanRHI::Init()
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());
 
-    m_cmdBufferManager = new VulkanCommandBufferManager(m_device, m_device->GetGfxQueue());
+    m_cmdBufferManager      = new VulkanCommandBufferManager(m_device, m_device->GetGfxQueue());
+    m_descriptorPoolManager = new VulkanDescriptorPoolManager(m_device);
 }
 
 void VulkanRHI::Destroy()
 {
     delete m_cmdBufferManager;
+    delete m_descriptorPoolManager;
 
     m_device->Destroy();
     delete m_device;

@@ -93,4 +93,5 @@ RHI_DEFINE_HANDLE(Framebuffer);
 RHI_DEFINE_HANDLE(Pipeline);
 RHI_DEFINE_HANDLE(Texture);
 RHI_DEFINE_HANDLE(Buffer);
+RHI_DEFINE_HANDLE(DescriptorSet);
 } // namespace zen::rhi

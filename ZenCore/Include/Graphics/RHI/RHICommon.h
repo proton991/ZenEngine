@@ -19,6 +19,97 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
     return static_cast<std::underlying_type_t<E>>(e);
 }
 
+struct Viewport
+{
+    float minX, maxX;
+    float minY, maxY;
+    float minZ, maxZ;
+
+    Viewport() : minX(0.f), maxX(0.f), minY(0.f), maxY(0.f), minZ(0.f), maxZ(1.f) {}
+
+    Viewport(float width, float height) :
+        minX(0.f), maxX(width), minY(0.f), maxY(height), minZ(0.f), maxZ(1.f)
+    {}
+
+    Viewport(float _minX, float _maxX, float _minY, float _maxY, float _minZ, float _maxZ) :
+        minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY), minZ(_minZ), maxZ(_maxZ)
+    {}
+
+    bool operator==(const Viewport& b) const
+    {
+        return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX &&
+            maxY == b.maxY && maxZ == b.maxZ;
+    }
+    bool operator!=(const Viewport& b) const
+    {
+        return !(*this == b);
+    }
+
+    [[nodiscard]] float Width() const
+    {
+        return maxX - minX;
+    }
+    [[nodiscard]] float Height() const
+    {
+        return maxY - minY;
+    }
+};
+
+struct Rect
+{
+    int minX, maxX;
+    int minY, maxY;
+
+    Rect() : minX(0), maxX(0), minY(0), maxY(0) {}
+    Rect(int width, int height) : minX(0), maxX(width), minY(0), maxY(height) {}
+    Rect(int _minX, int _maxX, int _minY, int _maxY) :
+        minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
+    {}
+    explicit Rect(const Viewport& viewport) :
+        minX(static_cast<int>(floorf(viewport.minX))),
+        maxX(static_cast<int>(ceilf(viewport.maxX))),
+        minY(static_cast<int>(floorf(viewport.minY))),
+        maxY(static_cast<int>(ceilf(viewport.maxY)))
+    {}
+
+    bool operator==(const Rect& b) const
+    {
+        return minX == b.minX && minY == b.minY && maxX == b.maxX && maxY == b.maxY;
+    }
+    bool operator!=(const Rect& b) const
+    {
+        return !(*this == b);
+    }
+
+    [[nodiscard]] int Width() const
+    {
+        return maxX - minX;
+    }
+
+    [[nodiscard]] int Height() const
+    {
+        return maxY - minY;
+    }
+};
+
+struct Color
+{
+    float r, g, b, a;
+
+    Color() : r(0.f), g(0.f), b(0.f), a(0.f) {}
+    explicit Color(float c) : r(c), g(c), b(c), a(c) {}
+    Color(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) {}
+
+    bool operator==(const Color& _b) const
+    {
+        return r == _b.r && g == _b.g && b == _b.b && a == _b.a;
+    }
+    bool operator!=(const Color& _b) const
+    {
+        return !(*this == _b);
+    }
+};
+
 enum class DataFormat : uint32_t
 {
     eUndefined          = 0,   // = VK_FORMAT_UNDEFINED
@@ -753,5 +844,111 @@ struct RenderTargetInfo
     uint32_t width{0};
     uint32_t height{0};
     uint32_t depth{1};
+};
+
+/**********************************************/
+/********** Context for RHICommandList ********/
+/*********************************************/
+struct VertexBufferBinding
+{
+    BufferHandle buffer{nullptr};
+    uint64_t offset{0};
+    uint32_t slot;
+    bool operator==(const VertexBufferBinding& b) const
+    {
+        return buffer == b.buffer && slot == b.slot && offset == b.offset;
+    }
+    bool operator!=(const VertexBufferBinding& b) const
+    {
+        return !(*this == b);
+    }
+};
+
+struct IndexBufferBinding
+{
+    BufferHandle buffer{nullptr};
+    uint64_t offset{0};
+    DataFormat format{DataFormat::eUndefined};
+
+
+    bool operator==(const IndexBufferBinding& b) const
+    {
+        return buffer == b.buffer && format == b.format && offset == b.offset;
+    }
+    bool operator!=(const IndexBufferBinding& b) const
+    {
+        return !(*this == b);
+    }
+};
+
+class GraphicsContext
+{
+public:
+    GraphicsContext() = default;
+
+    GraphicsContext& SetShader(const ShaderHandle& shader)
+    {
+        m_shader = shader;
+        return *this;
+    }
+
+    GraphicsContext& SetPipeline(const PipelineHandle& pipeline)
+    {
+        m_pipline = pipeline;
+        return *this;
+    }
+
+    GraphicsContext& SetFramebuffer(const FramebufferHandle& framebuffer)
+    {
+        m_framebuffer = framebuffer;
+        return *this;
+    }
+
+    GraphicsContext& SetBlendConstantColor(const Color& color)
+    {
+        m_blendConstantColor = color;
+        return *this;
+    }
+
+    GraphicsContext& AddViewport(const Viewport& vp)
+    {
+        m_viewports.emplace_back(vp);
+        return *this;
+    }
+
+    GraphicsContext& AddScissor(const Rect& scissor)
+    {
+        m_scissors.emplace_back(scissor);
+        return *this;
+    }
+
+    GraphicsContext& AddVertexBufferBinding(const BufferHandle& buffer,
+                                            uint64_t offset,
+                                            uint32_t slot)
+    {
+        VertexBufferBinding binding{buffer, offset, slot};
+        m_vertexBufferBindings.emplace_back(binding);
+        return *this;
+    }
+
+    GraphicsContext& SetIndexBufferBinding(const BufferHandle& buffer,
+                                           uint64_t offset,
+                                           DataFormat format = DataFormat::eR32UInt)
+    {
+        m_indexBufferBinding.buffer = buffer;
+        m_indexBufferBinding.offset = offset;
+        m_indexBufferBinding.format = format;
+        return *this;
+    }
+
+private:
+    ShaderHandle m_shader{nullptr};
+    PipelineHandle m_pipline{nullptr};
+    FramebufferHandle m_framebuffer{nullptr};
+    std::vector<Viewport> m_viewports;
+    std::vector<Rect> m_scissors;
+    Color m_blendConstantColor{};
+    std::vector<VertexBufferBinding> m_vertexBufferBindings;
+    IndexBufferBinding m_indexBufferBinding{};
 };
 } // namespace zen::rhi

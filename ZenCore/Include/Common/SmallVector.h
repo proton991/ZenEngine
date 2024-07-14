@@ -440,6 +440,16 @@ public:
         this->m_size = 0;
     }
 
+    const T* data() const
+    {
+        return m_alignedBuffer.data();
+    }
+
+    T* data()
+    {
+        return m_alignedBuffer.data();
+    }
+
 private:
     size_t m_capacity{0};
     AlignedBuffer<T, N> m_alignedBuffer;

@@ -16,15 +16,16 @@
 
 namespace zen::rhi
 {
-class VulkanMemoryAllocator;
-}
-namespace zen::rhi
-{
 class VulkanDevice;
 class VulkanCommandBufferManager;
+class VulkanDescriptorPoolManager;
 struct VulkanShader;
 struct VulkanTexture;
 struct VulkanBuffer;
+struct VulkanDescriptorSet;
+class VulkanMemoryAllocator;
+
+
 
 class VulkanRHI : public DynamicRHI
 {
@@ -53,6 +54,11 @@ public:
     VkPhysicalDevice GetPhysicalDevice() const;
 
     VkDevice GetVkDevice() const;
+
+    VulkanCommandBufferManager* GetCmdBufferManager() const
+    {
+        return m_cmdBufferManager;
+    }
 
     SwapchainHandle CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync) final;
 
@@ -95,6 +101,10 @@ public:
 
     void DestroyBuffer(BufferHandle bufferHandle) final;
 
+    DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex) final;
+
+    void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) override;
+
 protected:
     void CreateInstance();
 
@@ -116,6 +126,7 @@ private:
     VulkanDevice* m_device{nullptr};
 
     VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
+    VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
 
     // allocator for memory
     VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
@@ -123,5 +134,6 @@ private:
     PagedAllocator<VulkanShader> m_shaderAllocator;
     PagedAllocator<VulkanTexture> m_textureAllocator;
     PagedAllocator<VulkanBuffer> m_bufferAllocator;
+    PagedAllocator<VulkanDescriptorSet> m_descriptorSetAllocator;
 };
 } // namespace zen::rhi
