@@ -2,13 +2,14 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
 namespace zen::rhi
 {
 TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 {
-    VulkanTexture* texture = m_textureAllocator.Alloc();
+    VulkanTexture* texture = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);
     VkImageCreateInfo imageCI;
     InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
     imageCI.extent.width  = info.width;
@@ -64,7 +65,7 @@ void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
     m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
-    m_textureAllocator.Free(texture);
+    VersatileResource::Free(m_resourceAllocator, texture);
 }
 
 } // namespace zen::rhi

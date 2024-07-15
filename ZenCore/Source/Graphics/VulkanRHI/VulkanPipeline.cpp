@@ -4,6 +4,7 @@
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
 namespace zen::rhi
@@ -43,7 +44,7 @@ static uint32_t DecideDescriptorCount(
 
 ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
 {
-    VulkanShader* shader = m_shaderAllocator.Alloc();
+    VulkanShader* shader = VersatileResource::Alloc<VulkanShader>(m_resourceAllocator);
 
     // Create specialization info from tracked state. This is shared by all shaders.
     const auto& specConstants = sgInfo.specializationConstants;
@@ -190,8 +191,7 @@ void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
     {
         vkDestroyShaderModule(GetVkDevice(), stageCreateInfo.module, nullptr);
     }
-
-    m_shaderAllocator.Free(shader);
+    VersatileResource::Free(m_resourceAllocator, shader);
 }
 
 PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
@@ -540,10 +540,11 @@ DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, ui
         LOGE("Failed to allocate descriptor set");
     }
 
-    VulkanDescriptorSet* descriptorSet = m_descriptorSetAllocator.Alloc();
-    descriptorSet->iter                = iter;
-    descriptorSet->descriptorPool      = pool;
-    descriptorSet->descriptorSet       = vkDescriptorSet;
+    VulkanDescriptorSet* descriptorSet =
+        VersatileResource::Alloc<VulkanDescriptorSet>(m_resourceAllocator);
+    descriptorSet->iter           = iter;
+    descriptorSet->descriptorPool = pool;
+    descriptorSet->descriptorSet  = vkDescriptorSet;
 
     return DescriptorSetHandle(descriptorSet);
 }
@@ -558,8 +559,7 @@ void VulkanRHI::DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle)
 
     m_descriptorPoolManager->UnRefDescriptorPool(descriptorSet->iter,
                                                  descriptorSet->descriptorPool);
-
-    m_descriptorSetAllocator.Free(descriptorSet);
+    VersatileResource::Free(m_resourceAllocator, descriptorSet);
 }
 
 

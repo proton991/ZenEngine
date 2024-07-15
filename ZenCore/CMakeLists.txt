@@ -77,6 +77,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanBuffer.h
     Include/Graphics/VulkanRHI/VulkanMemory.h
     Include/Graphics/VulkanRHI/VulkanSynchronization.h
+    Include/Graphics/VulkanRHI/VulkanResourceAllocator.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h

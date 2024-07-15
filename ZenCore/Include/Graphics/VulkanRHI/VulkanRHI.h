@@ -25,7 +25,10 @@ struct VulkanBuffer;
 struct VulkanDescriptorSet;
 class VulkanMemoryAllocator;
 
+template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
+using VersatileResource =
+    VersatileResourceTemplate<VulkanShader, VulkanTexture, VulkanBuffer, VulkanDescriptorSet>;
 
 class VulkanRHI : public DynamicRHI
 {
@@ -131,9 +134,10 @@ private:
     // allocator for memory
     VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
     // allocators for resrouces
-    PagedAllocator<VulkanShader> m_shaderAllocator;
-    PagedAllocator<VulkanTexture> m_textureAllocator;
-    PagedAllocator<VulkanBuffer> m_bufferAllocator;
-    PagedAllocator<VulkanDescriptorSet> m_descriptorSetAllocator;
+    PagedAllocator<VersatileResource> m_resourceAllocator;
+    // PagedAllocator<VulkanShader> m_shaderAllocator;
+    // PagedAllocator<VulkanTexture> m_textureAllocator;
+    // PagedAllocator<VulkanBuffer> m_bufferAllocator;
+    // PagedAllocator<VulkanDescriptorSet> m_descriptorSetAllocator;
 };
 } // namespace zen::rhi
