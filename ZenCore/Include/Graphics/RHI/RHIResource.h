@@ -142,6 +142,28 @@ using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;
 using ShaderGroupSPIRVPtr  = RefCountPtr<ShaderGroupSPIRV>;
 
 /*****************************/
+/********** Sampler **********/
+/*****************************/
+struct SamplerInfo
+{
+    SamplerFilter magFilter{SamplerFilter::eNearest};
+    SamplerFilter minFilter{SamplerFilter::eNearest};
+    SamplerFilter mipFilter{SamplerFilter::eNearest};
+    SamplerRepeatMode repeatU{SamplerRepeatMode::eClampToEdge};
+    SamplerRepeatMode repeatV{SamplerRepeatMode::eClampToEdge};
+    SamplerRepeatMode repeatW{SamplerRepeatMode::eClampToEdge};
+    float lodBias{0.0f};
+    bool useAnisotropy{false};
+    float maxAnisotropy{1.0f};
+    bool enableCompare{false};
+    CompareOperator compareOp{CompareOperator::eAlways};
+    float minLod{0.0f};
+    float maxLod{1e20}; // Something very large should do.
+    SamplerBorderColor borderColor{SamplerBorderColor::eFloatOpaqueBlack};
+    bool unnormalizedUVW{false};
+};
+
+/*****************************/
 /********* Textures **********/
 /*****************************/
 struct TextureInfo

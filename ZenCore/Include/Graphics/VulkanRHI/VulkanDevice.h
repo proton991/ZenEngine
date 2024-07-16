@@ -75,6 +75,11 @@ public:
         return m_gfxQueue;
     }
 
+    const VkPhysicalDeviceFeatures& GetPhysicalDeviceFeatures()
+    {
+        return m_physicalDeviceFeatures;
+    }
+
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
 

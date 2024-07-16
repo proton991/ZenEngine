@@ -49,4 +49,10 @@ VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp);
 VkAttachmentStoreOp ToVkAttachmentStoreOp(RenderTargetStoreOp storeOp);
 
 VkImageLayout ToVkImageLayout(TextureLayout layout);
+
+VkFilter ToVkFilter(SamplerFilter filter);
+
+VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode);
+
+VkBorderColor ToVkBorderColor(SamplerBorderColor color);
 } // namespace zen::rhi

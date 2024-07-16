@@ -240,4 +240,20 @@ VkImageLayout ToVkImageLayout(TextureLayout layout)
         default: return VK_IMAGE_LAYOUT_UNDEFINED;
     }
 }
+
+VkFilter ToVkFilter(SamplerFilter filter)
+{
+    return static_cast<VkFilter>(filter);
+}
+
+VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode)
+{
+    return static_cast<VkSamplerAddressMode>(mode);
+}
+
+
+VkBorderColor ToVkBorderColor(SamplerBorderColor color)
+{
+    return static_cast<VkBorderColor>(color);
+}
 } // namespace zen::rhi

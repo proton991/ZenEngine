@@ -94,6 +94,10 @@ public:
 
     void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 
+    SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) final;
+
+    void DestroySampler(SamplerHandle samplerHandle) final;
+
     TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
 
     void DestroyTexture(TextureHandle textureHandle) final;

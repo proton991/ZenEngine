@@ -1,5 +1,6 @@
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
+#include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
@@ -7,6 +8,41 @@
 
 namespace zen::rhi
 {
+SamplerHandle VulkanRHI::CreateSampler(const SamplerInfo& samplerInfo)
+{
+    VkSamplerCreateInfo samplerCI;
+    InitVkStruct(samplerCI, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
+    samplerCI.magFilter        = ToVkFilter(samplerInfo.magFilter);
+    samplerCI.minFilter        = ToVkFilter(samplerInfo.minFilter);
+    samplerCI.mipmapMode       = samplerInfo.mipFilter == SamplerFilter::eLinear ?
+              VK_SAMPLER_MIPMAP_MODE_LINEAR :
+              VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    samplerCI.addressModeU     = ToVkSamplerAddressMode(samplerInfo.repeatU);
+    samplerCI.addressModeV     = ToVkSamplerAddressMode(samplerInfo.repeatV);
+    samplerCI.addressModeW     = ToVkSamplerAddressMode(samplerInfo.repeatW);
+    samplerCI.mipLodBias       = samplerInfo.lodBias;
+    samplerCI.anisotropyEnable = samplerInfo.useAnisotropy &&
+        (m_device->GetPhysicalDeviceFeatures().samplerAnisotropy == VK_TRUE);
+    samplerCI.maxAnisotropy           = samplerInfo.maxAnisotropy;
+    samplerCI.compareEnable           = samplerInfo.enableCompare;
+    samplerCI.compareOp               = ToVkCompareOp(samplerInfo.compareOp);
+    samplerCI.minLod                  = samplerInfo.minLod;
+    samplerCI.maxLod                  = samplerInfo.maxLod;
+    samplerCI.borderColor             = ToVkBorderColor(samplerInfo.borderColor);
+    samplerCI.unnormalizedCoordinates = samplerInfo.unnormalizedUVW;
+
+    VkSampler sampler{VK_NULL_HANDLE};
+    VKCHECK(vkCreateSampler(m_device->GetVkHandle(), &samplerCI, nullptr, &sampler));
+
+    return SamplerHandle(sampler);
+}
+
+void VulkanRHI::DestroySampler(SamplerHandle samplerHandle)
+{
+    VkSampler sampler = reinterpret_cast<VkSampler>(samplerHandle.value);
+    vkDestroySampler(m_device->GetVkHandle(), sampler, nullptr);
+}
+
 TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 {
     VulkanTexture* texture = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);

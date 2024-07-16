@@ -633,6 +633,36 @@ enum class BufferAllocateType
 };
 
 /*****************************/
+/********** Sampler **********/
+/*****************************/
+enum class SamplerFilter : uint32_t
+{
+    eNearest = 0,
+    eLinear  = 1,
+};
+
+enum class SamplerRepeatMode : uint32_t
+{
+    eRepeat            = 0,
+    eMirroredRepeat    = 1,
+    eClampToEdge       = 2,
+    eClampToBorder     = 3,
+    eMirrorClampToEdge = 4,
+    eMax               = 0x7FFFFFFF
+};
+
+enum class SamplerBorderColor : uint32_t
+{
+    eFloatTransparentBlack = 0,
+    eIntTransparentBlack   = 1,
+    eFloatOpaqueBlack      = 2,
+    eIntOpaqueBlack        = 3,
+    eFloatOpaqueWhite      = 4,
+    eIntOpaqueWhite        = 5,
+    eMax                   = 0x7FFFFFFF
+};
+
+/*****************************/
 /********* Textures **********/
 /*****************************/
 enum class TextureUsageFlagBits : uint32_t

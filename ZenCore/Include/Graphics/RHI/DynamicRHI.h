@@ -56,6 +56,10 @@ public:
 
     virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 
+    virtual SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) = 0;
+
+    virtual void DestroySampler(SamplerHandle samplerHandle) = 0;
+
     virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
 
     virtual void DestroyTexture(TextureHandle textureHandle) = 0;
