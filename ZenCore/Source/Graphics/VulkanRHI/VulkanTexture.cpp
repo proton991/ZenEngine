@@ -100,6 +100,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    vkDestroyImageView(m_device->GetVkHandle(), texture->imageView, nullptr);
     m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
     VersatileResource::Free(m_resourceAllocator, texture);
 }

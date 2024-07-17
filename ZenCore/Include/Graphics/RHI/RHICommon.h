@@ -330,6 +330,13 @@ struct ShaderResourceDescriptor
     uint32_t binding{0};
 };
 
+struct ShaderResourceBinding
+{
+    ShaderResourceType type{ShaderResourceType::eMax};
+    uint32_t binding{0};
+    std::vector<Handle> handles;
+};
+
 struct VertexInputAttribute
 {
     std::string name;

@@ -108,9 +108,14 @@ public:
 
     void DestroyBuffer(BufferHandle bufferHandle) final;
 
+    void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
+
     DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex) final;
 
-    void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) override;
+    void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) final;
+
+    void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
+                             const std::vector<ShaderResourceBinding>& resourceBindings) final;
 
 protected:
     void CreateInstance();
