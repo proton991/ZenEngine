@@ -15,6 +15,10 @@ add_executable(SmartPtrTest
 )
 add_executable(VulkanRHIDemo VulkanRHIDemo/VulkanRHIDemo.cpp)
 add_executable(ShaderUtilDemo VulkanRHIDemo/ShaderUtilDemo.cpp)
+add_executable(RenderGraphV2Demo
+    VulkanRHIDemo/RenderGraphDemo.cpp
+    VulkanRHIDemo/RenderGraphDemo.h
+)
 
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
@@ -47,3 +51,4 @@ add_executable(SceneGraphDemo
 target_link_libraries(HelloTriangle ZenCore)
 target_link_libraries(GLTFViewer ZenCore)
 target_link_libraries(SceneGraphDemo ZenCore)
+target_link_libraries(RenderGraphV2Demo ZenCore)

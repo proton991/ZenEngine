@@ -1,8 +1,22 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanTexture.h"
 
 namespace zen::rhi
 {
+void VulkanRHI::ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
+                                  VkImage image,
+                                  VkImageLayout srcLayout,
+                                  VkImageLayout dstLayout,
+                                  const VkImageSubresourceRange& range)
+{
+    VulkanPipelineBarrier barrier;
+    barrier.AddImageLayoutTransition(image, srcLayout, dstLayout, range);
+    barrier.Execute(cmdBuffer);
+}
+
 VulkanFence::VulkanFence(VulkanFenceManager* owner, bool createSignaled) :
     m_owner(owner), m_state(createSignaled ? State::eSignaled : State::eInitial)
 {
@@ -43,13 +57,18 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
 void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
 {
     ResetFence(fence);
-    auto it = m_usedFences.begin();
-    while (it != m_usedFences.end())
+    int size = m_usedFences.size();
+    if (!m_usedFences.empty())
     {
-        if (*it == fence)
+        auto it = m_usedFences.begin();
+        while (it != m_usedFences.end())
         {
-            m_usedFences.erase(it);
-            break;
+            if (*it == fence)
+            {
+                m_usedFences.erase(it);
+                break;
+            }
+            ++it;
         }
     }
     m_freeFences.push(fence);
@@ -110,6 +129,19 @@ void VulkanFenceManager::DestroyFence(VulkanFence* fence)
     fence->m_state = VulkanFence::State::eInitial;
 }
 
+VulkanSemaphore::VulkanSemaphore(VulkanDevice* device) : m_device(device)
+{
+    VkSemaphoreCreateInfo semaphoreCI;
+    InitVkStruct(semaphoreCI, VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
+    VKCHECK(vkCreateSemaphore(m_device->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
+}
+
+void VulkanSemaphore::SetDebugName(const char* pName)
+{
+    m_device->SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<uint64_t>(m_semaphore),
+                            pName);
+}
+
 VulkanSemaphore::~VulkanSemaphore()
 {
     vkDestroySemaphore(m_device->GetVkHandle(), m_semaphore, nullptr);
@@ -127,7 +159,7 @@ void VulkanSemaphoreManager::Destroy()
     }
 }
 
-VulkanSemaphore* VulkanSemaphoreManager::CreateSemaphore()
+VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
 {
     if (!m_freeSemaphores.empty())
     {
@@ -153,5 +185,124 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
     }
     m_freeSemaphores.push(sem);
     sem = nullptr;
+}
+
+void VulkanPipelineBarrier::AddImageLayoutTransition(VkImage image,
+                                                     VkImageLayout srcLayout,
+                                                     VkImageLayout dstLayout,
+                                                     const VkImageSubresourceRange& range)
+{
+    const VkAccessFlags srcAccessFlags = VkLayoutToAccessFlags(srcLayout);
+    const VkAccessFlags dstAccessFlags = VkLayoutToAccessFlags(dstLayout);
+
+    VkImageMemoryBarrier barrier;
+    InitVkStruct(barrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
+    barrier.image               = image;
+    barrier.srcAccessMask       = srcAccessFlags;
+    barrier.dstAccessMask       = dstAccessFlags;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.oldLayout           = srcLayout;
+    barrier.newLayout           = dstLayout;
+    barrier.subresourceRange    = range;
+    m_imageBarriers.emplace_back(barrier);
+}
+
+void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
+{
+    VkPipelineStageFlags srcStageFlags = 0;
+    VkPipelineStageFlags dstStageFlags = 0;
+    for (const auto& imageBarrier : m_imageBarriers)
+    {
+        srcStageFlags |= VkLayoutToPipelinStageFlags(imageBarrier.oldLayout);
+        dstStageFlags |= VkLayoutToPipelinStageFlags(imageBarrier.newLayout);
+    }
+    if (!m_imageBarriers.empty())
+    {
+        vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStageFlags, dstStageFlags, 0, 0, nullptr,
+                             0, nullptr, m_imageBarriers.size(), m_imageBarriers.data());
+    }
+}
+
+VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelinStageFlags(VkImageLayout layout)
+{
+    VkPipelineStageFlags flags = 0;
+    switch (layout)
+    {
+        case VK_IMAGE_LAYOUT_UNDEFINED:;
+        case VK_IMAGE_LAYOUT_GENERAL: flags = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: flags = VK_PIPELINE_STAGE_TRANSFER_BIT; break;
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+            flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            break;
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+        case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+            flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            break;
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT; break;
+
+        default: LOGE("Invalid Vulkan Image Layout") break;
+    }
+    return flags;
+}
+
+VkAccessFlags VulkanPipelineBarrier::VkLayoutToAccessFlags(VkImageLayout layout)
+{
+    VkAccessFlags flags = 0;
+    switch (layout)
+    {
+        case VK_IMAGE_LAYOUT_UNDEFINED:;
+        case VK_IMAGE_LAYOUT_GENERAL: flags = 0; break;
+
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: flags = VK_ACCESS_TRANSFER_READ_BIT; break;
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: flags = VK_ACCESS_TRANSFER_WRITE_BIT; break;
+
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+            flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+            flags = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+            flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: flags = VK_ACCESS_SHADER_READ_BIT; break;
+
+        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+        case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+        case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+            flags = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            break;
+
+        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: flags = 0; break;
+
+        default: LOGE("Invalid Vulkan Image Layout") break;
+    }
+    return flags;
 }
 } // namespace zen::rhi

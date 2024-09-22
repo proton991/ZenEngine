@@ -9,6 +9,8 @@ namespace zen::rhi
 class VulkanRHI;
 class VulkanDeviceExtension;
 class VulkanQueue;
+class VulkanCommandListContext;
+class VulkanCommandList;
 class VulkanFenceManager;
 class VulkanSemaphoreManager;
 
@@ -80,6 +82,15 @@ public:
         return m_physicalDeviceFeatures;
     }
 
+    VulkanCommandListContext* GetImmediateCmdContext() const
+    {
+        return m_immediateContext;
+    }
+
+    void SubmitCommandsAndFlush();
+
+    void WaitForIdle();
+
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
@@ -110,5 +121,7 @@ private:
 
     VulkanFenceManager* m_fenceManager;
     VulkanSemaphoreManager* m_semaphoreManger;
+
+    VulkanCommandListContext* m_immediateContext{nullptr};
 };
 } // namespace zen::rhi

@@ -17,6 +17,11 @@ public:
 
     Handle() = default;
 
+    bool operator==(const Handle& other) const
+    {
+        return this->value == other.value;
+    }
+
     size_t value = 0;
 };
 #define RHI_DEFINE_HANDLE(m_name)                                            \
@@ -83,8 +88,8 @@ template <> struct hash<zen::rhi::Handle>
 
 namespace zen::rhi
 {
-RHI_DEFINE_HANDLE(Surface);
-RHI_DEFINE_HANDLE(Swapchain);
+// RHI_DEFINE_HANDLE(Surface);
+// RHI_DEFINE_HANDLE(Swapchain);
 //RHI_DEFINE_HANDLE(CommandPool);
 //RHI_DEFINE_HANDLE(CommandBuffer);
 RHI_DEFINE_HANDLE(Shader);
@@ -96,3 +101,5 @@ RHI_DEFINE_HANDLE(Texture);
 RHI_DEFINE_HANDLE(Buffer);
 RHI_DEFINE_HANDLE(DescriptorSet);
 } // namespace zen::rhi
+
+HASH_DEFINE(Shader)

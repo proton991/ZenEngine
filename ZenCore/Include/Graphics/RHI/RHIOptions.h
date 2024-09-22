@@ -28,6 +28,11 @@ public:
         return m_VkRHIOptions.uploadCmdBufferSemaphore;
     }
 
+    bool WaitForFrameCompletion() const
+    {
+        return true;
+    }
+
     uint32_t MaxDescriptorSetPerPool() const
     {
         return m_VkRHIOptions.maxDescriptorSetPerPool;

@@ -1,8 +1,10 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
+#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
 namespace zen::rhi
@@ -97,6 +99,8 @@ void VulkanDevice::Init()
 
     m_fenceManager    = new VulkanFenceManager(this);
     m_semaphoreManger = new VulkanSemaphoreManager(this);
+
+    m_immediateContext = new VulkanCommandListContext(m_RHI);
 }
 
 void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions)
@@ -221,14 +225,41 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char*
     vkSetDebugUtilsObjectNameEXT(m_device, &info);
 }
 
+void VulkanDevice::SubmitCommandsAndFlush()
+{
+    VulkanCommandBufferManager* mgr = m_immediateContext->GetCmdBufferManager();
+    if (mgr->HasPendingUploadCmdBuffer())
+    {
+        mgr->SubmitUploadCmdBuffer();
+    }
+    if (mgr->HasPendingActiveCmdBuffer())
+    {
+        mgr->SubmitActiveCmdBuffer();
+    }
+    mgr->SetupNewActiveCmdBuffer();
+}
+
+void VulkanDevice::WaitForIdle()
+{
+    VKCHECK(vkDeviceWaitIdle(m_device));
+    m_immediateContext->GetCmdBufferManager()->RefreshFenceStatus();
+}
+
 void VulkanDevice::Destroy()
 {
-    m_fenceManager->Destroy();
-    delete m_fenceManager;
-
     m_semaphoreManger->Destroy();
     delete m_semaphoreManger;
 
+    delete m_immediateContext;
+
+    m_fenceManager->Destroy();
+    delete m_fenceManager;
     vkDestroyDevice(m_device, nullptr);
 }
+
+void VulkanRHI::WaitDeviceIdle()
+{
+    m_device->WaitForIdle();
+}
+
 } // namespace zen::rhi

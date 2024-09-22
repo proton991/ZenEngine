@@ -3,7 +3,9 @@
 #include "VulkanHeaders.h"
 #include "VulkanExtension.h"
 #include "Common/PagedAllocator.h"
+#include "Common/HashMap.h"
 #include "Graphics/RHI/DynamicRHI.h"
+#include "Graphics/RHI/RHICommands.h"
 #if defined(ZEN_MACOS)
 #    include "Platform/VulkanMacOSPlatform.h"
 #elif defined(ZEN_WIN32)
@@ -17,24 +19,34 @@
 namespace zen::rhi
 {
 class VulkanDevice;
+class VulkanViewport;
 class VulkanCommandBufferManager;
 class VulkanDescriptorPoolManager;
 struct VulkanShader;
 struct VulkanTexture;
 struct VulkanBuffer;
 struct VulkanDescriptorSet;
+struct VulkanPipeline;
+class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
 
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
-using VersatileResource =
-    VersatileResourceTemplate<VulkanShader, VulkanTexture, VulkanBuffer, VulkanDescriptorSet>;
+using VersatileResource = VersatileResourceTemplate<VulkanShader,
+                                                    VulkanTexture,
+                                                    VulkanBuffer,
+                                                    VulkanDescriptorSet,
+                                                    VulkanPipeline>;
 
 class VulkanRHI : public DynamicRHI
 {
 public:
     VulkanRHI();
     ~VulkanRHI() override = default;
+
+    RHICommandListContext* CreateCmdListContext() override;
+
+    void WaitForCommandList(RHICommandList* cmdList) override;
 
     void Init() override;
     void Destroy() override;
@@ -49,6 +61,11 @@ public:
         return "VulkanRHI";
     };
 
+    VulkanDevice* GetDevice() const
+    {
+        return m_device;
+    }
+
     VkInstance GetInstance() const
     {
         return m_instance;
@@ -58,16 +75,18 @@ public:
 
     VkDevice GetVkDevice() const;
 
-    VulkanCommandBufferManager* GetCmdBufferManager() const
-    {
-        return m_cmdBufferManager;
-    }
+    RHIViewport* CreateViewport(void* windowPtr,
+                                uint32_t width,
+                                uint32_t height,
+                                bool enableVSync) final;
 
-    SwapchainHandle CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync) final;
+    void DestroyViewport(RHIViewport* viewport) final;
 
-    Status ResizeSwapchain(SwapchainHandle swapchainHandle) final;
+    void BeginDrawingViewport(RHIViewport* viewportRHI) final;
 
-    void DestroySwapchain(SwapchainHandle swapchainHandle) final;
+    void EndDrawingViewport(RHIViewport* viewportRHI,
+                            RHICommandListContext* cmdListContext,
+                            bool present) final;
 
     ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
 
@@ -106,6 +125,10 @@ public:
                               BitField<BufferUsageFlagBits> usageFlags,
                               BufferAllocateType allocateType) final;
 
+    uint8_t* MapBuffer(BufferHandle bufferHandle) final;
+
+    void UnmapBuffer(BufferHandle bufferHandle) final;
+
     void DestroyBuffer(BufferHandle bufferHandle) final;
 
     void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
@@ -116,6 +139,14 @@ public:
 
     void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                              const std::vector<ShaderResourceBinding>& resourceBindings) final;
+
+    void ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
+                           VkImage image,
+                           VkImageLayout srcLayout,
+                           VkImageLayout dstLayout,
+                           const VkImageSubresourceRange& range);
+
+    void WaitDeviceIdle() final;
 
 protected:
     void CreateInstance();
@@ -137,16 +168,16 @@ private:
 
     VulkanDevice* m_device{nullptr};
 
-    VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
+    VulkanViewport* m_currentViewport{nullptr};
+
+    std::vector<RHICommandListContext*> m_cmdListContexts;
     VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
 
     // allocator for memory
     VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
     // allocators for resrouces
     PagedAllocator<VersatileResource> m_resourceAllocator;
-    // PagedAllocator<VulkanShader> m_shaderAllocator;
-    // PagedAllocator<VulkanTexture> m_textureAllocator;
-    // PagedAllocator<VulkanBuffer> m_bufferAllocator;
-    // PagedAllocator<VulkanDescriptorSet> m_descriptorSetAllocator;
+
+    HashMap<ShaderHandle, VulkanPipeline*> m_shaderPipelines;
 };
 } // namespace zen::rhi

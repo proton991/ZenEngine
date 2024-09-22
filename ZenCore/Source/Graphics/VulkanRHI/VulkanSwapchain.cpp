@@ -3,6 +3,8 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Common/Errors.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanQueue.h"
+#include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
 
 namespace zen::rhi
@@ -109,34 +111,53 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
     return VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR;
 }
 
-VulkanSwapchain::VulkanSwapchain(VulkanRHI* vkRHI,
-                                 VulkanSurface* vulkanSurface,
+VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
+                                 void* windowPtr,
+                                 uint32_t width,
+                                 uint32_t height,
                                  bool enableVSync,
-                                 VkSwapchainKHR oldSwapchain)
+                                 VulkanSwapchainRecreateInfo* recreateInfo) :
+    m_RHI(RHI), m_device(RHI->GetDevice())
 {
 
-    VkDevice device      = vkRHI->GetVkDevice();
-    VkPhysicalDevice gpu = vkRHI->GetPhysicalDevice();
-    VkSurfaceKHR surface = vulkanSurface->surface;
+    VkDevice device      = m_RHI->GetDevice()->GetVkHandle();
+    VkPhysicalDevice gpu = m_RHI->GetPhysicalDevice();
+    if (recreateInfo != nullptr)
+    {
+        m_surface             = recreateInfo->surface;
+        recreateInfo->surface = VK_NULL_HANDLE;
+    }
+    else
+    {
+        WindowData windowData{static_cast<platform::GlfwWindowImpl*>(windowPtr)->GetHandle(), width,
+                              height};
+        m_surface = VulkanPlatform::CreateSurface(m_RHI->GetInstance(), &windowData);
+    }
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &surfaceCapabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &surfaceCapabilities);
+    uint32_t swapchainWidth  = surfaceCapabilities.currentExtent.width == 0xFFFFFFFF ?
+         width :
+         surfaceCapabilities.currentExtent.width;
+    uint32_t swapchainHeight = surfaceCapabilities.currentExtent.height == 0xFFFFFFFF ?
+        height :
+        surfaceCapabilities.currentExtent.height;
 
-    VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(gpu, surface);
+    VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(gpu, m_surface);
 
     m_format      = surfaceFormat.format;
     m_colorSpace  = surfaceFormat.colorSpace;
-    m_presentMode = ChoosePresentMode(gpu, surface, enableVSync);
+    m_presentMode = ChoosePresentMode(gpu, m_surface, enableVSync);
 
     VkImageUsageFlags imageUsage =
         ChooseImageUsage(gpu, surfaceCapabilities.supportedUsageFlags, surfaceFormat.format);
 
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-    swapchainCI.surface       = surface;
+    swapchainCI.surface       = m_surface;
     swapchainCI.minImageCount = std::max(
         surfaceCapabilities.minImageCount,
         std::min(surfaceCapabilities.maxImageCount, (uint32_t)ZEN_RHI_SWAPCHAIN_IMAGE_COUNT));
-    swapchainCI.imageExtent      = {vulkanSurface->width, vulkanSurface->height};
+    swapchainCI.imageExtent      = {width, height};
     swapchainCI.imageArrayLayers = 1;
     swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -146,13 +167,14 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* vkRHI,
     swapchainCI.presentMode      = m_presentMode;
     swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
                                                         surfaceCapabilities.supportedCompositeAlpha);
-    swapchainCI.oldSwapchain     = oldSwapchain;
+    swapchainCI.oldSwapchain     = recreateInfo == nullptr ? nullptr : recreateInfo->swapchain;
 
     VKCHECK(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &m_swaphchain));
 
-    if (oldSwapchain != VK_NULL_HANDLE)
+    if (recreateInfo != nullptr)
     {
-        vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+        vkDestroySwapchainKHR(device, recreateInfo->swapchain, nullptr);
+        recreateInfo->swapchain = VK_NULL_HANDLE;
     }
 
     LOGI("Swapchain surface format: {}", VkToString(surfaceFormat));
@@ -162,32 +184,101 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* vkRHI,
     vkGetSwapchainImagesKHR(device, m_swaphchain, &numImages, nullptr);
     m_swapchainImages.resize(numImages);
     vkGetSwapchainImagesKHR(device, m_swaphchain, &numImages, m_swapchainImages.data());
-}
-
-
-SwapchainHandle VulkanRHI::CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync)
-{
-    VulkanSurface* vulkanSurface     = reinterpret_cast<VulkanSurface*>(surfaceHandle.value);
-    VulkanSwapchain* vulkanSwapchain = new VulkanSwapchain(this, vulkanSurface, enableVSync);
-
-    return SwapchainHandle(vulkanSwapchain);
-}
-
-
-Status VulkanRHI::ResizeSwapchain(SwapchainHandle swapchainHandle)
-{
-    return Status::eSuccess;
-}
-
-void VulkanRHI::DestroySwapchain(SwapchainHandle swapchainHandle)
-{
-    VulkanSwapchain* vulkanSwapchain = reinterpret_cast<VulkanSwapchain*>(swapchainHandle.value);
-    if (vulkanSwapchain != VK_NULL_HANDLE)
+    // create semaphores
+    m_imageAcquiredSemphores.reserve(numImages);
+    for (uint32_t i = 0; i < numImages; i++)
     {
-        vkDestroySwapchainKHR(m_device->GetVkHandle(), vulkanSwapchain->GetVkHandle(), nullptr);
+        auto* semaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
+        // auto* semaphore = new VulkanSemaphore(m_device);
+        const std::string debugName = "ImageAcquired-" + std::to_string(i);
+        semaphore->SetDebugName(debugName.c_str());
+        m_imageAcquiredSemphores.push_back(semaphore);
     }
-    delete vulkanSwapchain;
+
+    m_internalWidth  = std::min(width, swapchainCI.imageExtent.width);
+    m_internalHeight = std::min(height, swapchainCI.imageExtent.height);
 }
 
+int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** outSemaphore)
+{
+    VERIFY_EXPR(m_imageIndex == -1);
+    const int32_t prevSemaphoreIndex = m_semaphoreIndex;
+    m_semaphoreIndex =
+        (m_semaphoreIndex + 1) % static_cast<int32_t>(m_imageAcquiredSemphores.size());
+    uint32_t imageIndex = 0;
+    VkResult result;
+    {
+        result = vkAcquireNextImageKHR(m_device->GetVkHandle(), m_swaphchain, UINT64_MAX,
+                                       m_imageAcquiredSemphores[m_semaphoreIndex]->GetVkHandle(),
+                                       VK_NULL_HANDLE, &imageIndex);
+        const uint32_t maxImageIndex = m_imageAcquiredSemphores.size() - 1;
+        while (imageIndex > maxImageIndex && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
+        {
+            result =
+                vkAcquireNextImageKHR(m_device->GetVkHandle(), m_swaphchain, UINT64_MAX,
+                                      m_imageAcquiredSemphores[m_semaphoreIndex]->GetVkHandle(),
+                                      VK_NULL_HANDLE, &imageIndex);
+        }
+    }
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        m_semaphoreIndex = prevSemaphoreIndex;
+        return -1;
+    }
+    if (result == VK_ERROR_SURFACE_LOST_KHR)
+    {
+        m_semaphoreIndex = prevSemaphoreIndex;
+        return -1;
+    }
+    *outSemaphore = m_imageAcquiredSemphores[m_semaphoreIndex];
+    m_imageIndex  = static_cast<int32_t>(imageIndex);
+    return m_imageIndex;
+}
 
+bool VulkanSwapchain::Present(VulkanSemaphore* renderingCompleteSemaphore)
+{
+    VkPresentInfoKHR presentInfo;
+    InitVkStruct(presentInfo, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains    = &m_swaphchain;
+    presentInfo.pImageIndices  = reinterpret_cast<uint32_t*>(&m_imageIndex);
+    VkSemaphore semaphore{VK_NULL_HANDLE};
+    if (renderingCompleteSemaphore != nullptr)
+    {
+        presentInfo.waitSemaphoreCount = 1;
+        semaphore                      = renderingCompleteSemaphore->GetVkHandle();
+        presentInfo.pWaitSemaphores    = &semaphore;
+    }
+    VkResult result = vkQueuePresentKHR(m_device->GetGfxQueue()->GetVkHandle(), &presentInfo);
+    m_imageIndex    = -1;
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        return false;
+    }
+    return true;
+}
+
+void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* recreateInfo)
+{
+    if (recreateInfo != nullptr)
+    {
+        recreateInfo->swapchain = m_swaphchain;
+        recreateInfo->surface   = m_surface;
+    }
+    else
+    {
+        vkDestroySwapchainKHR(m_device->GetVkHandle(), m_swaphchain, nullptr);
+    }
+    m_swaphchain = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < m_imageAcquiredSemphores.size(); i++)
+    {
+        // m_imageAcquiredSemphores[i]->Release();
+        m_device->GetSemaphoreManager()->ReleaseSemaphore(m_imageAcquiredSemphores[i]);
+    }
+    if (recreateInfo == nullptr)
+    {
+        VulkanPlatform::DestroySurface(m_RHI->GetInstance(), m_surface);
+    }
+    m_surface = VK_NULL_HANDLE;
+}
 } // namespace zen::rhi

@@ -1,0 +1,534 @@
+#pragma once
+#include "Common/Errors.h"
+#include "Common/HashMap.h"
+#include "Common/PagedAllocator.h"
+#include "Common/SmallVector.h"
+#include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHICommands.h"
+#include <queue>
+
+// RDG_ID class
+class RDG_ID
+{
+public:
+    // Constructors
+    RDG_ID() : m_value(UndefinedValue) {} // Default constructor with "undefined" value
+    RDG_ID(int32_t id) : m_value(id) {}   // Constructor with int32_t value
+
+    // Copy constructor
+    RDG_ID(const RDG_ID& other) : m_value(other.m_value) {}
+
+    // Move constructor
+    RDG_ID(RDG_ID&& other) noexcept : m_value(other.m_value)
+    {
+        other.m_value = UndefinedValue;
+    }
+
+    // Copy assignment operator
+    RDG_ID& operator=(const RDG_ID& other)
+    {
+        if (this != &other)
+        {
+            m_value = other.m_value;
+        }
+        return *this;
+    }
+
+    // Move assignment operator
+    RDG_ID& operator=(RDG_ID&& other) noexcept
+    {
+        if (this != &other)
+        {
+            m_value       = other.m_value;
+            other.m_value = UndefinedValue;
+        }
+        return *this;
+    }
+
+    // Assignment from int32_t
+    RDG_ID& operator=(int32_t id)
+    {
+        m_value = id;
+        return *this;
+    }
+
+    // Conversion operator to int32_t
+    operator int32_t() const
+    {
+        return m_value;
+    }
+
+    // Equality operators
+    bool operator==(const RDG_ID& other) const
+    {
+        return m_value == other.m_value;
+    }
+
+    bool operator!=(const RDG_ID& other) const
+    {
+        return m_value != other.m_value;
+    }
+
+private:
+    int32_t m_value;
+    static constexpr int32_t UndefinedValue = -1;
+};
+
+namespace std
+{
+template <> struct hash<RDG_ID>
+{
+    std::size_t operator()(const RDG_ID& id) const noexcept
+    {
+        return std::hash<int32_t>()(id);
+    }
+};
+} // namespace std
+
+namespace zen::rc
+{
+// Singleton class to generate IDs
+class RDGIDGenerator
+{
+public:
+    // Returns the singleton instance
+    static RDGIDGenerator& GetInstance()
+    {
+        static RDGIDGenerator instance;
+        return instance;
+    }
+
+    // Get the next ID
+    int64_t GenID()
+    {
+        return m_currentID++;
+    }
+
+    // Delete copy constructor and assignment operator
+    RDGIDGenerator(const RDGIDGenerator&) = delete;
+    void operator=(const RDGIDGenerator&) = delete;
+
+private:
+    // Private constructor to prevent instantiation
+    RDGIDGenerator() : m_currentID(0) {} // Start ID from 1
+    // Current ID
+    int64_t m_currentID;
+};
+
+
+
+// using RDG_ID  = int32_t;
+using RDG_TAG = std::string;
+
+enum class RDGPassType : uint32_t
+{
+    eCompute  = 0,
+    eGraphics = 1,
+    eMax      = 2
+};
+
+enum class RDGPassCmdType : uint32_t
+{
+    eNone             = 0,
+    eBindIndexBuffer  = 1,
+    eBindVertexBuffer = 2,
+    eBindPipeline     = 3,
+    eClearAttachment  = 4,
+    eDraw             = 5,
+    eDrawIndexed      = 6,
+    eExecuteCommands  = 7,
+    eNextSubpass      = 8,
+    eDispatch         = 9,
+    eDispatchIndirect = 10,
+    eSetPushConstant  = 11,
+    eSetLineWidth     = 12,
+    eSetBlendConstant = 13,
+    eSetScissor       = 14,
+    eSetViewport      = 15,
+    eMax              = 16
+};
+
+enum class RDGNodeType : uint32_t
+{
+    eNone           = 0,
+    eClearBuffer    = 1,
+    eCopyBuffer     = 2,
+    eUpdateBuffer   = 3,
+    eClearTexture   = 4,
+    eCopyTexture    = 5,
+    eReadTexture    = 6,
+    eUpdateTexture  = 7,
+    eResolveTexture = 8,
+    eGraphicsPass   = 9,
+    eComputePass    = 10,
+    eMax            = 11
+};
+
+enum class RDGResourceType : uint32_t
+{
+    eNone    = 0,
+    eBuffer  = 1,
+    eTexture = 2,
+    eMax     = 3
+};
+
+// enum class RDGResourceAccessType : uint32_t
+// {
+//     eNone      = 0,
+//     eRead      = 1,
+//     eReadWrite = 2,
+//     eMax       = 3
+// };
+
+enum class RDGResourceUsage
+{
+    eNone
+};
+
+enum class RDGAccessType
+{
+    eNone      = 0,
+    eRead      = 1,
+    eReadWrite = 2,
+    eMax       = 3
+};
+
+struct RDGAccess
+{
+    RDGAccessType type{RDGAccessType::eNone};
+    RDG_ID nodeId{-1};
+    RDG_ID resourceId{-1};
+    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
+    rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
+    rhi::TextureSubResourceRange texutreSubResourceRange;
+};
+
+struct RDGResource
+{
+    RDG_ID id{-1};
+    rhi::Handle physicalHandle;
+    RDGResourceType type{RDGResourceType::eNone};
+    HashMap<RDGAccessType, std::vector<RDG_ID>> acessNodeMap;
+};
+
+struct RDGNodeBase
+{
+    RDG_ID id{-1};
+    RDG_ID tag;
+    RDGNodeType type{RDGNodeType::eNone};
+    BitField<rhi::PipelineStageBits> selfStages;
+};
+
+struct RDGPassNode;
+struct RDGPassChildNode
+{
+    RDGPassCmdType type{RDGPassCmdType::eNone};
+    RDGPassNode* parent{nullptr};
+};
+
+struct RDGPassNode : RDGNodeBase
+{
+    std::vector<RDGPassChildNode*> childNodes;
+    std::vector<RDGResource*> resources;
+};
+
+struct RDGComputePassNode : RDGPassNode
+{};
+
+struct RDGGraphicsPassNode : RDGPassNode
+{
+    rhi::RenderPassHandle renderPass;
+    rhi::FramebufferHandle framebuffer;
+    rhi::Rect2 renderArea;
+    std::vector<rhi::RenderPassClearValue> clearValues;
+};
+
+/*****************************/
+/********* RDGNodes **********/
+/*****************************/
+
+struct RDGBufferClearNode : RDGNodeBase
+{
+    rhi::BufferHandle buffer;
+    uint32_t offset{0};
+    uint32_t size{0};
+};
+
+struct RDGBufferCopyNode : RDGNodeBase
+{
+    rhi::BufferHandle srcBuffer;
+    rhi::BufferHandle dstBuffer;
+    rhi::BufferCopyRegion region;
+};
+
+struct RDGBufferUpdateNode : RDGNodeBase
+{
+    std::vector<rhi::BufferCopySource> sources;
+    rhi::BufferHandle dstBuffer;
+};
+
+struct RDGTextureClearNode : RDGNodeBase
+{
+    rhi::TextureHandle texture;
+    rhi::TextureSubResourceRange range;
+    rhi::Color color;
+};
+
+struct RDGTextureCopyNode : RDGNodeBase
+{
+    rhi::TextureHandle srcTexture;
+    rhi::TextureHandle dstTexture;
+    std::vector<rhi::TextureCopyRegion> copyRegions;
+};
+
+struct RDGTextureReadNode : RDGNodeBase
+{
+    rhi::TextureHandle srcTexture;
+    rhi::BufferHandle dstBuffer;
+    std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
+};
+
+struct RDGTextureUpdateNode : RDGNodeBase
+{
+    std::vector<rhi::BufferTextureCopySource> sources;
+    rhi::TextureHandle dstTexture;
+};
+
+struct RDGTextureResolveNode : RDGNodeBase
+{
+    rhi::TextureHandle srcTexture;
+    rhi::TextureHandle dstTexture;
+    uint32_t srcLayer{0};
+    uint32_t srcMipmap{0};
+    uint32_t dstLayer{0};
+    uint32_t dstMipmap{0};
+};
+
+struct RDGBindIndexBufferNode : RDGPassChildNode
+{
+    rhi::BufferHandle buffer;
+    rhi::DataFormat format;
+    uint32_t offset;
+};
+
+struct RDGBindVertexBufferNode : RDGPassChildNode
+{
+    std::vector<rhi::BufferHandle> vertexBuffers;
+    std::vector<uint64_t> offsets;
+};
+
+struct RDGBindPipelineNode : RDGPassChildNode
+{
+    rhi::PipelineHandle pipeline;
+    rhi::PipelineType pipelineType{rhi::PipelineType::eNone};
+};
+
+struct RDGDrawNode : RDGPassChildNode
+{
+    uint32_t vertexCount{0};
+    uint32_t instanceCount{0};
+};
+
+struct RDGDrawIndexedNode : RDGPassChildNode
+{
+    uint32_t indexCount{0};
+    uint32_t instanceCount{0};
+    uint32_t firstIndex{0};
+};
+
+struct RDGSetPushConstantsNode : RDGPassChildNode
+{
+    rhi::ShaderHandle shader;
+    std::vector<uint8_t> data;
+};
+
+struct RDGSetBlendConstantsNode : RDGPassChildNode
+{
+    rhi::Color color;
+};
+
+struct RDGSetLineWidthNode : RDGPassChildNode
+{
+    float width{1.0f};
+};
+
+struct RDGSetScissorNode : RDGPassChildNode
+{
+    rhi::Rect2 scissor;
+};
+
+struct RDGSetViewportNode : RDGPassChildNode
+{
+    rhi::Rect2 viewport;
+};
+
+class RenderGraph
+{
+public:
+    RenderGraph() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false) {}
+
+    void Init() {}
+
+    void Destroy();
+
+    RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
+                                     rhi::FramebufferHandle framebufferHandle,
+                                     rhi::Rect2 area,
+                                     VectorView<rhi::RenderPassClearValue> clearValues,
+                                     bool hasColorTarget,
+                                     bool hasDepthTarget = false);
+
+    void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
+                                            rhi::BufferHandle bufferHandle,
+                                            rhi::DataFormat format,
+                                            uint32_t offset);
+
+    void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
+                                             VectorView<rhi::BufferHandle> vertexBuffers,
+                                             VectorView<uint32_t> offsets);
+
+    void AddGraphicsPassBindPipelineNode(RDGPassNode* parent,
+                                         rhi::PipelineHandle pipelineHandle,
+                                         rhi::PipelineType pipelineType);
+
+    void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
+
+    void AddGraphicsPassDrawNode(RDGPassNode* parent, uint32_t vertexCount, uint32_t instanceCount);
+
+    void AddGraphicsPassDrawIndexedNode(RDGPassNode* parent,
+                                        uint32_t indexCount,
+                                        uint32_t instanceCount,
+                                        uint32_t firstIndex);
+
+    void AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color);
+
+    void AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float width);
+
+    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2& scissor);
+
+    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2& viewport);
+
+    void AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t offset, uint64_t size);
+
+    void AddBufferCopyNode(rhi::BufferHandle srcBufferHandle,
+                           rhi::BufferHandle dstBufferHandle,
+                           const rhi::BufferCopyRegion& copyRegion);
+
+    void AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
+                             const VectorView<rhi::BufferCopySource>& sources);
+
+    void AddTextureClearNode(rhi::TextureHandle textureHandle,
+                             const rhi::Color& color,
+                             const rhi::TextureSubResourceRange& range);
+
+    void AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
+                            rhi::TextureHandle dstTextureHandle,
+                            const VectorView<rhi::TextureCopyRegion>& regions);
+
+    void AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
+                            rhi::BufferHandle dstBufferHandle,
+                            const VectorView<rhi::BufferTextureCopyRegion>& regions);
+
+    void AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
+                              const VectorView<rhi::BufferTextureCopySource>& sources);
+
+    void AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
+                               rhi::TextureHandle dstTextureHandle,
+                               uint32_t srcLayer,
+                               uint32_t srcMipmap,
+                               uint32_t dstLayer,
+                               uint32_t dstMipMap);
+    void Begin();
+
+    void End();
+
+    void Execute(rhi::RHICommandList* cmdList);
+
+private:
+    static uint64_t CreateNodePairKey(const RDG_ID& nodeId1, const RDG_ID& nodeId2)
+    {
+        uint64_t key = static_cast<uint64_t>(static_cast<uint32_t>(nodeId1)) << 32;
+        key |= static_cast<uint32_t>(nodeId2);
+        return key;
+    }
+
+    void RunNode(RDGNodeBase* node);
+
+    void SortNodes();
+
+    void EmitTransitionBarriers(uint32_t level);
+
+    void EmitInitializationBarriers(uint32_t level);
+
+    template <class T>
+        requires std::derived_from<T, RDGNodeBase>
+    T* AllocNode()
+    {
+        uint32_t nodeDataOffset = m_nodeData.size();
+        m_nodeDataOffset.push_back(nodeDataOffset);
+        m_nodeData.resize(m_nodeData.size() + sizeof(T));
+        T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+        *newNode   = T();
+
+        newNode->id = m_nodeCount;
+        m_nodeCount++;
+        m_allNodes.push_back(newNode);
+        return newNode;
+    }
+
+    template <class T>
+        requires std::derived_from<T, RDGPassChildNode>
+    T* AllocPassChildNode(RDGPassNode* passNode)
+    {
+        T* newNode      = new T();
+        newNode->parent = passNode;
+        passNode->childNodes.push_back(newNode);
+        return newNode;
+    }
+
+    RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId)
+    {
+        const auto dataOffset = m_nodeDataOffset[nodeId];
+        return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
+    }
+
+    RDGResource* GetOrAllocResource(rhi::Handle handle, RDGResourceType type, const RDG_ID& nodeId)
+    {
+        RDGResource* resource;
+        if (!m_resourceMap.contains(handle))
+        {
+            resource     = m_resourceAllocator.Alloc();
+            resource->id = static_cast<int32_t>(m_resources.size());
+            m_resources.push_back(resource);
+            resource->type        = type;
+            m_resourceMap[handle] = resource;
+            // track first used node
+            m_resourceFirstUseNodeMap[resource->id] = nodeId;
+        }
+        else
+        {
+            resource = m_resourceMap[handle];
+        }
+        return resource;
+    }
+
+    // RHI CommandList
+    rhi::RHICommandList* m_cmdList{nullptr};
+    // nodes
+    std::vector<uint8_t> m_nodeData;
+    std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
+    std::vector<RDGNodeBase*> m_allNodes;
+    uint32_t m_nodeCount{0};
+    std::vector<std::vector<RDG_ID>> m_sortedNodes;
+    // tracked resources
+    std::vector<RDGResource*> m_resources;
+    PagedAllocator<RDGResource> m_resourceAllocator;
+    HashMap<rhi::Handle, RDGResource*> m_resourceMap;
+    // resource id -> node id
+    HashMap<RDG_ID, RDG_ID> m_resourceFirstUseNodeMap;
+    HashMap<RDG_ID, std::vector<RDGAccess>> m_nodeAccessMap;
+    // transitions
+    HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
+    HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
+};
+} // namespace zen::rc

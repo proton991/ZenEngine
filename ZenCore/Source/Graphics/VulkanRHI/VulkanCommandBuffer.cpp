@@ -96,7 +96,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
     {
         // wait 33ms
         uint64_t timeNS = 33 * 1000 * 1000LL;
-        fenceManager->WaitForFence(m_fence, timeNS);
+        fenceManager->WaitAndReleaseFence(m_fence, timeNS);
     }
     else
     {
@@ -121,7 +121,6 @@ void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags,
     for (auto sem : sems)
     {
         m_waitFlags.push_back(waitFlags);
-        sem->AddRef();
         m_waitSemaphores.push_back(sem);
     }
 }
@@ -146,13 +145,10 @@ void VulkanCommandBuffer::RefreshFenceStatus()
         VulkanFenceManager* fenceManager = m_cmdBufferPool->GetDevice()->GetFenceManager();
         if (fenceManager->IsFenceSignaled(m_fence))
         {
-            for (VulkanSemaphore* sem : m_submittedWaitSemaphores)
-            {
-                sem->Release();
-            }
             m_submittedWaitSemaphores.clear();
             m_fence->GetOwner()->ResetFence(m_fence);
             m_state = State::eNeedReset;
+            m_fenceSignaledCounter++;
         }
     }
 }
@@ -194,23 +190,24 @@ void VulkanCommandBuffer::EndRenderPass()
 }
 
 VulkanCommandBufferManager::VulkanCommandBufferManager(VulkanDevice* device, VulkanQueue* queue) :
-    m_device(device), m_queue(queue), m_pool(device, *this)
+    m_device(device), m_queue(queue), m_pool(device, this)
 {
     m_pool.Init(queue->GetFamilyIndex());
     // allocate active cmd buffer
     m_activeCmdBuffer = m_pool.CreateCmdBuffer(false);
     if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
     {
-        m_activeCmdBufferSemaphore = new VulkanSemaphore(m_device);
+        m_activeCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
     }
 }
 
 VulkanCommandBuffer* VulkanCommandBufferManager::GetActiveCommandBuffer()
 {
-    if (m_uploadCmdBuffer != nullptr)
-    {
-        SubmitUploadCmdBuffer();
-    }
+    // if (m_uploadCmdBuffer != nullptr)
+    // {
+    //     SubmitUploadCmdBuffer();
+    // }
+    m_activeCmdBuffer->Begin();
     return m_activeCmdBuffer;
 }
 
@@ -248,16 +245,13 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
     const std::vector<VulkanSemaphore*>& signalSemaphores)
 {
     std::vector<VkSemaphore> semaphoreHandles;
+    semaphoreHandles.reserve(signalSemaphores.size());
     for (VulkanSemaphore* sem : signalSemaphores)
     {
         semaphoreHandles.push_back(sem->GetVkHandle());
     }
     if (!m_activeCmdBuffer->IsSubmitted() && m_activeCmdBuffer->HasBegun())
     {
-        if (!m_activeCmdBuffer->IsOutsideRenderPass())
-        {
-            m_activeCmdBuffer->EndRenderPass();
-        }
         m_activeCmdBuffer->End();
 
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
@@ -275,11 +269,12 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
 
             m_uploadCompleteSemaphores.clear();
         }
+        else
+        {
+            m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
+        }
     }
-    else
-    {
-        m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
-    }
+
     m_activeCmdBuffer = nullptr;
 }
 
@@ -331,7 +326,6 @@ void VulkanCommandBufferManager::SubmitUploadCmdBuffer()
     if (!m_uploadCmdBuffer->IsSubmitted() && m_uploadCmdBuffer->HasBegun())
     {
         m_uploadCmdBuffer->End();
-        VERIFY_EXPR(m_uploadCmdBuffer->IsOutsideRenderPass());
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
         {
             for (VulkanSemaphore* sem : m_renderCompleteSemaphores)
@@ -358,7 +352,7 @@ void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
 {
     if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
     {
-        m_activeCmdBufferSemaphore = new VulkanSemaphore(m_device);
+        m_activeCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
     }
     for (auto i = 0; i < m_pool.m_usedCmdBuffers.size(); i++)
     {
@@ -370,7 +364,6 @@ void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
                 cmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
             {
                 m_activeCmdBuffer = cmdBuffer;
-                m_activeCmdBuffer->Begin();
                 return;
             }
             else
@@ -381,7 +374,6 @@ void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
     }
     // create a new one
     m_activeCmdBuffer = m_pool.CreateCmdBuffer(false);
-    m_activeCmdBuffer->Begin();
 }
 
 void VulkanCommandBufferManager::FreeUnusedCmdBuffers()

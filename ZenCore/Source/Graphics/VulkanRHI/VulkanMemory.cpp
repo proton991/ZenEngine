@@ -5,7 +5,25 @@
 
 namespace zen::rhi
 {
-static const uint32_t SMALL_VK_ALLOCATION_SIZE = 4096;
+static constexpr uint32_t SMALL_VK_ALLOCATION_SIZE = 4096;
+
+VulkanMemoryAllocator::~VulkanMemoryAllocator()
+{
+    if (m_vmaAllocator != VK_NULL_HANDLE)
+    {
+        VmaTotalStatistics stats;
+        vmaCalculateStatistics(m_vmaAllocator, &stats);
+
+        LOGI("VMA Total device memory leaked: {} bytes.", stats.total.statistics.allocationBytes);
+
+        // destroy pools
+        for (auto& kv : m_smallPools)
+        {
+            vmaDestroyPool(m_vmaAllocator, kv.second);
+        }
+        vmaDestroyAllocator(m_vmaAllocator);
+    }
+}
 
 void VulkanMemoryAllocator::Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device)
 {
@@ -115,6 +133,19 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
     VKCHECK(vmaCreateBuffer(m_vmaAllocator, bufferCI, &vmaAllocationCI, buffer, &allocation->handle,
                             &allocation->info));
 }
+
+uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc)
+{
+    void* dataPtr = nullptr;
+    VKCHECK(vmaMapMemory(m_vmaAllocator, memAlloc.handle, &dataPtr));
+    return static_cast<uint8_t*>(dataPtr);
+}
+
+void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)
+{
+    vmaUnmapMemory(m_vmaAllocator, memAlloc.handle);
+}
+
 
 void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
 {

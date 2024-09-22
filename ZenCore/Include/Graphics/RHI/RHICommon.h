@@ -1,6 +1,7 @@
 #pragma once
 #include "RHIDefs.h"
 #include "Common/BitField.h"
+#include "Common/Math.h"
 #include <string>
 #include <vector>
 
@@ -9,9 +10,8 @@
 
 #define ROUND_UP_ALIGNMENT(m_number, m_alignment) \
     ((((m_number) + ((m_alignment)-1)) / (m_alignment)) * (m_alignment))
+#define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
-namespace zen::rhi
-{}
 namespace zen::rhi
 {
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
@@ -55,28 +55,28 @@ struct Viewport
     }
 };
 
-struct Rect
+struct Rect2
 {
     int minX, maxX;
     int minY, maxY;
 
-    Rect() : minX(0), maxX(0), minY(0), maxY(0) {}
-    Rect(int width, int height) : minX(0), maxX(width), minY(0), maxY(height) {}
-    Rect(int _minX, int _maxX, int _minY, int _maxY) :
+    Rect2() : minX(0), maxX(0), minY(0), maxY(0) {}
+    Rect2(int width, int height) : minX(0), maxX(width), minY(0), maxY(height) {}
+    Rect2(int _minX, int _maxX, int _minY, int _maxY) :
         minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
     {}
-    explicit Rect(const Viewport& viewport) :
+    explicit Rect2(const Viewport& viewport) :
         minX(static_cast<int>(floorf(viewport.minX))),
         maxX(static_cast<int>(ceilf(viewport.maxX))),
         minY(static_cast<int>(floorf(viewport.minY))),
         maxY(static_cast<int>(ceilf(viewport.maxY)))
     {}
 
-    bool operator==(const Rect& b) const
+    bool operator==(const Rect2& b) const
     {
         return minX == b.minX && minY == b.minY && maxX == b.maxX && maxY == b.maxY;
     }
-    bool operator!=(const Rect& b) const
+    bool operator!=(const Rect2& b) const
     {
         return !(*this == b);
     }
@@ -96,7 +96,7 @@ struct Color
 {
     float r, g, b, a;
 
-    Color() : r(0.f), g(0.f), b(0.f), a(0.f) {}
+    Color() : r(0.f), g(0.f), b(0.f), a(1.f) {}
     explicit Color(float c) : r(c), g(c), b(c), a(c) {}
     Color(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) {}
 
@@ -568,7 +568,7 @@ struct GfxPipelineColorBlendState
         bool writeA{true};
     };
 
-    static GfxPipelineColorBlendState create_disabled(int count = 1)
+    static GfxPipelineColorBlendState CreateDisabled(int count = 1)
     {
         GfxPipelineColorBlendState bs;
         for (int i = 0; i < count; i++)
@@ -578,7 +578,7 @@ struct GfxPipelineColorBlendState
         return bs;
     }
 
-    static GfxPipelineColorBlendState createBlend(int count = 1)
+    static GfxPipelineColorBlendState CreateBlend(int count = 1)
     {
         GfxPipelineColorBlendState bs;
         for (int i = 0; i < count; i++)
@@ -596,7 +596,7 @@ struct GfxPipelineColorBlendState
     }
 
     std::vector<Attachment> attachments; // One per render target texture.
-    std::vector<float> blendConstants;
+    Color blendConstants;
 };
 
 enum class DynamicState : uint32_t
@@ -618,7 +618,7 @@ struct GfxPipelineStates
 /*****************************/
 /********* Buffers ***********/
 /*****************************/
-enum class BufferUsageFlagBits
+enum class BufferUsageFlagBits : uint32_t
 {
     eTransferSrcBuffer = 1 << 0,
     eTransferDstBuffer = 1 << 1,
@@ -630,6 +630,34 @@ enum class BufferUsageFlagBits
     eVertexBuffer      = 1 << 7,
     eIndirectBuffer    = 1 << 8,
     eMax               = 0x7FFFFFFF
+};
+
+enum class BufferUsage : uint32_t
+{
+    eNone           = 0,
+    eTransferSrc    = 1,
+    eTransferDst    = 2,
+    eTextureBuffer  = 3,
+    eImageBuffer    = 4,
+    eUniformBuffer  = 5,
+    eStorageBuffer  = 6,
+    eIndexBuffer    = 7,
+    eVertexBuffer   = 8,
+    eIndirectBuffer = 9,
+    eMax            = 10
+};
+
+struct BufferCopyRegion
+{
+    uint64_t srcOffset{0};
+    uint64_t dstOffset{0};
+    uint64_t size{0};
+};
+
+struct BufferCopySource
+{
+    BufferHandle buffer;
+    BufferCopyRegion region;
 };
 
 enum class BufferAllocateType
@@ -687,15 +715,24 @@ enum class TextureUsageFlagBits : uint32_t
 
 enum class TextureUsage : uint32_t
 {
-    eTransferSrc            = 0,
-    eTransferDst            = 1,
-    eSampled                = 2,
-    eStorage                = 3,
-    eColorAttachment        = 4,
-    eDepthStencilAttachment = 5,
-    eTransientAttachment    = 6,
-    eInputAttachment        = 7,
-    eMax                    = 8
+    eNone                   = 0,
+    eTransferSrc            = 1,
+    eTransferDst            = 2,
+    eSampled                = 3,
+    eStorage                = 4,
+    eColorAttachment        = 5,
+    eDepthStencilAttachment = 6,
+    eTransientAttachment    = 7,
+    eInputAttachment        = 8,
+    eMax                    = 9
+};
+
+enum class TextureAspectFlagBits : uint32_t
+{
+    eColor   = 1 << 0,
+    eDepth   = 1 << 1,
+    eStencil = 1 << 2,
+    eMax     = 0x7FFFFFFF
 };
 
 enum class TextureLayout : uint32_t
@@ -718,10 +755,51 @@ enum class TextureType : uint32_t
     eMax = 3
 };
 
+struct TextureSubResourceRange
+{
+    BitField<TextureAspectFlagBits> aspect;
+    uint32_t baseMipLevel{0};
+    uint32_t levelCount{0};
+    uint32_t baseArrayLayer{0};
+    uint32_t layerCount{0};
+};
+
+struct TextureSubresourceLayers
+{
+    BitField<TextureAspectFlagBits> aspect;
+    uint32_t mipmap{0};
+    uint32_t baseArrayLayer{0};
+    uint32_t layerCount{0};
+};
+
+struct TextureCopyRegion
+{
+    Vec3i srcOffset;
+    Vec3i dstOffset;
+    Vec3i size;
+    TextureSubresourceLayers srcSubresources;
+    TextureSubresourceLayers dstSubresources;
+};
+
+struct BufferTextureCopyRegion
+{
+    uint64_t bufferOffset{0};
+    TextureSubresourceLayers textureSubresources;
+    Vec3i textureOffset;
+    Vec3i textureSize;
+};
+
+struct BufferTextureCopySource
+{
+    BufferHandle buffer;
+    BufferTextureCopyRegion region;
+};
+
 inline TextureLayout TextureUsageToLayout(TextureUsage usage)
 {
     switch (usage)
     {
+        case TextureUsage::eNone: return TextureLayout::eUndefined;
         case TextureUsage::eTransferSrc: return TextureLayout::eTransferSrc;
         case TextureUsage::eTransferDst: return TextureLayout::eTransferDst;
         case TextureUsage::eSampled:
@@ -762,6 +840,18 @@ struct RenderTarget
     TextureUsage usage{TextureUsage::eMax};
 };
 
+union RenderPassClearValue
+{
+    Color color = {};
+    struct
+    {
+        float depth;
+        uint32_t stencil;
+    };
+
+    RenderPassClearValue() {}
+};
+
 class RenderPassLayout
 {
 public:
@@ -779,8 +869,7 @@ public:
     {
         if (m_numColorRT < m_colorRTs.size())
         {
-            RenderTarget renderTarget = {format, usage};
-            m_colorRTs.emplace_back(renderTarget);
+            m_colorRTs[m_numColorRT] = {format, usage};
             m_numColorRT++;
         }
     }
@@ -883,6 +972,13 @@ struct RenderTargetInfo
     uint32_t depth{1};
 };
 
+enum class PipelineType : uint32_t
+{
+    eNone     = 0,
+    eGraphics = 1,
+    eCompute  = 2,
+    eMax      = 3
+};
 /**********************************************/
 /********** Context for RHICommandList ********/
 /*********************************************/
@@ -953,7 +1049,7 @@ public:
         return *this;
     }
 
-    GraphicsContext& AddScissor(const Rect& scissor)
+    GraphicsContext& AddScissor(const Rect2& scissor)
     {
         m_scissors.emplace_back(scissor);
         return *this;
@@ -983,9 +1079,136 @@ private:
     PipelineHandle m_pipline{nullptr};
     FramebufferHandle m_framebuffer{nullptr};
     std::vector<Viewport> m_viewports;
-    std::vector<Rect> m_scissors;
+    std::vector<Rect2> m_scissors;
     Color m_blendConstantColor{};
     std::vector<VertexBufferBinding> m_vertexBufferBindings;
     IndexBufferBinding m_indexBufferBinding{};
+};
+
+/*****************************/
+/********* Barriers **********/
+/*****************************/
+enum class AccessFlagBits : uint32_t
+{
+    eNone                        = 0,
+    eIndirectCommandRead         = 1 << 0,
+    eIndexRead                   = 1 << 1,
+    eVertexAttributeRead         = 1 << 2,
+    eUniformRead                 = 1 << 3,
+    eInputAttachmentRead         = 1 << 4,
+    eShaderRead                  = 1 << 5,
+    eShaderWrite                 = 1 << 6,
+    eColorAttachmentRead         = 1 << 7,
+    eColorAttachmentWrite        = 1 << 8,
+    eDepthStencilAttachmentRead  = 1 << 9,
+    eDepthStencilAttachmentWrite = 1 << 10,
+    eTransferRead                = 1 << 11,
+    eTransferWrite               = 1 << 12,
+    eHostRead                    = 1 << 13,
+    eHostWrite                   = 1 << 14,
+    eMemoryRead                  = 1 << 15,
+    eMemoryWrite                 = 1 << 16,
+    eMax                         = 0x7FFFFFFF
+};
+
+enum class PipelineStageBits : uint32_t
+{
+    eNone                         = 0,
+    eTopOfPipe                    = 1 << 0,
+    eDrawIndirect                 = 1 << 1,
+    eVertexInput                  = 1 << 2,
+    eVertexShader                 = 1 << 3,
+    eTessellationControlShader    = 1 << 4,
+    eTessellationEvaluationShader = 1 << 5,
+    eGeometryShader               = 1 << 6,
+    eFragmentShader               = 1 << 7,
+    eEarlyFragmentTests           = 1 << 8,
+    eLateFragmentTests            = 1 << 9,
+    eColorAttachmentOutput        = 1 << 10,
+    eComputeShader                = 1 << 11,
+    eTransfer                     = 1 << 12,
+    eBottomOfPipe                 = 1 << 13,
+    eHost                         = 1 << 14,
+    eAllGraphics                  = 1 << 15,
+    eAllCommands                  = 1 << 16,
+    eMax                          = 0x7FFFFFFF
+};
+
+inline BitField<AccessFlagBits> TextureUsageToAccessFlagBits(TextureUsage usage)
+{
+    BitField<AccessFlagBits> result;
+    switch (usage)
+    {
+        case TextureUsage::eNone: break;
+        case TextureUsage::eTransferSrc: result.SetFlag(AccessFlagBits::eTransferRead); break;
+        case TextureUsage::eTransferDst: result.SetFlag(AccessFlagBits::eTransferWrite); break;
+        case TextureUsage::eSampled: result.SetFlag(AccessFlagBits::eShaderRead); break;
+        case TextureUsage::eStorage:
+            result.SetFlag(AccessFlagBits::eShaderRead);
+            result.SetFlag(AccessFlagBits::eShaderWrite);
+            break;
+        case TextureUsage::eColorAttachment:
+            result.SetFlag(AccessFlagBits::eColorAttachmentRead);
+            result.SetFlag(AccessFlagBits::eColorAttachmentWrite);
+            break;
+        case TextureUsage::eDepthStencilAttachment:
+            result.SetFlag(AccessFlagBits::eDepthStencilAttachmentRead);
+            result.SetFlag(AccessFlagBits::eDepthStencilAttachmentWrite);
+            break;
+        case TextureUsage::eInputAttachment:
+            result.SetFlag(AccessFlagBits::eInputAttachmentRead);
+            break;
+        default: break;
+    }
+    return result;
+}
+
+inline BitField<AccessFlagBits> BufferUsageToAccessFlagBits(BufferUsage usage)
+{
+    BitField<AccessFlagBits> result;
+    switch (usage)
+    {
+        case BufferUsage::eTransferSrc: result.SetFlag(AccessFlagBits::eTransferRead); break;
+        case BufferUsage::eTransferDst: result.SetFlag(AccessFlagBits::eTransferWrite); break;
+
+        case BufferUsage::eUniformBuffer:
+        case BufferUsage::eTextureBuffer: result.SetFlag(AccessFlagBits::eShaderRead); break;
+
+        case BufferUsage::eStorageBuffer:
+        case BufferUsage::eImageBuffer: result.SetFlag(AccessFlagBits::eShaderWrite); break;
+
+        case BufferUsage::eIndexBuffer: result.SetFlag(AccessFlagBits::eIndexRead); break;
+        case BufferUsage::eVertexBuffer:
+            result.SetFlag(AccessFlagBits::eVertexAttributeRead);
+            break;
+        case BufferUsage::eIndirectBuffer:
+            result.SetFlag(AccessFlagBits::eIndirectCommandRead);
+            break;
+        default: break;
+    }
+    return result;
+}
+
+struct MemoryTransition
+{
+    BitField<AccessFlagBits> srcAccess;
+    BitField<AccessFlagBits> dstAccess;
+};
+
+struct TextureTransition
+{
+    TextureHandle textureHandle;
+    TextureUsage oldUsage;
+    TextureUsage newUsage;
+    TextureSubResourceRange subResourceRange;
+};
+
+struct BufferTransition
+{
+    BufferHandle bufferHandle;
+    BufferUsage oldUsage;
+    BufferUsage newUsage;
+    uint64_t offset{0};
+    uint64_t size{ZEN_BUFFER_WHOLE_SIZE};
 };
 } // namespace zen::rhi

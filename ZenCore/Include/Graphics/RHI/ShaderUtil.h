@@ -29,11 +29,23 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
     uint32_t inputVarCount{0};
     SpvReflectResult result = spvReflectEnumerateInputVariables(module, &inputVarCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
+    std::vector<SpvReflectInterfaceVariable*> inputVars;
     if (inputVarCount > 0)
     {
-        std::vector<SpvReflectInterfaceVariable*> inputVars;
+
         inputVars.resize(inputVarCount);
         result = spvReflectEnumerateInputVariables(module, &inputVarCount, inputVars.data());
+        for (auto* inputVar : inputVars)
+        {
+            if (inputVar->built_in != SpvBuiltInMax)
+            {
+                inputVarCount--;
+            }
+        }
+    }
+    if (inputVarCount > 0)
+    {
+
         VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
         std::sort(
             inputVars.begin(), inputVars.end(),

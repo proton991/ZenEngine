@@ -22,7 +22,7 @@ public:
         return m_queueIndex;
     }
 
-    VkQueue GetHandle() const
+    VkQueue GetVkHandle() const
     {
         return m_handle;
     }
@@ -31,6 +31,8 @@ public:
     {
         return m_lastSubmittedCmdBuffer;
     }
+
+    void GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer, uint64_t* fenceSignaledCounter) const;
 
     void Submit(VulkanCommandBuffer* cmdBuffer,
                 uint32_t numSignalSemaphores,

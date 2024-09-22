@@ -1,5 +1,6 @@
 #pragma once
 #include <queue>
+#include <functional>
 #include "Mutex.h"
 
 namespace zen
@@ -65,4 +66,27 @@ public:
 private:
     std::queue<T> m_q;
 };
+
+class DeletionQueue
+{
+public:
+    void Enqueue(std::function<void()>&& function)
+    {
+        m_deletors.push_back(function);
+    }
+
+    void Flush()
+    {
+        for (auto it = m_deletors.rbegin(); it != m_deletors.rend(); ++it)
+        {
+            (*it)(); //call the function
+        }
+
+        m_deletors.clear();
+    }
+
+private:
+    std::deque<std::function<void()>> m_deletors;
+};
+
 } // namespace zen

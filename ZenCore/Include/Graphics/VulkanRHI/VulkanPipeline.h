@@ -45,10 +45,11 @@ struct VulkanShader
     {
         SmallVector<VkVertexInputBindingDescription> vkBindings;
         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
-        VkPipelineVertexInputStateCreateInfo stateCI{};
+        VkPipelineVertexInputStateCreateInfo stateCI;
     } vertexInputInfo;
     std::vector<VkSpecializationMapEntry> entries{};
     VkSpecializationInfo specializationInfo{};
+    VkShaderStageFlags pushConstantsStageFlags;
     SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
     SmallVector<VkDescriptorSetLayout> descriptorSetLayouts;
     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
@@ -78,5 +79,13 @@ struct VulkanDescriptorSet
     VkDescriptorSet descriptorSet{VK_NULL_HANDLE};
     VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
     VulkanDescriptorPoolsIt iter;
+};
+
+struct VulkanPipeline
+{
+    VkPipeline pipeline{VK_NULL_HANDLE};
+    VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+    uint32_t descriptorSetCount{0};
+    std::vector<VulkanDescriptorSet*> descriptorSets;
 };
 } // namespace zen::rhi

@@ -25,6 +25,18 @@ BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
     return BufferHandle(vulkanBuffer);
 }
 
+uint8_t* VulkanRHI::MapBuffer(BufferHandle bufferHandle)
+{
+    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    return m_vkMemAllocator->MapBuffer(vulkanBuffer->memAlloc);
+}
+
+void VulkanRHI::UnmapBuffer(BufferHandle bufferHandle)
+{
+    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    m_vkMemAllocator->UnmapBuffer(vulkanBuffer->memAlloc);
+}
+
 
 void VulkanRHI::DestroyBuffer(BufferHandle bufferHandle)
 {

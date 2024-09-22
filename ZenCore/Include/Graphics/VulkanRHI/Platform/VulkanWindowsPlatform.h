@@ -27,9 +27,9 @@ class VulkanWindowsPlatform
 public:
     static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static SurfaceHandle CreateSurface(VkInstance instance, void* data);
+    static VkSurfaceKHR CreateSurface(VkInstance instance, void* windowData);
 
-    static void DestroySurface(VkInstance instance, SurfaceHandle surfaceHandle);
+    static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };
 typedef VulkanWindowsPlatform VulkanPlatform;
 } // namespace zen::rhi

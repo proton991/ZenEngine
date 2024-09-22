@@ -58,6 +58,13 @@ void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer)
     Submit(cmdBuffer, 0, nullptr);
 }
 
+void VulkanQueue::GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer,
+                                    uint64_t* fenceSignaledCounter) const
+{
+    cmdBuffer             = m_lastSubmittedCmdBuffer;
+    *fenceSignaledCounter = m_lastSubmittedCmdBuffer->GetFenceSignaledCounter();
+}
+
 void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer)
 {
     m_lastSubmittedCmdBuffer = cmdBuffer;

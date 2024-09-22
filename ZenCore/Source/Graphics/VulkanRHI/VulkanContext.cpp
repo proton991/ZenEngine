@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
+#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
@@ -235,6 +236,19 @@ VkDevice VulkanRHI::GetVkDevice() const
     return m_device->GetVkHandle();
 }
 
+RHICommandListContext* VulkanRHI::CreateCmdListContext()
+{
+    RHICommandListContext* context = new VulkanCommandListContext(this);
+    m_cmdListContexts.push_back(context);
+    return context;
+}
+
+void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
+{
+    VulkanCommandList* vulkanCmdList = dynamic_cast<VulkanCommandList*>(cmdList);
+    vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
+}
+
 void VulkanRHI::Init()
 {
     CreateInstance();
@@ -244,14 +258,18 @@ void VulkanRHI::Init()
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());
 
-    m_cmdBufferManager      = new VulkanCommandBufferManager(m_device, m_device->GetGfxQueue());
     m_descriptorPoolManager = new VulkanDescriptorPoolManager(m_device);
 }
 
 void VulkanRHI::Destroy()
 {
-    delete m_cmdBufferManager;
+    delete m_vkMemAllocator;
     delete m_descriptorPoolManager;
+
+    for (auto* context : m_cmdListContexts)
+    {
+        delete context;
+    }
 
     m_device->Destroy();
     delete m_device;

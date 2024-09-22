@@ -93,7 +93,18 @@ VkFrontFace ToVkFrontFace(PolygonFrontFace frontFace)
 
 VkSampleCountFlagBits ToVkSampleCountFlagBits(SampleCount count)
 {
-    return static_cast<VkSampleCountFlagBits>(count);
+    switch (count)
+    {
+        case SampleCount::e1: return VK_SAMPLE_COUNT_1_BIT;
+        case SampleCount::e2: return VK_SAMPLE_COUNT_2_BIT;
+        case SampleCount::e4: return VK_SAMPLE_COUNT_4_BIT;
+        case SampleCount::e8: return VK_SAMPLE_COUNT_8_BIT;
+        case SampleCount::e16: return VK_SAMPLE_COUNT_16_BIT;
+        case SampleCount::e32: return VK_SAMPLE_COUNT_32_BIT;
+        case SampleCount::e64: return VK_SAMPLE_COUNT_64_BIT;
+        default:
+        case SampleCount::eMax: return VK_SAMPLE_COUNT_FLAG_BITS_MAX_ENUM;
+    }
 }
 
 VkCompareOp ToVkCompareOp(CompareOperator op)
@@ -129,6 +140,17 @@ VkDynamicState ToVkDynamicState(DynamicState state)
 VkImageType ToVkImageType(TextureType type)
 {
     return static_cast<VkImageType>(type);
+}
+
+VkImageViewType ToVkImageViewType(TextureType type)
+{
+    switch (type)
+    {
+        case TextureType::e1D: return VK_IMAGE_VIEW_TYPE_1D;
+        case TextureType::e2D: return VK_IMAGE_VIEW_TYPE_2D;
+        case TextureType::e3D: return VK_IMAGE_VIEW_TYPE_3D;
+        case TextureType::eMax: return VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+    }
 }
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flagBits)
@@ -241,6 +263,16 @@ VkImageLayout ToVkImageLayout(TextureLayout layout)
     }
 }
 
+VkAccessFlags ToVkAccessFlags(BitField<AccessFlagBits> access)
+{
+    return static_cast<VkAccessFlags>(access);
+}
+
+VkImageAspectFlags ToVkAspectFlags(BitField<TextureAspectFlagBits> aspect)
+{
+    return static_cast<VkImageAspectFlags>(aspect);
+}
+
 VkFilter ToVkFilter(SamplerFilter filter)
 {
     return static_cast<VkFilter>(filter);
@@ -255,5 +287,64 @@ VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode)
 VkBorderColor ToVkBorderColor(SamplerBorderColor color)
 {
     return static_cast<VkBorderColor>(color);
+}
+
+void ToVkClearColor(const Color& color, VkClearColorValue* colorValue)
+{
+    *colorValue            = {};
+    colorValue->float32[0] = color.r;
+    colorValue->float32[1] = color.g;
+    colorValue->float32[2] = color.b;
+    colorValue->float32[3] = color.a;
+}
+
+void ToVkImageSubresourceRange(const TextureSubResourceRange& range,
+                               VkImageSubresourceRange* vkRange)
+{
+    *vkRange                = {};
+    vkRange->aspectMask     = ToVkAspectFlags(range.aspect);
+    vkRange->layerCount     = range.layerCount;
+    vkRange->levelCount     = range.levelCount;
+    vkRange->baseArrayLayer = range.baseArrayLayer;
+    vkRange->baseMipLevel   = range.baseMipLevel;
+}
+
+void ToVkImageSubresourceLayers(const TextureSubresourceLayers& layers,
+                                VkImageSubresourceLayers* vkLayers)
+{
+    *vkLayers                = {};
+    vkLayers->aspectMask     = ToVkAspectFlags(layers.aspect);
+    vkLayers->layerCount     = layers.layerCount;
+    vkLayers->mipLevel       = layers.mipmap;
+    vkLayers->baseArrayLayer = layers.baseArrayLayer;
+}
+
+void ToVkImageCopy(const TextureCopyRegion& region, VkImageCopy* copy)
+{
+    *copy = {};
+    ToVkImageSubresourceLayers(region.srcSubresources, &copy->srcSubresource);
+    ToVkImageSubresourceLayers(region.dstSubresources, &copy->dstSubresource);
+    copy->srcOffset.x   = region.srcOffset.x;
+    copy->srcOffset.y   = region.srcOffset.y;
+    copy->srcOffset.z   = region.srcOffset.z;
+    copy->dstOffset.x   = region.dstOffset.x;
+    copy->dstOffset.y   = region.dstOffset.y;
+    copy->dstOffset.z   = region.dstOffset.z;
+    copy->extent.width  = region.size.x;
+    copy->extent.height = region.size.y;
+    copy->extent.depth  = region.size.z;
+}
+
+void ToVkBufferImageCopy(const BufferTextureCopyRegion& region, VkBufferImageCopy* copy)
+{
+    *copy = {};
+    ToVkImageSubresourceLayers(region.textureSubresources, &copy->imageSubresource);
+    copy->bufferOffset       = region.bufferOffset;
+    copy->imageOffset.x      = region.textureOffset.x;
+    copy->imageOffset.y      = region.textureOffset.y;
+    copy->imageOffset.z      = region.textureOffset.z;
+    copy->imageExtent.width  = region.textureSize.x;
+    copy->imageExtent.height = region.textureSize.y;
+    copy->imageExtent.depth  = region.textureSize.z;
 }
 } // namespace zen::rhi

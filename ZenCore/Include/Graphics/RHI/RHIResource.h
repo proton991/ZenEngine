@@ -10,7 +10,7 @@ namespace zen::rhi
 enum class ResourceType
 {
     eNone,
-    eSampler,
+    eViewport,
     eMax
 };
 
@@ -18,6 +18,11 @@ class RHIResource
 {
 public:
     RHIResource() = default;
+
+    virtual ~RHIResource()
+    {
+        VERIFY_EXPR(m_counter.GetValue() == 0);
+    }
 
     explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType) {}
 
@@ -201,4 +206,19 @@ inline uint32_t CalculateTextureSize(const TextureInfo& info)
     }
     return size;
 }
+
+class RHIViewport : public RHIResource
+{
+public:
+    RHIViewport() : RHIResource(ResourceType::eViewport) {}
+    virtual ~RHIViewport() = default;
+
+    virtual void WaitForFrameCompletion() = 0;
+
+    virtual void IssueFrameEvent() = 0;
+
+    virtual DataFormat GetSwapchainFormat() = 0;
+
+    virtual TextureHandle GetRenderBackBuffer() = 0;
+};
 } // namespace zen::rhi

@@ -14,6 +14,12 @@ public:
         return *this;
     }
 
+    BitField<T>& SetFlag(const BitField<T>& b)
+    {
+        m_value |= b.m_value;
+        return *this;
+    }
+
     bool HasFlag(T flag) const
     {
         return m_value & static_cast<int64_t>(flag);

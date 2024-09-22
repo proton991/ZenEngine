@@ -24,6 +24,9 @@ set(ZEN_CORE_HEADERS
     Include/Common/RefCountPtr.h
     Include/Common/Types.h
 
+    Include/Graphics/RenderCore/V2/RenderGraph.h
+    Include/Graphics/RenderCore/V2/RenderDevice.h
+
     Include/Graphics/RenderCore/RenderConfig.h
     Include/Graphics/RenderCore/RenderGraphDefinitions.h
     Include/Graphics/RenderCore/RenderGraph.h
@@ -68,6 +71,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanCommon.h
     Include/Graphics/VulkanRHI/VulkanQueue.h
     Include/Graphics/VulkanRHI/VulkanSwapchain.h
+    Include/Graphics/VulkanRHI/VulkanViewport.h
     Include/Graphics/VulkanRHI/VulkanCommandBuffer.h
     Include/Graphics/VulkanRHI/VulkanCommands.h
     Include/Graphics/VulkanRHI/VulkanTypes.h
@@ -115,6 +119,9 @@ set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
     Source/AssetLib/GLTFLoader.cpp
 
+    Source/Graphics/RenderCore/V2/RenderGraph.cpp
+    Source/Graphics/RenderCore/V2/RenderDevice.cpp
+
     Source/Graphics/RenderCore/RenderGraph.cpp
     Source/Graphics/RenderCore/RenderDevice.cpp
     Source/Graphics/RenderCore/RenderFrame.cpp
@@ -133,6 +140,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanContext.cpp
     Source/Graphics/VulkanRHI/VulkanQueue.cpp
     Source/Graphics/VulkanRHI/VulkanSwapchain.cpp
+    Source/Graphics/VulkanRHI/VulkanViewport.cpp
     Source/Graphics/VulkanRHI/VulkanCommandBuffer.cpp
     Source/Graphics/VulkanRHI/VulkanCommands.cpp
     Source/Graphics/VulkanRHI/VulkanTypes.cpp

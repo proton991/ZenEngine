@@ -38,6 +38,8 @@ VkDynamicState ToVkDynamicState(DynamicState state);
 
 VkImageType ToVkImageType(TextureType type);
 
+VkImageViewType ToVkImageViewType(TextureType type);
+
 VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flags);
 
 VkBufferUsageFlags ToVkBufferUsageFlags(BitField<BufferUsageFlagBits> flags);
@@ -50,9 +52,25 @@ VkAttachmentStoreOp ToVkAttachmentStoreOp(RenderTargetStoreOp storeOp);
 
 VkImageLayout ToVkImageLayout(TextureLayout layout);
 
+VkAccessFlags ToVkAccessFlags(BitField<AccessFlagBits> access);
+
+VkImageAspectFlags ToVkAspectFlags(BitField<TextureAspectFlagBits> aspect);
+
 VkFilter ToVkFilter(SamplerFilter filter);
 
 VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode);
 
 VkBorderColor ToVkBorderColor(SamplerBorderColor color);
+
+void ToVkClearColor(const Color& color, VkClearColorValue* colorValue);
+
+void ToVkImageSubresourceRange(const TextureSubResourceRange& range,
+                               VkImageSubresourceRange* vkRange);
+
+void ToVkImageSubresourceLayers(const TextureSubresourceLayers& layers,
+                                VkImageSubresourceLayers* vkLayers);
+
+void ToVkImageCopy(const TextureCopyRegion& region, VkImageCopy* copy);
+
+void ToVkBufferImageCopy(const BufferTextureCopyRegion& region, VkBufferImageCopy* copy);
 } // namespace zen::rhi

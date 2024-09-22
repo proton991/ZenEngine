@@ -73,6 +73,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     imageViewCI.components.g                = VK_COMPONENT_SWIZZLE_G;
     imageViewCI.components.b                = VK_COMPONENT_SWIZZLE_B;
     imageViewCI.components.a                = VK_COMPONENT_SWIZZLE_A;
+    imageViewCI.viewType                    = ToVkImageViewType(info.type);
     imageViewCI.format                      = imageCI.format;
     imageViewCI.image                       = texture->image;
     imageViewCI.subresourceRange.layerCount = imageCI.arrayLayers;

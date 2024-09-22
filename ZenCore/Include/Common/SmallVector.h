@@ -1,5 +1,5 @@
 #pragma once
-
+#include <vector>
 #include <cstdlib>
 #include <exception>
 #include <algorithm>
@@ -115,9 +115,11 @@ public:
 
     VectorView() = default;
 
+    VectorView(const T& element) : m_ptr(const_cast<T*>(&element)), m_size(1) {}
+
     VectorView(const T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
 
-    VectorView(const std::vector<T>& vec) : m_ptr(vec.data()), m_size(vec.size()) {}
+    VectorView(const std::vector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
 
 protected:
     T* m_ptr{nullptr};
@@ -270,7 +272,7 @@ public:
                 for (size_t i = 0; i < this->m_size; i++)
                 {
                     new (&newBuffer[i]) T(std::move(this->m_ptr[i]));
-                    this->m_ptr->~T();
+                    this->m_ptr[i].~T();
                 }
             }
             if (this->m_ptr != m_alignedBuffer.data())
@@ -427,6 +429,10 @@ public:
         else if (newSize > this->m_size)
         {
             reserve(newSize);
+            for (size_t i = this->m_size; i < newSize; i++)
+            {
+                new (&this->m_ptr[i]) T();
+            }
         }
         this->m_size = newSize;
     }
@@ -438,16 +444,6 @@ public:
             this->m_ptr[i].~T();
         }
         this->m_size = 0;
-    }
-
-    const T* data() const
-    {
-        return m_alignedBuffer.data();
-    }
-
-    T* data()
-    {
-        return m_alignedBuffer.data();
     }
 
 private:

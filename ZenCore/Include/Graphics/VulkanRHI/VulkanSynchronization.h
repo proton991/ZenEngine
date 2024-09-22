@@ -7,6 +7,8 @@ namespace zen::rhi
 {
 class VulkanDevice;
 class VulkanFenceManager;
+class VulkanCommandBuffer;
+struct VulkanTexture;
 
 class VulkanFence
 {
@@ -75,17 +77,19 @@ private:
     std::queue<VulkanFence*> m_freeFences;
 };
 
-class VulkanSemaphore : public RHIResource
+class VulkanSemaphore
 {
 public:
-    explicit VulkanSemaphore(VulkanDevice* device) : m_device(device) {}
+    explicit VulkanSemaphore(VulkanDevice* device);
 
-    ~VulkanSemaphore();
+    virtual ~VulkanSemaphore();
 
     VkSemaphore GetVkHandle() const
     {
         return m_semaphore;
     }
+
+    void SetDebugName(const char* pName);
 
 private:
     VulkanDevice* m_device{nullptr};
@@ -100,7 +104,7 @@ public:
 
     void Destroy();
 
-    VulkanSemaphore* CreateSemaphore();
+    VulkanSemaphore* GetOrCreateSemaphore();
 
     void ReleaseSemaphore(VulkanSemaphore*& sem);
 
@@ -108,5 +112,22 @@ private:
     VulkanDevice* m_device{nullptr};
     std::vector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
+};
+
+class VulkanPipelineBarrier
+{
+public:
+    void AddImageLayoutTransition(VkImage image,
+                                  VkImageLayout srcLayout,
+                                  VkImageLayout dstLayout,
+                                  const VkImageSubresourceRange& range);
+
+    void Execute(VulkanCommandBuffer* cmdBuffer);
+
+private:
+    static VkPipelineStageFlags VkLayoutToPipelinStageFlags(VkImageLayout layout);
+    static VkAccessFlags VkLayoutToAccessFlags(VkImageLayout layout);
+
+    std::vector<VkImageMemoryBarrier> m_imageBarriers;
 };
 } // namespace zen::rhi

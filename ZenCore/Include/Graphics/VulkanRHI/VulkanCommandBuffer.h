@@ -21,7 +21,7 @@ struct VulkanCommandPool
 class VulkanCommandBufferPool
 {
 public:
-    VulkanCommandBufferPool(VulkanDevice* device, VulkanCommandBufferManager& mgr) :
+    VulkanCommandBufferPool(VulkanDevice* device, VulkanCommandBufferManager* mgr) :
         m_device(device), m_owner(mgr)
     {}
 
@@ -39,7 +39,7 @@ public:
         return m_cmdPool;
     }
 
-    VulkanCommandBufferManager& GetManager() const
+    VulkanCommandBufferManager* GetManager() const
     {
         return m_owner;
     }
@@ -51,7 +51,7 @@ private:
     void FreeUnusedCmdBuffers(VulkanQueue* queue);
 
     VulkanDevice* m_device{nullptr};
-    VulkanCommandBufferManager& m_owner;
+    VulkanCommandBufferManager* m_owner;
     VkCommandPool m_cmdPool{VK_NULL_HANDLE};
     std::vector<VulkanCommandBuffer*> m_usedCmdBuffers;
     std::vector<VulkanCommandBuffer*> m_freeCmdBuffers;
@@ -104,6 +104,16 @@ public:
 
     void EndRenderPass();
 
+    auto GetFenceSignaledCounter() const
+    {
+        return m_fenceSignaledCounter;
+    }
+
+    VulkanCommandBufferPool* GetOwner() const
+    {
+        return m_cmdBufferPool;
+    }
+
 protected:
     VulkanCommandBuffer(VulkanCommandBufferPool* pool, bool isUploadOnly);
     ~VulkanCommandBuffer();
@@ -133,6 +143,7 @@ private:
     std::vector<VulkanSemaphore*> m_waitSemaphores;
     std::vector<VulkanSemaphore*> m_submittedWaitSemaphores;
     VulkanFence* m_fence;
+    uint64_t m_fenceSignaledCounter{0};
 
     friend class VulkanCommandBufferPool;
     friend class VulkanCommandBufferManager;
@@ -146,6 +157,11 @@ public:
     ~VulkanCommandBufferManager() = default;
 
     VulkanCommandBuffer* GetActiveCommandBuffer();
+
+    VulkanCommandBuffer* GetActiveCommandBufferDirect() const
+    {
+        return m_activeCmdBuffer;
+    }
 
     VulkanCommandBuffer* GetUploadCommandBuffer();
 

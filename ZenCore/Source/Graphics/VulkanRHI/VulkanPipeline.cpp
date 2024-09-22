@@ -139,21 +139,45 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
     }
     // vertex input state
     const auto vertexInputCount = sgInfo.vertexInputAttributes.size();
-    shader->vertexInputInfo.vkAttributes.resize(vertexInputCount);
-    // packed data for vertex inputs, only 1 binding
-    VkVertexInputBindingDescription vkBinding{};
-    vkBinding.binding   = 0;
-    vkBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    vkBinding.stride    = sgInfo.vertexBindingStride;
-    shader->vertexInputInfo.vkBindings.emplace_back(vkBinding);
-    // populate attributes
-    for (uint32_t i = 0; i < vertexInputCount; i++)
+    if (vertexInputCount > 0)
     {
-        shader->vertexInputInfo.vkAttributes[i].binding  = sgInfo.vertexInputAttributes[i].binding;
-        shader->vertexInputInfo.vkAttributes[i].location = sgInfo.vertexInputAttributes[i].location;
-        shader->vertexInputInfo.vkAttributes[i].offset   = sgInfo.vertexInputAttributes[i].offset;
-        shader->vertexInputInfo.vkAttributes[i].format =
-            static_cast<VkFormat>(sgInfo.vertexInputAttributes[i].format);
+        shader->vertexInputInfo.vkAttributes.resize(vertexInputCount);
+        // packed data for vertex inputs, only 1 binding
+        VkVertexInputBindingDescription vkBinding{};
+        vkBinding.binding   = 0;
+        vkBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        vkBinding.stride    = sgInfo.vertexBindingStride;
+        shader->vertexInputInfo.vkBindings.emplace_back(vkBinding);
+        // populate attributes
+        for (uint32_t i = 0; i < vertexInputCount; i++)
+        {
+            shader->vertexInputInfo.vkAttributes[i].binding =
+                sgInfo.vertexInputAttributes[i].binding;
+            shader->vertexInputInfo.vkAttributes[i].location =
+                sgInfo.vertexInputAttributes[i].location;
+            shader->vertexInputInfo.vkAttributes[i].offset = sgInfo.vertexInputAttributes[i].offset;
+            shader->vertexInputInfo.vkAttributes[i].format =
+                static_cast<VkFormat>(sgInfo.vertexInputAttributes[i].format);
+        }
+        InitVkStruct(shader->vertexInputInfo.stateCI,
+                     VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
+        shader->vertexInputInfo.stateCI.vertexAttributeDescriptionCount =
+            shader->vertexInputInfo.vkAttributes.size();
+        shader->vertexInputInfo.stateCI.pVertexAttributeDescriptions =
+            shader->vertexInputInfo.vkAttributes.data();
+        shader->vertexInputInfo.stateCI.vertexBindingDescriptionCount =
+            shader->vertexInputInfo.vkBindings.size();
+        shader->vertexInputInfo.stateCI.pVertexBindingDescriptions =
+            shader->vertexInputInfo.vkBindings.data();
+    }
+    else
+    {
+        InitVkStruct(shader->vertexInputInfo.stateCI,
+                     VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
+        shader->vertexInputInfo.stateCI.vertexAttributeDescriptionCount = 0;
+        shader->vertexInputInfo.stateCI.pVertexAttributeDescriptions    = nullptr;
+        shader->vertexInputInfo.stateCI.vertexBindingDescriptionCount   = 0;
+        shader->vertexInputInfo.stateCI.pVertexBindingDescriptions      = nullptr;
     }
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutCI;
@@ -172,6 +196,8 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
     vkCreatePipelineLayout(GetVkDevice(), &pipelineLayoutCI, nullptr, &shader->pipelineLayout);
 
     shader->descriptorPoolKey = descriptorPoolKey;
+    shader->pushConstantsStageFlags =
+        ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
 
     return ShaderHandle(shader);
 }
@@ -184,8 +210,6 @@ void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
     {
         vkDestroyDescriptorSetLayout(GetVkDevice(), dsLayout, nullptr);
     }
-
-    vkDestroyPipelineLayout(GetVkDevice(), shader->pipelineLayout, nullptr);
 
     for (auto& stageCreateInfo : shader->stageCreateInfos)
     {
@@ -201,7 +225,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
 {
     // Input Assembly
     VkPipelineInputAssemblyStateCreateInfo IAStateCI;
-    InitVkStruct(IAStateCI, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
+    InitVkStruct(IAStateCI, VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO);
     IAStateCI.topology               = ToVkPrimitiveTopology(states.primitiveType);
     IAStateCI.primitiveRestartEnable = VK_FALSE;
 
@@ -311,10 +335,10 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     CBStateCI.logicOp           = ToVkLogicOp(colorBlendState.logicOp);
     CBStateCI.attachmentCount   = static_cast<uint32_t>(vkCBAttStates.size());
     CBStateCI.pAttachments      = vkCBAttStates.empty() ? nullptr : vkCBAttStates.data();
-    CBStateCI.blendConstants[0] = colorBlendState.blendConstants[0];
-    CBStateCI.blendConstants[1] = colorBlendState.blendConstants[1];
-    CBStateCI.blendConstants[2] = colorBlendState.blendConstants[2];
-    CBStateCI.blendConstants[3] = colorBlendState.blendConstants[3];
+    CBStateCI.blendConstants[0] = colorBlendState.blendConstants.r;
+    CBStateCI.blendConstants[1] = colorBlendState.blendConstants.g;
+    CBStateCI.blendConstants[2] = colorBlendState.blendConstants.b;
+    CBStateCI.blendConstants[3] = colorBlendState.blendConstants.a;
 
     // Dynamic States
     VkPipelineDynamicStateCreateInfo dynamicStateCI;
@@ -349,13 +373,21 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     VKCHECK(
         vkCreateGraphicsPipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr, &gfxPipeline));
 
-    return PipelineHandle(gfxPipeline);
+    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline           = gfxPipeline;
+    pipeline->pipelineLayout     = shader->pipelineLayout;
+    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
+
+    m_shaderPipelines[shaderHandle] = pipeline;
+
+    return PipelineHandle(pipeline);
 }
 
 void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
-    VkPipeline pipeline = reinterpret_cast<VkPipeline>(pipelineHandle.value);
-    vkDestroyPipeline(GetVkDevice(), pipeline, nullptr);
+    VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    vkDestroyPipelineLayout(GetVkDevice(), pipeline->pipelineLayout, nullptr);
+    vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
 }
 
 VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
@@ -519,6 +551,11 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
 
 DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex)
 {
+    if (!m_shaderPipelines.contains(shaderHandle))
+    {
+        LOG_FATAL_ERROR("Pipeline shoudle be created before allocating descriptorsets");
+    }
+
     VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
     VulkanDescriptorPoolsIt iter{};
     VkDescriptorPool pool =
@@ -545,6 +582,8 @@ DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, ui
     descriptorSet->iter           = iter;
     descriptorSet->descriptorPool = pool;
     descriptorSet->descriptorSet  = vkDescriptorSet;
+
+    m_shaderPipelines[shaderHandle]->descriptorSets[setIndex] = descriptorSet;
 
     return DescriptorSetHandle(descriptorSet);
 }

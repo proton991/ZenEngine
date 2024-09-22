@@ -1,5 +1,5 @@
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 #if defined(ZEN_MACOS)
-#    include <dlfcn.h>
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 #    include "Graphics/VulkanRHI/VulkanExtension.h"
 
@@ -15,24 +15,20 @@ void VulkanMacOSPlatform::AddInstanceExtensions(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 
-SurfaceHandle VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
+VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
 {
-    MacOSWindowData* windowData  = static_cast<MacOSWindowData*>(data);
-    VulkanSurface* vulkanSurface = new VulkanSurface();
+    MacOSWindowData* windowData = static_cast<MacOSWindowData*>(data);
+    VkSurfaceKHR surface{VK_NULL_HANDLE};
+    glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &surface);
 
-    vulkanSurface->width  = windowData->width;
-    vulkanSurface->height = windowData->height;
-    glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &vulkanSurface->surface);
-
-    return SurfaceHandle(vulkanSurface);
+    return surface;
 }
 
-void VulkanMacOSPlatform::DestroySurface(VkInstance instance, SurfaceHandle surfaceHandle)
+void VulkanMacOSPlatform::DestroySurface(VkInstance instance, VkSurfaceKHR surface)
 {
-    VulkanSurface* vulkanSurface = reinterpret_cast<VulkanSurface*>(surfaceHandle.value);
-    if (instance != VK_NULL_HANDLE && vulkanSurface->surface != VK_NULL_HANDLE)
+    if (instance != VK_NULL_HANDLE && surface != VK_NULL_HANDLE)
     {
-        vkDestroySurfaceKHR(instance, vulkanSurface->surface, nullptr);
+        vkDestroySurfaceKHR(instance, surface, nullptr);
     }
 }
 } // namespace zen::rhi

@@ -21,6 +21,7 @@ typedef MacOSWindowData WindowData;
 
 namespace zen::rhi
 {
+class VulkanRHI;
 class VulkanInstanceExtension;
 class InstanceExtensionArray;
 class VulkanMacOSPlatform
@@ -28,9 +29,9 @@ class VulkanMacOSPlatform
 public:
     static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
-    static SurfaceHandle CreateSurface(VkInstance instance, void* windowData);
+    static VkSurfaceKHR CreateSurface(VkInstance instance, void* windowData);
 
-    static void DestroySurface(VkInstance instance, SurfaceHandle surfaceHandle);
+    static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };
 
 typedef VulkanMacOSPlatform VulkanPlatform;

@@ -5,16 +5,13 @@
 
 namespace zen::rhi
 {
+class RHICommandList;
+class RHICommandListContext;
+
 enum class GraphicsAPIType
 {
     eVulkan,
     Count
-};
-
-enum class CommandBufferLevel
-{
-    PRIMARY   = 0,
-    SECONDARY = 1
 };
 
 class DynamicRHI
@@ -26,15 +23,26 @@ public:
 
     virtual void Destroy() = 0;
 
+    virtual RHICommandListContext* CreateCmdListContext() = 0;
+
+    virtual void WaitForCommandList(RHICommandList* cmdList) = 0;
+
     virtual GraphicsAPIType GetAPIType() = 0;
 
     virtual const char* GetName() = 0;
 
-    virtual SwapchainHandle CreateSwapchain(SurfaceHandle surfaceHandle, bool enableVSync) = 0;
+    virtual RHIViewport* CreateViewport(void* windowPtr,
+                                        uint32_t width,
+                                        uint32_t height,
+                                        bool enableVSync) = 0;
 
-    virtual Status ResizeSwapchain(SwapchainHandle swapchainHandle) = 0;
+    virtual void DestroyViewport(RHIViewport* viewport) = 0;
 
-    virtual void DestroySwapchain(SwapchainHandle swapchainHandle) = 0;
+    virtual void BeginDrawingViewport(RHIViewport* viewport) = 0;
+
+    virtual void EndDrawingViewport(RHIViewport* viewport,
+                                    RHICommandListContext* cmdListContext,
+                                    bool present) = 0;
 
     virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
 
@@ -68,6 +76,10 @@ public:
                                       BitField<BufferUsageFlagBits> usageFlags,
                                       BufferAllocateType allocateType) = 0;
 
+    virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
+
+    virtual void UnmapBuffer(BufferHandle bufferHandle) = 0;
+
     virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
 
     virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
@@ -80,5 +92,7 @@ public:
     virtual void UpdateDescriptorSet(
         DescriptorSetHandle descriptorSetHandle,
         const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
+
+    virtual void WaitDeviceIdle() = 0;
 };
 } // namespace zen::rhi

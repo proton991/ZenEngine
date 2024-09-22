@@ -18,6 +18,8 @@ class VulkanMemoryAllocator
 public:
     VulkanMemoryAllocator() = default;
 
+    ~VulkanMemoryAllocator();
+
     void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device);
 
     void AllocImage(const VkImageCreateInfo* imageCI,
@@ -33,6 +35,10 @@ public:
                      BufferAllocateType allocType,
                      VkBuffer* buffer,
                      VulkanMemoryAllocation* allocation);
+
+    uint8_t* MapBuffer(const VulkanMemoryAllocation& memAlloc);
+
+    void UnmapBuffer(const VulkanMemoryAllocation& memAlloc);
 
     void FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc);
 
