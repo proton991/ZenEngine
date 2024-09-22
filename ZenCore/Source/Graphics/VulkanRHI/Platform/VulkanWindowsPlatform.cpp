@@ -14,7 +14,7 @@ void VulkanWindowsPlatform::AddInstanceExtensions(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 
-VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
+VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, void* data)
 {
     Win32WindowData* windowData = static_cast<Win32WindowData*>(data);
     VkSurfaceKHR surface{VK_NULL_HANDLE};
@@ -23,7 +23,7 @@ VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
     return surface;
 }
 
-void VulkanMacOSPlatform::DestroySurface(VkInstance instance, VkSurfaceKHR surface)
+void VulkanWindowsPlatform::DestroySurface(VkInstance instance, VkSurfaceKHR surface)
 {
     if (instance != VK_NULL_HANDLE && surface != VK_NULL_HANDLE)
     {
