@@ -32,7 +32,7 @@ std::vector<uint8_t> Application::LoadSpirvCode(const std::string& name)
 void Application::BuildPipeline()
 {
     ShaderGroupInfo sgInfo;
-    std::vector<uint8_t> vsCode = LoadSpirvCode("triangle_fixed.vert.spv");
+    std::vector<uint8_t> vsCode = LoadSpirvCode("triangle.vert.spv");
     std::vector<uint8_t> fsCode = LoadSpirvCode("triangle_fixed.frag.spv");
     ShaderGroupInfo shaderGroupInfo{};
     auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
@@ -66,15 +66,26 @@ void Application::BuildPipeline()
     colorRTInfo.numRenderTarget = 1;
     colorRTInfo.renderTargets   = &renderBackBuffer;
 
-    m_framebuffer = m_RHI->CreateFramebuffer(m_renderPass, colorRTInfo);
-    m_gfxPipeline = m_RHI->CreateGfxPipeline(shader, pso, m_renderPass, 0);
+    m_framebuffer   = m_RHI->CreateFramebuffer(m_renderPass, colorRTInfo);
+    m_gfxPipeline   = m_RHI->CreateGfxPipeline(shader, pso, m_renderPass, 0);
+    m_descriptorSet = m_RHI->CreateDescriptorSet(shader, 0);
+
+    std::vector<ShaderResourceBinding> bindings;
+    ShaderResourceBinding binding{};
+    binding.binding = 0;
+    binding.type    = ShaderResourceType::eUniformBuffer;
+    binding.handles.push_back(m_cameraUBO);
+    bindings.emplace_back(std::move(binding));
+    m_RHI->UpdateDescriptorSet(m_descriptorSet, bindings);
 
     m_RHI->DestroyShader(shader);
 
     m_deletionQueue.Enqueue([=] {
+        m_RHI->DestroyViewport(m_viewport);
         m_RHI->DestroyFramebuffer(m_framebuffer);
         m_RHI->DestroyRenderPass(m_renderPass);
         m_RHI->DestroyPipeline(m_gfxPipeline);
+        m_RHI->DestroyDescriptorSet(m_descriptorSet);
     });
 }
 
@@ -105,9 +116,13 @@ void Application::BuildResources()
     m_indexBuffer = m_renderDevice->CreateIndexBuffer(
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 
+    m_cameraUBO = m_renderDevice->CreateUniformBuffer(
+        sizeof(CameraUniformData), reinterpret_cast<const uint8_t*>(&m_cameraData));
+
     m_deletionQueue.Enqueue([=] {
         m_RHI->DestroyBuffer(m_vertexBuffer);
         m_RHI->DestroyBuffer(m_indexBuffer);
+        m_RHI->DestroyBuffer(m_cameraUBO);
     });
 }
 
@@ -123,6 +138,8 @@ void Application::BuildRenderGraph()
     clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
     auto* mainPass = m_rdg.AddGraphicsPassNode(m_renderPass, m_framebuffer, area, clearValue, true);
     m_rdg.AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipeline, PipelineType::eGraphics);
+    m_rdg.AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
+    m_rdg.AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg.AddGraphicsPassSetViewportNode(mainPass, area);
     m_rdg.AddGraphicsPassSetScissorNode(mainPass, area);
     m_rdg.AddGraphicsPassDrawNode(mainPass, 3, 1);
@@ -138,6 +155,10 @@ Application::Application()
     platform::WindowConfig windowConfig;
     m_window   = new platform::GlfwWindowImpl(windowConfig);
     m_viewport = m_RHI->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
+
+    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+                                         m_window->GetAspect());
+    m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
 }
 
 void Application::Prepare()
@@ -150,9 +171,7 @@ void Application::Prepare()
 void Application::Destroy()
 {
     m_rdg.Destroy();
-    m_RHI->WaitDeviceIdle();
     m_deletionQueue.Flush();
-    m_RHI->DestroyViewport(m_viewport);
     m_renderDevice->Destroy();
     delete m_renderDevice;
 }

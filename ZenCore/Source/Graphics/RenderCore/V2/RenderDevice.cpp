@@ -244,6 +244,21 @@ rhi::BufferHandle RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8
     return indexBuffer;
 }
 
+rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData)
+{
+    BitField<rhi::BufferUsageFlagBits> usages;
+    usages.SetFlag(rhi::BufferUsageFlagBits::eUniformBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+
+    rhi::BufferHandle uniformBuffer =
+        m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
+    if (pData != nullptr)
+    {
+        UpdateBuffer(uniformBuffer, 0, dataSize, pData);
+    }
+    return uniformBuffer;
+}
+
 void RenderDevice::DestroyBuffer(rhi::BufferHandle bufferHandle)
 {
     m_RHI->DestroyBuffer(bufferHandle);

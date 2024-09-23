@@ -2,8 +2,9 @@
 #include "Common/Queue.h"
 #include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Systems/Camera.h"
+
 #include <fstream>
 namespace zen::rc
 {
@@ -16,6 +17,11 @@ struct Vertex
     Vec3 position{0.0f, 0.0f, 0.0f};
     Vec3 color{0.0f, 0.0f, 0.0f};
     Vec2 uv{0.0f, 0.0f};
+};
+
+struct CameraUniformData
+{
+    Mat4 projViewMatrix{1.0f};
 };
 
 class Application
@@ -52,10 +58,16 @@ private:
     // TextureHandle m_offscreenRT;
     RenderPassHandle m_renderPass;
     FramebufferHandle m_framebuffer;
+    DescriptorSetHandle m_descriptorSet;
     PipelineHandle m_gfxPipeline;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;
 
+    BufferHandle m_cameraUBO;
+    CameraUniformData m_cameraData;
+
     DeletionQueue m_deletionQueue;
+
+    UniquePtr<sys::Camera> m_camera;
 };

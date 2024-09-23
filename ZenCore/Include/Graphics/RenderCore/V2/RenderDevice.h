@@ -95,6 +95,8 @@ public:
 
     rhi::BufferHandle CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
 
+    rhi::BufferHandle CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
+
     void DestroyBuffer(rhi::BufferHandle bufferHandle);
 
     auto* GetRHI() const

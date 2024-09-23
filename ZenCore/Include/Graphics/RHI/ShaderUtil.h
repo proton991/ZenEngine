@@ -37,7 +37,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
         result = spvReflectEnumerateInputVariables(module, &inputVarCount, inputVars.data());
         for (auto* inputVar : inputVars)
         {
-            if (inputVar->built_in != SpvBuiltInMax)
+            if (inputVar->built_in == SpvBuiltInMax)
             {
                 inputVarCount--;
             }

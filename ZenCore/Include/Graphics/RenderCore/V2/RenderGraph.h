@@ -381,7 +381,7 @@ public:
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
                                             rhi::BufferHandle bufferHandle,
                                             rhi::DataFormat format,
-                                            uint32_t offset);
+                                            uint32_t offset = 0);
 
     void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
                                              VectorView<rhi::BufferHandle> vertexBuffers,

@@ -251,7 +251,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<BufferHandle> bufferHandles
     std::vector<VkBuffer> buffers;
     for (BufferHandle handle : bufferHandles)
     {
-        VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandles.size());
+        VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(handle.value);
         buffers.push_back(vulkanBuffer->buffer);
     }
     vkCmdBindVertexBuffers(m_cmdBuffer->GetVkHandle(), 0, bufferHandles.size(), buffers.data(),

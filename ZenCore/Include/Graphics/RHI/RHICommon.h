@@ -12,6 +12,10 @@
     ((((m_number) + ((m_alignment)-1)) / (m_alignment)) * (m_alignment))
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
+#define ALLOCA(m_size)                (assert((m_size) != 0), alloca(m_size))
+#define ALLOCA_ARRAY(m_type, m_count) ((m_type*)ALLOCA(sizeof(m_type) * (m_count)))
+#define ALLOCA_SINGLE(m_type)         ALLOCA_ARRAY(m_type, 1)
+
 namespace zen::rhi
 {
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept

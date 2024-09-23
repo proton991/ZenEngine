@@ -377,6 +377,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     pipeline->pipeline           = gfxPipeline;
     pipeline->pipelineLayout     = shader->pipelineLayout;
     pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
+    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
     m_shaderPipelines[shaderHandle] = pipeline;
 
@@ -606,9 +607,9 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
 {
     std::vector<VkWriteDescriptorSet> writes;
     writes.resize(resourceBindings.size());
-    std::vector<VkDescriptorImageInfo> imageInfos;
-    std::vector<VkDescriptorBufferInfo> bufferInfos;
-    std::vector<VkBufferView> bufferViews;
+    // std::vector<VkDescriptorImageInfo> imageInfos;
+    // std::vector<VkDescriptorBufferInfo> bufferInfos;
+    // std::vector<VkBufferView> bufferViews;
 
     for (uint32_t i = 0; i < resourceBindings.size(); i++)
     {
@@ -616,31 +617,35 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
         InitVkStruct(writes[i], VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
         writes[i].dstBinding = srb.binding;
 
-        uint32_t numDescriptors                 = 1;
-        VkDescriptorBufferInfo* currBufferInfos = bufferInfos.data() + bufferInfos.size();
-        VkDescriptorImageInfo* currImageInfos   = imageInfos.data() + imageInfos.size();
-        VkBufferView* currBufferViews           = bufferViews.data() + bufferViews.size();
+        uint32_t numDescriptors = 1;
+        // VkDescriptorBufferInfo* currBufferInfos = bufferInfos.data() + bufferInfos.size();
+        // VkDescriptorImageInfo* currImageInfos   = imageInfos.data() + imageInfos.size();
+        // VkBufferView* currBufferViews           = bufferViews.data() + bufferViews.size();
 
         switch (srb.type)
         {
             case ShaderResourceType::eSampler:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.sampler     = reinterpret_cast<VkSampler>(srb.handles[j].value);
                     imageInfo.imageView   = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                writes[i].pImageInfo     = currImageInfos;
+                writes[i].pImageInfo     = imageInfos;
             }
             break;
             case ShaderResourceType::eTexture:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
@@ -648,33 +653,36 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                     imageInfo.imageView =
                         reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                writes[i].pImageInfo     = currImageInfos;
+                writes[i].pImageInfo     = imageInfos;
             }
             break;
             case ShaderResourceType::eSamplerWithTexture:
             {
                 VERIFY_EXPR(srb.handles.size() % 2 == 0 && srb.handles.size() >= 2);
                 numDescriptors = srb.handles.size() / 2;
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.sampler = reinterpret_cast<VkSampler>(srb.handles[j * 2 + 0].value);
-                    ;
                     imageInfo.imageView =
                         reinterpret_cast<VulkanTexture*>(srb.handles[j * 2 + 1].value)->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                writes[i].pImageInfo     = currImageInfos;
+                writes[i].pImageInfo     = imageInfos;
             }
             break;
             case ShaderResourceType::eImage:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
@@ -682,15 +690,18 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                     imageInfo.imageView =
                         reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                writes[i].pImageInfo     = currImageInfos;
+                writes[i].pImageInfo     = imageInfos;
             }
             break;
             case ShaderResourceType::eTextureBuffer:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorBufferInfo* bufferInfos =
+                    ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VulkanBuffer* vulkanBuffer =
@@ -698,43 +709,51 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->size;
-                    bufferViews.push_back(vulkanBuffer->bufferView);
-                    bufferInfos.push_back(bufferInfo);
+                    bufferViews[j]    = vulkanBuffer->bufferView;
+                    bufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-                writes[i].pBufferInfo      = currBufferInfos;
-                writes[i].pTexelBufferView = currBufferViews;
+                writes[i].pBufferInfo      = bufferInfos;
+                writes[i].pTexelBufferView = bufferViews;
             }
             break;
             case ShaderResourceType::eSamplerWithTextureBuffer:
             {
                 VERIFY_EXPR(srb.handles.size() % 2 == 0 && srb.handles.size() >= 2);
                 numDescriptors = srb.handles.size() / 2;
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+                VkDescriptorBufferInfo* bufferInfos =
+                    ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.sampler   = reinterpret_cast<VkSampler>(srb.handles[j * 2 + 0].value);
                     imageInfo.imageView = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
 
                     VulkanBuffer* vulkanBuffer =
                         reinterpret_cast<VulkanBuffer*>(srb.handles[j * 2 + 1].value);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->size;
-                    bufferViews.push_back(vulkanBuffer->bufferView);
-                    bufferInfos.push_back(bufferInfo);
+                    bufferViews[j]    = vulkanBuffer->bufferView;
+                    bufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-                writes[i].pImageInfo       = currImageInfos;
-                writes[i].pBufferInfo      = currBufferInfos;
-                writes[i].pTexelBufferView = currBufferViews;
+                writes[i].pImageInfo       = imageInfos;
+                writes[i].pBufferInfo      = bufferInfos;
+                writes[i].pTexelBufferView = bufferViews;
             }
             break;
             case ShaderResourceType::eImageBuffer:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorBufferInfo* bufferInfos =
+                    ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VulkanBuffer* vulkanBuffer =
@@ -742,43 +761,45 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->size;
-                    bufferViews.push_back(vulkanBuffer->bufferView);
-                    bufferInfos.push_back(bufferInfo);
+                    bufferViews[j]    = vulkanBuffer->bufferView;
+                    bufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-                writes[i].pBufferInfo      = currBufferInfos;
-                writes[i].pTexelBufferView = currBufferViews;
+                writes[i].pBufferInfo      = bufferInfos;
+                writes[i].pTexelBufferView = bufferViews;
             }
             break;
             case ShaderResourceType::eUniformBuffer:
             {
                 VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(srb.handles[0].value);
-                VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = vulkanBuffer->buffer;
-                bufferInfo.range  = vulkanBuffer->size;
-                bufferViews.push_back(vulkanBuffer->bufferView);
-                bufferInfos.push_back(bufferInfo);
+                VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+
+                *bufferInfo        = {};
+                bufferInfo->buffer = vulkanBuffer->buffer;
+                bufferInfo->range  = vulkanBuffer->size;
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                writes[i].pBufferInfo    = currBufferInfos;
+                writes[i].pBufferInfo    = bufferInfo;
             }
             break;
             case ShaderResourceType::eStorageBuffer:
             {
                 VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(srb.handles[0].value);
-                VkDescriptorBufferInfo bufferInfo{};
-                bufferInfo.buffer = vulkanBuffer->buffer;
-                bufferInfo.range  = vulkanBuffer->size;
-                bufferViews.push_back(vulkanBuffer->bufferView);
-                bufferInfos.push_back(bufferInfo);
+                VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+
+                *bufferInfo        = {};
+                bufferInfo->buffer = vulkanBuffer->buffer;
+                bufferInfo->range  = vulkanBuffer->size;
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                writes[i].pBufferInfo    = currBufferInfos;
+                writes[i].pBufferInfo    = bufferInfo;
             }
             break;
             case ShaderResourceType::eInputAttachment:
             {
                 numDescriptors = srb.handles.size();
+                VkDescriptorImageInfo* imageInfos =
+                    ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
@@ -786,10 +807,10 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                     imageInfo.imageView =
                         reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos.push_back(imageInfo);
+                    imageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-                writes[i].pImageInfo     = currImageInfos;
+                writes[i].pImageInfo     = imageInfos;
             }
             break;
             default:
@@ -801,7 +822,9 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     }
     for (auto& write : writes)
     {
-        write.dstSet = reinterpret_cast<VkDescriptorSet>(descriptorSetHandle.value);
+        VulkanDescriptorSet* descriptorSet =
+            reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
+        write.dstSet = descriptorSet->descriptorSet;
     }
     vkUpdateDescriptorSets(m_device->GetVkHandle(), writes.size(), writes.data(), 0, nullptr);
 }

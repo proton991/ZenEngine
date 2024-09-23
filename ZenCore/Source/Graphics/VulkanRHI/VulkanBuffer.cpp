@@ -21,7 +21,7 @@ BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
 
     m_vkMemAllocator->AllocBuffer(size, &bufferCI, allocateType, &vulkanBuffer->buffer,
                                   &vulkanBuffer->memAlloc);
-
+    vulkanBuffer->size = vulkanBuffer->memAlloc.info.size;
     return BufferHandle(vulkanBuffer);
 }
 
