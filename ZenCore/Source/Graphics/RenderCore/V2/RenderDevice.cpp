@@ -228,7 +228,7 @@ rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint
 
     rhi::BufferHandle vertexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
-    UpdateBuffer(vertexBuffer, 0, dataSize, pData);
+    UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
     return vertexBuffer;
 }
 
@@ -240,7 +240,7 @@ rhi::BufferHandle RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8
 
     rhi::BufferHandle indexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
-    UpdateBuffer(indexBuffer, 0, dataSize, pData);
+    UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
     return indexBuffer;
 }
 
@@ -254,9 +254,17 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
     if (pData != nullptr)
     {
-        UpdateBuffer(uniformBuffer, 0, dataSize, pData);
+        UpdateBufferInternal(uniformBuffer, 0, dataSize, pData);
     }
     return uniformBuffer;
+}
+
+void RenderDevice::Updatebuffer(rhi::BufferHandle bufferHandle,
+                                uint32_t dataSize,
+                                const uint8_t* pData,
+                                uint32_t offset)
+{
+    UpdateBufferInternal(bufferHandle, offset, dataSize, pData);
 }
 
 void RenderDevice::DestroyBuffer(rhi::BufferHandle bufferHandle)
@@ -264,10 +272,10 @@ void RenderDevice::DestroyBuffer(rhi::BufferHandle bufferHandle)
     m_RHI->DestroyBuffer(bufferHandle);
 }
 
-void RenderDevice::UpdateBuffer(rhi::BufferHandle bufferHandle,
-                                uint32_t offset,
-                                uint32_t dataSize,
-                                const uint8_t* pData)
+void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
+                                        uint32_t offset,
+                                        uint32_t dataSize,
+                                        const uint8_t* pData)
 {
     uint32_t toSubmit      = dataSize;
     uint32_t writePosition = 0;

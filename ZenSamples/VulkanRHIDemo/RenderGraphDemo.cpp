@@ -159,6 +159,8 @@ Application::Application()
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
                                          m_window->GetAspect());
     m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
+
+    m_timer = MakeUnique<platform::Timer>();
 }
 
 void Application::Prepare()
@@ -181,6 +183,10 @@ void Application::Run()
     while (!m_window->ShouldClose())
     {
         m_window->Update();
+        m_camera->Update(static_cast<float>(m_timer->Tick()));
+        m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
+        m_renderDevice->Updatebuffer(m_cameraUBO, sizeof(CameraUniformData),
+                                     reinterpret_cast<const uint8_t*>(&m_cameraData));
         m_renderDevice->ExecuteFrame(m_viewport, &m_rdg);
         m_renderDevice->NextFrame();
     }

@@ -97,6 +97,11 @@ public:
 
     rhi::BufferHandle CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
 
+    void Updatebuffer(rhi::BufferHandle bufferHandle,
+                      uint32_t dataSize,
+                      const uint8_t* pData,
+                      uint32_t offset = 0);
+
     void DestroyBuffer(rhi::BufferHandle bufferHandle);
 
     auto* GetRHI() const
@@ -120,10 +125,10 @@ private:
 
     void EndFrame();
 
-    void UpdateBuffer(rhi::BufferHandle bufferHandle,
-                      uint32_t offset,
-                      uint32_t dataSize,
-                      const uint8_t* pData);
+    void UpdateBufferInternal(rhi::BufferHandle bufferHandle,
+                              uint32_t offset,
+                              uint32_t dataSize,
+                              const uint8_t* pData);
 
     const rhi::GraphicsAPIType m_APIType;
     const uint32_t m_numFrames;

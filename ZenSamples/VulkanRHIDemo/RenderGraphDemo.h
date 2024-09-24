@@ -3,6 +3,7 @@
 #include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Platform/Timer.h"
 #include "Systems/Camera.h"
 
 #include <fstream>
@@ -70,4 +71,5 @@ private:
     DeletionQueue m_deletionQueue;
 
     UniquePtr<sys::Camera> m_camera;
+    UniquePtr<platform::Timer> m_timer;
 };
