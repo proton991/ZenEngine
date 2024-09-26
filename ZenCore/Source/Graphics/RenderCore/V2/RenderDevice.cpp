@@ -1,14 +1,78 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-
+#include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include <fstream>
 
 #define STAGING_BLOCK_SIZE_BYTES (256 * 1024)
 #define STAGING_POOL_SIZE_BYTES  (128 * 1024 * 1024)
 
 namespace zen::rc
 {
+std::vector<uint8_t> LoadSpirvCode(const std::string& name)
+{
+    const auto path = std::string(SPV_SHADER_PATH) + name;
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+
+    VERIFY_EXPR_MSG_F(file.is_open(), "Failed to load shader file {}", path);
+    //find what the size of the file is by looking up the location of the cursor
+    //because the cursor is at the end, it gives the size directly in bytes
+    size_t fileSize = (size_t)file.tellg();
+
+    //spir-v expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
+    std::vector<uint8_t> buffer(fileSize / sizeof(uint8_t));
+
+    //put file cursor at beginning
+    file.seekg(0);
+
+    //load the entire file into the buffer
+    file.read((char*)buffer.data(), fileSize);
+
+    //now that the file is loaded into the buffer, we can close it
+    file.close();
+
+    return buffer;
+}
+
+RenderPipeline RenderPipelineBuilder::Build()
+{
+    using namespace zen::rhi;
+    DynamicRHI* RHI       = m_renderDevice->GetRHI();
+    auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
+
+    if (m_hasVS)
+    {
+        shaderGroupSpirv->SetStageSPIRV(ShaderStage::eVertex, LoadSpirvCode(m_vsPath));
+    }
+    if (m_hasFS)
+    {
+        shaderGroupSpirv->SetStageSPIRV(ShaderStage::eFragment, LoadSpirvCode(m_fsPath));
+    }
+    ShaderGroupInfo shaderGroupInfo{};
+    ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    ShaderHandle shader = RHI->CreateShader(shaderGroupInfo);
+
+    RenderPipeline renderPipeline;
+    renderPipeline.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    renderPipeline.framebuffer =
+        m_renderDevice->GetOrCreateFramebuffer(renderPipeline.renderPass, m_fbInfo);
+    renderPipeline.pipeline = RHI->CreateGfxPipeline(shader, m_PSO, renderPipeline.renderPass, 0);
+
+    renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
+    for (const auto& kv : m_dsBindings)
+    {
+        const auto setIndex          = kv.first;
+        const auto& bindings         = kv.second;
+        DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
+        RHI->UpdateDescriptorSet(dsHandle, bindings);
+        renderPipeline.descriptorSets[setIndex] = dsHandle;
+    }
+
+    RHI->DestroyShader(shader);
+    return renderPipeline;
+}
+
 StagingBufferManager::StagingBufferManager(RenderDevice* renderDevice,
                                            uint32_t blockSize,
                                            uint64_t poolSize,
@@ -272,6 +336,29 @@ void RenderDevice::DestroyBuffer(rhi::BufferHandle bufferHandle)
     m_RHI->DestroyBuffer(bufferHandle);
 }
 
+rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassLayout& layout)
+{
+    auto hash = CalcRenderPassLayoutHash(layout);
+    if (!m_renderPassCache.contains(hash))
+    {
+        // create new one
+        m_renderPassCache[hash] = m_RHI->CreateRenderPass(layout);
+    }
+    return m_renderPassCache[hash];
+}
+
+rhi::FramebufferHandle RenderDevice::GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
+                                                            const rhi::FramebufferInfo& fbInfo)
+{
+    auto hash = CalcFramebufferHash(fbInfo, renderPassHandle);
+    if (!m_framebufferCache.contains(hash))
+    {
+        // create new one
+        m_framebufferCache[hash] = m_RHI->CreateFramebuffer(renderPassHandle, fbInfo);
+    }
+    return m_framebufferCache[hash];
+}
+
 void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
                                         uint32_t offset,
                                         uint32_t dataSize,
@@ -337,5 +424,61 @@ void RenderDevice::EndFrame()
 {
     m_frames[m_currentFrame].drawCmdList->EndRender();
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
+}
+
+size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)
+{
+    std::size_t seed = 0;
+
+    // Hashing utility
+    auto combineHash = [&seed](auto&& value) {
+        seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    };
+
+    // Hash basic types
+    combineHash(layout.GetNumColorRenderTargets());
+    combineHash(layout.GetNumSamples());
+    combineHash(layout.GetColorRenderTargetLoadOp());
+    combineHash(layout.GetColorRenderTargetStoreOp());
+    combineHash(layout.GetDepthStencilRenderTargetLoadOp());
+    combineHash(layout.GetDepthStencilRenderTargetStoreOp());
+    combineHash(layout.HasDepthStencilRenderTarget());
+
+    // Hash color render targets
+    for (const auto& rt : layout.GetColorRenderTargets())
+    {
+        // Assuming RenderTarget is hashable
+        combineHash(rt.format);
+        combineHash(rt.usage);
+    }
+    //
+    // // Hash depth stencil render target (assuming RenderTarget is hashable)
+    combineHash(layout.GetDepthStencilRenderTarget().format);
+    combineHash(layout.GetDepthStencilRenderTarget().usage);
+
+    return seed;
+}
+
+size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
+                                         rhi::RenderPassHandle renderPassHandle)
+{
+    std::size_t seed = 0;
+
+    // Hash each member and combine the result
+    std::hash<uint32_t> uint32Hasher;
+    std::hash<uint64_t> uint64Hasher;
+
+    // Hash the individual members
+    seed ^= uint32Hasher(info.numRenderTarget) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= uint32Hasher(info.width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= uint32Hasher(info.height) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= uint32Hasher(info.depth) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= uint64Hasher(renderPassHandle.value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    for (uint32_t i = 0; i < info.numRenderTarget; i++)
+    {
+        seed ^= uint64Hasher(info.renderTargets[i].value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    }
+    return seed;
 }
 } // namespace zen::rc

@@ -109,7 +109,7 @@ public:
     void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
 
     FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                        const RenderTargetInfo& RTInfo) final;
+                                        const FramebufferInfo& fbInfo) final;
 
     void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 

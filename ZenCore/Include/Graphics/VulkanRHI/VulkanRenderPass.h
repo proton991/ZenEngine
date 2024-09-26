@@ -31,7 +31,7 @@ private:
 class VulkanFramebuffer
 {
 public:
-    VulkanFramebuffer(VulkanRHI* vkRHI, VkRenderPass renderPass, const RenderTargetInfo& RTInfo);
+    VulkanFramebuffer(VulkanRHI* vkRHI, VkRenderPass renderPass, const FramebufferInfo& fbInfo);
 
     VkFramebuffer GetVkHandle() const
     {

@@ -1,46 +1,7 @@
 #include "RenderGraphDemo.h"
 
-#include "Graphics/RenderCore/V2/RenderDevice.h"
-
-static constexpr int STAINGING_BUFFER_SIZE = 64 * 1024 * 1024;
-
-std::vector<uint8_t> Application::LoadSpirvCode(const std::string& name)
-{
-    const auto path = std::string(SPV_SHADER_PATH) + name;
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-
-    VERIFY_EXPR_MSG_F(file.is_open(), "Failed to load shader file {}", path);
-    //find what the size of the file is by looking up the location of the cursor
-    //because the cursor is at the end, it gives the size directly in bytes
-    size_t fileSize = (size_t)file.tellg();
-
-    //spir-v expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
-    std::vector<uint8_t> buffer(fileSize / sizeof(uint8_t));
-
-    //put file cursor at beginning
-    file.seekg(0);
-
-    //load the entire file into the buffer
-    file.read((char*)buffer.data(), fileSize);
-
-    //now that the file is loaded into the buffer, we can close it
-    file.close();
-
-    return buffer;
-}
-
 void Application::BuildPipeline()
 {
-    ShaderGroupInfo sgInfo;
-    std::vector<uint8_t> vsCode = LoadSpirvCode("triangle.vert.spv");
-    std::vector<uint8_t> fsCode = LoadSpirvCode("triangle_fixed.frag.spv");
-    ShaderGroupInfo shaderGroupInfo{};
-    auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
-    shaderGroupSpirv->SetStageSPIRV(ShaderStage::eVertex, vsCode);
-    shaderGroupSpirv->SetStageSPIRV(ShaderStage::eFragment, fsCode);
-    ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
-    ShaderHandle shader = m_RHI->CreateShader(shaderGroupInfo);
-
     GfxPipelineStates pso{};
     pso.primitiveType      = DrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
@@ -50,25 +11,12 @@ void Application::BuildPipeline()
     pso.dynamicStates.push_back(DynamicState::eScissor);
     pso.dynamicStates.push_back(DynamicState::eViewPort);
 
-
-    RenderPassLayout renderPassLayout(1, false);
-    renderPassLayout.AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                          TextureUsage::eColorAttachment);
-    renderPassLayout.SetColorTargetLoadStoreOp(RenderTargetLoadOp::eClear,
-                                               RenderTargetStoreOp::eStore);
-    m_renderPass = m_RHI->CreateRenderPass(renderPassLayout);
-
     TextureHandle renderBackBuffer = m_viewport->GetRenderBackBuffer();
-
-    RenderTargetInfo colorRTInfo{};
-    colorRTInfo.width           = m_window->GetExtent2D().width;
-    colorRTInfo.height          = m_window->GetExtent2D().height;
-    colorRTInfo.numRenderTarget = 1;
-    colorRTInfo.renderTargets   = &renderBackBuffer;
-
-    m_framebuffer   = m_RHI->CreateFramebuffer(m_renderPass, colorRTInfo);
-    m_gfxPipeline   = m_RHI->CreateGfxPipeline(shader, pso, m_renderPass, 0);
-    m_descriptorSet = m_RHI->CreateDescriptorSet(shader, 0);
+    FramebufferInfo fbInfo{};
+    fbInfo.width           = m_window->GetExtent2D().width;
+    fbInfo.height          = m_window->GetExtent2D().height;
+    fbInfo.numRenderTarget = 1;
+    fbInfo.renderTargets   = &renderBackBuffer;
 
     std::vector<ShaderResourceBinding> bindings;
     ShaderResourceBinding binding{};
@@ -76,16 +24,29 @@ void Application::BuildPipeline()
     binding.type    = ShaderResourceType::eUniformBuffer;
     binding.handles.push_back(m_cameraUBO);
     bindings.emplace_back(std::move(binding));
-    m_RHI->UpdateDescriptorSet(m_descriptorSet, bindings);
 
-    m_RHI->DestroyShader(shader);
+    rc::RenderPipelineBuilder builder;
+    m_mainRP =
+        builder.Begin(m_renderDevice)
+            .SetVertexShader("triangle.vert.spv")
+            .SetFragmentShader("triangle_fixed.frag.spv")
+            .SetNumSamples(SampleCount::e1)
+            .SetNumRenderTargets(1)
+            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
+            .SetRenderTargetInfo(fbInfo)
+            .SetShaderResourceBinding(0, bindings)
+            .SetPipelineState(pso)
+            .Build();
 
     m_deletionQueue.Enqueue([=] {
         m_RHI->DestroyViewport(m_viewport);
-        m_RHI->DestroyFramebuffer(m_framebuffer);
-        m_RHI->DestroyRenderPass(m_renderPass);
-        m_RHI->DestroyPipeline(m_gfxPipeline);
-        m_RHI->DestroyDescriptorSet(m_descriptorSet);
+        m_RHI->DestroyFramebuffer(m_mainRP.framebuffer);
+        m_RHI->DestroyRenderPass(m_mainRP.renderPass);
+        m_RHI->DestroyPipeline(m_mainRP.pipeline);
+        for (const auto& ds : m_mainRP.descriptorSets)
+        {
+            m_RHI->DestroyDescriptorSet(ds);
+        }
     });
 }
 
@@ -136,8 +97,9 @@ void Application::BuildRenderGraph()
     area.maxY = (int)m_window->GetExtent2D().height;
     RenderPassClearValue clearValue;
     clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
-    auto* mainPass = m_rdg.AddGraphicsPassNode(m_renderPass, m_framebuffer, area, clearValue, true);
-    m_rdg.AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipeline, PipelineType::eGraphics);
+    auto* mainPass   = m_rdg.AddGraphicsPassNode(m_mainRP.renderPass, m_mainRP.framebuffer, area,
+                                                 clearValue, true);
+    m_rdg.AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
     m_rdg.AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg.AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg.AddGraphicsPassSetViewportNode(mainPass, area);

@@ -89,31 +89,31 @@ void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
 
 VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
                                      VkRenderPass renderPass,
-                                     const RenderTargetInfo& RTInfo)
+                                     const FramebufferInfo& fbInfo)
 {
     std::vector<VkImageView> imageViews;
-    imageViews.resize(RTInfo.numRenderTarget);
-    for (uint32_t i = 0; i < RTInfo.numRenderTarget; i++)
+    imageViews.resize(fbInfo.numRenderTarget);
+    for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {
-        VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(RTInfo.renderTargets[i].value);
+        VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(fbInfo.renderTargets[i].value);
         imageViews[i]          = texture->imageView;
     }
     VkFramebufferCreateInfo framebufferCI;
     InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
     framebufferCI.renderPass      = renderPass;
-    framebufferCI.width           = RTInfo.width;
-    framebufferCI.height          = RTInfo.height;
-    framebufferCI.layers          = RTInfo.depth;
+    framebufferCI.width           = fbInfo.width;
+    framebufferCI.height          = fbInfo.height;
+    framebufferCI.layers          = fbInfo.depth;
     framebufferCI.attachmentCount = imageViews.size();
     framebufferCI.pAttachments    = imageViews.data();
     VKCHECK(vkCreateFramebuffer(vkRHI->GetVkDevice(), &framebufferCI, nullptr, &m_framebuffer));
 }
 
 FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                               const RenderTargetInfo& RTInfo)
+                                               const FramebufferInfo& fbInfo)
 {
     VulkanFramebuffer* framebuffer =
-        new VulkanFramebuffer(this, reinterpret_cast<VkRenderPass>(renderPassHandle.value), RTInfo);
+        new VulkanFramebuffer(this, reinterpret_cast<VkRenderPass>(renderPassHandle.value), fbInfo);
     return FramebufferHandle(framebuffer);
 }
 

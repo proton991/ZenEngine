@@ -60,7 +60,7 @@ public:
     virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
 
     virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                                const RenderTargetInfo& RTInfo) = 0;
+                                                const FramebufferInfo& fbInfo) = 0;
 
     virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 

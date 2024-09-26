@@ -1,10 +1,115 @@
 #pragma once
+#include "Common/HashMap.h"
+#include "Common/Queue.h"
 #include "Graphics/RHI/DynamicRHI.h"
 
 namespace zen::rc
 {
 class RenderDevice;
 class RenderGraph;
+
+struct RenderPipeline
+{
+    rhi::RenderPassHandle renderPass;
+    rhi::FramebufferHandle framebuffer;
+    rhi::PipelineHandle pipeline;
+    std::vector<rhi::DescriptorSetHandle> descriptorSets;
+};
+
+class RenderPipelineBuilder
+{
+public:
+    RenderPipelineBuilder& Begin(RenderDevice* renderDevice)
+    {
+        m_renderDevice = renderDevice;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetViewport(rhi::Viewport* viewport)
+    {
+        m_viewport = viewport;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetVertexShader(const std::string& file)
+    {
+        m_vsPath = file;
+        m_hasVS  = true;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetFragmentShader(const std::string& file)
+    {
+        m_fsPath = file;
+        m_hasFS  = true;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetNumRenderTargets(uint32_t numRT)
+    {
+        m_rpLayout.SetNumColorRenderTargets(numRT);
+        return *this;
+    }
+
+    // Must be called after SetNumRenderTargets
+    RenderPipelineBuilder& AddColorRenderTarget(rhi::DataFormat format, rhi::TextureUsage usage)
+    {
+        VERIFY_EXPR_MSG(m_rpLayout.GetNumColorRenderTargets() != 0, "NumRenderTargets not set!");
+        m_rpLayout.AddColorRenderTarget(format, usage);
+        m_rpLayout.SetColorTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
+                                             rhi::RenderTargetStoreOp::eStore);
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetDepthStencilTarget(rhi::DataFormat format)
+    {
+        m_rpLayout.SetDepthStencilRenderTarget(format);
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetNumSamples(rhi::SampleCount sampleCount)
+    {
+        m_rpLayout.SetNumSamples(sampleCount);
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetRenderTargetInfo(const rhi::FramebufferInfo& fbInfo)
+    {
+        m_fbInfo = fbInfo;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetShaderResourceBinding(
+        uint32_t setIndex,
+        const std::vector<rhi::ShaderResourceBinding>& bindings)
+    {
+        m_dsBindings[setIndex] = bindings;
+        return *this;
+    }
+
+    RenderPipelineBuilder& SetPipelineState(const rhi::GfxPipelineStates& pso)
+    {
+        m_PSO = pso;
+        return *this;
+    }
+
+    RenderPipeline Build();
+
+private:
+    RenderDevice* m_renderDevice{nullptr};
+    rhi::Viewport* m_viewport{nullptr};
+    bool m_hasVS{false};
+    bool m_hasFS{false};
+    bool m_finished{false};
+    std::string m_vsPath;
+    std::string m_fsPath;
+    rhi::SampleCount m_numSamples{rhi::SampleCount::e1};
+    rhi::GfxPipelineStates m_PSO{};
+    rhi::RenderPassLayout m_rpLayout{};
+    rhi::FramebufferInfo m_fbInfo{};
+    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+};
+
 enum class StagingFlushAction : uint32_t
 {
     eNone    = 0,
@@ -104,6 +209,11 @@ public:
 
     void DestroyBuffer(rhi::BufferHandle bufferHandle);
 
+    rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
+
+    rhi::FramebufferHandle GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
+                                                  const rhi::FramebufferInfo& fbInfo);
+
     auto* GetRHI() const
     {
         return m_RHI;
@@ -130,6 +240,10 @@ private:
                               uint32_t dataSize,
                               const uint8_t* pData);
 
+    static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
+    static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
+                                      rhi::RenderPassHandle renderPassHandle);
+
     const rhi::GraphicsAPIType m_APIType;
     const uint32_t m_numFrames;
     uint32_t m_currentFrame{0};
@@ -137,5 +251,9 @@ private:
     std::vector<RenderFrame> m_frames;
     rhi::DynamicRHI* m_RHI{nullptr};
     StagingBufferManager* m_stagingBufferMgr{nullptr};
+    DeletionQueue m_deletionQueue;
+
+    HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
+    HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
 };
 } // namespace zen::rc

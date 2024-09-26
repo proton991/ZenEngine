@@ -859,8 +859,19 @@ union RenderPassClearValue
 class RenderPassLayout
 {
 public:
+    RenderPassLayout() = default;
+
     RenderPassLayout(uint32_t numColorRT, bool hasDepthStencilRT) :
         m_hasDepthStencilRT(hasDepthStencilRT)
+    {
+        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT)
+        {
+            numColorRT = MAX_COLOR_ATTACHMENT_COUNT;
+        }
+        m_colorRTs.resize(numColorRT);
+    }
+
+    void SetNumColorRenderTargets(uint32_t numColorRT)
     {
         if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT)
         {
@@ -907,7 +918,7 @@ public:
 
     const auto GetNumColorRenderTargets() const
     {
-        return m_numColorRT;
+        return m_colorRTs.size();
     }
 
     const auto GetNumSamples() const
@@ -967,7 +978,7 @@ inline uint64_t GetRenderpassLayoutHash(const RenderPassLayout& layout)
     return 0;
 }
 
-struct RenderTargetInfo
+struct FramebufferInfo
 {
     uint32_t numRenderTarget{0};
     TextureHandle* renderTargets{nullptr};

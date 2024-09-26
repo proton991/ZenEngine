@@ -1,6 +1,7 @@
 #pragma once
 #include "Common/Queue.h"
 #include "Graphics/RHI/ShaderUtil.h"
+#include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Platform/Timer.h"
@@ -56,11 +57,7 @@ private:
     platform::GlfwWindowImpl* m_window{nullptr};
     RHIViewport* m_viewport{nullptr};
 
-    // TextureHandle m_offscreenRT;
-    RenderPassHandle m_renderPass;
-    FramebufferHandle m_framebuffer;
-    DescriptorSetHandle m_descriptorSet;
-    PipelineHandle m_gfxPipeline;
+    rc::RenderPipeline m_mainRP;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;
