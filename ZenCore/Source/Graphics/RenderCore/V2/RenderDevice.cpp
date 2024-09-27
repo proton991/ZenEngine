@@ -70,6 +70,7 @@ RenderPipeline RenderPipelineBuilder::Build()
     }
 
     RHI->DestroyShader(shader);
+    m_renderDevice->m_renderPipelines.push_back(renderPipeline);
     return renderPipeline;
 }
 
@@ -266,6 +267,25 @@ void RenderDevice::Init()
 
 void RenderDevice::Destroy()
 {
+    for (auto* viewport : m_viewports)
+    {
+        m_RHI->DestroyViewport(viewport);
+    }
+    for (auto& rp : m_renderPipelines)
+    {
+        m_RHI->DestroyFramebuffer(rp.framebuffer);
+        m_RHI->DestroyRenderPass(rp.renderPass);
+        m_RHI->DestroyPipeline(rp.pipeline);
+        for (const auto& ds : rp.descriptorSets)
+        {
+            m_RHI->DestroyDescriptorSet(ds);
+        }
+    }
+    for (auto& buffer : m_buffers)
+    {
+        m_RHI->DestroyBuffer(buffer);
+    }
+
     m_stagingBufferMgr->Destroy();
     delete m_stagingBufferMgr;
     for (RenderFrame& frame : m_frames)
@@ -293,6 +313,7 @@ rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint
     rhi::BufferHandle vertexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
     UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
+    m_buffers.push_back(vertexBuffer);
     return vertexBuffer;
 }
 
@@ -305,6 +326,7 @@ rhi::BufferHandle RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8
     rhi::BufferHandle indexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
     UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
+    m_buffers.push_back(indexBuffer);
     return indexBuffer;
 }
 
@@ -320,6 +342,7 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
     {
         UpdateBufferInternal(uniformBuffer, 0, dataSize, pData);
     }
+    m_buffers.push_back(uniformBuffer);
     return uniformBuffer;
 }
 
@@ -357,6 +380,16 @@ rhi::FramebufferHandle RenderDevice::GetOrCreateFramebuffer(rhi::RenderPassHandl
         m_framebufferCache[hash] = m_RHI->CreateFramebuffer(renderPassHandle, fbInfo);
     }
     return m_framebufferCache[hash];
+}
+
+rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
+                                               uint32_t width,
+                                               uint32_t height,
+                                               bool enableVSync)
+{
+    auto* viewport = m_RHI->CreateViewport(pWindow, width, height, enableVSync);
+    m_viewports.push_back(viewport);
+    return viewport;
 }
 
 void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,

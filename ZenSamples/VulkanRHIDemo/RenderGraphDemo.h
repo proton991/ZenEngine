@@ -52,7 +52,6 @@ private:
     void BuildRenderGraph();
 
     rc::RenderDevice* m_renderDevice{nullptr};
-    DynamicRHI* m_RHI{nullptr};
     rc::RenderGraph m_rdg;
     platform::GlfwWindowImpl* m_window{nullptr};
     RHIViewport* m_viewport{nullptr};
@@ -64,8 +63,6 @@ private:
 
     BufferHandle m_cameraUBO;
     CameraUniformData m_cameraData;
-
-    DeletionQueue m_deletionQueue;
 
     UniquePtr<sys::Camera> m_camera;
     UniquePtr<platform::Timer> m_timer;

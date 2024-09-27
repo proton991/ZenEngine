@@ -25,12 +25,6 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetViewport(rhi::Viewport* viewport)
-    {
-        m_viewport = viewport;
-        return *this;
-    }
-
     RenderPipelineBuilder& SetVertexShader(const std::string& file)
     {
         m_vsPath = file;
@@ -73,7 +67,7 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetRenderTargetInfo(const rhi::FramebufferInfo& fbInfo)
+    RenderPipelineBuilder& SetFramebufferInfo(const rhi::FramebufferInfo& fbInfo)
     {
         m_fbInfo = fbInfo;
         return *this;
@@ -97,7 +91,6 @@ public:
 
 private:
     RenderDevice* m_renderDevice{nullptr};
-    rhi::Viewport* m_viewport{nullptr};
     bool m_hasVS{false};
     bool m_hasFS{false};
     bool m_finished{false};
@@ -214,6 +207,11 @@ public:
     rhi::FramebufferHandle GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
                                                   const rhi::FramebufferInfo& fbInfo);
 
+    rhi::RHIViewport* CreateViewport(void* pWindow,
+                                     uint32_t width,
+                                     uint32_t height,
+                                     bool enableVSync = true);
+
     auto* GetRHI() const
     {
         return m_RHI;
@@ -255,5 +253,10 @@ private:
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
+    std::vector<rhi::BufferHandle> m_buffers;
+    std::vector<RenderPipeline> m_renderPipelines;
+    std::vector<rhi::RHIViewport*> m_viewports;
+
+    friend class RenderPipelineBuilder;
 };
 } // namespace zen::rc

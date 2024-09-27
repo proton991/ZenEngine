@@ -33,36 +33,14 @@ void Application::BuildPipeline()
             .SetNumSamples(SampleCount::e1)
             .SetNumRenderTargets(1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
-            .SetRenderTargetInfo(fbInfo)
+            .SetFramebufferInfo(fbInfo)
             .SetShaderResourceBinding(0, bindings)
             .SetPipelineState(pso)
             .Build();
-
-    m_deletionQueue.Enqueue([=] {
-        m_RHI->DestroyViewport(m_viewport);
-        m_RHI->DestroyFramebuffer(m_mainRP.framebuffer);
-        m_RHI->DestroyRenderPass(m_mainRP.renderPass);
-        m_RHI->DestroyPipeline(m_mainRP.pipeline);
-        for (const auto& ds : m_mainRP.descriptorSets)
-        {
-            m_RHI->DestroyDescriptorSet(ds);
-        }
-    });
 }
 
 void Application::BuildResources()
 {
-    // offscreen RT
-    // TextureInfo textureInfo{};
-    // textureInfo.width  = m_window->GetExtent2D().width;
-    // textureInfo.height = m_window->GetExtent2D().height;
-    // textureInfo.fomrat = m_viewport->GetSwapchainFormat();
-    // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-    // textureInfo.type = TextureType::e2D;
-
-    // m_offscreenRT = m_RHI->CreateTexture(textureInfo);
-    // m_deletionQueue.Enqueue([=] { m_RHI->DestroyTexture(m_offscreenRT); });
-
     // buffers
     std::vector<Vertex> vertices = {
         {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f)},
@@ -79,12 +57,6 @@ void Application::BuildResources()
 
     m_cameraUBO = m_renderDevice->CreateUniformBuffer(
         sizeof(CameraUniformData), reinterpret_cast<const uint8_t*>(&m_cameraData));
-
-    m_deletionQueue.Enqueue([=] {
-        m_RHI->DestroyBuffer(m_vertexBuffer);
-        m_RHI->DestroyBuffer(m_indexBuffer);
-        m_RHI->DestroyBuffer(m_cameraUBO);
-    });
 }
 
 void Application::BuildRenderGraph()
@@ -113,10 +85,10 @@ Application::Application()
     m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
     m_renderDevice->Init();
 
-    m_RHI = m_renderDevice->GetRHI();
     platform::WindowConfig windowConfig;
-    m_window   = new platform::GlfwWindowImpl(windowConfig);
-    m_viewport = m_RHI->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
+    m_window = new platform::GlfwWindowImpl(windowConfig);
+    m_viewport =
+        m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
                                          m_window->GetAspect());
@@ -135,7 +107,6 @@ void Application::Prepare()
 void Application::Destroy()
 {
     m_rdg.Destroy();
-    m_deletionQueue.Flush();
     m_renderDevice->Destroy();
     delete m_renderDevice;
 }
