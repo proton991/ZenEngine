@@ -43,8 +43,6 @@ public:
     }
 
 private:
-    static std::vector<uint8_t> LoadSpirvCode(const std::string& name);
-
     void BuildPipeline();
 
     void BuildResources();
@@ -52,7 +50,7 @@ private:
     void BuildRenderGraph();
 
     rc::RenderDevice* m_renderDevice{nullptr};
-    rc::RenderGraph m_rdg;
+    UniquePtr<rc::RenderGraph> m_rdg;
     platform::GlfwWindowImpl* m_window{nullptr};
     RHIViewport* m_viewport{nullptr};
 

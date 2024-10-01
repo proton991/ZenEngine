@@ -61,7 +61,8 @@ void Application::BuildResources()
 
 void Application::BuildRenderGraph()
 {
-    m_rdg.Begin();
+    m_rdg = MakeUnique<rc::RenderGraph>();
+    m_rdg->Begin();
     Rect2 area;
     area.minX = 0;
     area.minY = 0;
@@ -69,15 +70,15 @@ void Application::BuildRenderGraph()
     area.maxY = (int)m_window->GetExtent2D().height;
     RenderPassClearValue clearValue;
     clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
-    auto* mainPass   = m_rdg.AddGraphicsPassNode(m_mainRP.renderPass, m_mainRP.framebuffer, area,
-                                                 clearValue, true);
-    m_rdg.AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
-    m_rdg.AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
-    m_rdg.AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
-    m_rdg.AddGraphicsPassSetViewportNode(mainPass, area);
-    m_rdg.AddGraphicsPassSetScissorNode(mainPass, area);
-    m_rdg.AddGraphicsPassDrawNode(mainPass, 3, 1);
-    m_rdg.End();
+    auto* mainPass   = m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, m_mainRP.framebuffer, area,
+                                                  clearValue, true);
+    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
+    m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
+    m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
+    m_rdg->AddGraphicsPassSetViewportNode(mainPass, area);
+    m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
+    m_rdg->AddGraphicsPassDrawNode(mainPass, 3, 1);
+    m_rdg->End();
 }
 
 Application::Application()
@@ -98,7 +99,6 @@ Application::Application()
         fbInfo.renderTargets   = &renderBackBuffer;
         m_mainRP.framebuffer = m_renderDevice->GetOrCreateFramebuffer(m_mainRP.renderPass, fbInfo);
         // rebuild render graph
-        m_rdg = rc::RenderGraph();
         BuildRenderGraph();
         // recreate camera
         m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
@@ -123,7 +123,7 @@ void Application::Prepare()
 
 void Application::Destroy()
 {
-    m_rdg.Destroy();
+    m_rdg->Destroy();
     m_renderDevice->Destroy();
     delete m_renderDevice;
 }
@@ -137,7 +137,7 @@ void Application::Run()
         m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
         m_renderDevice->Updatebuffer(m_cameraUBO, sizeof(CameraUniformData),
                                      reinterpret_cast<const uint8_t*>(&m_cameraData));
-        m_renderDevice->ExecuteFrame(m_viewport, &m_rdg);
+        m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
         m_renderDevice->NextFrame();
     }
 }

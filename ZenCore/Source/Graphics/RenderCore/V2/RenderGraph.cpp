@@ -1,5 +1,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
-
+#ifdef ZEN_WIN32
+#    include <queue>
+#endif
 namespace zen::rc
 {
 RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
