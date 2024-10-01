@@ -57,7 +57,8 @@ RenderPipeline RenderPipelineBuilder::Build()
     renderPipeline.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
     renderPipeline.framebuffer =
         m_renderDevice->GetOrCreateFramebuffer(renderPipeline.renderPass, m_fbInfo);
-    renderPipeline.pipeline = RHI->CreateGfxPipeline(shader, m_PSO, renderPipeline.renderPass, 0);
+    renderPipeline.pipeline =
+        m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, renderPipeline.renderPass);
 
     renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
     for (const auto& kv : m_dsBindings)
@@ -271,11 +272,21 @@ void RenderDevice::Destroy()
     {
         m_RHI->DestroyViewport(viewport);
     }
+    for (auto& kv : m_framebufferCache)
+    {
+        m_RHI->DestroyFramebuffer(kv.second);
+    }
+    for (auto& kv : m_renderPassCache)
+    {
+        m_RHI->DestroyRenderPass(kv.second);
+    }
+    for (auto& kv : m_pipelineCache)
+    {
+        m_RHI->DestroyPipeline(kv.second);
+    }
+
     for (auto& rp : m_renderPipelines)
     {
-        m_RHI->DestroyFramebuffer(rp.framebuffer);
-        m_RHI->DestroyRenderPass(rp.renderPass);
-        m_RHI->DestroyPipeline(rp.pipeline);
         for (const auto& ds : rp.descriptorSets)
         {
             m_RHI->DestroyDescriptorSet(ds);
@@ -382,6 +393,19 @@ rhi::FramebufferHandle RenderDevice::GetOrCreateFramebuffer(rhi::RenderPassHandl
     return m_framebufferCache[hash];
 }
 
+rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
+                                                         const rhi::ShaderHandle& shader,
+                                                         const rhi::RenderPassHandle& renderPass)
+{
+    auto hash = CalcGfxPipelineHash(PSO, shader, renderPass);
+    if (!m_pipelineCache.contains(hash))
+    {
+        // create new one
+        m_pipelineCache[hash] = m_RHI->CreateGfxPipeline(shader, PSO, renderPass, 0);
+    }
+    return m_pipelineCache[hash];
+}
+
 rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                                uint32_t width,
                                                uint32_t height,
@@ -390,6 +414,33 @@ rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
     auto* viewport = m_RHI->CreateViewport(pWindow, width, height, enableVSync);
     m_viewports.push_back(viewport);
     return viewport;
+}
+
+void RenderDevice::DestroyViewport(rhi::RHIViewport* viewport)
+{
+    auto it = m_viewports.begin();
+    while (it != m_viewports.end())
+    {
+        if (viewport == *it)
+        {
+            m_viewports.erase(it);
+            break;
+        }
+    }
+    m_RHI->DestroyViewport(viewport);
+}
+
+void RenderDevice::ResizeViewport(rhi::RHIViewport** viewport,
+                                  void* window,
+                                  uint32_t width,
+                                  uint32_t height)
+{
+    if (viewport != nullptr &&
+        ((*viewport)->GetWidth() != width || (*viewport)->GetHeight() != height))
+    {
+        DestroyViewport(*viewport);
+        *viewport = CreateViewport(window, width, height);
+    }
 }
 
 void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
@@ -512,6 +563,23 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
     {
         seed ^= uint64Hasher(info.renderTargets[i].value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     }
+    return seed;
+}
+
+size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                         const rhi::ShaderHandle& shader,
+                                         const rhi::RenderPassHandle& renderPass)
+{
+    std::size_t seed = 0;
+    // Hashing utility
+    auto combineHash = [&seed](auto&& value) {
+        seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    };
+    combineHash(shader.value);
+    combineHash(renderPass.value);
+    combineHash(pso.primitiveType);
+
     return seed;
 }
 } // namespace zen::rc

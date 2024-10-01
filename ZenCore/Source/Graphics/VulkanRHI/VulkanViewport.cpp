@@ -322,5 +322,7 @@ void VulkanViewport::Destroy()
     {
         m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
     }
+    m_renderingBackBuffer = nullptr;
+    m_renderingCompleteSemaphores.clear();
 }
 } // namespace zen::rhi

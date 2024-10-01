@@ -25,6 +25,16 @@ public:
 
     void Destroy();
 
+    uint32_t GetWidth() const final
+    {
+        return m_width;
+    }
+
+    uint32_t GetHeight() const final
+    {
+        return m_height;
+    }
+
     void WaitForFrameCompletion() final;
 
     void IssueFrameEvent() final;

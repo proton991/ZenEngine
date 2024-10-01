@@ -38,13 +38,12 @@ public:
         return m_framebuffer;
     }
 
-    VkRect2D GetRenderArea() const
-    {
-        return m_renderArea;
-    }
-
 private:
+    VulkanRHI* m_vkRHI;
     VkFramebuffer m_framebuffer{VK_NULL_HANDLE};
-    VkRect2D m_renderArea{};
+    VkRenderPass m_renderPass{VK_NULL_HANDLE};
+    uint32_t m_width{0};
+    uint32_t m_height{0};
+    uint32_t m_layers{1};
 };
 } // namespace zen::rhi

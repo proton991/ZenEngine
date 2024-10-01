@@ -275,6 +275,7 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* recreateInfo)
         // m_imageAcquiredSemphores[i]->Release();
         m_device->GetSemaphoreManager()->ReleaseSemaphore(m_imageAcquiredSemphores[i]);
     }
+    m_imageAcquiredSemphores.clear();
     if (recreateInfo == nullptr)
     {
         VulkanPlatform::DestroySurface(m_RHI->GetInstance(), m_surface);

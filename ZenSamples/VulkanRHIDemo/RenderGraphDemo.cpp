@@ -85,8 +85,25 @@ Application::Application()
     m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
     m_renderDevice->Init();
 
-    platform::WindowConfig windowConfig;
+    platform::WindowConfig windowConfig{"RDGV2Demo", true, 1280, 720};
     m_window = new platform::GlfwWindowImpl(windowConfig);
+    m_window->SetOnResize([&](uint32_t width, uint32_t height) {
+        m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
+        // recreate framebuffer
+        TextureHandle renderBackBuffer = m_viewport->GetRenderBackBuffer();
+        FramebufferInfo fbInfo{};
+        fbInfo.width           = m_window->GetExtent2D().width;
+        fbInfo.height          = m_window->GetExtent2D().height;
+        fbInfo.numRenderTarget = 1;
+        fbInfo.renderTargets   = &renderBackBuffer;
+        m_mainRP.framebuffer = m_renderDevice->GetOrCreateFramebuffer(m_mainRP.renderPass, fbInfo);
+        // rebuild render graph
+        m_rdg = rc::RenderGraph();
+        BuildRenderGraph();
+        // recreate camera
+        m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+                                             m_window->GetAspect());
+    });
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 

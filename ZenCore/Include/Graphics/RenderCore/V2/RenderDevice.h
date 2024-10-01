@@ -207,10 +207,19 @@ public:
     rhi::FramebufferHandle GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
                                                   const rhi::FramebufferInfo& fbInfo);
 
+    rhi::PipelineHandle GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
+                                               const rhi::ShaderHandle& shader,
+                                               const rhi::RenderPassHandle& renderPass);
+
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
                                      uint32_t height,
                                      bool enableVSync = true);
+
+    void ResizeViewport(rhi::RHIViewport** viewport,
+                        void* pWindow,
+                        uint32_t width,
+                        uint32_t height);
 
     auto* GetRHI() const
     {
@@ -228,6 +237,11 @@ public:
 
     void NextFrame();
 
+    void WaitForIdle() const
+    {
+        m_RHI->WaitDeviceIdle();
+    }
+
 private:
     void BeginFrame();
 
@@ -238,9 +252,14 @@ private:
                               uint32_t dataSize,
                               const uint8_t* pData);
 
+    void DestroyViewport(rhi::RHIViewport* viewport);
+
     static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
     static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
                                       rhi::RenderPassHandle renderPassHandle);
+    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                      const rhi::ShaderHandle& shader,
+                                      const rhi::RenderPassHandle& renderPass);
 
     const rhi::GraphicsAPIType m_APIType;
     const uint32_t m_numFrames;
@@ -253,6 +272,7 @@ private:
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
+    HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<RenderPipeline> m_renderPipelines;
     std::vector<rhi::RHIViewport*> m_viewports;

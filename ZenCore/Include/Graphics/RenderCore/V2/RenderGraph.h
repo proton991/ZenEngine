@@ -5,7 +5,6 @@
 #include "Common/SmallVector.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHICommands.h"
-#include <queue>
 
 // RDG_ID class
 class RDG_ID

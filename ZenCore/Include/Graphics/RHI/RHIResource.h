@@ -213,6 +213,10 @@ public:
     RHIViewport() : RHIResource(ResourceType::eViewport) {}
     virtual ~RHIViewport() = default;
 
+    virtual uint32_t GetWidth() const = 0;
+
+    virtual uint32_t GetHeight() const = 0;
+
     virtual void WaitForFrameCompletion() = 0;
 
     virtual void IssueFrameEvent() = 0;

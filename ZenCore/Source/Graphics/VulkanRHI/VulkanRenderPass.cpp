@@ -89,7 +89,12 @@ void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
 
 VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
                                      VkRenderPass renderPass,
-                                     const FramebufferInfo& fbInfo)
+                                     const FramebufferInfo& fbInfo) :
+    m_vkRHI(vkRHI),
+    m_renderPass(renderPass),
+    m_width(fbInfo.width),
+    m_height(fbInfo.height),
+    m_layers(fbInfo.depth)
 {
     std::vector<VkImageView> imageViews;
     imageViews.resize(fbInfo.numRenderTarget);
