@@ -21,6 +21,7 @@ public:
     {
         m_VkRHIOptions.uploadCmdBufferSemaphore = false;
         m_VkRHIOptions.maxDescriptorSetPerPool  = 64;
+        m_VkRHIOptions.reuseSwapchainOnResize   = false;
     }
 
     bool VKUploadCmdBufferSemaphore() const
@@ -38,6 +39,11 @@ public:
         return m_VkRHIOptions.maxDescriptorSetPerPool;
     }
 
+    bool ReuseSwapChainOnResize() const
+    {
+        return m_VkRHIOptions.reuseSwapchainOnResize;
+    }
+
 private:
     // Private constructor to prevent instantiation
     RHIOptions()
@@ -49,6 +55,7 @@ private:
     {
         bool uploadCmdBufferSemaphore;
         uint32_t maxDescriptorSetPerPool;
+        bool reuseSwapchainOnResize;
     } m_VkRHIOptions;
 };
 } // namespace zen::rhi

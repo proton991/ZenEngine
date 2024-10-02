@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
@@ -438,8 +439,17 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport** viewport,
     if (viewport != nullptr &&
         ((*viewport)->GetWidth() != width || (*viewport)->GetHeight() != height))
     {
-        DestroyViewport(*viewport);
-        *viewport = CreateViewport(window, width, height);
+        if (rhi::RHIOptions::GetInstance().ReuseSwapChainOnResize())
+        {
+            m_RHI->SubmitAllGPUCommands();
+            (*viewport)->Resize(width, height);
+            BeginFrame();
+        }
+        else
+        {
+            DestroyViewport(*viewport);
+            *viewport = CreateViewport(window, width, height);
+        }
     }
 }
 

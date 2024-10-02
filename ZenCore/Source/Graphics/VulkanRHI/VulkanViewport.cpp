@@ -154,6 +154,10 @@ void VulkanViewport::DestroySwaphchain(VulkanSwapchainRecreateInfo* recreateInfo
         delete m_swapchain;
         m_swapchain = nullptr;
     }
+    if (m_renderingBackBuffer)
+    {
+        m_RHI->DestroyTexture(TextureHandle(m_renderingBackBuffer));
+    }
 }
 
 void VulkanViewport::RecreateSwapchain()
@@ -311,13 +315,16 @@ bool VulkanViewport::Present(VulkanCommandBuffer* cmdBuffer)
     return presentResult;
 }
 
+void VulkanViewport::Resize(uint32_t width, uint32_t height)
+{
+    m_width  = width;
+    m_height = height;
+    RecreateSwapchain();
+}
+
 void VulkanViewport::Destroy()
 {
     DestroySwaphchain(nullptr);
-    if (m_renderingBackBuffer)
-    {
-        m_RHI->DestroyTexture(TextureHandle(m_renderingBackBuffer));
-    }
     for (auto& semaphore : m_renderingCompleteSemaphores)
     {
         m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);

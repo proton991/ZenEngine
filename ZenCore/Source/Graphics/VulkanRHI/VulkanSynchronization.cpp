@@ -182,6 +182,7 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
             m_usedSemaphores.erase(it);
             break;
         }
+        ++it;
     }
     m_freeSemaphores.push(sem);
     sem = nullptr;

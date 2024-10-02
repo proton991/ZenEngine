@@ -140,6 +140,8 @@ public:
     void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                              const std::vector<ShaderResourceBinding>& resourceBindings) final;
 
+    void SubmitAllGPUCommands() final;
+
     void ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
                            VkImage image,
                            VkImageLayout srcLayout,

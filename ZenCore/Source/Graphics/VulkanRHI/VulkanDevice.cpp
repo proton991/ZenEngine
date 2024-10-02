@@ -257,6 +257,34 @@ void VulkanDevice::Destroy()
     vkDestroyDevice(m_device, nullptr);
 }
 
+void VulkanRHI::SubmitAllGPUCommands()
+{
+    for (auto* ctx : m_cmdListContexts)
+    {
+        auto* vkCtx = dynamic_cast<VulkanCommandListContext*>(ctx);
+        if (vkCtx->GetCmdBufferManager()->HasPendingActiveCmdBuffer())
+        {
+            vkCtx->GetCmdBufferManager()->SubmitActiveCmdBuffer();
+            vkCtx->GetCmdBufferManager()->SetupNewActiveCmdBuffer();
+        }
+        if (vkCtx->GetCmdBufferManager()->HasPendingUploadCmdBuffer())
+        {
+            vkCtx->GetCmdBufferManager()->SubmitUploadCmdBuffer();
+        }
+    }
+    auto* immediateMgr = m_device->GetImmediateCmdContext()->GetCmdBufferManager();
+    if (immediateMgr->HasPendingUploadCmdBuffer())
+    {
+        immediateMgr->SubmitActiveCmdBuffer();
+        immediateMgr->SetupNewActiveCmdBuffer();
+    }
+    if (immediateMgr->HasPendingUploadCmdBuffer())
+    {
+        immediateMgr->SubmitUploadCmdBuffer();
+    }
+}
+
+
 void VulkanRHI::WaitDeviceIdle()
 {
     m_device->WaitForIdle();

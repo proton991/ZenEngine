@@ -93,6 +93,8 @@ public:
         DescriptorSetHandle descriptorSetHandle,
         const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
 
+    virtual void SubmitAllGPUCommands() = 0;
+
     virtual void WaitDeviceIdle() = 0;
 };
 } // namespace zen::rhi
