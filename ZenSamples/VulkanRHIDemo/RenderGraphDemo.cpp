@@ -70,8 +70,10 @@ void Application::BuildRenderGraph()
     area.maxY = (int)m_window->GetExtent2D().height;
     RenderPassClearValue clearValue;
     clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
-    auto* mainPass   = m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, m_mainRP.framebuffer, area,
-                                                  clearValue, true);
+
+    FramebufferHandle framebuffer = m_viewport->GetCompatibleFramebuffer(m_mainRP.renderPass);
+    auto* mainPass =
+        m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, framebuffer, area, clearValue, true);
     m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
@@ -90,15 +92,6 @@ Application::Application()
     m_window = new platform::GlfwWindowImpl(windowConfig);
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
         m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
-        // recreate framebuffer
-        TextureHandle renderBackBuffer = m_viewport->GetRenderBackBuffer();
-        FramebufferInfo fbInfo{};
-        fbInfo.width           = m_window->GetExtent2D().width;
-        fbInfo.height          = m_window->GetExtent2D().height;
-        fbInfo.numRenderTarget = 1;
-        fbInfo.renderTargets   = &renderBackBuffer;
-        m_mainRP.framebuffer = m_renderDevice->GetOrCreateFramebuffer(m_mainRP.renderPass, fbInfo);
-        // rebuild render graph
         BuildRenderGraph();
         // recreate camera
         m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},

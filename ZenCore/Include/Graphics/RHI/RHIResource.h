@@ -225,6 +225,8 @@ public:
 
     virtual TextureHandle GetRenderBackBuffer() = 0;
 
+    virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle) = 0;
+
     virtual void Resize(uint32_t width, uint32_t height) = 0;
 };
 } // namespace zen::rhi

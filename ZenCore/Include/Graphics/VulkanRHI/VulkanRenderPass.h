@@ -38,6 +38,11 @@ public:
         return m_framebuffer;
     }
 
+    VkRenderPass GetVkRenderPass() const
+    {
+        return m_renderPass;
+    }
+
 private:
     VulkanRHI* m_vkRHI;
     VkFramebuffer m_framebuffer{VK_NULL_HANDLE};

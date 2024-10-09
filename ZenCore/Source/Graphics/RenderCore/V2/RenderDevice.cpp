@@ -56,8 +56,6 @@ RenderPipeline RenderPipelineBuilder::Build()
 
     RenderPipeline renderPipeline;
     renderPipeline.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-    renderPipeline.framebuffer =
-        m_renderDevice->GetOrCreateFramebuffer(renderPipeline.renderPass, m_fbInfo);
     renderPipeline.pipeline =
         m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, renderPipeline.renderPass);
 

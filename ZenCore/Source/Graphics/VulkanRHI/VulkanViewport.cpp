@@ -7,6 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanRenderPass.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
 namespace zen::rhi
@@ -320,6 +321,18 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     m_width  = width;
     m_height = height;
     RecreateSwapchain();
+    VERIFY_EXPR_MSG(m_framebuffer != nullptr, "Cannot Resize viewport without framebuffer");
+    VkRenderPass renderPass = m_framebuffer->GetVkRenderPass();
+    m_RHI->DestroyFramebuffer(FramebufferHandle(m_framebuffer));
+    // create new one
+    TextureHandle renderBackBuffer = GetRenderBackBuffer();
+    FramebufferInfo fbInfo{};
+    fbInfo.width           = m_width;
+    fbInfo.height          = m_height;
+    fbInfo.numRenderTarget = 1;
+    fbInfo.renderTargets   = &renderBackBuffer;
+
+    m_framebuffer = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
 }
 
 void VulkanViewport::Destroy()
@@ -331,5 +344,25 @@ void VulkanViewport::Destroy()
     }
     m_renderingBackBuffer = nullptr;
     m_renderingCompleteSemaphores.clear();
+    if (m_framebuffer != nullptr)
+    {
+        m_RHI->DestroyFramebuffer(FramebufferHandle(m_framebuffer));
+    }
+}
+
+FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle)
+{
+    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    if (m_framebuffer == nullptr || renderPass != m_framebuffer->GetVkRenderPass())
+    {
+        TextureHandle renderBackBuffer = GetRenderBackBuffer();
+        FramebufferInfo fbInfo{};
+        fbInfo.width           = m_width;
+        fbInfo.height          = m_height;
+        fbInfo.numRenderTarget = 1;
+        fbInfo.renderTargets   = &renderBackBuffer;
+        m_framebuffer          = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+    }
+    return FramebufferHandle(m_framebuffer);
 }
 } // namespace zen::rhi

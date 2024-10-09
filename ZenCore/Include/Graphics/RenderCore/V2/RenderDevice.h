@@ -11,7 +11,6 @@ class RenderGraph;
 struct RenderPipeline
 {
     rhi::RenderPassHandle renderPass;
-    rhi::FramebufferHandle framebuffer;
     rhi::PipelineHandle pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
 };

@@ -12,6 +12,7 @@ class VulkanQueue;
 class VulkanDevice;
 class VulkanSemaphore;
 class VulkanCommandBuffer;
+class VulkanFramebuffer;
 struct VulkanTexture;
 
 class VulkanViewport : public RHIViewport
@@ -51,6 +52,8 @@ public:
         return TextureHandle(m_renderingBackBuffer);
     }
 
+    FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle) final;
+
     void Resize(uint32_t width, uint32_t height) final;
 
 private:
@@ -78,7 +81,7 @@ private:
     uint64_t m_lastFenceSignaledCounter{0};
     SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
     VulkanTexture* m_renderingBackBuffer{nullptr};
-
+    VulkanFramebuffer* m_framebuffer{nullptr};
     uint64_t m_presentCount{0};
 };
 } // namespace zen::rhi
