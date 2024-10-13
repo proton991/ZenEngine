@@ -4,10 +4,13 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "stb_image.h"
 #include <fstream>
+#include <execution>
 
-#define STAGING_BLOCK_SIZE_BYTES (256 * 1024)
-#define STAGING_POOL_SIZE_BYTES  (128 * 1024 * 1024)
+#define TEXTURE_UPLOAD_REGION_SIZE 64
+#define STAGING_BLOCK_SIZE_BYTES   (256 * 1024)
+#define STAGING_POOL_SIZE_BYTES    (128 * 1024 * 1024)
 
 namespace zen::rc
 {
@@ -60,6 +63,16 @@ RenderPipeline RenderPipelineBuilder::Build()
         m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, renderPipeline.renderPass);
 
     renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
+    // parallel build descriptor building process
+    //    std::for_each(std::execution::par, m_dsBindings.begin(), m_dsBindings.end(),
+    //                  [&](const auto& kv) {
+    //                      const auto setIndex  = kv.first;
+    //                      const auto& bindings = kv.second;
+    //                      // create and update
+    //                      DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
+    //                      RHI->UpdateDescriptorSet(dsHandle, bindings);
+    //                      renderPipeline.descriptorSets[setIndex] = dsHandle;
+    //                  });
     for (const auto& kv : m_dsBindings)
     {
         const auto setIndex          = kv.first;
@@ -76,9 +89,7 @@ RenderPipeline RenderPipelineBuilder::Build()
 
 StagingBufferManager::StagingBufferManager(RenderDevice* renderDevice,
                                            uint32_t blockSize,
-                                           uint64_t poolSize,
-                                           bool supportSegament) :
-    SUPPORT_SEGAMENTATION(supportSegament),
+                                           uint64_t poolSize) :
     BUFFER_SIZE(blockSize),
     POOL_SIZE(poolSize),
     m_renderDevice(renderDevice),
@@ -95,13 +106,7 @@ void StagingBufferManager::Init(uint32_t numFrames)
 {
     for (uint32_t i = 0; i < numFrames; i++)
     {
-        StagingBuffer buffer;
-        buffer.handle =
-            m_RHI->CreateBuffer(BUFFER_SIZE, BitField(rhi::BufferUsageFlagBits::eTransferSrcBuffer),
-                                rhi::BufferAllocateType::eCPU);
-        buffer.usedFrame    = 0;
-        buffer.occupiedSize = 0;
-        m_bufferBlocks.emplace_back(std::move(buffer));
+        InsertNewBlock();
     }
 }
 
@@ -127,19 +132,24 @@ void StagingBufferManager::InsertNewBlock()
 bool StagingBufferManager::FitInBlock(uint32_t blockIndex,
                                       uint32_t requiredSize,
                                       uint32_t requiredAlign,
+                                      bool canSegment,
                                       StagingSubmitResult* result)
 {
     uint32_t occupiedSize   = m_bufferBlocks[blockIndex].occupiedSize;
     uint32_t alignRemainder = occupiedSize % requiredAlign;
-    occupiedSize += requiredAlign - alignRemainder;
+    if (alignRemainder != 0)
+    {
+        occupiedSize += requiredAlign - alignRemainder;
+    }
     int32_t availableBytes = static_cast<int32_t>(BUFFER_SIZE) - static_cast<int32_t>(occupiedSize);
     if (static_cast<int32_t>(requiredSize) < availableBytes)
     {
         // enough room, allocate
         result->writeOffset = occupiedSize;
     }
-    else if (SUPPORT_SEGAMENTATION && availableBytes <= static_cast<int32_t>(requiredSize))
+    else if (canSegment && availableBytes >= static_cast<int32_t>(requiredAlign))
     {
+        // All won't fit but at least we can fit a chunk.
         result->writeOffset = occupiedSize;
         result->writeSize   = availableBytes - (availableBytes % requiredAlign);
     }
@@ -152,7 +162,8 @@ bool StagingBufferManager::FitInBlock(uint32_t blockIndex,
 
 void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
                                        StagingSubmitResult* result,
-                                       uint32_t requiredAlign)
+                                       uint32_t requiredAlign,
+                                       bool canSegment)
 {
     result->writeSize = requiredSize;
     while (true)
@@ -160,19 +171,32 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
         result->writeOffset = 0;
         if (m_bufferBlocks[m_currentBlockIndex].usedFrame == m_renderDevice->GetFramesCounter())
         {
-            if (!FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, result))
+            if (!FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, canSegment, result))
             {
                 m_currentBlockIndex = (m_currentBlockIndex + 1) % m_bufferBlocks.size();
                 if (m_bufferBlocks[m_currentBlockIndex].usedFrame ==
                     m_renderDevice->GetFramesCounter())
                 {
-                    bool secondAttempt =
-                        FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, result);
+                    //                    if (CanInsertNewBlock())
+                    //                    {
+                    //                        InsertNewBlock();
+                    //                        m_bufferBlocks[m_currentBlockIndex].usedFrame =
+                    //                            m_renderDevice->GetFramesCounter();
+                    //                    }
+                    //                    else
+                    //                    {
+                    //                        // not enough space, wait for all frames
+                    //                        result->flushAction = StagingFlushAction::eFull;
+                    //                    }
+                    bool secondAttempt = FitInBlock(m_currentBlockIndex, requiredSize,
+                                                    requiredAlign, canSegment, result);
                     if (!secondAttempt)
                     {
                         if (CanInsertNewBlock())
                         {
                             InsertNewBlock();
+                            m_bufferBlocks[m_currentBlockIndex].usedFrame =
+                                m_renderDevice->GetFramesCounter();
                         }
                         else
                         {
@@ -198,6 +222,7 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
         else if (CanInsertNewBlock())
         {
             InsertNewBlock();
+            m_bufferBlocks[m_currentBlockIndex].usedFrame = m_renderDevice->GetFramesCounter();
         }
         else
         {
@@ -295,7 +320,11 @@ void RenderDevice::Destroy()
     {
         m_RHI->DestroyBuffer(buffer);
     }
-
+    for (auto& kv : m_textureCache)
+    {
+        m_RHI->DestroyTexture(kv.second);
+    }
+    m_deletionQueue.Flush();
     m_stagingBufferMgr->Destroy();
     delete m_stagingBufferMgr;
     for (RenderFrame& frame : m_frames)
@@ -356,7 +385,7 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
     return uniformBuffer;
 }
 
-void RenderDevice::Updatebuffer(rhi::BufferHandle bufferHandle,
+void RenderDevice::UpdateBuffer(rhi::BufferHandle bufferHandle,
                                 uint32_t dataSize,
                                 const uint8_t* pData,
                                 uint32_t offset)
@@ -447,6 +476,200 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport** viewport,
         {
             DestroyViewport(*viewport);
             *viewport = CreateViewport(window, width, height);
+        }
+    }
+}
+
+
+rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
+{
+    rhi::SamplerHandle sampler = m_RHI->CreateSampler(samplerInfo);
+    m_deletionQueue.Enqueue([=, this]() { m_RHI->DestroySampler(sampler); });
+    return sampler;
+}
+
+static void CopyRegion(uint8_t const* pSrc,
+                       uint8_t* pDst,
+                       uint32_t srcX,
+                       uint32_t srcY,
+                       uint32_t srcW,
+                       uint32_t srcH,
+                       uint32_t srcFullW,
+                       uint32_t dstStride,
+                       uint32_t unitSize)
+{
+    uint32_t srcOffset = (srcY * srcFullW + srcX) * unitSize;
+    uint32_t dstOffset = 0;
+    for (uint32_t y = srcH; y > 0; y--)
+    {
+        uint8_t const* src = pSrc + srcOffset;
+        uint8_t* dst       = pDst + dstOffset;
+        for (uint32_t x = srcW * unitSize; x > 0; x--)
+        {
+            *dst = *src;
+            src++;
+            dst++;
+        }
+        srcOffset += srcFullW * unitSize;
+        dstOffset += dstStride;
+    }
+}
+
+rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool requireMipmap)
+{
+    if (m_textureCache.contains(file))
+    {
+        return m_textureCache[file];
+    }
+    // TODO: Refactor AssetLib
+    const std::string filepath = ZEN_TEXTURE_PATH + file;
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(true);
+    uint8_t* data = stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    stbi_set_flip_vertically_on_load(false);
+
+    std::vector<uint8_t> vecData;
+    // ONLY support RGBA format
+    vecData.resize(width * height * 4 * sizeof(uint8_t));
+    std::copy(data, data + vecData.size(), vecData.begin());
+    stbi_image_free(data);
+
+    rhi::TextureInfo textureInfo{};
+    textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
+    textureInfo.type        = rhi::TextureType::e2D;
+    textureInfo.width       = width;
+    textureInfo.height      = height;
+    textureInfo.depth       = 1;
+    textureInfo.arrayLayers = 1;
+    textureInfo.mipmaps     = 1;
+    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
+    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+
+    rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
+    // transfer layout to eTransferDst
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].drawCmdList, texture,
+                               rhi::TextureLayout::eUndefined, rhi::TextureLayout::eTransferDst);
+    if (requireMipmap)
+    {
+        // TODO: generate mipmaps
+    }
+    else
+    {
+        if (STAGING_BLOCK_SIZE_BYTES >= vecData.size())
+        {
+            UpdateTextureOneTime(texture,
+                                 {textureInfo.width, textureInfo.height, textureInfo.depth},
+                                 vecData.size(), vecData.data());
+        }
+        else
+        {
+            UpdateTextureBatch(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
+                               vecData.data());
+        }
+    }
+    // transfer layout to eShaderReadOnly
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].drawCmdList, texture,
+                               rhi::TextureLayout::eTransferDst,
+                               rhi::TextureLayout::eShaderReadOnly);
+    m_textureCache[file] = texture;
+    return texture;
+}
+
+void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
+                                        const Vec3i& textureSize,
+                                        uint32_t dataSize,
+                                        const uint8_t* pData)
+{
+
+    // NOT support mipmap
+    // TODO: remove hard code.
+    const uint32_t requiredAlign = 4;
+    const uint32_t pixelSize     = 4;
+    StagingSubmitResult submitResult;
+    m_stagingBufferMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
+    if (submitResult.flushAction == StagingFlushAction::ePartial)
+    {
+        WaitForPreviousFrames();
+    }
+    else if (submitResult.flushAction == StagingFlushAction::eFull)
+    {
+        WaitForAllFrames();
+    }
+    m_stagingBufferMgr->PerformAction(submitResult.flushAction);
+
+    // map staging buffer
+    uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
+    dataPtr += submitResult.writeOffset;
+
+    // copy
+    memcpy(dataPtr, pData, submitResult.writeSize);
+
+    // unmap
+    m_RHI->UnmapBuffer(submitResult.buffer);
+    // copy to gpu memory
+    rhi::BufferTextureCopyRegion copyRegion{};
+    copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
+    copyRegion.bufferOffset  = submitResult.writeOffset;
+    copyRegion.textureOffset = {0, 0, 0};
+    copyRegion.textureSize   = textureSize;
+    m_frames[m_currentFrame].drawCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
+                                                              copyRegion);
+
+    m_stagingBufferMgr->EndSubmit(&submitResult);
+}
+
+void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
+                                      const Vec3i& textureSize,
+                                      const uint8_t* pData)
+{
+    // not support mipmap
+    uint32_t requiredAlign = 4;
+    uint32_t regionSize    = TEXTURE_UPLOAD_REGION_SIZE;
+
+    const uint32_t width     = textureSize.x;
+    const uint32_t height    = textureSize.y;
+    const uint32_t depth     = textureSize.z;
+    const uint32_t pixelSize = 4;
+    for (uint32_t z = 0; z < depth; z++)
+    {
+        for (uint32_t y = 0; y < height; y += regionSize)
+        {
+            for (uint32_t x = 0; x < width; x += regionSize)
+            {
+                uint32_t regionWidth  = std::min(regionSize, width - x);
+                uint32_t regionHeight = std::min(regionSize, height - y);
+                uint32_t imageStride  = regionWidth * pixelSize;
+                uint32_t toSubmit     = imageStride * regionHeight;
+                StagingSubmitResult submitResult;
+                m_stagingBufferMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
+                if (submitResult.flushAction == StagingFlushAction::ePartial)
+                {
+                    WaitForPreviousFrames();
+                }
+                else if (submitResult.flushAction == StagingFlushAction::eFull)
+                {
+                    WaitForAllFrames();
+                }
+                m_stagingBufferMgr->PerformAction(submitResult.flushAction);
+
+                // map staging buffer
+                uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
+                // copy
+                CopyRegion(pData, dataPtr + submitResult.writeOffset, x, y, regionWidth,
+                           regionHeight, width, imageStride, pixelSize);
+                // unmap
+                m_RHI->UnmapBuffer(submitResult.buffer);
+                // copy to gpu memory
+                rhi::BufferTextureCopyRegion copyRegion{};
+                copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
+                copyRegion.bufferOffset  = submitResult.writeOffset;
+                copyRegion.textureOffset = {x, y, z};
+                copyRegion.textureSize   = {regionWidth, regionHeight, 1};
+                m_frames[m_currentFrame].drawCmdList->CopyBufferToTexture(
+                    submitResult.buffer, textureHandle, copyRegion);
+
+                m_stagingBufferMgr->EndSubmit(&submitResult);
+            }
         }
     }
 }

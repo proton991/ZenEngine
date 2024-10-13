@@ -142,6 +142,11 @@ public:
 
     void SubmitAllGPUCommands() final;
 
+    void ChangeTextureLayout(RHICommandList* cmdList,
+                             TextureHandle textureHandle,
+                             TextureLayout oldLayout,
+                             TextureLayout newLayout) final;
+
     void ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
                            VkImage image,
                            VkImageLayout srcLayout,

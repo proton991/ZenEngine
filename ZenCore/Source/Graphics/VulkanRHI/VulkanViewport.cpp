@@ -123,7 +123,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     TextureInfo textureInfo{};
     textureInfo.width  = m_width;
     textureInfo.height = m_height;
-    textureInfo.fomrat = GetSwapchainFormat();
+    textureInfo.format = GetSwapchainFormat();
     textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
     textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
     textureInfo.type = TextureType::e2D;

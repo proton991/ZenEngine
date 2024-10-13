@@ -19,11 +19,22 @@ void Application::BuildPipeline()
     fbInfo.renderTargets   = &renderBackBuffer;
 
     std::vector<ShaderResourceBinding> bindings;
-    ShaderResourceBinding binding{};
-    binding.binding = 0;
-    binding.type    = ShaderResourceType::eUniformBuffer;
-    binding.handles.push_back(m_cameraUBO);
-    bindings.emplace_back(std::move(binding));
+    {
+        ShaderResourceBinding binding{};
+        binding.binding = 0;
+        binding.type    = ShaderResourceType::eUniformBuffer;
+        binding.handles.push_back(m_cameraUBO);
+        bindings.emplace_back(std::move(binding));
+    }
+    std::vector<ShaderResourceBinding> textureBindings;
+    {
+        ShaderResourceBinding binding{};
+        binding.binding = 0;
+        binding.type    = ShaderResourceType::eSamplerWithTexture;
+        binding.handles.push_back(m_sampler);
+        binding.handles.push_back(m_texture);
+        textureBindings.emplace_back(std::move(binding));
+    }
 
     rc::RenderPipelineBuilder builder;
     m_mainRP =
@@ -35,6 +46,7 @@ void Application::BuildPipeline()
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
             .SetFramebufferInfo(fbInfo)
             .SetShaderResourceBinding(0, bindings)
+            .SetShaderResourceBinding(1, textureBindings)
             .SetPipelineState(pso)
             .Build();
 }
@@ -57,6 +69,11 @@ void Application::BuildResources()
 
     m_cameraUBO = m_renderDevice->CreateUniformBuffer(
         sizeof(CameraUniformData), reinterpret_cast<const uint8_t*>(&m_cameraData));
+
+    // load texture
+    SamplerInfo samplerInfo{};
+    m_sampler = m_renderDevice->CreateSampler(samplerInfo);
+    m_texture = m_renderDevice->RequestTexture2D("wood.png");
 }
 
 void Application::BuildRenderGraph()
@@ -128,7 +145,7 @@ void Application::Run()
         m_window->Update();
         m_camera->Update(static_cast<float>(m_timer->Tick()));
         m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
-        m_renderDevice->Updatebuffer(m_cameraUBO, sizeof(CameraUniformData),
+        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(CameraUniformData),
                                      reinterpret_cast<const uint8_t*>(&m_cameraData));
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
         m_renderDevice->NextFrame();

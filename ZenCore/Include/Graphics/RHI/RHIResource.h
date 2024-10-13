@@ -173,7 +173,7 @@ struct SamplerInfo
 /*****************************/
 struct TextureInfo
 {
-    DataFormat fomrat{DataFormat::eUndefined};
+    DataFormat format{DataFormat::eUndefined};
     SampleCount samples{SampleCount::e1};
     BitField<TextureUsageFlagBits> usageFlags;
     TextureType type{TextureType::e1D};
@@ -189,7 +189,7 @@ struct TextureInfo
 inline uint32_t CalculateTextureSize(const TextureInfo& info)
 {
     // TODO: Support compressed texture format
-    uint32_t pixelSize = GetTextureFormatPixelSize(info.fomrat);
+    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
 
     uint32_t w = info.width;
     uint32_t h = info.height;

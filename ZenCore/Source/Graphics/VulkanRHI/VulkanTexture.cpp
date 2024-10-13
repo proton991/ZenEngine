@@ -59,7 +59,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
     imageCI.imageType     = ToVkImageType(info.type);
     imageCI.usage         = ToVkImageUsageFlags(info.usageFlags);
-    imageCI.format        = ToVkFormat(info.fomrat);
+    imageCI.format        = ToVkFormat(info.format);
 
     const auto textureSize = CalculateTextureSize(info);
 

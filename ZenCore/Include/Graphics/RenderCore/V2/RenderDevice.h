@@ -121,10 +121,7 @@ struct StagingSubmitResult
 class StagingBufferManager
 {
 public:
-    StagingBufferManager(RenderDevice* renderDevice,
-                         uint32_t bufferSize,
-                         uint64_t poolSize,
-                         bool supportSegament = true);
+    StagingBufferManager(RenderDevice* renderDevice, uint32_t bufferSize, uint64_t poolSize);
 
     void Init(uint32_t numFrames);
 
@@ -132,7 +129,8 @@ public:
 
     void BeginSubmit(uint32_t requiredSize,
                      StagingSubmitResult* result,
-                     uint32_t requiredAlign = 32);
+                     uint32_t requiredAlign = 32,
+                     bool canSegment        = false);
 
     void EndSubmit(const StagingSubmitResult* result);
 
@@ -142,6 +140,7 @@ private:
     bool FitInBlock(uint32_t blockIndex,
                     uint32_t requiredSize,
                     uint32_t requiredAlign,
+                    bool canSegment,
                     StagingSubmitResult* result);
 
     bool CanInsertNewBlock() const
@@ -151,7 +150,6 @@ private:
 
     void InsertNewBlock();
 
-    bool SUPPORT_SEGAMENTATION{true};
     uint32_t BUFFER_SIZE;
     uint64_t POOL_SIZE;
     RenderDevice* m_renderDevice{nullptr};
@@ -194,7 +192,7 @@ public:
 
     rhi::BufferHandle CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    void Updatebuffer(rhi::BufferHandle bufferHandle,
+    void UpdateBuffer(rhi::BufferHandle bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
                       uint32_t offset = 0);
@@ -219,6 +217,10 @@ public:
                         void* pWindow,
                         uint32_t width,
                         uint32_t height);
+
+    rhi::TextureHandle RequestTexture2D(const std::string& file, bool requireMipmap = false);
+
+    rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
 
     auto* GetRHI() const
     {
@@ -251,6 +253,15 @@ private:
                               uint32_t dataSize,
                               const uint8_t* pData);
 
+    void UpdateTextureOneTime(rhi::TextureHandle textureHandle,
+                              const Vec3i& textureSize,
+                              uint32_t dataSize,
+                              const uint8_t* pData);
+
+    void UpdateTextureBatch(rhi::TextureHandle textureHandle,
+                            const Vec3i& textureSize,
+                            const uint8_t* pData);
+
     void DestroyViewport(rhi::RHIViewport* viewport);
 
     static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
@@ -271,6 +282,7 @@ private:
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
+    HashMap<std::string, rhi::TextureHandle> m_textureCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<RenderPipeline> m_renderPipelines;

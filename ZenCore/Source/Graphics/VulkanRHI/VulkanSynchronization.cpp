@@ -3,9 +3,25 @@
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
+#include "Graphics/VulkanRHI/VulkanTypes.h"
+#include "Graphics/VulkanRHI/VulkanCommands.h"
 
 namespace zen::rhi
 {
+void VulkanRHI::ChangeTextureLayout(RHICommandList* cmdList,
+                                    rhi::TextureHandle textureHandle,
+                                    rhi::TextureLayout oldLayout,
+                                    rhi::TextureLayout newLayout)
+{
+    VkImage image           = reinterpret_cast<VulkanTexture*>(textureHandle.value)->image;
+    VkImageLayout srcLayout = ToVkImageLayout(oldLayout);
+    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
+    const VkImageSubresourceRange range =
+        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+    VulkanCommandBuffer* cmdBuffer = reinterpret_cast<VulkanCommandList*>(cmdList)->m_cmdBuffer;
+    ChangeImageLayout(cmdBuffer, image, srcLayout, dstLayout, range);
+}
+
 void VulkanRHI::ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
                                   VkImage image,
                                   VkImageLayout srcLayout,

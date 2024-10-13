@@ -9,7 +9,7 @@
 #define MAX_SUBPASS_COUNT          8
 
 #define ROUND_UP_ALIGNMENT(m_number, m_alignment) \
-    ((((m_number) + ((m_alignment)-1)) / (m_alignment)) * (m_alignment))
+    ((((m_number) + ((m_alignment) - 1)) / (m_alignment)) * (m_alignment))
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
 #define ALLOCA(m_size)                (assert((m_size) != 0), alloca(m_size))
@@ -117,6 +117,10 @@ struct Color
 enum class DataFormat : uint32_t
 {
     eUndefined          = 0,   // = VK_FORMAT_UNDEFINED
+    eR8G8B8SRGB         = 29,  // VK_FORMAT_R8G8B8_SRGB
+    eR8G8B8UNORM        = 30,  // VK_FORMAT_B8G8R8_UNORM
+    eR8G8B8A8SRGB       = 43,  // VK_FORMAT_R8G8B8A8_SRGB
+    eR8G8B8A8UNORM      = 44,  //VK_FORMAT_B8G8R8A8_UNORM
     eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
     eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
     eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT
@@ -773,7 +777,7 @@ struct TextureSubresourceLayers
     BitField<TextureAspectFlagBits> aspect;
     uint32_t mipmap{0};
     uint32_t baseArrayLayer{0};
-    uint32_t layerCount{0};
+    uint32_t layerCount{1};
 };
 
 struct TextureCopyRegion

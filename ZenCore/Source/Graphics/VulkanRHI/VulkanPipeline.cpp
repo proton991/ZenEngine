@@ -554,7 +554,7 @@ DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, ui
 {
     if (!m_shaderPipelines.contains(shaderHandle))
     {
-        LOG_FATAL_ERROR("Pipeline shoudle be created before allocating descriptorsets");
+        LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
     }
 
     VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);

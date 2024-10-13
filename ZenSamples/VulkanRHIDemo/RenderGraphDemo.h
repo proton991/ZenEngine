@@ -59,6 +59,9 @@ private:
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;
 
+    TextureHandle m_texture;
+    SamplerHandle m_sampler;
+
     BufferHandle m_cameraUBO;
     CameraUniformData m_cameraData;
 
