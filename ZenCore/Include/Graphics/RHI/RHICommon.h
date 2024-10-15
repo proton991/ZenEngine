@@ -8,8 +8,6 @@
 #define MAX_COLOR_ATTACHMENT_COUNT 8
 #define MAX_SUBPASS_COUNT          8
 
-#define ROUND_UP_ALIGNMENT(m_number, m_alignment) \
-    ((((m_number) + ((m_alignment) - 1)) / (m_alignment)) * (m_alignment))
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
 #define ALLOCA(m_size)                (assert((m_size) != 0), alloca(m_size))
@@ -865,32 +863,10 @@ class RenderPassLayout
 public:
     RenderPassLayout() = default;
 
-    RenderPassLayout(uint32_t numColorRT, bool hasDepthStencilRT) :
-        m_hasDepthStencilRT(hasDepthStencilRT)
-    {
-        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT)
-        {
-            numColorRT = MAX_COLOR_ATTACHMENT_COUNT;
-        }
-        m_colorRTs.resize(numColorRT);
-    }
-
-    void SetNumColorRenderTargets(uint32_t numColorRT)
-    {
-        if (numColorRT > MAX_COLOR_ATTACHMENT_COUNT)
-        {
-            numColorRT = MAX_COLOR_ATTACHMENT_COUNT;
-        }
-        m_colorRTs.resize(numColorRT);
-    }
-
     void AddColorRenderTarget(DataFormat format, TextureUsage usage)
     {
-        if (m_numColorRT < m_colorRTs.size())
-        {
-            m_colorRTs[m_numColorRT] = {format, usage};
-            m_numColorRT++;
-        }
+        m_colorRTs.emplace_back(format, usage);
+        m_numColorRT++;
     }
 
     void SetDepthStencilRenderTarget(DataFormat format)
@@ -922,7 +898,7 @@ public:
 
     const auto GetNumColorRenderTargets() const
     {
-        return m_colorRTs.size();
+        return m_numColorRT;
     }
 
     const auto GetNumSamples() const

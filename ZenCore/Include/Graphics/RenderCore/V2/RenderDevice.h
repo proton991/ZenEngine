@@ -38,16 +38,8 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetNumRenderTargets(uint32_t numRT)
-    {
-        m_rpLayout.SetNumColorRenderTargets(numRT);
-        return *this;
-    }
-
-    // Must be called after SetNumRenderTargets
     RenderPipelineBuilder& AddColorRenderTarget(rhi::DataFormat format, rhi::TextureUsage usage)
     {
-        VERIFY_EXPR_MSG(m_rpLayout.GetNumColorRenderTargets() != 0, "NumRenderTargets not set!");
         m_rpLayout.AddColorRenderTarget(format, usage);
         m_rpLayout.SetColorTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
                                              rhi::RenderTargetStoreOp::eStore);
