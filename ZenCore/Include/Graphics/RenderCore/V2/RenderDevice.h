@@ -18,11 +18,7 @@ struct RenderPipeline
 class RenderPipelineBuilder
 {
 public:
-    RenderPipelineBuilder& Begin(RenderDevice* renderDevice)
-    {
-        m_renderDevice = renderDevice;
-        return *this;
-    }
+    explicit RenderPipelineBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
 
     RenderPipelineBuilder& SetVertexShader(const std::string& file)
     {
@@ -58,12 +54,6 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetFramebufferInfo(const rhi::FramebufferInfo& fbInfo)
-    {
-        m_fbInfo = fbInfo;
-        return *this;
-    }
-
     RenderPipelineBuilder& SetShaderResourceBinding(
         uint32_t setIndex,
         const std::vector<rhi::ShaderResourceBinding>& bindings)
@@ -87,10 +77,8 @@ private:
     bool m_finished{false};
     std::string m_vsPath;
     std::string m_fsPath;
-    rhi::SampleCount m_numSamples{rhi::SampleCount::e1};
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
-    rhi::FramebufferInfo m_fbInfo{};
     HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
 };
 

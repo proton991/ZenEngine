@@ -36,14 +36,12 @@ void Application::BuildPipeline()
         textureBindings.emplace_back(std::move(binding));
     }
 
-    rc::RenderPipelineBuilder builder;
+    rc::RenderPipelineBuilder builder(m_renderDevice);
     m_mainRP =
-        builder.Begin(m_renderDevice)
-            .SetVertexShader("triangle.vert.spv")
+        builder.SetVertexShader("triangle.vert.spv")
             .SetFragmentShader("triangle_fixed.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
-            .SetFramebufferInfo(fbInfo)
             .SetShaderResourceBinding(0, bindings)
             .SetShaderResourceBinding(1, textureBindings)
             .SetPipelineState(pso)
