@@ -21,11 +21,6 @@ struct Vertex
     Vec2 uv{0.0f, 0.0f};
 };
 
-struct CameraUniformData
-{
-    Mat4 projViewMatrix{1.0f};
-};
-
 class Application
 {
 public:
@@ -63,7 +58,6 @@ private:
     SamplerHandle m_sampler;
 
     BufferHandle m_cameraUBO;
-    CameraUniformData m_cameraData;
 
     UniquePtr<sys::Camera> m_camera;
     UniquePtr<platform::Timer> m_timer;

@@ -64,8 +64,8 @@ void Application::BuildResources()
     m_indexBuffer = m_renderDevice->CreateIndexBuffer(
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 
-    m_cameraUBO = m_renderDevice->CreateUniformBuffer(
-        sizeof(CameraUniformData), reinterpret_cast<const uint8_t*>(&m_cameraData));
+    m_cameraUBO = m_renderDevice->CreateUniformBuffer(sizeof(sys::CameraUniformData),
+                                                      m_camera->GetUniformData());
 
     // load texture
     SamplerInfo samplerInfo{};
@@ -116,7 +116,10 @@ Application::Application()
 
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
                                          m_window->GetAspect());
-    m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
+    m_camera->SetOnUpdate([&] {
+        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
+                                     m_camera->GetUniformData());
+    });
 
     m_timer = MakeUnique<platform::Timer>();
 }
@@ -141,9 +144,6 @@ void Application::Run()
     {
         m_window->Update();
         m_camera->Update(static_cast<float>(m_timer->Tick()));
-        m_cameraData.projViewMatrix = m_camera->GetProjectionMatrix() * m_camera->GetViewMatrix();
-        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(CameraUniformData),
-                                     reinterpret_cast<const uint8_t*>(&m_cameraData));
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
         m_renderDevice->NextFrame();
     }

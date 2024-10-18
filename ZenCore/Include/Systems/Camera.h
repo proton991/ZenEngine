@@ -2,6 +2,8 @@
 #include "Common/Math.h"
 #include "Common/UniquePtr.h"
 
+#include <functional>
+
 namespace zen::sys
 {
 namespace directions
@@ -13,6 +15,11 @@ constexpr Vec3 DEFAULT_RIGHT{1.0f, 0.0f, 0.0f};
 /// The default value of the camera's up vector.
 constexpr Vec3 DEFAULT_UP{0.0f, 1.0f, 0.0f};
 } // namespace directions
+
+struct CameraUniformData
+{
+    Mat4 projViewMatrix{1.0f};
+};
 
 class Camera
 {
@@ -46,6 +53,16 @@ public:
 
     void SetFarPlane(float far);
     void SetNearPlane(float near);
+
+    void SetOnUpdate(std::function<void()> updateFunc)
+    {
+        m_onUpdate = std::move(updateFunc);
+    }
+
+    const uint8_t* GetUniformData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&m_cameraData);
+    }
 
 private:
     void SetProjectionMatrix();
@@ -82,5 +99,8 @@ private:
 
     float m_speed{1.f};
     float m_sensitivity{0.2f};
+
+    CameraUniformData m_cameraData;
+    std::function<void()> m_onUpdate;
 };
 } // namespace zen::sys

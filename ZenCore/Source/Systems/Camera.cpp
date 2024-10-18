@@ -44,6 +44,8 @@ Camera::Camera(const Vec3& eye,
 
     UpdateBaseVectors();
     SetProjectionMatrix();
+
+    m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
 }
 
 void Camera::UpdateBaseVectors()
@@ -122,6 +124,8 @@ void Camera::Update(float deltaTime)
         UpdatePosition(velocity);
         UpdateView();
         UpdateBaseVectors();
+        m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
+        m_onUpdate();
     }
 }
 
