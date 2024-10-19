@@ -13,19 +13,21 @@ add_executable(SmartPtrTest
     SmartPtrTest/IntrusivePtrTests.cpp
     SmartPtrTest/RefCountPtrTests.cpp
 )
-add_executable(VulkanRHIDemo VulkanRHIDemo/VulkanRHIDemo.cpp)
-add_executable(ShaderUtilDemo VulkanRHIDemo/ShaderUtilDemo.cpp)
-add_executable(RenderGraphV2Demo
-    VulkanRHIDemo/RenderGraphDemo.cpp
-    VulkanRHIDemo/RenderGraphDemo.h
+
+# VulkanRHI (v2) Exmaples
+add_executable(hello_triangle
+    VulkanRHIDemo/HelloTriangle/HelloTriangle.cpp
+    VulkanRHIDemo/HelloTriangle/HelloTriangle.h
+    VulkanRHIDemo/Application.h
+    VulkanRHIDemo/Application.cpp
 )
+target_link_libraries(hello_triangle ZenCore)
 
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
 target_link_libraries(CommonTest ZenCore gtest_main)
-target_link_libraries(VulkanRHIDemo ZenCore)
-target_link_libraries(ShaderUtilDemo ZenCore)
+
 
 # Applications
 add_executable(HelloTriangle
@@ -51,4 +53,3 @@ add_executable(SceneGraphDemo
 target_link_libraries(HelloTriangle ZenCore)
 target_link_libraries(GLTFViewer ZenCore)
 target_link_libraries(SceneGraphDemo ZenCore)
-target_link_libraries(RenderGraphV2Demo ZenCore)

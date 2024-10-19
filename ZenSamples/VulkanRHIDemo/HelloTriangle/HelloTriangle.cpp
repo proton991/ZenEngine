@@ -1,6 +1,9 @@
-#include "RenderGraphDemo.h"
+#include "HelloTriangle.h"
 
-void Application::BuildPipeline()
+HelloTriangle::HelloTriangle(const platform::WindowConfig& windowConfig) : Application(windowConfig)
+{}
+
+void HelloTriangle::BuildRenderPipeline()
 {
     GfxPipelineStates pso{};
     pso.primitiveType      = DrawPrimitiveType::eTriangleList;
@@ -48,8 +51,9 @@ void Application::BuildPipeline()
             .Build();
 }
 
-void Application::BuildResources()
+void HelloTriangle::LoadResources()
 {
+    Application::LoadResources();
     // buffers
     std::vector<Vertex> vertices = {
         {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f)},
@@ -73,7 +77,7 @@ void Application::BuildResources()
     m_texture = m_renderDevice->RequestTexture2D("wood.png");
 }
 
-void Application::BuildRenderGraph()
+void HelloTriangle::BuildRenderGraph()
 {
     m_rdg = MakeUnique<rc::RenderGraph>();
     m_rdg->Begin();
@@ -97,48 +101,20 @@ void Application::BuildRenderGraph()
     m_rdg->End();
 }
 
-Application::Application()
+void HelloTriangle::Prepare()
 {
-    m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
-    m_renderDevice->Init();
-
-    platform::WindowConfig windowConfig{"RDGV2Demo", true, 1280, 720};
-    m_window = new platform::GlfwWindowImpl(windowConfig);
-    m_window->SetOnResize([&](uint32_t width, uint32_t height) {
-        m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
-        BuildRenderGraph();
-        // recreate camera
-        m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                             m_window->GetAspect());
-    });
-    m_viewport =
-        m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
-
-    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                         m_window->GetAspect());
-    m_camera->SetOnUpdate([&] {
-        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
-                                     m_camera->GetUniformData());
-    });
-
-    m_timer = MakeUnique<platform::Timer>();
-}
-
-void Application::Prepare()
-{
-    BuildResources();
-    BuildPipeline();
+    Application::Prepare();
+    LoadResources();
+    BuildRenderPipeline();
     BuildRenderGraph();
 }
 
-void Application::Destroy()
+void HelloTriangle::Destroy()
 {
-    m_rdg->Destroy();
-    m_renderDevice->Destroy();
-    delete m_renderDevice;
+    Application::Destroy();
 }
 
-void Application::Run()
+void HelloTriangle::Run()
 {
     while (!m_window->ShouldClose())
     {
@@ -151,10 +127,14 @@ void Application::Run()
 
 int main(int argc, char** argv)
 {
-    Application application;
-    application.Prepare();
+    platform::WindowConfig windowConfig{"hello_triangle", true, 1280, 720};
+    Application* app = new HelloTriangle(windowConfig);
 
-    application.Run();
+    app->Prepare();
 
-    application.Destroy();
+    app->Run();
+
+    app->Destroy();
+
+    delete app;
 }
