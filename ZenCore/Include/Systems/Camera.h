@@ -19,6 +19,8 @@ constexpr Vec3 DEFAULT_UP{0.0f, 1.0f, 0.0f};
 struct CameraUniformData
 {
     Mat4 projViewMatrix{1.0f};
+    Mat4 proj{1.0f};
+    Mat4 view{1.0f};
 };
 
 class Camera
@@ -36,6 +38,8 @@ public:
            float near  = 0.001f,
            float far   = 100.0f,
            float speed = 2.0f);
+
+    void SetPosition(const Vec3& position);
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;

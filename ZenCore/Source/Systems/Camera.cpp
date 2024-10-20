@@ -46,6 +46,24 @@ Camera::Camera(const Vec3& eye,
     SetProjectionMatrix();
 
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
+    m_cameraData.proj           = GetProjectionMatrix();
+    m_cameraData.view           = GetViewMatrix();
+}
+
+void Camera::SetPosition(const Vec3& position)
+{
+    m_position     = position;
+    Vec3 direction = glm::normalize(Vec3{0.0f, 0.0f, 0.0f} - m_position);
+
+    m_pitch = glm::degrees(asin(direction.y));
+    m_yaw   = glm::degrees(atan2(direction.z, direction.x));
+
+    UpdateBaseVectors();
+    SetProjectionMatrix();
+
+    m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
+    m_cameraData.proj           = GetProjectionMatrix();
+    m_cameraData.view           = GetViewMatrix();
 }
 
 void Camera::UpdateBaseVectors()
@@ -125,6 +143,8 @@ void Camera::Update(float deltaTime)
         UpdateView();
         UpdateBaseVectors();
         m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
+        m_cameraData.proj           = GetProjectionMatrix();
+        m_cameraData.view           = GetViewMatrix();
         m_onUpdate();
     }
 }

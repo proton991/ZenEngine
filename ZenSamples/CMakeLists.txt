@@ -23,6 +23,14 @@ add_executable(hello_triangle
 )
 target_link_libraries(hello_triangle ZenCore)
 
+add_executable(gears
+        VulkanRHIDemo/Gears/Gears.cpp
+        VulkanRHIDemo/Gears/Gears.h
+        VulkanRHIDemo/Application.h
+        VulkanRHIDemo/Application.cpp
+)
+target_link_libraries(gears ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

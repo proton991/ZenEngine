@@ -1,9 +1,10 @@
 #include "HelloTriangle.h"
 
-HelloTriangle::HelloTriangle(const platform::WindowConfig& windowConfig) : Application(windowConfig)
+HelloTriangleApp::HelloTriangleApp(const platform::WindowConfig& windowConfig) :
+    Application(windowConfig)
 {}
 
-void HelloTriangle::BuildRenderPipeline()
+void HelloTriangleApp::BuildRenderPipeline()
 {
     GfxPipelineStates pso{};
     pso.primitiveType      = DrawPrimitiveType::eTriangleList;
@@ -51,7 +52,7 @@ void HelloTriangle::BuildRenderPipeline()
             .Build();
 }
 
-void HelloTriangle::LoadResources()
+void HelloTriangleApp::LoadResources()
 {
     Application::LoadResources();
     // buffers
@@ -68,16 +69,13 @@ void HelloTriangle::LoadResources()
     m_indexBuffer = m_renderDevice->CreateIndexBuffer(
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 
-    m_cameraUBO = m_renderDevice->CreateUniformBuffer(sizeof(sys::CameraUniformData),
-                                                      m_camera->GetUniformData());
-
     // load texture
     SamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
     m_texture = m_renderDevice->RequestTexture2D("wood.png");
 }
 
-void HelloTriangle::BuildRenderGraph()
+void HelloTriangleApp::BuildRenderGraph()
 {
     m_rdg = MakeUnique<rc::RenderGraph>();
     m_rdg->Begin();
@@ -101,7 +99,7 @@ void HelloTriangle::BuildRenderGraph()
     m_rdg->End();
 }
 
-void HelloTriangle::Prepare()
+void HelloTriangleApp::Prepare()
 {
     Application::Prepare();
     LoadResources();
@@ -109,12 +107,12 @@ void HelloTriangle::Prepare()
     BuildRenderGraph();
 }
 
-void HelloTriangle::Destroy()
+void HelloTriangleApp::Destroy()
 {
     Application::Destroy();
 }
 
-void HelloTriangle::Run()
+void HelloTriangleApp::Run()
 {
     while (!m_window->ShouldClose())
     {
@@ -128,7 +126,7 @@ void HelloTriangle::Run()
 int main(int argc, char** argv)
 {
     platform::WindowConfig windowConfig{"hello_triangle", true, 1280, 720};
-    Application* app = new HelloTriangle(windowConfig);
+    Application* app = new HelloTriangleApp(windowConfig);
 
     app->Prepare();
 

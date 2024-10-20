@@ -7,17 +7,19 @@ class RenderDevice;
 }
 using namespace zen;
 using namespace zen::rhi;
-struct Vertex
-{
-    Vec3 position{0.0f, 0.0f, 0.0f};
-    Vec3 color{0.0f, 0.0f, 0.0f};
-    Vec2 uv{0.0f, 0.0f};
-};
 
-class HelloTriangle : public Application
+
+class HelloTriangleApp : public Application
 {
 public:
-    explicit HelloTriangle(const platform::WindowConfig& windowConfig);
+    struct Vertex
+    {
+        Vec3 position{0.0f, 0.0f, 0.0f};
+        Vec3 color{0.0f, 0.0f, 0.0f};
+        Vec2 uv{0.0f, 0.0f};
+    };
+
+    explicit HelloTriangleApp(const platform::WindowConfig& windowConfig);
 
     void Prepare() final;
 
@@ -25,7 +27,7 @@ public:
 
     void Destroy() final;
 
-    ~HelloTriangle() override{};
+    ~HelloTriangleApp() override {};
 
 private:
     void BuildRenderPipeline();

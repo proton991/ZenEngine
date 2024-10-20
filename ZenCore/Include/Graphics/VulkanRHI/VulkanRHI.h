@@ -155,6 +155,8 @@ public:
 
     void WaitDeviceIdle() final;
 
+    size_t GetUniformBufferAlignment() final;
+
 protected:
     void CreateInstance();
 

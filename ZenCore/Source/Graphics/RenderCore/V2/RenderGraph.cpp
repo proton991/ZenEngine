@@ -94,13 +94,17 @@ void RenderGraph::AddGraphicsPassDrawNode(RDGPassNode* parent,
 void RenderGraph::AddGraphicsPassDrawIndexedNode(RDGPassNode* parent,
                                                  uint32_t indexCount,
                                                  uint32_t instanceCount,
-                                                 uint32_t firstIndex)
+                                                 uint32_t firstIndex,
+                                                 int32_t vertexOffset,
+                                                 uint32_t firstInstance)
 {
     auto* node          = AllocPassChildNode<RDGDrawIndexedNode>(parent);
     node->type          = RDGPassCmdType::eDrawIndexed;
     node->indexCount    = indexCount;
     node->firstIndex    = firstIndex;
     node->instanceCount = instanceCount;
+    node->vertexOffset  = vertexOffset;
+    node->firstInstance = firstInstance;
 }
 
 void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color)
@@ -697,7 +701,8 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     {
                         auto* cmdNode = reinterpret_cast<RDGDrawIndexedNode*>(child);
                         m_cmdList->DrawIndexed(cmdNode->indexCount, cmdNode->instanceCount,
-                                               cmdNode->firstIndex, 0, 0);
+                                               cmdNode->firstIndex, cmdNode->vertexOffset,
+                                               cmdNode->firstInstance);
                     }
                     break;
                     case RDGPassCmdType::eExecuteCommands: break;

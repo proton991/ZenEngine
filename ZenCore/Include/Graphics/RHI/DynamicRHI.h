@@ -101,5 +101,7 @@ public:
     virtual void SubmitAllGPUCommands() = 0;
 
     virtual void WaitDeviceIdle() = 0;
+
+    virtual size_t GetUniformBufferAlignment() = 0;
 };
 } // namespace zen::rhi

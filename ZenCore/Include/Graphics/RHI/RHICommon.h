@@ -407,8 +407,8 @@ enum class PolygonCullMode : uint32_t
 
 enum class PolygonFrontFace : uint32_t
 {
-    eClockWise        = 0,
-    eCounterClockWise = 1,
+    eCounterClockWise = 0,
+    eClockWise        = 1,
     eMax              = 2,
 };
 
@@ -464,7 +464,7 @@ struct GfxPipelineRasterizationState
     bool discardPrimitives{false};
     bool wireframe{false};
     PolygonCullMode cullMode{PolygonCullMode::eDisabled};
-    PolygonFrontFace frontFace{PolygonFrontFace::eClockWise};
+    PolygonFrontFace frontFace{PolygonFrontFace::eCounterClockWise};
     bool enableDepthBias{false};
     float depthBiasConstantFactor{0.0f};
     float depthBiasClamp{0.0f};

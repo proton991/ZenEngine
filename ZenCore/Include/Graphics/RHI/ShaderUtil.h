@@ -23,6 +23,15 @@ inline ShaderGroupSPIRVPtr ShaderUtil::CompileShaderSourceToSPIRV(
     return MakeRefCountPtr<ShaderGroupSPIRV>();
 }
 
+static bool StartsWith(std::string_view str, std::string_view prefix)
+{
+    if (str.size() < prefix.size())
+    {
+        return false;
+    }
+    return str.substr(0, prefix.size()) == prefix;
+}
+
 static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
                                 ShaderGroupInfo& shaderGroupInfo)
 {
@@ -37,7 +46,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
         result = spvReflectEnumerateInputVariables(module, &inputVarCount, inputVars.data());
         for (auto* inputVar : inputVars)
         {
-            if (inputVar->built_in == SpvBuiltInMax)
+            if (StartsWith(inputVar->name, "gl_"))
             {
                 inputVarCount--;
             }
@@ -45,7 +54,6 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
     }
     if (inputVarCount > 0)
     {
-
         VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
         std::sort(
             inputVars.begin(), inputVars.end(),

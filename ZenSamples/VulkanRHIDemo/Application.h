@@ -43,4 +43,8 @@ protected:
     UniquePtr<sys::Camera> m_camera;
 
     UniquePtr<platform::Timer> m_timer;
+    // Defines a frame rate independent timer value clamped from -1.0...1.0
+    // For use in animations, rotations, etc.
+    float m_animationTimer{0.0f};
+    float m_animationSpeed{0.25f};
 };

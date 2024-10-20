@@ -251,6 +251,8 @@ private:
                                       const rhi::ShaderHandle& shader,
                                       const rhi::RenderPassHandle& renderPass);
 
+    size_t PadUniformBufferSize(size_t originalSize);
+
     const rhi::GraphicsAPIType m_APIType;
     const uint32_t m_numFrames;
     uint32_t m_currentFrame{0};

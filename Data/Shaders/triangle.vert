@@ -28,6 +28,8 @@ layout(location = 2) in vec2 inUV;
 layout(set = 0, binding = 0) uniform uCameraData
 {
     mat4 uProjViewMatrix;
+    mat4 uProj;
+    mat4 uView;
 };
 
 void main()

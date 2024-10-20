@@ -290,4 +290,9 @@ void VulkanRHI::WaitDeviceIdle()
     m_device->WaitForIdle();
 }
 
+size_t VulkanRHI::GetUniformBufferAlignment()
+{
+    return m_device->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+}
+
 } // namespace zen::rhi

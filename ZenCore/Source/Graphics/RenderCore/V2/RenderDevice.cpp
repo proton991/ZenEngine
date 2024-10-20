@@ -375,14 +375,22 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
     usages.SetFlag(rhi::BufferUsageFlagBits::eUniformBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
 
+    uint32_t paddedSize = PadUniformBufferSize(dataSize);
     rhi::BufferHandle uniformBuffer =
-        m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
+        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
     if (pData != nullptr)
     {
-        UpdateBufferInternal(uniformBuffer, 0, dataSize, pData);
+        UpdateBufferInternal(uniformBuffer, 0, paddedSize, pData);
     }
     m_buffers.push_back(uniformBuffer);
     return uniformBuffer;
+}
+
+size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
+{
+    auto minUboAlignment = m_RHI->GetUniformBufferAlignment();
+    size_t alignedSize   = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    return alignedSize;
 }
 
 void RenderDevice::UpdateBuffer(rhi::BufferHandle bufferHandle,
