@@ -47,3 +47,23 @@ Main Features(Implemented):
 
 3. Hybrid Rendering.
 4. Dynamic Diffuse Global Illumination (DDGI).
+
+## M2-2024.10.21
+
+**Current Status:**
+
+Implemented VulkanRHI and Render framework V2 from scratch (Basic structure and functionality
+implemented, but may contain bugs). Already implemented 2 sample applications based
+on [Vulkan Samples](https://github.com/SaschaWillems/Vulkan).
+
+**hello_triangle**(with texture)
+
+![hello_triangle_textured](./Doc/imgs/hello_triangle_textured.png)
+
+**gears**
+
+![gears](./Doc/imgs/gears.png)
+
+**Next steps:**
+
+Re-write **all** [Vulkan Samples](https://github.com/SaschaWillems/Vulkan) using ZenEngine's VulkanRHI and RenderCoreV2. 
