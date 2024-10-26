@@ -1,6 +1,6 @@
 #include "Application.h"
 
-Application::Application(const platform::WindowConfig& windowConfig)
+Application::Application(const platform::WindowConfig& windowConfig, sys::CameraType type)
 {
     m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
     m_renderDevice->Init();
@@ -17,7 +17,7 @@ Application::Application(const platform::WindowConfig& windowConfig)
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                         m_window->GetAspect());
+                                         m_window->GetAspect(), type);
     m_camera->SetOnUpdate([&] {
         m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
                                      m_camera->GetUniformData());

@@ -6,7 +6,10 @@
 using namespace zen::platform;
 namespace zen::sys
 {
-UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos, const Vec3& maxPos, float aspect)
+UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos,
+                                             const Vec3& maxPos,
+                                             float aspect,
+                                             CameraType type)
 {
     const auto diag   = maxPos - minPos;
     auto maxDistance  = glm::length(diag);
@@ -19,12 +22,19 @@ UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos, const Vec3& max
     // place camera at the bbx corner
     const auto eye   = Vec3(maxPos.x, maxPos.y + 0.5f * maxDistance, maxPos.z);
     const auto speed = maxDistance;
-    return MakeUnique<Camera>(eye, center, aspect, fov, near, far, speed);
+    return MakeUnique<Camera>(eye, center, aspect, fov, near, far, speed, type);
 }
 
-UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye, const Vec3& target, float aspect)
+UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye,
+                                       const Vec3& target,
+                                       float aspect,
+                                       CameraType type)
 {
-    return MakeUnique<Camera>(eye, target, aspect);
+    float fov   = 70.0f;
+    float near  = 0.001f;
+    float far   = 100.0f;
+    float speed = 2.0f;
+    return MakeUnique<Camera>(eye, target, aspect, fov, near, far, speed, type);
 }
 
 Camera::Camera(const Vec3& eye,
@@ -33,8 +43,15 @@ Camera::Camera(const Vec3& eye,
                float fov,
                float near,
                float far,
-               float speed) :
-    m_position{eye}, m_aspect{aspect}, m_fov{fov}, m_near{near}, m_far{far}, m_speed(speed)
+               float speed,
+               CameraType type) :
+    m_type{type},
+    m_position{eye},
+    m_aspect{aspect},
+    m_fov{fov},
+    m_near{near},
+    m_far{far},
+    m_speed(speed)
 {
     Vec3 direction = glm::normalize(target - m_position);
 
@@ -126,7 +143,7 @@ void Camera::UpdatePosition(float velocity)
     }
 }
 
-void Camera::UpdateView()
+void Camera::UpdateViewFirstPerson()
 {
     auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
     m_yaw += delta[0] * m_sensitivity;
@@ -134,18 +151,49 @@ void Camera::UpdateView()
     m_pitch = std::clamp(m_pitch, m_pitchMin, m_pitchMax);
 }
 
+void Camera::UpdateViewOrbit(const Vec3& rotation)
+{
+    m_rotation += rotation;
+    glm::mat4 rotM{1.0f};
+    rotM = glm::rotate(rotM, glm::radians(m_rotation.x), Vec3(1.0f, 0.0f, 0.0f));
+    rotM = glm::rotate(rotM, glm::radians(m_rotation.y * (m_flipY ? -1.0f : 1.0f)),
+                       Vec3(0.0f, 1.0f, 0.0f));
+    rotM = glm::rotate(rotM, glm::radians(m_rotation.z), Vec3(0.0f, 0.0f, 1.0f));
+
+    glm::vec3 translation = m_position;
+    if (m_flipY)
+    {
+        translation.y *= -1.0f;
+    }
+    glm::mat4 transM = glm::translate(glm::mat4(1.0f), translation);
+
+    m_cameraData.view = transM * rotM;
+}
+
 void Camera::Update(float deltaTime)
 {
-    if (KeyboardMouseInput::GetInstance().IsDirty())
+    if (m_type == CameraType::eFirstPerson)
     {
-        const float velocity = m_speed * deltaTime;
-        UpdatePosition(velocity);
-        UpdateView();
-        UpdateBaseVectors();
-        m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
-        m_cameraData.proj           = GetProjectionMatrix();
-        m_cameraData.view           = GetViewMatrix();
-        m_onUpdate();
+        if (KeyboardMouseInput::GetInstance().IsDirty())
+        {
+            const float velocity = m_speed * deltaTime;
+            UpdatePosition(velocity);
+            UpdateViewFirstPerson();
+            UpdateBaseVectors();
+            m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
+            m_cameraData.view           = GetViewMatrix();
+            m_onUpdate();
+        }
+    }
+    else
+    {
+        if (!KeyboardMouseInput::GetInstance().IsMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT))
+        {
+            auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
+            UpdateViewOrbit({delta[1] * m_rotationSpeed, delta[0] * m_rotationSpeed, 0.0f});
+            m_cameraData.projViewMatrix = GetProjectionMatrix() * m_cameraData.view;
+            m_onUpdate();
+        }
     }
 }
 

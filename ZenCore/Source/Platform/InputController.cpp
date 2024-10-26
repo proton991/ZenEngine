@@ -56,6 +56,15 @@ void KeyboardMouseInput::PressMouseButton(std::int32_t button)
     m_mouseButtonsUpdated        = true;
 }
 
+void KeyboardMouseInput::SetMouseButtonRelease(std::int32_t button, bool released)
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
+
+    std::scoped_lock lock(m_inputMutex);
+    m_mouseButtonReleased[button] = released;
+}
+
 void KeyboardMouseInput::ReleaseMouseButton(std::int32_t button)
 {
     ASSERT(button >= 0);
@@ -73,6 +82,15 @@ bool KeyboardMouseInput::IsMouseButtonPressed(std::int32_t button) const
 
     std::shared_lock lock(m_inputMutex);
     return m_mouseButtonPressed[button];
+}
+
+bool KeyboardMouseInput::IsMouseButtonReleased(std::int32_t button) const
+{
+    ASSERT(button >= 0);
+    ASSERT(button < GLFW_MOUSE_BUTTON_LAST);
+
+    std::shared_lock lock(m_inputMutex);
+    return m_mouseButtonReleased[button];
 }
 
 bool KeyboardMouseInput::WasMouseButtonPressedOnce(std::int32_t button)

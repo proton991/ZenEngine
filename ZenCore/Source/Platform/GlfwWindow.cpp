@@ -169,8 +169,18 @@ void GlfwWindowImpl::SetupWindowCallbacks()
         }
         switch (action)
         {
-            case GLFW_PRESS: KeyboardMouseInput::GetInstance().PressMouseButton(button); break;
-            case GLFW_RELEASE: KeyboardMouseInput::GetInstance().ReleaseMouseButton(button); break;
+            case GLFW_PRESS:
+            {
+                KeyboardMouseInput::GetInstance().PressMouseButton(button);
+                KeyboardMouseInput::GetInstance().SetMouseButtonRelease(button, false);
+                break;
+            }
+            case GLFW_RELEASE:
+            {
+                KeyboardMouseInput::GetInstance().ReleaseMouseButton(button);
+                KeyboardMouseInput::GetInstance().SetMouseButtonRelease(button, true);
+                break;
+            }
             default: break;
         }
     };

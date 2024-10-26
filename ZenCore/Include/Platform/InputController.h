@@ -47,6 +47,11 @@ public:
     /// @note button must be smaller than ``GLFW_MOUSE_BUTTON_LAST`` and greater or equal to 0
     void PressMouseButton(std::int32_t button);
 
+    /// @brief Change the mouse button's release state.
+    /// @param button the mouse button which was released
+    /// @note button must be smaller than ``GLFW_MOUSE_BUTTON_LAST`` and greater or equal to 0
+    void SetMouseButtonRelease(std::int32_t button, bool released);
+
     /// @brief Change the mouse button's state to unpressed.
     /// @param button the mouse button which was released
     /// @note button must be smaller than ``GLFW_MOUSE_BUTTON_LAST`` and greater or equal to 0
@@ -57,6 +62,12 @@ public:
     /// @note button must be smaller than ``GLFW_MOUSE_BUTTON_LAST`` and greater or equal to 0
     /// @return ``true`` if the mouse button is pressed
     [[nodiscard]] bool IsMouseButtonPressed(std::int32_t button) const;
+
+    /// @brief Check if the given mouse button is currently being held.
+    /// @param button the mouse button index
+    /// @note button must be smaller than ``GLFW_MOUSE_BUTTON_LAST`` and greater or equal to 0
+    /// @return ``true`` if the mouse button is being held.
+    bool IsMouseButtonReleased(std::int32_t button) const;
 
     /// @brief Checks if a mouse button was pressed once.
     /// @param button the mouse button index
@@ -96,6 +107,7 @@ private:
     std::array<std::int64_t, 2> m_currentCursorPos{0, 0};  // [x, y]
     std::array<bool, GLFW_KEY_LAST> m_keyPressed{false};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST> m_mouseButtonPressed{false};
+    std::array<bool, GLFW_MOUSE_BUTTON_LAST> m_mouseButtonReleased{true};
     bool m_keyboardUpdated{false};
     bool m_mouseButtonsUpdated{false};
     bool m_firstMouse{true};

@@ -1,8 +1,10 @@
 #include "HelloTriangle.h"
 
 HelloTriangleApp::HelloTriangleApp(const platform::WindowConfig& windowConfig) :
-    Application(windowConfig)
-{}
+    Application(windowConfig, sys::CameraType::eOrbit)
+{
+    m_camera->SetPosition({0.0f, 0.0f, -2.0f});
+}
 
 void HelloTriangleApp::BuildRenderPipeline()
 {
@@ -57,9 +59,9 @@ void HelloTriangleApp::LoadResources()
     Application::LoadResources();
     // buffers
     std::vector<Vertex> vertices = {
-        {Vec3(0.5f, 0.5f, 1.0f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f)},
-        {Vec3(0.5f, -0.5f, 1.0f), Vec3(0.0f, 1.0f, 0.0f), Vec2(1.0f, 1.0f)},
-        {Vec3(-0.5f, 0.5f, 1.0f), Vec3(0.0f, 0.0f, 1.0f), Vec2(0.0f, 0.0f)}};
+        {Vec3(0.5f, 0.5f, 0.0f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f)},
+        {Vec3(0.5f, -0.5f, 0.0f), Vec3(0.0f, 1.0f, 0.0f), Vec2(1.0f, 1.0f)},
+        {Vec3(-0.5f, 0.5f, 0.0f), Vec3(0.0f, 0.0f, 1.0f), Vec2(0.0f, 0.0f)}};
     std::vector<uint32_t> indices = {0, 1, 2};
 
     uint32_t vbSize = vertices.size() * sizeof(Vertex);

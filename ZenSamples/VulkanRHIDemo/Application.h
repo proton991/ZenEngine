@@ -16,7 +16,8 @@ class RenderDevice;
 class Application
 {
 public:
-    explicit Application(const platform::WindowConfig& windowConfig);
+    explicit Application(const platform::WindowConfig& windowConfig,
+                         sys::CameraType type = sys::CameraType::eFirstPerson);
 
     virtual void Prepare();
 

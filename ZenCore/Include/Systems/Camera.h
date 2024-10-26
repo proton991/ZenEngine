@@ -23,21 +23,32 @@ struct CameraUniformData
     Mat4 view{1.0f};
 };
 
+enum class CameraType : uint32_t
+{
+    eFirstPerson = 0,
+    eOrbit       = 1
+};
+
 class Camera
 {
 public:
     static UniquePtr<Camera> CreateUniqueOnAABB(const Vec3& minPos,
                                                 const Vec3& maxPos,
-                                                float aspect);
-    static UniquePtr<Camera> CreateUnique(const Vec3& eye, const Vec3& target, float aspect);
+                                                float aspect,
+                                                CameraType type = CameraType::eFirstPerson);
+    static UniquePtr<Camera> CreateUnique(const Vec3& eye,
+                                          const Vec3& target,
+                                          float aspect,
+                                          CameraType type = CameraType::eFirstPerson);
 
     Camera(const Vec3& eye,
            const Vec3& target,
            float aspect,
-           float fov   = 70.0f,
-           float near  = 0.001f,
-           float far   = 100.0f,
-           float speed = 2.0f);
+           float fov       = 70.0f,
+           float near      = 0.001f,
+           float far       = 100.0f,
+           float speed     = 2.0f,
+           CameraType type = CameraType::eFirstPerson);
 
     void SetPosition(const Vec3& position);
 
@@ -72,14 +83,22 @@ private:
     void SetProjectionMatrix();
     void UpdateBaseVectors();
     void UpdatePosition(float velocity);
-    void UpdateView();
+    void UpdateViewFirstPerson();
+    void UpdateViewOrbit(const Vec3& rotation);
     // camera attributes
+    CameraType m_type;
+
+    Vec3 m_rotation{0.0f, 0.0f, 0.0f};
+    float m_rotationSpeed{1.0f};
+
     Vec3 m_position{0.0f, 0.0f, 0.0f};
     Vec3 m_front{directions::DEFAULT_FRONT};
     Vec3 m_up{directions::DEFAULT_UP};
     Vec3 m_right{directions::DEFAULT_RIGHT};
 
     const Vec3 m_worldUp{directions::DEFAULT_UP};
+
+    bool m_flipY{false};
 
     Vec3 m_target{};
 
