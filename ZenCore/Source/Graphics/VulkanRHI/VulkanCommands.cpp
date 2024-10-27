@@ -342,11 +342,11 @@ void VulkanCommandList::DrawIndexed(uint32_t indexCount,
                      vertexOffset, firstInstance);
 }
 
-void VulkanCommandList::SetPushConstants(ShaderHandle shaderHandle, VectorView<uint8_t> data)
+void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
 {
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
-    vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), shader->pipelineLayout,
-                       shader->pushConstantsStageFlags, 0, data.size(), data.data());
+    VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), pipeline->pipelineLayout,
+                       pipeline->pushConstantsStageFlags, 0, data.size(), data.data());
 }
 
 void VulkanCommandList::SetViewports(VectorView<Rect2> viewports)

@@ -31,6 +31,14 @@ add_executable(gears
 )
 target_link_libraries(gears ZenCore)
 
+add_executable(push_constants
+    VulkanRHIDemo/PushConstants/PushConstants.cpp
+    VulkanRHIDemo/PushConstants/PushConstants.h
+    VulkanRHIDemo/Application.h
+    VulkanRHIDemo/Application.cpp
+)
+target_link_libraries(push_constants ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

@@ -712,7 +712,16 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        m_cmdList->SetPushConstants(cmdNode->shader, cmdNode->data);
+                        rhi::PipelineHandle pipelineHandle;
+                        for (auto* sibling : cmdNode->parent->childNodes)
+                        {
+                            if (sibling->type == RDGPassCmdType::eBindPipeline)
+                            {
+                                auto* casted   = reinterpret_cast<RDGBindPipelineNode*>(sibling);
+                                pipelineHandle = casted->pipeline;
+                            }
+                        }
+                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->data);
                     }
                     break;
                     case RDGPassCmdType::eSetLineWidth:

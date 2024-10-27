@@ -86,6 +86,7 @@ struct VulkanPipeline
     VkPipeline pipeline{VK_NULL_HANDLE};
     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
     uint32_t descriptorSetCount{0};
+    VkShaderStageFlags pushConstantsStageFlags;
     std::vector<VulkanDescriptorSet*> descriptorSets;
 };
 } // namespace zen::rhi

@@ -377,6 +377,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     pipeline->pipeline           = gfxPipeline;
     pipeline->pipelineLayout     = shader->pipelineLayout;
     pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
+    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
     pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
     m_shaderPipelines[shaderHandle] = pipeline;

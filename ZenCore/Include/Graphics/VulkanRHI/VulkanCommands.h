@@ -99,7 +99,7 @@ public:
                      uint32_t vertexOffset,
                      uint32_t firstInstance) final;
 
-    void SetPushConstants(ShaderHandle shaderHandle, VectorView<uint8_t> data) final;
+    void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) final;
 
     void SetViewports(VectorView<Rect2> viewports) final;
 
