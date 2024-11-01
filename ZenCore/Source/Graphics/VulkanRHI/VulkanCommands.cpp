@@ -147,7 +147,7 @@ void VulkanCommandList::CopyBuffer(BufferHandle srcBufferHandle,
                     &bufferCopy);
 }
 
-void VulkanCommandList::ClearTexutre(TextureHandle textureHandle,
+void VulkanCommandList::ClearTexture(TextureHandle textureHandle,
                                      const Color& color,
                                      const TextureSubResourceRange& range)
 {
@@ -300,7 +300,7 @@ void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle)
 
 void VulkanCommandList::BeginRenderPass(RenderPassHandle renderPassHandle,
                                         FramebufferHandle framebufferHandle,
-                                        const Rect2& area,
+                                        const Rect2<int>& area,
                                         VectorView<RenderPassClearValue> clearValues)
 {
     VkFramebuffer framebuffer =
@@ -349,7 +349,7 @@ void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorVi
                        pipeline->pushConstantsStageFlags, 0, data.size(), data.data());
 }
 
-void VulkanCommandList::SetViewports(VectorView<Rect2> viewports)
+void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
 {
     std::vector<VkViewport> vkViewports;
     vkViewports.resize(viewports.size());
@@ -366,7 +366,7 @@ void VulkanCommandList::SetViewports(VectorView<Rect2> viewports)
     vkCmdSetViewport(m_cmdBuffer->GetVkHandle(), 0, viewports.size(), vkViewports.data());
 }
 
-void VulkanCommandList::SetScissors(VectorView<Rect2> scissors)
+void VulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
 {
     std::vector<VkRect2D> vkScissors;
     vkScissors.resize(scissors.size());

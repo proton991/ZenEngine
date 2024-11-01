@@ -6,7 +6,7 @@ namespace zen::rc
 {
 RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                               rhi::FramebufferHandle framebufferHandle,
-                                              rhi::Rect2 area,
+                                              rhi::Rect2<int> area,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
@@ -121,14 +121,15 @@ void RenderGraph::AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float wid
     node->type  = RDGPassCmdType::eSetLineWidth;
 }
 
-void RenderGraph::AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2& scissor)
+void RenderGraph::AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2<int>& scissor)
 {
     auto* node    = AllocPassChildNode<RDGSetScissorNode>(parent);
     node->scissor = scissor;
     node->type    = RDGPassCmdType::eSetScissor;
 }
 
-void RenderGraph::AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2& viewport)
+void RenderGraph::AddGraphicsPassSetViewportNode(RDGPassNode* parent,
+                                                 const rhi::Rect2<float>& viewport)
 {
     auto* node     = AllocPassChildNode<RDGSetViewportNode>(parent);
     node->viewport = viewport;
@@ -616,7 +617,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         case RDGNodeType::eClearTexture:
         {
             RDGTextureClearNode* node = reinterpret_cast<RDGTextureClearNode*>(base);
-            m_cmdList->ClearTexutre(node->texture, node->color, node->range);
+            m_cmdList->ClearTexture(node->texture, node->color, node->range);
         }
         break;
         case RDGNodeType::eCopyTexture:

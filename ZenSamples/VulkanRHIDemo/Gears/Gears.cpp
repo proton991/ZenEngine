@@ -149,6 +149,12 @@ void GearsApp::BuildRenderGraph()
     area.minY = 0;
     area.maxX = (int)m_window->GetExtent2D().width;
     area.maxY = (int)m_window->GetExtent2D().height;
+
+    Rect2<float> vp;
+    vp.minX = 0.0f;
+    vp.minY = 0.0f;
+    vp.maxX = (float)m_window->GetExtent2D().width;
+    vp.maxY = (float)m_window->GetExtent2D().height;
     RenderPassClearValue clearValue;
     clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
 
@@ -158,7 +164,7 @@ void GearsApp::BuildRenderGraph()
     m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
-    m_rdg->AddGraphicsPassSetViewportNode(mainPass, area);
+    m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     for (auto i = 0; i < NUM_GEARS; i++)
     {

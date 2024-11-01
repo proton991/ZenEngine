@@ -21,28 +21,28 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
     return static_cast<std::underlying_type_t<E>>(e);
 }
 
-struct Viewport
+struct Rect3f
 {
     float minX, maxX;
     float minY, maxY;
     float minZ, maxZ;
 
-    Viewport() : minX(0.f), maxX(0.f), minY(0.f), maxY(0.f), minZ(0.f), maxZ(1.f) {}
+    Rect3f() : minX(0.f), maxX(0.f), minY(0.f), maxY(0.f), minZ(0.f), maxZ(1.f) {}
 
-    Viewport(float width, float height) :
+    Rect3f(float width, float height) :
         minX(0.f), maxX(width), minY(0.f), maxY(height), minZ(0.f), maxZ(1.f)
     {}
 
-    Viewport(float _minX, float _maxX, float _minY, float _maxY, float _minZ, float _maxZ) :
+    Rect3f(float _minX, float _maxX, float _minY, float _maxY, float _minZ, float _maxZ) :
         minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY), minZ(_minZ), maxZ(_maxZ)
     {}
 
-    bool operator==(const Viewport& b) const
+    bool operator==(const Rect3f& b) const
     {
         return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX &&
             maxY == b.maxY && maxZ == b.maxZ;
     }
-    bool operator!=(const Viewport& b) const
+    bool operator!=(const Rect3f& b) const
     {
         return !(*this == b);
     }
@@ -57,21 +57,14 @@ struct Viewport
     }
 };
 
-struct Rect2
+template <class T = int> struct Rect2
 {
-    int minX, maxX;
-    int minY, maxY;
+    T minX, maxX;
+    T minY, maxY;
 
     Rect2() : minX(0), maxX(0), minY(0), maxY(0) {}
-    Rect2(int width, int height) : minX(0), maxX(width), minY(0), maxY(height) {}
-    Rect2(int _minX, int _maxX, int _minY, int _maxY) :
-        minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
-    {}
-    explicit Rect2(const Viewport& viewport) :
-        minX(static_cast<int>(floorf(viewport.minX))),
-        maxX(static_cast<int>(ceilf(viewport.maxX))),
-        minY(static_cast<int>(floorf(viewport.minY))),
-        maxY(static_cast<int>(ceilf(viewport.maxY)))
+    Rect2(T width, T height) : minX(0), maxX(width), minY(0), maxY(height) {}
+    Rect2(T _minX, T _maxX, T _minY, T _maxY) : minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
     {}
 
     bool operator==(const Rect2& b) const
@@ -83,12 +76,12 @@ struct Rect2
         return !(*this == b);
     }
 
-    [[nodiscard]] int Width() const
+    [[nodiscard]] T Width() const
     {
         return maxX - minX;
     }
 
-    [[nodiscard]] int Height() const
+    [[nodiscard]] T Height() const
     {
         return maxY - minY;
     }
@@ -221,7 +214,7 @@ enum class ShaderStage : uint32_t
 {
     eVertex                = 0,
     eFragment              = 1,
-    eTesselationConrol     = 2,
+    eTesselationControl    = 2,
     eTesselationEvaluation = 3,
     eCompute               = 4,
     eMax                   = 5
@@ -231,7 +224,7 @@ enum class ShaderStageFlagBits : uint32_t
 {
     eVertex                = 1 << 0,
     eFragment              = 1 << 1,
-    eTesselationConrol     = 1 << 2,
+    eTesselationControl    = 1 << 2,
     eTesselationEvaluation = 1 << 3,
     eCompute               = 1 << 4,
     eMax                   = 1 << 5
@@ -256,7 +249,7 @@ static std::string ShaderStageFlagToString(BitField<ShaderStageFlagBits> stageFl
     {
         str += "Fragment ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eTesselationConrol))
+    if (stageFlags.HasFlag(ShaderStageFlagBits::eTesselationControl))
     {
         str += "TesselationControl ";
     }
@@ -887,8 +880,8 @@ public:
 
     void SetDepthStencilTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
     {
-        m_depthStencilRTLoadOp = loadOp;
-        m_depthStenciRTStoreOp = storeOp;
+        m_depthStencilRTLoadOp  = loadOp;
+        m_depthStencilRTStoreOp = storeOp;
     }
 
     void SetNumSamples(SampleCount sampleCount)
@@ -928,7 +921,7 @@ public:
 
     const auto GetDepthStencilRenderTargetStoreOp() const
     {
-        return m_depthStenciRTStoreOp;
+        return m_depthStencilRTStoreOp;
     }
 
     const auto& GetColorRenderTargets() const
@@ -949,14 +942,9 @@ private:
     RenderTargetLoadOp m_colorRToadOp{RenderTargetLoadOp::eNone};
     RenderTargetStoreOp m_colorRTStoreOp{RenderTargetStoreOp::eNone};
     RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
-    RenderTargetStoreOp m_depthStenciRTStoreOp{RenderTargetStoreOp::eNone};
+    RenderTargetStoreOp m_depthStencilRTStoreOp{RenderTargetStoreOp::eNone};
     bool m_hasDepthStencilRT{false};
 };
-
-inline uint64_t GetRenderpassLayoutHash(const RenderPassLayout& layout)
-{
-    return 0;
-}
 
 struct FramebufferInfo
 {
@@ -1009,76 +997,6 @@ struct IndexBufferBinding
     }
 };
 
-class GraphicsContext
-{
-public:
-    GraphicsContext() = default;
-
-    GraphicsContext& SetShader(const ShaderHandle& shader)
-    {
-        m_shader = shader;
-        return *this;
-    }
-
-    GraphicsContext& SetPipeline(const PipelineHandle& pipeline)
-    {
-        m_pipline = pipeline;
-        return *this;
-    }
-
-    GraphicsContext& SetFramebuffer(const FramebufferHandle& framebuffer)
-    {
-        m_framebuffer = framebuffer;
-        return *this;
-    }
-
-    GraphicsContext& SetBlendConstantColor(const Color& color)
-    {
-        m_blendConstantColor = color;
-        return *this;
-    }
-
-    GraphicsContext& AddViewport(const Viewport& vp)
-    {
-        m_viewports.emplace_back(vp);
-        return *this;
-    }
-
-    GraphicsContext& AddScissor(const Rect2& scissor)
-    {
-        m_scissors.emplace_back(scissor);
-        return *this;
-    }
-
-    GraphicsContext& AddVertexBufferBinding(const BufferHandle& buffer,
-                                            uint64_t offset,
-                                            uint32_t slot)
-    {
-        VertexBufferBinding binding{buffer, offset, slot};
-        m_vertexBufferBindings.emplace_back(binding);
-        return *this;
-    }
-
-    GraphicsContext& SetIndexBufferBinding(const BufferHandle& buffer,
-                                           uint64_t offset,
-                                           DataFormat format = DataFormat::eR32UInt)
-    {
-        m_indexBufferBinding.buffer = buffer;
-        m_indexBufferBinding.offset = offset;
-        m_indexBufferBinding.format = format;
-        return *this;
-    }
-
-private:
-    ShaderHandle m_shader{nullptr};
-    PipelineHandle m_pipline{nullptr};
-    FramebufferHandle m_framebuffer{nullptr};
-    std::vector<Viewport> m_viewports;
-    std::vector<Rect2> m_scissors;
-    Color m_blendConstantColor{};
-    std::vector<VertexBufferBinding> m_vertexBufferBindings;
-    IndexBufferBinding m_indexBufferBinding{};
-};
 
 /*****************************/
 /********* Barriers **********/

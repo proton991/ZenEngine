@@ -64,7 +64,7 @@ Camera::Camera(const Vec3& eye,
 
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
-    m_cameraData.view           = GetViewMatrix();
+    m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
 }
 
 void Camera::SetPosition(const Vec3& position)
@@ -80,7 +80,7 @@ void Camera::SetPosition(const Vec3& position)
 
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
-    m_cameraData.view           = GetViewMatrix();
+    m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
 }
 
 void Camera::UpdateBaseVectors()
@@ -180,8 +180,9 @@ void Camera::Update(float deltaTime)
             UpdatePosition(velocity);
             UpdateViewFirstPerson();
             UpdateBaseVectors();
-            m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
             m_cameraData.view           = GetViewMatrix();
+            m_cameraData.projViewMatrix = GetProjectionMatrix() * m_cameraData.view;
+
             m_onUpdate();
         }
     }

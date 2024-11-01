@@ -13,6 +13,7 @@ struct WindowConfig
     bool resizable{false};
     uint32_t width{1280};
     uint32_t height{720};
+    float aspect{0.0f};
 };
 
 class NativeWindow

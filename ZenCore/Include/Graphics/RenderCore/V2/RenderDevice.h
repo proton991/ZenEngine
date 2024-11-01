@@ -34,6 +34,12 @@ public:
         return *this;
     }
 
+    RenderPipelineBuilder& SetShaderSpecializationConstants(uint32_t constantId, int value)
+    {
+        m_specializationConstants[constantId] = value;
+        return *this;
+    }
+
     RenderPipelineBuilder& AddColorRenderTarget(rhi::DataFormat format, rhi::TextureUsage usage)
     {
         m_rpLayout.AddColorRenderTarget(format, usage);
@@ -80,6 +86,7 @@ private:
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
     HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, int> m_specializationConstants;
 };
 
 enum class StagingFlushAction : uint32_t
@@ -184,9 +191,11 @@ public:
     rhi::FramebufferHandle GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
                                                   const rhi::FramebufferInfo& fbInfo);
 
-    rhi::PipelineHandle GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
-                                               const rhi::ShaderHandle& shader,
-                                               const rhi::RenderPassHandle& renderPass);
+    rhi::PipelineHandle GetOrCreateGfxPipeline(
+        rhi::GfxPipelineStates& PSO,
+        const rhi::ShaderHandle& shader,
+        const rhi::RenderPassHandle& renderPass,
+        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
@@ -247,9 +256,11 @@ private:
     static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
     static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
                                       rhi::RenderPassHandle renderPassHandle);
-    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                      const rhi::ShaderHandle& shader,
-                                      const rhi::RenderPassHandle& renderPass);
+    static size_t CalcGfxPipelineHash(
+        const rhi::GfxPipelineStates& pso,
+        const rhi::ShaderHandle& shader,
+        const rhi::RenderPassHandle& renderPass,
+        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
     size_t PadUniformBufferSize(size_t originalSize);
 

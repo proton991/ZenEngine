@@ -52,7 +52,7 @@ VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage)
     switch (stage)
     {
         case ShaderStage::eVertex: return VK_SHADER_STAGE_VERTEX_BIT;
-        case ShaderStage::eTesselationConrol: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case ShaderStage::eTesselationControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
         case ShaderStage::eTesselationEvaluation:
             return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
         case ShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;

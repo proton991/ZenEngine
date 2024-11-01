@@ -50,7 +50,7 @@ public:
                     BufferHandle dstBufferHandle,
                     const BufferCopyRegion& region) final;
 
-    void ClearTexutre(TextureHandle textureHandle,
+    void ClearTexture(TextureHandle textureHandle,
                       const Color& color,
                       const TextureSubResourceRange& range) final;
 
@@ -83,7 +83,7 @@ public:
 
     void BeginRenderPass(RenderPassHandle renderPassHandle,
                          FramebufferHandle framebufferHandle,
-                         const Rect2& area,
+                         const Rect2<int>& area,
                          VectorView<RenderPassClearValue> clearValues) final;
 
     void EndRenderPass() final;
@@ -101,9 +101,9 @@ public:
 
     void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) final;
 
-    void SetViewports(VectorView<Rect2> viewports) final;
+    void SetViewports(VectorView<Rect2<float>> viewports) final;
 
-    void SetScissors(VectorView<Rect2> scissors) final;
+    void SetScissors(VectorView<Rect2<int>> scissors) final;
 
     void SetLineWidth(float width) final;
 

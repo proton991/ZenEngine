@@ -55,12 +55,31 @@ RenderPipeline RenderPipelineBuilder::Build()
     }
     ShaderGroupInfo shaderGroupInfo{};
     ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+
+    // set specialization constants
+    for (auto& spc : shaderGroupInfo.specializationConstants)
+    {
+        switch (spc.type)
+        {
+
+            case ShaderSpecializationConstantType::eBool:
+                spc.boolValue = static_cast<bool>(m_specializationConstants[spc.constantId]);
+                break;
+            case ShaderSpecializationConstantType::eInt:
+                spc.intValue = m_specializationConstants[spc.constantId];
+                break;
+            case ShaderSpecializationConstantType::eFloat:
+                spc.floatValue = static_cast<float>(m_specializationConstants[spc.constantId]);
+                break;
+            default: break;
+        }
+    }
     ShaderHandle shader = RHI->CreateShader(shaderGroupInfo);
 
     RenderPipeline renderPipeline;
     renderPipeline.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-    renderPipeline.pipeline =
-        m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, renderPipeline.renderPass);
+    renderPipeline.pipeline   = m_renderDevice->GetOrCreateGfxPipeline(
+        m_PSO, shader, renderPipeline.renderPass, shaderGroupInfo.specializationConstants);
 
     renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
     // parallel build descriptor building process
@@ -429,11 +448,13 @@ rhi::FramebufferHandle RenderDevice::GetOrCreateFramebuffer(rhi::RenderPassHandl
     return m_framebufferCache[hash];
 }
 
-rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
-                                                         const rhi::ShaderHandle& shader,
-                                                         const rhi::RenderPassHandle& renderPass)
+rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
+    rhi::GfxPipelineStates& PSO,
+    const rhi::ShaderHandle& shader,
+    const rhi::RenderPassHandle& renderPass,
+    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
-    auto hash = CalcGfxPipelineHash(PSO, shader, renderPass);
+    auto hash = CalcGfxPipelineHash(PSO, shader, renderPass, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
@@ -805,9 +826,11 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                         const rhi::ShaderHandle& shader,
-                                         const rhi::RenderPassHandle& renderPass)
+size_t RenderDevice::CalcGfxPipelineHash(
+    const rhi::GfxPipelineStates& pso,
+    const rhi::ShaderHandle& shader,
+    const rhi::RenderPassHandle& renderPass,
+    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -818,7 +841,17 @@ size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
     combineHash(shader.value);
     combineHash(renderPass.value);
     combineHash(pso.primitiveType);
+    for (auto& spc : specializationConstants)
+    {
+        switch (spc.type)
+        {
 
+            case rhi::ShaderSpecializationConstantType::eBool: combineHash(spc.boolValue); break;
+            case rhi::ShaderSpecializationConstantType::eInt: combineHash(spc.intValue); break;
+            case rhi::ShaderSpecializationConstantType::eFloat: combineHash(spc.floatValue); break;
+            default: break;
+        }
+    }
     return seed;
 }
 } // namespace zen::rc

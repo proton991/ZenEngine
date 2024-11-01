@@ -39,6 +39,14 @@ add_executable(push_constants
 )
 target_link_libraries(push_constants ZenCore)
 
+add_executable(specialization_constants
+    VulkanRHIDemo/SpecializationConstants/SpecializationConstants.cpp
+    VulkanRHIDemo/SpecializationConstants/SpecializationConstants.h
+    VulkanRHIDemo/Application.h
+    VulkanRHIDemo/Application.cpp
+)
+target_link_libraries(specialization_constants ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

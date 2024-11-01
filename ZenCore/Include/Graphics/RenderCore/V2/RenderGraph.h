@@ -238,7 +238,7 @@ struct RDGGraphicsPassNode : RDGPassNode
 {
     rhi::RenderPassHandle renderPass;
     rhi::FramebufferHandle framebuffer;
-    rhi::Rect2 renderArea;
+    rhi::Rect2<int> renderArea;
     std::vector<rhi::RenderPassClearValue> clearValues;
 };
 
@@ -355,12 +355,12 @@ struct RDGSetLineWidthNode : RDGPassChildNode
 
 struct RDGSetScissorNode : RDGPassChildNode
 {
-    rhi::Rect2 scissor;
+    rhi::Rect2<int> scissor;
 };
 
 struct RDGSetViewportNode : RDGPassChildNode
 {
-    rhi::Rect2 viewport;
+    rhi::Rect2<float> viewport;
 };
 
 class RenderGraph
@@ -374,7 +374,7 @@ public:
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,
-                                     rhi::Rect2 area,
+                                     rhi::Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      bool hasColorTarget,
                                      bool hasDepthTarget = false);
@@ -407,9 +407,9 @@ public:
 
     void AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float width);
 
-    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2& scissor);
+    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2<int>& scissor);
 
-    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2& viewport);
+    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2<float>& viewport);
 
     void AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t offset, uint64_t size);
 

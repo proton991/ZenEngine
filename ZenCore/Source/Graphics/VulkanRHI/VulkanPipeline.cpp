@@ -56,9 +56,32 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
             VkSpecializationMapEntry& entry = shader->entries[i];
             // fill in data
             entry.constantID = specConstants[i].constantId;
-            entry.size       = sizeof(uint32_t);
-            entry.offset     = reinterpret_cast<const char*>(&specConstants[i].intValue) -
-                reinterpret_cast<const char*>(specConstants.data());
+            switch (specConstants[i].type)
+            {
+
+                case ShaderSpecializationConstantType::eBool:
+                {
+                    entry.size   = sizeof(bool);
+                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].boolValue) -
+                        reinterpret_cast<const char*>(specConstants.data());
+                }
+                break;
+                case ShaderSpecializationConstantType::eInt:
+                {
+                    entry.size   = sizeof(int);
+                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].intValue) -
+                        reinterpret_cast<const char*>(specConstants.data());
+                }
+                break;
+                case ShaderSpecializationConstantType::eFloat:
+                {
+                    entry.size   = sizeof(float);
+                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].floatValue) -
+                        reinterpret_cast<const char*>(specConstants.data());
+                }
+                break;
+                default: break;
+            }
         }
     }
     shader->specializationInfo.mapEntryCount = static_cast<uint32_t>(shader->entries.size());
