@@ -713,7 +713,8 @@ void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
     while (toSubmit > 0)
     {
         StagingSubmitResult submitResult;
-        m_stagingBufferMgr->BeginSubmit(toSubmit, &submitResult);
+        m_stagingBufferMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
+                                        &submitResult, 32, true);
 
         if (submitResult.flushAction == StagingFlushAction::ePartial)
         {
