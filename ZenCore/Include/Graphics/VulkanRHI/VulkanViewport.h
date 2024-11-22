@@ -1,4 +1,5 @@
 #pragma once
+#include "Common/HashMap.h"
 #include "Common/SmallVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
@@ -52,13 +53,16 @@ public:
         return TextureHandle(m_renderingBackBuffer);
     }
 
+    FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
+                                               const FramebufferInfo* fbInfo) final;
+
     FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle) final;
 
     void Resize(uint32_t width, uint32_t height) final;
 
 private:
     void CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
-    void DestroySwaphchain(VulkanSwapchainRecreateInfo* recreateInfo);
+    void DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
     bool TryAcquireNextImage();
     void RecreateSwapchain();
     void CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
@@ -82,6 +86,7 @@ private:
     SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
     VulkanTexture* m_renderingBackBuffer{nullptr};
     VulkanFramebuffer* m_framebuffer{nullptr};
+    HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 };
 } // namespace zen::rhi

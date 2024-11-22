@@ -191,6 +191,7 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
     deviceInfo.ppEnabledExtensionNames = m_extensions.empty() ? nullptr : m_extensions.data();
     deviceInfo.queueCreateInfoCount    = static_cast<uint32_t>(deviceQueueInfos.size());
     deviceInfo.pQueueCreateInfos       = deviceQueueInfos.data();
+    deviceInfo.pEnabledFeatures        = &m_physicalDeviceFeatures; // enable all features
 
     VKCHECK(vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device));
     LOGI("Vulkan Device Created");

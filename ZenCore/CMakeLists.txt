@@ -215,7 +215,9 @@ message(STATUS "Spv Shader path: ${SHADER_SPV_PATH}")
 
 foreach (GLSL ${ZEN_SHADER_FILES})
     get_filename_component(FILE_NAME ${GLSL} NAME)
-    set(SPIRV "${SHADER_SPV_PATH}/${FILE_NAME}.spv")
+    get_filename_component(FILE_PATH ${GLSL} DIRECTORY)
+    file(RELATIVE_PATH RELATIVE_FILE_PATH ${SHADER_SRC_PATH} ${FILE_PATH})
+    set(SPIRV "${SHADER_SPV_PATH}/${RELATIVE_FILE_PATH}/${FILE_NAME}.spv")
     message(STATUS "Compiling shader ${GLSL} -> ${SPIRV}")
     add_custom_command(
         OUTPUT ${SPIRV}

@@ -148,6 +148,8 @@ enum class DataFormat : uint32_t
     eR64G64B64A64UInt   = 119, // = VK_FORMAT_R64G64B64A64_UINT
     eR64G64B64A64SInt   = 120, // = VK_FORMAT_R64G64B64A64_SINT
     eR64G64B64A64SFloat = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
+
+    eD32SFloatS8UInt = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
 };
 
 inline uint32_t GetTextureFormatPixelSize(DataFormat format)
@@ -511,6 +513,17 @@ struct GfxPipelineDepthStencilState
     StencilOperationState backOp{};
     float minDepthBounds{0.0f};
     float maxDepthBounds{1.0f};
+
+    static GfxPipelineDepthStencilState Create(bool enableDepthTest,
+                                               bool enableDepthWrite,
+                                               CompareOperator depthCompareOp)
+    {
+        GfxPipelineDepthStencilState state{};
+        state.enableDepthTest  = enableDepthTest;
+        state.enableDepthWrite = enableDepthWrite;
+        state.depthCompareOp   = depthCompareOp;
+        return state;
+    }
 };
 
 enum class BlendFactor : uint32_t
@@ -761,6 +774,21 @@ struct TextureSubResourceRange
     uint32_t levelCount{0};
     uint32_t baseArrayLayer{0};
     uint32_t layerCount{0};
+
+    static TextureSubResourceRange Color(uint32_t baseMiplevel   = 0,
+                                         uint32_t baseArrayLayer = 0,
+                                         uint32_t levelCount     = 1,
+                                         uint32_t layerCount     = 1)
+    {
+        TextureSubResourceRange range{};
+        range.aspect.SetFlag(TextureAspectFlagBits::eColor);
+        range.layerCount     = layerCount;
+        range.levelCount     = levelCount;
+        range.baseMipLevel   = baseMiplevel;
+        range.baseArrayLayer = baseArrayLayer;
+
+        return range;
+    }
 };
 
 struct TextureSubresourceLayers
@@ -802,7 +830,7 @@ inline TextureLayout TextureUsageToLayout(TextureUsage usage)
         case TextureUsage::eTransferSrc: return TextureLayout::eTransferSrc;
         case TextureUsage::eTransferDst: return TextureLayout::eTransferDst;
         case TextureUsage::eSampled:
-        case TextureUsage::eInputAttachment: return TextureLayout::eTransferSrc;
+        case TextureUsage::eInputAttachment: return TextureLayout::eShaderReadOnly;
         case TextureUsage::eStorage: return TextureLayout::eGeneral;
         case TextureUsage::eColorAttachment: return TextureLayout::eColorTarget;
         case TextureUsage::eDepthStencilAttachment: return TextureLayout::eDepthStencilTarget;
@@ -824,9 +852,8 @@ enum class RenderTargetLoadOp : uint32_t
 enum class RenderTargetStoreOp : uint32_t
 {
     eStore = 0,
-    eClear = 1,
-    eNone  = 2,
-    eMax   = 3
+    eNone  = 1,
+    eMax   = 2
 };
 
 struct RenderTarget
@@ -1071,6 +1098,31 @@ inline BitField<AccessFlagBits> TextureUsageToAccessFlagBits(TextureUsage usage)
         case TextureUsage::eInputAttachment:
             result.SetFlag(AccessFlagBits::eInputAttachmentRead);
             break;
+        default: break;
+    }
+    return result;
+}
+
+inline BitField<PipelineStageBits> TextureUsageToPipelineStage(TextureUsage usage)
+{
+    BitField<PipelineStageBits> result;
+    switch (usage)
+    {
+        case TextureUsage::eNone: result.SetFlag(PipelineStageBits::eTopOfPipe);
+
+        case TextureUsage::eTransferSrc:
+        case TextureUsage::eTransferDst: result.SetFlag(PipelineStageBits::eTransfer);
+
+        case TextureUsage::eSampled:
+        case TextureUsage::eInputAttachment:
+        case TextureUsage::eStorage: result.SetFlag(PipelineStageBits::eFragmentShader);
+
+        case TextureUsage::eColorAttachment:
+            result.SetFlag(PipelineStageBits::eColorAttachmentOutput);
+
+        case TextureUsage::eDepthStencilAttachment:
+            result.SetFlag(PipelineStageBits::eEarlyFragmentTests);
+            result.SetFlag(PipelineStageBits::eLateFragmentTests);
         default: break;
     }
     return result;

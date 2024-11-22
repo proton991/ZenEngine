@@ -47,6 +47,14 @@ add_executable(specialization_constants
 )
 target_link_libraries(specialization_constants ZenCore)
 
+add_executable(offscreen
+        VulkanRHIDemo/Offscreen/Offscreen.cpp
+        VulkanRHIDemo/Offscreen/Offscreen.h
+        VulkanRHIDemo/Application.h
+        VulkanRHIDemo/Application.cpp
+)
+target_link_libraries(offscreen ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

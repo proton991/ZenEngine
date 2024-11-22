@@ -401,6 +401,25 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
     }
 }
 
+void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
+                                              rhi::TextureHandle textureHandle,
+                                              rhi::TextureUsage usage,
+                                              const rhi::TextureSubResourceRange& range,
+                                              RDGAccessType accessType)
+{
+    RDGResource* resource =
+        GetOrAllocResource(textureHandle, RDGResourceType::eTexture, passNode->id);
+    resource->acessNodeMap[accessType].push_back(passNode->id);
+
+    RDGAccess access{};
+    access.type                    = accessType;
+    access.resourceId              = resource->id;
+    access.nodeId                  = passNode->id;
+    access.textureUsage            = usage;
+    access.texutreSubResourceRange = range;
+    m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
+}
+
 void RenderGraph::SortNodes()
 {
     // resolve node dependencies
@@ -776,24 +795,27 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
     std::vector<rhi::TextureTransition> textureTransitions;
     BitField<rhi::PipelineStageBits> srcStages;
     BitField<rhi::PipelineStageBits> dstStages;
-    for (const auto& srcNode : currLevel)
+    for (const auto& srcNodeId : currLevel)
     {
-        for (const auto& dstNode : nextLevel)
+        for (const auto& dstNodeId : nextLevel)
         {
-            auto nodePairKey = CreateNodePairKey(srcNode, dstNode);
+            auto nodePairKey = CreateNodePairKey(srcNodeId, dstNodeId);
             if (m_bufferTransitions.contains(nodePairKey))
             {
-                srcStages.SetFlag(GetNodeBaseById(srcNode)->selfStages);
-                dstStages.SetFlag(GetNodeBaseById(dstNode)->selfStages);
+                srcStages.SetFlag(GetNodeBaseById(srcNodeId)->selfStages);
+                dstStages.SetFlag(GetNodeBaseById(dstNodeId)->selfStages);
                 auto& transitions = m_bufferTransitions[nodePairKey];
                 bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
                                          transitions.end());
             }
             if (m_textureTransitions.contains(nodePairKey))
             {
-                srcStages.SetFlag(GetNodeBaseById(srcNode)->selfStages);
-                dstStages.SetFlag(GetNodeBaseById(dstNode)->selfStages);
                 auto& transitions = m_textureTransitions[nodePairKey];
+                for (auto& transition : transitions)
+                {
+                    srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
+                    dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
+                }
                 textureTransitions.insert(textureTransitions.end(), transitions.begin(),
                                           transitions.end());
             }
@@ -835,7 +857,9 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                                 static_cast<rhi::TextureUsage>(access.textureUsage);
                             textureTransition.subResourceRange = access.texutreSubResourceRange;
                             textureTransitions.emplace_back(textureTransition);
-                            dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
+                            // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
+                            dstStages.SetFlag(
+                                rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
                         }
                     }
                 }

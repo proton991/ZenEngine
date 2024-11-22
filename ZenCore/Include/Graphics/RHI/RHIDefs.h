@@ -103,3 +103,4 @@ RHI_DEFINE_HANDLE(DescriptorSet);
 } // namespace zen::rhi
 
 HASH_DEFINE(Shader)
+HASH_DEFINE(RenderPass)

@@ -19,8 +19,8 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.samples = ToVkSampleCountFlagBits(renderPassLayout.GetNumSamples());
         description.loadOp  = ToVkAttachmentLoadOp(renderPassLayout.GetColorRenderTargetLoadOp());
         description.storeOp = ToVkAttachmentStoreOp(renderPassLayout.GetColorRenderTargetStoreOp());
-        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
         description.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
         description.finalLayout    = ToVkImageLayout(TextureUsageToLayout(colorRTs[i].usage));
 
@@ -41,12 +41,10 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
             ToVkAttachmentLoadOp(renderPassLayout.GetDepthStencilRenderTargetLoadOp());
         description.storeOp =
             ToVkAttachmentStoreOp(renderPassLayout.GetDepthStencilRenderTargetStoreOp());
-        description.stencilLoadOp =
-            ToVkAttachmentLoadOp(renderPassLayout.GetDepthStencilRenderTargetLoadOp());
-        description.stencilStoreOp =
-            ToVkAttachmentStoreOp(renderPassLayout.GetDepthStencilRenderTargetStoreOp());
-        description.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        description.finalLayout   = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+        description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         m_depthStencilReference.attachment = m_numAttachments;
         m_depthStencilReference.layout     = description.finalLayout;
@@ -56,8 +54,14 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
 
     // only 1 subpass
     VkSubpassDescription& subpassDescription = m_subpasses[0];
+    subpassDescription.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.colorAttachmentCount  = m_numColorAttachmentRefs;
     subpassDescription.pColorAttachments     = m_colorAttachmentReference;
+    if (renderPassLayout.HasDepthStencilRenderTarget())
+    {
+        subpassDescription.pDepthStencilAttachment = &m_depthStencilReference;
+    }
+
 
     VkRenderPassCreateInfo renderPassCI;
     InitVkStruct(renderPassCI, VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO);

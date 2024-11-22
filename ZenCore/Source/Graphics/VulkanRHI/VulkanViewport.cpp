@@ -142,7 +142,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_acquiredImageIndex = -1;
 }
 
-void VulkanViewport::DestroySwaphchain(VulkanSwapchainRecreateInfo* recreateInfo)
+void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 {
     m_RHI->GetDevice()->WaitForIdle();
     if (m_swapchain != nullptr)
@@ -164,7 +164,7 @@ void VulkanViewport::DestroySwaphchain(VulkanSwapchainRecreateInfo* recreateInfo
 void VulkanViewport::RecreateSwapchain()
 {
     VulkanSwapchainRecreateInfo recreateInfo{VK_NULL_HANDLE, VK_NULL_HANDLE};
-    DestroySwaphchain(&recreateInfo);
+    DestroySwapchain(&recreateInfo);
     CreateSwapchain(&recreateInfo);
     VERIFY_EXPR(recreateInfo.surface == VK_NULL_HANDLE);
     VERIFY_EXPR(recreateInfo.swapchain == VK_NULL_HANDLE);
@@ -337,23 +337,26 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
 
 void VulkanViewport::Destroy()
 {
-    DestroySwaphchain(nullptr);
+    DestroySwapchain(nullptr);
     for (auto& semaphore : m_renderingCompleteSemaphores)
     {
         m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
     }
     m_renderingBackBuffer = nullptr;
     m_renderingCompleteSemaphores.clear();
-    if (m_framebuffer != nullptr)
+    for (auto& kv : m_framebufferCache)
     {
-        m_RHI->DestroyFramebuffer(FramebufferHandle(m_framebuffer));
+        m_RHI->DestroyFramebuffer(FramebufferHandle(kv.second));
     }
 }
 
 FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle)
 {
     VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
-    if (m_framebuffer == nullptr || renderPass != m_framebuffer->GetVkRenderPass())
+    if (m_framebuffer == nullptr ||
+        (m_framebufferCache.contains(renderPassHandle) &&
+         m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
+        !m_framebufferCache.contains(renderPassHandle))
     {
         TextureHandle renderBackBuffer = GetRenderBackBuffer();
         FramebufferInfo fbInfo{};
@@ -362,6 +365,24 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle rend
         fbInfo.numRenderTarget = 1;
         fbInfo.renderTargets   = &renderBackBuffer;
         m_framebuffer          = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+        // save to cache
+        m_framebufferCache[renderPassHandle] = m_framebuffer;
+    }
+    return FramebufferHandle(m_framebuffer);
+}
+
+FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
+                                                           const FramebufferInfo* fbInfo)
+{
+    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    if (m_framebuffer == nullptr ||
+        (m_framebufferCache.contains(renderPassHandle) &&
+         m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
+        !m_framebufferCache.contains(renderPassHandle))
+    {
+        m_framebuffer = new VulkanFramebuffer(m_RHI, renderPass, *fbInfo);
+        // save to cache
+        m_framebufferCache[renderPassHandle] = m_framebuffer;
     }
     return FramebufferHandle(m_framebuffer);
 }

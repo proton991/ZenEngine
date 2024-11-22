@@ -18,7 +18,7 @@ std::vector<uint8_t> LoadSpirvCode(const std::string& name)
 {
     const auto path = std::string(SPV_SHADER_PATH) + name;
     std::ifstream file(path, std::ios::ate | std::ios::binary);
-
+    bool opened = file.is_open();
     VERIFY_EXPR_MSG_F(file.is_open(), "Failed to load shader file {}", path);
     //find what the size of the file is by looking up the location of the cursor
     //because the cursor is at the end, it gives the size directly in bytes
@@ -360,6 +360,16 @@ void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg)
     m_RHI->BeginDrawingViewport(viewport);
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
     m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, true);
+}
+
+rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
+                                               const std::string& tag)
+{
+    if (!m_textureCache.contains(tag))
+    {
+        m_textureCache[tag] = m_RHI->CreateTexture(textureInfo);
+    }
+    return m_textureCache.at(tag);
 }
 
 rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)

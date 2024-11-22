@@ -121,8 +121,8 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
         imageBarriers.emplace_back(imageBarrier);
     }
 
-    vkCmdPipelineBarrier(m_cmdBufferManager->GetActiveCommandBuffer()->GetVkHandle(), srcStages,
-                         dstStages, 0, memoryBarriers.size(), memoryBarriers.data(),
+    vkCmdPipelineBarrier(m_cmdBufferManager->GetActiveCommandBufferDirect()->GetVkHandle(),
+                         srcStages, dstStages, 0, memoryBarriers.size(), memoryBarriers.data(),
                          bufferBarriers.size(), bufferBarriers.data(), imageBarriers.size(),
                          imageBarriers.data());
 }

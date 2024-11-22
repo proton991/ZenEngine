@@ -366,7 +366,10 @@ struct RDGSetViewportNode : RDGPassChildNode
 class RenderGraph
 {
 public:
-    RenderGraph() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false) {}
+    RenderGraph() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
+    {
+        m_resourceAllocator.Init();
+    }
 
     void Init() {}
 
@@ -441,6 +444,13 @@ public:
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
+
+    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
+                                     rhi::TextureHandle textureHandle,
+                                     rhi::TextureUsage usage,
+                                     const rhi::TextureSubResourceRange& range,
+                                     RDGAccessType accessType);
+
     void Begin();
 
     void End();
@@ -503,8 +513,9 @@ private:
             resource     = m_resourceAllocator.Alloc();
             resource->id = static_cast<int32_t>(m_resources.size());
             m_resources.push_back(resource);
-            resource->type        = type;
-            m_resourceMap[handle] = resource;
+            resource->type           = type;
+            resource->physicalHandle = handle;
+            m_resourceMap[handle]    = resource;
             // track first used node
             m_resourceFirstUseNodeMap[resource->id] = nodeId;
         }

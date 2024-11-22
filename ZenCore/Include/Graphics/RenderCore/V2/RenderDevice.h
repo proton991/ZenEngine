@@ -51,6 +51,8 @@ public:
     RenderPipelineBuilder& SetDepthStencilTarget(rhi::DataFormat format)
     {
         m_rpLayout.SetDepthStencilRenderTarget(format);
+        m_rpLayout.SetDepthStencilTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
+                                                    rhi::RenderTargetStoreOp::eNone);
         return *this;
     }
 
@@ -172,6 +174,8 @@ public:
     void Destroy();
 
     void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg);
+
+    rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
 
     rhi::BufferHandle CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
