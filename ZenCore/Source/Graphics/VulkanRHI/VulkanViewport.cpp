@@ -98,7 +98,9 @@ void VulkanViewport::IssueFrameEvent()
 
 void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 {
-    m_renderingBackBuffer = nullptr;
+    m_colorBackBuffer        = nullptr;
+    m_depthStencilBackBuffer = nullptr;
+
     m_swapchain =
         new VulkanSwapchain(m_RHI, m_windowPtr, m_width, m_height, m_enableVSync, recreateInfo);
     const SmallVector<VkImage>& images = m_swapchain->GetSwapchainImages();
@@ -120,21 +122,38 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
         m_RHI->ChangeImageLayout(cmdBuffer, images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
     }
-    TextureInfo textureInfo{};
-    textureInfo.width  = m_width;
-    textureInfo.height = m_height;
-    textureInfo.format = GetSwapchainFormat();
-    textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-    textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
-    textureInfo.type = TextureType::e2D;
-    m_renderingBackBuffer =
-        reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(textureInfo).value);
+    TextureInfo colorTexInfo{};
+    colorTexInfo.width  = m_width;
+    colorTexInfo.height = m_height;
+    colorTexInfo.format = GetSwapchainFormat();
+    colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
+    colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
+    colorTexInfo.type = TextureType::e2D;
+    m_colorBackBuffer = reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(colorTexInfo).value);
     {
         VulkanPipelineBarrier barrier;
         barrier.AddImageLayoutTransition(
-            m_renderingBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+            m_colorBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+        barrier.Execute(cmdBuffer);
+    }
+
+    TextureInfo depthStencilTexInfo{};
+    depthStencilTexInfo.width  = m_width;
+    depthStencilTexInfo.height = m_height;
+    depthStencilTexInfo.format = DataFormat::eD32SFloatS8UInt;
+    depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
+    depthStencilTexInfo.type = TextureType::e2D;
+    m_depthStencilBackBuffer =
+        reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(depthStencilTexInfo).value);
+    {
+        VulkanPipelineBarrier barrier;
+        barrier.AddImageLayoutTransition(
+            m_depthStencilBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VulkanTexture::GetSubresourceRange(
+                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1));
         barrier.Execute(cmdBuffer);
     }
     m_device->GetImmediateCmdContext()->GetCmdBufferManager()->SubmitUploadCmdBuffer();
@@ -155,9 +174,15 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
         delete m_swapchain;
         m_swapchain = nullptr;
     }
-    if (m_renderingBackBuffer)
+    if (m_colorBackBuffer)
     {
-        m_RHI->DestroyTexture(TextureHandle(m_renderingBackBuffer));
+        m_RHI->DestroyTexture(TextureHandle(m_colorBackBuffer));
+        m_colorBackBuffer = nullptr;
+    }
+    if (m_depthStencilBackBuffer)
+    {
+        m_RHI->DestroyTexture(TextureHandle(m_depthStencilBackBuffer));
+        m_depthStencilBackBuffer = nullptr;
     }
 }
 
@@ -193,7 +218,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
     {
         VulkanPipelineBarrier barrier;
         barrier.AddImageLayoutTransition(
-            m_renderingBackBuffer->image, prevLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            m_colorBackBuffer->image, prevLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.AddImageLayoutTransition(
             dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -221,7 +246,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
-        vkCmdBlitImage(cmdBuffer->GetVkHandle(), m_renderingBackBuffer->image,
+        vkCmdBlitImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->image,
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
     }
@@ -245,14 +270,14 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
         region.dstSubresource.mipLevel       = 0;
-        vkCmdCopyImage(cmdBuffer->GetVkHandle(), m_renderingBackBuffer->image,
+        vkCmdCopyImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->image,
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
     {
         VulkanPipelineBarrier barrier;
         barrier.AddImageLayoutTransition(
-            m_renderingBackBuffer->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
+            m_colorBackBuffer->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.AddImageLayoutTransition(
             dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -325,7 +350,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     VkRenderPass renderPass = m_framebuffer->GetVkRenderPass();
     m_RHI->DestroyFramebuffer(FramebufferHandle(m_framebuffer));
     // create new one
-    TextureHandle renderBackBuffer = GetRenderBackBuffer();
+    TextureHandle renderBackBuffer = GetColorBackBuffer();
     FramebufferInfo fbInfo{};
     fbInfo.width           = m_width;
     fbInfo.height          = m_height;
@@ -342,7 +367,7 @@ void VulkanViewport::Destroy()
     {
         m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
     }
-    m_renderingBackBuffer = nullptr;
+
     m_renderingCompleteSemaphores.clear();
     for (auto& kv : m_framebufferCache)
     {
@@ -358,12 +383,14 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle rend
          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
         !m_framebufferCache.contains(renderPassHandle))
     {
-        TextureHandle renderBackBuffer = GetRenderBackBuffer();
+        std::vector<TextureHandle> renderTargets;
+        renderTargets.push_back(GetColorBackBuffer());
+        renderTargets.push_back(GetDepthStencilBackBuffer());
         FramebufferInfo fbInfo{};
         fbInfo.width           = m_width;
         fbInfo.height          = m_height;
-        fbInfo.numRenderTarget = 1;
-        fbInfo.renderTargets   = &renderBackBuffer;
+        fbInfo.numRenderTarget = 2;
+        fbInfo.renderTargets   = renderTargets.data();
         m_framebuffer          = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
         // save to cache
         m_framebufferCache[renderPassHandle] = m_framebuffer;

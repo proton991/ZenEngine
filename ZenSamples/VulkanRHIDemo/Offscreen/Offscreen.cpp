@@ -139,6 +139,7 @@ void OffscreenApp::BuildRenderPipeline()
                                .SetNumSamples(SampleCount::e1)
                                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                      TextureUsage::eColorAttachment)
+                               .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
                                .SetShaderResourceBinding(0, uboBindings)
                                .SetShaderResourceBinding(1, textureBindings)
                                .SetPipelineState(pso)
@@ -231,8 +232,10 @@ void OffscreenApp::BuildRenderGraph()
     }
     // mirror pass
     {
-        RenderPassClearValue clearValue;
-        clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
+        std::vector<RenderPassClearValue> clearValues(2);
+        clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
+        clearValues[1].depth   = 1.0f;
+        clearValues[1].stencil = 1.0f;
 
         Rect2 area;
         area.minX = 0;
@@ -249,7 +252,7 @@ void OffscreenApp::BuildRenderGraph()
             m_viewport->GetCompatibleFramebuffer(m_mainRPs.mirror.renderPass);
 
         auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.mirror.renderPass, framebuffer, area,
-                                                clearValue, true);
+                                                clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);

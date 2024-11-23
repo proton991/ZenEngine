@@ -223,7 +223,11 @@ public:
 
     virtual DataFormat GetSwapchainFormat() = 0;
 
-    virtual TextureHandle GetRenderBackBuffer() = 0;
+    virtual DataFormat GetDefaultDepthStencilFormat() = 0;
+
+    virtual TextureHandle GetColorBackBuffer() = 0;
+
+    virtual TextureHandle GetDepthStencilBackBuffer() = 0;
 
     virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                        const FramebufferInfo* fbInfo) = 0;

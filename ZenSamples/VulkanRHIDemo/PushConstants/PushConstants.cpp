@@ -49,13 +49,6 @@ void PushConstantsApp::BuildRenderPipeline()
     pso.dynamicStates.push_back(DynamicState::eScissor);
     pso.dynamicStates.push_back(DynamicState::eViewPort);
 
-    TextureHandle renderBackBuffer = m_viewport->GetRenderBackBuffer();
-    FramebufferInfo fbInfo{};
-    fbInfo.width           = m_window->GetExtent2D().width;
-    fbInfo.height          = m_window->GetExtent2D().height;
-    fbInfo.numRenderTarget = 1;
-    fbInfo.renderTargets   = &renderBackBuffer;
-
     std::vector<ShaderResourceBinding> uboBindings;
     {
         ShaderResourceBinding binding0{};
@@ -77,6 +70,7 @@ void PushConstantsApp::BuildRenderPipeline()
             .SetFragmentShader("push_constants.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
+            .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
             .SetShaderResourceBinding(0, uboBindings)
             .SetPipelineState(pso)
             .Build();
@@ -129,12 +123,15 @@ void PushConstantsApp::BuildRenderGraph()
     vp.maxX = (float)m_window->GetExtent2D().width;
     vp.maxY = (float)m_window->GetExtent2D().height;
 
-    RenderPassClearValue clearValue;
-    clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
+    std::vector<RenderPassClearValue> clearValues(2);
+    clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
+    clearValues[1].depth   = 1.0f;
+    clearValues[1].stencil = 1.0f;
+
 
     FramebufferHandle framebuffer = m_viewport->GetCompatibleFramebuffer(m_mainRP.renderPass);
     auto* mainPass =
-        m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, framebuffer, area, clearValue, true);
+        m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, framebuffer, area, clearValues, true);
     m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);

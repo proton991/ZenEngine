@@ -46,11 +46,21 @@ public:
         return static_cast<DataFormat>(m_swapchain->GetFormat());
     }
 
+    DataFormat GetDefaultDepthStencilFormat() final
+    {
+        return DataFormat::eD32SFloatS8UInt;
+    }
+
     bool Present(VulkanCommandBuffer* cmdBuffer);
 
-    TextureHandle GetRenderBackBuffer() final
+    TextureHandle GetColorBackBuffer() final
     {
-        return TextureHandle(m_renderingBackBuffer);
+        return TextureHandle(m_colorBackBuffer);
+    }
+
+    TextureHandle GetDepthStencilBackBuffer() final
+    {
+        return TextureHandle(m_depthStencilBackBuffer);
     }
 
     FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
@@ -84,7 +94,8 @@ private:
     VulkanCommandBuffer* m_lastFrameCmdBuffer{nullptr};
     uint64_t m_lastFenceSignaledCounter{0};
     SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
-    VulkanTexture* m_renderingBackBuffer{nullptr};
+    VulkanTexture* m_colorBackBuffer{nullptr};
+    VulkanTexture* m_depthStencilBackBuffer{nullptr};
     VulkanFramebuffer* m_framebuffer{nullptr};
     HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};

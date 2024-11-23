@@ -46,13 +46,6 @@ void SpecializationConstantsApp::BuildRenderPipeline()
     pso.dynamicStates.push_back(DynamicState::eScissor);
     pso.dynamicStates.push_back(DynamicState::eViewPort);
 
-    TextureHandle renderBackBuffer = m_viewport->GetRenderBackBuffer();
-    FramebufferInfo fbInfo{};
-    fbInfo.width           = m_window->GetExtent2D().width;
-    fbInfo.height          = m_window->GetExtent2D().height;
-    fbInfo.numRenderTarget = 1;
-    fbInfo.renderTargets   = &renderBackBuffer;
-
     std::vector<ShaderResourceBinding> uboBindings;
     {
         ShaderResourceBinding binding0{};
@@ -85,6 +78,7 @@ void SpecializationConstantsApp::BuildRenderPipeline()
                               .SetNumSamples(SampleCount::e1)
                               .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                     TextureUsage::eColorAttachment)
+                              .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
                               .SetShaderResourceBinding(0, uboBindings)
                               .SetShaderResourceBinding(1, textureBindings)
                               .SetPipelineState(pso)
@@ -100,6 +94,7 @@ void SpecializationConstantsApp::BuildRenderPipeline()
                              .SetNumSamples(SampleCount::e1)
                              .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                    TextureUsage::eColorAttachment)
+                             .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
                              .SetShaderResourceBinding(0, uboBindings)
                              .SetShaderResourceBinding(1, textureBindings)
                              .SetPipelineState(pso)
@@ -114,6 +109,7 @@ void SpecializationConstantsApp::BuildRenderPipeline()
                                  .SetNumSamples(SampleCount::e1)
                                  .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                        TextureUsage::eColorAttachment)
+                                 .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
                                  .SetShaderResourceBinding(0, uboBindings)
                                  .SetShaderResourceBinding(1, textureBindings)
                                  .SetPipelineState(pso)
@@ -157,8 +153,10 @@ void SpecializationConstantsApp::BuildRenderGraph()
     area.maxX = (int)m_window->GetExtent2D().width;
     area.maxY = (int)m_window->GetExtent2D().height;
 
-    RenderPassClearValue clearValue;
-    clearValue.color = {0.2f, 0.2f, 0.2f, 1.0f};
+    std::vector<RenderPassClearValue> clearValues(2);
+    clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
+    clearValues[1].depth   = 1.0f;
+    clearValues[1].stencil = 1.0f;
 
     FramebufferHandle framebuffer =
         m_viewport->GetCompatibleFramebuffer(m_mainRPs.phong.renderPass);
@@ -170,8 +168,8 @@ void SpecializationConstantsApp::BuildRenderGraph()
     leftVP.maxX = (float)m_window->GetExtent2D().width / 3.0f;
     leftVP.maxY = (float)m_window->GetExtent2D().height;
 
-    auto* mainPass =
-        m_rdg->AddGraphicsPassNode(m_mainRPs.phong.renderPass, framebuffer, area, clearValue, true);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_mainRPs.phong.renderPass, framebuffer, area,
+                                                clearValues, true);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     // phone
     m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRPs.phong.pipeline,
