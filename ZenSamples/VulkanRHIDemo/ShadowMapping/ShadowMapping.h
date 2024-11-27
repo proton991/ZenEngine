@@ -21,7 +21,7 @@ public:
         Mat4 view;
         Mat4 model;
         Mat4 depthBiasMVP;
-        Vec4 lightPos;
+        Vec3 lightPos;
         // Used for depth map visualization
         float zNear;
         float zFar;
@@ -35,7 +35,7 @@ public:
 
     void Destroy() final;
 
-    ~ShadowMappingApp() override {};
+    ~ShadowMappingApp() override{};
 
 private:
     void PrepareOffscreen();

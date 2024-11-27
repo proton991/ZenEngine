@@ -189,8 +189,7 @@ void ShadowMappingApp::UpdateUniformBufferData()
     // Matrix from light's point of view
     Mat4 depthProjectionMatrix = glm::perspective(glm::radians(m_lightFOV), 1.0f,
                                                   m_shadowMapConfig.zNear, m_shadowMapConfig.zFar);
-    Mat4 depthViewMatrix =
-        glm::lookAt(Vec3(m_sceneUniformData.lightPos.xyz), Vec3(0.0f), Vec3(0, 1.0f, 0));
+    Mat4 depthViewMatrix  = glm::lookAt(m_sceneUniformData.lightPos, Vec3(0.0f), Vec3(0, 1.0f, 0));
     Mat4 depthModelMatrix = Mat4(1.0f);
 
     m_offscreenUniformData.depthMVP = depthProjectionMatrix * depthViewMatrix * depthModelMatrix;
