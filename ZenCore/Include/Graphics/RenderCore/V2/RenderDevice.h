@@ -48,11 +48,13 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetDepthStencilTarget(rhi::DataFormat format)
+    RenderPipelineBuilder& SetDepthStencilTarget(
+        rhi::DataFormat format,
+        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone)
     {
         m_rpLayout.SetDepthStencilRenderTarget(format);
-        m_rpLayout.SetDepthStencilTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
-                                                    rhi::RenderTargetStoreOp::eNone);
+        m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
         return *this;
     }
 

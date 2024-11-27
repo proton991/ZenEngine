@@ -55,6 +55,14 @@ add_executable(offscreen
 )
 target_link_libraries(offscreen ZenCore)
 
+add_executable(shadowmapping
+    VulkanRHIDemo/ShadowMapping/ShadowMapping.cpp
+    VulkanRHIDemo/ShadowMapping/ShadowMapping.h
+    VulkanRHIDemo/Application.h
+    VulkanRHIDemo/Application.cpp
+)
+target_link_libraries(shadowmapping ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

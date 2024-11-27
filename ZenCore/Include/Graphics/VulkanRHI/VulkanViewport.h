@@ -48,6 +48,7 @@ public:
 
     DataFormat GetDefaultDepthStencilFormat() final
     {
+        // todo: configurable
         return DataFormat::eD32SFloatS8UInt;
     }
 

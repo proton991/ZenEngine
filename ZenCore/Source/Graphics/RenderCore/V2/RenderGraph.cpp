@@ -136,6 +136,18 @@ void RenderGraph::AddGraphicsPassSetViewportNode(RDGPassNode* parent,
     node->type     = RDGPassCmdType::eSetViewport;
 }
 
+void RenderGraph::AddGraphicsPassSetDepthBiasNode(RDGPassNode* parent,
+                                                  float depthBiasConstantFactor,
+                                                  float depthBiasClamp,
+                                                  float depthBiasSlopeFactor)
+{
+    auto* node                    = AllocPassChildNode<RDGSetDepthBiasNode>(parent);
+    node->depthBiasConstantFactor = depthBiasConstantFactor;
+    node->depthBiasClamp          = depthBiasClamp;
+    node->depthBiasSlopeFactor    = depthBiasSlopeFactor;
+    node->type                    = RDGPassCmdType::eSetDepthBias;
+}
+
 void RenderGraph::AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t offset, uint64_t size)
 {
     auto* node   = AllocNode<RDGBufferClearNode>();
@@ -766,6 +778,14 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetViewportNode*>(child);
                         m_cmdList->SetViewports(cmdNode->viewport);
+                    }
+                    break;
+                    case RDGPassCmdType::eSetDepthBias:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGSetDepthBiasNode*>(child);
+                        m_cmdList->SetDepthBias(cmdNode->depthBiasConstantFactor,
+                                                cmdNode->depthBiasClamp,
+                                                cmdNode->depthBiasSlopeFactor);
                     }
                     break;
 

@@ -144,7 +144,8 @@ enum class RDGPassCmdType : uint32_t
     eSetBlendConstant = 13,
     eSetScissor       = 14,
     eSetViewport      = 15,
-    eMax              = 16
+    eSetDepthBias     = 16,
+    eMax              = 17
 };
 
 enum class RDGNodeType : uint32_t
@@ -363,6 +364,13 @@ struct RDGSetViewportNode : RDGPassChildNode
     rhi::Rect2<float> viewport;
 };
 
+struct RDGSetDepthBiasNode : RDGPassChildNode
+{
+    float depthBiasConstantFactor;
+    float depthBiasClamp;
+    float depthBiasSlopeFactor;
+};
+
 class RenderGraph
 {
 public:
@@ -413,6 +421,11 @@ public:
     void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2<int>& scissor);
 
     void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2<float>& viewport);
+
+    void AddGraphicsPassSetDepthBiasNode(RDGPassNode* parent,
+                                         float depthBiasConstantFactor,
+                                         float depthBiasClamp,
+                                         float depthBiasSlopeFactor);
 
     void AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t offset, uint64_t size);
 

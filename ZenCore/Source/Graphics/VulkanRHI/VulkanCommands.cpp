@@ -380,6 +380,14 @@ void VulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
     vkCmdSetScissor(m_cmdBuffer->GetVkHandle(), 0, vkScissors.size(), vkScissors.data());
 }
 
+void VulkanCommandList::SetDepthBias(float depthBiasConstantFactor,
+                                     float depthBiasClamp,
+                                     float depthBiasSlopeFactor)
+{
+    vkCmdSetDepthBias(m_cmdBuffer->GetVkHandle(), depthBiasConstantFactor, depthBiasClamp,
+                      depthBiasSlopeFactor);
+}
+
 void VulkanCommandList::SetLineWidth(float width)
 {
     vkCmdSetLineWidth(m_cmdBuffer->GetVkHandle(), width);

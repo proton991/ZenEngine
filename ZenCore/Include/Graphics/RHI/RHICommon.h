@@ -149,6 +149,7 @@ enum class DataFormat : uint32_t
     eR64G64B64A64SInt   = 120, // = VK_FORMAT_R64G64B64A64_SINT
     eR64G64B64A64SFloat = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
 
+    eD16UNORM        = 124, // VK_FORMAT_D16_UNORM
     eD32SFloatS8UInt = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
 };
 
@@ -613,9 +614,11 @@ struct GfxPipelineColorBlendState
 
 enum class DynamicState : uint32_t
 {
-    eViewPort = 0,
-    eScissor  = 1,
-    eMax      = 2
+    eViewPort  = 0,
+    eScissor   = 1,
+    eLineWidth = 2,
+    eDepthBias = 3,
+    eMax       = 4
 };
 
 struct GfxPipelineStates
@@ -785,6 +788,21 @@ struct TextureSubResourceRange
         range.layerCount     = layerCount;
         range.levelCount     = levelCount;
         range.baseMipLevel   = baseMiplevel;
+        range.baseArrayLayer = baseArrayLayer;
+
+        return range;
+    }
+
+    static TextureSubResourceRange Depth(uint32_t baseMipLevel   = 0,
+                                         uint32_t baseArrayLayer = 0,
+                                         uint32_t levelCount     = 1,
+                                         uint32_t layerCount     = 1)
+    {
+        TextureSubResourceRange range{};
+        range.aspect.SetFlag(TextureAspectFlagBits::eDepth);
+        range.layerCount     = layerCount;
+        range.levelCount     = levelCount;
+        range.baseMipLevel   = baseMipLevel;
         range.baseArrayLayer = baseArrayLayer;
 
         return range;

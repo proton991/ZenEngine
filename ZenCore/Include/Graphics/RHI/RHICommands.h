@@ -92,6 +92,10 @@ public:
 
     virtual void SetScissors(VectorView<Rect2<int>> scissors) = 0;
 
+    virtual void SetDepthBias(float depthBiasConstantFactor,
+                              float depthBiasClamp,
+                              float depthBiasSlopeFactor) = 0;
+
     virtual void SetLineWidth(float width) = 0;
 
     virtual void SetBlendConstants(const Color& color) = 0;

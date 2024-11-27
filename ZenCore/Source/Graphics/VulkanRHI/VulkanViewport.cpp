@@ -142,7 +142,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     TextureInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
     depthStencilTexInfo.height = m_height;
-    depthStencilTexInfo.format = DataFormat::eD32SFloatS8UInt;
+    depthStencilTexInfo.format = GetDefaultDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
     depthStencilTexInfo.type = TextureType::e2D;
     m_depthStencilBackBuffer =
