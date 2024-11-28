@@ -46,10 +46,9 @@ public:
         return static_cast<DataFormat>(m_swapchain->GetFormat());
     }
 
-    DataFormat GetDefaultDepthStencilFormat() final
+    DataFormat GetDepthStencilFormat() final
     {
-        // todo: configurable
-        return DataFormat::eD32SFloatS8UInt;
+        return m_depthFormat;
     }
 
     bool Present(VulkanCommandBuffer* cmdBuffer);
@@ -87,6 +86,7 @@ private:
     uint32_t m_width{0};
     uint32_t m_height{0};
     bool m_enableVSync{true};
+    DataFormat m_depthFormat;
     VulkanSwapchain* m_swapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_imageAcquiredSemaphore{nullptr};

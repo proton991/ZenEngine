@@ -223,7 +223,7 @@ public:
 
     virtual DataFormat GetSwapchainFormat() = 0;
 
-    virtual DataFormat GetDefaultDepthStencilFormat() = 0;
+    virtual DataFormat GetDepthStencilFormat() = 0;
 
     virtual TextureHandle GetColorBackBuffer() = 0;
 

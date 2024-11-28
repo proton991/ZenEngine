@@ -58,7 +58,8 @@ VulkanViewport::VulkanViewport(VulkanRHI* RHI,
     m_height(height),
     m_enableVSync(enableVSync)
 {
-
+    m_depthFormat = m_RHI->GetSupportedDepthFormat();
+    LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
     CreateSwapchain(nullptr);
     for (uint32_t i = 0; i < m_renderingCompleteSemaphores.size(); i++)
     {
@@ -142,7 +143,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     TextureInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
     depthStencilTexInfo.height = m_height;
-    depthStencilTexInfo.format = GetDefaultDepthStencilFormat();
+    depthStencilTexInfo.format = GetDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
     depthStencilTexInfo.type = TextureType::e2D;
     m_depthStencilBackBuffer =

@@ -36,6 +36,28 @@ static std::string GetQueuePropString(const VkQueueFamilyProperties& queueProp)
     }
     return queuePropStr;
 }
+
+DataFormat VulkanRHI::GetSupportedDepthFormat()
+{
+    VkFormat defaulFormat{VK_FORMAT_D16_UNORM};
+    const std::vector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,
+                                              VK_FORMAT_D24_UNORM_S8_UINT,
+                                              VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM};
+    for (auto& format : formatList)
+    {
+        VkFormatProperties formatProps;
+        vkGetPhysicalDeviceFormatProperties(m_device->GetPhysicalDeviceHandle(), format,
+                                            &formatProps);
+        if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        {
+            defaulFormat = format;
+            break;
+        }
+    }
+
+    return static_cast<DataFormat>(defaulFormat);
+}
+
 /**
  * Create VkDevice and initialise
  */

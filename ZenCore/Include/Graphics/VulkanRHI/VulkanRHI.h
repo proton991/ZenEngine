@@ -71,6 +71,8 @@ public:
         return m_instance;
     }
 
+    DataFormat GetSupportedDepthFormat() override;
+
     VkPhysicalDevice GetPhysicalDevice() const;
 
     VkDevice GetVkDevice() const;

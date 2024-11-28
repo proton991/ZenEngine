@@ -100,7 +100,7 @@ void GearsApp::BuildRenderPipeline()
             .SetFragmentShader("gears.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
-            .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
+            .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
             .SetShaderResourceBinding(0, uboBindings)
             .SetPipelineState(pso)
             .Build();

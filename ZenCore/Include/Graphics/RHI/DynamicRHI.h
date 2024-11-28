@@ -31,6 +31,8 @@ public:
 
     virtual const char* GetName() = 0;
 
+    virtual DataFormat GetSupportedDepthFormat() = 0;
+
     virtual RHIViewport* CreateViewport(void* windowPtr,
                                         uint32_t width,
                                         uint32_t height,

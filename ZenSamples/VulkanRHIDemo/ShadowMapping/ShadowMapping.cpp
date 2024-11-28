@@ -135,19 +135,18 @@ void ShadowMappingApp::BuildRenderPipeline()
             textureBindings.emplace_back(std::move(binding));
         }
         rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.sceneShadow =
-            builder.SetVertexShader("ShadowMapping/scene.vert.spv")
-                .SetFragmentShader("ShadowMapping/scene.frag.spv")
-                .SetNumSamples(SampleCount::e1)
-                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment)
-                .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat(),
-                                       rhi::RenderTargetLoadOp::eClear,
-                                       rhi::RenderTargetStoreOp::eStore)
-                .SetShaderResourceBinding(0, uboBindings)
-                .SetShaderResourceBinding(1, textureBindings)
-                .SetPipelineState(pso)
-                .Build();
+        m_mainRPs.sceneShadow = builder.SetVertexShader("ShadowMapping/scene.vert.spv")
+                                    .SetFragmentShader("ShadowMapping/scene.frag.spv")
+                                    .SetNumSamples(SampleCount::e1)
+                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                                          TextureUsage::eColorAttachment)
+                                    .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                                           rhi::RenderTargetLoadOp::eClear,
+                                                           rhi::RenderTargetStoreOp::eStore)
+                                    .SetShaderResourceBinding(0, uboBindings)
+                                    .SetShaderResourceBinding(1, textureBindings)
+                                    .SetPipelineState(pso)
+                                    .Build();
     }
 }
 

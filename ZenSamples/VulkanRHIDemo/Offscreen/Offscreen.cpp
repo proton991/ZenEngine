@@ -139,7 +139,7 @@ void OffscreenApp::BuildRenderPipeline()
                                .SetNumSamples(SampleCount::e1)
                                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                      TextureUsage::eColorAttachment)
-                               .SetDepthStencilTarget(m_viewport->GetDefaultDepthStencilFormat())
+                               .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
                                .SetShaderResourceBinding(0, uboBindings)
                                .SetShaderResourceBinding(1, textureBindings)
                                .SetPipelineState(pso)
