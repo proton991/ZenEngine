@@ -45,7 +45,7 @@ void main()
     outUV = inUV0;
 
     // Vertex position in world space
-    outWorldPos = locPos.xyz / locPos.w;;
+    outWorldPos = locPos.xyz / locPos.w;
 
     // Normal in world space
     mat3 mNormal = mat3(nodesData[uNodeIndex].normalMatrix);

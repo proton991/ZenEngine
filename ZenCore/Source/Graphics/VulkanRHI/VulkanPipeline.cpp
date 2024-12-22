@@ -515,7 +515,7 @@ VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
         if (poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eStorageBuffer)])
         {
             *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             currPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(ShaderResourceType::eStorageBuffer)] *
                 MaxDescriptorPerPool;
