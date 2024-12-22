@@ -240,7 +240,9 @@ struct RDGGraphicsPassNode : RDGPassNode
     rhi::RenderPassHandle renderPass;
     rhi::FramebufferHandle framebuffer;
     rhi::Rect2<int> renderArea;
-    std::vector<rhi::RenderPassClearValue> clearValues;
+    // todo: maxColorAttachments + 1, set based on GPU limits
+    uint32_t numAttachments;
+    rhi::RenderPassClearValue clearValues[8];
 };
 
 /*****************************/

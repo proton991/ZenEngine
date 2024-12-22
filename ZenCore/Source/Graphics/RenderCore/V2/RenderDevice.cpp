@@ -81,6 +81,8 @@ RenderPipeline RenderPipelineBuilder::Build()
     renderPipeline.pipeline   = m_renderDevice->GetOrCreateGfxPipeline(
         m_PSO, shader, renderPipeline.renderPass, shaderGroupInfo.specializationConstants);
 
+    RHI->SetRenderPassDebugName(renderPipeline.renderPass, m_tag + "_RenderPass");
+
     renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
     // parallel build descriptor building process
     //    std::for_each(std::execution::par, m_dsBindings.begin(), m_dsBindings.end(),
@@ -415,10 +417,34 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
     return uniformBuffer;
 }
 
+rhi::BufferHandle RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData)
+{
+    BitField<rhi::BufferUsageFlagBits> usages;
+    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+
+    uint32_t paddedSize = PadStorageBufferSize(dataSize);
+    rhi::BufferHandle storageBuffer =
+        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
+    if (pData != nullptr)
+    {
+        UpdateBufferInternal(storageBuffer, 0, paddedSize, pData);
+    }
+    m_buffers.push_back(storageBuffer);
+    return storageBuffer;
+}
+
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
 {
     auto minUboAlignment = m_RHI->GetUniformBufferAlignment();
     size_t alignedSize   = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    return alignedSize;
+}
+
+size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
+{
+    auto minAlignment  = m_RHI->GetStorageBufferAlignment();
+    size_t alignedSize = (originalSize + minAlignment - 1) & ~(minAlignment - 1);
     return alignedSize;
 }
 
@@ -525,6 +551,11 @@ rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerIn
     rhi::SamplerHandle sampler = m_RHI->CreateSampler(samplerInfo);
     m_deletionQueue.Enqueue([=, this]() { m_RHI->DestroySampler(sampler); });
     return sampler;
+}
+
+rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::TextureHandle handle)
+{
+    return m_RHI->GetTextureSubResourceRange(handle);
 }
 
 static void CopyRegion(uint8_t const* pSrc,

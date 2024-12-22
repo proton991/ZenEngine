@@ -318,4 +318,23 @@ size_t VulkanRHI::GetUniformBufferAlignment()
     return m_device->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
 }
 
+size_t VulkanRHI::GetStorageBufferAlignment()
+{
+    return m_device->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
+}
+
+void VulkanRHI::SetRenderPassDebugName(rhi::RenderPassHandle renderPassHandle,
+                                       const std::string& debugName)
+{
+    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    VkDebugUtilsObjectNameInfoEXT info{};
+    info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    info.pNext        = nullptr;
+    info.objectType   = VK_OBJECT_TYPE_RENDER_PASS;
+    info.objectHandle = reinterpret_cast<uint64_t>(renderPass);
+    info.pObjectName  = debugName.data();
+
+    CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(m_device->GetVkHandle(), &info),
+                   "Failed to set debug object name");
+}
 } // namespace zen::rhi

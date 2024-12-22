@@ -123,6 +123,10 @@ public:
 
     void DestroyTexture(TextureHandle textureHandle) final;
 
+    DataFormat GetTextureFormat(zen::rhi::TextureHandle textureHandle) final;
+
+    TextureSubResourceRange GetTextureSubResourceRange(zen::rhi::TextureHandle textureHandle) final;
+
     BufferHandle CreateBuffer(uint32_t size,
                               BitField<BufferUsageFlagBits> usageFlags,
                               BufferAllocateType allocateType) final;
@@ -158,6 +162,11 @@ public:
     void WaitDeviceIdle() final;
 
     size_t GetUniformBufferAlignment() final;
+
+    size_t GetStorageBufferAlignment() final;
+
+    void SetRenderPassDebugName(rhi::RenderPassHandle renderPassHandle,
+                                const std::string& debugName) final;
 
 protected:
     void CreateInstance();

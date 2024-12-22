@@ -811,6 +811,37 @@ struct TextureSubResourceRange
 
         return range;
     }
+
+    static TextureSubResourceRange Stencil(uint32_t baseMipLevel   = 0,
+                                           uint32_t baseArrayLayer = 0,
+                                           uint32_t levelCount     = 1,
+                                           uint32_t layerCount     = 1)
+    {
+        TextureSubResourceRange range{};
+        range.aspect.SetFlag(TextureAspectFlagBits::eStencil);
+        range.layerCount     = layerCount;
+        range.levelCount     = levelCount;
+        range.baseMipLevel   = baseMipLevel;
+        range.baseArrayLayer = baseArrayLayer;
+
+        return range;
+    }
+
+    static TextureSubResourceRange DepthStencil(uint32_t baseMipLevel   = 0,
+                                                uint32_t baseArrayLayer = 0,
+                                                uint32_t levelCount     = 1,
+                                                uint32_t layerCount     = 1)
+    {
+        TextureSubResourceRange range{};
+        range.aspect.SetFlag(TextureAspectFlagBits::eDepth);
+        range.aspect.SetFlag(TextureAspectFlagBits::eStencil);
+        range.layerCount     = layerCount;
+        range.levelCount     = levelCount;
+        range.baseMipLevel   = baseMipLevel;
+        range.baseArrayLayer = baseArrayLayer;
+
+        return range;
+    }
 };
 
 struct TextureSubresourceLayers
@@ -1175,6 +1206,37 @@ inline BitField<AccessFlagBits> BufferUsageToAccessFlagBits(BufferUsage usage)
     }
     return result;
 }
+
+inline bool FormatIsDepthStencil(DataFormat format)
+{
+    bool result = false;
+    if (format == DataFormat::eD24UNORMS8UInt || format == DataFormat::eD32SFloatS8UInt)
+    {
+        result = true;
+    }
+    return result;
+}
+
+inline bool FormatIsStencilOnly(DataFormat format)
+{
+    bool result = false;
+    if (format == DataFormat::eS8UInt)
+    {
+        result = true;
+    }
+    return result;
+}
+
+inline bool FormatIsDepthOnly(DataFormat format)
+{
+    bool result = false;
+    if (format == DataFormat::eD32SFloat || format == DataFormat::eD16UNORM)
+    {
+        result = true;
+    }
+    return result;
+}
+
 
 struct MemoryTransition
 {

@@ -11,12 +11,13 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
 {
-    auto* node        = AllocNode<RDGGraphicsPassNode>();
-    node->renderPass  = std::move(renderPassHandle);
-    node->framebuffer = std::move(framebufferHandle);
-    node->renderArea  = area;
-    node->type        = RDGNodeType::eGraphicsPass;
-    node->clearValues.resize(clearValues.size());
+    auto* node           = AllocNode<RDGGraphicsPassNode>();
+    node->renderPass     = std::move(renderPassHandle);
+    node->framebuffer    = std::move(framebufferHandle);
+    node->renderArea     = area;
+    node->type           = RDGNodeType::eGraphicsPass;
+    node->numAttachments = clearValues.size();
+
     for (auto i = 0; i < clearValues.size(); i++)
     {
         node->clearValues[i] = clearValues[i];
@@ -598,7 +599,7 @@ void RenderGraph::Begin()
 
 void RenderGraph::End()
 {
-    // sord nodes
+    // sort nodes
     SortNodes();
 }
 
@@ -690,7 +691,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         {
             RDGGraphicsPassNode* node = reinterpret_cast<RDGGraphicsPassNode*>(base);
             m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
-                                       node->clearValues);
+                                       VectorView(node->clearValues, node->numAttachments));
             for (RDGPassChildNode* child : node->childNodes)
             {
                 switch (child->type)
@@ -745,7 +746,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
                         rhi::PipelineHandle pipelineHandle;
-                        for (auto* sibling : cmdNode->parent->childNodes)
+                        for (auto* sibling : node->childNodes)
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
                             {

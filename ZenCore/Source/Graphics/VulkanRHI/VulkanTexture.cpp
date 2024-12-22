@@ -98,6 +98,36 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     return TextureHandle(texture);
 }
 
+DataFormat VulkanRHI::GetTextureFormat(zen::rhi::TextureHandle textureHandle)
+{
+    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    return static_cast<DataFormat>(texture->imageCI.format);
+}
+
+TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(zen::rhi::TextureHandle textureHandle)
+{
+    TextureSubResourceRange range;
+
+    DataFormat dataFormat = GetTextureFormat(textureHandle);
+    if (FormatIsDepthOnly(dataFormat))
+    {
+        range = TextureSubResourceRange::Depth();
+    }
+    else if (FormatIsStencilOnly(dataFormat))
+    {
+        range = TextureSubResourceRange::Stencil();
+    }
+    else if (FormatIsDepthStencil(dataFormat))
+    {
+        range = TextureSubResourceRange::DepthStencil();
+    }
+    else
+    {
+        range = TextureSubResourceRange::Color();
+    }
+    return range;
+}
+
 void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);

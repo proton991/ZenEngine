@@ -265,9 +265,9 @@ void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle)
     {
         std::vector<VkDescriptorSet> descriptorSets;
         descriptorSets.reserve(vulkanPipeline->descriptorSetCount);
-        for (VulkanDescriptorSet* ds : vulkanPipeline->descriptorSets)
+        for (uint32_t i = 0; i < vulkanPipeline->descriptorSetCount; i++)
         {
-            descriptorSets.push_back(ds->descriptorSet);
+            descriptorSets.push_back(vulkanPipeline->descriptorSets[i]->descriptorSet);
         }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 vulkanPipeline->pipelineLayout, 0,
@@ -285,10 +285,14 @@ void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle)
     {
         std::vector<VkDescriptorSet> descriptorSets;
         descriptorSets.reserve(vulkanPipeline->descriptorSetCount);
-        for (VulkanDescriptorSet* ds : vulkanPipeline->descriptorSets)
+        for (uint32_t i = 0; i < vulkanPipeline->descriptorSetCount; i++)
         {
-            descriptorSets.push_back(ds->descriptorSet);
+            descriptorSets.push_back(vulkanPipeline->descriptorSets[i]->descriptorSet);
         }
+        //        for (VulkanDescriptorSet* ds : vulkanPipeline->descriptorSets)
+        //        {
+        //            descriptorSets.push_back(ds->descriptorSet);
+        //        }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                                 vulkanPipeline->pipelineLayout, 0,
                                 vulkanPipeline->descriptorSetCount, descriptorSets.data(), 0,

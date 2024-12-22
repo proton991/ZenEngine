@@ -78,10 +78,17 @@ public:
         return *this;
     }
 
+    RenderPipelineBuilder& SetTag(std::string tag)
+    {
+        m_tag = std::move(tag);
+        return *this;
+    }
+
     RenderPipeline Build();
 
 private:
     RenderDevice* m_renderDevice{nullptr};
+    std::string m_tag;
     bool m_hasVS{false};
     bool m_hasFS{false};
     bool m_finished{false};
@@ -185,6 +192,8 @@ public:
 
     rhi::BufferHandle CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
 
+    rhi::BufferHandle CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
+
     void UpdateBuffer(rhi::BufferHandle bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
@@ -216,6 +225,8 @@ public:
     rhi::TextureHandle RequestTexture2D(const std::string& file, bool requireMipmap = false);
 
     rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
+
+    rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::TextureHandle handle);
 
     auto* GetRHI() const
     {
@@ -269,6 +280,8 @@ private:
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
     size_t PadUniformBufferSize(size_t originalSize);
+
+    size_t PadStorageBufferSize(size_t originalSize);
 
     const rhi::GraphicsAPIType m_APIType;
     const uint32_t m_numFrames;

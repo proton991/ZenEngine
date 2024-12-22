@@ -119,6 +119,8 @@ public:
 
     VectorView(const T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
 
+    VectorView(T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
+
     VectorView(const std::vector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
 
 protected:

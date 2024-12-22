@@ -255,7 +255,8 @@ VkImageLayout ToVkImageLayout(TextureLayout layout)
         case TextureLayout::eUndefined: return VK_IMAGE_LAYOUT_UNDEFINED;
         case TextureLayout::eGeneral: return VK_IMAGE_LAYOUT_GENERAL;
         case TextureLayout::eColorTarget: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        case TextureLayout::eDepthStencilTarget: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        case TextureLayout::eDepthStencilTarget:
+            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         case TextureLayout::eShaderReadOnly: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         case TextureLayout::eTransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         case TextureLayout::eTransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;

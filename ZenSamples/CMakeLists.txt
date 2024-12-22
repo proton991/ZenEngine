@@ -63,6 +63,11 @@ add_executable(shadowmapping
 )
 target_link_libraries(shadowmapping ZenCore)
 
+add_executable(scene_renderer_demo
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemo.h)
+target_link_libraries(scene_renderer_demo ZenCore)
+
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)

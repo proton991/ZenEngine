@@ -74,6 +74,10 @@ public:
 
     virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 
+    virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
+
+    virtual TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
+
     virtual BufferHandle CreateBuffer(uint32_t size,
                                       BitField<BufferUsageFlagBits> usageFlags,
                                       BufferAllocateType allocateType) = 0;
@@ -105,5 +109,11 @@ public:
     virtual void WaitDeviceIdle() = 0;
 
     virtual size_t GetUniformBufferAlignment() = 0;
+
+    virtual size_t GetStorageBufferAlignment() = 0;
+
+    // todo: move to debug util
+    virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
+                                        const std::string& debugName) = 0;
 };
 } // namespace zen::rhi

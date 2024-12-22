@@ -87,6 +87,7 @@ struct VulkanPipeline
     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
     uint32_t descriptorSetCount{0};
     VkShaderStageFlags pushConstantsStageFlags;
-    std::vector<VulkanDescriptorSet*> descriptorSets;
+    //    std::vector<VulkanDescriptorSet*> descriptorSets;
+    VulkanDescriptorSet* descriptorSets[8]; // todo: set size based on GPU limits
 };
 } // namespace zen::rhi
