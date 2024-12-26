@@ -24,6 +24,8 @@ private:
 
     UniquePtr<rc::RenderDevice> m_renderDevice;
 
+    UniquePtr<sg::Scene> m_scene;
+
     platform::GlfwWindowImpl* m_window{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};

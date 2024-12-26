@@ -1,5 +1,7 @@
 #include "SceneRendererDemo.h"
 
+#include "AssetLib/GLTFLoader.h"
+
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sys::CameraType type)
@@ -35,9 +37,20 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
 void SceneRendererDemo::Prepare()
 {
-    rc::SceneData sceneData{m_scenePath, m_camera.Get()};
-    m_sceneRenderer->LoadScene(sceneData);
-    m_sceneRenderer->Init();
+    m_scene         = MakeUnique<sg::Scene>();
+    auto gltfLoader = MakeUnique<gltf::GltfLoader>();
+    gltfLoader->LoadFromFile(m_scenePath, m_scene.Get());
+
+    rc::SceneData sceneData{};
+    sceneData.camera      = m_camera.Get();
+    sceneData.scene       = m_scene.Get();
+    sceneData.vertices    = gltfLoader->GetVertices().data();
+    sceneData.indices     = gltfLoader->GetIndices().data();
+    sceneData.numVertices = gltfLoader->GetVertices().size();
+    sceneData.numIndices  = gltfLoader->GetIndices().size();
+
+    m_sceneRenderer->SetScene(sceneData);
+    m_sceneRenderer->Bake();
 }
 
 void SceneRendererDemo::Destroy()

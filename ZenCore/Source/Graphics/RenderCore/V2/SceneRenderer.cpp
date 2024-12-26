@@ -10,7 +10,7 @@ SceneRenderer::SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport) 
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
-void SceneRenderer::Init()
+void SceneRenderer::Bake()
 {
     PrepareTextures();
 
@@ -22,17 +22,15 @@ void SceneRenderer::Destroy()
     m_rdg->Destroy();
 }
 
-void SceneRenderer::LoadScene(const SceneData& sceneData)
+void SceneRenderer::SetScene(const SceneData& sceneData)
 {
+    m_rebuildRDG = true;
     Clear();
     m_camera = sceneData.camera;
-    m_scene  = MakeUnique<sg::Scene>();
+    m_scene  = sceneData.scene;
 
-    auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(sceneData.sceneFilePath, m_scene.Get());
-    auto& renderableNodes = m_scene->GetRenderableNodes();
-    auto index            = 0u;
-    for (auto* node : renderableNodes)
+    auto index = 0u;
+    for (auto* node : m_scene->GetRenderableNodes())
     {
         NodeData nodeUniformData{};
         nodeUniformData.modelMatrix = node->GetComponent<sg::Transform>()->GetWorldMatrix();
@@ -44,13 +42,13 @@ void SceneRenderer::LoadScene(const SceneData& sceneData)
     }
     TransformScene();
 
-    uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(gltf::Vertex);
+    uint32_t vbSize = sceneData.numVertices * sizeof(gltf::Vertex);
     m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
-        vbSize, reinterpret_cast<const uint8_t*>(gltfLoader->GetVertices().data()));
+        vbSize, reinterpret_cast<const uint8_t*>(sceneData.vertices));
 
-    m_indexBuffer = m_renderDevice->CreateIndexBuffer(
-        gltfLoader->GetIndices().size() * sizeof(uint32_t),
-        reinterpret_cast<const uint8_t*>(gltfLoader->GetIndices().data()));
+    m_indexBuffer =
+        m_renderDevice->CreateIndexBuffer(sceneData.numIndices * sizeof(uint32_t),
+                                          reinterpret_cast<const uint8_t*>(sceneData.indices));
 
     PrepareBuffers();
 

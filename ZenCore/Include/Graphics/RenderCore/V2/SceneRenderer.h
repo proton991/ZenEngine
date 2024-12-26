@@ -13,11 +13,21 @@ namespace zen::sys
 class Camera;
 }
 
+namespace zen::gltf
+{
+struct Vertex;
+using Index = uint32_t;
+} // namespace zen::gltf
+
 namespace zen::rc
 {
 struct SceneData
 {
-    std::string sceneFilePath;
+    sg::Scene* scene;
+    const gltf::Vertex* vertices;
+    const gltf::Index* indices;
+    uint32_t numVertices;
+    uint32_t numIndices;
     sys::Camera* camera;
     // other scene data
 };
@@ -71,11 +81,11 @@ public:
 
     SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
-    void Init();
+    void Bake();
 
     void Destroy();
 
-    void LoadScene(const SceneData& sceneData);
+    void SetScene(const SceneData& sceneData);
 
     void DrawScene();
 
@@ -113,7 +123,7 @@ private:
     } m_mainRPs;
 
     bool m_sceneLoaded{false};
-    UniquePtr<sg::Scene> m_scene;
+    sg::Scene* m_scene;
 
     rhi::BufferHandle m_vertexBuffer;
     rhi::BufferHandle m_indexBuffer;
