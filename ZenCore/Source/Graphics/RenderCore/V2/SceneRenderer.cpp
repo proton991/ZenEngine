@@ -29,6 +29,11 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     m_camera = sceneData.camera;
     m_scene  = sceneData.scene;
 
+    // White
+    m_sceneUniformData.lightPosition  = sceneData.lightPosition;
+    m_sceneUniformData.lightColor     = sceneData.lightColor;
+    m_sceneUniformData.lightIntensity = sceneData.lightIntensity;
+
     auto index = 0u;
     for (auto* node : m_scene->GetRenderableNodes())
     {
@@ -62,9 +67,6 @@ void SceneRenderer::DrawScene()
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
-
-    m_sceneUniformData.viewPos =
-        glm::vec4(m_camera->GetPos(), 0.0f) * glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f);
 
     m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
                                  m_camera->GetUniformData());
@@ -215,11 +217,7 @@ void SceneRenderer::PrepareBuffers()
 
     {
         // scene ubo
-        // White
-        m_sceneUniformData.lightPosition  = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
-        m_sceneUniformData.lightColor     = glm::vec3(1.0f);
-        m_sceneUniformData.lightIntensity = Vec3(1.0f);
-        m_sceneUniformData.viewPos        = m_camera->GetPos();
+        m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
 
         const auto uboSize = sizeof(SceneUniformData);
         m_sceneUBO         = m_renderDevice->CreateUniformBuffer(

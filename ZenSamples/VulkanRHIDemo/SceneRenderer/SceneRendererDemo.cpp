@@ -27,7 +27,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
 
     m_camera =
-        sys::Camera::CreateUnique(Vec3{2.0f, 2.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
+        sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
     m_camera->SetOnUpdate([&] {
 
     });
@@ -48,6 +48,10 @@ void SceneRendererDemo::Prepare()
     sceneData.indices     = gltfLoader->GetIndices().data();
     sceneData.numVertices = gltfLoader->GetVertices().size();
     sceneData.numIndices  = gltfLoader->GetIndices().size();
+    // light info
+    sceneData.lightPosition  = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightColor     = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightIntensity = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
 
     m_sceneRenderer->SetScene(sceneData);
     m_sceneRenderer->Bake();

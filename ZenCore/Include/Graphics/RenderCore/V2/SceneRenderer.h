@@ -29,6 +29,9 @@ struct SceneData
     uint32_t numVertices;
     uint32_t numIndices;
     sys::Camera* camera;
+    Vec4 lightPosition;
+    Vec4 lightColor;
+    Vec4 lightIntensity;
     // other scene data
 };
 
@@ -68,10 +71,10 @@ public:
 
     struct SceneUniformData
     {
-        Vec3 lightPosition;
-        Vec3 lightColor;
-        Vec3 lightIntensity;
-        Vec3 viewPos;
+        Vec4 lightPosition;
+        Vec4 lightColor;
+        Vec4 lightIntensity;
+        Vec4 viewPos;
     };
 
     enum class RenderFlags

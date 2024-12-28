@@ -36,5 +36,5 @@ private:
     float m_animationTimer{0.0f};
     float m_animationSpeed{0.25f};
 
-    const std::string m_scenePath = "../../glTF-Sample-Models/2.0/ToyCar/glTF/ToyCar.gltf";
+    const std::string m_scenePath = "../../glTF-Sample-Models/2.0/Suzanne/glTF/Suzanne.gltf";
 };
