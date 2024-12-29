@@ -5,6 +5,7 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "stb_image.h"
+#include "Graphics/VulkanRHI/VulkanDebug.h"
 #include <fstream>
 #include <execution>
 
@@ -81,7 +82,10 @@ RenderPipeline RenderPipelineBuilder::Build()
     renderPipeline.pipeline   = m_renderDevice->GetOrCreateGfxPipeline(
         m_PSO, shader, renderPipeline.renderPass, shaderGroupInfo.specializationConstants);
 
-    RHI->SetRenderPassDebugName(renderPipeline.renderPass, m_tag + "_RenderPass");
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(renderPipeline.pipeline,
+                                                        m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(renderPipeline.renderPass,
+                                                          m_tag + "_RenderPass");
 
     renderPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
     // parallel build descriptor building process
@@ -292,6 +296,8 @@ void RenderDevice::Init()
     {
         m_RHI = new rhi::VulkanRHI();
         m_RHI->Init();
+
+        m_RHIDebug = new rhi::VulkanDebug(m_RHI);
         m_stagingBufferMgr =
             new StagingBufferManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
         m_stagingBufferMgr->Init(m_numFrames);

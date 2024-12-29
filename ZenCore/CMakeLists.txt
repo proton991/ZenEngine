@@ -58,6 +58,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/DynamicRHI.h
     Include/Graphics/RHI/RHICommands.h
     Include/Graphics/RHI/RHICommon.h
+    Include/Graphics/RHI/RHIDebug.h
     Include/Graphics/RHI/RHIResource.h
     Include/Graphics/RHI/RHIDefs.h
     Include/Graphics/RHI/RHIOptions.h
@@ -71,6 +72,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanHeaders.h
     Include/Graphics/VulkanRHI/VulkanRHI.h
     Include/Graphics/VulkanRHI/VulkanCommon.h
+    Include/Graphics/VulkanRHI/VulkanDebug.h
     Include/Graphics/VulkanRHI/VulkanQueue.h
     Include/Graphics/VulkanRHI/VulkanSwapchain.h
     Include/Graphics/VulkanRHI/VulkanViewport.h
@@ -141,6 +143,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanExtension.cpp
     Source/Graphics/VulkanRHI/VulkanDevice.cpp
     Source/Graphics/VulkanRHI/VulkanContext.cpp
+    Source/Graphics/VulkanRHI/VulkanDebug.cpp
     Source/Graphics/VulkanRHI/VulkanQueue.cpp
     Source/Graphics/VulkanRHI/VulkanSwapchain.cpp
     Source/Graphics/VulkanRHI/VulkanViewport.cpp

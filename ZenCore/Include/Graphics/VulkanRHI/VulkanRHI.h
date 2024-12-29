@@ -165,9 +165,6 @@ public:
 
     size_t GetStorageBufferAlignment() final;
 
-    void SetRenderPassDebugName(rhi::RenderPassHandle renderPassHandle,
-                                const std::string& debugName) final;
-
 protected:
     void CreateInstance();
 

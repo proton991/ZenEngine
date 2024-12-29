@@ -111,9 +111,5 @@ public:
     virtual size_t GetUniformBufferAlignment() = 0;
 
     virtual size_t GetStorageBufferAlignment() = 0;
-
-    // todo: move to debug util
-    virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
-                                        const std::string& debugName) = 0;
 };
 } // namespace zen::rhi

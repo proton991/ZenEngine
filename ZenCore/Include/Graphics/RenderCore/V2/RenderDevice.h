@@ -2,6 +2,7 @@
 #include "Common/HashMap.h"
 #include "Common/Queue.h"
 #include "Graphics/RHI/DynamicRHI.h"
+#include "Graphics/RHI/RHIDebug.h"
 
 namespace zen::rc
 {
@@ -233,6 +234,11 @@ public:
         return m_RHI;
     }
 
+    auto* GetRHIDebug() const
+    {
+        return m_RHIDebug;
+    }
+
     auto GetFramesCounter() const
     {
         return m_framesCounter;
@@ -289,6 +295,7 @@ private:
     uint64_t m_framesCounter{0};
     std::vector<RenderFrame> m_frames;
     rhi::DynamicRHI* m_RHI{nullptr};
+    rhi::RHIDebug* m_RHIDebug{nullptr};
     StagingBufferManager* m_stagingBufferMgr{nullptr};
     DeletionQueue m_deletionQueue;
 
