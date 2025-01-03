@@ -18,6 +18,7 @@ struct Vertex
 {
     Vec3 pos;
     Vec3 normal;
+    Vec4 tangent;
     Vec2 uv0;
     Vec2 uv1;
     Vec4 joint0;

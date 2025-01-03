@@ -1040,6 +1040,7 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 const float* bufferPos          = nullptr;
                 const float* bufferNormals      = nullptr;
+                const float* bufferTangents     = nullptr;
                 const float* bufferTexCoordSet0 = nullptr;
                 const float* bufferTexCoordSet1 = nullptr;
                 const float* bufferColorSet0    = nullptr;
@@ -1048,6 +1049,7 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
 
                 int posByteStride;
                 int normByteStride;
+                int tanByteStride;
                 int uv0ByteStride;
                 int uv1ByteStride;
                 int color0ByteStride;
@@ -1089,6 +1091,19 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
                         tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC3);
                 }
 
+                if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
+                {
+                    const tinygltf::Accessor& tangentAccessor =
+                        m_gltfModel.accessors[primitive.attributes.find("TANGENT")->second];
+                    const tinygltf::BufferView& tangentView =
+                        m_gltfModel.bufferViews[tangentAccessor.bufferView];
+                    bufferTangents = reinterpret_cast<const float*>(
+                        &(m_gltfModel.buffers[tangentView.buffer]
+                              .data[tangentAccessor.byteOffset + tangentView.byteOffset]));
+                    tanByteStride = tangentAccessor.ByteStride(tangentView) ?
+                        (tangentAccessor.ByteStride(tangentView) / sizeof(float)) :
+                        tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC4);
+                }
                 // UVs
                 if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end())
                 {
@@ -1171,6 +1186,9 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
                     vert.normal        = glm::normalize(
                         Vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) :
                                                     Vec3(0.0f)));
+                    vert.tangent = glm::normalize(
+                        Vec4(bufferTangents ? glm::make_vec4(&bufferTangents[v * tanByteStride]) :
+                                              Vec4(0.0f)));
                     vert.uv0   = bufferTexCoordSet0 ?
                           glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) :
                           Vec3(0.0f);
