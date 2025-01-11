@@ -4,6 +4,11 @@
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIDebug.h"
 
+namespace zen::sg
+{
+class Scene;
+}
+
 namespace zen::rc
 {
 class RenderDevice;
@@ -183,7 +188,11 @@ public:
 
     void Destroy();
 
+    void BeginDrawingViewport(rhi::RHIViewport* viewport);
+
     void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg);
+
+    void EndDrawingViewport(rhi::RHIViewport* viewport);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
 
@@ -224,6 +233,9 @@ public:
                         uint32_t height);
 
     rhi::TextureHandle RequestTexture2D(const std::string& file, bool requireMipmap = false);
+
+    void RegisterSceneTextures(const sg::Scene* scene,
+                               std::vector<rhi::TextureHandle>& outTextures);
 
     rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
 

@@ -112,6 +112,9 @@ private:
     VulkanDevice* m_device{nullptr};
     std::vector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
+#if defined(ZEN_DEBUG)
+    uint32_t m_allocatedSemaphoreCount{0};
+#endif
 };
 
 class VulkanPipelineBarrier

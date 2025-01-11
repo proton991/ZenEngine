@@ -170,6 +170,10 @@ void VulkanCommandBuffer::Begin()
     else
     {
         VERIFY_EXPR(m_state == State::eReadyForBegin);
+        if (m_state != State::eReadyForBegin)
+        {
+            int a = 1;
+        }
     }
     m_state = State::eHasBegun;
     VkCommandBufferBeginInfo beginInfo;
@@ -217,7 +221,7 @@ VulkanCommandBuffer* VulkanCommandBufferManager::GetUploadCommandBuffer()
     {
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
         {
-            m_uploadCmdBufferSemaphore = new VulkanSemaphore(m_device);
+            m_uploadCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
         }
         for (auto i = 0; i < m_pool.m_usedCmdBuffers.size(); i++)
         {
@@ -259,6 +263,7 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
             for (VulkanSemaphore* sem : m_uploadCompleteSemaphores)
             {
                 m_activeCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, sem);
+                m_device->GetSemaphoreManager()->ReleaseSemaphore(sem);
             }
             semaphoreHandles.push_back(m_activeCmdBufferSemaphore->GetVkHandle());
             // submit via VulkanQueue
@@ -331,6 +336,7 @@ void VulkanCommandBufferManager::SubmitUploadCmdBuffer()
             for (VulkanSemaphore* sem : m_renderCompleteSemaphores)
             {
                 m_uploadCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, sem);
+                m_device->GetSemaphoreManager()->ReleaseSemaphore(sem);
             }
             VkSemaphore semaphore = m_uploadCmdBufferSemaphore->GetVkHandle();
             m_queue->Submit(m_uploadCmdBuffer, 1, &semaphore);

@@ -34,7 +34,13 @@ void ShadowMappingApp::Run()
                                      reinterpret_cast<const uint8_t*>(&m_offscreenUniformData));
         m_renderDevice->UpdateBuffer(m_sceneUBO, sizeof(SceneUniformData),
                                      reinterpret_cast<const uint8_t*>(&m_sceneUniformData));
+
+        m_renderDevice->BeginDrawingViewport(m_viewport);
+
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
+
+        m_renderDevice->EndDrawingViewport(m_viewport);
+
         m_renderDevice->NextFrame();
     }
 }

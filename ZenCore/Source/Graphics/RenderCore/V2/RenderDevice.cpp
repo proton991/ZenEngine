@@ -6,6 +6,8 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "stb_image.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
+#include "SceneGraph/Scene.h"
+
 #include <fstream>
 #include <execution>
 
@@ -363,10 +365,19 @@ void RenderDevice::Destroy()
     delete m_RHI;
 }
 
-void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg)
+void RenderDevice::BeginDrawingViewport(rhi::RHIViewport* viewport)
 {
     m_RHI->BeginDrawingViewport(viewport);
+}
+
+void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg)
+{
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
+}
+
+void RenderDevice::EndDrawingViewport(rhi::RHIViewport* viewport)
+{
+    EndFrame();
     m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, true);
 }
 
@@ -623,7 +634,7 @@ rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool 
 
     rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
     // transfer layout to eTransferDst
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].drawCmdList, texture,
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
                                rhi::TextureLayout::eUndefined, rhi::TextureLayout::eTransferDst);
     if (requireMipmap)
     {
@@ -644,11 +655,57 @@ rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool 
         }
     }
     // transfer layout to eShaderReadOnly
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].drawCmdList, texture,
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
                                rhi::TextureLayout::eTransferDst,
                                rhi::TextureLayout::eShaderReadOnly);
     m_textureCache[file] = texture;
     return texture;
+}
+
+void RenderDevice::RegisterSceneTextures(const sg::Scene* scene,
+                                         std::vector<rhi::TextureHandle>& outTextures)
+{
+    std::vector<sg::Texture*> sgTextures = scene->GetComponents<sg::Texture>();
+    for (sg::Texture* sgTexture : sgTextures)
+    {
+        if (!m_textureCache.contains(sgTexture->GetName()))
+        {
+            rhi::TextureInfo textureInfo{};
+            textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
+            textureInfo.type        = rhi::TextureType::e2D;
+            textureInfo.width       = sgTexture->width;
+            textureInfo.height      = sgTexture->height;
+            textureInfo.depth       = 1;
+            textureInfo.arrayLayers = 1;
+            textureInfo.mipmaps     = 1;
+            textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
+            textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+
+            rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
+            // transfer layout to eTransferDst
+            m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
+                                       rhi::TextureLayout::eUndefined,
+                                       rhi::TextureLayout::eTransferDst);
+            if (STAGING_BLOCK_SIZE_BYTES >= sgTexture->bytesData.size())
+            {
+                UpdateTextureOneTime(texture,
+                                     {textureInfo.width, textureInfo.height, textureInfo.depth},
+                                     sgTexture->bytesData.size(), sgTexture->bytesData.data());
+            }
+            else
+            {
+                UpdateTextureBatch(texture,
+                                   {textureInfo.width, textureInfo.height, textureInfo.depth},
+                                   sgTexture->bytesData.data());
+            }
+            // transfer layout to eShaderReadOnly
+            m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
+                                       rhi::TextureLayout::eTransferDst,
+                                       rhi::TextureLayout::eShaderReadOnly);
+            m_textureCache[sgTexture->GetName()] = texture;
+        }
+        outTextures.push_back(m_textureCache[sgTexture->GetName()]);
+    }
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
@@ -688,8 +745,8 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
-    m_frames[m_currentFrame].drawCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
-                                                              copyRegion);
+    m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
+                                                                copyRegion);
 
     m_stagingBufferMgr->EndSubmit(&submitResult);
 }
@@ -741,7 +798,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_frames[m_currentFrame].drawCmdList->CopyBufferToTexture(
+                m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(
                     submitResult.buffer, textureHandle, copyRegion);
 
                 m_stagingBufferMgr->EndSubmit(&submitResult);
@@ -799,7 +856,6 @@ void RenderDevice::WaitForAllFrames() {}
 
 void RenderDevice::NextFrame()
 {
-    EndFrame();
     m_currentFrame = (m_currentFrame + 1) % m_frames.size();
     BeginFrame();
 }
@@ -807,15 +863,14 @@ void RenderDevice::NextFrame()
 void RenderDevice::BeginFrame()
 {
     m_framesCounter++;
-    // m_RHI->WaitForCommandList(m_frames[m_currentFrame].drawCmdList);
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
 }
 
 void RenderDevice::EndFrame()
 {
-    m_frames[m_currentFrame].drawCmdList->EndRender();
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
+    m_frames[m_currentFrame].drawCmdList->EndRender();
 }
 
 size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)

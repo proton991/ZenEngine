@@ -193,7 +193,9 @@ void GearsApp::Run()
         UpdateSceneData();
         m_renderDevice->UpdateBuffer(m_sceneUBO, sizeof(SceneData),
                                      reinterpret_cast<const uint8_t*>(&m_sceneData));
+        m_renderDevice->BeginDrawingViewport(m_viewport);
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
+        m_renderDevice->EndDrawingViewport(m_viewport);
         m_renderDevice->NextFrame();
     }
 }

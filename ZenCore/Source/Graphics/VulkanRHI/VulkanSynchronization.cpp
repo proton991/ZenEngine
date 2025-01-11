@@ -166,11 +166,17 @@ VulkanSemaphore::~VulkanSemaphore()
 
 void VulkanSemaphoreManager::Destroy()
 {
-    VERIFY_EXPR(m_usedSemaphores.empty());
+#if defined(ZEN_DEBUG)
+    VERIFY_EXPR(m_allocatedSemaphoreCount == m_usedSemaphores.size() + m_freeSemaphores.size());
+#endif
     while (!m_freeSemaphores.empty())
     {
         VulkanSemaphore* sem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
+        delete sem;
+    }
+    for (VulkanSemaphore* sem : m_usedSemaphores)
+    {
         delete sem;
     }
 }
@@ -181,10 +187,12 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
     {
         VulkanSemaphore* sem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
+        m_usedSemaphores.push_back(sem);
         return sem;
     }
     VulkanSemaphore* newSem = new VulkanSemaphore(m_device);
     m_usedSemaphores.push_back(newSem);
+    m_allocatedSemaphoreCount++;
     return newSem;
 }
 
@@ -201,7 +209,7 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
         ++it;
     }
     m_freeSemaphores.push(sem);
-    sem = nullptr;
+    // sem = nullptr;
 }
 
 void VulkanPipelineBarrier::AddImageLayoutTransition(VkImage image,

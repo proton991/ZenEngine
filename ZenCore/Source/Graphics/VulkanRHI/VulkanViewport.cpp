@@ -41,7 +41,7 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
     {
         VulkanCommandBuffer* cmdBuffer = dynamic_cast<VulkanCommandListContext*>(cmdListContext)
                                              ->GetCmdBufferManager()
-                                             ->GetActiveCommandBufferDirect();
+                                             ->GetActiveCommandBuffer();
         m_currentViewport->Present(cmdBuffer);
     }
 }

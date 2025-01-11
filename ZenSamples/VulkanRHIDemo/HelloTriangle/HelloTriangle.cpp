@@ -124,7 +124,9 @@ void HelloTriangleApp::Run()
     {
         m_window->Update();
         m_camera->Update(static_cast<float>(m_timer->Tick()));
+        m_renderDevice->BeginDrawingViewport(m_viewport);
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
+        m_renderDevice->EndDrawingViewport(m_viewport);
         m_renderDevice->NextFrame();
     }
 }
