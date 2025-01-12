@@ -246,7 +246,14 @@ RHICommandListContext* VulkanRHI::CreateCmdListContext()
 void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
 {
     VulkanCommandList* vulkanCmdList = dynamic_cast<VulkanCommandList*>(cmdList);
-    vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
+    if (vulkanCmdList->m_cmdBuffer == nullptr)
+    {
+        vulkanCmdList->m_cmdBufferManager->WaitForLastSubmittedCmdBuffer();
+    }
+    else
+    {
+        vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
+    }
 }
 
 void VulkanRHI::Init()

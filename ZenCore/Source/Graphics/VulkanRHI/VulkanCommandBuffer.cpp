@@ -395,4 +395,13 @@ void VulkanCommandBufferManager::WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer
     VERIFY_EXPR(success);
     cmdBuffer->RefreshFenceStatus();
 }
+
+void VulkanCommandBufferManager::WaitForLastSubmittedCmdBuffer(float timeInSecondsToWait)
+{
+    VulkanCommandBuffer* cmdBuffer = m_queue->GetLastSubmittedCmdBuffer();
+    bool success                   = m_device->GetFenceManager()->WaitForFence(cmdBuffer->m_fence,
+                                                                               (uint64_t)(timeInSecondsToWait * 1e9));
+    VERIFY_EXPR(success);
+    cmdBuffer->RefreshFenceStatus();
+}
 } // namespace zen::rhi

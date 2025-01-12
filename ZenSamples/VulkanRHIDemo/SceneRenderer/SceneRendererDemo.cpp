@@ -51,7 +51,7 @@ void SceneRendererDemo::Prepare()
     // light info
     sceneData.lightPosition  = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
     sceneData.lightColor     = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightIntensity = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightIntensity = Vec4(10.0f, 10.0f, 10.0f, 0.0f);
 
     m_sceneRenderer->SetScene(sceneData);
     m_sceneRenderer->Bake();

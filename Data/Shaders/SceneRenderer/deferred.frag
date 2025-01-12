@@ -43,5 +43,5 @@ void main() {
 	vec3 finalColor = (diffuse + specular) * albedo * attenuation;
 
 	// Output final color
-	outFragColor = vec4(diffuse, 1.0);
+	outFragColor = vec4(finalColor, 1.0);
 }

@@ -122,6 +122,7 @@ struct StagingSubmitResult
     rhi::BufferHandle buffer;
 };
 
+// todo: fix bugs when loading a large number of textures
 class StagingBufferManager
 {
 public:

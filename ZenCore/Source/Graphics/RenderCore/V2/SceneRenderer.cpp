@@ -19,7 +19,10 @@ void SceneRenderer::Bake()
 
 void SceneRenderer::Destroy()
 {
-    m_rdg->Destroy();
+    if (m_rdg)
+    {
+        m_rdg->Destroy();
+    }
 }
 
 void SceneRenderer::SetScene(const SceneData& sceneData)
@@ -54,10 +57,60 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     m_indexBuffer =
         m_renderDevice->CreateIndexBuffer(sceneData.numIndices * sizeof(uint32_t),
                                           reinterpret_cast<const uint8_t*>(sceneData.indices));
+    LoadSceneMaterials();
+
+    LoadSceneTextures();
 
     PrepareBuffers();
 
     m_sceneLoaded = true;
+}
+
+void SceneRenderer::LoadSceneMaterials()
+{
+    auto sgMaterials = m_scene->GetComponents<sg::Material>();
+    m_materialUniforms.reserve(sgMaterials.size());
+    for (const auto* mat : sgMaterials)
+    {
+        MaterialData materialData{};
+        if (mat->baseColorTexture != nullptr)
+        {
+            materialData.bcTexIndex = mat->baseColorTexture->index;
+            materialData.bcTexSet   = mat->texCoordSets.baseColor;
+        }
+        if (mat->metallicRoughnessTexture != nullptr)
+        {
+            materialData.mrTexIndex = mat->metallicRoughnessTexture->index;
+            materialData.mrTexSet   = mat->texCoordSets.metallicRoughness;
+        }
+        if (mat->normalTexture != nullptr)
+        {
+            materialData.normalTexIndex = mat->normalTexture->index;
+            materialData.normalTexSet   = mat->texCoordSets.normal;
+        }
+        if (mat->occlusionTexture != nullptr)
+        {
+            materialData.aoTexIndex = mat->occlusionTexture->index;
+            materialData.aoTexSet   = mat->texCoordSets.occlusion;
+        }
+        if (mat->emissiveTexture != nullptr)
+        {
+            materialData.emissiveTexIndex = mat->emissiveTexture->index;
+            materialData.emissiveTexSet   = mat->texCoordSets.emissive;
+        }
+        materialData.metallicFactor  = mat->metallicFactor;
+        materialData.roughnessFactor = mat->roughnessFactor;
+        materialData.emissiveFactor  = mat->emissiveFactor;
+        m_materialUniforms.emplace_back(materialData);
+    }
+}
+
+void SceneRenderer::LoadSceneTextures()
+{
+    // default base color texture
+    m_defaultBaseColorTexture = m_renderDevice->RequestTexture2D("wood.png");
+    // scene textures
+    m_renderDevice->RegisterSceneTextures(m_scene, m_sceneTextures);
 }
 
 void SceneRenderer::DrawScene()
@@ -139,8 +192,6 @@ void SceneRenderer::PrepareTextures()
         texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
         m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo, "offscreen_depth");
     }
-    // default base color
-    m_defaultBaseColorTexture = m_renderDevice->RequestTexture2D("wood.png");
     // offscreen color texture sampler
     {
         SamplerInfo samplerInfo{};
@@ -173,46 +224,10 @@ void SceneRenderer::PrepareBuffers()
     }
 
     {
-        // prepare material ubo
-        auto sgMaterials = m_scene->GetComponents<sg::Material>();
-        m_materialUniforms.reserve(sgMaterials.size());
-        for (const auto* mat : sgMaterials)
-        {
-            MaterialUniformData matUniformData{};
-            if (mat->baseColorTexture != nullptr)
-            {
-                matUniformData.bcTexIndex = mat->baseColorTexture->index;
-                matUniformData.bcTexSet   = mat->texCoordSets.baseColor;
-            }
-            if (mat->metallicRoughnessTexture != nullptr)
-            {
-                matUniformData.mrTexIndex = mat->metallicRoughnessTexture->index;
-                matUniformData.mrTexSet   = mat->texCoordSets.metallicRoughness;
-            }
-            if (mat->normalTexture != nullptr)
-            {
-                matUniformData.normalTexIndex = mat->normalTexture->index;
-                matUniformData.normalTexSet   = mat->texCoordSets.normal;
-            }
-            if (mat->occlusionTexture != nullptr)
-            {
-                matUniformData.aoTexIndex = mat->occlusionTexture->index;
-                matUniformData.aoTexSet   = mat->texCoordSets.occlusion;
-            }
-            if (mat->emissiveTexture != nullptr)
-            {
-                matUniformData.emissiveTexIndex = mat->emissiveTexture->index;
-                matUniformData.emissiveTexSet   = mat->texCoordSets.emissive;
-            }
-            matUniformData.metallicFactor  = mat->metallicFactor;
-            matUniformData.roughnessFactor = mat->roughnessFactor;
-            matUniformData.emissiveFactor  = mat->emissiveFactor;
-            m_materialUniforms.emplace_back(matUniformData);
-        }
-
-        const auto uboSize = sizeof(MaterialUniformData) * m_materialUniforms.size();
-        m_materialsUBO     = m_renderDevice->CreateUniformBuffer(
-            uboSize, reinterpret_cast<const uint8_t*>(m_materialUniforms.data()));
+        // prepare material ssbo
+        const auto ssboSize = sizeof(MaterialData) * m_materialUniforms.size();
+        m_materialSSBO      = m_renderDevice->CreateStorageBuffer(
+            ssboSize, reinterpret_cast<const uint8_t*>(m_materialUniforms.data()));
     }
 
     {
@@ -259,16 +274,31 @@ void SceneRenderer::BuildRenderPipelines()
             binding1.type    = ShaderResourceType::eStorageBuffer;
             binding1.handles.push_back(m_nodeSSBO);
             bufferBindings.emplace_back(std::move(binding1));
+
+            ShaderResourceBinding binding2{};
+            binding2.binding = 2;
+            binding2.type    = ShaderResourceType::eStorageBuffer;
+            binding2.handles.push_back(m_materialSSBO);
+            bufferBindings.emplace_back(std::move(binding2));
         }
 
         std::vector<ShaderResourceBinding> textureBindings;
         {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eSamplerWithTexture;
-            binding0.handles.push_back(m_colorSampler);
-            binding0.handles.push_back(m_defaultBaseColorTexture);
-            textureBindings.emplace_back(std::move(binding0));
+            ShaderResourceBinding binding{};
+            binding.binding = 0;
+            binding.type    = ShaderResourceType::eTexture;
+            for (TextureHandle& textureHandle : m_sceneTextures)
+            {
+                binding.handles.push_back(textureHandle);
+            }
+            textureBindings.emplace_back(std::move(binding));
+        }
+        {
+            ShaderResourceBinding binding{};
+            binding.binding = 1;
+            binding.type    = ShaderResourceType::eSampler;
+            binding.handles.push_back(m_colorSampler);
+            textureBindings.emplace_back(std::move(binding));
         }
         rc::RenderPipelineBuilder builder(m_renderDevice);
         m_mainRPs.offscreen =
@@ -488,7 +518,7 @@ void SceneRenderer::Clear()
         m_renderDevice->DestroyBuffer(m_vertexBuffer);
         m_renderDevice->DestroyBuffer(m_indexBuffer);
         m_renderDevice->DestroyBuffer(m_nodeSSBO);
-        m_renderDevice->DestroyBuffer(m_materialsUBO);
+        m_renderDevice->DestroyBuffer(m_materialSSBO);
 
         m_pushConstantsData = {};
         m_nodesData.clear();

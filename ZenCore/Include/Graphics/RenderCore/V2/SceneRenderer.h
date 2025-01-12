@@ -44,7 +44,7 @@ public:
         Mat4 normalMatrix{1.0f};
     };
 
-    struct MaterialUniformData
+    struct MaterialData
     {
         int bcTexIndex{-1};
         int mrTexIndex{-1};
@@ -56,7 +56,7 @@ public:
         int normalTexSet{-1};
         int aoTexSet{-1};
         int emissiveTexSet{-1};
-        float metallicFactor{1.0f};
+        float metallicFactor{0.0f};
         float roughnessFactor{1.0f};
         Vec4 baseColorFactor{1.0f};
         Vec4 emissiveFactor{0.0f};
@@ -66,7 +66,6 @@ public:
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
-        uint32_t numLights;
     };
 
     struct SceneUniformData
@@ -98,6 +97,10 @@ public:
     }
 
 private:
+    void LoadSceneMaterials();
+
+    void LoadSceneTextures();
+
     void PrepareTextures();
 
     void PrepareBuffers();
@@ -141,8 +144,8 @@ private:
     std::vector<NodeData> m_nodesData;
     rhi::BufferHandle m_nodeSSBO;
 
-    std::vector<MaterialUniformData> m_materialUniforms;
-    rhi::BufferHandle m_materialsUBO;
+    std::vector<MaterialData> m_materialUniforms;
+    rhi::BufferHandle m_materialSSBO;
 
     BufferHandle m_cameraUBO;
     sys::Camera* m_camera{nullptr};
@@ -154,6 +157,8 @@ private:
         TextureHandle albedo;
         TextureHandle depth;
     } m_offscreenTextures;
+
+    std::vector<TextureHandle> m_sceneTextures;
 
     TextureHandle m_defaultBaseColorTexture;
 
