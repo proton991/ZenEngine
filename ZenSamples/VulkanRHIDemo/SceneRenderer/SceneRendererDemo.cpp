@@ -80,11 +80,7 @@ void SceneRendererDemo::Run()
 
         m_camera->Update(frameTime);
 
-        m_renderDevice->BeginDrawingViewport(m_viewport);
-
         m_sceneRenderer->DrawScene();
-
-        m_renderDevice->EndDrawingViewport(m_viewport);
 
         m_renderDevice->NextFrame();
     }

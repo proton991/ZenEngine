@@ -109,12 +109,18 @@ bool VulkanFenceManager::IsFenceSignaled(VulkanFence* fence)
 
 bool VulkanFenceManager::WaitForFence(VulkanFence* fence, uint64_t timeNS)
 {
+    if (IsFenceSignaled(fence))
+    {
+        fence->m_state = VulkanFence::State::eSignaled;
+        return true;
+    }
     VkResult result = vkWaitForFences(m_device->GetVkHandle(), 1, &fence->m_fence, true, timeNS);
     if (result == VK_SUCCESS)
     {
         fence->m_state = VulkanFence::State::eSignaled;
         return true;
     }
+    LOGE("vkWaitForFences Failed with error {}", result);
     return false;
 }
 

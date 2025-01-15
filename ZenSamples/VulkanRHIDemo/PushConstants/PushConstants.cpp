@@ -25,9 +25,7 @@ void PushConstantsApp::Run()
 
         m_window->Update();
         m_camera->Update(frameTime);
-        m_renderDevice->BeginDrawingViewport(m_viewport);
         m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
-        m_renderDevice->EndDrawingViewport(m_viewport);
         m_renderDevice->NextFrame();
     }
 }

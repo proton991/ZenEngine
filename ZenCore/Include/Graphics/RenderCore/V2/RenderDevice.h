@@ -155,6 +155,11 @@ private:
 
     void InsertNewBlock();
 
+    void UpdateBlockIndex()
+    {
+        m_currentBlockIndex = (m_currentBlockIndex + 1) % m_bufferBlocks.size();
+    }
+
     uint32_t BUFFER_SIZE;
     uint64_t POOL_SIZE;
     RenderDevice* m_renderDevice{nullptr};
@@ -167,6 +172,7 @@ private:
     };
     std::vector<StagingBuffer> m_bufferBlocks;
     uint32_t m_currentBlockIndex;
+    bool m_stagingBufferUsed{false};
 
     friend class RenderDevice;
 };
@@ -176,6 +182,7 @@ struct RenderFrame
     rhi::RHICommandListContext* cmdListContext{nullptr};
     rhi::RHICommandList* uploadCmdList{nullptr};
     rhi::RHICommandList* drawCmdList{nullptr};
+    bool cmdSubmitted{false};
 };
 
 class RenderDevice
@@ -189,11 +196,7 @@ public:
 
     void Destroy();
 
-    void BeginDrawingViewport(rhi::RHIViewport* viewport);
-
-    void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg);
-
-    void EndDrawingViewport(rhi::RHIViewport* viewport);
+    void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present = true);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
 

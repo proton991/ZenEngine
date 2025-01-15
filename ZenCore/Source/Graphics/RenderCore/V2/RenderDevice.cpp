@@ -12,8 +12,8 @@
 #include <execution>
 
 #define TEXTURE_UPLOAD_REGION_SIZE 64
-#define STAGING_BLOCK_SIZE_BYTES   (256 * 1024)
-#define STAGING_POOL_SIZE_BYTES    (128 * 1024 * 1024)
+#define STAGING_BLOCK_SIZE_BYTES   (512 * 1024)
+#define STAGING_POOL_SIZE_BYTES    (256 * 1024 * 1024)
 
 namespace zen::rc
 {
@@ -196,6 +196,7 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
     while (true)
     {
         result->writeOffset = 0;
+        uint32_t usedFrame  = m_bufferBlocks[m_currentBlockIndex].usedFrame;
         if (m_bufferBlocks[m_currentBlockIndex].usedFrame == m_renderDevice->GetFramesCounter())
         {
             if (!FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, canSegment, result))
@@ -204,33 +205,33 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
                 if (m_bufferBlocks[m_currentBlockIndex].usedFrame ==
                     m_renderDevice->GetFramesCounter())
                 {
-                    //                    if (CanInsertNewBlock())
-                    //                    {
-                    //                        InsertNewBlock();
-                    //                        m_bufferBlocks[m_currentBlockIndex].usedFrame =
-                    //                            m_renderDevice->GetFramesCounter();
-                    //                    }
-                    //                    else
-                    //                    {
-                    //                        // not enough space, wait for all frames
-                    //                        result->flushAction = StagingFlushAction::eFull;
-                    //                    }
-                    bool secondAttempt = FitInBlock(m_currentBlockIndex, requiredSize,
-                                                    requiredAlign, canSegment, result);
-                    if (!secondAttempt)
+                    if (CanInsertNewBlock())
                     {
-                        if (CanInsertNewBlock())
-                        {
-                            InsertNewBlock();
-                            m_bufferBlocks[m_currentBlockIndex].usedFrame =
-                                m_renderDevice->GetFramesCounter();
-                        }
-                        else
-                        {
-                            // not enough space, wait for all frames
-                            result->flushAction = StagingFlushAction::eFull;
-                        }
+                        InsertNewBlock();
+                        m_bufferBlocks[m_currentBlockIndex].usedFrame =
+                            m_renderDevice->GetFramesCounter();
                     }
+                    else
+                    {
+                        // not enough space, wait for all frames
+                        result->flushAction = StagingFlushAction::eFull;
+                    }
+                    //                    bool secondAttempt = FitInBlock(m_currentBlockIndex, requiredSize,
+                    //                                                    requiredAlign, canSegment, result);
+                    //                    if (!secondAttempt)
+                    //                    {
+                    //                        if (CanInsertNewBlock())
+                    //                        {
+                    //                            InsertNewBlock();
+                    //                            m_bufferBlocks[m_currentBlockIndex].usedFrame =
+                    //                                m_renderDevice->GetFramesCounter();
+                    //                        }
+                    //                        else
+                    //                        {
+                    //                            // not enough space, wait for all frames
+                    //                            result->flushAction = StagingFlushAction::eFull;
+                    //                        }
+                    //                    }
                 }
                 else
                 {
@@ -258,8 +259,9 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
         }
         break;
     }
-    result->success = true;
-    result->buffer  = m_bufferBlocks[m_currentBlockIndex].handle;
+    result->success     = true;
+    result->buffer      = m_bufferBlocks[m_currentBlockIndex].handle;
+    m_stagingBufferUsed = true;
 }
 
 void StagingBufferManager::EndSubmit(const StagingSubmitResult* result)
@@ -314,6 +316,7 @@ void RenderDevice::Init()
                 dynamic_cast<rhi::VulkanCommandListContext*>(frame.cmdListContext));
             m_frames.emplace_back(frame);
         }
+        m_framesCounter = m_frames.size();
     }
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
@@ -365,20 +368,12 @@ void RenderDevice::Destroy()
     delete m_RHI;
 }
 
-void RenderDevice::BeginDrawingViewport(rhi::RHIViewport* viewport)
+void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present)
 {
     m_RHI->BeginDrawingViewport(viewport);
-}
-
-void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg)
-{
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
-}
-
-void RenderDevice::EndDrawingViewport(rhi::RHIViewport* viewport)
-{
     EndFrame();
-    m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, true);
+    m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
 }
 
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
@@ -850,8 +845,25 @@ void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
     }
 }
 
-void RenderDevice::WaitForPreviousFrames() {}
-void RenderDevice::WaitForAllFrames() {}
+void RenderDevice::WaitForPreviousFrames()
+{
+    for (uint32_t i = 0; i < m_frames.size(); i++)
+    {
+        if (m_frames[i].cmdSubmitted)
+        {
+            m_RHI->WaitForCommandList(m_frames[i].uploadCmdList);
+            m_RHI->WaitForCommandList(m_frames[i].drawCmdList);
+            m_frames[i].cmdSubmitted = false;
+        }
+    }
+}
+
+void RenderDevice::WaitForAllFrames()
+{
+    WaitForPreviousFrames();
+    EndFrame();
+    BeginFrame();
+}
 
 
 void RenderDevice::NextFrame()
@@ -863,6 +875,11 @@ void RenderDevice::NextFrame()
 void RenderDevice::BeginFrame()
 {
     m_framesCounter++;
+    if (m_stagingBufferMgr->m_stagingBufferUsed)
+    {
+        m_stagingBufferMgr->UpdateBlockIndex();
+        m_stagingBufferMgr->m_stagingBufferUsed = false;
+    }
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
 }
@@ -871,6 +888,7 @@ void RenderDevice::EndFrame()
 {
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
     m_frames[m_currentFrame].drawCmdList->EndRender();
+    m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
 size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)

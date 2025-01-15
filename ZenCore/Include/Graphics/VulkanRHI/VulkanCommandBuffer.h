@@ -189,9 +189,7 @@ public:
         return m_uploadCmdBuffer != nullptr;
     }
 
-    void WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer, float timeInSecondsToWait = 10.0f);
-
-    void WaitForLastSubmittedCmdBuffer(float timeInSecondsToWait = 10.0f);
+    void WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer, float timeInSecondsToWait = 1.0f);
 
     // Update the fences of all cmd buffers except SkipCmdBuffer
     void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer = nullptr)
