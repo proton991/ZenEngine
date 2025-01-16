@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "stb_image.h"
@@ -114,7 +115,75 @@ RenderPipeline RenderPipelineBuilder::Build()
     return renderPipeline;
 }
 
-StagingBufferManager::StagingBufferManager(RenderDevice* renderDevice,
+rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
+{
+    for (uint32_t i = 0; i < m_freeBuffers.size(); i++)
+    {
+        Entry& entry = m_freeBuffers[i];
+        if (entry.size == requiredSize)
+        {
+            m_freeBuffers.erase(m_freeBuffers.begin() + i);
+            entry.usedFrame = m_renderDevice->GetFramesCounter();
+            m_usedBuffers.push_back(entry);
+            return entry.buffer;
+        }
+    }
+
+    Entry newEntry{};
+    newEntry.size      = requiredSize;
+    newEntry.usedFrame = m_renderDevice->GetFramesCounter();
+    newEntry.buffer    = m_renderDevice->GetRHI()->CreateBuffer(
+        requiredSize, BitField(rhi::BufferUsageFlagBits::eTransferSrcBuffer),
+        rhi::BufferAllocateType::eCPU);
+
+    m_usedBuffers.push_back(newEntry);
+
+    m_allocatedBuffers.push_back(newEntry.buffer);
+
+    m_usedMemory += requiredSize;
+
+    return newEntry.buffer;
+}
+
+void TextureStagingManager::ReleaseBuffer(const rhi::BufferHandle& buffer)
+{
+    for (uint32_t i = 0; i < m_usedBuffers.size(); i++)
+    {
+        if (m_usedBuffers[i].buffer.value == buffer.value)
+        {
+            Entry& entry = m_usedBuffers[i];
+            m_usedBuffers.erase(m_usedBuffers.begin() + i);
+            m_pendingFreeBuffers.push_back(entry);
+        }
+    }
+}
+
+void TextureStagingManager::ProcessPendingFrees()
+{
+    uint32_t currentFrame = m_renderDevice->GetFramesCounter();
+    for (uint32_t i = 0; i < m_pendingFreeBuffers.size(); i++)
+    {
+        Entry& entry = m_pendingFreeBuffers[i];
+        if (currentFrame - entry.usedFrame >= RenderConfig::GetInstance().numFrames)
+        {
+            // old buffers, reuse them
+            m_pendingFreeBuffers.erase(m_pendingFreeBuffers.begin() + i);
+            entry.usedFrame = currentFrame;
+            m_freeBuffers.push_back(entry);
+        }
+    }
+}
+
+void TextureStagingManager::Destroy()
+{
+    for (rhi::BufferHandle& buffer : m_allocatedBuffers)
+    {
+        m_renderDevice->GetRHI()->DestroyBuffer(buffer);
+    }
+    LOGI("Texture Staging Memory Used: {} bytes.", m_usedMemory);
+}
+
+BufferStagingManager::BufferStagingManager(RenderDevice* renderDevice,
                                            uint32_t blockSize,
                                            uint64_t poolSize) :
     BUFFER_SIZE(blockSize),
@@ -129,7 +198,7 @@ StagingBufferManager::StagingBufferManager(RenderDevice* renderDevice,
     }
 }
 
-void StagingBufferManager::Init(uint32_t numFrames)
+void BufferStagingManager::Init(uint32_t numFrames)
 {
     for (uint32_t i = 0; i < numFrames; i++)
     {
@@ -137,7 +206,7 @@ void StagingBufferManager::Init(uint32_t numFrames)
     }
 }
 
-void StagingBufferManager::Destroy()
+void BufferStagingManager::Destroy()
 {
     for (auto& buffer : m_bufferBlocks)
     {
@@ -145,7 +214,7 @@ void StagingBufferManager::Destroy()
     }
 }
 
-void StagingBufferManager::InsertNewBlock()
+void BufferStagingManager::InsertNewBlock()
 {
     StagingBuffer buffer;
     buffer.handle =
@@ -156,7 +225,7 @@ void StagingBufferManager::InsertNewBlock()
     m_bufferBlocks.insert(m_bufferBlocks.begin() + m_currentBlockIndex, std::move(buffer));
 }
 
-bool StagingBufferManager::FitInBlock(uint32_t blockIndex,
+bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
                                       uint32_t requiredSize,
                                       uint32_t requiredAlign,
                                       bool canSegment,
@@ -187,7 +256,7 @@ bool StagingBufferManager::FitInBlock(uint32_t blockIndex,
     return true;
 }
 
-void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
+void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
                                        StagingSubmitResult* result,
                                        uint32_t requiredAlign,
                                        bool canSegment)
@@ -216,22 +285,6 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
                         // not enough space, wait for all frames
                         result->flushAction = StagingFlushAction::eFull;
                     }
-                    //                    bool secondAttempt = FitInBlock(m_currentBlockIndex, requiredSize,
-                    //                                                    requiredAlign, canSegment, result);
-                    //                    if (!secondAttempt)
-                    //                    {
-                    //                        if (CanInsertNewBlock())
-                    //                        {
-                    //                            InsertNewBlock();
-                    //                            m_bufferBlocks[m_currentBlockIndex].usedFrame =
-                    //                                m_renderDevice->GetFramesCounter();
-                    //                        }
-                    //                        else
-                    //                        {
-                    //                            // not enough space, wait for all frames
-                    //                            result->flushAction = StagingFlushAction::eFull;
-                    //                        }
-                    //                    }
                 }
                 else
                 {
@@ -264,13 +317,13 @@ void StagingBufferManager::BeginSubmit(uint32_t requiredSize,
     m_stagingBufferUsed = true;
 }
 
-void StagingBufferManager::EndSubmit(const StagingSubmitResult* result)
+void BufferStagingManager::EndSubmit(const StagingSubmitResult* result)
 {
     m_bufferBlocks[m_currentBlockIndex].occupiedSize = result->writeOffset + result->writeSize;
     m_bufferBlocks[m_currentBlockIndex].usedFrame    = m_renderDevice->GetFramesCounter();
 }
 
-void StagingBufferManager::PerformAction(StagingFlushAction action)
+void BufferStagingManager::PerformAction(StagingFlushAction action)
 {
     if (action == StagingFlushAction::ePartial)
     {
@@ -302,9 +355,10 @@ void RenderDevice::Init()
         m_RHI->Init();
 
         m_RHIDebug = new rhi::VulkanDebug(m_RHI);
-        m_stagingBufferMgr =
-            new StagingBufferManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
-        m_stagingBufferMgr->Init(m_numFrames);
+        m_bufferStagingMgr =
+            new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
+        m_bufferStagingMgr->Init(m_numFrames);
+        m_textureStagingMgr = new TextureStagingManager(this);
         m_frames.reserve(m_numFrames);
         for (uint32_t i = 0; i < m_numFrames; i++)
         {
@@ -357,8 +411,13 @@ void RenderDevice::Destroy()
         m_RHI->DestroyTexture(kv.second);
     }
     m_deletionQueue.Flush();
-    m_stagingBufferMgr->Destroy();
-    delete m_stagingBufferMgr;
+
+    m_bufferStagingMgr->Destroy();
+    delete m_bufferStagingMgr;
+
+    m_textureStagingMgr->Destroy();
+    delete m_textureStagingMgr;
+
     for (RenderFrame& frame : m_frames)
     {
         delete frame.uploadCmdList;
@@ -637,17 +696,8 @@ rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool 
     }
     else
     {
-        if (STAGING_BLOCK_SIZE_BYTES >= vecData.size())
-        {
-            UpdateTextureOneTime(texture,
-                                 {textureInfo.width, textureInfo.height, textureInfo.depth},
-                                 vecData.size(), vecData.data());
-        }
-        else
-        {
-            UpdateTextureBatch(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
-                               vecData.data());
-        }
+        UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
+                      vecData.size(), vecData.data());
     }
     // transfer layout to eShaderReadOnly
     m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
@@ -681,18 +731,10 @@ void RenderDevice::RegisterSceneTextures(const sg::Scene* scene,
             m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
                                        rhi::TextureLayout::eUndefined,
                                        rhi::TextureLayout::eTransferDst);
-            if (STAGING_BLOCK_SIZE_BYTES >= sgTexture->bytesData.size())
-            {
-                UpdateTextureOneTime(texture,
-                                     {textureInfo.width, textureInfo.height, textureInfo.depth},
-                                     sgTexture->bytesData.size(), sgTexture->bytesData.data());
-            }
-            else
-            {
-                UpdateTextureBatch(texture,
-                                   {textureInfo.width, textureInfo.height, textureInfo.depth},
-                                   sgTexture->bytesData.data());
-            }
+
+            UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
+                          sgTexture->bytesData.size(), sgTexture->bytesData.data());
+
             // transfer layout to eShaderReadOnly
             m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
                                        rhi::TextureLayout::eTransferDst,
@@ -701,6 +743,29 @@ void RenderDevice::RegisterSceneTextures(const sg::Scene* scene,
         }
         outTextures.push_back(m_textureCache[sgTexture->GetName()]);
     }
+}
+
+void RenderDevice::UpdateTexture(rhi::TextureHandle textureHandle,
+                                 const Vec3i& textureSize,
+                                 uint32_t dataSize,
+                                 const uint8_t* pData)
+{
+    rhi::BufferHandle stagingBuffer = m_textureStagingMgr->RequireBuffer(dataSize);
+    // map staging buffer
+    uint8_t* dataPtr = m_RHI->MapBuffer(stagingBuffer);
+    // copy
+    memcpy(dataPtr, pData, dataSize);
+    // unmap
+    m_RHI->UnmapBuffer(stagingBuffer);
+    // copy to gpu memory
+    rhi::BufferTextureCopyRegion copyRegion{};
+    copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
+    copyRegion.bufferOffset  = 0;
+    copyRegion.textureOffset = {0, 0, 0};
+    copyRegion.textureSize   = textureSize;
+    m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(stagingBuffer, textureHandle,
+                                                                copyRegion);
+    m_textureStagingMgr->ReleaseBuffer(stagingBuffer);
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
@@ -714,7 +779,7 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     const uint32_t requiredAlign = 4;
     const uint32_t pixelSize     = 4;
     StagingSubmitResult submitResult;
-    m_stagingBufferMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
+    m_bufferStagingMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
     if (submitResult.flushAction == StagingFlushAction::ePartial)
     {
         WaitForPreviousFrames();
@@ -723,7 +788,7 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     {
         WaitForAllFrames();
     }
-    m_stagingBufferMgr->PerformAction(submitResult.flushAction);
+    m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
     // map staging buffer
     uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
@@ -743,7 +808,7 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
                                                                 copyRegion);
 
-    m_stagingBufferMgr->EndSubmit(&submitResult);
+    m_bufferStagingMgr->EndSubmit(&submitResult);
 }
 
 void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
@@ -769,7 +834,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
                 uint32_t imageStride  = regionWidth * pixelSize;
                 uint32_t toSubmit     = imageStride * regionHeight;
                 StagingSubmitResult submitResult;
-                m_stagingBufferMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
+                m_bufferStagingMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
                 if (submitResult.flushAction == StagingFlushAction::ePartial)
                 {
                     WaitForPreviousFrames();
@@ -778,7 +843,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
                 {
                     WaitForAllFrames();
                 }
-                m_stagingBufferMgr->PerformAction(submitResult.flushAction);
+                m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
                 // map staging buffer
                 uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
@@ -796,7 +861,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
                 m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(
                     submitResult.buffer, textureHandle, copyRegion);
 
-                m_stagingBufferMgr->EndSubmit(&submitResult);
+                m_bufferStagingMgr->EndSubmit(&submitResult);
             }
         }
     }
@@ -812,7 +877,7 @@ void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
     while (toSubmit > 0)
     {
         StagingSubmitResult submitResult;
-        m_stagingBufferMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
+        m_bufferStagingMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
                                         &submitResult, 32, true);
 
         if (submitResult.flushAction == StagingFlushAction::ePartial)
@@ -823,7 +888,7 @@ void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
         {
             WaitForAllFrames();
         }
-        m_stagingBufferMgr->PerformAction(submitResult.flushAction);
+        m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
         // map staging buffer
         uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
@@ -839,7 +904,7 @@ void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
         m_frames[m_currentFrame].uploadCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
                                                            copyRegion);
 
-        m_stagingBufferMgr->EndSubmit(&submitResult);
+        m_bufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
         writePosition += submitResult.writeSize;
     }
@@ -875,10 +940,10 @@ void RenderDevice::NextFrame()
 void RenderDevice::BeginFrame()
 {
     m_framesCounter++;
-    if (m_stagingBufferMgr->m_stagingBufferUsed)
+    if (m_bufferStagingMgr->m_stagingBufferUsed)
     {
-        m_stagingBufferMgr->UpdateBlockIndex();
-        m_stagingBufferMgr->m_stagingBufferUsed = false;
+        m_bufferStagingMgr->UpdateBlockIndex();
+        m_bufferStagingMgr->m_stagingBufferUsed = false;
     }
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
@@ -889,6 +954,7 @@ void RenderDevice::EndFrame()
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
     m_frames[m_currentFrame].drawCmdList->EndRender();
     m_frames[m_currentFrame].cmdSubmitted = true;
+    m_textureStagingMgr->ProcessPendingFrees();
 }
 
 size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)

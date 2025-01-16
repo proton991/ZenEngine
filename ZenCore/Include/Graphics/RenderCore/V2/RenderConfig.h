@@ -19,6 +19,8 @@ struct RenderConfig
 
     uint32_t offScreenFbSize = 2048;
 
-    DataFormat shadowDepthFormat{DataFormat::eD16UNORM};
+    uint32_t numFrames = 3;
+
+    rhi::DataFormat shadowDepthFormat{rhi::DataFormat::eD16UNORM};
 };
 } // namespace zen::rc

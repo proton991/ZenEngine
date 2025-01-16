@@ -122,11 +122,47 @@ struct StagingSubmitResult
     rhi::BufferHandle buffer;
 };
 
-// todo: fix bugs when loading a large number of textures
-class StagingBufferManager
+class TextureStagingManager
 {
 public:
-    StagingBufferManager(RenderDevice* renderDevice, uint32_t bufferSize, uint64_t poolSize);
+    explicit TextureStagingManager(RenderDevice* renderDevice) :
+        m_renderDevice(renderDevice), m_usedMemory(0)
+    {}
+
+    rhi::BufferHandle RequireBuffer(uint32_t requiredSize);
+
+    void ReleaseBuffer(const rhi::BufferHandle& buffer);
+
+    void ProcessPendingFrees();
+
+    uint32_t GetUsedMemory() const
+    {
+        return m_usedMemory;
+    }
+
+    void Destroy();
+
+private:
+    RenderDevice* m_renderDevice{nullptr};
+    struct Entry
+    {
+        uint32_t size;
+        rhi::BufferHandle buffer;
+        uint32_t usedFrame;
+    };
+    std::vector<Entry> m_usedBuffers;
+    std::vector<Entry> m_pendingFreeBuffers;
+    std::vector<Entry> m_freeBuffers;
+    // for memory management
+    std::vector<rhi::BufferHandle> m_allocatedBuffers;
+    uint32_t m_usedMemory;
+};
+
+// todo: fix bugs when loading a large number of textures
+class BufferStagingManager
+{
+public:
+    BufferStagingManager(RenderDevice* renderDevice, uint32_t bufferSize, uint64_t poolSize);
 
     void Init(uint32_t numFrames);
 
@@ -281,6 +317,11 @@ private:
                               uint32_t dataSize,
                               const uint8_t* pData);
 
+    void UpdateTexture(rhi::TextureHandle textureHandle,
+                       const Vec3i& textureSize,
+                       uint32_t dataSize,
+                       const uint8_t* pData);
+
     void UpdateTextureOneTime(rhi::TextureHandle textureHandle,
                               const Vec3i& textureSize,
                               uint32_t dataSize,
@@ -312,7 +353,8 @@ private:
     std::vector<RenderFrame> m_frames;
     rhi::DynamicRHI* m_RHI{nullptr};
     rhi::RHIDebug* m_RHIDebug{nullptr};
-    StagingBufferManager* m_stagingBufferMgr{nullptr};
+    BufferStagingManager* m_bufferStagingMgr{nullptr};
+    TextureStagingManager* m_textureStagingMgr{nullptr};
     DeletionQueue m_deletionQueue;
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;

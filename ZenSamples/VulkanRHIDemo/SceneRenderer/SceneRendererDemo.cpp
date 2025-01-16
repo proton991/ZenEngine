@@ -1,12 +1,13 @@
 #include "SceneRendererDemo.h"
-
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/GLTFLoader.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sys::CameraType type)
 {
-    m_renderDevice = MakeUnique<rc::RenderDevice>(GraphicsAPIType::eVulkan, 3);
+    m_renderDevice = MakeUnique<rc::RenderDevice>(GraphicsAPIType::eVulkan,
+                                                  rc::RenderConfig::GetInstance().numFrames);
     m_renderDevice->Init();
 
     m_window = new platform::GlfwWindowImpl(windowConfig);
