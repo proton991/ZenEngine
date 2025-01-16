@@ -202,6 +202,13 @@ void SceneRenderer::PrepareTextures()
     {
         SamplerInfo samplerInfo{};
         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
+        samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
+        samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
+        samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
+        samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
+        samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
+        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
         m_colorSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
 }
