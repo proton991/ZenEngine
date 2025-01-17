@@ -36,7 +36,6 @@ void VulkanCommandList::EndRender()
 {
     m_cmdBufferManager->SubmitActiveCmdBuffer();
     m_cmdBufferManager->SetupNewActiveCmdBuffer();
-    m_cmdBuffer = nullptr;
 }
 
 void VulkanCommandList::BeginUpload()
@@ -47,7 +46,6 @@ void VulkanCommandList::BeginUpload()
 void VulkanCommandList::EndUpload()
 {
     m_cmdBufferManager->SubmitUploadCmdBuffer();
-    m_cmdBuffer = nullptr;
 }
 
 void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages,

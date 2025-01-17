@@ -4,6 +4,11 @@
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIDebug.h"
 
+#define TEXTURE_UPLOAD_REGION_SIZE            64
+#define STAGING_BLOCK_SIZE_BYTES              (256 * 1024)
+#define STAGING_POOL_SIZE_BYTES               (128 * 1024 * 1024)
+#define MAX_TEXTURE_STAGING_PENDING_FREE_SIZE (4 * 1024 * 1024)
+
 namespace zen::sg
 {
 class Scene;
@@ -126,7 +131,7 @@ class TextureStagingManager
 {
 public:
     explicit TextureStagingManager(RenderDevice* renderDevice) :
-        m_renderDevice(renderDevice), m_usedMemory(0)
+        m_renderDevice(renderDevice), m_usedMemory(0), m_pendingFreeMemorySize(0)
     {}
 
     rhi::BufferHandle RequireBuffer(uint32_t requiredSize);
@@ -135,9 +140,14 @@ public:
 
     void ProcessPendingFrees();
 
-    uint32_t GetUsedMemory() const
+    uint32_t GetUsedMemorySize() const
     {
         return m_usedMemory;
+    }
+
+    uint32_t GetPendingFreeMemorySize() const
+    {
+        return m_pendingFreeMemorySize;
     }
 
     void Destroy();
@@ -156,6 +166,7 @@ private:
     // for memory management
     std::vector<rhi::BufferHandle> m_allocatedBuffers;
     uint32_t m_usedMemory;
+    uint32_t m_pendingFreeMemorySize;
 };
 
 // todo: fix bugs when loading a large number of textures

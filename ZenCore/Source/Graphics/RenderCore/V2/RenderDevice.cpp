@@ -12,10 +12,6 @@
 #include <fstream>
 #include <execution>
 
-#define TEXTURE_UPLOAD_REGION_SIZE 64
-#define STAGING_BLOCK_SIZE_BYTES   (512 * 1024)
-#define STAGING_POOL_SIZE_BYTES    (256 * 1024 * 1024)
-
 namespace zen::rc
 {
 std::vector<uint8_t> LoadSpirvCode(const std::string& name)
@@ -119,7 +115,7 @@ rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
 {
     for (uint32_t i = 0; i < m_freeBuffers.size(); i++)
     {
-        Entry& entry = m_freeBuffers[i];
+        Entry entry = m_freeBuffers[i];
         if (entry.size == requiredSize)
         {
             m_freeBuffers.erase(m_freeBuffers.begin() + i);
@@ -151,9 +147,10 @@ void TextureStagingManager::ReleaseBuffer(const rhi::BufferHandle& buffer)
     {
         if (m_usedBuffers[i].buffer.value == buffer.value)
         {
-            Entry& entry = m_usedBuffers[i];
+            Entry entry = m_usedBuffers[i];
             m_usedBuffers.erase(m_usedBuffers.begin() + i);
             m_pendingFreeBuffers.push_back(entry);
+            m_pendingFreeMemorySize += entry.size;
         }
     }
 }
@@ -163,13 +160,13 @@ void TextureStagingManager::ProcessPendingFrees()
     uint32_t currentFrame = m_renderDevice->GetFramesCounter();
     for (uint32_t i = 0; i < m_pendingFreeBuffers.size(); i++)
     {
-        Entry& entry = m_pendingFreeBuffers[i];
+        Entry entry = m_pendingFreeBuffers[i];
         if (currentFrame - entry.usedFrame >= RenderConfig::GetInstance().numFrames)
         {
             // old buffers, reuse them
             m_pendingFreeBuffers.erase(m_pendingFreeBuffers.begin() + i);
-            entry.usedFrame = currentFrame;
             m_freeBuffers.push_back(entry);
+            m_pendingFreeMemorySize -= entry.size;
         }
     }
 }
@@ -687,9 +684,7 @@ rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool 
     textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
 
     rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-    // transfer layout to eTransferDst
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
-                               rhi::TextureLayout::eUndefined, rhi::TextureLayout::eTransferDst);
+
     if (requireMipmap)
     {
         // TODO: generate mipmaps
@@ -699,10 +694,7 @@ rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool 
         UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
                       vecData.size(), vecData.data());
     }
-    // transfer layout to eShaderReadOnly
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
-                               rhi::TextureLayout::eTransferDst,
-                               rhi::TextureLayout::eShaderReadOnly);
+
     m_textureCache[file] = texture;
     return texture;
 }
@@ -727,18 +719,10 @@ void RenderDevice::RegisterSceneTextures(const sg::Scene* scene,
             textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
 
             rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-            // transfer layout to eTransferDst
-            m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
-                                       rhi::TextureLayout::eUndefined,
-                                       rhi::TextureLayout::eTransferDst);
 
             UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
                           sgTexture->bytesData.size(), sgTexture->bytesData.data());
 
-            // transfer layout to eShaderReadOnly
-            m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, texture,
-                                       rhi::TextureLayout::eTransferDst,
-                                       rhi::TextureLayout::eShaderReadOnly);
             m_textureCache[sgTexture->GetName()] = texture;
         }
         outTextures.push_back(m_textureCache[sgTexture->GetName()]);
@@ -750,6 +734,10 @@ void RenderDevice::UpdateTexture(rhi::TextureHandle textureHandle,
                                  uint32_t dataSize,
                                  const uint8_t* pData)
 {
+    // transfer layout to eTransferDst
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, textureHandle,
+                               rhi::TextureLayout::eUndefined, rhi::TextureLayout::eTransferDst);
+
     rhi::BufferHandle stagingBuffer = m_textureStagingMgr->RequireBuffer(dataSize);
     // map staging buffer
     uint8_t* dataPtr = m_RHI->MapBuffer(stagingBuffer);
@@ -766,6 +754,16 @@ void RenderDevice::UpdateTexture(rhi::TextureHandle textureHandle,
     m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(stagingBuffer, textureHandle,
                                                                 copyRegion);
     m_textureStagingMgr->ReleaseBuffer(stagingBuffer);
+
+    // transfer layout to eShaderReadOnly
+    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, textureHandle,
+                               rhi::TextureLayout::eTransferDst,
+                               rhi::TextureLayout::eShaderReadOnly);
+
+    if (m_textureStagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
+    {
+        WaitForAllFrames();
+    }
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
@@ -925,8 +923,8 @@ void RenderDevice::WaitForPreviousFrames()
 
 void RenderDevice::WaitForAllFrames()
 {
-    WaitForPreviousFrames();
     EndFrame();
+    WaitForPreviousFrames();
     BeginFrame();
 }
 
