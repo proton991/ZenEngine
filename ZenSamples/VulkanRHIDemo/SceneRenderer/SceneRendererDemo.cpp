@@ -34,13 +34,15 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     });
 
     m_timer = MakeUnique<platform::Timer>();
+
+    m_configLoader = platform::ConfigLoader();
 }
 
 void SceneRendererDemo::Prepare()
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(m_scenePath, m_scene.Get());
+    gltfLoader->LoadFromFile(m_configLoader.GetDefaultGLTFModelPath(), m_scene.Get());
 
     rc::SceneData sceneData{};
     sceneData.camera      = m_camera.Get();

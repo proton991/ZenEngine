@@ -1,4 +1,5 @@
 #pragma once
+#include "Platform/ConfigLoader.h"
 #include "Platform/Timer.h"
 #include "Systems/Camera.h"
 #include "Graphics/RenderCore/V2/SceneRenderer.h"
@@ -36,5 +37,5 @@ private:
     float m_animationTimer{0.0f};
     float m_animationSpeed{0.25f};
 
-    const std::string m_scenePath = "../../glTF-Sample-Models/2.0/Suzanne/glTF/Suzanne.gltf";
+    platform::ConfigLoader m_configLoader;
 };

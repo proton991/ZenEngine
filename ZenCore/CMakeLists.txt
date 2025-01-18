@@ -117,6 +117,7 @@ set(ZEN_CORE_HEADERS
     Include/Platform/InputController.h
     Include/Platform/NativeWindow.h
     Include/Platform/Timer.h
+    Include/Platform/ConfigLoader.h
 )
 
 set(ZEN_CORE_SOURCES
@@ -255,3 +256,4 @@ target_compile_definitions(ZenCore PUBLIC SPV_SHADER_PATH="${SHADER_SPV_PATH}")
 
 set(ZEN_TEXTURE_PATH ${PROJECT_SOURCE_DIR}/Data/Textures/)
 target_compile_definitions(ZenCore PUBLIC ZEN_TEXTURE_PATH="${ZEN_TEXTURE_PATH}")
+target_compile_definitions(ZenCore PUBLIC ZEN_CONFIG_PATH="${PROJECT_SOURCE_DIR}/Data/engine.cfg")

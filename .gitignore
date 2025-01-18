@@ -5,4 +5,5 @@ build/
 .idea/
 
 Data/SpvShaders
+Data/engine.cfg
 .DS_Store
