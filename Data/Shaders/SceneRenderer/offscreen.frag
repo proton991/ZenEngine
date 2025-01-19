@@ -1,9 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout (set = 1, binding = 0) uniform texture2D uTextureArray[1024];
-layout (set = 1, binding = 1) uniform sampler uTextureSampler;
-
+layout (set = 1, binding = 0) uniform sampler2D uTextureArray[1024];
 
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec2 inUV;
@@ -64,5 +62,5 @@ void main()
     vec3 tnorm = GetNormal();
     outNormal = vec4(tnorm, 1.0);
 
-    outAlbedo = texture(sampler2D(uTextureArray[materialData[uMaterialIndex].bcTexIndex], uTextureSampler), inUV);
+    outAlbedo = texture(uTextureArray[materialData[uMaterialIndex].bcTexIndex], inUV);
 }

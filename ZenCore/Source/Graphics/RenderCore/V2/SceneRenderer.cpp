@@ -293,20 +293,15 @@ void SceneRenderer::BuildRenderPipelines()
         {
             ShaderResourceBinding binding{};
             binding.binding = 0;
-            binding.type    = ShaderResourceType::eTexture;
+            binding.type    = ShaderResourceType::eSamplerWithTexture;
             for (TextureHandle& textureHandle : m_sceneTextures)
             {
+                binding.handles.push_back(m_colorSampler);
                 binding.handles.push_back(textureHandle);
             }
             textureBindings.emplace_back(std::move(binding));
         }
-        {
-            ShaderResourceBinding binding{};
-            binding.binding = 1;
-            binding.type    = ShaderResourceType::eSampler;
-            binding.handles.push_back(m_colorSampler);
-            textureBindings.emplace_back(std::move(binding));
-        }
+
         rc::RenderPipelineBuilder builder(m_renderDevice);
         m_mainRPs.offscreen =
             builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
