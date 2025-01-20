@@ -5,6 +5,8 @@
 
 namespace zen::sg
 {
+Scene::DefaultTextures Scene::sDefaultTextures = {};
+
 void Scene::UpdateAABB()
 {
     for (auto* node : m_renderableNodes)
@@ -44,5 +46,49 @@ std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& ey
         result.push_back(nodeIt->second);
     }
     return result;
+}
+
+void Scene::LoadDefaultTextures(uint32_t startIndex)
+{
+    sDefaultTextures.baseColor            = new sg::Texture("DefaultBaseColor");
+    sDefaultTextures.baseColor->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.baseColor->index     = startIndex;
+    sDefaultTextures.baseColor->height    = 1;
+    sDefaultTextures.baseColor->width     = 1;
+    sDefaultTextures.baseColor->bytesData = {129, 133, 137, 255};
+
+    sDefaultTextures.metallicRoughness         = new sg::Texture("DefaultMetallicRoughness");
+    sDefaultTextures.metallicRoughness->format = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.metallicRoughness->index  = startIndex + 1;
+    sDefaultTextures.metallicRoughness->height = 1;
+    sDefaultTextures.metallicRoughness->width  = 1;
+    // g 0 for metallic, b 255 for roughness
+    sDefaultTextures.metallicRoughness->bytesData = {0, 0, 255, 255};
+
+    sDefaultTextures.normal            = new sg::Texture("DefaultNormal");
+    sDefaultTextures.normal->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.normal->index     = startIndex + 2;
+    sDefaultTextures.normal->height    = 1;
+    sDefaultTextures.normal->width     = 1;
+    sDefaultTextures.normal->bytesData = {127, 127, 255, 255};
+
+    sDefaultTextures.emissive            = new sg::Texture("DefaultEmissive");
+    sDefaultTextures.emissive->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.emissive->index     = startIndex + 3;
+    sDefaultTextures.emissive->height    = 1;
+    sDefaultTextures.emissive->width     = 1;
+    sDefaultTextures.emissive->bytesData = {0, 0, 0, 255};
+
+    sDefaultTextures.occlusion            = new sg::Texture("DefaultOcclusion");
+    sDefaultTextures.occlusion->format    = Format::R8G8B8A8_UNORM;
+    sDefaultTextures.occlusion->index     = startIndex + 4;
+    sDefaultTextures.occlusion->height    = 1;
+    sDefaultTextures.occlusion->width     = 1;
+    sDefaultTextures.occlusion->bytesData = {255, 0, 0, 255};
+}
+
+Scene::DefaultTextures Scene::GetDefaultTextures()
+{
+    return sDefaultTextures;
 }
 } // namespace zen::sg

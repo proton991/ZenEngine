@@ -72,32 +72,25 @@ void SceneRenderer::LoadSceneMaterials()
     m_materialUniforms.reserve(sgMaterials.size());
     for (const auto* mat : sgMaterials)
     {
+        VERIFY_EXPR(mat->baseColorTexture != nullptr);
+        VERIFY_EXPR(mat->metallicRoughnessTexture != nullptr);
+        VERIFY_EXPR(mat->normalTexture != nullptr);
+        VERIFY_EXPR(mat->occlusionTexture != nullptr);
+        VERIFY_EXPR(mat->emissiveTexture != nullptr);
+
         MaterialData materialData{};
-        if (mat->baseColorTexture != nullptr)
-        {
-            materialData.bcTexIndex = mat->baseColorTexture->index;
-            materialData.bcTexSet   = mat->texCoordSets.baseColor;
-        }
-        if (mat->metallicRoughnessTexture != nullptr)
-        {
-            materialData.mrTexIndex = mat->metallicRoughnessTexture->index;
-            materialData.mrTexSet   = mat->texCoordSets.metallicRoughness;
-        }
-        if (mat->normalTexture != nullptr)
-        {
-            materialData.normalTexIndex = mat->normalTexture->index;
-            materialData.normalTexSet   = mat->texCoordSets.normal;
-        }
-        if (mat->occlusionTexture != nullptr)
-        {
-            materialData.aoTexIndex = mat->occlusionTexture->index;
-            materialData.aoTexSet   = mat->texCoordSets.occlusion;
-        }
-        if (mat->emissiveTexture != nullptr)
-        {
-            materialData.emissiveTexIndex = mat->emissiveTexture->index;
-            materialData.emissiveTexSet   = mat->texCoordSets.emissive;
-        }
+        materialData.bcTexSet       = mat->texCoordSets.baseColor;
+        materialData.mrTexSet       = mat->texCoordSets.metallicRoughness;
+        materialData.normalTexSet   = mat->texCoordSets.normal;
+        materialData.aoTexSet       = mat->texCoordSets.occlusion;
+        materialData.emissiveTexSet = mat->texCoordSets.emissive;
+
+        materialData.bcTexIndex       = mat->baseColorTexture->index;
+        materialData.mrTexIndex       = mat->metallicRoughnessTexture->index;
+        materialData.normalTexIndex   = mat->normalTexture->index;
+        materialData.aoTexIndex       = mat->occlusionTexture->index;
+        materialData.emissiveTexIndex = mat->emissiveTexture->index;
+
         materialData.metallicFactor  = mat->metallicFactor;
         materialData.roughnessFactor = mat->roughnessFactor;
         materialData.emissiveFactor  = mat->emissiveFactor;

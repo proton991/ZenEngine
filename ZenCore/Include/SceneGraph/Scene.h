@@ -11,6 +11,15 @@ namespace zen::sg
 class Scene
 {
 public:
+    struct DefaultTextures
+    {
+        Texture* baseColor;
+        Texture* metallicRoughness;
+        Texture* normal;
+        Texture* emissive;
+        Texture* occlusion;
+    };
+
     Scene() = default;
 
     std::vector<Node*>& GetRenderableNodes()
@@ -92,6 +101,10 @@ public:
         return m_aabb;
     }
 
+    static void LoadDefaultTextures(uint32_t startIndex);
+
+    static DefaultTextures GetDefaultTextures();
+
 private:
     std::string m_name;
 
@@ -104,5 +117,7 @@ private:
     Node* m_rootNode{nullptr};
 
     HashMap<TypeId, std::vector<UniquePtr<Component>>> m_components;
+
+    static DefaultTextures sDefaultTextures;
 };
 } // namespace zen::sg
