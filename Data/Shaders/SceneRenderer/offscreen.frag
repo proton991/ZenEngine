@@ -11,13 +11,15 @@ layout (location = 3) in vec3 inWorldPos;
 layout (location = 0) out vec4 outPosition;
 layout (location = 1) out vec4 outNormal;
 layout (location = 2) out vec4 outAlbedo;
+layout (location = 3) out vec4 outMetallicRoughness;
+layout (location = 4) out vec4 outEmissiveOcclusion;
 
 struct Material
 {
     int bcTexIndex;
     int mrTexIndex;
     int normalTexIndex;
-    int aoTexIndex;
+    int occlusionTexIndex;
     int emissiveTexIndex;
     int bcTexSet;
     int mrTexSet;
@@ -40,6 +42,16 @@ layout (push_constant) uniform uNodePushConstant
     uint uMaterialIndex;
 };
 
+struct SurfaceOut
+{
+    vec4 albedo;
+    vec3 normal;
+    vec3 emissive;
+    float roughness;
+    float metallic;
+    float occlusion;
+};
+
 vec3 GetNormal() {
     vec3 pos_dx = dFdx(inWorldPos);
     vec3 pos_dy = dFdy(inWorldPos);
@@ -54,13 +66,38 @@ vec3 GetNormal() {
     return normalize(TBN[2].xyz);
 }
 
+void SurfaceShaderTextured(out SurfaceOut surface)
+{
+    Material surfMat = materialData[uMaterialIndex];
+
+    surface.normal = GetNormal();
+
+    surface.albedo = surfMat.baseColorFactor;
+    surface.albedo *= texture(uTextureArray[surfMat.bcTexIndex], inUV);
+
+    surface.roughness = surfMat.roughnessFactor;
+    surface.roughness *= texture(uTextureArray[surfMat.mrTexIndex], inUV).g;
+
+    surface.metallic = surfMat.metallicFactor;
+    surface.metallic *= texture(uTextureArray[surfMat.mrTexIndex], inUV).b;
+
+    surface.emissive = surfMat.emissiveFactor.rbg;
+    surface.emissive *= texture(uTextureArray[surfMat.emissiveTexIndex], inUV).rgb;
+
+    surface.occlusion = 1.0f;
+    surface.occlusion *= texture(uTextureArray[surfMat.occlusionTexIndex], inUV).r;
+
+}
+
 void main()
 {
     outPosition = vec4(inWorldPos, 1.0);
 
-    // Calculate normal in tangent space
-    vec3 tnorm = GetNormal();
-    outNormal = vec4(tnorm, 1.0);
+    SurfaceOut surface;
+    SurfaceShaderTextured(surface);
 
-    outAlbedo = texture(uTextureArray[materialData[uMaterialIndex].bcTexIndex], inUV);
+    outNormal = vec4(surface.normal, 1.0);
+    outAlbedo = vec4(surface.albedo);
+    outMetallicRoughness = vec4(surface.metallic, surface.roughness, vec2(0.0));
+    outEmissiveOcclusion = vec4(surface.emissive, surface.occlusion);
 }

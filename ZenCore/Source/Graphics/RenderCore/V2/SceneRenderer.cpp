@@ -32,10 +32,12 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     m_camera = sceneData.camera;
     m_scene  = sceneData.scene;
 
-    // White
-    m_sceneUniformData.lightPosition  = sceneData.lightPosition;
-    m_sceneUniformData.lightColor     = sceneData.lightColor;
-    m_sceneUniformData.lightIntensity = sceneData.lightIntensity;
+    std::memcpy(m_sceneUniformData.lightPositions, sceneData.lightPositions,
+                sizeof(sceneData.lightPositions));
+    std::memcpy(m_sceneUniformData.lightColors, sceneData.lightColors,
+                sizeof(sceneData.lightColors));
+    std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
+                sizeof(sceneData.lightIntensities));
 
     auto index = 0u;
     for (auto* node : m_scene->GetRenderableNodes())
@@ -85,11 +87,11 @@ void SceneRenderer::LoadSceneMaterials()
         materialData.aoTexSet       = mat->texCoordSets.occlusion;
         materialData.emissiveTexSet = mat->texCoordSets.emissive;
 
-        materialData.bcTexIndex       = mat->baseColorTexture->index;
-        materialData.mrTexIndex       = mat->metallicRoughnessTexture->index;
-        materialData.normalTexIndex   = mat->normalTexture->index;
-        materialData.aoTexIndex       = mat->occlusionTexture->index;
-        materialData.emissiveTexIndex = mat->emissiveTexture->index;
+        materialData.bcTexIndex        = mat->baseColorTexture->index;
+        materialData.mrTexIndex        = mat->metallicRoughnessTexture->index;
+        materialData.normalTexIndex    = mat->normalTexture->index;
+        materialData.occlusionTexIndex = mat->occlusionTexture->index;
+        materialData.emissiveTexIndex  = mat->emissiveTexture->index;
 
         materialData.metallicFactor  = mat->metallicFactor;
         materialData.roughnessFactor = mat->roughnessFactor;
@@ -167,7 +169,12 @@ void SceneRenderer::PrepareTextures()
         texInfo.samples     = SampleCount::e1;
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, "offscreen_albedo");
+        m_offscreenTextures.albedo =
+            m_renderDevice->CreateTexture(texInfo, "offscreen_albedo");
+        m_offscreenTextures.metallicRoughness =
+            m_renderDevice->CreateTexture(texInfo, "offscreen_roughness");
+        m_offscreenTextures.emissiveOcclusion =
+            m_renderDevice->CreateTexture(texInfo, "offscreen_emissive_occlusion");
     }
     // depth
     {
@@ -258,7 +265,7 @@ void SceneRenderer::BuildRenderPipelines()
 
     // offscreen
     {
-        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled(3);
+        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled(5);
         pso.dynamicStates.push_back(DynamicState::eScissor);
         pso.dynamicStates.push_back(DynamicState::eViewPort);
         std::vector<ShaderResourceBinding> bufferBindings;
@@ -307,6 +314,10 @@ void SceneRenderer::BuildRenderPipelines()
                 .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
                                       TextureUsage::eColorAttachment)
                 // Albedo (color)
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
+                // metallicRoughness
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
+                // emissiveOcclusion
                 .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                        rhi::RenderTargetLoadOp::eClear,
@@ -357,6 +368,20 @@ void SceneRenderer::BuildRenderPipelines()
             binding2.handles.push_back(m_colorSampler);
             binding2.handles.push_back(m_offscreenTextures.albedo);
             textureBindings.emplace_back(std::move(binding2));
+
+            ShaderResourceBinding binding3{};
+            binding2.binding = 3;
+            binding2.type    = ShaderResourceType::eSamplerWithTexture;
+            binding2.handles.push_back(m_colorSampler);
+            binding2.handles.push_back(m_offscreenTextures.metallicRoughness);
+            textureBindings.emplace_back(std::move(binding2));
+
+            ShaderResourceBinding binding4{};
+            binding2.binding = 4;
+            binding2.type    = ShaderResourceType::eSamplerWithTexture;
+            binding2.handles.push_back(m_colorSampler);
+            binding2.handles.push_back(m_offscreenTextures.emissiveOcclusion);
+            textureBindings.emplace_back(std::move(binding2));
         }
         rc::RenderPipelineBuilder builder(m_renderDevice);
         m_mainRPs.sceneLighting = builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
@@ -382,12 +407,14 @@ void SceneRenderer::BuildRenderGraph()
     // offscreen pass
     {
         const uint32_t cFbSize = RenderConfig::GetInstance().offScreenFbSize;
-        std::vector<RenderPassClearValue> clearValues(4);
+        std::vector<RenderPassClearValue> clearValues(6);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[1].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[2].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[3].depth   = 1.0f;
-        clearValues[3].stencil = 0;
+        clearValues[3].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        clearValues[4].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        clearValues[5].depth   = 1.0f;
+        clearValues[5].stencil = 0;
 
         Rect2 area;
         area.minX = 0;
@@ -401,11 +428,13 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        std::vector<TextureHandle> mrts(4);
+        std::vector<TextureHandle> mrts(6);
         mrts[0] = m_offscreenTextures.position;
         mrts[1] = m_offscreenTextures.normal;
         mrts[2] = m_offscreenTextures.albedo;
-        mrts[3] = m_offscreenTextures.depth;
+        mrts[3] = m_offscreenTextures.metallicRoughness;
+        mrts[4] = m_offscreenTextures.emissiveOcclusion;
+        mrts[5] = m_offscreenTextures.depth;
 
         FramebufferInfo fbInfo{};
         fbInfo.width           = cFbSize;
@@ -424,6 +453,12 @@ void SceneRenderer::BuildRenderGraph()
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.albedo, TextureUsage::eColorAttachment,
+            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+        m_rdg->DeclareTextureAccessForPass(
+            pass, m_offscreenTextures.metallicRoughness, TextureUsage::eColorAttachment,
+            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+        m_rdg->DeclareTextureAccessForPass(
+            pass, m_offscreenTextures.emissiveOcclusion, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
@@ -464,6 +499,12 @@ void SceneRenderer::BuildRenderGraph()
                                            rc::RDGAccessType::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.albedo, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
+                                           rc::RDGAccessType::eRead);
+        m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.metallicRoughness,
+                                           TextureUsage::eSampled, TextureSubResourceRange::Color(),
+                                           rc::RDGAccessType::eRead);
+        m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.emissiveOcclusion,
+                                           TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.depth, TextureUsage::eSampled,

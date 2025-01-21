@@ -52,9 +52,21 @@ void SceneRendererDemo::Prepare()
     sceneData.numVertices = gltfLoader->GetVertices().size();
     sceneData.numIndices  = gltfLoader->GetIndices().size();
     // light info
-    sceneData.lightPosition  = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightColor     = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightIntensity = Vec4(10.0f, 10.0f, 10.0f, 0.0f);
+    // todo: support more flex configuration throught config file
+    sceneData.lightPositions[0] = glm::vec4(-1.0f, 1.0f, -1.0f, 1.0f); // Top-left
+    sceneData.lightPositions[1] = glm::vec4(1.0f, 1.0f, -1.0f, 1.0f);  // Top-right
+    sceneData.lightPositions[2] = glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);  // Bottom-left
+    sceneData.lightPositions[3] = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);   // Bottom-right
+
+    sceneData.lightColors[0] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightColors[1] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightColors[2] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    sceneData.lightColors[3] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
+
+    sceneData.lightIntensities[0] = Vec4(5.0f);
+    sceneData.lightIntensities[1] = Vec4(5.0f);
+    sceneData.lightIntensities[2] = Vec4(5.0f);
+    sceneData.lightIntensities[3] = Vec4(5.0f);
 
     m_sceneRenderer->SetScene(sceneData);
     m_sceneRenderer->Bake();

@@ -2,7 +2,6 @@
 #include "RenderGraph.h"
 #include "RenderDevice.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "Common/BitField.h"
 #include "SceneGraph/Scene.h"
 #include "Graphics/RHI/RHIDefs.h"
 
@@ -29,9 +28,9 @@ struct SceneData
     uint32_t numVertices;
     uint32_t numIndices;
     sys::Camera* camera;
-    Vec4 lightPosition;
-    Vec4 lightColor;
-    Vec4 lightIntensity;
+    Vec4 lightPositions[4];
+    Vec4 lightColors[4];
+    Vec4 lightIntensities[4];
     // other scene data
 };
 
@@ -49,7 +48,7 @@ public:
         int bcTexIndex{-1};
         int mrTexIndex{-1};
         int normalTexIndex{-1};
-        int aoTexIndex{-1};
+        int occlusionTexIndex{-1};
         int emissiveTexIndex{-1};
         int bcTexSet{-1};
         int mrTexSet{-1};
@@ -70,9 +69,9 @@ public:
 
     struct SceneUniformData
     {
-        Vec4 lightPosition;
-        Vec4 lightColor;
-        Vec4 lightIntensity;
+        Vec4 lightPositions[4];
+        Vec4 lightColors[4];
+        Vec4 lightIntensities[4];
         Vec4 viewPos;
     };
 
@@ -155,6 +154,8 @@ private:
         TextureHandle position;
         TextureHandle normal;
         TextureHandle albedo;
+        TextureHandle metallicRoughness;
+        TextureHandle emissiveOcclusion;
         TextureHandle depth;
     } m_offscreenTextures;
 
