@@ -68,6 +68,47 @@ private:
 };
 
 /**
+ * VK_KHR_dynamic_rendering
+ */
+class VulkanDynamicRenderingExtension : public VulkanDeviceExtension
+{
+public:
+    VulkanDynamicRenderingExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+    {
+        InitVkStruct(m_dynamicRenderingFeaturesKHR,
+                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
+    }
+
+    void BeforePhysicalDeviceFeatures(
+        VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr) final
+    {
+        AddToPNext(physicalDeviceFeatures2Khr, m_dynamicRenderingFeaturesKHR);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        bool supported = (m_dynamicRenderingFeaturesKHR.dynamicRendering == VK_TRUE);
+        if (supported)
+        {
+            SetSupport();
+            m_device->GetExtensionFlags().hasDynamicRendering = 1;
+        }
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_dynamicRenderingFeaturesKHR);
+        }
+    }
+
+private:
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR m_dynamicRenderingFeaturesKHR;
+};
+
+/**
  * VK_KHR_buffer_device_address
  */
 class VulkanBufferDeviceAddressExtension : public VulkanDeviceExtension
@@ -353,6 +394,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanAccelerationStructureExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRaytracingPipelineExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRayQueryExtension)
+    ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
 
     FlagExtensionSupported(
         enabledExtensions,

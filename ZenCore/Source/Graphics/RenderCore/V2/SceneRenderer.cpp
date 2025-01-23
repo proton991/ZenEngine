@@ -169,8 +169,7 @@ void SceneRenderer::PrepareTextures()
         texInfo.samples     = SampleCount::e1;
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.albedo =
-            m_renderDevice->CreateTexture(texInfo, "offscreen_albedo");
+        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, "offscreen_albedo");
         m_offscreenTextures.metallicRoughness =
             m_renderDevice->CreateTexture(texInfo, "offscreen_roughness");
         m_offscreenTextures.emissiveOcclusion =
@@ -460,10 +459,6 @@ void SceneRenderer::BuildRenderGraph()
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.emissiveOcclusion, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
-        m_rdg->DeclareTextureAccessForPass(
-            pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
-            m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.depth),
-            rc::RDGAccessType::eReadWrite);
 
         AddMeshDrawNodes(pass, area, vp);
     }
@@ -506,10 +501,7 @@ void SceneRenderer::BuildRenderGraph()
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.emissiveOcclusion,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
-        m_rdg->DeclareTextureAccessForPass(
-            pass, m_offscreenTextures.depth, TextureUsage::eSampled,
-            m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.depth),
-            rc::RDGAccessType::eRead);
+
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image
