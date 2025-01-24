@@ -23,7 +23,7 @@ public:
 
         if (basePathIt != m_configData.end() && defaultModelIt != m_configData.end())
         {
-            path = "../../glTF-Sample-Models/2.0/" + defaultModelIt->second + "/glTF/" +
+            path = basePathIt->second + "/" + defaultModelIt->second + "/glTF/" +
                 defaultModelIt->second + ".gltf";
         }
         else
