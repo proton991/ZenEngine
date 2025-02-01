@@ -234,17 +234,12 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxY = cShadowMapSize;
 
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen.renderPass,
-                                                m_gfxPipelines.offscreen.framebuffer, area,
-                                                clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenDepthTexture, TextureUsage::eDepthStencilAttachment,
             TextureSubResourceRange::Depth(), rc::RDGAccessType::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.offscreen.pipeline,
-                                               PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
         m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
@@ -278,16 +273,12 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneShadow.renderPass,
-                                                m_gfxPipelines.sceneShadow.framebuffer, area,
-                                                clearValues, true);
+        auto* pass =
+            m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneShadow, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, TextureUsage::eSampled,
                                            TextureSubResourceRange::Depth(),
                                            rc::RDGAccessType::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.sceneShadow.pipeline,
-                                               PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
         m_rdg->AddGraphicsPassSetViewportNode(pass, vp);

@@ -1,8 +1,8 @@
 #pragma once
 #include "Common/HashMap.h"
 #include "Common/Queue.h"
-#include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIDebug.h"
+#include "RenderCoreDefs.h"
 
 #define TEXTURE_UPLOAD_REGION_SIZE            64
 #define STAGING_BLOCK_SIZE_BYTES              (256 * 1024)
@@ -18,14 +18,6 @@ namespace zen::rc
 {
 class RenderDevice;
 class RenderGraph;
-
-struct GraphicsPipeline
-{
-    rhi::FramebufferHandle framebuffer;
-    rhi::RenderPassHandle renderPass;
-    rhi::PipelineHandle pipeline;
-    std::vector<rhi::DescriptorSetHandle> descriptorSets;
-};
 
 class GraphicsPipelineBuilder
 {

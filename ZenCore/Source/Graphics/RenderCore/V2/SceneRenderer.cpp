@@ -435,9 +435,7 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen.renderPass,
-                                                m_gfxPipelines.offscreen.framebuffer, area,
-                                                clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
@@ -475,9 +473,8 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneLighting.renderPass,
-                                                m_gfxPipelines.sceneLighting.framebuffer, area,
-                                                clearValues, true);
+        auto* pass =
+            m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneLighting, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
@@ -497,8 +494,6 @@ void SceneRenderer::BuildRenderGraph()
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.sceneLighting.pipeline,
-                                               PipelineType::eGraphics);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
         m_rdg->AddGraphicsPassDrawNode(pass, 3, 1);
@@ -510,12 +505,10 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                      const Rect2<int>& area,
                                      const Rect2<float>& viewport)
 {
-    m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-    m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.offscreen.pipeline,
-                                           PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
+    m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     for (auto* node : m_scene->GetRenderableNodes())
     {
         m_pushConstantsData.nodeIndex = m_nodeUniformIndex[node->GetHash()];

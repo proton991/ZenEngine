@@ -95,10 +95,8 @@ void HelloTriangleApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline.renderPass, m_gfxPipeline.framebuffer,
-                                                area, clearValues, true);
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipeline.pipeline,
-                                           PipelineType::eGraphics);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline, area, clearValues, true);
+
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);

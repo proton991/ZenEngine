@@ -5,6 +5,7 @@
 #include "Common/SmallVector.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHICommands.h"
+#include "RenderCoreDefs.h"
 
 // RDG_ID class
 class RDG_ID
@@ -171,14 +172,6 @@ enum class RDGResourceType : uint32_t
     eTexture = 2,
     eMax     = 3
 };
-
-// enum class RDGResourceAccessType : uint32_t
-// {
-//     eNone      = 0,
-//     eRead      = 1,
-//     eReadWrite = 2,
-//     eMax       = 3
-// };
 
 enum class RDGResourceUsage
 {
@@ -387,6 +380,12 @@ public:
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,
+                                     rhi::Rect2<int> area,
+                                     VectorView<rhi::RenderPassClearValue> clearValues,
+                                     bool hasColorTarget,
+                                     bool hasDepthTarget = false);
+
+    RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPipeline& gfxPipeline,
                                      rhi::Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      bool hasColorTarget,

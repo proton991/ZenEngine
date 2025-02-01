@@ -28,6 +28,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderDevice.h
     Include/Graphics/RenderCore/V2/SceneRenderer.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
+    Include/Graphics/RenderCore/V2/RenderCoreDefs.h
 
     Include/Graphics/RenderCore/RenderConfig.h
     Include/Graphics/RenderCore/RenderGraphDefinitions.h
