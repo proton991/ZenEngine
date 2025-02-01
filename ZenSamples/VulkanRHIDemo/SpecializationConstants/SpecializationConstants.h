@@ -36,10 +36,10 @@ private:
 
     struct RenderPipelines
     {
-        rc::RenderPipeline phong;
-        rc::RenderPipeline toon;
-        rc::RenderPipeline textured;
-    } m_mainRPs;
+        rc::GraphicsPipeline phong;
+        rc::GraphicsPipeline toon;
+        rc::GraphicsPipeline textured;
+    } m_gfxPipelines;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

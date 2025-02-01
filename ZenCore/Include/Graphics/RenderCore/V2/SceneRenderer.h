@@ -104,7 +104,7 @@ private:
 
     void PrepareBuffers();
 
-    void BuildRenderPipelines();
+    void BuildGraphicsPipelines();
 
     void BuildRenderGraph();
 
@@ -121,11 +121,11 @@ private:
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
 
-    struct RenderPipelines
+    struct GraphicsPipelines
     {
-        RenderPipeline offscreen;
-        RenderPipeline sceneLighting;
-    } m_mainRPs;
+        GraphicsPipeline offscreen;
+        GraphicsPipeline sceneLighting;
+    } m_gfxPipelines;
 
     bool m_sceneLoaded{false};
     sg::Scene* m_scene;

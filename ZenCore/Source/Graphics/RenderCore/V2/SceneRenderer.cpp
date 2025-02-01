@@ -14,7 +14,7 @@ void SceneRenderer::Bake()
 {
     PrepareTextures();
 
-    BuildRenderPipelines();
+    BuildGraphicsPipelines();
 }
 
 void SceneRenderer::Destroy()
@@ -246,7 +246,7 @@ void SceneRenderer::PrepareBuffers()
     }
 }
 
-void SceneRenderer::BuildRenderPipelines()
+void SceneRenderer::BuildGraphicsPipelines()
 {
     GfxPipelineStates pso{};
     pso.primitiveType      = DrawPrimitiveType::eTriangleList;
@@ -301,29 +301,34 @@ void SceneRenderer::BuildRenderPipelines()
             textureBindings.emplace_back(std::move(binding));
         }
 
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.offscreen =
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.offscreen =
             builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
                 .SetFragmentShader("SceneRenderer/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 // (World space) Positions
                 .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
-                                      TextureUsage::eColorAttachment)
+                                      TextureUsage::eColorAttachment, m_offscreenTextures.position)
                 // (World space) Normals
                 .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
-                                      TextureUsage::eColorAttachment)
+                                      TextureUsage::eColorAttachment, m_offscreenTextures.normal)
                 // Albedo (color)
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
+                                      m_offscreenTextures.albedo)
                 // metallicRoughness
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
+                                      m_offscreenTextures.metallicRoughness)
                 // emissiveOcclusion
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment)
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
+                                      m_offscreenTextures.emissiveOcclusion)
                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       rhi::RenderTargetLoadOp::eClear,
+                                       m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)
                 .SetShaderResourceBinding(0, bufferBindings)
                 .SetShaderResourceBinding(1, textureBindings)
                 .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport, RenderConfig::GetInstance().offScreenFbSize,
+                                    RenderConfig::GetInstance().offScreenFbSize)
                 .SetTag("OffScreen")
                 .Build();
     }
@@ -382,20 +387,23 @@ void SceneRenderer::BuildRenderPipelines()
             binding2.handles.push_back(m_offscreenTextures.emissiveOcclusion);
             textureBindings.emplace_back(std::move(binding2));
         }
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.sceneLighting = builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
-                                      .SetFragmentShader("SceneRenderer/deferred.frag.spv")
-                                      .SetNumSamples(SampleCount::e1)
-                                      .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                            TextureUsage::eColorAttachment)
-                                      .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                                             rhi::RenderTargetLoadOp::eClear,
-                                                             rhi::RenderTargetStoreOp::eStore)
-                                      .SetShaderResourceBinding(0, textureBindings)
-                                      .SetShaderResourceBinding(1, uboBindings)
-                                      .SetPipelineState(pso)
-                                      .SetTag("SceneLighting")
-                                      .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.sceneLighting =
+            builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
+                .SetFragmentShader("SceneRenderer/deferred.frag.spv")
+                .SetNumSamples(SampleCount::e1)
+                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                      TextureUsage::eColorAttachment,
+                                      m_viewport->GetColorBackBuffer())
+                .SetDepthStencilTarget(
+                    m_viewport->GetDepthStencilFormat(), m_viewport->GetDepthStencilBackBuffer(),
+                    rhi::RenderTargetLoadOp::eClear, rhi::RenderTargetStoreOp::eStore)
+                .SetShaderResourceBinding(0, textureBindings)
+                .SetShaderResourceBinding(1, uboBindings)
+                .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport)
+                .SetTag("SceneLighting")
+                .Build();
     }
 }
 
@@ -427,22 +435,8 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        std::vector<TextureHandle> mrts(6);
-        mrts[0] = m_offscreenTextures.position;
-        mrts[1] = m_offscreenTextures.normal;
-        mrts[2] = m_offscreenTextures.albedo;
-        mrts[3] = m_offscreenTextures.metallicRoughness;
-        mrts[4] = m_offscreenTextures.emissiveOcclusion;
-        mrts[5] = m_offscreenTextures.depth;
-
-        FramebufferInfo fbInfo{};
-        fbInfo.width           = cFbSize;
-        fbInfo.height          = cFbSize;
-        fbInfo.numRenderTarget = mrts.size();
-        fbInfo.renderTargets   = mrts.data();
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.offscreen.renderPass, &fbInfo);
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.offscreen.renderPass, framebuffer, area,
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen.renderPass,
+                                                m_gfxPipelines.offscreen.framebuffer, area,
                                                 clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
@@ -481,11 +475,9 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.sceneLighting.renderPass);
-
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.sceneLighting.renderPass, framebuffer,
-                                                area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneLighting.renderPass,
+                                                m_gfxPipelines.sceneLighting.framebuffer, area,
+                                                clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
@@ -505,7 +497,7 @@ void SceneRenderer::BuildRenderGraph()
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.sceneLighting.pipeline,
+        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.sceneLighting.pipeline,
                                                PipelineType::eGraphics);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
@@ -519,7 +511,7 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                      const Rect2<float>& viewport)
 {
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-    m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.offscreen.pipeline,
+    m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.offscreen.pipeline,
                                            PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

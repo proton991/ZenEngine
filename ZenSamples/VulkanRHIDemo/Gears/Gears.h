@@ -239,7 +239,7 @@ private:
 
     std::vector<Gear> m_gears{};
 
-    rc::RenderPipeline m_mainRP;
+    rc::GraphicsPipeline m_gfxPipeline;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

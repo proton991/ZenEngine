@@ -97,16 +97,18 @@ void ShadowMappingApp::BuildRenderPipeline()
             binding0.handles.push_back(m_offscreenUBO);
             uboBindings.emplace_back(std::move(binding0));
         }
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.offscreen =
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.offscreen =
             builder
                 .SetVertexShader("ShadowMapping/offscreen.vert.spv")
                 //                .SetFragmentShader("ShadowMapping/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
-                .SetDepthStencilTarget(cOffscreenDepthFormat, rhi::RenderTargetLoadOp::eClear,
+                .SetDepthStencilTarget(cOffscreenDepthFormat, m_offscreenDepthTexture,
+                                       rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)
                 .SetShaderResourceBinding(0, uboBindings)
                 .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport, cShadowMapSize, cShadowMapSize)
                 .Build();
     }
 
@@ -136,19 +138,22 @@ void ShadowMappingApp::BuildRenderPipeline()
             binding.handles.push_back(m_offscreenDepthTexture);
             textureBindings.emplace_back(std::move(binding));
         }
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.sceneShadow = builder.SetVertexShader("ShadowMapping/scene.vert.spv")
-                                    .SetFragmentShader("ShadowMapping/scene.frag.spv")
-                                    .SetNumSamples(SampleCount::e1)
-                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                          TextureUsage::eColorAttachment)
-                                    .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                                           rhi::RenderTargetLoadOp::eClear,
-                                                           rhi::RenderTargetStoreOp::eStore)
-                                    .SetShaderResourceBinding(0, uboBindings)
-                                    .SetShaderResourceBinding(1, textureBindings)
-                                    .SetPipelineState(pso)
-                                    .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.sceneShadow =
+            builder.SetVertexShader("ShadowMapping/scene.vert.spv")
+                .SetFragmentShader("ShadowMapping/scene.frag.spv")
+                .SetNumSamples(SampleCount::e1)
+                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                      TextureUsage::eColorAttachment,
+                                      m_viewport->GetColorBackBuffer())
+                .SetDepthStencilTarget(
+                    m_viewport->GetDepthStencilFormat(), m_viewport->GetDepthStencilBackBuffer(),
+                    rhi::RenderTargetLoadOp::eClear, rhi::RenderTargetStoreOp::eStore)
+                .SetShaderResourceBinding(0, uboBindings)
+                .SetShaderResourceBinding(1, textureBindings)
+                .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport)
+                .Build();
     }
 }
 
@@ -228,14 +233,9 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxX = cShadowMapSize;
         vp.maxY = cShadowMapSize;
 
-        FramebufferInfo fbInfo{};
-        fbInfo.width           = cShadowMapSize;
-        fbInfo.height          = cShadowMapSize;
-        fbInfo.numRenderTarget = 1;
-        fbInfo.renderTargets   = &m_offscreenDepthTexture;
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.offscreen.renderPass, &fbInfo);
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.offscreen.renderPass, framebuffer, area,
+
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen.renderPass,
+                                                m_gfxPipelines.offscreen.framebuffer, area,
                                                 clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenDepthTexture, TextureUsage::eDepthStencilAttachment,
@@ -243,7 +243,7 @@ void ShadowMappingApp::BuildRenderGraph()
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.offscreen.pipeline,
+        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.offscreen.pipeline,
                                                PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
@@ -277,17 +277,16 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.minY = 0.0f;
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.sceneShadow.renderPass);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.sceneShadow.renderPass, framebuffer, area,
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneShadow.renderPass,
+                                                m_gfxPipelines.sceneShadow.framebuffer, area,
                                                 clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, TextureUsage::eSampled,
                                            TextureSubResourceRange::Depth(),
                                            rc::RDGAccessType::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.sceneShadow.pipeline,
+        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.sceneShadow.pipeline,
                                                PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

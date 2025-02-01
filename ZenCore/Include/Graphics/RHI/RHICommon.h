@@ -936,19 +936,21 @@ class RenderPassLayout
 public:
     RenderPassLayout() = default;
 
-    void AddColorRenderTarget(DataFormat format, TextureUsage usage)
+    void AddColorRenderTarget(DataFormat format, TextureUsage usage, const TextureHandle& handle)
     {
         m_colorRTs.emplace_back(format, usage);
         m_numColorRT++;
+        m_rtHandles.push_back(handle);
     }
 
-    void SetDepthStencilRenderTarget(DataFormat format)
+    void SetDepthStencilRenderTarget(DataFormat format, const TextureHandle& handle)
     {
         if (!m_hasDepthStencilRT)
         {
             m_depthStencilRT.format = format;
             m_depthStencilRT.usage  = TextureUsage::eDepthStencilAttachment;
             m_hasDepthStencilRT     = true;
+            m_rtHandles.push_back(handle);
         }
     }
 
@@ -1014,6 +1016,11 @@ public:
         return m_depthStencilRT;
     }
 
+    TextureHandle* GetRenderTargetHandles()
+    {
+        return m_rtHandles.data();
+    }
+
 private:
     uint32_t m_numColorRT{0};
     std::vector<RenderTarget> m_colorRTs;
@@ -1023,6 +1030,7 @@ private:
     RenderTargetStoreOp m_colorRTStoreOp{RenderTargetStoreOp::eNone};
     RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
     RenderTargetStoreOp m_depthStencilRTStoreOp{RenderTargetStoreOp::eNone};
+    std::vector<TextureHandle> m_rtHandles;
     bool m_hasDepthStencilRT{false};
 };
 

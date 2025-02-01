@@ -95,16 +95,18 @@ void OffscreenApp::BuildRenderPipeline()
             uboBindings.emplace_back(std::move(binding1));
         }
         pso.rasterizationState.cullMode = PolygonCullMode::eFront;
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.offscreenShaded = builder.SetVertexShader("Offscreen/phong.vert.spv")
-                                        .SetFragmentShader("Offscreen/phong.frag.spv")
-                                        .SetNumSamples(SampleCount::e1)
-                                        .AddColorRenderTarget(rhi::DataFormat::eR8G8B8A8SRGB,
-                                                              TextureUsage::eColorAttachment)
-                                        .SetDepthStencilTarget(DataFormat::eD32SFloatS8UInt)
-                                        .SetShaderResourceBinding(0, uboBindings)
-                                        .SetPipelineState(pso)
-                                        .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.offscreenShaded =
+            builder.SetVertexShader("Offscreen/phong.vert.spv")
+                .SetFragmentShader("Offscreen/phong.frag.spv")
+                .SetNumSamples(SampleCount::e1)
+                .AddColorRenderTarget(rhi::DataFormat::eR8G8B8A8SRGB,
+                                      TextureUsage::eColorAttachment, m_offscreenTextures.color)
+                .SetDepthStencilTarget(DataFormat::eD32SFloatS8UInt, m_offscreenTextures.depth)
+                .SetShaderResourceBinding(0, uboBindings)
+                .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport, OFFSCREEN_TEXTURE_DIM, OFFSCREEN_TEXTURE_DIM)
+                .Build();
     }
 
     // mirror
@@ -133,17 +135,20 @@ void OffscreenApp::BuildRenderPipeline()
             textureBindings.emplace_back(std::move(binding));
         }
         pso.rasterizationState.cullMode = PolygonCullMode::eDisabled;
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.mirror = builder.SetVertexShader("Offscreen/mirror.vert.spv")
-                               .SetFragmentShader("Offscreen/mirror.frag.spv")
-                               .SetNumSamples(SampleCount::e1)
-                               .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                     TextureUsage::eColorAttachment)
-                               .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
-                               .SetShaderResourceBinding(0, uboBindings)
-                               .SetShaderResourceBinding(1, textureBindings)
-                               .SetPipelineState(pso)
-                               .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.mirror = builder.SetVertexShader("Offscreen/mirror.vert.spv")
+                                    .SetFragmentShader("Offscreen/mirror.frag.spv")
+                                    .SetNumSamples(SampleCount::e1)
+                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                                          TextureUsage::eColorAttachment,
+                                                          m_viewport->GetColorBackBuffer())
+                                    .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                                           m_viewport->GetDepthStencilBackBuffer())
+                                    .SetShaderResourceBinding(0, uboBindings)
+                                    .SetShaderResourceBinding(1, textureBindings)
+                                    .SetPipelineState(pso)
+                                    .SetFramebufferInfo(m_viewport)
+                                    .Build();
     }
 }
 
@@ -198,25 +203,16 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxX = OFFSCREEN_TEXTURE_DIM;
         vp.maxY = OFFSCREEN_TEXTURE_DIM;
 
-        std::vector<TextureHandle> renderTargets;
-        renderTargets.emplace_back(m_offscreenTextures.color);
-        renderTargets.emplace_back(m_offscreenTextures.depth);
-        FramebufferInfo fbInfo{};
-        fbInfo.width           = OFFSCREEN_TEXTURE_DIM;
-        fbInfo.height          = OFFSCREEN_TEXTURE_DIM;
-        fbInfo.numRenderTarget = 2;
-        fbInfo.renderTargets   = renderTargets.data();
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.offscreenShaded.renderPass, &fbInfo);
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.offscreenShaded.renderPass, framebuffer,
-                                                area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreenShaded.renderPass,
+                                                m_gfxPipelines.offscreenShaded.framebuffer, area,
+                                                clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.color, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.offscreenShaded.pipeline,
+        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.offscreenShaded.pipeline,
                                                PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
@@ -248,17 +244,16 @@ void OffscreenApp::BuildRenderGraph()
         vp.minY = 0.0f;
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
-        FramebufferHandle framebuffer =
-            m_viewport->GetCompatibleFramebuffer(m_mainRPs.mirror.renderPass);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_mainRPs.mirror.renderPass, framebuffer, area,
-                                                clearValues, true);
+        auto* pass =
+            m_rdg->AddGraphicsPassNode(m_gfxPipelines.mirror.renderPass,
+                                       m_gfxPipelines.mirror.framebuffer, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         // phone
-        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_mainRPs.mirror.pipeline,
+        m_rdg->AddGraphicsPassBindPipelineNode(pass, m_gfxPipelines.mirror.pipeline,
                                                PipelineType::eGraphics);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

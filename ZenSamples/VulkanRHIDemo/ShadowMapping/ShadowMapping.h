@@ -35,7 +35,7 @@ public:
 
     void Destroy() final;
 
-    ~ShadowMappingApp() override{};
+    ~ShadowMappingApp() override {};
 
 private:
     void PrepareOffscreen();
@@ -50,9 +50,9 @@ private:
 
     struct RenderPipelines
     {
-        rc::RenderPipeline offscreen;
-        rc::RenderPipeline sceneShadow;
-    } m_mainRPs;
+        rc::GraphicsPipeline offscreen;
+        rc::GraphicsPipeline sceneShadow;
+    } m_gfxPipelines;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

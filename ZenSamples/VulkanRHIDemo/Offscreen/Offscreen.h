@@ -24,7 +24,7 @@ public:
 
     void Destroy() final;
 
-    ~OffscreenApp() override{};
+    ~OffscreenApp() override {};
 
 private:
     void PrepareOffscreenTextures();
@@ -37,9 +37,9 @@ private:
 
     struct RenderPipelines
     {
-        rc::RenderPipeline offscreenShaded;
-        rc::RenderPipeline mirror;
-    } m_mainRPs;
+        rc::GraphicsPipeline offscreenShaded;
+        rc::GraphicsPipeline mirror;
+    } m_gfxPipelines;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

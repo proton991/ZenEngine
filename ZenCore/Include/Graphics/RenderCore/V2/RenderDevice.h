@@ -19,63 +19,69 @@ namespace zen::rc
 class RenderDevice;
 class RenderGraph;
 
-struct RenderPipeline
+struct GraphicsPipeline
 {
+    rhi::FramebufferHandle framebuffer;
     rhi::RenderPassHandle renderPass;
     rhi::PipelineHandle pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
 };
 
-class RenderPipelineBuilder
+class GraphicsPipelineBuilder
 {
 public:
-    explicit RenderPipelineBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
+    explicit GraphicsPipelineBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
 
-    RenderPipelineBuilder& SetVertexShader(const std::string& file)
+    GraphicsPipelineBuilder& SetVertexShader(const std::string& file)
     {
         m_vsPath = file;
         m_hasVS  = true;
         return *this;
     }
 
-    RenderPipelineBuilder& SetFragmentShader(const std::string& file)
+    GraphicsPipelineBuilder& SetFragmentShader(const std::string& file)
     {
         m_fsPath = file;
         m_hasFS  = true;
         return *this;
     }
 
-    RenderPipelineBuilder& SetShaderSpecializationConstants(uint32_t constantId, int value)
+    GraphicsPipelineBuilder& SetShaderSpecializationConstants(uint32_t constantId, int value)
     {
         m_specializationConstants[constantId] = value;
         return *this;
     }
 
-    RenderPipelineBuilder& AddColorRenderTarget(rhi::DataFormat format, rhi::TextureUsage usage)
+    GraphicsPipelineBuilder& AddColorRenderTarget(rhi::DataFormat format,
+                                                  rhi::TextureUsage usage,
+                                                  const rhi::TextureHandle& handle)
     {
-        m_rpLayout.AddColorRenderTarget(format, usage);
+        m_rpLayout.AddColorRenderTarget(format, usage, handle);
         m_rpLayout.SetColorTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
                                              rhi::RenderTargetStoreOp::eStore);
+        m_framebufferInfo.numRenderTarget++;
         return *this;
     }
 
-    RenderPipelineBuilder& SetDepthStencilTarget(
+    GraphicsPipelineBuilder& SetDepthStencilTarget(
         rhi::DataFormat format,
+        const rhi::TextureHandle& handle,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone)
     {
-        m_rpLayout.SetDepthStencilRenderTarget(format);
+        m_rpLayout.SetDepthStencilRenderTarget(format, handle);
         m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+        m_framebufferInfo.numRenderTarget++;
         return *this;
     }
 
-    RenderPipelineBuilder& SetNumSamples(rhi::SampleCount sampleCount)
+    GraphicsPipelineBuilder& SetNumSamples(rhi::SampleCount sampleCount)
     {
         m_rpLayout.SetNumSamples(sampleCount);
         return *this;
     }
 
-    RenderPipelineBuilder& SetShaderResourceBinding(
+    GraphicsPipelineBuilder& SetShaderResourceBinding(
         uint32_t setIndex,
         const std::vector<rhi::ShaderResourceBinding>& bindings)
     {
@@ -83,22 +89,41 @@ public:
         return *this;
     }
 
-    RenderPipelineBuilder& SetPipelineState(const rhi::GfxPipelineStates& pso)
+    GraphicsPipelineBuilder& SetPipelineState(const rhi::GfxPipelineStates& pso)
     {
         m_PSO = pso;
         return *this;
     }
 
-    RenderPipelineBuilder& SetTag(std::string tag)
+    GraphicsPipelineBuilder& SetTag(std::string tag)
     {
         m_tag = std::move(tag);
         return *this;
     }
 
-    RenderPipeline Build();
+    GraphicsPipelineBuilder& SetFramebufferInfo(rhi::RHIViewport* viewport,
+                                                uint32_t width,
+                                                uint32_t height)
+    {
+        m_framebufferInfo.width  = width;
+        m_framebufferInfo.height = height;
+        m_viewport               = viewport;
+        return *this;
+    }
+
+    GraphicsPipelineBuilder& SetFramebufferInfo(rhi::RHIViewport* viewport)
+    {
+        m_framebufferInfo.width  = viewport->GetWidth();
+        m_framebufferInfo.height = viewport->GetHeight();
+        m_viewport               = viewport;
+        return *this;
+    }
+
+    GraphicsPipeline Build();
 
 private:
     RenderDevice* m_renderDevice{nullptr};
+    rhi::RHIViewport* m_viewport{nullptr};
     std::string m_tag;
     bool m_hasVS{false};
     bool m_hasFS{false};
@@ -107,6 +132,7 @@ private:
     std::string m_fsPath;
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
+    rhi::FramebufferInfo m_framebufferInfo{};
     HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
     HashMap<uint32_t, int> m_specializationConstants;
 };
@@ -373,9 +399,9 @@ private:
     HashMap<std::string, rhi::TextureHandle> m_textureCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     std::vector<rhi::BufferHandle> m_buffers;
-    std::vector<RenderPipeline> m_renderPipelines;
+    std::vector<GraphicsPipeline> m_gfxPipelines;
     std::vector<rhi::RHIViewport*> m_viewports;
 
-    friend class RenderPipelineBuilder;
+    friend class GraphicsPipelineBuilder;
 };
 } // namespace zen::rc

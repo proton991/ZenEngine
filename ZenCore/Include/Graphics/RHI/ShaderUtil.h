@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include "RHIResource.h"
 #include "spirv_reflect.h"
 #include "Common/Errors.h"

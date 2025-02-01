@@ -94,15 +94,18 @@ void GearsApp::BuildRenderPipeline()
         uboBindings.emplace_back(std::move(binding1));
     }
 
-    rc::RenderPipelineBuilder builder(m_renderDevice);
-    m_mainRP =
+    rc::GraphicsPipelineBuilder builder(m_renderDevice);
+    m_gfxPipeline =
         builder.SetVertexShader("gears.vert.spv")
             .SetFragmentShader("gears.frag.spv")
             .SetNumSamples(SampleCount::e1)
-            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment)
-            .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
+            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
+                                  m_viewport->GetColorBackBuffer())
+            .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                   m_viewport->GetDepthStencilBackBuffer())
             .SetShaderResourceBinding(0, uboBindings)
             .SetPipelineState(pso)
+            .SetFramebufferInfo(m_viewport->GetWidth(), m_viewport->GetHeight(), m_viewport)
             .Build();
 }
 
@@ -154,10 +157,10 @@ void GearsApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    FramebufferHandle framebuffer = m_viewport->GetCompatibleFramebuffer(m_mainRP.renderPass);
-    auto* mainPass =
-        m_rdg->AddGraphicsPassNode(m_mainRP.renderPass, framebuffer, area, clearValues, true);
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRP.pipeline, PipelineType::eGraphics);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline.renderPass, m_gfxPipeline.framebuffer,
+                                                area, clearValues, true);
+    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipeline.pipeline,
+                                           PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);

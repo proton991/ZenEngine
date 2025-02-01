@@ -71,49 +71,59 @@ void SpecializationConstantsApp::BuildRenderPipeline()
     }
     // phone
     {
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.phong = builder.SetVertexShader("uber.vert.spv")
-                              .SetFragmentShader("uber.frag.spv")
-                              .SetShaderSpecializationConstants(0, 0)
-                              .SetNumSamples(SampleCount::e1)
-                              .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                    TextureUsage::eColorAttachment)
-                              .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
-                              .SetShaderResourceBinding(0, uboBindings)
-                              .SetShaderResourceBinding(1, textureBindings)
-                              .SetPipelineState(pso)
-                              .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.phong = builder.SetVertexShader("uber.vert.spv")
+                                   .SetFragmentShader("uber.frag.spv")
+                                   .SetShaderSpecializationConstants(0, 0)
+                                   .SetNumSamples(SampleCount::e1)
+                                   .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                                         TextureUsage::eColorAttachment,
+                                                         m_viewport->GetColorBackBuffer())
+                                   .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                                          m_viewport->GetDepthStencilBackBuffer())
+                                   .SetShaderResourceBinding(0, uboBindings)
+                                   .SetShaderResourceBinding(1, textureBindings)
+                                   .SetPipelineState(pso)
+                                   .SetFramebufferInfo(m_viewport)
+                                   .Build();
     }
     // toon
     {
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.toon = builder.SetVertexShader("uber.vert.spv")
-                             .SetFragmentShader("uber.frag.spv")
-                             .SetShaderSpecializationConstants(0, 1)
-                             .SetShaderSpecializationConstants(1, 0.0f)
-                             .SetNumSamples(SampleCount::e1)
-                             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                   TextureUsage::eColorAttachment)
-                             .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
-                             .SetShaderResourceBinding(0, uboBindings)
-                             .SetShaderResourceBinding(1, textureBindings)
-                             .SetPipelineState(pso)
-                             .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.toon = builder.SetVertexShader("uber.vert.spv")
+                                  .SetFragmentShader("uber.frag.spv")
+                                  .SetShaderSpecializationConstants(0, 1)
+                                  .SetShaderSpecializationConstants(1, 0.0f)
+                                  .SetNumSamples(SampleCount::e1)
+                                  .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                                        TextureUsage::eColorAttachment,
+                                                        m_viewport->GetColorBackBuffer())
+                                  .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                                         m_viewport->GetDepthStencilBackBuffer())
+                                  .SetShaderResourceBinding(0, uboBindings)
+                                  .SetShaderResourceBinding(1, textureBindings)
+                                  .SetPipelineState(pso)
+                                  .SetFramebufferInfo(m_viewport)
+                                  .Build();
     }
     // textured
     {
-        rc::RenderPipelineBuilder builder(m_renderDevice);
-        m_mainRPs.textured = builder.SetVertexShader("uber.vert.spv")
-                                 .SetFragmentShader("uber.frag.spv")
-                                 .SetShaderSpecializationConstants(0, 2)
-                                 .SetNumSamples(SampleCount::e1)
-                                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                       TextureUsage::eColorAttachment)
-                                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat())
-                                 .SetShaderResourceBinding(0, uboBindings)
-                                 .SetShaderResourceBinding(1, textureBindings)
-                                 .SetPipelineState(pso)
-                                 .Build();
+        rc::GraphicsPipelineBuilder builder(m_renderDevice);
+        m_gfxPipelines.textured =
+            builder.SetVertexShader("uber.vert.spv")
+                .SetFragmentShader("uber.frag.spv")
+                .SetShaderSpecializationConstants(0, 2)
+                .SetNumSamples(SampleCount::e1)
+                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                      TextureUsage::eColorAttachment,
+                                      m_viewport->GetColorBackBuffer())
+                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                       m_viewport->GetDepthStencilBackBuffer())
+                .SetShaderResourceBinding(0, uboBindings)
+                .SetShaderResourceBinding(1, textureBindings)
+                .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport)
+                .Build();
     }
 }
 
@@ -158,21 +168,17 @@ void SpecializationConstantsApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    FramebufferHandle framebuffer =
-        m_viewport->GetCompatibleFramebuffer(m_mainRPs.phong.renderPass);
-
-
     Rect2<float> leftVP;
     leftVP.minX = 0.0f;
     leftVP.minY = 0.0f;
     leftVP.maxX = (float)m_window->GetExtent2D().width / 3.0f;
     leftVP.maxY = (float)m_window->GetExtent2D().height;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_mainRPs.phong.renderPass, framebuffer, area,
-                                                clearValues, true);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(
+        m_gfxPipelines.phong.renderPass, m_gfxPipelines.phong.framebuffer, area, clearValues, true);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     // phone
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRPs.phong.pipeline,
+    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipelines.phong.pipeline,
                                            PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
@@ -192,7 +198,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     middleVP.maxX = 2 * (float)m_window->GetExtent2D().width / 3.0f;
     middleVP.maxY = (float)m_window->GetExtent2D().height;
 
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRPs.toon.pipeline,
+    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipelines.toon.pipeline,
                                            PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
@@ -213,7 +219,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     rightVP.maxX = (float)m_window->GetExtent2D().width;
     rightVP.maxY = (float)m_window->GetExtent2D().height;
 
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_mainRPs.textured.pipeline,
+    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPipelines.textured.pipeline,
                                            PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
