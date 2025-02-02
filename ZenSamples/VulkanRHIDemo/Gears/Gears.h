@@ -229,7 +229,7 @@ private:
 
     void GenerateGears();
 
-    void BuildRenderPipeline();
+    void BuildGraphicsPasses();
 
     void LoadResources() final;
 
@@ -239,7 +239,7 @@ private:
 
     std::vector<Gear> m_gears{};
 
-    rc::GraphicsPipeline m_gfxPipeline;
+    rc::GraphicsPass m_gfxPass;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

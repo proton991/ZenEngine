@@ -39,7 +39,7 @@ std::vector<uint8_t> LoadSpirvCode(const std::string& name)
     return buffer;
 }
 
-GraphicsPipeline GraphicsPipelineBuilder::Build()
+GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
     DynamicRHI* RHI       = m_renderDevice->GetRHI();
@@ -78,18 +78,18 @@ GraphicsPipeline GraphicsPipelineBuilder::Build()
 
     m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
 
-    GraphicsPipeline gfxPipeline;
-    gfxPipeline.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-    gfxPipeline.framebuffer =
-        m_viewport->GetCompatibleFramebuffer(gfxPipeline.renderPass, &m_framebufferInfo);
-    gfxPipeline.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-        m_PSO, shader, gfxPipeline.renderPass, shaderGroupInfo.specializationConstants);
+    GraphicsPass gfxPass;
+    gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    gfxPass.framebuffer =
+        m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
+    gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+        m_PSO, shader, gfxPass.renderPass, shaderGroupInfo.specializationConstants);
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPipeline.pipeline, m_tag + "_Pipeline");
-    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPipeline.renderPass,
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
                                                           m_tag + "_RenderPass");
 
-    gfxPipeline.descriptorSets.resize(shaderGroupInfo.SRDs.size());
+    gfxPass.descriptorSets.resize(shaderGroupInfo.SRDs.size());
     // parallel build descriptor building process
     //    std::for_each(std::execution::par, m_dsBindings.begin(), m_dsBindings.end(),
     //                  [&](const auto& kv) {
@@ -98,7 +98,7 @@ GraphicsPipeline GraphicsPipelineBuilder::Build()
     //                      // create and update
     //                      DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
     //                      RHI->UpdateDescriptorSet(dsHandle, bindings);
-    //                      gfxPipeline.descriptorSets[setIndex] = dsHandle;
+    //                      gfxPass.descriptorSets[setIndex] = dsHandle;
     //                  });
     for (const auto& kv : m_dsBindings)
     {
@@ -106,12 +106,12 @@ GraphicsPipeline GraphicsPipelineBuilder::Build()
         const auto& bindings         = kv.second;
         DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
         RHI->UpdateDescriptorSet(dsHandle, bindings);
-        gfxPipeline.descriptorSets[setIndex] = dsHandle;
+        gfxPass.descriptorSets[setIndex] = dsHandle;
     }
 
     RHI->DestroyShader(shader);
-    m_renderDevice->m_gfxPipelines.push_back(gfxPipeline);
-    return gfxPipeline;
+    m_renderDevice->m_gfxPasses.push_back(gfxPass);
+    return gfxPass;
 }
 
 rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
@@ -395,7 +395,7 @@ void RenderDevice::Destroy()
         m_RHI->DestroyPipeline(kv.second);
     }
 
-    for (auto& rp : m_gfxPipelines)
+    for (auto& rp : m_gfxPasses)
     {
         for (const auto& ds : rp.descriptorSets)
         {

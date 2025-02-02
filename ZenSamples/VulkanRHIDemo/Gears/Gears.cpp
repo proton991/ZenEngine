@@ -65,7 +65,7 @@ void GearsApp::GenerateGears()
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 }
 
-void GearsApp::BuildRenderPipeline()
+void GearsApp::BuildGraphicsPasses()
 {
     GfxPipelineStates pso{};
     pso.primitiveType = DrawPrimitiveType::eTriangleList;
@@ -94,8 +94,8 @@ void GearsApp::BuildRenderPipeline()
         uboBindings.emplace_back(std::move(binding1));
     }
 
-    rc::GraphicsPipelineBuilder builder(m_renderDevice);
-    m_gfxPipeline =
+    rc::GraphicsPassBuilder builder(m_renderDevice);
+    m_gfxPass =
         builder.SetVertexShader("gears.vert.spv")
             .SetFragmentShader("gears.frag.spv")
             .SetNumSamples(SampleCount::e1)
@@ -157,7 +157,7 @@ void GearsApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline, area, clearValues, true);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
 
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
@@ -175,7 +175,7 @@ void GearsApp::Prepare()
 {
     Application::Prepare();
     LoadResources();
-    BuildRenderPipeline();
+    BuildGraphicsPasses();
     BuildRenderGraph();
 }
 

@@ -6,7 +6,7 @@ HelloTriangleApp::HelloTriangleApp(const platform::WindowConfig& windowConfig) :
     m_camera->SetPosition({0.0f, 0.0f, -2.0f});
 }
 
-void HelloTriangleApp::BuildRenderPipeline()
+void HelloTriangleApp::BuildGraphicsPasses()
 {
     GfxPipelineStates pso{};
     pso.primitiveType      = DrawPrimitiveType::eTriangleList;
@@ -35,8 +35,8 @@ void HelloTriangleApp::BuildRenderPipeline()
         textureBindings.emplace_back(std::move(binding));
     }
 
-    rc::GraphicsPipelineBuilder builder(m_renderDevice);
-    m_gfxPipeline =
+    rc::GraphicsPassBuilder builder(m_renderDevice);
+    m_gfxPass =
         builder.SetVertexShader("triangle.vert.spv")
             .SetFragmentShader("triangle_fixed.frag.spv")
             .SetNumSamples(SampleCount::e1)
@@ -95,7 +95,7 @@ void HelloTriangleApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline, area, clearValues, true);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
 
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
@@ -109,7 +109,7 @@ void HelloTriangleApp::Prepare()
 {
     Application::Prepare();
     LoadResources();
-    BuildRenderPipeline();
+    BuildGraphicsPasses();
     BuildRenderGraph();
 }
 

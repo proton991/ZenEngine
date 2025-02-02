@@ -3,7 +3,7 @@
 
 namespace zen::rc
 {
-struct GraphicsPipeline
+struct GraphicsPass
 {
     rhi::FramebufferHandle framebuffer;
     rhi::RenderPassHandle renderPass;
