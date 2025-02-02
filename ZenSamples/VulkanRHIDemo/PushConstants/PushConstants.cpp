@@ -64,8 +64,8 @@ void PushConstantsApp::BuildRenderPipeline()
         uboBindings.emplace_back(std::move(binding1));
     }
 
-    rc::GraphicsPipelineBuilder builder(m_renderDevice);
-    m_gfxPipeline =
+    rc::GraphicsPassBuilder builder(m_renderDevice);
+    m_gfxPass =
         builder.SetVertexShader("push_constants.vert.spv")
             .SetFragmentShader("push_constants.frag.spv")
             .SetNumSamples(SampleCount::e1)
@@ -131,7 +131,7 @@ void PushConstantsApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPipeline, area, clearValues, true);
+    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
 
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);

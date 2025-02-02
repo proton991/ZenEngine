@@ -385,7 +385,7 @@ public:
                                      bool hasColorTarget,
                                      bool hasDepthTarget = false);
 
-    RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPipeline& gfxPipeline,
+    RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                      rhi::Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      bool hasColorTarget,

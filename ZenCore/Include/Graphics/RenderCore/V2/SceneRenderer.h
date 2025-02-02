@@ -121,11 +121,11 @@ private:
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
 
-    struct GraphicsPipelines
+    struct GraphicsPasses
     {
-        GraphicsPipeline offscreen;
-        GraphicsPipeline sceneLighting;
-    } m_gfxPipelines;
+        GraphicsPass offscreen;
+        GraphicsPass sceneLighting;
+    } m_gfxPasses;
 
     bool m_sceneLoaded{false};
     sg::Scene* m_scene;

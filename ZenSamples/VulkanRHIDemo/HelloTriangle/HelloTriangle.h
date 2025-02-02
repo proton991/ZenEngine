@@ -36,7 +36,7 @@ private:
 
     void BuildRenderGraph() final;
 
-    rc::GraphicsPipeline m_gfxPipeline;
+    rc::GraphicsPass m_gfxPass;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

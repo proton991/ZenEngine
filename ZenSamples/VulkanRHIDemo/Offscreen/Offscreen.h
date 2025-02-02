@@ -35,11 +35,11 @@ private:
 
     void BuildRenderGraph() final;
 
-    struct RenderPipelines
+    struct GraphicsPasses
     {
-        rc::GraphicsPipeline offscreenShaded;
-        rc::GraphicsPipeline mirror;
-    } m_gfxPipelines;
+        rc::GraphicsPass offscreenShaded;
+        rc::GraphicsPass mirror;
+    } m_gfxPasses;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

@@ -48,11 +48,11 @@ private:
 
     void UpdateUniformBufferData();
 
-    struct RenderPipelines
+    struct GraphicsPasses
     {
-        rc::GraphicsPipeline offscreen;
-        rc::GraphicsPipeline sceneShadow;
-    } m_gfxPipelines;
+        rc::GraphicsPass offscreen;
+        rc::GraphicsPass sceneShadow;
+    } m_gfxPasses;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

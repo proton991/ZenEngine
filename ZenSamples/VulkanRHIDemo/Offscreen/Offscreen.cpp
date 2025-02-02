@@ -95,8 +95,8 @@ void OffscreenApp::BuildRenderPipeline()
             uboBindings.emplace_back(std::move(binding1));
         }
         pso.rasterizationState.cullMode = PolygonCullMode::eFront;
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.offscreenShaded =
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.offscreenShaded =
             builder.SetVertexShader("Offscreen/phong.vert.spv")
                 .SetFragmentShader("Offscreen/phong.frag.spv")
                 .SetNumSamples(SampleCount::e1)
@@ -135,20 +135,20 @@ void OffscreenApp::BuildRenderPipeline()
             textureBindings.emplace_back(std::move(binding));
         }
         pso.rasterizationState.cullMode = PolygonCullMode::eDisabled;
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.mirror = builder.SetVertexShader("Offscreen/mirror.vert.spv")
-                                    .SetFragmentShader("Offscreen/mirror.frag.spv")
-                                    .SetNumSamples(SampleCount::e1)
-                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                          TextureUsage::eColorAttachment,
-                                                          m_viewport->GetColorBackBuffer())
-                                    .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                                           m_viewport->GetDepthStencilBackBuffer())
-                                    .SetShaderResourceBinding(0, uboBindings)
-                                    .SetShaderResourceBinding(1, textureBindings)
-                                    .SetPipelineState(pso)
-                                    .SetFramebufferInfo(m_viewport)
-                                    .Build();
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.mirror = builder.SetVertexShader("Offscreen/mirror.vert.spv")
+                                 .SetFragmentShader("Offscreen/mirror.frag.spv")
+                                 .SetNumSamples(SampleCount::e1)
+                                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
+                                                       TextureUsage::eColorAttachment,
+                                                       m_viewport->GetColorBackBuffer())
+                                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                                        m_viewport->GetDepthStencilBackBuffer())
+                                 .SetShaderResourceBinding(0, uboBindings)
+                                 .SetShaderResourceBinding(1, textureBindings)
+                                 .SetPipelineState(pso)
+                                 .SetFramebufferInfo(m_viewport)
+                                 .Build();
     }
 }
 
@@ -204,7 +204,7 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxY = OFFSCREEN_TEXTURE_DIM;
 
         auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreenShaded, area, clearValues, true);
+            m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreenShaded, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.color, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
@@ -241,7 +241,7 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.mirror, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.mirror, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);

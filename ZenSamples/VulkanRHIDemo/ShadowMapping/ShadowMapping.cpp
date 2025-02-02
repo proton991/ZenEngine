@@ -97,8 +97,8 @@ void ShadowMappingApp::BuildRenderPipeline()
             binding0.handles.push_back(m_offscreenUBO);
             uboBindings.emplace_back(std::move(binding0));
         }
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.offscreen =
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.offscreen =
             builder
                 .SetVertexShader("ShadowMapping/offscreen.vert.spv")
                 //                .SetFragmentShader("ShadowMapping/offscreen.frag.spv")
@@ -138,8 +138,8 @@ void ShadowMappingApp::BuildRenderPipeline()
             binding.handles.push_back(m_offscreenDepthTexture);
             textureBindings.emplace_back(std::move(binding));
         }
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.sceneShadow =
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.sceneShadow =
             builder.SetVertexShader("ShadowMapping/scene.vert.spv")
                 .SetFragmentShader("ShadowMapping/scene.frag.spv")
                 .SetNumSamples(SampleCount::e1)
@@ -234,7 +234,7 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxY = cShadowMapSize;
 
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenDepthTexture, TextureUsage::eDepthStencilAttachment,
             TextureSubResourceRange::Depth(), rc::RDGAccessType::eReadWrite);
@@ -273,8 +273,7 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
 
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneShadow, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneShadow, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, TextureUsage::eSampled,
                                            TextureSubResourceRange::Depth(),
                                            rc::RDGAccessType::eRead);

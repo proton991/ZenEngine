@@ -34,12 +34,12 @@ private:
 
     void BuildRenderGraph() final;
 
-    struct RenderPipelines
+    struct GraphicsPasses
     {
-        rc::GraphicsPipeline phong;
-        rc::GraphicsPipeline toon;
-        rc::GraphicsPipeline textured;
-    } m_gfxPipelines;
+        rc::GraphicsPass phong;
+        rc::GraphicsPass toon;
+        rc::GraphicsPass textured;
+    } m_gfxPasses;
 
     BufferHandle m_vertexBuffer;
     BufferHandle m_indexBuffer;

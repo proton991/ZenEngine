@@ -301,8 +301,8 @@ void SceneRenderer::BuildGraphicsPipelines()
             textureBindings.emplace_back(std::move(binding));
         }
 
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.offscreen =
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.offscreen =
             builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
                 .SetFragmentShader("SceneRenderer/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
@@ -387,8 +387,8 @@ void SceneRenderer::BuildGraphicsPipelines()
             binding2.handles.push_back(m_offscreenTextures.emissiveOcclusion);
             textureBindings.emplace_back(std::move(binding2));
         }
-        rc::GraphicsPipelineBuilder builder(m_renderDevice);
-        m_gfxPipelines.sceneLighting =
+        rc::GraphicsPassBuilder builder(m_renderDevice);
+        m_gfxPasses.sceneLighting =
             builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
                 .SetFragmentShader("SceneRenderer/deferred.frag.spv")
                 .SetNumSamples(SampleCount::e1)
@@ -435,7 +435,7 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPipelines.offscreen, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
@@ -473,8 +473,7 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPipelines.sceneLighting, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);

@@ -35,15 +35,15 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
     return node;
 }
 
-RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPipeline& gfxPipeline,
+RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                               rhi::Rect2<int> area,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
 {
     auto* node           = AllocNode<RDGGraphicsPassNode>();
-    node->renderPass     = std::move(gfxPipeline.renderPass);
-    node->framebuffer    = std::move(gfxPipeline.framebuffer);
+    node->renderPass     = std::move(gfxPass.renderPass);
+    node->framebuffer    = std::move(gfxPass.framebuffer);
     node->renderArea     = area;
     node->type           = RDGNodeType::eGraphicsPass;
     node->numAttachments = clearValues.size();
@@ -61,7 +61,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPipeline& gfxPip
         node->selfStages.SetFlag(rhi::PipelineStageBits::eEarlyFragmentTests);
         node->selfStages.SetFlag(rhi::PipelineStageBits::eLateFragmentTests);
     }
-    AddGraphicsPassBindPipelineNode(node, gfxPipeline.pipeline, rhi::PipelineType::eGraphics);
+    AddGraphicsPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
     return node;
 }
 
