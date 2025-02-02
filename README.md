@@ -67,3 +67,17 @@ on [Vulkan Samples](https://github.com/SaschaWillems/Vulkan).
 **Next steps:**
 
 Re-write **all** [Vulkan Samples](https://github.com/SaschaWillems/Vulkan) using ZenEngine's VulkanRHI and RenderCoreV2. 
+
+## M3-2025.2.2
+
+**Current Status:**
+
+Refined VulkanRHI and Render framework V2. Implemented scene graph based renderer demo.
+
+**scene_renderer_demo**(basic PBR with static lighting, use SceneGraph to manage gltf models)
+
+![scene_renderer_demo.png](./Doc/imgs/scene_renderer_demo.png)
+
+**Next steps:**
+
+Refine further ZenEngine's VulkanRHI and RenderCoreV2 framework. Implement more rendering algorithms.
