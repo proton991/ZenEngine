@@ -149,6 +149,7 @@ VkImageViewType ToVkImageViewType(TextureType type)
         case TextureType::e1D: return VK_IMAGE_VIEW_TYPE_1D;
         case TextureType::e2D: return VK_IMAGE_VIEW_TYPE_2D;
         case TextureType::e3D: return VK_IMAGE_VIEW_TYPE_3D;
+        case TextureType::eCube: return VK_IMAGE_VIEW_TYPE_CUBE;
         case TextureType::eMax: return VK_IMAGE_VIEW_TYPE_MAX_ENUM;
     }
 }

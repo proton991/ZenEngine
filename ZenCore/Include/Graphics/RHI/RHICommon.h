@@ -16,6 +16,12 @@
 
 namespace zen::rhi
 {
+enum class GraphicsAPIType
+{
+    eVulkan = 0,
+    eMax    = 1
+};
+
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
 {
     return static_cast<std::underlying_type_t<E>>(e);
@@ -768,10 +774,11 @@ enum class TextureLayout : uint32_t
 
 enum class TextureType : uint32_t
 {
-    e1D  = 0,
-    e2D  = 1,
-    e3D  = 2,
-    eMax = 3
+    e1D   = 0,
+    e2D   = 1,
+    e3D   = 2,
+    eCube = 3,
+    eMax  = 4
 };
 
 struct TextureSubResourceRange

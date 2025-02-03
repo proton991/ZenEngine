@@ -8,15 +8,11 @@ namespace zen::rhi
 class RHICommandList;
 class RHICommandListContext;
 
-enum class GraphicsAPIType
-{
-    eVulkan,
-    Count
-};
-
 class DynamicRHI
 {
 public:
+    static DynamicRHI* Create(GraphicsAPIType type);
+
     virtual ~DynamicRHI() = default;
 
     virtual void Init() = 0;

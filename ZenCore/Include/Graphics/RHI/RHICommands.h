@@ -14,6 +14,8 @@ public:
 class RHICommandList
 {
 public:
+    static RHICommandList* Create(GraphicsAPIType type, RHICommandListContext* context);
+
     virtual void BeginRender() = 0;
 
     virtual void EndRender() = 0;

@@ -349,29 +349,23 @@ void BufferStagingManager::PerformAction(StagingFlushAction action)
 
 void RenderDevice::Init()
 {
-    if (m_APIType == rhi::GraphicsAPIType::eVulkan)
+    m_RHI = rhi::DynamicRHI::Create(m_APIType);
+    m_RHI->Init();
+    m_RHIDebug = rhi::RHIDebug::Create(m_RHI);
+    m_bufferStagingMgr =
+        new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
+    m_bufferStagingMgr->Init(m_numFrames);
+    m_textureStagingMgr = new TextureStagingManager(this);
+    m_frames.reserve(m_numFrames);
+    for (uint32_t i = 0; i < m_numFrames; i++)
     {
-        m_RHI = new rhi::VulkanRHI();
-        m_RHI->Init();
-
-        m_RHIDebug = new rhi::VulkanDebug(m_RHI);
-        m_bufferStagingMgr =
-            new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
-        m_bufferStagingMgr->Init(m_numFrames);
-        m_textureStagingMgr = new TextureStagingManager(this);
-        m_frames.reserve(m_numFrames);
-        for (uint32_t i = 0; i < m_numFrames; i++)
-        {
-            RenderFrame frame{};
-            frame.cmdListContext = m_RHI->CreateCmdListContext();
-            frame.drawCmdList    = new rhi::VulkanCommandList(
-                dynamic_cast<rhi::VulkanCommandListContext*>(frame.cmdListContext));
-            frame.uploadCmdList = new rhi::VulkanCommandList(
-                dynamic_cast<rhi::VulkanCommandListContext*>(frame.cmdListContext));
-            m_frames.emplace_back(frame);
-        }
-        m_framesCounter = m_frames.size();
+        RenderFrame frame{};
+        frame.cmdListContext = m_RHI->CreateCmdListContext();
+        frame.drawCmdList    = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
+        frame.uploadCmdList  = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
+        m_frames.emplace_back(frame);
     }
+    m_framesCounter = m_frames.size();
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
 }

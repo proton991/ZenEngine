@@ -140,6 +140,8 @@ set(ZEN_CORE_SOURCES
 
     Source/Systems/Camera.cpp
 
+    Source/Graphics/RHI/RHIFactory.cpp
+
     Source/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.cpp
     Source/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.cpp
     Source/Graphics/VulkanRHI/VulkanExtension.cpp
