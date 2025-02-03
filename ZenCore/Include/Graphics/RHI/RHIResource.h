@@ -232,7 +232,8 @@ public:
     virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                        const FramebufferInfo* fbInfo) = 0;
 
-    virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle) = 0;
+    virtual FramebufferHandle GetCompatibleFramebufferForBackBuffer(
+        RenderPassHandle renderPassHandle) = 0;
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
 };

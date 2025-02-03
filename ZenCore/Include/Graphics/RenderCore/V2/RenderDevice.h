@@ -383,7 +383,6 @@ private:
     DeletionQueue m_deletionQueue;
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
-    HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;

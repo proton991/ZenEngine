@@ -49,3 +49,14 @@ protected:
     float m_animationTimer{0.0f};
     float m_animationSpeed{0.25f};
 };
+
+#define ZEN_RHI_DEMO_MAIN(AppClass, AppName)                            \
+    int main(int argc, char** argv)                                     \
+    {                                                                   \
+        platform::WindowConfig windowConfig{AppName, false, 1280, 720}; \
+        Application* app = new AppClass(windowConfig);                  \
+        app->Prepare();                                                 \
+        app->Run();                                                     \
+        app->Destroy();                                                 \
+        delete app;                                                     \
+    }

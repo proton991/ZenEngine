@@ -90,10 +90,7 @@ public:
 
     void DrawScene();
 
-    void OnViewportResized()
-    {
-        m_rebuildRDG = true;
-    }
+    void OnResize(rhi::RHIViewport* viewport, sys::Camera* camera);
 
 private:
     void LoadSceneMaterials();

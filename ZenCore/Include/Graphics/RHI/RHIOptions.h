@@ -21,7 +21,7 @@ public:
     {
         m_VkRHIOptions.uploadCmdBufferSemaphore = false;
         m_VkRHIOptions.maxDescriptorSetPerPool  = 64;
-        m_VkRHIOptions.reuseSwapchainOnResize   = false;
+        m_VkRHIOptions.reuseSwapchainOnResize   = true;
     }
 
     bool VKUploadCmdBufferSemaphore() const

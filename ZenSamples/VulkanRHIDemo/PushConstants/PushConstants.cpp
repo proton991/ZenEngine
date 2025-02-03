@@ -152,17 +152,4 @@ void PushConstantsApp::BuildRenderGraph()
     m_rdg->End();
 }
 
-
-int main(int argc, char** argv)
-{
-    platform::WindowConfig windowConfig{"push_constants", true, 1280, 720};
-    Application* app = new PushConstantsApp(windowConfig);
-
-    app->Prepare();
-
-    app->Run();
-
-    app->Destroy();
-
-    delete app;
-}
+ZEN_RHI_DEMO_MAIN(PushConstantsApp, "push_constants")

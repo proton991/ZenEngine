@@ -85,6 +85,12 @@ GraphicsPass GraphicsPassBuilder::Build()
         m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
     gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
         m_PSO, shader, gfxPass.renderPass, shaderGroupInfo.specializationConstants);
+    gfxPass.framebufferWidth  = m_framebufferInfo.width;
+    gfxPass.framebufferHeight = m_framebufferInfo.height;
+    for (uint32_t i = 0; i < m_framebufferInfo.numRenderTarget; i++)
+    {
+        gfxPass.rtHandles.push_back(m_framebufferInfo.renderTargets[i]);
+    }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
     m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
@@ -377,10 +383,6 @@ void RenderDevice::Destroy()
     for (auto* viewport : m_viewports)
     {
         m_RHI->DestroyViewport(viewport);
-    }
-    for (auto& kv : m_framebufferCache)
-    {
-        m_RHI->DestroyFramebuffer(kv.second);
     }
     for (auto& kv : m_renderPassCache)
     {

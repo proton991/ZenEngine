@@ -66,7 +66,8 @@ public:
     FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                const FramebufferInfo* fbInfo) final;
 
-    FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle) final;
+    FramebufferHandle GetCompatibleFramebufferForBackBuffer(
+        RenderPassHandle renderPassHandle) final;
 
     void Resize(uint32_t width, uint32_t height) final;
 

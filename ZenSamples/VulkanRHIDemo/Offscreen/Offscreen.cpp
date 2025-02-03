@@ -261,18 +261,4 @@ void OffscreenApp::BuildRenderGraph()
     m_rdg->End();
 }
 
-
-int main(int argc, char** argv)
-{
-    platform::WindowConfig windowConfig{"offscreen", true, 1280, 720};
-
-    Application* app = new OffscreenApp(windowConfig);
-
-    app->Prepare();
-
-    app->Run();
-
-    app->Destroy();
-
-    delete app;
-}
+ZEN_RHI_DEMO_MAIN(OffscreenApp, "offscreen")

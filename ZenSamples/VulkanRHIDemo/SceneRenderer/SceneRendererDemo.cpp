@@ -20,18 +20,16 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
         m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
-        m_sceneRenderer->OnViewportResized();
         // recreate camera
-        m_camera =
-            sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, aspect);
+        m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+                                             m_window->GetAspect(), type);
+        m_camera->SetOnUpdate([&] {});
+        m_sceneRenderer->OnResize(m_viewport, m_camera.Get());
     });
-
 
     m_camera =
         sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
-    m_camera->SetOnUpdate([&] {
-
-    });
+    m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
 

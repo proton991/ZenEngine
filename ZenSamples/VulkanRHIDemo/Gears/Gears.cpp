@@ -204,16 +204,4 @@ void GearsApp::Destroy()
     Application::Destroy();
 }
 
-int main(int argc, char** argv)
-{
-    platform::WindowConfig windowConfig{"gears", true, 1280, 720};
-    Application* app = new GearsApp(windowConfig);
-
-    app->Prepare();
-
-    app->Run();
-
-    app->Destroy();
-
-    delete app;
-}
+ZEN_RHI_DEMO_MAIN(GearsApp, "gears")

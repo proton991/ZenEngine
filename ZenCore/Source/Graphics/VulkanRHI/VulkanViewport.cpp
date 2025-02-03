@@ -349,16 +349,20 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     RecreateSwapchain();
     VERIFY_EXPR_MSG(m_framebuffer != nullptr, "Cannot Resize viewport without framebuffer");
     VkRenderPass renderPass = m_framebuffer->GetVkRenderPass();
-    m_RHI->DestroyFramebuffer(FramebufferHandle(m_framebuffer));
+    vkDestroyFramebuffer(m_device->GetVkHandle(), m_framebuffer->GetVkHandle(), nullptr);
     // create new one
-    TextureHandle renderBackBuffer = GetColorBackBuffer();
+    std::vector<TextureHandle> renderTargets;
+    renderTargets.push_back(GetColorBackBuffer());
+    renderTargets.push_back(GetDepthStencilBackBuffer());
     FramebufferInfo fbInfo{};
     fbInfo.width           = m_width;
     fbInfo.height          = m_height;
-    fbInfo.numRenderTarget = 1;
-    fbInfo.renderTargets   = &renderBackBuffer;
+    fbInfo.numRenderTarget = 2;
+    fbInfo.renderTargets   = renderTargets.data();
 
     m_framebuffer = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+    // update cache
+    m_framebufferCache[RenderPassHandle(renderPass)] = m_framebuffer;
 }
 
 void VulkanViewport::Destroy()
@@ -376,7 +380,8 @@ void VulkanViewport::Destroy()
     }
 }
 
-FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle)
+FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
+    RenderPassHandle renderPassHandle)
 {
     VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
     if (m_framebuffer == nullptr ||
@@ -396,22 +401,24 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle rend
         // save to cache
         m_framebufferCache[renderPassHandle] = m_framebuffer;
     }
-    return FramebufferHandle(m_framebuffer);
+    return FramebufferHandle(m_framebufferCache[renderPassHandle]);
 }
 
 FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                            const FramebufferInfo* fbInfo)
 {
     VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
-    if (m_framebuffer == nullptr ||
-        (m_framebufferCache.contains(renderPassHandle) &&
+    if ((m_framebufferCache.contains(renderPassHandle) &&
          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
         !m_framebufferCache.contains(renderPassHandle))
     {
-        m_framebuffer = new VulkanFramebuffer(m_RHI, renderPass, *fbInfo);
         // save to cache
-        m_framebufferCache[renderPassHandle] = m_framebuffer;
+        m_framebufferCache[renderPassHandle] = new VulkanFramebuffer(m_RHI, renderPass, *fbInfo);
     }
-    return FramebufferHandle(m_framebuffer);
+    if (fbInfo->width == m_width && fbInfo->height == m_height && fbInfo->numRenderTarget == 2)
+    {
+        m_framebuffer = m_framebufferCache[renderPassHandle];
+    }
+    return FramebufferHandle(m_framebufferCache[renderPassHandle]);
 }
 } // namespace zen::rhi

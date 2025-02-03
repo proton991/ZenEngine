@@ -235,19 +235,4 @@ void SpecializationConstantsApp::BuildRenderGraph()
     m_rdg->End();
 }
 
-
-int main(int argc, char** argv)
-{
-    platform::WindowConfig windowConfig{"specialization_constants", true, 1280, 720};
-    windowConfig.aspect = 1280.0f / 720.f / 3;
-
-    Application* app = new SpecializationConstantsApp(windowConfig);
-
-    app->Prepare();
-
-    app->Run();
-
-    app->Destroy();
-
-    delete app;
-}
+ZEN_RHI_DEMO_MAIN(SpecializationConstantsApp, "specialization_constants")
