@@ -103,9 +103,9 @@ void SceneRenderer::LoadSceneMaterials()
 void SceneRenderer::LoadSceneTextures()
 {
     // default base color texture
-    m_defaultBaseColorTexture = m_renderDevice->RequestTexture2D("wood.png");
+    m_defaultBaseColorTexture = m_renderDevice->LoadTexture2D("wood.png");
     // scene textures
-    m_renderDevice->RegisterSceneTextures(m_scene, m_sceneTextures);
+    m_renderDevice->LoadSceneTextures(m_scene, m_sceneTextures);
 }
 
 void SceneRenderer::DrawScene()

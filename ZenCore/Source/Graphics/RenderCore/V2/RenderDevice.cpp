@@ -3,6 +3,7 @@
 #include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "stb_image.h"
@@ -356,6 +357,7 @@ void RenderDevice::Init()
         new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
     m_bufferStagingMgr->Init(m_numFrames);
     m_textureStagingMgr = new TextureStagingManager(this);
+    m_textureManager    = new TextureManager(this, m_textureStagingMgr);
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
@@ -400,14 +402,14 @@ void RenderDevice::Destroy()
     {
         m_RHI->DestroyBuffer(buffer);
     }
-    for (auto& kv : m_textureCache)
-    {
-        m_RHI->DestroyTexture(kv.second);
-    }
+
     m_deletionQueue.Flush();
 
     m_bufferStagingMgr->Destroy();
     delete m_bufferStagingMgr;
+
+    m_textureManager->Destroy();
+    delete m_textureManager;
 
     m_textureStagingMgr->Destroy();
     delete m_textureStagingMgr;
@@ -432,11 +434,7 @@ void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bo
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
                                                const std::string& tag)
 {
-    if (!m_textureCache.contains(tag))
-    {
-        m_textureCache[tag] = m_RHI->CreateTexture(textureInfo);
-    }
-    return m_textureCache.at(tag);
+    return m_textureManager->CreateTexture(textureInfo, tag);
 }
 
 rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
@@ -513,7 +511,7 @@ size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
     return alignedSize;
 }
 
-void RenderDevice::UpdateBuffer(rhi::BufferHandle bufferHandle,
+void RenderDevice::UpdateBuffer(const rhi::BufferHandle& bufferHandle,
                                 uint32_t dataSize,
                                 const uint8_t* pData,
                                 uint32_t offset)
@@ -521,7 +519,7 @@ void RenderDevice::UpdateBuffer(rhi::BufferHandle bufferHandle,
     UpdateBufferInternal(bufferHandle, offset, dataSize, pData);
 }
 
-void RenderDevice::DestroyBuffer(rhi::BufferHandle bufferHandle)
+void RenderDevice::DestroyBuffer(const rhi::BufferHandle& bufferHandle)
 {
     m_RHI->DestroyBuffer(bufferHandle);
 }
@@ -535,18 +533,6 @@ rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassL
         m_renderPassCache[hash] = m_RHI->CreateRenderPass(layout);
     }
     return m_renderPassCache[hash];
-}
-
-rhi::FramebufferHandle RenderDevice::GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
-                                                            const rhi::FramebufferInfo& fbInfo)
-{
-    auto hash = CalcFramebufferHash(fbInfo, renderPassHandle);
-    if (!m_framebufferCache.contains(hash))
-    {
-        // create new one
-        m_framebufferCache[hash] = m_RHI->CreateFramebuffer(renderPassHandle, fbInfo);
-    }
-    return m_framebufferCache[hash];
 }
 
 rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
@@ -650,117 +636,15 @@ static void CopyRegion(uint8_t const* pSrc,
     }
 }
 
-rhi::TextureHandle RenderDevice::RequestTexture2D(const std::string& file, bool requireMipmap)
+rhi::TextureHandle RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
-    if (m_textureCache.contains(file))
-    {
-        return m_textureCache[file];
-    }
-    // TODO: Refactor AssetLib
-    const std::string filepath = ZEN_TEXTURE_PATH + file;
-    int width = 0, height = 0, channels = 0;
-    stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-    stbi_set_flip_vertically_on_load(false);
-
-    std::vector<uint8_t> vecData;
-    // ONLY support RGBA format
-    vecData.resize(width * height * 4 * sizeof(uint8_t));
-    std::copy(data, data + vecData.size(), vecData.begin());
-    stbi_image_free(data);
-
-    rhi::TextureInfo textureInfo{};
-    textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
-    textureInfo.type        = rhi::TextureType::e2D;
-    textureInfo.width       = width;
-    textureInfo.height      = height;
-    textureInfo.depth       = 1;
-    textureInfo.arrayLayers = 1;
-    textureInfo.mipmaps     = 1;
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
-
-    rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-
-    if (requireMipmap)
-    {
-        // TODO: generate mipmaps
-    }
-    else
-    {
-        UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
-                      vecData.size(), vecData.data());
-    }
-
-    m_textureCache[file] = texture;
-    return texture;
+    return m_textureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::RegisterSceneTextures(const sg::Scene* scene,
-                                         std::vector<rhi::TextureHandle>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
+                                     std::vector<rhi::TextureHandle>& outTextures)
 {
-    std::vector<sg::Texture*> sgTextures = scene->GetComponents<sg::Texture>();
-    for (sg::Texture* sgTexture : sgTextures)
-    {
-        if (!m_textureCache.contains(sgTexture->GetName()))
-        {
-            rhi::TextureInfo textureInfo{};
-            textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
-            textureInfo.type        = rhi::TextureType::e2D;
-            textureInfo.width       = sgTexture->width;
-            textureInfo.height      = sgTexture->height;
-            textureInfo.depth       = 1;
-            textureInfo.arrayLayers = 1;
-            textureInfo.mipmaps     = 1;
-            textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
-            textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
-
-            rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-
-            UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
-                          sgTexture->bytesData.size(), sgTexture->bytesData.data());
-
-            m_textureCache[sgTexture->GetName()] = texture;
-        }
-        outTextures.push_back(m_textureCache[sgTexture->GetName()]);
-    }
-}
-
-void RenderDevice::UpdateTexture(rhi::TextureHandle textureHandle,
-                                 const Vec3i& textureSize,
-                                 uint32_t dataSize,
-                                 const uint8_t* pData)
-{
-    // transfer layout to eTransferDst
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, textureHandle,
-                               rhi::TextureLayout::eUndefined, rhi::TextureLayout::eTransferDst);
-
-    rhi::BufferHandle stagingBuffer = m_textureStagingMgr->RequireBuffer(dataSize);
-    // map staging buffer
-    uint8_t* dataPtr = m_RHI->MapBuffer(stagingBuffer);
-    // copy
-    memcpy(dataPtr, pData, dataSize);
-    // unmap
-    m_RHI->UnmapBuffer(stagingBuffer);
-    // copy to gpu memory
-    rhi::BufferTextureCopyRegion copyRegion{};
-    copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
-    copyRegion.bufferOffset  = 0;
-    copyRegion.textureOffset = {0, 0, 0};
-    copyRegion.textureSize   = textureSize;
-    m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(stagingBuffer, textureHandle,
-                                                                copyRegion);
-    m_textureStagingMgr->ReleaseBuffer(stagingBuffer);
-
-    // transfer layout to eShaderReadOnly
-    m_RHI->ChangeTextureLayout(m_frames[m_currentFrame].uploadCmdList, textureHandle,
-                               rhi::TextureLayout::eTransferDst,
-                               rhi::TextureLayout::eShaderReadOnly);
-
-    if (m_textureStagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
-    {
-        WaitForAllFrames();
-    }
+    m_textureManager->LoadSceneTextures(scene, outTextures);
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
@@ -862,7 +746,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
     }
 }
 
-void RenderDevice::UpdateBufferInternal(rhi::BufferHandle bufferHandle,
+void RenderDevice::UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
                                         uint32_t offset,
                                         uint32_t dataSize,
                                         const uint8_t* pData)

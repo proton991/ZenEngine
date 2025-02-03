@@ -158,7 +158,7 @@ void OffscreenApp::LoadResources()
     // load texture
     SamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
-    m_texture = m_renderDevice->RequestTexture2D("wood.png");
+    m_texture = m_renderDevice->LoadTexture2D("wood.png");
 
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();

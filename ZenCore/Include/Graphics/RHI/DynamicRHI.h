@@ -23,6 +23,8 @@ public:
 
     virtual void WaitForCommandList(RHICommandList* cmdList) = 0;
 
+    virtual RHICommandList* GetImmediateCommandList() = 0;
+
     virtual GraphicsAPIType GetAPIType() = 0;
 
     virtual const char* GetName() = 0;

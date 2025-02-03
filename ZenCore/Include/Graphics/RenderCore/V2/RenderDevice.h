@@ -18,6 +18,7 @@ namespace zen::rc
 {
 class RenderDevice;
 class RenderGraph;
+class TextureManager;
 
 class GraphicsPassBuilder
 {
@@ -187,7 +188,6 @@ private:
     uint32_t m_pendingFreeMemorySize;
 };
 
-// todo: fix bugs when loading a large number of textures
 class BufferStagingManager
 {
 public:
@@ -273,17 +273,14 @@ public:
 
     rhi::BufferHandle CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    void UpdateBuffer(rhi::BufferHandle bufferHandle,
+    void UpdateBuffer(const rhi::BufferHandle& bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
                       uint32_t offset = 0);
 
-    void DestroyBuffer(rhi::BufferHandle bufferHandle);
+    void DestroyBuffer(const rhi::BufferHandle& bufferHandle);
 
     rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
-
-    rhi::FramebufferHandle GetOrCreateFramebuffer(rhi::RenderPassHandle renderPassHandle,
-                                                  const rhi::FramebufferInfo& fbInfo);
 
     rhi::PipelineHandle GetOrCreateGfxPipeline(
         rhi::GfxPipelineStates& PSO,
@@ -301,10 +298,9 @@ public:
                         uint32_t width,
                         uint32_t height);
 
-    rhi::TextureHandle RequestTexture2D(const std::string& file, bool requireMipmap = false);
+    rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void RegisterSceneTextures(const sg::Scene* scene,
-                               std::vector<rhi::TextureHandle>& outTextures);
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
 
     rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
 
@@ -341,15 +337,10 @@ private:
 
     void EndFrame();
 
-    void UpdateBufferInternal(rhi::BufferHandle bufferHandle,
+    void UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
                               uint32_t offset,
                               uint32_t dataSize,
                               const uint8_t* pData);
-
-    void UpdateTexture(rhi::TextureHandle textureHandle,
-                       const Vec3i& textureSize,
-                       uint32_t dataSize,
-                       const uint8_t* pData);
 
     void UpdateTextureOneTime(rhi::TextureHandle textureHandle,
                               const Vec3i& textureSize,
@@ -380,15 +371,19 @@ private:
     uint32_t m_currentFrame{0};
     uint64_t m_framesCounter{0};
     std::vector<RenderFrame> m_frames;
+
     rhi::DynamicRHI* m_RHI{nullptr};
     rhi::RHIDebug* m_RHIDebug{nullptr};
+
     BufferStagingManager* m_bufferStagingMgr{nullptr};
     TextureStagingManager* m_textureStagingMgr{nullptr};
+
+    TextureManager* m_textureManager{nullptr};
+
     DeletionQueue m_deletionQueue;
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::FramebufferHandle> m_framebufferCache;
-    HashMap<std::string, rhi::TextureHandle> m_textureCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;

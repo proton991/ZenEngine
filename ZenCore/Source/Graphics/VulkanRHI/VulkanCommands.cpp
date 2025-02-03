@@ -10,20 +10,24 @@
 
 namespace zen::rhi
 {
-VulkanCommandListContext::VulkanCommandListContext(const VulkanRHI* RHI)
-{
-    m_cmdBufferMgr =
-        new VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
-}
-
-VulkanCommandListContext::~VulkanCommandListContext()
-{
-    delete m_cmdBufferMgr;
-}
-
 VulkanCommandList::VulkanCommandList(VulkanCommandListContext* context) :
     m_cmdBufferManager(context->GetCmdBufferManager())
 {}
+
+void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
+{
+    VulkanCommandList* vulkanCmdList = dynamic_cast<VulkanCommandList*>(cmdList);
+    if (vulkanCmdList->m_cmdBuffer != nullptr && vulkanCmdList->m_cmdBuffer->IsSubmitted())
+    {
+        vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
+    }
+}
+
+RHICommandList* VulkanRHI::GetImmediateCommandList()
+{
+    VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
+    return RHICommandList::Create(GraphicsAPIType::eVulkan, context);
+}
 
 VulkanCommandList::~VulkanCommandList() {}
 

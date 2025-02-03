@@ -48,6 +48,8 @@ public:
 
     void WaitForCommandList(RHICommandList* cmdList) override;
 
+    RHICommandList* GetImmediateCommandList() override;
+
     void Init() override;
     void Destroy() override;
 

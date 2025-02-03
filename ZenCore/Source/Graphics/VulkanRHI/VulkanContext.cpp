@@ -243,16 +243,15 @@ RHICommandListContext* VulkanRHI::CreateCmdListContext()
     return context;
 }
 
-void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
+VulkanCommandListContext::VulkanCommandListContext(const VulkanRHI* RHI)
 {
-    VulkanCommandList* vulkanCmdList = dynamic_cast<VulkanCommandList*>(cmdList);
-    if (vulkanCmdList->m_cmdBuffer != nullptr)
-    {
-        if (vulkanCmdList->m_cmdBuffer->IsSubmitted())
-        {
-            vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
-        }
-    }
+    m_cmdBufferMgr =
+        new VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
+}
+
+VulkanCommandListContext::~VulkanCommandListContext()
+{
+    delete m_cmdBufferMgr;
 }
 
 void VulkanRHI::Init()
