@@ -124,20 +124,11 @@ void SceneRenderer::DrawScene()
     m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
 }
 
-void SceneRenderer::OnResize(rhi::RHIViewport* viewport, sys::Camera* camera)
+void SceneRenderer::OnResize(uint32_t width, uint32_t height)
 {
-    m_viewport   = viewport;
-    m_camera     = camera;
     m_rebuildRDG = true;
-
-    FramebufferInfo offscreenFbInfo{};
-    offscreenFbInfo.width           = m_gfxPasses.offscreen.framebufferWidth;
-    offscreenFbInfo.height          = m_gfxPasses.offscreen.framebufferHeight;
-    offscreenFbInfo.numRenderTarget = m_gfxPasses.offscreen.rtHandles.size();
-    offscreenFbInfo.renderTargets   = m_gfxPasses.offscreen.rtHandles.data();
-    m_gfxPasses.offscreen.framebuffer =
-        m_viewport->GetCompatibleFramebuffer(m_gfxPasses.offscreen.renderPass, &offscreenFbInfo);
-
+    m_renderDevice->ResizeViewport(m_viewport, width, height);
+    // update graphics pass framebuffer
     m_gfxPasses.sceneLighting.framebuffer =
         m_viewport->GetCompatibleFramebufferForBackBuffer(m_gfxPasses.sceneLighting.renderPass);
 }

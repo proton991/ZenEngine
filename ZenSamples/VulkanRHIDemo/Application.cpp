@@ -7,19 +7,11 @@ Application::Application(const platform::WindowConfig& windowConfig, sys::Camera
 
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
-    float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
-    m_window->SetOnResize([&](uint32_t width, uint32_t height) {
-        m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
-        BuildRenderGraph();
-        // recreate camera
-        m_camera =
-            sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, aspect);
-    });
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 
-    m_camera =
-        sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
+    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+                                         m_window->GetAspect(), type);
     m_camera->SetOnUpdate([&] {
         m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
                                      m_camera->GetUniformData());

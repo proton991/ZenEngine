@@ -293,10 +293,7 @@ public:
                                      uint32_t height,
                                      bool enableVSync = true);
 
-    void ResizeViewport(rhi::RHIViewport** viewport,
-                        void* pWindow,
-                        uint32_t width,
-                        uint32_t height);
+    void ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height);
 
     rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
 

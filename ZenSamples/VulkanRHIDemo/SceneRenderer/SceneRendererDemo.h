@@ -9,8 +9,7 @@ using namespace zen;
 class SceneRendererDemo
 {
 public:
-    SceneRendererDemo(const platform::WindowConfig& windowConfig,
-                      sys::CameraType type = sys::CameraType::eFirstPerson);
+    SceneRendererDemo(const platform::WindowConfig& windowConfig, sys::CameraType type);
 
     void Prepare();
 

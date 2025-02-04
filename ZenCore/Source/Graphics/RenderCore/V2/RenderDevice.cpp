@@ -85,12 +85,6 @@ GraphicsPass GraphicsPassBuilder::Build()
         m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
     gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
         m_PSO, shader, gfxPass.renderPass, shaderGroupInfo.specializationConstants);
-    gfxPass.framebufferWidth  = m_framebufferInfo.width;
-    gfxPass.framebufferHeight = m_framebufferInfo.height;
-    for (uint32_t i = 0; i < m_framebufferInfo.numRenderTarget; i++)
-    {
-        gfxPass.rtHandles.push_back(m_framebufferInfo.renderTargets[i]);
-    }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
     m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
@@ -576,28 +570,15 @@ void RenderDevice::DestroyViewport(rhi::RHIViewport* viewport)
     m_RHI->DestroyViewport(viewport);
 }
 
-void RenderDevice::ResizeViewport(rhi::RHIViewport** viewport,
-                                  void* window,
-                                  uint32_t width,
-                                  uint32_t height)
+void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height)
 {
-    if (viewport != nullptr &&
-        ((*viewport)->GetWidth() != width || (*viewport)->GetHeight() != height))
+    if (viewport != nullptr && (viewport->GetWidth() != width || viewport->GetHeight() != height))
     {
-        if (rhi::RHIOptions::GetInstance().ReuseSwapChainOnResize())
-        {
-            m_RHI->SubmitAllGPUCommands();
-            (*viewport)->Resize(width, height);
-            BeginFrame();
-        }
-        else
-        {
-            DestroyViewport(*viewport);
-            *viewport = CreateViewport(window, width, height);
-        }
+        m_RHI->SubmitAllGPUCommands();
+        viewport->Resize(width, height);
+        BeginFrame();
     }
 }
-
 
 rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
 {

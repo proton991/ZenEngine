@@ -19,12 +19,8 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
-        m_renderDevice->ResizeViewport(&m_viewport, m_window, width, height);
-        // recreate camera
-        m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                             m_window->GetAspect(), type);
-        m_camera->SetOnUpdate([&] {});
-        m_sceneRenderer->OnResize(m_viewport, m_camera.Get());
+        m_camera->UpdateAspect(m_window->GetAspect());
+        m_sceneRenderer->OnResize(width, height);
     });
 
     m_camera =
@@ -103,7 +99,7 @@ int main(int argc, char** argv)
 {
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
 
-    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig);
+    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sys::CameraType::eFirstPerson);
 
     demo->Prepare();
 

@@ -90,7 +90,7 @@ public:
 
     void DrawScene();
 
-    void OnResize(rhi::RHIViewport* viewport, sys::Camera* camera);
+    void OnResize(uint32_t width, uint32_t height);
 
 private:
     void LoadSceneMaterials();
