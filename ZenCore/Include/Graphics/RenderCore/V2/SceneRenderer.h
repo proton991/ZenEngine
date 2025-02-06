@@ -1,7 +1,6 @@
 #pragma once
 #include "RenderGraph.h"
 #include "RenderDevice.h"
-#include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "SceneGraph/Scene.h"
 #include "Graphics/RHI/RHIDefs.h"
 
@@ -61,12 +60,6 @@ public:
         Vec4 emissiveFactor{0.0f};
     };
 
-    struct PushConstantsData
-    {
-        uint32_t nodeIndex;
-        uint32_t materialIndex;
-    };
-
     struct SceneUniformData
     {
         Vec4 lightPositions[4];
@@ -103,6 +96,8 @@ private:
 
     void BuildGraphicsPasses();
 
+    void UpdateGraphicsPassResources();
+
     void BuildRenderGraph();
 
     void AddMeshDrawNodes(RDGPassNode* pass, const Rect2<int>& area, const Rect2<float>& viewport);
@@ -114,6 +109,8 @@ private:
     RenderDevice* m_renderDevice{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};
+
+    SkyboxRenderer* m_skyboxRenderer{nullptr};
 
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
@@ -130,7 +127,7 @@ private:
     rhi::BufferHandle m_vertexBuffer;
     rhi::BufferHandle m_indexBuffer;
 
-    PushConstantsData m_pushConstantsData{};
+    PushConstantNode m_pushConstantsData{};
 
     SceneUniformData m_sceneUniformData{};
     BufferHandle m_sceneUBO;
@@ -157,6 +154,8 @@ private:
     } m_offscreenTextures;
 
     std::vector<TextureHandle> m_sceneTextures;
+
+    EnvTexture m_envTexture;
 
     TextureHandle m_defaultBaseColorTexture;
 

@@ -2,27 +2,30 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Systems/Camera.h"
 #include "AssetLib/GLTFLoader.h"
+#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
 
 namespace zen::rc
 {
 
 SceneRenderer::SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
-{}
+{
+    m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
+    m_skyboxRenderer->Init();
+}
 
 void SceneRenderer::Bake()
 {
     PrepareTextures();
 
     BuildGraphicsPasses();
+
+    UpdateGraphicsPassResources();
 }
 
 void SceneRenderer::Destroy()
 {
-    if (m_rdg)
-    {
-        m_rdg->Destroy();
-    }
+    m_skyboxRenderer->Destroy();
 }
 
 void SceneRenderer::SetScene(const SceneData& sceneData)
@@ -106,22 +109,31 @@ void SceneRenderer::LoadSceneTextures()
     m_defaultBaseColorTexture = m_renderDevice->LoadTexture2D("wood.png");
     // scene textures
     m_renderDevice->LoadSceneTextures(m_scene, m_sceneTextures);
+    // environment texture
+    m_renderDevice->LoadTextureEnv("papermill.ktx", &m_envTexture, m_skyboxRenderer);
 }
 
 void SceneRenderer::DrawScene()
 {
+    m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
+                                 m_camera->GetUniformData());
+    m_renderDevice->UpdateBuffer(m_sceneUBO, sizeof(SceneUniformData),
+                                 reinterpret_cast<const uint8_t*>(&m_sceneUniformData));
+
+    m_skyboxRenderer->PrepareRenderWorkload(m_envTexture.skybox, m_cameraUBO);
+
     if (m_rebuildRDG)
     {
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
 
-    m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
-                                 m_camera->GetUniformData());
-    m_renderDevice->UpdateBuffer(m_sceneUBO, sizeof(SceneUniformData),
-                                 reinterpret_cast<const uint8_t*>(&m_sceneUniformData));
+    std::vector RDGs{
+        m_skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
+        m_rdg.Get()                         // 2nd & 3rd pass: deferred scene
+    };
 
-    m_renderDevice->ExecuteFrame(m_viewport, m_rdg.Get());
+    m_renderDevice->ExecuteFrame(m_viewport, RDGs);
 }
 
 void SceneRenderer::OnResize(uint32_t width, uint32_t height)
@@ -131,6 +143,7 @@ void SceneRenderer::OnResize(uint32_t width, uint32_t height)
     // update graphics pass framebuffer
     m_gfxPasses.sceneLighting.framebuffer =
         m_viewport->GetCompatibleFramebufferForBackBuffer(m_gfxPasses.sceneLighting.renderPass);
+    m_skyboxRenderer->OnResize();
 }
 
 void SceneRenderer::PrepareTextures()
@@ -257,58 +270,17 @@ void SceneRenderer::PrepareBuffers()
 
 void SceneRenderer::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
-    pso.rasterizationState = {};
-    pso.depthStencilState =
-        GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLessOrEqual);
-    pso.depthStencilState.frontOp.fail      = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.pass      = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.depthFail = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.compare   = rhi::CompareOperator::eNever;
-    pso.depthStencilState.backOp.fail       = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.backOp.pass       = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.backOp.depthFail  = rhi::StencilOperation::eKeep;
-    pso.multiSampleState                    = {};
-
     // offscreen
     {
-        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled(5);
+        GfxPipelineStates pso{};
+        pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+        pso.rasterizationState = {};
+        pso.depthStencilState =
+            GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLess);
+        pso.multiSampleState = {};
+        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(5);
         pso.dynamicStates.push_back(DynamicState::eScissor);
         pso.dynamicStates.push_back(DynamicState::eViewPort);
-        std::vector<ShaderResourceBinding> bufferBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
-            binding0.handles.push_back(m_cameraUBO);
-            bufferBindings.emplace_back(std::move(binding0));
-
-            ShaderResourceBinding binding1{};
-            binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eStorageBuffer;
-            binding1.handles.push_back(m_nodeSSBO);
-            bufferBindings.emplace_back(std::move(binding1));
-
-            ShaderResourceBinding binding2{};
-            binding2.binding = 2;
-            binding2.type    = ShaderResourceType::eStorageBuffer;
-            binding2.handles.push_back(m_materialSSBO);
-            bufferBindings.emplace_back(std::move(binding2));
-        }
-
-        std::vector<ShaderResourceBinding> textureBindings;
-        {
-            ShaderResourceBinding binding{};
-            binding.binding = 0;
-            binding.type    = ShaderResourceType::eSamplerWithTexture;
-            for (TextureHandle& textureHandle : m_sceneTextures)
-            {
-                binding.handles.push_back(m_colorSampler);
-                binding.handles.push_back(textureHandle);
-            }
-            textureBindings.emplace_back(std::move(binding));
-        }
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
@@ -333,8 +305,6 @@ void SceneRenderer::BuildGraphicsPasses()
                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                        m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)
-                .SetShaderResourceBinding(0, bufferBindings)
-                .SetShaderResourceBinding(1, textureBindings)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, RenderConfig::GetInstance().offScreenFbSize,
                                     RenderConfig::GetInstance().offScreenFbSize)
@@ -344,58 +314,16 @@ void SceneRenderer::BuildGraphicsPasses()
 
     // scene lighting
     {
-        pso.dynamicStates.clear();
+        GfxPipelineStates pso{};
+        pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+        pso.rasterizationState = {};
+        pso.multiSampleState   = {};
         pso.dynamicStates.push_back(DynamicState::eScissor);
         pso.dynamicStates.push_back(DynamicState::eViewPort);
+        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled(1);
+        pso.depthStencilState =
+            GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLessOrEqual);
 
-        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled();
-
-        //        pso.rasterizationState.cullMode = rhi::PolygonCullMode::eFront;
-        std::vector<ShaderResourceBinding> uboBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
-            binding0.handles.push_back(m_sceneUBO);
-            uboBindings.emplace_back(std::move(binding0));
-        }
-        std::vector<ShaderResourceBinding> textureBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eSamplerWithTexture;
-            binding0.handles.push_back(m_colorSampler);
-            binding0.handles.push_back(m_offscreenTextures.position);
-            textureBindings.emplace_back(std::move(binding0));
-
-            ShaderResourceBinding binding1{};
-            binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eSamplerWithTexture;
-            binding1.handles.push_back(m_colorSampler);
-            binding1.handles.push_back(m_offscreenTextures.normal);
-            textureBindings.emplace_back(std::move(binding1));
-
-            ShaderResourceBinding binding2{};
-            binding2.binding = 2;
-            binding2.type    = ShaderResourceType::eSamplerWithTexture;
-            binding2.handles.push_back(m_colorSampler);
-            binding2.handles.push_back(m_offscreenTextures.albedo);
-            textureBindings.emplace_back(std::move(binding2));
-
-            ShaderResourceBinding binding3{};
-            binding2.binding = 3;
-            binding2.type    = ShaderResourceType::eSamplerWithTexture;
-            binding2.handles.push_back(m_colorSampler);
-            binding2.handles.push_back(m_offscreenTextures.metallicRoughness);
-            textureBindings.emplace_back(std::move(binding2));
-
-            ShaderResourceBinding binding4{};
-            binding2.binding = 4;
-            binding2.type    = ShaderResourceType::eSamplerWithTexture;
-            binding2.handles.push_back(m_colorSampler);
-            binding2.handles.push_back(m_offscreenTextures.emissiveOcclusion);
-            textureBindings.emplace_back(std::move(binding2));
-        }
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneLighting =
             builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
@@ -403,12 +331,10 @@ void SceneRenderer::BuildGraphicsPasses()
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                       TextureUsage::eColorAttachment,
-                                      m_viewport->GetColorBackBuffer())
-                .SetDepthStencilTarget(
-                    m_viewport->GetDepthStencilFormat(), m_viewport->GetDepthStencilBackBuffer(),
-                    rhi::RenderTargetLoadOp::eClear, rhi::RenderTargetStoreOp::eStore)
-                .SetShaderResourceBinding(0, textureBindings)
-                .SetShaderResourceBinding(1, uboBindings)
+                                      m_viewport->GetColorBackBuffer(), false)
+                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
+                                       m_viewport->GetDepthStencilBackBuffer(),
+                                       RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport)
                 .SetTag("SceneLighting")
@@ -460,7 +386,9 @@ void SceneRenderer::BuildRenderGraph()
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.emissiveOcclusion, TextureUsage::eColorAttachment,
             TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
-
+        m_rdg->DeclareTextureAccessForPass(
+            pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
+            TextureSubResourceRange::DepthStencil(), rc::RDGAccessType::eReadWrite);
         AddMeshDrawNodes(pass, area, vp);
     }
     // scene lighting pass
@@ -482,6 +410,8 @@ void SceneRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
+        DynamicRHI* RHI = m_renderDevice->GetRHI();
+
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
@@ -498,7 +428,9 @@ void SceneRenderer::BuildRenderGraph()
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.emissiveOcclusion,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
                                            rc::RDGAccessType::eRead);
-
+        m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.depth, TextureUsage::eSampled,
+                                           TextureSubResourceRange::DepthStencil(),
+                                           rc::RDGAccessType::eRead);
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image
@@ -524,7 +456,7 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
         {
             m_pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
             m_rdg->AddGraphicsPassSetPushConstants(pass, &m_pushConstantsData,
-                                                   sizeof(PushConstantsData));
+                                                   sizeof(PushConstantNode));
             m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                   subMesh->GetFirstIndex(), 0, 0);
         }
@@ -570,4 +502,127 @@ void SceneRenderer::TransformScene()
 
     m_scene->GetAABB().Transform(transformMat);
 }
+
+void SceneRenderer::UpdateGraphicsPassResources()
+{
+    {
+        std::vector<ShaderResourceBinding> bufferBindings;
+        {
+            ShaderResourceBinding binding0{};
+            binding0.binding = 0;
+            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.handles.push_back(m_cameraUBO);
+            bufferBindings.emplace_back(std::move(binding0));
+
+            ShaderResourceBinding binding1{};
+            binding1.binding = 1;
+            binding1.type    = ShaderResourceType::eStorageBuffer;
+            binding1.handles.push_back(m_nodeSSBO);
+            bufferBindings.emplace_back(std::move(binding1));
+
+            ShaderResourceBinding binding2{};
+            binding2.binding = 2;
+            binding2.type    = ShaderResourceType::eStorageBuffer;
+            binding2.handles.push_back(m_materialSSBO);
+            bufferBindings.emplace_back(std::move(binding2));
+        }
+
+        std::vector<ShaderResourceBinding> textureBindings;
+        {
+            ShaderResourceBinding binding{};
+            binding.binding = 0;
+            binding.type    = ShaderResourceType::eSamplerWithTexture;
+            for (TextureHandle& textureHandle : m_sceneTextures)
+            {
+                binding.handles.push_back(m_colorSampler);
+                binding.handles.push_back(textureHandle);
+            }
+            textureBindings.emplace_back(std::move(binding));
+        }
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
+        updater.SetShaderResourceBinding(0, bufferBindings)
+            .SetShaderResourceBinding(1, textureBindings)
+            .Update();
+    }
+    {
+        std::vector<ShaderResourceBinding> bufferBindings;
+        {
+            ShaderResourceBinding binding0{};
+            binding0.binding = 0;
+            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.handles.push_back(m_sceneUBO);
+            bufferBindings.emplace_back(std::move(binding0));
+        }
+        std::vector<ShaderResourceBinding> textureBindings;
+        {
+            ShaderResourceBinding binding0{};
+            binding0.binding = 0;
+            binding0.type    = ShaderResourceType::eSamplerWithTexture;
+            binding0.handles.push_back(m_colorSampler);
+            binding0.handles.push_back(m_offscreenTextures.position);
+            textureBindings.emplace_back(std::move(binding0));
+
+            ShaderResourceBinding binding1{};
+            binding1.binding = 1;
+            binding1.type    = ShaderResourceType::eSamplerWithTexture;
+            binding1.handles.push_back(m_colorSampler);
+            binding1.handles.push_back(m_offscreenTextures.normal);
+            textureBindings.emplace_back(std::move(binding1));
+
+            ShaderResourceBinding binding2{};
+            binding2.binding = 2;
+            binding2.type    = ShaderResourceType::eSamplerWithTexture;
+            binding2.handles.push_back(m_colorSampler);
+            binding2.handles.push_back(m_offscreenTextures.albedo);
+            textureBindings.emplace_back(std::move(binding2));
+
+            ShaderResourceBinding binding3{};
+            binding3.binding = 3;
+            binding3.type    = ShaderResourceType::eSamplerWithTexture;
+            binding3.handles.push_back(m_colorSampler);
+            binding3.handles.push_back(m_offscreenTextures.metallicRoughness);
+            textureBindings.emplace_back(std::move(binding3));
+
+            ShaderResourceBinding binding4{};
+            binding4.binding = 4;
+            binding4.type    = ShaderResourceType::eSamplerWithTexture;
+            binding4.handles.push_back(m_colorSampler);
+            binding4.handles.push_back(m_offscreenTextures.emissiveOcclusion);
+            textureBindings.emplace_back(std::move(binding4));
+
+            ShaderResourceBinding binding5{};
+            binding5.binding = 5;
+            binding5.type    = ShaderResourceType::eSamplerWithTexture;
+            binding5.handles.push_back(m_depthSampler);
+            binding5.handles.push_back(m_offscreenTextures.depth);
+            textureBindings.emplace_back(std::move(binding5));
+
+            ShaderResourceBinding binding6{};
+            binding6.binding = 6;
+            binding6.type    = ShaderResourceType::eSamplerWithTexture;
+            binding6.handles.push_back(m_envTexture.irradianceSampler);
+            binding6.handles.push_back(m_envTexture.irradiance);
+            textureBindings.emplace_back(std::move(binding6));
+
+            ShaderResourceBinding binding7{};
+            binding7.binding = 7;
+            binding7.type    = ShaderResourceType::eSamplerWithTexture;
+            binding7.handles.push_back(m_envTexture.prefilteredSampler);
+            binding7.handles.push_back(m_envTexture.prefiltered);
+            textureBindings.emplace_back(std::move(binding7));
+
+            ShaderResourceBinding binding8{};
+            binding8.binding = 8;
+            binding8.type    = ShaderResourceType::eSamplerWithTexture;
+            binding8.handles.push_back(m_envTexture.lutBRDFSampler);
+            binding8.handles.push_back(m_envTexture.lutBRDF);
+            textureBindings.emplace_back(std::move(binding8));
+        }
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
+        updater.SetShaderResourceBinding(0, textureBindings)
+            .SetShaderResourceBinding(1, bufferBindings)
+            .Update();
+    }
+}
+
 } // namespace zen::rc

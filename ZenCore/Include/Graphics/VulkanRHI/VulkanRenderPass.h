@@ -43,6 +43,16 @@ public:
         return m_renderPass;
     }
 
+    auto GetWidth() const
+    {
+        return m_width;
+    }
+
+    auto GetHeight() const
+    {
+        return m_height;
+    }
+
 private:
     VulkanRHI* m_vkRHI;
     VkFramebuffer m_framebuffer{VK_NULL_HANDLE};

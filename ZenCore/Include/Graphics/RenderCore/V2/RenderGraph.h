@@ -193,7 +193,7 @@ struct RDGAccess
     RDG_ID resourceId{-1};
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
     rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
-    rhi::TextureSubResourceRange texutreSubResourceRange;
+    rhi::TextureSubResourceRange textureSubResourceRange;
 };
 
 struct RDGResource
@@ -374,9 +374,10 @@ public:
         m_resourceAllocator.Init();
     }
 
-    void Init() {}
-
-    void Destroy();
+    ~RenderGraph()
+    {
+        Destroy();
+    }
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,
@@ -442,7 +443,9 @@ public:
                              const rhi::TextureSubResourceRange& range);
 
     void AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
+                            const rhi::TextureSubResourceRange& srcTextureSubresourceRange,
                             rhi::TextureHandle dstTextureHandle,
+                            const rhi::TextureSubResourceRange& dstTextureSubresourceRange,
                             const VectorView<rhi::TextureCopyRegion>& regions);
 
     void AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
@@ -472,6 +475,8 @@ public:
     void Execute(rhi::RHICommandList* cmdList);
 
 private:
+    void Destroy();
+
     static uint64_t CreateNodePairKey(const RDG_ID& nodeId1, const RDG_ID& nodeId2)
     {
         uint64_t key = static_cast<uint64_t>(static_cast<uint32_t>(nodeId1)) << 32;

@@ -1,8 +1,8 @@
 #pragma once
-#include "Platform/ConfigLoader.h"
 #include "Platform/Timer.h"
 #include "Systems/Camera.h"
 #include "Graphics/RenderCore/V2/SceneRenderer.h"
+#include "Platform/GlfwWindow.h"
 
 using namespace zen;
 
@@ -35,6 +35,4 @@ private:
     // For use in animations, rotations, etc.
     float m_animationTimer{0.0f};
     float m_animationSpeed{0.25f};
-
-    platform::ConfigLoader m_configLoader;
 };

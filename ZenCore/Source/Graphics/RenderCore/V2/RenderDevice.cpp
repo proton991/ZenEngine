@@ -7,6 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "stb_image.h"
+#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 #include "SceneGraph/Scene.h"
 
@@ -91,28 +92,33 @@ GraphicsPass GraphicsPassBuilder::Build()
                                                           m_tag + "_RenderPass");
 
     gfxPass.descriptorSets.resize(shaderGroupInfo.SRDs.size());
-    // parallel build descriptor building process
-    //    std::for_each(std::execution::par, m_dsBindings.begin(), m_dsBindings.end(),
-    //                  [&](const auto& kv) {
-    //                      const auto setIndex  = kv.first;
-    //                      const auto& bindings = kv.second;
-    //                      // create and update
-    //                      DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
-    //                      RHI->UpdateDescriptorSet(dsHandle, bindings);
-    //                      gfxPass.descriptorSets[setIndex] = dsHandle;
-    //                  });
+
+    for (uint32_t setIndex = 0; setIndex < shaderGroupInfo.SRDs.size(); ++setIndex)
+    {
+        gfxPass.descriptorSets[setIndex] = RHI->CreateDescriptorSet(shader, setIndex);
+    }
+    // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
     for (const auto& kv : m_dsBindings)
     {
-        const auto setIndex          = kv.first;
-        const auto& bindings         = kv.second;
-        DescriptorSetHandle dsHandle = RHI->CreateDescriptorSet(shader, setIndex);
-        RHI->UpdateDescriptorSet(dsHandle, bindings);
-        gfxPass.descriptorSets[setIndex] = dsHandle;
+        const auto setIndex  = kv.first;
+        const auto& bindings = kv.second;
+        RHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
     }
-
-    RHI->DestroyShader(shader);
+    m_renderDevice->m_deletionQueue.Enqueue([=, this]() { RHI->DestroyShader(shader); });
     m_renderDevice->m_gfxPasses.push_back(gfxPass);
     return gfxPass;
+}
+
+void GraphicsPassResourceUpdater::Update()
+{
+    rhi::DynamicRHI* RHI = m_renderDevice->GetRHI();
+    for (const auto& kv : m_dsBindings)
+    {
+        const auto setIndex               = kv.first;
+        const auto& bindings              = kv.second;
+        rhi::DescriptorSetHandle dsHandle = m_gfxPass->descriptorSets[setIndex];
+        RHI->UpdateDescriptorSet(dsHandle, bindings);
+    }
 }
 
 rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
@@ -348,11 +354,8 @@ void BufferStagingManager::PerformAction(StagingFlushAction action)
     }
 }
 
-void RenderDevice::Init()
+void RenderDevice::Init(rhi::RHIViewport* mainViewport)
 {
-    m_RHI = rhi::DynamicRHI::Create(m_APIType);
-    m_RHI->Init();
-    m_RHIDebug = rhi::RHIDebug::Create(m_RHI);
     m_bufferStagingMgr =
         new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
     m_bufferStagingMgr->Init(m_numFrames);
@@ -370,6 +373,8 @@ void RenderDevice::Init()
     m_framesCounter = m_frames.size();
     m_frames[m_currentFrame].uploadCmdList->BeginUpload();
     m_frames[m_currentFrame].drawCmdList->BeginRender();
+
+    m_mainViewport = mainViewport;
 }
 
 void RenderDevice::Destroy()
@@ -425,6 +430,28 @@ void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bo
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
     EndFrame();
     m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+}
+
+void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport,
+                                const std::vector<RenderGraph*>& rdgs,
+                                bool present)
+{
+    m_RHI->BeginDrawingViewport(viewport);
+    for (auto* rdg : rdgs)
+    {
+        rdg->Execute(m_frames[m_currentFrame].drawCmdList);
+    }
+    EndFrame();
+    m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+}
+
+void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg)
+{
+    rhi::RHICommandList* cmdList = m_RHI->GetImmediateCommandList();
+    cmdList->BeginRender();
+    rdg->Execute(cmdList);
+    cmdList->EndRender();
+    m_RHI->WaitForCommandList(cmdList);
 }
 
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
@@ -628,6 +655,14 @@ void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
                                      std::vector<rhi::TextureHandle>& outTextures)
 {
     m_textureManager->LoadSceneTextures(scene, outTextures);
+}
+
+void RenderDevice::LoadTextureEnv(const std::string& file,
+                                  EnvTexture* texture,
+                                  SkyboxRenderer* skboxRenderer)
+{
+    auto fullPath = ZEN_TEXTURE_PATH + file;
+    m_textureManager->LoadTextureEnv(fullPath, texture, skboxRenderer);
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,

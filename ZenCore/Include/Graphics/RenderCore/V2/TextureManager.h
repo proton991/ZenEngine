@@ -3,6 +3,8 @@
 
 namespace zen::rc
 {
+class SkyboxRenderer;
+
 class TextureManager
 {
 public:
@@ -20,15 +22,27 @@ public:
 
     void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
 
+    void LoadTextureEnv(const std::string& file,
+                        EnvTexture* outTexture,
+                        SkyboxRenderer* skyboxRenderer);
+
 private:
     void UpdateTexture(const rhi::TextureHandle& textureHandle,
                        const Vec3i& textureSize,
                        uint32_t dataSize,
                        const uint8_t* pData);
 
+    void UpdateTextureCube(const rhi::TextureHandle& textureHandle,
+                           const std::vector<rhi::BufferTextureCopyRegion>& regions,
+                           uint32_t dataSize,
+                           const uint8_t* pData);
+
     rhi::DynamicRHI* m_RHI{nullptr};
+
     RenderDevice* m_renderDevice{nullptr};
+
     TextureStagingManager* m_stagingMgr{nullptr};
+
     HashMap<std::string, rhi::TextureHandle> m_textureCache;
 };
 } // namespace zen::rc

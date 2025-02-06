@@ -2,13 +2,14 @@
 
 Application::Application(const platform::WindowConfig& windowConfig, sys::CameraType type)
 {
-    m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
-    m_renderDevice->Init();
-
     m_window = new platform::GlfwWindowImpl(windowConfig);
+
+    m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
 
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
+
+    m_renderDevice->Init(m_viewport);
 
     m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
                                          m_window->GetAspect(), type);
@@ -30,7 +31,6 @@ void Application::Prepare() {}
 
 void Application::Destroy()
 {
-    m_rdg->Destroy();
     m_renderDevice->Destroy();
     delete m_renderDevice;
 }

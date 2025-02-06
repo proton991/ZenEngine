@@ -8,3 +8,4 @@ git submodule add https://github.com/google/googletest External/googletest
 git submodule add https://github.com/tcbrindle/span External/span
 git submodule add https://github.com/nothings/stb External/stb
 git submodule add https://github.com/syoyo/tinygltf External/tinygltf
+git submodule add https://github.com/g-truc/gli External/gli

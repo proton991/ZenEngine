@@ -10,9 +10,29 @@ namespace zen::platform
 class ConfigLoader
 {
 public:
-    ConfigLoader()
+    static ConfigLoader& GetInstance()
     {
-        LoadConfig(ZEN_CONFIG_PATH);
+        static ConfigLoader instance;
+        return instance;
+    }
+
+    std::string GetSkyboxModelPath() const
+    {
+        std::string path    = "";
+        auto basePathIt     = m_configData.find("model_base_path");
+        auto defaultModelIt = m_configData.find("skybox_model");
+
+        if (basePathIt != m_configData.end() && defaultModelIt != m_configData.end())
+        {
+            path = basePathIt->second + "/" + defaultModelIt->second + "/glTF/" +
+                defaultModelIt->second + ".gltf";
+        }
+        else
+        {
+            LOGE("Missing configuration values for GLTF model path.");
+        }
+
+        return path;
     }
 
     std::string GetDefaultGLTFModelPath() const
@@ -34,7 +54,16 @@ public:
         return path;
     }
 
+    // Delete copy constructor and assignment operator to enforce singleton
+    ConfigLoader(const ConfigLoader&)            = delete;
+    ConfigLoader& operator=(const ConfigLoader&) = delete;
+
 private:
+    ConfigLoader()
+    {
+        LoadConfig(ZEN_CONFIG_PATH);
+    }
+
     HashMap<std::string, std::string> m_configData;
 
     void LoadConfig(const std::string& configPath)

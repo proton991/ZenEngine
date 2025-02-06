@@ -125,9 +125,9 @@ public:
 
     void DestroyTexture(TextureHandle textureHandle) final;
 
-    DataFormat GetTextureFormat(zen::rhi::TextureHandle textureHandle) final;
+    DataFormat GetTextureFormat(TextureHandle textureHandle) final;
 
-    TextureSubResourceRange GetTextureSubResourceRange(zen::rhi::TextureHandle textureHandle) final;
+    TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
 
     BufferHandle CreateBuffer(uint32_t size,
                               BitField<BufferUsageFlagBits> usageFlags,

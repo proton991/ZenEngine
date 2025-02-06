@@ -28,3 +28,6 @@
 [submodule "External/tinygltf"]
 	path = External/tinygltf
 	url = https://github.com/syoyo/tinygltf
+[submodule "External/gli"]
+	path = External/gli
+	url = https://github.com/g-truc/gli

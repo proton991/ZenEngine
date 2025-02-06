@@ -1,18 +1,21 @@
 #include "SceneRendererDemo.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/GLTFLoader.h"
+#include "Platform/ConfigLoader.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sys::CameraType type)
 {
+    m_window = new platform::GlfwWindowImpl(windowConfig);
+
     m_renderDevice = MakeUnique<rc::RenderDevice>(GraphicsAPIType::eVulkan,
                                                   rc::RenderConfig::GetInstance().numFrames);
-    m_renderDevice->Init();
 
-    m_window = new platform::GlfwWindowImpl(windowConfig);
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
+
+    m_renderDevice->Init(m_viewport);
 
     m_sceneRenderer = MakeUnique<rc::SceneRenderer>(m_renderDevice.Get(), m_viewport);
 
@@ -28,15 +31,14 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
-
-    m_configLoader = platform::ConfigLoader();
 }
 
 void SceneRendererDemo::Prepare()
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<gltf::GltfLoader>();
-    gltfLoader->LoadFromFile(m_configLoader.GetDefaultGLTFModelPath(), m_scene.Get());
+    gltfLoader->LoadFromFile(platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath(),
+                             m_scene.Get());
 
     rc::SceneData sceneData{};
     sceneData.camera      = m_camera.Get();

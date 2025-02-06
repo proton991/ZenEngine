@@ -91,14 +91,12 @@ private:
     VulkanSwapchain* m_swapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_imageAcquiredSemaphore{nullptr};
-    // SmallVector<VulkanSemaphore*, NUM_FRAMES> m_renderingCompleteSemaphores;
     std::vector<VulkanSemaphore*> m_renderingCompleteSemaphores;
     VulkanCommandBuffer* m_lastFrameCmdBuffer{nullptr};
     uint64_t m_lastFenceSignaledCounter{0};
     SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
     VulkanTexture* m_colorBackBuffer{nullptr};
     VulkanTexture* m_depthStencilBackBuffer{nullptr};
-    VulkanFramebuffer* m_framebuffer{nullptr};
     HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 };

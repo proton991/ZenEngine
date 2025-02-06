@@ -13,13 +13,16 @@ void VulkanRHI::ChangeTextureLayout(RHICommandList* cmdList,
                                     rhi::TextureLayout oldLayout,
                                     rhi::TextureLayout newLayout)
 {
-    VkImage image           = reinterpret_cast<VulkanTexture*>(textureHandle.value)->image;
+    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
+    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
+
     VkImageLayout srcLayout = ToVkImageLayout(oldLayout);
     VkImageLayout dstLayout = ToVkImageLayout(newLayout);
     const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
     VulkanCommandBuffer* cmdBuffer = reinterpret_cast<VulkanCommandList*>(cmdList)->m_cmdBuffer;
-    ChangeImageLayout(cmdBuffer, image, srcLayout, dstLayout, range);
+    ChangeImageLayout(cmdBuffer, vkTexture->image, srcLayout, dstLayout, range);
 }
 
 void VulkanRHI::ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,

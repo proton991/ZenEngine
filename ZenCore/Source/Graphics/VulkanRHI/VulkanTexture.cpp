@@ -57,9 +57,17 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     imageCI.mipLevels     = info.mipmaps;
     imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-    imageCI.imageType     = ToVkImageType(info.type);
-    imageCI.usage         = ToVkImageUsageFlags(info.usageFlags);
-    imageCI.format        = ToVkFormat(info.format);
+    if (info.type == TextureType::eCube)
+    {
+        imageCI.imageType = VK_IMAGE_TYPE_2D;
+        imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    }
+    else
+    {
+        imageCI.imageType = ToVkImageType(info.type);
+    }
+    imageCI.usage  = ToVkImageUsageFlags(info.usageFlags);
+    imageCI.format = ToVkFormat(info.format);
 
     const auto textureSize = CalculateTextureSize(info);
 
@@ -98,17 +106,17 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     return TextureHandle(texture);
 }
 
-DataFormat VulkanRHI::GetTextureFormat(zen::rhi::TextureHandle textureHandle)
+DataFormat VulkanRHI::GetTextureFormat(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
     return static_cast<DataFormat>(texture->imageCI.format);
 }
 
-TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(zen::rhi::TextureHandle textureHandle)
+TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle textureHandle)
 {
     TextureSubResourceRange range;
-
     DataFormat dataFormat = GetTextureFormat(textureHandle);
+
     if (FormatIsDepthOnly(dataFormat))
     {
         range = TextureSubResourceRange::Depth();
@@ -125,6 +133,10 @@ TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(zen::rhi::TextureH
     {
         range = TextureSubResourceRange::Color();
     }
+
+    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    range.layerCount       = texture->imageCI.arrayLayers;
+    range.levelCount       = texture->imageCI.mipLevels;
     return range;
 }
 

@@ -19,6 +19,7 @@ namespace zen::rc
 class RenderDevice;
 class RenderGraph;
 class TextureManager;
+class SkyboxRenderer;
 
 class GraphicsPassBuilder
 {
@@ -47,10 +48,12 @@ public:
 
     GraphicsPassBuilder& AddColorRenderTarget(rhi::DataFormat format,
                                               rhi::TextureUsage usage,
-                                              const rhi::TextureHandle& handle)
+                                              const rhi::TextureHandle& handle,
+                                              bool clear = true)
     {
         m_rpLayout.AddColorRenderTarget(format, usage, handle);
-        m_rpLayout.SetColorTargetLoadStoreOp(rhi::RenderTargetLoadOp::eClear,
+        m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+                                                     rhi::RenderTargetLoadOp::eLoad,
                                              rhi::RenderTargetStoreOp::eStore);
         m_framebufferInfo.numRenderTarget++;
         return *this;
@@ -128,6 +131,29 @@ private:
     rhi::FramebufferInfo m_framebufferInfo{};
     HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
     HashMap<uint32_t, int> m_specializationConstants;
+};
+
+class GraphicsPassResourceUpdater
+{
+public:
+    GraphicsPassResourceUpdater(RenderDevice* renderDevice, GraphicsPass* gfxPass) :
+        m_renderDevice(renderDevice), m_gfxPass(gfxPass)
+    {}
+
+    GraphicsPassResourceUpdater& SetShaderResourceBinding(
+        uint32_t setIndex,
+        const std::vector<rhi::ShaderResourceBinding>& bindings)
+    {
+        m_dsBindings[setIndex] = bindings;
+        return *this;
+    }
+
+    void Update();
+
+private:
+    RenderDevice* m_renderDevice{nullptr};
+    GraphicsPass* m_gfxPass{nullptr};
+    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
 };
 
 enum class StagingFlushAction : uint32_t
@@ -255,13 +281,23 @@ class RenderDevice
 public:
     explicit RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames) :
         m_APIType(APIType), m_numFrames(numFrames)
-    {}
+    {
+        m_RHI = rhi::DynamicRHI::Create(m_APIType);
+        m_RHI->Init();
+        m_RHIDebug = rhi::RHIDebug::Create(m_RHI);
+    }
 
-    void Init();
+    void Init(rhi::RHIViewport* mainViewport);
 
     void Destroy();
 
     void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present = true);
+
+    void ExecuteFrame(rhi::RHIViewport* viewport,
+                      const std::vector<RenderGraph*>& rdgs,
+                      bool present = true);
+
+    void ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
 
@@ -299,6 +335,8 @@ public:
 
     void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
 
+    void LoadTextureEnv(const std::string& file, EnvTexture* texture, SkyboxRenderer* skboxRendere);
+
     rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
 
     rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::TextureHandle handle);
@@ -316,6 +354,11 @@ public:
     auto GetFramesCounter() const
     {
         return m_framesCounter;
+    }
+
+    rhi::RHICommandList* GetCurrentUploadCmdList() const
+    {
+        return m_frames[m_currentFrame].uploadCmdList;
     }
 
     void WaitForPreviousFrames();
@@ -384,6 +427,7 @@ private:
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;
     std::vector<rhi::RHIViewport*> m_viewports;
+    rhi::RHIViewport* m_mainViewport{nullptr};
 
     friend class GraphicsPassBuilder;
 };

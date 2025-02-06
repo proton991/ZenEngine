@@ -281,7 +281,7 @@ void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
     access.type                    = RDGAccessType::eReadWrite;
     access.nodeId                  = node->id;
     access.textureUsage            = rhi::TextureUsage::eTransferDst;
-    access.texutreSubResourceRange = range;
+    access.textureSubResourceRange = range;
 
     RDGResource* resource = GetOrAllocResource(textureHandle, RDGResourceType::eTexture, node->id);
     resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
@@ -291,10 +291,13 @@ void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
 }
 
 void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
+                                     const rhi::TextureSubResourceRange& srcTextureSubresourceRange,
                                      rhi::TextureHandle dstTextureHandle,
+                                     const rhi::TextureSubResourceRange& dstTextureSubresourceRange,
                                      const VectorView<rhi::TextureCopyRegion>& regions)
 {
     auto* node       = AllocNode<RDGTextureCopyNode>();
+    node->type       = RDGNodeType::eCopyTexture;
     node->srcTexture = std::move(srcTextureHandle);
     node->dstTexture = std::move(dstTextureHandle);
     for (auto& region : regions)
@@ -304,9 +307,10 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     // read access to src texture
     {
         RDGAccess readAccess{};
-        readAccess.type         = RDGAccessType::eRead;
-        readAccess.textureUsage = rhi::TextureUsage::eTransferSrc;
-        readAccess.nodeId       = node->id;
+        readAccess.textureSubResourceRange = srcTextureSubresourceRange;
+        readAccess.type                    = RDGAccessType::eRead;
+        readAccess.textureUsage            = rhi::TextureUsage::eTransferSrc;
+        readAccess.nodeId                  = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
@@ -318,9 +322,10 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     // write access to dst texture
     {
         RDGAccess writeAccess{};
-        writeAccess.type         = RDGAccessType::eReadWrite;
-        writeAccess.textureUsage = rhi::TextureUsage::eTransferDst;
-        writeAccess.nodeId       = node->id;
+        writeAccess.textureSubResourceRange = dstTextureSubresourceRange;
+        writeAccess.type                    = RDGAccessType::eReadWrite;
+        writeAccess.textureUsage            = rhi::TextureUsage::eTransferDst;
+        writeAccess.nodeId                  = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
@@ -443,7 +448,7 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
     }
 }
-
+// todo: implement more concise and explicit layout transition (consider RenderPass's layout transition)
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               rhi::TextureHandle textureHandle,
                                               rhi::TextureUsage usage,
@@ -459,7 +464,7 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
     access.resourceId              = resource->id;
     access.nodeId                  = passNode->id;
     access.textureUsage            = usage;
-    access.texutreSubResourceRange = range;
+    access.textureSubResourceRange = range;
     m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
 }
 
@@ -504,7 +509,7 @@ void RenderGraph::SortNodes()
                         if (isTexutre)
                         {
                             oldUsage                 = ToUnderlying(access.textureUsage);
-                            texutureSubResourceRange = access.texutreSubResourceRange;
+                            texutureSubResourceRange = access.textureSubResourceRange;
                         }
                         else
                         {
@@ -519,7 +524,7 @@ void RenderGraph::SortNodes()
                         if (isTexutre)
                         {
                             newUsage                 = ToUnderlying(access.textureUsage);
-                            texutureSubResourceRange = access.texutreSubResourceRange;
+                            texutureSubResourceRange = access.textureSubResourceRange;
                         }
                         else
                         {
@@ -592,17 +597,18 @@ void RenderGraph::SortNodes()
 
 void RenderGraph::Destroy()
 {
-    for (RDGNodeBase* node : m_allNodes)
-    {
-        if (node->type == RDGNodeType::eGraphicsPass)
-        {
-            auto* casted = reinterpret_cast<RDGGraphicsPassNode*>(node);
-            for (RDGPassChildNode* child : casted->childNodes)
-            {
-                delete child;
-            }
-        }
-    }
+    // todo: fix bugs in memory allocation for rdg nodes
+    // for (RDGNodeBase* node : m_allNodes)
+    // {
+    //     if (node->type == RDGNodeType::eGraphicsPass)
+    //     {
+    //         auto* casted = reinterpret_cast<RDGGraphicsPassNode*>(node);
+    //         for (RDGPassChildNode* child : casted->childNodes)
+    //         {
+    //             delete child;
+    //         }
+    //     }
+    // }
     for (RDGResource* resource : m_resources)
     {
         m_resourceAllocator.Free(resource);
@@ -906,7 +912,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                             textureTransition.oldUsage = rhi::TextureUsage::eNone;
                             textureTransition.newUsage =
                                 static_cast<rhi::TextureUsage>(access.textureUsage);
-                            textureTransition.subResourceRange = access.texutreSubResourceRange;
+                            textureTransition.subResourceRange = access.textureSubResourceRange;
                             textureTransitions.emplace_back(textureTransition);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             dstStages.SetFlag(

@@ -1,4 +1,5 @@
 #pragma once
+#include "Graphics/RHI/RHICommon.h"
 
 namespace zen::rc
 {
