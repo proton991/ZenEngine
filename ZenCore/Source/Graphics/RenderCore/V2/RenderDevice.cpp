@@ -4,13 +4,8 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
-#include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "stb_image.h"
 #include "Graphics/RenderCore/V2/SkyboxRenderer.h"
-#include "Graphics/VulkanRHI/VulkanDebug.h"
 #include "SceneGraph/Scene.h"
-
 #include <fstream>
 #include <execution>
 
@@ -851,7 +846,6 @@ void RenderDevice::EndFrame()
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
     m_frames[m_currentFrame].drawCmdList->EndRender();
     m_frames[m_currentFrame].cmdSubmitted = true;
-    m_textureStagingMgr->ProcessPendingFrees();
 }
 
 size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)

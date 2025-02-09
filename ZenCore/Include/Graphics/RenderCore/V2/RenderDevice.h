@@ -7,7 +7,7 @@
 #define TEXTURE_UPLOAD_REGION_SIZE            64
 #define STAGING_BLOCK_SIZE_BYTES              (256 * 1024)
 #define STAGING_POOL_SIZE_BYTES               (128 * 1024 * 1024)
-#define MAX_TEXTURE_STAGING_PENDING_FREE_SIZE (4 * 1024 * 1024)
+#define MAX_TEXTURE_STAGING_PENDING_FREE_SIZE (4 * 1024 * 1024 * 10)
 
 namespace zen::sg
 {
