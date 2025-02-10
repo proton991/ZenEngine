@@ -633,7 +633,7 @@ enum class DynamicState : uint32_t
 
 struct GfxPipelineStates
 {
-    DrawPrimitiveType primitiveType;
+    DrawPrimitiveType primitiveType{DrawPrimitiveType::eTriangleList};
     GfxPipelineRasterizationState rasterizationState;
     GfxPipelineMultiSampleState multiSampleState;
     GfxPipelineDepthStencilState depthStencilState;

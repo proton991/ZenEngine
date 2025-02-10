@@ -273,8 +273,9 @@ void SceneRenderer::BuildGraphicsPasses()
     // offscreen
     {
         GfxPipelineStates pso{};
-        pso.primitiveType      = DrawPrimitiveType::eTriangleList;
-        pso.rasterizationState = {};
+        pso.rasterizationState          = {};
+        pso.rasterizationState.cullMode = PolygonCullMode::eBack;
+
         pso.depthStencilState =
             GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLess);
         pso.multiSampleState = {};
