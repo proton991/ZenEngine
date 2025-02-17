@@ -597,18 +597,17 @@ void RenderGraph::SortNodes()
 
 void RenderGraph::Destroy()
 {
-    // todo: fix bugs in memory allocation for rdg nodes
-    // for (RDGNodeBase* node : m_allNodes)
-    // {
-    //     if (node->type == RDGNodeType::eGraphicsPass)
-    //     {
-    //         auto* casted = reinterpret_cast<RDGGraphicsPassNode*>(node);
-    //         for (RDGPassChildNode* child : casted->childNodes)
-    //         {
-    //             delete child;
-    //         }
-    //     }
-    // }
+    for (RDGNodeBase* node : m_allNodes)
+    {
+        if (node->type == RDGNodeType::eGraphicsPass)
+        {
+            auto* casted = reinterpret_cast<RDGGraphicsPassNode*>(node);
+            for (RDGPassChildNode* child : casted->childNodes)
+            {
+                delete child;
+            }
+        }
+    }
     for (RDGResource* resource : m_resources)
     {
         m_resourceAllocator.Free(resource);
