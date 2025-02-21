@@ -1323,11 +1323,6 @@ void GltfLoader::LoadGltfRenderableNodes(
 {
     const auto& gltfNode = m_gltfModel.nodes[nodeIndex];
 
-    if (gltfNode.mesh == -1)
-    {
-        // only process renderable mesh nodes
-        return;
-    }
     auto newNode   = MakeUnique<sg::Node>(nodeIndex, gltfNode.name);
     auto transform = MakeUnique<sg::Transform>(*newNode);
 
@@ -1365,11 +1360,14 @@ void GltfLoader::LoadGltfRenderableNodes(
         }
     }
 
-    auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.mesh];
-    newNode->AddComponent(sgMesh);
-    sgMesh->AddNode(newNode.Get());
-    // store
-    scene->AddRenderableNode(newNode.Get());
+    if (gltfNode.mesh > -1)
+    {
+        auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.mesh];
+        newNode->AddComponent(sgMesh);
+        sgMesh->AddNode(newNode.Get());
+        // store
+        scene->AddRenderableNode(newNode.Get());
+    }
 
     if (parent)
     {

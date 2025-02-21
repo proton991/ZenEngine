@@ -243,10 +243,7 @@ void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
     m_RHI->ChangeTextureLayout(cmdList, textureHandle, rhi::TextureLayout::eTransferDst,
                                rhi::TextureLayout::eShaderReadOnly);
 
-    if (m_stagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
-    {
-        m_renderDevice->WaitForAllFrames();
-        m_stagingMgr->ProcessPendingFrees();
-    }
+    m_renderDevice->WaitForAllFrames();
+    m_stagingMgr->ProcessPendingFrees();
 }
 } // namespace zen::rc
