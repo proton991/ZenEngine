@@ -714,7 +714,7 @@ void GltfLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
     LoadGltfTextures(scene);
     LoadGltfMaterials(scene);
     LoadGltfMeshes(scene);
-    ParseGltfNodes(scene);
+    LoadGltfRenderableNodes(scene);
     scene->UpdateAABB();
 }
 
@@ -1296,7 +1296,7 @@ void GltfLoader::LoadGltfMeshes(sg::Scene* scene)
     }
 }
 
-void GltfLoader::ParseGltfNodes(sg::Scene* scene)
+void GltfLoader::LoadGltfRenderableNodes(sg::Scene* scene)
 {
     std::vector<UniquePtr<sg::Node>> sgNodes;
     sgNodes.reserve(m_gltfModel.nodes.size());
@@ -1305,13 +1305,13 @@ void GltfLoader::ParseGltfNodes(sg::Scene* scene)
     for (int nodeIndex : gltfScene.nodes)
     {
         const tinygltf::Node& node = m_gltfModel.nodes[nodeIndex];
-        ParseGltfNode(nodeIndex, nullptr, sgNodes, scene);
+        LoadGltfRenderableNodes(nodeIndex, nullptr, sgNodes, scene);
     }
 
     scene->SetNodes(std::move(sgNodes));
 }
 
-void GltfLoader::ParseGltfNode(
+void GltfLoader::LoadGltfRenderableNodes(
     // current node index
     uint32_t nodeIndex,
     // parent node
@@ -1323,6 +1323,11 @@ void GltfLoader::ParseGltfNode(
 {
     const auto& gltfNode = m_gltfModel.nodes[nodeIndex];
 
+    if (gltfNode.mesh == -1)
+    {
+        // only process renderable mesh nodes
+        return;
+    }
     auto newNode   = MakeUnique<sg::Node>(nodeIndex, gltfNode.name);
     auto transform = MakeUnique<sg::Transform>(*newNode);
 
@@ -1356,18 +1361,15 @@ void GltfLoader::ParseGltfNode(
     {
         for (size_t i = 0; i < gltfNode.children.size(); i++)
         {
-            ParseGltfNode(gltfNode.children[i], newNode.Get(), sgNodes, scene);
+            LoadGltfRenderableNodes(gltfNode.children[i], newNode.Get(), sgNodes, scene);
         }
     }
 
-    if (gltfNode.mesh > -1)
-    {
-        auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.mesh];
-        newNode->AddComponent(sgMesh);
-        sgMesh->AddNode(newNode.Get());
-        // store
-        scene->AddRenderableNode(newNode.Get());
-    }
+    auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.mesh];
+    newNode->AddComponent(sgMesh);
+    sgMesh->AddNode(newNode.Get());
+    // store
+    scene->AddRenderableNode(newNode.Get());
 
     if (parent)
     {

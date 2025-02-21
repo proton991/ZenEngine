@@ -515,6 +515,7 @@ private:
         T* newNode      = new T();
         newNode->parent = passNode;
         passNode->childNodes.push_back(newNode);
+        m_allChildNodes.push_back(newNode);
         return newNode;
     }
 
@@ -551,6 +552,7 @@ private:
     std::vector<uint8_t> m_nodeData;
     std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
     std::vector<RDGNodeBase*> m_allNodes;
+    std::vector<RDGPassChildNode*> m_allChildNodes;
     uint32_t m_nodeCount{0};
     std::vector<std::vector<RDG_ID>> m_sortedNodes;
     // tracked resources

@@ -597,16 +597,9 @@ void RenderGraph::SortNodes()
 
 void RenderGraph::Destroy()
 {
-    for (RDGNodeBase* node : m_allNodes)
+    for (RDGPassChildNode* child : m_allChildNodes)
     {
-        if (node->type == RDGNodeType::eGraphicsPass)
-        {
-            auto* casted = reinterpret_cast<RDGGraphicsPassNode*>(node);
-            for (RDGPassChildNode* child : casted->childNodes)
-            {
-                delete child;
-            }
-        }
+        delete child;
     }
     for (RDGResource* resource : m_resources)
     {

@@ -50,8 +50,9 @@ private:
     {
         if (!m_validLocalMatrix)
         {
-            m_localMatrix = glm::translate(Mat4(1.0f), m_translation) * Mat4(m_rotation) *
+            m_localMatrix = glm::translate(Mat4(1.0f), m_translation) * glm::mat4_cast(m_rotation) *
                 glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
+            m_validLocalMatrix = true;
         }
         return m_localMatrix;
     }

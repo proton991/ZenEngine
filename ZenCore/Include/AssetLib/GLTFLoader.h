@@ -261,9 +261,9 @@ private:
 
     void LoadGltfMeshes(sg::Scene* scene);
 
-    void ParseGltfNodes(sg::Scene* scene);
+    void LoadGltfRenderableNodes(sg::Scene* scene);
 
-    void ParseGltfNode(
+    void LoadGltfRenderableNodes(
         // current node index
         uint32_t nodeIndex,
         // parent node
