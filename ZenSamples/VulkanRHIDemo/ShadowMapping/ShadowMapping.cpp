@@ -1,5 +1,5 @@
 #include "ShadowMapping.h"
-#include "AssetLib/GLTFLoader.h"
+#include "AssetLib/FastGLTFLoader.h"
 
 
 ShadowMappingApp::ShadowMappingApp(const platform::WindowConfig& windowConfig) :
@@ -162,10 +162,10 @@ void ShadowMappingApp::LoadResources()
     Application::LoadResources();
 
     m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<gltf::GltfLoader>();
+    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(m_modelPath, m_scene.Get());
 
-    uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(gltf::Vertex);
+    uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(asset::Vertex);
     m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
         vbSize, reinterpret_cast<const uint8_t*>(gltfLoader->GetVertices().data()));
 

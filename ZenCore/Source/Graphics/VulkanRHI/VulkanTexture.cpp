@@ -103,6 +103,12 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 
     texture->imageCI = imageCI;
 
+    if (!info.name.empty())
+    {
+        m_device->SetObjectName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(texture->image),
+                                info.name.c_str());
+    }
+
     return TextureHandle(texture);
 }
 

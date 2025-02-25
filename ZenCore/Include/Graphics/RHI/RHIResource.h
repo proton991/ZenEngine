@@ -184,6 +184,7 @@ struct TextureInfo
     uint32_t mipmaps{1};
     // memory flags
     bool cpuReadable{false};
+    std::string name;
 };
 
 inline uint32_t CalculateTextureSize(const TextureInfo& info)

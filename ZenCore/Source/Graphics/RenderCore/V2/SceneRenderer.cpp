@@ -55,7 +55,7 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     }
     TransformScene();
 
-    uint32_t vbSize = sceneData.numVertices * sizeof(gltf::Vertex);
+    uint32_t vbSize = sceneData.numVertices * sizeof(asset::Vertex);
     m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
         vbSize, reinterpret_cast<const uint8_t*>(sceneData.vertices));
 

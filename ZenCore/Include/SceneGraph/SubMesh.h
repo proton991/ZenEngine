@@ -45,6 +45,11 @@ public:
         m_vertexCount = vertexCount;
     }
 
+    auto GetVertexCount() const
+    {
+        return m_vertexCount;
+    }
+
     auto GetIndexCount() const
     {
         return m_indexCount;
@@ -74,6 +79,11 @@ public:
         return m_hasIndices;
     }
 
+    auto GetMaterialIndex() const
+    {
+        return m_materialIndex;
+    }
+
 private:
     uint32_t m_firstIndex{0};
     uint32_t m_indexCount{0};
@@ -87,4 +97,41 @@ private:
     bool m_hasIndices{false};
 };
 
+inline bool operator==(const SubMesh& lhs, const SubMesh& rhs)
+{
+    // Compare the name
+    //    if (lhs.GetName() != rhs.GetName())
+    //        return false;
+
+    // Compare the AABB (bounding box)
+    if (lhs.GetAABB() != rhs.GetAABB())
+        return false;
+
+    // Compare the first index
+    if (lhs.GetFirstIndex() != rhs.GetFirstIndex())
+        return false;
+
+    // Compare the index count
+    if (lhs.GetIndexCount() != rhs.GetIndexCount())
+        return false;
+
+    // Compare the vertex count
+    if (lhs.GetVertexCount() != rhs.GetVertexCount())
+        return false;
+
+    // Compare if they have the same material and material index
+    if (lhs.GetMaterial() != rhs.GetMaterial() || lhs.GetMaterialIndex() != rhs.GetMaterialIndex())
+        return false;
+
+    // Compare whether both have indices
+    if (lhs.HasIndices() != rhs.HasIndices())
+        return false;
+
+    return true;
+}
+
+inline bool operator!=(const SubMesh& lhs, const SubMesh& rhs)
+{
+    return !(lhs == rhs);
+}
 } // namespace zen::sg

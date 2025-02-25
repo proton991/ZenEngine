@@ -53,4 +53,47 @@ private:
 
     std::vector<Node*> m_nodes;
 };
+
+inline bool operator==(const Mesh& lhs, const Mesh& rhs)
+{
+    // Compare the name
+    if (lhs.GetName() != rhs.GetName())
+        return false;
+
+    // Compare the AABB (bounding box)
+    if (lhs.GetAABB() != rhs.GetAABB())
+        return false;
+
+    // Compare the number of nodes
+    if (lhs.GetNodes().size() != rhs.GetNodes().size())
+        return false;
+
+    // Compare the nodes themselves
+    for (size_t i = 0; i < lhs.GetNodes().size(); ++i)
+    {
+        if (lhs.GetNodes()[i] != rhs.GetNodes()[i])
+            return false;
+    }
+
+    // Compare the number of submeshes
+    if (lhs.GetSubMeshes().size() != rhs.GetSubMeshes().size())
+        return false;
+
+    // Compare the submeshes themselves
+    for (size_t i = 0; i < lhs.GetSubMeshes().size(); ++i)
+    {
+        auto& subMesh1 = *lhs.GetSubMeshes()[i];
+        auto& subMesh2 = *lhs.GetSubMeshes()[i];
+        bool equal     = (subMesh1 == subMesh2);
+        if (!equal)
+            return false;
+    }
+
+    return true;
+}
+
+inline bool operator!=(const Mesh& lhs, const Mesh& rhs)
+{
+    return !(lhs == rhs);
+}
 } // namespace zen::sg

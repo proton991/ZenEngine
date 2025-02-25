@@ -11,19 +11,19 @@ namespace zen::sys
 class Camera;
 }
 
-namespace zen::gltf
+namespace zen::asset
 {
 struct Vertex;
 using Index = uint32_t;
-} // namespace zen::gltf
+} // namespace zen::asset
 
 namespace zen::rc
 {
 struct SceneData
 {
     sg::Scene* scene;
-    const gltf::Vertex* vertices;
-    const gltf::Index* indices;
+    const asset::Vertex* vertices;
+    const asset::Index* indices;
     uint32_t numVertices;
     uint32_t numIndices;
     sys::Camera* camera;

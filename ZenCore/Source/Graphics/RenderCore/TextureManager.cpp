@@ -14,13 +14,13 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     {
         return m_cache[filename].Get();
     }
-    TextureInfo textureInfo = TextureLoader::LoadTexture2DFromFile(filename);
+    asset::TextureInfo textureInfo = asset::TextureLoader::LoadTexture2DFromFile(filename);
     // Create Image
     val::ImageCreateInfo imageCI{};
     imageCI.format      = util::ToVkType<VkFormat>(textureInfo.format);
     imageCI.extent3D    = {textureInfo.width, textureInfo.height, 1};
     bool generateMipmap = false;
-    if (requireMipmap && (!textureInfo.hasMipMap))
+    if (requireMipmap && (!textureInfo.hasMipmap))
     {
         // generate mipmap
         generateMipmap = true;
@@ -42,8 +42,7 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     else
     {
         auto stagingBuffer = m_renderContext.GetCurrentStagingBuffer();
-        auto submitInfo    = stagingBuffer->Submit(textureInfo.baseLevelData.data(),
-                                                   textureInfo.baseLevelData.size());
+        auto submitInfo = stagingBuffer->Submit(textureInfo.data.data(), textureInfo.data.size());
         // copy to image
         val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
         commandBuffer->Begin();

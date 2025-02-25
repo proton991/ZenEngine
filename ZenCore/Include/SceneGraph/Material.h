@@ -1,6 +1,5 @@
 #pragma once
 #include "Component.h"
-#include "Common/Types.h"
 #include "Common/Math.h"
 #include "Texture.h"
 #include <vector>
@@ -69,4 +68,84 @@ public:
     bool unlit{false};
     float emissiveStrength{1.0f};
 };
+
+inline bool operator==(const Material& lhs, const Material& rhs)
+{
+    // Compare the name
+    if (lhs.GetName() != rhs.GetName())
+        return false;
+
+    // Compare alphaMode
+    if (lhs.alphaMode != rhs.alphaMode)
+        return false;
+
+    // Compare doubleSided flag
+    if (lhs.doubleSided != rhs.doubleSided)
+        return false;
+
+    // Compare material factors
+    if (lhs.alphaCutoff != rhs.alphaCutoff)
+        return false;
+
+    if (lhs.metallicFactor != rhs.metallicFactor)
+        return false;
+
+    if (lhs.roughnessFactor != rhs.roughnessFactor)
+        return false;
+
+    if (lhs.baseColorFactor != rhs.baseColorFactor)
+        return false;
+
+    if (lhs.emissiveFactor != rhs.emissiveFactor)
+        return false;
+
+    // Compare textures (check if the texture pointers are the same)
+    if (*lhs.baseColorTexture != *rhs.baseColorTexture)
+        return false;
+
+    if (*lhs.metallicRoughnessTexture != *rhs.metallicRoughnessTexture)
+        return false;
+
+    if (*lhs.normalTexture != *rhs.normalTexture)
+        return false;
+
+    if (*lhs.occlusionTexture != *rhs.occlusionTexture)
+        return false;
+
+    if (*lhs.emissiveTexture != *rhs.emissiveTexture)
+        return false;
+
+    // Compare texCoordSets
+    if (lhs.texCoordSets.baseColor != rhs.texCoordSets.baseColor ||
+        lhs.texCoordSets.metallicRoughness != rhs.texCoordSets.metallicRoughness ||
+        lhs.texCoordSets.specularGlossiness != rhs.texCoordSets.specularGlossiness ||
+        lhs.texCoordSets.normal != rhs.texCoordSets.normal ||
+        lhs.texCoordSets.occlusion != rhs.texCoordSets.occlusion ||
+        lhs.texCoordSets.emissive != rhs.texCoordSets.emissive)
+        return false;
+
+    // Compare extension fields
+    if (lhs.extension.specularGlossinessTexture != rhs.extension.specularGlossinessTexture ||
+        lhs.extension.diffuseTexture != rhs.extension.diffuseTexture ||
+        lhs.extension.diffuseFactor != rhs.extension.diffuseFactor ||
+        lhs.extension.specularFactor != rhs.extension.specularFactor)
+        return false;
+
+    // Compare PBR workflows
+    if (lhs.pbrWorkflows.metallicRoughness != rhs.pbrWorkflows.metallicRoughness ||
+        lhs.pbrWorkflows.specularGlossiness != rhs.pbrWorkflows.specularGlossiness)
+        return false;
+
+    // Compare other scalar values and flags
+    if (lhs.index != rhs.index || lhs.unlit != rhs.unlit ||
+        lhs.emissiveStrength != rhs.emissiveStrength)
+        return false;
+
+    return true;
+}
+
+inline bool operator!=(const Material& lhs, const Material& rhs)
+{
+    return !(lhs == rhs);
+}
 } // namespace zen::sg

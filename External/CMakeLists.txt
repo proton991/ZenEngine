@@ -83,4 +83,7 @@ target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/stb")
 
 # tinygltf
 add_library(tinygltf INTERFACE)
-target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/tinygltf")
+target_include_directories(tinygltf INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/tinygltf")
+
+# fastgltf
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/fastgltf)

@@ -1,7 +1,8 @@
 #pragma once
-#include <cstdint>
+#include <vector>
+#include "Common/Math.h"
 
-namespace zen
+namespace zen::asset
 {
 enum class Format : uint32_t
 {
@@ -309,4 +310,64 @@ enum class Format : uint32_t
     MAX_ENUM                                       = 0x7FFFFFFF
 };
 
-}
+struct Vertex
+{
+    Vec3 pos;
+    Vec3 normal;
+    Vec4 tangent;
+    Vec2 uv0;
+    Vec2 uv1;
+    Vec4 joint0;
+    Vec4 weight0;
+    Vec4 color;
+};
+
+struct TextureInfo
+{
+    TextureInfo() = default;
+    TextureInfo(uint32_t weight_,
+                uint32_t height_,
+                Format format_,
+                // moved
+                std::vector<uint8_t> data_,
+                int samplerIndex_ = -1) :
+        samplerIndex(samplerIndex_),
+        width(weight_),
+        height(height_),
+        format(format_),
+        data(std::move(data_))
+    {}
+
+    int samplerIndex{-1};
+    uint32_t width{0};
+    uint32_t height{0};
+    Format format{Format::UNDEFINED};
+    std::vector<uint8_t> data; // byte data no mipmaps
+    bool hasMipmap{false};     // for now do not support mipmap
+    std::vector<uint8_t> otherLeveData;
+};
+
+enum class SamplerFilter : uint32_t
+{
+    eNearest = 0,
+    eLinear  = 1,
+};
+
+enum class SamplerRepeatMode : uint32_t
+{
+    eRepeat            = 0,
+    eMirroredRepeat    = 1,
+    eClampToEdge       = 2,
+    eClampToBorder     = 3,
+    eMirrorClampToEdge = 4,
+    eMax               = 0x7FFFFFFF
+};
+
+struct SamplerInfo
+{
+    SamplerFilter minFilter{SamplerFilter::eNearest};
+    SamplerFilter magFilter{SamplerFilter::eNearest};
+    SamplerRepeatMode wrapS{SamplerRepeatMode::eRepeat};
+    SamplerRepeatMode wrapT{SamplerRepeatMode::eRepeat};
+};
+} // namespace zen::asset

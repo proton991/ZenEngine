@@ -62,4 +62,14 @@ private:
     Vec3 m_min;
     Vec3 m_max;
 };
+inline bool operator==(const AABB& lhs, const AABB& rhs)
+{
+    // Compare the min and max points of the AABBs
+    return lhs.GetMin() == rhs.GetMin() && lhs.GetMax() == rhs.GetMax();
+}
+
+inline bool operator!=(const AABB& lhs, const AABB& rhs)
+{
+    return !(lhs == rhs);
+}
 } // namespace zen::sg

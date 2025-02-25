@@ -50,6 +50,8 @@ std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& ey
 
 void Scene::LoadDefaultTextures(uint32_t startIndex)
 {
+    using namespace zen::asset;
+
     sDefaultTextures.baseColor            = new sg::Texture("DefaultBaseColor");
     sDefaultTextures.baseColor->format    = Format::R8G8B8A8_UNORM;
     sDefaultTextures.baseColor->index     = startIndex;

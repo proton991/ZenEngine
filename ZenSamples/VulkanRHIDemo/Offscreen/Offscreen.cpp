@@ -1,5 +1,5 @@
 #include "Offscreen.h"
-#include "AssetLib/GLTFLoader.h"
+#include "AssetLib/FastGLTFLoader.h"
 
 #define OFFSCREEN_TEXTURE_DIM 512
 
@@ -161,10 +161,10 @@ void OffscreenApp::LoadResources()
     m_texture = m_renderDevice->LoadTexture2D("wood.png");
 
     m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<gltf::GltfLoader>();
+    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(m_modelPath, m_scene.Get());
 
-    uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(gltf::Vertex);
+    uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(asset::Vertex);
     m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
         vbSize, reinterpret_cast<const uint8_t*>(gltfLoader->GetVertices().data()));
 

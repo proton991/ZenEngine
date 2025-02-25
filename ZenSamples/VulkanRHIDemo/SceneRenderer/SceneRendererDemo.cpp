@@ -1,6 +1,7 @@
 #include "SceneRendererDemo.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/GLTFLoader.h"
+#include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
 
 
@@ -36,7 +37,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 void SceneRendererDemo::Prepare()
 {
     m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<gltf::GltfLoader>();
+    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath(),
                              m_scene.Get());
 

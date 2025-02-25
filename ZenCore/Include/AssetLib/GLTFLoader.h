@@ -3,67 +3,16 @@
 #include <string>
 #include <tiny_gltf.h>
 #include "Common/Math.h"
-#include "Common/Types.h"
 #include "Common/UniquePtr.h"
-
+#include "Types.h"
 
 namespace zen::sg
 {
 class Scene;
 class Node;
 } // namespace zen::sg
-namespace zen::gltf
+namespace zen::asset
 {
-struct Vertex
-{
-    Vec3 pos;
-    Vec3 normal;
-    Vec4 tangent;
-    Vec2 uv0;
-    Vec2 uv1;
-    Vec4 joint0;
-    Vec4 weight0;
-    Vec4 color;
-};
-
-using Index = uint32_t;
-
-struct TextureInfo
-{
-    TextureInfo() = default;
-    TextureInfo(int samplerIndex_,
-                uint32_t weight_,
-                uint32_t height_,
-                Format format_,
-                // moved
-                std::vector<uint8_t> data_) :
-        samplerIndex(samplerIndex_),
-        width(weight_),
-        height(height_),
-        format(format_),
-        data(std::move(data_))
-    {}
-
-    int samplerIndex{-1};
-    uint32_t width{0};
-    uint32_t height{0};
-    Format format{Format::UNDEFINED};
-    // byte data no mipmaps
-    std::vector<uint8_t> data;
-};
-
-struct SamplerInfo
-{
-    int minFilter{-1}; // optional. -1 = no filter defined. ["NEAREST", "LINEAR",
-                       // "NEAREST_MIPMAP_NEAREST", "LINEAR_MIPMAP_NEAREST",
-                       // "NEAREST_MIPMAP_LINEAR", "LINEAR_MIPMAP_LINEAR"]
-    int magFilter{-1}; // optional. -1 = no filter defined. ["NEAREST", "LINEAR"]
-    int wrapS{TINYGLTF_TEXTURE_WRAP_REPEAT}; // ["CLAMP_TO_EDGE", "MIRRORED_REPEAT",
-                                             // "REPEAT"], default "REPEAT"
-    int wrapT{TINYGLTF_TEXTURE_WRAP_REPEAT}; // ["CLAMP_TO_EDGE", "MIRRORED_REPEAT",
-                                             // "REPEAT"], default "REPEAT"
-};
-
 struct BoundingBox
 {
     BoundingBox() = default;
@@ -180,66 +129,10 @@ struct Model
     std::vector<Node*> flatNodes;
 };
 
-
-class ModelLoader
+class GLTFLoader
 {
 public:
-    ModelLoader();
-
-    void LoadFromFile(const std::string& path, gltf::Model* pOutModel, float scale = 1.0f);
-
-    const auto& GetVertices() const
-    {
-        return m_vertices;
-    }
-    const auto& GetIndices() const
-    {
-        return m_indices;
-    }
-
-private:
-    void LoadSamplers(tinygltf::Model& gltfModel);
-    void LoadTextures(tinygltf::Model& gltfModel);
-    void LoadMaterials(tinygltf::Model& gltfModel);
-    void LoadNode(gltf::Model* pOutModel,
-                  gltf::Node* parent,
-                  const tinygltf::Node& node,
-                  uint32_t nodeIndex,
-                  const tinygltf::Model& model,
-                  float globalScale);
-    void GetModelProps(const tinygltf::Node& node,
-                       const tinygltf::Model& model,
-                       // sum
-                       size_t& vertexCount,
-                       size_t& indexCount,
-                       size_t& nodeCount);
-    void SetModelBoundingBox(gltf::Model* pModel);
-
-    // counters
-    size_t m_vertexPos{0};
-    size_t m_indexPos{0};
-    // vertices and indices
-    std::vector<gltf::Vertex> m_vertices;
-    std::vector<gltf::Index> m_indices;
-    // textures
-    std::vector<gltf::TextureInfo> m_textureInfos;
-    std::vector<gltf::SamplerInfo> m_samplerInfos;
-    // materials
-    std::vector<gltf::Material> m_materials;
-
-    struct DefaultTextures
-    {
-        gltf::TextureInfo baseColor;
-        gltf::TextureInfo metallicRoughness;
-        gltf::TextureInfo normal;
-    } m_defaultTextures;
-};
-
-
-class GltfLoader
-{
-public:
-    GltfLoader() = default;
+    GLTFLoader() = default;
 
     void LoadFromFile(const std::string& path, sg::Scene* scene);
 
@@ -279,7 +172,7 @@ private:
     size_t m_vertexPos{0};
     size_t m_indexPos{0};
     // vertices and indices
-    std::vector<gltf::Vertex> m_vertices;
-    std::vector<gltf::Index> m_indices;
+    std::vector<Vertex> m_vertices;
+    std::vector<uint32_t> m_indices;
 };
-} // namespace zen::gltf
+} // namespace zen::asset

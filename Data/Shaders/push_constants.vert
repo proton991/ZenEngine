@@ -33,7 +33,7 @@ layout (location = 0) out vec3 outColor;
 
 void main() 
 {
-	outColor = inColor.rgb * pushConsts.color.rgb;
+	outColor = pushConsts.color.rgb;
 	vec3 locPos = vec3(uModel * vec4(inPos, 1.0));
 	vec3 worldPos = locPos + pushConsts.position.xyz;
 	gl_Position =  uProj * uView * vec4(worldPos, 1.0);

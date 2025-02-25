@@ -1,6 +1,8 @@
 set(ZEN_CORE_HEADERS
     Include/AssetLib/TextureLoader.h
     Include/AssetLib/GLTFLoader.h
+    Include/AssetLib/FastGLTFLoader.h
+    Include/AssetLib/Types.h
 
     Include/Common/ArrayView.h
     Include/Common/BitField.h
@@ -22,7 +24,6 @@ set(ZEN_CORE_HEADERS
     Include/Common/SharedPtr.h
     Include/Common/UniquePtr.h
     Include/Common/RefCountPtr.h
-    Include/Common/Types.h
 
     Include/Graphics/RenderCore/V2/RenderGraph.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
@@ -126,6 +127,7 @@ set(ZEN_CORE_HEADERS
 set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
     Source/AssetLib/GLTFLoader.cpp
+    Source/AssetLib/FastGLTFLoader.cpp
 
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
@@ -213,6 +215,7 @@ target_link_libraries(ZenCore PUBLIC
     span
     stb
     tinygltf
+    fastgltf
 )
 
 ############################################################

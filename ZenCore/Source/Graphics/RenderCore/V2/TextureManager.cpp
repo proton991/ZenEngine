@@ -2,7 +2,7 @@
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/SkyboxRenderer.h"
 #include "SceneGraph/Scene.h"
-#include <stb_image.h>
+#include "AssetLib/TextureLoader.h"
 #include <gli/gli.hpp>
 
 namespace zen::rc
@@ -25,37 +25,18 @@ rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& texture
     return m_textureCache.at(tag);
 }
 
-static void LoadTexture2DRawData(const std::string& file,
-                                 std::vector<uint8_t>& outData,
-                                 rhi::TextureInfo& outTextureInfo)
-{
-    // TODO: Refactor AssetLib
-    const std::string filepath = ZEN_TEXTURE_PATH + file;
-    int width = 0, height = 0, channels = 0;
-    stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-    stbi_set_flip_vertically_on_load(false);
-
-    // ONLY support RGBA format
-    outData.resize(width * height * 4 * sizeof(uint8_t));
-    std::copy(data, data + outData.size(), outData.begin());
-
-    outTextureInfo.width  = width;
-    outTextureInfo.height = height;
-
-    stbi_image_free(data);
-}
-
 rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     if (m_textureCache.contains(file))
     {
         return m_textureCache[file];
     }
-    std::vector<uint8_t> vecData;
-    rhi::TextureInfo textureInfo{};
-    LoadTexture2DRawData(file, vecData, textureInfo);
+    asset::TextureInfo rawTextureInfo{};
+    asset::TextureLoader::LoadTexture2DFromFile(file, &rawTextureInfo);
 
+    rhi::TextureInfo textureInfo{};
+    textureInfo.width       = rawTextureInfo.width;
+    textureInfo.height      = rawTextureInfo.height;
     textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
     textureInfo.type        = rhi::TextureType::e2D;
     textureInfo.depth       = 1;
@@ -73,7 +54,7 @@ rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool r
     else
     {
         UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
-                      vecData.size(), vecData.data());
+                      rawTextureInfo.data.size(), rawTextureInfo.data.data());
     }
 
     m_textureCache[file] = texture;
@@ -96,6 +77,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene,
             textureInfo.depth       = 1;
             textureInfo.arrayLayers = 1;
             textureInfo.mipmaps     = 1;
+            textureInfo.name        = sgTexture->GetName();
             textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
             textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
 
