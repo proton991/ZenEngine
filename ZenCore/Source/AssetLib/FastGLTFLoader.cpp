@@ -3,6 +3,8 @@
 #include "AssetLib/FastGLTFLoader.h"
 #include "SceneGraph/Scene.h"
 #include "Common/Errors.h"
+#include "Common/ThreadPool.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 
 namespace zen::asset
 {
@@ -71,7 +73,8 @@ FastGLTFLoader::FastGLTFLoader()
 
 void FastGLTFLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
 {
-    m_name        = std::filesystem::path(path).stem().string();
+    m_name = std::filesystem::path(path).stem().string();
+    scene->SetName(m_name);
     auto gltfFile = fastgltf::MappedGltfFile::FromPath(path);
     if (!bool(gltfFile))
     {
@@ -235,17 +238,73 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
     return sgTexture;
 }
 
+template <typename ReturnType, typename... Args> class Task
+{
+public:
+    // Submit a task (lambda or callable) with parameters
+    template <typename Callable, typename... Params>
+    void SubmitTask(Callable&& task, Params&&... params)
+    {
+        // Using std::bind to allow passing arguments to the callable
+        futures.push_back(std::async(std::launch::async, std::forward<Callable>(task),
+                                     std::forward<Params>(params)...));
+    }
+
+    // Wait for all tasks to finish
+    void Execute()
+    {
+        for (auto& f : futures)
+        {
+            f.get(); // Block until the task finishes
+        }
+    }
+
+private:
+    std::vector<std::future<ReturnType>> futures;
+};
+
 void FastGLTFLoader::LoadGltfTextures(sg::Scene* scene)
 {
+    uint32_t groupSize = rc::RenderConfig::GetInstance().numThreads;
+    auto threadPool    = MakeUnique<ThreadPool<void, uint32_t>>(groupSize);
+
     std::vector<UniquePtr<sg::Texture>> textures;
     size_t numTextures = m_gltfAsset.textures.size();
     textures.resize(numTextures);
-    // retrieve all images from the glTF file
-    for (uint32_t textureIndex = 0; textureIndex < numTextures; ++textureIndex)
-    {
-        textures[textureIndex] = UniquePtr<sg::Texture>(LoadGltfTextureVisitor(textureIndex));
-    }
 
+    uint32_t groupWorkLoad = numTextures / groupSize;
+    uint32_t workRemained  = numTextures % rc::RenderConfig::GetInstance().numThreads;
+
+    uint32_t startIdx = 0;
+    std::vector<std::future<std::vector<sg::Texture*>>> futures;
+    for (size_t i = 0; i < groupSize; ++i)
+    {
+        uint32_t endIdx = startIdx + groupWorkLoad;
+        if (workRemained > 0)
+        {
+            workRemained--;
+            endIdx++;
+        }
+        auto future = threadPool->Push([this, startIdx, endIdx](uint32_t threadId) {
+            std::vector<sg::Texture*> batchResult;
+            for (uint32_t j = startIdx; j < endIdx; j++)
+            {
+                sg::Texture* texture = LoadGltfTextureVisitor(j);
+                batchResult.push_back(texture);
+            }
+            return batchResult;
+        });
+        futures.emplace_back(std::move(future));
+        startIdx = endIdx;
+    }
+    for (auto& fut : futures)
+    {
+        std::vector<sg::Texture*> batch = fut.get();
+        for (auto* sgTex : batch)
+        {
+            textures[sgTex->index] = UniquePtr(sgTex);
+        }
+    }
     sg::Scene::LoadDefaultTextures(textures.size());
     sg::Scene::DefaultTextures defaultTextures = sg::Scene::GetDefaultTextures();
     textures.emplace_back(defaultTextures.baseColor);

@@ -25,7 +25,7 @@ public:
     explicit ThreadPool(uint32_t nThreads)
     {
         this->Init();
-        this->Resize(nThreads);
+        this->Resize(std::min(std::thread::hardware_concurrency(), nThreads));
     }
 
     // the destructor waits for all the functions in the queue to be finished

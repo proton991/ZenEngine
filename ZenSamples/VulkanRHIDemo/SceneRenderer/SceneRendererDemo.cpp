@@ -40,6 +40,8 @@ void SceneRendererDemo::Prepare()
     auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath(),
                              m_scene.Get());
+    auto timeUsed = static_cast<float>(m_timer->Tick());
+    LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), timeUsed);
 
     rc::SceneData sceneData{};
     sceneData.camera      = m_camera.Get();

@@ -105,6 +105,16 @@ public:
 
     static DefaultTextures GetDefaultTextures();
 
+    void SetName(std::string name)
+    {
+        m_name = std::move(name);
+    }
+
+    const std::string GetName() const
+    {
+        return m_name;
+    }
+
 private:
     std::string m_name;
 
