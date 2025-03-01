@@ -285,6 +285,7 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* scene)
         }
 
         sgMat->index = static_cast<uint32_t>(currIndex);
+        sgMat->SetData();
         currIndex++;
         materials.emplace_back(sgMat);
     }
@@ -680,6 +681,8 @@ void GLTFLoader::LoadGltfRenderableNodes(
     {
         auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.mesh];
         newNode->AddComponent(sgMesh);
+        newNode->SetData(scene->GetRenderableCount(),
+                         newNode->GetComponent<sg::Transform>()->GetWorldMatrix());
         sgMesh->AddNode(newNode.Get());
         // store
         scene->AddRenderableNode(newNode.Get());

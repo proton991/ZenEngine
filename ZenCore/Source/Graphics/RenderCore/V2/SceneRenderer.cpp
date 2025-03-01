@@ -42,17 +42,11 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
                 sizeof(sceneData.lightIntensities));
 
-    auto index = 0u;
     for (auto* node : m_scene->GetRenderableNodes())
     {
-        NodeData nodeUniformData{};
-        nodeUniformData.modelMatrix = node->GetComponent<sg::Transform>()->GetWorldMatrix();
-        // pre-calculate normal transform matrix
-        nodeUniformData.normalMatrix = glm::transpose(glm::inverse(nodeUniformData.modelMatrix));
-        m_nodesData.emplace_back(nodeUniformData);
-        m_nodeUniformIndex[node->GetHash()] = index;
-        index++;
+        m_nodesData.emplace_back(node->GetData());
     }
+
     TransformScene();
 
     uint32_t vbSize = sceneData.numVertices * sizeof(asset::Vertex);
@@ -77,29 +71,7 @@ void SceneRenderer::LoadSceneMaterials()
     m_materialUniforms.reserve(sgMaterials.size());
     for (const auto* mat : sgMaterials)
     {
-        VERIFY_EXPR(mat->baseColorTexture != nullptr);
-        VERIFY_EXPR(mat->metallicRoughnessTexture != nullptr);
-        VERIFY_EXPR(mat->normalTexture != nullptr);
-        VERIFY_EXPR(mat->occlusionTexture != nullptr);
-        VERIFY_EXPR(mat->emissiveTexture != nullptr);
-
-        MaterialData materialData{};
-        materialData.bcTexSet       = mat->texCoordSets.baseColor;
-        materialData.mrTexSet       = mat->texCoordSets.metallicRoughness;
-        materialData.normalTexSet   = mat->texCoordSets.normal;
-        materialData.aoTexSet       = mat->texCoordSets.occlusion;
-        materialData.emissiveTexSet = mat->texCoordSets.emissive;
-
-        materialData.bcTexIndex        = mat->baseColorTexture->index;
-        materialData.mrTexIndex        = mat->metallicRoughnessTexture->index;
-        materialData.normalTexIndex    = mat->normalTexture->index;
-        materialData.occlusionTexIndex = mat->occlusionTexture->index;
-        materialData.emissiveTexIndex  = mat->emissiveTexture->index;
-
-        materialData.metallicFactor  = mat->metallicFactor;
-        materialData.roughnessFactor = mat->roughnessFactor;
-        materialData.emissiveFactor  = mat->emissiveFactor;
-        m_materialUniforms.emplace_back(materialData);
+        m_materialUniforms.emplace_back(mat->data);
     }
 }
 
@@ -244,7 +216,7 @@ void SceneRenderer::PrepareBuffers()
 
     {
         // prepare node ssbo
-        auto ssboSize = sizeof(NodeData) * m_nodesData.size();
+        auto ssboSize = sizeof(sg::NodeData) * m_nodesData.size();
         m_nodeSSBO    = m_renderDevice->CreateStorageBuffer(
             ssboSize, reinterpret_cast<const uint8_t*>(m_nodesData.data()));
         m_renderDevice->UpdateBuffer(m_nodeSSBO, ssboSize,
@@ -253,7 +225,7 @@ void SceneRenderer::PrepareBuffers()
 
     {
         // prepare material ssbo
-        const auto ssboSize = sizeof(MaterialData) * m_materialUniforms.size();
+        const auto ssboSize = sizeof(sg::MaterialData) * m_materialUniforms.size();
         m_materialSSBO      = m_renderDevice->CreateStorageBuffer(
             ssboSize, reinterpret_cast<const uint8_t*>(m_materialUniforms.data()));
     }
@@ -452,7 +424,7 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     for (auto* node : m_scene->GetRenderableNodes())
     {
-        m_pushConstantsData.nodeIndex = m_nodeUniformIndex[node->GetHash()];
+        m_pushConstantsData.nodeIndex = node->GetRenderableIndex();
         for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
             m_pushConstantsData.materialIndex = subMesh->GetMaterial()->index;

@@ -1,6 +1,5 @@
 #include "SceneRendererDemo.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
-#include "AssetLib/GLTFLoader.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
 

@@ -405,7 +405,7 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* scene)
         }
         // todo: support gltf extensions
 
-
+        sgMat->SetData();
         materials[currIndex] = UniquePtr<sg::Material>(sgMat);
         currIndex++;
     }
@@ -800,6 +800,8 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
     {
         auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
         newNode->AddComponent(sgMesh);
+        newNode->SetData(scene->GetRenderableCount(),
+                         newNode->GetComponent<sg::Transform>()->GetWorldMatrix());
         sgMesh->AddNode(newNode.Get());
         // store
         scene->AddRenderableNode(newNode.Get());

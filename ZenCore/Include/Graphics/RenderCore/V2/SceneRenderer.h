@@ -36,30 +36,6 @@ struct SceneData
 class SceneRenderer
 {
 public:
-    struct NodeData
-    {
-        Mat4 modelMatrix{1.0f};
-        Mat4 normalMatrix{1.0f};
-    };
-
-    struct MaterialData
-    {
-        int bcTexIndex{-1};
-        int mrTexIndex{-1};
-        int normalTexIndex{-1};
-        int occlusionTexIndex{-1};
-        int emissiveTexIndex{-1};
-        int bcTexSet{-1};
-        int mrTexSet{-1};
-        int normalTexSet{-1};
-        int aoTexSet{-1};
-        int emissiveTexSet{-1};
-        float metallicFactor{0.0f};
-        float roughnessFactor{1.0f};
-        Vec4 baseColorFactor{1.0f};
-        Vec4 emissiveFactor{0.0f};
-    };
-
     struct SceneUniformData
     {
         Vec4 lightPositions[4];
@@ -132,12 +108,10 @@ private:
     SceneUniformData m_sceneUniformData{};
     BufferHandle m_sceneUBO;
 
-
-    HashMap<uint64_t, uint32_t> m_nodeUniformIndex;
-    std::vector<NodeData> m_nodesData;
+    std::vector<sg::NodeData> m_nodesData;
     rhi::BufferHandle m_nodeSSBO;
 
-    std::vector<MaterialData> m_materialUniforms;
+    std::vector<sg::MaterialData> m_materialUniforms;
     rhi::BufferHandle m_materialSSBO;
 
     BufferHandle m_cameraUBO;

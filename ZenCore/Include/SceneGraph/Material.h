@@ -1,6 +1,7 @@
 #pragma once
 #include "Component.h"
 #include "Common/Math.h"
+#include "Common/Errors.h"
 #include "Texture.h"
 #include <vector>
 
@@ -11,6 +12,24 @@ enum class AlphaMode
     Opaque,
     Mask,
     Blend
+};
+
+struct MaterialData
+{
+    int bcTexIndex{-1};
+    int mrTexIndex{-1};
+    int normalTexIndex{-1};
+    int occlusionTexIndex{-1};
+    int emissiveTexIndex{-1};
+    int bcTexSet{-1};
+    int mrTexSet{-1};
+    int normalTexSet{-1};
+    int aoTexSet{-1};
+    int emissiveTexSet{-1};
+    float metallicFactor{0.0f};
+    float roughnessFactor{1.0f};
+    Vec4 baseColorFactor{1.0f};
+    Vec4 emissiveFactor{0.0f};
 };
 
 class Material : public Component
@@ -26,6 +45,31 @@ public:
     virtual TypeId GetTypeId() const override
     {
         return typeid(Material);
+    }
+
+    void SetData()
+    {
+        VERIFY_EXPR(baseColorTexture != nullptr);
+        VERIFY_EXPR(metallicRoughnessTexture != nullptr);
+        VERIFY_EXPR(normalTexture != nullptr);
+        VERIFY_EXPR(occlusionTexture != nullptr);
+        VERIFY_EXPR(emissiveTexture != nullptr);
+
+        data.bcTexSet       = texCoordSets.baseColor;
+        data.mrTexSet       = texCoordSets.metallicRoughness;
+        data.normalTexSet   = texCoordSets.normal;
+        data.aoTexSet       = texCoordSets.occlusion;
+        data.emissiveTexSet = texCoordSets.emissive;
+
+        data.bcTexIndex        = static_cast<int>(baseColorTexture->index);
+        data.mrTexIndex        = static_cast<int>(metallicRoughnessTexture->index);
+        data.normalTexIndex    = static_cast<int>(normalTexture->index);
+        data.occlusionTexIndex = static_cast<int>(occlusionTexture->index);
+        data.emissiveTexIndex  = static_cast<int>(emissiveTexture->index);
+
+        data.metallicFactor  = metallicFactor;
+        data.roughnessFactor = roughnessFactor;
+        data.emissiveFactor  = emissiveFactor;
     }
 
     AlphaMode alphaMode{AlphaMode::Opaque};
@@ -67,6 +111,8 @@ public:
     uint32_t index{0};
     bool unlit{false};
     float emissiveStrength{1.0f};
+
+    MaterialData data;
 };
 
 inline bool operator==(const Material& lhs, const Material& rhs)

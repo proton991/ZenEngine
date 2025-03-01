@@ -27,6 +27,11 @@ public:
         return m_renderableNodes;
     }
 
+    auto GetRenderableCount() const
+    {
+        return m_renderableNodes.size();
+    }
+
     std::vector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos,
                                                                const Mat4& transform);
 
