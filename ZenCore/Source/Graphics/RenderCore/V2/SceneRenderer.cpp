@@ -1,6 +1,7 @@
 #include "Graphics/RenderCore/V2/SceneRenderer.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Systems/Camera.h"
+#include "Systems/SceneEditor.h"
 #include "AssetLib/GLTFLoader.h"
 #include "Graphics/RenderCore/V2/SkyboxRenderer.h"
 
@@ -42,12 +43,12 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
     std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
                 sizeof(sceneData.lightIntensities));
 
+    sys::SceneEditor::CenterAndNormalizeScene(m_scene);
+
     for (auto* node : m_scene->GetRenderableNodes())
     {
         m_nodesData.emplace_back(node->GetData());
     }
-
-    TransformScene();
 
     uint32_t vbSize = sceneData.numVertices * sizeof(asset::Vertex);
     m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
@@ -450,30 +451,6 @@ void SceneRenderer::Clear()
         m_nodesData.clear();
         m_materialUniforms.clear();
     }
-}
-
-void SceneRenderer::TransformScene()
-{
-    // Center and scale model
-    Vec3 center(0.0f);
-    Vec3 extents = m_scene->GetAABB().GetMax() - m_scene->GetAABB().GetMin();
-    Vec3 scaleFactors(1.0f);
-    scaleFactors.x = glm::abs(extents.x) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.x;
-    scaleFactors.y = glm::abs(extents.y) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.y;
-    scaleFactors.z = glm::abs(extents.z) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.z;
-
-    auto scaleFactorMax = std::max(scaleFactors.x, std::max(scaleFactors.y, scaleFactors.z));
-    Mat4 scaleMat       = glm::scale(Mat4(1.0f), Vec3(scaleFactorMax));
-    Mat4 translateMat   = glm::translate(Mat4(1.0f), center - m_scene->GetAABB().GetCenter());
-
-    Mat4 transformMat = scaleMat * translateMat;
-
-    for (auto& nodeData : m_nodesData)
-    {
-        nodeData.modelMatrix = transformMat * nodeData.modelMatrix;
-    }
-
-    m_scene->GetAABB().Transform(transformMat);
 }
 
 void SceneRenderer::UpdateGraphicsPassResources()

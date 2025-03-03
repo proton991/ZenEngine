@@ -83,6 +83,11 @@ public:
         m_renderableIndex   = renderableIndex;
     }
 
+    void SetData(const NodeData& data)
+    {
+        m_data = data;
+    }
+
     const NodeData& GetData() const
     {
         return m_data;

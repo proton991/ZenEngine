@@ -58,6 +58,7 @@ set(ZEN_CORE_HEADERS
     Include/SceneGraph/Transform.h
 
     Include/Systems/Camera.h
+    Include/Systems/SceneEditor.h
 
     Include/Graphics/RHI/DynamicRHI.h
     Include/Graphics/RHI/RHICommands.h
@@ -145,6 +146,7 @@ set(ZEN_CORE_SOURCES
     Source/SceneGraph/Transform.cpp
 
     Source/Systems/Camera.cpp
+    Source/Systems/SceneEditor.cpp
 
     Source/Graphics/RHI/RHIFactory.cpp
 

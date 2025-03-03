@@ -80,8 +80,6 @@ private:
 
     void Clear();
 
-    void TransformScene();
-
     RenderDevice* m_renderDevice{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};
