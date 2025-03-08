@@ -115,6 +115,12 @@ public:
         return *this;
     }
 
+    GraphicsPassBuilder& SetPreloadedShaderName(std::string name)
+    {
+        m_preloadedShaderName = std::move(name);
+        return *this;
+    }
+
     GraphicsPass Build();
 
 private:
@@ -126,6 +132,7 @@ private:
     bool m_finished{false};
     std::string m_vsPath;
     std::string m_fsPath;
+    std::string m_preloadedShaderName;
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
     rhi::FramebufferInfo m_framebufferInfo{};

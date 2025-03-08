@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
+#include "Graphics/RenderCore/V2/ShaderManager.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
@@ -17,8 +18,9 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     m_renderDevice->Init(m_viewport);
 
-    m_sceneRenderer = MakeUnique<rc::SceneRenderer>(m_renderDevice.Get(), m_viewport);
+    rc::ShaderManager::GetInstance().LoadShaders(m_renderDevice.Get());
 
+    m_sceneRenderer = MakeUnique<rc::SceneRenderer>(m_renderDevice.Get(), m_viewport);
 
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
@@ -73,6 +75,8 @@ void SceneRendererDemo::Prepare()
 void SceneRendererDemo::Destroy()
 {
     m_sceneRenderer->Destroy();
+
+    rc::ShaderManager::GetInstance().Destroy();
 
     m_renderDevice->Destroy();
 }

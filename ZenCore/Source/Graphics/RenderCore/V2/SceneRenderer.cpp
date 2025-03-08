@@ -258,8 +258,10 @@ void SceneRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
-            builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
-                .SetFragmentShader("SceneRenderer/offscreen.frag.spv")
+            builder
+                .SetPreloadedShaderName("DeferredPBR")
+                // builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
+                //     .SetFragmentShader("SceneRenderer/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 // (World space) Positions
                 .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,

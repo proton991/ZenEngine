@@ -5,73 +5,62 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/SkyboxRenderer.h"
+#include "Graphics/RenderCore/V2/ShaderManager.h"
 #include "SceneGraph/Scene.h"
 #include <fstream>
 #include <execution>
 
 namespace zen::rc
 {
-std::vector<uint8_t> LoadSpirvCode(const std::string& name)
-{
-    const auto path = std::string(SPV_SHADER_PATH) + name;
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-    bool opened = file.is_open();
-    VERIFY_EXPR_MSG_F(file.is_open(), "Failed to load shader file {}", path);
-    //find what the size of the file is by looking up the location of the cursor
-    //because the cursor is at the end, it gives the size directly in bytes
-    size_t fileSize = (size_t)file.tellg();
-
-    //spir-v expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
-    std::vector<uint8_t> buffer(fileSize / sizeof(uint8_t));
-
-    //put file cursor at beginning
-    file.seekg(0);
-
-    //load the entire file into the buffer
-    file.read((char*)buffer.data(), fileSize);
-
-    //now that the file is loaded into the buffer, we can close it
-    file.close();
-
-    return buffer;
-}
-
 GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
-    DynamicRHI* RHI       = m_renderDevice->GetRHI();
-    auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
-
-    if (m_hasVS)
-    {
-        shaderGroupSpirv->SetStageSPIRV(ShaderStage::eVertex, LoadSpirvCode(m_vsPath));
-    }
-    if (m_hasFS)
-    {
-        shaderGroupSpirv->SetStageSPIRV(ShaderStage::eFragment, LoadSpirvCode(m_fsPath));
-    }
+    DynamicRHI* RHI = m_renderDevice->GetRHI();
     ShaderGroupInfo shaderGroupInfo{};
-    ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    ShaderHandle shader;
 
-    // set specialization constants
-    for (auto& spc : shaderGroupInfo.specializationConstants)
+    if (!m_preloadedShaderName.empty())
     {
-        switch (spc.type)
-        {
-
-            case ShaderSpecializationConstantType::eBool:
-                spc.boolValue = static_cast<bool>(m_specializationConstants[spc.constantId]);
-                break;
-            case ShaderSpecializationConstantType::eInt:
-                spc.intValue = m_specializationConstants[spc.constantId];
-                break;
-            case ShaderSpecializationConstantType::eFloat:
-                spc.floatValue = static_cast<float>(m_specializationConstants[spc.constantId]);
-                break;
-            default: break;
-        }
+        // note: preloaded shader does not support specialization constants,
+        // its destruction is handled by ShaderManager
+        shader          = ShaderManager::GetInstance().RequestShader(m_preloadedShaderName);
+        shaderGroupInfo = ShaderManager::GetInstance().GetShaderGroupInfo(m_preloadedShaderName);
     }
-    ShaderHandle shader = RHI->CreateShader(shaderGroupInfo);
+    else
+    {
+        auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
+        if (m_hasVS)
+        {
+            shaderGroupSpirv->SetStageSPIRV(ShaderStage::eVertex,
+                                            ShaderManager::LoadSpirvCode(m_vsPath));
+        }
+        if (m_hasFS)
+        {
+            shaderGroupSpirv->SetStageSPIRV(ShaderStage::eFragment,
+                                            ShaderManager::LoadSpirvCode(m_fsPath));
+        }
+        ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+        // set specialization constants
+        for (auto& spc : shaderGroupInfo.specializationConstants)
+        {
+            switch (spc.type)
+            {
+
+                case ShaderSpecializationConstantType::eBool:
+                    spc.boolValue = static_cast<bool>(m_specializationConstants[spc.constantId]);
+                    break;
+                case ShaderSpecializationConstantType::eInt:
+                    spc.intValue = m_specializationConstants[spc.constantId];
+                    break;
+                case ShaderSpecializationConstantType::eFloat:
+                    spc.floatValue = static_cast<float>(m_specializationConstants[spc.constantId]);
+                    break;
+                default: break;
+            }
+        }
+        shader = RHI->CreateShader(shaderGroupInfo);
+        m_renderDevice->m_deletionQueue.Enqueue([=, this]() { RHI->DestroyShader(shader); });
+    }
 
     m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
 
@@ -99,7 +88,7 @@ GraphicsPass GraphicsPassBuilder::Build()
         const auto& bindings = kv.second;
         RHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
     }
-    m_renderDevice->m_deletionQueue.Enqueue([=, this]() { RHI->DestroyShader(shader); });
+
     m_renderDevice->m_gfxPasses.push_back(gfxPass);
     return gfxPass;
 }

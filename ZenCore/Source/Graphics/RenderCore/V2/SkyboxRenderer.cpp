@@ -119,8 +119,10 @@ void SkyboxRenderer::BuildGraphicsPasses()
     {
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.irradiance =
-            builder.SetVertexShader("Environment/filtercube.vert.spv")
-                .SetFragmentShader("Environment/irradiancecube.frag.spv")
+            builder
+                .SetPreloadedShaderName("EnvMapIrradiance")
+                // .SetVertexShader("Environment/filtercube.vert.spv")
+                //         .SetFragmentShader("Environment/irradiancecube.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(cIrradianceFormat, TextureUsage::eColorAttachment,
@@ -134,8 +136,10 @@ void SkyboxRenderer::BuildGraphicsPasses()
     {
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.prefiltered =
-            builder.SetVertexShader("Environment/filtercube.vert.spv")
-                .SetFragmentShader("Environment/prefilterenvmap.frag.spv")
+            builder
+                .SetPreloadedShaderName("EnvMapPrefiltered")
+                // .SetVertexShader("Environment/filtercube.vert.spv")
+                //         .SetFragmentShader("Environment/prefilterenvmap.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(cPrefilteredFormat, TextureUsage::eColorAttachment,
@@ -161,8 +165,10 @@ void SkyboxRenderer::BuildGraphicsPasses()
 
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.skybox =
-            builder.SetVertexShader("Environment/skybox.vert.spv")
-                .SetFragmentShader("Environment/skybox.frag.spv")
+            builder
+                .SetPreloadedShaderName("SkyboxRender")
+                // .SetVertexShader("Environment/skybox.vert.spv")
+                //         .SetFragmentShader("Environment/skybox.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
@@ -384,8 +390,10 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 
     GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPasses.lutBRDF =
-        builder.SetVertexShader("Environment/genbrdflut.vert.spv")
-            .SetFragmentShader("Environment/genbrdflut.frag.spv")
+        builder
+            .SetPreloadedShaderName("EnvMapBRDFLutGen")
+            // .SetVertexShader("Environment/genbrdflut.vert.spv")
+            //         .SetFragmentShader("Environment/genbrdflut.frag.spv")
             .SetNumSamples(SampleCount::e1)
             // offscreen texture
             .AddColorRenderTarget(format, TextureUsage::eColorAttachment, texture->lutBRDF)
