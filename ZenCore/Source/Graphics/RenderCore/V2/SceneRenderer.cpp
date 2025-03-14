@@ -15,7 +15,7 @@ SceneRenderer::SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport) 
     m_skyboxRenderer->Init();
 }
 
-void SceneRenderer::Bake()
+void SceneRenderer::Init()
 {
     PrepareTextures();
 
@@ -459,38 +459,19 @@ void SceneRenderer::UpdateGraphicsPassResources()
 {
     {
         std::vector<ShaderResourceBinding> bufferBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
-            binding0.handles.push_back(m_cameraUBO);
-            bufferBindings.emplace_back(std::move(binding0));
-
-            ShaderResourceBinding binding1{};
-            binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eStorageBuffer;
-            binding1.handles.push_back(m_nodeSSBO);
-            bufferBindings.emplace_back(std::move(binding1));
-
-            ShaderResourceBinding binding2{};
-            binding2.binding = 2;
-            binding2.type    = ShaderResourceType::eStorageBuffer;
-            binding2.handles.push_back(m_materialSSBO);
-            bufferBindings.emplace_back(std::move(binding2));
-        }
-
         std::vector<ShaderResourceBinding> textureBindings;
-        {
-            ShaderResourceBinding binding{};
-            binding.binding = 0;
-            binding.type    = ShaderResourceType::eSamplerWithTexture;
-            for (TextureHandle& textureHandle : m_sceneTextures)
-            {
-                binding.handles.push_back(m_colorSampler);
-                binding.handles.push_back(textureHandle);
-            }
-            textureBindings.emplace_back(std::move(binding));
-        }
+        // buffers
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+                                  m_cameraUBO);
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, ShaderResourceType::eStorageBuffer,
+                                  m_nodeSSBO);
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, ShaderResourceType::eStorageBuffer,
+                                  m_materialSSBO);
+        // texture array
+        ADD_SHADER_BINDING_TEXTURE_ARRAY(textureBindings, 0,
+                                         ShaderResourceType::eSamplerWithTexture, m_colorSampler,
+                                         m_sceneTextures)
+
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
         updater.SetShaderResourceBinding(0, bufferBindings)
             .SetShaderResourceBinding(1, textureBindings)
@@ -498,83 +479,35 @@ void SceneRenderer::UpdateGraphicsPassResources()
     }
     {
         std::vector<ShaderResourceBinding> bufferBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
-            binding0.handles.push_back(m_sceneUBO);
-            bufferBindings.emplace_back(std::move(binding0));
-        }
         std::vector<ShaderResourceBinding> textureBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eSamplerWithTexture;
-            binding0.handles.push_back(m_colorSampler);
-            binding0.handles.push_back(m_offscreenTextures.position);
-            textureBindings.emplace_back(std::move(binding0));
+        // buffer
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+                                  m_sceneUBO);
 
-            ShaderResourceBinding binding1{};
-            binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eSamplerWithTexture;
-            binding1.handles.push_back(m_colorSampler);
-            binding1.handles.push_back(m_offscreenTextures.normal);
-            textureBindings.emplace_back(std::move(binding1));
+        // textures
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+                                  m_colorSampler, m_offscreenTextures.position);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 1, ShaderResourceType::eSamplerWithTexture,
+                                  m_colorSampler, m_offscreenTextures.normal);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 2, ShaderResourceType::eSamplerWithTexture,
+                                  m_colorSampler, m_offscreenTextures.albedo);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 3, ShaderResourceType::eSamplerWithTexture,
+                                  m_colorSampler, m_offscreenTextures.metallicRoughness);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 4, ShaderResourceType::eSamplerWithTexture,
+                                  m_colorSampler, m_offscreenTextures.emissiveOcclusion);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 5, ShaderResourceType::eSamplerWithTexture,
+                                  m_depthSampler, m_offscreenTextures.depth);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 6, ShaderResourceType::eSamplerWithTexture,
+                                  m_envTexture.irradianceSampler, m_envTexture.irradiance);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 7, ShaderResourceType::eSamplerWithTexture,
+                                  m_envTexture.prefilteredSampler, m_envTexture.prefiltered);
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
+                                  m_envTexture.lutBRDFSampler, m_envTexture.lutBRDF);
 
-            ShaderResourceBinding binding2{};
-            binding2.binding = 2;
-            binding2.type    = ShaderResourceType::eSamplerWithTexture;
-            binding2.handles.push_back(m_colorSampler);
-            binding2.handles.push_back(m_offscreenTextures.albedo);
-            textureBindings.emplace_back(std::move(binding2));
-
-            ShaderResourceBinding binding3{};
-            binding3.binding = 3;
-            binding3.type    = ShaderResourceType::eSamplerWithTexture;
-            binding3.handles.push_back(m_colorSampler);
-            binding3.handles.push_back(m_offscreenTextures.metallicRoughness);
-            textureBindings.emplace_back(std::move(binding3));
-
-            ShaderResourceBinding binding4{};
-            binding4.binding = 4;
-            binding4.type    = ShaderResourceType::eSamplerWithTexture;
-            binding4.handles.push_back(m_colorSampler);
-            binding4.handles.push_back(m_offscreenTextures.emissiveOcclusion);
-            textureBindings.emplace_back(std::move(binding4));
-
-            ShaderResourceBinding binding5{};
-            binding5.binding = 5;
-            binding5.type    = ShaderResourceType::eSamplerWithTexture;
-            binding5.handles.push_back(m_depthSampler);
-            binding5.handles.push_back(m_offscreenTextures.depth);
-            textureBindings.emplace_back(std::move(binding5));
-
-            ShaderResourceBinding binding6{};
-            binding6.binding = 6;
-            binding6.type    = ShaderResourceType::eSamplerWithTexture;
-            binding6.handles.push_back(m_envTexture.irradianceSampler);
-            binding6.handles.push_back(m_envTexture.irradiance);
-            textureBindings.emplace_back(std::move(binding6));
-
-            ShaderResourceBinding binding7{};
-            binding7.binding = 7;
-            binding7.type    = ShaderResourceType::eSamplerWithTexture;
-            binding7.handles.push_back(m_envTexture.prefilteredSampler);
-            binding7.handles.push_back(m_envTexture.prefiltered);
-            textureBindings.emplace_back(std::move(binding7));
-
-            ShaderResourceBinding binding8{};
-            binding8.binding = 8;
-            binding8.type    = ShaderResourceType::eSamplerWithTexture;
-            binding8.handles.push_back(m_envTexture.lutBRDFSampler);
-            binding8.handles.push_back(m_envTexture.lutBRDF);
-            textureBindings.emplace_back(std::move(binding8));
-        }
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
         updater.SetShaderResourceBinding(0, textureBindings)
             .SetShaderResourceBinding(1, bufferBindings)
             .Update();
     }
 }
-
 } // namespace zen::rc

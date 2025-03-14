@@ -51,7 +51,7 @@ public:
 
     SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
-    void Bake();
+    void Init();
 
     void Destroy();
 

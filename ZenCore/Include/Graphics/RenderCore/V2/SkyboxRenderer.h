@@ -81,7 +81,6 @@ private:
     struct
     {
         rhi::SamplerHandle cubemapSampler;
-        rhi::SamplerHandle skyboxSampler;
         rhi::SamplerHandle lutBRDFSampler;
     } m_samplers;
 

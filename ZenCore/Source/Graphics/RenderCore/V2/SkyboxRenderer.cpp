@@ -240,14 +240,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         // offscreen
         {
             std::vector<ShaderResourceBinding> textureBindings;
-            {
-                ShaderResourceBinding binding{};
-                binding.binding = 0;
-                binding.type    = ShaderResourceType::eSamplerWithTexture;
-                binding.handles.push_back(m_samplers.cubemapSampler);
-                binding.handles.push_back(texture->skybox);
-                textureBindings.emplace_back(std::move(binding));
-            }
+            ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+                                      m_samplers.cubemapSampler, texture->skybox);
+
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
             updater.SetShaderResourceBinding(0, textureBindings).Update();
 
@@ -440,23 +435,12 @@ void SkyboxRenderer::PrepareRenderWorkload(const rhi::TextureHandle& skyboxTextu
     using namespace zen::rhi;
     if (m_updatePassResource)
     {
+
         std::vector<ShaderResourceBinding> bufferBindings;
-        {
-            ShaderResourceBinding binding0{};
-            binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
-            binding0.handles.push_back(cameraUBO);
-            bufferBindings.emplace_back(std::move(binding0));
-        }
         std::vector<ShaderResourceBinding> textureBindings;
-        {
-            ShaderResourceBinding binding{};
-            binding.binding = 0;
-            binding.type    = ShaderResourceType::eSamplerWithTexture;
-            binding.handles.push_back(m_samplers.cubemapSampler);
-            binding.handles.push_back(skyboxTexture);
-            textureBindings.emplace_back(std::move(binding));
-        }
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer, cameraUBO)
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+                                  m_samplers.cubemapSampler, skyboxTexture)
 
         GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
         updater.SetShaderResourceBinding(0, bufferBindings)

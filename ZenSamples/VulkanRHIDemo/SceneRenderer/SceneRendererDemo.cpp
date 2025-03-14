@@ -69,7 +69,7 @@ void SceneRendererDemo::Prepare()
     sceneData.lightIntensities[3] = Vec4(5.0f);
 
     m_sceneRenderer->SetScene(sceneData);
-    m_sceneRenderer->Bake();
+    m_sceneRenderer->Init();
 }
 
 void SceneRendererDemo::Destroy()
