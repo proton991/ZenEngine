@@ -26,17 +26,9 @@ class GraphicsPassBuilder
 public:
     explicit GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
 
-    GraphicsPassBuilder& SetVertexShader(const std::string& file)
+    GraphicsPassBuilder& AddShaderStage(rhi::ShaderStage stage, std::string path)
     {
-        m_vsPath = file;
-        m_hasVS  = true;
-        return *this;
-    }
-
-    GraphicsPassBuilder& SetFragmentShader(const std::string& file)
-    {
-        m_fsPath = file;
-        m_hasFS  = true;
+        m_shaderStages[stage] = std::move(path);
         return *this;
     }
 
@@ -115,9 +107,10 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& SetPreloadedShaderName(std::string name)
+    GraphicsPassBuilder& SetShaderProgramName(std::string name)
     {
-        m_preloadedShaderName = std::move(name);
+        m_shaderProgramName = std::move(name);
+        m_shaderMode        = GfxPassShaderMode::ePreCompiled;
         return *this;
     }
 
@@ -127,12 +120,9 @@ private:
     RenderDevice* m_renderDevice{nullptr};
     rhi::RHIViewport* m_viewport{nullptr};
     std::string m_tag;
-    bool m_hasVS{false};
-    bool m_hasFS{false};
-    bool m_finished{false};
-    std::string m_vsPath;
-    std::string m_fsPath;
-    std::string m_preloadedShaderName;
+    GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eRuntime};
+    HashMap<rhi::ShaderStage, std::string> m_shaderStages;
+    std::string m_shaderProgramName;
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
     rhi::FramebufferInfo m_framebufferInfo{};

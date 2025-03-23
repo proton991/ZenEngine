@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
 
 Application::Application(const platform::WindowConfig& windowConfig, sys::CameraType type)
 {
@@ -31,6 +32,7 @@ void Application::Prepare() {}
 
 void Application::Destroy()
 {
+    rc::ShaderProgramManager::GetInstance().Destroy();
     m_renderDevice->Destroy();
     delete m_renderDevice;
 }

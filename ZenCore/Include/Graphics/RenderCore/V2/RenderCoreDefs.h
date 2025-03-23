@@ -3,6 +3,7 @@
 
 namespace zen::rc
 {
+class ShaderProgram;
 struct PushConstantNode
 {
     uint32_t nodeIndex;
@@ -15,6 +16,14 @@ struct GraphicsPass
     rhi::RenderPassHandle renderPass;
     rhi::PipelineHandle pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
+    ShaderProgram* shaderProgram;
+};
+
+enum class GfxPassShaderMode : uint32_t
+{
+    ePreCompiled = 0,
+    eRuntime     = 1,
+    eMax         = 2
 };
 
 struct EnvTexture

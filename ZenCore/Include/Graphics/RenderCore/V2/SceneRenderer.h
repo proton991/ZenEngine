@@ -2,7 +2,6 @@
 #include "RenderGraph.h"
 #include "RenderDevice.h"
 #include "SceneGraph/Scene.h"
-#include "Graphics/RHI/RHIDefs.h"
 
 using namespace zen::rhi;
 
@@ -104,15 +103,13 @@ private:
     PushConstantNode m_pushConstantsData{};
 
     SceneUniformData m_sceneUniformData{};
-    BufferHandle m_sceneUBO;
 
     std::vector<sg::NodeData> m_nodesData;
     rhi::BufferHandle m_nodeSSBO;
 
-    std::vector<sg::MaterialData> m_materialUniforms;
+    std::vector<sg::MaterialData> m_materialsData;
     rhi::BufferHandle m_materialSSBO;
 
-    BufferHandle m_cameraUBO;
     sys::Camera* m_camera{nullptr};
 
     struct

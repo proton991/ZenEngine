@@ -72,9 +72,10 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // phone
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.phong = builder.SetVertexShader("uber.vert.spv")
-                                .SetFragmentShader("uber.frag.spv")
+        m_gfxPasses.phong = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
+                                .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
                                 .SetShaderSpecializationConstants(0, 0)
+                                .SetShaderSpecializationConstants(1, 0.0f)
                                 .SetNumSamples(SampleCount::e1)
                                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                       TextureUsage::eColorAttachment,
@@ -85,13 +86,14 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
                                 .SetShaderResourceBinding(1, textureBindings)
                                 .SetPipelineState(pso)
                                 .SetFramebufferInfo(m_viewport)
+                                .SetTag("Phone")
                                 .Build();
     }
     // toon
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.toon = builder.SetVertexShader("uber.vert.spv")
-                               .SetFragmentShader("uber.frag.spv")
+        m_gfxPasses.toon = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
+                               .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
                                .SetShaderSpecializationConstants(0, 1)
                                .SetShaderSpecializationConstants(1, 0.0f)
                                .SetNumSamples(SampleCount::e1)
@@ -104,14 +106,16 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
                                .SetShaderResourceBinding(1, textureBindings)
                                .SetPipelineState(pso)
                                .SetFramebufferInfo(m_viewport)
+                               .SetTag("Toon")
                                .Build();
     }
     // textured
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.textured = builder.SetVertexShader("uber.vert.spv")
-                                   .SetFragmentShader("uber.frag.spv")
+        m_gfxPasses.textured = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
+                                   .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
                                    .SetShaderSpecializationConstants(0, 2)
+                                   .SetShaderSpecializationConstants(1, 0.0f)
                                    .SetNumSamples(SampleCount::e1)
                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                                          TextureUsage::eColorAttachment,
@@ -122,6 +126,7 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
                                    .SetShaderResourceBinding(1, textureBindings)
                                    .SetPipelineState(pso)
                                    .SetFramebufferInfo(m_viewport)
+                                   .SetTag("Textured")
                                    .Build();
     }
 }
@@ -135,7 +140,7 @@ void SpecializationConstantsApp::LoadResources()
     m_texture = m_renderDevice->LoadTexture2D("wood.png");
 
     m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<asset::GLTFLoader>();
+    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(m_modelPath, m_scene.Get());
 
     uint32_t vbSize = gltfLoader->GetVertices().size() * sizeof(asset::Vertex);

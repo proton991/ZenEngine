@@ -1,5 +1,6 @@
 #include "Graphics/RenderCore/V2/SceneRenderer.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Systems/Camera.h"
 #include "Systems/SceneEditor.h"
 #include "AssetLib/GLTFLoader.h"
@@ -69,10 +70,10 @@ void SceneRenderer::SetScene(const SceneData& sceneData)
 void SceneRenderer::LoadSceneMaterials()
 {
     auto sgMaterials = m_scene->GetComponents<sg::Material>();
-    m_materialUniforms.reserve(sgMaterials.size());
+    m_materialsData.reserve(sgMaterials.size());
     for (const auto* mat : sgMaterials)
     {
-        m_materialUniforms.emplace_back(mat->data);
+        m_materialsData.emplace_back(mat->data);
     }
 }
 
@@ -88,12 +89,16 @@ void SceneRenderer::LoadSceneTextures()
 
 void SceneRenderer::DrawScene()
 {
-    m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
-                                 m_camera->GetUniformData());
-    m_renderDevice->UpdateBuffer(m_sceneUBO, sizeof(SceneUniformData),
-                                 reinterpret_cast<const uint8_t*>(&m_sceneUniformData));
+    m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
+                                                             m_camera->GetUniformData(), 0);
 
-    m_skyboxRenderer->PrepareRenderWorkload(m_envTexture.skybox, m_cameraUBO);
+    m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
+    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer(
+        "uSceneData", reinterpret_cast<const uint8_t*>(&m_sceneUniformData), 0);
+
+    m_skyboxRenderer->PrepareRenderWorkload(
+        m_envTexture.skybox,
+        m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
 
     if (m_rebuildRDG)
     {
@@ -209,36 +214,15 @@ void SceneRenderer::PrepareTextures()
 
 void SceneRenderer::PrepareBuffers()
 {
-    {
-        // camera ubo
-        m_cameraUBO = m_renderDevice->CreateUniformBuffer(sizeof(sys::CameraUniformData),
-                                                          m_camera->GetUniformData());
-    }
+    // nodes data ssbo
+    m_nodeSSBO =
+        m_renderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),
+                                            reinterpret_cast<const uint8_t*>(m_nodesData.data()));
 
-    {
-        // prepare node ssbo
-        auto ssboSize = sizeof(sg::NodeData) * m_nodesData.size();
-        m_nodeSSBO    = m_renderDevice->CreateStorageBuffer(
-            ssboSize, reinterpret_cast<const uint8_t*>(m_nodesData.data()));
-        m_renderDevice->UpdateBuffer(m_nodeSSBO, ssboSize,
-                                     reinterpret_cast<const uint8_t*>(m_nodesData.data()));
-    }
-
-    {
-        // prepare material ssbo
-        const auto ssboSize = sizeof(sg::MaterialData) * m_materialUniforms.size();
-        m_materialSSBO      = m_renderDevice->CreateStorageBuffer(
-            ssboSize, reinterpret_cast<const uint8_t*>(m_materialUniforms.data()));
-    }
-
-    {
-        // scene ubo
-        m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
-
-        const auto uboSize = sizeof(SceneUniformData);
-        m_sceneUBO         = m_renderDevice->CreateUniformBuffer(
-            uboSize, reinterpret_cast<const uint8_t*>(&m_sceneUniformData));
-    }
+    // material data ssbo
+    m_materialSSBO = m_renderDevice->CreateStorageBuffer(
+        sizeof(sg::MaterialData) * m_materialsData.size(),
+        reinterpret_cast<const uint8_t*>(m_materialsData.data()));
 }
 
 void SceneRenderer::BuildGraphicsPasses()
@@ -258,10 +242,7 @@ void SceneRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
-            builder
-                .SetPreloadedShaderName("DeferredPBR")
-                // builder.SetVertexShader("SceneRenderer/offscreen.vert.spv")
-                //     .SetFragmentShader("SceneRenderer/offscreen.frag.spv")
+            builder.SetShaderProgramName("GBufferSP")
                 .SetNumSamples(SampleCount::e1)
                 // (World space) Positions
                 .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
@@ -302,8 +283,7 @@ void SceneRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneLighting =
-            builder.SetVertexShader("SceneRenderer/deferred.vert.spv")
-                .SetFragmentShader("SceneRenderer/deferred.frag.spv")
+            builder.SetShaderProgramName("DeferredLightingSP")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                       TextureUsage::eColorAttachment,
@@ -451,7 +431,7 @@ void SceneRenderer::Clear()
 
         m_pushConstantsData = {};
         m_nodesData.clear();
-        m_materialUniforms.clear();
+        m_materialsData.clear();
     }
 }
 
@@ -461,8 +441,9 @@ void SceneRenderer::UpdateGraphicsPassResources()
         std::vector<ShaderResourceBinding> bufferBindings;
         std::vector<ShaderResourceBinding> textureBindings;
         // buffers
-        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer,
-                                  m_cameraUBO);
+        ADD_SHADER_BINDING_SINGLE(
+            bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+            m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, ShaderResourceType::eStorageBuffer,
                                   m_nodeSSBO);
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, ShaderResourceType::eStorageBuffer,
@@ -481,9 +462,9 @@ void SceneRenderer::UpdateGraphicsPassResources()
         std::vector<ShaderResourceBinding> bufferBindings;
         std::vector<ShaderResourceBinding> textureBindings;
         // buffer
-        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer,
-                                  m_sceneUBO);
-
+        ADD_SHADER_BINDING_SINGLE(
+            bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+            m_gfxPasses.sceneLighting.shaderProgram->GetUniformBufferHandle("uSceneData"));
         // textures
         ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.position);

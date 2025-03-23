@@ -2,7 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
-#include "Graphics/RenderCore/V2/ShaderManager.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
@@ -18,7 +18,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     m_renderDevice->Init(m_viewport);
 
-    rc::ShaderManager::GetInstance().LoadShaders(m_renderDevice.Get());
+    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
     m_sceneRenderer = MakeUnique<rc::SceneRenderer>(m_renderDevice.Get(), m_viewport);
 
@@ -75,9 +75,7 @@ void SceneRendererDemo::Prepare()
 void SceneRendererDemo::Destroy()
 {
     m_sceneRenderer->Destroy();
-
-    rc::ShaderManager::GetInstance().Destroy();
-
+    rc::ShaderProgramManager::GetInstance().Destroy();
     m_renderDevice->Destroy();
 }
 

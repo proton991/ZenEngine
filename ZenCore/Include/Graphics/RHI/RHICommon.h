@@ -406,6 +406,7 @@ struct ShaderGroupInfo
     std::vector<ShaderSpecializationConstant> specializationConstants;
     // shader stages
     std::vector<ShaderStage> shaderStages;
+    std::string name;
 };
 
 /*****************************/

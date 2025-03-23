@@ -17,7 +17,7 @@ const int NUM_LIGHTS = 4;
 
 const bool useIBL = true; // Control for enabling IBL or not
 
-layout (set = 1, binding = 0) uniform SceneUBO {
+layout (set = 1, binding = 0) uniform uSceneData {
 	vec4 lightPosition[NUM_LIGHTS];  // Positions of 4 lights
 	vec4 lightColor[NUM_LIGHTS];     // Colors of 4 lights
 	vec4 lightIntensity[NUM_LIGHTS]; // Intensities of 4 lights
@@ -109,17 +109,22 @@ void main() {
 	vec3 finalColor = vec3(0.0);
 
 	if (useIBL) {
-		// IBL - Image-Based Lighting (Diffuse + Specular)
-		vec3 irradiance = SampleEnvIrradianceMap(normal);  // Diffuse component from environment map
-		vec3 prefiltered = SampleEnvPrefilteredMap(normal, roughness);  // Specular component from environment map
-		float brdf = CalculateBRDFSpecular(max(dot(normal, normalize(sceneUbo.viewPosition.xyz - position)), 0.0), roughness); // BRDF for specular
+		vec3 irradiance = SampleEnvIrradianceMap(normal); // Diffuse from environment
+		vec3 prefiltered = SampleEnvPrefilteredMap(normal, roughness); // Specular from environment
+		vec2 brdf = texture(lutBRDFMap, vec2(max(dot(normal, normalize(sceneUbo.viewPosition.xyz - position)), 0.0), roughness)).rg; // Use both channels
 
-		// Diffuse from IBL (irradiance map) + Specular from IBL (prefiltered map)
-		vec3 diffuse = (1.0 - metallic) * albedo / 3.14159265359;  // Lambertian Diffuse term
-		vec3 specular = prefiltered * brdf; // Specular term based on the environment map
+		// Fresnel-Schlick for IBL
+		vec3 F0 = mix(vec3(0.04), albedo, metallic);
+		vec3 F = F0 + (1.0 - F0) * pow(1.0 - max(dot(normal, normalize(sceneUbo.viewPosition.xyz - position)), 0.0), 5.0);
 
-		// Add both diffuse and specular lighting from IBL
-		finalColor += irradiance * albedo * occlusion + specular;
+		// Diffuse reflection from IBL
+		vec3 diffuse = (1.0 - metallic) * albedo * irradiance;
+
+		// Specular reflection from IBL
+		vec3 specular = prefiltered * (F * brdf.x + brdf.y);
+
+		// Final color accumulation
+		finalColor += diffuse * occlusion + specular;
 	} else {
 		// Static lighting
 		finalColor += CalculateDirectLighting(position, normal, occlusion, albedo, metallic, roughness);

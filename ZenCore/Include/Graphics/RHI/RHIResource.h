@@ -187,6 +187,20 @@ struct TextureInfo
     std::string name;
 };
 
+#define INIT_TEXTURE_INFO(info, type_, format_, width_, height_, depth_, mipmaps_, arrayLayers_, \
+                          samples_, name_, ...)                                                  \
+    rhi::TextureInfo info{};                                                                     \
+    info.type        = type_;                                                                    \
+    info.format      = format_;                                                                  \
+    info.width       = width_;                                                                   \
+    info.height      = height_;                                                                  \
+    info.depth       = depth_;                                                                   \
+    info.mipmaps     = mipmaps_;                                                                 \
+    info.arrayLayers = arrayLayers_;                                                             \
+    info.samples     = SampleCount::e1;                                                          \
+    info.name        = name_;                                                                    \
+    info.usageFlags.SetFlags(__VA_ARGS__);
+
 inline uint32_t CalculateTextureSize(const TextureInfo& info)
 {
     // TODO: Support compressed texture format

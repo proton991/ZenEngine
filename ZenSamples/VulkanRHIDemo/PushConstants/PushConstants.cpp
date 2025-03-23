@@ -67,8 +67,8 @@ void PushConstantsApp::BuildGraphicsPasses()
 
     rc::GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPass =
-        builder.SetVertexShader("push_constants.vert.spv")
-            .SetFragmentShader("push_constants.frag.spv")
+        builder.AddShaderStage(rhi::ShaderStage::eVertex, "push_constants.vert.spv")
+            .AddShaderStage(rhi::ShaderStage::eFragment, "push_constants.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
                                   m_viewport->GetColorBackBuffer())

@@ -119,10 +119,7 @@ void SkyboxRenderer::BuildGraphicsPasses()
     {
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.irradiance =
-            builder
-                .SetPreloadedShaderName("EnvMapIrradiance")
-                // .SetVertexShader("Environment/filtercube.vert.spv")
-                //         .SetFragmentShader("Environment/irradiancecube.frag.spv")
+            builder.SetShaderProgramName("EnvMapIrradianceSP")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(cIrradianceFormat, TextureUsage::eColorAttachment,
@@ -136,10 +133,7 @@ void SkyboxRenderer::BuildGraphicsPasses()
     {
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.prefiltered =
-            builder
-                .SetPreloadedShaderName("EnvMapPrefiltered")
-                // .SetVertexShader("Environment/filtercube.vert.spv")
-                //         .SetFragmentShader("Environment/prefilterenvmap.frag.spv")
+            builder.SetShaderProgramName("EnvMapPrefilteredSP")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(cPrefilteredFormat, TextureUsage::eColorAttachment,
@@ -165,10 +159,7 @@ void SkyboxRenderer::BuildGraphicsPasses()
 
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.skybox =
-            builder
-                .SetPreloadedShaderName("SkyboxRender")
-                // .SetVertexShader("Environment/skybox.vert.spv")
-                //         .SetFragmentShader("Environment/skybox.frag.spv")
+            builder.SetShaderProgramName("SkyboxRenderSP")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
@@ -385,10 +376,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 
     GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPasses.lutBRDF =
-        builder
-            .SetPreloadedShaderName("EnvMapBRDFLutGen")
-            // .SetVertexShader("Environment/genbrdflut.vert.spv")
-            //         .SetFragmentShader("Environment/genbrdflut.frag.spv")
+        builder.SetShaderProgramName("EnvMapBRDFLutGenSP")
             .SetNumSamples(SampleCount::e1)
             // offscreen texture
             .AddColorRenderTarget(format, TextureUsage::eColorAttachment, texture->lutBRDF)

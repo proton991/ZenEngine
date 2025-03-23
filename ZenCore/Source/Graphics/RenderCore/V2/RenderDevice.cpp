@@ -5,7 +5,7 @@
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/SkyboxRenderer.h"
-#include "Graphics/RenderCore/V2/ShaderManager.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
 #include <fstream>
 #include <execution>
@@ -16,71 +16,47 @@ GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
     DynamicRHI* RHI = m_renderDevice->GetRHI();
-    ShaderGroupInfo shaderGroupInfo{};
-    ShaderHandle shader;
-
-    if (!m_preloadedShaderName.empty())
-    {
-        // note: preloaded shader does not support specialization constants,
-        // its destruction is handled by ShaderManager
-        shader          = ShaderManager::GetInstance().RequestShader(m_preloadedShaderName);
-        shaderGroupInfo = ShaderManager::GetInstance().GetShaderGroupInfo(m_preloadedShaderName);
-    }
-    else
-    {
-        auto shaderGroupSpirv = MakeRefCountPtr<ShaderGroupSPIRV>();
-        if (m_hasVS)
-        {
-            shaderGroupSpirv->SetStageSPIRV(ShaderStage::eVertex,
-                                            ShaderManager::LoadSpirvCode(m_vsPath));
-        }
-        if (m_hasFS)
-        {
-            shaderGroupSpirv->SetStageSPIRV(ShaderStage::eFragment,
-                                            ShaderManager::LoadSpirvCode(m_fsPath));
-        }
-        ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
-        // set specialization constants
-        for (auto& spc : shaderGroupInfo.specializationConstants)
-        {
-            switch (spc.type)
-            {
-
-                case ShaderSpecializationConstantType::eBool:
-                    spc.boolValue = static_cast<bool>(m_specializationConstants[spc.constantId]);
-                    break;
-                case ShaderSpecializationConstantType::eInt:
-                    spc.intValue = m_specializationConstants[spc.constantId];
-                    break;
-                case ShaderSpecializationConstantType::eFloat:
-                    spc.floatValue = static_cast<float>(m_specializationConstants[spc.constantId]);
-                    break;
-                default: break;
-            }
-        }
-        shader = RHI->CreateShader(shaderGroupInfo);
-        m_renderDevice->m_deletionQueue.Enqueue([=, this]() { RHI->DestroyShader(shader); });
-    }
 
     m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
+
+    ShaderHandle shader;
+    std::vector<ShaderSpecializationConstant> specializationConstants;
+    std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs;
 
     GraphicsPass gfxPass;
     gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
     gfxPass.framebuffer =
         m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
-    gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-        m_PSO, shader, gfxPass.renderPass, shaderGroupInfo.specializationConstants);
+    ShaderProgram* shaderProgram;
+    if (m_shaderMode == GfxPassShaderMode::ePreCompiled)
+    {
+        shaderProgram =
+            ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
+    }
+    else
+    {
+        shaderProgram =
+            ShaderProgramManager::GetInstance().CreateShaderProgram(m_renderDevice, m_tag + "SP");
+        for (const auto& kv : m_shaderStages)
+        {
+            shaderProgram->AddShaderStage(kv.first, kv.second);
+        }
+        shaderProgram->Init(m_specializationConstants);
+    }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
-    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
-                                                          m_tag + "_RenderPass");
+    shader = shaderProgram->GetShaderHandle();
+    SRDs   = shaderProgram->GetSRDs();
 
-    gfxPass.descriptorSets.resize(shaderGroupInfo.SRDs.size());
+    gfxPass.shaderProgram = shaderProgram;
+    gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
+                                                              specializationConstants);
+    gfxPass.descriptorSets.resize(SRDs.size());
 
-    for (uint32_t setIndex = 0; setIndex < shaderGroupInfo.SRDs.size(); ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
         gfxPass.descriptorSets[setIndex] = RHI->CreateDescriptorSet(shader, setIndex);
     }
+
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
     for (const auto& kv : m_dsBindings)
     {
@@ -89,6 +65,9 @@ GraphicsPass GraphicsPassBuilder::Build()
         RHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
     }
 
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
+                                                          m_tag + "_RenderPass");
     m_renderDevice->m_gfxPasses.push_back(gfxPass);
     return gfxPass;
 }

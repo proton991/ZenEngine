@@ -222,6 +222,10 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
     shader->pushConstantsStageFlags =
         ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
 
+    auto debugName = sgInfo.name + "_PipelineLayout";
+    m_device->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                            reinterpret_cast<uint64_t>(shader->pipelineLayout), debugName.c_str());
+
     return ShaderHandle(shader);
 }
 

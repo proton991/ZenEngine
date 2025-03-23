@@ -14,6 +14,13 @@ public:
         return *this;
     }
 
+    template <typename... Flags> BitField<T>& SetFlags(Flags... flags)
+    {
+        uint32_t values = (... | (uint32_t)flags);
+        m_value |= values;
+        return *this;
+    }
+
     BitField<T>& SetFlag(const BitField<T>& b)
     {
         m_value |= b.m_value;

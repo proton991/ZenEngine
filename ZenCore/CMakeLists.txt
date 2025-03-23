@@ -32,7 +32,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
     Include/Graphics/RenderCore/V2/TextureManager.h
     Include/Graphics/RenderCore/V2/SkyboxRenderer.h
-    Include/Graphics/RenderCore/V2/ShaderManager.h
+    Include/Graphics/RenderCore/V2/ShaderProgram.h
 
     Include/Graphics/RenderCore/RenderConfig.h
     Include/Graphics/RenderCore/RenderGraphDefinitions.h
@@ -136,7 +136,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/SceneRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
-    Source/Graphics/RenderCore/V2/ShaderManager.cpp
+    Source/Graphics/RenderCore/V2/ShaderProgram.cpp
 
     Source/Graphics/RenderCore/RenderGraph.cpp
     Source/Graphics/RenderCore/RenderDevice.cpp

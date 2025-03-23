@@ -1,7 +1,6 @@
 #pragma once
 #include "RenderGraph.h"
 #include "RenderDevice.h"
-#include "Graphics/RHI/RHIDefs.h"
 #include "Common/UniquePtr.h"
 
 #define M_PI 3.14159265358979323846 // pi
