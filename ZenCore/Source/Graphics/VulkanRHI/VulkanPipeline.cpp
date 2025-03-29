@@ -91,20 +91,20 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         specConstants.size() * sizeof(ShaderSpecializationConstant);
     shader->specializationInfo.pData = specConstants.empty() ? nullptr : specConstants.data();
 
-    for (uint32_t i = 0; i < sgInfo.shaderStages.size(); i++)
+    for (auto& kv : sgInfo.sprivCode)
     {
         VkShaderModuleCreateInfo shaderModuleCI;
         InitVkStruct(shaderModuleCI, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
-        shaderModuleCI.codeSize = sgInfo.sprivCode[i].size();
-        shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(sgInfo.sprivCode[i].data());
+        shaderModuleCI.codeSize = kv.second.size();
+        shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(kv.second.data());
         VkShaderModule module{VK_NULL_HANDLE};
         VKCHECK(vkCreateShaderModule(GetVkDevice(), &shaderModuleCI, nullptr, &module));
 
         VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
         InitVkStruct(pipelineShaderStageCI, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO);
-        pipelineShaderStageCI.stage  = ShaderStageToVkShaderStageFlagBits(sgInfo.shaderStages[i]);
-        pipelineShaderStageCI.pName  = "main";
-        pipelineShaderStageCI.module = module;
+        pipelineShaderStageCI.stage               = ShaderStageToVkShaderStageFlagBits(kv.first);
+        pipelineShaderStageCI.pName               = "main";
+        pipelineShaderStageCI.module              = module;
         pipelineShaderStageCI.pSpecializationInfo = &shader->specializationInfo;
 
         shader->stageCreateInfos.push_back(pipelineShaderStageCI);
@@ -241,6 +241,10 @@ void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
     for (auto& stageCreateInfo : shader->stageCreateInfos)
     {
         vkDestroyShaderModule(GetVkDevice(), stageCreateInfo.module, nullptr);
+    }
+    if (shader->pipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(GetVkDevice(), shader->pipelineLayout, nullptr);
     }
     VersatileResource::Free(m_resourceAllocator, shader);
 }
@@ -415,7 +419,6 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
 void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
     VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
-    vkDestroyPipelineLayout(GetVkDevice(), pipeline->pipelineLayout, nullptr);
     vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
 }
 

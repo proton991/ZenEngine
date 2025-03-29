@@ -1,13 +1,11 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RHI/RHIOptions.h"
-#include "Graphics/RHI/ShaderUtil.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
-#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
-#include <fstream>
 #include <execution>
 
 namespace zen::rc
@@ -338,6 +336,9 @@ void RenderDevice::Init(rhi::RHIViewport* mainViewport)
     m_frames[m_currentFrame].drawCmdList->BeginRender();
 
     m_mainViewport = mainViewport;
+
+    m_rendererServer = new RendererServer(this, m_mainViewport);
+    m_rendererServer->Init();
 }
 
 void RenderDevice::Destroy()
@@ -377,6 +378,8 @@ void RenderDevice::Destroy()
 
     m_textureStagingMgr->Destroy();
     delete m_textureStagingMgr;
+
+    m_rendererServer->Destroy();
 
     for (RenderFrame& frame : m_frames)
     {
@@ -620,12 +623,10 @@ void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
     m_textureManager->LoadSceneTextures(scene, outTextures);
 }
 
-void RenderDevice::LoadTextureEnv(const std::string& file,
-                                  EnvTexture* texture,
-                                  SkyboxRenderer* skboxRenderer)
+void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* texture)
 {
     auto fullPath = ZEN_TEXTURE_PATH + file;
-    m_textureManager->LoadTextureEnv(fullPath, texture, skboxRenderer);
+    m_textureManager->LoadTextureEnv(fullPath, texture);
 }
 
 void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,

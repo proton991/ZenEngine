@@ -18,6 +18,7 @@ namespace zen::rc
 {
 class RenderDevice;
 class RenderGraph;
+class RendererServer;
 class TextureManager;
 class SkyboxRenderer;
 
@@ -332,7 +333,7 @@ public:
 
     void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
 
-    void LoadTextureEnv(const std::string& file, EnvTexture* texture, SkyboxRenderer* skboxRendere);
+    void LoadTextureEnv(const std::string& file, EnvTexture* texture);
 
     rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
 
@@ -358,6 +359,11 @@ public:
         return m_frames[m_currentFrame].uploadCmdList;
     }
 
+    RendererServer* GetRendererServer() const
+    {
+        return m_rendererServer;
+    }
+
     void WaitForPreviousFrames();
 
     void WaitForAllFrames();
@@ -367,6 +373,16 @@ public:
     void WaitForIdle() const
     {
         m_RHI->WaitDeviceIdle();
+    }
+
+    // todo: find better way to check geometry shader support
+    bool SupportGeometryShader() const
+    {
+#if defined(ZEN_WIN32)
+        return true;
+#else
+        return false;
+#endif
     }
 
 private:
@@ -412,9 +428,11 @@ private:
     rhi::DynamicRHI* m_RHI{nullptr};
     rhi::RHIDebug* m_RHIDebug{nullptr};
 
+
     BufferStagingManager* m_bufferStagingMgr{nullptr};
     TextureStagingManager* m_textureStagingMgr{nullptr};
 
+    RendererServer* m_rendererServer{nullptr};
     TextureManager* m_textureManager{nullptr};
 
     DeletionQueue m_deletionQueue;

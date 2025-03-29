@@ -1,8 +1,10 @@
 #include "SceneRendererDemo.h"
-#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
@@ -10,17 +12,17 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 {
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
-    m_renderDevice = MakeUnique<rc::RenderDevice>(GraphicsAPIType::eVulkan,
+    m_renderDevice = MakeUnique<rc::RenderDevice>(rhi::GraphicsAPIType::eVulkan,
                                                   rc::RenderConfig::GetInstance().numFrames);
 
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 
-    m_renderDevice->Init(m_viewport);
-
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
-    m_sceneRenderer = MakeUnique<rc::SceneRenderer>(m_renderDevice.Get(), m_viewport);
+    m_renderDevice->Init(m_viewport);
+
+    m_sceneRenderer = m_renderDevice->GetRendererServer()->RequestSceneRenderer();
 
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
@@ -33,6 +35,11 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
+}
+
+SceneRendererDemo::~SceneRendererDemo()
+{
+    delete m_window;
 }
 
 void SceneRendererDemo::Prepare()
@@ -68,13 +75,14 @@ void SceneRendererDemo::Prepare()
     sceneData.lightIntensities[2] = Vec4(5.0f);
     sceneData.lightIntensities[3] = Vec4(5.0f);
 
-    m_sceneRenderer->SetScene(sceneData);
-    m_sceneRenderer->Init();
+    m_renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), sceneData);
+    m_renderScene->Init();
+
+    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
 }
 
 void SceneRendererDemo::Destroy()
 {
-    m_sceneRenderer->Destroy();
     rc::ShaderProgramManager::GetInstance().Destroy();
     m_renderDevice->Destroy();
 }

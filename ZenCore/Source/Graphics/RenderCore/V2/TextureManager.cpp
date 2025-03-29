@@ -1,6 +1,7 @@
 #include "Graphics/RHI/RHICommands.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
-#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "SceneGraph/Scene.h"
 #include "AssetLib/TextureLoader.h"
 #include <gli/gli.hpp>
@@ -92,9 +93,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene,
     }
 }
 
-void TextureManager::LoadTextureEnv(const std::string& file,
-                                    EnvTexture* outTexture,
-                                    SkyboxRenderer* skyboxRenderer)
+void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outTexture)
 {
     if (m_textureCache.contains(file))
     {
@@ -154,6 +153,7 @@ void TextureManager::LoadTextureEnv(const std::string& file,
     const auto prefilteredTag = outTexture->tag + "_prefiltered";
     const auto lutBRDFTag     = outTexture->tag + "_lutBRDF";
 
+    SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
     // note: only generate once
     skyboxRenderer->GenerateEnvCubemaps(outTexture);
     m_textureCache[irradianceTag]  = outTexture->irradiance;

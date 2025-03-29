@@ -1,7 +1,8 @@
 #pragma once
 #include "Platform/Timer.h"
 #include "Systems/Camera.h"
-#include "Graphics/RenderCore/V2/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/GlfwWindow.h"
 
 using namespace zen;
@@ -10,6 +11,8 @@ class SceneRendererDemo
 {
 public:
     SceneRendererDemo(const platform::WindowConfig& windowConfig, sys::CameraType type);
+
+    ~SceneRendererDemo();
 
     void Prepare();
 
@@ -20,11 +23,12 @@ public:
 private:
     UniquePtr<sys::Camera> m_camera;
 
-    UniquePtr<rc::SceneRenderer> m_sceneRenderer;
+    rc::SceneRenderer* m_sceneRenderer;
 
     UniquePtr<rc::RenderDevice> m_renderDevice;
 
     UniquePtr<sg::Scene> m_scene;
+    UniquePtr<rc::RenderScene> m_renderScene;
 
     platform::GlfwWindowImpl* m_window{nullptr};
 

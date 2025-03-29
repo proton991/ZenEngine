@@ -1,103 +1,42 @@
-#include "Graphics/RenderCore/V2/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Systems/Camera.h"
-#include "Systems/SceneEditor.h"
-#include "AssetLib/GLTFLoader.h"
-#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
+
+using namespace zen::rhi;
 
 namespace zen::rc
 {
-
-SceneRenderer::SceneRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
+SceneRenderer::SceneRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
-{
-    m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
-    m_skyboxRenderer->Init();
-}
+{}
 
 void SceneRenderer::Init()
 {
     PrepareTextures();
 
     BuildGraphicsPasses();
-
-    UpdateGraphicsPassResources();
 }
 
-void SceneRenderer::Destroy()
-{
-    m_skyboxRenderer->Destroy();
-}
-
-void SceneRenderer::SetScene(const SceneData& sceneData)
-{
-    m_rebuildRDG = true;
-    Clear();
-    m_camera = sceneData.camera;
-    m_scene  = sceneData.scene;
-
-    std::memcpy(m_sceneUniformData.lightPositions, sceneData.lightPositions,
-                sizeof(sceneData.lightPositions));
-    std::memcpy(m_sceneUniformData.lightColors, sceneData.lightColors,
-                sizeof(sceneData.lightColors));
-    std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
-                sizeof(sceneData.lightIntensities));
-
-    sys::SceneEditor::CenterAndNormalizeScene(m_scene);
-
-    for (auto* node : m_scene->GetRenderableNodes())
-    {
-        m_nodesData.emplace_back(node->GetData());
-    }
-
-    uint32_t vbSize = sceneData.numVertices * sizeof(asset::Vertex);
-    m_vertexBuffer  = m_renderDevice->CreateVertexBuffer(
-        vbSize, reinterpret_cast<const uint8_t*>(sceneData.vertices));
-
-    m_indexBuffer =
-        m_renderDevice->CreateIndexBuffer(sceneData.numIndices * sizeof(uint32_t),
-                                          reinterpret_cast<const uint8_t*>(sceneData.indices));
-    LoadSceneMaterials();
-
-    LoadSceneTextures();
-
-    PrepareBuffers();
-
-    m_sceneLoaded = true;
-}
-
-void SceneRenderer::LoadSceneMaterials()
-{
-    auto sgMaterials = m_scene->GetComponents<sg::Material>();
-    m_materialsData.reserve(sgMaterials.size());
-    for (const auto* mat : sgMaterials)
-    {
-        m_materialsData.emplace_back(mat->data);
-    }
-}
-
-void SceneRenderer::LoadSceneTextures()
-{
-    // default base color texture
-    m_defaultBaseColorTexture = m_renderDevice->LoadTexture2D("wood.png");
-    // scene textures
-    m_renderDevice->LoadSceneTextures(m_scene, m_sceneTextures);
-    // environment texture
-    m_renderDevice->LoadTextureEnv("papermill.ktx", &m_envTexture, m_skyboxRenderer);
-}
+void SceneRenderer::Destroy() {}
 
 void SceneRenderer::DrawScene()
 {
+    m_scene->Update();
+
+    SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
     m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
-                                                             m_camera->GetUniformData(), 0);
+                                                             m_scene->GetCameraUniformData(), 0);
 
-    m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
-    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer(
-        "uSceneData", reinterpret_cast<const uint8_t*>(&m_sceneUniformData), 0);
+    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer("uSceneData",
+                                                                 m_scene->GetSceneUniformData(), 0);
 
-    m_skyboxRenderer->PrepareRenderWorkload(
-        m_envTexture.skybox,
+    skyboxRenderer->PrepareRenderWorkload(
+        m_scene->GetEnvTexture().skybox,
         m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
 
     if (m_rebuildRDG)
@@ -107,8 +46,8 @@ void SceneRenderer::DrawScene()
     }
 
     std::vector RDGs{
-        m_skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
-        m_rdg.Get()                         // 2nd & 3rd pass: deferred scene
+        skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
+        m_rdg.Get()                       // 2nd & 3rd pass: deferred scene
     };
 
     m_renderDevice->ExecuteFrame(m_viewport, RDGs);
@@ -121,7 +60,7 @@ void SceneRenderer::OnResize(uint32_t width, uint32_t height)
     // update graphics pass framebuffer
     m_gfxPasses.sceneLighting.framebuffer =
         m_viewport->GetCompatibleFramebufferForBackBuffer(m_gfxPasses.sceneLighting.renderPass);
-    m_skyboxRenderer->OnResize();
+    m_renderDevice->GetRendererServer()->RequestSkyboxRenderer()->OnResize();
 }
 
 void SceneRenderer::PrepareTextures()
@@ -210,19 +149,6 @@ void SceneRenderer::PrepareTextures()
         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
         m_colorSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
-}
-
-void SceneRenderer::PrepareBuffers()
-{
-    // nodes data ssbo
-    m_nodeSSBO =
-        m_renderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),
-                                            reinterpret_cast<const uint8_t*>(m_nodesData.data()));
-
-    // material data ssbo
-    m_materialSSBO = m_renderDevice->CreateStorageBuffer(
-        sizeof(sg::MaterialData) * m_materialsData.size(),
-        reinterpret_cast<const uint8_t*>(m_materialsData.data()));
 }
 
 void SceneRenderer::BuildGraphicsPasses()
@@ -401,8 +327,9 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                      const Rect2<int>& area,
                                      const Rect2<float>& viewport)
 {
-    m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
-    m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
+    m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
+    m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
+                                              DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     for (auto* node : m_scene->GetRenderableNodes())
@@ -419,24 +346,9 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
     }
 }
 
-void SceneRenderer::Clear()
-{
-    if (m_sceneLoaded)
-    {
-        // clear currently cached scene data
-        m_renderDevice->DestroyBuffer(m_vertexBuffer);
-        m_renderDevice->DestroyBuffer(m_indexBuffer);
-        m_renderDevice->DestroyBuffer(m_nodeSSBO);
-        m_renderDevice->DestroyBuffer(m_materialSSBO);
-
-        m_pushConstantsData = {};
-        m_nodesData.clear();
-        m_materialsData.clear();
-    }
-}
-
 void SceneRenderer::UpdateGraphicsPassResources()
 {
+    const EnvTexture& envTexture = m_scene->GetEnvTexture();
     {
         std::vector<ShaderResourceBinding> bufferBindings;
         std::vector<ShaderResourceBinding> textureBindings;
@@ -445,13 +357,13 @@ void SceneRenderer::UpdateGraphicsPassResources()
             bufferBindings, 0, ShaderResourceType::eUniformBuffer,
             m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, ShaderResourceType::eStorageBuffer,
-                                  m_nodeSSBO);
+                                  m_scene->GetNodesDataSSBO());
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, ShaderResourceType::eStorageBuffer,
-                                  m_materialSSBO);
+                                  m_scene->GetMaterialsDataSSBO());
         // texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(textureBindings, 0,
                                          ShaderResourceType::eSamplerWithTexture, m_colorSampler,
-                                         m_sceneTextures)
+                                         m_scene->GetSceneTextures())
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
         updater.SetShaderResourceBinding(0, bufferBindings)
@@ -479,11 +391,11 @@ void SceneRenderer::UpdateGraphicsPassResources()
         ADD_SHADER_BINDING_SINGLE(textureBindings, 5, ShaderResourceType::eSamplerWithTexture,
                                   m_depthSampler, m_offscreenTextures.depth);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 6, ShaderResourceType::eSamplerWithTexture,
-                                  m_envTexture.irradianceSampler, m_envTexture.irradiance);
+                                  envTexture.irradianceSampler, envTexture.irradiance);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 7, ShaderResourceType::eSamplerWithTexture,
-                                  m_envTexture.prefilteredSampler, m_envTexture.prefiltered);
+                                  envTexture.prefilteredSampler, envTexture.prefiltered);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
-                                  m_envTexture.lutBRDFSampler, m_envTexture.lutBRDF);
+                                  envTexture.lutBRDFSampler, envTexture.lutBRDF);
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
         updater.SetShaderResourceBinding(0, textureBindings)

@@ -1,4 +1,4 @@
-#include "Graphics/RenderCore/V2/SkyboxRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 
 #define IRRADIANCE_DIM  64

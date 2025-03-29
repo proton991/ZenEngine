@@ -25,13 +25,16 @@ set(ZEN_CORE_HEADERS
     Include/Common/UniquePtr.h
     Include/Common/RefCountPtr.h
 
+    Include/Graphics/RenderCore/V2/Renderer/RendererServer.h
+    Include/Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h
+    Include/Graphics/RenderCore/V2//Renderer/SceneRenderer.h
+
     Include/Graphics/RenderCore/V2/RenderGraph.h
+    Include/Graphics/RenderCore/V2/RenderScene.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
-    Include/Graphics/RenderCore/V2/SceneRenderer.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
     Include/Graphics/RenderCore/V2/TextureManager.h
-    Include/Graphics/RenderCore/V2/SkyboxRenderer.h
     Include/Graphics/RenderCore/V2/ShaderProgram.h
 
     Include/Graphics/RenderCore/RenderConfig.h
@@ -131,7 +134,9 @@ set(ZEN_CORE_SOURCES
     Source/AssetLib/GLTFLoader.cpp
     Source/AssetLib/FastGLTFLoader.cpp
 
+    Source/Graphics/RenderCore/V2/RendererServer.cpp
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
+    Source/Graphics/RenderCore/V2/RenderScene.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
     Source/Graphics/RenderCore/V2/SceneRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
@@ -230,6 +235,7 @@ set(SHADER_SPV_PATH ${PROJECT_SOURCE_DIR}/Data/SpvShaders/)
 file(GLOB_RECURSE ZEN_SHADER_FILES
     "${SHADER_SRC_PATH}/*.frag"
     "${SHADER_SRC_PATH}/*.vert"
+    "${SHADER_SRC_PATH}/*.geom"
     "${SHADER_SRC_PATH}/*.comp"
 )
 

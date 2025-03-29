@@ -1,6 +1,7 @@
 #pragma once
 #include "RHIDefs.h"
 #include "Common/BitField.h"
+#include "Common/HashMap.h"
 #include "Common/Math.h"
 #include <string>
 #include <vector>
@@ -229,8 +230,9 @@ enum class ShaderStage : uint32_t
     eFragment              = 1,
     eTesselationControl    = 2,
     eTesselationEvaluation = 3,
-    eCompute               = 4,
-    eMax                   = 5
+    eGeometry              = 4,
+    eCompute               = 5,
+    eMax                   = 6
 };
 
 enum class ShaderStageFlagBits : uint32_t
@@ -246,7 +248,7 @@ enum class ShaderStageFlagBits : uint32_t
 static std::string ShaderStageToString(ShaderStage stage)
 {
     static const char* SHADER_STAGE_NAMES[ToUnderlying(ShaderStage::eMax)] = {
-        "Vertex", "Fragment", "TesselationControl", "TesselationEvaluation", "Compute",
+        "Vertex", "Fragment", "TesselationControl", "TesselationEvaluation", "Geometry", "Compute",
     };
     return SHADER_STAGE_NAMES[ToUnderlying(stage)];
 }
@@ -359,7 +361,7 @@ struct ShaderResourceDescriptor
         ShaderResourceBinding binding{};                                                \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (TextureHandle & textureHandle : textures_)                                 \
+        for (const TextureHandle& textureHandle : textures_)                            \
         {                                                                               \
             binding.handles.push_back(sampler_);                                        \
             binding.handles.push_back(textureHandle);                                   \
@@ -394,7 +396,7 @@ struct ShaderPushConstants
 struct ShaderGroupInfo
 {
     // TODO: store spirv code using some cache strategy, no-copy
-    std::vector<std::vector<uint8_t>> sprivCode;
+    HashMap<ShaderStage, std::vector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
     // vertex input attribute
     std::vector<VertexInputAttribute> vertexInputAttributes;
@@ -404,8 +406,6 @@ struct ShaderGroupInfo
     std::vector<std::vector<ShaderResourceDescriptor>> SRDs;
     // specialization constants
     std::vector<ShaderSpecializationConstant> specializationConstants;
-    // shader stages
-    std::vector<ShaderStage> shaderStages;
     std::string name;
 };
 
@@ -616,6 +616,21 @@ struct GfxPipelineColorBlendState
         bool writeB{true};
         bool writeA{true};
     };
+
+    static GfxPipelineColorBlendState CreateColorWriteDisabled(int count = 1)
+    {
+        GfxPipelineColorBlendState bs;
+        for (int i = 0; i < count; i++)
+        {
+            Attachment attachment{};
+            attachment.writeR = false;
+            attachment.writeG = false;
+            attachment.writeB = false;
+            attachment.writeA = false;
+            bs.attachments.emplace_back(attachment);
+        }
+        return bs;
+    }
 
     static GfxPipelineColorBlendState CreateDisabled(int count = 1)
     {

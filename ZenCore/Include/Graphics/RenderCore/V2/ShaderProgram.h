@@ -133,6 +133,12 @@ public:
     }
 };
 
+class VoxelizationProgram : public ShaderProgram
+{
+public:
+    explicit VoxelizationProgram(RenderDevice* renderDevice);
+};
+
 class ShaderProgramManager
 {
 public:

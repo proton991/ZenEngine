@@ -122,10 +122,24 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
             {
                 m_uniformBuffers[srd.name] =
                     m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr);
-                uint32_t size = srd.blockSize;
-                //                m_renderDevice->CreateUniformBuffer();
             }
         }
+    }
+}
+
+VoxelizationProgram::VoxelizationProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "VoxelizationSP")
+{
+    if (renderDevice->SupportGeometryShader())
+    {
+        AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
+        AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
+        AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
+        Init();
+    }
+    else
+    {
+        LOG_ERROR_AND_THROW("Geometry shader not supported");
     }
 }
 
@@ -169,6 +183,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
     }
     {
         ShaderProgram* shaderProgram             = new EnvMapBRDFLutGenProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram             = new VoxelizationProgram(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
 }

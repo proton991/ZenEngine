@@ -55,6 +55,7 @@ VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage)
         case ShaderStage::eTesselationControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
         case ShaderStage::eTesselationEvaluation:
             return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case ShaderStage::eGeometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
         case ShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;
         case ShaderStage::eCompute: return VK_SHADER_STAGE_COMPUTE_BIT;
         default: return VK_SHADER_STAGE_ALL;

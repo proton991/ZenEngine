@@ -22,9 +22,7 @@ public:
 
     void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
 
-    void LoadTextureEnv(const std::string& file,
-                        EnvTexture* outTexture,
-                        SkyboxRenderer* skyboxRenderer);
+    void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
     static uint32_t CalcMipLevels(uint32_t width, uint32_t height)
     {
