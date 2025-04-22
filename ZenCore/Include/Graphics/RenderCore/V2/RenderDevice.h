@@ -359,6 +359,11 @@ public:
         return m_frames[m_currentFrame].uploadCmdList;
     }
 
+    rhi::RHICommandList* GetCurrentDrawCmdList() const
+    {
+        return m_frames[m_currentFrame].drawCmdList;
+    }
+
     RendererServer* GetRendererServer() const
     {
         return m_rendererServer;
@@ -375,8 +380,8 @@ public:
         m_RHI->WaitDeviceIdle();
     }
 
-    // todo: find better way to check geometry shader support
-    bool SupportGeometryShader() const
+    // todo: refactor later
+    bool SupportVoxelizer() const
     {
 #if defined(ZEN_WIN32)
         return true;

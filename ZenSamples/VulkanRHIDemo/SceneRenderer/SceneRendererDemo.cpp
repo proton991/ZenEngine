@@ -78,7 +78,8 @@ void SceneRendererDemo::Prepare()
     m_renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), sceneData);
     m_renderScene->Init();
 
-    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
+    m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
+    //    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
 }
 
 void SceneRendererDemo::Destroy()

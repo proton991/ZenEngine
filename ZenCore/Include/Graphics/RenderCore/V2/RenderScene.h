@@ -93,14 +93,14 @@ public:
         return m_scene->GetRenderableNodes();
     }
 
+    const sg::AABB& GetAABB() const
+    {
+        return m_scene->GetAABB();
+    }
+
     const uint8_t* GetCameraUniformData() const;
 
     const uint8_t* GetSceneUniformData() const;
-
-    //    SceneUniformData& GetSceneUniformData()
-    //    {
-    //        return m_sceneUniformData;
-    //    }
 
 private:
     RenderDevice* m_renderDevice{nullptr};

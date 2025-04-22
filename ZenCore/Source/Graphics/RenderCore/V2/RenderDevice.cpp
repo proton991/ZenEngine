@@ -735,7 +735,7 @@ void RenderDevice::UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
 {
     uint32_t toSubmit      = dataSize;
     uint32_t writePosition = 0;
-    while (toSubmit > 0)
+    while (toSubmit > 0 && pData != nullptr)
     {
         StagingSubmitResult submitResult;
         m_bufferStagingMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
@@ -817,6 +817,7 @@ void RenderDevice::EndFrame()
     m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
+// todo: consider attachment size when calculating hash
 size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)
 {
     std::size_t seed = 0;

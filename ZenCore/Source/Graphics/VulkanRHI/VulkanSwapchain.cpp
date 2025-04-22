@@ -150,7 +150,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
     m_presentMode = ChoosePresentMode(gpu, m_surface, enableVSync);
 
     VkImageUsageFlags imageUsage =
-        ChooseImageUsage(gpu, surfaceCapabilities.supportedUsageFlags, surfaceFormat.format);
+        ChooseImageUsage(gpu, surfaceCapabilities.supportedUsageFlags, m_format);
 
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
     swapchainCI.surface       = m_surface;

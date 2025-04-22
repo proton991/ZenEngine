@@ -1,6 +1,8 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 
 namespace zen::rc
 {
@@ -15,11 +17,21 @@ void RendererServer::Init()
 
     m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
     m_skyboxRenderer->Init();
+
+    m_voxelRenderer = new VoxelRenderer(m_renderDevice, m_viewport);
+    m_voxelRenderer->Init();
 }
 
 void RendererServer::Destroy()
 {
     m_sceneRenderer->Destroy();
     m_skyboxRenderer->Destroy();
+    m_voxelRenderer->Destroy();
+}
+
+void RendererServer::SetRenderScene(RenderScene* scene)
+{
+    m_sceneRenderer->SetRenderScene(scene);
+    m_voxelRenderer->SetRenderScene(scene);
 }
 } // namespace zen::rc

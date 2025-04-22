@@ -1,5 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -29,6 +30,13 @@ void SceneRenderer::DrawScene()
     m_scene->Update();
 
     SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
+    skyboxRenderer->PrepareRenderWorkload(
+        m_scene->GetEnvTexture().skybox,
+        m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
+
+    VoxelRenderer* voxelRenderer = m_renderDevice->GetRendererServer()->RequestVoxelRenderer();
+    voxelRenderer->PrepareRenderWorkload();
+
     m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
                                                              m_scene->GetCameraUniformData(), 0);
 
@@ -46,6 +54,7 @@ void SceneRenderer::DrawScene()
     }
 
     std::vector RDGs{
+        //        voxelRenderer->GetRenderGraph(),
         skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
         m_rdg.Get()                       // 2nd & 3rd pass: deferred scene
     };

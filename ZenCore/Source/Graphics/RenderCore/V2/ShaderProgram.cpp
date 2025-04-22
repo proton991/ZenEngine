@@ -130,17 +130,19 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
 VoxelizationProgram::VoxelizationProgram(RenderDevice* renderDevice) :
     ShaderProgram(renderDevice, "VoxelizationSP")
 {
-    if (renderDevice->SupportGeometryShader())
-    {
-        AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
-        AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
-        AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
-        Init();
-    }
-    else
-    {
-        LOG_ERROR_AND_THROW("Geometry shader not supported");
-    }
+    AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
+    AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
+    AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
+    Init();
+}
+
+VoxelDrawShaderProgram::VoxelDrawShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "VoxelDrawSP")
+{
+    AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/draw_voxels.vert.spv");
+    AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/draw_voxels.geom.spv");
+    AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/draw_voxels.frag.spv");
+    Init();
 }
 
 ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* renderDevice,
@@ -185,9 +187,16 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
         ShaderProgram* shaderProgram             = new EnvMapBRDFLutGenProgram(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
+    if (renderDevice->SupportVoxelizer())
     {
-        ShaderProgram* shaderProgram             = new VoxelizationProgram(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        {
+            ShaderProgram* shaderProgram             = new VoxelizationProgram(renderDevice);
+            m_programCache[shaderProgram->GetName()] = shaderProgram;
+        }
+        {
+            ShaderProgram* shaderProgram             = new VoxelDrawShaderProgram(renderDevice);
+            m_programCache[shaderProgram->GetName()] = shaderProgram;
+        }
     }
 }
 } // namespace zen::rc

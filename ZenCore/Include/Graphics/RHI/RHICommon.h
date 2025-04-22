@@ -49,6 +49,7 @@ struct Rect3f
         return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX &&
             maxY == b.maxY && maxZ == b.maxZ;
     }
+
     bool operator!=(const Rect3f& b) const
     {
         return !(*this == b);
@@ -58,6 +59,7 @@ struct Rect3f
     {
         return maxX - minX;
     }
+
     [[nodiscard]] float Height() const
     {
         return maxY - minY;
@@ -70,7 +72,9 @@ template <class T = int> struct Rect2
     T minY, maxY;
 
     Rect2() : minX(0), maxX(0), minY(0), maxY(0) {}
+
     Rect2(T width, T height) : minX(0), maxX(width), minY(0), maxY(height) {}
+
     Rect2(T _minX, T _maxX, T _minY, T _maxY) : minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
     {}
 
@@ -78,6 +82,7 @@ template <class T = int> struct Rect2
     {
         return minX == b.minX && minY == b.minY && maxX == b.maxX && maxY == b.maxY;
     }
+
     bool operator!=(const Rect2& b) const
     {
         return !(*this == b);
@@ -99,13 +104,16 @@ struct Color
     float r, g, b, a;
 
     Color() : r(0.f), g(0.f), b(0.f), a(1.f) {}
+
     explicit Color(float c) : r(c), g(c), b(c), a(c) {}
+
     Color(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) {}
 
     bool operator==(const Color& _b) const
     {
         return r == _b.r && g == _b.g && b == _b.b && a == _b.a;
     }
+
     bool operator!=(const Color& _b) const
     {
         return !(*this == _b);
@@ -115,8 +123,11 @@ struct Color
 enum class DataFormat : uint32_t
 {
     eUndefined          = 0,   // = VK_FORMAT_UNDEFINED
+    eR8UNORM            = 9,   // VK_FORMAT_R8_UNORM
+    eR8UInt             = 13,  // VK_FORMAT_R8_UINT
     eR8G8B8SRGB         = 29,  // VK_FORMAT_R8G8B8_SRGB
     eR8G8B8UNORM        = 30,  // VK_FORMAT_B8G8R8_UNORM
+    eR8G8B8A8UInt       = 41,  // VK_FORMAT_R8G8B8A8_UINT
     eR8G8B8A8SRGB       = 43,  // VK_FORMAT_R8G8B8A8_SRGB
     eR8G8B8A8UNORM      = 44,  //VK_FORMAT_B8G8R8A8_UNORM
     eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
@@ -224,13 +235,14 @@ enum class ShaderLanguage : uint32_t
     eGLSL = 0,
     eMax  = 1
 };
+
 enum class ShaderStage : uint32_t
 {
     eVertex                = 0,
-    eFragment              = 1,
-    eTesselationControl    = 2,
-    eTesselationEvaluation = 3,
-    eGeometry              = 4,
+    eTesselationControl    = 1,
+    eTesselationEvaluation = 2,
+    eGeometry              = 3,
+    eFragment              = 4,
     eCompute               = 5,
     eMax                   = 6
 };
@@ -238,11 +250,12 @@ enum class ShaderStage : uint32_t
 enum class ShaderStageFlagBits : uint32_t
 {
     eVertex                = 1 << 0,
-    eFragment              = 1 << 1,
-    eTesselationControl    = 1 << 2,
-    eTesselationEvaluation = 1 << 3,
-    eCompute               = 1 << 4,
-    eMax                   = 1 << 5
+    eTesselationControl    = 1 << 1,
+    eTesselationEvaluation = 1 << 2,
+    eGeometry              = 1 << 3,
+    eFragment              = 1 << 4,
+    eCompute               = 1 << 5,
+    eMax                   = 1 << 6
 };
 
 static std::string ShaderStageToString(ShaderStage stage)
@@ -301,6 +314,7 @@ struct ShaderSpecializationConstant
         float floatValue;
         bool boolValue;
     };
+
     ShaderSpecializationConstantType type{ShaderSpecializationConstantType::eMax};
     uint32_t constantId{0};
     BitField<ShaderStageFlagBits> stages;
@@ -681,6 +695,7 @@ struct GfxPipelineStates
     GfxPipelineColorBlendState colorBlendState;
     std::vector<DynamicState> dynamicStates;
 };
+
 /*****************************/
 /********* Buffers ***********/
 /*****************************/
@@ -970,6 +985,7 @@ struct RenderTarget
 union RenderPassClearValue
 {
     Color color = {};
+
     struct
     {
         float depth;
@@ -1098,6 +1114,7 @@ enum class PipelineType : uint32_t
     eCompute  = 2,
     eMax      = 3
 };
+
 /**********************************************/
 /********** Context for RHICommandList ********/
 /*********************************************/
@@ -1106,10 +1123,12 @@ struct VertexBufferBinding
     BufferHandle buffer{nullptr};
     uint64_t offset{0};
     uint32_t slot;
+
     bool operator==(const VertexBufferBinding& b) const
     {
         return buffer == b.buffer && slot == b.slot && offset == b.offset;
     }
+
     bool operator!=(const VertexBufferBinding& b) const
     {
         return !(*this == b);
@@ -1127,6 +1146,7 @@ struct IndexBufferBinding
     {
         return buffer == b.buffer && format == b.format && offset == b.offset;
     }
+
     bool operator!=(const IndexBufferBinding& b) const
     {
         return !(*this == b);
@@ -1217,17 +1237,18 @@ inline BitField<PipelineStageBits> TextureUsageToPipelineStage(TextureUsage usag
     BitField<PipelineStageBits> result;
     switch (usage)
     {
-        case TextureUsage::eNone: result.SetFlag(PipelineStageBits::eTopOfPipe);
+        case TextureUsage::eNone: result.SetFlag(PipelineStageBits::eTopOfPipe); break;
 
         case TextureUsage::eTransferSrc:
-        case TextureUsage::eTransferDst: result.SetFlag(PipelineStageBits::eTransfer);
+        case TextureUsage::eTransferDst: result.SetFlag(PipelineStageBits::eTransfer); break;
 
         case TextureUsage::eSampled:
         case TextureUsage::eInputAttachment:
-        case TextureUsage::eStorage: result.SetFlag(PipelineStageBits::eFragmentShader);
+        case TextureUsage::eStorage: result.SetFlag(PipelineStageBits::eFragmentShader); break;
 
         case TextureUsage::eColorAttachment:
             result.SetFlag(PipelineStageBits::eColorAttachmentOutput);
+            break;
 
         case TextureUsage::eDepthStencilAttachment:
             result.SetFlag(PipelineStageBits::eEarlyFragmentTests);

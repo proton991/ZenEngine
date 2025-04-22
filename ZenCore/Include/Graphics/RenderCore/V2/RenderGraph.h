@@ -468,6 +468,13 @@ public:
                                      const rhi::TextureSubResourceRange& range,
                                      RDGAccessType accessType);
 
+    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
+                                     uint32_t numTextures,
+                                     rhi::TextureHandle* textureHandles,
+                                     rhi::TextureUsage usage,
+                                     rhi::TextureSubResourceRange* ranges,
+                                     RDGAccessType accessType);
+
     void Begin();
 
     void End();

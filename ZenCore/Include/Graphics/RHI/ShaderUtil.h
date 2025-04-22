@@ -318,7 +318,7 @@ static void MergeOrAddSRDs(ShaderStage stage,
     std::vector<std::vector<ShaderResourceDescriptor>>& allSRDs = shaderGroupInfo.SRDs;
     if (setIndex < allSRDs.size())
     {
-        for (uint32_t k = 0; k < allSRDs.size(); k++)
+        for (uint32_t k = 0; k < allSRDs[setIndex].size(); k++)
         {
             const auto& existSRD = allSRDs[setIndex][k];
             if (existSRD.binding == srd.binding)
@@ -343,8 +343,11 @@ static void MergeOrAddSRDs(ShaderStage stage,
                 }
                 existed = true;
             }
-            allSRDs[setIndex][k].stageFlags.SetFlag(stageFlag);
-            break;
+            if (existed)
+            {
+                allSRDs[setIndex][k].stageFlags.SetFlag(stageFlag);
+                break;
+            }
         }
     }
     else

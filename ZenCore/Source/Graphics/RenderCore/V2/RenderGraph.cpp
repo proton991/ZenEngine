@@ -468,6 +468,19 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
     m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
 }
 
+void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
+                                              uint32_t numTextures,
+                                              rhi::TextureHandle* textureHandles,
+                                              rhi::TextureUsage usage,
+                                              rhi::TextureSubResourceRange* ranges,
+                                              RDGAccessType accessType)
+{
+    for (uint32_t i = 0; i < numTextures; i++)
+    {
+        DeclareTextureAccessForPass(passNode, textureHandles[i], usage, ranges[i], accessType);
+    }
+}
+
 void RenderGraph::SortNodes()
 {
     // resolve node dependencies

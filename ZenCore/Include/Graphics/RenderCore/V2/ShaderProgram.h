@@ -137,6 +137,50 @@ class VoxelizationProgram : public ShaderProgram
 {
 public:
     explicit VoxelizationProgram(RenderDevice* renderDevice);
+
+    const uint8_t* GetVoxelConfigData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&voxelConfigData);
+    }
+
+    struct VoxelConfigData
+    {
+        Mat4 viewProjectionMatrices[3];  // view projection matrices for 3 axes
+        Mat4 viewProjectionMatricesI[3]; // inverse view projection matrices for 3 axes
+        Vec4 worldMinPointScale;
+    } voxelConfigData;
+
+    struct PushConstantData
+    {
+        uint32_t nodeIndex;
+        uint32_t materialIndex;
+        uint32_t flagStaticVoxels;
+        uint32_t volumeDimension;
+    } pushConstantsData;
+};
+
+class VoxelDrawShaderProgram : public ShaderProgram
+{
+public:
+    explicit VoxelDrawShaderProgram(RenderDevice* renderDevice);
+
+    const uint8_t* GetVoxelInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&voxelInfo);
+    }
+
+    struct PushConstantData
+    {
+        uint32_t volumeDimension;
+        //        Vec4 colorChannels;
+    } pushConstantsData;
+
+    struct VoxelInfo
+    {
+        Mat4 modelViewProjection;
+        Vec4 frustumPlanes[6];
+        Vec4 worldMinPointVoxelSize;
+    } voxelInfo;
 };
 
 class ShaderProgramManager
@@ -164,6 +208,7 @@ private:
     {
         m_programCache = {};
     }
+
     HashMap<std::string, ShaderProgram*> m_programCache;
 };
 } // namespace zen::rc
