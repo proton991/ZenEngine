@@ -129,7 +129,7 @@ enum class DataFormat : uint32_t
     eR8G8B8UNORM        = 30,  // VK_FORMAT_B8G8R8_UNORM
     eR8G8B8A8UInt       = 41,  // VK_FORMAT_R8G8B8A8_UINT
     eR8G8B8A8SRGB       = 43,  // VK_FORMAT_R8G8B8A8_SRGB
-    eR8G8B8A8UNORM      = 44,  //VK_FORMAT_B8G8R8A8_UNORM
+    eR8G8B8A8UNORM      = 37,  // VK_FORMAT_R8G8B8A8_UNORM,
     eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
     eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
     eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT

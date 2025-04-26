@@ -426,6 +426,12 @@ rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureIn
     return m_textureManager->CreateTexture(textureInfo, tag);
 }
 
+rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+                                                    const rhi::TextureProxyInfo& proxyInfo)
+{
+    return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
+}
+
 rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;

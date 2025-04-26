@@ -11,13 +11,9 @@ layout(location = 0) in GS_OUT {
     uint faxis;
 } fs_in;
 
-layout(set = 1, binding = 0, rgba16f) uniform volatile coherent image3D voxelAlbedo;
-layout(set = 1, binding = 1, rgba16f) uniform volatile coherent image3D voxelNormal;
-layout(set = 1, binding = 2, rgba16f) uniform volatile coherent image3D voxelEmission;
-
-//layout(set = 1, binding = 0, r32ui) uniform volatile coherent uimage3D voxelAlbedo;
-//layout(set = 1, binding = 1, r32ui) uniform volatile coherent uimage3D voxelNormal;
-//layout(set = 1, binding = 2, r32ui) uniform volatile coherent uimage3D voxelEmission;
+layout(set = 1, binding = 0, r32ui) uniform volatile coherent uimage3D voxelAlbedo;
+layout(set = 1, binding = 1, r32ui) uniform volatile coherent uimage3D voxelNormal;
+layout(set = 1, binding = 2, r32ui) uniform volatile coherent uimage3D voxelEmission;
 layout(set = 1, binding = 3, r8) uniform volatile coherent image3D staticVoxelFlag;
 
 layout (set = 2, binding = 0) uniform sampler2D uTextureArray[1024];
@@ -75,28 +71,28 @@ uint convVec4ToRGBA8(vec4 val)
     (uint(val.x) & 0x000000FF);
 }
 
-//void imageAtomicRGBA8AvgAlbedo(ivec3 coords, vec4 value)
-//{
-//    value.rgb *= 255.0;                 // optimize following calculations
-//    uint newVal = convVec4ToRGBA8(value);
-//    uint prevStoredVal = 0;
-//    uint curStoredVal;
-//    uint numIterations = 0;
-//
-//    while((curStoredVal = imageAtomicCompSwap(voxelAlbedo, coords, prevStoredVal, newVal))
-//            != prevStoredVal
-//            && numIterations < 255)
-//    {
-//        prevStoredVal = curStoredVal;
-//        vec4 rval = convRGBA8ToVec4(curStoredVal);
-//        rval.rgb = (rval.rgb * rval.a); // Denormalize
-//        vec4 curValF = rval + value;    // Add
-//        curValF.rgb /= curValF.a;       // Renormalize
-//        newVal = convVec4ToRGBA8(curValF);
-//
-//        ++numIterations;
-//    }
-//}
+void imageAtomicRGBA8AvgAlbedo(ivec3 coords, vec4 value)
+{
+    value.rgb *= 255.0;                 // optimize following calculations
+    uint newVal = convVec4ToRGBA8(value);
+    uint prevStoredVal = 0;
+    uint curStoredVal;
+    uint numIterations = 0;
+
+    while((curStoredVal = imageAtomicCompSwap(voxelAlbedo, coords, prevStoredVal, newVal))
+            != prevStoredVal
+            && numIterations < 255)
+    {
+        prevStoredVal = curStoredVal;
+        vec4 rval = convRGBA8ToVec4(curStoredVal);
+        rval.rgb = (rval.rgb * rval.a); // Denormalize
+        vec4 curValF = rval + value;    // Add
+        curValF.rgb /= curValF.a;       // Renormalize
+        newVal = convVec4ToRGBA8(curValF);
+
+        ++numIterations;
+    }
+}
 
 void main() {
 //    if (fs_in.position.x < fs_in.triangleAABB.x || fs_in.position.y < fs_in.triangleAABB.y ||
@@ -116,11 +112,11 @@ void main() {
     ivec3 texCoord3d = ivec3(fs_in.wsPosition);
 
 //    imageStore(voxelAlbedo, texCoord3d, vec4(1.0, 0.0, 0.0, 1.0));
-    imageStore(voxelAlbedo, texCoord3d, albedoColor);
-//    imageAtomicRGBA8AvgAlbedo(texCoord3d, albedoColor);
+//    imageStore(voxelAlbedo, texCoord3d, albedoColor);
+    imageAtomicRGBA8AvgAlbedo(texCoord3d, albedoColor);
 
     // voxel normal
-    vec4 normal = imageLoad(voxelNormal, texCoord3d);
+//    vec4 normal = imageLoad(voxelNormal, texCoord3d);
 
     outFragColor = vec4(albedoColor.xyz, 1.0);
 }

@@ -70,6 +70,9 @@ public:
 
     virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
 
+    virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
+                                             const TextureProxyInfo& textureProxyInfo) = 0;
+
     virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 
     virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;

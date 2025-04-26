@@ -18,8 +18,7 @@ VoxelRenderer::VoxelRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewp
 void VoxelRenderer::Init()
 {
     m_config.volumeDimension = 256;
-    //    m_config.voxelTexFormat  = DataFormat::eR32UInt;
-    m_config.voxelTexFormat = DataFormat::eR16G16B16A16SFloat;
+    m_config.voxelTexFormat  = DataFormat::eR32UInt;
     m_config.voxelCount =
         m_config.volumeDimension * m_config.volumeDimension * m_config.volumeDimension;
     m_config.drawColorChannels = Vec4(1.0f);
@@ -65,7 +64,18 @@ void VoxelRenderer::PrepareTextures()
                           m_config.volumeDimension, m_config.volumeDimension,
                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_albedo",
                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        texInfo.mutableFormat  = true;
         m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        rhi::TextureProxyInfo textureProxyInfo{};
+        textureProxyInfo.type        = rhi::TextureType::e3D;
+        textureProxyInfo.arrayLayers = 1;
+        textureProxyInfo.mipmaps     = 1;
+        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        textureProxyInfo.name        = "voxel_albedo_proxy";
+        m_voxelTextures.albedoProxy =
+            m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
     }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
@@ -133,6 +143,7 @@ void VoxelRenderer::BuildRenderGraph()
     m_rdg = MakeUnique<RenderGraph>();
     m_rdg->Begin();
     // voxelization pass
+    if (m_needVoxelization)
     {
         VoxelizationProgram* shaderProgram =
             dynamic_cast<VoxelizationProgram*>(m_gfxPasses.voxelization.shaderProgram);
@@ -175,6 +186,12 @@ void VoxelRenderer::BuildRenderGraph()
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
         }
+        m_needVoxelization = false;
+        m_rebuildRDG       = true;
+    }
+    else
+    {
+        m_rebuildRDG = false;
     }
     // voxel draw pass
     {
@@ -194,10 +211,6 @@ void VoxelRenderer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
 
-        // m_rdg->DeclareTextureAccessForPass(pass, m_voxelTextures.albedo, TextureUsage::eStorage,
-        //                                    m_renderDevice->GetTextureSubResourceRange(
-        //                                        m_voxelTextures.albedo),
-        //                                    RDGAccessType::eRead);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
@@ -220,7 +233,7 @@ void VoxelRenderer::BuildGraphicsPasses()
         pso.depthStencilState =
             GfxPipelineDepthStencilState::Create(false, false, CompareOperator::eNever);
         pso.multiSampleState = {};
-        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
+        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled();
         pso.dynamicStates.push_back(DynamicState::eScissor);
         pso.dynamicStates.push_back(DynamicState::eViewPort);
 
@@ -229,8 +242,8 @@ void VoxelRenderer::BuildGraphicsPasses()
             builder.SetShaderProgramName("VoxelizationSP")
                 .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
-                                      m_voxelTextures.offscreen1)
+                //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
+                //                      m_voxelTextures.offscreen1)
                 .SetFramebufferInfo(m_viewport, m_config.volumeDimension, m_config.volumeDimension)
                 .SetTag("Voxelization")
                 .Build();
@@ -306,7 +319,7 @@ void VoxelRenderer::UpdateGraphicsPassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.albedoProxy);
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, ShaderResourceType::eUniformBuffer,
             m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
@@ -381,7 +394,7 @@ void VoxelRenderer::PrepareRenderWorkload()
     if (m_rebuildRDG)
     {
         BuildRenderGraph();
-        m_rebuildRDG = false;
+        //        m_rebuildRDG = false;
     }
     UpdateUniformData();
     VoxelizationProgram* voxelizationSP =

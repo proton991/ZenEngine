@@ -68,6 +68,10 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     }
     imageCI.usage  = ToVkImageUsageFlags(info.usageFlags);
     imageCI.format = ToVkFormat(info.format);
+    if (info.mutableFormat != false)
+    {
+        imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    }
 
     const auto textureSize = CalculateTextureSize(info);
 
@@ -112,6 +116,61 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
     return TextureHandle(texture);
 }
 
+TextureHandle VulkanRHI::CreateTextureProxy(const TextureHandle& baseTexture,
+                                            const TextureProxyInfo& textureProxyInfo)
+{
+    VulkanTexture* baseTextureVk  = reinterpret_cast<VulkanTexture*>(baseTexture.value);
+    VulkanTexture* proxyTextureVk = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);
+    // copy from base
+    proxyTextureVk->image    = baseTextureVk->image;
+    proxyTextureVk->memAlloc = baseTextureVk->memAlloc;
+    proxyTextureVk->isProxy  = true;
+
+    VkImageCreateInfo imageCI = baseTextureVk->imageCI;
+    ;
+    // overwrite
+    imageCI.format      = ToVkFormat(textureProxyInfo.format);
+    imageCI.imageType   = ToVkImageType(textureProxyInfo.type);
+    imageCI.arrayLayers = textureProxyInfo.arrayLayers;
+    imageCI.mipLevels   = textureProxyInfo.mipmaps;
+
+    // create image view
+    VkImageViewCreateInfo imageViewCI;
+    InitVkStruct(imageViewCI, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
+    imageViewCI.components.r                = VK_COMPONENT_SWIZZLE_R;
+    imageViewCI.components.g                = VK_COMPONENT_SWIZZLE_G;
+    imageViewCI.components.b                = VK_COMPONENT_SWIZZLE_B;
+    imageViewCI.components.a                = VK_COMPONENT_SWIZZLE_A;
+    imageViewCI.viewType                    = ToVkImageViewType(textureProxyInfo.type);
+    imageViewCI.format                      = imageCI.format;
+    imageViewCI.image                       = proxyTextureVk->image;
+    imageViewCI.subresourceRange.layerCount = imageCI.arrayLayers;
+    imageViewCI.subresourceRange.levelCount = imageCI.mipLevels;
+    if (imageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    {
+        imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
+    else
+    {
+        imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+
+    if (vkCreateImageView(GetVkDevice(), &imageViewCI, nullptr, &proxyTextureVk->imageView) !=
+        VK_SUCCESS)
+    {
+        LOGE("vkCreateImageView for TextureProxy failed with error");
+    }
+
+    proxyTextureVk->imageCI = imageCI;
+    if (!textureProxyInfo.name.empty())
+    {
+        m_device->SetObjectName(VK_OBJECT_TYPE_IMAGE_VIEW,
+                                reinterpret_cast<uint64_t>(proxyTextureVk->imageView),
+                                textureProxyInfo.name.c_str());
+    }
+    return TextureHandle(proxyTextureVk);
+}
+
 DataFormat VulkanRHI::GetTextureFormat(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
@@ -150,7 +209,10 @@ void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
     vkDestroyImageView(m_device->GetVkHandle(), texture->imageView, nullptr);
-    m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
+    if (texture->isProxy != true)
+    {
+        m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
+    }
     VersatileResource::Free(m_resourceAllocator, texture);
 }
 

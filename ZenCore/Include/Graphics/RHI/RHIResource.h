@@ -71,6 +71,7 @@ private:
     private:
         std::atomic_uint m_count{0};
     };
+
     mutable AtomicCounter m_counter;
     ResourceType m_resourceType{ResourceType::eMax};
 };
@@ -184,6 +185,16 @@ struct TextureInfo
     uint32_t mipmaps{1};
     // memory flags
     bool cpuReadable{false};
+    bool mutableFormat{false};
+    std::string name;
+};
+
+struct TextureProxyInfo
+{
+    DataFormat format{DataFormat::eUndefined};
+    TextureType type{TextureType::e1D};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
     std::string name;
 };
 
@@ -226,6 +237,7 @@ class RHIViewport : public RHIResource
 {
 public:
     RHIViewport() : RHIResource(ResourceType::eViewport) {}
+
     virtual ~RHIViewport() = default;
 
     virtual uint32_t GetWidth() const = 0;

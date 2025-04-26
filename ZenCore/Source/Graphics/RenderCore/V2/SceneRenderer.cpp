@@ -54,9 +54,9 @@ void SceneRenderer::DrawScene()
     }
 
     std::vector RDGs{
-        //        voxelRenderer->GetRenderGraph(),
-        skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
-        m_rdg.Get()                       // 2nd & 3rd pass: deferred scene
+        voxelRenderer->GetRenderGraph(),
+        //        skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
+        //        m_rdg.Get()                       // 2nd & 3rd pass: deferred scene
     };
 
     m_renderDevice->ExecuteFrame(m_viewport, RDGs);

@@ -123,6 +123,9 @@ public:
 
     TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
 
+    TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
+                                     const TextureProxyInfo& textureProxyInfo) final;
+
     void DestroyTexture(TextureHandle textureHandle) final;
 
     DataFormat GetTextureFormat(TextureHandle textureHandle) final;

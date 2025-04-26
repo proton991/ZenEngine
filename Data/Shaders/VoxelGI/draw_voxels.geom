@@ -64,15 +64,6 @@ void main()
 		vec4(-0.5f,  0.5f, -0.5f, 0.0f)  // 7
 	);
 
-//	const int cubeIndices[24] = int[24]
-//	(
-//		0, 2, 1, 3, // right
-//		6, 4, 7, 5, // left
-//		5, 4, 1, 0, // up
-//		6, 7, 2, 3, // down
-//		4, 6, 0, 2, // front
-//		1, 3, 5, 7  // back
-//	);
 	const int cubeIndices[24] = int[24]
 	(
 		0, 1, 2, 3, // right   (0 2 1 → 0 1 2 and 1 2 3 → 2 1 3)
@@ -82,6 +73,29 @@ void main()
 		4, 0, 6, 2, // front   (4 6 0 → 4 0 6 and 0 2 6 → 2 0 6)
 		3, 1, 7, 5  // back    (1 3 5 → 1 5 3 and 5 7 3 → 3 5 7)
 	);
+
+//	const vec4 cubeVertices[8] = vec4[8]
+//	(
+//	vec4( 0.5f,  0.5f,  0.5f, 0.0f),
+//	vec4( 0.5f,  0.5f, -0.5f, 0.0f),
+//	vec4( 0.5f, -0.5f,  0.5f, 0.0f),
+//	vec4( 0.5f, -0.5f, -0.5f, 0.0f),
+//	vec4(-0.5f,  0.5f,  0.5f, 0.0f),
+//	vec4(-0.5f,  0.5f, -0.5f, 0.0f),
+//	vec4(-0.5f, -0.5f,  0.5f, 0.0f),
+//	vec4(-0.5f, -0.5f, -0.5f, 0.0f)
+//	);
+//
+//	const int cubeIndices[24] = int[24]
+//	(
+//	0, 2, 1, 3, // right
+//	6, 4, 7, 5, // left
+//	5, 4, 1, 0, // up
+//	6, 7, 2, 3, // down
+//	4, 6, 0, 2, // front
+//	1, 3, 5, 7  // back
+//	);
+
 //	vec3 center = VoxelToWorld(gl_in[0].gl_Position.xyz);
 //	vec3 extent = vec3(ubo.worldMinPointVoxelSize.w);
 

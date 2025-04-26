@@ -26,5 +26,6 @@ struct VulkanTexture
     VkImageView imageView{VK_NULL_HANDLE};
     VkImageCreateInfo imageCI{};
     VulkanMemoryAllocation memAlloc{};
+    bool isProxy{false};
 };
 } // namespace zen::rhi

@@ -26,6 +26,16 @@ rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& texture
     return m_textureCache.at(tag);
 }
 
+rhi::TextureHandle TextureManager::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+                                                      const rhi::TextureProxyInfo& proxyInfo)
+{
+    if (!m_textureCache.contains(proxyInfo.name))
+    {
+        m_textureCache[proxyInfo.name] = m_RHI->CreateTextureProxy(baseTexture, proxyInfo);
+    }
+    return m_textureCache.at(proxyInfo.name);
+}
+
 rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     if (m_textureCache.contains(file))

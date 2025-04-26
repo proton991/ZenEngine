@@ -70,6 +70,7 @@ private:
         rhi::TextureHandle offscreen2;
         rhi::TextureHandle staticFlag;
         rhi::TextureHandle albedo;
+        rhi::TextureHandle albedoProxy;
         rhi::TextureHandle normal;
         rhi::TextureHandle emissive;
         rhi::TextureHandle radiance;
@@ -105,5 +106,6 @@ private:
 
     bool m_rebuildRDG{true};
     UniquePtr<RenderGraph> m_rdg;
+    bool m_needVoxelization{true};
 };
 } // namespace zen::rc

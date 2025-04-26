@@ -197,12 +197,14 @@ public:
 
 private:
     RenderDevice* m_renderDevice{nullptr};
+
     struct Entry
     {
         uint32_t size;
         rhi::BufferHandle buffer;
         uint32_t usedFrame;
     };
+
     std::vector<Entry> m_usedBuffers;
     std::vector<Entry> m_pendingFreeBuffers;
     std::vector<Entry> m_freeBuffers;
@@ -253,12 +255,14 @@ private:
     uint64_t POOL_SIZE;
     RenderDevice* m_renderDevice{nullptr};
     rhi::DynamicRHI* m_RHI{nullptr};
+
     struct StagingBuffer
     {
         rhi::BufferHandle handle;
         uint64_t usedFrame;
         uint32_t occupiedSize;
     };
+
     std::vector<StagingBuffer> m_bufferBlocks;
     uint32_t m_currentBlockIndex;
     bool m_stagingBufferUsed{false};
@@ -298,6 +302,9 @@ public:
     void ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
+
+    rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+                                          const rhi::TextureProxyInfo& proxyInfo);
 
     rhi::BufferHandle CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
