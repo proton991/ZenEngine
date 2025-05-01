@@ -72,6 +72,7 @@ private:
         rhi::TextureHandle albedo;
         rhi::TextureHandle albedoProxy;
         rhi::TextureHandle normal;
+        rhi::TextureHandle normalProxy;
         rhi::TextureHandle emissive;
         rhi::TextureHandle radiance;
         rhi::TextureHandle mipmaps[6]; // per face

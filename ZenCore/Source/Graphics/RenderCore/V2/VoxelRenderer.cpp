@@ -82,7 +82,18 @@ void VoxelRenderer::PrepareTextures()
                           m_config.volumeDimension, m_config.volumeDimension,
                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_normal",
                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        texInfo.mutableFormat  = true;
         m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        rhi::TextureProxyInfo textureProxyInfo{};
+        textureProxyInfo.type        = rhi::TextureType::e3D;
+        textureProxyInfo.arrayLayers = 1;
+        textureProxyInfo.mipmaps     = 1;
+        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        textureProxyInfo.name        = "voxel_normal_proxy";
+        m_voxelTextures.normalProxy =
+            m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
     }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
