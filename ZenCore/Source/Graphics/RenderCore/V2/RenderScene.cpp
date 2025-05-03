@@ -95,6 +95,11 @@ void RenderScene::Update()
     m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
 }
 
+const sys::Camera* RenderScene::GetCamera() const
+{
+    return m_camera;
+}
+
 const uint8_t* RenderScene::GetCameraUniformData() const
 {
     return m_camera->GetUniformData();

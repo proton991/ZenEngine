@@ -65,6 +65,8 @@ Camera::Camera(const Vec3& eye,
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
     m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
+
+    m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
 
 void Camera::SetPosition(const Vec3& position)
@@ -81,6 +83,8 @@ void Camera::SetPosition(const Vec3& position)
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
     m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
+
+    m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
 
 void Camera::UpdateBaseVectors()
@@ -182,7 +186,7 @@ void Camera::Update(float deltaTime)
             UpdateBaseVectors();
             m_cameraData.view           = GetViewMatrix();
             m_cameraData.projViewMatrix = GetProjectionMatrix() * m_cameraData.view;
-
+            m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
             m_onUpdate();
         }
     }
@@ -193,6 +197,7 @@ void Camera::Update(float deltaTime)
             auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
             UpdateViewOrbit({delta[1] * m_rotationSpeed, delta[0] * m_rotationSpeed, 0.0f});
             m_cameraData.projViewMatrix = GetProjectionMatrix() * m_cameraData.view;
+            m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
             m_onUpdate();
         }
     }

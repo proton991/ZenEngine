@@ -25,6 +25,8 @@ set(ZEN_CORE_HEADERS
     Include/Common/UniquePtr.h
     Include/Common/RefCountPtr.h
 
+    Include/Graphics/Types/Frustum.h
+
     Include/Graphics/RenderCore/V2/Renderer/RendererServer.h
     Include/Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/SceneRenderer.h
@@ -62,7 +64,6 @@ set(ZEN_CORE_HEADERS
     Include/SceneGraph/Texture.h
     Include/SceneGraph/Transform.h
 
-    Include/Systems/Frustum.h
     Include/Systems/Camera.h
     Include/Systems/SceneEditor.h
 

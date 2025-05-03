@@ -96,10 +96,10 @@ void main()
 //	1, 3, 5, 7  // back
 //	);
 
-//	vec3 center = VoxelToWorld(gl_in[0].gl_Position.xyz);
-//	vec3 extent = vec3(ubo.worldMinPointVoxelSize.w);
+	vec3 center = VoxelToWorld(gl_in[0].gl_Position.xyz);
+	vec3 extent = vec3(ubo.worldMinPointVoxelSize.w);
 
-	//if(gs_in[0].albedo.a == 0.0f || !VoxelInFrustum(center, extent)) { return; }
+	if(gs_in[0].albedo.a == 0.0f || !VoxelInFrustum(center, extent)) { return; }
 
 
 	vec4 projectedVertices[8];

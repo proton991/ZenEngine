@@ -1,6 +1,7 @@
 #pragma once
 #include "Common/Math.h"
 #include "Common/UniquePtr.h"
+#include "Graphics/Types/Frustum.h"
 
 #include <functional>
 
@@ -79,6 +80,11 @@ public:
         return reinterpret_cast<const uint8_t*>(&m_cameraData);
     }
 
+    const Frustum& GetFrustum() const
+    {
+        return m_frustum;
+    }
+
 private:
     void SetProjectionMatrix();
     void UpdateBaseVectors();
@@ -125,5 +131,7 @@ private:
 
     CameraUniformData m_cameraData;
     std::function<void()> m_onUpdate;
+
+    Frustum m_frustum;
 };
 } // namespace zen::sys

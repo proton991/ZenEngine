@@ -98,6 +98,8 @@ public:
         return m_scene->GetAABB();
     }
 
+    const sys::Camera* GetCamera() const;
+
     const uint8_t* GetCameraUniformData() const;
 
     const uint8_t* GetSceneUniformData() const;

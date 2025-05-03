@@ -390,9 +390,11 @@ void VoxelRenderer::UpdateUniformData()
             glm::scale(Mat4(1.0f), glm::vec3(vSize));
         shaderProgram->voxelInfo.modelViewProjection =
             cameraUniformData->projViewMatrix * modelMatrix;
+
+        auto& planes = m_scene->GetCamera()->GetFrustum().GetPlanes();
         for (auto i = 0; i < 6; i++)
         {
-            // shaderProgram->sceneInfo.frustumPlanes[i] =
+            shaderProgram->voxelInfo.frustumPlanes[i] = planes[i];
         }
         shaderProgram->voxelInfo.worldMinPointVoxelSize =
             Vec4(sceneBox.GetMin(), m_config.voxelSize);
