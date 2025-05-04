@@ -34,18 +34,11 @@ void SceneRenderer::DrawScene()
         m_scene->GetEnvTexture().skybox,
         m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
 
-    VoxelRenderer* voxelRenderer = m_renderDevice->GetRendererServer()->RequestVoxelRenderer();
-    voxelRenderer->PrepareRenderWorkload();
-
     m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
                                                              m_scene->GetCameraUniformData(), 0);
 
     m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer("uSceneData",
                                                                  m_scene->GetSceneUniformData(), 0);
-
-    skyboxRenderer->PrepareRenderWorkload(
-        m_scene->GetEnvTexture().skybox,
-        m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
 
     if (m_rebuildRDG)
     {
@@ -53,11 +46,20 @@ void SceneRenderer::DrawScene()
         m_rebuildRDG = false;
     }
 
-    std::vector RDGs{
-        voxelRenderer->GetRenderGraph(),
-        //        skyboxRenderer->GetRenderGraph(), // 1st pass: skybox
-        //        m_rdg.Get()                       // 2nd & 3rd pass: deferred scene
-    };
+    std::vector<RenderGraph*> RDGs;
+    if (m_renderDevice->SupportVoxelizer())
+    {
+        VoxelRenderer* voxelRenderer = m_renderDevice->GetRendererServer()->RequestVoxelRenderer();
+        voxelRenderer->PrepareRenderWorkload();
+        RDGs.push_back(voxelRenderer->GetRenderGraph());  // voxel
+        RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
+        RDGs.push_back(m_rdg.Get());                      // deferred pbr
+    }
+    else
+    {
+        RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
+        RDGs.push_back(m_rdg.Get());                      // deferred pbr
+    }
 
     m_renderDevice->ExecuteFrame(m_viewport, RDGs);
 }
