@@ -6,11 +6,9 @@
 namespace zen::sg
 {
 class Scene;
-}
-namespace zen::sys
-{
 class Camera;
-}
+} // namespace zen::sg
+
 namespace zen::asset
 {
 struct Vertex;
@@ -25,7 +23,7 @@ struct SceneData
     const uint32_t* indices;
     uint32_t numVertices;
     uint32_t numIndices;
-    sys::Camera* camera;
+    sg::Camera* camera;
     Vec4 lightPositions[4];
     Vec4 lightColors[4];
     Vec4 lightIntensities[4];
@@ -98,7 +96,7 @@ public:
         return m_scene->GetAABB();
     }
 
-    const sys::Camera* GetCamera() const;
+    const sg::Camera* GetCamera() const;
 
     const uint8_t* GetCameraUniformData() const;
 
@@ -107,7 +105,7 @@ public:
 private:
     RenderDevice* m_renderDevice{nullptr};
     sg::Scene* m_scene{nullptr};
-    sys::Camera* m_camera{nullptr};
+    sg::Camera* m_camera{nullptr};
 
     std::vector<sg::NodeData> m_nodesData;
     rhi::BufferHandle m_nodeSSBO;

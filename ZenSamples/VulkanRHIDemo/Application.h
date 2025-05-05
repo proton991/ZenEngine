@@ -3,7 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Platform/Timer.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 
 using namespace zen;
 using namespace zen::rhi;
@@ -17,7 +17,7 @@ class Application
 {
 public:
     explicit Application(const platform::WindowConfig& windowConfig,
-                         sys::CameraType type = sys::CameraType::eFirstPerson);
+                         sg::CameraType type = sg::CameraType::eFirstPerson);
 
     virtual void Prepare();
 
@@ -41,7 +41,7 @@ protected:
     RHIViewport* m_viewport{nullptr};
 
     BufferHandle m_cameraUBO;
-    UniquePtr<sys::Camera> m_camera;
+    UniquePtr<sg::Camera> m_camera;
 
     UniquePtr<platform::Timer> m_timer;
     // Defines a frame rate independent timer value clamped from -1.0...1.0

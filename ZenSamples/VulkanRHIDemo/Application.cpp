@@ -1,7 +1,7 @@
 #include "Application.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 
-Application::Application(const platform::WindowConfig& windowConfig, sys::CameraType type)
+Application::Application(const platform::WindowConfig& windowConfig, sg::CameraType type)
 {
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
@@ -10,12 +10,14 @@ Application::Application(const platform::WindowConfig& windowConfig, sys::Camera
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
 
+    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice);
+
     m_renderDevice->Init(m_viewport);
 
-    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
-                                         m_window->GetAspect(), type);
+    m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+                                        m_window->GetAspect(), type);
     m_camera->SetOnUpdate([&] {
-        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sys::CameraUniformData),
+        m_renderDevice->UpdateBuffer(m_cameraUBO, sizeof(sg::CameraUniformData),
                                      m_camera->GetUniformData());
     });
 
@@ -24,7 +26,7 @@ Application::Application(const platform::WindowConfig& windowConfig, sys::Camera
 
 void Application::LoadResources()
 {
-    m_cameraUBO = m_renderDevice->CreateUniformBuffer(sizeof(sys::CameraUniformData),
+    m_cameraUBO = m_renderDevice->CreateUniformBuffer(sizeof(sg::CameraUniformData),
                                                       m_camera->GetUniformData());
 }
 

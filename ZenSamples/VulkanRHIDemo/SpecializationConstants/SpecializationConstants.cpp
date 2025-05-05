@@ -2,7 +2,7 @@
 #include "AssetLib/FastGLTFLoader.h"
 
 SpecializationConstantsApp::SpecializationConstantsApp(const platform::WindowConfig& windowConfig) :
-    Application(windowConfig, zen::sys::CameraType::eFirstPerson)
+    Application(windowConfig, sg::CameraType::eFirstPerson)
 {
     m_camera->SetPosition({1.0f, 1.0f, -2.0f});
 }

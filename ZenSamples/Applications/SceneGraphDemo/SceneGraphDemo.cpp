@@ -269,7 +269,7 @@ void SceneGraphDemo::LoadScene()
     FillLightUniforms();
 
     // configure camera
-    m_camera = sys::Camera::CreateUniqueOnAABB(m_scene->GetAABB().GetMin(),
+    m_camera = sg::Camera::CreateUniqueOnAABB(m_scene->GetAABB().GetMin(),
                                                m_scene->GetAABB().GetMax(), m_window->GetAspect());
 
     const auto& modelVertices = gltfLoader->GetVertices();

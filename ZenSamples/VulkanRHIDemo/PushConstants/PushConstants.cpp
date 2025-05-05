@@ -4,7 +4,7 @@
 #include "AssetLib/GLTFLoader.h"
 
 PushConstantsApp::PushConstantsApp(const platform::WindowConfig& windowConfig) :
-    Application(windowConfig, zen::sys::CameraType::eOrbit)
+    Application(windowConfig, zen::sg::CameraType::eOrbit)
 {
     m_camera->SetPosition({0.0f, 0.0f, -5.0f});
 }

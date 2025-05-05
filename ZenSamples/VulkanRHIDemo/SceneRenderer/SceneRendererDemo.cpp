@@ -8,7 +8,7 @@
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
-                                     sys::CameraType type)
+                                     sg::CameraType type)
 {
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
@@ -31,7 +31,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     });
 
     m_camera =
-        sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
+        sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
     m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
@@ -114,7 +114,7 @@ int main(int argc, char** argv)
 {
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
 
-    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sys::CameraType::eFirstPerson);
+    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
 
     demo->Prepare();
 

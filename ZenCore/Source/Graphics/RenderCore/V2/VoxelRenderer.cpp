@@ -3,7 +3,7 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "SceneGraph/Scene.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 
 using namespace zen::rhi;
 
@@ -380,7 +380,7 @@ void VoxelRenderer::UpdateUniformData()
 
     {
         const auto* cameraUniformData =
-            reinterpret_cast<const sys::CameraUniformData*>(m_scene->GetCameraUniformData());
+            reinterpret_cast<const sg::CameraUniformData*>(m_scene->GetCameraUniformData());
         VoxelDrawShaderProgram* shaderProgram =
             dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
         uint32_t drawMipLevel = 0;

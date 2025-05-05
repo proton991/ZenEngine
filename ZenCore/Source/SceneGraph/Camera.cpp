@@ -1,10 +1,10 @@
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 #include "Platform/InputController.h"
 #include "Common/Errors.h"
 #include <glm/gtc/matrix_transform.hpp>
 
 using namespace zen::platform;
-namespace zen::sys
+namespace zen::sg
 {
 UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos,
                                              const Vec3& maxPos,
@@ -230,4 +230,4 @@ Mat4 Camera::GetProjectionMatrix() const
 {
     return m_projMatrix;
 }
-} // namespace zen::sys
+} // namespace zen::sg

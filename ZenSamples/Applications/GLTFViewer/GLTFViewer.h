@@ -5,7 +5,7 @@
 #include "Graphics/RenderCore/ShaderManager.h"
 #include "Graphics/RenderCore/RenderBuffers.h"
 #include "Platform/Timer.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 #include "Common/Math.h"
 #include "Graphics/RenderCore/TextureManager.h"
 #include "AssetLib/GLTFLoader.h"
@@ -62,7 +62,7 @@ private:
 
     UniquePtr<IndexBuffer> m_indexBuffer;
 
-    UniquePtr<sys::Camera> m_camera;
+    UniquePtr<sg::Camera> m_camera;
 
     UniquePtr<UniformBuffer> m_cameraUniformBuffer;
     CameraUniformData m_cameraUniformData{};

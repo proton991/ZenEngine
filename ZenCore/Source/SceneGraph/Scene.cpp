@@ -1,7 +1,6 @@
 #include <map>
 #include "SceneGraph/Scene.h"
-#include "Common/Errors.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 
 namespace zen::sg
 {

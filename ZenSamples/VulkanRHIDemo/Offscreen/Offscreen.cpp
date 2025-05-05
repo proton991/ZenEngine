@@ -4,7 +4,7 @@
 #define OFFSCREEN_TEXTURE_DIM 512
 
 OffscreenApp::OffscreenApp(const platform::WindowConfig& windowConfig) :
-    Application(windowConfig, sys::CameraType::eFirstPerson)
+    Application(windowConfig, sg::CameraType::eFirstPerson)
 {
     m_camera->SetPosition({1.0f, 1.0f, -2.0f});
 }

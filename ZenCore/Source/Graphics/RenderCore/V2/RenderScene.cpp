@@ -1,8 +1,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Systems/SceneEditor.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 
 namespace zen::rc
 {
@@ -95,7 +94,7 @@ void RenderScene::Update()
     m_sceneUniformData.viewPos = Vec4(m_camera->GetPos(), 1.0f);
 }
 
-const sys::Camera* RenderScene::GetCamera() const
+const sg::Camera* RenderScene::GetCamera() const
 {
     return m_camera;
 }

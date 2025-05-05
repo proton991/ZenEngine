@@ -5,7 +5,7 @@
 
 #include <functional>
 
-namespace zen::sys
+namespace zen::sg
 {
 namespace directions
 {
@@ -134,4 +134,4 @@ private:
 
     Frustum m_frustum;
 };
-} // namespace zen::sys
+} // namespace zen::sg

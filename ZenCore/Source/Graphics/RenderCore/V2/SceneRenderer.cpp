@@ -6,7 +6,7 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Systems/Camera.h"
+#include "SceneGraph/Camera.h"
 
 using namespace zen::rhi;
 

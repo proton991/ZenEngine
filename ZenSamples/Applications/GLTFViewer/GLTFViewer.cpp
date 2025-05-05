@@ -19,7 +19,7 @@ void GLTFViewer::Prepare(const platform::WindowConfig& windowConfig)
     m_cameraUniformBuffer = UniformBuffer::CreateUnique(*m_device, sizeof(CameraUniformData));
 
 
-    m_camera = sys::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
+    m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, -0.1f}, Vec3{0.0f, 0.0f, 0.0f},
                                          m_window->GetAspect());
     m_timer  = MakeUnique<platform::Timer>();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {

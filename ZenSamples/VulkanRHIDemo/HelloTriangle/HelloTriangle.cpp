@@ -1,7 +1,7 @@
 #include "HelloTriangle.h"
 
 HelloTriangleApp::HelloTriangleApp(const platform::WindowConfig& windowConfig) :
-    Application(windowConfig, sys::CameraType::eOrbit)
+    Application(windowConfig, sg::CameraType::eOrbit)
 {
     m_camera->SetPosition({0.0f, 0.0f, -2.0f});
 }
