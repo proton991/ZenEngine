@@ -330,6 +330,66 @@ void VulkanCommandList::EndRenderPass()
     vkCmdEndRenderPass(m_cmdBuffer->GetVkHandle());
 }
 
+void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
+                                               const Rect2<int>& area,
+                                               VectorView<RenderPassClearValue> clearValues)
+{
+    const std::vector<RenderTarget>& colorRTs = rpLayout.GetColorRenderTargets();
+    VkRenderingInfoKHR renderingInfo{};
+    InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
+    renderingInfo.layerCount               = 1;
+    renderingInfo.viewMask                 = 0;
+    renderingInfo.flags                    = 0;
+    renderingInfo.renderArea.offset.x      = area.minX;
+    renderingInfo.renderArea.offset.y      = area.minY;
+    renderingInfo.renderArea.extent.width  = area.Width();
+    renderingInfo.renderArea.extent.height = area.Height();
+
+    std::vector<VkRenderingAttachmentInfoKHR> colorAttachments;
+    colorAttachments.reserve(colorRTs.size());
+
+    for (uint32_t i = 0; i < colorRTs.size(); i++)
+    {
+        VulkanTexture* vulkanTexture =
+            reinterpret_cast<VulkanTexture*>(rpLayout.GetRenderTargetHandles()[i].value);
+        VkRenderingAttachmentInfoKHR colorAttachment{};
+        InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+        colorAttachment.imageView   = vulkanTexture->imageView;
+        colorAttachment.imageLayout = ToVkImageLayout(TextureUsageToLayout(colorRTs[i].usage));
+        colorAttachment.loadOp      = ToVkAttachmentLoadOp(rpLayout.GetColorRenderTargetLoadOp());
+        colorAttachment.storeOp     = ToVkAttachmentStoreOp(rpLayout.GetColorRenderTargetStoreOp());
+        colorAttachment.clearValue.color = ToVkClearColor(clearValues[i]);
+        colorAttachments.emplace_back(colorAttachment);
+    }
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
+    renderingInfo.pColorAttachments    = colorAttachments.data();
+
+    VkRenderingAttachmentInfoKHR depthStencilAttachment;
+    InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+    if (rpLayout.HasDepthStencilRenderTarget())
+    {
+        VulkanTexture* vulkanTexture =
+            reinterpret_cast<VulkanTexture*>(rpLayout.GetDepthStencilRenderTargetHandle()->value);
+        depthStencilAttachment.imageView = vulkanTexture->imageView;
+        depthStencilAttachment.imageLayout =
+            ToVkImageLayout(TextureUsageToLayout(rpLayout.GetDepthStencilRenderTarget().usage));
+        depthStencilAttachment.loadOp =
+            ToVkAttachmentLoadOp(rpLayout.GetDepthStencilRenderTargetLoadOp());
+        depthStencilAttachment.storeOp =
+            ToVkAttachmentStoreOp(rpLayout.GetDepthStencilRenderTargetStoreOp());
+        depthStencilAttachment.clearValue.depthStencil = ToVkClearDepthStencil(clearValues.back());
+
+        renderingInfo.pDepthAttachment = &depthStencilAttachment;
+    }
+
+    vkCmdBeginRenderingKHR(m_cmdBuffer->GetVkHandle(), &renderingInfo);
+}
+
+void VulkanCommandList::EndRenderPassDynamic()
+{
+    vkCmdEndRenderingKHR(m_cmdBuffer->GetVkHandle());
+}
+
 void VulkanCommandList::Draw(uint32_t vertexCount,
                              uint32_t instanceCount,
                              uint32_t firstVertex,

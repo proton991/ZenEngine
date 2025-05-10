@@ -19,8 +19,14 @@ public:
 
     void LoadDefault()
     {
+        m_VkRHIOptions.useDynamicRendering      = true;
         m_VkRHIOptions.uploadCmdBufferSemaphore = false;
         m_VkRHIOptions.maxDescriptorSetPerPool  = 64;
+    }
+
+    bool UseDynamicRendering() const
+    {
+        return m_VkRHIOptions.useDynamicRendering;
     }
 
     bool VKUploadCmdBufferSemaphore() const
@@ -48,6 +54,7 @@ private:
     struct VulkanRHIOptions
     {
         bool uploadCmdBufferSemaphore;
+        bool useDynamicRendering;
         uint32_t maxDescriptorSetPerPool;
     } m_VkRHIOptions;
 };

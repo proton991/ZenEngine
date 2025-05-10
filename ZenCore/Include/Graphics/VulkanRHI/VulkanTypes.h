@@ -62,6 +62,10 @@ VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode);
 
 VkBorderColor ToVkBorderColor(SamplerBorderColor color);
 
+VkClearColorValue ToVkClearColor(const RenderPassClearValue& clearValue);
+
+VkClearDepthStencilValue ToVkClearDepthStencil(const RenderPassClearValue& clearValue);
+
 void ToVkClearColor(const Color& color, VkClearColorValue* colorValue);
 
 void ToVkImageSubresourceRange(const TextureSubResourceRange& range,

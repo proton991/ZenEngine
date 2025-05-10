@@ -87,5 +87,5 @@ private:
     const std::string m_modelPath = "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf";
     const uint32_t cShadowMapSize{2048};
 
-    const DataFormat cOffscreenDepthFormat{DataFormat::eD16UNORM};
+    const DataFormat cOffscreenDepthFormat{DataFormat::eD32SFloatS8UInt};
 };

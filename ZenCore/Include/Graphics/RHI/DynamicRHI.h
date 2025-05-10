@@ -53,6 +53,11 @@ public:
                                              RenderPassHandle renderPassHandle,
                                              uint32_t subpass) = 0;
 
+    virtual PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+                                             const GfxPipelineStates& states,
+                                             const RenderPassLayout& renderPassLayout,
+                                             uint32_t subpass) = 0;
+
     virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) = 0;

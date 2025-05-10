@@ -1,4 +1,6 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RHI/RHIOptions.h"
+
 #ifdef ZEN_WIN32
 #    include <queue>
 #endif
@@ -41,12 +43,14 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
 {
-    auto* node           = AllocNode<RDGGraphicsPassNode>();
-    node->renderPass     = std::move(gfxPass.renderPass);
-    node->framebuffer    = std::move(gfxPass.framebuffer);
-    node->renderArea     = area;
-    node->type           = RDGNodeType::eGraphicsPass;
-    node->numAttachments = clearValues.size();
+    auto* node             = AllocNode<RDGGraphicsPassNode>();
+    node->renderPass       = std::move(gfxPass.renderPass);
+    node->framebuffer      = std::move(gfxPass.framebuffer);
+    node->renderArea       = area;
+    node->type             = RDGNodeType::eGraphicsPass;
+    node->numAttachments   = clearValues.size();
+    node->renderPassLayout = std::move(gfxPass.renderPassLayout);
+    node->dynamic          = rhi::RHIOptions::GetInstance().UseDynamicRendering();
 
     for (auto i = 0; i < clearValues.size(); i++)
     {
@@ -731,8 +735,20 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         case RDGNodeType::eGraphicsPass:
         {
             RDGGraphicsPassNode* node = reinterpret_cast<RDGGraphicsPassNode*>(base);
-            m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
-                                       VectorView(node->clearValues, node->numAttachments));
+            if (node->dynamic)
+            {
+                m_cmdList->BeginRenderPassDynamic(
+                    node->renderPassLayout, node->renderArea,
+                    VectorView(node->clearValues, node->numAttachments));
+            }
+            else
+            {
+                m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
+                                           VectorView(node->clearValues, node->numAttachments));
+            }
+
+            // m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
+            //                            VectorView(node->clearValues, node->numAttachments));
             for (RDGPassChildNode* child : node->childNodes)
             {
                 switch (child->type)
@@ -835,7 +851,14 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eMax: break;
                 }
             }
-            m_cmdList->EndRenderPass();
+            if (node->dynamic)
+            {
+                m_cmdList->EndRenderPassDynamic();
+            }
+            else
+            {
+                m_cmdList->EndRenderPass();
+            }
         }
         break;
         case RDGNodeType::eNone:

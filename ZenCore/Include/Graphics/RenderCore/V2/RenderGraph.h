@@ -236,6 +236,8 @@ struct RDGGraphicsPassNode : RDGPassNode
     // todo: maxColorAttachments + 1, set based on GPU limits
     uint32_t numAttachments;
     rhi::RenderPassClearValue clearValues[8];
+    rhi::RenderPassLayout renderPassLayout;
+    bool dynamic;
 };
 
 /*****************************/

@@ -239,7 +239,7 @@ void ShadowMappingApp::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenDepthTexture, TextureUsage::eDepthStencilAttachment,
-            TextureSubResourceRange::Depth(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::DepthStencil(), rc::RDGAccessType::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -277,7 +277,7 @@ void ShadowMappingApp::BuildRenderGraph()
 
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneShadow, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, TextureUsage::eSampled,
-                                           TextureSubResourceRange::Depth(),
+                                           TextureSubResourceRange::DepthStencil(),
                                            rc::RDGAccessType::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});

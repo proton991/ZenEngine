@@ -329,6 +329,12 @@ public:
         const rhi::RenderPassHandle& renderPass,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
+    rhi::PipelineHandle GetOrCreateGfxPipeline(
+        rhi::GfxPipelineStates& PSO,
+        const rhi::ShaderHandle& shader,
+        const rhi::RenderPassLayout& renderPassLayout,
+        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
+
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
                                      uint32_t height,
@@ -425,6 +431,12 @@ private:
         const rhi::GfxPipelineStates& pso,
         const rhi::ShaderHandle& shader,
         const rhi::RenderPassHandle& renderPass,
+        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
+
+    static size_t CalcGfxPipelineHash(
+        const rhi::GfxPipelineStates& pso,
+        const rhi::ShaderHandle& shader,
+        const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
     size_t PadUniformBufferSize(size_t originalSize);

@@ -416,6 +416,194 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     return PipelineHandle(pipeline);
 }
 
+PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
+                                            const GfxPipelineStates& states,
+                                            const RenderPassLayout& renderPassLayout,
+                                            uint32_t subpass)
+
+{
+    // Input Assembly
+    VkPipelineInputAssemblyStateCreateInfo IAStateCI;
+    InitVkStruct(IAStateCI, VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO);
+    IAStateCI.topology               = ToVkPrimitiveTopology(states.primitiveType);
+    IAStateCI.primitiveRestartEnable = VK_FALSE;
+
+    // Viewport State
+    VkPipelineViewportStateCreateInfo VPStateCI;
+    InitVkStruct(VPStateCI, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO);
+    VPStateCI.scissorCount  = 1;
+    VPStateCI.viewportCount = 1;
+
+    // Rasterization State
+    const auto& rasterizationState = states.rasterizationState;
+    VkPipelineRasterizationStateCreateInfo rasterizationCI;
+    InitVkStruct(rasterizationCI, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
+    rasterizationCI.cullMode                = ToVkCullModeFlags(rasterizationState.cullMode);
+    rasterizationCI.frontFace               = ToVkFrontFace(rasterizationState.frontFace);
+    rasterizationCI.depthClampEnable        = rasterizationState.enableDepthClamp;
+    rasterizationCI.rasterizerDiscardEnable = rasterizationState.discardPrimitives;
+    rasterizationCI.polygonMode =
+        rasterizationState.wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
+    rasterizationCI.depthBiasEnable         = rasterizationState.enableDepthBias;
+    rasterizationCI.depthBiasClamp          = rasterizationState.depthBiasClamp;
+    rasterizationCI.depthBiasConstantFactor = rasterizationState.depthBiasConstantFactor;
+    rasterizationCI.depthBiasSlopeFactor    = rasterizationState.depthBiasSlopeFactor;
+    rasterizationCI.lineWidth               = rasterizationState.lineWidth;
+
+    // Multisample state
+    const auto& multisampleState = states.multiSampleState;
+    VkPipelineMultisampleStateCreateInfo MSStateCI;
+    InitVkStruct(MSStateCI, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO);
+    MSStateCI.rasterizationSamples  = ToVkSampleCountFlagBits(multisampleState.sampleCount);
+    MSStateCI.sampleShadingEnable   = multisampleState.enableSampleShading;
+    MSStateCI.minSampleShading      = multisampleState.minSampleShading;
+    MSStateCI.alphaToCoverageEnable = multisampleState.enableAlphaToCoverage;
+    MSStateCI.alphaToOneEnable      = multisampleState.enbaleAlphaToOne;
+    MSStateCI.pSampleMask =
+        multisampleState.sampleMasks.empty() ? nullptr : multisampleState.sampleMasks.data();
+
+    // Depth Stencil
+    const auto& depthStencilState = states.depthStencilState;
+    VkPipelineDepthStencilStateCreateInfo DSStateCI;
+    InitVkStruct(DSStateCI, VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO);
+    DSStateCI.depthTestEnable       = depthStencilState.enableDepthTest;
+    DSStateCI.depthWriteEnable      = depthStencilState.enableDepthWrite;
+    DSStateCI.depthCompareOp        = ToVkCompareOp(depthStencilState.depthCompareOp);
+    DSStateCI.depthBoundsTestEnable = depthStencilState.enableDepthBoundsTest;
+    DSStateCI.stencilTestEnable     = depthStencilState.enableStencilTest;
+
+    DSStateCI.front.failOp      = ToVkStencilOp(depthStencilState.frontOp.fail);
+    DSStateCI.front.passOp      = ToVkStencilOp(depthStencilState.frontOp.pass);
+    DSStateCI.front.depthFailOp = ToVkStencilOp(depthStencilState.frontOp.depthFail);
+    DSStateCI.front.compareOp   = ToVkCompareOp(depthStencilState.frontOp.compare);
+    DSStateCI.front.compareMask = depthStencilState.frontOp.compareMask;
+    DSStateCI.front.writeMask   = depthStencilState.frontOp.writeMask;
+    DSStateCI.front.reference   = depthStencilState.frontOp.reference;
+
+    DSStateCI.back.failOp      = ToVkStencilOp(depthStencilState.backOp.fail);
+    DSStateCI.back.passOp      = ToVkStencilOp(depthStencilState.backOp.pass);
+    DSStateCI.back.depthFailOp = ToVkStencilOp(depthStencilState.backOp.depthFail);
+    DSStateCI.back.compareOp   = ToVkCompareOp(depthStencilState.backOp.compare);
+    DSStateCI.back.compareMask = depthStencilState.backOp.compareMask;
+    DSStateCI.back.writeMask   = depthStencilState.backOp.writeMask;
+    DSStateCI.back.reference   = depthStencilState.backOp.reference;
+
+    DSStateCI.minDepthBounds = depthStencilState.minDepthBounds;
+    DSStateCI.maxDepthBounds = depthStencilState.maxDepthBounds;
+
+    // Color Blend State
+    const auto& colorBlendState = states.colorBlendState;
+    std::vector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
+    vkCBAttStates.resize(colorBlendState.attachments.size());
+    for (uint32_t i = 0; i < colorBlendState.attachments.size(); i++)
+    {
+        vkCBAttStates[i].blendEnable = colorBlendState.attachments[i].enableBlend;
+
+        vkCBAttStates[i].srcColorBlendFactor =
+            ToVkBlendFactor(colorBlendState.attachments[i].srcAlphaBlendFactor);
+        vkCBAttStates[i].dstColorBlendFactor =
+            ToVkBlendFactor(colorBlendState.attachments[i].dstColorBlendFactor);
+        vkCBAttStates[i].colorBlendOp = ToVkBlendOp(colorBlendState.attachments[i].colorBlendOp);
+
+        vkCBAttStates[i].srcAlphaBlendFactor =
+            ToVkBlendFactor(colorBlendState.attachments[i].srcAlphaBlendFactor);
+        vkCBAttStates[i].dstAlphaBlendFactor =
+            ToVkBlendFactor(colorBlendState.attachments[i].dstAlphaBlendFactor);
+        vkCBAttStates[i].alphaBlendOp = ToVkBlendOp(colorBlendState.attachments[i].alphaBlendOp);
+
+        if (colorBlendState.attachments[i].writeR)
+        {
+            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
+        }
+        if (colorBlendState.attachments[i].writeG)
+        {
+            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
+        }
+        if (colorBlendState.attachments[i].writeB)
+        {
+            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
+        }
+        if (colorBlendState.attachments[i].writeA)
+        {
+            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
+        }
+    }
+    VkPipelineColorBlendStateCreateInfo CBStateCI;
+    InitVkStruct(CBStateCI, VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO);
+    CBStateCI.logicOpEnable     = colorBlendState.enableLogicOp;
+    CBStateCI.logicOp           = ToVkLogicOp(colorBlendState.logicOp);
+    CBStateCI.attachmentCount   = static_cast<uint32_t>(vkCBAttStates.size());
+    CBStateCI.pAttachments      = vkCBAttStates.empty() ? nullptr : vkCBAttStates.data();
+    CBStateCI.blendConstants[0] = colorBlendState.blendConstants.r;
+    CBStateCI.blendConstants[1] = colorBlendState.blendConstants.g;
+    CBStateCI.blendConstants[2] = colorBlendState.blendConstants.b;
+    CBStateCI.blendConstants[3] = colorBlendState.blendConstants.a;
+
+    // Dynamic States
+    VkPipelineDynamicStateCreateInfo dynamicStateCI;
+    InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
+    std::vector<VkDynamicState> vkDynamicStates(states.dynamicStates.size());
+    for (uint32_t i = 0; i < states.dynamicStates.size(); i++)
+    {
+        vkDynamicStates[i] = ToVkDynamicState(states.dynamicStates[i]);
+    }
+    dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(states.dynamicStates.size());
+    dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
+
+    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+
+    VkGraphicsPipelineCreateInfo pipelineCI;
+    InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
+    pipelineCI.stageCount          = shader->stageCreateInfos.size();
+    pipelineCI.pStages             = shader->stageCreateInfos.data();
+    pipelineCI.pVertexInputState   = &shader->vertexInputInfo.stateCI;
+    pipelineCI.pInputAssemblyState = &IAStateCI;
+    pipelineCI.pViewportState      = &VPStateCI;
+    pipelineCI.pRasterizationState = &rasterizationCI;
+    pipelineCI.pMultisampleState   = &MSStateCI;
+    pipelineCI.pDepthStencilState  = &DSStateCI;
+    pipelineCI.pColorBlendState    = &CBStateCI;
+    pipelineCI.pDynamicState       = &dynamicStateCI;
+    pipelineCI.layout              = shader->pipelineLayout;
+    pipelineCI.renderPass          = VK_NULL_HANDLE;
+    pipelineCI.subpass             = subpass;
+
+    std::vector<VkFormat> colorAttachmentFormats;
+    colorAttachmentFormats.reserve(renderPassLayout.GetNumColorRenderTargets());
+    for (uint32_t i = 0; i < renderPassLayout.GetNumColorRenderTargets(); i++)
+    {
+        VkFormat colorFormat = ToVkFormat(renderPassLayout.GetColorRenderTargets()[i].format);
+        colorAttachmentFormats.emplace_back(colorFormat);
+    }
+    VkPipelineRenderingCreateInfoKHR renderingCI;
+    InitVkStruct(renderingCI, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
+    renderingCI.colorAttachmentCount    = static_cast<uint32_t>(colorAttachmentFormats.size());
+    renderingCI.pColorAttachmentFormats = colorAttachmentFormats.data();
+
+    if (renderPassLayout.HasDepthStencilRenderTarget())
+    {
+        VkFormat depthFormat = ToVkFormat(renderPassLayout.GetDepthStencilRenderTarget().format);
+        renderingCI.depthAttachmentFormat   = depthFormat;
+        renderingCI.stencilAttachmentFormat = depthFormat;
+    }
+    pipelineCI.pNext = &renderingCI;
+
+    VkPipeline gfxPipeline{VK_NULL_HANDLE};
+    VKCHECK(
+        vkCreateGraphicsPipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr, &gfxPipeline));
+
+    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline           = gfxPipeline;
+    pipeline->pipelineLayout     = shader->pipelineLayout;
+    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
+    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
+    //    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
+
+    m_shaderPipelines[shaderHandle] = pipeline;
+
+    return PipelineHandle(pipeline);
+}
+
 void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
     VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);

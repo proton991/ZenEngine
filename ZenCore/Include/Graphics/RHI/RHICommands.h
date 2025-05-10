@@ -77,6 +77,13 @@ public:
 
     virtual void EndRenderPass() = 0;
 
+    virtual void BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
+                                        const Rect2<int>& area,
+                                        VectorView<RenderPassClearValue> clearValues) = 0;
+
+    virtual void EndRenderPassDynamic() = 0;
+
+
     virtual void Draw(uint32_t vertexCount,
                       uint32_t instanceCount,
                       uint32_t firstVertex,

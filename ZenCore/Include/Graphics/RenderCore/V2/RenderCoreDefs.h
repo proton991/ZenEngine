@@ -17,6 +17,7 @@ struct GraphicsPass
     rhi::PipelineHandle pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
     ShaderProgram* shaderProgram;
+    rhi::RenderPassLayout renderPassLayout;
 };
 
 enum class GfxPassShaderMode : uint32_t

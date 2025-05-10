@@ -22,7 +22,8 @@ GraphicsPass GraphicsPassBuilder::Build()
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs;
 
     GraphicsPass gfxPass;
-    gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    gfxPass.renderPass       = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    gfxPass.renderPassLayout = std::move(m_rpLayout);
     gfxPass.framebuffer =
         m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
     ShaderProgram* shaderProgram;
@@ -46,8 +47,17 @@ GraphicsPass GraphicsPassBuilder::Build()
     SRDs   = shaderProgram->GetSRDs();
 
     gfxPass.shaderProgram = shaderProgram;
-    gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
-                                                              specializationConstants);
+    if (RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+            m_PSO, shader, gfxPass.renderPassLayout, specializationConstants);
+    }
+    else
+    {
+        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
+                                                                  specializationConstants);
+    }
+
     gfxPass.descriptorSets.resize(SRDs.size());
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
@@ -545,6 +555,21 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     return m_pipelineCache[hash];
 }
 
+rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
+    rhi::GfxPipelineStates& PSO,
+    const rhi::ShaderHandle& shader,
+    const rhi::RenderPassLayout& renderPassLayout,
+    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+{
+    auto hash = CalcGfxPipelineHash(PSO, shader, renderPassLayout, specializationConstants);
+    if (!m_pipelineCache.contains(hash))
+    {
+        // create new one
+        m_pipelineCache[hash] = m_RHI->CreateGfxPipeline(shader, PSO, renderPassLayout, 0);
+    }
+    return m_pipelineCache[hash];
+}
+
 rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                                uint32_t width,
                                                uint32_t height,
@@ -894,6 +919,38 @@ size_t RenderDevice::CalcGfxPipelineHash(
     };
     combineHash(shader.value);
     combineHash(renderPass.value);
+    combineHash(pso.primitiveType);
+    for (auto& spc : specializationConstants)
+    {
+        switch (spc.type)
+        {
+
+            case rhi::ShaderSpecializationConstantType::eBool: combineHash(spc.boolValue); break;
+            case rhi::ShaderSpecializationConstantType::eInt: combineHash(spc.intValue); break;
+            case rhi::ShaderSpecializationConstantType::eFloat: combineHash(spc.floatValue); break;
+            default: break;
+        }
+    }
+    return seed;
+}
+
+size_t RenderDevice::CalcGfxPipelineHash(
+    const rhi::GfxPipelineStates& pso,
+    const rhi::ShaderHandle& shader,
+    const rhi::RenderPassLayout& renderPassLayout,
+    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+{
+    std::size_t seed = 0;
+    // Hashing utility
+    auto combineHash = [&seed](auto&& value) {
+        seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    };
+    combineHash(shader.value);
+    for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
+    {
+        combineHash(renderPassLayout.GetRenderTargetHandles()[i].value);
+    }
     combineHash(pso.primitiveType);
     for (auto& spc : specializationConstants)
     {

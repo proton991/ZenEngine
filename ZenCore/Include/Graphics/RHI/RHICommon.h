@@ -1080,9 +1080,24 @@ public:
         return m_depthStencilRT;
     }
 
+    const TextureHandle* GetDepthStencilRenderTargetHandle() const
+    {
+        return &m_rtHandles.back();
+    }
+
+    const TextureHandle* GetRenderTargetHandles() const
+    {
+        return m_rtHandles.data();
+    }
+
     TextureHandle* GetRenderTargetHandles()
     {
         return m_rtHandles.data();
+    }
+
+    auto GetNumRenderTargets() const
+    {
+        return static_cast<uint32_t>(m_rtHandles.size());
     }
 
 private:
