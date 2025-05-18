@@ -1,6 +1,7 @@
 #include "SceneGraph/Camera.h"
 #include "Platform/InputController.h"
 #include "Common/Errors.h"
+
 #include <glm/gtc/matrix_transform.hpp>
 
 using namespace zen::platform;
@@ -25,16 +26,34 @@ UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos,
     return MakeUnique<Camera>(eye, center, aspect, fov, near, far, speed, type);
 }
 
+UniquePtr<Camera> Camera::CreateOrthoOnAABB(const sg::AABB& aabb)
+{
+    auto radius = aabb.GetScale() * 0.5f;
+    Vec3 target = aabb.GetCenter();
+    float near  = -radius;
+    float far   = 2.0f * radius;
+    float fov   = 70.0f;
+
+    auto direction = aabb.GetMax() - target;
+    const auto eye = target + direction * radius;
+
+    auto* camera = new Camera(eye, target, 1.0f, fov, near, far, radius, CameraType::eFirstPerson,
+                              CameraProjectionType::eOrthographic);
+    camera->SetOrthoRect(Vec4(-radius, radius, -radius, radius));
+    return UniquePtr<Camera>(camera);
+}
+
 UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye,
                                        const Vec3& target,
                                        float aspect,
-                                       CameraType type)
+                                       CameraType type,
+                                       CameraProjectionType projectionType)
 {
     float fov   = 70.0f;
     float near  = 0.001f;
     float far   = 100.0f;
     float speed = 2.0f;
-    return MakeUnique<Camera>(eye, target, aspect, fov, near, far, speed, type);
+    return MakeUnique<Camera>(eye, target, aspect, fov, near, far, speed, type, projectionType);
 }
 
 Camera::Camera(const Vec3& eye,
@@ -44,8 +63,10 @@ Camera::Camera(const Vec3& eye,
                float near,
                float far,
                float speed,
-               CameraType type) :
+               CameraType type,
+               CameraProjectionType projectionType) :
     m_type{type},
+    m_projectionType(projectionType),
     m_position{eye},
     m_aspect{aspect},
     m_fov{fov},
@@ -62,9 +83,11 @@ Camera::Camera(const Vec3& eye,
     UpdateBaseVectors();
     SetProjectionMatrix();
 
+    m_viewMatrix = glm::lookAt(m_position, m_position + m_front, m_up);
+
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
-    m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
+    m_cameraData.view           = GetViewMatrix();
 
     m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
@@ -72,7 +95,7 @@ Camera::Camera(const Vec3& eye,
 void Camera::SetPosition(const Vec3& position)
 {
     m_position     = position;
-    Vec3 direction = glm::normalize(Vec3{0.0f, 0.0f, 0.0f} - m_position);
+    Vec3 direction = glm::normalize(m_target - m_position);
 
     m_pitch = glm::degrees(asin(direction.y));
     m_yaw   = glm::degrees(atan2(direction.z, direction.x));
@@ -80,9 +103,11 @@ void Camera::SetPosition(const Vec3& position)
     UpdateBaseVectors();
     SetProjectionMatrix();
 
+    m_viewMatrix = glm::lookAt(m_position, m_position + m_front, m_up);
+
     m_cameraData.projViewMatrix = GetProjectionMatrix() * GetViewMatrix();
     m_cameraData.proj           = GetProjectionMatrix();
-    m_cameraData.view           = glm::lookAt(m_position, m_position + m_front, m_up);
+    m_cameraData.view           = GetViewMatrix();
 
     m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
@@ -102,7 +127,15 @@ void Camera::UpdateBaseVectors()
 void Camera::SetProjectionMatrix()
 {
     assert(glm::abs(m_aspect - std::numeric_limits<float>::epsilon()) > 0.f);
-    m_projMatrix = glm::perspective(glm::radians(m_fov), m_aspect, m_near, m_far);
+    if (m_projectionType == CameraProjectionType::ePerspective)
+    {
+        m_projMatrix = glm::perspective(glm::radians(m_fov), m_aspect, m_near, m_far);
+    }
+    else
+    {
+        m_projMatrix =
+            glm::ortho(m_orthoRect.x, m_orthoRect.y, m_orthoRect.z, m_orthoRect.w, m_near, m_far);
+    }
     m_projMatrix[1][1] *= -1;
 }
 
@@ -152,7 +185,8 @@ void Camera::UpdateViewFirstPerson()
     auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
     m_yaw += delta[0] * m_sensitivity;
     m_pitch += delta[1] * m_sensitivity;
-    m_pitch = std::clamp(m_pitch, m_pitchMin, m_pitchMax);
+    m_pitch      = std::clamp(m_pitch, m_pitchMin, m_pitchMax);
+    m_viewMatrix = glm::lookAt(m_position, m_position + m_front, m_up);
 }
 
 void Camera::UpdateViewOrbit(const Vec3& rotation)
@@ -221,9 +255,40 @@ void Camera::SetNearPlane(float near)
     SetProjectionMatrix();
 }
 
+void Camera::SetOrthoRect(const Vec4& rect)
+{
+    if (m_orthoRect != rect)
+    {
+        m_orthoRect = rect;
+        SetProjectionMatrix();
+    }
+}
+
+void Camera::SetupOnAABB(const AABB& aabb)
+{
+    auto sceneMax    = aabb.GetMax();
+    auto sceneCenter = aabb.GetCenter();
+    auto radius      = aabb.GetScale() * 0.5f;
+    if (m_projectionType == CameraProjectionType::eOrthographic)
+    {
+        Vec4 rect = Vec4(-radius, radius, -radius, radius);
+        if (m_orthoRect != rect)
+        {
+            m_orthoRect = rect;
+        }
+        m_near = -2.0f * radius;
+        m_far  = 5.0f * radius;
+    }
+    m_target       = sceneCenter;
+    auto direction = glm::normalize(sceneMax - sceneCenter);
+    const auto eye = sceneCenter + direction * radius * 2.0f;
+
+    SetPosition(eye);
+}
+
 Mat4 Camera::GetViewMatrix() const
 {
-    return glm::lookAt(m_position, m_position + m_front, m_up);
+    return m_viewMatrix;
 }
 
 Mat4 Camera::GetProjectionMatrix() const

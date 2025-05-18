@@ -6,6 +6,7 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
 #include "SceneGraph/Camera.h"
 
 using namespace zen::rhi;
@@ -46,14 +47,19 @@ void SceneRenderer::DrawScene()
         m_rebuildRDG = false;
     }
 
+    ShadowMapRenderer* shadowMapRenderer =
+        m_renderDevice->GetRendererServer()->RequestShadowMapRenderer();
+    shadowMapRenderer->PrepareRenderWorkload();
+
     std::vector<RenderGraph*> RDGs;
     if (m_renderDevice->SupportVoxelizer())
     {
         VoxelRenderer* voxelRenderer = m_renderDevice->GetRendererServer()->RequestVoxelRenderer();
         voxelRenderer->PrepareRenderWorkload();
-        RDGs.push_back(voxelRenderer->GetRenderGraph());  // voxel
-        RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
-        RDGs.push_back(m_rdg.Get());                      // deferred pbr
+        RDGs.push_back(shadowMapRenderer->GetRenderGraph()); // shadowMap
+        RDGs.push_back(voxelRenderer->GetRenderGraph());     // voxel
+        // RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
+        // RDGs.push_back(m_rdg.Get());                      // deferred pbr
     }
     else
     {
@@ -338,6 +344,8 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                      const Rect2<int>& area,
                                      const Rect2<float>& viewport)
 {
+    GBufferShaderProgram* shaderProgram =
+        dynamic_cast<GBufferShaderProgram*>(m_gfxPasses.offscreen.shaderProgram);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                               DataFormat::eR32UInt);
@@ -345,12 +353,12 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     for (auto* node : m_scene->GetRenderableNodes())
     {
-        m_pushConstantsData.nodeIndex = node->GetRenderableIndex();
+        shaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
         for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            m_pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-            m_rdg->AddGraphicsPassSetPushConstants(pass, &m_pushConstantsData,
-                                                   sizeof(PushConstantNode));
+            shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
+            m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                                                   sizeof(GBufferShaderProgram::PushConstantData));
             m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                   subMesh->GetFirstIndex(), 0, 0);
         }

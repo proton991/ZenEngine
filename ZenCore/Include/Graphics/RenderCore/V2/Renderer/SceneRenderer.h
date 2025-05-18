@@ -71,8 +71,6 @@ private:
 
     RenderScene* m_scene{nullptr};
 
-    PushConstantNode m_pushConstantsData{};
-
     struct
     {
         rhi::TextureHandle position;

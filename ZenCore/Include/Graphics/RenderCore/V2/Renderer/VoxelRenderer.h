@@ -22,15 +22,15 @@ public:
     void SetRenderScene(RenderScene* scene)
     {
         m_scene = scene;
-        UpdateGraphicsPassResources();
         UpdateUniformData();
+        UpdateGraphicsPassResources();
     }
 
     void Destroy();
 
     void PrepareRenderWorkload();
 
-    RenderGraph* GetRenderGraph()
+    RenderGraph* GetRenderGraph() const
     {
         return m_rdg.Get();
     };

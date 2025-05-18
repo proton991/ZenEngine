@@ -11,6 +11,7 @@ class RenderDevice;
 class SkyboxRenderer;
 class SceneRenderer;
 class VoxelRenderer;
+class ShadowMapRenderer;
 class RenderScene;
 
 class RendererServer
@@ -39,6 +40,12 @@ public:
         return m_voxelRenderer;
     }
 
+    ShadowMapRenderer* RequestShadowMapRenderer() const
+    {
+        return m_shadowMapRenderer;
+    }
+
+
 private:
     rhi::RHIViewport* m_viewport{nullptr};
     RenderDevice* m_renderDevice{nullptr};
@@ -46,5 +53,6 @@ private:
     SceneRenderer* m_sceneRenderer{nullptr};
     SkyboxRenderer* m_skyboxRenderer{nullptr};
     VoxelRenderer* m_voxelRenderer{nullptr};
+    ShadowMapRenderer* m_shadowMapRenderer{nullptr};
 };
 } // namespace zen::rc

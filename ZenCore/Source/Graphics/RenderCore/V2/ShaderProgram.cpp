@@ -145,6 +145,14 @@ VoxelDrawShaderProgram::VoxelDrawShaderProgram(RenderDevice* renderDevice) :
     Init();
 }
 
+ShadowMapRenderProgram::ShadowMapRenderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "ShadowMapRenderSP")
+{
+    AddShaderStage(rhi::ShaderStage::eVertex, "ShadowMapping/evsm.vert.spv");
+    AddShaderStage(rhi::ShaderStage::eFragment, "ShadowMapping/evsm.frag.spv");
+    Init();
+}
+
 ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* renderDevice,
                                                          const std::string& name)
 {
@@ -168,7 +176,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new DeferredLightShaderProgram(renderDevice);
+        ShaderProgram* shaderProgram             = new DeferredLightingShaderProgram(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
@@ -197,6 +205,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
             ShaderProgram* shaderProgram             = new VoxelDrawShaderProgram(renderDevice);
             m_programCache[shaderProgram->GetName()] = shaderProgram;
         }
+    }
+    {
+        ShaderProgram* shaderProgram             = new ShadowMapRenderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
 }
 } // namespace zen::rc

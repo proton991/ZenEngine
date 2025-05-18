@@ -2,7 +2,7 @@
 #include "Common/Math.h"
 #include "Common/UniquePtr.h"
 #include "Graphics/Types/Frustum.h"
-
+#include "SceneGraph/AABB.h"
 #include <functional>
 
 namespace zen::sg
@@ -30,6 +30,12 @@ enum class CameraType : uint32_t
     eOrbit       = 1
 };
 
+enum class CameraProjectionType : uint32_t
+{
+    ePerspective  = 0,
+    eOrthographic = 1
+};
+// todo: fix bug in orthographic camera
 class Camera
 {
 public:
@@ -37,10 +43,15 @@ public:
                                                 const Vec3& maxPos,
                                                 float aspect,
                                                 CameraType type = CameraType::eFirstPerson);
-    static UniquePtr<Camera> CreateUnique(const Vec3& eye,
-                                          const Vec3& target,
-                                          float aspect,
-                                          CameraType type = CameraType::eFirstPerson);
+
+    static UniquePtr<Camera> CreateOrthoOnAABB(const sg::AABB& aabb);
+
+    static UniquePtr<Camera> CreateUnique(
+        const Vec3& eye,
+        const Vec3& target,
+        float aspect,
+        CameraType type                     = CameraType::eFirstPerson,
+        CameraProjectionType projectionType = CameraProjectionType::ePerspective);
 
     Camera(const Vec3& eye,
            const Vec3& target,
@@ -49,9 +60,16 @@ public:
            float near      = 0.001f,
            float far       = 100.0f,
            float speed     = 2.0f,
-           CameraType type = CameraType::eFirstPerson);
+           CameraType type = CameraType::eFirstPerson,
+           // use perspective projection by default
+           CameraProjectionType projectionType = CameraProjectionType::ePerspective);
 
     void SetPosition(const Vec3& position);
+
+    void SetProjectionType(CameraProjectionType type)
+    {
+        m_projectionType = type;
+    }
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;
@@ -69,6 +87,10 @@ public:
 
     void SetFarPlane(float far);
     void SetNearPlane(float near);
+
+    void SetOrthoRect(const Vec4& rect);
+
+    void SetupOnAABB(const AABB& aabb);
 
     void SetOnUpdate(std::function<void()> updateFunc)
     {
@@ -93,6 +115,7 @@ private:
     void UpdateViewOrbit(const Vec3& rotation);
     // camera attributes
     CameraType m_type;
+    CameraProjectionType m_projectionType{CameraProjectionType::ePerspective};
 
     Vec3 m_rotation{0.0f, 0.0f, 0.0f};
     float m_rotationSpeed{1.0f};
@@ -122,6 +145,8 @@ private:
 
     float m_near{0.001f};
     float m_far{100.0f};
+
+    Vec4 m_orthoRect;
 
     Mat4 m_projMatrix{1.f};
     Mat4 m_viewMatrix{1.f};

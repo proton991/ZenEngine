@@ -30,8 +30,8 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
         m_sceneRenderer->OnResize(width, height);
     });
 
-    m_camera =
-        sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type);
+    m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect,
+                                        type, sg::CameraProjectionType::ePerspective);
     m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
@@ -78,6 +78,7 @@ void SceneRendererDemo::Prepare()
     m_renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), sceneData);
     m_renderScene->Init();
 
+    m_camera->SetupOnAABB(m_scene->GetAABB());
     m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
     //    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
 }

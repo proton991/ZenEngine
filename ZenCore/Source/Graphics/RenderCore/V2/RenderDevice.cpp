@@ -606,6 +606,7 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, ui
 
 rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
 {
+    // todo: calculate SamplerInfo hash and resue samplers
     rhi::SamplerHandle sampler = m_RHI->CreateSampler(samplerInfo);
     m_deletionQueue.Enqueue([=, this]() { m_RHI->DestroySampler(sampler); });
     return sampler;

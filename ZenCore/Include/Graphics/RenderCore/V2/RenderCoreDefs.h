@@ -4,11 +4,6 @@
 namespace zen::rc
 {
 class ShaderProgram;
-struct PushConstantNode
-{
-    uint32_t nodeIndex;
-    uint32_t materialIndex;
-};
 
 struct GraphicsPass
 {

@@ -71,12 +71,18 @@ public:
         AddShaderStage(rhi::ShaderStage::eFragment, "SceneRenderer/offscreen.frag.spv");
         Init();
     }
+
+    struct PushConstantData
+    {
+        uint32_t nodeIndex;
+        uint32_t materialIndex;
+    } pushConstantsData;
 };
 
-class DeferredLightShaderProgram : public ShaderProgram
+class DeferredLightingShaderProgram : public ShaderProgram
 {
 public:
-    explicit DeferredLightShaderProgram(RenderDevice* renderDevice) :
+    explicit DeferredLightingShaderProgram(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "DeferredLightingSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
@@ -181,6 +187,30 @@ public:
         Vec4 frustumPlanes[6];
         Vec4 worldMinPointVoxelSize;
     } voxelInfo;
+};
+
+class ShadowMapRenderProgram : public ShaderProgram
+{
+public:
+    explicit ShadowMapRenderProgram(RenderDevice* renderDevice);
+
+    const uint8_t* GetLightInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&lightInfo);
+    }
+
+    struct PushConstantData
+    {
+        Vec2 exponents;
+        uint32_t nodeIndex;
+        uint32_t materialIndex;
+        float alphaCutoff;
+    } pushConstantsData;
+
+    struct LightInfo
+    {
+        Mat4 lightViewProjection;
+    } lightInfo;
 };
 
 class ShaderProgramManager

@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
 
 namespace zen::rc
 {
@@ -22,6 +23,9 @@ void RendererServer::Init()
         m_voxelRenderer = new VoxelRenderer(m_renderDevice, m_viewport);
         m_voxelRenderer->Init();
     }
+
+    m_shadowMapRenderer = new ShadowMapRenderer(m_renderDevice, m_viewport);
+    m_shadowMapRenderer->Init();
 }
 
 void RendererServer::Destroy()
@@ -41,5 +45,6 @@ void RendererServer::SetRenderScene(RenderScene* scene)
     {
         m_voxelRenderer->SetRenderScene(scene);
     }
+    m_shadowMapRenderer->SetRenderScene(scene);
 }
 } // namespace zen::rc
