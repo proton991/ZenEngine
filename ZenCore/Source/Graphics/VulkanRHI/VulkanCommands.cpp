@@ -11,7 +11,7 @@
 namespace zen::rhi
 {
 VulkanCommandList::VulkanCommandList(VulkanCommandListContext* context) :
-    m_cmdBufferManager(context->GetCmdBufferManager())
+    m_vkRHI(context->GetVkRHI()), m_cmdBufferManager(context->GetCmdBufferManager())
 {}
 
 void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
@@ -121,6 +121,8 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
         imageBarrier.subresourceRange.baseMipLevel =
             textureTransition.subResourceRange.baseMipLevel;
         imageBarriers.emplace_back(imageBarrier);
+
+        m_vkRHI->UpdateImageLayout(vulkanTexture->image, imageBarrier.newLayout);
     }
 
     vkCmdPipelineBarrier(m_cmdBufferManager->GetActiveCommandBufferDirect()->GetVkHandle(),

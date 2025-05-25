@@ -163,6 +163,10 @@ public:
                              TextureLayout oldLayout,
                              TextureLayout newLayout) final;
 
+    void ChangeTextureLayout(RHICommandList* cmdList,
+                             TextureHandle textureHandle,
+                             TextureLayout newLayout) final;
+
     void ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
                            VkImage image,
                            VkImageLayout srcLayout,
@@ -174,6 +178,10 @@ public:
     size_t GetUniformBufferAlignment() final;
 
     size_t GetStorageBufferAlignment() final;
+
+    void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
+
+    VkImageLayout GetImageCurrentLayout(VkImage image);
 
 protected:
     void CreateInstance();
@@ -206,5 +214,9 @@ private:
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
     HashMap<ShaderHandle, VulkanPipeline*> m_shaderPipelines;
+
+    // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
+    // primarily applied outside the RenderGraph.
+    HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
 };
 } // namespace zen::rhi

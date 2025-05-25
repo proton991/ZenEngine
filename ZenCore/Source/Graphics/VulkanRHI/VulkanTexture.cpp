@@ -112,7 +112,8 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
         m_device->SetObjectName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(texture->image),
                                 info.name.c_str());
     }
-
+    // set layout as undefined when first created
+    m_imageLayoutCache[texture->image] = VK_IMAGE_LAYOUT_UNDEFINED;
     return TextureHandle(texture);
 }
 
@@ -127,7 +128,7 @@ TextureHandle VulkanRHI::CreateTextureProxy(const TextureHandle& baseTexture,
     proxyTextureVk->isProxy  = true;
 
     VkImageCreateInfo imageCI = baseTextureVk->imageCI;
-    ;
+
     // overwrite
     imageCI.format      = ToVkFormat(textureProxyInfo.format);
     imageCI.imageType   = ToVkImageType(textureProxyInfo.type);
@@ -209,11 +210,30 @@ void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
     VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
     vkDestroyImageView(m_device->GetVkHandle(), texture->imageView, nullptr);
+    m_imageLayoutCache.erase(texture->image);
     if (texture->isProxy != true)
     {
         m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
     }
     VersatileResource::Free(m_resourceAllocator, texture);
+}
+
+void VulkanRHI::UpdateImageLayout(VkImage image, VkImageLayout newLayout)
+{
+    if (m_imageLayoutCache.contains(image))
+    {
+        m_imageLayoutCache[image] = newLayout;
+    }
+}
+
+VkImageLayout VulkanRHI::GetImageCurrentLayout(VkImage image)
+{
+    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (m_imageLayoutCache.contains(image))
+    {
+        layout = m_imageLayoutCache[image];
+    }
+    return layout;
 }
 
 } // namespace zen::rhi

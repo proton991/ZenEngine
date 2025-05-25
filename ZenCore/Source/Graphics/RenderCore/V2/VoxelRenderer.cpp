@@ -114,7 +114,7 @@ void VoxelRenderer::PrepareTextures()
     {
         const auto texName = "voxel_mipmap_face_" + std::to_string(i);
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat, halfDim, halfDim,
-                          halfDim, TextureManager::CalcMipLevels(halfDim, halfDim, halfDim), 1,
+                          halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
                           SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
         m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);

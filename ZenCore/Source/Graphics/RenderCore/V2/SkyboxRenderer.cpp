@@ -201,7 +201,6 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             format           = cPrefilteredFormat;
             dim              = PREFILTERED_DIM;
         }
-        const uint32_t numMips = static_cast<uint32_t>(floor(log2(dim))) + 1;
 
         TextureInfo textureInfo{};
         textureInfo.format      = format;
@@ -210,9 +209,11 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         textureInfo.type        = TextureType::eCube;
         textureInfo.depth       = 1;
         textureInfo.arrayLayers = 6;
-        textureInfo.mipmaps     = numMips;
+        textureInfo.mipmaps     = CalculateTextureMipLevels(dim);
         textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
         textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+
+        const uint32_t numMips = textureInfo.mipmaps;
 
         SamplerInfo samplerInfo{};
         samplerInfo.minFilter     = SamplerFilter::eLinear;
@@ -312,7 +313,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
             m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(), cubemapTexture,
-                                       TextureLayout::eTransferDst, TextureLayout::eShaderReadOnly);
+                                       TextureLayout::eShaderReadOnly);
 
             if (target == IRRADIANCE)
             {
@@ -414,7 +415,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
     m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(), texture->lutBRDF,
-                               TextureLayout::eColorTarget, TextureLayout::eShaderReadOnly);
+                               TextureLayout::eShaderReadOnly);
 }
 
 void SkyboxRenderer::PrepareRenderWorkload(const rhi::TextureHandle& skyboxTexture,

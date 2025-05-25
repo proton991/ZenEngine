@@ -27,17 +27,6 @@ public:
 
     void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
-    static uint32_t CalcMipLevels(uint32_t width, uint32_t height)
-    {
-        return static_cast<uint32_t>(floor(log2(std::max(width, height))) + 1);
-    }
-
-    static uint32_t CalcMipLevels(uint32_t width, uint32_t height, uint32_t depth)
-    {
-        uint32_t maxDim = std::max(std::max(width, height), depth);
-        return static_cast<uint32_t>(floor(log2(maxDim)) + 1);
-    }
-
 private:
     void UpdateTexture(const rhi::TextureHandle& textureHandle,
                        const Vec3i& textureSize,

@@ -243,7 +243,7 @@ RHICommandListContext* VulkanRHI::CreateCmdListContext()
     return context;
 }
 
-VulkanCommandListContext::VulkanCommandListContext(const VulkanRHI* RHI)
+VulkanCommandListContext::VulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI)
 {
     m_cmdBufferMgr =
         new VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());

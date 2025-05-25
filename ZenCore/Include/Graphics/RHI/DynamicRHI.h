@@ -110,6 +110,10 @@ public:
                                      TextureLayout oldLayout,
                                      TextureLayout newLayout) = 0;
 
+    virtual void ChangeTextureLayout(RHICommandList* cmdList,
+                                     TextureHandle textureHandle,
+                                     TextureLayout newLayout) = 0;
+
     virtual void SubmitAllGPUCommands() = 0;
 
     virtual void WaitDeviceIdle() = 0;

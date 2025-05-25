@@ -12,7 +12,7 @@ class VulkanCommandBufferManager;
 class VulkanCommandListContext : public RHICommandListContext
 {
 public:
-    explicit VulkanCommandListContext(const VulkanRHI* RHI);
+    explicit VulkanCommandListContext(VulkanRHI* RHI);
 
     ~VulkanCommandListContext() override;
 
@@ -21,7 +21,13 @@ public:
         return m_cmdBufferMgr;
     }
 
+    auto* GetVkRHI() const
+    {
+        return m_vkRHI;
+    }
+
 private:
+    VulkanRHI* m_vkRHI{nullptr};
     VulkanCommandBufferManager* m_cmdBufferMgr{nullptr};
 };
 
@@ -126,6 +132,7 @@ public:
     }
 
 private:
+    VulkanRHI* m_vkRHI{nullptr};
     VulkanCommandBufferManager* m_cmdBufferManager{nullptr};
     VulkanCommandBuffer* m_cmdBuffer{nullptr};
 
