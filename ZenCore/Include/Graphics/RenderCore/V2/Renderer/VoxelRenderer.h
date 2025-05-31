@@ -40,6 +40,8 @@ public:
         return m_voxelTextures.albedo;
     }
 
+    void OnResize();
+
 private:
     void PrepareTextures();
 

@@ -350,26 +350,31 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     m_width  = width;
     m_height = height;
     RecreateSwapchain();
-    // create new one
-    std::vector<TextureHandle> renderTargets;
-    renderTargets.push_back(GetColorBackBuffer());
-    renderTargets.push_back(GetDepthStencilBackBuffer());
-    FramebufferInfo fbInfo{};
-    fbInfo.width           = m_width;
-    fbInfo.height          = m_height;
-    fbInfo.numRenderTarget = 2;
-    fbInfo.renderTargets   = renderTargets.data();
-
-    for (auto& kv : m_framebufferCache)
+    if (!RHIOptions::GetInstance().UseDynamicRendering())
     {
-        VulkanFramebuffer* vkFramebuffer = kv.second;
-        VkRenderPass renderPass          = vkFramebuffer->GetVkRenderPass();
-        if (vkFramebuffer->GetWidth() == oldWidth && vkFramebuffer->GetHeight() == oldHeight)
+        // create new one
+        std::vector<TextureHandle> renderTargets;
+        renderTargets.push_back(GetColorBackBuffer());
+        renderTargets.push_back(GetDepthStencilBackBuffer());
+        FramebufferInfo fbInfo{};
+        fbInfo.width           = m_width;
+        fbInfo.height          = m_height;
+        fbInfo.numRenderTarget = 2;
+        fbInfo.renderTargets   = renderTargets.data();
+
+        for (auto& kv : m_framebufferCache)
         {
-            // update old frame buffer
-            vkDestroyFramebuffer(m_device->GetVkHandle(), vkFramebuffer->GetVkHandle(), nullptr);
-            VulkanFramebuffer* newFramebuffer = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
-            m_framebufferCache[RenderPassHandle(renderPass)] = newFramebuffer;
+            VulkanFramebuffer* vkFramebuffer = kv.second;
+            VkRenderPass renderPass          = vkFramebuffer->GetVkRenderPass();
+            if (vkFramebuffer->GetWidth() == oldWidth && vkFramebuffer->GetHeight() == oldHeight)
+            {
+                // update old frame buffer
+                vkDestroyFramebuffer(m_device->GetVkHandle(), vkFramebuffer->GetVkHandle(),
+                                     nullptr);
+                VulkanFramebuffer* newFramebuffer =
+                    new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+                m_framebufferCache[RenderPassHandle(renderPass)] = newFramebuffer;
+            }
         }
     }
 }

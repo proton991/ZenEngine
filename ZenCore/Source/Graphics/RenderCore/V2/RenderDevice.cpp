@@ -22,10 +22,16 @@ GraphicsPass GraphicsPassBuilder::Build()
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs;
 
     GraphicsPass gfxPass;
-    gfxPass.renderPass       = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    if (!RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+        gfxPass.framebuffer =
+            m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
+        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
+                                                              m_tag + "_RenderPass");
+    }
     gfxPass.renderPassLayout = std::move(m_rpLayout);
-    gfxPass.framebuffer =
-        m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
+
     ShaderProgram* shaderProgram;
     if (m_shaderMode == GfxPassShaderMode::ePreCompiled)
     {
@@ -74,8 +80,7 @@ GraphicsPass GraphicsPassBuilder::Build()
     }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
-    m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
-                                                          m_tag + "_RenderPass");
+
     m_renderDevice->m_gfxPasses.push_back(gfxPass);
     return gfxPass;
 }
@@ -604,6 +609,23 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, ui
     }
 }
 
+void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport)
+{
+    if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        gfxPass.renderPassLayout.ClearRenderTargetInfo();
+        gfxPass.renderPassLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(),
+                                                      rhi::TextureUsage::eColorAttachment,
+                                                      viewport->GetColorBackBuffer());
+        gfxPass.renderPassLayout.SetDepthStencilRenderTarget(viewport->GetDepthStencilFormat(),
+                                                             viewport->GetDepthStencilBackBuffer());
+    }
+    else
+    {
+        gfxPass.framebuffer = viewport->GetCompatibleFramebufferForBackBuffer(gfxPass.renderPass);
+    }
+}
+
 rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
 {
     // todo: calculate SamplerInfo hash and resue samplers
@@ -828,6 +850,15 @@ void RenderDevice::NextFrame()
 {
     m_currentFrame = (m_currentFrame + 1) % m_frames.size();
     BeginFrame();
+}
+
+bool RenderDevice::SupportVoxelizer() const
+{
+#if defined(ZEN_WIN32)
+    return true;
+#else
+    return false;
+#endif
 }
 
 void RenderDevice::BeginFrame()

@@ -342,6 +342,8 @@ public:
 
     void ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height);
 
+    void UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport);
+
     rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
     void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
@@ -394,14 +396,7 @@ public:
     }
 
     // todo: refactor later
-    bool SupportVoxelizer() const
-    {
-#if defined(ZEN_WIN32)
-        return true;
-#else
-        return false;
-#endif
-    }
+    bool SupportVoxelizer() const;
 
 private:
     void BeginFrame();

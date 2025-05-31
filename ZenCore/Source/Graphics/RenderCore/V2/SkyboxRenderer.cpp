@@ -449,8 +449,7 @@ void SkyboxRenderer::PrepareRenderWorkload(const rhi::TextureHandle& skyboxTextu
 void SkyboxRenderer::OnResize()
 {
     m_rebuildRDG = true;
-    // update graphics pass framebuffer
-    m_gfxPasses.skybox.framebuffer =
-        m_viewport->GetCompatibleFramebufferForBackBuffer(m_gfxPasses.skybox.renderPass);
+    // update graphics pass
+    m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.skybox, m_viewport);
 }
 } // namespace zen::rc

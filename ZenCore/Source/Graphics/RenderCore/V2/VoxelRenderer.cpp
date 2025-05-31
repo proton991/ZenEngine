@@ -419,6 +419,13 @@ void VoxelRenderer::PrepareRenderWorkload()
     voxelDrawSP->UpdateUniformBuffer("uVoxelInfo", voxelDrawSP->GetVoxelInfoData(), 0);
 }
 
+
+void VoxelRenderer::OnResize()
+{
+    m_rebuildRDG = true;
+    m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.voxelDraw, m_viewport);
+}
+
 void VoxelRenderer::VoxelizeStaticScene() {}
 
 void VoxelRenderer::VoxelizeDynamicScene() {}

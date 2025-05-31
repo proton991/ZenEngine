@@ -1100,6 +1100,14 @@ public:
         return static_cast<uint32_t>(m_rtHandles.size());
     }
 
+    void ClearRenderTargetInfo()
+    {
+        m_rtHandles.clear();
+        m_colorRTs.clear();
+        m_hasDepthStencilRT = false;
+        m_numColorRT        = 0;
+    }
+
 private:
     uint32_t m_numColorRT{0};
     std::vector<RenderTarget> m_colorRTs;
