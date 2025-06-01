@@ -436,6 +436,8 @@ private:
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
+    static size_t CalcSamplerHash(const rhi::SamplerInfo& info);
+
     size_t PadUniformBufferSize(size_t originalSize);
 
     size_t PadStorageBufferSize(size_t originalSize);
@@ -460,6 +462,7 @@ private:
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
+    HashMap<size_t, rhi::SamplerHandle> m_samplerCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;
     std::vector<rhi::RHIViewport*> m_viewports;

@@ -6,10 +6,38 @@
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
-#include <execution>
+#include "Common/Helpers.h"
+
 
 namespace zen::rc
 {
+static void CopyRegion(uint8_t const* pSrc,
+                       uint8_t* pDst,
+                       uint32_t srcX,
+                       uint32_t srcY,
+                       uint32_t srcW,
+                       uint32_t srcH,
+                       uint32_t srcFullW,
+                       uint32_t dstStride,
+                       uint32_t unitSize)
+{
+    uint32_t srcOffset = (srcY * srcFullW + srcX) * unitSize;
+    uint32_t dstOffset = 0;
+    for (uint32_t y = srcH; y > 0; y--)
+    {
+        uint8_t const* src = pSrc + srcOffset;
+        uint8_t* dst       = pDst + dstOffset;
+        for (uint32_t x = srcW * unitSize; x > 0; x--)
+        {
+            *dst = *src;
+            src++;
+            dst++;
+        }
+        srcOffset += srcFullW * unitSize;
+        dstOffset += dstStride;
+    }
+}
+
 GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
@@ -370,6 +398,10 @@ void RenderDevice::Destroy()
     {
         m_RHI->DestroyPipeline(kv.second);
     }
+    for (auto& kv : m_samplerCache)
+    {
+        m_RHI->DestroySampler(kv.second);
+    }
 
     for (auto& rp : m_gfxPasses)
     {
@@ -628,42 +660,18 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIVie
 
 rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
 {
-    // todo: calculate SamplerInfo hash and resue samplers
-    rhi::SamplerHandle sampler = m_RHI->CreateSampler(samplerInfo);
-    m_deletionQueue.Enqueue([=, this]() { m_RHI->DestroySampler(sampler); });
-    return sampler;
+    const size_t samplerHash = CalcSamplerHash(samplerInfo);
+    if (!m_samplerCache.contains(samplerHash))
+    {
+        m_samplerCache[samplerHash] = m_RHI->CreateSampler(samplerInfo);
+    }
+
+    return m_samplerCache[samplerHash];
 }
 
 rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::TextureHandle handle)
 {
     return m_RHI->GetTextureSubResourceRange(handle);
-}
-
-static void CopyRegion(uint8_t const* pSrc,
-                       uint8_t* pDst,
-                       uint32_t srcX,
-                       uint32_t srcY,
-                       uint32_t srcW,
-                       uint32_t srcH,
-                       uint32_t srcFullW,
-                       uint32_t dstStride,
-                       uint32_t unitSize)
-{
-    uint32_t srcOffset = (srcY * srcFullW + srcX) * unitSize;
-    uint32_t dstOffset = 0;
-    for (uint32_t y = srcH; y > 0; y--)
-    {
-        uint8_t const* src = pSrc + srcOffset;
-        uint8_t* dst       = pDst + dstOffset;
-        for (uint32_t x = srcW * unitSize; x > 0; x--)
-        {
-            *dst = *src;
-            src++;
-            dst++;
-        }
-        srcOffset += srcFullW * unitSize;
-        dstOffset += dstStride;
-    }
 }
 
 rhi::TextureHandle RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
@@ -1001,6 +1009,35 @@ size_t RenderDevice::CalcGfxPipelineHash(
             default: break;
         }
     }
+    return seed;
+}
+
+size_t RenderDevice::CalcSamplerHash(const rhi::SamplerInfo& info)
+{
+    using namespace zen::util;
+
+    std::size_t seed = 0;
+
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.magFilter)));
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.minFilter)));
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.mipFilter)));
+
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.repeatU)));
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.repeatV)));
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.repeatW)));
+
+    HashCombine(seed, std::hash<float>()(info.lodBias));
+    HashCombine(seed, std::hash<bool>()(info.useAnisotropy));
+    HashCombine(seed, std::hash<float>()(info.maxAnisotropy));
+    HashCombine(seed, std::hash<bool>()(info.enableCompare));
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.compareOp)));
+
+    HashCombine(seed, std::hash<float>()(info.minLod));
+    HashCombine(seed, std::hash<float>()(info.maxLod));
+
+    HashCombine(seed, std::hash<int>()(static_cast<int>(info.borderColor)));
+    HashCombine(seed, std::hash<bool>()(info.unnormalizedUVW));
+
     return seed;
 }
 } // namespace zen::rc
