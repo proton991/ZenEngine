@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 namespace zen::rhi
 {
@@ -24,6 +25,8 @@ public:
     void Destroy();
 
     void SetRenderScene(RenderScene* scene);
+
+    void ViewpportReiszeCallback();
 
     SceneRenderer* RequestSceneRenderer() const
     {

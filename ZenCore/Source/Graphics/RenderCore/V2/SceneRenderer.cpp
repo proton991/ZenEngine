@@ -70,17 +70,10 @@ void SceneRenderer::DrawScene()
     m_renderDevice->ExecuteFrame(m_viewport, RDGs);
 }
 
-void SceneRenderer::OnResize(uint32_t width, uint32_t height)
+void SceneRenderer::OnResize()
 {
     m_rebuildRDG = true;
-    m_renderDevice->ResizeViewport(m_viewport, width, height);
-    // update graphics pass
     m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.sceneLighting, m_viewport);
-    m_renderDevice->GetRendererServer()->RequestSkyboxRenderer()->OnResize();
-    if (m_renderDevice->SupportVoxelizer())
-    {
-        m_renderDevice->GetRendererServer()->RequestVoxelRenderer()->OnResize();
-    }
 }
 
 void SceneRenderer::PrepareTextures()

@@ -384,6 +384,8 @@ public:
         return m_rendererServer;
     }
 
+    void ProcessViewportResize(uint32_t width, uint32_t height);
+
     void WaitForPreviousFrames();
 
     void WaitForAllFrames();

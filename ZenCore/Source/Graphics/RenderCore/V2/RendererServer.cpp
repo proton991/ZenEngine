@@ -47,4 +47,14 @@ void RendererServer::SetRenderScene(RenderScene* scene)
     }
     m_shadowMapRenderer->SetRenderScene(scene);
 }
+
+void RendererServer::ViewpportReiszeCallback()
+{
+    m_sceneRenderer->OnResize();
+    m_skyboxRenderer->OnResize();
+    if (m_voxelRenderer != nullptr)
+    {
+        m_voxelRenderer->OnResize();
+    }
+}
 } // namespace zen::rc

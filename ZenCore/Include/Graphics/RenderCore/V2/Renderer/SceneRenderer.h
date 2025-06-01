@@ -41,7 +41,7 @@ public:
 
     void DrawScene();
 
-    void OnResize(uint32_t width, uint32_t height);
+    void OnResize();
 
 private:
     void PrepareTextures();

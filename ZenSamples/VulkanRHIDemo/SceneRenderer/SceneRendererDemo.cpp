@@ -27,7 +27,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
         m_camera->UpdateAspect(m_window->GetAspect());
-        m_sceneRenderer->OnResize(width, height);
+        m_renderDevice->ProcessViewportResize(width, height);
     });
 
     m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect,
