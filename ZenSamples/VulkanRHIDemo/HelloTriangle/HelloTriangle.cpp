@@ -71,7 +71,7 @@ void HelloTriangleApp::LoadResources()
     // load texture
     SamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
-    m_texture = m_renderDevice->LoadTexture2D("wood.png");
+    m_texture = m_renderDevice->LoadTexture2D("wood.png", true);
 }
 
 void HelloTriangleApp::BuildRenderGraph()
@@ -96,7 +96,9 @@ void HelloTriangleApp::BuildRenderGraph()
     clearValues[1].stencil = 1.0f;
 
     auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
-
+    // m_rdg->DeclareTextureAccessForPass(mainPass, m_texture, TextureUsage::eSampled,
+    //                                    m_renderDevice->GetTextureSubResourceRange(m_texture),
+    //                                    rc::RDGAccessType::eRead);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);

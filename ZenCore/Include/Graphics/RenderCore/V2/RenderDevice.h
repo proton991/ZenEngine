@@ -306,6 +306,9 @@ public:
     rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
                                           const rhi::TextureProxyInfo& proxyInfo);
 
+    void GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
+                                rhi::RHICommandList* cmdList);
+
     rhi::BufferHandle CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
     rhi::BufferHandle CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);

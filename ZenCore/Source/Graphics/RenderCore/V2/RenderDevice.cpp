@@ -479,6 +479,13 @@ rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& ba
     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
 }
 
+void RenderDevice::GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
+                                          rhi::RHICommandList* cmdList)
+{
+    // todo: refactor choose proper cmd list for texture operations, update / blit...
+    m_RHI->GenerateTextureMipmaps(textureHandle, cmdList);
+}
+
 rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;

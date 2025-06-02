@@ -52,7 +52,10 @@ rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool r
     textureInfo.type        = rhi::TextureType::e2D;
     textureInfo.depth       = 1;
     textureInfo.arrayLayers = 1;
-    textureInfo.mipmaps     = 1;
+    textureInfo.mipmaps     = requireMipmap ?
+            rhi::CalculateTextureMipLevels(rawTextureInfo.width, rawTextureInfo.height) :
+            1;
+    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferSrc);
     textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
     textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
 
@@ -60,7 +63,9 @@ rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool r
 
     if (requireMipmap)
     {
-        // TODO: generate mipmaps
+        UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
+                      rawTextureInfo.data.size(), rawTextureInfo.data.data());
+        m_renderDevice->GenerateTextureMipmaps(texture, m_renderDevice->GetCurrentUploadCmdList());
     }
     else
     {

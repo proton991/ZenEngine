@@ -16,6 +16,8 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
+#define AS_VK_TEX(handle) reinterpret_cast<VulkanTexture*>((handle).value)
+
 namespace zen::rhi
 {
 class VulkanDevice;
@@ -130,6 +132,8 @@ public:
 
     TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
                                      const TextureProxyInfo& textureProxyInfo) final;
+
+    void GenerateTextureMipmaps(TextureHandle textureHandle, RHICommandList* cmdList) final;
 
     void DestroyTexture(TextureHandle textureHandle) final;
 

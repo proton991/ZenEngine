@@ -937,6 +937,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                             rhi::TextureTransition textureTransition;
                             textureTransition.textureHandle =
                                 rhi::TextureHandle(resource->physicalHandle.value);
+                            // todo: potential bugs, should be unified with RHI's layout cache?
                             textureTransition.oldUsage = rhi::TextureUsage::eNone;
                             textureTransition.newUsage =
                                 static_cast<rhi::TextureUsage>(access.textureUsage);
