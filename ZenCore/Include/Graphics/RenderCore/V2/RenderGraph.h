@@ -575,4 +575,41 @@ private:
     HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
     HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
 };
+
+class RDGResourceUsageTracker
+{
+public:
+    static RDGResourceUsageTracker& GetInstance()
+    {
+        static RDGResourceUsageTracker tracker;
+        return tracker;
+    }
+
+    void TrackTextureUsage(const rhi::Handle& textureHandle, rhi::TextureUsage usage)
+    {
+        m_textureUsageCache[textureHandle] = usage;
+    }
+
+    void TrackBufferUsage(const rhi::Handle& bufferHandle, rhi::BufferUsage usage)
+    {
+        m_bufferUsageCache[bufferHandle] = usage;
+    }
+
+    rhi::TextureUsage GetTextureUsage(const rhi::Handle& textureHandle) const
+    {
+        auto it = m_textureUsageCache.find(textureHandle);
+        return it == m_textureUsageCache.end() ? rhi::TextureUsage::eNone : it->second;
+    }
+
+    rhi::BufferUsage GetBufferUsage(const rhi::Handle& bufferHandle) const
+    {
+        auto it = m_bufferUsageCache.find(bufferHandle);
+        return it == m_bufferUsageCache.end() ? rhi::BufferUsage::eNone : it->second;
+    }
+
+private:
+    RDGResourceUsageTracker() = default;
+    HashMap<rhi::Handle, rhi::TextureUsage> m_textureUsageCache;
+    HashMap<rhi::Handle, rhi::BufferUsage> m_bufferUsageCache;
+};
 } // namespace zen::rc

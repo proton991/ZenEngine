@@ -89,9 +89,10 @@ void SceneRenderer::PrepareTextures()
         texInfo.mipmaps     = 1;
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
+        texInfo.name        = "offscreen_position";
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo, "offscreen_position");
+        m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // (World space) Normals
     {
@@ -104,9 +105,10 @@ void SceneRenderer::PrepareTextures()
         texInfo.mipmaps     = 1;
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
+        texInfo.name        = "offscreen_normal";
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo, "offscreen_normal");
+        m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // color
     {
@@ -121,11 +123,17 @@ void SceneRenderer::PrepareTextures()
         texInfo.samples     = SampleCount::e1;
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, "offscreen_albedo");
+
+        texInfo.name               = "offscreen_albedo";
+        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+
+        texInfo.name = "offscreen_roughness";
         m_offscreenTextures.metallicRoughness =
-            m_renderDevice->CreateTexture(texInfo, "offscreen_roughness");
+            m_renderDevice->CreateTexture(texInfo, texInfo.name);
+
+        texInfo.name = "offscreen_emissive_occlusion";
         m_offscreenTextures.emissiveOcclusion =
-            m_renderDevice->CreateTexture(texInfo, "offscreen_emissive_occlusion");
+            m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // depth
     {
@@ -139,9 +147,10 @@ void SceneRenderer::PrepareTextures()
         texInfo.depth       = 1;
         texInfo.arrayLayers = 1;
         texInfo.mipmaps     = 1;
+        texInfo.name        = "offscreen_depth";
         texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eDepthStencilAttachment);
         texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo, "offscreen_depth");
+        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // offscreen color texture sampler
     {

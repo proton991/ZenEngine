@@ -542,10 +542,16 @@ void RenderGraph::SortNodes()
                         {
                             newUsage                 = ToUnderlying(access.textureUsage);
                             texutureSubResourceRange = access.textureSubResourceRange;
+
+                            // RDGResourceUsageTracker::GetInstance().TrackTextureUsage(
+                            //     resource->physicalHandle, access.textureUsage);
                         }
                         else
                         {
                             newUsage = ToUnderlying(access.bufferUsage);
+
+                            // RDGResourceUsageTracker::GetInstance().TrackBufferUsage(
+                            //     resource->physicalHandle, access.bufferUsage);
                         }
                     }
                 }
@@ -954,6 +960,11 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
     }
     if (!textureTransitions.empty())
     {
+        for (auto& transition : textureTransitions)
+        {
+            srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
+            dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
+        }
         m_cmdList->AddPipelineBarrier(srcStages, dstStages, {}, {}, textureTransitions);
     }
 }
