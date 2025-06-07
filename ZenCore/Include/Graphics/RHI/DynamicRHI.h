@@ -78,8 +78,6 @@ public:
     virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
                                              const TextureProxyInfo& textureProxyInfo) = 0;
 
-    virtual void GenerateTextureMipmaps(TextureHandle textureHandle, RHICommandList* cmdList) = 0;
-
     virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 
     virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
@@ -106,15 +104,6 @@ public:
     virtual void UpdateDescriptorSet(
         DescriptorSetHandle descriptorSetHandle,
         const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
-
-    virtual void ChangeTextureLayout(RHICommandList* cmdList,
-                                     TextureHandle textureHandle,
-                                     TextureLayout oldLayout,
-                                     TextureLayout newLayout) = 0;
-
-    virtual void ChangeTextureLayout(RHICommandList* cmdList,
-                                     TextureHandle textureHandle,
-                                     TextureLayout newLayout) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 

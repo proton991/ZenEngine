@@ -1,4 +1,5 @@
 #pragma once
+#include "VulkanHeaders.h"
 #include "Common/SmallVector.h"
 #include "Graphics/RHI/RHICommands.h"
 
@@ -126,10 +127,22 @@ public:
     void SetBlendConstants(const Color& color) final;
 
     // used by VulkanRHI backends
-    VulkanCommandBufferManager& GetCmdBufferManager() const
+    VulkanCommandBufferManager* GetCmdBufferManager() const
     {
-        return *m_cmdBufferManager;
+        return m_cmdBufferManager;
     }
+
+    void ChangeTextureLayout(TextureHandle textureHandle,
+                             TextureLayout oldLayout,
+                             TextureLayout newLayout) final;
+
+    void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) final;
+    void GenerateTextureMipmaps(TextureHandle textureHandle) final;
+
+    void ChangeImageLayout(VkImage image,
+                           VkImageLayout srcLayout,
+                           VkImageLayout dstLayout,
+                           const VkImageSubresourceRange& range);
 
 private:
     VulkanRHI* m_vkRHI{nullptr};

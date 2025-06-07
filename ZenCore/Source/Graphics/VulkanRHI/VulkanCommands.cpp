@@ -5,6 +5,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/VulkanRenderPass.h"
+#include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
@@ -465,5 +466,106 @@ void VulkanCommandList::SetBlendConstants(const Color& color)
 {
     float constants[4] = {color.r, color.g, color.b, color.a};
     vkCmdSetBlendConstants(m_cmdBuffer->GetVkHandle(), constants);
+}
+
+void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
+{
+    VulkanTexture* texture = AS_VK_TEX(textureHandle);
+    VkImage vkImage        = texture->image;
+    // Get texture attributes
+    const uint32_t mipLevels = texture->imageCI.mipLevels;
+    const uint32_t texWidth  = texture->imageCI.extent.width;
+    const uint32_t texHeight = texture->imageCI.extent.height;
+
+    // store image's original layout
+    VkImageLayout originLayout = m_vkRHI->GetImageCurrentLayout(vkImage);
+    // Transition first mip level to transfer source for read during blit
+    ChangeImageLayout(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                      VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0,
+                                                         texture->imageCI.arrayLayers));
+    // Copy down mips from n-1 to n
+    for (uint32_t i = 1; i < mipLevels; i++)
+    {
+        VkImageBlit imageBlit{};
+
+        // Source
+        imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.srcSubresource.layerCount = 1;
+        imageBlit.srcSubresource.mipLevel   = i - 1;
+        imageBlit.srcOffsets[1].x           = static_cast<int32_t>(texWidth >> (i - 1));
+        imageBlit.srcOffsets[1].y           = static_cast<int32_t>(texHeight >> (i - 1));
+        imageBlit.srcOffsets[1].z           = 1;
+
+        // Destination
+        imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.dstSubresource.layerCount = 1;
+        imageBlit.dstSubresource.mipLevel   = i;
+        imageBlit.dstOffsets[1].x           = static_cast<int32_t>(texWidth >> i);
+        imageBlit.dstOffsets[1].y           = static_cast<int32_t>(texHeight >> i);
+        imageBlit.dstOffsets[1].z           = 1;
+
+        VkImageSubresourceRange mipSubRange = {};
+        mipSubRange.aspectMask              = VK_IMAGE_ASPECT_COLOR_BIT;
+        mipSubRange.baseMipLevel            = i;
+        mipSubRange.levelCount              = 1;
+        mipSubRange.layerCount              = 1;
+
+        // Prepare current mip level as image blit destination
+        ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage),
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
+
+        // Blit from previous level
+        vkCmdBlitImage(m_cmdBuffer->GetVkHandle(), vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit,
+                       VK_FILTER_LINEAR);
+
+        // Prepare the current mip level as image blit source for the next level
+        ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage),
+                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+    }
+    // After the loop, all mip layers are in TRANSFER_SRC layout,
+    // need to restore its layout.
+    ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage), originLayout,
+                      VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0,
+                                                         texture->imageCI.arrayLayers));
+}
+
+void VulkanCommandList::ChangeTextureLayout(rhi::TextureHandle textureHandle,
+                                            rhi::TextureLayout oldLayout,
+                                            rhi::TextureLayout newLayout)
+{
+    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
+    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
+
+    VkImageLayout srcLayout = ToVkImageLayout(oldLayout);
+    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
+    const VkImageSubresourceRange range =
+        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
+    ChangeImageLayout(vkTexture->image, srcLayout, dstLayout, range);
+}
+
+void VulkanCommandList::ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout)
+{
+    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
+    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
+
+    VkImageLayout srcLayout = m_vkRHI->GetImageCurrentLayout(vkTexture->image);
+    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
+    const VkImageSubresourceRange range =
+        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
+    ChangeImageLayout(vkTexture->image, srcLayout, dstLayout, range);
+}
+
+void VulkanCommandList::ChangeImageLayout(VkImage image,
+                                          VkImageLayout srcLayout,
+                                          VkImageLayout dstLayout,
+                                          const VkImageSubresourceRange& range)
+{
+    VulkanPipelineBarrier barrier;
+    barrier.AddImageLayoutTransition(image, srcLayout, dstLayout, range);
+    barrier.Execute(m_cmdBuffer);
+    m_vkRHI->UpdateImageLayout(image, dstLayout);
 }
 } // namespace zen::rhi

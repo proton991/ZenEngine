@@ -151,18 +151,19 @@ enum class RDGPassCmdType : uint32_t
 
 enum class RDGNodeType : uint32_t
 {
-    eNone           = 0,
-    eClearBuffer    = 1,
-    eCopyBuffer     = 2,
-    eUpdateBuffer   = 3,
-    eClearTexture   = 4,
-    eCopyTexture    = 5,
-    eReadTexture    = 6,
-    eUpdateTexture  = 7,
-    eResolveTexture = 8,
-    eGraphicsPass   = 9,
-    eComputePass    = 10,
-    eMax            = 11
+    eNone             = 0,
+    eClearBuffer      = 1,
+    eCopyBuffer       = 2,
+    eUpdateBuffer     = 3,
+    eClearTexture     = 4,
+    eCopyTexture      = 5,
+    eReadTexture      = 6,
+    eUpdateTexture    = 7,
+    eResolveTexture   = 8,
+    eGenTextureMipmap = 9,
+    eGraphicsPass     = 10,
+    eComputePass      = 11,
+    eMax              = 12
 };
 
 enum class RDGResourceType : uint32_t
@@ -299,6 +300,11 @@ struct RDGTextureResolveNode : RDGNodeBase
     uint32_t srcMipmap{0};
     uint32_t dstLayer{0};
     uint32_t dstMipmap{0};
+};
+
+struct RDGTextureMipmapGenNode : RDGNodeBase
+{
+    rhi::TextureHandle texture;
 };
 
 struct RDGBindIndexBufferNode : RDGPassChildNode
@@ -463,6 +469,8 @@ public:
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
+
+    void AddTextureMipmapGenNode(rhi::TextureHandle textureHandle);
 
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                      rhi::TextureHandle textureHandle,

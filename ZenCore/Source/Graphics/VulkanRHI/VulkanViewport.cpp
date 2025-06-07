@@ -108,20 +108,22 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_renderingCompleteSemaphores.resize(images.size());
     m_backBufferImages.resize(images.size());
 
-    VulkanCommandBuffer* cmdBuffer =
-        m_device->GetImmediateCmdContext()->GetCmdBufferManager()->GetUploadCommandBuffer();
+    VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
+    cmdList->BeginUpload();
+    VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
+
     const VkImageSubresourceRange range =
         VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
     VkClearColorValue clearColor{0.1f, 0.1f, 0.1f, 1.0f};
     for (uint32_t i = 0; i < images.size(); i++)
     {
         m_backBufferImages[i] = images[i];
-        m_RHI->ChangeImageLayout(cmdBuffer, images[i], VK_IMAGE_LAYOUT_UNDEFINED,
-                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
+        cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_UNDEFINED,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
         vkCmdClearColorImage(cmdBuffer->GetVkHandle(), images[i],
                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &range);
-        m_RHI->ChangeImageLayout(cmdBuffer, images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+        cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
     }
     TextureInfo colorTexInfo{};
     colorTexInfo.width  = m_width;
@@ -157,7 +159,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
                 VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1));
         barrier.Execute(cmdBuffer);
     }
-    m_device->GetImmediateCmdContext()->GetCmdBufferManager()->SubmitUploadCmdBuffer();
+    cmdList->EndUpload();
 
     m_acquiredImageIndex = -1;
 }

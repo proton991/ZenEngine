@@ -8,51 +8,6 @@
 
 namespace zen::rhi
 {
-void VulkanRHI::ChangeTextureLayout(RHICommandList* cmdList,
-                                    rhi::TextureHandle textureHandle,
-                                    rhi::TextureLayout oldLayout,
-                                    rhi::TextureLayout newLayout)
-{
-    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
-    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
-    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
-
-    VkImageLayout srcLayout = ToVkImageLayout(oldLayout);
-    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
-    const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
-    VulkanCommandBuffer* cmdBuffer = reinterpret_cast<VulkanCommandList*>(cmdList)->m_cmdBuffer;
-    ChangeImageLayout(cmdBuffer, vkTexture->image, srcLayout, dstLayout, range);
-}
-
-void VulkanRHI::ChangeTextureLayout(RHICommandList* cmdList,
-                                    TextureHandle textureHandle,
-                                    TextureLayout newLayout)
-{
-    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
-    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
-    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
-
-    VkImageLayout srcLayout = GetImageCurrentLayout(vkTexture->image);
-    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
-    const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
-    VulkanCommandBuffer* cmdBuffer = reinterpret_cast<VulkanCommandList*>(cmdList)->m_cmdBuffer;
-    ChangeImageLayout(cmdBuffer, vkTexture->image, srcLayout, dstLayout, range);
-}
-
-void VulkanRHI::ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
-                                  VkImage image,
-                                  VkImageLayout srcLayout,
-                                  VkImageLayout dstLayout,
-                                  const VkImageSubresourceRange& range)
-{
-    VulkanPipelineBarrier barrier;
-    barrier.AddImageLayoutTransition(image, srcLayout, dstLayout, range);
-    barrier.Execute(cmdBuffer);
-    UpdateImageLayout(image, dstLayout);
-}
-
 VulkanFence::VulkanFence(VulkanFenceManager* owner, bool createSignaled) :
     m_owner(owner), m_state(createSignaled ? State::eSignaled : State::eInitial)
 {

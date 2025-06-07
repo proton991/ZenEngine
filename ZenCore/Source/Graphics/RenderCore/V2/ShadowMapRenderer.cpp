@@ -47,16 +47,19 @@ void ShadowMapRenderer::PrepareTextures()
 {
     {
         TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = m_config.shadowMapFormat;
-        texInfo.width       = m_config.shadowMapWidth;
-        texInfo.height      = m_config.shadowMapHeight;
-        texInfo.depth       = 1;
-        texInfo.mipmaps     = 1;
+        texInfo.type   = rhi::TextureType::e2D;
+        texInfo.format = m_config.shadowMapFormat;
+        texInfo.width  = m_config.shadowMapWidth;
+        texInfo.height = m_config.shadowMapHeight;
+        texInfo.depth  = 1;
+        texInfo.mipmaps =
+            CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
         texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
+        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
         m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo, "shadowmap");
     }
     // depth
@@ -141,7 +144,8 @@ void ShadowMapRenderer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.shadowMap, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),
+            rc::RDGAccessType::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
             TextureSubResourceRange::DepthStencil(), rc::RDGAccessType::eReadWrite);
@@ -166,6 +170,7 @@ void ShadowMapRenderer::BuildRenderGraph()
             }
         }
     }
+    m_rdg->AddTextureMipmapGenNode(m_offscreenTextures.shadowMap);
     m_rdg->End();
 }
 

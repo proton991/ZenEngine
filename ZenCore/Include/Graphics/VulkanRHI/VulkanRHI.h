@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include "VulkanHeaders.h"
 #include "VulkanExtension.h"
 #include "Common/PagedAllocator.h"
 #include "Common/HashMap.h"
@@ -133,8 +132,6 @@ public:
     TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
                                      const TextureProxyInfo& textureProxyInfo) final;
 
-    void GenerateTextureMipmaps(TextureHandle textureHandle, RHICommandList* cmdList) final;
-
     void DestroyTexture(TextureHandle textureHandle) final;
 
     DataFormat GetTextureFormat(TextureHandle textureHandle) final;
@@ -161,21 +158,6 @@ public:
                              const std::vector<ShaderResourceBinding>& resourceBindings) final;
 
     void SubmitAllGPUCommands() final;
-
-    void ChangeTextureLayout(RHICommandList* cmdList,
-                             TextureHandle textureHandle,
-                             TextureLayout oldLayout,
-                             TextureLayout newLayout) final;
-
-    void ChangeTextureLayout(RHICommandList* cmdList,
-                             TextureHandle textureHandle,
-                             TextureLayout newLayout) final;
-
-    void ChangeImageLayout(VulkanCommandBuffer* cmdBuffer,
-                           VkImage image,
-                           VkImageLayout srcLayout,
-                           VkImageLayout dstLayout,
-                           const VkImageSubresourceRange& range);
 
     void WaitDeviceIdle() final;
 

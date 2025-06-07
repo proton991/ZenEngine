@@ -452,6 +452,14 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
     }
 }
+
+void RenderGraph::AddTextureMipmapGenNode(rhi::TextureHandle textureHandle)
+{
+    auto* node    = AllocNode<RDGTextureMipmapGenNode>();
+    node->type    = RDGNodeType::eGenTextureMipmap;
+    node->texture = std::move(textureHandle);
+}
+
 // todo: implement more concise and explicit layout transition (consider RenderPass's layout transition)
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               rhi::TextureHandle textureHandle,
@@ -730,6 +738,13 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             RDGTextureResolveNode* node = reinterpret_cast<RDGTextureResolveNode*>(base);
             m_cmdList->ResolveTexture(node->srcTexture, node->dstTexture, node->srcLayer,
                                       node->srcMipmap, node->dstLayer, node->dstMipmap);
+        }
+        break;
+
+        case RDGNodeType::eGenTextureMipmap:
+        {
+            RDGTextureMipmapGenNode* node = reinterpret_cast<RDGTextureMipmapGenNode*>(base);
+            m_cmdList->GenerateTextureMipmaps(node->texture);
         }
         break;
 

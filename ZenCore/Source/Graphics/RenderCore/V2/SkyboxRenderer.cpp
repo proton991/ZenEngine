@@ -312,8 +312,8 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
             m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
-            m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(), cubemapTexture,
-                                       TextureLayout::eShaderReadOnly);
+            m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
+                cubemapTexture, TextureLayout::eShaderReadOnly);
 
             if (target == IRRADIANCE)
             {
@@ -414,8 +414,8 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 
     m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
-    m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(), texture->lutBRDF,
-                               TextureLayout::eShaderReadOnly);
+    m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
+                                                                   TextureLayout::eShaderReadOnly);
 }
 
 void SkyboxRenderer::PrepareRenderWorkload(const rhi::TextureHandle& skyboxTexture,

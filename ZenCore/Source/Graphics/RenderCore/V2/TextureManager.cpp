@@ -65,7 +65,7 @@ rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool r
     {
         UpdateTexture(texture, {textureInfo.width, textureInfo.height, textureInfo.depth},
                       rawTextureInfo.data.size(), rawTextureInfo.data.data());
-        m_renderDevice->GenerateTextureMipmaps(texture, m_renderDevice->GetCurrentUploadCmdList());
+        m_renderDevice->GetCurrentUploadCmdList()->GenerateTextureMipmaps(texture);
     }
     else
     {
@@ -185,7 +185,7 @@ void TextureManager::UpdateTexture(const rhi::TextureHandle& textureHandle,
 {
     rhi::RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
     // transfer layout to eTransferDst
-    m_RHI->ChangeTextureLayout(cmdList, textureHandle, rhi::TextureLayout::eTransferDst);
+    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eTransferDst);
 
     rhi::BufferHandle stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
     // map staging buffer
@@ -204,7 +204,7 @@ void TextureManager::UpdateTexture(const rhi::TextureHandle& textureHandle,
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
     // transfer layout to eShaderReadOnly
-    m_RHI->ChangeTextureLayout(cmdList, textureHandle, rhi::TextureLayout::eShaderReadOnly);
+    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eShaderReadOnly);
 
     if (m_stagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
     {
@@ -220,7 +220,7 @@ void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
 {
     rhi::RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
     // transfer layout to eTransferDst
-    m_RHI->ChangeTextureLayout(cmdList, textureHandle, rhi::TextureLayout::eTransferDst);
+    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eTransferDst);
 
     rhi::BufferHandle stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
     // map staging buffer
@@ -234,7 +234,7 @@ void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
     // transfer layout to eShaderReadOnly
-    m_RHI->ChangeTextureLayout(cmdList, textureHandle, rhi::TextureLayout::eShaderReadOnly);
+    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eShaderReadOnly);
 
     m_renderDevice->WaitForAllFrames();
     m_stagingMgr->ProcessPendingFrees();
