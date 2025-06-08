@@ -1,4 +1,4 @@
-#include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
@@ -13,70 +13,40 @@ using namespace zen::rhi;
 
 namespace zen::rc
 {
-SceneRenderer::SceneRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+DeferredLightingRenderer::DeferredLightingRenderer(RenderDevice* renderDevice,
+                                                   rhi::RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
-void SceneRenderer::Init()
+void DeferredLightingRenderer::Init()
 {
     PrepareTextures();
 
     BuildGraphicsPasses();
 }
 
-void SceneRenderer::Destroy() {}
+void DeferredLightingRenderer::Destroy() {}
 
-void SceneRenderer::DrawScene()
+void DeferredLightingRenderer::PrepareRenderWorkload()
 {
-    m_scene->Update();
-
-    SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
-    skyboxRenderer->PrepareRenderWorkload(
-        m_scene->GetEnvTexture().skybox,
-        m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
-
-    m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
-                                                             m_scene->GetCameraUniformData(), 0);
-
-    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer("uSceneData",
-                                                                 m_scene->GetSceneUniformData(), 0);
-
     if (m_rebuildRDG)
     {
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
-
-    ShadowMapRenderer* shadowMapRenderer =
-        m_renderDevice->GetRendererServer()->RequestShadowMapRenderer();
-    shadowMapRenderer->PrepareRenderWorkload();
-
-    std::vector<RenderGraph*> RDGs;
-    if (m_renderDevice->SupportVoxelizer())
-    {
-        VoxelRenderer* voxelRenderer = m_renderDevice->GetRendererServer()->RequestVoxelRenderer();
-        voxelRenderer->PrepareRenderWorkload();
-        RDGs.push_back(shadowMapRenderer->GetRenderGraph()); // shadowMap
-        RDGs.push_back(voxelRenderer->GetRenderGraph());     // voxel
-        // RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
-        // RDGs.push_back(m_rdg.Get());                      // deferred pbr
-    }
-    else
-    {
-        RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
-        RDGs.push_back(m_rdg.Get());                      // deferred pbr
-    }
-
-    m_renderDevice->ExecuteFrame(m_viewport, RDGs);
+    m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
+                                                             m_scene->GetCameraUniformData(), 0);
+    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer("uSceneData",
+                                                                 m_scene->GetSceneUniformData(), 0);
 }
 
-void SceneRenderer::OnResize()
+void DeferredLightingRenderer::OnResize()
 {
     m_rebuildRDG = true;
     m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.sceneLighting, m_viewport);
 }
 
-void SceneRenderer::PrepareTextures()
+void DeferredLightingRenderer::PrepareTextures()
 {
     // (World space) Positions
     {
@@ -90,8 +60,8 @@ void SceneRenderer::PrepareTextures()
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
         texInfo.name        = "offscreen_position";
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+                                    TextureUsageFlagBits::eSampled);
         m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // (World space) Normals
@@ -106,8 +76,8 @@ void SceneRenderer::PrepareTextures()
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
         texInfo.name        = "offscreen_normal";
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+                                    TextureUsageFlagBits::eSampled);
         m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // color
@@ -121,8 +91,8 @@ void SceneRenderer::PrepareTextures()
         texInfo.mipmaps     = 1;
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+                                    TextureUsageFlagBits::eSampled);
 
         texInfo.name               = "offscreen_albedo";
         m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
@@ -148,8 +118,8 @@ void SceneRenderer::PrepareTextures()
         texInfo.arrayLayers = 1;
         texInfo.mipmaps     = 1;
         texInfo.name        = "offscreen_depth";
-        texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eDepthStencilAttachment);
-        texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
+                                    TextureUsageFlagBits::eSampled);
         m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     // offscreen color texture sampler
@@ -173,7 +143,7 @@ void SceneRenderer::PrepareTextures()
     }
 }
 
-void SceneRenderer::BuildGraphicsPasses()
+void DeferredLightingRenderer::BuildGraphicsPasses()
 {
     // offscreen
     {
@@ -246,7 +216,7 @@ void SceneRenderer::BuildGraphicsPasses()
     }
 }
 
-void SceneRenderer::BuildRenderGraph()
+void DeferredLightingRenderer::BuildRenderGraph()
 {
     m_rdg = MakeUnique<RenderGraph>();
     m_rdg->Begin();
@@ -345,9 +315,9 @@ void SceneRenderer::BuildRenderGraph()
     m_rdg->End();
 }
 
-void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
-                                     const Rect2<int>& area,
-                                     const Rect2<float>& viewport)
+void DeferredLightingRenderer::AddMeshDrawNodes(RDGPassNode* pass,
+                                                const Rect2<int>& area,
+                                                const Rect2<float>& viewport)
 {
     GBufferShaderProgram* shaderProgram =
         dynamic_cast<GBufferShaderProgram*>(m_gfxPasses.offscreen.shaderProgram);
@@ -370,7 +340,7 @@ void SceneRenderer::AddMeshDrawNodes(RDGPassNode* pass,
     }
 }
 
-void SceneRenderer::UpdateGraphicsPassResources()
+void DeferredLightingRenderer::UpdateGraphicsPassResources()
 {
     const EnvTexture& envTexture = m_scene->GetEnvTexture();
     {

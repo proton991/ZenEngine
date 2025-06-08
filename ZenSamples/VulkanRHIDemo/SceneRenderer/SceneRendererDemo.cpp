@@ -22,8 +22,6 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     m_renderDevice->Init(m_viewport);
 
-    m_sceneRenderer = m_renderDevice->GetRendererServer()->RequestSceneRenderer();
-
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
     m_window->SetOnResize([&](uint32_t width, uint32_t height) {
         m_camera->UpdateAspect(m_window->GetAspect());
@@ -105,7 +103,7 @@ void SceneRendererDemo::Run()
 
         m_camera->Update(frameTime);
 
-        m_sceneRenderer->DrawScene();
+        m_renderDevice->GetRendererServer()->DispatchRenderWorkloads();
 
         m_renderDevice->NextFrame();
     }

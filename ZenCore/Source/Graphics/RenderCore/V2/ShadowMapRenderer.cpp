@@ -56,10 +56,9 @@ void ShadowMapRenderer::PrepareTextures()
             CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
         texInfo.arrayLayers = 1;
         texInfo.samples     = SampleCount::e1;
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
-        texInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(
+            TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled,
+            TextureUsageFlagBits::eTransferSrc, TextureUsageFlagBits::eTransferDst);
         m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo, "shadowmap");
     }
     // depth
@@ -74,8 +73,8 @@ void ShadowMapRenderer::PrepareTextures()
         texInfo.depth       = 1;
         texInfo.arrayLayers = 1;
         texInfo.mipmaps     = 1;
-        texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eDepthStencilAttachment);
-        texInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
+                                    TextureUsageFlagBits::eSampled);
         m_offscreenTextures.depth =
             m_renderDevice->CreateTexture(texInfo, "shadowmap_render_depth");
     }

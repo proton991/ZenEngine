@@ -7,6 +7,8 @@
 
 namespace zen::rc
 {
+class RenderScene;
+
 class SkyboxRenderer
 {
 public:
@@ -20,10 +22,15 @@ public:
 
     void GenerateLutBRDF(EnvTexture* texture);
 
-    void PrepareRenderWorkload(const rhi::TextureHandle& skyboxTexture,
-                               const rhi::BufferHandle& cameraUBO);
+    void PrepareRenderWorkload();
 
     void OnResize();
+
+    void SetRenderScene(RenderScene* renderScene)
+    {
+        m_scene = renderScene;
+        UpdateGraphicsPassResources();
+    }
 
     RenderGraph* GetRenderGraph()
     {
@@ -44,6 +51,8 @@ private:
 
     void BuildGraphicsPasses();
 
+    void UpdateGraphicsPassResources();
+
     struct SkyboxVertex
     {
         Vec3 position{0.0f, 0.0f, 0.0f};
@@ -55,7 +64,8 @@ private:
 
     rhi::RHIViewport* m_viewport{nullptr};
 
-    bool m_updatePassResource{true};
+    RenderScene* m_scene{nullptr};
+
     bool m_rebuildRDG{true};
 
     struct

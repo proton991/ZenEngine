@@ -10,7 +10,7 @@ namespace zen::rc
 {
 class RenderDevice;
 class SkyboxRenderer;
-class SceneRenderer;
+class DeferredLightingRenderer;
 class VoxelRenderer;
 class ShadowMapRenderer;
 class RenderScene;
@@ -26,11 +26,13 @@ public:
 
     void SetRenderScene(RenderScene* scene);
 
-    void ViewpportReiszeCallback();
+    void DispatchRenderWorkloads();
 
-    SceneRenderer* RequestSceneRenderer() const
+    void ViewportResizeCallback();
+
+    DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
-        return m_sceneRenderer;
+        return m_deferredLightingRenderer;
     }
 
     SkyboxRenderer* RequestSkyboxRenderer() const
@@ -52,8 +54,9 @@ public:
 private:
     rhi::RHIViewport* m_viewport{nullptr};
     RenderDevice* m_renderDevice{nullptr};
+    RenderScene* m_scene{nullptr};
 
-    SceneRenderer* m_sceneRenderer{nullptr};
+    DeferredLightingRenderer* m_deferredLightingRenderer{nullptr};
     SkyboxRenderer* m_skyboxRenderer{nullptr};
     VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};

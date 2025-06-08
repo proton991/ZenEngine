@@ -1,7 +1,6 @@
 #pragma once
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
-#include "Graphics/RenderCore/V2/Renderer/SceneRenderer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/GlfwWindow.h"
 
@@ -22,8 +21,6 @@ public:
 
 private:
     UniquePtr<sg::Camera> m_camera;
-
-    rc::SceneRenderer* m_sceneRenderer;
 
     UniquePtr<rc::RenderDevice> m_renderDevice;
 

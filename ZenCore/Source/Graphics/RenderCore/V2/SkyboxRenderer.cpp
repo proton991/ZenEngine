@@ -1,5 +1,7 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 
 #define IRRADIANCE_DIM  64
 #define PREFILTERED_DIM 512
@@ -52,8 +54,8 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.width  = IRRADIANCE_DIM;
         offscreenTexInfo.height = IRRADIANCE_DIM;
         offscreenTexInfo.format = cIrradianceFormat;
-        offscreenTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        offscreenTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
+        offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+                                             TextureUsageFlagBits::eTransferSrc);
         offscreenTexInfo.type = TextureType::e2D;
 
         m_offscreenTextures.irradiance =
@@ -64,8 +66,8 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.width  = PREFILTERED_DIM;
         offscreenTexInfo.height = PREFILTERED_DIM;
         offscreenTexInfo.format = cPrefilteredFormat;
-        offscreenTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-        offscreenTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
+        offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+                                             TextureUsageFlagBits::eTransferSrc);
         offscreenTexInfo.type = TextureType::e2D;
 
         m_offscreenTextures.prefiltered =
@@ -418,32 +420,34 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
                                                                    TextureLayout::eShaderReadOnly);
 }
 
-void SkyboxRenderer::PrepareRenderWorkload(const rhi::TextureHandle& skyboxTexture,
-                                           const rhi::BufferHandle& cameraUBO)
+void SkyboxRenderer::PrepareRenderWorkload()
 {
-    using namespace zen::rhi;
-    if (m_updatePassResource)
-    {
-
-        std::vector<ShaderResourceBinding> bufferBindings;
-        std::vector<ShaderResourceBinding> textureBindings;
-        ADD_SHADER_BINDING_SINGLE(bufferBindings, 0, ShaderResourceType::eUniformBuffer, cameraUBO)
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  m_samplers.cubemapSampler, skyboxTexture)
-
-        GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
-        updater.SetShaderResourceBinding(0, bufferBindings)
-            .SetShaderResourceBinding(1, textureBindings)
-            .Update();
-
-        m_updatePassResource = false;
-    }
-
     if (m_rebuildRDG)
     {
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
+    m_gfxPasses.skybox.shaderProgram->UpdateUniformBuffer("uCameraData",
+                                                          m_scene->GetCameraUniformData(), 0);
+}
+
+
+void SkyboxRenderer::UpdateGraphicsPassResources()
+{
+    using namespace zen::rhi;
+    std::vector<ShaderResourceBinding> bufferBindings;
+    std::vector<ShaderResourceBinding> textureBindings;
+    ADD_SHADER_BINDING_SINGLE(
+        bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+        m_gfxPasses.skybox.shaderProgram->GetUniformBufferHandle("uCameraData"))
+
+    ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+                              m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
+
+    GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
+    updater.SetShaderResourceBinding(0, bufferBindings)
+        .SetShaderResourceBinding(1, textureBindings)
+        .Update();
 }
 
 void SkyboxRenderer::OnResize()

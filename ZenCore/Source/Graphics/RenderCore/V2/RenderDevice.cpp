@@ -842,7 +842,7 @@ void RenderDevice::UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
 void RenderDevice::ProcessViewportResize(uint32_t width, uint32_t height)
 {
     ResizeViewport(m_mainViewport, width, height);
-    m_rendererServer->ViewpportReiszeCallback();
+    m_rendererServer->ViewportResizeCallback();
 }
 
 void RenderDevice::WaitForPreviousFrames()

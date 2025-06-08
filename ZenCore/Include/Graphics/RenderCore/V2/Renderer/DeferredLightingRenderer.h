@@ -19,7 +19,7 @@ class RenderScene;
 class RenderDevice;
 class SkyboxRenderer;
 
-class SceneRenderer
+class DeferredLightingRenderer
 {
 public:
     enum class RenderFlags
@@ -27,7 +27,7 @@ public:
         eBindTextures = 1 << 0
     };
 
-    SceneRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    DeferredLightingRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
 
     void Init();
 
@@ -38,10 +38,14 @@ public:
         m_scene = renderScene;
         UpdateGraphicsPassResources();
     }
-
-    void DrawScene();
+    void PrepareRenderWorkload();
 
     void OnResize();
+
+    RenderGraph* GetRenderGraph()
+    {
+        return m_rdg.Get();
+    };
 
 private:
     void PrepareTextures();
