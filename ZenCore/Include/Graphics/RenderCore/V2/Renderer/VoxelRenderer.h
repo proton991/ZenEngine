@@ -76,6 +76,7 @@ private:
         rhi::TextureHandle normal;
         rhi::TextureHandle normalProxy;
         rhi::TextureHandle emissive;
+        rhi::TextureHandle emissiveProxy;
         rhi::TextureHandle radiance;
         rhi::TextureHandle mipmaps[6]; // per face
     } m_voxelTextures;
