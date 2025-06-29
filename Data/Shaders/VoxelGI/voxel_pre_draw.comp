@@ -1,0 +1,55 @@
+#version 450
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+struct VkDrawIndexedIndirectCommand {
+    uint    indexCount;
+    uint    instanceCount;
+    uint    firstIndex;
+    int     vertexOffset;
+    uint    firstInstance;
+};
+
+layout(set = 0, binding = 0, rgba8) uniform image3D voxelTexture;
+
+layout(std140, set=1, binding = 0) buffer InstancePositionBuffer {
+   vec4 positions[];
+};
+
+layout(std140, set=2, binding = 0) buffer InstanceColorBuffer {
+    vec4 colors[];
+};
+
+layout(std140, set=3, binding = 0) buffer IndirectBuffer {
+    VkDrawIndexedIndirectCommand command;
+};
+
+layout (set = 4, binding = 0) uniform uSceneInfo
+{
+    vec4 aabbMin;
+    vec4 aabbMax;
+} ubo;
+
+void main()
+{
+
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+    ivec3 voxel_coordinate = ivec3(x, y, z);
+
+    vec4 voxel_value = imageLoad(voxelTexture, voxel_coordinate);
+
+    if(voxel_value.w >= 1.0)
+	{
+		uint index = atomicAdd(command.instanceCount, 1);
+
+        vec3 _min = ubo.aabbMin.xyz * 2;
+	    vec3 _max = ubo.aabbMax.xyz * 2;
+	    int voxels_per_side = imageSize(voxelTexture).x;
+        float voxel_width = (_max.x - _min.x) / float(voxels_per_side);
+
+        positions[index] = vec4(_min+ vec3(voxel_width / 2) + vec3(voxel_coordinate) * voxel_width, 1.0);
+        colors[index] = vec4(voxel_value.xyz / voxel_value.w, 1.0);
+	}
+}

@@ -260,6 +260,8 @@ void VulkanRHI::Init()
     SelectGPU();
     m_device->Init();
 
+    m_gpuInfo.supportGeometryShader = true;
+
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());
 

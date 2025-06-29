@@ -182,8 +182,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
         m_gfxPasses.phong.renderPass, m_gfxPasses.phong.framebuffer, area, clearValues, true);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     // phone
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPasses.phong.pipeline,
-                                           PipelineType::eGraphics);
+    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.phong.pipeline, PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, leftVP);
@@ -202,8 +201,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     middleVP.maxX = 2 * (float)m_window->GetExtent2D().width / 3.0f;
     middleVP.maxY = (float)m_window->GetExtent2D().height;
 
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPasses.toon.pipeline,
-                                           PipelineType::eGraphics);
+    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.toon.pipeline, PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, middleVP);
@@ -223,8 +221,8 @@ void SpecializationConstantsApp::BuildRenderGraph()
     rightVP.maxX = (float)m_window->GetExtent2D().width;
     rightVP.maxY = (float)m_window->GetExtent2D().height;
 
-    m_rdg->AddGraphicsPassBindPipelineNode(mainPass, m_gfxPasses.textured.pipeline,
-                                           PipelineType::eGraphics);
+    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.textured.pipeline,
+                                   PipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, rightVP);

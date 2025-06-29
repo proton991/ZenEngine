@@ -189,6 +189,66 @@ public:
     } voxelInfo;
 };
 
+class VoxelizationCompShaderProgram : public ShaderProgram
+{
+public:
+    explicit VoxelizationCompShaderProgram(RenderDevice* renderDevice);
+
+    const uint8_t* GetSceneInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&sceneInfo);
+    }
+
+    struct SceneInfo
+    {
+        Vec4 aabbMin;
+        Vec4 aabbMax;
+    } sceneInfo;
+
+    struct PushConstantData
+    {
+        uint32_t albedoTexIndex;
+        uint32_t normalTexIndex;
+        uint32_t nodeIndex;
+        uint32_t triangleCount;
+        uint32_t largeTriangleThreshold;
+    } pushConstantsData;
+};
+
+class VoxelPreDrawShaderProgram : public ShaderProgram
+{
+public:
+    explicit VoxelPreDrawShaderProgram(RenderDevice* renderDevice);
+
+    const uint8_t* GetSceneInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&sceneInfo);
+    }
+
+    struct SceneInfo
+    {
+        Vec4 aabbMin;
+        Vec4 aabbMax;
+    } sceneInfo;
+};
+
+class VoxelDrawShaderProgram2 : public ShaderProgram
+{
+public:
+    explicit VoxelDrawShaderProgram2(RenderDevice* renderDevice);
+
+    const uint8_t* GetTransformData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&transformData);
+    }
+    struct TransformData
+    {
+        Mat4 modelMatrix;
+        Mat4 viewMatrix;
+        Mat4 projMatrix;
+    } transformData;
+};
+
 class ShadowMapRenderProgram : public ShaderProgram
 {
 public:

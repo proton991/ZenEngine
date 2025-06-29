@@ -129,24 +129,25 @@ enum class RDGPassType : uint32_t
 
 enum class RDGPassCmdType : uint32_t
 {
-    eNone             = 0,
-    eBindIndexBuffer  = 1,
-    eBindVertexBuffer = 2,
-    eBindPipeline     = 3,
-    eClearAttachment  = 4,
-    eDraw             = 5,
-    eDrawIndexed      = 6,
-    eExecuteCommands  = 7,
-    eNextSubpass      = 8,
-    eDispatch         = 9,
-    eDispatchIndirect = 10,
-    eSetPushConstant  = 11,
-    eSetLineWidth     = 12,
-    eSetBlendConstant = 13,
-    eSetScissor       = 14,
-    eSetViewport      = 15,
-    eSetDepthBias     = 16,
-    eMax              = 17
+    eNone                = 0,
+    eBindIndexBuffer     = 1,
+    eBindVertexBuffer    = 2,
+    eBindPipeline        = 3,
+    eClearAttachment     = 4,
+    eDraw                = 5,
+    eDrawIndexed         = 6,
+    eDrawIndexedIndirect = 7,
+    eExecuteCommands     = 8,
+    eNextSubpass         = 9,
+    eDispatch            = 10,
+    eDispatchIndirect    = 11,
+    eSetPushConstant     = 12,
+    eSetLineWidth        = 13,
+    eSetBlendConstant    = 14,
+    eSetScissor          = 15,
+    eSetViewport         = 16,
+    eSetDepthBias        = 17,
+    eMax                 = 18
 };
 
 enum class RDGNodeType : uint32_t
@@ -208,7 +209,7 @@ struct RDGResource
 struct RDGNodeBase
 {
     RDG_ID id{-1};
-    RDG_ID tag;
+    std::string tag;
     RDGNodeType type{RDGNodeType::eNone};
     BitField<rhi::PipelineStageBits> selfStages;
 };
@@ -341,6 +342,22 @@ struct RDGDrawIndexedNode : RDGPassChildNode
     uint32_t firstInstance{0};
 };
 
+struct RDGDrawIndexedIndirectNode : RDGPassChildNode
+{
+    rhi::BufferHandle indirectBuffer;
+    uint32_t offset{0};
+    uint32_t drawCount{0};
+    uint32_t stride{0};
+};
+
+struct RDGDispatchNode : RDGPassChildNode
+{
+    uint32_t groupCountX{0};
+    uint32_t groupCountY{0};
+    uint32_t groupCountZ{0};
+};
+
+
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
     rhi::ShaderHandle shader;
@@ -387,6 +404,17 @@ public:
         Destroy();
     }
 
+    void AddPassBindPipelineNode(RDGPassNode* parent,
+                                 rhi::PipelineHandle pipelineHandle,
+                                 rhi::PipelineType pipelineType);
+
+    RDGPassNode* AddComputePassNode(const ComputePass& computePass);
+
+    void AddComputePassDispatchNode(RDGPassNode* parent,
+                                    uint32_t groupCountX,
+                                    uint32_t groupCountY,
+                                    uint32_t groupCountZ);
+
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,
                                      rhi::Rect2<int> area,
@@ -409,11 +437,9 @@ public:
                                              VectorView<rhi::BufferHandle> vertexBuffers,
                                              VectorView<uint32_t> offsets);
 
-    void AddGraphicsPassBindPipelineNode(RDGPassNode* parent,
-                                         rhi::PipelineHandle pipelineHandle,
-                                         rhi::PipelineType pipelineType);
-
     void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
+
+    void AddComputePassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
 
     void AddGraphicsPassDrawNode(RDGPassNode* parent, uint32_t vertexCount, uint32_t instanceCount);
 
@@ -423,6 +449,12 @@ public:
                                         uint32_t firstIndex,
                                         int32_t vertexOffset   = 0,
                                         uint32_t firstInstance = 0);
+
+    void AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
+                                                rhi::BufferHandle indirectBuffer,
+                                                uint32_t offset,
+                                                uint32_t drawCount,
+                                                uint32_t stride);
 
     void AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color);
 
@@ -517,7 +549,9 @@ private:
         m_nodeDataOffset.push_back(nodeDataOffset);
         m_nodeData.resize(m_nodeData.size() + sizeof(T));
         T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
-        *newNode   = T();
+
+        new (newNode) T();
+        // *newNode   = T();
 
         newNode->id = m_nodeCount;
         m_nodeCount++;

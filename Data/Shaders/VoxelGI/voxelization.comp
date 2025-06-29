@@ -1,0 +1,182 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_debug_printf : enable
+
+layout (local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+#include "compute_voxelizer_common.glsl"
+
+ivec3 world_pos_to_voxel_coord(vec3 vertex_world, vec3 _min, float voxel_width){
+    return ivec3((vertex_world - _min) / voxel_width);
+}
+
+vec3 world_pos_to_voxel_space(vec3 vertex_world, vec3 _min, float voxel_width){
+    return vec3((vertex_world - _min) / voxel_width);
+}
+
+vec3 voxel_coord_to_world_pos(ivec3 voxel_coord, vec3 _min, float voxel_width){
+    return _min + voxel_coord * voxel_width + vec3(voxel_width / 2.0);
+}
+
+uint find_major_axis(vec3 v1, vec3 v2){
+    float dx = abs(v2.x - v1.x);
+    float dy = abs(v2.y - v1.y);
+    float dz = abs(v2.z - v1.z);
+    float max_diff = max(max(dx, dy), dz);
+
+    uint major_axis;
+    if (max_diff == dx) major_axis = 0;
+    else if (max_diff == dy) major_axis = 1;
+    else major_axis = 2;
+
+    return major_axis;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+
+    if (index >= pc.triangleCount)
+    {
+        return;
+    }
+
+    #define vertex1 vertices[indices[index * 3]]
+    #define vertex2 vertices[indices[index * 3 + 1]]
+    #define vertex3 vertices[indices[index * 3 + 2]]
+
+    vec3 _min = ubo.aabbMin.xyz;
+    vec3 _max = ubo.aabbMax.xyz;
+    int voxels_per_side = imageSize(voxelTexture).x;
+    float voxel_width = (_max.x - _min.x) / float(voxels_per_side);
+
+    mat4 modelMatrix = nodesData[pc.nodeIndex].modelMatrix;
+    vec4 vertex1_world = modelMatrix * vec4(vertex1.position, 1.0f);
+    vec4 vertex2_world = modelMatrix * vec4(vertex2.position, 1.0f);
+    vec4 vertex3_world = modelMatrix  * vec4(vertex3.position, 1.0f);
+
+    ivec3 vertex1_voxel = ivec3((vertex1_world.xyz - _min) / voxel_width);
+    ivec3 vertex2_voxel = ivec3((vertex2_world.xyz - _min) / voxel_width);
+    ivec3 vertex3_voxel = ivec3((vertex3_world.xyz - _min) / voxel_width);
+
+    // Check if the triangle is outside the voxel grid
+    //if (vertex1_world.x < _min.x || vertex1_world.x > _max.x) return;
+    //if (vertex1_world.y < _min.y || vertex1_world.y > _max.y) return;
+    //if (vertex1_world.z < _min.z || vertex1_world.z > _max.z) return;
+    //if (vertex2_world.x < _min.x || vertex2_world.x > _max.x) return;
+    //if (vertex2_world.y < _min.y || vertex2_world.y > _max.y) return;
+    //if (vertex2_world.z < _min.z || vertex2_world.z > _max.z) return;
+    //if (vertex3_world.x < _min.x || vertex3_world.x > _max.x) return;
+    //if (vertex3_world.y < _min.y || vertex3_world.y > _max.y) return;
+    //if (vertex3_world.z < _min.z || vertex3_world.z > _max.z) return;
+
+    float min_x = min(min(vertex1_world.x, vertex2_world.x), vertex3_world.x);
+    float min_y = min(min(vertex1_world.y, vertex2_world.y), vertex3_world.y);
+    float min_z = min(min(vertex1_world.z, vertex2_world.z), vertex3_world.z);
+    float max_x = max(max(vertex1_world.x, vertex2_world.x), vertex3_world.x);
+    float max_y = max(max(vertex1_world.y, vertex2_world.y), vertex3_world.y);
+    float max_z = max(max(vertex1_world.z, vertex2_world.z), vertex3_world.z);
+
+    float x_dim = max_x - min_x;
+    float y_dim = max_y - min_y;
+    float z_dim = max_z - min_z;
+    float mindim = min(min(x_dim, y_dim), z_dim);
+
+    // z is the axis with the smallest change in coords
+    // y is the axis with the largest change in coords
+    uint x, y, z;
+    if(mindim == x_dim){
+        z = 0;
+        if(max(y_dim, z_dim) == y_dim){
+            y = 1;
+            x = 2;
+        }
+        else{
+            y = 2;
+            x = 1;
+        }
+    }
+    else if(mindim == y_dim){
+        z = 1;
+        if(max(x_dim, z_dim) == x_dim){
+            y = 0;
+            x = 2;
+        }
+        else{
+            y = 2;
+            x = 0;
+        }
+    }
+    else{
+        z = 2;
+        if(max(x_dim, y_dim) == x_dim){
+            y = 0;
+            x = 1;
+        }
+        else{
+            y = 1;
+            x = 0;
+        }
+    }
+
+
+    vec3 vertex1_voxel_space = world_pos_to_voxel_space(vertex1_world.xyz, _min, voxel_width);
+    vec3 vertex2_voxel_space = world_pos_to_voxel_space(vertex2_world.xyz, _min, voxel_width);
+    vec3 vertex3_voxel_space = world_pos_to_voxel_space(vertex3_world.xyz, _min, voxel_width);
+
+    // Find the plane equation
+    vec3 normal = normalize(cross(vertex2_voxel_space.xyz - vertex1_voxel_space.xyz, vertex3_voxel_space.xyz - vertex1_voxel_space.xyz));
+    float D = -dot(normal, vertex1_voxel_space.xyz);
+    float plane_x_coefficient = -normal[x] / normal[z];
+    float plane_y_coefficient = -normal[y] / normal[z];
+    float plane_constant = -D / normal[z];
+
+    // Voxel bounding box
+    int min_x_voxel = int(min(min(vertex1_voxel[x], vertex2_voxel[x]), vertex3_voxel[x]));
+    int min_y_voxel = int(min(min(vertex1_voxel[y], vertex2_voxel[y]), vertex3_voxel[y]));
+    int max_x_voxel = int(max(max(vertex1_voxel[x], vertex2_voxel[x]), vertex3_voxel[x]));
+    int max_y_voxel = int(max(max(vertex1_voxel[y], vertex2_voxel[y]), vertex3_voxel[y]));
+
+    int x_dim_voxel = max_x_voxel - min_x_voxel + 1;
+    int y_dim_voxel = max_y_voxel - min_y_voxel + 1;
+    int voxel_count = x_dim_voxel * y_dim_voxel;
+
+    #define WORKGROUP_SIZE 64
+
+//    if (x_dim_voxel * y_dim_voxel < pc.largeTriangleThreshold)
+    {
+        for(int i = min_x_voxel; i <= max_x_voxel; i++){
+            for(int j = min_y_voxel; j <= max_y_voxel; j++){
+
+                float z_value = plane_x_coefficient * (float(i) + 0.5) + plane_y_coefficient * (float(j) + 0.5) + plane_constant;
+
+                ivec3 voxel_coord;
+                voxel_coord[x] = i;
+                voxel_coord[y] = j;
+                voxel_coord[z] = int(z_value);
+
+                if(!voxel_triangle_collision_test(vertex1_world.xyz, vertex2_world.xyz, vertex3_world.xyz, voxel_coord, voxel_width, _min)) continue;
+
+                vec3 barycentric = get_barycentric_coordinates(vertex1_voxel_space, vertex2_voxel_space, vertex3_voxel_space, vec3(voxel_coord));
+
+                vec2 texcoord = vec2(barycentric.x * vertex1.texcoord.x + barycentric.y * vertex2.texcoord.x + barycentric.z * vertex3.texcoord.x,
+                barycentric.x * vertex1.texcoord.y + barycentric.y * vertex2.texcoord.y + barycentric.z * vertex3.texcoord.y);
+
+                vec3 diffuse = texture(uTextureArray[pc.albedoTexIndex], texcoord).xyz;
+                const vec4 voxel_value = vec4(diffuse, 1.0);
+
+                imageStore(voxelTexture, voxel_coord, voxel_value);
+            }
+        }
+    }
+//    else{
+//        uint workgroup_count = (x_dim_voxel * y_dim_voxel) / WORKGROUP_SIZE + 1;
+//        uint large_triangle_index = atomicAdd(command.x, workgroup_count);
+//
+//        for(uint i = 0; i < workgroup_count; i++){
+//            largeTriangles[large_triangle_index + i].triangleIndex = index; // change struct to include both triangle index and per triangle index
+//            largeTriangles[large_triangle_index + i].innerTriangleIndex = i;
+//        }
+//    }
+}

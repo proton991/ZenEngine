@@ -12,6 +12,7 @@ class RenderDevice;
 class SkyboxRenderer;
 class DeferredLightingRenderer;
 class VoxelRenderer;
+class VoxelizerBase;
 class ShadowMapRenderer;
 class RenderScene;
 
@@ -40,10 +41,10 @@ public:
         return m_skyboxRenderer;
     }
 
-    VoxelRenderer* RequestVoxelRenderer() const
-    {
-        return m_voxelRenderer;
-    }
+    // VoxelRenderer* RequestVoxelRenderer() const
+    // {
+    //     return m_voxelRenderer;
+    // }
 
     ShadowMapRenderer* RequestShadowMapRenderer() const
     {
@@ -58,7 +59,8 @@ private:
 
     DeferredLightingRenderer* m_deferredLightingRenderer{nullptr};
     SkyboxRenderer* m_skyboxRenderer{nullptr};
-    VoxelRenderer* m_voxelRenderer{nullptr};
+    VoxelizerBase* m_voxelizer{nullptr};
+    // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
 };
 } // namespace zen::rc

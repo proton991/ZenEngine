@@ -6,6 +6,36 @@
 #endif
 namespace zen::rc
 {
+void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
+                                          rhi::PipelineHandle pipelineHandle,
+                                          rhi::PipelineType pipelineType)
+{
+    auto* node         = AllocPassChildNode<RDGBindPipelineNode>(parent);
+    node->pipeline     = std::move(pipelineHandle);
+    node->pipelineType = pipelineType;
+    node->type         = RDGPassCmdType::eBindPipeline;
+}
+
+RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass)
+{
+    auto* node = AllocNode<RDGComputePassNode>();
+    node->type = RDGNodeType::eComputePass;
+    AddPassBindPipelineNode(node, computePass.pipeline, rhi::PipelineType::eCompute);
+    return node;
+}
+
+void RenderGraph::AddComputePassDispatchNode(RDGPassNode* parent,
+                                             uint32_t groupCountX,
+                                             uint32_t groupCountY,
+                                             uint32_t groupCountZ)
+{
+    auto* node        = AllocPassChildNode<RDGDispatchNode>(parent);
+    node->type        = RDGPassCmdType::eDispatch;
+    node->groupCountX = groupCountX;
+    node->groupCountY = groupCountY;
+    node->groupCountZ = groupCountZ;
+}
+
 RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                               rhi::FramebufferHandle framebufferHandle,
                                               rhi::Rect2<int> area,
@@ -65,7 +95,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
         node->selfStages.SetFlag(rhi::PipelineStageBits::eEarlyFragmentTests);
         node->selfStages.SetFlag(rhi::PipelineStageBits::eLateFragmentTests);
     }
-    AddGraphicsPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
+    AddPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
     return node;
 }
 
@@ -96,19 +126,19 @@ void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
     node->type = RDGPassCmdType::eBindVertexBuffer;
 }
 
-void RenderGraph::AddGraphicsPassBindPipelineNode(RDGPassNode* parent,
-                                                  rhi::PipelineHandle pipelineHandle,
-                                                  rhi::PipelineType pipelineType)
-{
-    auto* node         = AllocPassChildNode<RDGBindPipelineNode>(parent);
-    node->pipeline     = std::move(pipelineHandle);
-    node->pipelineType = pipelineType;
-    node->type         = RDGPassCmdType::eBindPipeline;
-}
-
 void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* parent,
                                                   const void* data,
                                                   uint32_t dataSize)
+{
+    auto* node = AllocPassChildNode<RDGSetPushConstantsNode>(parent);
+    node->type = RDGPassCmdType::eSetPushConstant;
+    node->data.resize(dataSize);
+    std::memcpy(node->data.data(), data, dataSize);
+}
+
+void RenderGraph::AddComputePassSetPushConstants(RDGPassNode* parent,
+                                                 const void* data,
+                                                 uint32_t dataSize)
 {
     auto* node = AllocPassChildNode<RDGSetPushConstantsNode>(parent);
     node->type = RDGPassCmdType::eSetPushConstant;
@@ -140,6 +170,20 @@ void RenderGraph::AddGraphicsPassDrawIndexedNode(RDGPassNode* parent,
     node->instanceCount = instanceCount;
     node->vertexOffset  = vertexOffset;
     node->firstInstance = firstInstance;
+}
+
+void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
+                                                         rhi::BufferHandle indirectBuffer,
+                                                         uint32_t offset,
+                                                         uint32_t drawCount,
+                                                         uint32_t stride)
+{
+    auto* node           = AllocPassChildNode<RDGDrawIndexedIndirectNode>(parent);
+    node->type           = RDGPassCmdType::eDrawIndexedIndirect;
+    node->indirectBuffer = indirectBuffer;
+    node->offset         = offset;
+    node->drawCount      = drawCount;
+    node->stride         = stride;
 }
 
 void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color)
@@ -659,7 +703,20 @@ void RenderGraph::Begin()
 void RenderGraph::End()
 {
     // sort nodes
+    // todo: fix level sort bugs
     SortNodes();
+    for (auto i = 0; i < m_sortedNodes.size(); i++)
+    {
+        const auto& currLevel = m_sortedNodes[i];
+        for (auto& nodeId : currLevel)
+        {
+            RDGNodeBase* node = GetNodeBaseById(nodeId);
+            if (!node->tag.empty())
+            {
+                LOGI("RDG NodeTag after sort: {}, level: {}", node->tag, i);
+            }
+        }
+    }
 }
 
 void RenderGraph::Execute(rhi::RHICommandList* cmdList)
@@ -681,6 +738,7 @@ void RenderGraph::Execute(rhi::RHICommandList* cmdList)
 
 void RenderGraph::RunNode(RDGNodeBase* base)
 {
+
     RDGNodeType type = base->type;
     switch (type)
     {
@@ -750,6 +808,41 @@ void RenderGraph::RunNode(RDGNodeBase* base)
 
         case RDGNodeType::eComputePass:
         {
+            RDGComputePassNode* node = reinterpret_cast<RDGComputePassNode*>(base);
+            for (RDGPassChildNode* child : node->childNodes)
+            {
+                switch (child->type)
+                {
+                    case RDGPassCmdType::eBindPipeline:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
+                        m_cmdList->BindComputePipeline(cmdNode->pipeline);
+                    }
+                    break;
+                    case RDGPassCmdType::eDispatch:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGDispatchNode*>(child);
+                        m_cmdList->Dispatch(cmdNode->groupCountX, cmdNode->groupCountY,
+                                            cmdNode->groupCountZ);
+                    }
+                    break;
+                    case RDGPassCmdType::eSetPushConstant:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
+                        rhi::PipelineHandle pipelineHandle;
+                        for (auto* sibling : node->childNodes)
+                        {
+                            if (sibling->type == RDGPassCmdType::eBindPipeline)
+                            {
+                                auto* casted   = reinterpret_cast<RDGBindPipelineNode*>(sibling);
+                                pipelineHandle = casted->pipeline;
+                            }
+                        }
+                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->data);
+                    }
+                    break;
+                }
+            }
         }
         break;
 
@@ -791,14 +884,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eBindPipeline:
                     {
                         auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
-                        if (cmdNode->pipelineType == rhi::PipelineType::eGraphics)
-                        {
-                            m_cmdList->BindGfxPipeline(cmdNode->pipeline);
-                        }
-                        else if (cmdNode->pipelineType == rhi::PipelineType::eCompute)
-                        {
-                            m_cmdList->BindComputePipeline(cmdNode->pipeline);
-                        }
+                        m_cmdList->BindGfxPipeline(cmdNode->pipeline);
                     }
                     break;
                     case RDGPassCmdType::eClearAttachment: break;
@@ -814,6 +900,13 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         m_cmdList->DrawIndexed(cmdNode->indexCount, cmdNode->instanceCount,
                                                cmdNode->firstIndex, cmdNode->vertexOffset,
                                                cmdNode->firstInstance);
+                    }
+                    break;
+                    case RDGPassCmdType::eDrawIndexedIndirect:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGDrawIndexedIndirectNode*>(child);
+                        m_cmdList->DrawIndexedIndirect(cmdNode->indirectBuffer, cmdNode->offset,
+                                                       cmdNode->drawCount, cmdNode->stride);
                     }
                     break;
                     case RDGPassCmdType::eExecuteCommands: break;

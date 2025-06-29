@@ -154,6 +154,52 @@ private:
     HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
 };
 
+class ComputePassBuilder
+{
+public:
+    explicit ComputePassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
+
+    ComputePassBuilder& SetShaderProgramName(std::string name)
+    {
+        m_shaderProgramName = std::move(name);
+        return *this;
+    }
+    ComputePassBuilder& SetTag(std::string tag)
+    {
+        m_tag = std::move(tag);
+        return *this;
+    }
+    ComputePass Build();
+
+private:
+    RenderDevice* m_renderDevice{nullptr};
+    std::string m_tag;
+    std::string m_shaderProgramName;
+};
+
+class ComputePassResourceUpdater
+{
+public:
+    ComputePassResourceUpdater(RenderDevice* renderDevice, ComputePass* computePass) :
+        m_renderDevice(renderDevice), m_computePass(computePass)
+    {}
+
+    ComputePassResourceUpdater& SetShaderResourceBinding(
+        uint32_t setIndex,
+        const std::vector<rhi::ShaderResourceBinding>& bindings)
+    {
+        m_dsBindings[setIndex] = bindings;
+        return *this;
+    }
+
+    void Update();
+
+private:
+    RenderDevice* m_renderDevice{nullptr};
+    ComputePass* m_computePass{nullptr};
+    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+};
+
 enum class StagingFlushAction : uint32_t
 {
     eNone    = 0,
@@ -278,6 +324,11 @@ struct RenderFrame
     bool cmdSubmitted{false};
 };
 
+struct RenderDeviceFeatures
+{
+    bool geometryShader{false};
+};
+
 class RenderDevice
 {
 public:
@@ -317,6 +368,8 @@ public:
 
     rhi::BufferHandle CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
 
+    rhi::BufferHandle CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData);
+
     void UpdateBuffer(const rhi::BufferHandle& bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
@@ -337,6 +390,8 @@ public:
         const rhi::ShaderHandle& shader,
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
+
+    rhi::PipelineHandle GetOrCreateComputePipeline(const rhi::ShaderHandle& shader);
 
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
@@ -439,6 +494,8 @@ private:
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
+    static size_t CalcComputePipelineHash(const rhi::ShaderHandle& shader);
+
     static size_t CalcSamplerHash(const rhi::SamplerInfo& info);
 
     size_t PadUniformBufferSize(size_t originalSize);
@@ -468,9 +525,11 @@ private:
     HashMap<size_t, rhi::SamplerHandle> m_samplerCache;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;
+    std::vector<ComputePass> m_computePasses;
     std::vector<rhi::RHIViewport*> m_viewports;
     rhi::RHIViewport* m_mainViewport{nullptr};
 
     friend class GraphicsPassBuilder;
+    friend class ComputePassBuilder;
 };
 } // namespace zen::rc

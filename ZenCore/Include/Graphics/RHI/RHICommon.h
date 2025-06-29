@@ -23,6 +23,11 @@ enum class GraphicsAPIType
     eMax    = 1
 };
 
+struct GPUInfo
+{
+    bool supportGeometryShader{false};
+};
+
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
 {
     return static_cast<std::underlying_type_t<E>>(e);
@@ -1344,8 +1349,11 @@ struct MemoryTransition
     BitField<AccessFlagBits> dstAccess;
 };
 
+// todo: add src access and dst access
 struct TextureTransition
 {
+    BitField<AccessFlagBits> srcAccess;
+    BitField<AccessFlagBits> dstAccess;
     TextureHandle textureHandle;
     TextureUsage oldUsage;
     TextureUsage newUsage;
@@ -1354,6 +1362,8 @@ struct TextureTransition
 
 struct BufferTransition
 {
+    BitField<AccessFlagBits> srcAccess;
+    BitField<AccessFlagBits> dstAccess;
     BufferHandle bufferHandle;
     BufferUsage oldUsage;
     BufferUsage newUsage;

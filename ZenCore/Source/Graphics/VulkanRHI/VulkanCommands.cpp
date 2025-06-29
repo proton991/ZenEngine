@@ -294,10 +294,6 @@ void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle)
         {
             descriptorSets.push_back(vulkanPipeline->descriptorSets[i]->descriptorSet);
         }
-        //        for (VulkanDescriptorSet* ds : vulkanPipeline->descriptorSets)
-        //        {
-        //            descriptorSets.push_back(ds->descriptorSet);
-        //        }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                                 vulkanPipeline->pipelineLayout, 0,
                                 vulkanPipeline->descriptorSetCount, descriptorSets.data(), 0,
@@ -410,6 +406,23 @@ void VulkanCommandList::DrawIndexed(uint32_t indexCount,
     vkCmdDrawIndexed(m_cmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex,
                      vertexOffset, firstInstance);
 }
+
+void VulkanCommandList::DrawIndexedIndirect(BufferHandle indirectBuffer,
+                                            uint32_t offset,
+                                            uint32_t drawCount,
+                                            uint32_t stride)
+{
+    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(indirectBuffer.value);
+    vkCmdDrawIndexedIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset, drawCount,
+                             stride);
+}
+
+
+void VulkanCommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+{
+    vkCmdDispatch(m_cmdBuffer->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
+}
+
 
 void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
 {

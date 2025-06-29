@@ -18,6 +18,9 @@ public:
     virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                         const std::string& debugName) = 0;
 
+    virtual void SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+                                           const std::string& debugName) = 0;
+
 protected:
     explicit RHIDebug(DynamicRHI* RHI) : m_RHI(RHI) {}
 

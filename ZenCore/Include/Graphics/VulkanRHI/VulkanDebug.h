@@ -16,6 +16,9 @@ public:
 
     void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                 const std::string& debugName) final;
+
+    void SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+                                   const std::string& debugName) final;
 };
 
 } // namespace zen::rhi

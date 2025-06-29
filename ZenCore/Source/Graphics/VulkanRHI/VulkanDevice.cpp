@@ -58,6 +58,12 @@ DataFormat VulkanRHI::GetSupportedDepthFormat()
     return static_cast<DataFormat>(defaulFormat);
 }
 
+
+const GPUInfo& VulkanRHI::QueryGPUInfo() const
+{
+    return m_gpuInfo;
+}
+
 /**
  * Create VkDevice and initialise
  */

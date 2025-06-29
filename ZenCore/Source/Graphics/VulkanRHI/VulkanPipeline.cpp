@@ -604,6 +604,30 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     return PipelineHandle(pipeline);
 }
 
+PipelineHandle VulkanRHI::CreateComputePipeline(ShaderHandle shaderHandle)
+{
+    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+
+    VkComputePipelineCreateInfo pipelineCI{};
+    pipelineCI.sType  = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineCI.stage  = shader->stageCreateInfos[0];
+    pipelineCI.layout = shader->pipelineLayout;
+
+    VkPipeline computePipeline{VK_NULL_HANDLE};
+    VKCHECK(vkCreateComputePipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
+                                     &computePipeline));
+
+    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline           = computePipeline;
+    pipeline->pipelineLayout     = shader->pipelineLayout;
+    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
+    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
+
+    m_shaderPipelines[shaderHandle] = pipeline;
+
+    return PipelineHandle(pipeline);
+}
+
 void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
     VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
@@ -1008,7 +1032,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
 
                 *bufferInfo        = {};
                 bufferInfo->buffer = vulkanBuffer->buffer;
-                bufferInfo->range  = vulkanBuffer->size;
+                bufferInfo->range  = VK_WHOLE_SIZE;
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 writes[i].pBufferInfo    = bufferInfo;

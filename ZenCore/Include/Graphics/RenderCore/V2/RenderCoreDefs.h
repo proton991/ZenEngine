@@ -5,6 +5,33 @@ namespace zen::rc
 {
 class ShaderProgram;
 
+struct SimpleVertex
+{
+    Vec4 position;
+};
+
+struct ComputeIndirectCommand
+{
+    uint32_t x;
+    uint32_t y;
+    uint32_t z;
+};
+
+struct DrawIndexedIndirectCommand
+{
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int vertexOffset;
+    uint32_t firstInstance;
+};
+
+struct LargeTriangle
+{
+    uint32_t triangleIndex;
+    uint32_t innerTriangleIndex;
+};
+
 struct GraphicsPass
 {
     rhi::FramebufferHandle framebuffer;
@@ -13,6 +40,13 @@ struct GraphicsPass
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
     ShaderProgram* shaderProgram;
     rhi::RenderPassLayout renderPassLayout;
+};
+
+struct ComputePass
+{
+    rhi::PipelineHandle pipeline;
+    std::vector<rhi::DescriptorSetHandle> descriptorSets;
+    ShaderProgram* shaderProgram;
 };
 
 enum class GfxPassShaderMode : uint32_t

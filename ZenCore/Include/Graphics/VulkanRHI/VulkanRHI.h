@@ -112,6 +112,8 @@ public:
                                      const RenderPassLayout& renderPassLayout,
                                      uint32_t subpass) final;
 
+    PipelineHandle CreateComputePipeline(ShaderHandle shaderHandle) final;
+
     void DestroyPipeline(PipelineHandle pipelineHandle) final;
 
     RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) final;
@@ -165,6 +167,8 @@ public:
 
     size_t GetStorageBufferAlignment() final;
 
+    const GPUInfo& QueryGPUInfo() const final;
+
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
 
     VkImageLayout GetImageCurrentLayout(VkImage image);
@@ -188,6 +192,8 @@ private:
     InstanceExtensionFlags m_instanceExtensionFlags{};
 
     VulkanDevice* m_device{nullptr};
+
+    GPUInfo m_gpuInfo{};
 
     VulkanViewport* m_currentViewport{nullptr};
 

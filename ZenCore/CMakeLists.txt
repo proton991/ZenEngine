@@ -31,10 +31,14 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelRenderer.h
+    Include/Graphics/RenderCore/V2/Renderer/VoxelizerBase.h
+    Include/Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h
+    Include/Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h
 
     Include/Graphics/RenderCore/V2/RenderGraph.h
     Include/Graphics/RenderCore/V2/RenderScene.h
+    Include/Graphics/RenderCore/V2/RenderObject.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
@@ -141,11 +145,15 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RendererServer.cpp
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
+    Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
     Source/Graphics/RenderCore/V2/VoxelRenderer.cpp
+    Source/Graphics/RenderCore/V2/ComputeVoxelizer.cpp
+    Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
+    Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp
     Source/Graphics/RenderCore/V2/ShaderProgram.cpp
 

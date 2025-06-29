@@ -102,6 +102,11 @@ public:
 
     const uint8_t* GetSceneUniformData() const;
 
+    const auto& GetMaterialsData() const
+    {
+        return m_materialsData;
+    }
+
 private:
     RenderDevice* m_renderDevice{nullptr};
     sg::Scene* m_scene{nullptr};

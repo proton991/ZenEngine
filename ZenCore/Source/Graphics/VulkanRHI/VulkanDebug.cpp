@@ -56,4 +56,23 @@ void VulkanDebug::SetRenderPassDebugName(RenderPassHandle renderPassHandle,
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(vkRHI->GetDevice()->GetVkHandle(), &info),
                    "Failed to set debug object name");
 }
+
+void VulkanDebug::SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+                                            const std::string& debugName)
+{
+    VulkanRHI* vkRHI = dynamic_cast<VulkanRHI*>(m_RHI);
+
+    VulkanDescriptorSet* descriptorSet =
+        reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
+    VkDebugUtilsObjectNameInfoEXT info{};
+    info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    info.pNext        = nullptr;
+    info.objectType   = VK_OBJECT_TYPE_DESCRIPTOR_SET;
+    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet);
+    info.pObjectName  = debugName.data();
+
+    CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(vkRHI->GetDevice()->GetVkHandle(), &info),
+                   "Failed to set debug object name");
+}
+
 } // namespace zen::rhi

@@ -125,6 +125,47 @@ void GraphicsPassResourceUpdater::Update()
     }
 }
 
+ComputePass ComputePassBuilder::Build()
+{
+    using namespace zen::rhi;
+
+    DynamicRHI* RHI = m_renderDevice->GetRHI();
+    ComputePass computePass;
+
+    ShaderProgram* shaderProgram =
+        ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
+    ShaderHandle shader = shaderProgram->GetShaderHandle();
+
+    std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs = shaderProgram->GetSRDs();
+
+    computePass.shaderProgram = shaderProgram;
+    computePass.pipeline      = m_renderDevice->GetOrCreateComputePipeline(shader);
+    computePass.descriptorSets.resize(SRDs.size());
+
+    for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
+    {
+        computePass.descriptorSets[setIndex] = RHI->CreateDescriptorSet(shader, setIndex);
+    }
+
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(computePass.pipeline, m_tag + "_Pipeline");
+
+    m_renderDevice->m_computePasses.push_back(computePass);
+    return computePass;
+}
+
+
+void ComputePassResourceUpdater::Update()
+{
+    rhi::DynamicRHI* RHI = m_renderDevice->GetRHI();
+    for (const auto& kv : m_dsBindings)
+    {
+        const auto setIndex               = kv.first;
+        const auto& bindings              = kv.second;
+        rhi::DescriptorSetHandle dsHandle = m_computePass->descriptorSets[setIndex];
+        RHI->UpdateDescriptorSet(dsHandle, bindings);
+    }
+}
+
 rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
 {
     for (uint32_t i = 0; i < m_freeBuffers.size(); i++)
@@ -410,6 +451,15 @@ void RenderDevice::Destroy()
             m_RHI->DestroyDescriptorSet(ds);
         }
     }
+
+    for (auto& rp : m_computePasses)
+    {
+        for (const auto& ds : rp.descriptorSets)
+        {
+            m_RHI->DestroyDescriptorSet(ds);
+        }
+    }
+
     for (auto& buffer : m_buffers)
     {
         m_RHI->DestroyBuffer(buffer);
@@ -490,6 +540,7 @@ rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eVertexBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
 
     rhi::BufferHandle vertexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
@@ -503,6 +554,7 @@ rhi::BufferHandle RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eIndexBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
 
     rhi::BufferHandle indexBuffer =
         m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
@@ -543,6 +595,24 @@ rhi::BufferHandle RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uin
     }
     m_buffers.push_back(storageBuffer);
     return storageBuffer;
+}
+
+rhi::BufferHandle RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData)
+{
+    BitField<rhi::BufferUsageFlagBits> usages;
+    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eIndirectBuffer);
+    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+
+    uint32_t paddedSize = PadStorageBufferSize(dataSize);
+    rhi::BufferHandle indirectBuffer =
+        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
+    if (pData != nullptr)
+    {
+        UpdateBufferInternal(indirectBuffer, 0, paddedSize, pData);
+    }
+    m_buffers.push_back(indirectBuffer);
+    return indirectBuffer;
 }
 
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
@@ -609,6 +679,16 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     {
         // create new one
         m_pipelineCache[hash] = m_RHI->CreateGfxPipeline(shader, PSO, renderPassLayout, 0);
+    }
+    return m_pipelineCache[hash];
+}
+
+rhi::PipelineHandle RenderDevice::GetOrCreateComputePipeline(const rhi::ShaderHandle& shader)
+{
+    auto hash = CalcComputePipelineHash(shader);
+    if (!m_pipelineCache.contains(hash))
+    {
+        m_pipelineCache[hash] = m_RHI->CreateComputePipeline(shader);
     }
     return m_pipelineCache[hash];
 }
@@ -1015,6 +1095,18 @@ size_t RenderDevice::CalcGfxPipelineHash(
             default: break;
         }
     }
+    return seed;
+}
+
+size_t RenderDevice::CalcComputePipelineHash(const rhi::ShaderHandle& shader)
+{
+    std::size_t seed = 0;
+    // Hashing utility
+    auto combineHash = [&seed](auto&& value) {
+        seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
+    };
+    combineHash(shader.value);
     return seed;
 }
 

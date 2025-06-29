@@ -50,10 +50,10 @@ void RenderScene::Init()
 
 void RenderScene::Destroy()
 {
-    m_renderDevice->DestroyBuffer(m_vertexBuffer);
-    m_renderDevice->DestroyBuffer(m_indexBuffer);
-    m_renderDevice->DestroyBuffer(m_nodeSSBO);
-    m_renderDevice->DestroyBuffer(m_materialSSBO);
+    // m_renderDevice->DestroyBuffer(m_vertexBuffer);
+    // m_renderDevice->DestroyBuffer(m_indexBuffer);
+    // m_renderDevice->DestroyBuffer(m_nodeSSBO);
+    // m_renderDevice->DestroyBuffer(m_materialSSBO);
 }
 
 void RenderScene::LoadSceneMaterials()

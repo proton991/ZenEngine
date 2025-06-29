@@ -3,6 +3,8 @@
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
+#include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 
 namespace zen::rc
@@ -19,11 +21,20 @@ void RendererServer::Init()
     m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
     m_skyboxRenderer->Init();
 
-    if (m_renderDevice->SupportVoxelizer())
+    // if (m_renderDevice->SupportVoxelizer())
+    // {
+    //     m_voxelRenderer = new VoxelRenderer(m_renderDevice, m_viewport);
+    //     m_voxelRenderer->Init();
+    // }
+    if (m_renderDevice->GetRHI()->QueryGPUInfo().supportGeometryShader)
     {
-        m_voxelRenderer = new VoxelRenderer(m_renderDevice, m_viewport);
-        m_voxelRenderer->Init();
+        m_voxelizer = new GeometryVoxelizer(m_renderDevice, m_viewport);
     }
+    else
+    {
+        m_voxelizer = new ComputeVoxelizer(m_renderDevice, m_viewport);
+    }
+    m_voxelizer->Init();
 
     m_shadowMapRenderer = new ShadowMapRenderer(m_renderDevice, m_viewport);
     m_shadowMapRenderer->Init();
@@ -33,10 +44,10 @@ void RendererServer::Destroy()
 {
     m_deferredLightingRenderer->Destroy();
     m_skyboxRenderer->Destroy();
-    if (m_renderDevice->SupportVoxelizer())
-    {
-        m_voxelRenderer->Destroy();
-    }
+    // if (m_renderDevice->SupportVoxelizer())
+    // {
+    //     m_voxelRenderer->Destroy();
+    // }
 }
 
 void RendererServer::DispatchRenderWorkloads()
@@ -52,9 +63,11 @@ void RendererServer::DispatchRenderWorkloads()
     std::vector<RenderGraph*> RDGs;
     if (m_renderDevice->SupportVoxelizer())
     {
-        m_voxelRenderer->PrepareRenderWorkload();
+        // m_voxelRenderer->PrepareRenderWorkload();
+        m_voxelizer->PrepareRenderWorkload();
         RDGs.push_back(m_shadowMapRenderer->GetRenderGraph()); // shadowMap
-        RDGs.push_back(m_voxelRenderer->GetRenderGraph());     // voxel
+        // RDGs.push_back(m_voxelRenderer->GetRenderGraph());     // voxel
+        RDGs.push_back(m_voxelizer->GetRenderGraph()); // voxel
         // RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
         // RDGs.push_back(m_rdg.Get());                      // deferred pbr
     }
@@ -72,10 +85,11 @@ void RendererServer::SetRenderScene(RenderScene* scene)
     m_scene = scene;
     m_skyboxRenderer->SetRenderScene(scene);
     m_deferredLightingRenderer->SetRenderScene(scene);
-    if (m_renderDevice->SupportVoxelizer())
-    {
-        m_voxelRenderer->SetRenderScene(scene);
-    }
+    // if (m_renderDevice->SupportVoxelizer())
+    // {
+    //     m_voxelRenderer->SetRenderScene(scene);
+    // }
+    m_voxelizer->SetRenderScene(scene);
     m_shadowMapRenderer->SetRenderScene(scene);
 }
 
@@ -83,9 +97,10 @@ void RendererServer::ViewportResizeCallback()
 {
     m_deferredLightingRenderer->OnResize();
     m_skyboxRenderer->OnResize();
-    if (m_voxelRenderer != nullptr)
-    {
-        m_voxelRenderer->OnResize();
-    }
+    m_voxelizer->OnResize();
+    // if (m_voxelRenderer != nullptr)
+    // {
+    //     m_voxelRenderer->OnResize();
+    // }
 }
 } // namespace zen::rc

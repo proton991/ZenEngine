@@ -58,6 +58,8 @@ public:
                                              const RenderPassLayout& renderPassLayout,
                                              uint32_t subpass) = 0;
 
+    virtual PipelineHandle CreateComputePipeline(ShaderHandle shaderHandle) = 0;
+
     virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) = 0;
@@ -109,8 +111,12 @@ public:
 
     virtual void WaitDeviceIdle() = 0;
 
+    // todo: refactor this, find nicer ways to query hardware related capabilities
+    /// e.g. put all methods into a struct (GPUInfo).
     virtual size_t GetUniformBufferAlignment() = 0;
 
     virtual size_t GetStorageBufferAlignment() = 0;
+
+    virtual const GPUInfo& QueryGPUInfo() const = 0;
 };
 } // namespace zen::rhi

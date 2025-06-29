@@ -145,6 +145,28 @@ VoxelDrawShaderProgram::VoxelDrawShaderProgram(RenderDevice* renderDevice) :
     Init();
 }
 
+VoxelizationCompShaderProgram::VoxelizationCompShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "VoxelizationCompSP")
+{
+    AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxelization.comp.spv");
+    Init();
+}
+
+VoxelPreDrawShaderProgram::VoxelPreDrawShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "VoxelPreDrawSP")
+{
+    AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
+    Init();
+}
+
+VoxelDrawShaderProgram2::VoxelDrawShaderProgram2(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "VoxelDrawSP2")
+{
+    AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxel_vis.vert.spv");
+    AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxel_vis.frag.spv");
+    Init();
+}
+
 ShadowMapRenderProgram::ShadowMapRenderProgram(RenderDevice* renderDevice) :
     ShaderProgram(renderDevice, "ShadowMapRenderSP")
 {
@@ -205,6 +227,18 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
             ShaderProgram* shaderProgram             = new VoxelDrawShaderProgram(renderDevice);
             m_programCache[shaderProgram->GetName()] = shaderProgram;
         }
+    }
+    {
+        ShaderProgram* shaderProgram             = new VoxelizationCompShaderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram             = new VoxelPreDrawShaderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram             = new VoxelDrawShaderProgram2(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
         ShaderProgram* shaderProgram             = new ShadowMapRenderProgram(renderDevice);
