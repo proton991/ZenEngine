@@ -144,10 +144,10 @@ void ShadowMapRenderer::BuildRenderGraph()
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.shadowMap, TextureUsage::eColorAttachment,
             m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),
-            rc::RDGAccessType::eReadWrite);
+            rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
-            TextureSubResourceRange::DepthStencil(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::DepthStencil(), rhi::AccessMode::eReadWrite);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);

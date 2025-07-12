@@ -15,6 +15,7 @@ void Scene::UpdateAABB()
         m_aabb.SetMin(meshAABB.GetMin());
         m_aabb.SetMax(meshAABB.GetMax());
     }
+    m_localAABB = m_aabb;
 }
 
 std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& eyePos,

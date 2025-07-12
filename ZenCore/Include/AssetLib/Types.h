@@ -312,8 +312,8 @@ enum class Format : uint32_t
 
 struct Vertex
 {
-    Vec3 pos;
-    Vec3 normal;
+    Vec4 pos;
+    Vec4 normal;
     Vec4 tangent;
     Vec2 uv0;
     Vec2 uv1;

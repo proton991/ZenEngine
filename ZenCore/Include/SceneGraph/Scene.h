@@ -106,6 +106,11 @@ public:
         return m_aabb;
     }
 
+    const auto& GetLocalAABB() const
+    {
+        return m_localAABB;
+    }
+
     static void LoadDefaultTextures(uint32_t startIndex);
 
     static DefaultTextures GetDefaultTextures();
@@ -122,6 +127,9 @@ public:
 
 private:
     std::string m_name;
+
+    // aabb without transformation
+    AABB m_localAABB;
 
     AABB m_aabb;
 

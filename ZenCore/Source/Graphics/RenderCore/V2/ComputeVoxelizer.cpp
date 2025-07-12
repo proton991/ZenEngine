@@ -11,14 +11,11 @@
 
 using namespace zen::rhi;
 
+/**
+* todo: inconsistent buffer(draw indirect/color/position) and texture compared to reference renderer
+ */
 namespace zen::rc
 {
-// ComputeVoxelizer::ComputeVoxelizer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
-//     m_renderDevice(renderDevice), m_viewport(viewport)
-// {
-//     m_RHI = m_renderDevice->GetRHI();
-// }
-
 void ComputeVoxelizer::Init()
 {
     m_config.volumeDimension = 256;
@@ -202,33 +199,67 @@ void ComputeVoxelizer::PrepareBuffers()
     m_buffers.instanceColorBuffer =
         m_renderDevice->CreateStorageBuffer(sizeof(Vec4) * 3000000, nullptr);
 
-    m_buffers.drawIndirectBuffer =
-        m_renderDevice->CreateIndirectBuffer(sizeof(DrawIndexedIndirectCommand), nullptr);
+    DrawIndexedIndirectCommand drawIndirectCmd{};
+    drawIndirectCmd.instanceCount = 1;
+    drawIndirectCmd.firstInstance = 0;
+    drawIndirectCmd.indexCount    = 36;
+    drawIndirectCmd.firstIndex    = 0;
+    drawIndirectCmd.vertexOffset  = 0;
+
+    m_buffers.drawIndirectBuffer = m_renderDevice->CreateIndirectBuffer(
+        sizeof(DrawIndexedIndirectCommand), reinterpret_cast<const uint8_t*>(&drawIndirectCmd));
 }
+
+// static glm::mat4 get_model()
+// {
+//     auto model = glm::mat4(1.0f);
+//     model      = glm::scale(model, glm::vec3(1.0f));
+//     model      = glm::mat4_cast(rotation) * model;
+//     model      = glm::translate(model, position);
+//     return model;
+// }
 
 void ComputeVoxelizer::BuildRenderGraph()
 {
     VERIFY_EXPR(m_scene != nullptr);
     m_rdg = MakeUnique<RenderGraph>();
     m_rdg->Begin();
+    int workgroupCount;
     // voxelization pass
     if (m_needVoxelization)
     {
+        rhi::TextureHandle textures[] = {
+            // m_voxelTextures.staticFlag,
+            m_voxelTextures.albedo,
+            // m_voxelTextures.normal,
+            // m_voxelTextures.emissive
+        };
+        rhi::TextureSubResourceRange ranges[] = {
+            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
+            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
+            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
+            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)
+        };
+
+
+        auto* resetTexPass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
+        resetTexPass->tag  = "reset_voxel_texture";
+        m_rdg->DeclareTextureAccessForPass(resetTexPass, 1, textures, TextureUsage::eStorage,
+                                           ranges, AccessMode::eReadWrite);
+        workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
+        m_rdg->AddComputePassDispatchNode(resetTexPass, workgroupCount, workgroupCount,
+                                          workgroupCount);
+
+
         VoxelizationCompShaderProgram* shaderProgram = dynamic_cast<VoxelizationCompShaderProgram*>(
             m_computePasses.voxelization.shaderProgram);
         auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
         pass->tag  = "voxelization_compute";
 
-        rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
-                                                 m_voxelTextures.normal, m_voxelTextures.emissive};
-        rhi::TextureSubResourceRange ranges[] = {
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
-
-        m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
-                                           RDGAccessType::eReadWrite);
+        m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+                                           AccessMode::eReadWrite);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
 
 
         shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
@@ -239,17 +270,17 @@ void ComputeVoxelizer::BuildRenderGraph()
             shaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
-                const int triangleCount  = subMesh->GetIndexCount() / 3;
-                const int workgroupCount = ceil(double(triangleCount) / double(localSize));
+                const int triangleCount = subMesh->GetIndexCount() / 3;
+                workgroupCount          = ceil(double(triangleCount) / double(localSize));
 
                 auto& materialData = m_scene->GetMaterialsData()[subMesh->GetMaterialIndex()];
                 // shaderProgram->pushConstantsData.albedoTexIndex =
                 shaderProgram->pushConstantsData.albedoTexIndex = materialData.bcTexIndex;
                 shaderProgram->pushConstantsData.normalTexIndex = materialData.normalTexIndex;
-                shaderProgram->pushConstantsData.triangleCount  = subMesh->GetIndexCount() / 3;
+                shaderProgram->pushConstantsData.triangleCount  = triangleCount;
                 m_rdg->AddComputePassSetPushConstants(
                     pass, &shaderProgram->pushConstantsData,
-                    sizeof(VoxelizationProgram::PushConstantData));
+                    sizeof(VoxelizationCompShaderProgram::PushConstantData));
                 m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
             }
         }
@@ -260,16 +291,28 @@ void ComputeVoxelizer::BuildRenderGraph()
     {
         m_rebuildRDG = false;
     }
+    // reset draw indirect
+    {
+        auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect);
+        pass->tag  = "reset_draw_indirect_compute";
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+        m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
+    }
     // voxel pre-draw pass
     {
         auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelPreDraw);
         pass->tag  = "voxel_pre_draw_compute";
         m_rdg->DeclareTextureAccessForPass(
             pass, m_voxelTextures.albedo, TextureUsage::eStorage,
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-            RDGAccessType::eRead);
-
-        const int workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
+            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+        workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
         m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
     }
 
@@ -286,7 +329,12 @@ void ComputeVoxelizer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
         pass->tag = "voxel_draw2";
-
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eRead);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
+                                          BufferUsage::eStorageBuffer, AccessMode::eRead);
+        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+                                          BufferUsage::eIndirectBuffer, AccessMode::eRead);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_cube->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_cube->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);
@@ -331,6 +379,20 @@ void ComputeVoxelizer::BuildGraphicsPasses()
 
 void ComputeVoxelizer::BuildComputePasses()
 {
+    {
+        // reset draw indirect
+        ComputePassBuilder builder(m_renderDevice);
+        m_computePasses.resetDrawIndirect = builder.SetShaderProgramName("ResetDrawIndirectSP")
+                                                .SetTag("ResetDrawIndirectComp")
+                                                .Build();
+    }
+    {
+        // reset voxel texture
+        ComputePassBuilder builder(m_renderDevice);
+        m_computePasses.resetVoxelTexture = builder.SetShaderProgramName("ResetVoxelTextureSP")
+                                                .SetTag("ResetVoxelTextureComp")
+                                                .Build();
+    }
     // voxelization pass
     {
         ComputePassBuilder builder(m_renderDevice);
@@ -348,6 +410,22 @@ void ComputeVoxelizer::BuildComputePasses()
 
 void ComputeVoxelizer::UpdatePassResources()
 {
+    // reset draw indirect
+    {
+        std::vector<ShaderResourceBinding> set0bindings;
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eStorageBuffer,
+                                  m_buffers.drawIndirectBuffer);
+        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetDrawIndirect);
+        updater.SetShaderResourceBinding(0, set0bindings).Update();
+    }
+    // reset voxel texture
+    {
+        std::vector<ShaderResourceBinding> set0bindings;
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
+                                  m_voxelTextures.albedo);
+        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
+        updater.SetShaderResourceBinding(0, set0bindings).Update();
+    }
     // voxelization pass
     {
         std::vector<ShaderResourceBinding> set0bindings;
@@ -355,8 +433,6 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set2bindings;
         std::vector<ShaderResourceBinding> set3bindings;
         std::vector<ShaderResourceBinding> set4bindings;
-        std::vector<ShaderResourceBinding> set5bindings;
-        std::vector<ShaderResourceBinding> set6bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
                                   m_voxelTextures.albedo);
@@ -369,7 +445,7 @@ void ComputeVoxelizer::UpdatePassResources()
                                   m_scene->GetVertexBuffer());
         ADD_SHADER_BINDING_SINGLE(set2bindings, 1, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetIndexBuffer());
-        ADD_SHADER_BINDING_SINGLE(set6bindings, 0, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(set2bindings, 2, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetNodesDataSSBO());
         // set-3 bindings: texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set3bindings, 0, ShaderResourceType::eSamplerWithTexture,
@@ -378,7 +454,7 @@ void ComputeVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set4bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.computeIndirectBuffer);
         // set-5 bindings
-        ADD_SHADER_BINDING_SINGLE(set5bindings, 0, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(set4bindings, 1, ShaderResourceType::eStorageBuffer,
                                   m_buffers.largeTriangleBuffer);
 
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelization);
@@ -387,8 +463,6 @@ void ComputeVoxelizer::UpdatePassResources()
             .SetShaderResourceBinding(2, set2bindings)
             .SetShaderResourceBinding(3, set3bindings)
             .SetShaderResourceBinding(4, set4bindings)
-            .SetShaderResourceBinding(5, set5bindings)
-            .SetShaderResourceBinding(6, set6bindings)
             .Update();
     }
     // voxel pre-draw pass

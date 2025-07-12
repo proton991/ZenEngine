@@ -1,7 +1,7 @@
 struct Vertex
 {
-    vec3 position;
-    vec3 normal;
+    vec4 position;
+    vec4 normal;
     vec4 tangent;
     vec2 texcoord;
     vec2 uv1;
@@ -33,7 +33,7 @@ struct NodeData {
     mat4 normalMatrix;
 };
 
-layout(std140, set = 6, binding = 0) readonly buffer NodeBuffer {
+layout(std140, set = 2, binding = 2) readonly buffer NodeBuffer {
     NodeData nodesData[];
 };
 
@@ -69,7 +69,7 @@ struct LargeTriangle
     uint innerTriangleIndex;
 };
 
-layout(set = 5, binding = 0) buffer LargeTriangleArray
+layout(set = 4, binding = 1) buffer LargeTriangleArray
 {
     LargeTriangle largeTriangles[];
 };

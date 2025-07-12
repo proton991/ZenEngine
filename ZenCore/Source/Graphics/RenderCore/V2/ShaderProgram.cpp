@@ -159,6 +159,27 @@ VoxelPreDrawShaderProgram::VoxelPreDrawShaderProgram(RenderDevice* renderDevice)
     Init();
 }
 
+ResetDrawIndirectShaderProgram::ResetDrawIndirectShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "ResetDrawIndirectSP")
+{
+    AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_draw_indirect.comp.spv");
+    Init();
+}
+
+ResetCompIndirectShaderProgram::ResetCompIndirectShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "ResetCompIndirectSP")
+{
+    AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_compute_indirect.comp.spv");
+    Init();
+}
+
+ResetVoxelTextureShaderProgram::ResetVoxelTextureShaderProgram(RenderDevice* renderDevice) :
+    ShaderProgram(renderDevice, "ResetVoxelTextureSP")
+{
+    AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv");
+    Init();
+}
+
 VoxelDrawShaderProgram2::VoxelDrawShaderProgram2(RenderDevice* renderDevice) :
     ShaderProgram(renderDevice, "VoxelDrawSP2")
 {
@@ -227,6 +248,18 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
             ShaderProgram* shaderProgram             = new VoxelDrawShaderProgram(renderDevice);
             m_programCache[shaderProgram->GetName()] = shaderProgram;
         }
+    }
+    {
+        ShaderProgram* shaderProgram             = new ResetCompIndirectShaderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram             = new ResetDrawIndirectShaderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram             = new ResetVoxelTextureShaderProgram(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
         ShaderProgram* shaderProgram             = new VoxelizationCompShaderProgram(renderDevice);

@@ -210,7 +210,7 @@ void OffscreenApp::BuildRenderGraph()
             m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreenShaded, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.color, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -247,7 +247,7 @@ void OffscreenApp::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.mirror, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

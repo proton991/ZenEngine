@@ -1,7 +1,7 @@
 #version 460
 
-layout (location = 0) in vec3 inPos;
-layout (location = 1) in vec3 inNormal;
+layout (location = 0) in vec4 inPos;
+layout (location = 1) in vec4 inNormal;
 layout (location = 2) in vec4 inTangent;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
@@ -38,7 +38,7 @@ layout (push_constant) uniform uNodePushConstant
 
 void main()
 {
-    vec4 vertexPos = vec4(inPos, 1.0);
+    vec4 vertexPos = vec4(inPos.xyz, 1.0);
     vs_out.position = uLightViewProjection * nodesData[pc.nodeIndex].modelMatrix * vertexPos;
     vs_out.texCoord = inUV0.xy;
     // final drawing pos

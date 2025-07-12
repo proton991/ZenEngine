@@ -1,7 +1,7 @@
 #version 450
 
-layout (location = 0) in vec3 inPos;
-layout (location = 1) in vec3 inNormal;
+layout (location = 0) in vec4 inPos;
+layout (location = 1) in vec4 inNormal;
 layout (location = 2) in vec4 inTangent;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
@@ -36,15 +36,15 @@ const mat4 biasMat = mat4(
 void main() 
 {
 	outColor = inColor.rgb;
-	outNormal = inNormal;
+	outNormal = inNormal.xyz;
 
 	gl_Position = ubo.projection * ubo.view * ubo.model * vec4(inPos.xyz, 1.0);
 	
-    vec4 pos = ubo.model * vec4(inPos, 1.0);
-    outNormal = mat3(ubo.model) * inNormal;
-    outLightVec = normalize(ubo.lightPos - inPos);
+    vec4 pos = ubo.model * vec4(inPos.xyz, 1.0);
+    outNormal = mat3(ubo.model) * inNormal.xyz;
+    outLightVec = normalize(ubo.lightPos - inPos.xyz);
     outViewVec = -pos.xyz;			
 
-	outShadowCoord = ( biasMat * ubo.lightSpace * ubo.model ) * vec4(inPos, 1.0);	
+	outShadowCoord = ( biasMat * ubo.lightSpace * ubo.model ) * vec4(inPos.xyz, 1.0);
 }
 

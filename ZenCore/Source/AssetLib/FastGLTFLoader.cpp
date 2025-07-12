@@ -589,7 +589,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 // position
                 auto position =
                     bufferPos ? glm::make_vec3(&bufferPos[vertexIterator * 3]) : glm::vec3(0.0f);
-                vertex.pos = glm::vec3(position.x, position.y, position.z);
+                vertex.pos = glm::vec4(position.x, position.y, position.z, 1.0f);
                 // color
                 glm::vec3 vertexColor{1.0f};
                 switch (colorBufferComponentType)
@@ -630,9 +630,10 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 vertex.color =
                     glm::vec4(vertexColor.x, vertexColor.y, vertexColor.z, 1.0f) * diffuseColor;
                 // normal
-                vertex.normal = glm::normalize(
-                    glm::vec3(bufferNormals ? glm::make_vec3(&bufferNormals[vertexIterator * 3]) :
-                                              glm::vec3(0.0f)));
+                vertex.normal = glm::normalize(glm::vec4(
+                    bufferNormals ?
+                        glm::vec4(glm::make_vec3(&bufferNormals[vertexIterator * 3]), 0.0f) :
+                        glm::vec4(0.0f)));
                 // uv0
                 auto uv0   = bufferTexCoordSet0 ?
                       glm::make_vec2(&bufferTexCoordSet0[vertexIterator * 2]) :

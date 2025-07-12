@@ -52,9 +52,9 @@ void main()
     float voxel_width = (_max.x - _min.x) / float(voxels_per_side);
 
     mat4 modelMatrix = nodesData[pc.nodeIndex].modelMatrix;
-    vec4 vertex1_world = modelMatrix * vec4(vertex1.position, 1.0f);
-    vec4 vertex2_world = modelMatrix * vec4(vertex2.position, 1.0f);
-    vec4 vertex3_world = modelMatrix  * vec4(vertex3.position, 1.0f);
+    vec4 vertex1_world = modelMatrix * vec4(vertex1.position.xyz, 1.0f);
+    vec4 vertex2_world = modelMatrix * vec4(vertex2.position.xyz, 1.0f);
+    vec4 vertex3_world = modelMatrix  * vec4(vertex3.position.xyz, 1.0f);
 
     ivec3 vertex1_voxel = ivec3((vertex1_world.xyz - _min) / voxel_width);
     ivec3 vertex2_voxel = ivec3((vertex2_world.xyz - _min) / voxel_width);
@@ -134,7 +134,7 @@ void main()
 
     // Voxel bounding box
     int min_x_voxel = int(min(min(vertex1_voxel[x], vertex2_voxel[x]), vertex3_voxel[x]));
-    int min_y_voxel = int(min(min(vertex1_voxel[y], vertex2_voxel[y]), vertex3_voxel[y]));
+     int min_y_voxel = int(min(min(vertex1_voxel[y], vertex2_voxel[y]), vertex3_voxel[y]));
     int max_x_voxel = int(max(max(vertex1_voxel[x], vertex2_voxel[x]), vertex3_voxel[x]));
     int max_y_voxel = int(max(max(vertex1_voxel[y], vertex2_voxel[y]), vertex3_voxel[y]));
 
@@ -164,6 +164,7 @@ void main()
                 barycentric.x * vertex1.texcoord.y + barycentric.y * vertex2.texcoord.y + barycentric.z * vertex3.texcoord.y);
 
                 vec3 diffuse = texture(uTextureArray[pc.albedoTexIndex], texcoord).xyz;
+//                vec3 diffuse = vec3(1.0, 0.0, 0.0);
                 const vec4 voxel_value = vec4(diffuse, 1.0);
 
                 imageStore(voxelTexture, voxel_coord, voxel_value);

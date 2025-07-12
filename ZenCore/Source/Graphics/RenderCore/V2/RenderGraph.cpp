@@ -237,12 +237,12 @@ void RenderGraph::AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t of
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 
     RDGAccess access{};
-    access.type        = RDGAccessType::eReadWrite;
+    access.accessMode  = rhi::AccessMode::eReadWrite;
     access.nodeId      = node->id;
     access.bufferUsage = rhi::BufferUsage::eTransferDst;
 
     RDGResource* resource = GetOrAllocResource(bufferHandle, RDGResourceType::eBuffer, node->id);
-    resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
@@ -261,13 +261,13 @@ void RenderGraph::AddBufferCopyNode(rhi::BufferHandle srcBufferHandle,
     // read access to src buffer
     {
         RDGAccess readAccess{};
-        readAccess.type        = RDGAccessType::eRead;
+        readAccess.accessMode  = rhi::AccessMode::eRead;
         readAccess.bufferUsage = rhi::BufferUsage::eTransferSrc;
         readAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->acessNodeMap[RDGAccessType::eRead].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -275,13 +275,13 @@ void RenderGraph::AddBufferCopyNode(rhi::BufferHandle srcBufferHandle,
     // write access to dst buffer
     {
         RDGAccess writeAccess{};
-        writeAccess.type        = RDGAccessType::eReadWrite;
+        writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
         writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
         writeAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -303,12 +303,12 @@ void RenderGraph::AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
     // staging buffer is neither owned nor managed by RDG
     // write access to dst buffer
     RDGAccess writeAccess{};
-    writeAccess.type        = RDGAccessType::eReadWrite;
+    writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
     writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
     writeAccess.nodeId      = node->id;
 
     RDGResource* resource = GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-    resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -326,13 +326,13 @@ void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 
     RDGAccess access{};
-    access.type                    = RDGAccessType::eReadWrite;
+    access.accessMode              = rhi::AccessMode::eReadWrite;
     access.nodeId                  = node->id;
     access.textureUsage            = rhi::TextureUsage::eTransferDst;
     access.textureSubResourceRange = range;
 
     RDGResource* resource = GetOrAllocResource(textureHandle, RDGResourceType::eTexture, node->id);
-    resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
@@ -356,13 +356,13 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     {
         RDGAccess readAccess{};
         readAccess.textureSubResourceRange = srcTextureSubresourceRange;
-        readAccess.type                    = RDGAccessType::eRead;
+        readAccess.accessMode              = rhi::AccessMode::eRead;
         readAccess.textureUsage            = rhi::TextureUsage::eTransferSrc;
         readAccess.nodeId                  = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
-        resource->acessNodeMap[RDGAccessType::eRead].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -371,13 +371,13 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     {
         RDGAccess writeAccess{};
         writeAccess.textureSubResourceRange = dstTextureSubresourceRange;
-        writeAccess.type                    = RDGAccessType::eReadWrite;
+        writeAccess.accessMode              = rhi::AccessMode::eReadWrite;
         writeAccess.textureUsage            = rhi::TextureUsage::eTransferDst;
         writeAccess.nodeId                  = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
-        resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -398,13 +398,13 @@ void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
     // read access to src texture
     {
         RDGAccess readAccess{};
-        readAccess.type         = RDGAccessType::eRead;
+        readAccess.accessMode   = rhi::AccessMode::eRead;
         readAccess.textureUsage = rhi::TextureUsage::eTransferSrc;
         readAccess.nodeId       = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
-        resource->acessNodeMap[RDGAccessType::eRead].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -412,13 +412,13 @@ void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
     // write access to dst buffer
     {
         RDGAccess writeAccess{};
-        writeAccess.type        = RDGAccessType::eReadWrite;
+        writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
         writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
         writeAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -440,13 +440,13 @@ void RenderGraph::AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
     // staging buffer is neither owned nor managed by RDG
     // write access to dst texture
     RDGAccess writeAccess{};
-    writeAccess.type         = RDGAccessType::eReadWrite;
+    writeAccess.accessMode   = rhi::AccessMode::eReadWrite;
     writeAccess.textureUsage = rhi::TextureUsage::eTransferDst;
     writeAccess.nodeId       = node->id;
 
     RDGResource* resource =
         GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
-    resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -470,13 +470,13 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
     // read access to src texture
     {
         RDGAccess readAccess{};
-        readAccess.type         = RDGAccessType::eRead;
+        readAccess.accessMode   = rhi::AccessMode::eRead;
         readAccess.textureUsage = rhi::TextureUsage::eTransferSrc;
         readAccess.nodeId       = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
-        resource->acessNodeMap[RDGAccessType::eRead].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -484,13 +484,13 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
     // write access to dst texture
     {
         RDGAccess writeAccess{};
-        writeAccess.type         = RDGAccessType::eReadWrite;
+        writeAccess.accessMode   = rhi::AccessMode::eReadWrite;
         writeAccess.textureUsage = rhi::TextureUsage::eTransferDst;
         writeAccess.nodeId       = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
-        resource->acessNodeMap[RDGAccessType::eReadWrite].push_back(node->id);
+        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -509,14 +509,14 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               rhi::TextureHandle textureHandle,
                                               rhi::TextureUsage usage,
                                               const rhi::TextureSubResourceRange& range,
-                                              RDGAccessType accessType)
+                                              rhi::AccessMode accessMode)
 {
     RDGResource* resource =
         GetOrAllocResource(textureHandle, RDGResourceType::eTexture, passNode->id);
-    resource->acessNodeMap[accessType].push_back(passNode->id);
+    resource->accessNodeMap[accessMode].push_back(passNode->id);
 
     RDGAccess access{};
-    access.type                    = accessType;
+    access.accessMode              = accessMode;
     access.resourceId              = resource->id;
     access.nodeId                  = passNode->id;
     access.textureUsage            = usage;
@@ -529,12 +529,29 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               rhi::TextureHandle* textureHandles,
                                               rhi::TextureUsage usage,
                                               rhi::TextureSubResourceRange* ranges,
-                                              RDGAccessType accessType)
+                                              rhi::AccessMode accessMode)
 {
     for (uint32_t i = 0; i < numTextures; i++)
     {
-        DeclareTextureAccessForPass(passNode, textureHandles[i], usage, ranges[i], accessType);
+        DeclareTextureAccessForPass(passNode, textureHandles[i], usage, ranges[i], accessMode);
     }
+}
+
+void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
+                                             rhi::BufferHandle bufferHandle,
+                                             rhi::BufferUsage usage,
+                                             rhi::AccessMode accessMode)
+{
+    RDGResource* resource =
+        GetOrAllocResource(bufferHandle, RDGResourceType::eBuffer, passNode->id);
+    resource->accessNodeMap[accessMode].push_back(passNode->id);
+
+    RDGAccess access{};
+    access.accessMode  = accessMode;
+    access.resourceId  = resource->id;
+    access.nodeId      = passNode->id;
+    access.bufferUsage = usage;
+    m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
 }
 
 void RenderGraph::SortNodes()
@@ -544,12 +561,12 @@ void RenderGraph::SortNodes()
     std::vector<uint32_t> inDegrees(m_nodeCount, 0);
     for (RDGResource* resource : m_resources)
     {
-        if (resource->acessNodeMap.contains(RDGAccessType::eReadWrite) &&
-            resource->acessNodeMap.contains(RDGAccessType::eRead))
+        if (resource->accessNodeMap.contains(rhi::AccessMode::eReadWrite) &&
+            resource->accessNodeMap.contains(rhi::AccessMode::eRead))
         {
-            bool isTexutre         = resource->type == RDGResourceType::eTexture;
-            auto& writtenByNodeIds = resource->acessNodeMap[RDGAccessType::eReadWrite];
-            auto& readByNodeIDs    = resource->acessNodeMap[RDGAccessType::eRead];
+            bool isTexture         = resource->type == RDGResourceType::eTexture;
+            auto& writtenByNodeIds = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
+            auto& readByNodeIDs    = resource->accessNodeMap[rhi::AccessMode::eRead];
             std::ranges::sort(writtenByNodeIds);
             std::ranges::sort(readByNodeIDs);
             // Combine write and read access nodes into a single vector while preserving the order
@@ -570,30 +587,33 @@ void RenderGraph::SortNodes()
 
                 uint32_t oldUsage = 0;
                 uint32_t newUsage = 0;
-                rhi::TextureSubResourceRange texutureSubResourceRange;
+                rhi::AccessMode oldAccessMode;
+                rhi::AccessMode newAccessMode;
+                rhi::TextureSubResourceRange textureSubResourceRange;
                 for (const auto& access : m_nodeAccessMap[srcNodeId])
                 {
                     if (access.resourceId == resource->id)
                     {
-                        if (isTexutre)
+                        if (isTexture)
                         {
-                            oldUsage                 = ToUnderlying(access.textureUsage);
-                            texutureSubResourceRange = access.textureSubResourceRange;
+                            oldUsage                = ToUnderlying(access.textureUsage);
+                            textureSubResourceRange = access.textureSubResourceRange;
                         }
                         else
                         {
                             oldUsage = ToUnderlying(access.bufferUsage);
                         }
+                        oldAccessMode = access.accessMode;
                     }
                 }
                 for (const auto& access : m_nodeAccessMap[dstNodeId])
                 {
                     if (access.resourceId == resource->id)
                     {
-                        if (isTexutre)
+                        if (isTexture)
                         {
-                            newUsage                 = ToUnderlying(access.textureUsage);
-                            texutureSubResourceRange = access.textureSubResourceRange;
+                            newUsage                = ToUnderlying(access.textureUsage);
+                            textureSubResourceRange = access.textureSubResourceRange;
 
                             // RDGResourceUsageTracker::GetInstance().TrackTextureUsage(
                             //     resource->physicalHandle, access.textureUsage);
@@ -605,6 +625,7 @@ void RenderGraph::SortNodes()
                             // RDGResourceUsageTracker::GetInstance().TrackBufferUsage(
                             //     resource->physicalHandle, access.bufferUsage);
                         }
+                        newAccessMode = access.accessMode;
                     }
                 }
                 if (resource->type == RDGResourceType::eBuffer)
@@ -612,8 +633,10 @@ void RenderGraph::SortNodes()
                     rhi::BufferTransition bufferTransition;
                     bufferTransition.bufferHandle =
                         rhi::BufferHandle(resource->physicalHandle.value);
-                    bufferTransition.oldUsage = static_cast<rhi::BufferUsage>(oldUsage);
-                    bufferTransition.newUsage = static_cast<rhi::BufferUsage>(newUsage);
+                    bufferTransition.oldAccessMode = oldAccessMode;
+                    bufferTransition.newAccessMode = newAccessMode;
+                    bufferTransition.oldUsage      = static_cast<rhi::BufferUsage>(oldUsage);
+                    bufferTransition.newUsage      = static_cast<rhi::BufferUsage>(newUsage);
                     m_bufferTransitions[nodePairId].emplace_back(bufferTransition);
                 }
                 else if (resource->type == RDGResourceType::eTexture)
@@ -621,9 +644,11 @@ void RenderGraph::SortNodes()
                     rhi::TextureTransition textureTransition;
                     textureTransition.textureHandle =
                         rhi::TextureHandle(resource->physicalHandle.value);
+                    textureTransition.oldAccessMode    = oldAccessMode;
+                    textureTransition.newAccessMode    = newAccessMode;
                     textureTransition.oldUsage         = static_cast<rhi::TextureUsage>(oldUsage);
                     textureTransition.newUsage         = static_cast<rhi::TextureUsage>(newUsage);
-                    textureTransition.subResourceRange = texutureSubResourceRange;
+                    textureTransition.subResourceRange = textureSubResourceRange;
                     m_textureTransitions[nodePairId].emplace_back(textureTransition);
                 }
                 else
@@ -1001,8 +1026,10 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
             auto nodePairKey = CreateNodePairKey(srcNodeId, dstNodeId);
             if (m_bufferTransitions.contains(nodePairKey))
             {
-                srcStages.SetFlag(GetNodeBaseById(srcNodeId)->selfStages);
-                dstStages.SetFlag(GetNodeBaseById(dstNodeId)->selfStages);
+                srcStages.SetFlag(rhi::PipelineStageBits::eAllCommands);
+                dstStages.SetFlag(rhi::PipelineStageBits::eAllCommands);
+                // srcStages.SetFlag(GetNodeBaseById(srcNodeId)->selfStages);
+                // dstStages.SetFlag(GetNodeBaseById(dstNodeId)->selfStages);
                 auto& transitions = m_bufferTransitions[nodePairKey];
                 bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
                                          transitions.end());
@@ -1026,6 +1053,7 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
 void RenderGraph::EmitInitializationBarriers(uint32_t level)
 {
     std::vector<rhi::TextureTransition> textureTransitions;
+    std::vector<rhi::BufferTransition> bufferTransitions;
     BitField<rhi::PipelineStageBits> srcStages;
     BitField<rhi::PipelineStageBits> dstStages;
     srcStages.SetFlag(rhi::PipelineStageBits::eTopOfPipe);
@@ -1052,28 +1080,42 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                             textureTransition.textureHandle =
                                 rhi::TextureHandle(resource->physicalHandle.value);
                             // todo: potential bugs, should be unified with RHI's layout cache?
-                            textureTransition.oldUsage = rhi::TextureUsage::eNone;
-                            textureTransition.newUsage =
-                                static_cast<rhi::TextureUsage>(access.textureUsage);
+                            textureTransition.oldUsage         = rhi::TextureUsage::eNone;
+                            textureTransition.newUsage         = access.textureUsage;
+                            textureTransition.oldAccessMode    = rhi::AccessMode::eNone;
+                            textureTransition.newAccessMode    = access.accessMode;
                             textureTransition.subResourceRange = access.textureSubResourceRange;
                             textureTransitions.emplace_back(textureTransition);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             dstStages.SetFlag(
                                 rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
                         }
+                        if (resource->type == RDGResourceType::eBuffer)
+                        {
+                            rhi::BufferTransition bufferTransition;
+                            bufferTransition.bufferHandle =
+                                rhi::BufferHandle(resource->physicalHandle.value);
+                            bufferTransition.oldUsage      = rhi::BufferUsage::eNone;
+                            bufferTransition.newUsage      = access.bufferUsage;
+                            bufferTransition.oldAccessMode = rhi::AccessMode::eNone;
+                            bufferTransition.newAccessMode = access.accessMode;
+                            bufferTransition.offset        = 0;
+
+                            bufferTransitions.emplace_back(bufferTransition);
+                            // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
+                            dstStages.SetFlag(
+                                rhi::BufferUsageToPipelineStage(bufferTransition.newUsage));
+                        }
                     }
                 }
             }
         }
     }
-    if (!textureTransitions.empty())
+
+    if (!textureTransitions.empty() || !bufferTransitions.empty())
     {
-        for (auto& transition : textureTransitions)
-        {
-            srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
-            dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
-        }
-        m_cmdList->AddPipelineBarrier(srcStages, dstStages, {}, {}, textureTransitions);
+        m_cmdList->AddPipelineBarrier(srcStages, dstStages, {}, bufferTransitions,
+                                      textureTransitions);
     }
 }
 } // namespace zen::rc

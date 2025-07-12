@@ -164,7 +164,7 @@ void GeometryVoxelizer::BuildRenderGraph()
             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
 
         m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
-                                           RDGAccessType::eReadWrite);
+                                           AccessMode::eReadWrite);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);

@@ -66,6 +66,11 @@ public:
         return m_indexBuffer;
     }
 
+    auto GetNumIndices() const
+    {
+        return m_numIndices;
+    }
+
     rhi::BufferHandle GetNodesDataSSBO() const
     {
         return m_nodeSSBO;
@@ -96,6 +101,11 @@ public:
         return m_scene->GetAABB();
     }
 
+    const sg::AABB& GetLocalAABB() const
+    {
+        return m_scene->GetLocalAABB();
+    }
+
     const sg::Camera* GetCamera() const;
 
     const uint8_t* GetCameraUniformData() const;
@@ -122,6 +132,8 @@ private:
 
     rhi::BufferHandle m_vertexBuffer;
     rhi::BufferHandle m_indexBuffer;
+
+    uint32_t m_numIndices{0};
 
     std::vector<rhi::TextureHandle> m_sceneTextures;
     std::string m_envTextureName;

@@ -180,17 +180,17 @@ enum class RDGResourceUsage
     eNone
 };
 
-enum class RDGAccessType
-{
-    eNone      = 0,
-    eRead      = 1,
-    eReadWrite = 2,
-    eMax       = 3
-};
+// enum class RDGAccessType
+// {
+//     eNone      = 0,
+//     eRead      = 1,
+//     eReadWrite = 2,
+//     eMax       = 3
+// };
 
 struct RDGAccess
 {
-    RDGAccessType type{RDGAccessType::eNone};
+    rhi::AccessMode accessMode{};
     RDG_ID nodeId{-1};
     RDG_ID resourceId{-1};
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
@@ -203,7 +203,7 @@ struct RDGResource
     RDG_ID id{-1};
     rhi::Handle physicalHandle;
     RDGResourceType type{RDGResourceType::eNone};
-    HashMap<RDGAccessType, std::vector<RDG_ID>> acessNodeMap;
+    HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
 };
 
 struct RDGNodeBase
@@ -508,14 +508,19 @@ public:
                                      rhi::TextureHandle textureHandle,
                                      rhi::TextureUsage usage,
                                      const rhi::TextureSubResourceRange& range,
-                                     RDGAccessType accessType);
+                                     rhi::AccessMode accessMode);
 
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                      uint32_t numTextures,
                                      rhi::TextureHandle* textureHandles,
                                      rhi::TextureUsage usage,
                                      rhi::TextureSubResourceRange* ranges,
-                                     RDGAccessType accessType);
+                                     rhi::AccessMode accessMode);
+
+    void DeclareBufferAccessForPass(const RDGPassNode* passNode,
+                                    rhi::BufferHandle bufferHandle,
+                                    rhi::BufferUsage usage,
+                                    rhi::AccessMode accessMode);
 
     void Begin();
 

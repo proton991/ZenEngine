@@ -53,6 +53,8 @@ protected:
 
     struct
     {
+        ComputePass resetVoxelTexture;
+        ComputePass resetDrawIndirect;
         ComputePass voxelization;
         ComputePass voxelPreDraw; // calculate position and color for voxel draw pass
     } m_computePasses;

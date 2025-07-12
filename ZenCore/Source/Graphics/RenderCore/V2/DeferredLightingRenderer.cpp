@@ -247,22 +247,22 @@ void DeferredLightingRenderer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.normal, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.albedo, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.metallicRoughness, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.emissiveOcclusion, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
-            TextureSubResourceRange::DepthStencil(), rc::RDGAccessType::eReadWrite);
+            TextureSubResourceRange::DepthStencil(), rhi::AccessMode::eReadWrite);
         AddMeshDrawNodes(pass, area, vp);
     }
     // scene lighting pass
@@ -289,22 +289,22 @@ void DeferredLightingRenderer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.normal, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.albedo, TextureUsage::eSampled,
                                            TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.metallicRoughness,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.emissiveOcclusion,
                                            TextureUsage::eSampled, TextureSubResourceRange::Color(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.depth, TextureUsage::eSampled,
                                            TextureSubResourceRange::DepthStencil(),
-                                           rc::RDGAccessType::eRead);
+                                           rhi::AccessMode::eRead);
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image

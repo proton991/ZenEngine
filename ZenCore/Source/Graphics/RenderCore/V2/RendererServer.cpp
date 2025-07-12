@@ -44,6 +44,7 @@ void RendererServer::Destroy()
 {
     m_deferredLightingRenderer->Destroy();
     m_skyboxRenderer->Destroy();
+    m_voxelizer->Destroy();
     // if (m_renderDevice->SupportVoxelizer())
     // {
     //     m_voxelRenderer->Destroy();

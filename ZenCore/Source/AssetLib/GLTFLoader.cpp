@@ -487,8 +487,9 @@ void GLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                     Vertex& vert = m_vertices[m_vertexPos];
                     vert.pos     = Vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
                     vert.normal  = glm::normalize(
-                        Vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) :
-                                              Vec3(0.0f)));
+                        Vec4(bufferNormals ?
+                                  Vec4(glm::make_vec3(&bufferNormals[v * normByteStride]), 0.0f) :
+                                  Vec4(0.0f)));
                     vert.tangent = glm::normalize(
                         Vec4(bufferTangents ? glm::make_vec4(&bufferTangents[v * tanByteStride]) :
                                               Vec4(0.0f)));

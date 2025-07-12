@@ -81,13 +81,13 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
             reinterpret_cast<VulkanBuffer*>(bufferTransition.bufferHandle.value);
         VkBufferMemoryBarrier bufferBarrier;
         InitVkStruct(bufferBarrier, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
-        bufferBarrier.buffer = vulkanBuffer->buffer;
-        bufferBarrier.offset = bufferTransition.offset;
-        bufferBarrier.size   = bufferTransition.size;
-        bufferBarrier.srcAccessMask =
-            ToVkAccessFlags(BufferUsageToAccessFlagBits(bufferTransition.oldUsage));
-        bufferBarrier.dstAccessMask =
-            ToVkAccessFlags(BufferUsageToAccessFlagBits(bufferTransition.newUsage));
+        bufferBarrier.buffer        = vulkanBuffer->buffer;
+        bufferBarrier.offset        = bufferTransition.offset;
+        bufferBarrier.size          = bufferTransition.size;
+        bufferBarrier.srcAccessMask = ToVkAccessFlags(
+            BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode));
+        bufferBarrier.dstAccessMask = ToVkAccessFlags(
+            BufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode));
         bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         bufferBarriers.emplace_back(bufferBarrier);
@@ -97,10 +97,10 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
     {
         VulkanTexture* vulkanTexture =
             reinterpret_cast<VulkanTexture*>(textureTransition.textureHandle.value);
-        VkAccessFlags srcAccess =
-            ToVkAccessFlags(TextureUsageToAccessFlagBits(textureTransition.oldUsage));
-        VkAccessFlags dstAccess =
-            ToVkAccessFlags(TextureUsageToAccessFlagBits(textureTransition.newUsage));
+        VkAccessFlags srcAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
+            textureTransition.oldUsage, textureTransition.oldAccessMode));
+        VkAccessFlags dstAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
+            textureTransition.newUsage, textureTransition.newAccessMode));
         VkImageLayout oldLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout newLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.newUsage));
 

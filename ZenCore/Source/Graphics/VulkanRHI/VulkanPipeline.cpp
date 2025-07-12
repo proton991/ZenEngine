@@ -951,7 +951,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                         reinterpret_cast<VulkanBuffer*>(srb.handles[j].value);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
-                    bufferInfo.range  = vulkanBuffer->size;
+                    bufferInfo.range  = vulkanBuffer->requiredSize;
                     bufferViews[j]    = vulkanBuffer->bufferView;
                     bufferInfos[j]    = bufferInfo;
                 }
@@ -981,7 +981,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                         reinterpret_cast<VulkanBuffer*>(srb.handles[j * 2 + 1].value);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
-                    bufferInfo.range  = vulkanBuffer->size;
+                    bufferInfo.range  = vulkanBuffer->requiredSize;
                     bufferViews[j]    = vulkanBuffer->bufferView;
                     bufferInfos[j]    = bufferInfo;
                 }
@@ -1003,7 +1003,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                         reinterpret_cast<VulkanBuffer*>(srb.handles[j].value);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
-                    bufferInfo.range  = vulkanBuffer->size;
+                    bufferInfo.range  = vulkanBuffer->requiredSize;
                     bufferViews[j]    = vulkanBuffer->bufferView;
                     bufferInfos[j]    = bufferInfo;
                 }
@@ -1019,7 +1019,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
 
                 *bufferInfo        = {};
                 bufferInfo->buffer = vulkanBuffer->buffer;
-                bufferInfo->range  = vulkanBuffer->size;
+                bufferInfo->range  = vulkanBuffer->requiredSize;
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
                 writes[i].pBufferInfo    = bufferInfo;
@@ -1032,7 +1032,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
 
                 *bufferInfo        = {};
                 bufferInfo->buffer = vulkanBuffer->buffer;
-                bufferInfo->range  = VK_WHOLE_SIZE;
+                bufferInfo->range  = vulkanBuffer->requiredSize;
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 writes[i].pBufferInfo    = bufferInfo;

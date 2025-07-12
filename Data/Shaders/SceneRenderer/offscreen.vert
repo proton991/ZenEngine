@@ -1,7 +1,7 @@
 #version 450
 
-layout (location = 0) in vec3 inPos;
-layout (location = 1) in vec3 inNormal;
+layout (location = 0) in vec4 inPos;
+layout (location = 1) in vec4 inNormal;
 layout (location = 2) in vec4 inTangent;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
@@ -39,7 +39,7 @@ layout (location = 3) out vec3 outWorldPos;
 
 void main()
 {
-    vec4 locPos = nodesData[uNodeIndex].modelMatrix * vec4(inPos, 1.0);
+    vec4 locPos = nodesData[uNodeIndex].modelMatrix * vec4(inPos.xyz, 1.0);
 
     gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
 
@@ -50,7 +50,7 @@ void main()
 
     // Normal in world space
     mat3 mNormal = mat3(nodesData[uNodeIndex].normalMatrix);
-    outNormal = mNormal * normalize(inNormal);
+    outNormal = mNormal * normalize(inNormal.xyz);
 
     // Currently just vertex color
     outColor = inColor.rgb;

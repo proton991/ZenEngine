@@ -21,7 +21,8 @@ BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
 
     m_vkMemAllocator->AllocBuffer(size, &bufferCI, allocateType, &vulkanBuffer->buffer,
                                   &vulkanBuffer->memAlloc);
-    vulkanBuffer->size = vulkanBuffer->memAlloc.info.size;
+    vulkanBuffer->requiredSize  = size;
+    vulkanBuffer->allocatedSize = vulkanBuffer->memAlloc.info.size;
     return BufferHandle(vulkanBuffer);
 }
 
@@ -58,7 +59,7 @@ void VulkanRHI::SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat forma
     InitVkStruct(bufferViewCI, VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO);
     bufferViewCI.buffer = buffer->buffer;
     bufferViewCI.format = ToVkFormat(format);
-    bufferViewCI.range  = buffer->size;
+    bufferViewCI.range  = buffer->allocatedSize;
     bufferViewCI.offset = 0;
 
     VKCHECK(

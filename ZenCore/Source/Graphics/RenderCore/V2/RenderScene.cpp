@@ -37,6 +37,8 @@ RenderScene::RenderScene(RenderDevice* renderDevice, const SceneData& sceneData)
     m_indexBuffer =
         m_renderDevice->CreateIndexBuffer(sceneData.numIndices * sizeof(uint32_t),
                                           reinterpret_cast<const uint8_t*>(sceneData.indices));
+
+    m_numIndices = sceneData.numIndices;
 }
 
 void RenderScene::Init()

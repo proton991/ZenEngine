@@ -2,7 +2,7 @@
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-struct VkDrawIndexedIndirectCommand {
+struct DrawIndexedIndirectCommand {
     uint    indexCount;
     uint    instanceCount;
     uint    firstIndex;
@@ -12,16 +12,16 @@ struct VkDrawIndexedIndirectCommand {
 
 layout(set = 0, binding = 0, rgba8) uniform image3D voxelTexture;
 
-layout(std140, set=1, binding = 0) buffer InstancePositionBuffer {
+layout(std430, set=1, binding = 0) buffer InstancePositionBuffer {
    vec4 positions[];
 };
 
-layout(std140, set=2, binding = 0) buffer InstanceColorBuffer {
+layout(std430, set=2, binding = 0) buffer InstanceColorBuffer {
     vec4 colors[];
 };
 
 layout(std140, set=3, binding = 0) buffer IndirectBuffer {
-    VkDrawIndexedIndirectCommand command;
+    DrawIndexedIndirectCommand command;
 };
 
 layout (set = 4, binding = 0) uniform uSceneInfo
@@ -51,5 +51,6 @@ void main()
 
         positions[index] = vec4(_min+ vec3(voxel_width / 2) + vec3(voxel_coordinate) * voxel_width, 1.0);
         colors[index] = vec4(voxel_value.xyz / voxel_value.w, 1.0);
+//        colors[index] = vec4(voxel_coordinate, 1.0);
 	}
 }

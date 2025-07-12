@@ -215,6 +215,24 @@ public:
     } pushConstantsData;
 };
 
+class ResetDrawIndirectShaderProgram : public ShaderProgram
+{
+public:
+    explicit ResetDrawIndirectShaderProgram(RenderDevice* renderDevice);
+};
+
+class ResetCompIndirectShaderProgram : public ShaderProgram
+{
+public:
+    explicit ResetCompIndirectShaderProgram(RenderDevice* renderDevice);
+};
+
+class ResetVoxelTextureShaderProgram : public ShaderProgram
+{
+public:
+    explicit ResetVoxelTextureShaderProgram(RenderDevice* renderDevice);
+};
+
 class VoxelPreDrawShaderProgram : public ShaderProgram
 {
 public:

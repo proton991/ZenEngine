@@ -266,7 +266,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                     rdg->DeclareTextureAccessForPass(
                         pass, offscreenTexture, TextureUsage::eColorAttachment,
                         m_RHI->GetTextureSubResourceRange(offscreenTexture),
-                        rc::RDGAccessType::eReadWrite);
+                        rhi::AccessMode::eReadWrite);
                     rdg->AddGraphicsPassSetScissorNode(pass, area);
                     rdg->AddGraphicsPassSetViewportNode(pass, vp);
                     rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -408,7 +408,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, true);
     rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, TextureUsage::eColorAttachment,
                                      m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
-                                     rc::RDGAccessType::eReadWrite);
+                                     rhi::AccessMode::eReadWrite);
     rdg->AddGraphicsPassSetScissorNode(pass, area);
     rdg->AddGraphicsPassSetViewportNode(pass, vp);
     rdg->AddGraphicsPassDrawNode(pass, 3, 1);

@@ -98,7 +98,7 @@ void HelloTriangleApp::BuildRenderGraph()
     auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
     // m_rdg->DeclareTextureAccessForPass(mainPass, m_texture, TextureUsage::eSampled,
     //                                    m_renderDevice->GetTextureSubResourceRange(m_texture),
-    //                                    rc::RDGAccessType::eRead);
+    //                                    rhi::AccessMode::eRead);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);

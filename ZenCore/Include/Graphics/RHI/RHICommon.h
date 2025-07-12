@@ -1185,6 +1185,13 @@ struct IndexBufferBinding
 /*****************************/
 /********* Barriers **********/
 /*****************************/
+enum class AccessMode
+{
+    eNone      = 0,
+    eRead      = 1,
+    eReadWrite = 2
+};
+
 enum class AccessFlagBits : uint32_t
 {
     eNone                        = 0,
@@ -1231,7 +1238,7 @@ enum class PipelineStageBits : uint32_t
     eMax                          = 0x7FFFFFFF
 };
 
-inline BitField<AccessFlagBits> TextureUsageToAccessFlagBits(TextureUsage usage)
+inline BitField<AccessFlagBits> TextureUsageToAccessFlagBits(TextureUsage usage, AccessMode mode)
 {
     BitField<AccessFlagBits> result;
     switch (usage)
@@ -1241,16 +1248,22 @@ inline BitField<AccessFlagBits> TextureUsageToAccessFlagBits(TextureUsage usage)
         case TextureUsage::eTransferDst: result.SetFlag(AccessFlagBits::eTransferWrite); break;
         case TextureUsage::eSampled: result.SetFlag(AccessFlagBits::eShaderRead); break;
         case TextureUsage::eStorage:
+        {
             result.SetFlag(AccessFlagBits::eShaderRead);
-            result.SetFlag(AccessFlagBits::eShaderWrite);
-            break;
+            if (mode == AccessMode::eReadWrite)
+            {
+                result.SetFlag(AccessFlagBits::eShaderWrite);
+            }
+        }
+        break;
         case TextureUsage::eColorAttachment:
-            result.SetFlag(AccessFlagBits::eColorAttachmentRead);
-            result.SetFlag(AccessFlagBits::eColorAttachmentWrite);
+            result.SetFlag(mode == AccessMode::eRead ? AccessFlagBits::eColorAttachmentRead :
+                                                       AccessFlagBits::eColorAttachmentWrite);
             break;
         case TextureUsage::eDepthStencilAttachment:
-            result.SetFlag(AccessFlagBits::eDepthStencilAttachmentRead);
-            result.SetFlag(AccessFlagBits::eDepthStencilAttachmentWrite);
+            result.SetFlag(mode == AccessMode::eRead ?
+                               AccessFlagBits::eDepthStencilAttachmentRead :
+                               AccessFlagBits::eDepthStencilAttachmentWrite);
             break;
         case TextureUsage::eInputAttachment:
             result.SetFlag(AccessFlagBits::eInputAttachmentRead);
@@ -1286,7 +1299,33 @@ inline BitField<PipelineStageBits> TextureUsageToPipelineStage(TextureUsage usag
     return result;
 }
 
-inline BitField<AccessFlagBits> BufferUsageToAccessFlagBits(BufferUsage usage)
+inline BitField<PipelineStageBits> BufferUsageToPipelineStage(BufferUsage usage)
+{
+    BitField<PipelineStageBits> result;
+    switch (usage)
+    {
+        case BufferUsage::eNone: result.SetFlag(PipelineStageBits::eTopOfPipe); break;
+
+        case BufferUsage::eTransferSrc:
+        case BufferUsage::eTransferDst: result.SetFlag(PipelineStageBits::eTransfer); break;
+
+        case BufferUsage::eTextureBuffer:
+        case BufferUsage::eImageBuffer:
+        case BufferUsage::eUniformBuffer:
+        case BufferUsage::eStorageBuffer:
+        case BufferUsage::eIndirectBuffer:
+            result.SetFlags(PipelineStageBits::eAllGraphics, PipelineStageBits::eAllCommands);
+            break;
+
+        case BufferUsage::eIndexBuffer:
+        case BufferUsage::eVertexBuffer: result.SetFlag(PipelineStageBits::eVertexShader); break;
+
+        default: break;
+    }
+    return result;
+}
+
+inline BitField<AccessFlagBits> BufferUsageToAccessFlagBits(BufferUsage usage, AccessMode mode)
 {
     BitField<AccessFlagBits> result;
     switch (usage)
@@ -1298,7 +1337,15 @@ inline BitField<AccessFlagBits> BufferUsageToAccessFlagBits(BufferUsage usage)
         case BufferUsage::eTextureBuffer: result.SetFlag(AccessFlagBits::eShaderRead); break;
 
         case BufferUsage::eStorageBuffer:
-        case BufferUsage::eImageBuffer: result.SetFlag(AccessFlagBits::eShaderWrite); break;
+        case BufferUsage::eImageBuffer:
+        {
+            result.SetFlag(AccessFlagBits::eShaderRead);
+            if (mode == AccessMode::eReadWrite)
+            {
+                result.SetFlag(AccessFlagBits::eShaderWrite);
+            }
+        }
+        break;
 
         case BufferUsage::eIndexBuffer: result.SetFlag(AccessFlagBits::eIndexRead); break;
         case BufferUsage::eVertexBuffer:
@@ -1352,8 +1399,8 @@ struct MemoryTransition
 // todo: add src access and dst access
 struct TextureTransition
 {
-    BitField<AccessFlagBits> srcAccess;
-    BitField<AccessFlagBits> dstAccess;
+    AccessMode oldAccessMode;
+    AccessMode newAccessMode;
     TextureHandle textureHandle;
     TextureUsage oldUsage;
     TextureUsage newUsage;
@@ -1362,8 +1409,8 @@ struct TextureTransition
 
 struct BufferTransition
 {
-    BitField<AccessFlagBits> srcAccess;
-    BitField<AccessFlagBits> dstAccess;
+    AccessMode oldAccessMode;
+    AccessMode newAccessMode;
     BufferHandle bufferHandle;
     BufferUsage oldUsage;
     BufferUsage newUsage;

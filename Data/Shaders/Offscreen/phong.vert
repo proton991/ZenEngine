@@ -1,7 +1,7 @@
 #version 450
 
-layout (location = 0) in vec3 inPos;
-layout (location = 1) in vec3 inNormal;
+layout (location = 0) in vec4 inPos;
+layout (location = 1) in vec4 inNormal;
 layout (location = 2) in vec4 inTangent;
 layout (location = 3) in vec2 inUV0;
 layout (location = 4) in vec2 inUV1;
@@ -38,13 +38,13 @@ layout (location = 3) out vec3 outLightVec;
 
 void main() 
 {
-	outNormal = inNormal;
+	outNormal = inNormal.xyz;
 	outColor = inColor.rgb;
-	gl_Position = uProj * uView * uMddel * vec4(inPos, 1.0);
-	outEyePos = vec3(uView * uMddel * vec4(inPos, 1.0));
+	gl_Position = uProj * uView * uMddel * vec4(inPos.xyz, 1.0);
+	outEyePos = vec3(uView * uMddel * vec4(inPos.xyz, 1.0));
 	outLightVec = normalize(uLightPos.xyz - outEyePos);
 
 	// Clip against reflection plane
 	vec4 clipPlane = vec4(0.0, -1.0, 0.0, 1.5);	
-	gl_ClipDistance[0] = dot(vec4(inPos, 1.0), clipPlane);	
+	gl_ClipDistance[0] = dot(vec4(inPos.xyz, 1.0), clipPlane);
 }

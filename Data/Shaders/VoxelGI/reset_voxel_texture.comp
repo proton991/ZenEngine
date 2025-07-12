@@ -1,0 +1,18 @@
+#version 450
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(set = 0, binding = 0, rgba8) uniform image3D voxelTexture;
+
+void main()
+{
+
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint z = gl_GlobalInvocationID.z;
+    ivec3 voxel_coordinate = ivec3(x, y, z);
+
+    const vec4 voxel_value = vec4(0.0, 0.0, 0.0, 0.0);
+   
+    imageStore(voxelTexture, voxel_coordinate, voxel_value);
+}
