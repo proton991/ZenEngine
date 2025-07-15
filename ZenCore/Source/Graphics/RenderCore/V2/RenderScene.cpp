@@ -23,7 +23,7 @@ RenderScene::RenderScene(RenderDevice* renderDevice, const SceneData& sceneData)
     std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
                 sizeof(sceneData.lightIntensities));
 
-    sys::SceneEditor::CenterAndNormalizeScene(m_scene);
+    // sys::SceneEditor::CenterAndNormalizeScene(m_scene);
 
     for (auto* node : m_scene->GetRenderableNodes())
     {
@@ -80,6 +80,26 @@ void RenderScene::LoadSceneTextures()
 
 void RenderScene::PrepareBuffers()
 {
+    std::vector<uint32_t> triangleSubMeshMap;
+    for (auto* node : m_scene->GetRenderableNodes())
+    {
+        uint32_t subMeshIndex = 0;
+        for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
+        {
+            const int triangleCount = subMesh->GetIndexCount() / 3;
+            for (uint32_t i = 0; i < triangleCount; i++)
+            {
+                triangleSubMeshMap.push_back(
+                    m_materialsData[subMesh->GetMaterialIndex()].bcTexIndex);
+            }
+            subMeshIndex++;
+        }
+    }
+
+    m_triangleMapBuffer = m_renderDevice->CreateStorageBuffer(
+        sizeof(uint32_t) * triangleSubMeshMap.size(),
+        reinterpret_cast<const uint8_t*>(triangleSubMeshMap.data()));
+
     // nodes data ssbo
     m_nodeSSBO =
         m_renderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),

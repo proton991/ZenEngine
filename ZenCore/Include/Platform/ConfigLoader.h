@@ -54,6 +54,24 @@ public:
         return path;
     }
 
+    std::string GetGLTFModelPath(const std::string& name) const
+    {
+        std::string path    = "";
+        auto basePathIt     = m_configData.find("model_base_path");
+
+        if (basePathIt != m_configData.end())
+        {
+            path = basePathIt->second + "/" + name + "/glTF/" +
+                name + ".gltf";
+        }
+        else
+        {
+            LOGE("Missing configuration values for GLTF model path.");
+        }
+
+        return path;
+    }
+
     // Delete copy constructor and assignment operator to enforce singleton
     ConfigLoader(const ConfigLoader&)            = delete;
     ConfigLoader& operator=(const ConfigLoader&) = delete;

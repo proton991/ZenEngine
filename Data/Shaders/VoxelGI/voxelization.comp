@@ -144,6 +144,7 @@ void main()
 
     #define WORKGROUP_SIZE 64
 
+    uint texture_index = triangleMap[index];
 //    if (x_dim_voxel * y_dim_voxel < pc.largeTriangleThreshold)
     {
         for(int i = min_x_voxel; i <= max_x_voxel; i++){
@@ -163,9 +164,10 @@ void main()
                 vec2 texcoord = vec2(barycentric.x * vertex1.texcoord.x + barycentric.y * vertex2.texcoord.x + barycentric.z * vertex3.texcoord.x,
                 barycentric.x * vertex1.texcoord.y + barycentric.y * vertex2.texcoord.y + barycentric.z * vertex3.texcoord.y);
 
-                vec3 diffuse = texture(uTextureArray[pc.albedoTexIndex], texcoord).xyz;
-//                vec3 diffuse = vec3(1.0, 0.0, 0.0);
-                const vec4 voxel_value = vec4(diffuse, 1.0);
+                vec3 albedo = texture(uTextureArray[texture_index], texcoord).xyz;
+                // vec3 albedo = texture(uTextureArray[pc.albedoTexIndex], texcoord).xyz;
+                // vec3 albedo = vec3(1.0, 0.0, 0.0);
+                const vec4 voxel_value = vec4(albedo, 1.0);
 
                 imageStore(voxelTexture, voxel_coord, voxel_value);
             }

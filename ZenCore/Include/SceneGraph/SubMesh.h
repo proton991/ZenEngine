@@ -74,6 +74,11 @@ public:
         return m_aabb;
     }
 
+    auto& GetAABB()
+    {
+        return m_aabb;
+    }
+
     bool HasIndices() const
     {
         return m_hasIndices;

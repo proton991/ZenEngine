@@ -46,10 +46,10 @@ layout(set = 3, binding = 0) uniform sampler2D uTextureArray[1024];
 //layout(set = 4, binding = 3) uniform sampler2D s_Roughness_unbound[];
 //layout(set = 4, binding = 4) uniform sampler2D s_Emissive_unbound[];
 
-//layout(set = 4, binding = 0) buffer TriangleMap
-//{
-//    uint triangleMap[];
-//};
+layout(set = 5, binding = 0) buffer TriangleMap
+{
+   uint triangleMap[];
+};
 
 struct VkDispatchIndirectCommand
 {
@@ -81,6 +81,8 @@ layout(push_constant) uniform constants
     uint nodeIndex;
     uint triangleCount;
     uint largeTriangleThreshold;
+    vec3 aabbMin;
+    vec3 aabbMax;
 } pc;
 
 bool test_axis(vec3 axis, vec3 u0, vec3 u1, vec3 u2, float extent)

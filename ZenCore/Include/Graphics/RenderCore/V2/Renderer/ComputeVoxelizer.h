@@ -8,6 +8,7 @@ namespace zen::rc
 class RenderScene;
 class RenderObject;
 
+// todo: For voxel albedo, color output only occupies upper half of the texture. Maybe related to flickering issue?
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
@@ -65,6 +66,5 @@ protected:
     } m_gfxPasses;
 
     RenderObject* m_cube;
-    const std::string CUBE_MODEL_PATH = "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf";
 };
 } // namespace zen::rc

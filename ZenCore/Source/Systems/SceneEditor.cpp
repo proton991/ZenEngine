@@ -24,6 +24,9 @@ void SceneEditor::CenterAndNormalizeScene(sg::Scene* scene)
         nodeData.modelMatrix  = transformMat * nodeData.modelMatrix;
         nodeData.normalMatrix = glm::transpose(glm::inverse(nodeData.modelMatrix));
         sgNode->SetData(nodeData);
+        for (auto* subMesh : sgNode->GetComponent<sg::Mesh>()->GetSubMeshes()) {
+            subMesh->GetAABB().Transform(transformMat);
+        }
     }
 
     scene->GetAABB().Transform(transformMat);

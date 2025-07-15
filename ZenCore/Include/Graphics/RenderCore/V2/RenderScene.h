@@ -66,6 +66,11 @@ public:
         return m_indexBuffer;
     }
 
+    rhi::BufferHandle GetTriangleMapBuffer() const
+    {
+        return m_triangleMapBuffer;
+    }
+
     auto GetNumIndices() const
     {
         return m_numIndices;
@@ -132,6 +137,8 @@ private:
 
     rhi::BufferHandle m_vertexBuffer;
     rhi::BufferHandle m_indexBuffer;
+
+    rhi::BufferHandle m_triangleMapBuffer;
 
     uint32_t m_numIndices{0};
 
