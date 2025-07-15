@@ -21,12 +21,7 @@ void RendererServer::Init()
     m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
     m_skyboxRenderer->Init();
 
-    // if (m_renderDevice->SupportVoxelizer())
-    // {
-    //     m_voxelRenderer = new VoxelRenderer(m_renderDevice, m_viewport);
-    //     m_voxelRenderer->Init();
-    // }
-    if (m_renderDevice->GetRHI()->QueryGPUInfo().supportGeometryShader)
+    if (m_renderDevice->GetGPUInfo().supportGeometryShader)
     {
         m_voxelizer = new GeometryVoxelizer(m_renderDevice, m_viewport);
     }
@@ -45,10 +40,6 @@ void RendererServer::Destroy()
     m_deferredLightingRenderer->Destroy();
     m_skyboxRenderer->Destroy();
     m_voxelizer->Destroy();
-    // if (m_renderDevice->SupportVoxelizer())
-    // {
-    //     m_voxelRenderer->Destroy();
-    // }
 }
 
 void RendererServer::DispatchRenderWorkloads()
@@ -62,7 +53,7 @@ void RendererServer::DispatchRenderWorkloads()
     m_deferredLightingRenderer->PrepareRenderWorkload();
 
     std::vector<RenderGraph*> RDGs;
-    if (m_renderDevice->SupportVoxelizer())
+    if (m_renderOption == RenderOption::eVoxelize)
     {
         // m_voxelRenderer->PrepareRenderWorkload();
         m_voxelizer->PrepareRenderWorkload();
@@ -86,10 +77,6 @@ void RendererServer::SetRenderScene(RenderScene* scene)
     m_scene = scene;
     m_skyboxRenderer->SetRenderScene(scene);
     m_deferredLightingRenderer->SetRenderScene(scene);
-    // if (m_renderDevice->SupportVoxelizer())
-    // {
-    //     m_voxelRenderer->SetRenderScene(scene);
-    // }
     m_voxelizer->SetRenderScene(scene);
     m_shadowMapRenderer->SetRenderScene(scene);
 }
@@ -99,9 +86,5 @@ void RendererServer::ViewportResizeCallback()
     m_deferredLightingRenderer->OnResize();
     m_skyboxRenderer->OnResize();
     m_voxelizer->OnResize();
-    // if (m_voxelRenderer != nullptr)
-    // {
-    //     m_voxelRenderer->OnResize();
-    // }
 }
 } // namespace zen::rc

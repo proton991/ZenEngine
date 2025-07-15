@@ -455,8 +455,10 @@ public:
         m_RHI->WaitDeviceIdle();
     }
 
-    // todo: refactor later
-    bool SupportVoxelizer() const;
+    const rhi::GPUInfo& GetGPUInfo() const
+    {
+        return m_RHI->QueryGPUInfo();
+    }
 
 private:
     void BeginFrame();

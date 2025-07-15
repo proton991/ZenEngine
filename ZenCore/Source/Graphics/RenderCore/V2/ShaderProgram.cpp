@@ -238,7 +238,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
         ShaderProgram* shaderProgram             = new EnvMapBRDFLutGenProgram(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
-    if (renderDevice->SupportVoxelizer())
+    if (renderDevice->GetGPUInfo().supportGeometryShader)
     {
         {
             ShaderProgram* shaderProgram             = new VoxelizationProgram(renderDevice);

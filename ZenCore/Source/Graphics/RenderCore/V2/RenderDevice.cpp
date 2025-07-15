@@ -952,15 +952,6 @@ void RenderDevice::NextFrame()
     BeginFrame();
 }
 
-bool RenderDevice::SupportVoxelizer() const
-{
-#if defined(ZEN_WIN32)
-    return true;
-#else
-    return false;
-#endif
-}
-
 void RenderDevice::BeginFrame()
 {
     m_framesCounter++;

@@ -16,6 +16,13 @@ class VoxelizerBase;
 class ShadowMapRenderer;
 class RenderScene;
 
+enum class RenderOption : uint32_t
+{
+    eVoxelize = 0,
+    ePBR      = 1,
+    eMax      = 2
+};
+
 class RendererServer
 {
 public:
@@ -62,5 +69,7 @@ private:
     VoxelizerBase* m_voxelizer{nullptr};
     // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
+
+    RenderOption m_renderOption{RenderOption::eVoxelize};
 };
 } // namespace zen::rc
