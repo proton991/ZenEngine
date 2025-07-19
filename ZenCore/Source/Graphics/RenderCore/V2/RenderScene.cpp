@@ -23,7 +23,7 @@ RenderScene::RenderScene(RenderDevice* renderDevice, const SceneData& sceneData)
     std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
                 sizeof(sceneData.lightIntensities));
 
-    // sys::SceneEditor::CenterAndNormalizeScene(m_scene);
+    sys::SceneEditor::CenterAndNormalizeScene(m_scene);
 
     for (auto* node : m_scene->GetRenderableNodes())
     {

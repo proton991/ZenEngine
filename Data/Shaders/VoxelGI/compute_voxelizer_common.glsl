@@ -81,8 +81,6 @@ layout(push_constant) uniform constants
     uint nodeIndex;
     uint triangleCount;
     uint largeTriangleThreshold;
-    vec3 aabbMin;
-    vec3 aabbMax;
 } pc;
 
 bool test_axis(vec3 axis, vec3 u0, vec3 u1, vec3 u2, float extent)

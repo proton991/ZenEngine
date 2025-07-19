@@ -20,7 +20,7 @@ public:
 
     virtual void Init() = 0;
 
-    void SetRenderScene(RenderScene* scene)
+    virtual void SetRenderScene(RenderScene* scene)
     {
         m_scene = scene;
         UpdateUniformData();

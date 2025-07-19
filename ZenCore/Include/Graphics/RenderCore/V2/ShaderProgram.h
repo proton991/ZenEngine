@@ -212,8 +212,6 @@ public:
         uint32_t nodeIndex;
         uint32_t triangleCount;
         uint32_t largeTriangleThreshold;
-        Vec3 aabbMin;
-        Vec3 aabbMax;
     } pushConstantsData;
 };
 

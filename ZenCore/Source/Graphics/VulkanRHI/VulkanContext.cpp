@@ -159,6 +159,14 @@ void VulkanRHI::CreateInstance()
     VkDebugUtilsMessengerCreateInfoEXT debugMessengerCI;
     PopulateDebugMessengerCreateInfo(debugMessengerCI);
 
+    std::vector<VkValidationFeatureEnableEXT> validationFeatureEnables = {
+        VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
+
+    VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    validationFeatures.enabledValidationFeatureCount = 1;
+    validationFeatures.pEnabledValidationFeatures    = validationFeatureEnables.data();
+    validationFeatures.pNext                         = &debugMessengerCI;
+
     VkInstanceCreateInfo instanceInfo;
     InitVkStruct(instanceInfo, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
 #if defined(ZEN_MACOS)
@@ -171,7 +179,7 @@ void VulkanRHI::CreateInstance()
     instanceInfo.enabledExtensionCount = static_cast<uint32_t>(m_instanceExtensions.size());
     instanceInfo.ppEnabledExtensionNames =
         m_instanceExtensions.empty() ? nullptr : m_instanceExtensions.data();
-    instanceInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugMessengerCI;
+    instanceInfo.pNext = &validationFeatures;
 
     VKCHECK(vkCreateInstance(&instanceInfo, nullptr, &m_instance));
     volkLoadInstance(m_instance);

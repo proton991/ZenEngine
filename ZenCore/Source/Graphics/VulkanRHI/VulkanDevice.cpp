@@ -144,6 +144,8 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
             extension->BeforeCreateDevice(deviceInfo);
         }
     }
+    // for glsl shader debug printf ext
+    m_extensions.emplace_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
     // set up queue info
     std::vector<VkDeviceQueueCreateInfo> deviceQueueInfos;
 

@@ -1396,7 +1396,6 @@ struct MemoryTransition
     BitField<AccessFlagBits> dstAccess;
 };
 
-// todo: add src access and dst access
 struct TextureTransition
 {
     AccessMode oldAccessMode;

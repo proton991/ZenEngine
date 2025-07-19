@@ -25,6 +25,11 @@ public:
         return m_aabb;
     }
 
+    auto& GetAABB()
+    {
+        return m_aabb;
+    }
+
     const auto& GetNodes() const
     {
         return m_nodes;

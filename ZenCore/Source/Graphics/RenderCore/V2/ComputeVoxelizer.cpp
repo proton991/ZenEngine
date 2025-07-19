@@ -11,9 +11,6 @@
 
 using namespace zen::rhi;
 
-/**
-* todo: inconsistent buffer(draw indirect/color/position) and texture compared to reference renderer
- */
 namespace zen::rc
 {
 void ComputeVoxelizer::Init()
@@ -52,7 +49,8 @@ void ComputeVoxelizer::Destroy()
 
 void ComputeVoxelizer::LoadCubeModel()
 {
-    m_cube = new RenderObject(m_renderDevice, platform::ConfigLoader::GetInstance().GetGLTFModelPath("Box"));
+    m_cube = new RenderObject(m_renderDevice,
+                              platform::ConfigLoader::GetInstance().GetGLTFModelPath("Box"));
 }
 
 void ComputeVoxelizer::PrepareTextures()
@@ -264,11 +262,12 @@ void ComputeVoxelizer::BuildRenderGraph()
 
         shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
 
-        const int localSize = 32;
-        shaderProgram->pushConstantsData.nodeIndex = 0;
+        const int localSize     = 32;
         const int triangleCount = m_scene->GetNumIndices() / 3;
         workgroupCount          = ceil(double(triangleCount) / double(localSize));
-        shaderProgram->pushConstantsData.triangleCount  = triangleCount;
+        // todo: handle multi-node scene
+        shaderProgram->pushConstantsData.nodeIndex     = 0;
+        shaderProgram->pushConstantsData.triangleCount = triangleCount;
         m_rdg->AddComputePassSetPushConstants(
             pass, &shaderProgram->pushConstantsData,
             sizeof(VoxelizationCompShaderProgram::PushConstantData));
@@ -280,26 +279,24 @@ void ComputeVoxelizer::BuildRenderGraph()
         //     {
         //         const int triangleCount = subMesh->GetIndexCount() / 3;
         //         workgroupCount          = ceil(double(triangleCount) / double(localSize));
-
+        //
         //         auto& materialData = m_scene->GetMaterialsData()[subMesh->GetMaterialIndex()];
         //         // shaderProgram->pushConstantsData.albedoTexIndex =
         //         shaderProgram->pushConstantsData.albedoTexIndex = materialData.bcTexIndex;
         //         shaderProgram->pushConstantsData.normalTexIndex = materialData.normalTexIndex;
         //         shaderProgram->pushConstantsData.triangleCount  = triangleCount;
-        //         shaderProgram->pushConstantsData.aabbMin  = subMesh->GetAABB().GetMin();
-        //         shaderProgram->pushConstantsData.aabbMax  = subMesh->GetAABB().GetMax();
         //         m_rdg->AddComputePassSetPushConstants(
         //             pass, &shaderProgram->pushConstantsData,
         //             sizeof(VoxelizationCompShaderProgram::PushConstantData));
         //         m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
         //     }
         // }
-            // reset draw indirect
+        // reset draw indirect
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect);
             pass->tag  = "reset_draw_indirect_compute";
             m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
-                                            BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
         }
         // voxel pre-draw pass
@@ -308,13 +305,14 @@ void ComputeVoxelizer::BuildRenderGraph()
             pass->tag  = "voxel_pre_draw_compute";
             m_rdg->DeclareTextureAccessForPass(
                 pass, m_voxelTextures.albedo, TextureUsage::eStorage,
-                m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
+                m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
+                AccessMode::eRead);
             m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
-                                            BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
-                                            BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
-                                            BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
             m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
         }
@@ -351,14 +349,7 @@ void ComputeVoxelizer::BuildRenderGraph()
                                                   DataFormat::eR32UInt);
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        for (auto* node : m_cube->GetRenderableNodes())
-        {
-            for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-            {
-                m_rdg->AddGraphicsPassDrawIndexedIndirectNode(pass, m_buffers.drawIndirectBuffer, 0,
-                                                              1, 0);
-            }
-        }
+        m_rdg->AddGraphicsPassDrawIndexedIndirectNode(pass, m_buffers.drawIndirectBuffer, 0, 1, 0);
     }
     m_rdg->End();
 }
@@ -367,7 +358,7 @@ void ComputeVoxelizer::BuildGraphicsPasses()
 {
     GfxPipelineStates pso{};
     pso.rasterizationState           = {};
-    pso.rasterizationState.cullMode  = PolygonCullMode::eBack;
+    pso.rasterizationState.cullMode  = PolygonCullMode::eDisabled;
     pso.rasterizationState.frontFace = PolygonFrontFace::eCounterClockWise;
 
     pso.depthStencilState =
@@ -473,7 +464,7 @@ void ComputeVoxelizer::UpdatePassResources()
 
         // set-5 bindings
         ADD_SHADER_BINDING_SINGLE(set5bindings, 0, ShaderResourceType::eStorageBuffer,
-                                  m_scene->GetTriangleMapBuffer());                           
+                                  m_scene->GetTriangleMapBuffer());
 
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelization);
         updater.SetShaderResourceBinding(0, set0bindings)
@@ -545,25 +536,24 @@ void ComputeVoxelizer::UpdatePassResources()
 
 void ComputeVoxelizer::UpdateUniformData()
 {
-    const sg::AABB& sceneBox = m_scene->GetAABB();
     {
         VoxelizationCompShaderProgram* shaderProgram = dynamic_cast<VoxelizationCompShaderProgram*>(
             m_computePasses.voxelization.shaderProgram);
-        shaderProgram->sceneInfo.aabbMax = Vec4(sceneBox.GetMax(), 1.0f);
-        shaderProgram->sceneInfo.aabbMin = Vec4(sceneBox.GetMin(), 1.0f);
+        shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
+        shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
         VoxelPreDrawShaderProgram* shaderProgram =
             dynamic_cast<VoxelPreDrawShaderProgram*>(m_computePasses.voxelPreDraw.shaderProgram);
-        shaderProgram->sceneInfo.aabbMax = Vec4(sceneBox.GetMax(), 1.0f);
-        shaderProgram->sceneInfo.aabbMin = Vec4(sceneBox.GetMin(), 1.0f);
+        shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
+        shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
         VoxelDrawShaderProgram2* shaderProgram =
             dynamic_cast<VoxelDrawShaderProgram2*>(m_gfxPasses.voxelDraw.shaderProgram);
-        shaderProgram->transformData.modelMatrix = Mat4(1.0f);
+        shaderProgram->transformData.modelMatrix = m_voxelTransform;
         shaderProgram->transformData.projMatrix  = m_scene->GetCamera()->GetProjectionMatrix();
         shaderProgram->transformData.viewMatrix  = m_scene->GetCamera()->GetViewMatrix();
 
@@ -586,6 +576,31 @@ void ComputeVoxelizer::PrepareRenderWorkload()
 void ComputeVoxelizer::OnResize()
 {
     m_rebuildRDG = true;
+}
+
+void ComputeVoxelizer::SetRenderScene(RenderScene* scene)
+{
+    VoxelizerBase::SetRenderScene(scene);
+    const auto& aabb = m_scene->GetAABB();
+
+    const auto aabbMin = aabb.GetMin();
+    const auto aabbMax = aabb.GetMax();
+    const auto center  = aabb.GetCenter();
+
+    m_sceneLength = aabb.GetMaxExtent();
+
+    glm::vec3 min = center - glm::vec3(m_sceneLength / 2, m_sceneLength / 2, m_sceneLength / 2);
+    glm::vec3 max = center + glm::vec3(m_sceneLength / 2, m_sceneLength / 2, m_sceneLength / 2);
+    m_voxelAABB   = {min, max};
+
+    m_voxelWidth = m_sceneLength / static_cast<float>(m_config.volumeDimension);
+
+    auto cubeExtent = m_cube->GetAABB().GetExtent3D();
+
+    // make sure cube vertex is (-1, -1, 1) (1, 1, 1) todo: find other solution
+    float scaleFactor = 2.0f / (cubeExtent.x);
+
+    m_voxelTransform = glm::scale(Mat4(1.0f), glm::vec3(m_voxelWidth) * scaleFactor);
 }
 
 // void ComputeVoxelizer::VoxelizeStaticScene() {}

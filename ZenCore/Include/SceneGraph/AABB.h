@@ -47,6 +47,17 @@ public:
         return glm::distance(m_min, m_max);
     }
 
+    Vec3 GetExtent3D() const
+    {
+        return glm::abs(Vec3(m_max - m_min));
+    }
+
+    float GetMaxExtent() const
+    {
+        auto extent = GetExtent3D();
+        return std::max(extent.x, std::max(extent.y, extent.z));
+    }
+
     void Transform(const Mat4& transform)
     {
         m_min = Vec3(transform * Vec4(m_min, 1.0f));

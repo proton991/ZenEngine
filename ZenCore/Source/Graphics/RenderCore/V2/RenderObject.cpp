@@ -1,5 +1,4 @@
 #include "Graphics/RenderCore/V2/RenderObject.h"
-
 #include "AssetLib/FastGLTFLoader.h"
 
 namespace zen::rc

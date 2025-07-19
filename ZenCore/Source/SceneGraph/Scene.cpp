@@ -10,12 +10,13 @@ void Scene::UpdateAABB()
 {
     for (auto* node : m_renderableNodes)
     {
-        auto meshAABB = node->GetComponent<Mesh>()->GetAABB();
+        auto& meshAABB = node->GetComponent<Mesh>()->GetAABB();
+        m_localAABB    = meshAABB;
+        // todo: WorldMatrix not correct
         meshAABB.Transform(node->GetComponent<Transform>()->GetWorldMatrix());
         m_aabb.SetMin(meshAABB.GetMin());
         m_aabb.SetMax(meshAABB.GetMax());
     }
-    m_localAABB = m_aabb;
 }
 
 std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& eyePos,

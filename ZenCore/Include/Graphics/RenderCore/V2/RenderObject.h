@@ -38,6 +38,11 @@ public:
         return m_indexBuffer;
     }
 
+    const auto& GetAABB() const
+    {
+        return m_scene->GetAABB();
+    }
+
 private:
     RenderDevice* m_renderDevice{nullptr};
     UniquePtr<sg::Scene> m_scene;

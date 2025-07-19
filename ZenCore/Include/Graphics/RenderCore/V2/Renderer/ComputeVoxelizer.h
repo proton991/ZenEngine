@@ -2,13 +2,13 @@
 #include "VoxelizerBase.h"
 #include "../RenderDevice.h"
 #include "../RenderGraph.h"
+#include "SceneGraph/AABB.h"
 
 namespace zen::rc
 {
 class RenderScene;
 class RenderObject;
 
-// todo: For voxel albedo, color output only occupies upper half of the texture. Maybe related to flickering issue?
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
@@ -23,6 +23,8 @@ public:
     void PrepareRenderWorkload() final;
 
     void OnResize() final;
+
+    void SetRenderScene(RenderScene* scene) override;
 
 protected:
     void LoadCubeModel();
@@ -66,5 +68,10 @@ protected:
     } m_gfxPasses;
 
     RenderObject* m_cube;
+
+    float m_sceneLength;
+    float m_voxelWidth;
+    Mat4 m_voxelTransform;
+    sg::AABB m_voxelAABB;
 };
 } // namespace zen::rc
