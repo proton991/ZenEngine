@@ -76,8 +76,6 @@ layout(set = 4, binding = 1) buffer LargeTriangleArray
 
 layout(push_constant) uniform constants
 {
-    uint albedoTexIndex;
-    uint normalTexIndex;
     uint nodeIndex;
     uint triangleCount;
     uint largeTriangleThreshold;

@@ -262,35 +262,20 @@ void ComputeVoxelizer::BuildRenderGraph()
 
         shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
 
-        const int localSize     = 32;
-        const int triangleCount = m_scene->GetNumIndices() / 3;
-        workgroupCount          = ceil(double(triangleCount) / double(localSize));
-        // todo: handle multi-node scene
-        shaderProgram->pushConstantsData.nodeIndex     = 0;
-        shaderProgram->pushConstantsData.triangleCount = triangleCount;
-        m_rdg->AddComputePassSetPushConstants(
-            pass, &shaderProgram->pushConstantsData,
-            sizeof(VoxelizationCompShaderProgram::PushConstantData));
-        m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
-        // for (auto* node : m_scene->GetRenderableNodes())
-        // {
-        //     shaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
-        //     for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
-        //     {
-        //         const int triangleCount = subMesh->GetIndexCount() / 3;
-        //         workgroupCount          = ceil(double(triangleCount) / double(localSize));
-        //
-        //         auto& materialData = m_scene->GetMaterialsData()[subMesh->GetMaterialIndex()];
-        //         // shaderProgram->pushConstantsData.albedoTexIndex =
-        //         shaderProgram->pushConstantsData.albedoTexIndex = materialData.bcTexIndex;
-        //         shaderProgram->pushConstantsData.normalTexIndex = materialData.normalTexIndex;
-        //         shaderProgram->pushConstantsData.triangleCount  = triangleCount;
-        //         m_rdg->AddComputePassSetPushConstants(
-        //             pass, &shaderProgram->pushConstantsData,
-        //             sizeof(VoxelizationCompShaderProgram::PushConstantData));
-        //         m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
-        //     }
-        // }
+        const int localSize = 32;
+        for (auto* node : m_scene->GetRenderableNodes())
+        {
+            const int triangleCount = node->GetComponent<sg::Mesh>()->GetNumIndices() / 3;
+            ASSERT(triangleCount == m_scene->GetNumIndices() / 3);
+            workgroupCount = ceil(double(triangleCount) / double(localSize));
+
+            shaderProgram->pushConstantsData.nodeIndex     = node->GetRenderableIndex();
+            shaderProgram->pushConstantsData.triangleCount = triangleCount;
+            m_rdg->AddComputePassSetPushConstants(
+                pass, &shaderProgram->pushConstantsData,
+                sizeof(VoxelizationCompShaderProgram::PushConstantData));
+            m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
+        }
         // reset draw indirect
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect);

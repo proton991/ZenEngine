@@ -207,8 +207,6 @@ public:
 
     struct PushConstantData
     {
-        uint32_t albedoTexIndex;
-        uint32_t normalTexIndex;
         uint32_t nodeIndex;
         uint32_t triangleCount;
         uint32_t largeTriangleThreshold;

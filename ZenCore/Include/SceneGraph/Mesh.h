@@ -43,6 +43,7 @@ public:
     void AddSubMesh(SubMesh* subMesh)
     {
         m_subMeshes.push_back(subMesh);
+        m_numIndices += subMesh->GetIndexCount();
     }
 
     void SetAABB(const Vec3& min, const Vec3& max)
@@ -51,7 +52,14 @@ public:
         m_aabb.SetMax(max);
     }
 
+    const auto GetNumIndices() const
+    {
+        return m_numIndices;
+    }
+
 private:
+    uint32_t m_numIndices{0};
+
     AABB m_aabb;
 
     std::vector<SubMesh*> m_subMeshes;
