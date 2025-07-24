@@ -269,6 +269,10 @@ void VulkanRHI::Init()
     m_device->Init();
 
     m_gpuInfo.supportGeometryShader = m_device->GetPhysicalDeviceFeatures().geometryShader;
+    m_gpuInfo.uniformBufferAlignment =
+        m_device->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+    m_gpuInfo.storageBufferAlignment =
+        m_device->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
 
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());

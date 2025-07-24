@@ -617,14 +617,14 @@ rhi::BufferHandle RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const ui
 
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
 {
-    auto minUboAlignment = m_RHI->GetUniformBufferAlignment();
+    auto minUboAlignment = m_RHI->QueryGPUInfo().uniformBufferAlignment;
     size_t alignedSize   = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
     return alignedSize;
 }
 
 size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
 {
-    auto minAlignment  = m_RHI->GetStorageBufferAlignment();
+    auto minAlignment  = m_RHI->QueryGPUInfo().storageBufferAlignment;
     size_t alignedSize = (originalSize + minAlignment - 1) & ~(minAlignment - 1);
     return alignedSize;
 }

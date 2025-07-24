@@ -111,12 +111,6 @@ public:
 
     virtual void WaitDeviceIdle() = 0;
 
-    // todo: refactor this, find nicer ways to query hardware related capabilities
-    /// e.g. put all methods into a struct (GPUInfo).
-    virtual size_t GetUniformBufferAlignment() = 0;
-
-    virtual size_t GetStorageBufferAlignment() = 0;
-
     virtual const GPUInfo& QueryGPUInfo() const = 0;
 };
 } // namespace zen::rhi

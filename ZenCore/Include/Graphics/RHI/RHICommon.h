@@ -26,6 +26,8 @@ enum class GraphicsAPIType
 struct GPUInfo
 {
     bool supportGeometryShader{false};
+    size_t uniformBufferAlignment{0};
+    size_t storageBufferAlignment{0};
 };
 
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept

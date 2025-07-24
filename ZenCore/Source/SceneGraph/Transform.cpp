@@ -19,8 +19,11 @@ void Transform::UpdateWorldMatrix()
     auto parent   = m_node.GetParent();
     while (parent)
     {
-        auto* transform = parent->GetComponent<Transform>();
-        m_worldMatrix   = transform->GetWorldMatrix() * m_worldMatrix;
+        if (parent->HasComponent<Transform>())
+        {
+            auto* transform = parent->GetComponent<Transform>();
+            m_worldMatrix   = transform->GetWorldMatrix() * m_worldMatrix;
+        }
         // Get parent node
         parent = parent->GetParent();
     }

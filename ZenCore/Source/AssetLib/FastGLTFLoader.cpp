@@ -785,9 +785,6 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
         transform->SetScale(glm::make_vec3(TRS->scale.data()));
     }
 
-    newNode->AddComponent(transform.Get());
-    scene->AddComponent(transform);
-
     // Node with children
     if (!gltfNode.children.empty())
     {
@@ -799,6 +796,9 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
 
     if (gltfNode.meshIndex.has_value())
     {
+        newNode->AddComponent(transform.Get());
+        scene->AddComponent(transform);
+
         auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
         newNode->AddComponent(sgMesh);
         newNode->SetData(scene->GetRenderableCount(),

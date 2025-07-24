@@ -12,7 +12,6 @@ void Scene::UpdateAABB()
     {
         auto& meshAABB = node->GetComponent<Mesh>()->GetAABB();
         m_localAABB    = meshAABB;
-        // todo: WorldMatrix not correct
         meshAABB.Transform(node->GetComponent<Transform>()->GetWorldMatrix());
         m_aabb.SetMin(meshAABB.GetMin());
         m_aabb.SetMax(meshAABB.GetMax());

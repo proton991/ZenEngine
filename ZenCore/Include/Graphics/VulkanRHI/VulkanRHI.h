@@ -163,10 +163,6 @@ public:
 
     void WaitDeviceIdle() final;
 
-    size_t GetUniformBufferAlignment() final;
-
-    size_t GetStorageBufferAlignment() final;
-
     const GPUInfo& QueryGPUInfo() const final;
 
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
