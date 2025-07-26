@@ -249,8 +249,8 @@ void ComputeVoxelizer::BuildRenderGraph()
                                           workgroupCount);
 
 
-        VoxelizationCompShaderProgram* shaderProgram = dynamic_cast<VoxelizationCompShaderProgram*>(
-            m_computePasses.voxelization.shaderProgram);
+        VoxelizationCompSP* shaderProgram =
+            dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
         auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
         pass->tag  = "voxelization_compute";
 
@@ -271,9 +271,8 @@ void ComputeVoxelizer::BuildRenderGraph()
 
             shaderProgram->pushConstantsData.nodeIndex     = node->GetRenderableIndex();
             shaderProgram->pushConstantsData.triangleCount = triangleCount;
-            m_rdg->AddComputePassSetPushConstants(
-                pass, &shaderProgram->pushConstantsData,
-                sizeof(VoxelizationCompShaderProgram::PushConstantData));
+            m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                                                  sizeof(VoxelizationCompSP::PushConstantData));
             m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
         }
         // reset draw indirect
@@ -496,8 +495,8 @@ void ComputeVoxelizer::UpdatePassResources()
     }
     // voxel draw pass
     {
-        VoxelDrawShaderProgram2* shaderProgram =
-            dynamic_cast<VoxelDrawShaderProgram2*>(m_gfxPasses.voxelDraw.shaderProgram);
+        VoxelDrawSP2* shaderProgram =
+            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw.shaderProgram);
 
         std::vector<ShaderResourceBinding> set0bindings;
         std::vector<ShaderResourceBinding> set1bindings;
@@ -522,22 +521,22 @@ void ComputeVoxelizer::UpdatePassResources()
 void ComputeVoxelizer::UpdateUniformData()
 {
     {
-        VoxelizationCompShaderProgram* shaderProgram = dynamic_cast<VoxelizationCompShaderProgram*>(
-            m_computePasses.voxelization.shaderProgram);
+        VoxelizationCompSP* shaderProgram =
+            dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
-        VoxelPreDrawShaderProgram* shaderProgram =
-            dynamic_cast<VoxelPreDrawShaderProgram*>(m_computePasses.voxelPreDraw.shaderProgram);
+        VoxelPreDrawSP* shaderProgram =
+            dynamic_cast<VoxelPreDrawSP*>(m_computePasses.voxelPreDraw.shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
-        VoxelDrawShaderProgram2* shaderProgram =
-            dynamic_cast<VoxelDrawShaderProgram2*>(m_gfxPasses.voxelDraw.shaderProgram);
+        VoxelDrawSP2* shaderProgram =
+            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw.shaderProgram);
         shaderProgram->transformData.modelMatrix = m_voxelTransform;
         shaderProgram->transformData.projMatrix  = m_scene->GetCamera()->GetProjectionMatrix();
         shaderProgram->transformData.viewMatrix  = m_scene->GetCamera()->GetViewMatrix();
@@ -566,11 +565,8 @@ void ComputeVoxelizer::OnResize()
 void ComputeVoxelizer::SetRenderScene(RenderScene* scene)
 {
     VoxelizerBase::SetRenderScene(scene);
-    const auto& aabb = m_scene->GetAABB();
-
-    const auto aabbMin = aabb.GetMin();
-    const auto aabbMax = aabb.GetMax();
-    const auto center  = aabb.GetCenter();
+    const auto& aabb  = m_scene->GetAABB();
+    const auto center = aabb.GetCenter();
 
     m_sceneLength = aabb.GetMaxExtent();
 

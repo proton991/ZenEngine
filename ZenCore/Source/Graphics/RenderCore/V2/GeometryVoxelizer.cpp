@@ -144,8 +144,8 @@ void GeometryVoxelizer::BuildRenderGraph()
     // voxelization pass
     if (m_needVoxelization)
     {
-        VoxelizationProgram* shaderProgram =
-            dynamic_cast<VoxelizationProgram*>(m_gfxPasses.voxelization.shaderProgram);
+        VoxelizationSP* shaderProgram =
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
         const uint32_t cFbSize = m_config.volumeDimension;
         std::vector<RenderPassClearValue> clearValues(1);
         clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -178,9 +178,8 @@ void GeometryVoxelizer::BuildRenderGraph()
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
                 shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-                m_rdg->AddGraphicsPassSetPushConstants(
-                    pass, &shaderProgram->pushConstantsData,
-                    sizeof(VoxelizationProgram::PushConstantData));
+                m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                                                       sizeof(VoxelizationSP::PushConstantData));
                 m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
@@ -194,8 +193,8 @@ void GeometryVoxelizer::BuildRenderGraph()
     }
     // voxel draw pass
     {
-        VoxelDrawShaderProgram* shaderProgram =
-            dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
+        VoxelDrawSP* shaderProgram =
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw.shaderProgram);
 
         std::vector<RenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -216,7 +215,7 @@ void GeometryVoxelizer::BuildRenderGraph()
         //        shaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
         shaderProgram->pushConstantsData.volumeDimension = m_config.volumeDimension;
         m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                               sizeof(VoxelDrawShaderProgram::PushConstantData));
+                                               sizeof(VoxelDrawSP::PushConstantData));
         m_rdg->AddGraphicsPassDrawNode(pass, m_config.voxelCount, 1);
     }
     m_rdg->End();
@@ -345,8 +344,8 @@ void GeometryVoxelizer::UpdateUniformData()
         projection[1][1] *= -1;
 
         // view matrices
-        VoxelizationProgram* shaderProgram =
-            dynamic_cast<VoxelizationProgram*>(m_gfxPasses.voxelization.shaderProgram);
+        VoxelizationSP* shaderProgram =
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
         shaderProgram->voxelConfigData.viewProjectionMatrices[0] =
             glm::lookAt(center - Vec3(halfSize, 0.0f, 0.0f), center, Vec3(0.0f, 1.0f, 0.0f));
         shaderProgram->voxelConfigData.viewProjectionMatrices[1] =
@@ -371,8 +370,8 @@ void GeometryVoxelizer::UpdateUniformData()
     {
         const auto* cameraUniformData =
             reinterpret_cast<const sg::CameraUniformData*>(m_scene->GetCameraUniformData());
-        VoxelDrawShaderProgram* shaderProgram =
-            dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
+        VoxelDrawSP* shaderProgram =
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw.shaderProgram);
         uint32_t drawMipLevel = 0;
         auto vDimension = static_cast<unsigned>(m_config.volumeDimension / pow(2.0f, drawMipLevel));
         auto vSize      = m_config.volumeGridSize / vDimension;

@@ -128,8 +128,8 @@ void ShadowMapRenderer::BuildRenderGraph()
     m_rdg->Begin();
     // offscreen pass
     {
-        ShadowMapRenderProgram* shaderProgram =
-            dynamic_cast<ShadowMapRenderProgram*>(m_gfxPasses.evsm.shaderProgram);
+        ShadowMapRenderSP* shaderProgram =
+            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm.shaderProgram);
         std::vector<RenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[1].depth   = 1.0f;
@@ -161,9 +161,8 @@ void ShadowMapRenderer::BuildRenderGraph()
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
                 shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-                m_rdg->AddGraphicsPassSetPushConstants(
-                    pass, &shaderProgram->pushConstantsData,
-                    sizeof(ShadowMapRenderProgram::PushConstantData));
+                m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                                                       sizeof(ShadowMapRenderSP::PushConstantData));
                 m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
@@ -176,8 +175,8 @@ void ShadowMapRenderer::BuildRenderGraph()
 void ShadowMapRenderer::UpdateGraphicsPassResources()
 {
     {
-        ShadowMapRenderProgram* shaderProgram =
-            dynamic_cast<ShadowMapRenderProgram*>(m_gfxPasses.evsm.shaderProgram);
+        ShadowMapRenderSP* shaderProgram =
+            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm.shaderProgram);
         std::vector<ShaderResourceBinding> set0bindings;
         std::vector<ShaderResourceBinding> set1bindings;
         // set-0 bindings

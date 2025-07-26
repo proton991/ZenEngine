@@ -319,8 +319,7 @@ void DeferredLightingRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                                 const Rect2<int>& area,
                                                 const Rect2<float>& viewport)
 {
-    GBufferShaderProgram* shaderProgram =
-        dynamic_cast<GBufferShaderProgram*>(m_gfxPasses.offscreen.shaderProgram);
+    GBufferSP* shaderProgram = dynamic_cast<GBufferSP*>(m_gfxPasses.offscreen.shaderProgram);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                               DataFormat::eR32UInt);
@@ -333,7 +332,7 @@ void DeferredLightingRenderer::AddMeshDrawNodes(RDGPassNode* pass,
         {
             shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
             m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                   sizeof(GBufferShaderProgram::PushConstantData));
+                                                   sizeof(GBufferSP::PushConstantData));
             m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                   subMesh->GetFirstIndex(), 0, 0);
         }

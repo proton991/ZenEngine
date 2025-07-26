@@ -61,11 +61,10 @@ private:
     friend class GraphicsPassBuilder;
 };
 
-class GBufferShaderProgram : public ShaderProgram
+class GBufferSP : public ShaderProgram
 {
 public:
-    explicit GBufferShaderProgram(RenderDevice* renderDevice) :
-        ShaderProgram(renderDevice, "GBufferSP")
+    explicit GBufferSP(RenderDevice* renderDevice) : ShaderProgram(renderDevice, "GBufferSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
         AddShaderStage(rhi::ShaderStage::eFragment, "SceneRenderer/offscreen.frag.spv");
@@ -79,10 +78,10 @@ public:
     } pushConstantsData;
 };
 
-class DeferredLightingShaderProgram : public ShaderProgram
+class DeferredLightingSP : public ShaderProgram
 {
 public:
-    explicit DeferredLightingShaderProgram(RenderDevice* renderDevice) :
+    explicit DeferredLightingSP(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "DeferredLightingSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
@@ -91,10 +90,10 @@ public:
     }
 };
 
-class EnvMapIrradianceProgram : public ShaderProgram
+class EnvMapIrradianceSP : public ShaderProgram
 {
 public:
-    explicit EnvMapIrradianceProgram(RenderDevice* renderDevice) :
+    explicit EnvMapIrradianceSP(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "EnvMapIrradianceSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "Environment/filtercube.vert.spv");
@@ -103,10 +102,10 @@ public:
     }
 };
 
-class EnvMapPrefilteredProgram : public ShaderProgram
+class EnvMapPrefilteredSP : public ShaderProgram
 {
 public:
-    explicit EnvMapPrefilteredProgram(RenderDevice* renderDevice) :
+    explicit EnvMapPrefilteredSP(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "EnvMapPrefilteredSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "Environment/filtercube.vert.spv");
@@ -115,10 +114,10 @@ public:
     }
 };
 
-class SkyboxRenderProgram : public ShaderProgram
+class SkyboxRenderSP : public ShaderProgram
 {
 public:
-    explicit SkyboxRenderProgram(RenderDevice* renderDevice) :
+    explicit SkyboxRenderSP(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "SkyboxRenderSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "Environment/skybox.vert.spv");
@@ -127,10 +126,10 @@ public:
     }
 };
 
-class EnvMapBRDFLutGenProgram : public ShaderProgram
+class EnvMapBRDFLutGenSP : public ShaderProgram
 {
 public:
-    explicit EnvMapBRDFLutGenProgram(RenderDevice* renderDevice) :
+    explicit EnvMapBRDFLutGenSP(RenderDevice* renderDevice) :
         ShaderProgram(renderDevice, "EnvMapBRDFLutGenSP")
     {
         AddShaderStage(rhi::ShaderStage::eVertex, "Environment/genbrdflut.vert.spv");
@@ -139,10 +138,17 @@ public:
     }
 };
 
-class VoxelizationProgram : public ShaderProgram
+class VoxelizationSP : public ShaderProgram
 {
 public:
-    explicit VoxelizationProgram(RenderDevice* renderDevice);
+    explicit VoxelizationSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "VoxelizationSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
+        AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
+        AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
+        Init();
+    }
 
     const uint8_t* GetVoxelConfigData() const
     {
@@ -165,10 +171,16 @@ public:
     } pushConstantsData;
 };
 
-class VoxelDrawShaderProgram : public ShaderProgram
+class VoxelDrawSP : public ShaderProgram
 {
 public:
-    explicit VoxelDrawShaderProgram(RenderDevice* renderDevice);
+    explicit VoxelDrawSP(RenderDevice* renderDevice) : ShaderProgram(renderDevice, "VoxelDrawSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/draw_voxels.vert.spv");
+        AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/draw_voxels.geom.spv");
+        AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/draw_voxels.frag.spv");
+        Init();
+    }
 
     const uint8_t* GetVoxelInfoData() const
     {
@@ -189,10 +201,15 @@ public:
     } voxelInfo;
 };
 
-class VoxelizationCompShaderProgram : public ShaderProgram
+class VoxelizationCompSP : public ShaderProgram
 {
 public:
-    explicit VoxelizationCompShaderProgram(RenderDevice* renderDevice);
+    explicit VoxelizationCompSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "VoxelizationCompSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxelization.comp.spv");
+        Init();
+    }
 
     const uint8_t* GetSceneInfoData() const
     {
@@ -213,28 +230,49 @@ public:
     } pushConstantsData;
 };
 
-class ResetDrawIndirectShaderProgram : public ShaderProgram
+class ResetDrawIndirectSP : public ShaderProgram
 {
 public:
-    explicit ResetDrawIndirectShaderProgram(RenderDevice* renderDevice);
+    explicit ResetDrawIndirectSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "ResetDrawIndirectSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_draw_indirect.comp.spv");
+        Init();
+    }
 };
 
-class ResetCompIndirectShaderProgram : public ShaderProgram
+class ResetCompIndirectSP : public ShaderProgram
 {
 public:
-    explicit ResetCompIndirectShaderProgram(RenderDevice* renderDevice);
+    explicit ResetCompIndirectSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "ResetCompIndirectSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_compute_indirect.comp.spv");
+        Init();
+    }
 };
 
-class ResetVoxelTextureShaderProgram : public ShaderProgram
+class ResetVoxelTextureSP : public ShaderProgram
 {
 public:
-    explicit ResetVoxelTextureShaderProgram(RenderDevice* renderDevice);
+    explicit ResetVoxelTextureSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "ResetVoxelTextureSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv");
+        Init();
+    }
 };
 
-class VoxelPreDrawShaderProgram : public ShaderProgram
+class VoxelPreDrawSP : public ShaderProgram
 {
 public:
-    explicit VoxelPreDrawShaderProgram(RenderDevice* renderDevice);
+    explicit VoxelPreDrawSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "VoxelPreDrawSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
+        Init();
+    }
+
 
     const uint8_t* GetSceneInfoData() const
     {
@@ -248,10 +286,15 @@ public:
     } sceneInfo;
 };
 
-class VoxelDrawShaderProgram2 : public ShaderProgram
+class VoxelDrawSP2 : public ShaderProgram
 {
 public:
-    explicit VoxelDrawShaderProgram2(RenderDevice* renderDevice);
+    explicit VoxelDrawSP2(RenderDevice* renderDevice) : ShaderProgram(renderDevice, "VoxelDrawSP2")
+    {
+        AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxel_vis.vert.spv");
+        AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxel_vis.frag.spv");
+        Init();
+    }
 
     const uint8_t* GetTransformData() const
     {
@@ -265,10 +308,17 @@ public:
     } transformData;
 };
 
-class ShadowMapRenderProgram : public ShaderProgram
+class ShadowMapRenderSP : public ShaderProgram
 {
 public:
-    explicit ShadowMapRenderProgram(RenderDevice* renderDevice);
+    explicit ShadowMapRenderSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "ShadowMapRenderSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eVertex, "ShadowMapping/evsm.vert.spv");
+        AddShaderStage(rhi::ShaderStage::eFragment, "ShadowMapping/evsm.frag.spv");
+        Init();
+    }
+
 
     const uint8_t* GetLightInfoData() const
     {

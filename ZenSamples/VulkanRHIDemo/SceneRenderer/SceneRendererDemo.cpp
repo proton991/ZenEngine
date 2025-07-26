@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Platform/InputController.h"
 
 
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
@@ -104,6 +105,16 @@ void SceneRendererDemo::Run()
         m_camera->Update(frameTime);
 
         m_renderDevice->GetRendererServer()->DispatchRenderWorkloads();
+
+        if (platform::KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_1))
+        {
+            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
+        }
+
+        if (platform::KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_2))
+        {
+            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
+        }
 
         m_renderDevice->NextFrame();
     }

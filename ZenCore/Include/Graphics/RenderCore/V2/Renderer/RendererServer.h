@@ -58,6 +58,10 @@ public:
         return m_shadowMapRenderer;
     }
 
+    void SetRenderOption(RenderOption option)
+    {
+        m_renderOption = option;
+    }
 
 private:
     rhi::RHIViewport* m_viewport{nullptr};
@@ -70,6 +74,6 @@ private:
     // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
 
-    RenderOption m_renderOption{RenderOption::eVoxelize};
+    RenderOption m_renderOption{RenderOption::ePBR};
 };
 } // namespace zen::rc
