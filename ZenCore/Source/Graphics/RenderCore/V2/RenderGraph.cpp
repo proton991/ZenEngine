@@ -36,6 +36,16 @@ void RenderGraph::AddComputePassDispatchNode(RDGPassNode* parent,
     node->groupCountZ = groupCountZ;
 }
 
+void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
+                                                     rhi::BufferHandle indirectBuffer,
+                                                     uint32_t offset)
+{
+    auto* node           = AllocPassChildNode<RDGDispatchIndirectNode>(parent);
+    node->type           = RDGPassCmdType::eDispatchIndirect;
+    node->indirectBuffer = indirectBuffer;
+    node->offset         = offset;
+}
+
 RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                               rhi::FramebufferHandle framebufferHandle,
                                               rhi::Rect2<int> area,
@@ -849,6 +859,12 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         auto* cmdNode = reinterpret_cast<RDGDispatchNode*>(child);
                         m_cmdList->Dispatch(cmdNode->groupCountX, cmdNode->groupCountY,
                                             cmdNode->groupCountZ);
+                    }
+                    break;
+                    case RDGPassCmdType::eDispatchIndirect:
+                    {
+                        auto* cmdNode = reinterpret_cast<RDGDispatchIndirectNode*>(child);
+                        m_cmdList->DispatchIndirect(cmdNode->indirectBuffer, cmdNode->offset);
                     }
                     break;
                     case RDGPassCmdType::eSetPushConstant:

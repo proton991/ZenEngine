@@ -230,6 +230,35 @@ public:
     } pushConstantsData;
 };
 
+class VoxelizationLargeTriangleCompSP : public ShaderProgram
+{
+public:
+    explicit VoxelizationLargeTriangleCompSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "VoxelizationLargeTriangleCompSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxelization_large_triangles.comp.spv");
+        Init();
+    }
+
+    const uint8_t* GetSceneInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&sceneInfo);
+    }
+
+    struct SceneInfo
+    {
+        Vec4 aabbMin;
+        Vec4 aabbMax;
+    } sceneInfo;
+
+    struct PushConstantData
+    {
+        uint32_t nodeIndex;
+        uint32_t triangleCount;
+        uint32_t largeTriangleThreshold;
+    } pushConstantsData;
+};
+
 class ResetDrawIndirectSP : public ShaderProgram
 {
 public:

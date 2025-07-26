@@ -423,6 +423,11 @@ void VulkanCommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uin
     vkCmdDispatch(m_cmdBuffer->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
+void VulkanCommandList::DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset)
+{
+    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(indirectBuffer.value);
+    vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset);
+}
 
 void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
 {

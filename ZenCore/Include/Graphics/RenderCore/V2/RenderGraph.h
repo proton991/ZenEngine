@@ -357,6 +357,11 @@ struct RDGDispatchNode : RDGPassChildNode
     uint32_t groupCountZ{0};
 };
 
+struct RDGDispatchIndirectNode : RDGPassChildNode
+{
+    rhi::BufferHandle indirectBuffer;
+    uint32_t offset{0};
+};
 
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
@@ -414,6 +419,10 @@ public:
                                     uint32_t groupCountX,
                                     uint32_t groupCountY,
                                     uint32_t groupCountZ);
+
+    void AddComputePassDispatchIndirectNode(RDGPassNode* parent,
+                                            rhi::BufferHandle indirectBuffer,
+                                            uint32_t offset);
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,

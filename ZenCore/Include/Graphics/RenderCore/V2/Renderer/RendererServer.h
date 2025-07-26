@@ -74,6 +74,6 @@ private:
     // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
 
-    RenderOption m_renderOption{RenderOption::ePBR};
+    RenderOption m_renderOption{RenderOption::eVoxelize};
 };
 } // namespace zen::rc

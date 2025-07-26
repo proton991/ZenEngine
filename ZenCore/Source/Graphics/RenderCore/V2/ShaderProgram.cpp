@@ -127,75 +127,6 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     }
 }
 
-// VoxelizationProgram::VoxelizationProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "VoxelizationSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
-//     AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
-//     AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
-//     Init();
-// }
-//
-// VoxelDrawShaderProgram::VoxelDrawShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "VoxelDrawSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/draw_voxels.vert.spv");
-//     AddShaderStage(rhi::ShaderStage::eGeometry, "VoxelGI/draw_voxels.geom.spv");
-//     AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/draw_voxels.frag.spv");
-//     Init();
-// }
-//
-// VoxelizationCompShaderProgram::VoxelizationCompShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "VoxelizationCompSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxelization.comp.spv");
-//     Init();
-// }
-//
-// VoxelPreDrawShaderProgram::VoxelPreDrawShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "VoxelPreDrawSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
-//     Init();
-// }
-//
-// ResetDrawIndirectShaderProgram::ResetDrawIndirectShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "ResetDrawIndirectSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_draw_indirect.comp.spv");
-//     Init();
-// }
-//
-// ResetCompIndirectShaderProgram::ResetCompIndirectShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "ResetCompIndirectSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_compute_indirect.comp.spv");
-//     Init();
-// }
-//
-// ResetVoxelTextureShaderProgram::ResetVoxelTextureShaderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "ResetVoxelTextureSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv");
-//     Init();
-// }
-//
-// VoxelDrawShaderProgram2::VoxelDrawShaderProgram2(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "VoxelDrawSP2")
-// {
-//     AddShaderStage(rhi::ShaderStage::eVertex, "VoxelGI/voxel_vis.vert.spv");
-//     AddShaderStage(rhi::ShaderStage::eFragment, "VoxelGI/voxel_vis.frag.spv");
-//     Init();
-// }
-//
-// ShadowMapRenderProgram::ShadowMapRenderProgram(RenderDevice* renderDevice) :
-//     ShaderProgram(renderDevice, "ShadowMapRenderSP")
-// {
-//     AddShaderStage(rhi::ShaderStage::eVertex, "ShadowMapping/evsm.vert.spv");
-//     AddShaderStage(rhi::ShaderStage::eFragment, "ShadowMapping/evsm.frag.spv");
-//     Init();
-// }
-
 ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* renderDevice,
                                                          const std::string& name)
 {
@@ -263,6 +194,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
     }
     {
         ShaderProgram* shaderProgram             = new VoxelizationCompSP(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
+    {
+        ShaderProgram* shaderProgram = new VoxelizationLargeTriangleCompSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {

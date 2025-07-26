@@ -102,6 +102,8 @@ public:
 
     virtual void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
+    virtual void DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset) = 0;
+
     virtual void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) = 0;
 
     virtual void SetViewports(VectorView<Rect2<float>> viewports) = 0;

@@ -59,6 +59,7 @@ protected:
         ComputePass resetVoxelTexture;
         ComputePass resetDrawIndirect;
         ComputePass voxelization;
+        ComputePass voxelizationLargeTriangle;
         ComputePass voxelPreDraw; // calculate position and color for voxel draw pass
     } m_computePasses;
 

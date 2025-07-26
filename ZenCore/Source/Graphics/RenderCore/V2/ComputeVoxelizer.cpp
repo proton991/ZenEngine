@@ -238,42 +238,61 @@ void ComputeVoxelizer::BuildRenderGraph()
             // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
             // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)
         };
-
-
-        auto* resetTexPass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
-        resetTexPass->tag  = "reset_voxel_texture";
-        m_rdg->DeclareTextureAccessForPass(resetTexPass, 1, textures, TextureUsage::eStorage,
-                                           ranges, AccessMode::eReadWrite);
-        workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
-        m_rdg->AddComputePassDispatchNode(resetTexPass, workgroupCount, workgroupCount,
-                                          workgroupCount);
-
-
-        VoxelizationCompSP* shaderProgram =
-            dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
-        auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
-        pass->tag  = "voxelization_compute";
-
-        m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
-                                           AccessMode::eReadWrite);
-        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
-                                          BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
-
-
-        shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
-
-        const int localSize = 32;
-        for (auto* node : m_scene->GetRenderableNodes())
+        // reset voxel texture
         {
-            const int triangleCount = node->GetComponent<sg::Mesh>()->GetNumIndices() / 3;
-            ASSERT(triangleCount == m_scene->GetNumIndices() / 3);
-            workgroupCount = ceil(double(triangleCount) / double(localSize));
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
+            pass->tag  = "reset_voxel_texture";
+            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+                                               AccessMode::eReadWrite);
+            workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
+            m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
+        }
+        // voxelize small triangles
+        {
+            VoxelizationCompSP* shaderProgram =
+                dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
+            pass->tag  = "voxelization_compute";
 
-            shaderProgram->pushConstantsData.nodeIndex     = node->GetRenderableIndex();
-            shaderProgram->pushConstantsData.triangleCount = triangleCount;
-            m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                  sizeof(VoxelizationCompSP::PushConstantData));
-            m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
+            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+                                               AccessMode::eReadWrite);
+            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+
+            shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
+
+            const int localSize = 32;
+            for (auto* node : m_scene->GetRenderableNodes())
+            {
+                const int triangleCount = node->GetComponent<sg::Mesh>()->GetNumIndices() / 3;
+                ASSERT(triangleCount == m_scene->GetNumIndices() / 3);
+                workgroupCount = ceil(double(triangleCount) / double(localSize));
+
+                shaderProgram->pushConstantsData.nodeIndex     = node->GetRenderableIndex();
+                shaderProgram->pushConstantsData.triangleCount = triangleCount;
+                m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                                                      sizeof(VoxelizationCompSP::PushConstantData));
+                m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
+            }
+        }
+        // voxelize large triangles
+        {
+            VoxelizationLargeTriangleCompSP* shaderProgram =
+                dynamic_cast<VoxelizationLargeTriangleCompSP*>(
+                    m_computePasses.voxelizationLargeTriangle.shaderProgram);
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelizationLargeTriangle);
+            pass->tag  = "voxelization_compute_large_triangle";
+            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+                                               AccessMode::eReadWrite);
+            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+                                              BufferUsage::eIndirectBuffer, AccessMode::eRead);
+            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
+                                              BufferUsage::eStorageBuffer, AccessMode::eRead);
+
+            shaderProgram->pushConstantsData.nodeIndex = 0;
+            m_rdg->AddComputePassDispatchIndirectNode(pass, m_buffers.computeIndirectBuffer, 0);
         }
         // reset draw indirect
         {
@@ -388,6 +407,14 @@ void ComputeVoxelizer::BuildComputePasses()
         m_computePasses.voxelization =
             builder.SetShaderProgramName("VoxelizationCompSP").SetTag("VoxelizationComp").Build();
     }
+    // voxelization large triangle pass
+    {
+        ComputePassBuilder builder(m_renderDevice);
+        m_computePasses.voxelizationLargeTriangle =
+            builder.SetShaderProgramName("VoxelizationLargeTriangleCompSP")
+                .SetTag("VoxelizationLargeTriangleComp")
+                .Build();
+    }
     // voxel pre-draw pass, calculate position and color
     {
         ComputePassBuilder builder(m_renderDevice);
@@ -452,6 +479,17 @@ void ComputeVoxelizer::UpdatePassResources()
 
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelization);
         updater.SetShaderResourceBinding(0, set0bindings)
+            .SetShaderResourceBinding(1, set1bindings)
+            .SetShaderResourceBinding(2, set2bindings)
+            .SetShaderResourceBinding(3, set3bindings)
+            .SetShaderResourceBinding(4, set4bindings)
+            .SetShaderResourceBinding(5, set5bindings)
+            .Update();
+
+        // large triangles
+        ComputePassResourceUpdater updater2(m_renderDevice,
+                                            &m_computePasses.voxelizationLargeTriangle);
+        updater2.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
             .SetShaderResourceBinding(3, set3bindings)
@@ -523,6 +561,14 @@ void ComputeVoxelizer::UpdateUniformData()
     {
         VoxelizationCompSP* shaderProgram =
             dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
+        shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
+        shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
+        shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
+    }
+    {
+        VoxelizationLargeTriangleCompSP* shaderProgram =
+            dynamic_cast<VoxelizationLargeTriangleCompSP*>(
+                m_computePasses.voxelizationLargeTriangle.shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);

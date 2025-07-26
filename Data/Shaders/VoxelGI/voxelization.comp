@@ -145,7 +145,7 @@ void main()
     #define WORKGROUP_SIZE 64
 
     uint texture_index = triangleMap[index];
-//    if (x_dim_voxel * y_dim_voxel < pc.largeTriangleThreshold)
+    if (x_dim_voxel * y_dim_voxel < pc.largeTriangleThreshold)
     {
         for(int i = min_x_voxel; i <= max_x_voxel; i++){
             for(int j = min_y_voxel; j <= max_y_voxel; j++){
@@ -173,13 +173,13 @@ void main()
             }
         }
     }
-//    else{
-//        uint workgroup_count = (x_dim_voxel * y_dim_voxel) / WORKGROUP_SIZE + 1;
-//        uint large_triangle_index = atomicAdd(command.x, workgroup_count);
-//
-//        for(uint i = 0; i < workgroup_count; i++){
-//            largeTriangles[large_triangle_index + i].triangleIndex = index; // change struct to include both triangle index and per triangle index
-//            largeTriangles[large_triangle_index + i].innerTriangleIndex = i;
-//        }
-//    }
+    else{
+        uint workgroup_count = (x_dim_voxel * y_dim_voxel) / WORKGROUP_SIZE + 1;
+        uint large_triangle_index = atomicAdd(command.x, workgroup_count);
+
+        for(uint i = 0; i < workgroup_count; i++){
+            largeTriangles[large_triangle_index + i].triangleIndex = index; // change struct to include both triangle index and per triangle index
+            largeTriangles[large_triangle_index + i].innerTriangleIndex = i;
+        }
+    }
 }
