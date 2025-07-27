@@ -56,7 +56,8 @@ void main(){
     int voxels_per_side = imageSize(voxelTexture).x;
     float voxel_width = (_max.x - _min.x) / float(voxels_per_side);
 
-    mat4 modelMatrix = nodesData[pc.nodeIndex].modelMatrix;
+//    mat4 modelMatrix = nodesData[pc.nodeIndex].modelMatrix;
+    mat4 modelMatrix = largeTriangles[gl_WorkGroupID.x].modelMatrix;
     vec4 vertex1_world = modelMatrix * vertex1.position;
     vec4 vertex2_world = modelMatrix * vertex2.position;
     vec4 vertex3_world = modelMatrix * vertex3.position;

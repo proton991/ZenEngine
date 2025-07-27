@@ -26,12 +26,6 @@ struct DrawIndexedIndirectCommand
     uint32_t firstInstance;
 };
 
-struct LargeTriangle
-{
-    uint32_t triangleIndex;
-    uint32_t innerTriangleIndex;
-};
-
 struct GraphicsPass
 {
     rhi::FramebufferHandle framebuffer;

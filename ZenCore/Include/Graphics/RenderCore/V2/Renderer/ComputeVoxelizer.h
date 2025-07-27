@@ -43,6 +43,13 @@ protected:
 
     void UpdateUniformData() final;
 
+    struct LargeTriangle
+    {
+        uint32_t triangleIndex{0};
+        uint32_t innerTriangleIndex{0};
+        Mat4 modelMatrix{1.0f};
+    };
+
     struct
     {
         // voxelization pass
@@ -57,6 +64,7 @@ protected:
     struct
     {
         ComputePass resetVoxelTexture;
+        ComputePass resetComputeIndirect;
         ComputePass resetDrawIndirect;
         ComputePass voxelization;
         ComputePass voxelizationLargeTriangle;

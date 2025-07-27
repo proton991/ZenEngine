@@ -181,7 +181,7 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
         }
     }
     {
-        ShaderProgram* shaderProgram             = new ResetCompIndirectSP(renderDevice);
+        ShaderProgram* shaderProgram             = new ResetComputeIndirectSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {

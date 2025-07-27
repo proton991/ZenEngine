@@ -67,6 +67,7 @@ struct LargeTriangle
 {
     uint triangleIndex;
     uint innerTriangleIndex;
+    mat4 modelMatrix;
 };
 
 layout(set = 4, binding = 1) buffer LargeTriangleArray

@@ -180,6 +180,7 @@ void main()
         for(uint i = 0; i < workgroup_count; i++){
             largeTriangles[large_triangle_index + i].triangleIndex = index; // change struct to include both triangle index and per triangle index
             largeTriangles[large_triangle_index + i].innerTriangleIndex = i;
+            largeTriangles[large_triangle_index + i].modelMatrix = modelMatrix;
         }
     }
 }

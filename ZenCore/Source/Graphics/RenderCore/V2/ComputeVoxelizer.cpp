@@ -247,6 +247,14 @@ void ComputeVoxelizer::BuildRenderGraph()
             workgroupCount = static_cast<int>(m_config.volumeDimension / 8);
             m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
         }
+        // reset compute indirect
+        {
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetComputeIndirect);
+            pass->tag  = "reset_compute_indirect";
+            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
+        }
         // voxelize small triangles
         {
             VoxelizationCompSP* shaderProgram =
@@ -279,9 +287,6 @@ void ComputeVoxelizer::BuildRenderGraph()
         }
         // voxelize large triangles
         {
-            VoxelizationLargeTriangleCompSP* shaderProgram =
-                dynamic_cast<VoxelizationLargeTriangleCompSP*>(
-                    m_computePasses.voxelizationLargeTriangle.shaderProgram);
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelizationLargeTriangle);
             pass->tag  = "voxelization_compute_large_triangle";
             m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
@@ -290,8 +295,6 @@ void ComputeVoxelizer::BuildRenderGraph()
                                               BufferUsage::eIndirectBuffer, AccessMode::eRead);
             m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
                                               BufferUsage::eStorageBuffer, AccessMode::eRead);
-
-            shaderProgram->pushConstantsData.nodeIndex = 0;
             m_rdg->AddComputePassDispatchIndirectNode(pass, m_buffers.computeIndirectBuffer, 0);
         }
         // reset draw indirect
@@ -401,6 +404,14 @@ void ComputeVoxelizer::BuildComputePasses()
                                                 .SetTag("ResetVoxelTextureComp")
                                                 .Build();
     }
+    {
+        // reset compute indirect
+        ComputePassBuilder builder(m_renderDevice);
+        m_computePasses.resetComputeIndirect =
+            builder.SetShaderProgramName("ResetComputeIndirectSP")
+                .SetTag("ResetComputeIndirectComp")
+                .Build();
+    }
     // voxelization pass
     {
         ComputePassBuilder builder(m_renderDevice);
@@ -440,6 +451,14 @@ void ComputeVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
                                   m_voxelTextures.albedo);
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
+        updater.SetShaderResourceBinding(0, set0bindings).Update();
+    }
+    // reset compute indirect
+    {
+        std::vector<ShaderResourceBinding> set0bindings;
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eStorageBuffer,
+                                  m_buffers.computeIndirectBuffer);
+        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetComputeIndirect);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // voxelization pass

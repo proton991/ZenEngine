@@ -270,11 +270,11 @@ public:
     }
 };
 
-class ResetCompIndirectSP : public ShaderProgram
+class ResetComputeIndirectSP : public ShaderProgram
 {
 public:
-    explicit ResetCompIndirectSP(RenderDevice* renderDevice) :
-        ShaderProgram(renderDevice, "ResetCompIndirectSP")
+    explicit ResetComputeIndirectSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "ResetComputeIndirectSP")
     {
         AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/reset_compute_indirect.comp.spv");
         Init();
