@@ -193,10 +193,10 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
     // sem = nullptr;
 }
 
-void VulkanPipelineBarrier::AddImageLayoutTransition(VkImage image,
-                                                     VkImageLayout srcLayout,
-                                                     VkImageLayout dstLayout,
-                                                     const VkImageSubresourceRange& range)
+void VulkanPipelineBarrier::AddImageBarrier(VkImage image,
+                                            VkImageLayout srcLayout,
+                                            VkImageLayout dstLayout,
+                                            const VkImageSubresourceRange& range)
 {
     const VkAccessFlags srcAccessFlags = VkLayoutToAccessFlags(srcLayout);
     const VkAccessFlags dstAccessFlags = VkLayoutToAccessFlags(dstLayout);
@@ -214,14 +214,62 @@ void VulkanPipelineBarrier::AddImageLayoutTransition(VkImage image,
     m_imageBarriers.emplace_back(barrier);
 }
 
+void VulkanPipelineBarrier::AddImageBarrier(VkImage image,
+                                            VkImageLayout srcLayout,
+                                            VkImageLayout dstLayout,
+                                            const VkImageSubresourceRange& range,
+                                            VkAccessFlags srcAccess,
+                                            VkAccessFlags dstAccess)
+{
+    VkImageMemoryBarrier barrier;
+    InitVkStruct(barrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
+    barrier.image               = image;
+    barrier.srcAccessMask       = srcAccess;
+    barrier.dstAccessMask       = dstAccess;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.oldLayout           = srcLayout;
+    barrier.newLayout           = dstLayout;
+    barrier.subresourceRange    = range;
+    m_imageBarriers.emplace_back(barrier);
+}
+
+void VulkanPipelineBarrier::AddBufferBarrier(VkBuffer buffer,
+                                             uint64_t offset,
+                                             uint64_t size,
+                                             VkAccessFlags srcAccess,
+                                             VkAccessFlags dstAccess)
+{
+    VkBufferMemoryBarrier bufferBarrier;
+    InitVkStruct(bufferBarrier, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
+    bufferBarrier.buffer              = buffer;
+    bufferBarrier.offset              = offset;
+    bufferBarrier.size                = size;
+    bufferBarrier.srcAccessMask       = srcAccess;
+    bufferBarrier.dstAccessMask       = dstAccess;
+    bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    m_bufferBarriers.emplace_back(bufferBarrier);
+}
+
+void VulkanPipelineBarrier::AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
+{
+    VkMemoryBarrier memoryBarrier;
+    InitVkStruct(memoryBarrier, VK_STRUCTURE_TYPE_MEMORY_BARRIER);
+    memoryBarrier.srcAccessMask = srcAccess;
+    memoryBarrier.dstAccessMask = dstAccess;
+    m_memoryBarriers.emplace_back(memoryBarrier);
+}
+
 void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
 {
     VkPipelineStageFlags srcStageFlags = 0;
     VkPipelineStageFlags dstStageFlags = 0;
     for (const auto& imageBarrier : m_imageBarriers)
     {
-        srcStageFlags |= VkLayoutToPipelinStageFlags(imageBarrier.oldLayout);
-        dstStageFlags |= VkLayoutToPipelinStageFlags(imageBarrier.newLayout);
+        srcStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.oldLayout);
+        dstStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.newLayout);
+        // todo: buffer access to stage flags?
     }
     if (!m_imageBarriers.empty())
     {
@@ -230,7 +278,20 @@ void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
     }
 }
 
-VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelinStageFlags(VkImageLayout layout)
+void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
+                                    BitField<PipelineStageBits> srcStages,
+                                    BitField<PipelineStageBits> dstStages)
+{
+    if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
+    {
+        vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStages, dstStages, 0,
+                             m_memoryBarriers.size(), m_memoryBarriers.data(),
+                             m_bufferBarriers.size(), m_bufferBarriers.data(),
+                             m_imageBarriers.size(), m_imageBarriers.data());
+    }
+}
+
+VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImageLayout layout)
 {
     VkPipelineStageFlags flags = 0;
     switch (layout)

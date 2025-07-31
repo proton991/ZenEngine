@@ -120,17 +120,41 @@ private:
 class VulkanPipelineBarrier
 {
 public:
-    void AddImageLayoutTransition(VkImage image,
-                                  VkImageLayout srcLayout,
-                                  VkImageLayout dstLayout,
-                                  const VkImageSubresourceRange& range);
+    void AddImageBarrier(VkImage image,
+                         VkImageLayout srcLayout,
+                         VkImageLayout dstLayout,
+                         const VkImageSubresourceRange& range);
+
+    void AddImageBarrier(VkImage image,
+                         VkImageLayout srcLayout,
+                         VkImageLayout dstLayout,
+                         const VkImageSubresourceRange& range,
+                         VkAccessFlags srcAccess,
+                         VkAccessFlags dstAccess);
+
+    void AddBufferBarrier(VkBuffer buffer,
+                          uint64_t offset,
+                          uint64_t size,
+                          VkAccessFlags srcAccess,
+                          VkAccessFlags dstAccess);
+
+    void AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
     void Execute(VulkanCommandBuffer* cmdBuffer);
 
+    void Execute(VulkanCommandBuffer* cmdBuffer,
+                 BitField<PipelineStageBits> srcStages,
+                 BitField<PipelineStageBits> dstStages);
+
 private:
-    static VkPipelineStageFlags VkLayoutToPipelinStageFlags(VkImageLayout layout);
+    static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);
     static VkAccessFlags VkLayoutToAccessFlags(VkImageLayout layout);
 
+    VkPipelineStageFlags m_srcStageFlags{0};
+    VkPipelineStageFlags m_dstStageFlags{0};
+
     std::vector<VkImageMemoryBarrier> m_imageBarriers;
+    std::vector<VkMemoryBarrier> m_memoryBarriers;
+    std::vector<VkBufferMemoryBarrier> m_bufferBarriers;
 };
 } // namespace zen::rhi

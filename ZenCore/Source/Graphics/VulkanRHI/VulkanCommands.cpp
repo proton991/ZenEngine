@@ -59,38 +59,24 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
                                            const std::vector<BufferTransition>& bufferTransitions,
                                            const std::vector<TextureTransition>& textureTransitions)
 {
-    std::vector<VkMemoryBarrier> memoryBarriers;
-    std::vector<VkBufferMemoryBarrier> bufferBarriers;
-    std::vector<VkImageMemoryBarrier> imageBarriers;
-    memoryBarriers.reserve(memoryTransitions.size());
-    bufferBarriers.reserve(bufferTransitions.size());
-    imageBarriers.reserve(textureTransitions.size());
+    VulkanPipelineBarrier barrier;
 
     for (const auto& memoryTransition : memoryTransitions)
     {
-        VkMemoryBarrier memoryBarrier;
-        InitVkStruct(memoryBarrier, VK_STRUCTURE_TYPE_MEMORY_BARRIER);
-        memoryBarrier.srcAccessMask = ToVkAccessFlags(memoryTransition.srcAccess);
-        memoryBarrier.dstAccessMask = ToVkAccessFlags(memoryTransition.dstAccess);
-        memoryBarriers.emplace_back(memoryBarrier);
+        barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess),
+                                 ToVkAccessFlags(memoryTransition.dstAccess));
     }
 
     for (const auto& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* vulkanBuffer =
             reinterpret_cast<VulkanBuffer*>(bufferTransition.bufferHandle.value);
-        VkBufferMemoryBarrier bufferBarrier;
-        InitVkStruct(bufferBarrier, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER);
-        bufferBarrier.buffer        = vulkanBuffer->buffer;
-        bufferBarrier.offset        = bufferTransition.offset;
-        bufferBarrier.size          = bufferTransition.size;
-        bufferBarrier.srcAccessMask = ToVkAccessFlags(
-            BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode));
-        bufferBarrier.dstAccessMask = ToVkAccessFlags(
-            BufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode));
-        bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        bufferBarriers.emplace_back(bufferBarrier);
+        VkAccessFlags srcAccess =
+            BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess =
+            BufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode);
+        barrier.AddBufferBarrier(vulkanBuffer->buffer, bufferTransition.offset,
+                                 bufferTransition.size, srcAccess, dstAccess);
     }
 
     for (const auto& textureTransition : textureTransitions)
@@ -101,35 +87,27 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
             textureTransition.oldUsage, textureTransition.oldAccessMode));
         VkAccessFlags dstAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
-        VkImageLayout oldLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.oldUsage));
+        // VkImageLayout oldLayout =
+        //     ToVkImageLayout(TextureUsageToLayout(textureTransition.oldUsage));
+        VkImageLayout oldLayout = m_vkRHI->GetImageCurrentLayout(vulkanTexture->image);
         VkImageLayout newLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.newUsage));
+        // filter
+        if (oldLayout == newLayout)
+        {
+            continue;
+        }
+        VkImageSubresourceRange subresourceRange{};
+        subresourceRange.aspectMask = ToVkAspectFlags(textureTransition.subResourceRange.aspect);
+        subresourceRange.layerCount = textureTransition.subResourceRange.layerCount;
+        subresourceRange.levelCount = textureTransition.subResourceRange.levelCount;
+        subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
+        subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
 
-        VkImageMemoryBarrier imageBarrier;
-        InitVkStruct(imageBarrier, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER);
-        imageBarrier.image               = vulkanTexture->image;
-        imageBarrier.oldLayout           = oldLayout;
-        imageBarrier.newLayout           = newLayout;
-        imageBarrier.srcAccessMask       = srcAccess;
-        imageBarrier.dstAccessMask       = dstAccess;
-        imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        imageBarrier.subresourceRange.aspectMask =
-            ToVkAspectFlags(textureTransition.subResourceRange.aspect);
-        imageBarrier.subresourceRange.layerCount = textureTransition.subResourceRange.layerCount;
-        imageBarrier.subresourceRange.levelCount = textureTransition.subResourceRange.levelCount;
-        imageBarrier.subresourceRange.baseArrayLayer =
-            textureTransition.subResourceRange.baseArrayLayer;
-        imageBarrier.subresourceRange.baseMipLevel =
-            textureTransition.subResourceRange.baseMipLevel;
-        imageBarriers.emplace_back(imageBarrier);
-
-        m_vkRHI->UpdateImageLayout(vulkanTexture->image, imageBarrier.newLayout);
+        barrier.AddImageBarrier(vulkanTexture->image, oldLayout, newLayout, subresourceRange,
+                                srcAccess, dstAccess);
+        m_vkRHI->UpdateImageLayout(vulkanTexture->image, newLayout);
     }
-
-    vkCmdPipelineBarrier(m_cmdBufferManager->GetActiveCommandBufferDirect()->GetVkHandle(),
-                         srcStages, dstStages, 0, memoryBarriers.size(), memoryBarriers.data(),
-                         bufferBarriers.size(), bufferBarriers.data(), imageBarriers.size(),
-                         imageBarriers.data());
+    barrier.Execute(m_cmdBufferManager->GetActiveCommandBufferDirect(), srcStages, dstStages);
 }
 
 void VulkanCommandList::ClearBuffer(BufferHandle bufferHandle, uint32_t offset, uint32_t size)
@@ -548,21 +526,6 @@ void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
                                                          texture->imageCI.arrayLayers));
 }
 
-void VulkanCommandList::ChangeTextureLayout(rhi::TextureHandle textureHandle,
-                                            rhi::TextureLayout oldLayout,
-                                            rhi::TextureLayout newLayout)
-{
-    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
-    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
-    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
-
-    VkImageLayout srcLayout = ToVkImageLayout(oldLayout);
-    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
-    const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
-    ChangeImageLayout(vkTexture->image, srcLayout, dstLayout, range);
-}
-
 void VulkanCommandList::ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout)
 {
     VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
@@ -582,7 +545,7 @@ void VulkanCommandList::ChangeImageLayout(VkImage image,
                                           const VkImageSubresourceRange& range)
 {
     VulkanPipelineBarrier barrier;
-    barrier.AddImageLayoutTransition(image, srcLayout, dstLayout, range);
+    barrier.AddImageBarrier(image, srcLayout, dstLayout, range);
     barrier.Execute(m_cmdBuffer);
     m_vkRHI->UpdateImageLayout(image, dstLayout);
 }

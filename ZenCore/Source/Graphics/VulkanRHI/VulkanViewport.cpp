@@ -133,14 +133,6 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
     colorTexInfo.type = TextureType::e2D;
     m_colorBackBuffer = reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(colorTexInfo).value);
-    {
-        VulkanPipelineBarrier barrier;
-        barrier.AddImageLayoutTransition(
-            m_colorBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
-        barrier.Execute(cmdBuffer);
-    }
 
     TextureInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
@@ -150,15 +142,16 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     depthStencilTexInfo.type = TextureType::e2D;
     m_depthStencilBackBuffer =
         reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(depthStencilTexInfo).value);
-    {
-        VulkanPipelineBarrier barrier;
-        barrier.AddImageLayoutTransition(
-            m_depthStencilBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            VulkanTexture::GetSubresourceRange(
-                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1));
-        barrier.Execute(cmdBuffer);
-    }
+    // add image barriers, transfer back buffer layout
+    VulkanPipelineBarrier barrier;
+    barrier.AddImageBarrier(m_colorBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
+    barrier.AddImageBarrier(m_depthStencilBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                            VulkanTexture::GetSubresourceRange(
+                                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1));
+    barrier.Execute(cmdBuffer);
     cmdList->EndUpload();
 
     m_acquiredImageIndex = -1;
@@ -220,10 +213,10 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
     const VkImageLayout prevLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     {
         VulkanPipelineBarrier barrier;
-        barrier.AddImageLayoutTransition(
+        barrier.AddImageBarrier(
             m_colorBackBuffer->image, prevLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.AddImageLayoutTransition(
+        barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.Execute(cmdBuffer);
@@ -279,10 +272,10 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
     }
     {
         VulkanPipelineBarrier barrier;
-        barrier.AddImageLayoutTransition(
+        barrier.AddImageBarrier(
             m_colorBackBuffer->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.AddImageLayoutTransition(
+        barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.Execute(cmdBuffer);

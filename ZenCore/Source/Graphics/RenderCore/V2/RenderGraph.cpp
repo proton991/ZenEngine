@@ -1042,11 +1042,13 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
             auto nodePairKey = CreateNodePairKey(srcNodeId, dstNodeId);
             if (m_bufferTransitions.contains(nodePairKey))
             {
-                srcStages.SetFlag(rhi::PipelineStageBits::eAllCommands);
-                dstStages.SetFlag(rhi::PipelineStageBits::eAllCommands);
-                // srcStages.SetFlag(GetNodeBaseById(srcNodeId)->selfStages);
-                // dstStages.SetFlag(GetNodeBaseById(dstNodeId)->selfStages);
                 auto& transitions = m_bufferTransitions[nodePairKey];
+
+                for (auto& transition : transitions)
+                {
+                    srcStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.oldUsage));
+                    dstStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.newUsage));
+                }
                 bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
                                          transitions.end());
             }
@@ -1095,7 +1097,6 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                             rhi::TextureTransition textureTransition;
                             textureTransition.textureHandle =
                                 rhi::TextureHandle(resource->physicalHandle.value);
-                            // todo: potential bugs, should be unified with RHI's layout cache?
                             textureTransition.oldUsage         = rhi::TextureUsage::eNone;
                             textureTransition.newUsage         = access.textureUsage;
                             textureTransition.oldAccessMode    = rhi::AccessMode::eNone;

@@ -120,10 +120,6 @@ public:
 
     virtual void GenerateTextureMipmaps(TextureHandle textureHandle) = 0;
 
-    virtual void ChangeTextureLayout(TextureHandle textureHandle,
-                                     TextureLayout oldLayout,
-                                     TextureLayout newLayout) = 0;
-
     virtual void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) = 0;
 };
 } // namespace zen::rhi

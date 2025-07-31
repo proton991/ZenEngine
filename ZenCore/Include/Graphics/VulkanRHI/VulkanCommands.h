@@ -141,10 +141,6 @@ public:
         return m_cmdBufferManager;
     }
 
-    void ChangeTextureLayout(TextureHandle textureHandle,
-                             TextureLayout oldLayout,
-                             TextureLayout newLayout) final;
-
     void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) final;
     void GenerateTextureMipmaps(TextureHandle textureHandle) final;
 
