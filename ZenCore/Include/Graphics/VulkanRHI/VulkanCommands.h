@@ -142,6 +142,7 @@ public:
     }
 
     void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) final;
+
     void GenerateTextureMipmaps(TextureHandle textureHandle) final;
 
     void ChangeImageLayout(VkImage image,

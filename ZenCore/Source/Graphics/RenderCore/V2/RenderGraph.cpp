@@ -1,4 +1,6 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
+
+#include <utility>
 #include "Graphics/RHI/RHIOptions.h"
 
 #ifdef ZEN_WIN32
@@ -20,6 +22,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass)
 {
     auto* node = AllocNode<RDGComputePassNode>();
     node->type = RDGNodeType::eComputePass;
+    node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
     AddPassBindPipelineNode(node, computePass.pipeline, rhi::PipelineType::eCompute);
     return node;
 }
@@ -42,7 +45,7 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
 {
     auto* node           = AllocPassChildNode<RDGDispatchIndirectNode>(parent);
     node->type           = RDGPassCmdType::eDispatchIndirect;
-    node->indirectBuffer = indirectBuffer;
+    node->indirectBuffer = std::move(indirectBuffer);
     node->offset         = offset;
 }
 
@@ -119,6 +122,7 @@ void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
     node->format = format;
     node->offset = offset;
     node->type   = RDGPassCmdType::eBindIndexBuffer;
+    node->parent->selfStages.SetFlag(rhi::PipelineStageBits::eVertexShader);
 }
 
 void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
@@ -134,6 +138,7 @@ void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
         node->offsets[i]       = offsets[i];
     }
     node->type = RDGPassCmdType::eBindVertexBuffer;
+    node->parent->selfStages.SetFlag(rhi::PipelineStageBits::eVertexShader);
 }
 
 void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* parent,
@@ -194,6 +199,7 @@ void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
     node->offset         = offset;
     node->drawCount      = drawCount;
     node->stride         = stride;
+    node->parent->selfStages.SetFlags(rhi::PipelineStageBits::eDrawIndirect);
 }
 
 void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color)
@@ -358,6 +364,8 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     node->type       = RDGNodeType::eCopyTexture;
     node->srcTexture = std::move(srcTextureHandle);
     node->dstTexture = std::move(dstTextureHandle);
+    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+
     for (auto& region : regions)
     {
         node->copyRegions.push_back(region);
@@ -401,6 +409,7 @@ void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
     auto* node       = AllocNode<RDGTextureReadNode>();
     node->srcTexture = std::move(srcTextureHandle);
     node->dstBuffer  = std::move(dstBufferHandle);
+    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
     for (auto& region : regions)
     {
         node->bufferTextureCopyRegions.push_back(region);
@@ -512,9 +521,9 @@ void RenderGraph::AddTextureMipmapGenNode(rhi::TextureHandle textureHandle)
     auto* node    = AllocNode<RDGTextureMipmapGenNode>();
     node->type    = RDGNodeType::eGenTextureMipmap;
     node->texture = std::move(textureHandle);
+    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 }
 
-// todo: implement more concise and explicit layout transition (consider RenderPass's layout transition)
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               rhi::TextureHandle textureHandle,
                                               rhi::TextureUsage usage,
@@ -532,6 +541,28 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
     access.textureUsage            = usage;
     access.textureSubResourceRange = range;
     m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
+
+    RDGNodeBase* baseNode = GetNodeBaseById(passNode->id);
+    if (usage == rhi::TextureUsage::eSampled)
+    {
+        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+    }
+    if (usage == rhi::TextureUsage::eDepthStencilAttachment)
+    {
+        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eEarlyFragmentTests,
+                                      rhi::PipelineStageBits::eLateFragmentTests);
+    }
+    if (usage == rhi::TextureUsage::eStorage)
+    {
+        if (passNode->type == RDGNodeType::eGraphicsPass)
+        {
+            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+        }
+        if (passNode->type == RDGNodeType::eComputePass)
+        {
+            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eComputeShader);
+        }
+    }
 }
 
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
@@ -562,6 +593,21 @@ void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
     access.nodeId      = passNode->id;
     access.bufferUsage = usage;
     m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
+
+    RDGNodeBase* baseNode = GetNodeBaseById(passNode->id);
+
+    if (passNode->type == RDGNodeType::eGraphicsPass)
+    {
+        if (usage == rhi::BufferUsage::eIndirectBuffer)
+        {
+            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eDrawIndirect);
+        }
+        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+    }
+    if (passNode->type == RDGNodeType::eComputePass)
+    {
+        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eAllCommands);
+    }
 }
 
 void RenderGraph::SortNodes()
@@ -738,7 +784,6 @@ void RenderGraph::Begin()
 void RenderGraph::End()
 {
     // sort nodes
-    // todo: fix level sort bugs
     SortNodes();
     for (auto i = 0; i < m_sortedNodes.size(); i++)
     {
@@ -882,6 +927,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         m_cmdList->SetPushConstants(pipelineHandle, cmdNode->data);
                     }
                     break;
+                    default: break;
                 }
             }
         }
@@ -1040,26 +1086,28 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
         for (const auto& dstNodeId : nextLevel)
         {
             auto nodePairKey = CreateNodePairKey(srcNodeId, dstNodeId);
+            srcStages.SetFlag(GetNodeBaseById(srcNodeId)->selfStages);
+            dstStages.SetFlag(GetNodeBaseById(dstNodeId)->selfStages);
             if (m_bufferTransitions.contains(nodePairKey))
             {
                 auto& transitions = m_bufferTransitions[nodePairKey];
 
-                for (auto& transition : transitions)
-                {
-                    srcStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.oldUsage));
-                    dstStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.newUsage));
-                }
+                // for (auto& transition : transitions)
+                // {
+                //     srcStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.oldUsage));
+                //     dstStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.newUsage));
+                // }
                 bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
                                          transitions.end());
             }
             if (m_textureTransitions.contains(nodePairKey))
             {
                 auto& transitions = m_textureTransitions[nodePairKey];
-                for (auto& transition : transitions)
-                {
-                    srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
-                    dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
-                }
+                // for (auto& transition : transitions)
+                // {
+                //     srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
+                //     dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
+                // }
                 textureTransitions.insert(textureTransitions.end(), transitions.begin(),
                                           transitions.end());
             }
@@ -1074,7 +1122,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
     std::vector<rhi::BufferTransition> bufferTransitions;
     BitField<rhi::PipelineStageBits> srcStages;
     BitField<rhi::PipelineStageBits> dstStages;
-    srcStages.SetFlag(rhi::PipelineStageBits::eTopOfPipe);
+    srcStages.SetFlag(rhi::PipelineStageBits::eBottomOfPipe);
 
     const auto& currLevel = m_sortedNodes[level];
     for (const auto& kv : m_resourceFirstUseNodeMap)
@@ -1086,6 +1134,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
         {
             if (firstNodeId == nodeId)
             {
+                dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                 RDGResource* resource    = m_resources[resourceId];
                 const auto& nodeAccesses = m_nodeAccessMap[nodeId];
                 for (const auto& access : nodeAccesses)
@@ -1104,8 +1153,8 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                             textureTransition.subResourceRange = access.textureSubResourceRange;
                             textureTransitions.emplace_back(textureTransition);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
-                            dstStages.SetFlag(
-                                rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
+                            // dstStages.SetFlag(
+                            //     rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
                         }
                         if (resource->type == RDGResourceType::eBuffer)
                         {
@@ -1120,8 +1169,8 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
 
                             bufferTransitions.emplace_back(bufferTransition);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
-                            dstStages.SetFlag(
-                                rhi::BufferUsageToPipelineStage(bufferTransition.newUsage));
+                            // dstStages.SetFlag(
+                            //     rhi::BufferUsageToPipelineStage(bufferTransition.newUsage));
                         }
                     }
                 }

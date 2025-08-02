@@ -269,7 +269,6 @@ void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
     {
         srcStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.oldLayout);
         dstStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.newLayout);
-        // todo: buffer access to stage flags?
     }
     if (!m_imageBarriers.empty())
     {

@@ -534,8 +534,15 @@ void VulkanCommandList::ChangeTextureLayout(TextureHandle textureHandle, Texture
 
     VkImageLayout srcLayout = m_vkRHI->GetImageCurrentLayout(vkTexture->image);
     VkImageLayout dstLayout = ToVkImageLayout(newLayout);
-    const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, levelCount, 0, layerCount);
+
+    VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    if (vkTexture->imageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    {
+        aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+
+    VkImageSubresourceRange range =
+        VulkanTexture::GetSubresourceRange(aspectFlags, 0, levelCount, 0, layerCount);
     ChangeImageLayout(vkTexture->image, srcLayout, dstLayout, range);
 }
 

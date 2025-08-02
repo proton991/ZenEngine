@@ -120,6 +120,7 @@ private:
 class VulkanPipelineBarrier
 {
 public:
+    // for Image-only transitions
     void AddImageBarrier(VkImage image,
                          VkImageLayout srcLayout,
                          VkImageLayout dstLayout,
@@ -140,6 +141,7 @@ public:
 
     void AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
+    // for Image-only transitions
     void Execute(VulkanCommandBuffer* cmdBuffer);
 
     void Execute(VulkanCommandBuffer* cmdBuffer,
