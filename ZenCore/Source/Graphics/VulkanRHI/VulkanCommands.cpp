@@ -69,8 +69,7 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
 
     for (const auto& bufferTransition : bufferTransitions)
     {
-        VulkanBuffer* vulkanBuffer =
-            reinterpret_cast<VulkanBuffer*>(bufferTransition.bufferHandle.value);
+        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferTransition.bufferHandle);
         VkAccessFlags srcAccess =
             BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
         VkAccessFlags dstAccess =
@@ -81,8 +80,8 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
 
     for (const auto& textureTransition : textureTransitions)
     {
-        VulkanTexture* vulkanTexture =
-            reinterpret_cast<VulkanTexture*>(textureTransition.textureHandle.value);
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureTransition.textureHandle);
+
         VkAccessFlags srcAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
         VkAccessFlags dstAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
@@ -112,7 +111,7 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
 
 void VulkanCommandList::ClearBuffer(BufferHandle bufferHandle, uint32_t offset, uint32_t size)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferHandle);
     vkCmdFillBuffer(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset, size, 0);
 }
 
@@ -120,8 +119,8 @@ void VulkanCommandList::CopyBuffer(BufferHandle srcBufferHandle,
                                    BufferHandle dstBufferHandle,
                                    const BufferCopyRegion& region)
 {
-    VulkanBuffer* srcBuffer = reinterpret_cast<VulkanBuffer*>(srcBufferHandle.value);
-    VulkanBuffer* dstBuffer = reinterpret_cast<VulkanBuffer*>(dstBufferHandle.value);
+    VulkanBuffer* srcBuffer = TO_VK_BUFFER(srcBufferHandle);
+    VulkanBuffer* dstBuffer = TO_VK_BUFFER(dstBufferHandle);
     VkBufferCopy bufferCopy;
     bufferCopy.srcOffset = region.srcOffset;
     bufferCopy.dstOffset = region.dstOffset;
@@ -134,7 +133,7 @@ void VulkanCommandList::ClearTexture(TextureHandle textureHandle,
                                      const Color& color,
                                      const TextureSubResourceRange& range)
 {
-    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     VkImageSubresourceRange vkRange;
     ToVkImageSubresourceRange(range, &vkRange);
     VkClearColorValue colorValue;
@@ -152,8 +151,8 @@ void VulkanCommandList::CopyTexture(TextureHandle srcTextureHandle,
     {
         ToVkImageCopy(regions[i], &copies[i]);
     }
-    VulkanTexture* srcTexture = reinterpret_cast<VulkanTexture*>(srcTextureHandle.value);
-    VulkanTexture* dstTexture = reinterpret_cast<VulkanTexture*>(dstTextureHandle.value);
+    VulkanTexture* srcTexture = TO_VK_TEXTURE(srcTextureHandle);
+    VulkanTexture* dstTexture = TO_VK_TEXTURE(dstTextureHandle);
     vkCmdCopyImage(m_cmdBuffer->GetVkHandle(), srcTexture->image,
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstTexture->image,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
@@ -168,8 +167,8 @@ void VulkanCommandList::CopyTextureToBuffer(TextureHandle textureHandle,
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
     }
-    VulkanTexture* srcTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
-    VulkanBuffer* dstBuffer   = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanTexture* srcTexture = TO_VK_TEXTURE(textureHandle);
+    VulkanBuffer* dstBuffer   = TO_VK_BUFFER(bufferHandle);
 
     vkCmdCopyImageToBuffer(m_cmdBuffer->GetVkHandle(), srcTexture->image,
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstBuffer->buffer, copies.size(),
@@ -185,8 +184,8 @@ void VulkanCommandList::CopyBufferToTexture(BufferHandle bufferHandle,
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
     }
-    VulkanBuffer* srcBuffer   = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
-    VulkanTexture* dstTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanBuffer* srcBuffer   = TO_VK_BUFFER(bufferHandle);
+    VulkanTexture* dstTexture = TO_VK_TEXTURE(textureHandle);
 
     vkCmdCopyBufferToImage(m_cmdBuffer->GetVkHandle(), srcBuffer->buffer, dstTexture->image,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
@@ -199,8 +198,8 @@ void VulkanCommandList::ResolveTexture(TextureHandle srcTextureHandle,
                                        uint32_t dstLayer,
                                        uint32_t dstMipmap)
 {
-    VulkanTexture* srcTexture = reinterpret_cast<VulkanTexture*>(srcTextureHandle.value);
-    VulkanTexture* dstTexture = reinterpret_cast<VulkanTexture*>(dstTextureHandle.value);
+    VulkanTexture* srcTexture = TO_VK_TEXTURE(srcTextureHandle);
+    VulkanTexture* dstTexture = TO_VK_TEXTURE(dstTextureHandle);
     VkImageResolve region{};
     region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     region.srcSubresource.mipLevel       = srcMipmap;
@@ -222,7 +221,7 @@ void VulkanCommandList::BindIndexBuffer(BufferHandle bufferHandle,
                                         DataFormat format,
                                         uint32_t offset)
 {
-    VulkanBuffer* indexBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* indexBuffer = TO_VK_BUFFER(bufferHandle);
     VkIndexType indexType =
         format == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
     vkCmdBindIndexBuffer(m_cmdBuffer->GetVkHandle(), indexBuffer->buffer, offset, indexType);
@@ -234,7 +233,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<BufferHandle> bufferHandles
     std::vector<VkBuffer> buffers;
     for (BufferHandle handle : bufferHandles)
     {
-        VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(handle.value);
+        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(handle);
         buffers.push_back(vulkanBuffer->buffer);
     }
     vkCmdBindVertexBuffers(m_cmdBuffer->GetVkHandle(), 0, bufferHandles.size(), buffers.data(),
@@ -243,7 +242,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<BufferHandle> bufferHandles
 
 void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle)
 {
-    VulkanPipeline* vulkanPipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (vulkanPipeline->descriptorSetCount > 0)
     {
         std::vector<VkDescriptorSet> descriptorSets;
@@ -263,7 +262,7 @@ void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle)
 
 void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle)
 {
-    VulkanPipeline* vulkanPipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (vulkanPipeline->descriptorSetCount > 0)
     {
         std::vector<VkDescriptorSet> descriptorSets;
@@ -286,11 +285,10 @@ void VulkanCommandList::BeginRenderPass(RenderPassHandle renderPassHandle,
                                         const Rect2<int>& area,
                                         VectorView<RenderPassClearValue> clearValues)
 {
-    VkFramebuffer framebuffer =
-        reinterpret_cast<VulkanFramebuffer*>(framebufferHandle.value)->GetVkHandle();
+    VkFramebuffer framebuffer = TO_VK_FRAMEBUFFER(framebufferHandle)->GetVkHandle();
     VkRenderPassBeginInfo rpBeginInfo;
     InitVkStruct(rpBeginInfo, VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO);
-    rpBeginInfo.renderPass               = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    rpBeginInfo.renderPass               = TO_VK_RENDER_PASS(renderPassHandle);
     rpBeginInfo.framebuffer              = framebuffer;
     rpBeginInfo.renderArea.offset.x      = area.minX;
     rpBeginInfo.renderArea.offset.y      = area.minY;
@@ -327,8 +325,7 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
 
     for (uint32_t i = 0; i < colorRTs.size(); i++)
     {
-        VulkanTexture* vulkanTexture =
-            reinterpret_cast<VulkanTexture*>(rpLayout.GetRenderTargetHandles()[i].value);
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(rpLayout.GetRenderTargetHandles()[i]);
         VkRenderingAttachmentInfoKHR colorAttachment{};
         InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
         colorAttachment.imageView   = vulkanTexture->imageView;
@@ -345,8 +342,7 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
     InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
     if (rpLayout.HasDepthStencilRenderTarget())
     {
-        VulkanTexture* vulkanTexture =
-            reinterpret_cast<VulkanTexture*>(rpLayout.GetDepthStencilRenderTargetHandle()->value);
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(rpLayout.GetDepthStencilRenderTargetHandle());
         depthStencilAttachment.imageView = vulkanTexture->imageView;
         depthStencilAttachment.imageLayout =
             ToVkImageLayout(TextureUsageToLayout(rpLayout.GetDepthStencilRenderTarget().usage));
@@ -390,7 +386,7 @@ void VulkanCommandList::DrawIndexedIndirect(BufferHandle indirectBuffer,
                                             uint32_t drawCount,
                                             uint32_t stride)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(indirectBuffer.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
     vkCmdDrawIndexedIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset, drawCount,
                              stride);
 }
@@ -403,13 +399,13 @@ void VulkanCommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uin
 
 void VulkanCommandList::DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(indirectBuffer.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
     vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset);
 }
 
 void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
 {
-    VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    VulkanPipeline* pipeline = TO_VK_PIPELINE(pipelineHandle);
     vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), pipeline->pipelineLayout,
                        pipeline->pushConstantsStageFlags, 0, data.size(), data.data());
 }
@@ -466,7 +462,7 @@ void VulkanCommandList::SetBlendConstants(const Color& color)
 
 void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
 {
-    VulkanTexture* texture = AS_VK_TEX(textureHandle);
+    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     VkImage vkImage        = texture->image;
     // Get texture attributes
     const uint32_t mipLevels = texture->imageCI.mipLevels;
@@ -528,7 +524,7 @@ void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
 
 void VulkanCommandList::ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout)
 {
-    VulkanTexture* vkTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* vkTexture = TO_VK_TEXTURE(textureHandle);
     uint32_t levelCount      = vkTexture->imageCI.mipLevels;
     uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
 

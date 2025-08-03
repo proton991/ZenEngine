@@ -12,7 +12,7 @@ void VulkanDebug::SetPipelineDebugName(PipelineHandle pipelineHandle, const std:
 {
     VulkanRHI* vkRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanPipeline* vulkanPipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
@@ -28,7 +28,7 @@ void VulkanDebug::SetTextureDebugName(TextureHandle textureHandle, const std::st
 {
     VulkanRHI* vkRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanTexture* vulkanTexture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
@@ -45,7 +45,7 @@ void VulkanDebug::SetRenderPassDebugName(RenderPassHandle renderPassHandle,
 {
     VulkanRHI* vkRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;

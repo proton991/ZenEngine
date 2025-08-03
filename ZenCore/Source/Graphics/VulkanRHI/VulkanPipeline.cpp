@@ -231,7 +231,7 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
 
 void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
 {
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     for (auto& dsLayout : shader->descriptorSetLayouts)
     {
@@ -382,7 +382,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(states.dynamicStates.size());
     dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
 
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkGraphicsPipelineCreateInfo pipelineCI;
     InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
@@ -397,7 +397,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     pipelineCI.pColorBlendState    = &CBStateCI;
     pipelineCI.pDynamicState       = &dynamicStateCI;
     pipelineCI.layout              = shader->pipelineLayout;
-    pipelineCI.renderPass          = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    pipelineCI.renderPass          = TO_VK_RENDER_PASS(renderPassHandle);
     pipelineCI.subpass             = subpass;
 
     VkPipeline gfxPipeline{VK_NULL_HANDLE};
@@ -550,7 +550,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(states.dynamicStates.size());
     dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
 
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkGraphicsPipelineCreateInfo pipelineCI;
     InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
@@ -606,7 +606,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
 
 PipelineHandle VulkanRHI::CreateComputePipeline(ShaderHandle shaderHandle)
 {
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkComputePipelineCreateInfo pipelineCI{};
     pipelineCI.sType  = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -630,7 +630,7 @@ PipelineHandle VulkanRHI::CreateComputePipeline(ShaderHandle shaderHandle)
 
 void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
-    VulkanPipeline* pipeline = reinterpret_cast<VulkanPipeline*>(pipelineHandle.value);
+    VulkanPipeline* pipeline = TO_VK_PIPELINE(pipelineHandle);
     vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
 }
 
@@ -800,7 +800,7 @@ DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, ui
         LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
     }
 
-    VulkanShader* shader = reinterpret_cast<VulkanShader*>(shaderHandle.value);
+    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
     VulkanDescriptorPoolsIt iter{};
     VkDescriptorPool pool =
         m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->descriptorPoolKey, &iter);
@@ -875,7 +875,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler     = reinterpret_cast<VkSampler>(srb.handles[j].value);
+                    imageInfo.sampler     = TO_VK_SAMPLER(srb.handles[j]);
                     imageInfo.imageView   = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                     imageInfos[j]         = imageInfo;
@@ -892,9 +892,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler = VK_NULL_HANDLE;
-                    imageInfo.imageView =
-                        reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
+                    imageInfo.sampler     = VK_NULL_HANDLE;
+                    imageInfo.imageView   = TO_VK_TEXTURE(srb.handles[j])->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     imageInfos[j]         = imageInfo;
                 }
@@ -911,9 +910,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler = reinterpret_cast<VkSampler>(srb.handles[j * 2 + 0].value);
-                    imageInfo.imageView =
-                        reinterpret_cast<VulkanTexture*>(srb.handles[j * 2 + 1].value)->imageView;
+                    imageInfo.sampler   = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
+                    imageInfo.imageView = TO_VK_TEXTURE(srb.handles[j * 2 + 1])->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     imageInfos[j]         = imageInfo;
                 }
@@ -929,9 +927,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler = VK_NULL_HANDLE;
-                    imageInfo.imageView =
-                        reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
+                    imageInfo.sampler     = VK_NULL_HANDLE;
+                    imageInfo.imageView   = TO_VK_TEXTURE(srb.handles[j])->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                     imageInfos[j]         = imageInfo;
                 }
@@ -947,8 +944,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
-                    VulkanBuffer* vulkanBuffer =
-                        reinterpret_cast<VulkanBuffer*>(srb.handles[j].value);
+                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.handles[j]);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->requiredSize;
@@ -972,13 +968,12 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler   = reinterpret_cast<VkSampler>(srb.handles[j * 2 + 0].value);
+                    imageInfo.sampler   = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
                     imageInfo.imageView = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                     imageInfos[j]         = imageInfo;
 
-                    VulkanBuffer* vulkanBuffer =
-                        reinterpret_cast<VulkanBuffer*>(srb.handles[j * 2 + 1].value);
+                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.handles[j * 2 + 1]);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->requiredSize;
@@ -999,8 +994,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
-                    VulkanBuffer* vulkanBuffer =
-                        reinterpret_cast<VulkanBuffer*>(srb.handles[j].value);
+                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.handles[j]);
                     VkDescriptorBufferInfo bufferInfo{};
                     bufferInfo.buffer = vulkanBuffer->buffer;
                     bufferInfo.range  = vulkanBuffer->requiredSize;
@@ -1014,7 +1008,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
             break;
             case ShaderResourceType::eUniformBuffer:
             {
-                VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(srb.handles[0].value);
+                VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.handles[0]);
                 VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
 
                 *bufferInfo        = {};
@@ -1027,7 +1021,7 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
             break;
             case ShaderResourceType::eStorageBuffer:
             {
-                VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(srb.handles[0].value);
+                VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.handles[0]);
                 VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
 
                 *bufferInfo        = {};
@@ -1046,9 +1040,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler = VK_NULL_HANDLE;
-                    imageInfo.imageView =
-                        reinterpret_cast<VulkanTexture*>(srb.handles[j].value)->imageView;
+                    imageInfo.sampler     = VK_NULL_HANDLE;
+                    imageInfo.imageView   = TO_VK_TEXTURE(srb.handles[j])->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     imageInfos[j]         = imageInfo;
                 }

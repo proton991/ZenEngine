@@ -93,7 +93,7 @@ RenderPassHandle VulkanRHI::CreateRenderPass(const RenderPassLayout& renderPassL
 
 void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
 {
-    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
     vkDestroyRenderPass(GetVkDevice(), renderPass, nullptr);
 }
 
@@ -110,7 +110,7 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     imageViews.resize(fbInfo.numRenderTarget);
     for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {
-        VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(fbInfo.renderTargets[i].value);
+        VulkanTexture* texture = TO_VK_TEXTURE(fbInfo.renderTargets[i]);
         imageViews[i]          = texture->imageView;
     }
     VkFramebufferCreateInfo framebufferCI;
@@ -128,13 +128,13 @@ FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle
                                                const FramebufferInfo& fbInfo)
 {
     VulkanFramebuffer* framebuffer =
-        new VulkanFramebuffer(this, reinterpret_cast<VkRenderPass>(renderPassHandle.value), fbInfo);
+        new VulkanFramebuffer(this, TO_VK_RENDER_PASS(renderPassHandle), fbInfo);
     return FramebufferHandle(framebuffer);
 }
 
 void VulkanRHI::DestroyFramebuffer(FramebufferHandle framebufferHandle)
 {
-    VulkanFramebuffer* framebuffer = reinterpret_cast<VulkanFramebuffer*>(framebufferHandle.value);
+    VulkanFramebuffer* framebuffer = TO_VK_FRAMEBUFFER(framebufferHandle);
     vkDestroyFramebuffer(GetVkDevice(), framebuffer->GetVkHandle(), nullptr);
     delete framebuffer;
 }

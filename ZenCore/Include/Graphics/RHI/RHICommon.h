@@ -1087,9 +1087,9 @@ public:
         return m_depthStencilRT;
     }
 
-    const TextureHandle* GetDepthStencilRenderTargetHandle() const
+    const TextureHandle& GetDepthStencilRenderTargetHandle() const
     {
-        return &m_rtHandles.back();
+        return m_rtHandles.back();
     }
 
     const TextureHandle* GetRenderTargetHandles() const

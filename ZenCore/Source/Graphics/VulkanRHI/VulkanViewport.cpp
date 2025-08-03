@@ -132,7 +132,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
     colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
     colorTexInfo.type = TextureType::e2D;
-    m_colorBackBuffer = reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(colorTexInfo).value);
+    m_colorBackBuffer = TO_VK_TEXTURE(m_RHI->CreateTexture(colorTexInfo));
 
     TextureInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
@@ -140,8 +140,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     depthStencilTexInfo.format = GetDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
     depthStencilTexInfo.type = TextureType::e2D;
-    m_depthStencilBackBuffer =
-        reinterpret_cast<VulkanTexture*>(m_RHI->CreateTexture(depthStencilTexInfo).value);
+    m_depthStencilBackBuffer = TO_VK_TEXTURE(m_RHI->CreateTexture(depthStencilTexInfo));
     // add image barriers, transfer back buffer layout
     VulkanPipelineBarrier barrier;
     barrier.AddImageBarrier(m_colorBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
@@ -392,7 +391,7 @@ void VulkanViewport::Destroy()
 FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
     RenderPassHandle renderPassHandle)
 {
-    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
     if ((m_framebufferCache.contains(renderPassHandle) &&
          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
         !m_framebufferCache.contains(renderPassHandle))
@@ -414,7 +413,7 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
 FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                            const FramebufferInfo* fbInfo)
 {
-    VkRenderPass renderPass = reinterpret_cast<VkRenderPass>(renderPassHandle.value);
+    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
     if ((m_framebufferCache.contains(renderPassHandle) &&
          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
         !m_framebufferCache.contains(renderPassHandle))

@@ -41,7 +41,7 @@ SamplerHandle VulkanRHI::CreateSampler(const SamplerInfo& samplerInfo)
 
 void VulkanRHI::DestroySampler(SamplerHandle samplerHandle)
 {
-    VkSampler sampler = reinterpret_cast<VkSampler>(samplerHandle.value);
+    VkSampler sampler = TO_VK_SAMPLER(samplerHandle);
     vkDestroySampler(m_device->GetVkHandle(), sampler, nullptr);
 }
 
@@ -122,7 +122,7 @@ TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
 TextureHandle VulkanRHI::CreateTextureProxy(const TextureHandle& baseTexture,
                                             const TextureProxyInfo& textureProxyInfo)
 {
-    VulkanTexture* baseTextureVk  = reinterpret_cast<VulkanTexture*>(baseTexture.value);
+    VulkanTexture* baseTextureVk  = TO_VK_TEXTURE(baseTexture);
     VulkanTexture* proxyTextureVk = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);
     // copy from base
     proxyTextureVk->image    = baseTextureVk->image;
@@ -176,7 +176,7 @@ TextureHandle VulkanRHI::CreateTextureProxy(const TextureHandle& baseTexture,
 
 DataFormat VulkanRHI::GetTextureFormat(TextureHandle textureHandle)
 {
-    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     return static_cast<DataFormat>(texture->imageCI.format);
 }
 
@@ -202,7 +202,7 @@ TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle text
         range = TextureSubResourceRange::Color();
     }
 
-    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     range.layerCount       = texture->imageCI.arrayLayers;
     range.levelCount       = texture->imageCI.mipLevels;
     return range;
@@ -210,7 +210,7 @@ TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle text
 
 void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
 {
-    VulkanTexture* texture = reinterpret_cast<VulkanTexture*>(textureHandle.value);
+    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     vkDestroyImageView(m_device->GetVkHandle(), texture->imageView, nullptr);
     m_imageLayoutCache.erase(texture->image);
     if (texture->isProxy != true)

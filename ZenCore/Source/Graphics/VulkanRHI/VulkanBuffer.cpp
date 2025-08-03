@@ -28,20 +28,20 @@ BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
 
 uint8_t* VulkanRHI::MapBuffer(BufferHandle bufferHandle)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferHandle);
     return m_vkMemAllocator->MapBuffer(vulkanBuffer->memAlloc);
 }
 
 void VulkanRHI::UnmapBuffer(BufferHandle bufferHandle)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferHandle);
     m_vkMemAllocator->UnmapBuffer(vulkanBuffer->memAlloc);
 }
 
 
 void VulkanRHI::DestroyBuffer(BufferHandle bufferHandle)
 {
-    VulkanBuffer* vulkanBuffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferHandle);
     if (vulkanBuffer->bufferView != VK_NULL_HANDLE)
     {
         vkDestroyBufferView(m_device->GetVkHandle(), vulkanBuffer->bufferView, nullptr);
@@ -52,7 +52,7 @@ void VulkanRHI::DestroyBuffer(BufferHandle bufferHandle)
 
 void VulkanRHI::SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format)
 {
-    VulkanBuffer* buffer = reinterpret_cast<VulkanBuffer*>(bufferHandle.value);
+    VulkanBuffer* buffer = TO_VK_BUFFER(bufferHandle);
     VERIFY_EXPR(buffer->bufferView == VK_NULL_HANDLE);
 
     VkBufferViewCreateInfo bufferViewCI;

@@ -15,7 +15,13 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-#define AS_VK_TEX(handle) reinterpret_cast<VulkanTexture*>((handle).value)
+#define TO_VK_TEXTURE(handle)     reinterpret_cast<VulkanTexture*>((handle).value)
+#define TO_VK_BUFFER(handle)      reinterpret_cast<VulkanBuffer*>((handle).value)
+#define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>((handle).value)
+#define TO_VK_FRAMEBUFFER(handle) reinterpret_cast<VulkanFramebuffer*>((handle).value)
+#define TO_VK_RENDER_PASS(handle) reinterpret_cast<VkRenderPass>((handle).value)
+#define TO_VK_SHADER(handle)      reinterpret_cast<VulkanShader*>((handle).value)
+#define TO_VK_SAMPLER(handle)     reinterpret_cast<VkSampler>((handle).value)
 
 namespace zen::rhi
 {
