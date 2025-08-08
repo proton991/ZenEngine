@@ -20,12 +20,7 @@ public:
 
     virtual void Init() = 0;
 
-    virtual void SetRenderScene(RenderScene* scene)
-    {
-        m_scene = scene;
-        UpdateUniformData();
-        UpdatePassResources();
-    }
+    virtual void SetRenderScene(RenderScene* scene);
 
     virtual void Destroy() = 0;
 
@@ -90,20 +85,21 @@ protected:
     rhi::SamplerHandle m_colorSampler;
     struct
     {
-        uint32_t volumeDimension;
-        uint32_t voxelCount;
         bool injectFirstBounce;
-        float volumeGridSize;
-        float voxelSize;
         bool traceShadowCones;
         bool normalWeightedLambert;
         float traceShadowHit;
         uint32_t drawMipLevel;
         uint32_t drawDirection;
         glm::vec4 drawColorChannels;
-        rhi::DataFormat voxelTexFormat;
     } m_config;
 
+    uint32_t m_voxelTexResolution;
+    float m_voxelSize;
+    uint32_t m_voxelCount;
+    rhi::DataFormat m_voxelTexFormat;
+
+    float m_sceneExtent;
 
     bool m_rebuildRDG{true};
     UniquePtr<RenderGraph> m_rdg;

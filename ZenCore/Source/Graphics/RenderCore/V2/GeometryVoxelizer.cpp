@@ -11,10 +11,10 @@ namespace zen::rc
 {
 void GeometryVoxelizer::Init()
 {
-    m_config.volumeDimension = 256;
-    m_config.voxelTexFormat  = DataFormat::eR32UInt;
-    m_config.voxelCount =
-        m_config.volumeDimension * m_config.volumeDimension * m_config.volumeDimension;
+    m_voxelTexResolution = 256;
+    m_voxelTexFormat     = DataFormat::eR32UInt;
+    m_voxelCount         = m_voxelTexResolution * m_voxelTexResolution * m_voxelTexResolution;
+
     m_config.drawColorChannels = Vec4(1.0f);
 
     PrepareTextures();
@@ -32,9 +32,9 @@ void GeometryVoxelizer::PrepareTextures()
     using namespace zen::rhi;
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
-                          m_config.volumeDimension, m_config.volumeDimension, 1, 1, 1,
-                          SampleCount::e1, "voxel_offscreen1",
-                          TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled);
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
+                          "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
+                          TextureUsageFlagBits::eSampled);
         m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     {
@@ -46,16 +46,16 @@ void GeometryVoxelizer::PrepareTextures()
     }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
-                          m_config.volumeDimension, m_config.volumeDimension,
-                          m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_static_flag",
-                          TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+                          m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
+                          SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
         m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
     {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
-                          m_config.volumeDimension, m_config.volumeDimension,
-                          m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_albedo",
-                          TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_albedo", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat  = true;
         m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
@@ -70,10 +70,10 @@ void GeometryVoxelizer::PrepareTextures()
             m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
     }
     {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
-                          m_config.volumeDimension, m_config.volumeDimension,
-                          m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_normal",
-                          TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_normal", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat  = true;
         m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
@@ -88,10 +88,10 @@ void GeometryVoxelizer::PrepareTextures()
             m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
     }
     {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
-                          m_config.volumeDimension, m_config.volumeDimension,
-                          m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_emissive",
-                          TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_emissive", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat    = true;
         m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
@@ -106,17 +106,17 @@ void GeometryVoxelizer::PrepareTextures()
             m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
     }
     {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
-                          m_config.volumeDimension, m_config.volumeDimension,
-                          m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_radiance",
-                          TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_radiance", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
         m_voxelTextures.radiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     }
-    const auto halfDim = m_config.volumeDimension / 2;
+    const auto halfDim = m_voxelTexResolution / 2;
     for (uint32_t i = 0; i < 6; i++)
     {
         const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat, halfDim, halfDim,
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
                           halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
                           SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
@@ -131,10 +131,10 @@ void GeometryVoxelizer::PrepareTextures()
 void GeometryVoxelizer::PrepareBuffers()
 {
     std::vector<SimpleVertex> vertices;
-    vertices.resize(m_config.voxelCount);
+    vertices.resize(m_voxelCount);
 
     m_voxelVBO = m_renderDevice->CreateVertexBuffer(
-        m_config.voxelCount * sizeof(Vec4), reinterpret_cast<const uint8_t*>(vertices.data()));
+        m_voxelCount * sizeof(Vec4), reinterpret_cast<const uint8_t*>(vertices.data()));
 }
 
 void GeometryVoxelizer::BuildRenderGraph()
@@ -146,7 +146,7 @@ void GeometryVoxelizer::BuildRenderGraph()
     {
         VoxelizationSP* shaderProgram =
             dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
-        const uint32_t cFbSize = m_config.volumeDimension;
+        const uint32_t cFbSize = m_voxelTexResolution;
         std::vector<RenderPassClearValue> clearValues(1);
         clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
@@ -171,7 +171,7 @@ void GeometryVoxelizer::BuildRenderGraph()
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         shaderProgram->pushConstantsData.flagStaticVoxels = 1;
-        shaderProgram->pushConstantsData.volumeDimension  = m_config.volumeDimension;
+        shaderProgram->pushConstantsData.volumeDimension  = m_voxelTexResolution;
         for (auto* node : m_scene->GetRenderableNodes())
         {
             shaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
@@ -213,10 +213,10 @@ void GeometryVoxelizer::BuildRenderGraph()
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         //        shaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
-        shaderProgram->pushConstantsData.volumeDimension = m_config.volumeDimension;
+        shaderProgram->pushConstantsData.volumeDimension = m_voxelTexResolution;
         m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
                                                sizeof(VoxelDrawSP::PushConstantData));
-        m_rdg->AddGraphicsPassDrawNode(pass, m_config.voxelCount, 1);
+        m_rdg->AddGraphicsPassDrawNode(pass, m_voxelCount, 1);
     }
     m_rdg->End();
 }
@@ -242,7 +242,7 @@ void GeometryVoxelizer::BuildGraphicsPasses()
                 .SetPipelineState(pso)
                 //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
                 //                      m_voxelTextures.offscreen1)
-                .SetFramebufferInfo(m_viewport, m_config.volumeDimension, m_config.volumeDimension)
+                .SetFramebufferInfo(m_viewport, m_voxelTexResolution, m_voxelTexResolution)
                 .SetTag("Voxelization")
                 .Build();
     }
@@ -329,18 +329,13 @@ void GeometryVoxelizer::UpdatePassResources()
 
 void GeometryVoxelizer::UpdateUniformData()
 {
-    const sg::AABB& sceneBox = m_scene->GetAABB();
+    const sg::AABB& sceneAABB = m_scene->GetAABB();
 
-    auto axisSize           = sceneBox.GetMax() - sceneBox.GetMin();
-    auto center             = sceneBox.GetCenter();
-    m_config.volumeGridSize = glm::max(axisSize.x, glm::max(axisSize.y, axisSize.z));
-    m_config.voxelSize      = m_config.volumeGridSize / m_config.volumeDimension;
-
+    auto center = sceneAABB.GetCenter();
     {
-        auto halfSize = m_config.volumeGridSize / 2.0f;
+        auto halfSize = m_sceneExtent / 2.0f;
         // projection matrices
-        auto projection =
-            glm::ortho(-halfSize, halfSize, -halfSize, halfSize, 0.0f, m_config.volumeGridSize);
+        auto projection = glm::ortho(-halfSize, halfSize, -halfSize, halfSize, 0.0f, m_sceneExtent);
         projection[1][1] *= -1;
 
         // view matrices
@@ -354,7 +349,7 @@ void GeometryVoxelizer::UpdateUniformData()
             glm::lookAt(center - Vec3(0.0f, 0.0f, halfSize), center, Vec3(0.0f, 1.0f, 0.0f));
 
         shaderProgram->voxelConfigData.worldMinPointScale =
-            Vec4(sceneBox.GetMin(), 1.0f / m_config.volumeGridSize);
+            Vec4(m_scene->GetAABB().GetMin(), 1.0f / m_sceneExtent);
 
         for (int i = 0; i < 3; ++i)
         {
@@ -373,9 +368,9 @@ void GeometryVoxelizer::UpdateUniformData()
         VoxelDrawSP* shaderProgram =
             dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw.shaderProgram);
         uint32_t drawMipLevel = 0;
-        auto vDimension = static_cast<unsigned>(m_config.volumeDimension / pow(2.0f, drawMipLevel));
-        auto vSize      = m_config.volumeGridSize / vDimension;
-        auto modelMatrix = glm::translate(Mat4(1.0f), sceneBox.GetMin()) *
+        auto vDimension  = static_cast<unsigned>(m_voxelTexResolution / pow(2.0f, drawMipLevel));
+        auto vSize       = m_sceneExtent / vDimension;
+        auto modelMatrix = glm::translate(Mat4(1.0f), sceneAABB.GetMin()) *
             glm::scale(Mat4(1.0f), glm::vec3(vSize));
         shaderProgram->voxelInfo.modelViewProjection =
             cameraUniformData->projViewMatrix * modelMatrix;
@@ -385,8 +380,7 @@ void GeometryVoxelizer::UpdateUniformData()
         {
             shaderProgram->voxelInfo.frustumPlanes[i] = planes[i];
         }
-        shaderProgram->voxelInfo.worldMinPointVoxelSize =
-            Vec4(sceneBox.GetMin(), m_config.voxelSize);
+        shaderProgram->voxelInfo.worldMinPointVoxelSize = Vec4(sceneAABB.GetMin(), m_voxelSize);
 
         shaderProgram->UpdateUniformBuffer("uVoxelInfo", shaderProgram->GetVoxelInfoData(), 0);
     }

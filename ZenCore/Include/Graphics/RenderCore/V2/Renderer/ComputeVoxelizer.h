@@ -78,8 +78,6 @@ protected:
 
     RenderObject* m_cube;
 
-    float m_sceneLength;
-    float m_voxelWidth;
     Mat4 m_voxelTransform;
     sg::AABB m_voxelAABB;
 };

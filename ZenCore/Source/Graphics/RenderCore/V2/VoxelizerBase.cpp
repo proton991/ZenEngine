@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 
 namespace zen::rc
 {
@@ -27,5 +28,15 @@ void VoxelizerBase::PrepareTextures()
 
         m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
     }
+}
+
+void VoxelizerBase::SetRenderScene(RenderScene* scene)
+{
+    m_scene       = scene;
+    m_sceneExtent = m_scene->GetAABB().GetMaxExtent();
+    m_voxelSize   = m_sceneExtent / static_cast<float>(m_voxelTexResolution);
+
+    UpdateUniformData();
+    UpdatePassResources();
 }
 } // namespace zen::rc
