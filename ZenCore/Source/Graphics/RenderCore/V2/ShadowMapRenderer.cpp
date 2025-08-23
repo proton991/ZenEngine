@@ -161,8 +161,9 @@ void ShadowMapRenderer::BuildRenderGraph()
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
                 shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-                m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                       sizeof(ShadowMapRenderSP::PushConstantData));
+                m_rdg->AddGraphicsPassSetPushConstants(
+                    pass, &shaderProgram->pushConstantsData,
+                    sizeof(ShadowMapRenderSP::PushConstantsData));
                 m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }

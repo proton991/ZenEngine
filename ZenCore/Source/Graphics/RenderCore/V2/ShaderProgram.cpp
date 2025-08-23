@@ -212,5 +212,9 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
         ShaderProgram* shaderProgram             = new ShadowMapRenderSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
+    {
+        ShaderProgram* shaderProgram             = new VoxelInjectRadianceSP(renderDevice);
+        m_programCache[shaderProgram->GetName()] = shaderProgram;
+    }
 }
 } // namespace zen::rc

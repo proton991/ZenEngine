@@ -5,6 +5,7 @@ namespace zen::rc
 {
 void VoxelizerBase::PrepareTextures()
 {
+    // todo: create voxel textures on base class
     {
         rhi::SamplerInfo samplerInfo{};
         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
@@ -35,8 +36,14 @@ void VoxelizerBase::SetRenderScene(RenderScene* scene)
     m_scene       = scene;
     m_sceneExtent = m_scene->GetAABB().GetMaxExtent();
     m_voxelSize   = m_sceneExtent / static_cast<float>(m_voxelTexResolution);
+    m_voxelScale  = 1.0f / m_sceneExtent;
 
     UpdateUniformData();
     UpdatePassResources();
+}
+
+Vec3 VoxelizerBase::GetSceneMinPoint() const
+{
+    return m_scene->GetAABB().GetMin();
 }
 } // namespace zen::rc

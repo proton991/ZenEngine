@@ -19,15 +19,6 @@ void ComputeVoxelizer::Init()
     m_voxelTexFormat     = DataFormat::eR8G8B8A8UNORM;
     m_voxelCount         = m_voxelTexResolution * m_voxelTexResolution * m_voxelTexResolution;
 
-    m_config.drawColorChannels = Vec4(1.0f);
-
-
-    // std::vector<SimpleVertex> vertices;
-    // vertices.resize(m_config.voxelCount);
-
-    // m_voxelVBO = m_renderDevice->CreateVertexBuffer(
-    //     m_config.voxelCount * sizeof(Vec4), reinterpret_cast<const uint8_t*>(vertices.data()));
-
     PrepareTextures();
 
     PrepareBuffers();
@@ -57,20 +48,20 @@ void ComputeVoxelizer::PrepareTextures()
 {
     VoxelizerBase::PrepareTextures();
     using namespace zen::rhi;
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
-                          "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
-                          m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
-                          "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
+    //                       "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
+    //                       m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
+    //                       "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
                           m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
@@ -132,28 +123,22 @@ void ComputeVoxelizer::PrepareTextures()
         m_voxelTextures.emissiveProxy =
             m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
     }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_radiance", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.radiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    const auto halfDim = m_voxelTexResolution / 2;
-    for (uint32_t i = 0; i < 6; i++)
-    {
-        const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-                          halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
-                          SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-        //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-        //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-        //                                   TextureLayout::eGeneral);
-    }
 
-    m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
+    // const auto halfDim = m_voxelTexResolution / 2;
+    // for (uint32_t i = 0; i < 6; i++)
+    // {
+    //     const auto texName = "voxel_mipmap_face_" + std::to_string(i);
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
+    //                       halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
+    //                       SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    //     //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
+    //     //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
+    //     //                                   TextureLayout::eGeneral);
+    // }
+
+    // m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
     // {
     //     rhi::SamplerInfo samplerInfo{};
     //     samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
@@ -280,8 +265,9 @@ void ComputeVoxelizer::BuildRenderGraph()
 
                 shaderProgram->pushConstantsData.nodeIndex     = node->GetRenderableIndex();
                 shaderProgram->pushConstantsData.triangleCount = triangleCount;
-                m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                      sizeof(VoxelizationCompSP::PushConstantData));
+                m_rdg->AddComputePassSetPushConstants(
+                    pass, &shaderProgram->pushConstantsData,
+                    sizeof(VoxelizationCompSP::PushConstantsData));
                 m_rdg->AddComputePassDispatchNode(pass, workgroupCount, 1, 1);
             }
         }
@@ -350,6 +336,9 @@ void ComputeVoxelizer::BuildRenderGraph()
                                           BufferUsage::eStorageBuffer, AccessMode::eRead);
         m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
                                           BufferUsage::eIndirectBuffer, AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, m_voxelTextures.albedo, TextureUsage::eStorage,
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_cube->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_cube->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);

@@ -68,7 +68,7 @@ void VulkanDebug::SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHan
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_DESCRIPTOR_SET;
-    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet);
+    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet->descriptorSet);
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(vkRHI->GetDevice()->GetVkHandle(), &info),

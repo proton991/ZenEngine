@@ -1,7 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Graphics/RenderCore/V2/TextureManager.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Camera.h"
 
@@ -14,8 +13,6 @@ void GeometryVoxelizer::Init()
     m_voxelTexResolution = 256;
     m_voxelTexFormat     = DataFormat::eR32UInt;
     m_voxelCount         = m_voxelTexResolution * m_voxelTexResolution * m_voxelTexResolution;
-
-    m_config.drawColorChannels = Vec4(1.0f);
 
     PrepareTextures();
 
@@ -30,20 +27,20 @@ void GeometryVoxelizer::PrepareTextures()
 {
     VoxelizerBase::PrepareTextures();
     using namespace zen::rhi;
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
-                          "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
-                          m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
-                          "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
+    //                       "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
+    //                       m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
+    //                       "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
                           m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
@@ -105,26 +102,26 @@ void GeometryVoxelizer::PrepareTextures()
         m_voxelTextures.emissiveProxy =
             m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
     }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_radiance", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.radiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    const auto halfDim = m_voxelTexResolution / 2;
-    for (uint32_t i = 0; i < 6; i++)
-    {
-        const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-                          halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
-                          SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-        //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-        //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-        //                                   TextureLayout::eGeneral);
-    }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+    //                       "voxel_radiance", TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.radiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // const auto halfDim = m_voxelTexResolution / 2;
+    // for (uint32_t i = 0; i < 6; i++)
+    // {
+    //     const auto texName = "voxel_mipmap_face_" + std::to_string(i);
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
+    //                       halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
+    //                       SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    //     //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
+    //     //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
+    //     //                                   TextureLayout::eGeneral);
+    // }
     m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
 }
 
@@ -179,7 +176,7 @@ void GeometryVoxelizer::BuildRenderGraph()
             {
                 shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
                 m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                       sizeof(VoxelizationSP::PushConstantData));
+                                                       sizeof(VoxelizationSP::PushConstantsData));
                 m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
@@ -209,13 +206,16 @@ void GeometryVoxelizer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
 
-        // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});
+        m_rdg->DeclareTextureAccessForPass(
+            pass, m_voxelTextures.albedo, TextureUsage::eStorage,
+            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
+        // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});1
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         //        shaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
         shaderProgram->pushConstantsData.volumeDimension = m_voxelTexResolution;
         m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                               sizeof(VoxelDrawSP::PushConstantData));
+                                               sizeof(VoxelDrawSP::PushConstantsData));
         m_rdg->AddGraphicsPassDrawNode(pass, m_voxelCount, 1);
     }
     m_rdg->End();

@@ -8,6 +8,26 @@ namespace zen::rc
 {
 class RenderDevice;
 
+// refactor: move to RenderScene, create sg::Light
+struct Attenuation
+{
+    float constant;
+    float linear;
+    float quadratic;
+};
+
+struct Light
+{
+    float angleInnerCone;
+    float angleOuterCone;
+    Vec3 diffuse;
+    Vec3 position;
+    Vec3 direction;
+    uint32_t shadowingMethod;
+    Attenuation attenuation;
+};
+
+
 class ShaderProgram
 {
 public:
@@ -71,7 +91,7 @@ public:
         Init();
     }
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
@@ -162,7 +182,7 @@ public:
         Vec4 worldMinPointScale;
     } voxelConfigData;
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
@@ -187,7 +207,7 @@ public:
         return reinterpret_cast<const uint8_t*>(&voxelInfo);
     }
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         uint32_t volumeDimension;
         //        Vec4 colorChannels;
@@ -222,7 +242,7 @@ public:
         Vec4 aabbMax;
     } sceneInfo;
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t triangleCount;
@@ -251,7 +271,7 @@ public:
         Vec4 aabbMax;
     } sceneInfo;
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         uint32_t nodeIndex;
         uint32_t triangleCount;
@@ -337,6 +357,62 @@ public:
     } transformData;
 };
 
+const uint32_t MAX_DIRECTIONAL_LIGHTS = 3;
+const uint32_t MAX_POINT_LIGHTS       = 6;
+const uint32_t MAX_SPOT_LIGHTS        = 6;
+
+enum LightType
+{
+    DIRECTIONAL_LIGHT = 0,
+    POINT_LIGHT       = 1,
+    SPOT_LIGHT        = 2,
+};
+class VoxelInjectRadianceSP : public ShaderProgram
+{
+public:
+    explicit VoxelInjectRadianceSP(RenderDevice* renderDevice) :
+        ShaderProgram(renderDevice, "VoxelInjectRadianceSP")
+    {
+        AddShaderStage(rhi::ShaderStage::eCompute, "VoxelGI/inject_radiance.comp.spv");
+        Init();
+    }
+
+    const uint8_t* GetSceneInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&sceneInfo);
+    }
+
+    const uint8_t* GetLightInfoData() const
+    {
+        return reinterpret_cast<const uint8_t*>(&lightInfo);
+    }
+
+    struct SceneInfo
+    {
+        float voxelSize;
+        float voxelScale;
+        Vec3 worldMinPoint;
+        int volumeDimension;
+    } sceneInfo;
+
+    struct LightInfo
+    {
+        Light directionalLight[MAX_DIRECTIONAL_LIGHTS];
+        Light pointLight[MAX_POINT_LIGHTS];
+        Light spotLight[MAX_SPOT_LIGHTS];
+        uint32_t lightTypeCount[3];
+        Mat4 lightViewProjection;
+        float lightBleedingReduction;
+        Vec2 exponents;
+    } lightInfo;
+
+    struct PushConstantsData
+    {
+        float traceShadowHit;
+        uint32_t normalWeightedLambert;
+    } pushConstantsData;
+};
+
 class ShadowMapRenderSP : public ShaderProgram
 {
 public:
@@ -354,7 +430,7 @@ public:
         return reinterpret_cast<const uint8_t*>(&lightInfo);
     }
 
-    struct PushConstantData
+    struct PushConstantsData
     {
         Vec2 exponents;
         uint32_t nodeIndex;

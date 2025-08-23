@@ -6,7 +6,6 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
 #include "SceneGraph/Camera.h"
 
 using namespace zen::rhi;
@@ -332,7 +331,7 @@ void DeferredLightingRenderer::AddMeshDrawNodes(RDGPassNode* pass,
         {
             shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
             m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
-                                                   sizeof(GBufferSP::PushConstantData));
+                                                   sizeof(GBufferSP::PushConstantsData));
             m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
                                                   subMesh->GetFirstIndex(), 0, 0);
         }

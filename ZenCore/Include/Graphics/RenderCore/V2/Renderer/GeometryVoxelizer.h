@@ -2,7 +2,6 @@
 #include "VoxelizerBase.h"
 #include "../RenderDevice.h"
 #include "../RenderGraph.h"
-#include "Common/UniquePtr.h"
 
 namespace zen::rc
 {

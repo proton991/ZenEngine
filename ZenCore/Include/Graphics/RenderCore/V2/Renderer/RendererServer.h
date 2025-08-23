@@ -11,9 +11,9 @@ namespace zen::rc
 class RenderDevice;
 class SkyboxRenderer;
 class DeferredLightingRenderer;
-class VoxelRenderer;
 class VoxelizerBase;
 class ShadowMapRenderer;
+class VoxelGIRenderer;
 class RenderScene;
 
 enum class RenderOption : uint32_t
@@ -48,10 +48,10 @@ public:
         return m_skyboxRenderer;
     }
 
-    // VoxelRenderer* RequestVoxelRenderer() const
-    // {
-    //     return m_voxelRenderer;
-    // }
+    VoxelizerBase* RequestVoxelizer() const
+    {
+        return m_voxelizer;
+    }
 
     ShadowMapRenderer* RequestShadowMapRenderer() const
     {
@@ -73,6 +73,7 @@ private:
     VoxelizerBase* m_voxelizer{nullptr};
     // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
+    // VoxelGIRenderer* m_voxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
 };

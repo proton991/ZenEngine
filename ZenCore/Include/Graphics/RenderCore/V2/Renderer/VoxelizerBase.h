@@ -7,16 +7,27 @@ namespace zen::rc
 {
 class RenderScene;
 
+// 3D textures (written by voxelizer)
+struct VoxelTextures
+{
+    rhi::TextureHandle staticFlag;
+    rhi::TextureHandle albedo;
+    rhi::TextureHandle albedoProxy;
+    rhi::TextureHandle normal;
+    rhi::TextureHandle normalProxy;
+    rhi::TextureHandle emissive;
+    rhi::TextureHandle emissiveProxy;
+};
 class VoxelizerBase
 {
 public:
-    virtual ~VoxelizerBase() = default;
-
     VoxelizerBase(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
-        m_renderDevice(renderDevice), m_viewport(viewport), m_config()
+        m_renderDevice(renderDevice), m_viewport(viewport)
     {
         m_RHI = m_renderDevice->GetRHI();
     }
+
+    virtual ~VoxelizerBase() = default;
 
     virtual void Init() = 0;
 
@@ -26,17 +37,43 @@ public:
 
     virtual void PrepareRenderWorkload() = 0;
 
+    virtual void OnResize() = 0;
+
     RenderGraph* GetRenderGraph() const
     {
         return m_rdg.Get();
     };
 
-    const rhi::TextureHandle& GetVoxelAlbedo() const
+    const VoxelTextures& GetVoxelTextures() const
     {
-        return m_voxelTextures.albedo;
+        return m_voxelTextures;
     }
 
-    virtual void OnResize() = 0;
+    const rhi::SamplerHandle& GetVoxelSampler() const
+    {
+        return m_voxelSampler;
+    }
+    rhi::DataFormat GetVoxelTexFormat() const
+    {
+        return m_voxelTexFormat;
+    }
+
+    uint32_t GetVoxelTexResolution() const
+    {
+        return m_voxelTexResolution;
+    }
+
+    float GetVoxelSize() const
+    {
+        return m_voxelSize;
+    }
+
+    float GetVoxelScale() const
+    {
+        return m_voxelScale;
+    }
+
+    Vec3 GetSceneMinPoint() const;
 
 protected:
     virtual void PrepareTextures();
@@ -65,37 +102,14 @@ protected:
 
     RenderScene* m_scene{nullptr};
 
-    // 3D textures (written by voxelizer)
-    struct
-    {
-        rhi::TextureHandle offscreen1;
-        rhi::TextureHandle offscreen2;
-        rhi::TextureHandle staticFlag;
-        rhi::TextureHandle albedo;
-        rhi::TextureHandle albedoProxy;
-        rhi::TextureHandle normal;
-        rhi::TextureHandle normalProxy;
-        rhi::TextureHandle emissive;
-        rhi::TextureHandle emissiveProxy;
-        rhi::TextureHandle radiance;
-        rhi::TextureHandle mipmaps[6]; // per face
-    } m_voxelTextures;
+    VoxelTextures m_voxelTextures;
 
     rhi::SamplerHandle m_voxelSampler;
     rhi::SamplerHandle m_colorSampler;
-    struct
-    {
-        bool injectFirstBounce;
-        bool traceShadowCones;
-        bool normalWeightedLambert;
-        float traceShadowHit;
-        uint32_t drawMipLevel;
-        uint32_t drawDirection;
-        glm::vec4 drawColorChannels;
-    } m_config;
 
     uint32_t m_voxelTexResolution;
     float m_voxelSize;
+    float m_voxelScale;
     uint32_t m_voxelCount;
     rhi::DataFormat m_voxelTexFormat;
 

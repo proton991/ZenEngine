@@ -32,6 +32,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelizerBase.h
+    Include/Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h
@@ -154,6 +155,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/ComputeVoxelizer.cpp
     Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp
     Source/Graphics/RenderCore/V2/ShaderProgram.cpp
 

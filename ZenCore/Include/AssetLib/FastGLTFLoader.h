@@ -86,7 +86,7 @@ private:
     size_t m_vertexPos{0};
     size_t m_indexPos{0};
     // vertices and indices
-    std::vector<asset::Vertex> m_vertices;
+    std::vector<Vertex> m_vertices;
     std::vector<uint32_t> m_indices;
 };
 } // namespace zen::asset
