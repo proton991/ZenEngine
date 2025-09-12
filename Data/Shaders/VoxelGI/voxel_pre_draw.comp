@@ -10,7 +10,7 @@ struct DrawIndexedIndirectCommand {
     uint    firstInstance;
 };
 
-layout(set = 0, binding = 0, rgba8) uniform image3D voxelTexture;
+layout(set = 0, binding = 0, rgba8) uniform readonly image3D voxelTexture;
 
 layout(std430, set=1, binding = 0) buffer InstancePositionBuffer {
    vec4 positions[];

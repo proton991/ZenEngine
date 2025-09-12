@@ -38,6 +38,32 @@ static void CopyRegion(uint8_t const* pSrc,
     }
 }
 
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(rhi::DataFormat format,
+                                                               rhi::TextureUsage usage,
+                                                               const rhi::TextureHandle& handle,
+                                                               bool clear)
+{
+    m_rpLayout.AddColorRenderTarget(format, usage, handle,
+                                    m_renderDevice->GetTextureSubResourceRange(handle));
+    m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+                                                 rhi::RenderTargetLoadOp::eLoad,
+                                         rhi::RenderTargetStoreOp::eStore);
+    m_framebufferInfo.numRenderTarget++;
+    return *this;
+}
+
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::DataFormat format,
+                                                                const rhi::TextureHandle& handle,
+                                                                rhi::RenderTargetLoadOp loadOp,
+                                                                rhi::RenderTargetStoreOp storeOp)
+{
+    m_rpLayout.SetDepthStencilRenderTarget(format, handle,
+                                           m_renderDevice->GetTextureSubResourceRange(handle));
+    m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+    m_framebufferInfo.numRenderTarget++;
+    return *this;
+}
+
 GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
@@ -81,6 +107,59 @@ GraphicsPass GraphicsPassBuilder::Build()
     SRDs   = shaderProgram->GetSRDs();
 
     gfxPass.shaderProgram = shaderProgram;
+
+    // set up resource trackers
+    gfxPass.resourceTrackers.resize(SRDs.size());
+    // build PassTextureTracker and PassBufferTracker
+    // PassTextureTracker's handle is not available until UpdatePassResource is called
+    for (auto& srd : shaderProgram->GetSampledTextureSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name = srd.name;
+        // for combined image samplers,
+        tracker.textureUsage = TextureUsage::eSampled;
+        tracker.resourceType = PassResourceType::eTexture;
+        tracker.accessMode   = AccessMode::eRead;
+        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+    for (auto& srd : shaderProgram->GetStorageImageSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eTexture;
+        tracker.textureUsage = TextureUsage::eStorage;
+        if (!srd.writable)
+        {
+            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+            tracker.accessMode = AccessMode::eRead;
+        }
+        else
+        {
+            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
+            tracker.accessMode = AccessMode::eReadWrite;
+        }
+        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+    for (auto& srd : shaderProgram->GetStorageBufferSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eBuffer;
+        tracker.bufferUsage  = BufferUsage::eStorageBuffer;
+        if (!srd.writable)
+        {
+            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+            tracker.accessMode = AccessMode::eRead;
+        }
+        else
+        {
+            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
+            tracker.accessMode = AccessMode::eReadWrite;
+        }
+        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
         gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
@@ -122,6 +201,41 @@ void GraphicsPassResourceUpdater::Update()
         const auto& bindings              = kv.second;
         rhi::DescriptorSetHandle dsHandle = m_gfxPass->descriptorSets[setIndex];
         RHI->UpdateDescriptorSet(dsHandle, bindings);
+        // set pass tracker handle values here
+        rhi::Handle handle;
+        for (auto& srb : bindings)
+        {
+            PassResourceTracker& tracker = m_gfxPass->resourceTrackers[setIndex][srb.binding];
+            if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            {
+                handle = srb.handles[1];
+            }
+            else
+            {
+                handle = srb.handles[0];
+            }
+            if (tracker.resourceType == PassResourceType::eTexture)
+            {
+                // check if a texture is a proxy
+                rhi::TextureHandle textureHandle;
+                if (m_renderDevice->IsProxyTexture(textureHandle))
+                {
+                    textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
+                }
+                else
+                {
+                    textureHandle = TO_TEX_HANDLE(handle);
+                }
+                tracker.textureHandle = textureHandle;
+                tracker.textureSubResRange =
+                    m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+            }
+            else if (tracker.resourceType == PassResourceType::eBuffer)
+            {
+                tracker.bufferHandle = TO_BUF_HANDLE(handle);
+            }
+        }
     }
 }
 
@@ -141,6 +255,57 @@ ComputePass ComputePassBuilder::Build()
     computePass.shaderProgram = shaderProgram;
     computePass.pipeline      = m_renderDevice->GetOrCreateComputePipeline(shader);
     computePass.descriptorSets.resize(SRDs.size());
+
+    // set up resource trackers
+    computePass.resourceTrackers.resize(SRDs.size());
+    // build PassTextureTracker and PassBufferTracker
+    // PassTextureTracker's handle is not available until UpdatePassResource is called
+    for (auto& srd : shaderProgram->GetSampledTextureSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name = srd.name;
+        // for combined image samplers,
+        tracker.textureUsage = TextureUsage::eSampled;
+        tracker.accessMode   = AccessMode::eRead;
+        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+    for (auto& srd : shaderProgram->GetStorageImageSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eTexture;
+        tracker.textureUsage = TextureUsage::eStorage;
+        if (!srd.writable)
+        {
+            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+            tracker.accessMode = AccessMode::eRead;
+        }
+        else
+        {
+            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
+            tracker.accessMode = AccessMode::eReadWrite;
+        }
+        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+    for (auto& srd : shaderProgram->GetStorageBufferSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eBuffer;
+        tracker.bufferUsage  = BufferUsage::eStorageBuffer;
+        if (!srd.writable)
+        {
+            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+            tracker.accessMode = AccessMode::eRead;
+        }
+        else
+        {
+            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
+            tracker.accessMode = AccessMode::eReadWrite;
+        }
+        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
@@ -163,6 +328,31 @@ void ComputePassResourceUpdater::Update()
         const auto& bindings              = kv.second;
         rhi::DescriptorSetHandle dsHandle = m_computePass->descriptorSets[setIndex];
         RHI->UpdateDescriptorSet(dsHandle, bindings);
+        // set pass tracker handle values here
+        rhi::Handle handle;
+        for (auto& srb : bindings)
+        {
+            PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
+            if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            {
+                handle = srb.handles[1];
+            }
+            else
+            {
+                handle = srb.handles[0];
+            }
+            if (tracker.resourceType == PassResourceType::eTexture)
+            {
+                tracker.textureHandle = TO_TEX_HANDLE(handle);
+                tracker.textureSubResRange =
+                    m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+            }
+            else
+            {
+                tracker.bufferHandle = TO_BUF_HANDLE(handle);
+            }
+        }
     }
 }
 
@@ -529,6 +719,16 @@ rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& ba
     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
 }
 
+rhi::TextureHandle RenderDevice::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
+{
+    return m_textureManager->GetBaseTextureForProxy(handle);
+}
+
+bool RenderDevice::IsProxyTexture(const rhi::TextureHandle& handle) const
+{
+    return m_textureManager->IsProxyTexture(handle);
+}
+
 void RenderDevice::GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
                                           rhi::RHICommandList* cmdList)
 {
@@ -732,11 +932,13 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIVie
     if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
     {
         gfxPass.renderPassLayout.ClearRenderTargetInfo();
-        gfxPass.renderPassLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(),
-                                                      rhi::TextureUsage::eColorAttachment,
-                                                      viewport->GetColorBackBuffer());
-        gfxPass.renderPassLayout.SetDepthStencilRenderTarget(viewport->GetDepthStencilFormat(),
-                                                             viewport->GetDepthStencilBackBuffer());
+        gfxPass.renderPassLayout.AddColorRenderTarget(
+            viewport->GetSwapchainFormat(), rhi::TextureUsage::eColorAttachment,
+            viewport->GetColorBackBuffer(),
+            GetTextureSubResourceRange(viewport->GetColorBackBuffer()));
+        gfxPass.renderPassLayout.SetDepthStencilRenderTarget(
+            viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+            GetTextureSubResourceRange(viewport->GetDepthStencilBackBuffer()));
     }
     else
     {

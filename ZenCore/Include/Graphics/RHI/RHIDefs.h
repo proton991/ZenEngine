@@ -100,7 +100,11 @@ RHI_DEFINE_HANDLE(Pipeline);
 RHI_DEFINE_HANDLE(Texture);
 RHI_DEFINE_HANDLE(Buffer);
 RHI_DEFINE_HANDLE(DescriptorSet);
+
+#define TO_TEX_HANDLE(handle) rhi::TextureHandle(handle.value)
+#define TO_BUF_HANDLE(handle) rhi::BufferHandle(handle.value)
 } // namespace zen::rhi
 
+HASH_DEFINE(Texture)
 HASH_DEFINE(Shader)
 HASH_DEFINE(RenderPass)

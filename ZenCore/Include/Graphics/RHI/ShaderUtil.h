@@ -194,12 +194,41 @@ static void ParseSpvSpecializationConstant(ShaderStage stage,
     }
 }
 
+static bool IsDescriptorBindingWritable(const SpvReflectDescriptorBinding& reflBinding)
+{
+    bool writable = true;
+    if ((reflBinding.decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0 ||
+        (reflBinding.block.decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0)
+    {
+        writable = false;
+    }
+    if ((reflBinding.type_description != nullptr) &&
+        (reflBinding.type_description->decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0)
+    {
+        writable = false;
+    }
+    return writable;
+}
+
 static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding,
                                              ShaderResourceDescriptor& srd)
 {
     bool needArrayDims = false;
     bool needBlockSize = false;
     bool writable      = false;
+
+    if (reflBinding.type_description != nullptr &&
+        reflBinding.type_description->type_name != nullptr)
+    {
+        srd.name = reflBinding.type_description->type_name;
+    }
+    else
+    {
+        srd.name = reflBinding.name;
+    }
+    srd.set       = reflBinding.set;
+    srd.binding   = reflBinding.binding;
+    srd.arraySize = 1;
 
     switch (reflBinding.descriptor_type)
     {
@@ -225,7 +254,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         {
             srd.type      = ShaderResourceType::eImage;
             needArrayDims = true;
-            writable      = true;
+            writable      = IsDescriptorBindingWritable(reflBinding);
         }
         break;
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
@@ -238,7 +267,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         {
             srd.type      = ShaderResourceType::eImageBuffer;
             needArrayDims = true;
-            writable      = true;
+            writable      = IsDescriptorBindingWritable(reflBinding);
         }
         break;
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
@@ -251,7 +280,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         {
             srd.type      = ShaderResourceType::eStorageBuffer;
             needBlockSize = true;
-            writable      = true;
+            writable      = IsDescriptorBindingWritable(reflBinding);
         }
         break;
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
@@ -276,18 +305,8 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         }
         break;
     }
-    if (reflBinding.type_description != nullptr &&
-        reflBinding.type_description->type_name != nullptr)
-    {
-        srd.name = reflBinding.type_description->type_name;
-    }
-    else
-    {
-        srd.name = reflBinding.name;
-    }
-    srd.set       = reflBinding.set;
-    srd.binding   = reflBinding.binding;
-    srd.arraySize = 1;
+
+    srd.writable = writable;
     if (needArrayDims)
     {
         for (uint32_t i = 0; i < reflBinding.array.dims_count; i++)
@@ -298,12 +317,6 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     else if (needBlockSize)
     {
         srd.blockSize = reflBinding.block.size;
-    }
-    if (writable)
-    {
-        srd.writable = !(reflBinding.type_description->decoration_flags &
-                         SPV_REFLECT_DECORATION_NON_WRITABLE) &&
-            !(reflBinding.block.decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE);
     }
 }
 

@@ -180,13 +180,13 @@ enum class RDGResourceUsage
     eNone
 };
 
-// enum class RDGAccessType
-// {
-//     eNone      = 0,
-//     eRead      = 1,
-//     eReadWrite = 2,
-//     eMax       = 3
-// };
+struct RDGResourceTracker
+{
+    rhi::AccessMode accessMode{};
+    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
+    rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
+    rhi::TextureSubResourceRange textureSubResourceRange;
+};
 
 struct RDGAccess
 {
@@ -195,6 +195,7 @@ struct RDGAccess
     RDG_ID resourceId{-1};
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
     rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
+    BitField<rhi::AccessFlagBits> accessFlags;
     rhi::TextureSubResourceRange textureSubResourceRange;
 };
 
@@ -203,12 +204,16 @@ struct RDGResource
     RDG_ID id{-1};
     rhi::Handle physicalHandle;
     RDGResourceType type{RDGResourceType::eNone};
+    RDGResourceTracker* tracker{nullptr};
+    std::vector<int32_t> writtenByNodeIds;
+    std::vector<int32_t> readByNodeIds;
     HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
 };
 
 struct RDGNodeBase
 {
     RDG_ID id{-1};
+    int32_t idx{-1};
     std::string tag;
     RDGNodeType type{RDGNodeType::eNone};
     BitField<rhi::PipelineStageBits> selfStages;
@@ -396,6 +401,7 @@ struct RDGSetDepthBiasNode : RDGPassChildNode
     float depthBiasSlopeFactor;
 };
 
+// todo: refactor RDG AddXXXNode functions, resolve dependency when adding to graph, maintain deps by using adj list for graph datastructure
 class RenderGraph
 {
 public:
@@ -553,6 +559,9 @@ private:
 
     void EmitTransitionBarriers(uint32_t level);
 
+    // add node to adj list based on resource's current RDGAccess and previouse accesses
+    void AddNodeToGraph(RDGNodeBase* node, uint32_t numResources, RDGResource** resources);
+
     void EmitInitializationBarriers(uint32_t level);
 
     template <class T>
@@ -567,7 +576,8 @@ private:
         new (newNode) T();
         // *newNode   = T();
 
-        newNode->id = m_nodeCount;
+        newNode->id  = m_nodeCount;
+        newNode->idx = m_nodeCount;
         m_nodeCount++;
         m_allNodes.push_back(newNode);
         return newNode;
@@ -590,17 +600,25 @@ private:
         return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     }
 
+    RDGNodeBase* GetNodeBaseById(int32_t idx)
+    {
+        const auto dataOffset = m_nodeDataOffset[idx];
+        return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
+    }
+
     RDGResource* GetOrAllocResource(rhi::Handle handle, RDGResourceType type, const RDG_ID& nodeId)
     {
         RDGResource* resource;
         if (!m_resourceMap.contains(handle))
         {
-            resource     = m_resourceAllocator.Alloc();
-            resource->id = static_cast<int32_t>(m_resources.size());
-            m_resources.push_back(resource);
+            resource                 = m_resourceAllocator.Alloc();
+            resource->id             = static_cast<int32_t>(m_resources.size());
+            resource->tracker        = CreateResourceTracker();
             resource->type           = type;
             resource->physicalHandle = handle;
-            m_resourceMap[handle]    = resource;
+
+            m_resources.push_back(resource);
+            m_resourceMap[handle] = resource;
             // track first used node
             m_resourceFirstUseNodeMap[resource->id] = nodeId;
         }
@@ -611,8 +629,40 @@ private:
         return resource;
     }
 
+    template <class T>
+        requires std::derived_from<T, RDGNodeBase>
+    static RDGNodeBase* ToBaseNode(T* derived)
+    {
+        return static_cast<RDGNodeBase*>(derived);
+    }
+
+    template <class T>
+        requires std::derived_from<T, RDGNodeBase>
+    static const RDGNodeBase* ToBaseNode(const T* derived)
+    {
+        return static_cast<RDGNodeBase*>(derived);
+    }
+
+    static RDGResourceTracker* CreateResourceTracker()
+    {
+        if (!s_trackerPool.empty())
+        {
+            RDGResourceTracker* tracker = s_trackerPool.back();
+            s_trackerPool.pop_back();
+            return tracker;
+        }
+        return new RDGResourceTracker();
+    }
+
+    static void DestroyResourceTracker(RDGResourceTracker* tracker)
+    {
+        s_trackerPool.push_back(tracker);
+    }
+
     // RHI CommandList
     rhi::RHICommandList* m_cmdList{nullptr};
+    // stores dependency between graph nodes
+    std::vector<std::vector<int32_t>> m_adjacencyList;
     // nodes
     std::vector<uint8_t> m_nodeData;
     std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
@@ -630,42 +680,7 @@ private:
     // transitions
     HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
     HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
-};
 
-class RDGResourceUsageTracker
-{
-public:
-    static RDGResourceUsageTracker& GetInstance()
-    {
-        static RDGResourceUsageTracker tracker;
-        return tracker;
-    }
-
-    void TrackTextureUsage(const rhi::Handle& textureHandle, rhi::TextureUsage usage)
-    {
-        m_textureUsageCache[textureHandle] = usage;
-    }
-
-    void TrackBufferUsage(const rhi::Handle& bufferHandle, rhi::BufferUsage usage)
-    {
-        m_bufferUsageCache[bufferHandle] = usage;
-    }
-
-    rhi::TextureUsage GetTextureUsage(const rhi::Handle& textureHandle) const
-    {
-        auto it = m_textureUsageCache.find(textureHandle);
-        return it == m_textureUsageCache.end() ? rhi::TextureUsage::eNone : it->second;
-    }
-
-    rhi::BufferUsage GetBufferUsage(const rhi::Handle& bufferHandle) const
-    {
-        auto it = m_bufferUsageCache.find(bufferHandle);
-        return it == m_bufferUsageCache.end() ? rhi::BufferUsage::eNone : it->second;
-    }
-
-private:
-    RDGResourceUsageTracker() = default;
-    HashMap<rhi::Handle, rhi::TextureUsage> m_textureUsageCache;
-    HashMap<rhi::Handle, rhi::BufferUsage> m_bufferUsageCache;
+    static std::vector<RDGResourceTracker*> s_trackerPool;
 };
 } // namespace zen::rc

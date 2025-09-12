@@ -124,19 +124,19 @@ void ComputeVoxelizer::PrepareTextures()
             m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
     }
 
-    // const auto halfDim = m_voxelTexResolution / 2;
-    // for (uint32_t i = 0; i < 6; i++)
-    // {
-    //     const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-    //                       halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
-    //                       SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-    //                       TextureUsageFlagBits::eSampled);
-    //     m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    //     //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-    //     //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-    //     //                                   TextureLayout::eGeneral);
-    // }
+    const auto halfDim = m_voxelTexResolution / 2;
+    for (uint32_t i = 0; i < 6; i++)
+    {
+        const auto texName = "voxel_mipmap_face_" + std::to_string(i);
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
+                          halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
+                          SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
+        m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        // m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
+        //                            m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
+        //                            TextureLayout::eGeneral);
+    }
 
     // m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
     // {
@@ -227,8 +227,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
             pass->tag  = "reset_voxel_texture";
-            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
-                                               AccessMode::eReadWrite);
+            // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+            //                                    AccessMode::eReadWrite);
             workgroupCount = static_cast<int>(m_voxelTexResolution / 8);
             m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
         }
@@ -236,8 +236,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetComputeIndirect);
             pass->tag  = "reset_compute_indirect";
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
         }
         // voxelize small triangles
@@ -247,12 +247,12 @@ void ComputeVoxelizer::BuildRenderGraph()
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
             pass->tag  = "voxelization_compute";
 
-            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
-                                               AccessMode::eReadWrite);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+            //                                    AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
 
             shaderProgram->pushConstantsData.largeTriangleThreshold = 15;
 
@@ -275,36 +275,36 @@ void ComputeVoxelizer::BuildRenderGraph()
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelizationLargeTriangle);
             pass->tag  = "voxelization_compute_large_triangle";
-            m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
-                                               AccessMode::eReadWrite);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
-                                              BufferUsage::eIndirectBuffer, AccessMode::eRead);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eRead);
+            // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
+            //                                    AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
+            //                                   BufferUsage::eIndirectBuffer, AccessMode::eRead);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.largeTriangleBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eRead);
             m_rdg->AddComputePassDispatchIndirectNode(pass, m_buffers.computeIndirectBuffer, 0);
         }
         // reset draw indirect
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect);
             pass->tag  = "reset_draw_indirect_compute";
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
         }
         // voxel pre-draw pass
         {
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelPreDraw);
             pass->tag  = "voxel_pre_draw_compute";
-            m_rdg->DeclareTextureAccessForPass(
-                pass, m_voxelTextures.albedo, TextureUsage::eStorage,
-                m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-                AccessMode::eRead);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
-            m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
-                                              BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareTextureAccessForPass(
+            //     pass, m_voxelTextures.albedo, TextureUsage::eStorage,
+            //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
+            //     AccessMode::eRead);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
+            // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+            //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             workgroupCount = static_cast<int>(m_voxelTexResolution / 8);
             m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
         }
@@ -330,12 +330,12 @@ void ComputeVoxelizer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
         pass->tag = "voxel_draw2";
-        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
-                                          BufferUsage::eStorageBuffer, AccessMode::eRead);
-        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
-                                          BufferUsage::eStorageBuffer, AccessMode::eRead);
-        m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
-                                          BufferUsage::eIndirectBuffer, AccessMode::eRead);
+        // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
+        //                                   BufferUsage::eStorageBuffer, AccessMode::eRead);
+        // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
+        //                                   BufferUsage::eStorageBuffer, AccessMode::eRead);
+        // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
+        //                                   BufferUsage::eIndirectBuffer, AccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_voxelTextures.albedo, TextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
@@ -368,7 +368,7 @@ void ComputeVoxelizer::BuildGraphicsPasses()
             .SetNumSamples(SampleCount::e1)
             .SetPipelineState(pso)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
-                                  m_viewport->GetColorBackBuffer())
+                                  m_viewport->GetColorBackBuffer(), false)
             .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                    m_viewport->GetDepthStencilBackBuffer(),
                                    RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)

@@ -263,10 +263,10 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                     vp.maxX    = static_cast<float>(dim * std::pow(0.5f, m));
                     vp.maxY    = static_cast<float>(dim * std::pow(0.5f, m));
                     auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, true);
-                    rdg->DeclareTextureAccessForPass(
-                        pass, offscreenTexture, TextureUsage::eColorAttachment,
-                        m_RHI->GetTextureSubResourceRange(offscreenTexture),
-                        rhi::AccessMode::eReadWrite);
+                    // rdg->DeclareTextureAccessForPass(
+                    //     pass, offscreenTexture, TextureUsage::eColorAttachment,
+                    //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
+                    //     rhi::AccessMode::eReadWrite);
                     rdg->AddGraphicsPassSetScissorNode(pass, area);
                     rdg->AddGraphicsPassSetViewportNode(pass, vp);
                     rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -406,9 +406,9 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     vp.maxX    = static_cast<float>(dim);
     vp.maxY    = static_cast<float>(dim);
     auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, true);
-    rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, TextureUsage::eColorAttachment,
-                                     m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
-                                     rhi::AccessMode::eReadWrite);
+    // rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, TextureUsage::eColorAttachment,
+    //                                  m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
+    //                                  rhi::AccessMode::eReadWrite);
     rdg->AddGraphicsPassSetScissorNode(pass, area);
     rdg->AddGraphicsPassSetViewportNode(pass, vp);
     rdg->AddGraphicsPassDrawNode(pass, 3, 1);

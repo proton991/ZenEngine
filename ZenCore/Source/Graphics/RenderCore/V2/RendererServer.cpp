@@ -52,25 +52,28 @@ void RendererServer::DispatchRenderWorkloads()
 
     m_skyboxRenderer->PrepareRenderWorkload();
 
-    m_shadowMapRenderer->PrepareRenderWorkload();
+    // m_shadowMapRenderer->PrepareRenderWorkload();
 
-    m_deferredLightingRenderer->PrepareRenderWorkload();
+    // m_deferredLightingRenderer->PrepareRenderWorkload();
 
     std::vector<RenderGraph*> RDGs;
     if (m_renderOption == RenderOption::eVoxelize)
     {
         // m_voxelRenderer->PrepareRenderWorkload();
         m_voxelizer->PrepareRenderWorkload();
+        m_shadowMapRenderer->PrepareRenderWorkload();
         // m_voxelGIRenderer->PrepareRenderWorkload();
+        RDGs.push_back(m_skyboxRenderer->GetRenderGraph());
         RDGs.push_back(m_shadowMapRenderer->GetRenderGraph()); // shadowMap
         // RDGs.push_back(m_voxelRenderer->GetRenderGraph());     // voxel
         RDGs.push_back(m_voxelizer->GetRenderGraph()); // voxelization
         // RDGs.push_back(m_voxelGIRenderer->GetRenderGraph()); // voxel GI
-        // RDGs.push_back(skyboxRenderer->GetRenderGraph()); // skybox
-        // RDGs.push_back(m_rdg.Get());                      // deferred pbr
     }
     else
     {
+        m_skyboxRenderer->PrepareRenderWorkload();
+        m_deferredLightingRenderer->PrepareRenderWorkload();
+
         RDGs.push_back(m_skyboxRenderer->GetRenderGraph());           // skybox
         RDGs.push_back(m_deferredLightingRenderer->GetRenderGraph()); // deferred pbr
     }

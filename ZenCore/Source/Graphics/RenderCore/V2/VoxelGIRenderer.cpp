@@ -124,16 +124,16 @@ void VoxelGIRenderer::BuildRenderGraph()
         pass->tag  = "inject_voxel_radiance";
         // m_rdg->DeclareTextureAccessForPass(pass, 2, textures, TextureUsage::eStorage, ranges,
         //                                    AccessMode::eRead);
-        m_rdg->DeclareTextureAccessForPass(
-            pass, voxelTextures.albedo, TextureUsage::eSampled,
-            m_renderDevice->GetTextureSubResourceRange(voxelTextures.albedo), AccessMode::eRead);
-        m_rdg->DeclareTextureAccessForPass(
-            pass, m_textures.shadowMap, TextureUsage::eSampled,
-            m_renderDevice->GetTextureSubResourceRange(m_textures.shadowMap), AccessMode::eRead);
-        m_rdg->DeclareTextureAccessForPass(
-            pass, m_textures.voxelRadiance, TextureUsage::eStorage,
-            m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
-            AccessMode::eReadWrite);
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, voxelTextures.albedo, TextureUsage::eSampled,
+        //     m_renderDevice->GetTextureSubResourceRange(voxelTextures.albedo), AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, m_textures.shadowMap, TextureUsage::eSampled,
+        //     m_renderDevice->GetTextureSubResourceRange(m_textures.shadowMap), AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, m_textures.voxelRadiance, TextureUsage::eStorage,
+        //     m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
+        //     AccessMode::eReadWrite);
 
         m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
                                               sizeof(VoxelInjectRadianceSP::PushConstantsData));

@@ -27,6 +27,10 @@ public:
 
     void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
+    rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
+
+    bool IsProxyTexture(const rhi::TextureHandle& textureHandle) const;
+
 private:
     void UpdateTexture(const rhi::TextureHandle& textureHandle,
                        const Vec3i& textureSize,
@@ -45,5 +49,7 @@ private:
     TextureStagingManager* m_stagingMgr{nullptr};
 
     HashMap<std::string, rhi::TextureHandle> m_textureCache;
+
+    HashMap<rhi::TextureHandle, rhi::TextureHandle> m_textureProxyMap; // proxy tex -> base tex
 };
 } // namespace zen::rc

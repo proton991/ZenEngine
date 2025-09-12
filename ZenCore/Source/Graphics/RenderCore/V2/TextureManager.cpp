@@ -32,6 +32,7 @@ rhi::TextureHandle TextureManager::CreateTextureProxy(const rhi::TextureHandle& 
     if (!m_textureCache.contains(proxyInfo.name))
     {
         m_textureCache[proxyInfo.name] = m_RHI->CreateTextureProxy(baseTexture, proxyInfo);
+        m_textureProxyMap[m_textureCache[proxyInfo.name]] = baseTexture;
     }
     return m_textureCache.at(proxyInfo.name);
 }
@@ -238,5 +239,16 @@ void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
 
     m_renderDevice->WaitForAllFrames();
     m_stagingMgr->ProcessPendingFrees();
+}
+
+rhi::TextureHandle TextureManager::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
+{
+    // assume the handle is a proxy texture handle
+    return m_textureProxyMap.at(handle);
+}
+
+bool TextureManager::IsProxyTexture(const rhi::TextureHandle& textureHandle) const
+{
+    return m_textureProxyMap.contains(textureHandle);
 }
 } // namespace zen::rc

@@ -75,6 +75,19 @@ void ShaderProgram::Init()
                     m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr);
                 m_uniformBufferSizes[srd.name] = srd.blockSize;
             }
+            else if (srd.type == rhi::ShaderResourceType::eStorageBuffer)
+            {
+                m_storageBuffers.emplace_back(srd);
+            }
+            else if (srd.type == rhi::ShaderResourceType::eImage)
+            {
+                m_storageImages.emplace_back(srd);
+            }
+            else if (srd.type == rhi::ShaderResourceType::eTexture ||
+                     srd.type == rhi::ShaderResourceType::eSamplerWithTexture)
+            {
+                m_sampledTextures.emplace_back(srd);
+            }
         }
     }
 }

@@ -59,6 +59,21 @@ public:
 
     void UpdateUniformBuffer(const std::string& name, const uint8_t* data, uint32_t offset);
 
+    const auto& GetSampledTextureSRDs() const
+    {
+        return m_sampledTextures;
+    }
+
+    const auto& GetStorageBufferSRDs() const
+    {
+        return m_storageBuffers;
+    }
+
+    const auto& GetStorageImageSRDs() const
+    {
+        return m_storageImages;
+    }
+
 protected:
     void Init();
 
@@ -75,8 +90,13 @@ private:
     HashMap<rhi::ShaderStage, std::string> m_stages; // stage -> path
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> m_SRDs;
     rhi::ShaderHandle m_shader;
+
     HashMap<std::string, rhi::BufferHandle> m_uniformBuffers; // created from SRDs
     HashMap<std::string, uint32_t> m_uniformBufferSizes;      // created from SRDs
+
+    std::vector<rhi::ShaderResourceDescriptor> m_sampledTextures;
+    std::vector<rhi::ShaderResourceDescriptor> m_storageBuffers;
+    std::vector<rhi::ShaderResourceDescriptor> m_storageImages;
 
     friend class GraphicsPassBuilder;
 };

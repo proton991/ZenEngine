@@ -357,7 +357,7 @@ struct ShaderResourceDescriptor
     std::string name;
     ShaderResourceType type{ShaderResourceType::eMax};
     BitField<ShaderStageFlagBits> stageFlags;
-    bool writable{false};
+    bool writable{false}; // for storage image/buffer
     // Size of arrays (in total elements), or ubos (in bytes * total elements).
     uint32_t arraySize{1};
     uint32_t blockSize{0};
@@ -1007,14 +1007,20 @@ class RenderPassLayout
 public:
     RenderPassLayout() = default;
 
-    void AddColorRenderTarget(DataFormat format, TextureUsage usage, const TextureHandle& handle)
+    void AddColorRenderTarget(DataFormat format,
+                              TextureUsage usage,
+                              const TextureHandle& handle,
+                              TextureSubResourceRange subResourceRange)
     {
         m_colorRTs.emplace_back(format, usage);
         m_numColorRT++;
         m_rtHandles.push_back(handle);
+        m_rtSubResRanges.emplace_back(subResourceRange);
     }
 
-    void SetDepthStencilRenderTarget(DataFormat format, const TextureHandle& handle)
+    void SetDepthStencilRenderTarget(DataFormat format,
+                                     const TextureHandle& handle,
+                                     TextureSubResourceRange subResourceRange)
     {
         if (!m_hasDepthStencilRT)
         {
@@ -1022,6 +1028,7 @@ public:
             m_depthStencilRT.usage  = TextureUsage::eDepthStencilAttachment;
             m_hasDepthStencilRT     = true;
             m_rtHandles.push_back(handle);
+            m_rtSubResRanges.emplace_back(subResourceRange);
         }
     }
 
@@ -1055,6 +1062,11 @@ public:
     const auto HasDepthStencilRenderTarget() const
     {
         return m_hasDepthStencilRT;
+    }
+
+    const auto HasColorRenderTarget() const
+    {
+        return m_numColorRT > 0;
     }
 
     const auto GetColorRenderTargetLoadOp() const
@@ -1102,6 +1114,11 @@ public:
         return m_rtHandles.data();
     }
 
+    const auto& GetRTSubResourceRanges()
+    {
+        return m_rtSubResRanges;
+    }
+
     auto GetNumRenderTargets() const
     {
         return static_cast<uint32_t>(m_rtHandles.size());
@@ -1125,6 +1142,7 @@ private:
     RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
     RenderTargetStoreOp m_depthStencilRTStoreOp{RenderTargetStoreOp::eNone};
     std::vector<TextureHandle> m_rtHandles;
+    std::vector<TextureSubResourceRange> m_rtSubResRanges;
     bool m_hasDepthStencilRT{false};
 };
 

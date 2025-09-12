@@ -42,27 +42,13 @@ public:
     GraphicsPassBuilder& AddColorRenderTarget(rhi::DataFormat format,
                                               rhi::TextureUsage usage,
                                               const rhi::TextureHandle& handle,
-                                              bool clear = true)
-    {
-        m_rpLayout.AddColorRenderTarget(format, usage, handle);
-        m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-                                                     rhi::RenderTargetLoadOp::eLoad,
-                                             rhi::RenderTargetStoreOp::eStore);
-        m_framebufferInfo.numRenderTarget++;
-        return *this;
-    }
+                                              bool clear = true);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
         rhi::DataFormat format,
         const rhi::TextureHandle& handle,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone)
-    {
-        m_rpLayout.SetDepthStencilRenderTarget(format, handle);
-        m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
-        m_framebufferInfo.numRenderTarget++;
-        return *this;
-    }
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
 
     GraphicsPassBuilder& SetNumSamples(rhi::SampleCount sampleCount)
     {
@@ -356,6 +342,10 @@ public:
 
     rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
                                           const rhi::TextureProxyInfo& proxyInfo);
+
+    rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
+
+    bool IsProxyTexture(const rhi::TextureHandle& handle) const;
 
     void GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
                                 rhi::RHICommandList* cmdList);

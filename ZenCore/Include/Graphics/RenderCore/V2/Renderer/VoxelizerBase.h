@@ -17,6 +17,7 @@ struct VoxelTextures
     rhi::TextureHandle normalProxy;
     rhi::TextureHandle emissive;
     rhi::TextureHandle emissiveProxy;
+    rhi::TextureHandle mipmaps[6];
 };
 class VoxelizerBase
 {

@@ -151,6 +151,7 @@ void GeometryVoxelizer::BuildRenderGraph()
 
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues, false, false);
+        pass->tag = "geom_voxelization";
 
         rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
                                                  m_voxelTextures.normal, m_voxelTextures.emissive};
@@ -160,8 +161,8 @@ void GeometryVoxelizer::BuildRenderGraph()
             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
 
-        m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
-                                           AccessMode::eReadWrite);
+        // m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
+        //                                    AccessMode::eReadWrite);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);
@@ -205,11 +206,12 @@ void GeometryVoxelizer::BuildRenderGraph()
 
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
+        pass->tag = "geom_voxel_draw";
 
         m_rdg->DeclareTextureAccessForPass(
             pass, m_voxelTextures.albedo, TextureUsage::eStorage,
             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
-        // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});1
+        // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         //        shaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
@@ -268,7 +270,7 @@ void GeometryVoxelizer::BuildGraphicsPasses()
                 .SetPipelineState(pso)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                       TextureUsage::eColorAttachment,
-                                      m_viewport->GetColorBackBuffer())
+                                      m_viewport->GetColorBackBuffer(), false)
                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                        m_viewport->GetDepthStencilBackBuffer(),
                                        RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
