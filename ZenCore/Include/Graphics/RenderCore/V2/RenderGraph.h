@@ -11,6 +11,7 @@
 class RDG_ID
 {
 public:
+    static constexpr int32_t UndefinedValue = -1;
     // Constructors
     RDG_ID() : m_value(UndefinedValue) {} // Default constructor with "undefined" value
     RDG_ID(int32_t id) : m_value(id) {}   // Constructor with int32_t value
@@ -69,9 +70,13 @@ public:
         return m_value != other.m_value;
     }
 
+    bool IsValid() const
+    {
+        return m_value != UndefinedValue;
+    }
+
 private:
     int32_t m_value;
-    static constexpr int32_t UndefinedValue = -1;
 };
 
 namespace std
@@ -202,18 +207,16 @@ struct RDGAccess
 struct RDGResource
 {
     RDG_ID id{-1};
+    std::string tag; // todo: set tag in a more elegent way
     rhi::Handle physicalHandle;
     RDGResourceType type{RDGResourceType::eNone};
     RDGResourceTracker* tracker{nullptr};
-    std::vector<int32_t> writtenByNodeIds;
-    std::vector<int32_t> readByNodeIds;
     HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
 };
 
 struct RDGNodeBase
 {
     RDG_ID id{-1};
-    int32_t idx{-1};
     std::string tag;
     RDGNodeType type{RDGNodeType::eNone};
     BitField<rhi::PipelineStageBits> selfStages;
@@ -228,8 +231,8 @@ struct RDGPassChildNode
 
 struct RDGPassNode : RDGNodeBase
 {
-    std::vector<RDGPassChildNode*> childNodes;
-    std::vector<RDGResource*> resources;
+    // std::vector<RDGPassChildNode*> childNodes;
+    // std::vector<RDGResource*> resources;
 };
 
 struct RDGComputePassNode : RDGPassNode
@@ -419,7 +422,7 @@ public:
                                  rhi::PipelineHandle pipelineHandle,
                                  rhi::PipelineType pipelineType);
 
-    RDGPassNode* AddComputePassNode(const ComputePass& computePass);
+    RDGPassNode* AddComputePassNode(const ComputePass& computePass, std::string tag);
 
     void AddComputePassDispatchNode(RDGPassNode* parent,
                                     uint32_t groupCountX,
@@ -440,8 +443,7 @@ public:
     RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                      rhi::Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
-                                     bool hasColorTarget,
-                                     bool hasDepthTarget = false);
+                                     std::string tag);
 
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
                                             rhi::BufferHandle bufferHandle,
@@ -523,7 +525,8 @@ public:
                                      rhi::TextureHandle textureHandle,
                                      rhi::TextureUsage usage,
                                      const rhi::TextureSubResourceRange& range,
-                                     rhi::AccessMode accessMode);
+                                     rhi::AccessMode accessMode,
+                                     std::string tag = "");
 
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                      uint32_t numTextures,
@@ -535,7 +538,8 @@ public:
     void DeclareBufferAccessForPass(const RDGPassNode* passNode,
                                     rhi::BufferHandle bufferHandle,
                                     rhi::BufferUsage usage,
-                                    rhi::AccessMode accessMode);
+                                    rhi::AccessMode accessMode,
+                                    std::string tag = "");
 
     void Begin();
 
@@ -557,10 +561,14 @@ private:
 
     void SortNodes();
 
-    void EmitTransitionBarriers(uint32_t level);
+    bool AddNodeDepsForResource(RDGResource* resource,
+                                HashMap<RDG_ID, std::vector<RDG_ID>>& nodeDepedencies,
+                                const RDG_ID& srcNodeId,
+                                const RDG_ID& dstNodeId);
 
-    // add node to adj list based on resource's current RDGAccess and previouse accesses
-    void AddNodeToGraph(RDGNodeBase* node, uint32_t numResources, RDGResource** resources);
+    void SortNodesV2();
+
+    void EmitTransitionBarriers(uint32_t level);
 
     void EmitInitializationBarriers(uint32_t level);
 
@@ -576,8 +584,7 @@ private:
         new (newNode) T();
         // *newNode   = T();
 
-        newNode->id  = m_nodeCount;
-        newNode->idx = m_nodeCount;
+        newNode->id = m_nodeCount;
         m_nodeCount++;
         m_allNodes.push_back(newNode);
         return newNode;
@@ -589,7 +596,8 @@ private:
     {
         T* newNode      = new T();
         newNode->parent = passNode;
-        passNode->childNodes.push_back(newNode);
+        // passNode->childNodes.push_back(newNode);
+        m_passChildNodes[passNode->id].push_back(newNode);
         m_allChildNodes.push_back(newNode);
         return newNode;
     }
@@ -662,14 +670,16 @@ private:
     // RHI CommandList
     rhi::RHICommandList* m_cmdList{nullptr};
     // stores dependency between graph nodes
-    std::vector<std::vector<int32_t>> m_adjacencyList;
+    HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;
     // nodes
     std::vector<uint8_t> m_nodeData;
     std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
     std::vector<RDGNodeBase*> m_allNodes;
-    std::vector<RDGPassChildNode*> m_allChildNodes;
     uint32_t m_nodeCount{0};
     std::vector<std::vector<RDG_ID>> m_sortedNodes;
+    std::vector<RDGPassChildNode*> m_allChildNodes;
+    HashMap<RDG_ID, std::vector<RDGPassChildNode*>> m_passChildNodes;
+
     // tracked resources
     std::vector<RDGResource*> m_resources;
     PagedAllocator<RDGResource> m_resourceAllocator;
@@ -680,6 +690,8 @@ private:
     // transitions
     HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
     HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
+    // todo:use macro
+    bool m_debugMode{false};
 
     static std::vector<RDGResourceTracker*> s_trackerPool;
 };

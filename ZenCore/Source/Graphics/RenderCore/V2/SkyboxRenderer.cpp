@@ -57,9 +57,10 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
                                              TextureUsageFlagBits::eTransferSrc);
         offscreenTexInfo.type = TextureType::e2D;
+        offscreenTexInfo.name = "EnvIrradianceOffscreen";
 
         m_offscreenTextures.irradiance =
-            m_renderDevice->CreateTexture(offscreenTexInfo, "EnvIrradianceOffscreen");
+            m_renderDevice->CreateTexture(offscreenTexInfo, offscreenTexInfo.name);
     }
     {
         TextureInfo offscreenTexInfo{};
@@ -69,9 +70,10 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
                                              TextureUsageFlagBits::eTransferSrc);
         offscreenTexInfo.type = TextureType::e2D;
+        offscreenTexInfo.name = "EnvPrefilteredOffscreen";
 
         m_offscreenTextures.prefiltered =
-            m_renderDevice->CreateTexture(offscreenTexInfo, "EnvPrefilteredOffscreen");
+            m_renderDevice->CreateTexture(offscreenTexInfo, offscreenTexInfo.name);
     }
 }
 
@@ -95,7 +97,7 @@ void SkyboxRenderer::BuildRenderGraph()
     vp.maxX = static_cast<float>(m_viewport->GetWidth());
     vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-    auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.skybox, area, clearValues, true);
+    auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.skybox, area, clearValues, "skybox_draw");
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -188,13 +190,14 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         uint32_t dim;
         DataFormat format;
         GraphicsPass* gfxPass;
-
+        std::string targetName = "";
         if (target == IRRADIANCE)
         {
             gfxPass          = &m_gfxPasses.irradiance;
             offscreenTexture = m_offscreenTextures.irradiance;
             format           = cIrradianceFormat;
             dim              = IRRADIANCE_DIM;
+            targetName       = "irradiance_cubemap_gen";
         }
         else
         {
@@ -202,6 +205,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             offscreenTexture = m_offscreenTextures.prefiltered;
             format           = cPrefilteredFormat;
             dim              = PREFILTERED_DIM;
+            targetName       = "prefiltered_cubemap_gen";
         }
 
         TextureInfo textureInfo{};
@@ -251,18 +255,28 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             area.maxX = static_cast<int>(dim);
             area.maxY = static_cast<int>(dim);
 
-
             // 1st pass: render to offscreen texture (6 faces)
+            // auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, targetName);
+            // // rdg->DeclareTextureAccessForPass(pass, offscreenTexture, TextureUsage::eColorAttachment,
+            // //                                  m_RHI->GetTextureSubResourceRange(offscreenTexture),
+            // //                                  rhi::AccessMode::eReadWrite);
+            // rdg->AddGraphicsPassSetScissorNode(pass, area);
+            // rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
+            // rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
+
             for (uint32_t m = 0; m < numMips; m++)
             {
                 for (uint32_t f = 0; f < 6; f++)
                 {
                     Rect2<float> vp;
-                    vp.minX    = 0.0f;
-                    vp.minY    = 0.0f;
-                    vp.maxX    = static_cast<float>(dim * std::pow(0.5f, m));
-                    vp.maxY    = static_cast<float>(dim * std::pow(0.5f, m));
-                    auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, true);
+                    vp.minX = 0.0f;
+                    vp.minY = 0.0f;
+                    vp.maxX = static_cast<float>(dim * std::pow(0.5f, m));
+                    vp.maxY = static_cast<float>(dim * std::pow(0.5f, m));
+
+                    std::string passTag =
+                        targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
+                    auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, passTag);
                     // rdg->DeclareTextureAccessForPass(
                     //     pass, offscreenTexture, TextureUsage::eColorAttachment,
                     //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
@@ -303,6 +317,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                     copyRegion.dstSubresources.mipmap         = m;
                     copyRegion.dstOffset                      = {0, 0, 0};
                     copyRegion.size                           = {vp.Width(), vp.Height(), 1};
+
                     rdg->AddTextureCopyNode(
                         offscreenTexture, m_RHI->GetTextureSubResourceRange(offscreenTexture),
                         cubemapTexture, m_RHI->GetTextureSubResourceRange(cubemapTexture),
@@ -405,7 +420,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     vp.minY    = 0.0f;
     vp.maxX    = static_cast<float>(dim);
     vp.maxY    = static_cast<float>(dim);
-    auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, true);
+    auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, "lut_brdf_gen");
     // rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, TextureUsage::eColorAttachment,
     //                                  m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
     //                                  rhi::AccessMode::eReadWrite);

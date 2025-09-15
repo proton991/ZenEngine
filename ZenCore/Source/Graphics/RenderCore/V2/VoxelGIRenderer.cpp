@@ -120,8 +120,8 @@ void VoxelGIRenderer::BuildRenderGraph()
         shaderProgram->pushConstantsData.normalWeightedLambert = m_config.normalWeightedLambert;
         shaderProgram->pushConstantsData.traceShadowHit        = m_config.traceShadowHit;
 
-        auto* pass = m_rdg->AddComputePassNode(m_computePasses.injectRadiance);
-        pass->tag  = "inject_voxel_radiance";
+        auto* pass =
+            m_rdg->AddComputePassNode(m_computePasses.injectRadiance, "inject_voxel_radiance");
         // m_rdg->DeclareTextureAccessForPass(pass, 2, textures, TextureUsage::eStorage, ranges,
         //                                    AccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(

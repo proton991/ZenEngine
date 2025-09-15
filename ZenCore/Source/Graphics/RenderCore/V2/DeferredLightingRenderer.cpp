@@ -243,8 +243,8 @@ void DeferredLightingRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
-        pass->tag  = "offscreen_gbuffer";
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues,
+                                                "offscreen_gbuffer");
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
         //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
@@ -286,8 +286,8 @@ void DeferredLightingRenderer::BuildRenderGraph()
 
         DynamicRHI* RHI = m_renderDevice->GetRHI();
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues, true);
-        pass->tag  = "deferred_lighting";
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues,
+                                                "deferred_lighting");
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
         //                                    TextureUsage::eSampled, TextureSubResourceRange::Color(),
         //                                    rhi::AccessMode::eRead);

@@ -225,8 +225,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         };
         // reset voxel texture
         {
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
-            pass->tag  = "reset_voxel_texture";
+            auto* pass =
+                m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture, "reset_voxel_texture");
             // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
             //                                    AccessMode::eReadWrite);
             workgroupCount = static_cast<int>(m_voxelTexResolution / 8);
@@ -234,8 +234,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         }
         // reset compute indirect
         {
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetComputeIndirect);
-            pass->tag  = "reset_compute_indirect";
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetComputeIndirect,
+                                                   "reset_compute_indirect");
             // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
             //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
@@ -244,8 +244,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         {
             VoxelizationCompSP* shaderProgram =
                 dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
-            pass->tag  = "voxelization_compute";
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization,
+                                                   "voxelization_compute_small_triangles");
 
             // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
             //                                    AccessMode::eReadWrite);
@@ -273,8 +273,8 @@ void ComputeVoxelizer::BuildRenderGraph()
         }
         // voxelize large triangles
         {
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelizationLargeTriangle);
-            pass->tag  = "voxelization_compute_large_triangle";
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelizationLargeTriangle,
+                                                   "voxelization_compute_large_triangle");
             // m_rdg->DeclareTextureAccessForPass(pass, 1, textures, TextureUsage::eStorage, ranges,
             //                                    AccessMode::eReadWrite);
             // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.computeIndirectBuffer,
@@ -285,16 +285,16 @@ void ComputeVoxelizer::BuildRenderGraph()
         }
         // reset draw indirect
         {
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect);
-            pass->tag  = "reset_draw_indirect_compute";
+            auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetDrawIndirect,
+                                                   "reset_draw_indirect_compute");
             // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.drawIndirectBuffer,
             //                                   BufferUsage::eStorageBuffer, AccessMode::eReadWrite);
             m_rdg->AddComputePassDispatchNode(pass, 1, 1, 1);
         }
         // voxel pre-draw pass
         {
-            auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelPreDraw);
-            pass->tag  = "voxel_pre_draw_compute";
+            auto* pass =
+                m_rdg->AddComputePassNode(m_computePasses.voxelPreDraw, "voxel_pre_draw_compute");
             // m_rdg->DeclareTextureAccessForPass(
             //     pass, m_voxelTextures.albedo, TextureUsage::eStorage,
             //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
@@ -328,8 +328,7 @@ void ComputeVoxelizer::BuildRenderGraph()
         Rect2<float> viewport(static_cast<float>(m_viewport->GetWidth()),
                               static_cast<float>(m_viewport->GetHeight()));
         auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
-        pass->tag = "voxel_draw2";
+            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, "voxel_draw2");
         // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
         //                                   BufferUsage::eStorageBuffer, AccessMode::eRead);
         // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,

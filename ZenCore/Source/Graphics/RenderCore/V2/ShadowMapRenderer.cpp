@@ -140,7 +140,7 @@ void ShadowMapRenderer::BuildRenderGraph()
         Rect2<float> viewport(static_cast<float>(m_config.shadowMapWidth),
                               static_cast<float>(m_config.shadowMapHeight));
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, true);
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, "shadowmap_offscreen");
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenTextures.shadowMap, TextureUsage::eColorAttachment,
         //     m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),

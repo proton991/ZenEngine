@@ -149,9 +149,8 @@ void GeometryVoxelizer::BuildRenderGraph()
         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
 
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues, false, false);
-        pass->tag = "geom_voxelization";
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues,
+                                                "geom_voxelization");
 
         rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
                                                  m_voxelTextures.normal, m_voxelTextures.emissive};
@@ -205,8 +204,7 @@ void GeometryVoxelizer::BuildRenderGraph()
                               static_cast<float>(m_viewport->GetHeight()));
 
         auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, true, true);
-        pass->tag = "geom_voxel_draw";
+            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, "geom_voxel_draw");
 
         m_rdg->DeclareTextureAccessForPass(
             pass, m_voxelTextures.albedo, TextureUsage::eStorage,

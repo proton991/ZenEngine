@@ -706,7 +706,7 @@ void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg
     cmdList->EndRender();
     m_RHI->WaitForCommandList(cmdList);
 }
-
+// todo: remove tag parameter
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
                                                const std::string& tag)
 {
