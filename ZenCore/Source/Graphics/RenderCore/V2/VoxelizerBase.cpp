@@ -5,6 +5,7 @@ namespace zen::rc
 {
 void VoxelizerBase::PrepareTextures()
 {
+    using namespace zen::rhi;
     // todo: create voxel textures on base class
     {
         rhi::SamplerInfo samplerInfo{};
@@ -28,6 +29,67 @@ void VoxelizerBase::PrepareTextures()
         samplerInfo.borderColor = rhi::SamplerBorderColor::eFloatOpaqueWhite;
 
         m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
+    }
+        {
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
+                          m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
+                          SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
+        m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_albedo", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
+        texInfo.mutableFormat  = true;
+        m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        rhi::TextureProxyInfo textureProxyInfo{};
+        textureProxyInfo.type        = rhi::TextureType::e3D;
+        textureProxyInfo.arrayLayers = 1;
+        textureProxyInfo.mipmaps     = 1;
+        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        textureProxyInfo.name        = "voxel_albedo_proxy";
+        m_voxelTextures.albedoProxy =
+            m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
+    }
+    {
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_normal", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
+        texInfo.mutableFormat  = true;
+        m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        rhi::TextureProxyInfo textureProxyInfo{};
+        textureProxyInfo.type        = rhi::TextureType::e3D;
+        textureProxyInfo.arrayLayers = 1;
+        textureProxyInfo.mipmaps     = 1;
+        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        textureProxyInfo.name        = "voxel_normal_proxy";
+        m_voxelTextures.normalProxy =
+            m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
+    }
+    {
+        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+                          "voxel_emissive", TextureUsageFlagBits::eStorage,
+                          TextureUsageFlagBits::eSampled);
+        texInfo.mutableFormat    = true;
+        m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    }
+    {
+        rhi::TextureProxyInfo textureProxyInfo{};
+        textureProxyInfo.type        = rhi::TextureType::e3D;
+        textureProxyInfo.arrayLayers = 1;
+        textureProxyInfo.mipmaps     = 1;
+        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        textureProxyInfo.name        = "voxel_emissive_proxy";
+        m_voxelTextures.emissiveProxy =
+            m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
     }
 }
 

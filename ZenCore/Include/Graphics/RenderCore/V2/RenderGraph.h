@@ -690,8 +690,6 @@ private:
     // transitions
     HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
     HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
-    // todo:use macro
-    bool m_debugMode{false};
 
     static std::vector<RDGResourceTracker*> s_trackerPool;
 };

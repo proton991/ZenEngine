@@ -697,11 +697,12 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
         return false;
     auto srcNodeTag = GetNodeBaseById(srcNodeId)->tag;
     auto dstNodeTag = GetNodeBaseById(dstNodeId)->tag;
-    if (m_debugMode && !srcNodeTag.empty() && !dstNodeTag.empty())
+#if defined(ZEN_DEBUG)
+    if (!srcNodeTag.empty() && !dstNodeTag.empty())
     {
         LOGI("RDG Node dependency: {} -> {}, resource: {}", srcNodeTag, dstNodeTag, resource->tag);
     }
-
+#endif
     // Add the dependency src -> dst
     nodeDependencies[srcNodeId].push_back(dstNodeId);
 
@@ -815,12 +816,14 @@ void RenderGraph::SortNodes()
                     continue;
                 auto srcNodeTag = GetNodeBaseById(srcNodeId)->tag;
                 auto dstNodeTag = GetNodeBaseById(dstNodeId)->tag;
-                if (m_debugMode && !srcNodeTag.empty() && !dstNodeTag.empty())
+#if defined(ZEN_DEBUG)
+
+                if (!srcNodeTag.empty() && !dstNodeTag.empty())
                 {
                     LOGI("RDG Node dependency: {} -> {}, resource: {}", srcNodeTag, dstNodeTag,
                          resource->tag);
                 }
-
+#endif
                 // Add the dependency src -> dst
                 nodeDpedencies[srcNodeId].push_back(dstNodeId);
 

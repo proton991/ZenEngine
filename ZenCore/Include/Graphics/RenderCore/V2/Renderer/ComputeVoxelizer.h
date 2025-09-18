@@ -43,6 +43,8 @@ protected:
 
     void UpdateUniformData() final;
 
+    rhi::TextureHandle m_dummyTextures[3];
+
     struct LargeTriangle
     {
         uint32_t triangleIndex{0};

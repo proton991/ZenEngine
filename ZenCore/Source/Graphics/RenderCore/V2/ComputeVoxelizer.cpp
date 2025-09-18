@@ -62,81 +62,81 @@ void ComputeVoxelizer::PrepareTextures()
     //                       TextureUsageFlagBits::eSampled);
     //     m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
     // }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
-                          m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
-                          SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_albedo", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        texInfo.mutableFormat  = true;
-        m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        rhi::TextureProxyInfo textureProxyInfo{};
-        textureProxyInfo.type        = rhi::TextureType::e3D;
-        textureProxyInfo.arrayLayers = 1;
-        textureProxyInfo.mipmaps     = 1;
-        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        textureProxyInfo.name        = "voxel_albedo_proxy";
-        m_voxelTextures.albedoProxy =
-            m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
-    }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_normal", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        texInfo.mutableFormat  = true;
-        m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        rhi::TextureProxyInfo textureProxyInfo{};
-        textureProxyInfo.type        = rhi::TextureType::e3D;
-        textureProxyInfo.arrayLayers = 1;
-        textureProxyInfo.mipmaps     = 1;
-        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        textureProxyInfo.name        = "voxel_normal_proxy";
-        m_voxelTextures.normalProxy =
-            m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
-    }
-    {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-                          m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_emissive", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        texInfo.mutableFormat    = true;
-        m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    }
-    {
-        rhi::TextureProxyInfo textureProxyInfo{};
-        textureProxyInfo.type        = rhi::TextureType::e3D;
-        textureProxyInfo.arrayLayers = 1;
-        textureProxyInfo.mipmaps     = 1;
-        textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        textureProxyInfo.name        = "voxel_emissive_proxy";
-        m_voxelTextures.emissiveProxy =
-            m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
-    }
-
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
+    //                       m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
+    //                       SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+    //                       "voxel_albedo", TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     texInfo.mutableFormat  = true;
+    //     m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     rhi::TextureProxyInfo textureProxyInfo{};
+    //     textureProxyInfo.type        = rhi::TextureType::e3D;
+    //     textureProxyInfo.arrayLayers = 1;
+    //     textureProxyInfo.mipmaps     = 1;
+    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+    //     textureProxyInfo.name        = "voxel_albedo_proxy";
+    //     m_voxelTextures.albedoProxy =
+    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
+    // }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+    //                       "voxel_normal", TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     texInfo.mutableFormat  = true;
+    //     m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     rhi::TextureProxyInfo textureProxyInfo{};
+    //     textureProxyInfo.type        = rhi::TextureType::e3D;
+    //     textureProxyInfo.arrayLayers = 1;
+    //     textureProxyInfo.mipmaps     = 1;
+    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+    //     textureProxyInfo.name        = "voxel_normal_proxy";
+    //     m_voxelTextures.normalProxy =
+    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
+    // }
+    // {
+    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
+    //                       "voxel_emissive", TextureUsageFlagBits::eStorage,
+    //                       TextureUsageFlagBits::eSampled);
+    //     texInfo.mutableFormat    = true;
+    //     m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+    // }
+    // {
+    //     rhi::TextureProxyInfo textureProxyInfo{};
+    //     textureProxyInfo.type        = rhi::TextureType::e3D;
+    //     textureProxyInfo.arrayLayers = 1;
+    //     textureProxyInfo.mipmaps     = 1;
+    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
+    //     textureProxyInfo.name        = "voxel_emissive_proxy";
+    //     m_voxelTextures.emissiveProxy =
+    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
+    // }
+#ifdef ZEN_MACOS
     const auto halfDim = m_voxelTexResolution / 2;
-    for (uint32_t i = 0; i < 6; i++)
+    for (uint32_t i = 0; i < 3; i++)
     {
-        const auto texName = "voxel_mipmap_face_" + std::to_string(i);
+        const auto texName = "dummy_texture_" + std::to_string(i);
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-                          halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
-                          SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
+                          halfDim, 1, 1, SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
-        m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_dummyTextures[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
         // m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
         //                            m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
         //                            TextureLayout::eGeneral);
     }
+#endif
 
     // m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
     // {
