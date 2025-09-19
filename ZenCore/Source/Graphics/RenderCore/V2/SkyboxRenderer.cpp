@@ -59,8 +59,7 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.type = TextureType::e2D;
         offscreenTexInfo.name = "EnvIrradianceOffscreen";
 
-        m_offscreenTextures.irradiance =
-            m_renderDevice->CreateTexture(offscreenTexInfo, offscreenTexInfo.name);
+        m_offscreenTextures.irradiance = m_renderDevice->CreateTexture(offscreenTexInfo);
     }
     {
         TextureInfo offscreenTexInfo{};
@@ -72,8 +71,7 @@ void SkyboxRenderer::PrepareTextures()
         offscreenTexInfo.type = TextureType::e2D;
         offscreenTexInfo.name = "EnvPrefilteredOffscreen";
 
-        m_offscreenTextures.prefiltered =
-            m_renderDevice->CreateTexture(offscreenTexInfo, offscreenTexInfo.name);
+        m_offscreenTextures.prefiltered = m_renderDevice->CreateTexture(offscreenTexInfo);
     }
 }
 

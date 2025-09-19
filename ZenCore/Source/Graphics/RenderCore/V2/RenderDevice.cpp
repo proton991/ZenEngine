@@ -706,11 +706,11 @@ void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg
     cmdList->EndRender();
     m_RHI->WaitForCommandList(cmdList);
 }
-// todo: remove tag parameter
-rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo,
-                                               const std::string& tag)
+
+rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
 {
-    return m_textureManager->CreateTexture(textureInfo, tag);
+    ASSERT(!textureInfo.name.empty());
+    return m_textureManager->CreateTexture(textureInfo);
 }
 
 rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& baseTexture,

@@ -6,7 +6,6 @@ namespace zen::rc
 void VoxelizerBase::PrepareTextures()
 {
     using namespace zen::rhi;
-    // todo: create voxel textures on base class
     {
         rhi::SamplerInfo samplerInfo{};
         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
@@ -30,12 +29,12 @@ void VoxelizerBase::PrepareTextures()
 
         m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
     }
-        {
+    {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
                           m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
                           SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
-        m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo);
     }
     {
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
@@ -43,7 +42,7 @@ void VoxelizerBase::PrepareTextures()
                           "voxel_albedo", TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat  = true;
-        m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo);
     }
     {
         rhi::TextureProxyInfo textureProxyInfo{};
@@ -61,7 +60,7 @@ void VoxelizerBase::PrepareTextures()
                           "voxel_normal", TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat  = true;
-        m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo);
     }
     {
         rhi::TextureProxyInfo textureProxyInfo{};
@@ -79,7 +78,7 @@ void VoxelizerBase::PrepareTextures()
                           "voxel_emissive", TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
         texInfo.mutableFormat    = true;
-        m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo);
     }
     {
         rhi::TextureProxyInfo textureProxyInfo{};

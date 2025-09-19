@@ -68,7 +68,7 @@ void VoxelGIRenderer::PrepareTextures()
                           voxelTexResolution, voxelTexResolution, 1, 1, SampleCount::e1,
                           "voxel_radiance", TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
-        m_textures.voxelRadiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_textures.voxelRadiance = m_renderDevice->CreateTexture(texInfo);
     }
     const auto halfDim = voxelTexResolution / 2;
     for (uint32_t i = 0; i < 6; i++)
@@ -77,7 +77,7 @@ void VoxelGIRenderer::PrepareTextures()
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, halfDim, halfDim, halfDim,
                           CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1, SampleCount::e1,
                           texName, TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
-        m_textures.voxelMipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_textures.voxelMipmaps[i] = m_renderDevice->CreateTexture(texInfo);
         //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
         //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
         //                                   TextureLayout::eGeneral);

@@ -16,14 +16,13 @@ void TextureManager::Destroy()
     }
 }
 
-rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& textureInfo,
-                                                 const std::string& tag)
+rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& textureInfo)
 {
-    if (!m_textureCache.contains(tag))
+    if (!m_textureCache.contains(textureInfo.name))
     {
-        m_textureCache[tag] = m_RHI->CreateTexture(textureInfo);
+        m_textureCache[textureInfo.name] = m_RHI->CreateTexture(textureInfo);
     }
-    return m_textureCache.at(tag);
+    return m_textureCache.at(textureInfo.name);
 }
 
 rhi::TextureHandle TextureManager::CreateTextureProxy(const rhi::TextureHandle& baseTexture,

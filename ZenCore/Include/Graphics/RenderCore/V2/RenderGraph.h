@@ -200,14 +200,14 @@ struct RDGAccess
     RDG_ID resourceId{-1};
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
     rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
-    BitField<rhi::AccessFlagBits> accessFlags;
+    BitField<rhi::AccessFlagBits> accessFlags; // todo: use this when emitting barriers
     rhi::TextureSubResourceRange textureSubResourceRange;
 };
 
 struct RDGResource
 {
     RDG_ID id{-1};
-    std::string tag; // todo: set tag in a more elegent way
+    std::string tag; // todo: set tag in a more elegant way
     rhi::Handle physicalHandle;
     RDGResourceType type{RDGResourceType::eNone};
     RDGResourceTracker* tracker{nullptr};

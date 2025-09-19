@@ -59,7 +59,8 @@ void ShadowMapRenderer::PrepareTextures()
         texInfo.usageFlags.SetFlags(
             TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled,
             TextureUsageFlagBits::eTransferSrc, TextureUsageFlagBits::eTransferDst);
-        m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo, "shadowmap");
+        texInfo.name                  = "shadowmap";
+        m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo);
     }
     // depth
     {
@@ -75,8 +76,8 @@ void ShadowMapRenderer::PrepareTextures()
         texInfo.mipmaps     = 1;
         texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
                                     TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.depth =
-            m_renderDevice->CreateTexture(texInfo, "shadowmap_render_depth");
+        texInfo.name              = "shadowmap_render_depth";
+        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
     }
     {
         SamplerInfo samplerInfo{};
@@ -140,7 +141,8 @@ void ShadowMapRenderer::BuildRenderGraph()
         Rect2<float> viewport(static_cast<float>(m_config.shadowMapWidth),
                               static_cast<float>(m_config.shadowMapHeight));
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, "shadowmap_offscreen");
+        auto* pass =
+            m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, "shadowmap_offscreen");
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenTextures.shadowMap, TextureUsage::eColorAttachment,
         //     m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),

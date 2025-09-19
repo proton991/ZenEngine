@@ -3,7 +3,6 @@
 #include "Graphics/RenderCore/V2/RenderObject.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/Val/CommandBuffer.h"
 #include "Platform/ConfigLoader.h"
 #include "SceneGraph/Scene.h"
@@ -32,10 +31,7 @@ void ComputeVoxelizer::Init()
 
 void ComputeVoxelizer::Destroy()
 {
-    if (m_cube)
-    {
-        delete m_cube;
-    }
+    delete m_cube;
 }
 
 void ComputeVoxelizer::LoadCubeModel()
@@ -48,81 +44,6 @@ void ComputeVoxelizer::PrepareTextures()
 {
     VoxelizerBase::PrepareTextures();
     using namespace zen::rhi;
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
-    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, 1, SampleCount::e1,
-    //                       "voxel_offscreen1", TextureUsageFlagBits::eColorAttachment,
-    //                       TextureUsageFlagBits::eSampled);
-    //     m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
-    //                       m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
-    //                       "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
-    //                       TextureUsageFlagBits::eSampled);
-    //     m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
-    //                       m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
-    //                       SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
-    //                       TextureUsageFlagBits::eSampled);
-    //     m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-    //                       "voxel_albedo", TextureUsageFlagBits::eStorage,
-    //                       TextureUsageFlagBits::eSampled);
-    //     texInfo.mutableFormat  = true;
-    //     m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     rhi::TextureProxyInfo textureProxyInfo{};
-    //     textureProxyInfo.type        = rhi::TextureType::e3D;
-    //     textureProxyInfo.arrayLayers = 1;
-    //     textureProxyInfo.mipmaps     = 1;
-    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-    //     textureProxyInfo.name        = "voxel_albedo_proxy";
-    //     m_voxelTextures.albedoProxy =
-    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
-    // }
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-    //                       "voxel_normal", TextureUsageFlagBits::eStorage,
-    //                       TextureUsageFlagBits::eSampled);
-    //     texInfo.mutableFormat  = true;
-    //     m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     rhi::TextureProxyInfo textureProxyInfo{};
-    //     textureProxyInfo.type        = rhi::TextureType::e3D;
-    //     textureProxyInfo.arrayLayers = 1;
-    //     textureProxyInfo.mipmaps     = 1;
-    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-    //     textureProxyInfo.name        = "voxel_normal_proxy";
-    //     m_voxelTextures.normalProxy =
-    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
-    // }
-    // {
-    //     INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-    //                       m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-    //                       "voxel_emissive", TextureUsageFlagBits::eStorage,
-    //                       TextureUsageFlagBits::eSampled);
-    //     texInfo.mutableFormat    = true;
-    //     m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
-    // }
-    // {
-    //     rhi::TextureProxyInfo textureProxyInfo{};
-    //     textureProxyInfo.type        = rhi::TextureType::e3D;
-    //     textureProxyInfo.arrayLayers = 1;
-    //     textureProxyInfo.mipmaps     = 1;
-    //     textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-    //     textureProxyInfo.name        = "voxel_emissive_proxy";
-    //     m_voxelTextures.emissiveProxy =
-    //         m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
-    // }
 #ifdef ZEN_MACOS
     const auto halfDim = m_voxelTexResolution / 2;
     for (uint32_t i = 0; i < 3; i++)
@@ -131,37 +52,12 @@ void ComputeVoxelizer::PrepareTextures()
         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
                           halfDim, 1, 1, SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
                           TextureUsageFlagBits::eSampled);
-        m_dummyTextures[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_dummyTextures[i] = m_renderDevice->CreateTexture(texInfo);
         // m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
         //                            m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
         //                            TextureLayout::eGeneral);
     }
 #endif
-
-    // m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
-    // {
-    //     rhi::SamplerInfo samplerInfo{};
-    //     samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-    //     samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-    //     samplerInfo.mipFilter = rhi::SamplerFilter::eLinear;
-    //
-    //     m_voxelSampler = m_renderDevice->CreateSampler(samplerInfo);
-    // }
-    //
-    // // offscreen depth texture sampler
-    // {
-    //     SamplerInfo samplerInfo{};
-    //     samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
-    //     samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
-    //     samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
-    //     samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
-    //     samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
-    //     samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
-    //     samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
-    //     samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
-    //
-    //     m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
-    // }
 }
 
 void ComputeVoxelizer::PrepareBuffers()

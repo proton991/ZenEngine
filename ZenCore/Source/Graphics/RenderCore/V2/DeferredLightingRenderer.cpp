@@ -61,7 +61,7 @@ void DeferredLightingRenderer::PrepareTextures()
         texInfo.name        = "offscreen_position";
         texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
                                     TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo);
     }
     // (World space) Normals
     {
@@ -77,7 +77,7 @@ void DeferredLightingRenderer::PrepareTextures()
         texInfo.name        = "offscreen_normal";
         texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
                                     TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo);
     }
     // color
     {
@@ -94,15 +94,13 @@ void DeferredLightingRenderer::PrepareTextures()
                                     TextureUsageFlagBits::eSampled);
 
         texInfo.name               = "offscreen_albedo";
-        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo);
 
-        texInfo.name = "offscreen_roughness";
-        m_offscreenTextures.metallicRoughness =
-            m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        texInfo.name                          = "offscreen_roughness";
+        m_offscreenTextures.metallicRoughness = m_renderDevice->CreateTexture(texInfo);
 
-        texInfo.name = "offscreen_emissive_occlusion";
-        m_offscreenTextures.emissiveOcclusion =
-            m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        texInfo.name                          = "offscreen_emissive_occlusion";
+        m_offscreenTextures.emissiveOcclusion = m_renderDevice->CreateTexture(texInfo);
     }
     // depth
     {
@@ -119,7 +117,7 @@ void DeferredLightingRenderer::PrepareTextures()
         texInfo.name        = "offscreen_depth";
         texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
                                     TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo, texInfo.name);
+        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
     }
     // offscreen color texture sampler
     {

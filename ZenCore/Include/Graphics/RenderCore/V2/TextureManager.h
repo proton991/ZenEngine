@@ -16,7 +16,7 @@ public:
 
     void Destroy();
 
-    rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo, const std::string& tag);
+    rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
 
     rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
                                           const rhi::TextureProxyInfo& proxyInfo);
