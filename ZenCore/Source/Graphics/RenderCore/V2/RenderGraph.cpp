@@ -10,7 +10,50 @@
 #endif
 namespace zen::rc
 {
-std::vector<RDGResourceTracker*> RenderGraph::s_trackerPool;
+RDGResourceTrackerPool RenderGraph::s_trackerPool;
+
+RDGResourceTrackerPool::RDGResourceTrackerPool() = default;
+
+RDGResourceTrackerPool::~RDGResourceTrackerPool()
+{
+    for (auto* tracker : m_trackers)
+    {
+        delete tracker;
+    }
+}
+
+RDGResourceTracker* RDGResourceTrackerPool::GetTracker(const rhi::Handle& handle)
+{
+    if (!m_trackerMap.contains(handle))
+    {
+        m_trackerMap[handle] = new RDGResourceTracker();
+    }
+    return m_trackerMap[handle];
+}
+
+void RDGResourceTrackerPool::UpdateTrackerState(const rhi::TextureHandle& handle,
+                                                rhi::AccessMode accessMode,
+                                                rhi::TextureUsage usage)
+{
+    if (m_trackerMap.contains(handle))
+    {
+        RDGResourceTracker* tracker = m_trackerMap[handle];
+        tracker->accessMode         = accessMode;
+        tracker->textureUsage       = usage;
+    }
+}
+
+void RDGResourceTrackerPool::UpdateTrackerState(const rhi::BufferHandle& handle,
+                                                rhi::AccessMode accessMode,
+                                                rhi::BufferUsage usage)
+{
+    if (m_trackerMap.contains(handle))
+    {
+        RDGResourceTracker* tracker = m_trackerMap[handle];
+        tracker->accessMode         = accessMode;
+        tracker->bufferUsage        = usage;
+    }
+}
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
                                           rhi::PipelineHandle pipelineHandle,
@@ -1032,8 +1075,6 @@ void RenderGraph::Destroy()
     }
     for (RDGResource* resource : m_resources)
     {
-        DestroyResourceTracker(resource->tracker);
-
         m_resourceAllocator.Free(resource);
     }
 }
@@ -1068,11 +1109,13 @@ void RenderGraph::End()
         for (auto& nodeId : currLevel)
         {
             RDGNodeBase* node = GetNodeBaseById(nodeId);
+#if defined(ZEN_DEBUG)
             if (!node->tag.empty())
             {
                 LOGI("RDG NodeTag after sort: {}, level: {}", node->tag, i);
             }
         }
+#endif
     }
     LOGI("==========Render Graph End==========");
 }
@@ -1376,6 +1419,12 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
                 //     srcStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.oldUsage));
                 //     dstStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.newUsage));
                 // }
+                for (auto& transition : transitions)
+                {
+                    // update tracker state
+                    s_trackerPool.UpdateTrackerState(transition.bufferHandle,
+                                                     transition.newAccessMode, transition.newUsage);
+                }
                 bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
                                          transitions.end());
             }
@@ -1387,6 +1436,13 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
                 //     srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
                 //     dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
                 // }
+                for (auto& transition : transitions)
+                {
+                    // update tracker state
+                    s_trackerPool.UpdateTrackerState(transition.textureHandle,
+                                                     transition.newAccessMode, transition.newUsage);
+                }
+
                 textureTransitions.insert(textureTransitions.end(), transitions.begin(),
                                           transitions.end());
             }
@@ -1401,7 +1457,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
     std::vector<rhi::BufferTransition> bufferTransitions;
     BitField<rhi::PipelineStageBits> srcStages;
     BitField<rhi::PipelineStageBits> dstStages;
-    srcStages.SetFlag(rhi::PipelineStageBits::eBottomOfPipe);
+    srcStages.SetFlag(rhi::PipelineStageBits::eAllCommands); // todo: is it correct?
 
     const auto& currLevel = m_sortedNodes[level];
     for (const auto& kv : m_resourceFirstUseNodeMap)
@@ -1422,31 +1478,45 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                     {
                         if (resource->type == RDGResourceType::eTexture)
                         {
+                            RDGResourceTracker* tracker =
+                                s_trackerPool.GetTracker(resource->physicalHandle);
                             rhi::TextureTransition textureTransition;
                             textureTransition.textureHandle =
                                 rhi::TextureHandle(resource->physicalHandle.value);
-                            textureTransition.oldUsage         = rhi::TextureUsage::eNone;
+                            // set oldUsage and access based on RDGResourceTracker
+                            textureTransition.oldUsage         = tracker->textureUsage;
                             textureTransition.newUsage         = access.textureUsage;
-                            textureTransition.oldAccessMode    = rhi::AccessMode::eNone;
+                            textureTransition.oldAccessMode    = tracker->accessMode;
                             textureTransition.newAccessMode    = access.accessMode;
                             textureTransition.subResourceRange = access.textureSubResourceRange;
+
                             textureTransitions.emplace_back(textureTransition);
+                            // update tracker state
+                            s_trackerPool.UpdateTrackerState(textureTransition.textureHandle,
+                                                             textureTransition.newAccessMode,
+                                                             textureTransition.newUsage);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             // dstStages.SetFlag(
                             //     rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
                         }
                         if (resource->type == RDGResourceType::eBuffer)
                         {
+                            RDGResourceTracker* tracker =
+                                s_trackerPool.GetTracker(resource->physicalHandle);
                             rhi::BufferTransition bufferTransition;
                             bufferTransition.bufferHandle =
                                 rhi::BufferHandle(resource->physicalHandle.value);
-                            bufferTransition.oldUsage      = rhi::BufferUsage::eNone;
+                            bufferTransition.oldUsage      = tracker->bufferUsage;
                             bufferTransition.newUsage      = access.bufferUsage;
-                            bufferTransition.oldAccessMode = rhi::AccessMode::eNone;
+                            bufferTransition.oldAccessMode = tracker->accessMode;
                             bufferTransition.newAccessMode = access.accessMode;
                             bufferTransition.offset        = 0;
 
                             bufferTransitions.emplace_back(bufferTransition);
+                            // update tracker state
+                            s_trackerPool.UpdateTrackerState(bufferTransition.bufferHandle,
+                                                             bufferTransition.newAccessMode,
+                                                             bufferTransition.newUsage);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             // dstStages.SetFlag(
                             //     rhi::BufferUsageToPipelineStage(bufferTransition.newUsage));

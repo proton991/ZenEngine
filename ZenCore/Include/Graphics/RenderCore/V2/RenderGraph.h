@@ -187,10 +187,31 @@ enum class RDGResourceUsage
 
 struct RDGResourceTracker
 {
-    rhi::AccessMode accessMode{};
-    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
-    rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
+    rhi::AccessMode accessMode{rhi::AccessMode::eNone};
+    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eNone};
+    rhi::TextureUsage textureUsage{rhi::TextureUsage::eNone};
     rhi::TextureSubResourceRange textureSubResourceRange;
+};
+
+class RDGResourceTrackerPool
+{
+public:
+    RDGResourceTrackerPool();
+    ~RDGResourceTrackerPool();
+
+    RDGResourceTracker* GetTracker(const rhi::Handle& handle);
+
+    void UpdateTrackerState(const rhi::TextureHandle& handle,
+                            rhi::AccessMode accessMode,
+                            rhi::TextureUsage usage);
+
+    void UpdateTrackerState(const rhi::BufferHandle& handle,
+                            rhi::AccessMode accessMode,
+                            rhi::BufferUsage usage);
+
+private:
+    HashMap<rhi::Handle, RDGResourceTracker*> m_trackerMap;
+    std::vector<RDGResourceTracker*> m_trackers;
 };
 
 struct RDGAccess
@@ -200,17 +221,16 @@ struct RDGAccess
     RDG_ID resourceId{-1};
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
     rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
-    BitField<rhi::AccessFlagBits> accessFlags; // todo: use this when emitting barriers
+    BitField<rhi::AccessFlagBits> accessFlags;
     rhi::TextureSubResourceRange textureSubResourceRange;
 };
 
 struct RDGResource
 {
     RDG_ID id{-1};
-    std::string tag; // todo: set tag in a more elegant way
+    std::string tag;
     rhi::Handle physicalHandle;
     RDGResourceType type{RDGResourceType::eNone};
-    RDGResourceTracker* tracker{nullptr};
     HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
 };
 
@@ -404,7 +424,6 @@ struct RDGSetDepthBiasNode : RDGPassChildNode
     float depthBiasSlopeFactor;
 };
 
-// todo: refactor RDG AddXXXNode functions, resolve dependency when adding to graph, maintain deps by using adj list for graph datastructure
 class RenderGraph
 {
 public:
@@ -621,7 +640,6 @@ private:
         {
             resource                 = m_resourceAllocator.Alloc();
             resource->id             = static_cast<int32_t>(m_resources.size());
-            resource->tracker        = CreateResourceTracker();
             resource->type           = type;
             resource->physicalHandle = handle;
 
@@ -651,22 +669,6 @@ private:
         return static_cast<RDGNodeBase*>(derived);
     }
 
-    static RDGResourceTracker* CreateResourceTracker()
-    {
-        if (!s_trackerPool.empty())
-        {
-            RDGResourceTracker* tracker = s_trackerPool.back();
-            s_trackerPool.pop_back();
-            return tracker;
-        }
-        return new RDGResourceTracker();
-    }
-
-    static void DestroyResourceTracker(RDGResourceTracker* tracker)
-    {
-        s_trackerPool.push_back(tracker);
-    }
-
     // RHI CommandList
     rhi::RHICommandList* m_cmdList{nullptr};
     // stores dependency between graph nodes
@@ -690,7 +692,7 @@ private:
     // transitions
     HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
     HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
-
-    static std::vector<RDGResourceTracker*> s_trackerPool;
+    // track resource state across multiple RDG instances
+    static RDGResourceTrackerPool s_trackerPool;
 };
 } // namespace zen::rc
