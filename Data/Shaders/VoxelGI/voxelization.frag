@@ -18,7 +18,7 @@ layout(set = 1, binding = 3, r8) uniform volatile coherent image3D staticVoxelFl
 
 layout (set = 2, binding = 0) uniform sampler2D uTextureArray[1024];
 
-layout (location = 0) out vec4 outFragColor;
+//layout (location = 0) out vec4 outFragColor;
 
 struct Material
 {
@@ -188,5 +188,5 @@ void main() {
     // voxel emissive
     IMAGE_ATOMIC_RGBA8_AVG(voxelEmissive, texCoord3d, emissive);
 
-    outFragColor = vec4(albedoColor.xyz, 1.0);
+//    outFragColor = vec4(albedoColor.xyz, 1.0);
 }

@@ -47,8 +47,8 @@ void GeometryVoxelizer::BuildRenderGraph()
         VoxelizationSP* shaderProgram =
             dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
         const uint32_t cFbSize = m_voxelTexResolution;
-        std::vector<RenderPassClearValue> clearValues(1);
-        clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
+        std::vector<RenderPassClearValue> clearValues(0);
+        // clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
 
