@@ -509,6 +509,7 @@ void ComputeVoxelizer::PrepareRenderWorkload()
 void ComputeVoxelizer::OnResize()
 {
     m_rebuildRDG = true;
+    m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.voxelDraw, m_viewport);
 }
 
 void ComputeVoxelizer::SetRenderScene(RenderScene* scene)
