@@ -136,12 +136,13 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &surfaceCapabilities);
-    uint32_t swapchainWidth  = surfaceCapabilities.currentExtent.width == 0xFFFFFFFF ?
-         width :
-         surfaceCapabilities.currentExtent.width;
-    uint32_t swapchainHeight = surfaceCapabilities.currentExtent.height == 0xFFFFFFFF ?
-        height :
-        surfaceCapabilities.currentExtent.height;
+    uint32_t swapchainWidth  = std::clamp(width, surfaceCapabilities.minImageExtent.width,
+                                          surfaceCapabilities.maxImageExtent.width);
+    uint32_t swapchainHeight = std::clamp(height, surfaceCapabilities.minImageExtent.height,
+                                          surfaceCapabilities.maxImageExtent.height);
+    uint32_t minImageCount   = std::max(
+        surfaceCapabilities.minImageCount,
+        std::min(surfaceCapabilities.maxImageCount, (uint32_t)ZEN_RHI_SWAPCHAIN_IMAGE_COUNT));
 
     VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(gpu, m_surface);
 
@@ -153,11 +154,9 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
         ChooseImageUsage(gpu, surfaceCapabilities.supportedUsageFlags, m_format);
 
     VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-    swapchainCI.surface       = m_surface;
-    swapchainCI.minImageCount = std::max(
-        surfaceCapabilities.minImageCount,
-        std::min(surfaceCapabilities.maxImageCount, (uint32_t)ZEN_RHI_SWAPCHAIN_IMAGE_COUNT));
-    swapchainCI.imageExtent      = {width, height};
+    swapchainCI.surface          = m_surface;
+    swapchainCI.minImageCount    = minImageCount;
+    swapchainCI.imageExtent      = {swapchainWidth, swapchainHeight};
     swapchainCI.imageArrayLayers = 1;
     swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
