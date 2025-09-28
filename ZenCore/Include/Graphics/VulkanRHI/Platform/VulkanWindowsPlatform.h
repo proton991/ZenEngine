@@ -3,7 +3,7 @@
 #    include "Graphics/RHI/RHIDefs.h"
 #    include "VulkanPlatformCommon.h"
 #    include <vector>
-#    include "Common/UniquePtr.h"
+#    include "Utils/UniquePtr.h"
 #    define VK_USE_PLATFORM_WIN32_KHR
 
 namespace zen
