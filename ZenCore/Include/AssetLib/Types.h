@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "Common/Math.h"
+#include "Math/Math.h"
 
 namespace zen::asset
 {

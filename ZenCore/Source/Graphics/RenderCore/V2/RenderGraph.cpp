@@ -121,7 +121,7 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
 
 RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                               rhi::FramebufferHandle framebufferHandle,
-                                              rhi::Rect2<int> area,
+                                              Rect2<int> area,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
@@ -151,7 +151,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
 }
 
 RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
-                                              rhi::Rect2<int> area,
+                                              Rect2<int> area,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               std::string tag)
 {
@@ -218,7 +218,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
 
 void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
                                                      rhi::BufferHandle bufferHandle,
-                                                     rhi::DataFormat format,
+                                                     DataFormat format,
                                                      uint32_t offset)
 {
     auto* node   = AllocPassChildNode<RDGBindIndexBufferNode>(parent);
@@ -309,7 +309,7 @@ void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
                                rhi::AccessMode::eRead, "draw_indirect_buffer");
 }
 
-void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color)
+void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const Color& color)
 {
     auto* node  = AllocPassChildNode<RDGSetBlendConstantsNode>(parent);
     node->color = color;
@@ -323,15 +323,14 @@ void RenderGraph::AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float wid
     node->type  = RDGPassCmdType::eSetLineWidth;
 }
 
-void RenderGraph::AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2<int>& scissor)
+void RenderGraph::AddGraphicsPassSetScissorNode(RDGPassNode* parent, const Rect2<int>& scissor)
 {
     auto* node    = AllocPassChildNode<RDGSetScissorNode>(parent);
     node->scissor = scissor;
     node->type    = RDGPassCmdType::eSetScissor;
 }
 
-void RenderGraph::AddGraphicsPassSetViewportNode(RDGPassNode* parent,
-                                                 const rhi::Rect2<float>& viewport)
+void RenderGraph::AddGraphicsPassSetViewportNode(RDGPassNode* parent, const Rect2<float>& viewport)
 {
     auto* node     = AllocPassChildNode<RDGSetViewportNode>(parent);
     node->viewport = viewport;
@@ -438,7 +437,7 @@ void RenderGraph::AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
 }
 
 void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
-                                      const rhi::Color& color,
+                                      const Color& color,
                                       const rhi::TextureSubResourceRange& range)
 {
     auto* node    = AllocNode<RDGTextureClearNode>();

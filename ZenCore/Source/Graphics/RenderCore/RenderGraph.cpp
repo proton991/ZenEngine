@@ -1,6 +1,6 @@
 #include "Graphics/RenderCore/RenderGraph.h"
-#include "Common/Errors.h"
-#include "Common/Helpers.h"
+#include "Utils/Errors.h"
+#include "Utils/Helpers.h"
 #include "Graphics/RenderCore/RenderContext.h"
 #include "Graphics/RenderCore/RenderConfig.h"
 #include <queue>

@@ -1,8 +1,8 @@
 #pragma once
 #include "VulkanHeaders.h"
-#include "Common/SmallVector.h"
-#include "Common/Helpers.h"
-#include "Common/HashMap.h"
+#include "Templates/SmallVector.h"
+#include "Utils/Helpers.h"
+#include "Templates/HashMap.h"
 
 namespace zen::rhi
 {

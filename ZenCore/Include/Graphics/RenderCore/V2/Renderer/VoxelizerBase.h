@@ -1,7 +1,7 @@
 #pragma once
 #include "../RenderDevice.h"
 #include "../RenderGraph.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 
 namespace zen::rc
 {
@@ -54,7 +54,7 @@ public:
     {
         return m_voxelSampler;
     }
-    rhi::DataFormat GetVoxelTexFormat() const
+    DataFormat GetVoxelTexFormat() const
     {
         return m_voxelTexFormat;
     }
@@ -112,7 +112,7 @@ protected:
     float m_voxelSize;
     float m_voxelScale;
     uint32_t m_voxelCount;
-    rhi::DataFormat m_voxelTexFormat;
+    DataFormat m_voxelTexFormat;
 
     float m_sceneExtent;
 

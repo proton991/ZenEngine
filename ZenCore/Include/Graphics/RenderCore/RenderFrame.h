@@ -1,6 +1,5 @@
 #pragma once
 #include "Graphics/Val/SyncObjPool.h"
-#include "Common/UniquePtr.h"
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/Swapchain.h"
 #include "Graphics/Val/Image.h"

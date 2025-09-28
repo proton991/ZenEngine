@@ -24,6 +24,6 @@ struct RenderConfig
 
     uint32_t numThreads = 8;
 
-    rhi::DataFormat shadowDepthFormat{rhi::DataFormat::eD16UNORM};
+    DataFormat shadowDepthFormat{DataFormat::eD16UNORM};
 };
 } // namespace zen::rc

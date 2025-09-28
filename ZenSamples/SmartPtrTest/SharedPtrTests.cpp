@@ -8,7 +8,7 @@
 * or copy at http://opensource.org/licenses/MIT)
 */
 
-#include "Common/SharedPtr.h"
+#include "Utils/SharedPtr.h"
 
 #include <vector>
 

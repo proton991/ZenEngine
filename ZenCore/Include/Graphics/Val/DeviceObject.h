@@ -1,8 +1,7 @@
 #pragma once
 #include <utility>
 #include <vulkan/vulkan.hpp>
-#include "Common/ObjectBase.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Device.h"
 
 namespace zen::val

@@ -1,9 +1,7 @@
 #pragma once
 #include "Component.h"
-#include "Common/Math.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Texture.h"
-#include <vector>
 
 namespace zen::sg
 {

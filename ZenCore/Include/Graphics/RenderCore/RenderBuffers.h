@@ -1,6 +1,6 @@
 #pragma once
 #include "Graphics/Val/Buffer.h"
-#include "Common/ArrayView.h"
+#include "Templates/ArrayView.h"
 
 #define MAX_STAGING_BUFFER_SIZE (64 * 1024 * 1024)
 

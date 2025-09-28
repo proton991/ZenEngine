@@ -1,6 +1,6 @@
 #pragma once
-#include "Common/HashMap.h"
-#include "Common/Queue.h"
+#include "Templates/HashMap.h"
+#include "Templates/Queue.h"
 #include "Graphics/RHI/RHIDebug.h"
 #include "RenderCoreDefs.h"
 
@@ -39,18 +39,18 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& AddColorRenderTarget(rhi::DataFormat format,
+    GraphicsPassBuilder& AddColorRenderTarget(DataFormat format,
                                               rhi::TextureUsage usage,
                                               const rhi::TextureHandle& handle,
                                               bool clear = true);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
-        rhi::DataFormat format,
+        DataFormat format,
         const rhi::TextureHandle& handle,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
 
-    GraphicsPassBuilder& SetNumSamples(rhi::SampleCount sampleCount)
+    GraphicsPassBuilder& SetNumSamples(SampleCount sampleCount)
     {
         m_rpLayout.SetNumSamples(sampleCount);
         return *this;
@@ -315,6 +315,7 @@ struct RenderDeviceFeatures
     bool geometryShader{false};
 };
 
+// todo: some resources may be freed or recycled, track these and free them before frame begins
 class RenderDevice
 {
 public:

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Common/Math.h"
+#include "Math/Math.h"
 
 namespace zen::sg
 {

@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-#include "Common/ObjectBase.h"
+#include "ObjectBase.h"
 #include "DeviceObject.h"
 
 namespace zen::val

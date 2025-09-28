@@ -1,8 +1,7 @@
 #pragma once
 #include "VulkanHeaders.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include <vector>
-#include <string>
 
 namespace zen::rhi
 {

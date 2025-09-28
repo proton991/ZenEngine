@@ -1,7 +1,7 @@
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "AssetLib/GLTFLoader.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Transform.h"
 

@@ -1,6 +1,6 @@
 #pragma once
 #include <vk_mem_alloc.h>
-#include "Common/HashMap.h"
+#include "Templates/HashMap.h"
 #include "Graphics/RHI/RHICommon.h"
 
 namespace zen::rhi

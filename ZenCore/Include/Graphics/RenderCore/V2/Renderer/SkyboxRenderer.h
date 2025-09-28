@@ -1,7 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 
 #define M_PI 3.14159265358979323846 // pi
 
@@ -107,8 +107,8 @@ private:
         uint32_t numSamples = 32u;
     } m_pcPrefilterEnv;
 
-    const rhi::DataFormat cIrradianceFormat  = rhi::DataFormat::eR32G32B32A32SFloat;
-    const rhi::DataFormat cPrefilteredFormat = rhi::DataFormat::eR16G16B16A16SFloat;
+    const DataFormat cIrradianceFormat  = DataFormat::eR32G32B32A32SFloat;
+    const DataFormat cPrefilteredFormat = DataFormat::eR16G16B16A16SFloat;
 
     const std::vector<SkyboxVertex> cSkyboxVertices = {
         {Vec3(-1.0f, 1.0f, -1.0f)}, // Front face

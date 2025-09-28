@@ -1,7 +1,7 @@
 #pragma once
 #include "Shader.h"
 #include "spirv_glsl.hpp"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include <unordered_map>
 
 namespace zen::val

@@ -1,5 +1,4 @@
 #pragma once
-#include "Common/UniquePtr.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "SceneGraph/Camera.h"
 
@@ -69,7 +68,7 @@ private:
 
     struct
     {
-        rhi::DataFormat shadowMapFormat;
+        DataFormat shadowMapFormat;
         uint32_t shadowMapWidth;
         uint32_t shadowMapHeight;
         Vec2 exponents;

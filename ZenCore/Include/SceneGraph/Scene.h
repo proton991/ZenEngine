@@ -1,5 +1,5 @@
 #pragma once
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include "Node.h"
 #include "Mesh.h"
 #include "Sampler.h"

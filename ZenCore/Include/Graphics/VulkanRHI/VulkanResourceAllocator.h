@@ -2,7 +2,7 @@
 #include "VulkanBuffer.h"
 #include "VulkanTexture.h"
 #include "VulkanPipeline.h"
-#include "Common/PagedAllocator.h"
+#include "Memory/PagedAllocator.h"
 
 namespace zen::rhi
 {

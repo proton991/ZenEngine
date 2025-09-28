@@ -1,6 +1,6 @@
 #include "Graphics/Val/DescriptorSetLayout.h"
-#include "Common/Errors.h"
-#include "Common/Helpers.h"
+#include "Utils/Errors.h"
+#include "Utils/Helpers.h"
 #include "Graphics/Val/Shader.h"
 
 namespace zen::val

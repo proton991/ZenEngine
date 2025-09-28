@@ -1,5 +1,5 @@
 #pragma once
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 
 namespace zen::sys
@@ -56,9 +56,7 @@ private:
 
     void BuildRenderGraph();
 
-    void AddMeshDrawNodes(RDGPassNode* pass,
-                          const rhi::Rect2<int>& area,
-                          const rhi::Rect2<float>& viewport);
+    void AddMeshDrawNodes(RDGPassNode* pass, const Rect2<int>& area, const Rect2<float>& viewport);
 
     RenderDevice* m_renderDevice{nullptr};
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include "Common/UniquePtr.h"
 #include <vector>
 #include "DeviceObject.h"
 

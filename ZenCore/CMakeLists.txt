@@ -1,29 +1,36 @@
 set(ZEN_CORE_HEADERS
+    Include/ObjectBase.h
+
     Include/AssetLib/TextureLoader.h
     Include/AssetLib/GLTFLoader.h
     Include/AssetLib/FastGLTFLoader.h
     Include/AssetLib/Types.h
 
-    Include/Common/ArrayView.h
-    Include/Common/BitField.h
-    Include/Common/Errors.h
-    Include/Common/HashMap.h
-    Include/Common/Helpers.h
-    Include/Common/Math.h
-    Include/Common/Memory.h
-    Include/Common/Mutex.h
-    Include/Common/SpinLock.h
-    Include/Common/ConditionVariable.h
-    Include/Common/ObjectBase.h
-    Include/Common/PagedAllocator.h
-    Include/Common/Queue.h
-    Include/Common/SmallVector.h
-    Include/Common/ThreadPool.h
-    Include/Common/Counter.h
-    Include/Common/Intrusive.h
-    Include/Common/SharedPtr.h
-    Include/Common/UniquePtr.h
-    Include/Common/RefCountPtr.h
+    Include/Templates/ArrayView.h
+    Include/Templates/BitField.h
+    Include/Templates/HashMap.h
+    Include/Templates/Queue.h
+    Include/Templates/SmallVector.h
+
+    Include/Utils/ConditionVariable.h
+    Include/Utils/Counter.h
+    Include/Utils/Errors.h
+    Include/Utils/Helpers.h
+    Include/Utils/Intrusive.h
+    Include/Utils/Mutex.h
+    Include/Utils/RefCountPtr.h
+    Include/Utils/SharedPtr.h
+    Include/Utils/SpinLock.h
+    Include/Utils/ThreadPool.h
+    Include/Utils/UniquePtr.h
+
+    Include/Math/Math.h
+
+    Include/Memory/Memory.h
+    Include/Memory/PagedAllocator.h
+
+    Include/Graphics/Common/Format.h
+    Include/Graphics/Common/Color.h
 
     Include/Graphics/Types/Frustum.h
 

@@ -40,7 +40,7 @@ void OffscreenApp::PrepareOffscreenTextures()
     // offscreen color
     {
         rhi::TextureInfo textureInfo{};
-        textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
+        textureInfo.format      = DataFormat::eR8G8B8A8SRGB;
         textureInfo.type        = rhi::TextureType::e2D;
         textureInfo.width       = OFFSCREEN_TEXTURE_DIM;
         textureInfo.height      = OFFSCREEN_TEXTURE_DIM;
@@ -54,7 +54,7 @@ void OffscreenApp::PrepareOffscreenTextures()
     // offscreen depth stencil
     {
         rhi::TextureInfo textureInfo{};
-        textureInfo.format      = rhi::DataFormat::eD32SFloatS8UInt;
+        textureInfo.format      = DataFormat::eD32SFloatS8UInt;
         textureInfo.type        = rhi::TextureType::e2D;
         textureInfo.width       = OFFSCREEN_TEXTURE_DIM;
         textureInfo.height      = OFFSCREEN_TEXTURE_DIM;
@@ -100,8 +100,8 @@ void OffscreenApp::BuildGraphicsPasses()
             builder.AddShaderStage(rhi::ShaderStage::eVertex, "Offscreen/phong.vert.spv")
                 .AddShaderStage(rhi::ShaderStage::eFragment, "Offscreen/phong.frag.spv")
                 .SetNumSamples(SampleCount::e1)
-                .AddColorRenderTarget(rhi::DataFormat::eR8G8B8A8SRGB,
-                                      TextureUsage::eColorAttachment, m_offscreenTextures.color)
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
+                                      m_offscreenTextures.color)
                 .SetDepthStencilTarget(DataFormat::eD32SFloatS8UInt, m_offscreenTextures.depth)
                 .SetShaderResourceBinding(0, uboBindings)
                 .SetPipelineState(pso)

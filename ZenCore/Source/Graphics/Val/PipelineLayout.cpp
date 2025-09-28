@@ -1,7 +1,7 @@
 #include "Graphics/Val/PipelineLayout.h"
 #include "Graphics/Val/DescriptorSetLayout.h"
 #include "Graphics/Val/VulkanStrings.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 namespace zen::val
 {

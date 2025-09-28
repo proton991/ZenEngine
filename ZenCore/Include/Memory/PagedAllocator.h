@@ -1,6 +1,6 @@
 #pragma once
 #include "Memory.h"
-#include "SpinLock.h"
+#include "Utils/SpinLock.h"
 
 #define ZEN_DEFAULT_PAGESIZE 4096
 namespace zen

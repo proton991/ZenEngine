@@ -1,6 +1,6 @@
 #pragma once
 #include "VulkanHeaders.h"
-#include "Common/SmallVector.h"
+#include "Templates/SmallVector.h"
 #include "Graphics/RHI/RHICommands.h"
 
 namespace zen::rhi

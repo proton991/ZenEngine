@@ -2,8 +2,8 @@
 #include <vector>
 #include <string>
 #include <tiny_gltf.h>
-#include "Common/Math.h"
-#include "Common/UniquePtr.h"
+#include "Math/Math.h"
+#include "Utils/UniquePtr.h"
 #include "Types.h"
 
 namespace zen::sg

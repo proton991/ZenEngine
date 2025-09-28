@@ -2,7 +2,7 @@
 #include <algorithm>
 #include "RHIResource.h"
 #include "spirv_reflect.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 namespace zen::rhi
 {

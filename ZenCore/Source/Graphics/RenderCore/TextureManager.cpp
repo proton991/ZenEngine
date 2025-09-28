@@ -2,9 +2,9 @@
 #include "Graphics/RenderCore/TextureManager.h"
 #include "Graphics/RenderCore/RenderDevice.h"
 #include "Graphics/RenderCore/RenderContext.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "SceneGraph/Scene.h"
-#include "Common/Helpers.h"
+#include "Utils/Helpers.h"
 
 namespace zen
 {

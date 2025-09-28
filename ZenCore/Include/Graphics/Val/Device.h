@@ -1,10 +1,10 @@
 #pragma once
-#include "Common/SharedPtr.h"
-#include "Common/UniquePtr.h"
+#include "Utils/SharedPtr.h"
+#include "Utils/UniquePtr.h"
 #include "VulkanHeaders.h"
 #include "PhysicalDevice.h"
 #include <vector>
-#include "Common/HashMap.h"
+#include "Templates/HashMap.h"
 #include "vk_mem_alloc.h"
 
 namespace zen::val

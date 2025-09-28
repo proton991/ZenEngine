@@ -2,8 +2,8 @@
 #include <stb_image.h>
 #include "AssetLib/FastGLTFLoader.h"
 #include "SceneGraph/Scene.h"
-#include "Common/Errors.h"
-#include "Common/ThreadPool.h"
+#include "Utils/Errors.h"
+#include "Utils/ThreadPool.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 
 namespace zen::asset

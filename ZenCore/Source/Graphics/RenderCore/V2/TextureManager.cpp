@@ -18,6 +18,7 @@ void TextureManager::Destroy()
 
 rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& textureInfo)
 {
+    // todo: remove caching
     if (!m_textureCache.contains(textureInfo.name))
     {
         m_textureCache[textureInfo.name] = m_RHI->CreateTexture(textureInfo);
@@ -48,7 +49,7 @@ rhi::TextureHandle TextureManager::LoadTexture2D(const std::string& file, bool r
     rhi::TextureInfo textureInfo{};
     textureInfo.width       = rawTextureInfo.width;
     textureInfo.height      = rawTextureInfo.height;
-    textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
+    textureInfo.format      = DataFormat::eR8G8B8A8SRGB;
     textureInfo.type        = rhi::TextureType::e2D;
     textureInfo.depth       = 1;
     textureInfo.arrayLayers = 1;
@@ -86,7 +87,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene,
         if (!m_textureCache.contains(sgTexture->GetName()))
         {
             rhi::TextureInfo textureInfo{};
-            textureInfo.format      = rhi::DataFormat::eR8G8B8A8SRGB;
+            textureInfo.format      = DataFormat::eR8G8B8A8SRGB;
             textureInfo.type        = rhi::TextureType::e2D;
             textureInfo.width       = sgTexture->width;
             textureInfo.height      = sgTexture->height;
@@ -124,7 +125,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     rhi::TextureInfo textureInfo{};
     textureInfo.width       = width;
     textureInfo.height      = height;
-    textureInfo.format      = rhi::DataFormat::eR16G16B16A16SFloat;
+    textureInfo.format      = DataFormat::eR16G16B16A16SFloat;
     textureInfo.type        = rhi::TextureType::eCube;
     textureInfo.depth       = 1;
     textureInfo.arrayLayers = 6;

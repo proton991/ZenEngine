@@ -1,8 +1,6 @@
 #pragma once
-#include "Common/Errors.h"
-#include "Common/HashMap.h"
-#include "Common/PagedAllocator.h"
-#include "Common/SmallVector.h"
+#include "Utils/Errors.h"
+#include "Memory/PagedAllocator.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHICommands.h"
 #include "RenderCoreDefs.h"
@@ -262,7 +260,7 @@ struct RDGGraphicsPassNode : RDGPassNode
 {
     rhi::RenderPassHandle renderPass;
     rhi::FramebufferHandle framebuffer;
-    rhi::Rect2<int> renderArea;
+    Rect2<int> renderArea;
     // todo: maxColorAttachments + 1, set based on GPU limits
     uint32_t numAttachments;
     rhi::RenderPassClearValue clearValues[8];
@@ -298,7 +296,7 @@ struct RDGTextureClearNode : RDGNodeBase
 {
     rhi::TextureHandle texture;
     rhi::TextureSubResourceRange range;
-    rhi::Color color;
+    Color color;
 };
 
 struct RDGTextureCopyNode : RDGNodeBase
@@ -339,7 +337,7 @@ struct RDGTextureMipmapGenNode : RDGNodeBase
 struct RDGBindIndexBufferNode : RDGPassChildNode
 {
     rhi::BufferHandle buffer;
-    rhi::DataFormat format;
+    DataFormat format;
     uint32_t offset;
 };
 
@@ -399,7 +397,7 @@ struct RDGSetPushConstantsNode : RDGPassChildNode
 
 struct RDGSetBlendConstantsNode : RDGPassChildNode
 {
-    rhi::Color color;
+    Color color;
 };
 
 struct RDGSetLineWidthNode : RDGPassChildNode
@@ -409,12 +407,12 @@ struct RDGSetLineWidthNode : RDGPassChildNode
 
 struct RDGSetScissorNode : RDGPassChildNode
 {
-    rhi::Rect2<int> scissor;
+    Rect2<int> scissor;
 };
 
 struct RDGSetViewportNode : RDGPassChildNode
 {
-    rhi::Rect2<float> viewport;
+    Rect2<float> viewport;
 };
 
 struct RDGSetDepthBiasNode : RDGPassChildNode
@@ -454,19 +452,19 @@ public:
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
                                      rhi::FramebufferHandle framebufferHandle,
-                                     rhi::Rect2<int> area,
+                                     Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      bool hasColorTarget,
                                      bool hasDepthTarget = false);
 
     RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
-                                     rhi::Rect2<int> area,
+                                     Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      std::string tag);
 
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
                                             rhi::BufferHandle bufferHandle,
-                                            rhi::DataFormat format,
+                                            DataFormat format,
                                             uint32_t offset = 0);
 
     void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
@@ -492,13 +490,13 @@ public:
                                                 uint32_t drawCount,
                                                 uint32_t stride);
 
-    void AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const rhi::Color& color);
+    void AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const Color& color);
 
     void AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float width);
 
-    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const rhi::Rect2<int>& scissor);
+    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const Rect2<int>& scissor);
 
-    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const rhi::Rect2<float>& viewport);
+    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const Rect2<float>& viewport);
 
     void AddGraphicsPassSetDepthBiasNode(RDGPassNode* parent,
                                          float depthBiasConstantFactor,
@@ -515,7 +513,7 @@ public:
                              const VectorView<rhi::BufferCopySource>& sources);
 
     void AddTextureClearNode(rhi::TextureHandle textureHandle,
-                             const rhi::Color& color,
+                             const Color& color,
                              const rhi::TextureSubResourceRange& range);
 
     void AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,

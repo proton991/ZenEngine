@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "Common/SmallVector.h"
-#include "Common/Errors.h"
+#include "Templates/SmallVector.h"
+#include "Utils/Errors.h"
 
 using namespace zen;
 TEST(small_vector_tests, constructors)

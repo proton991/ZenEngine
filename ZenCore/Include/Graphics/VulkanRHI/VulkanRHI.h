@@ -1,8 +1,8 @@
 #pragma once
 #include <vector>
 #include "VulkanExtension.h"
-#include "Common/PagedAllocator.h"
-#include "Common/HashMap.h"
+#include "Memory/PagedAllocator.h"
+#include "Templates/HashMap.h"
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHICommands.h"
 #if defined(ZEN_MACOS)

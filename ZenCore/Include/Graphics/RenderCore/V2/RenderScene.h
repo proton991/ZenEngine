@@ -1,6 +1,5 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Common/Math.h"
 #include "SceneGraph/Scene.h"
 
 namespace zen::sg

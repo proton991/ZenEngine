@@ -1,8 +1,10 @@
 #pragma once
+#include "Graphics/Common/Format.h"
+#include "Graphics/Common/Color.h"
 #include "RHIDefs.h"
-#include "Common/BitField.h"
-#include "Common/HashMap.h"
-#include "Common/Math.h"
+#include "Templates/BitField.h"
+#include "Templates/HashMap.h"
+#include "Math/Math.h"
 #include <string>
 #include <vector>
 
@@ -34,153 +36,6 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
 {
     return static_cast<std::underlying_type_t<E>>(e);
 }
-
-struct Rect3f
-{
-    float minX, maxX;
-    float minY, maxY;
-    float minZ, maxZ;
-
-    Rect3f() : minX(0.f), maxX(0.f), minY(0.f), maxY(0.f), minZ(0.f), maxZ(1.f) {}
-
-    Rect3f(float width, float height) :
-        minX(0.f), maxX(width), minY(0.f), maxY(height), minZ(0.f), maxZ(1.f)
-    {}
-
-    Rect3f(float _minX, float _maxX, float _minY, float _maxY, float _minZ, float _maxZ) :
-        minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY), minZ(_minZ), maxZ(_maxZ)
-    {}
-
-    bool operator==(const Rect3f& b) const
-    {
-        return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX &&
-            maxY == b.maxY && maxZ == b.maxZ;
-    }
-
-    bool operator!=(const Rect3f& b) const
-    {
-        return !(*this == b);
-    }
-
-    [[nodiscard]] float Width() const
-    {
-        return maxX - minX;
-    }
-
-    [[nodiscard]] float Height() const
-    {
-        return maxY - minY;
-    }
-};
-
-template <class T = int> struct Rect2
-{
-    T minX, maxX;
-    T minY, maxY;
-
-    Rect2() : minX(0), maxX(0), minY(0), maxY(0) {}
-
-    Rect2(T width, T height) : minX(0), maxX(width), minY(0), maxY(height) {}
-
-    Rect2(T _minX, T _maxX, T _minY, T _maxY) : minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
-    {}
-
-    bool operator==(const Rect2& b) const
-    {
-        return minX == b.minX && minY == b.minY && maxX == b.maxX && maxY == b.maxY;
-    }
-
-    bool operator!=(const Rect2& b) const
-    {
-        return !(*this == b);
-    }
-
-    [[nodiscard]] T Width() const
-    {
-        return maxX - minX;
-    }
-
-    [[nodiscard]] T Height() const
-    {
-        return maxY - minY;
-    }
-};
-
-struct Color
-{
-    float r, g, b, a;
-
-    Color() : r(0.f), g(0.f), b(0.f), a(1.f) {}
-
-    explicit Color(float c) : r(c), g(c), b(c), a(c) {}
-
-    Color(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) {}
-
-    bool operator==(const Color& _b) const
-    {
-        return r == _b.r && g == _b.g && b == _b.b && a == _b.a;
-    }
-
-    bool operator!=(const Color& _b) const
-    {
-        return !(*this == _b);
-    }
-};
-
-enum class DataFormat : uint32_t
-{
-    eUndefined          = 0,   // = VK_FORMAT_UNDEFINED
-    eR8UNORM            = 9,   // VK_FORMAT_R8_UNORM
-    eR8UInt             = 13,  // VK_FORMAT_R8_UINT
-    eR8G8B8SRGB         = 29,  // VK_FORMAT_R8G8B8_SRGB
-    eR8G8B8UNORM        = 30,  // VK_FORMAT_B8G8R8_UNORM
-    eR8G8B8A8UInt       = 41,  // VK_FORMAT_R8G8B8A8_UINT
-    eR8G8B8A8SRGB       = 43,  // VK_FORMAT_R8G8B8A8_SRGB
-    eR8G8B8A8UNORM      = 37,  // VK_FORMAT_R8G8B8A8_UNORM,
-    eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
-    eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
-    eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT
-    eR16G16UInt         = 81,  // = VK_FORMAT_R16G16_UINT
-    eR16G16SInt         = 82,  // = VK_FORMAT_R16G16_SINT
-    eR16G16SFloat       = 83,  // = VK_FORMAT_R16G16_SFLOAT
-    eR16G16B16UInt      = 88,  // = VK_FORMAT_R16G16B16_UINT
-    eR16G16B16SInt      = 89,  // = VK_FORMAT_R16G16B16_SINT
-    eR16G16B16SFloat    = 90,  // = VK_FORMAT_R16G16B16_SFLOAT
-    eR16G16B16A16UInt   = 95,  // = VK_FORMAT_R16G16B16A16_UINT
-    eR16G16B16A16SInt   = 96,  // = VK_FORMAT_R16G16B16A16_SINT
-    eR16G16B16A16SFloat = 97,  // = VK_FORMAT_R16G16B16A16_SFLOAT
-    eR32UInt            = 98,  // = VK_FORMAT_R32_UINT
-    eR32SInt            = 99,  // = VK_FORMAT_R32_SINT
-    eR32SFloat          = 100, // = VK_FORMAT_R32_SFLOAT
-    eR32G32UInt         = 101, // = VK_FORMAT_R32G32_UINT
-    eR32G32SInt         = 102, // = VK_FORMAT_R32G32_SINT
-    eR32G32SFloat       = 103, // = VK_FORMAT_R32G32_SFLOAT
-    eR32G32B32UInt      = 104, // = VK_FORMAT_R32G32B32_UINT
-    eR32G32B32SInt      = 105, // = VK_FORMAT_R32G32B32_SINT
-    eR32G32B32SFloat    = 106, // = VK_FORMAT_R32G32B32_SFLOAT
-    eR32G32B32A32UInt   = 107, // = VK_FORMAT_R32G32B32A32_UINT
-    eR32G32B32A32SInt   = 108, // = VK_FORMAT_R32G32B32A32_SINT
-    eR32G32B32A32SFloat = 109, // = VK_FORMAT_R32G32B32A32_SFLOAT
-    eR64UInt            = 110, // = VK_FORMAT_R64_UINT
-    eR64SInt            = 111, // = VK_FORMAT_R64_SINT
-    eR64SFloat          = 112, // = VK_FORMAT_R64_SFLOAT
-    eR64G64UInt         = 113, // = VK_FORMAT_R64G64_UINT
-    eR64G64SInt         = 114, // = VK_FORMAT_R64G64_SINT
-    eR64G64SFloat       = 115, // = VK_FORMAT_R64G64_SFLOAT
-    eR64G64B64UInt      = 116, // = VK_FORMAT_R64G64B64_UINT
-    eR64G64B64SInt      = 117, // = VK_FORMAT_R64G64B64_SINT
-    eR64G64B64SFloat    = 118, // = VK_FORMAT_R64G64B64_SFLOAT
-    eR64G64B64A64UInt   = 119, // = VK_FORMAT_R64G64B64A64_UINT
-    eR64G64B64A64SInt   = 120, // = VK_FORMAT_R64G64B64A64_SINT
-    eR64G64B64A64SFloat = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
-
-    eD16UNORM        = 124, // VK_FORMAT_D16_UNORM
-    eD32SFloat       = 126, // VK_FORMAT_D32_SFLOAT
-    eS8UInt          = 127, // VK_FORMAT_S8_UINT
-    eD16UNORMS8UInt  = 128, // VK_FORMAT_D16_UNORM_S8_UINT
-    eD24UNORMS8UInt  = 129, //VK_FORMAT_D24_UNORM_S8_UINT
-    eD32SFloatS8UInt = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
-};
 
 inline uint32_t GetTextureFormatPixelSize(DataFormat format)
 {
@@ -463,18 +318,6 @@ enum class PolygonFrontFace : uint32_t
     eCounterClockWise = 0,
     eClockWise        = 1,
     eMax              = 2,
-};
-
-enum class SampleCount : uint32_t
-{
-    e1   = 0,
-    e2   = 1,
-    e4   = 2,
-    e8   = 3,
-    e16  = 4,
-    e32  = 5,
-    e64  = 6,
-    eMax = 7
 };
 
 enum class CompareOperator : uint32_t
@@ -1166,40 +1009,40 @@ enum class PipelineType : uint32_t
 /**********************************************/
 /********** Context for RHICommandList ********/
 /*********************************************/
-struct VertexBufferBinding
-{
-    BufferHandle buffer{nullptr};
-    uint64_t offset{0};
-    uint32_t slot;
-
-    bool operator==(const VertexBufferBinding& b) const
-    {
-        return buffer == b.buffer && slot == b.slot && offset == b.offset;
-    }
-
-    bool operator!=(const VertexBufferBinding& b) const
-    {
-        return !(*this == b);
-    }
-};
-
-struct IndexBufferBinding
-{
-    BufferHandle buffer{nullptr};
-    uint64_t offset{0};
-    DataFormat format{DataFormat::eUndefined};
-
-
-    bool operator==(const IndexBufferBinding& b) const
-    {
-        return buffer == b.buffer && format == b.format && offset == b.offset;
-    }
-
-    bool operator!=(const IndexBufferBinding& b) const
-    {
-        return !(*this == b);
-    }
-};
+// struct VertexBufferBinding
+// {
+//     BufferHandle buffer{nullptr};
+//     uint64_t offset{0};
+//     uint32_t slot;
+//
+//     bool operator==(const VertexBufferBinding& b) const
+//     {
+//         return buffer == b.buffer && slot == b.slot && offset == b.offset;
+//     }
+//
+//     bool operator!=(const VertexBufferBinding& b) const
+//     {
+//         return !(*this == b);
+//     }
+// };
+//
+// struct IndexBufferBinding
+// {
+//     BufferHandle buffer{nullptr};
+//     uint64_t offset{0};
+//     DataFormat format{DataFormat::eUndefined};
+//
+//
+//     bool operator==(const IndexBufferBinding& b) const
+//     {
+//         return buffer == b.buffer && format == b.format && offset == b.offset;
+//     }
+//
+//     bool operator!=(const IndexBufferBinding& b) const
+//     {
+//         return !(*this == b);
+//     }
+// };
 
 
 /*****************************/

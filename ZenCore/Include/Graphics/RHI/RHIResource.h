@@ -1,9 +1,8 @@
 #pragma once
 #include <atomic>
-#include "Common/RefCountPtr.h"
+#include "Utils/RefCountPtr.h"
 #include "RHICommon.h"
-#include "Common/Errors.h"
-#include "Common/BitField.h"
+#include "Utils/Errors.h"
 
 namespace zen::rhi
 {

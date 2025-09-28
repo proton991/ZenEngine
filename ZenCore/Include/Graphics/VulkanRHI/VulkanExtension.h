@@ -1,6 +1,6 @@
 #pragma once
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include <string>
 
 namespace zen::rhi

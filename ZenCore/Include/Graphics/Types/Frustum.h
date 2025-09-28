@@ -1,5 +1,5 @@
 #pragma once
-#include "Common/Math.h"
+#include "Math/Math.h"
 #include <glm/gtc/matrix_access.hpp>
 #include <array>
 

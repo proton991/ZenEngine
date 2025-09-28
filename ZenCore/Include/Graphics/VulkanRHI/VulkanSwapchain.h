@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
-#include "Common/SmallVector.h"
+#include "Templates/SmallVector.h"
 
 namespace zen::rhi
 {

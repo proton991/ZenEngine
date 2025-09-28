@@ -1,7 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"

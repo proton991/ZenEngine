@@ -1,6 +1,6 @@
 #include "Graphics/Val//SyncObjPool.h"
-#include "Common/Errors.h"
-#include "Common/Helpers.h"
+#include "Utils/Errors.h"
+#include "Utils/Helpers.h"
 
 namespace zen::val
 {

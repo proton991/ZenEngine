@@ -1,6 +1,6 @@
 #pragma once
 #include "Platform/GlfwWindow.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include "Graphics/Val/ZenVal.h"
 
 namespace zen

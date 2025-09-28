@@ -2,7 +2,7 @@
 #include <utility>
 
 #include "Graphics/RHI/RHIResource.h"
-#include "Common/HashMap.h"
+#include "Templates/HashMap.h"
 
 namespace zen::rc
 {

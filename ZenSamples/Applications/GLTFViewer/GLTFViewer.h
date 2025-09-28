@@ -6,7 +6,7 @@
 #include "Graphics/RenderCore/RenderBuffers.h"
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
-#include "Common/Math.h"
+#include "Math/Math.h"
 #include "Graphics/RenderCore/TextureManager.h"
 #include "AssetLib/GLTFLoader.h"
 

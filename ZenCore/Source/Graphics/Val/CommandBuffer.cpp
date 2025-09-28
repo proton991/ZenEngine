@@ -2,8 +2,8 @@
 #include "Graphics/Val/CommandPool.h"
 #include "Graphics/Val/Image.h"
 #include "Graphics/Val/Buffer.h"
-#include "Common/Errors.h"
-#include "Common/Helpers.h"
+#include "Utils/Errors.h"
+#include "Utils/Helpers.h"
 
 namespace zen::val
 {

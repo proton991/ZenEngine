@@ -1,9 +1,9 @@
 #include <iostream>
-#include "Common/SharedPtr.h"
-#include "Common/UniquePtr.h"
+#include "Utils/SharedPtr.h"
+#include "Utils/UniquePtr.h"
 #include "Graphics/Val/ZenVal.h"
 #include "Platform/GlfwWindow.h"
-#include "Common/Helpers.h"
+#include "Utils/Helpers.h"
 #include "Graphics/RenderCore/RenderDevice.h"
 #include "Graphics/Val/VulkanStrings.h"
 

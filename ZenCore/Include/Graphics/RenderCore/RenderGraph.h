@@ -1,10 +1,8 @@
 #pragma once
 #include "RenderGraphDefinitions.h"
-#include "Common/UniquePtr.h"
 #include <vector>
 #include <vulkan/vulkan.h>
 #include <unordered_set>
-#include "Common/HashMap.h"
 #include "RenderDevice.h"
 
 namespace zen

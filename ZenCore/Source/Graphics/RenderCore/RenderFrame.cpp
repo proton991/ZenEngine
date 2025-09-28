@@ -1,5 +1,5 @@
 #include "Graphics/RenderCore/RenderFrame.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 namespace zen
 {

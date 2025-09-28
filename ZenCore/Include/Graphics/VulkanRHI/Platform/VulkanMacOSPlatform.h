@@ -5,7 +5,7 @@
 #if defined(ZEN_MACOS)
 
 #    include <vector>
-#    include "Common/UniquePtr.h"
+#    include "Utils/UniquePtr.h"
 #    define VK_USE_PLATFORM_MACOS_MVK
 
 namespace zen

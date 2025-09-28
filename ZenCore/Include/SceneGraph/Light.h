@@ -1,7 +1,6 @@
 #pragma once
 #include "Component.h"
-#include "Common/Math.h"
-#include "Common/UniquePtr.h"
+
 
 
 namespace zen::sg

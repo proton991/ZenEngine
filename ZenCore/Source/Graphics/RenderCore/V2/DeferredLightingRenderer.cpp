@@ -229,7 +229,7 @@ void DeferredLightingRenderer::BuildRenderGraph()
         clearValues[5].depth   = 1.0f;
         clearValues[5].stencil = 0;
 
-        Rect2 area;
+        Rect2i area;
         area.minX = 0;
         area.minY = 0;
         area.maxX = static_cast<int>(cFbSize);
@@ -270,7 +270,7 @@ void DeferredLightingRenderer::BuildRenderGraph()
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 0;
 
-        Rect2 area;
+        Rect2i area;
         area.minX = 0;
         area.minY = 0;
         area.maxX = static_cast<int>(m_viewport->GetWidth());

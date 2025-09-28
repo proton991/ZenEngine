@@ -2,7 +2,7 @@
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include "DeviceObject.h"
-#include "Common/SharedPtr.h"
+#include "Utils/SharedPtr.h"
 
 namespace zen::val
 {

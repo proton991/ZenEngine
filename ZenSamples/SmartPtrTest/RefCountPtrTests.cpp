@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "Graphics/RHI/RHIResource.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 using namespace zen;
 

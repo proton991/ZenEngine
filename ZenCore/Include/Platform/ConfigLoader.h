@@ -2,8 +2,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "Common/Errors.h"
-#include "Common/HashMap.h"
+#include "Utils/Errors.h"
+#include "Templates/HashMap.h"
 
 namespace zen::platform
 {
@@ -56,13 +56,12 @@ public:
 
     std::string GetGLTFModelPath(const std::string& name) const
     {
-        std::string path    = "";
-        auto basePathIt     = m_configData.find("model_base_path");
+        std::string path = "";
+        auto basePathIt  = m_configData.find("model_base_path");
 
         if (basePathIt != m_configData.end())
         {
-            path = basePathIt->second + "/" + name + "/glTF/" +
-                name + ".gltf";
+            path = basePathIt->second + "/" + name + "/glTF/" + name + ".gltf";
         }
         else
         {

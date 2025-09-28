@@ -1,5 +1,5 @@
 #include "Graphics/Val/Instance.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #if defined(ZEN_MACOS)
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 #endif

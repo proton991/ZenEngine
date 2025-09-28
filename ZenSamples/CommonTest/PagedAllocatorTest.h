@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
-#include "Common/PagedAllocator.h"
+#include "Utils/PagedAllocator.h"
 
 // Dummy class for testing
 class DummyClass

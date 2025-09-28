@@ -1,6 +1,6 @@
 #pragma once
-#include "Common/HashMap.h"
-#include "Common/SmallVector.h"
+#include "Templates/HashMap.h"
+#include "Templates/SmallVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/RHI/RHIResource.h"

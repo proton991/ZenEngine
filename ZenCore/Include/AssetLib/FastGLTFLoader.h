@@ -4,7 +4,7 @@
 #include <fastgltf/types.hpp>
 #include <fastgltf/tools.hpp>
 #include "Types.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 
 namespace zen::sg
 {

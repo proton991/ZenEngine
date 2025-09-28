@@ -1,5 +1,5 @@
 #include "Platform/GlfwWindow.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Platform/InputController.h"
 
 namespace zen::platform

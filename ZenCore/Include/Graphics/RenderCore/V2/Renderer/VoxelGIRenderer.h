@@ -1,7 +1,7 @@
 #pragma once
 #include "../RenderDevice.h"
 #include "../RenderGraph.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 
 namespace zen::rc
 {

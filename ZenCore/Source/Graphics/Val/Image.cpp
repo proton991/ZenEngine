@@ -1,5 +1,5 @@
 #include "Graphics/Val/Image.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 namespace zen::val
 {

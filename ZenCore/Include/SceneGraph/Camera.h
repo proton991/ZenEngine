@@ -1,6 +1,5 @@
 #pragma once
-#include "Common/Math.h"
-#include "Common/UniquePtr.h"
+#include "Utils/UniquePtr.h"
 #include "Graphics/Types/Frustum.h"
 #include "SceneGraph/AABB.h"
 #include <functional>

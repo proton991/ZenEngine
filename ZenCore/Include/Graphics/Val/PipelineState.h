@@ -1,8 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-#include "Common/Helpers.h"
-#include "Common/HashMap.h"
+#include "Utils/Helpers.h"
+#include "Templates/HashMap.h"
 
 namespace zen::val
 {

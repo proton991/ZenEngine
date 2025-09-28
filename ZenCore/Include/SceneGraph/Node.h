@@ -1,8 +1,8 @@
 #pragma once
 #include <vector>
 #include <string>
-#include "Common/HashMap.h"
-#include "Common/Math.h"
+#include "Templates/HashMap.h"
+#include "Math/Math.h"
 #include "Component.h"
 
 namespace zen::sg

@@ -1,5 +1,5 @@
 #include "Graphics/Val/Sampler.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 namespace zen::val
 {

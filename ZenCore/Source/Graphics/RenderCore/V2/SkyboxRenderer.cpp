@@ -83,13 +83,13 @@ void SkyboxRenderer::BuildRenderGraph()
     clearValues[0].color   = {0.0f, 0.0f, 0.2f, 0.0f};
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 0;
-    rhi::Rect2 area;
+    Rect2i area;
     area.minX = 0;
     area.minY = 0;
     area.maxX = static_cast<int>(m_viewport->GetWidth());
     area.maxY = static_cast<int>(m_viewport->GetHeight());
 
-    rhi::Rect2<float> vp;
+    Rect2<float> vp;
     vp.minX = 0.0f;
     vp.minY = 0.0f;
     vp.maxX = static_cast<float>(m_viewport->GetWidth());
@@ -99,7 +99,7 @@ void SkyboxRenderer::BuildRenderGraph()
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
-    m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, rhi::DataFormat::eR32UInt);
+    m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
     // draw skybox model
     m_rdg->AddGraphicsPassDrawIndexedNode(pass, cSkyboxIndices.size(), 1, 0, 0, 0);
     m_rdg->End();
@@ -247,7 +247,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             std::vector<RenderPassClearValue> clearValues(1);
             clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
-            Rect2 area;
+            Rect2i area;
             area.minX = 0;
             area.minY = 0;
             area.maxX = static_cast<int>(dim);
@@ -407,7 +407,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     std::vector<RenderPassClearValue> clearValues(1);
     clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
-    Rect2 area;
+    Rect2i area;
     area.minX = 0;
     area.minY = 0;
     area.maxX = static_cast<int>(dim);

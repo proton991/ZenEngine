@@ -6,7 +6,7 @@
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
-#include "Common/Helpers.h"
+#include "Utils/Helpers.h"
 
 
 namespace zen::rc
@@ -38,7 +38,7 @@ static void CopyRegion(uint8_t const* pSrc,
     }
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(rhi::DataFormat format,
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format,
                                                                rhi::TextureUsage usage,
                                                                const rhi::TextureHandle& handle,
                                                                bool clear)
@@ -52,7 +52,7 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(rhi::DataFormat f
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::DataFormat format,
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(DataFormat format,
                                                                 const rhi::TextureHandle& handle,
                                                                 rhi::RenderTargetLoadOp loadOp,
                                                                 rhi::RenderTargetStoreOp storeOp)

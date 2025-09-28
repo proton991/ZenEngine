@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "Common/Intrusive.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 using namespace zen;
 

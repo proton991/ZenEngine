@@ -1,7 +1,7 @@
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIDebug.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 

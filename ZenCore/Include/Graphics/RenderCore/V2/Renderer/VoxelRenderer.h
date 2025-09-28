@@ -1,7 +1,7 @@
 // #pragma once
 // #include "../RenderDevice.h"
 // #include "../RenderGraph.h"
-// #include "Common/UniquePtr.h"
+// #include "Utils/UniquePtr.h"
 //
 // namespace zen::rc
 // {
@@ -137,7 +137,7 @@
 //         uint32_t drawMipLevel;
 //         uint32_t drawDirection;
 //         glm::vec4 drawColorChannels;
-//         rhi::DataFormat voxelTexFormat;
+//         DataFormat voxelTexFormat;
 //     } m_config;
 //
 //     struct

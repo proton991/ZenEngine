@@ -1,6 +1,6 @@
 #include "SceneGraph/Camera.h"
 #include "Platform/InputController.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 

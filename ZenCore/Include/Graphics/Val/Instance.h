@@ -1,6 +1,6 @@
 #pragma once
-#include "Common/SharedPtr.h"
-#include "Common/UniquePtr.h"
+#include "Utils/SharedPtr.h"
+#include "Utils/UniquePtr.h"
 #include <vector>
 #include "VulkanHeaders.h"
 

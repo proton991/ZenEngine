@@ -1,7 +1,6 @@
 #pragma once
 #include "RHICommon.h"
-#include "Common/BitField.h"
-#include "Common/SmallVector.h"
+#include "Templates/SmallVector.h"
 
 namespace zen::rhi
 {

@@ -2,7 +2,7 @@
 #include "Graphics/Val/PipelineLayout.h"
 #include "Graphics/Val/PipelineState.h"
 #include "Graphics/Val/Shader.h"
-#include "Common/Errors.h"
+#include "Utils/Errors.h"
 #include "Graphics/Val/VulkanDebug.h"
 
 namespace zen::val

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Common/HashMap.h"
+#include "Templates/HashMap.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 
 namespace zen::rhi
