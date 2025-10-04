@@ -1,5 +1,5 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
-#include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 
@@ -23,9 +23,7 @@ static const std::vector<Mat4> cMatrices = {
 
 SkyboxRenderer::SkyboxRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
-{
-    m_RHI = m_renderDevice->GetRHI();
-}
+{}
 
 void SkyboxRenderer::Init()
 {
@@ -44,34 +42,60 @@ void SkyboxRenderer::Init()
     BuildGraphicsPasses();
 }
 
-void SkyboxRenderer::Destroy() {}
+void SkyboxRenderer::Destroy()
+{
+    m_renderDevice->DestroyTexture(m_offscreenTextures.irradiance);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.prefiltered);
+}
 
 void SkyboxRenderer::PrepareTextures()
 {
-    using namespace zen::rhi;
+    TextureUsageHint usageHint{.copyUsage = true};
     {
-        TextureInfo offscreenTexInfo{};
-        offscreenTexInfo.width  = IRRADIANCE_DIM;
-        offscreenTexInfo.height = IRRADIANCE_DIM;
-        offscreenTexInfo.format = cIrradianceFormat;
-        offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-                                             TextureUsageFlagBits::eTransferSrc);
-        offscreenTexInfo.type = TextureType::e2D;
-        offscreenTexInfo.name = "EnvIrradianceOffscreen";
+        // TextureInfo offscreenTexInfo{};
+        // offscreenTexInfo.width  = IRRADIANCE_DIM;
+        // offscreenTexInfo.height = IRRADIANCE_DIM;
+        // offscreenTexInfo.format = cIrradianceFormat;
+        // offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+        //                                      TextureUsageFlagBits::eTransferSrc);
+        // offscreenTexInfo.type = TextureType::e2D;
+        // offscreenTexInfo.name = "EnvIrradianceOffscreen";
 
-        m_offscreenTextures.irradiance = m_renderDevice->CreateTexture(offscreenTexInfo);
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = cIrradianceFormat;
+        texFormat.width       = IRRADIANCE_DIM;
+        texFormat.height      = IRRADIANCE_DIM;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_offscreenTextures.irradiance =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "env_irradiance_offscreen");
     }
     {
-        TextureInfo offscreenTexInfo{};
-        offscreenTexInfo.width  = PREFILTERED_DIM;
-        offscreenTexInfo.height = PREFILTERED_DIM;
-        offscreenTexInfo.format = cPrefilteredFormat;
-        offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-                                             TextureUsageFlagBits::eTransferSrc);
-        offscreenTexInfo.type = TextureType::e2D;
-        offscreenTexInfo.name = "EnvPrefilteredOffscreen";
+        // TextureInfo offscreenTexInfo{};
+        // offscreenTexInfo.width  = PREFILTERED_DIM;
+        // offscreenTexInfo.height = PREFILTERED_DIM;
+        // offscreenTexInfo.format = cPrefilteredFormat;
+        // offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+        //                                      TextureUsageFlagBits::eTransferSrc);
+        // offscreenTexInfo.type = TextureType::e2D;
+        // offscreenTexInfo.name = "EnvPrefilteredOffscreen";
+        //
+        // m_offscreenTextures.prefiltered = m_renderDevice->CreateTexture(offscreenTexInfo);
 
-        m_offscreenTextures.prefiltered = m_renderDevice->CreateTexture(offscreenTexInfo);
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = cPrefilteredFormat;
+        texFormat.width       = PREFILTERED_DIM;
+        texFormat.height      = PREFILTERED_DIM;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_offscreenTextures.prefiltered =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "env_prefiltered_offscreen");
     }
 }
 
@@ -120,16 +144,14 @@ void SkyboxRenderer::BuildGraphicsPasses()
 
     {
         GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.irradiance =
-            builder.SetShaderProgramName("EnvMapIrradianceSP")
-                .SetNumSamples(SampleCount::e1)
-                // offscreen texture
-                .AddColorRenderTarget(cIrradianceFormat, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.irradiance)
-                .SetPipelineState(pso)
-                .SetFramebufferInfo(m_viewport, IRRADIANCE_DIM, IRRADIANCE_DIM)
-                .SetTag("EnvIrradiance")
-                .Build();
+        m_gfxPasses.irradiance = builder.SetShaderProgramName("EnvMapIrradianceSP")
+                                     .SetNumSamples(SampleCount::e1)
+                                     // offscreen texture
+                                     .AddColorRenderTarget(m_offscreenTextures.irradiance)
+                                     .SetPipelineState(pso)
+                                     .SetFramebufferInfo(m_viewport, IRRADIANCE_DIM, IRRADIANCE_DIM)
+                                     .SetTag("EnvIrradiance")
+                                     .Build();
     }
 
     {
@@ -138,8 +160,7 @@ void SkyboxRenderer::BuildGraphicsPasses()
             builder.SetShaderProgramName("EnvMapPrefilteredSP")
                 .SetNumSamples(SampleCount::e1)
                 // offscreen texture
-                .AddColorRenderTarget(cPrefilteredFormat, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.prefiltered)
+                .AddColorRenderTarget(m_offscreenTextures.prefiltered)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, PREFILTERED_DIM, PREFILTERED_DIM)
                 .SetTag("EnvPrefilter")
@@ -160,20 +181,16 @@ void SkyboxRenderer::BuildGraphicsPasses()
         pso.dynamicStates.push_back(DynamicState::eViewPort);
 
         GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.skybox =
-            builder.SetShaderProgramName("SkyboxRenderSP")
-                .SetNumSamples(SampleCount::e1)
-                // offscreen texture
-                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment,
-                                      m_viewport->GetColorBackBuffer())
-                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       m_viewport->GetDepthStencilBackBuffer(),
-                                       RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
-                .SetPipelineState(pso)
-                .SetFramebufferInfo(m_viewport)
-                .SetTag("SkyboxDraw")
-                .Build();
+        m_gfxPasses.skybox = builder.SetShaderProgramName("SkyboxRenderSP")
+                                 .SetNumSamples(SampleCount::e1)
+                                 // offscreen texture
+                                 .AddViewportColorRT(m_viewport)
+                                 .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
+                                                            RenderTargetStoreOp::eStore)
+                                 .SetPipelineState(pso)
+                                 .SetFramebufferInfo(m_viewport)
+                                 .SetTag("SkyboxDraw")
+                                 .Build();
     }
 }
 
@@ -183,8 +200,8 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
     for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
     {
-        TextureHandle cubemapTexture;
-        TextureHandle offscreenTexture;
+        TextureRD* cubemapTexture;
+        TextureRD* offscreenTexture;
         uint32_t dim;
         DataFormat format;
         GraphicsPass* gfxPass;
@@ -231,13 +248,24 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         samplerInfo.borderColor   = SamplerBorderColor::eFloatOpaqueBlack;
 
         m_samplers.cubemapSampler = m_renderDevice->CreateSampler(samplerInfo);
-        cubemapTexture            = m_RHI->CreateTexture(textureInfo);
+
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::eCube;
+        texFormat.format      = format;
+        texFormat.width       = dim;
+        texFormat.height      = dim;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 6;
+        texFormat.mipmaps     = CalculateTextureMipLevels(dim);
+
+        cubemapTexture =
+            m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, targetName);
 
         // offscreen
         {
             std::vector<ShaderResourceBinding> textureBindings;
             ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                      m_samplers.cubemapSampler, texture->skybox);
+                                      m_samplers.cubemapSampler, texture->skybox->GetHandle());
 
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
             updater.SetShaderResourceBinding(0, textureBindings).Update();
@@ -316,10 +344,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                     copyRegion.dstOffset                      = {0, 0, 0};
                     copyRegion.size                           = {vp.Width(), vp.Height(), 1};
 
-                    rdg->AddTextureCopyNode(
-                        offscreenTexture, m_RHI->GetTextureSubResourceRange(offscreenTexture),
-                        cubemapTexture, m_RHI->GetTextureSubResourceRange(cubemapTexture),
-                        copyRegion);
+                    rdg->AddTextureCopyNode(offscreenTexture, cubemapTexture, copyRegion);
                 }
             }
 
@@ -327,22 +352,22 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
             m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
-            m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
-                cubemapTexture, TextureLayout::eShaderReadOnly);
+            // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
+            //     cubemapTexture->GetHandle(), TextureLayout::eShaderReadOnly);
 
             if (target == IRRADIANCE)
             {
                 texture->irradiance        = cubemapTexture;
                 texture->irradianceSampler = m_samplers.cubemapSampler;
-                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->irradiance,
+                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->irradiance->GetHandle(),
                                                                    "EnvIrradiance");
             }
             else
             {
                 texture->prefiltered        = cubemapTexture;
                 texture->prefilteredSampler = m_samplers.cubemapSampler;
-                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->prefiltered,
-                                                                   "EnvPrefiltered");
+                m_renderDevice->GetRHIDebug()->SetTextureDebugName(
+                    texture->prefiltered->GetHandle(), "EnvPrefiltered");
             }
         }
     }
@@ -355,15 +380,27 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     const uint32_t dim      = 512;
     const DataFormat format = DataFormat::eR16G16SFloat;
 
-    TextureInfo textureInfo{};
-    textureInfo.format = format;
-    textureInfo.width  = dim;
-    textureInfo.height = dim;
-    textureInfo.type   = TextureType::e2D;
-    textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-    textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+    // TextureInfo textureInfo{};
+    // textureInfo.format = format;
+    // textureInfo.width  = dim;
+    // textureInfo.height = dim;
+    // textureInfo.type   = TextureType::e2D;
+    // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
+    // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+    //
+    // texture->lutBRDF = m_RHI->CreateTexture(textureInfo);
 
-    texture->lutBRDF = m_RHI->CreateTexture(textureInfo);
+    TextureFormat texFormat{};
+    texFormat.format      = DataFormat::eR16G16SFloat;
+    texFormat.dimension   = TextureDimension::e2D;
+    texFormat.width       = dim;
+    texFormat.height      = dim;
+    texFormat.depth       = 1;
+    texFormat.arrayLayers = 1;
+    texFormat.mipmaps     = 1;
+
+    texture->lutBRDF =
+        m_renderDevice->CreateTextureColorRT(texFormat, {.copyUsage = false}, "env_lut_brdf");
 
     SamplerInfo samplerInfo{};
     samplerInfo.minFilter     = SamplerFilter::eLinear;
@@ -391,15 +428,14 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     pso.dynamicStates.push_back(DynamicState::eViewPort);
 
     GraphicsPassBuilder builder(m_renderDevice);
-    m_gfxPasses.lutBRDF =
-        builder.SetShaderProgramName("EnvMapBRDFLutGenSP")
-            .SetNumSamples(SampleCount::e1)
-            // offscreen texture
-            .AddColorRenderTarget(format, TextureUsage::eColorAttachment, texture->lutBRDF)
-            .SetPipelineState(pso)
-            .SetFramebufferInfo(m_viewport, dim, dim)
-            .SetTag("GenlutBRDF")
-            .Build();
+    m_gfxPasses.lutBRDF = builder.SetShaderProgramName("EnvMapBRDFLutGenSP")
+                              .SetNumSamples(SampleCount::e1)
+                              // offscreen texture
+                              .AddColorRenderTarget(texture->lutBRDF)
+                              .SetPipelineState(pso)
+                              .SetFramebufferInfo(m_viewport, dim, dim)
+                              .SetTag("GenlutBRDF")
+                              .Build();
 
     // build rdg
     UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>();
@@ -429,8 +465,8 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 
     m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
-    m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
-                                                                   TextureLayout::eShaderReadOnly);
+    // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF->GetHandle(),
+    //                                                                TextureLayout::eShaderReadOnly);
 }
 
 void SkyboxRenderer::PrepareRenderWorkload()
@@ -455,7 +491,8 @@ void SkyboxRenderer::UpdateGraphicsPassResources()
         m_gfxPasses.skybox.shaderProgram->GetUniformBufferHandle("uCameraData"))
 
     ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                              m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
+                              m_samplers.cubemapSampler,
+                              m_scene->GetEnvTexture().skybox->GetHandle())
 
     GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
     updater.SetShaderResourceBinding(0, bufferBindings)

@@ -1,4 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
+
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
@@ -21,7 +23,10 @@ void GeometryVoxelizer::Init()
     BuildGraphicsPasses();
 }
 
-void GeometryVoxelizer::Destroy() {}
+void GeometryVoxelizer::Destroy()
+{
+    VoxelizerBase::Destroy();
+}
 
 void GeometryVoxelizer::PrepareTextures()
 {
@@ -55,13 +60,13 @@ void GeometryVoxelizer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues,
                                                 "geom_voxelization");
 
-        rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
-                                                 m_voxelTextures.normal, m_voxelTextures.emissive};
-        rhi::TextureSubResourceRange ranges[] = {
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
+        // rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
+        //                                          m_voxelTextures.normal, m_voxelTextures.emissive};
+        // rhi::TextureSubResourceRange ranges[] = {
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
 
         // m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
         //                                    AccessMode::eReadWrite);
@@ -109,9 +114,9 @@ void GeometryVoxelizer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, "geom_voxel_draw");
 
-        m_rdg->DeclareTextureAccessForPass(
-            pass, m_voxelTextures.albedo, TextureUsage::eStorage,
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, m_voxelTextures.albedo, TextureUsage::eStorage,
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), AccessMode::eRead);
         // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});
         m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
@@ -169,12 +174,9 @@ void GeometryVoxelizer::BuildGraphicsPasses()
             builder.SetShaderProgramName("VoxelDrawSP")
                 .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
-                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment,
-                                      m_viewport->GetColorBackBuffer(), false)
-                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       m_viewport->GetDepthStencilBackBuffer(),
-                                       RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
+                .AddViewportColorRT(m_viewport, false)
+                .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
+                                           RenderTargetStoreOp::eStore)
                 .SetFramebufferInfo(m_viewport)
                 .SetTag("VoxelDraw")
                 .Build();
@@ -199,13 +201,13 @@ void GeometryVoxelizer::UpdatePassResources()
 
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.albedo->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set1bindings, 1, ShaderResourceType::eImage,
-                                  m_voxelTextures.normal);
+                                  m_voxelTextures.normal->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set1bindings, 2, ShaderResourceType::eImage,
-                                  m_voxelTextures.emissive);
+                                  m_voxelTextures.emissive->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set1bindings, 3, ShaderResourceType::eImage,
-                                  m_voxelTextures.staticFlag);
+                                  m_voxelTextures.staticFlag->GetHandle());
         // set-2 bindings: texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0, ShaderResourceType::eSamplerWithTexture,
                                          m_colorSampler, m_scene->GetSceneTextures())
@@ -220,7 +222,7 @@ void GeometryVoxelizer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedoProxy);
+                                  m_voxelTextures.albedoProxy->GetHandle());
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, ShaderResourceType::eUniformBuffer,
             m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));

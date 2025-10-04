@@ -4,6 +4,50 @@
 namespace zen::rc
 {
 class ShaderProgram;
+class TextureRD;
+
+enum class TextureDimension : uint32_t
+{
+    e1D   = 0,
+    e2D   = 1,
+    e3D   = 2,
+    eCube = 3,
+    eMax  = 4
+};
+
+struct TextureUsageHint
+{
+    bool copyUsage : 1;
+};
+
+struct TextureFormat
+{
+    DataFormat format{DataFormat::eUndefined};
+    TextureDimension dimension{TextureDimension::e2D};
+    SampleCount sampleCount{SampleCount::e1};
+    uint32_t width{0};
+    uint32_t height{0};
+    uint32_t depth{0};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
+    bool mutableFormat{false};
+};
+
+struct TextureProxyFormat
+{
+    DataFormat format{DataFormat::eUndefined};
+    TextureDimension dimension{TextureDimension::e1D};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
+};
+
+struct TextureSlice
+{
+    uint32_t baseMipLevel{0};
+    uint32_t levelCount{1};
+    uint32_t baseArrayLayer{0};
+    uint32_t layerCount{1};
+};
 
 struct SimpleVertex
 {
@@ -78,10 +122,10 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    rhi::TextureHandle skybox;
-    rhi::TextureHandle irradiance;
-    rhi::TextureHandle prefiltered;
-    rhi::TextureHandle lutBRDF;
+    TextureRD* skybox;
+    TextureRD* irradiance;
+    TextureRD* prefiltered;
+    TextureRD* lutBRDF;
     rhi::SamplerHandle irradianceSampler;
     rhi::SamplerHandle prefilteredSampler;
     rhi::SamplerHandle lutBRDFSampler;

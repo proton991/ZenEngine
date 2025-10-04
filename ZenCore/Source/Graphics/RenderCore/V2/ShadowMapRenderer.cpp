@@ -1,4 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
+
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
@@ -24,7 +26,11 @@ void ShadowMapRenderer::Init()
     BuildGraphicsPasses();
 }
 
-void ShadowMapRenderer::Destroy() {}
+void ShadowMapRenderer::Destroy()
+{
+    m_renderDevice->DestroyTexture(m_offscreenTextures.shadowMap);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.depth);
+}
 
 void ShadowMapRenderer::SetRenderScene(RenderScene* renderScene)
 {
@@ -45,39 +51,66 @@ void ShadowMapRenderer::PrepareRenderWorkload()
 
 void ShadowMapRenderer::PrepareTextures()
 {
+    TextureUsageHint usageHint{.copyUsage = false};
     {
-        TextureInfo texInfo{};
-        texInfo.type   = rhi::TextureType::e2D;
-        texInfo.format = m_config.shadowMapFormat;
-        texInfo.width  = m_config.shadowMapWidth;
-        texInfo.height = m_config.shadowMapHeight;
-        texInfo.depth  = 1;
-        texInfo.mipmaps =
+        // TextureInfo texInfo{};
+        // texInfo.type   = rhi::TextureType::e2D;
+        // texInfo.format = m_config.shadowMapFormat;
+        // texInfo.width  = m_config.shadowMapWidth;
+        // texInfo.height = m_config.shadowMapHeight;
+        // texInfo.depth  = 1;
+        // texInfo.mipmaps =
+        //     CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
+        // texInfo.arrayLayers = 1;
+        // texInfo.samples     = SampleCount::e1;
+        // texInfo.usageFlags.SetFlags(
+        //     TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled,
+        //     TextureUsageFlagBits::eTransferSrc, TextureUsageFlagBits::eTransferDst);
+        // texInfo.name                  = "shadowmap";
+        // m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo);
+
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = m_config.shadowMapFormat;
+        texFormat.width       = m_config.shadowMapWidth;
+        texFormat.height      = m_config.shadowMapHeight;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps =
             CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
-        texInfo.arrayLayers = 1;
-        texInfo.samples     = SampleCount::e1;
-        texInfo.usageFlags.SetFlags(
-            TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled,
-            TextureUsageFlagBits::eTransferSrc, TextureUsageFlagBits::eTransferDst);
-        texInfo.name                  = "shadowmap";
-        m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo);
+
+        m_offscreenTextures.shadowMap =
+            m_renderDevice->CreateTextureColorRT(texFormat, {.copyUsage = true}, "shadowmap");
     }
     // depth
     {
 
-        rhi::TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = m_viewport->GetDepthStencilFormat();
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.width       = m_config.shadowMapWidth;
-        texInfo.height      = m_config.shadowMapHeight;
-        texInfo.depth       = 1;
-        texInfo.arrayLayers = 1;
-        texInfo.mipmaps     = 1;
-        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
-                                    TextureUsageFlagBits::eSampled);
-        texInfo.name              = "shadowmap_render_depth";
-        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
+        // rhi::TextureInfo texInfo{};
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.format      = m_viewport->GetDepthStencilFormat();
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.width       = m_config.shadowMapWidth;
+        // texInfo.height      = m_config.shadowMapHeight;
+        // texInfo.depth       = 1;
+        // texInfo.arrayLayers = 1;
+        // texInfo.mipmaps     = 1;
+        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
+        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.name              = "shadowmap_render_depth";
+        // m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
+
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = m_viewport->GetDepthStencilFormat();
+        texFormat.width       = m_config.shadowMapWidth;
+        texFormat.height      = m_config.shadowMapHeight;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps =
+            CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
+
+        m_offscreenTextures.depth = m_renderDevice->CreateTextureDepthStencilRT(
+            texFormat, {.copyUsage = false}, "shadowmap_render_depth");
     }
     {
         SamplerInfo samplerInfo{};
@@ -111,10 +144,8 @@ void ShadowMapRenderer::BuildGraphicsPasses()
         m_gfxPasses.evsm =
             builder.SetShaderProgramName("ShadowMapRenderSP")
                 .SetNumSamples(SampleCount::e1)
-                .AddColorRenderTarget(m_config.shadowMapFormat, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.shadowMap)
-                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
+                .AddColorRenderTarget(m_offscreenTextures.shadowMap)
+                .SetDepthStencilTarget(m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, m_config.shadowMapWidth, m_config.shadowMapHeight)

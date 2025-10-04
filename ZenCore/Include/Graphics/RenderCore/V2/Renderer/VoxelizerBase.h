@@ -1,32 +1,40 @@
 #pragma once
-#include "../RenderDevice.h"
+// #include "../RenderDevice.h"
 #include "../RenderGraph.h"
 #include "Utils/UniquePtr.h"
 
 namespace zen::rc
 {
 class RenderScene;
-
+class RenderDevice;
+class TextureRD;
 // 3D textures (written by voxelizer)
+// struct VoxelTextures
+// {
+//     rhi::TextureHandle staticFlag;
+//     rhi::TextureHandle albedo;
+//     rhi::TextureHandle albedoProxy;
+//     rhi::TextureHandle normal;
+//     rhi::TextureHandle normalProxy;
+//     rhi::TextureHandle emissive;
+//     rhi::TextureHandle emissiveProxy;
+// };
+
 struct VoxelTextures
 {
-    rhi::TextureHandle staticFlag;
-    rhi::TextureHandle albedo;
-    rhi::TextureHandle albedoProxy;
-    rhi::TextureHandle normal;
-    rhi::TextureHandle normalProxy;
-    rhi::TextureHandle emissive;
-    rhi::TextureHandle emissiveProxy;
+    TextureRD* staticFlag{nullptr};
+    TextureRD* albedo{nullptr};
+    TextureRD* albedoProxy{nullptr};
+    TextureRD* normal{nullptr};
+    TextureRD* normalProxy{nullptr};
+    TextureRD* emissive{nullptr};
+    TextureRD* emissiveProxy{nullptr};
 };
 
 class VoxelizerBase
 {
 public:
-    VoxelizerBase(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
-        m_renderDevice(renderDevice), m_viewport(viewport)
-    {
-        m_RHI = m_renderDevice->GetRHI();
-    }
+    VoxelizerBase(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
 
     virtual ~VoxelizerBase() = default;
 
@@ -34,7 +42,7 @@ public:
 
     virtual void SetRenderScene(RenderScene* scene);
 
-    virtual void Destroy() = 0;
+    virtual void Destroy();
 
     virtual void PrepareRenderWorkload() = 0;
 
@@ -96,8 +104,6 @@ protected:
     // void VoxelizeDynamicScene();
 
     RenderDevice* m_renderDevice{nullptr};
-
-    rhi::DynamicRHI* m_RHI{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};
 

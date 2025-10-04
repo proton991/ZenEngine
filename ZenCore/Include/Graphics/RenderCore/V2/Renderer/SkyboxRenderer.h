@@ -1,6 +1,5 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph.h"
-#include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Utils/UniquePtr.h"
 
 #define M_PI 3.14159265358979323846 // pi
@@ -8,6 +7,8 @@
 namespace zen::rc
 {
 class RenderScene;
+class RenderDevice;
+class TextureRD;
 
 class SkyboxRenderer
 {
@@ -58,8 +59,6 @@ private:
         Vec3 position{0.0f, 0.0f, 0.0f};
     };
 
-    rhi::DynamicRHI* m_RHI{nullptr};
-
     RenderDevice* m_renderDevice{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};
@@ -78,8 +77,8 @@ private:
 
     struct
     {
-        rhi::TextureHandle irradiance;
-        rhi::TextureHandle prefiltered;
+        TextureRD* irradiance{nullptr};
+        TextureRD* prefiltered{nullptr};
     } m_offscreenTextures;
 
     UniquePtr<RenderGraph> m_rdg;

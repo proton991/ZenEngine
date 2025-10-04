@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "SceneGraph/Camera.h"
 
 namespace zen::sg
@@ -11,6 +12,7 @@ namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
+class TextureRD;
 
 class ShadowMapRenderer
 {
@@ -32,7 +34,7 @@ public:
 
     const rhi::TextureHandle& GetShadowMapTexture() const
     {
-        return m_offscreenTextures.shadowMap;
+        return m_offscreenTextures.shadowMap->GetHandle();
     }
 
     const rhi::SamplerHandle& GetColorSampler() const
@@ -77,8 +79,8 @@ private:
 
     struct
     {
-        rhi::TextureHandle shadowMap;
-        rhi::TextureHandle depth;
+        TextureRD* shadowMap{nullptr};
+        TextureRD* depth{nullptr};
     } m_offscreenTextures;
 
     rhi::SamplerHandle m_colorSampler;

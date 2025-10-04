@@ -58,9 +58,32 @@ public:
         return TextureHandle(m_colorBackBuffer);
     }
 
+    TextureSubResourceRange GetColorBackBufferRange() final
+    {
+        TextureSubResourceRange range;
+        range.aspect.SetFlag(TextureAspectFlagBits::eColor);
+        range.layerCount     = 1;
+        range.levelCount     = 1;
+        range.baseMipLevel   = 0;
+        range.baseArrayLayer = 0;
+        return range;
+    }
+
     TextureHandle GetDepthStencilBackBuffer() final
     {
         return TextureHandle(m_depthStencilBackBuffer);
+    }
+
+    TextureSubResourceRange GetDepthStencilBackBufferRange() final
+    {
+        TextureSubResourceRange range{};
+        range.aspect.SetFlag(TextureAspectFlagBits::eDepth);
+        range.aspect.SetFlag(TextureAspectFlagBits::eStencil);
+        range.layerCount     = 1;
+        range.levelCount     = 1;
+        range.baseMipLevel   = 0;
+        range.baseArrayLayer = 0;
+        return range;
     }
 
     FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,

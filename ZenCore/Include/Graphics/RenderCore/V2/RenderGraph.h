@@ -294,21 +294,25 @@ struct RDGBufferUpdateNode : RDGNodeBase
 
 struct RDGTextureClearNode : RDGNodeBase
 {
-    rhi::TextureHandle texture;
-    rhi::TextureSubResourceRange range;
+    // rhi::TextureHandle texture;
+    // rhi::TextureSubResourceRange range;
+    TextureRD* texture;
     Color color;
 };
 
 struct RDGTextureCopyNode : RDGNodeBase
 {
-    rhi::TextureHandle srcTexture;
-    rhi::TextureHandle dstTexture;
+    // rhi::TextureHandle srcTexture;
+    // rhi::TextureHandle dstTexture;
+    TextureRD* srcTexture;
+    TextureRD* dstTexture;
     std::vector<rhi::TextureCopyRegion> copyRegions;
 };
 
 struct RDGTextureReadNode : RDGNodeBase
 {
-    rhi::TextureHandle srcTexture;
+    // rhi::TextureHandle srcTexture;
+    TextureRD* srcTexture;
     rhi::BufferHandle dstBuffer;
     std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
 };
@@ -316,13 +320,16 @@ struct RDGTextureReadNode : RDGNodeBase
 struct RDGTextureUpdateNode : RDGNodeBase
 {
     std::vector<rhi::BufferTextureCopySource> sources;
-    rhi::TextureHandle dstTexture;
+    // rhi::TextureHandle dstTexture;
+    TextureRD* dstTexture;
 };
 
 struct RDGTextureResolveNode : RDGNodeBase
 {
-    rhi::TextureHandle srcTexture;
-    rhi::TextureHandle dstTexture;
+    // rhi::TextureHandle srcTexture;
+    // rhi::TextureHandle dstTexture;
+    TextureRD* srcTexture;
+    TextureRD* dstTexture;
     uint32_t srcLayer{0};
     uint32_t srcMipmap{0};
     uint32_t dstLayer{0};
@@ -331,7 +338,8 @@ struct RDGTextureResolveNode : RDGNodeBase
 
 struct RDGTextureMipmapGenNode : RDGNodeBase
 {
-    rhi::TextureHandle texture;
+    // rhi::TextureHandle texture;
+    TextureRD* texture;
 };
 
 struct RDGBindIndexBufferNode : RDGPassChildNode
@@ -512,51 +520,30 @@ public:
     void AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
                              const VectorView<rhi::BufferCopySource>& sources);
 
-    void AddTextureClearNode(rhi::TextureHandle textureHandle,
+    void AddTextureClearNode(TextureRD* texture,
                              const Color& color,
                              const rhi::TextureSubResourceRange& range);
 
-    void AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
-                            const rhi::TextureSubResourceRange& srcTextureSubresourceRange,
-                            rhi::TextureHandle dstTextureHandle,
-                            const rhi::TextureSubResourceRange& dstTextureSubresourceRange,
+    void AddTextureCopyNode(TextureRD* srcTexture,
+                            TextureRD* dstTexture,
                             const VectorView<rhi::TextureCopyRegion>& regions);
 
-    void AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
+    void AddTextureReadNode(TextureRD* srcTexture,
                             rhi::BufferHandle dstBufferHandle,
                             const VectorView<rhi::BufferTextureCopyRegion>& regions);
 
-    void AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
+    void AddTextureUpdateNode(TextureRD* dstTexture,
                               const VectorView<rhi::BufferTextureCopySource>& sources);
 
-    void AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
-                               rhi::TextureHandle dstTextureHandle,
+    void AddTextureResolveNode(TextureRD* srcTexture,
+                               TextureRD* dstTexture,
                                uint32_t srcLayer,
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
 
-    void AddTextureMipmapGenNode(rhi::TextureHandle textureHandle);
+    void AddTextureMipmapGenNode(TextureRD* texture);
 
-    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     rhi::TextureHandle textureHandle,
-                                     rhi::TextureUsage usage,
-                                     const rhi::TextureSubResourceRange& range,
-                                     rhi::AccessMode accessMode,
-                                     std::string tag = "");
-
-    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     uint32_t numTextures,
-                                     rhi::TextureHandle* textureHandles,
-                                     rhi::TextureUsage usage,
-                                     rhi::TextureSubResourceRange* ranges,
-                                     rhi::AccessMode accessMode);
-
-    void DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                    rhi::BufferHandle bufferHandle,
-                                    rhi::BufferUsage usage,
-                                    rhi::AccessMode accessMode,
-                                    std::string tag = "");
 
     void Begin();
 
@@ -565,6 +552,19 @@ public:
     void Execute(rhi::RHICommandList* cmdList);
 
 private:
+    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
+                                     rhi::TextureHandle textureHandle,
+                                     rhi::TextureUsage usage,
+                                     const rhi::TextureSubResourceRange& range,
+                                     rhi::AccessMode accessMode,
+                                     std::string tag = "");
+
+    void DeclareBufferAccessForPass(const RDGPassNode* passNode,
+                                    rhi::BufferHandle bufferHandle,
+                                    rhi::BufferUsage usage,
+                                    rhi::AccessMode accessMode,
+                                    std::string tag = "");
+
     void Destroy();
 
     static uint64_t CreateNodePairKey(const RDG_ID& nodeId1, const RDG_ID& nodeId2)

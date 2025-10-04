@@ -42,6 +42,7 @@ void RendererServer::Init()
 void RendererServer::Destroy()
 {
     m_deferredLightingRenderer->Destroy();
+    m_shadowMapRenderer->Destroy();
     m_skyboxRenderer->Destroy();
     m_voxelizer->Destroy();
 }

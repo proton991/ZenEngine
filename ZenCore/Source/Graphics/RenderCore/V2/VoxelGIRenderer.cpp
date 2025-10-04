@@ -1,10 +1,9 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
-
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 
 using namespace zen::rhi;
 
@@ -109,12 +108,12 @@ void VoxelGIRenderer::BuildRenderGraph()
     // todo: fix gpu hang
     // inject radiance
     {
-        auto& voxelTextures                   = m_voxelizer->GetVoxelTextures();
-        rhi::TextureHandle textures[]         = {voxelTextures.normal, voxelTextures.emissive};
-        rhi::TextureSubResourceRange ranges[] = {
-            m_renderDevice->GetTextureSubResourceRange(textures[0]),
-            m_renderDevice->GetTextureSubResourceRange(textures[1]),
-        };
+        auto& voxelTextures = m_voxelizer->GetVoxelTextures();
+        // rhi::TextureHandle textures[]         = {voxelTextures.normal, voxelTextures.emissive};
+        // rhi::TextureSubResourceRange ranges[] = {
+        //     m_renderDevice->GetTextureSubResourceRange(textures[0]),
+        //     m_renderDevice->GetTextureSubResourceRange(textures[1]),
+        // };
         VoxelInjectRadianceSP* shaderProgram =
             dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance.shaderProgram);
         shaderProgram->pushConstantsData.normalWeightedLambert = m_config.normalWeightedLambert;
@@ -185,13 +184,14 @@ void VoxelGIRenderer::UpdatePassResources()
 
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  m_voxelizer->GetVoxelSampler(), voxelTextures.albedoProxy);
+                                  m_voxelizer->GetVoxelSampler(),
+                                  voxelTextures.albedoProxy->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set0bindings, 1, ShaderResourceType::eImage,
-                                  voxelTextures.normalProxy);
+                                  voxelTextures.normalProxy->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eImage,
                                   m_textures.voxelRadiance);
         ADD_SHADER_BINDING_SINGLE(set0bindings, 3, ShaderResourceType::eImage,
-                                  voxelTextures.emissiveProxy);
+                                  voxelTextures.emissiveProxy->GetHandle());
 
         // set-1 bindings
         ShadowMapRenderer* shadowMapRenderer =

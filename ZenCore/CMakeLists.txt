@@ -47,6 +47,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderGraph.h
     Include/Graphics/RenderCore/V2/RenderScene.h
     Include/Graphics/RenderCore/V2/RenderObject.h
+    Include/Graphics/RenderCore/V2/RenderResource.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
@@ -154,6 +155,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
+    Source/Graphics/RenderCore/V2/RenderResource.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp

@@ -4,6 +4,8 @@
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "SceneGraph/Scene.h"
 #include "AssetLib/TextureLoader.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
+
 #include <gli/gli.hpp>
 
 namespace zen::rc
@@ -113,7 +115,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
 {
     if (m_textureCache.contains(file))
     {
-        outTexture->skybox = m_textureCache[file];
+        // outTexture->skybox = m_textureCache[file];
     }
 
     gli::texture_cube texCube(gli::load(file.c_str()));
@@ -122,18 +124,30 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     uint32_t mipLevels = static_cast<uint32_t>(texCube.levels());
 
     std::vector<uint8_t> vecData;
-    rhi::TextureInfo textureInfo{};
-    textureInfo.width       = width;
-    textureInfo.height      = height;
-    textureInfo.format      = DataFormat::eR16G16B16A16SFloat;
-    textureInfo.type        = rhi::TextureType::eCube;
-    textureInfo.depth       = 1;
-    textureInfo.arrayLayers = 6;
-    textureInfo.mipmaps     = mipLevels;
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+    // rhi::TextureInfo textureInfo{};
+    // textureInfo.width       = width;
+    // textureInfo.height      = height;
+    // textureInfo.format      = DataFormat::eR16G16B16A16SFloat;
+    // textureInfo.type        = rhi::TextureType::eCube;
+    // textureInfo.depth       = 1;
+    // textureInfo.arrayLayers = 6;
+    // textureInfo.mipmaps     = mipLevels;
+    // textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eTransferDst);
+    // textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
 
-    rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
+    TextureFormat texFormat{};
+    texFormat.format      = DataFormat::eR16G16B16A16SFloat;
+    texFormat.dimension   = TextureDimension::eCube;
+    texFormat.width       = width;
+    texFormat.height      = height;
+    texFormat.depth       = 1;
+    texFormat.arrayLayers = 6;
+    texFormat.mipmaps     = mipLevels;
+
+    TextureRD* texture =
+        m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, "env_skybox");
+
+    // rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
     std::vector<rhi::BufferTextureCopyRegion> regions;
     regions.reserve(mipLevels);
     uint32_t offset = 0;
@@ -156,14 +170,15 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
         }
     }
 
-    UpdateTextureCube(texture, regions, texCube.size(),
+    UpdateTextureCube(texture->GetHandle(), regions, texCube.size(),
                       static_cast<const uint8_t*>(texCube.data()));
 
-    m_textureCache[file] = texture;
+    m_textureCache[file] = texture->GetHandle();
 
     outTexture->skybox = texture;
 
-    m_renderDevice->GetRHIDebug()->SetTextureDebugName(outTexture->skybox, "SkyboxTexture");
+    m_renderDevice->GetRHIDebug()->SetTextureDebugName(outTexture->skybox->GetHandle(),
+                                                       "SkyboxTexture");
 
     const auto irradianceTag  = outTexture->tag + "_irradiance";
     const auto prefilteredTag = outTexture->tag + "_prefiltered";
@@ -172,11 +187,11 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
     // note: only generate once
     skyboxRenderer->GenerateEnvCubemaps(outTexture);
-    m_textureCache[irradianceTag]  = outTexture->irradiance;
-    m_textureCache[prefilteredTag] = outTexture->prefiltered;
+    m_textureCache[outTexture->irradiance->GetName()]  = outTexture->irradiance->GetHandle();
+    m_textureCache[outTexture->prefiltered->GetName()] = outTexture->prefiltered->GetHandle();
 
     skyboxRenderer->GenerateLutBRDF(outTexture);
-    m_textureCache[lutBRDFTag] = outTexture->lutBRDF;
+    m_textureCache[outTexture->lutBRDF->GetName()] = outTexture->lutBRDF->GetHandle();
 }
 
 void TextureManager::UpdateTexture(const rhi::TextureHandle& textureHandle,

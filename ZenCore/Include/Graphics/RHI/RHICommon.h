@@ -691,9 +691,9 @@ struct TextureSubResourceRange
 {
     BitField<TextureAspectFlagBits> aspect;
     uint32_t baseMipLevel{0};
-    uint32_t levelCount{0};
+    uint32_t levelCount{1};
     uint32_t baseArrayLayer{0};
-    uint32_t layerCount{0};
+    uint32_t layerCount{1};
 
     static TextureSubResourceRange Color(uint32_t baseMiplevel   = 0,
                                          uint32_t baseArrayLayer = 0,
@@ -851,11 +851,10 @@ public:
     RenderPassLayout() = default;
 
     void AddColorRenderTarget(DataFormat format,
-                              TextureUsage usage,
                               const TextureHandle& handle,
                               TextureSubResourceRange subResourceRange)
     {
-        m_colorRTs.emplace_back(format, usage);
+        m_colorRTs.emplace_back(format, TextureUsage::eColorAttachment);
         m_numColorRT++;
         m_rtHandles.push_back(handle);
         m_rtSubResRanges.emplace_back(subResourceRange);

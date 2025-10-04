@@ -21,6 +21,7 @@ class RenderGraph;
 class RendererServer;
 class TextureManager;
 class SkyboxRenderer;
+class TextureRD;
 
 class GraphicsPassBuilder
 {
@@ -39,14 +40,21 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& AddColorRenderTarget(DataFormat format,
-                                              rhi::TextureUsage usage,
-                                              const rhi::TextureHandle& handle,
-                                              bool clear = true);
+    // GraphicsPassBuilder& AddColorRenderTarget(DataFormat format,
+    //                                           const rhi::TextureHandle& handle,
+    //                                           bool clear = true);
+
+    GraphicsPassBuilder& AddViewportColorRT(rhi::RHIViewport* viewport, bool clear = true);
+
+    GraphicsPassBuilder& SetViewportDepthStencilRT(
+        rhi::RHIViewport* viewport,
+        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
+
+    GraphicsPassBuilder& AddColorRenderTarget(const TextureRD* colorRT, bool clear = true);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
-        DataFormat format,
-        const rhi::TextureHandle& handle,
+        const TextureRD* depthStencilRT,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
 
@@ -55,6 +63,12 @@ public:
         m_rpLayout.SetNumSamples(sampleCount);
         return *this;
     }
+
+    // GraphicsPassBuilder& SetDepthStencilTarget(
+    //     DataFormat format,
+    //     const rhi::TextureHandle& handle,
+    //     rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
+    //     rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
 
     GraphicsPassBuilder& SetShaderResourceBinding(
         uint32_t setIndex,
@@ -338,6 +352,28 @@ public:
                       bool present = true);
 
     void ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg);
+
+    TextureRD* CreateTextureColorRT(const TextureFormat& texFormat,
+                                    TextureUsageHint usageHint,
+                                    std::string name);
+
+    TextureRD* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+                                           TextureUsageHint usageHint,
+                                           std::string name);
+
+    TextureRD* CreateTextureStorage(const TextureFormat& texFormat,
+                                    TextureUsageHint usageHint,
+                                    std::string name);
+
+    TextureRD* CreateTextureSampled(const TextureFormat& texFormat,
+                                    TextureUsageHint usageHint,
+                                    std::string name);
+
+    TextureRD* CreateTextureProxy(TextureRD* baseTexture,
+                                  const TextureProxyFormat& proxyFormat,
+                                  std::string name);
+
+    void DestroyTexture(TextureRD* textureRD);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
 

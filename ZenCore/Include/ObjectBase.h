@@ -1,4 +1,6 @@
 #pragma once
+#include <atomic>
+
 #define ZEN_NO_COPY_MOVE(ClassName)                  \
     ClassName(const ClassName&)            = delete; \
     ClassName(ClassName&&)                 = delete; \
@@ -44,3 +46,30 @@
 
 #    define ZEN_ENABLE_WARNINGS() __pragma(warning(pop))
 #endif
+
+class ObjectBase
+{
+public:
+    ObjectBase() : m_refCount(1) {}
+
+    void IncreaseRefCount()
+    {
+        ++m_refCount;
+    }
+
+    void DecreaseRefCount()
+    {
+        if (--m_refCount == 0)
+        {
+            Destroy(); // delegate actual cleanup to derived class
+        }
+    }
+
+protected:
+    virtual ~ObjectBase() = default;
+
+    virtual void Destroy() = 0;
+
+private:
+    std::atomic<uint32_t> m_refCount{0};
+};

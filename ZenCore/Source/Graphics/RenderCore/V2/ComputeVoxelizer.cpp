@@ -1,6 +1,7 @@
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Graphics/RenderCore/V2/RenderObject.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/Val/CommandBuffer.h"
@@ -31,6 +32,7 @@ void ComputeVoxelizer::Init()
 
 void ComputeVoxelizer::Destroy()
 {
+    VoxelizerBase::Destroy();
     delete m_cube;
 }
 
@@ -107,18 +109,18 @@ void ComputeVoxelizer::BuildRenderGraph()
     // voxelization pass
     if (m_needVoxelization)
     {
-        rhi::TextureHandle textures[] = {
-            // m_voxelTextures.staticFlag,
-            m_voxelTextures.albedo,
-            // m_voxelTextures.normal,
-            // m_voxelTextures.emissive
-        };
-        rhi::TextureSubResourceRange ranges[] = {
-            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
-            m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
-            // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)
-        };
+        // rhi::TextureHandle textures[] = {
+        //     // m_voxelTextures.staticFlag,
+        //     m_voxelTextures.albedo,
+        //     // m_voxelTextures.normal,
+        //     // m_voxelTextures.emissive
+        // };
+        // rhi::TextureSubResourceRange ranges[] = {
+        //     // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
+        //     // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
+        //     // m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)
+        // };
         // reset voxel texture
         {
             auto* pass =
@@ -258,18 +260,15 @@ void ComputeVoxelizer::BuildGraphicsPasses()
     pso.dynamicStates.push_back(DynamicState::eScissor);
     pso.dynamicStates.push_back(DynamicState::eViewPort);
     rc::GraphicsPassBuilder builder(m_renderDevice);
-    m_gfxPasses.voxelDraw =
-        builder.SetShaderProgramName("VoxelDrawSP2")
-            .SetNumSamples(SampleCount::e1)
-            .SetPipelineState(pso)
-            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
-                                  m_viewport->GetColorBackBuffer(), false)
-            .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                   m_viewport->GetDepthStencilBackBuffer(),
-                                   RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
-            .SetFramebufferInfo(m_viewport)
-            .SetTag("VoxelDraw2")
-            .Build();
+    m_gfxPasses.voxelDraw = builder.SetShaderProgramName("VoxelDrawSP2")
+                                .SetNumSamples(SampleCount::e1)
+                                .SetPipelineState(pso)
+                                .AddViewportColorRT(m_viewport, false)
+                                .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
+                                                           RenderTargetStoreOp::eStore)
+                                .SetFramebufferInfo(m_viewport)
+                                .SetTag("VoxelDraw2")
+                                .Build();
 }
 
 void ComputeVoxelizer::BuildComputePasses()
@@ -333,7 +332,7 @@ void ComputeVoxelizer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.albedo->GetHandle());
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
@@ -355,7 +354,7 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set5bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.albedo->GetHandle());
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(
             set1bindings, 0, ShaderResourceType::eUniformBuffer,
@@ -410,7 +409,7 @@ void ComputeVoxelizer::UpdatePassResources()
 
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.albedo->GetHandle());
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.instancePositionBuffer);

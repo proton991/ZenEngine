@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Scene.h"
@@ -38,13 +39,23 @@ static void CopyRegion(uint8_t const* pSrc,
     }
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format,
-                                                               rhi::TextureUsage usage,
-                                                               const rhi::TextureHandle& handle,
-                                                               bool clear)
+// GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format,
+//                                                                const rhi::TextureHandle& handle,
+//                                                                bool clear)
+// {
+//     m_rpLayout.AddColorRenderTarget(format, rhi::TextureUsage::eColorAttachment, handle,
+//                                     m_renderDevice->GetTextureSubResourceRange(handle));
+//     m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+//                                                  rhi::RenderTargetLoadOp::eLoad,
+//                                          rhi::RenderTargetStoreOp::eStore);
+//     m_framebufferInfo.numRenderTarget++;
+//     return *this;
+// }
+
+GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(rhi::RHIViewport* viewport, bool clear)
 {
-    m_rpLayout.AddColorRenderTarget(format, usage, handle,
-                                    m_renderDevice->GetTextureSubResourceRange(handle));
+    m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
+                                    viewport->GetColorBackBufferRange());
     m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
                                                  rhi::RenderTargetLoadOp::eLoad,
                                          rhi::RenderTargetStoreOp::eStore);
@@ -52,17 +63,52 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(DataFormat format,
-                                                                const rhi::TextureHandle& handle,
-                                                                rhi::RenderTargetLoadOp loadOp,
-                                                                rhi::RenderTargetStoreOp storeOp)
+GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
+    rhi::RHIViewport* viewport,
+    rhi::RenderTargetLoadOp loadOp,
+    rhi::RenderTargetStoreOp storeOp)
 {
-    m_rpLayout.SetDepthStencilRenderTarget(format, handle,
-                                           m_renderDevice->GetTextureSubResourceRange(handle));
+    m_rpLayout.SetDepthStencilRenderTarget(viewport->GetDepthStencilFormat(),
+                                           viewport->GetDepthStencilBackBuffer(),
+                                           viewport->GetDepthStencilBackBufferRange());
     m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
+
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(const TextureRD* colorRT, bool clear)
+{
+    m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT->GetHandle(),
+                                    colorRT->GetTextureSubResourceRange());
+    m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+                                                 rhi::RenderTargetLoadOp::eLoad,
+                                         rhi::RenderTargetStoreOp::eStore);
+    m_framebufferInfo.numRenderTarget++;
+    return *this;
+}
+
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(const TextureRD* depthStencilRT,
+                                                                rhi::RenderTargetLoadOp loadOp,
+                                                                rhi::RenderTargetStoreOp storeOp)
+{
+    m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT->GetHandle(),
+                                           depthStencilRT->GetTextureSubResourceRange());
+    m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+    m_framebufferInfo.numRenderTarget++;
+    return *this;
+}
+
+// GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(DataFormat format,
+//                                                                 const rhi::TextureHandle& handle,
+//                                                                 rhi::RenderTargetLoadOp loadOp,
+//                                                                 rhi::RenderTargetStoreOp storeOp)
+// {
+//     m_rpLayout.SetDepthStencilRenderTarget(format, handle,
+//                                            m_renderDevice->GetTextureSubResourceRange(handle));
+//     m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+//     m_framebufferInfo.numRenderTarget++;
+//     return *this;
+// }
 
 GraphicsPass GraphicsPassBuilder::Build()
 {
@@ -218,16 +264,16 @@ void GraphicsPassResourceUpdater::Update()
             if (tracker.resourceType == PassResourceType::eTexture)
             {
                 // check if a texture is a proxy
-                rhi::TextureHandle textureHandle;
-                if (m_renderDevice->IsProxyTexture(textureHandle))
-                {
-                    textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
-                }
-                else
-                {
-                    textureHandle = TO_TEX_HANDLE(handle);
-                }
-                tracker.textureHandle = textureHandle;
+                // rhi::TextureHandle textureHandle = TO_TEX_HANDLE(handle);
+                // if (m_renderDevice->IsProxyTexture(textureHandle))
+                // {
+                //     textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
+                // }
+                // else
+                // {
+                //     textureHandle = TO_TEX_HANDLE(handle);
+                // }
+                tracker.textureHandle = TO_TEX_HANDLE(handle);
                 tracker.textureSubResRange =
                     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
             }
@@ -707,6 +753,159 @@ void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg
     m_RHI->WaitForCommandList(cmdList);
 }
 
+TextureRD* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
+                                              TextureUsageHint usageHint,
+                                              std::string name)
+{
+    rhi::TextureInfo texInfo{};
+    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    texInfo.format        = texFormat.format;
+    texInfo.width         = texFormat.width;
+    texInfo.height        = texFormat.height;
+    texInfo.depth         = texFormat.depth;
+    texInfo.mipmaps       = texFormat.mipmaps;
+    texInfo.arrayLayers   = texFormat.arrayLayers;
+    texInfo.samples       = texFormat.sampleCount;
+    texInfo.mutableFormat = texFormat.mutableFormat;
+    texInfo.name          = std::move(name);
+    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eColorAttachment,
+                                rhi::TextureUsageFlagBits::eSampled);
+
+    if (usageHint.copyUsage)
+    {
+        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
+                                    rhi::TextureUsageFlagBits::eTransferDst);
+    }
+
+    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
+    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
+TextureRD* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+                                                     TextureUsageHint usageHint,
+                                                     std::string name)
+{
+    rhi::TextureInfo texInfo{};
+    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    texInfo.format        = texFormat.format;
+    texInfo.width         = texFormat.width;
+    texInfo.height        = texFormat.height;
+    texInfo.depth         = texFormat.depth;
+    texInfo.mipmaps       = texFormat.mipmaps;
+    texInfo.arrayLayers   = texFormat.arrayLayers;
+    texInfo.samples       = texFormat.sampleCount;
+    texInfo.mutableFormat = texFormat.mutableFormat;
+    texInfo.name          = std::move(name);
+    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eDepthStencilAttachment,
+                                rhi::TextureUsageFlagBits::eSampled);
+
+    if (usageHint.copyUsage)
+    {
+        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
+                                    rhi::TextureUsageFlagBits::eTransferDst);
+    }
+
+    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
+    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
+TextureRD* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
+                                              TextureUsageHint usageHint,
+                                              std::string name)
+{
+    rhi::TextureInfo texInfo{};
+    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    texInfo.format        = texFormat.format;
+    texInfo.width         = texFormat.width;
+    texInfo.height        = texFormat.height;
+    texInfo.depth         = texFormat.depth;
+    texInfo.mipmaps       = texFormat.mipmaps;
+    texInfo.arrayLayers   = texFormat.arrayLayers;
+    texInfo.samples       = texFormat.sampleCount;
+    texInfo.mutableFormat = texFormat.mutableFormat;
+    texInfo.name          = std::move(name);
+
+    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eStorage,
+                                rhi::TextureUsageFlagBits::eSampled);
+
+    if (usageHint.copyUsage)
+    {
+        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
+                                    rhi::TextureUsageFlagBits::eTransferDst);
+    }
+
+    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
+    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
+TextureRD* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
+                                              TextureUsageHint usageHint,
+                                              std::string name)
+{
+    rhi::TextureInfo texInfo{};
+    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    texInfo.format        = texFormat.format;
+    texInfo.width         = texFormat.width;
+    texInfo.height        = texFormat.height;
+    texInfo.depth         = texFormat.depth;
+    texInfo.mipmaps       = texFormat.mipmaps;
+    texInfo.arrayLayers   = texFormat.arrayLayers;
+    texInfo.samples       = texFormat.sampleCount;
+    texInfo.mutableFormat = texFormat.mutableFormat;
+    texInfo.name          = std::move(name);
+    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
+
+    if (usageHint.copyUsage)
+    {
+        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
+                                    rhi::TextureUsageFlagBits::eTransferDst);
+    }
+
+    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
+    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
+TextureRD* RenderDevice::CreateTextureProxy(TextureRD* baseTexture,
+                                            const TextureProxyFormat& proxyFormat,
+                                            std::string name)
+{
+    rhi::TextureProxyInfo textureProxyInfo{};
+    textureProxyInfo.type        = static_cast<rhi::TextureType>(proxyFormat.dimension);
+    textureProxyInfo.arrayLayers = proxyFormat.arrayLayers;
+    textureProxyInfo.mipmaps     = proxyFormat.mipmaps;
+    textureProxyInfo.format      = proxyFormat.format;
+    textureProxyInfo.name        = std::move(name);
+
+    TextureRD* textureRD = TextureRD::CreateProxy(baseTexture, proxyFormat, textureProxyInfo.name);
+    rhi::TextureHandle handle =
+        m_RHI->CreateTextureProxy(baseTexture->GetHandle(), textureProxyInfo);
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
+void RenderDevice::DestroyTexture(TextureRD* textureRD)
+{
+    if (textureRD->IsProxy())
+    {
+        textureRD->GetBaseTexture()->DecreaseRefCount();
+    }
+    textureRD->DecreaseRefCount();
+}
+
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
 {
     ASSERT(!textureInfo.name.empty());
@@ -932,13 +1131,12 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIVie
     if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
     {
         gfxPass.renderPassLayout.ClearRenderTargetInfo();
-        gfxPass.renderPassLayout.AddColorRenderTarget(
-            viewport->GetSwapchainFormat(), rhi::TextureUsage::eColorAttachment,
-            viewport->GetColorBackBuffer(),
-            GetTextureSubResourceRange(viewport->GetColorBackBuffer()));
+        gfxPass.renderPassLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(),
+                                                      viewport->GetColorBackBuffer(),
+                                                      viewport->GetColorBackBufferRange());
         gfxPass.renderPassLayout.SetDepthStencilRenderTarget(
             viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-            GetTextureSubResourceRange(viewport->GetDepthStencilBackBuffer()));
+            viewport->GetDepthStencilBackBufferRange());
     }
     else
     {

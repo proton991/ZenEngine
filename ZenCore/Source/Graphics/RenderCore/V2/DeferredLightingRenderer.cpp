@@ -5,6 +5,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Camera.h"
 
@@ -24,7 +25,15 @@ void DeferredLightingRenderer::Init()
     BuildGraphicsPasses();
 }
 
-void DeferredLightingRenderer::Destroy() {}
+void DeferredLightingRenderer::Destroy()
+{
+    m_renderDevice->DestroyTexture(m_offscreenTextures.position);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.normal);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.albedo);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.metallicRoughness);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.emissiveOcclusion);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.depth);
+}
 
 void DeferredLightingRenderer::PrepareRenderWorkload()
 {
@@ -47,77 +56,131 @@ void DeferredLightingRenderer::OnResize()
 
 void DeferredLightingRenderer::PrepareTextures()
 {
+    TextureUsageHint usageHint{.copyUsage = false};
     // (World space) Positions
     {
-        rhi::TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = DataFormat::eR16G16B16A16SFloat;
-        texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.depth       = 1;
-        texInfo.mipmaps     = 1;
-        texInfo.arrayLayers = 1;
-        texInfo.samples     = SampleCount::e1;
-        texInfo.name        = "offscreen_position";
-        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-                                    TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo);
+        // rhi::TextureInfo texInfo{};
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.format      = DataFormat::eR16G16B16A16SFloat;
+        // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.depth       = 1;
+        // texInfo.mipmaps     = 1;
+        // texInfo.arrayLayers = 1;
+        // texInfo.samples     = SampleCount::e1;
+        // texInfo.name        = "offscreen_position";
+        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+        //                             TextureUsageFlagBits::eSampled);
+        // m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo);
+
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = DataFormat::eR16G16B16A16SFloat;
+        texFormat.width       = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.height      = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_offscreenTextures.position =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "offscreen_position");
     }
     // (World space) Normals
     {
-        rhi::TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = DataFormat::eR16G16B16A16SFloat;
-        texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.depth       = 1;
-        texInfo.mipmaps     = 1;
-        texInfo.arrayLayers = 1;
-        texInfo.samples     = SampleCount::e1;
-        texInfo.name        = "offscreen_normal";
-        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-                                    TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo);
+        // rhi::TextureInfo texInfo{};
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.format      = DataFormat::eR16G16B16A16SFloat;
+        // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.depth       = 1;
+        // texInfo.mipmaps     = 1;
+        // texInfo.arrayLayers = 1;
+        // texInfo.samples     = SampleCount::e1;
+        // texInfo.name        = "offscreen_normal";
+        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+        //                             TextureUsageFlagBits::eSampled);
+        // m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo);
+
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = DataFormat::eR16G16B16A16SFloat;
+        texFormat.width       = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.height      = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_offscreenTextures.normal =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "offscreen_normal");
     }
     // color
     {
-        rhi::TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.depth       = 1;
-        texInfo.mipmaps     = 1;
-        texInfo.arrayLayers = 1;
-        texInfo.samples     = SampleCount::e1;
-        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-                                    TextureUsageFlagBits::eSampled);
+        // rhi::TextureInfo texInfo{};
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.format      = DataFormat::eR8G8B8A8UNORM;
+        // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.depth       = 1;
+        // texInfo.mipmaps     = 1;
+        // texInfo.arrayLayers = 1;
+        // texInfo.samples     = SampleCount::e1;
+        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
+        //                             TextureUsageFlagBits::eSampled);
+        //
+        // texInfo.name               = "offscreen_albedo";
+        // m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo);
+        //
+        // texInfo.name                          = "offscreen_roughness";
+        // m_offscreenTextures.metallicRoughness = m_renderDevice->CreateTexture(texInfo);
+        //
+        // texInfo.name                          = "offscreen_emissive_occlusion";
+        // m_offscreenTextures.emissiveOcclusion = m_renderDevice->CreateTexture(texInfo);
 
-        texInfo.name               = "offscreen_albedo";
-        m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo);
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = DataFormat::eR8G8B8A8UNORM;
+        texFormat.width       = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.height      = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
 
-        texInfo.name                          = "offscreen_roughness";
-        m_offscreenTextures.metallicRoughness = m_renderDevice->CreateTexture(texInfo);
+        m_offscreenTextures.albedo =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "offscreen_albedo");
 
-        texInfo.name                          = "offscreen_emissive_occlusion";
-        m_offscreenTextures.emissiveOcclusion = m_renderDevice->CreateTexture(texInfo);
+        m_offscreenTextures.metallicRoughness =
+            m_renderDevice->CreateTextureColorRT(texFormat, usageHint, "offscreen_roughness");
+
+        m_offscreenTextures.emissiveOcclusion = m_renderDevice->CreateTextureColorRT(
+            texFormat, usageHint, "offscreen_emissive_occlusion");
     }
     // depth
     {
+        // rhi::TextureInfo texInfo{};
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.format      = m_viewport->GetDepthStencilFormat();
+        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
+        // texInfo.depth       = 1;
+        // texInfo.arrayLayers = 1;
+        // texInfo.mipmaps     = 1;
+        // texInfo.name        = "offscreen_depth";
+        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
+        //                             TextureUsageFlagBits::eSampled);
+        // m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
 
-        rhi::TextureInfo texInfo{};
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.format      = m_viewport->GetDepthStencilFormat();
-        texInfo.type        = rhi::TextureType::e2D;
-        texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
-        texInfo.depth       = 1;
-        texInfo.arrayLayers = 1;
-        texInfo.mipmaps     = 1;
-        texInfo.name        = "offscreen_depth";
-        texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
-                                    TextureUsageFlagBits::eSampled);
-        m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
+        TextureFormat texFormat{};
+        texFormat.dimension   = TextureDimension::e2D;
+        texFormat.format      = m_viewport->GetDepthStencilFormat();
+        texFormat.width       = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.height      = RenderConfig::GetInstance().offScreenFbSize;
+        texFormat.depth       = 1;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_offscreenTextures.depth =
+            m_renderDevice->CreateTextureDepthStencilRT(texFormat, usageHint, "offscreen_depth");
     }
     // offscreen color texture sampler
     {
@@ -160,22 +223,16 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
             builder.SetShaderProgramName("GBufferSP")
                 .SetNumSamples(SampleCount::e1)
                 // (World space) Positions
-                .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
-                                      TextureUsage::eColorAttachment, m_offscreenTextures.position)
+                .AddColorRenderTarget(m_offscreenTextures.position)
                 // (World space) Normals
-                .AddColorRenderTarget(DataFormat::eR16G16B16A16SFloat,
-                                      TextureUsage::eColorAttachment, m_offscreenTextures.normal)
+                .AddColorRenderTarget(m_offscreenTextures.normal)
                 // Albedo (color)
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.albedo)
+                .AddColorRenderTarget(m_offscreenTextures.albedo)
                 // metallicRoughness
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.metallicRoughness)
+                .AddColorRenderTarget(m_offscreenTextures.metallicRoughness)
                 // emissiveOcclusion
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8UNORM, TextureUsage::eColorAttachment,
-                                      m_offscreenTextures.emissiveOcclusion)
-                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
+                .AddColorRenderTarget(m_offscreenTextures.emissiveOcclusion)
+                .SetDepthStencilTarget(m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, RenderConfig::GetInstance().offScreenFbSize,
@@ -200,12 +257,9 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
         m_gfxPasses.sceneLighting =
             builder.SetShaderProgramName("DeferredLightingSP")
                 .SetNumSamples(SampleCount::e1)
-                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment,
-                                      m_viewport->GetColorBackBuffer(), false)
-                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
-                                       m_viewport->GetDepthStencilBackBuffer(),
-                                       RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
+                .AddViewportColorRT(m_viewport, false)
+                .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
+                                           RenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport)
                 .SetTag("SceneLighting")
@@ -282,8 +336,6 @@ void DeferredLightingRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-        DynamicRHI* RHI = m_renderDevice->GetRHI();
-
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues,
                                                 "deferred_lighting");
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
@@ -357,7 +409,7 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
                                          ShaderResourceType::eSamplerWithTexture, m_colorSampler,
                                          m_scene->GetSceneTextures())
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
+        GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
         updater.SetShaderResourceBinding(0, bufferBindings)
             .SetShaderResourceBinding(1, textureBindings)
             .Update();
@@ -371,25 +423,28 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
             m_gfxPasses.sceneLighting.shaderProgram->GetUniformBufferHandle("uSceneData"));
         // textures
         ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.position);
+                                  m_colorSampler, m_offscreenTextures.position->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 1, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.normal);
+                                  m_colorSampler, m_offscreenTextures.normal->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 2, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.albedo);
+                                  m_colorSampler, m_offscreenTextures.albedo->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 3, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.metallicRoughness);
+                                  m_colorSampler,
+                                  m_offscreenTextures.metallicRoughness->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 4, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.emissiveOcclusion);
+                                  m_colorSampler,
+                                  m_offscreenTextures.emissiveOcclusion->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 5, ShaderResourceType::eSamplerWithTexture,
-                                  m_depthSampler, m_offscreenTextures.depth);
+                                  m_depthSampler, m_offscreenTextures.depth->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 6, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.irradianceSampler, envTexture.irradiance);
+                                  envTexture.irradianceSampler, envTexture.irradiance->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 7, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.prefilteredSampler, envTexture.prefiltered);
+                                  envTexture.prefilteredSampler,
+                                  envTexture.prefiltered->GetHandle());
         ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.lutBRDFSampler, envTexture.lutBRDF);
+                                  envTexture.lutBRDFSampler, envTexture.lutBRDF->GetHandle());
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
+        GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
         updater.SetShaderResourceBinding(0, textureBindings)
             .SetShaderResourceBinding(1, bufferBindings)
             .Update();

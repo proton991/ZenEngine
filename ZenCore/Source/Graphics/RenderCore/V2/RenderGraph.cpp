@@ -1,6 +1,5 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
-
-#include <utility>
+#include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/Val/Shader.h"
@@ -67,6 +66,8 @@ void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
 
 RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std::string tag)
 {
+    VERIFY_EXPR_MSG(!tag.empty(), "compute pass node tag should not be empty");
+
     auto* node = AllocNode<RDGComputePassNode>();
     node->type = RDGNodeType::eComputePass;
     node->tag  = std::move(tag);
@@ -155,7 +156,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               std::string tag)
 {
-
+    VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
     auto* node             = AllocNode<RDGGraphicsPassNode>();
     node->renderPass       = std::move(gfxPass.renderPass);
     node->framebuffer      = std::move(gfxPass.framebuffer);
@@ -176,10 +177,10 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
         const rhi::TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
         for (uint32_t i = 0; i < node->renderPassLayout.GetNumColorRenderTargets(); i++)
         {
-            const std::string tag = "gfx_pass_color_rt_" + std::to_string(i);
+            const std::string textureTag = node->tag + "_color_rt_" + std::to_string(i);
             DeclareTextureAccessForPass(node, handles[i], rhi::TextureUsage::eColorAttachment,
                                         node->renderPassLayout.GetRTSubResourceRanges()[i],
-                                        rhi::AccessMode::eReadWrite, tag);
+                                        rhi::AccessMode::eReadWrite, textureTag);
         }
     }
     if (node->renderPassLayout.HasDepthStencilRenderTarget())
@@ -436,14 +437,14 @@ void RenderGraph::AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
+void RenderGraph::AddTextureClearNode(TextureRD* texture,
                                       const Color& color,
                                       const rhi::TextureSubResourceRange& range)
 {
-    auto* node    = AllocNode<RDGTextureClearNode>();
-    node->color   = color;
-    node->range   = range;
-    node->texture = std::move(textureHandle);
+    auto* node  = AllocNode<RDGTextureClearNode>();
+    node->color = color;
+    // node->range   = range;
+    node->texture = texture;
     node->type    = RDGNodeType::eClearTexture;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 
@@ -453,23 +454,22 @@ void RenderGraph::AddTextureClearNode(rhi::TextureHandle textureHandle,
     access.textureUsage            = rhi::TextureUsage::eTransferDst;
     access.textureSubResourceRange = range;
 
-    RDGResource* resource = GetOrAllocResource(textureHandle, RDGResourceType::eTexture, node->id);
+    RDGResource* resource =
+        GetOrAllocResource(texture->GetHandle(), RDGResourceType::eTexture, node->id);
     resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
 }
 
-void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
-                                     const rhi::TextureSubResourceRange& srcTextureSubresourceRange,
-                                     rhi::TextureHandle dstTextureHandle,
-                                     const rhi::TextureSubResourceRange& dstTextureSubresourceRange,
+void RenderGraph::AddTextureCopyNode(TextureRD* srcTexture,
+                                     TextureRD* dstTexture,
                                      const VectorView<rhi::TextureCopyRegion>& regions)
 {
     auto* node       = AllocNode<RDGTextureCopyNode>();
     node->type       = RDGNodeType::eCopyTexture;
-    node->srcTexture = std::move(srcTextureHandle);
-    node->dstTexture = std::move(dstTextureHandle);
+    node->srcTexture = srcTexture;
+    node->dstTexture = dstTexture;
     node->tag        = "texture_copy";
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 
@@ -480,13 +480,13 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
 
     // read access to src texture
     RDGAccess readAccess{};
-    readAccess.textureSubResourceRange = srcTextureSubresourceRange;
+    readAccess.textureSubResourceRange = srcTexture->GetTextureSubResourceRange();
     readAccess.accessMode              = rhi::AccessMode::eRead;
     readAccess.textureUsage            = rhi::TextureUsage::eTransferSrc;
     readAccess.nodeId                  = node->id;
 
     RDGResource* srcResource =
-        GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
+        GetOrAllocResource(srcTexture->GetHandle(), RDGResourceType::eTexture, node->id);
     if (srcResource->tag.empty())
     {
         srcResource->tag = "src_texture";
@@ -498,16 +498,16 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
 
     // write access to dst texture
     RDGAccess writeAccess{};
-    writeAccess.textureSubResourceRange = dstTextureSubresourceRange;
+    writeAccess.textureSubResourceRange = dstTexture->GetTextureSubResourceRange();
     writeAccess.accessMode              = rhi::AccessMode::eReadWrite;
     writeAccess.textureUsage            = rhi::TextureUsage::eTransferDst;
     writeAccess.nodeId                  = node->id;
 
     RDGResource* dstResource =
-        GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
+        GetOrAllocResource(dstTexture->GetHandle(), RDGResourceType::eTexture, node->id);
     if (dstResource->tag.empty())
     {
-        dstResource->tag = "src_texture";
+        dstResource->tag = "dst_texture";
     }
     dstResource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     writeAccess.resourceId = dstResource->id;
@@ -515,12 +515,12 @@ void RenderGraph::AddTextureCopyNode(rhi::TextureHandle srcTextureHandle,
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
+void RenderGraph::AddTextureReadNode(TextureRD* srcTexture,
                                      rhi::BufferHandle dstBufferHandle,
                                      const VectorView<rhi::BufferTextureCopyRegion>& regions)
 {
     auto* node       = AllocNode<RDGTextureReadNode>();
-    node->srcTexture = std::move(srcTextureHandle);
+    node->srcTexture = srcTexture;
     node->dstBuffer  = std::move(dstBufferHandle);
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
     for (auto& region : regions)
@@ -535,7 +535,7 @@ void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
         readAccess.nodeId       = node->id;
 
         RDGResource* resource =
-            GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
+            GetOrAllocResource(srcTexture->GetHandle(), RDGResourceType::eTexture, node->id);
         resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
@@ -557,7 +557,7 @@ void RenderGraph::AddTextureReadNode(rhi::TextureHandle srcTextureHandle,
     }
 }
 
-void RenderGraph::AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
+void RenderGraph::AddTextureUpdateNode(TextureRD* dstTexture,
                                        const VectorView<rhi::BufferTextureCopySource>& sources)
 {
     auto* node = AllocNode<RDGTextureUpdateNode>();
@@ -565,7 +565,7 @@ void RenderGraph::AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
     {
         node->sources.push_back(source);
     }
-    node->dstTexture = std::move(dstTextureHandle);
+    node->dstTexture = dstTexture;
     node->type       = RDGNodeType::eCopyBuffer;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
     // only support update through staging buffer
@@ -577,23 +577,23 @@ void RenderGraph::AddTextureUpdateNode(rhi::TextureHandle dstTextureHandle,
     writeAccess.nodeId       = node->id;
 
     RDGResource* resource =
-        GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
+        GetOrAllocResource(dstTexture->GetHandle(), RDGResourceType::eTexture, node->id);
     resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
-                                        rhi::TextureHandle dstTextureHandle,
+void RenderGraph::AddTextureResolveNode(TextureRD* srcTexture,
+                                        TextureRD* dstTexture,
                                         uint32_t srcLayer,
                                         uint32_t srcMipmap,
                                         uint32_t dstLayer,
                                         uint32_t dstMipMap)
 {
     auto* node       = AllocNode<RDGTextureResolveNode>();
-    node->srcTexture = std::move(srcTextureHandle);
-    node->dstTexture = std::move(dstTextureHandle);
+    node->srcTexture = srcTexture;
+    node->dstTexture = dstTexture;
     node->srcLayer   = srcLayer;
     node->srcMipmap  = srcMipmap;
     node->dstLayer   = dstLayer;
@@ -607,7 +607,7 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
         readAccess.nodeId       = node->id;
 
         RDGResource* resource =
-            GetOrAllocResource(srcTextureHandle, RDGResourceType::eTexture, node->id);
+            GetOrAllocResource(srcTexture->GetHandle(), RDGResourceType::eTexture, node->id);
         resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
         readAccess.resourceId = resource->id;
 
@@ -621,7 +621,7 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
         writeAccess.nodeId       = node->id;
 
         RDGResource* resource =
-            GetOrAllocResource(dstTextureHandle, RDGResourceType::eTexture, node->id);
+            GetOrAllocResource(dstTexture->GetHandle(), RDGResourceType::eTexture, node->id);
         resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
         writeAccess.resourceId = resource->id;
 
@@ -629,11 +629,11 @@ void RenderGraph::AddTextureResolveNode(rhi::TextureHandle srcTextureHandle,
     }
 }
 
-void RenderGraph::AddTextureMipmapGenNode(rhi::TextureHandle textureHandle)
+void RenderGraph::AddTextureMipmapGenNode(TextureRD* texture)
 {
     auto* node    = AllocNode<RDGTextureMipmapGenNode>();
     node->type    = RDGNodeType::eGenTextureMipmap;
-    node->texture = std::move(textureHandle);
+    node->texture = texture;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
 }
 
@@ -679,19 +679,6 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
         {
             baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eComputeShader);
         }
-    }
-}
-
-void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                              uint32_t numTextures,
-                                              rhi::TextureHandle* textureHandles,
-                                              rhi::TextureUsage usage,
-                                              rhi::TextureSubResourceRange* ranges,
-                                              rhi::AccessMode accessMode)
-{
-    for (uint32_t i = 0; i < numTextures; i++)
-    {
-        DeclareTextureAccessForPass(passNode, textureHandles[i], usage, ranges[i], accessMode);
     }
 }
 
@@ -1166,19 +1153,21 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         case RDGNodeType::eClearTexture:
         {
             RDGTextureClearNode* node = reinterpret_cast<RDGTextureClearNode*>(base);
-            m_cmdList->ClearTexture(node->texture, node->color, node->range);
+            m_cmdList->ClearTexture(node->texture->GetHandle(), node->color,
+                                    node->texture->GetTextureSubResourceRange());
         }
         break;
         case RDGNodeType::eCopyTexture:
         {
             RDGTextureCopyNode* node = reinterpret_cast<RDGTextureCopyNode*>(base);
-            m_cmdList->CopyTexture(node->srcTexture, node->dstTexture, node->copyRegions);
+            m_cmdList->CopyTexture(node->srcTexture->GetHandle(), node->dstTexture->GetHandle(),
+                                   node->copyRegions);
         }
         break;
         case RDGNodeType::eReadTexture:
         {
             RDGTextureReadNode* node = reinterpret_cast<RDGTextureReadNode*>(base);
-            m_cmdList->CopyTextureToBuffer(node->srcTexture, node->dstBuffer,
+            m_cmdList->CopyTextureToBuffer(node->srcTexture->GetHandle(), node->dstBuffer,
                                            node->bufferTextureCopyRegions);
         }
         break;
@@ -1187,22 +1176,24 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             RDGTextureUpdateNode* node = reinterpret_cast<RDGTextureUpdateNode*>(base);
             for (auto& source : node->sources)
             {
-                m_cmdList->CopyBufferToTexture(source.buffer, node->dstTexture, source.region);
+                m_cmdList->CopyBufferToTexture(source.buffer, node->dstTexture->GetHandle(),
+                                               source.region);
             }
         }
         break;
         case RDGNodeType::eResolveTexture:
         {
             RDGTextureResolveNode* node = reinterpret_cast<RDGTextureResolveNode*>(base);
-            m_cmdList->ResolveTexture(node->srcTexture, node->dstTexture, node->srcLayer,
-                                      node->srcMipmap, node->dstLayer, node->dstMipmap);
+            m_cmdList->ResolveTexture(node->srcTexture->GetHandle(), node->dstTexture->GetHandle(),
+                                      node->srcLayer, node->srcMipmap, node->dstLayer,
+                                      node->dstMipmap);
         }
         break;
 
         case RDGNodeType::eGenTextureMipmap:
         {
             RDGTextureMipmapGenNode* node = reinterpret_cast<RDGTextureMipmapGenNode*>(base);
-            m_cmdList->GenerateTextureMipmaps(node->texture);
+            m_cmdList->GenerateTextureMipmaps(node->texture->GetHandle());
         }
         break;
 

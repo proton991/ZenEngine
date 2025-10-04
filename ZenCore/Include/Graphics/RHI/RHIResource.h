@@ -270,7 +270,11 @@ public:
 
     virtual TextureHandle GetColorBackBuffer() = 0;
 
+    virtual TextureSubResourceRange GetColorBackBufferRange() = 0;
+
     virtual TextureHandle GetDepthStencilBackBuffer() = 0;
+
+    virtual TextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
     virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
                                                        const FramebufferInfo* fbInfo) = 0;
