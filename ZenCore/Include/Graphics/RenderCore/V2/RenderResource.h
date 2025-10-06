@@ -18,6 +18,15 @@ public:
 
     void Init(RenderDevice* device, rhi::TextureHandle handle);
 
+    void DecreaseRefCount() override
+    {
+        if (IsProxy())
+        {
+            GetBaseTexture()->DecreaseRefCount();
+        }
+        ObjectBase::DecreaseRefCount();
+    }
+
     rhi::TextureHandle GetHandle() const
     {
         return m_handle;

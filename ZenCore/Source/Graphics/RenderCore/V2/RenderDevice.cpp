@@ -160,6 +160,7 @@ GraphicsPass GraphicsPassBuilder::Build()
     // PassTextureTracker's handle is not available until UpdatePassResource is called
     for (auto& srd : shaderProgram->GetSampledTextureSRDs())
     {
+        // todo: array binding in shader resource descriptor, srd.arraySize > 1
         PassResourceTracker tracker;
         tracker.name = srd.name;
         // for combined image samplers,
@@ -714,6 +715,11 @@ void RenderDevice::Destroy()
 
     m_rendererServer->Destroy();
 
+    for (uint32_t i = 0; i < m_numFrames; i++)
+    {
+        ProcessPendingFreeResources(i);
+    }
+
     for (RenderFrame& frame : m_frames)
     {
         delete frame.uploadCmdList;
@@ -899,11 +905,12 @@ TextureRD* RenderDevice::CreateTextureProxy(TextureRD* baseTexture,
 
 void RenderDevice::DestroyTexture(TextureRD* textureRD)
 {
-    if (textureRD->IsProxy())
-    {
-        textureRD->GetBaseTexture()->DecreaseRefCount();
-    }
-    textureRD->DecreaseRefCount();
+    // if (textureRD->IsProxy())
+    // {
+    //     textureRD->GetBaseTexture()->DecreaseRefCount();
+    // }
+    // textureRD->DecreaseRefCount();
+    m_frames[m_currentFrame].texturesPendingFree.emplace_back(textureRD);
 }
 
 rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
@@ -1348,6 +1355,12 @@ void RenderDevice::WaitForAllFrames()
 
 void RenderDevice::NextFrame()
 {
+    // for (TextureRD* texture : GetCurrentFrame()->texturesPendingFree)
+    // {
+    //     texture->DecreaseRefCount();
+    // }
+    // GetCurrentFrame()->texturesPendingFree.clear();
+    ProcessPendingFreeResources(m_currentFrame);
     m_currentFrame = (m_currentFrame + 1) % m_frames.size();
     BeginFrame();
 }
@@ -1369,6 +1382,15 @@ void RenderDevice::EndFrame()
     m_frames[m_currentFrame].uploadCmdList->EndUpload();
     m_frames[m_currentFrame].drawCmdList->EndRender();
     m_frames[m_currentFrame].cmdSubmitted = true;
+}
+
+void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
+{
+    for (TextureRD* texture : m_frames[frameIndex].texturesPendingFree)
+    {
+        texture->DecreaseRefCount();
+    }
+    m_frames[frameIndex].texturesPendingFree.clear();
 }
 
 // todo: consider attachment size when calculating hash

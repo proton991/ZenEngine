@@ -42,11 +42,7 @@ void SkyboxRenderer::Init()
     BuildGraphicsPasses();
 }
 
-void SkyboxRenderer::Destroy()
-{
-    m_renderDevice->DestroyTexture(m_offscreenTextures.irradiance);
-    m_renderDevice->DestroyTexture(m_offscreenTextures.prefiltered);
-}
+void SkyboxRenderer::Destroy() {}
 
 void SkyboxRenderer::PrepareTextures()
 {
@@ -371,6 +367,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             }
         }
     }
+    // free texture resources
+    m_renderDevice->DestroyTexture(m_offscreenTextures.irradiance);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.prefiltered);
 }
 
 void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)

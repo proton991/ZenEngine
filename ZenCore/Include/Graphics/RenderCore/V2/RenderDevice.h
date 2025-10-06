@@ -322,6 +322,7 @@ struct RenderFrame
     rhi::RHICommandList* uploadCmdList{nullptr};
     rhi::RHICommandList* drawCmdList{nullptr};
     bool cmdSubmitted{false};
+    std::vector<TextureRD*> texturesPendingFree;
 };
 
 struct RenderDeviceFeatures
@@ -491,6 +492,8 @@ private:
     void BeginFrame();
 
     void EndFrame();
+
+    void ProcessPendingFreeResources(uint32_t frameIndex);
 
     void UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
                               uint32_t offset,

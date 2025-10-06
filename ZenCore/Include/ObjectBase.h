@@ -57,7 +57,7 @@ public:
         ++m_refCount;
     }
 
-    void DecreaseRefCount()
+    virtual void DecreaseRefCount()
     {
         if (--m_refCount == 0)
         {
