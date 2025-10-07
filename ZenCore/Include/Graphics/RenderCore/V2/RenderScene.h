@@ -90,7 +90,7 @@ public:
         return m_envTexture;
     }
 
-    const std::vector<rhi::TextureHandle>& GetSceneTextures() const
+    const std::vector<TextureRD*>& GetSceneTextures() const
     {
         return m_sceneTextures;
     }
@@ -141,9 +141,11 @@ private:
 
     uint32_t m_numIndices{0};
 
-    std::vector<rhi::TextureHandle> m_sceneTextures;
+    // std::vector<rhi::TextureHandle> m_sceneTextures;
+    std::vector<TextureRD*> m_sceneTextures;
     std::string m_envTextureName;
     EnvTexture m_envTexture;
-    rhi::TextureHandle m_defaultBaseColorTexture;
+    TextureRD* m_defaultBaseColorTexture;
+    // rhi::TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

@@ -553,14 +553,14 @@ public:
 
 private:
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     rhi::TextureHandle textureHandle,
+                                     const rhi::TextureHandle& textureHandle,
                                      rhi::TextureUsage usage,
                                      const rhi::TextureSubResourceRange& range,
                                      rhi::AccessMode accessMode,
                                      std::string tag = "");
 
     void DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                    rhi::BufferHandle bufferHandle,
+                                    const rhi::BufferHandle& bufferHandle,
                                     rhi::BufferUsage usage,
                                     rhi::AccessMode accessMode,
                                     std::string tag = "");

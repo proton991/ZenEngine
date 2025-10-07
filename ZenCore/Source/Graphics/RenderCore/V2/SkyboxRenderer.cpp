@@ -219,18 +219,18 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             targetName       = "prefiltered_cubemap_gen";
         }
 
-        TextureInfo textureInfo{};
-        textureInfo.format      = format;
-        textureInfo.width       = dim;
-        textureInfo.height      = dim;
-        textureInfo.type        = TextureType::eCube;
-        textureInfo.depth       = 1;
-        textureInfo.arrayLayers = 6;
-        textureInfo.mipmaps     = CalculateTextureMipLevels(dim);
-        textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
-        textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
-
-        const uint32_t numMips = textureInfo.mipmaps;
+        // TextureInfo textureInfo{};
+        // textureInfo.format      = format;
+        // textureInfo.width       = dim;
+        // textureInfo.height      = dim;
+        // textureInfo.type        = TextureType::eCube;
+        // textureInfo.depth       = 1;
+        // textureInfo.arrayLayers = 6;
+        // textureInfo.mipmaps     = CalculateTextureMipLevels(dim);
+        // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
+        // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        //
+        const uint32_t numMips = CalculateTextureMipLevels(dim);
 
         SamplerInfo samplerInfo{};
         samplerInfo.minFilter     = SamplerFilter::eLinear;
@@ -252,7 +252,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         texFormat.height      = dim;
         texFormat.depth       = 1;
         texFormat.arrayLayers = 6;
-        texFormat.mipmaps     = CalculateTextureMipLevels(dim);
+        texFormat.mipmaps     = numMips;
 
         cubemapTexture =
             m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, targetName);

@@ -80,9 +80,15 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std
             const PassResourceTracker& tracker = kv.second;
             if (tracker.resourceType == PassResourceType::eTexture)
             {
-                DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
-                                            tracker.textureSubResRange, tracker.accessMode,
-                                            tracker.name);
+                for (auto* texture : tracker.textures)
+                {
+                    DeclareTextureAccessForPass(node, texture->GetHandle(), tracker.textureUsage,
+                                                texture->GetTextureSubResourceRange(),
+                                                tracker.accessMode, tracker.name);
+                }
+                // DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
+                //                             tracker.textureSubResRange, tracker.accessMode,
+                //                             tracker.name);
             }
             else if (tracker.resourceType == PassResourceType::eBuffer)
             {
@@ -202,9 +208,15 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
             const PassResourceTracker& tracker = kv.second;
             if (tracker.resourceType == PassResourceType::eTexture)
             {
-                DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
-                                            tracker.textureSubResRange, tracker.accessMode,
-                                            tracker.name);
+                for (auto* texture : tracker.textures)
+                {
+                    DeclareTextureAccessForPass(node, texture->GetHandle(), tracker.textureUsage,
+                                                texture->GetTextureSubResourceRange(),
+                                                tracker.accessMode, tracker.name);
+                }
+                // DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
+                //                             tracker.textureSubResRange, tracker.accessMode,
+                //                             tracker.name);
             }
             else if (tracker.resourceType == PassResourceType::eBuffer)
             {
@@ -638,7 +650,7 @@ void RenderGraph::AddTextureMipmapGenNode(TextureRD* texture)
 }
 
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                              rhi::TextureHandle textureHandle,
+                                              const rhi::TextureHandle& textureHandle,
                                               rhi::TextureUsage usage,
                                               const rhi::TextureSubResourceRange& range,
                                               rhi::AccessMode accessMode,
@@ -683,7 +695,7 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
 }
 
 void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                             rhi::BufferHandle bufferHandle,
+                                             const rhi::BufferHandle& bufferHandle,
                                              rhi::BufferUsage usage,
                                              rhi::AccessMode accessMode,
                                              std::string tag)
@@ -989,7 +1001,7 @@ void RenderGraph::SortNodesV2()
         RDG_ID lastWriter = RDG_ID::UndefinedValue;
         RDG_ID lastReader = RDG_ID::UndefinedValue;
 
-        for (auto [nodeId, mode] : accesses)
+        for (const auto& [nodeId, mode] : accesses)
         {
             if (mode == rhi::AccessMode::eReadWrite)
             {

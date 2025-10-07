@@ -160,7 +160,6 @@ GraphicsPass GraphicsPassBuilder::Build()
     // PassTextureTracker's handle is not available until UpdatePassResource is called
     for (auto& srd : shaderProgram->GetSampledTextureSRDs())
     {
-        // todo: array binding in shader resource descriptor, srd.arraySize > 1
         PassResourceTracker tracker;
         tracker.name = srd.name;
         // for combined image samplers,
@@ -249,39 +248,58 @@ void GraphicsPassResourceUpdater::Update()
         rhi::DescriptorSetHandle dsHandle = m_gfxPass->descriptorSets[setIndex];
         RHI->UpdateDescriptorSet(dsHandle, bindings);
         // set pass tracker handle values here
-        rhi::Handle handle;
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_gfxPass->resourceTrackers[setIndex][srb.binding];
-            if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
+            uint32_t index = 0;
+            while (index < srb.handles.size())
             {
-                handle = srb.handles[1];
+                rhi::Handle handle = srb.handles[hasSampler ? index + 1 : index];
+                if (tracker.resourceType == PassResourceType::eTexture)
+                {
+                    tracker.textures.emplace_back(
+                        m_renderDevice->GetTextureRDFromHandle(TO_TEX_HANDLE(handle)));
+                    // tracker.textureHandle = TO_TEX_HANDLE(handle);
+                    // tracker.textureSubResRange =
+                    //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+                }
+                else if (tracker.resourceType == PassResourceType::eBuffer)
+                {
+                    tracker.bufferHandle = TO_BUF_HANDLE(handle);
+                }
+                index = hasSampler ? index + 2 : index + 1;
             }
-            else
-            {
-                handle = srb.handles[0];
-            }
-            if (tracker.resourceType == PassResourceType::eTexture)
-            {
-                // check if a texture is a proxy
-                // rhi::TextureHandle textureHandle = TO_TEX_HANDLE(handle);
-                // if (m_renderDevice->IsProxyTexture(textureHandle))
-                // {
-                //     textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
-                // }
-                // else
-                // {
-                //     textureHandle = TO_TEX_HANDLE(handle);
-                // }
-                tracker.textureHandle = TO_TEX_HANDLE(handle);
-                tracker.textureSubResRange =
-                    m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
-            }
-            else if (tracker.resourceType == PassResourceType::eBuffer)
-            {
-                tracker.bufferHandle = TO_BUF_HANDLE(handle);
-            }
+            // if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+            //     srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            // {
+            //     handle = srb.handles[1];
+            // }
+            // else
+            // {
+            //     handle = srb.handles[0];
+            // }
+            // if (tracker.resourceType == PassResourceType::eTexture)
+            // {
+            //     // check if a texture is a proxy
+            //     // rhi::TextureHandle textureHandle = TO_TEX_HANDLE(handle);
+            //     // if (m_renderDevice->IsProxyTexture(textureHandle))
+            //     // {
+            //     //     textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
+            //     // }
+            //     // else
+            //     // {
+            //     //     textureHandle = TO_TEX_HANDLE(handle);
+            //     // }
+            //     tracker.textureHandle = TO_TEX_HANDLE(handle);
+            //     tracker.textureSubResRange =
+            //         m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+            // }
+            // else if (tracker.resourceType == PassResourceType::eBuffer)
+            // {
+            //     tracker.bufferHandle = TO_BUF_HANDLE(handle);
+            // }
         }
     }
 }
@@ -380,25 +398,46 @@ void ComputePassResourceUpdater::Update()
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
-            if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
+            uint32_t index = 0;
+            while (index < srb.handles.size())
             {
-                handle = srb.handles[1];
+                rhi::Handle handle = srb.handles[hasSampler ? index + 1 : index];
+                if (tracker.resourceType == PassResourceType::eTexture)
+                {
+                    tracker.textures.emplace_back(
+                        m_renderDevice->GetTextureRDFromHandle(TO_TEX_HANDLE(handle)));
+                    // tracker.textureHandle = TO_TEX_HANDLE(handle);
+                    // tracker.textureSubResRange =
+                    //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+                }
+                else if (tracker.resourceType == PassResourceType::eBuffer)
+                {
+                    tracker.bufferHandle = TO_BUF_HANDLE(handle);
+                }
+                index = hasSampler ? index + 2 : index + 1;
             }
-            else
-            {
-                handle = srb.handles[0];
-            }
-            if (tracker.resourceType == PassResourceType::eTexture)
-            {
-                tracker.textureHandle = TO_TEX_HANDLE(handle);
-                tracker.textureSubResRange =
-                    m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
-            }
-            else
-            {
-                tracker.bufferHandle = TO_BUF_HANDLE(handle);
-            }
+            // PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
+            // if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
+            //     srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            // {
+            //     handle = srb.handles[1];
+            // }
+            // else
+            // {
+            //     handle = srb.handles[0];
+            // }
+            // if (tracker.resourceType == PassResourceType::eTexture)
+            // {
+            //     tracker.textureHandle = TO_TEX_HANDLE(handle);
+            //     tracker.textureSubResRange =
+            //         m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
+            // }
+            // else
+            // {
+            //     tracker.bufferHandle = TO_BUF_HANDLE(handle);
+            // }
         }
     }
 }
@@ -787,6 +826,8 @@ TextureRD* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
     rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
     textureRD->Init(this, handle);
 
+    m_textureMap[handle] = textureRD;
+
     return textureRD;
 }
 
@@ -818,6 +859,8 @@ TextureRD* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFor
     rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
 
     textureRD->Init(this, handle);
+
+    m_textureMap[handle] = textureRD;
 
     return textureRD;
 }
@@ -851,6 +894,8 @@ TextureRD* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
     rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
     textureRD->Init(this, handle);
 
+    m_textureMap[handle] = textureRD;
+
     return textureRD;
 }
 
@@ -881,6 +926,8 @@ TextureRD* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
     rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
     textureRD->Init(this, handle);
 
+    m_textureMap[handle] = textureRD;
+
     return textureRD;
 }
 
@@ -900,7 +947,14 @@ TextureRD* RenderDevice::CreateTextureProxy(TextureRD* baseTexture,
         m_RHI->CreateTextureProxy(baseTexture->GetHandle(), textureProxyInfo);
     textureRD->Init(this, handle);
 
+    m_textureMap[handle] = textureRD;
+
     return textureRD;
+}
+
+TextureRD* RenderDevice::GetTextureRDFromHandle(const rhi::TextureHandle& handle)
+{
+    return m_textureMap[handle];
 }
 
 void RenderDevice::DestroyTexture(TextureRD* textureRD)
@@ -910,6 +964,7 @@ void RenderDevice::DestroyTexture(TextureRD* textureRD)
     //     textureRD->GetBaseTexture()->DecreaseRefCount();
     // }
     // textureRD->DecreaseRefCount();
+    m_textureMap.erase(textureRD->GetHandle());
     m_frames[m_currentFrame].texturesPendingFree.emplace_back(textureRD);
 }
 
@@ -1167,13 +1222,12 @@ rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::Textu
     return m_RHI->GetTextureSubResourceRange(handle);
 }
 
-rhi::TextureHandle RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
+TextureRD* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     return m_textureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
-                                     std::vector<rhi::TextureHandle>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures)
 {
     m_textureManager->LoadSceneTextures(scene, outTextures);
 }

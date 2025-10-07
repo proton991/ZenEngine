@@ -1,6 +1,31 @@
 #pragma once
 #include "Graphics/RHI/DynamicRHI.h"
 
+#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                           \
+    {                                                                                      \
+        rhi::ShaderResourceBinding binding{};                                              \
+        binding.binding = index_;                                                          \
+        binding.type    = type_;                                                           \
+        {                                                                                  \
+            std::initializer_list<Handle> handles = {__VA_ARGS__};                         \
+            binding.handles.insert(binding.handles.end(), handles.begin(), handles.end()); \
+        }                                                                                  \
+        bindings_.emplace_back(std::move(binding));                                        \
+    }
+
+#define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \
+    {                                                                                   \
+        rhi::ShaderResourceBinding binding{};                                           \
+        binding.binding = index_;                                                       \
+        binding.type    = type_;                                                        \
+        for (const rc::TextureRD* texture : textures_)                                  \
+        {                                                                               \
+            binding.handles.push_back(sampler_);                                        \
+            binding.handles.push_back(texture->GetHandle());                            \
+        }                                                                               \
+        bindings_.emplace_back(std::move(binding));                                     \
+    }
+
 namespace zen::rc
 {
 class ShaderProgram;
@@ -80,14 +105,15 @@ enum class PassResourceType
 struct PassResourceTracker
 {
     std::string name;
-    rhi::TextureHandle textureHandle;
+    std::vector<TextureRD*> textures;
+    // rhi::TextureHandle textureHandle;
     rhi::BufferHandle bufferHandle;
     PassResourceType resourceType{PassResourceType::eMax};
     rhi::AccessMode accessMode{rhi::AccessMode::eNone};
     BitField<rhi::AccessFlagBits> accessFlags;
     rhi::BufferUsage bufferUsage{rhi::BufferUsage::eNone};
     rhi::TextureUsage textureUsage{rhi::TextureUsage::eNone};
-    rhi::TextureSubResourceRange textureSubResRange;
+    // rhi::TextureSubResourceRange textureSubResRange;
 };
 
 struct GraphicsPass

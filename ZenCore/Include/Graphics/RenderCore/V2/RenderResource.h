@@ -37,6 +37,21 @@ public:
         return m_format;
     }
 
+    uint32_t GetWidth() const
+    {
+        return m_width;
+    }
+
+    uint32_t GetHeight() const
+    {
+        return m_height;
+    }
+
+    uint32_t GetDepth() const
+    {
+        return m_depth;
+    }
+
     const rhi::TextureSubResourceRange& GetTextureSubResourceRange() const
     {
         return m_subResourceRange;
@@ -65,6 +80,7 @@ private:
         m_format(texFormat.format),
         m_width(texFormat.width),
         m_height(texFormat.height),
+        m_depth(texFormat.depth),
         m_arrayLayers(texFormat.arrayLayers),
         m_mipmaps(texFormat.mipmaps)
     {}
@@ -87,9 +103,9 @@ private:
     DataFormat m_format{DataFormat::eUndefined};
     uint32_t m_width{0};
     uint32_t m_height{0};
-    uint32_t m_depth{0};
-    uint32_t m_arrayLayers{0};
-    uint32_t m_mipmaps{0};
+    uint32_t m_depth{1};
+    uint32_t m_arrayLayers{1};
+    uint32_t m_mipmaps{1};
 
     TextureRD* m_baseTex{nullptr};
     bool m_isProxy{false};

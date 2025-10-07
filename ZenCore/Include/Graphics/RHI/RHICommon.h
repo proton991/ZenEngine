@@ -220,31 +220,6 @@ struct ShaderResourceDescriptor
     uint32_t binding{0};
 };
 
-#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                           \
-    {                                                                                      \
-        ShaderResourceBinding binding{};                                                   \
-        binding.binding = index_;                                                          \
-        binding.type    = type_;                                                           \
-        {                                                                                  \
-            std::initializer_list<Handle> handles = {__VA_ARGS__};                         \
-            binding.handles.insert(binding.handles.end(), handles.begin(), handles.end()); \
-        }                                                                                  \
-        bindings_.emplace_back(std::move(binding));                                        \
-    }
-
-#define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \
-    {                                                                                   \
-        ShaderResourceBinding binding{};                                                \
-        binding.binding = index_;                                                       \
-        binding.type    = type_;                                                        \
-        for (const TextureHandle& textureHandle : textures_)                            \
-        {                                                                               \
-            binding.handles.push_back(sampler_);                                        \
-            binding.handles.push_back(textureHandle);                                   \
-        }                                                                               \
-        bindings_.emplace_back(std::move(binding));                                     \
-    }
-
 struct ShaderResourceBinding
 {
     ShaderResourceType type{ShaderResourceType::eMax};

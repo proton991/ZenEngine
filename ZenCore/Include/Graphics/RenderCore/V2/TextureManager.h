@@ -21,9 +21,9 @@ public:
     rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
                                           const rhi::TextureProxyInfo& proxyInfo);
 
-    rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    TextureRD* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
@@ -32,15 +32,22 @@ public:
     bool IsProxyTexture(const rhi::TextureHandle& textureHandle) const;
 
 private:
-    void UpdateTexture(const rhi::TextureHandle& textureHandle,
-                       const Vec3i& textureSize,
-                       uint32_t dataSize,
-                       const uint8_t* pData);
+    void UpdateTexture(const TextureRD* texture, uint32_t dataSize, const uint8_t* pData);
 
     void UpdateTextureCube(const rhi::TextureHandle& textureHandle,
                            const std::vector<rhi::BufferTextureCopyRegion>& regions,
                            uint32_t dataSize,
                            const uint8_t* pData);
+
+    // void UpdateTexture(const rhi::TextureHandle& textureHandle,
+    //                    const Vec3i& textureSize,
+    //                    uint32_t dataSize,
+    //                    const uint8_t* pData);
+    //
+    // void UpdateTextureCube(const rhi::TextureHandle& textureHandle,
+    //                        const std::vector<rhi::BufferTextureCopyRegion>& regions,
+    //                        uint32_t dataSize,
+    //                        const uint8_t* pData);
 
     rhi::DynamicRHI* m_RHI{nullptr};
 

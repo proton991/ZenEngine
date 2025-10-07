@@ -374,6 +374,8 @@ public:
                                   const TextureProxyFormat& proxyFormat,
                                   std::string name);
 
+    TextureRD* GetTextureRDFromHandle(const rhi::TextureHandle& handle);
+
     void DestroyTexture(TextureRD* textureRD);
 
     rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
@@ -430,9 +432,11 @@ public:
 
     void UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport);
 
-    rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    // rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::TextureHandle>& outTextures);
+    TextureRD* LoadTexture2D(const std::string& file, bool requireMipmap = false);
+
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* texture);
 
@@ -555,6 +559,7 @@ private:
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
     HashMap<size_t, rhi::SamplerHandle> m_samplerCache;
+    HashMap<rhi::TextureHandle, TextureRD*> m_textureMap;
     std::vector<rhi::BufferHandle> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;
     std::vector<ComputePass> m_computePasses;
