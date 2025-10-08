@@ -14,128 +14,115 @@ layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outFragColor;
 
 const int NUM_LIGHTS = 4;
-
-const bool useIBL = true; // Control for enabling IBL or not
+const float PI = 3.14159265359;
+const float MAX_REFLECTION_LOD = 4.0;
 
 layout (set = 1, binding = 0) uniform uSceneData {
-	vec4 lightPosition[NUM_LIGHTS];  // Positions of 4 lights
-	vec4 lightColor[NUM_LIGHTS];     // Colors of 4 lights
-	vec4 lightIntensity[NUM_LIGHTS]; // Intensities of 4 lights
-	vec4 viewPosition;               // Camera/View position
+	vec4 lightPosition[NUM_LIGHTS];
+	vec4 lightColor[NUM_LIGHTS];
+	vec4 lightIntensity[NUM_LIGHTS];
+	vec4 viewPosition;
 } sceneUbo;
 
-// Function to sample the environment irradiance map for diffuse lighting
-vec3 SampleEnvIrradianceMap(vec3 normal) {
-	return texture(envIrradianceMap, normal).rgb;
+// ---------- PBR Helpers ----------
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+	float a = roughness * roughness;
+	float a2 = a * a;
+	float NdotH = max(dot(N, H), 0.0);
+	float NdotH2 = NdotH * NdotH;
+	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	denom = PI * denom * denom;
+	return a2 / max(denom, 1e-6);
 }
 
-// Function to sample the environment prefiltered map for specular reflection
-vec3 SampleEnvPrefilteredMap(vec3 normal, float roughness) {
-	float lod = roughness * 5.0; // Roughness determines the mip level
-	return textureLod(envPrefilteredMap, normal, lod).rgb;
+float GeometrySchlickGGX(float NdotV, float k) {
+	return NdotV / (NdotV * (1.0 - k) + k);
 }
 
-// Function to calculate the specular reflection using the BRDF LUT
-float CalculateBRDFSpecular(float NdotV, float roughness) {
-	return texture(lutBRDFMap, vec2(NdotV, roughness)).r; // Lookup BRDF for specular reflection
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+	float k = (roughness + 1.0);
+	k = k * k * 0.125;
+	float ggx1 = GeometrySchlickGGX(max(dot(N, V), 0.0), k);
+	float ggx2 = GeometrySchlickGGX(max(dot(N, L), 0.0), k);
+	return ggx1 * ggx2;
 }
 
-// Function to calculate the lighting using traditional point lights
-vec3 CalculateDirectLighting(vec3 position, vec3 normal, float occlusion, vec3 albedo, float metallic, float roughness) {
-	vec3 finalColor = vec3(0.0);
-
-	// Accumulate lighting from all lights in the scene
-	for (int i = 0; i < NUM_LIGHTS; i++) {
-		vec3 lightDir = normalize(sceneUbo.lightPosition[i].xyz - position);
-		float distance = length(sceneUbo.lightPosition[i].xyz - position);
-		float attenuation = 1.0 / (distance * distance + 0.1); // Light attenuation
-		vec3 radiance = sceneUbo.lightColor[i].rgb * sceneUbo.lightIntensity[i].rgb * attenuation;
-
-		// Lambertian Diffuse (direct lighting)
-		float NdotL = max(dot(normal, lightDir), 0.0);
-		vec3 diffuse = (1.0 - metallic) * albedo / 3.14159265359;
-
-		// Specular (Cook-Torrance Microfacet Model)
-		vec3 viewDir = normalize(sceneUbo.viewPosition.xyz - position);
-		vec3 halfDir = normalize(viewDir + lightDir);
-		float NdotH = max(dot(normal, halfDir), 0.0);
-		float NdotV = max(dot(normal, viewDir), 0.0);
-
-		float roughnessSquared = roughness * roughness;
-		float D = roughnessSquared / (3.14159265359 * pow(NdotH * (roughnessSquared - 1.0) + 1.0, 2.0));
-		float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
-		float G = (NdotL / (NdotL * (1.0 - k) + k)) * (NdotV / (NdotV * (1.0 - k) + k));
-		vec3 F = mix(vec3(0.04), albedo, metallic) + (1.0 - mix(vec3(0.04), albedo, metallic)) * pow(1.0 - NdotV, 5.0);
-
-		vec3 specular = (D * G * F) / (4.0 * NdotL * NdotV + 0.001);
-
-		// Combine diffuse and specular lighting
-		finalColor += (diffuse + specular) * radiance * NdotL * occlusion;
-	}
-
-	return finalColor;
+vec3 FresnelSchlick(float cosTheta, vec3 F0) {
+	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+vec3 SamplePrefiltered(vec3 R, float roughness) {
+	float lod = roughness * MAX_REFLECTION_LOD;
+	return textureLod(envPrefilteredMap, R, lod).rgb;
+}
+
+// ---------- Main ----------
 void main() {
-	// Sample the depth from the G-buffer texture
-	float depth = texture(depthMap, inUV).r; // Retrieve depth from the texture (r component)
+	float depth = texture(depthMap, inUV).r;
+	if (depth >= 0.9999) discard;
 
-	// If depth is 1 (indicating skybox or background), don't perform deferred lighting
-	if (depth == 1.0) {
-		discard; // Skip lighting calculations (we're rendering the skybox or background)
-	}
+	vec3 worldPos = texture(positionMap, inUV).rgb;
+	vec3 N = normalize(texture(normalMap, inUV).rgb);
+	vec4 albRGBA = texture(albedoMap, inUV);
+	vec3 albedo = albRGBA.rgb;
+	if (albRGBA.a < 0.1) discard;
 
-	// Sample G-buffer textures
-	vec3 position = texture(positionMap, inUV).rgb;
-	vec3 normal = normalize(texture(normalMap, inUV).rgb);
-	vec4 albedoTex = texture(albedoMap, inUV);
-	vec3 albedo = albedoTex.rgb;
+	vec2 mr = texture(metallicRoughnessMap, inUV).rg;
+	float metallic = clamp(mr.r, 0.0, 1.0);
+	float roughness = clamp(mr.g, 0.04, 1.0);
 
-	// Perform alpha test using albedo alpha component
-	if (albedoTex.a < 0.1f) {
-		discard; // Discard the fragment if it doesn't pass the alpha threshold
-	}
+	vec4 emissiveOccl = texture(emissiveOcclusionMap, inUV);
+	vec3 emissive = emissiveOccl.rgb;
+	float ao = clamp(emissiveOccl.a, 0.0, 1.0);
 
-
-	float occlusion = texture(emissiveOcclusionMap, inUV).a;
-	float metallic = texture(metallicRoughnessMap, inUV).r;
-	float roughness = texture(metallicRoughnessMap, inUV).g;
-	vec3 emissive = texture(emissiveOcclusionMap, inUV).rgb;
-
-	// Fresnel-Schlick Approximation for F0 (the reflection color at normal incidence)
+	vec3 V = normalize(sceneUbo.viewPosition.xyz - worldPos);
+	float NdotV = max(dot(N, V), 0.001);
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-	// Initialize final color (which will be adjusted by IBL or direct lighting)
-	vec3 finalColor = vec3(0.0);
+	// ---------- Direct Lighting ----------
+	vec3 Lo = vec3(0.0);
+	for (int i = 0; i < NUM_LIGHTS; ++i) {
+		vec3 L = normalize(sceneUbo.lightPosition[i].xyz - worldPos);
+		float NdotL = max(dot(N, L), 0.0);
+		if (NdotL <= 0.0) continue;
 
-	if (useIBL) {
-		vec3 irradiance = SampleEnvIrradianceMap(normal); // Diffuse from environment
-		vec3 prefiltered = SampleEnvPrefilteredMap(normal, roughness); // Specular from environment
-		vec2 brdf = texture(lutBRDFMap, vec2(max(dot(normal, normalize(sceneUbo.viewPosition.xyz - position)), 0.0), roughness)).rg; // Use both channels
+		vec3 H = normalize(V + L);
+		float D = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
-		// Fresnel-Schlick for IBL
-		vec3 F0 = mix(vec3(0.04), albedo, metallic);
-		vec3 F = F0 + (1.0 - F0) * pow(1.0 - max(dot(normal, normalize(sceneUbo.viewPosition.xyz - position)), 0.0), 5.0);
+		vec3 numerator = D * G * F;
+		float denom = max(4.0 * NdotV * NdotL, 1e-6);
+		vec3 specular = numerator / denom;
 
-		// Diffuse reflection from IBL
-		vec3 diffuse = (1.0 - metallic) * albedo * irradiance;
+		vec3 kS = F;
+		vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+		vec3 diffuse = albedo / PI;
 
-		// Specular reflection from IBL
-		vec3 specular = prefiltered * (F * brdf.x + brdf.y);
+		float distance = length(sceneUbo.lightPosition[i].xyz - worldPos);
+		float attenuation = 1.0 / (distance * distance + 0.01);
+		vec3 radiance = sceneUbo.lightColor[i].rgb * sceneUbo.lightIntensity[i].r * attenuation;
 
-		// Final color accumulation
-		finalColor += diffuse * occlusion + specular;
-	} else {
-		// Static lighting
-		finalColor += CalculateDirectLighting(position, normal, occlusion, albedo, metallic, roughness);
+		Lo += (kD * diffuse + specular) * radiance * NdotL;
 	}
 
-	// Add emissive lighting to the final color
-	finalColor += emissive;
+	// ---------- IBL ----------
+	vec3 irradiance = texture(envIrradianceMap, N).rgb;
+	vec3 R = reflect(-V, N);
+	vec3 prefilteredColor = SamplePrefiltered(R, roughness);
+	vec2 brdf = texture(lutBRDFMap, vec2(NdotV, roughness)).rg;
+	vec3 F = FresnelSchlick(NdotV, F0);
+	vec3 kS = F;
+	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+	vec3 diffuseIBL = irradiance * albedo;
+	vec3 specularIBL = prefilteredColor * (F * brdf.x + brdf.y);
+	vec3 ambient = (kD * diffuseIBL * ao) + (specularIBL * ao);
 
-	// Apply gamma correction
-	finalColor = pow(finalColor, vec3(1.0 / 2.2));
+	vec3 color = Lo + ambient + emissive;
 
-	// Output the final color
-	outFragColor = vec4(finalColor, 1.0);
+	// simple Reinhard tone mapping
+	color = color / (color + vec3(1.0));
+	color = pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
+
+	outFragColor = vec4(color, 1.0);
 }
