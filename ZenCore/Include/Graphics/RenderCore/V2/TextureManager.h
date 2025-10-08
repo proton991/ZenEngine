@@ -16,10 +16,10 @@ public:
 
     void Destroy();
 
-    rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
-
-    rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
-                                          const rhi::TextureProxyInfo& proxyInfo);
+    // rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
+    //
+    // rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+    //                                       const rhi::TextureProxyInfo& proxyInfo);
 
     TextureRD* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
@@ -27,9 +27,9 @@ public:
 
     void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
-    rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
-
-    bool IsProxyTexture(const rhi::TextureHandle& textureHandle) const;
+    // rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
+    //
+    // bool IsProxyTexture(const rhi::TextureHandle& textureHandle) const;
 
 private:
     void UpdateTexture(const TextureRD* texture, uint32_t dataSize, const uint8_t* pData);

@@ -82,10 +82,10 @@ private:
 
     struct
     {
-        rhi::TextureHandle voxelRadiance;
-        rhi::TextureHandle voxelMipmaps[6];
+        TextureRD* voxelRadiance;
+        TextureRD* voxelMipmaps[6];
         // from ShadowMapRenderer
-        rhi::TextureHandle shadowMap;
+        TextureRD* shadowMap;
     } m_textures;
 };
 } // namespace zen::rc

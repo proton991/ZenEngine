@@ -968,27 +968,27 @@ void RenderDevice::DestroyTexture(TextureRD* textureRD)
     m_frames[m_currentFrame].texturesPendingFree.emplace_back(textureRD);
 }
 
-rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
-{
-    ASSERT(!textureInfo.name.empty());
-    return m_textureManager->CreateTexture(textureInfo);
-}
+// rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
+// {
+//     ASSERT(!textureInfo.name.empty());
+//     return m_textureManager->CreateTexture(textureInfo);
+// }
 
-rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
-                                                    const rhi::TextureProxyInfo& proxyInfo)
-{
-    return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
-}
+// rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+//                                                     const rhi::TextureProxyInfo& proxyInfo)
+// {
+//     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
+// }
 
-rhi::TextureHandle RenderDevice::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
-{
-    return m_textureManager->GetBaseTextureForProxy(handle);
-}
-
-bool RenderDevice::IsProxyTexture(const rhi::TextureHandle& handle) const
-{
-    return m_textureManager->IsProxyTexture(handle);
-}
+// rhi::TextureHandle RenderDevice::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
+// {
+//     return m_textureManager->GetBaseTextureForProxy(handle);
+// }
+//
+// bool RenderDevice::IsProxyTexture(const rhi::TextureHandle& handle) const
+// {
+//     return m_textureManager->IsProxyTexture(handle);
+// }
 
 void RenderDevice::GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
                                           rhi::RHICommandList* cmdList)

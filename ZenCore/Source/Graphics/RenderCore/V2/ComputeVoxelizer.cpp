@@ -33,6 +33,11 @@ void ComputeVoxelizer::Init()
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
+#ifdef ZEN_MACOS
+    m_renderDevice->DestroyTexture(m_dummyTextures[0]);
+    m_renderDevice->DestroyTexture(m_dummyTextures[1]);
+    m_renderDevice->DestroyTexture(m_dummyTextures[2]);
+#endif
     delete m_cube;
 }
 
@@ -51,10 +56,20 @@ void ComputeVoxelizer::PrepareTextures()
     for (uint32_t i = 0; i < 3; i++)
     {
         const auto texName = "dummy_texture_" + std::to_string(i);
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-                          halfDim, 1, 1, SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_dummyTextures[i] = m_renderDevice->CreateTexture(texInfo);
+        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
+        //                   halfDim, 1, 1, SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
+        //                   TextureUsageFlagBits::eSampled);
+        TextureFormat texFormat{};
+        texFormat.format      = m_voxelTexFormat;
+        texFormat.dimension   = TextureDimension::e3D;
+        texFormat.width       = halfDim;
+        texFormat.height      = halfDim;
+        texFormat.depth       = halfDim;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        m_dummyTextures[i] =
+            m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, texName);
         // m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
         //                            m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
         //                            TextureLayout::eGeneral);

@@ -378,14 +378,14 @@ public:
 
     void DestroyTexture(TextureRD* textureRD);
 
-    rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
+    // rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
+    //
+    // rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+    //                                       const rhi::TextureProxyInfo& proxyInfo);
 
-    rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
-                                          const rhi::TextureProxyInfo& proxyInfo);
+    // rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
 
-    rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
-
-    bool IsProxyTexture(const rhi::TextureHandle& handle) const;
+    // bool IsProxyTexture(const rhi::TextureHandle& handle) const;
 
     void GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
                                 rhi::RHICommandList* cmdList);

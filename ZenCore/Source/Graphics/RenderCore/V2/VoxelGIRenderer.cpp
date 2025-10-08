@@ -63,20 +63,37 @@ void VoxelGIRenderer::PrepareTextures()
     DataFormat voxelTexFormat   = DataFormat::eR8G8B8A8UNORM;
     uint32_t voxelTexResolution = m_voxelizer->GetVoxelTexResolution();
     {
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, voxelTexResolution,
-                          voxelTexResolution, voxelTexResolution, 1, 1, SampleCount::e1,
-                          "voxel_radiance", TextureUsageFlagBits::eStorage,
-                          TextureUsageFlagBits::eSampled);
-        m_textures.voxelRadiance = m_renderDevice->CreateTexture(texInfo);
+        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, voxelTexResolution,
+        //                   voxelTexResolution, voxelTexResolution, 1, 1, SampleCount::e1,
+        //                   "voxel_radiance", TextureUsageFlagBits::eStorage,
+        //                   TextureUsageFlagBits::eSampled);
+        TextureFormat texFormat{};
+        texFormat.format    = voxelTexFormat;
+        texFormat.dimension = TextureDimension::e3D;
+        texFormat.width     = voxelTexResolution;
+        texFormat.height    = voxelTexResolution;
+        texFormat.depth     = voxelTexResolution;
+
+        m_textures.voxelRadiance =
+            m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, "voxel_radiance");
     }
     const auto halfDim = voxelTexResolution / 2;
     for (uint32_t i = 0; i < 6; i++)
     {
         const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-        INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, halfDim, halfDim, halfDim,
-                          CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1, SampleCount::e1,
-                          texName, TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
-        m_textures.voxelMipmaps[i] = m_renderDevice->CreateTexture(texInfo);
+        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, halfDim, halfDim, halfDim,
+        //                   CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1, SampleCount::e1,
+        //                   texName, TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        TextureFormat texFormat{};
+        texFormat.format    = voxelTexFormat;
+        texFormat.dimension = TextureDimension::e3D;
+        texFormat.width     = halfDim;
+        texFormat.height    = halfDim;
+        texFormat.depth     = halfDim;
+        texFormat.mipmaps   = CalculateTextureMipLevels(halfDim, halfDim, halfDim);
+
+        m_textures.voxelMipmaps[i] =
+            m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, texName);
         //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
         //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
         //                                   TextureLayout::eGeneral);
@@ -170,7 +187,7 @@ void VoxelGIRenderer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_textures.voxelRadiance);
+                                  m_textures.voxelRadiance->GetHandle());
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
@@ -189,7 +206,7 @@ void VoxelGIRenderer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set0bindings, 1, ShaderResourceType::eImage,
                                   voxelTextures.normalProxy->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eImage,
-                                  m_textures.voxelRadiance);
+                                  m_textures.voxelRadiance->GetHandle());
         ADD_SHADER_BINDING_SINGLE(set0bindings, 3, ShaderResourceType::eImage,
                                   voxelTextures.emissiveProxy->GetHandle());
 
@@ -197,7 +214,8 @@ void VoxelGIRenderer::UpdatePassResources()
         ShadowMapRenderer* shadowMapRenderer =
             m_renderDevice->GetRendererServer()->RequestShadowMapRenderer();
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  shadowMapRenderer->GetColorSampler(), m_textures.shadowMap);
+                                  shadowMapRenderer->GetColorSampler(),
+                                  m_textures.shadowMap->GetHandle());
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(
             set2bindings, 0, ShaderResourceType::eUniformBuffer,

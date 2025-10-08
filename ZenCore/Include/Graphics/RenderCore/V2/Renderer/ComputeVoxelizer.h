@@ -43,7 +43,9 @@ protected:
 
     void UpdateUniformData() final;
 
-    rhi::TextureHandle m_dummyTextures[3];
+#ifdef ZEN_MACOS
+    TextureRD* m_dummyTextures[3];
+#endif
 
     struct LargeTriangle
     {

@@ -32,9 +32,9 @@ public:
         return m_rdg.Get();
     };
 
-    const rhi::TextureHandle& GetShadowMapTexture() const
+    TextureRD* GetShadowMapTexture() const
     {
-        return m_offscreenTextures.shadowMap->GetHandle();
+        return m_offscreenTextures.shadowMap;
     }
 
     const rhi::SamplerHandle& GetColorSampler() const

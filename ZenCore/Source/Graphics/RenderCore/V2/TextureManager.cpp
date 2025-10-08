@@ -18,26 +18,25 @@ void TextureManager::Destroy()
     }
 }
 
-rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& textureInfo)
-{
-    // todo: remove caching
-    if (!m_textureCache.contains(textureInfo.name))
-    {
-        m_textureCache[textureInfo.name] = m_RHI->CreateTexture(textureInfo);
-    }
-    return m_textureCache.at(textureInfo.name);
-}
+// rhi::TextureHandle TextureManager::CreateTexture(const rhi::TextureInfo& textureInfo)
+// {
+//     if (!m_textureCache.contains(textureInfo.name))
+//     {
+//         m_textureCache[textureInfo.name] = m_RHI->CreateTexture(textureInfo);
+//     }
+//     return m_textureCache.at(textureInfo.name);
+// }
 
-rhi::TextureHandle TextureManager::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
-                                                      const rhi::TextureProxyInfo& proxyInfo)
-{
-    if (!m_textureCache.contains(proxyInfo.name))
-    {
-        m_textureCache[proxyInfo.name] = m_RHI->CreateTextureProxy(baseTexture, proxyInfo);
-        m_textureProxyMap[m_textureCache[proxyInfo.name]] = baseTexture;
-    }
-    return m_textureCache.at(proxyInfo.name);
-}
+// rhi::TextureHandle TextureManager::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+//                                                       const rhi::TextureProxyInfo& proxyInfo)
+// {
+//     if (!m_textureCache.contains(proxyInfo.name))
+//     {
+//         m_textureCache[proxyInfo.name] = m_RHI->CreateTextureProxy(baseTexture, proxyInfo);
+//         m_textureProxyMap[m_textureCache[proxyInfo.name]] = baseTexture;
+//     }
+//     return m_textureCache.at(proxyInfo.name);
+// }
 
 TextureRD* TextureManager::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
@@ -284,14 +283,14 @@ void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
     m_stagingMgr->ProcessPendingFrees();
 }
 
-rhi::TextureHandle TextureManager::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
-{
-    // assume the handle is a proxy texture handle
-    return m_textureProxyMap.at(handle);
-}
+// rhi::TextureHandle TextureManager::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
+// {
+//     // assume the handle is a proxy texture handle
+//     return m_textureProxyMap.at(handle);
+// }
 
-bool TextureManager::IsProxyTexture(const rhi::TextureHandle& textureHandle) const
-{
-    return m_textureProxyMap.contains(textureHandle);
-}
+// bool TextureManager::IsProxyTexture(const rhi::TextureHandle& textureHandle) const
+// {
+//     return m_textureProxyMap.contains(textureHandle);
+// }
 } // namespace zen::rc
