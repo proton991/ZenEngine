@@ -910,8 +910,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler   = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
-                    imageInfo.imageView = TO_VK_TEXTURE(srb.handles[j * 2 + 1])->imageView;
+                    imageInfo.sampler     = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
+                    imageInfo.imageView   = TO_VK_TEXTURE(srb.handles[j * 2 + 1])->imageView;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     imageInfos[j]         = imageInfo;
                 }
@@ -968,8 +968,8 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
-                    imageInfo.sampler   = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
-                    imageInfo.imageView = VK_NULL_HANDLE;
+                    imageInfo.sampler     = TO_VK_SAMPLER(srb.handles[j * 2 + 0]);
+                    imageInfo.imageView   = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                     imageInfos[j]         = imageInfo;
 

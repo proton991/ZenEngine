@@ -383,9 +383,9 @@ inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSp
         ShaderStage stage = static_cast<ShaderStage>(i);
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
-            shaderGroupInfo.sprivCode[stage] = shaderGroupSpirv->GetStageSPIRV(stage);
+            shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
             SpvReflectShaderModule module;
-            std::vector<uint8_t> spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
+            const std::vector<uint8_t>& spirvCode = shaderGroupInfo.sprivCode[stage];
             SpvReflectResult result =
                 spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
             if (result != SPV_REFLECT_RESULT_SUCCESS)

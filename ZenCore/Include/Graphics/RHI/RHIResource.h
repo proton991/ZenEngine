@@ -109,7 +109,7 @@ public:
         m_spirv[static_cast<uint32_t>(stage)] = source;
     }
 
-    const std::vector<uint8_t>& GetStageSPIRV(ShaderStage stage) const
+    std::vector<uint8_t> GetStageSPIRV(ShaderStage stage) const
     {
         VERIFY_EXPR(stage < ShaderStage::eMax);
         return m_spirv[ToUnderlying(stage)];
