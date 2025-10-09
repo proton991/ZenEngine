@@ -330,6 +330,7 @@ ComputePass ComputePassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name = srd.name;
         // for combined image samplers,
+        tracker.resourceType = PassResourceType::eTexture;
         tracker.textureUsage = TextureUsage::eSampled;
         tracker.accessMode   = AccessMode::eRead;
         tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);

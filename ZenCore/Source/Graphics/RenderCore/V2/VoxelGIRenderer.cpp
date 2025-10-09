@@ -40,7 +40,14 @@ void VoxelGIRenderer::SetRenderScene(RenderScene* scene)
     UpdatePassResources();
 }
 
-void VoxelGIRenderer::Destroy() {}
+void VoxelGIRenderer::Destroy()
+{
+    for (uint32_t i = 0; i < 6; i++)
+    {
+        m_renderDevice->DestroyTexture(m_textures.voxelMipmaps[i]);
+    }
+    m_renderDevice->DestroyTexture(m_textures.voxelRadiance);
+}
 
 void VoxelGIRenderer::PrepareRenderWorkload()
 {
