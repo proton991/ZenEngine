@@ -4,6 +4,10 @@
 #include "../RenderGraph.h"
 #include "SceneGraph/AABB.h"
 
+#ifdef ZEN_MACOS
+#    define NUM_DUMMY_TEXTURES 6
+#endif
+
 namespace zen::rc
 {
 class RenderScene;
@@ -44,7 +48,7 @@ protected:
     void UpdateUniformData() final;
 
 #ifdef ZEN_MACOS
-    TextureRD* m_dummyTextures[3];
+    TextureRD* m_dummyTextures[NUM_DUMMY_TEXTURES];
 #endif
 
     struct LargeTriangle

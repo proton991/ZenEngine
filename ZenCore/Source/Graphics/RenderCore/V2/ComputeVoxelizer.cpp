@@ -33,10 +33,13 @@ void ComputeVoxelizer::Init()
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
+    // todo: WA for MoltenVK on macos. Need to locate the root cause.
+    // Without following code, compute voxelization will cause GPU hang on macos.
 #ifdef ZEN_MACOS
-    m_renderDevice->DestroyTexture(m_dummyTextures[0]);
-    m_renderDevice->DestroyTexture(m_dummyTextures[1]);
-    m_renderDevice->DestroyTexture(m_dummyTextures[2]);
+    for (uint32_t i = 0; i < NUM_DUMMY_TEXTURES; ++i)
+    {
+        m_renderDevice->DestroyTexture(m_dummyTextures[i]);
+    }
 #endif
     delete m_cube;
 }
@@ -53,7 +56,7 @@ void ComputeVoxelizer::PrepareTextures()
     using namespace zen::rhi;
 #ifdef ZEN_MACOS
     const auto halfDim = m_voxelTexResolution / 2;
-    for (uint32_t i = 0; i < 3; i++)
+    for (uint32_t i = 0; i < NUM_DUMMY_TEXTURES; i++)
     {
         const auto texName = "dummy_texture_" + std::to_string(i);
         // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
