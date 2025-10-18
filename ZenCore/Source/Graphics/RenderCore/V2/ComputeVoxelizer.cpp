@@ -278,10 +278,11 @@ void ComputeVoxelizer::BuildGraphicsPasses()
     pso.dynamicStates.push_back(DynamicState::eScissor);
     pso.dynamicStates.push_back(DynamicState::eViewPort);
     rc::GraphicsPassBuilder builder(m_renderDevice);
-    m_gfxPasses.voxelDraw = builder.SetShaderProgramName("VoxelDrawSP2")
-                                .SetNumSamples(SampleCount::e1)
+    m_gfxPasses.voxelDraw = builder
+                                .SetShaderProgramName("VoxelDrawSP2")
+                                // .SetNumSamples(SampleCount::e1)
                                 .SetPipelineState(pso)
-                                .AddViewportColorRT(m_viewport, false)
+                                .AddViewportColorRT(m_viewport, RenderTargetLoadOp::eLoad)
                                 .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
                                                            RenderTargetStoreOp::eStore)
                                 .SetFramebufferInfo(m_viewport)

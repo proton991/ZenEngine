@@ -142,8 +142,9 @@ void ShadowMapRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.evsm =
-            builder.SetShaderProgramName("ShadowMapRenderSP")
-                .SetNumSamples(SampleCount::e1)
+            builder
+                .SetShaderProgramName("ShadowMapRenderSP")
+                // .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_offscreenTextures.shadowMap)
                 .SetDepthStencilTarget(m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
                                        rhi::RenderTargetStoreOp::eStore)

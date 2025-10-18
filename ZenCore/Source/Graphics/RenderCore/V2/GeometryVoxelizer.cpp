@@ -145,8 +145,9 @@ void GeometryVoxelizer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.voxelization =
-            builder.SetShaderProgramName("VoxelizationSP")
-                .SetNumSamples(SampleCount::e1)
+            builder
+                .SetShaderProgramName("VoxelizationSP")
+                // .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
                 //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
                 //                      m_voxelTextures.offscreen1)
@@ -171,10 +172,11 @@ void GeometryVoxelizer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.voxelDraw =
-            builder.SetShaderProgramName("VoxelDrawSP")
-                .SetNumSamples(SampleCount::e1)
+            builder
+                .SetShaderProgramName("VoxelDrawSP")
+                // .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
-                .AddViewportColorRT(m_viewport, false)
+                .AddViewportColorRT(m_viewport, RenderTargetLoadOp::eLoad)
                 .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
                                            RenderTargetStoreOp::eStore)
                 .SetFramebufferInfo(m_viewport)

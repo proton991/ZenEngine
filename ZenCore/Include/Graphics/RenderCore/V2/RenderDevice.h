@@ -44,25 +44,31 @@ public:
     //                                           const rhi::TextureHandle& handle,
     //                                           bool clear = true);
 
-    GraphicsPassBuilder& AddViewportColorRT(rhi::RHIViewport* viewport, bool clear = true);
+    GraphicsPassBuilder& AddViewportColorRT(
+        rhi::RHIViewport* viewport,
+        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& SetViewportDepthStencilRT(
         rhi::RHIViewport* viewport,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
-    GraphicsPassBuilder& AddColorRenderTarget(const TextureRD* colorRT, bool clear = true);
+    GraphicsPassBuilder& AddColorRenderTarget(
+        const TextureRD* colorRT,
+        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
         const TextureRD* depthStencilRT,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
+        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
-    GraphicsPassBuilder& SetNumSamples(SampleCount sampleCount)
-    {
-        m_rpLayout.SetNumSamples(sampleCount);
-        return *this;
-    }
+    // GraphicsPassBuilder& SetNumSamples(SampleCount sampleCount)
+    // {
+    //     m_rpLayout.SetNumSamples(sampleCount);
+    //     return *this;
+    // }
 
     // GraphicsPassBuilder& SetDepthStencilTarget(
     //     DataFormat format,

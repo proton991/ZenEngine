@@ -56,9 +56,15 @@ public:
     {
         return m_subResourceRange;
     }
+
     TextureRD* GetBaseTexture() const
     {
         return m_baseTex;
+    }
+
+    SampleCount GetSampleCount() const
+    {
+        return m_sampleCount;
     }
 
     std::string GetName() const
@@ -77,6 +83,7 @@ protected:
 private:
     TextureRD(const TextureFormat& texFormat, std::string name) :
         m_name(std::move(name)),
+        m_sampleCount(texFormat.sampleCount),
         m_format(texFormat.format),
         m_width(texFormat.width),
         m_height(texFormat.height),
@@ -99,6 +106,7 @@ private:
     RenderDevice* m_renderDevice{nullptr};
     rhi::TextureHandle m_handle;
     rhi::TextureSubResourceRange m_subResourceRange;
+    SampleCount m_sampleCount{SampleCount::e1};
     std::string m_name;
     DataFormat m_format{DataFormat::eUndefined};
     uint32_t m_width{0};

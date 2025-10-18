@@ -326,13 +326,14 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
 
     for (uint32_t i = 0; i < colorRTs.size(); i++)
     {
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(rpLayout.GetRenderTargetHandles()[i]);
+        const RenderTarget& colorRT  = colorRTs[i];
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(colorRT.handle);
         VkRenderingAttachmentInfoKHR colorAttachment{};
         InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-        colorAttachment.imageView   = vulkanTexture->imageView;
-        colorAttachment.imageLayout = ToVkImageLayout(TextureUsageToLayout(colorRTs[i].usage));
-        colorAttachment.loadOp      = ToVkAttachmentLoadOp(rpLayout.GetColorRenderTargetLoadOp());
-        colorAttachment.storeOp     = ToVkAttachmentStoreOp(rpLayout.GetColorRenderTargetStoreOp());
+        colorAttachment.imageView        = vulkanTexture->imageView;
+        colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
+        colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
         colorAttachment.clearValue.color = ToVkClearColor(clearValues[i]);
         colorAttachments.emplace_back(colorAttachment);
     }
@@ -343,14 +344,12 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
     InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
     if (rpLayout.HasDepthStencilRenderTarget())
     {
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(rpLayout.GetDepthStencilRenderTargetHandle());
-        depthStencilAttachment.imageView = vulkanTexture->imageView;
-        depthStencilAttachment.imageLayout =
-            ToVkImageLayout(TextureUsageToLayout(rpLayout.GetDepthStencilRenderTarget().usage));
-        depthStencilAttachment.loadOp =
-            ToVkAttachmentLoadOp(rpLayout.GetDepthStencilRenderTargetLoadOp());
-        depthStencilAttachment.storeOp =
-            ToVkAttachmentStoreOp(rpLayout.GetDepthStencilRenderTargetStoreOp());
+        const RenderTarget& depthStencilRT = rpLayout.GetDepthStencilRenderTarget();
+        VulkanTexture* vulkanTexture       = TO_VK_TEXTURE(depthStencilRT.handle);
+        depthStencilAttachment.imageView   = vulkanTexture->imageView;
+        depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
+        depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
         depthStencilAttachment.clearValue.depthStencil = ToVkClearDepthStencil(clearValues.back());
 
         renderingInfo.pDepthAttachment = &depthStencilAttachment;

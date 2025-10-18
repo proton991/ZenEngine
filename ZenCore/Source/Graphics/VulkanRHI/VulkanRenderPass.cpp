@@ -14,18 +14,18 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     for (uint32_t i = 0; i < renderPassLayout.GetNumColorRenderTargets(); i++)
     {
         VkAttachmentDescription& description = m_attachmentDescriptions[i];
+        const RenderTarget& colorRT          = colorRTs[i];
         // set field values
-        description.format  = ToVkFormat(colorRTs[i].format);
-        description.samples = ToVkSampleCountFlagBits(renderPassLayout.GetNumSamples());
-        description.loadOp  = ToVkAttachmentLoadOp(renderPassLayout.GetColorRenderTargetLoadOp());
-        description.storeOp = ToVkAttachmentStoreOp(renderPassLayout.GetColorRenderTargetStoreOp());
+        description.format         = ToVkFormat(colorRT.format);
+        description.samples        = ToVkSampleCountFlagBits(colorRT.numSamples);
+        description.loadOp         = ToVkAttachmentLoadOp(colorRT.loadOp);
+        description.storeOp        = ToVkAttachmentStoreOp(colorRT.storeOp);
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        description.initialLayout =
-            renderPassLayout.GetColorRenderTargetLoadOp() == RenderTargetLoadOp::eClear ?
-            VK_IMAGE_LAYOUT_UNDEFINED :
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        description.finalLayout = ToVkImageLayout(TextureUsageToLayout(colorRTs[i].usage));
+        description.initialLayout  = colorRT.loadOp == RenderTargetLoadOp::eClear ?
+             VK_IMAGE_LAYOUT_UNDEFINED :
+             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference& reference = m_colorAttachmentReference[m_numColorAttachmentRefs];
         reference.attachment             = i;
@@ -38,19 +38,17 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     if (renderPassLayout.HasDepthStencilRenderTarget())
     {
         VkAttachmentDescription& description = m_attachmentDescriptions[m_numAttachments];
+        const RenderTarget& depthStencilRT   = renderPassLayout.GetDepthStencilRenderTarget();
         description.format  = ToVkFormat(renderPassLayout.GetDepthStencilRenderTarget().format);
-        description.samples = ToVkSampleCountFlagBits(renderPassLayout.GetNumSamples());
-        description.loadOp =
-            ToVkAttachmentLoadOp(renderPassLayout.GetDepthStencilRenderTargetLoadOp());
-        description.storeOp =
-            ToVkAttachmentStoreOp(renderPassLayout.GetDepthStencilRenderTargetStoreOp());
+        description.samples = ToVkSampleCountFlagBits(depthStencilRT.numSamples);
+        description.loadOp  = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
+        description.storeOp = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        description.initialLayout =
-            renderPassLayout.GetDepthStencilRenderTargetLoadOp() == RenderTargetLoadOp::eClear ?
-            VK_IMAGE_LAYOUT_UNDEFINED :
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        description.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        description.initialLayout  = depthStencilRT.loadOp == RenderTargetLoadOp::eClear ?
+             VK_IMAGE_LAYOUT_UNDEFINED :
+             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         m_depthStencilReference.attachment = m_numAttachments;
         m_depthStencilReference.layout     = description.finalLayout;

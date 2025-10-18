@@ -798,12 +798,13 @@ enum class RenderTargetStoreOp : uint32_t
 
 struct RenderTarget
 {
-    RenderTarget() = default;
-
-    RenderTarget(DataFormat format_, TextureUsage usage_) : format(format_), usage(usage_) {}
-
     DataFormat format{DataFormat::eUndefined};
-    TextureUsage usage{TextureUsage::eMax};
+    SampleCount numSamples{SampleCount::e1};
+    RenderTargetLoadOp loadOp{RenderTargetLoadOp::eNone};
+    RenderTargetStoreOp storeOp{RenderTargetStoreOp::eStore};
+    TextureHandle handle;
+    TextureSubResourceRange subresourceRange;
+    // TextureUsage usage{TextureUsage::eMax};
 };
 
 union RenderPassClearValue
@@ -826,61 +827,79 @@ public:
 
     ~RenderPassLayout()
     {
-        m_rtHandles.clear();
+        // m_rtHandles.clear();
         m_colorRTs.clear();
-        m_rtSubResRanges.clear();
+        // m_rtSubResRanges.clear();
     }
 
     void AddColorRenderTarget(DataFormat format,
                               const TextureHandle& handle,
-                              TextureSubResourceRange subResourceRange)
+                              const TextureSubResourceRange& subResourceRange,
+                              RenderTargetLoadOp loadOp,
+                              RenderTargetStoreOp storeOp,
+                              SampleCount numSamples = SampleCount::e1)
     {
-        m_colorRTs.emplace_back(format, TextureUsage::eColorAttachment);
+        RenderTarget colorRT;
+        colorRT.format           = format;
+        colorRT.handle           = handle;
+        colorRT.subresourceRange = subResourceRange;
+
+        colorRT.numSamples = numSamples;
+        colorRT.loadOp     = loadOp;
+        colorRT.storeOp    = storeOp;
+
+        m_colorRTs.emplace_back(std::move(colorRT));
         m_numColorRT++;
-        m_rtHandles.push_back(handle);
-        m_rtSubResRanges.emplace_back(subResourceRange);
+        // m_rtHandles.push_back(handle);
+        // m_rtSubResRanges.emplace_back(subResourceRange);
     }
 
     void SetDepthStencilRenderTarget(DataFormat format,
                                      const TextureHandle& handle,
-                                     TextureSubResourceRange subResourceRange)
+                                     TextureSubResourceRange subResourceRange,
+                                     RenderTargetLoadOp loadOp,
+                                     RenderTargetStoreOp storeOp)
     {
         if (!m_hasDepthStencilRT)
         {
-            m_depthStencilRT.format = format;
-            m_depthStencilRT.usage  = TextureUsage::eDepthStencilAttachment;
-            m_hasDepthStencilRT     = true;
-            m_rtHandles.push_back(handle);
-            m_rtSubResRanges.emplace_back(subResourceRange);
+            m_depthStencilRT.format           = format;
+            m_depthStencilRT.handle           = handle;
+            m_depthStencilRT.subresourceRange = subResourceRange;
+            m_depthStencilRT.loadOp           = loadOp;
+            m_depthStencilRT.storeOp          = storeOp;
+            // m_depthStencilRT.usage  = TextureUsage::eDepthStencilAttachment;
+            m_hasDepthStencilRT = true;
+            // m_rtHandles.push_back(handle);
+            // m_rtSubResRanges.emplace_back(subResourceRange);
         }
     }
 
-    void SetColorTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
-    {
-        m_colorRToadOp   = loadOp;
-        m_colorRTStoreOp = storeOp;
-    }
-
-    void SetDepthStencilTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
-    {
-        m_depthStencilRTLoadOp  = loadOp;
-        m_depthStencilRTStoreOp = storeOp;
-    }
-
-    void SetNumSamples(SampleCount sampleCount)
-    {
-        m_numSamples = sampleCount;
-    }
+    // void SetColorTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
+    // {
+    //     m_colorRToadOp   = loadOp;
+    //     m_colorRTStoreOp = storeOp;
+    // }
+    //
+    // void SetDepthStencilTargetLoadStoreOp(RenderTargetLoadOp loadOp, RenderTargetStoreOp storeOp)
+    // {
+    //     m_depthStencilRTLoadOp  = loadOp;
+    //     m_depthStencilRTStoreOp = storeOp;
+    // }
+    //
+    // void SetNumSamples(SampleCount sampleCount)
+    // {
+    //     m_numSamples = sampleCount;
+    // }
 
     const auto GetNumColorRenderTargets() const
     {
         return m_numColorRT;
     }
 
-    const auto GetNumSamples() const
-    {
-        return m_numSamples;
-    }
+    // const auto GetNumSamples() const
+    // {
+    //     return m_numSamples;
+    // }
 
     const auto HasDepthStencilRenderTarget() const
     {
@@ -892,25 +911,25 @@ public:
         return m_numColorRT > 0;
     }
 
-    const auto GetColorRenderTargetLoadOp() const
-    {
-        return m_colorRToadOp;
-    }
-
-    const auto GetDepthStencilRenderTargetLoadOp() const
-    {
-        return m_depthStencilRTLoadOp;
-    }
-
-    const auto GetColorRenderTargetStoreOp() const
-    {
-        return m_colorRTStoreOp;
-    }
-
-    const auto GetDepthStencilRenderTargetStoreOp() const
-    {
-        return m_depthStencilRTStoreOp;
-    }
+    // const auto GetColorRenderTargetLoadOp() const
+    // {
+    //     return m_colorRToadOp;
+    // }
+    //
+    // const auto GetDepthStencilRenderTargetLoadOp() const
+    // {
+    //     return m_depthStencilRTLoadOp;
+    // }
+    //
+    // const auto GetColorRenderTargetStoreOp() const
+    // {
+    //     return m_colorRTStoreOp;
+    // }
+    //
+    // const auto GetDepthStencilRenderTargetStoreOp() const
+    // {
+    //     return m_depthStencilRTStoreOp;
+    // }
 
     const auto& GetColorRenderTargets() const
     {
@@ -922,34 +941,34 @@ public:
         return m_depthStencilRT;
     }
 
-    const TextureHandle& GetDepthStencilRenderTargetHandle() const
-    {
-        return m_rtHandles.back();
-    }
+    // const TextureHandle& GetDepthStencilRenderTargetHandle() const
+    // {
+    //     return m_rtHandles.back();
+    // }
+    //
+    // const TextureHandle* GetRenderTargetHandles() const
+    // {
+    //     return m_rtHandles.data();
+    // }
+    //
+    // TextureHandle* GetRenderTargetHandles()
+    // {
+    //     return m_rtHandles.data();
+    // }
+    //
+    // const auto& GetRTSubResourceRanges()
+    // {
+    //     return m_rtSubResRanges;
+    // }
 
-    const TextureHandle* GetRenderTargetHandles() const
-    {
-        return m_rtHandles.data();
-    }
-
-    TextureHandle* GetRenderTargetHandles()
-    {
-        return m_rtHandles.data();
-    }
-
-    const auto& GetRTSubResourceRanges()
-    {
-        return m_rtSubResRanges;
-    }
-
-    auto GetNumRenderTargets() const
-    {
-        return static_cast<uint32_t>(m_rtHandles.size());
-    }
+    // auto GetNumRenderTargets() const
+    // {
+    //     return m_hasDepthStencilRT ? m_numColorRT + 1 : m_numColorRT;
+    // }
 
     void ClearRenderTargetInfo()
     {
-        m_rtHandles.clear();
+        // m_rtHandles.clear();
         m_colorRTs.clear();
         m_hasDepthStencilRT = false;
         m_numColorRT        = 0;
@@ -959,13 +978,13 @@ private:
     uint32_t m_numColorRT{0};
     std::vector<RenderTarget> m_colorRTs;
     RenderTarget m_depthStencilRT;
-    SampleCount m_numSamples{SampleCount::e1};
-    RenderTargetLoadOp m_colorRToadOp{RenderTargetLoadOp::eNone};
-    RenderTargetStoreOp m_colorRTStoreOp{RenderTargetStoreOp::eNone};
-    RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
-    RenderTargetStoreOp m_depthStencilRTStoreOp{RenderTargetStoreOp::eNone};
-    std::vector<TextureHandle> m_rtHandles;
-    std::vector<TextureSubResourceRange> m_rtSubResRanges;
+    // SampleCount m_numSamples{SampleCount::e1};
+    // RenderTargetLoadOp m_colorRToadOp{RenderTargetLoadOp::eNone};
+    // RenderTargetStoreOp m_colorRTStoreOp{RenderTargetStoreOp::eNone};
+    // RenderTargetLoadOp m_depthStencilRTLoadOp{RenderTargetLoadOp::eNone};
+    // RenderTargetStoreOp m_depthStencilRTStoreOp{RenderTargetStoreOp::eNone};
+    // std::vector<TextureHandle> m_rtHandles;
+    // std::vector<TextureSubResourceRange> m_rtSubResRanges;
     bool m_hasDepthStencilRT{false};
 };
 

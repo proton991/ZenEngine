@@ -140,8 +140,9 @@ void SkyboxRenderer::BuildGraphicsPasses()
 
     {
         GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.irradiance = builder.SetShaderProgramName("EnvMapIrradianceSP")
-                                     .SetNumSamples(SampleCount::e1)
+        m_gfxPasses.irradiance = builder
+                                     .SetShaderProgramName("EnvMapIrradianceSP")
+                                     // .SetNumSamples(SampleCount::e1)
                                      // offscreen texture
                                      .AddColorRenderTarget(m_offscreenTextures.irradiance)
                                      .SetPipelineState(pso)
@@ -153,8 +154,9 @@ void SkyboxRenderer::BuildGraphicsPasses()
     {
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.prefiltered =
-            builder.SetShaderProgramName("EnvMapPrefilteredSP")
-                .SetNumSamples(SampleCount::e1)
+            builder
+                .SetShaderProgramName("EnvMapPrefilteredSP")
+                // .SetNumSamples(SampleCount::e1)
                 // offscreen texture
                 .AddColorRenderTarget(m_offscreenTextures.prefiltered)
                 .SetPipelineState(pso)
@@ -177,8 +179,9 @@ void SkyboxRenderer::BuildGraphicsPasses()
         pso.dynamicStates.push_back(DynamicState::eViewPort);
 
         GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.skybox = builder.SetShaderProgramName("SkyboxRenderSP")
-                                 .SetNumSamples(SampleCount::e1)
+        m_gfxPasses.skybox = builder
+                                 .SetShaderProgramName("SkyboxRenderSP")
+                                 // .SetNumSamples(SampleCount::e1)
                                  // offscreen texture
                                  .AddViewportColorRT(m_viewport)
                                  .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
@@ -427,8 +430,9 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     pso.dynamicStates.push_back(DynamicState::eViewPort);
 
     GraphicsPassBuilder builder(m_renderDevice);
-    m_gfxPasses.lutBRDF = builder.SetShaderProgramName("EnvMapBRDFLutGenSP")
-                              .SetNumSamples(SampleCount::e1)
+    m_gfxPasses.lutBRDF = builder
+                              .SetShaderProgramName("EnvMapBRDFLutGenSP")
+                              // .SetNumSamples(SampleCount::e1)
                               // offscreen texture
                               .AddColorRenderTarget(texture->lutBRDF)
                               .SetPipelineState(pso)

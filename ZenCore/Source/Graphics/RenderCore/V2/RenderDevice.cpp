@@ -52,13 +52,15 @@ static void CopyRegion(uint8_t const* pSrc,
 //     return *this;
 // }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(rhi::RHIViewport* viewport, bool clear)
+GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(rhi::RHIViewport* viewport,
+                                                             rhi::RenderTargetLoadOp loadOp,
+                                                             rhi::RenderTargetStoreOp storeOp)
 {
     m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
-                                    viewport->GetColorBackBufferRange());
-    m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-                                                 rhi::RenderTargetLoadOp::eLoad,
-                                         rhi::RenderTargetStoreOp::eStore);
+                                    viewport->GetColorBackBufferRange(), loadOp, storeOp);
+    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+    //                                              rhi::RenderTargetLoadOp::eLoad,
+    //                                      rhi::RenderTargetStoreOp::eStore);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
@@ -68,21 +70,23 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
     rhi::RenderTargetLoadOp loadOp,
     rhi::RenderTargetStoreOp storeOp)
 {
-    m_rpLayout.SetDepthStencilRenderTarget(viewport->GetDepthStencilFormat(),
-                                           viewport->GetDepthStencilBackBuffer(),
-                                           viewport->GetDepthStencilBackBufferRange());
-    m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+    m_rpLayout.SetDepthStencilRenderTarget(
+        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+        viewport->GetDepthStencilBackBufferRange(), loadOp, storeOp);
+    // m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(const TextureRD* colorRT, bool clear)
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(const TextureRD* colorRT,
+                                                               rhi::RenderTargetLoadOp loadOp,
+                                                               rhi::RenderTargetStoreOp storeOp)
 {
     m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT->GetHandle(),
-                                    colorRT->GetTextureSubResourceRange());
-    m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-                                                 rhi::RenderTargetLoadOp::eLoad,
-                                         rhi::RenderTargetStoreOp::eStore);
+                                    colorRT->GetTextureSubResourceRange(), loadOp, storeOp);
+    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
+    //                                              rhi::RenderTargetLoadOp::eLoad,
+    // rhi::RenderTargetStoreOp::eStore);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
@@ -92,8 +96,9 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(const TextureRD*
                                                                 rhi::RenderTargetStoreOp storeOp)
 {
     m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT->GetHandle(),
-                                           depthStencilRT->GetTextureSubResourceRange());
-    m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
+                                           depthStencilRT->GetTextureSubResourceRange(), loadOp,
+                                           storeOp);
+    // m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
@@ -115,7 +120,16 @@ GraphicsPass GraphicsPassBuilder::Build()
     using namespace zen::rhi;
     DynamicRHI* RHI = m_renderDevice->GetRHI();
 
-    m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
+    std::vector<TextureHandle> rtHandles;
+    rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
+
+    for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
+    {
+        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].handle;
+    }
+
+    // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
+    m_framebufferInfo.renderTargets = rtHandles.data();
 
     ShaderHandle shader;
     std::vector<ShaderSpecializationConstant> specializationConstants;
@@ -1198,13 +1212,20 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIVie
 {
     if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
     {
+        rhi::RenderTargetLoadOp oldColorRTLoadOp =
+            gfxPass.renderPassLayout.GetColorRenderTargets()[0].loadOp;
+        rhi::RenderTargetStoreOp oldColorRTStoreOp =
+            gfxPass.renderPassLayout.GetColorRenderTargets()[0].storeOp;
         gfxPass.renderPassLayout.ClearRenderTargetInfo();
-        gfxPass.renderPassLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(),
-                                                      viewport->GetColorBackBuffer(),
-                                                      viewport->GetColorBackBufferRange());
+        gfxPass.renderPassLayout.AddColorRenderTarget(
+            viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
+            viewport->GetColorBackBufferRange(), oldColorRTLoadOp, oldColorRTStoreOp);
+
+
         gfxPass.renderPassLayout.SetDepthStencilRenderTarget(
             viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-            viewport->GetDepthStencilBackBufferRange());
+            viewport->GetDepthStencilBackBufferRange(), rhi::RenderTargetLoadOp::eClear,
+            rhi::RenderTargetStoreOp::eStore);
     }
     else
     {
@@ -1466,11 +1487,11 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layou
 
     // Hash basic types
     combineHash(layout.GetNumColorRenderTargets());
-    combineHash(layout.GetNumSamples());
-    combineHash(layout.GetColorRenderTargetLoadOp());
-    combineHash(layout.GetColorRenderTargetStoreOp());
-    combineHash(layout.GetDepthStencilRenderTargetLoadOp());
-    combineHash(layout.GetDepthStencilRenderTargetStoreOp());
+    // combineHash(layout.GetNumSamples());
+    // combineHash(layout.GetColorRenderTargetLoadOp());
+    // combineHash(layout.GetColorRenderTargetStoreOp());
+    // combineHash(layout.GetDepthStencilRenderTargetLoadOp());
+    // combineHash(layout.GetDepthStencilRenderTargetStoreOp());
     combineHash(layout.HasDepthStencilRenderTarget());
 
     // Hash color render targets
@@ -1478,12 +1499,18 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layou
     {
         // Assuming RenderTarget is hashable
         combineHash(rt.format);
-        combineHash(rt.usage);
+        combineHash(rt.numSamples);
+        combineHash(rt.loadOp);
+        combineHash(rt.storeOp);
+        // combineHash(rt.usage);
     }
-    //
-    // // Hash depth stencil render target (assuming RenderTarget is hashable)
-    combineHash(layout.GetDepthStencilRenderTarget().format);
-    combineHash(layout.GetDepthStencilRenderTarget().usage);
+    if (layout.HasDepthStencilRenderTarget())
+    {
+        // Hash depth stencil render target (assuming RenderTarget is hashable)
+        combineHash(layout.GetDepthStencilRenderTarget().format);
+    }
+
+    // combineHash(layout.GetDepthStencilRenderTarget().usage);
 
     return seed;
 }
@@ -1552,9 +1579,14 @@ size_t RenderDevice::CalcGfxPipelineHash(
             (seed >> 2);
     };
     combineHash(shader.value);
-    for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
+    // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
+    for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
     {
-        combineHash(renderPassLayout.GetRenderTargetHandles()[i].value);
+        combineHash(colorRT.handle.value);
+    }
+    if (renderPassLayout.HasDepthStencilRenderTarget())
+    {
+        combineHash(renderPassLayout.GetDepthStencilRenderTarget().handle.value);
     }
     combineHash(pso.primitiveType);
     for (auto& spc : specializationConstants)

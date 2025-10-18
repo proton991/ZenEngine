@@ -220,8 +220,9 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
-            builder.SetShaderProgramName("GBufferSP")
-                .SetNumSamples(SampleCount::e1)
+            builder
+                .SetShaderProgramName("GBufferSP")
+                // .SetNumSamples(SampleCount::e1)
                 // (World space) Positions
                 .AddColorRenderTarget(m_offscreenTextures.position)
                 // (World space) Normals
@@ -255,9 +256,10 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneLighting =
-            builder.SetShaderProgramName("DeferredLightingSP")
-                .SetNumSamples(SampleCount::e1)
-                .AddViewportColorRT(m_viewport, false)
+            builder
+                .SetShaderProgramName("DeferredLightingSP")
+                // .SetNumSamples(SampleCount::e1)
+                .AddViewportColorRT(m_viewport, RenderTargetLoadOp::eLoad)
                 .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
                                            RenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)

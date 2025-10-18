@@ -179,25 +179,26 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
     if (node->renderPassLayout.HasColorRenderTarget())
     {
         node->selfStages.SetFlag(rhi::PipelineStageBits::eColorAttachmentOutput);
-        const rhi::TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
-        const auto& rtSubresourceRanges   = node->renderPassLayout.GetRTSubResourceRanges();
+        // const rhi::TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
+        // const auto& rtSubresourceRanges   = node->renderPassLayout.GetRTSubResourceRanges();
+        const auto& colorRTs = node->renderPassLayout.GetColorRenderTargets();
         for (uint32_t i = 0; i < node->renderPassLayout.GetNumColorRenderTargets(); i++)
         {
             const std::string textureTag = node->tag + "_color_rt_" + std::to_string(i);
-            DeclareTextureAccessForPass(node, handles[i], rhi::TextureUsage::eColorAttachment,
-                                        rtSubresourceRanges[i], rhi::AccessMode::eReadWrite,
-                                        textureTag);
+            DeclareTextureAccessForPass(
+                node, colorRTs[i].handle, rhi::TextureUsage::eColorAttachment,
+                colorRTs[i].subresourceRange, rhi::AccessMode::eReadWrite, textureTag);
         }
     }
     if (node->renderPassLayout.HasDepthStencilRenderTarget())
     {
+        const auto& depthStencilRT = node->renderPassLayout.GetDepthStencilRenderTarget();
         node->selfStages.SetFlag(rhi::PipelineStageBits::eEarlyFragmentTests);
         node->selfStages.SetFlag(rhi::PipelineStageBits::eLateFragmentTests);
-        DeclareTextureAccessForPass(node,
-                                    node->renderPassLayout.GetDepthStencilRenderTargetHandle(),
+        DeclareTextureAccessForPass(node, depthStencilRT.handle,
                                     rhi::TextureUsage::eDepthStencilAttachment,
-                                    node->renderPassLayout.GetRTSubResourceRanges().back(),
-                                    rhi::AccessMode::eReadWrite, "gfx_pass_depth_stencil_rt");
+                                    depthStencilRT.subresourceRange, rhi::AccessMode::eReadWrite,
+                                    "gfx_pass_depth_stencil_rt");
     }
     AddPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
     for (uint32_t i = 0; i < gfxPass.shaderProgram->GetSRDs().size(); i++)
