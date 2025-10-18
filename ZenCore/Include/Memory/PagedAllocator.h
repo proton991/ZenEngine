@@ -69,12 +69,12 @@ public:
             uint32_t pageIndex = m_numPagesAllocated;
             m_numPagesAllocated++;
             m_pagePool =
-                static_cast<T**>(MEM_REALLOC(m_pagePool, sizeof(T*) * m_numPagesAllocated));
+                static_cast<T**>(ZEN_MEM_REALLOC(m_pagePool, sizeof(T*) * m_numPagesAllocated));
             m_freePages =
-                static_cast<T***>(MEM_REALLOC(m_freePages, sizeof(T**) * m_numPagesAllocated));
+                static_cast<T***>(ZEN_MEM_REALLOC(m_freePages, sizeof(T**) * m_numPagesAllocated));
 
-            m_pagePool[pageIndex]  = static_cast<T*>(MEM_ALLOC(sizeof(T) * m_pageSize));
-            m_freePages[pageIndex] = static_cast<T**>(MEM_ALLOC(sizeof(T*) * m_pageSize));
+            m_pagePool[pageIndex]  = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T) * m_pageSize));
+            m_freePages[pageIndex] = static_cast<T**>(ZEN_MEM_ALLOC(sizeof(T*) * m_pageSize));
 
             for (uint32_t i = 0; i < m_pageSize; i++)
             {
@@ -117,11 +117,11 @@ private:
         {
             for (uint32_t i = 0; i < m_numPagesAllocated; i++)
             {
-                MEM_FREE(m_pagePool[i]);
-                MEM_FREE(m_freePages[i]);
+                ZEN_MEM_FREE(m_pagePool[i]);
+                ZEN_MEM_FREE(m_freePages[i]);
             }
-            MEM_FREE(m_pagePool);
-            MEM_FREE(m_freePages);
+            ZEN_MEM_FREE(m_pagePool);
+            ZEN_MEM_FREE(m_freePages);
             m_pagePool          = nullptr;
             m_freePages         = nullptr;
             m_numPagesAllocated = 0;

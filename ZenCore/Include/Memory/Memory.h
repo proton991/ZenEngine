@@ -98,8 +98,8 @@ template <typename T, typename... Args> T* MemNew(Args&&... args)
     return new (pMemory) T(std::forward<Args>(args)...);
 }
 
-#define MEM_ALLOC(m_size)          DefaultAllocator::Alloc(m_size)
-#define MEM_ALLOC_ZEROED(m_size)   DefaultAllocator::Calloc(m_size)
-#define MEM_REALLOC(m_mem, m_size) DefaultAllocator::Realloc(m_mem, m_size)
-#define MEM_FREE(m_mem)            DefaultAllocator::Free(m_mem)
+#define ZEN_MEM_ALLOC(m_size)          DefaultAllocator::Alloc(m_size)
+#define ZEN_MEM_ALLOC_ZEROED(m_size)   DefaultAllocator::Calloc(m_size)
+#define ZEN_MEM_REALLOC(m_mem, m_size) DefaultAllocator::Realloc(m_mem, m_size)
+#define ZEN_MEM_FREE(m_mem)            DefaultAllocator::Free(m_mem)
 } // namespace zen

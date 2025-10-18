@@ -2,7 +2,6 @@
 #include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
-#include "Graphics/Val/Shader.h"
 
 #ifdef ZEN_WIN32
 #    include <queue>
@@ -1111,7 +1110,7 @@ void RenderGraph::Destroy()
 {
     for (RDGPassChildNode* child : m_allChildNodes)
     {
-        MEM_FREE(child);
+        ZEN_MEM_FREE(child);
         // delete child;
     }
     m_allChildNodes.clear();

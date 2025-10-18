@@ -706,7 +706,7 @@ private:
     T* AllocPassChildNode(RDGPassNode* passNode)
     {
         // T* newNode      = new T();
-        T* newNode      = static_cast<T*>(MEM_ALLOC(sizeof(T)));
+        T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
         newNode->parent = passNode;
         // passNode->childNodes.push_back(newNode);
         m_passChildNodes[passNode->id].push_back(newNode);
@@ -718,7 +718,7 @@ private:
         requires std::derived_from<T, RDGPassChildNode>
     T* AllocPassChildNode(RDGPassNode* passNode, size_t nodeSize)
     {
-        T* newNode = static_cast<T*>(MEM_ALLOC(nodeSize));
+        T* newNode = static_cast<T*>(ZEN_MEM_ALLOC(nodeSize));
         // new (newNode) T;
 
         // T* newNode      = new T();
