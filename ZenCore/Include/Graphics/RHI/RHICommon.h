@@ -824,6 +824,13 @@ class RenderPassLayout
 public:
     RenderPassLayout() = default;
 
+    ~RenderPassLayout()
+    {
+        m_rtHandles.clear();
+        m_colorRTs.clear();
+        m_rtSubResRanges.clear();
+    }
+
     void AddColorRenderTarget(DataFormat format,
                               const TextureHandle& handle,
                               TextureSubResourceRange subResourceRange)

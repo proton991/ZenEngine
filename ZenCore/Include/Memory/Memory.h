@@ -56,10 +56,15 @@ template <typename T> T HandleFromVoidPtr(void* pData)
 class DefaultAllocator
 {
 public:
-    inline static void* Alloc(size_t size)
+    inline static void* Alloc(size_t size, size_t alignment = ZEN_DEFAULT_ALIGNMENT)
     {
-        void* pMemory = DefaultAllocImpl(size, ZEN_DEFAULT_ALIGNMENT);
+        void* pMemory = DefaultAllocImpl(size, alignment);
+        return pMemory;
+    }
 
+    inline static void* Calloc(size_t size, size_t alignment = ZEN_DEFAULT_ALIGNMENT)
+    {
+        void* pMemory = DefaultCallocImpl(size, alignment);
         return pMemory;
     }
 
@@ -68,63 +73,19 @@ public:
         DefaultFreeImpl(pMemory);
     }
 
-    inline static void* Realloc(void* ptr, size_t newSize)
+    inline static void* Realloc(void* ptr, size_t newSize, size_t alignment = ZEN_DEFAULT_ALIGNMENT)
     {
-        return DefaultReallocImpl(ptr, newSize, ZEN_DEFAULT_ALIGNMENT);
+        return DefaultReallocImpl(ptr, newSize, alignment);
     }
 
 private:
-    inline static void* DefaultAllocImpl(size_t size, size_t alignment)
-    {
-        void* pMem;
-#if _POSIX_VERSION >= 20112L || defined(ZEN_MACOS)
-        if (posix_memalign(&pMem, Pow2Align(alignment, sizeof(void*)), size) != 0)
-        {
-            pMem = nullptr;
-        }
-#elif _MSC_VER
-        pMem = _aligned_malloc(size, Pow2Pad(size));
-#else
-#    error "Unsuported Platform"
-#endif
-        return pMem;
-    }
-    inline static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment)
-    {
-        // nullptr do alloc
-        if (ptr == nullptr)
-        {
-            return DefaultAllocImpl(size, alignment);
-        }
+    static void* DefaultAllocImpl(size_t size, size_t alignment);
 
-        void* pNewMem;
-#if _POSIX_VERSION >= 200112L || defined(ZEN_MACOS)
-        // posix_memalign does not support realloc, so we need to manually handle it
-        pNewMem = DefaultAllocImpl(size, alignment);
-        if (pNewMem)
-        {
-            // Assuming we know the old size, for simplicity let's use memcpy
-            std::memcpy(pNewMem, ptr, size);
-            DefaultFreeImpl(ptr);
-        }
-#elif defined(_MSC_VER)
-        pNewMem = _aligned_realloc(ptr, size, Pow2Pad(alignment));
-#else
-#    error "Unsupported Platform"
-#endif
-        return pNewMem;
-    }
+    static void* DefaultCallocImpl(size_t size, size_t alignment);
 
-    inline static void DefaultFreeImpl(void* pMem)
-    {
-#if _POSIX_VERSION >= 20112L || defined(ZEN_MACOS)
-        free(pMem);
-#elif _MSC_VER
-        _aligned_free(pMem);
-#else
-#    error "Unsuported Platform"
-#endif
-    }
+    static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment);
+
+    static void DefaultFreeImpl(void* pMem);
 };
 
 template <typename T, typename... Args> T* MemNew(Args&&... args)
@@ -137,4 +98,8 @@ template <typename T, typename... Args> T* MemNew(Args&&... args)
     return new (pMemory) T(std::forward<Args>(args)...);
 }
 
+#define MEM_ALLOC(m_size)          DefaultAllocator::Alloc(m_size)
+#define MEM_ALLOC_ZEROED(m_size)   DefaultAllocator::Calloc(m_size)
+#define MEM_REALLOC(m_mem, m_size) DefaultAllocator::Realloc(m_mem, m_size)
+#define MEM_FREE(m_mem)            DefaultAllocator::Free(m_mem)
 } // namespace zen

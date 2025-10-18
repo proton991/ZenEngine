@@ -14,7 +14,7 @@ void TextureManager::Destroy()
 {
     for (auto& kv : m_textureCache)
     {
-        m_RHI->DestroyTexture(kv.second);
+        kv.second->DecreaseRefCount();
     }
 }
 
@@ -87,7 +87,7 @@ TextureRD* TextureManager::LoadTexture2D(const std::string& file, bool requireMi
         UpdateTexture(texture, rawTextureInfo.data.size(), rawTextureInfo.data.data());
     }
 
-    m_textureCache[file] = texture->GetHandle();
+    m_textureCache[file] = texture;
     return texture;
 }
 
@@ -133,7 +133,7 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene, std::vector<Textu
         TextureRD* texture = m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true},
                                                                   sgTexture->GetName());
         UpdateTexture(texture, sgTexture->bytesData.size(), sgTexture->bytesData.data());
-        m_textureCache[sgTexture->GetName()] = texture->GetHandle();
+        m_textureCache[sgTexture->GetName()] = texture;
         outTextures.push_back(texture);
     }
 }
@@ -200,7 +200,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     UpdateTextureCube(texture->GetHandle(), regions, texCube.size(),
                       static_cast<const uint8_t*>(texCube.data()));
 
-    m_textureCache[file] = texture->GetHandle();
+    m_textureCache[file] = texture;
 
     outTexture->skybox = texture;
 
@@ -214,11 +214,11 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
     // note: only generate once
     skyboxRenderer->GenerateEnvCubemaps(outTexture);
-    m_textureCache[outTexture->irradiance->GetName()]  = outTexture->irradiance->GetHandle();
-    m_textureCache[outTexture->prefiltered->GetName()] = outTexture->prefiltered->GetHandle();
+    m_textureCache[outTexture->irradiance->GetName()]  = outTexture->irradiance;
+    m_textureCache[outTexture->prefiltered->GetName()] = outTexture->prefiltered;
 
     skyboxRenderer->GenerateLutBRDF(outTexture);
-    m_textureCache[outTexture->lutBRDF->GetName()] = outTexture->lutBRDF->GetHandle();
+    m_textureCache[outTexture->lutBRDF->GetName()] = outTexture->lutBRDF;
 }
 
 void TextureManager::UpdateTexture(const TextureRD* texture,

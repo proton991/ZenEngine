@@ -87,6 +87,11 @@ public:
         return m_immediateContext;
     }
 
+    VulkanCommandList* GetImmediateCommandList() const
+    {
+        return m_immediateCommandList;
+    }
+
     void SubmitCommandsAndFlush();
 
     void WaitForIdle();
@@ -123,5 +128,6 @@ private:
     VulkanSemaphoreManager* m_semaphoreManger;
 
     VulkanCommandListContext* m_immediateContext{nullptr};
+    VulkanCommandList* m_immediateCommandList{nullptr};
 };
 } // namespace zen::rhi

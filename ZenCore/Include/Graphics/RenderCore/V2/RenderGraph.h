@@ -209,7 +209,7 @@ public:
 
 private:
     HashMap<rhi::Handle, RDGResourceTracker*> m_trackerMap;
-    std::vector<RDGResourceTracker*> m_trackers;
+    // std::vector<RDGResourceTracker*> m_trackers;
 };
 
 struct RDGAccess
@@ -304,24 +304,58 @@ struct RDGTextureCopyNode : RDGNodeBase
 {
     // rhi::TextureHandle srcTexture;
     // rhi::TextureHandle dstTexture;
+    uint32_t numCopyRegions;
     TextureRD* srcTexture;
     TextureRD* dstTexture;
-    std::vector<rhi::TextureCopyRegion> copyRegions;
+    // rhi::TextureCopyRegion* copyRegions;
+
+    rhi::TextureCopyRegion* TextureCopyRegions()
+    {
+        return reinterpret_cast<rhi::TextureCopyRegion*>(&this[1]);
+    }
+
+    const rhi::TextureCopyRegion* TextureCopyRegions() const
+    {
+        return reinterpret_cast<const rhi::TextureCopyRegion*>(&this[1]);
+    }
+    // std::vector<rhi::TextureCopyRegion> copyRegions;
 };
 
 struct RDGTextureReadNode : RDGNodeBase
 {
     // rhi::TextureHandle srcTexture;
+    uint32_t numCopyRegions;
     TextureRD* srcTexture;
     rhi::BufferHandle dstBuffer;
-    std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
+    // std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
+
+    rhi::BufferTextureCopyRegion* BufferTextureCopyRegions()
+    {
+        return reinterpret_cast<rhi::BufferTextureCopyRegion*>(&this[1]);
+    }
+
+    const rhi::BufferTextureCopyRegion* BufferTextureCopyRegions() const
+    {
+        return reinterpret_cast<const rhi::BufferTextureCopyRegion*>(&this[1]);
+    }
 };
 
 struct RDGTextureUpdateNode : RDGNodeBase
 {
-    std::vector<rhi::BufferTextureCopySource> sources;
+    // std::vector<rhi::BufferTextureCopySource> sources;
     // rhi::TextureHandle dstTexture;
+    uint32_t numCopySources;
     TextureRD* dstTexture;
+
+    rhi::BufferTextureCopySource* TextureCopySources()
+    {
+        return reinterpret_cast<rhi::BufferTextureCopySource*>(&this[1]);
+    }
+
+    const rhi::BufferTextureCopySource* TextureCopySources() const
+    {
+        return reinterpret_cast<const rhi::BufferTextureCopySource*>(&this[1]);
+    }
 };
 
 struct RDGTextureResolveNode : RDGNodeBase
@@ -349,10 +383,39 @@ struct RDGBindIndexBufferNode : RDGPassChildNode
     uint32_t offset;
 };
 
+// struct RDGBindVertexBufferNode : RDGPassChildNode
+// {
+//     std::vector<rhi::BufferHandle> vertexBuffers;
+//     std::vector<uint64_t> offsets;
+// };
+
 struct RDGBindVertexBufferNode : RDGPassChildNode
 {
-    std::vector<rhi::BufferHandle> vertexBuffers;
-    std::vector<uint64_t> offsets;
+    uint32_t numBuffers{0};
+    // rhi::BufferHandle* vertexBuffers{nullptr};
+    // uint64_t* offsets{nullptr};
+    // std::vector<rhi::BufferHandle> vertexBuffers;
+    // std::vector<uint64_t> offsets;
+
+    rhi::BufferHandle* VertexBuffers()
+    {
+        return reinterpret_cast<rhi::BufferHandle*>(&this[1]);
+    }
+
+    const rhi::BufferHandle* VertexBuffers() const
+    {
+        return reinterpret_cast<const rhi::BufferHandle*>(&this[1]);
+    }
+
+    uint64_t* VertexBufferOffsets()
+    {
+        return reinterpret_cast<uint64_t*>(&VertexBuffers()[numBuffers]);
+    }
+
+    const uint64_t* VertexBufferOffsets() const
+    {
+        return reinterpret_cast<const uint64_t*>(&VertexBuffers()[numBuffers]);
+    }
 };
 
 struct RDGBindPipelineNode : RDGPassChildNode
@@ -400,7 +463,20 @@ struct RDGDispatchIndirectNode : RDGPassChildNode
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
     rhi::ShaderHandle shader;
-    std::vector<uint8_t> data;
+    uint32_t dataSize{0};
+
+    uint8_t* Data()
+    {
+        return reinterpret_cast<uint8_t*>(&this[1]);
+    }
+
+    const uint8_t* Data() const
+    {
+        return reinterpret_cast<const uint8_t*>(&this[1]);
+    }
+
+
+    // std::vector<uint8_t> data;
 };
 
 struct RDGSetBlendConstantsNode : RDGPassChildNode
@@ -608,15 +684,61 @@ private:
     }
 
     template <class T>
+        requires std::derived_from<T, RDGNodeBase>
+    T* AllocNode(size_t nodeSize)
+    {
+        uint32_t nodeDataOffset = m_nodeData.size();
+        m_nodeDataOffset.push_back(nodeDataOffset);
+        m_nodeData.resize(m_nodeData.size() + nodeSize);
+        T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+
+        new (newNode) T();
+        // *newNode   = T();
+
+        newNode->id = m_nodeCount;
+        m_nodeCount++;
+        m_allNodes.push_back(newNode);
+        return newNode;
+    }
+
+    template <class T>
         requires std::derived_from<T, RDGPassChildNode>
     T* AllocPassChildNode(RDGPassNode* passNode)
     {
-        T* newNode      = new T();
+        // T* newNode      = new T();
+        T* newNode      = static_cast<T*>(MEM_ALLOC(sizeof(T)));
         newNode->parent = passNode;
         // passNode->childNodes.push_back(newNode);
         m_passChildNodes[passNode->id].push_back(newNode);
         m_allChildNodes.push_back(newNode);
         return newNode;
+    }
+
+    template <class T>
+        requires std::derived_from<T, RDGPassChildNode>
+    T* AllocPassChildNode(RDGPassNode* passNode, size_t nodeSize)
+    {
+        T* newNode = static_cast<T*>(MEM_ALLOC(nodeSize));
+        // new (newNode) T;
+
+        // T* newNode      = new T();
+        newNode->parent = passNode;
+        // uint32_t nodeDataOffset = m_nodeData.size();
+        // m_nodeDataOffset.push_back(nodeDataOffset);
+        // m_nodeData.resize(m_nodeData.size() + nodeSize);
+        // T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+
+        // new (newNode) T();
+        // passNode->childNodes.push_back(newNode);
+        m_passChildNodes[passNode->id].push_back(newNode);
+        m_allChildNodes.push_back(newNode);
+        return newNode;
+    }
+
+    const RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId) const
+    {
+        const auto dataOffset = m_nodeDataOffset[nodeId];
+        return reinterpret_cast<const RDGNodeBase*>(&m_nodeData[dataOffset]);
     }
 
     RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId)

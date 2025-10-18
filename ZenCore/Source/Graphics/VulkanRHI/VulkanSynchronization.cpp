@@ -25,6 +25,7 @@ void VulkanFenceManager::Destroy()
         VulkanFence* fence = m_freeFences.front();
         m_freeFences.pop();
         DestroyFence(fence);
+        delete fence;
     }
 }
 

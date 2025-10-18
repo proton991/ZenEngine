@@ -55,7 +55,8 @@ private:
 
     TextureStagingManager* m_stagingMgr{nullptr};
 
-    HashMap<std::string, rhi::TextureHandle> m_textureCache;
+    // HashMap<std::string, rhi::TextureHandle> m_textureCache;
+    HashMap<std::string, TextureRD*> m_textureCache;
 
     HashMap<rhi::TextureHandle, rhi::TextureHandle> m_textureProxyMap; // proxy tex -> base tex
 };

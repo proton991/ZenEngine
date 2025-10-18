@@ -222,6 +222,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/Val/SyncObjPool.cpp
     Source/Graphics/Val/VulkanDebug.cpp
 
+    Source/Memory/Memory.cpp
+
     Source/Platform/FileSystem.cpp
     Source/Platform/GlfwWindow.cpp
     Source/Platform/InputController.cpp

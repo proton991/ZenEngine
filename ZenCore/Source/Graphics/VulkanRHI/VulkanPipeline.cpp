@@ -632,6 +632,7 @@ void VulkanRHI::DestroyPipeline(PipelineHandle pipelineHandle)
 {
     VulkanPipeline* pipeline = TO_VK_PIPELINE(pipelineHandle);
     vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
+    VersatileResource::Free(m_resourceAllocator, pipeline);
 }
 
 VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(

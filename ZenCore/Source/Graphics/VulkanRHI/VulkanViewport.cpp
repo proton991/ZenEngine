@@ -108,7 +108,8 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_renderingCompleteSemaphores.resize(images.size());
     m_backBufferImages.resize(images.size());
 
-    VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
+    // VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
+    VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
     cmdList->BeginUpload();
     VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
 

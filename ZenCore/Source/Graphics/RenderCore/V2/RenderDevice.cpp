@@ -707,6 +707,7 @@ void RenderDevice::Destroy()
     for (auto* viewport : m_viewports)
     {
         m_RHI->DestroyViewport(viewport);
+        delete viewport;
     }
     for (auto& kv : m_renderPassCache)
     {
@@ -754,6 +755,7 @@ void RenderDevice::Destroy()
     delete m_textureStagingMgr;
 
     m_rendererServer->Destroy();
+    delete m_rendererServer;
 
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
@@ -765,6 +767,9 @@ void RenderDevice::Destroy()
         delete frame.uploadCmdList;
         delete frame.drawCmdList;
     }
+
+    delete m_RHIDebug;
+
     m_RHI->Destroy();
     delete m_RHI;
 }

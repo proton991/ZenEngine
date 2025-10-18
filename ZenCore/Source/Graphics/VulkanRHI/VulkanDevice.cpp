@@ -128,7 +128,8 @@ void VulkanDevice::Init()
     m_fenceManager    = new VulkanFenceManager(this);
     m_semaphoreManger = new VulkanSemaphoreManager(this);
 
-    m_immediateContext = new VulkanCommandListContext(m_RHI);
+    m_immediateContext     = new VulkanCommandListContext(m_RHI);
+    m_immediateCommandList = new VulkanCommandList(m_immediateContext);
 }
 
 void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions)
@@ -283,8 +284,15 @@ void VulkanDevice::Destroy()
 
     delete m_immediateContext;
 
+    delete m_immediateCommandList;
+
     m_fenceManager->Destroy();
     delete m_fenceManager;
+
+    delete m_computeQueue;
+    delete m_gfxQueue;
+    delete m_transferQueue;
+
     vkDestroyDevice(m_device, nullptr);
 }
 

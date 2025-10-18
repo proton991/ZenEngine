@@ -26,8 +26,9 @@ void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
 
 RHICommandList* VulkanRHI::GetImmediateCommandList()
 {
-    VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
-    return RHICommandList::Create(GraphicsAPIType::eVulkan, context);
+    // VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
+    // return RHICommandList::Create(GraphicsAPIType::eVulkan, context);
+    return m_device->GetImmediateCommandList();
 }
 
 VulkanCommandList::~VulkanCommandList() {}
