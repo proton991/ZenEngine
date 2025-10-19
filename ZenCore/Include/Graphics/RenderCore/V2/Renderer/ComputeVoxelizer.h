@@ -31,6 +31,10 @@ public:
     void SetRenderScene(RenderScene* scene) override;
 
 protected:
+#ifdef ZEN_MACOS
+    void WarmupTextureAllocation();
+#endif
+
     void LoadCubeModel();
 
     void PrepareTextures() final;
@@ -46,10 +50,6 @@ protected:
     void UpdatePassResources() final;
 
     void UpdateUniformData() final;
-
-#ifdef ZEN_MACOS
-    TextureRD* m_dummyTextures[NUM_DUMMY_TEXTURES];
-#endif
 
     struct LargeTriangle
     {

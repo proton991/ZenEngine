@@ -951,6 +951,36 @@ TextureRD* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
     return textureRD;
 }
 
+TextureRD* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
+                                            TextureUsageHint usageHint,
+                                            std::string name)
+{
+    rhi::TextureInfo texInfo{};
+    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    texInfo.format        = texFormat.format;
+    texInfo.width         = texFormat.width;
+    texInfo.height        = texFormat.height;
+    texInfo.depth         = texFormat.depth;
+    texInfo.mipmaps       = texFormat.mipmaps;
+    texInfo.arrayLayers   = texFormat.arrayLayers;
+    texInfo.samples       = texFormat.sampleCount;
+    texInfo.mutableFormat = texFormat.mutableFormat;
+    texInfo.name          = std::move(name);
+    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
+
+    if (usageHint.copyUsage)
+    {
+        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
+                                    rhi::TextureUsageFlagBits::eTransferDst);
+    }
+
+    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
+    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+    textureRD->Init(this, handle);
+
+    return textureRD;
+}
+
 TextureRD* RenderDevice::CreateTextureProxy(TextureRD* baseTexture,
                                             const TextureProxyFormat& proxyFormat,
                                             std::string name)

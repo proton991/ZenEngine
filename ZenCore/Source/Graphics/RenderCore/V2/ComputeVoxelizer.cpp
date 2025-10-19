@@ -33,14 +33,6 @@ void ComputeVoxelizer::Init()
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
-    // todo: WA for MoltenVK on macos. Need to locate the root cause.
-    // Without following code, compute voxelization will cause GPU hang on macos.
-#ifdef ZEN_MACOS
-    for (uint32_t i = 0; i < NUM_DUMMY_TEXTURES; ++i)
-    {
-        m_renderDevice->DestroyTexture(m_dummyTextures[i]);
-    }
-#endif
     delete m_cube;
 }
 
@@ -53,30 +45,9 @@ void ComputeVoxelizer::LoadCubeModel()
 void ComputeVoxelizer::PrepareTextures()
 {
     VoxelizerBase::PrepareTextures();
-    using namespace zen::rhi;
+    // WA for MoltenVK on MacOS.
 #ifdef ZEN_MACOS
-    const auto halfDim = m_voxelTexResolution / 2;
-    for (uint32_t i = 0; i < NUM_DUMMY_TEXTURES; i++)
-    {
-        const auto texName = "dummy_texture_" + std::to_string(i);
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, halfDim, halfDim,
-        //                   halfDim, 1, 1, SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
-        TextureFormat texFormat{};
-        texFormat.format      = m_voxelTexFormat;
-        texFormat.dimension   = TextureDimension::e3D;
-        texFormat.width       = halfDim;
-        texFormat.height      = halfDim;
-        texFormat.depth       = halfDim;
-        texFormat.arrayLayers = 1;
-        texFormat.mipmaps     = 1;
-
-        m_dummyTextures[i] =
-            m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, texName);
-        // m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-        //                            m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-        //                            TextureLayout::eGeneral);
-    }
+    WarmupTextureAllocation();
 #endif
 }
 
@@ -547,6 +518,28 @@ void ComputeVoxelizer::SetRenderScene(RenderScene* scene)
     m_voxelTransform = glm::scale(Mat4(1.0f), glm::vec3(m_voxelSize) * scaleFactor);
 }
 
+#ifdef ZEN_MACOS
+void ComputeVoxelizer::WarmupTextureAllocation()
+{
+    const auto halfDim = m_voxelTexResolution / 2;
+    for (uint32_t i = 0; i < NUM_DUMMY_TEXTURES; i++)
+    {
+        const auto texName = "dummy_texture_" + std::to_string(i);
+        TextureFormat texFormat{};
+        texFormat.format      = m_voxelTexFormat;
+        texFormat.dimension   = TextureDimension::e3D;
+        texFormat.width       = halfDim;
+        texFormat.height      = halfDim;
+        texFormat.depth       = halfDim;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
+
+        TextureRD* dummyTex =
+            m_renderDevice->CreateTextureDummy(texFormat, {.copyUsage = false}, texName);
+        m_renderDevice->DestroyTexture(dummyTex);
+    }
+}
+#endif
 // void ComputeVoxelizer::VoxelizeStaticScene() {}
 //
 // void ComputeVoxelizer::VoxelizeDynamicScene() {}

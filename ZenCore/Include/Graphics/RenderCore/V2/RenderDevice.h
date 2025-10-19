@@ -376,6 +376,10 @@ public:
                                     TextureUsageHint usageHint,
                                     std::string name);
 
+    TextureRD* CreateTextureDummy(const TextureFormat& texFormat,
+                                  TextureUsageHint usageHint,
+                                  std::string name);
+
     TextureRD* CreateTextureProxy(TextureRD* baseTexture,
                                   const TextureProxyFormat& proxyFormat,
                                   std::string name);
