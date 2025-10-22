@@ -119,17 +119,18 @@ void VoxelGIRenderer::BuildRenderGraph()
 
     uint32_t workgroupCount;
     // reset voxel texture
-    // {
-    //     auto* pass = m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture);
-    //     pass->tag  = "reset_voxel_texture";
-    //     m_rdg->DeclareTextureAccessForPass(
-    //         pass, m_textures.voxelRadiance, TextureUsage::eStorage,
-    //         m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
-    //         AccessMode::eReadWrite);
-    //     workgroupCount = 1;
-    //     m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
-    // }
-    // todo: fix gpu hang
+    {
+        auto* pass =
+            m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture, "reset_voxel_radiance");
+        pass->tag = "reset_voxel_texture";
+        // m_rdg->DeclareTextureAccessForPass(
+        //     pass, m_textures.voxelRadiance, TextureUsage::eStorage,
+        //     m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
+        //     AccessMode::eReadWrite);
+        workgroupCount = 1;
+        m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
+    }
+
     // inject radiance
     {
         auto& voxelTextures = m_voxelizer->GetVoxelTextures();
@@ -227,9 +228,9 @@ void VoxelGIRenderer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(
             set2bindings, 0, ShaderResourceType::eUniformBuffer,
             m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uLightInfo"));
-        ADD_SHADER_BINDING_SINGLE(
-            set2bindings, 1, ShaderResourceType::eUniformBuffer,
-            m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
+        // ADD_SHADER_BINDING_SINGLE(
+        //     set2bindings, 1, ShaderResourceType::eUniformBuffer,
+        //     m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.injectRadiance);
         updater.SetShaderResourceBinding(0, set0bindings)
@@ -245,16 +246,16 @@ void VoxelGIRenderer::UpdateUniformData()
         VoxelInjectRadianceSP* shaderProgram =
             dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance.shaderProgram);
 
-        shaderProgram->sceneInfo.volumeDimension = m_voxelizer->GetVoxelTexResolution();
-        shaderProgram->sceneInfo.voxelSize       = m_voxelizer->GetVoxelSize();
-        shaderProgram->sceneInfo.voxelScale      = m_voxelizer->GetVoxelScale();
-        shaderProgram->sceneInfo.worldMinPoint   = m_voxelizer->GetSceneMinPoint();
+        shaderProgram->pushConstantsData.volumeDimension = m_voxelizer->GetVoxelTexResolution();
+        shaderProgram->pushConstantsData.voxelSize       = m_voxelizer->GetVoxelSize();
+        shaderProgram->pushConstantsData.voxelScale      = m_voxelizer->GetVoxelScale();
+        shaderProgram->pushConstantsData.worldMinPoint   = m_voxelizer->GetSceneMinPoint();
         // todo: light info should be added by user or imported from scene file
         auto& lightInfo = shaderProgram->lightInfo;
 
-        lightInfo.lightTypeCount[DIRECTIONAL_LIGHT] = 1;
-        lightInfo.lightTypeCount[POINT_LIGHT]       = 0;
-        lightInfo.lightTypeCount[DIRECTIONAL_LIGHT] = 0;
+        // lightInfo.lightTypeCount[DIRECTIONAL_LIGHT] = 1;
+        // lightInfo.lightTypeCount[POINT_LIGHT]       = 0;
+        // lightInfo.lightTypeCount[DIRECTIONAL_LIGHT] = 0;
 
         Light dirLight;
         dirLight.direction       = Vec3(-1.0f, -1.0f, -1.0f);
@@ -262,7 +263,8 @@ void VoxelGIRenderer::UpdateUniformData()
         dirLight.shadowingMethod = 2;
 
         lightInfo.directionalLight[0] = dirLight;
-        shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
+        lightInfo.lightViewProjection = Mat4(1.0f);
+        // shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
         shaderProgram->UpdateUniformBuffer("uLightInfo", shaderProgram->GetLightInfoData(), 0);
     }
 }

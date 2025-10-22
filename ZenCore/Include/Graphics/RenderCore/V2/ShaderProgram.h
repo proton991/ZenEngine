@@ -11,22 +11,25 @@ class RenderDevice;
 // refactor: move to RenderScene, create sg::Light
 struct Attenuation
 {
-    float constant;
-    float linear;
-    float quadratic;
+    float constant{0.0f};
+    float linear{0.0f};
+    float quadratic{0.0f};
+    float _padding{0.0f}; // padding
 };
 
 struct Light
 {
-    float angleInnerCone;
-    float angleOuterCone;
-    Vec3 diffuse;
-    Vec3 position;
-    Vec3 direction;
-    uint32_t shadowingMethod;
+    glm::vec3 position{0.0f};
+    float angleInnerCone{0.0f};
+
+    glm::vec3 direction{0.0f};
+    float angleOuterCone{0.0f};
+
+    glm::vec3 diffuse{0.0f};
+    uint32_t shadowingMethod{0};
+
     Attenuation attenuation;
 };
-
 
 class ShaderProgram
 {
@@ -397,39 +400,46 @@ public:
         Init();
     }
 
-    const uint8_t* GetSceneInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&sceneInfo);
-    }
+    // const uint8_t* GetSceneInfoData() const
+    // {
+    //     return reinterpret_cast<const uint8_t*>(&sceneInfo);
+    // }
 
     const uint8_t* GetLightInfoData() const
     {
         return reinterpret_cast<const uint8_t*>(&lightInfo);
     }
 
-    struct SceneInfo
-    {
-        float voxelSize;
-        float voxelScale;
-        Vec3 worldMinPoint;
-        int volumeDimension;
-    } sceneInfo;
+    // struct SceneInfo
+    // {
+    //     float voxelSize;
+    //     float voxelScale;
+    //     Vec3 worldMinPoint;
+    //     int volumeDimension;
+    // } sceneInfo;
 
     struct LightInfo
     {
         Light directionalLight[MAX_DIRECTIONAL_LIGHTS];
         Light pointLight[MAX_POINT_LIGHTS];
         Light spotLight[MAX_SPOT_LIGHTS];
-        uint32_t lightTypeCount[3];
-        Mat4 lightViewProjection;
-        float lightBleedingReduction;
-        Vec2 exponents;
+
+        // uint32_t lightTypeCount[3]{};
+        Mat4 lightViewProjection{1.0f};
+
+        float lightBleedingReduction{0.0f};
+        Vec2 exponents{0.0f};
+        float _padding{0.0f};
     } lightInfo;
 
     struct PushConstantsData
     {
         float traceShadowHit;
         uint32_t normalWeightedLambert;
+        float voxelSize;
+        float voxelScale;
+        Vec3 worldMinPoint;
+        int volumeDimension;
     } pushConstantsData;
 };
 

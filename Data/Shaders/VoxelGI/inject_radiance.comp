@@ -17,46 +17,58 @@ const uint MAX_DIRECTIONAL_LIGHTS = 3;
 const uint MAX_POINT_LIGHTS = 6;
 const uint MAX_SPOT_LIGHTS = 6;
 
-struct Attenuation
-{
+#define NUM_DIRECTIONAL_LIGHT 1
+#define NUM_POINT_LIGHT 0
+#define NUM_SPOT_LIGHT 0
+
+struct Attenuation {
     float constant;
     float linear;
     float quadratic;
+    float _padding;
 };
 
 struct Light {
-    float angleInnerCone;
-    float angleOuterCone;
-    vec3 diffuse;
     vec3 position;
+    float angleInnerCone;
+
     vec3 direction;
+    float angleOuterCone;
+
+    vec3 diffuse;
     uint shadowingMethod;
+
     Attenuation attenuation;
 };
 
-layout(set = 2, binding = 0) uniform uLightInfo
-{
+layout(set = 2, binding = 0, std140) uniform uLightInfo {
     Light directionalLight[MAX_DIRECTIONAL_LIGHTS];
     Light pointLight[MAX_POINT_LIGHTS];
     Light spotLight[MAX_SPOT_LIGHTS];
-    uint lightTypeCount[3];
+
     mat4 lightViewProjection;
+
     float lightBleedingReduction;
+
     vec2 exponents;
+    vec2 _padding;
 };
 
-layout(set = 2, binding = 1) uniform uSceneInfo
-{
+//layout(set = 2, binding = 1) uniform uSceneInfo
+//{
+//    float voxelSize;
+//    float voxelScale;
+//    vec3 worldMinPoint;
+//    int volumeDimension;
+//};
+
+layout(push_constant) uniform uPushConstant {
+    float traceShadowHit;
+    uint normalWeightedLambert;
     float voxelSize;
     float voxelScale;
     vec3 worldMinPoint;
     int volumeDimension;
-};
-
-layout(push_constant) uniform uPushConstant {
-//    uint storeVisibility;
-    float traceShadowHit;
-    uint normalWeightedLambert;
 };
 
 vec3 VoxelToWorld(ivec3 pos)
@@ -293,7 +305,7 @@ vec4 CalculateDirectLighting(vec3 position, vec3 normal, vec3 albedo)
     position = position + normal * voxelWorldSize * 0.5f;
 
     // calculate lighting for directional lights
-    for(int i = 0; i < lightTypeCount[0]; ++i)
+    for(int i = 0; i < NUM_DIRECTIONAL_LIGHT; ++i)
     {
         current = CalculateDirectional(directionalLight[i], normal, position, albedo);
         directLighting.rgb += current.rgb;
@@ -301,7 +313,7 @@ vec4 CalculateDirectLighting(vec3 position, vec3 normal, vec3 albedo)
     }
 
     // calculate lighting for point lights
-    for(int i = 0; i < lightTypeCount[1]; ++i)
+    for(int i = 0; i < NUM_POINT_LIGHT; ++i)
     {
         current = CalculatePoint(pointLight[i], normal, position, albedo);
         directLighting.rgb += current.rgb;
@@ -309,7 +321,7 @@ vec4 CalculateDirectLighting(vec3 position, vec3 normal, vec3 albedo)
     }
 
     // calculate lighting for spot lights
-    for(int i = 0; i < lightTypeCount[2]; ++i)
+    for(int i = 0; i < NUM_SPOT_LIGHT; ++i)
     {
         current = CalculateSpot(spotLight[i], normal, position, albedo);
         directLighting.rgb += current.rgb;
