@@ -1,9 +1,68 @@
 #pragma once
 
-#include <cassert>
+#include "Utils/Errors.h"
 
 namespace zen
 {
+class RefCounted
+{
+public:
+    RefCounted() = default;
+
+    virtual ~RefCounted()
+    {
+        VERIFY_EXPR(m_counter.GetValue() == 0);
+    }
+
+    uint32_t AddRef()
+    {
+        uint32_t newValue = m_counter.AddRef();
+        return newValue;
+    }
+
+    uint32_t Release()
+    {
+        uint32_t newValue = m_counter.Release();
+        if (newValue == 0)
+        {
+            delete this;
+        }
+        return newValue;
+    }
+
+    uint32_t GetRefCount() const
+    {
+        return m_counter.GetValue();
+    }
+
+private:
+    class AtomicCounter
+    {
+    public:
+        uint32_t AddRef()
+        {
+            uint32_t oldValue = m_count.fetch_add(1, std::memory_order_acquire);
+            return oldValue + 1;
+        }
+
+        uint32_t Release()
+        {
+            uint32_t oldValue = m_count.fetch_sub(1, std::memory_order_release);
+            return oldValue - 1;
+        }
+
+        uint32_t GetValue()
+        {
+            return m_count.load(std::memory_order_relaxed);
+        }
+
+    private:
+        std::atomic_uint m_count{0};
+    };
+
+    mutable AtomicCounter m_counter;
+};
+
 /**
  * A smart pointer to an object which implements AddRef/Release.
  */

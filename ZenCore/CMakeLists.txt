@@ -82,6 +82,7 @@ set(ZEN_CORE_HEADERS
     Include/Systems/SceneEditor.h
 
     Include/Graphics/RHI/DynamicRHI.h
+    Include/Graphics/RHI/RHICommandList.h
     Include/Graphics/RHI/RHICommands.h
     Include/Graphics/RHI/RHICommon.h
     Include/Graphics/RHI/RHIDebug.h
@@ -180,6 +181,7 @@ set(ZEN_CORE_SOURCES
 
     Source/Systems/SceneEditor.cpp
 
+    Source/Graphics/RHI/RHICommandList.cpp
     Source/Graphics/RHI/RHIFactory.cpp
 
     Source/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.cpp

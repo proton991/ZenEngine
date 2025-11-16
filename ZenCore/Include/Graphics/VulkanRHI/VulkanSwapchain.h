@@ -1,7 +1,8 @@
 #pragma once
 #include <vector>
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
-#include "Templates/SmallVector.h"
+
+#define ZEN_NUM_FRAMES_IN_FLIGHT 3u
 
 namespace zen::rhi
 {
@@ -36,7 +37,12 @@ public:
         return m_format;
     }
 
-    auto& GetSwapchainImages() const
+    auto& GetNumSwapchainImages() const
+    {
+        return m_numImages;
+    }
+
+    const VkImage* GetSwapchainImages() const
     {
         return m_swapchainImages;
     }
@@ -57,11 +63,14 @@ private:
     VkFormat m_format{VK_FORMAT_UNDEFINED};
     VkColorSpaceKHR m_colorSpace{VK_COLORSPACE_SRGB_NONLINEAR_KHR};
     VkPresentModeKHR m_presentMode{VK_PRESENT_MODE_IMMEDIATE_KHR};
-    SmallVector<VkImage> m_swapchainImages;
+    uint32_t m_numImages{0};
+    // SmallVector<VkImage> m_swapchainImages;
+    VkImage m_swapchainImages[ZEN_NUM_FRAMES_IN_FLIGHT];
     int32_t m_imageIndex{-1};
     int32_t m_semaphoreIndex{0};
     // SmallVector<VulkanSemaphore*> m_imageAcquiredSemphores;
-    std::vector<VulkanSemaphore*> m_imageAcquiredSemphores;
+    // std::vector<VulkanSemaphore*> m_imageAcquiredSemaphores;
+    VulkanSemaphore* m_imageAcquiredSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
 
     friend class VulkanViewport;
 };

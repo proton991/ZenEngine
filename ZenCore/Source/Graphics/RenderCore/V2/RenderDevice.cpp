@@ -721,7 +721,7 @@ void RenderDevice::Destroy()
     for (auto* viewport : m_viewports)
     {
         m_RHI->DestroyViewport(viewport);
-        delete viewport;
+        // delete viewport;
     }
     for (auto& kv : m_renderPassCache)
     {
@@ -1209,7 +1209,8 @@ rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                                uint32_t height,
                                                bool enableVSync)
 {
-    auto* viewport = m_RHI->CreateViewport(pWindow, width, height, enableVSync);
+    // auto* viewport = m_RHI->CreateViewport(pWindow, width, height, enableVSync);
+    auto* viewport = rhi::RHIViewport::Create(pWindow, width, height, enableVSync);
     m_viewports.push_back(viewport);
     return viewport;
 }

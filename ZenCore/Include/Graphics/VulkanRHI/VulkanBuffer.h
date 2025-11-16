@@ -1,7 +1,8 @@
 #pragma once
-
+#include "Graphics/RHI/RHIResource.h"
 #include "VulkanHeaders.h"
 #include "VulkanMemory.h"
+
 
 namespace zen::rhi
 {
@@ -12,5 +13,32 @@ struct VulkanBuffer
     uint32_t requiredSize{0};
     VkBufferView bufferView{VK_NULL_HANDLE};
     VulkanMemoryAllocation memAlloc{};
+};
+
+class FVulkanBuffer : public RHIBuffer
+{
+public:
+    explicit FVulkanBuffer(const RHIBufferCreateInfo& createInfo) : RHIBuffer(createInfo) {}
+
+    void Init() override;
+
+    void Destroy() override;
+
+    uint8_t* Map() override;
+
+    void Unmap() override;
+
+    void SetTexelFormat(DataFormat format) override;
+
+    VkBuffer GetVkBuffer() const
+    {
+        return m_vkBuffer;
+    }
+
+private:
+    VkBuffer m_vkBuffer{VK_NULL_HANDLE};
+    uint32_t m_allocatedSize{0};
+    VkBufferView m_bufferView{VK_NULL_HANDLE};
+    VulkanMemoryAllocation m_memAlloc{};
 };
 } // namespace zen::rhi

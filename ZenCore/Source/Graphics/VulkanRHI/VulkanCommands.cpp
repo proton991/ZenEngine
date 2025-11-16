@@ -374,7 +374,7 @@ void VulkanCommandList::Draw(uint32_t vertexCount,
 void VulkanCommandList::DrawIndexed(uint32_t indexCount,
                                     uint32_t instanceCount,
                                     uint32_t firstIndex,
-                                    uint32_t vertexOffset,
+                                    int32_t vertexOffset,
                                     uint32_t firstInstance)
 {
     vkCmdDrawIndexed(m_cmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex,

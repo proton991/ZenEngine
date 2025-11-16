@@ -31,10 +31,10 @@ public:
 
     virtual DataFormat GetSupportedDepthFormat() = 0;
 
-    virtual RHIViewport* CreateViewport(void* windowPtr,
-                                        uint32_t width,
-                                        uint32_t height,
-                                        bool enableVSync) = 0;
+    // virtual RHIViewport* CreateViewport(void* windowPtr,
+    //                                     uint32_t width,
+    //                                     uint32_t height,
+    //                                     bool enableVSync) = 0;
 
     virtual void DestroyViewport(RHIViewport* viewport) = 0;
 
@@ -90,6 +90,8 @@ public:
                                       BitField<BufferUsageFlagBits> usageFlags,
                                       BufferAllocateType allocateType) = 0;
 
+    virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
+
     virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
 
     virtual void UnmapBuffer(BufferHandle bufferHandle) = 0;
@@ -113,4 +115,7 @@ public:
 
     virtual const GPUInfo& QueryGPUInfo() const = 0;
 };
+
+// Global instance pointer
+extern DynamicRHI* GDynamicRHI;
 } // namespace zen::rhi

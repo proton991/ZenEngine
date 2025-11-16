@@ -1,10 +1,10 @@
 #pragma once
 #include "Templates/HashMap.h"
-#include "Templates/SmallVector.h"
+// #include "Templates/SmallVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/RHI/RHIResource.h"
-#define NUM_FRAMES 3
+// #define NUM_FRAMES 3
 
 namespace zen::rhi
 {
@@ -25,7 +25,7 @@ public:
                    uint32_t height,
                    bool enableVSync);
 
-    void Destroy();
+    ~VulkanViewport() {}
 
     uint32_t GetWidth() const final
     {
@@ -94,6 +94,10 @@ public:
 
     void Resize(uint32_t width, uint32_t height) final;
 
+    void Init() override;
+
+    void Destroy() override;
+
 private:
     void CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
     void DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
@@ -106,18 +110,19 @@ private:
 
     VulkanRHI* m_RHI{nullptr};
     VulkanDevice* m_device{nullptr};
-    void* m_windowPtr{nullptr};
-    uint32_t m_width{0};
-    uint32_t m_height{0};
-    bool m_enableVSync{true};
+    // void* m_windowPtr{nullptr};
+    // uint32_t m_width{0};
+    // uint32_t m_height{0};
+    // bool m_enableVSync{true};
     DataFormat m_depthFormat;
     VulkanSwapchain* m_swapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_imageAcquiredSemaphore{nullptr};
-    std::vector<VulkanSemaphore*> m_renderingCompleteSemaphores;
+    VulkanSemaphore* m_renderingCompleteSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
     VulkanCommandBuffer* m_lastFrameCmdBuffer{nullptr};
     uint64_t m_lastFenceSignaledCounter{0};
-    SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
+    // SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
+    VkImage m_backBufferImages[ZEN_NUM_FRAMES_IN_FLIGHT];
     VulkanTexture* m_colorBackBuffer{nullptr};
     VulkanTexture* m_depthStencilBackBuffer{nullptr};
     HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;

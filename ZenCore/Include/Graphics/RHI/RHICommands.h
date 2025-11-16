@@ -10,6 +10,10 @@ public:
     virtual ~RHICommandListContext() = default;
 };
 
+// todo: refactor this as follows:
+// RHICommandList API do not call gfx API directly, instead, allocate command and store them.
+// Move command implementation to RHICommandContext
+// Implement other helper class to execute the command list
 class RHICommandList
 {
 public:
@@ -91,7 +95,7 @@ public:
     virtual void DrawIndexed(uint32_t indexCount,
                              uint32_t instanceCount,
                              uint32_t firstIndex,
-                             uint32_t vertexOffset,
+                             int32_t vertexOffset,
                              uint32_t firstInstance) = 0;
 
     virtual void DrawIndexedIndirect(BufferHandle indirectBuffer,

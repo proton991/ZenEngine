@@ -4,7 +4,7 @@
 
 using namespace zen;
 
-class DummyResource : public rhi::RHIResource
+class DummyResource : public RefCounted
 {};
 
 class DummyResourceChild : public DummyResource

@@ -7,16 +7,24 @@
 
 namespace zen::rhi
 {
+DynamicRHI* GDynamicRHI = nullptr;
+
 DynamicRHI* DynamicRHI::Create(GraphicsAPIType type)
 {
+    DynamicRHI* RHI = nullptr;
+
     if (type == GraphicsAPIType::eVulkan)
     {
-        return new VulkanRHI();
+        RHI = new VulkanRHI();
+    }
+    else
+    {
+        LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
     }
 
-    LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
+    GDynamicRHI = RHI;
 
-    return nullptr;
+    return RHI;
 }
 
 RHIDebug* RHIDebug::Create(DynamicRHI* RHI)

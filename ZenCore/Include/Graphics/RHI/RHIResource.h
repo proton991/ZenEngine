@@ -6,11 +6,12 @@
 
 namespace zen::rhi
 {
-enum class ResourceType
+enum class ResourceType : uint32_t
 {
-    eNone,
-    eViewport,
-    eMax
+    eNone     = 0,
+    eViewport = 1,
+    eBuffer   = 2,
+    eMax      = 3
 };
 
 class RHIResource
@@ -25,18 +26,18 @@ public:
 
     explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType) {}
 
-    uint32_t AddRef()
+    uint32_t AddReference()
     {
         uint32_t newValue = m_counter.AddRef();
         return newValue;
     }
 
-    uint32_t Release()
+    uint32_t ReleaseReference()
     {
         uint32_t newValue = m_counter.Release();
         if (newValue == 0)
         {
-            delete this;
+            Destroy();
         }
         return newValue;
     }
@@ -45,6 +46,10 @@ public:
     {
         return m_counter.GetValue();
     }
+
+    virtual void Init() = 0;
+
+    virtual void Destroy() = 0;
 
 private:
     class AtomicCounter
@@ -75,7 +80,7 @@ private:
     ResourceType m_resourceType{ResourceType::eMax};
 };
 
-class ShaderGroupSource : public RHIResource
+class ShaderGroupSource : public RefCounted
 {
 public:
     ShaderGroupSource() = default;
@@ -97,7 +102,7 @@ private:
     std::string m_source[ToUnderlying(ShaderStage::eMax)];
 };
 
-class ShaderGroupSPIRV : public RHIResource
+class ShaderGroupSPIRV : public RefCounted
 {
 public:
     ShaderGroupSPIRV() = default;
@@ -252,7 +257,12 @@ inline uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint3
 class RHIViewport : public RHIResource
 {
 public:
-    RHIViewport() : RHIResource(ResourceType::eViewport) {}
+    static RHIViewport* Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync);
+
+    // RHIViewport() : RHIResource(ResourceType::eViewport)
+    // {
+    //     AddReference();
+    // }
 
     virtual ~RHIViewport() = default;
 
@@ -283,5 +293,101 @@ public:
         RenderPassHandle renderPassHandle) = 0;
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
+
+protected:
+    RHIViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) :
+        RHIResource(ResourceType::eViewport),
+        m_pWindow(pWindow),
+        m_width(width),
+        m_height(height),
+        m_enableVSync(enableVSync)
+    {
+        AddReference();
+    }
+
+    void* m_pWindow{nullptr};
+    uint32_t m_width{0};
+    uint32_t m_height{0};
+    bool m_enableVSync{true};
+};
+
+struct RHIBufferCreateInfo
+{
+    uint32_t size{0};
+    BitField<BufferUsageFlagBits> usageFlags{0};
+    BufferAllocateType allocateType{BufferAllocateType::eNone};
+};
+
+class RHIBuffer : public RHIResource
+{
+public:
+    static RHIBuffer* Create(const RHIBufferCreateInfo& createInfo);
+
+    ~RHIBuffer() {}
+
+    virtual uint8_t* Map() = 0;
+
+    virtual void Unmap() = 0;
+
+    virtual void SetTexelFormat(DataFormat format) = 0;
+
+protected:
+    explicit RHIBuffer(const RHIBufferCreateInfo& createInfo) :
+        m_requiredSize(createInfo.size),
+        m_usageFlags(createInfo.usageFlags),
+        m_allocateType(createInfo.allocateType)
+    {}
+
+    uint32_t m_requiredSize{0};
+    BitField<BufferUsageFlagBits> m_usageFlags;
+    BufferAllocateType m_allocateType{BufferAllocateType::eNone};
+    // BufferHandle m_handle;
+};
+
+struct RHITextureCreateInfo
+{
+    DataFormat format{DataFormat::eUndefined};
+    SampleCount samples{SampleCount::e1};
+    BitField<TextureUsageFlagBits> usageFlags;
+    TextureType type{TextureType::e1D};
+    uint32_t width{1};
+    uint32_t height{1};
+    uint32_t depth{1};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
+    // memory flags
+    bool cpuReadable{false};
+    bool mutableFormat{false};
+    std::string name;
+};
+
+class RHITexture
+{
+public:
+    RHITexture* Create(const RHITextureCreateInfo& createInfo);
+
+private:
+    RHITexture(const RHITextureCreateInfo& createInfo);
+
+    RHITextureCreateInfo m_baseInfo{};
+};
+
+struct RHISamplerCreateInfo
+{
+    SamplerFilter magFilter{SamplerFilter::eNearest};
+    SamplerFilter minFilter{SamplerFilter::eNearest};
+    SamplerFilter mipFilter{SamplerFilter::eNearest};
+    SamplerRepeatMode repeatU{SamplerRepeatMode::eClampToEdge};
+    SamplerRepeatMode repeatV{SamplerRepeatMode::eClampToEdge};
+    SamplerRepeatMode repeatW{SamplerRepeatMode::eClampToEdge};
+    float lodBias{0.0f};
+    bool useAnisotropy{false};
+    float maxAnisotropy{1.0f};
+    bool enableCompare{false};
+    CompareOperator compareOp{CompareOperator::eAlways};
+    float minLod{0.0f};
+    float maxLod{1e20}; // Something very large should do.
+    SamplerBorderColor borderColor{SamplerBorderColor::eFloatOpaqueBlack};
+    bool unnormalizedUVW{false};
 };
 } // namespace zen::rhi

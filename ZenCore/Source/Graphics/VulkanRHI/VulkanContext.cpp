@@ -9,6 +9,9 @@
 
 namespace zen::rhi
 {
+VulkanMemoryAllocator* GVkMemAllocator = nullptr;
+VulkanRHI* GVulkanRHI                  = nullptr;
+
 struct VulkanLayer
 {
     VkLayerProperties layerProperties;
@@ -232,6 +235,9 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
     }
     m_resourceAllocator.Init();
     m_vkMemAllocator = new VulkanMemoryAllocator();
+    GVkMemAllocator  = new VulkanMemoryAllocator();
+
+    GVulkanRHI = this;
 }
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
@@ -277,12 +283,17 @@ void VulkanRHI::Init()
     m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
                            m_device->GetVkHandle());
 
+    GVkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(), m_device->GetVkHandle());
+
     m_descriptorPoolManager = new VulkanDescriptorPoolManager(m_device);
 }
 
 void VulkanRHI::Destroy()
 {
     delete m_vkMemAllocator;
+
+    delete GVkMemAllocator;
+
     delete m_descriptorPoolManager;
 
     for (auto* context : m_cmdListContexts)

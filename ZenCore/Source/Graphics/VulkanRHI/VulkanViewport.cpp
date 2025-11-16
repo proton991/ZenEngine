@@ -12,18 +12,31 @@
 
 namespace zen::rhi
 {
-RHIViewport* VulkanRHI::CreateViewport(void* windowPtr,
-                                       uint32_t width,
-                                       uint32_t height,
-                                       bool enableVSync)
+RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
 {
-    RHIViewport* viewport = new VulkanViewport(this, windowPtr, width, height, enableVSync);
-    return viewport;
+    RHIViewport* pViewport =
+        static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
+
+    new (pViewport)
+        VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
+
+    pViewport->Init();
+
+    return pViewport;
 }
+
+// RHIViewport* VulkanRHI::CreateViewport(void* windowPtr,
+//                                        uint32_t width,
+//                                        uint32_t height,
+//                                        bool enableVSync)
+// {
+//     RHIViewport* viewport = new VulkanViewport(this, windowPtr, width, height, enableVSync);
+//     return viewport;
+// }
 
 void VulkanRHI::DestroyViewport(RHIViewport* viewport)
 {
-    dynamic_cast<VulkanViewport*>(viewport)->Destroy();
+    viewport->ReleaseReference();
 }
 
 void VulkanRHI::BeginDrawingViewport(RHIViewport* viewportRHI)
@@ -51,23 +64,55 @@ VulkanViewport::VulkanViewport(VulkanRHI* RHI,
                                uint32_t width,
                                uint32_t height,
                                bool enableVSync) :
-    m_RHI(RHI),
-    m_device(m_RHI->GetDevice()),
-    m_windowPtr(windowPtr),
-    m_width(width),
-    m_height(height),
-    m_enableVSync(enableVSync)
+    RHIViewport(windowPtr, width, height, enableVSync), m_RHI(RHI), m_device(m_RHI->GetDevice())
+// m_windowPtr(windowPtr),
+// m_width(width),
+// m_height(height),
+// m_enableVSync(enableVSync)
+{
+    // m_depthFormat = m_RHI->GetSupportedDepthFormat();
+    // LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
+    // CreateSwapchain(nullptr);
+    // for (uint32_t i = 0; i < m_renderingCompleteSemaphores.size(); i++)
+    // {
+    //     auto* semaphore = m_RHI->GetDevice()->GetSemaphoreManager()->GetOrCreateSemaphore();
+    //     const std::string debugName = "RenderComplete-" + std::to_string(i);
+    //     semaphore->SetDebugName(debugName.c_str());
+    //     m_renderingCompleteSemaphores[i] = semaphore;
+    // }
+}
+
+void VulkanViewport::Init()
 {
     m_depthFormat = m_RHI->GetSupportedDepthFormat();
     LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
     CreateSwapchain(nullptr);
-    for (uint32_t i = 0; i < m_renderingCompleteSemaphores.size(); i++)
+    for (uint32_t i = 0; i < m_swapchain->GetNumSwapchainImages(); i++)
     {
         auto* semaphore = m_RHI->GetDevice()->GetSemaphoreManager()->GetOrCreateSemaphore();
         const std::string debugName = "RenderComplete-" + std::to_string(i);
         semaphore->SetDebugName(debugName.c_str());
         m_renderingCompleteSemaphores[i] = semaphore;
     }
+}
+
+void VulkanViewport::Destroy()
+{
+    DestroySwapchain(nullptr);
+    for (auto& semaphore : m_renderingCompleteSemaphores)
+    {
+        m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
+    }
+
+    // m_renderingCompleteSemaphores.clear();
+    for (auto& kv : m_framebufferCache)
+    {
+        m_RHI->DestroyFramebuffer(FramebufferHandle(kv.second));
+    }
+
+    this->~VulkanViewport();
+
+    ZEN_MEM_FREE(this);
 }
 
 void VulkanViewport::WaitForFrameCompletion()
@@ -103,10 +148,11 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_depthStencilBackBuffer = nullptr;
 
     m_swapchain =
-        new VulkanSwapchain(m_RHI, m_windowPtr, m_width, m_height, m_enableVSync, recreateInfo);
-    const SmallVector<VkImage>& images = m_swapchain->GetSwapchainImages();
-    m_renderingCompleteSemaphores.resize(images.size());
-    m_backBufferImages.resize(images.size());
+        new VulkanSwapchain(m_RHI, m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
+    const VkImage* images    = m_swapchain->GetSwapchainImages();
+    const uint32_t numImages = m_swapchain->GetNumSwapchainImages();
+    // m_renderingCompleteSemaphores.resize(numImages);
+    // m_backBufferImages.resize(numImages);
 
     // VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
     VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
@@ -116,7 +162,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     const VkImageSubresourceRange range =
         VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
     VkClearColorValue clearColor{0.1f, 0.1f, 0.1f, 1.0f};
-    for (uint32_t i = 0; i < images.size(); i++)
+    for (uint32_t i = 0; i < numImages; i++)
     {
         m_backBufferImages[i] = images[i];
         cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_UNDEFINED,
@@ -162,7 +208,7 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_RHI->GetDevice()->WaitForIdle();
     if (m_swapchain != nullptr)
     {
-        for (uint32_t i = 0; i < m_backBufferImages.size(); i++)
+        for (uint32_t i = 0; i < m_swapchain->GetNumSwapchainImages(); i++)
         {
             m_backBufferImages[i] = VK_NULL_HANDLE;
         }
@@ -371,21 +417,6 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
                 m_framebufferCache[RenderPassHandle(renderPass)] = newFramebuffer;
             }
         }
-    }
-}
-
-void VulkanViewport::Destroy()
-{
-    DestroySwapchain(nullptr);
-    for (auto& semaphore : m_renderingCompleteSemaphores)
-    {
-        m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
-    }
-
-    m_renderingCompleteSemaphores.clear();
-    for (auto& kv : m_framebufferCache)
-    {
-        m_RHI->DestroyFramebuffer(FramebufferHandle(kv.second));
     }
 }
 

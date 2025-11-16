@@ -565,11 +565,12 @@ struct BufferCopySource
     BufferCopyRegion region;
 };
 
-enum class BufferAllocateType
+enum class BufferAllocateType : uint32_t
 {
-    eCPU = 0,
-    eGPU = 1,
-    eMax = 2
+    eNone = 0,
+    eCPU  = 1,
+    eGPU  = 2,
+    eMax  = 3
 };
 
 /*****************************/

@@ -1,8 +1,6 @@
 #pragma once
 #include <functional>
 
-#define ZEN_RHI_SWAPCHAIN_IMAGE_COUNT 3
-
 namespace zen::rhi
 {
 enum class Status : uint32_t

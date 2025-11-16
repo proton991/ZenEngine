@@ -32,6 +32,7 @@ class VulkanDescriptorPoolManager;
 struct VulkanShader;
 struct VulkanTexture;
 struct VulkanBuffer;
+class FVulkanBuffer;
 struct VulkanDescriptorSet;
 struct VulkanPipeline;
 class VulkanCommandBuffer;
@@ -41,6 +42,7 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
 using VersatileResource = VersatileResourceTemplate<VulkanShader,
                                                     VulkanTexture,
+                                                    FVulkanBuffer,
                                                     VulkanBuffer,
                                                     VulkanDescriptorSet,
                                                     VulkanPipeline>;
@@ -86,10 +88,10 @@ public:
 
     VkDevice GetVkDevice() const;
 
-    RHIViewport* CreateViewport(void* windowPtr,
-                                uint32_t width,
-                                uint32_t height,
-                                bool enableVSync) final;
+    // RHIViewport* CreateViewport(void* windowPtr,
+    //                             uint32_t width,
+    //                             uint32_t height,
+    //                             bool enableVSync) final;
 
     void DestroyViewport(RHIViewport* viewport) final;
 
@@ -156,6 +158,8 @@ public:
 
     void DestroyBuffer(BufferHandle bufferHandle) final;
 
+    void DestroyBuffer(RHIBuffer* pBuffer) final;
+
     void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
 
     DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex) final;
@@ -174,6 +178,11 @@ public:
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
 
     VkImageLayout GetImageCurrentLayout(VkImage image);
+
+    auto& GetResourceAllocator()
+    {
+        return m_resourceAllocator;
+    }
 
 protected:
     void CreateInstance();
@@ -204,7 +213,7 @@ private:
 
     // allocator for memory
     VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
-    // allocators for resrouces
+    // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
     HashMap<ShaderHandle, VulkanPipeline*> m_shaderPipelines;
@@ -213,4 +222,7 @@ private:
     // primarily applied outside the RenderGraph.
     HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
 };
+
+extern VulkanMemoryAllocator* GVkMemAllocator;
+extern VulkanRHI* GVulkanRHI;
 } // namespace zen::rhi
