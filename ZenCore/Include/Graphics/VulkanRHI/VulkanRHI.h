@@ -15,13 +15,14 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-#define TO_VK_TEXTURE(handle)     reinterpret_cast<VulkanTexture*>((handle).value)
-#define TO_VK_BUFFER(handle)      reinterpret_cast<VulkanBuffer*>((handle).value)
+#define TO_VK_TEXTURE(tex)        (dynamic_cast<VulkanTexture*>(tex))
+#define TO_CVK_TEXTURE(tex)       (dynamic_cast<const VulkanTexture*>(tex))
+#define TO_VK_BUFFER(buffer)      (dynamic_cast<VulkanBuffer*>(buffer))
 #define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>((handle).value)
 #define TO_VK_FRAMEBUFFER(handle) reinterpret_cast<VulkanFramebuffer*>((handle).value)
 #define TO_VK_RENDER_PASS(handle) reinterpret_cast<VkRenderPass>((handle).value)
 #define TO_VK_SHADER(handle)      reinterpret_cast<VulkanShader*>((handle).value)
-#define TO_VK_SAMPLER(handle)     reinterpret_cast<VkSampler>((handle).value)
+#define TO_VK_SAMPLER(sampler)    (dynamic_cast<VulkanSampler*>(sampler))
 
 namespace zen::rhi
 {
@@ -31,8 +32,8 @@ class VulkanCommandBufferManager;
 class VulkanDescriptorPoolManager;
 struct VulkanShader;
 struct VulkanTexture;
-struct VulkanBuffer;
-class FVulkanBuffer;
+class VulkanBuffer;
+class VulkanSampler;
 struct VulkanDescriptorSet;
 struct VulkanPipeline;
 class VulkanCommandBuffer;
@@ -42,7 +43,7 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
 using VersatileResource = VersatileResourceTemplate<VulkanShader,
                                                     VulkanTexture,
-                                                    FVulkanBuffer,
+                                                    VulkanSampler,
                                                     VulkanBuffer,
                                                     VulkanDescriptorSet,
                                                     VulkanPipeline>;
@@ -133,34 +134,36 @@ public:
 
     void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 
-    SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) final;
+    // SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) final;
 
-    void DestroySampler(SamplerHandle samplerHandle) final;
+    void DestroySampler(RHISampler* sampler) final;
 
-    TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
+    // TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
+    //
+    // TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
+    //                                  const TextureProxyInfo& textureProxyInfo) final;
+    //
+    // void DestroyTexture(TextureHandle textureHandle) final;
 
-    TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
-                                     const TextureProxyInfo& textureProxyInfo) final;
+    void DestroyTexture(RHITexture* texture) final;
 
-    void DestroyTexture(TextureHandle textureHandle) final;
+    // DataFormat GetTextureFormat(TextureHandle textureHandle) final;
+    //
+    // TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
 
-    DataFormat GetTextureFormat(TextureHandle textureHandle) final;
-
-    TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
-
-    BufferHandle CreateBuffer(uint32_t size,
-                              BitField<BufferUsageFlagBits> usageFlags,
-                              BufferAllocateType allocateType) final;
-
-    uint8_t* MapBuffer(BufferHandle bufferHandle) final;
-
-    void UnmapBuffer(BufferHandle bufferHandle) final;
-
-    void DestroyBuffer(BufferHandle bufferHandle) final;
-
+    // BufferHandle CreateBuffer(uint32_t size,
+    //                           BitField<BufferUsageFlagBits> usageFlags,
+    //                           BufferAllocateType allocateType) final;
+    //
+    // uint8_t* MapBuffer(BufferHandle bufferHandle) final;
+    //
+    // void UnmapBuffer(BufferHandle bufferHandle) final;
+    //
+    // void DestroyBuffer(BufferHandle bufferHandle) final;
+    //
     void DestroyBuffer(RHIBuffer* pBuffer) final;
-
-    void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
+    //
+    // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
 
     DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex) final;
 
@@ -176,6 +179,8 @@ public:
     const GPUInfo& QueryGPUInfo() const final;
 
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
+
+    void RemoveImageLayout(VkImage image);
 
     VkImageLayout GetImageCurrentLayout(VkImage image);
 

@@ -184,13 +184,13 @@ void DeferredLightingRenderer::PrepareTextures()
     }
     // offscreen color texture sampler
     {
-        SamplerInfo samplerInfo{};
+        RHISamplerCreateInfo samplerInfo{};
         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
         m_depthSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
     // offscreen depth texture sampler
     {
-        SamplerInfo samplerInfo{};
+        RHISamplerCreateInfo samplerInfo{};
         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
         samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
         samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
@@ -425,26 +425,23 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
             m_gfxPasses.sceneLighting.shaderProgram->GetUniformBufferHandle("uSceneData"));
         // textures
         ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.position->GetHandle());
+                                  m_colorSampler, m_offscreenTextures.position);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 1, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.normal->GetHandle());
+                                  m_colorSampler, m_offscreenTextures.normal);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 2, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler, m_offscreenTextures.albedo->GetHandle());
+                                  m_colorSampler, m_offscreenTextures.albedo);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 3, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler,
-                                  m_offscreenTextures.metallicRoughness->GetHandle());
+                                  m_colorSampler, m_offscreenTextures.metallicRoughness);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 4, ShaderResourceType::eSamplerWithTexture,
-                                  m_colorSampler,
-                                  m_offscreenTextures.emissiveOcclusion->GetHandle());
+                                  m_colorSampler, m_offscreenTextures.emissiveOcclusion);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 5, ShaderResourceType::eSamplerWithTexture,
-                                  m_depthSampler, m_offscreenTextures.depth->GetHandle());
+                                  m_depthSampler, m_offscreenTextures.depth);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 6, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.irradianceSampler, envTexture.irradiance->GetHandle());
+                                  envTexture.irradianceSampler, envTexture.irradiance);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 7, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.prefilteredSampler,
-                                  envTexture.prefiltered->GetHandle());
+                                  envTexture.prefilteredSampler, envTexture.prefiltered);
         ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
-                                  envTexture.lutBRDFSampler, envTexture.lutBRDF->GetHandle());
+                                  envTexture.lutBRDFSampler, envTexture.lutBRDF);
 
         GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
         updater.SetShaderResourceBinding(0, textureBindings)

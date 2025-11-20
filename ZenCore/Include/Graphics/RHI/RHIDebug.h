@@ -13,7 +13,7 @@ public:
     virtual void SetPipelineDebugName(PipelineHandle pipelineHandle,
                                       const std::string& debugName) = 0;
 
-    virtual void SetTextureDebugName(TextureHandle textureHandle, const std::string& debugName) = 0;
+    virtual void SetTextureDebugName(RHITexture* texture, const std::string& debugName) = 0;
 
     virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                         const std::string& debugName) = 0;

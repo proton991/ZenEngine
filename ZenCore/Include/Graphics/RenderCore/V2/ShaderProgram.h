@@ -53,7 +53,7 @@ public:
         return m_SRDs;
     }
 
-    const rhi::BufferHandle& GetUniformBufferHandle(const std::string& name)
+    rhi::RHIBuffer* GetUniformBufferHandle(const std::string& name)
     {
         VERIFY_EXPR(m_uniformBuffers.contains(name) != false);
 
@@ -94,8 +94,8 @@ private:
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> m_SRDs;
     rhi::ShaderHandle m_shader;
 
-    HashMap<std::string, rhi::BufferHandle> m_uniformBuffers; // created from SRDs
-    HashMap<std::string, uint32_t> m_uniformBufferSizes;      // created from SRDs
+    HashMap<std::string, rhi::RHIBuffer*> m_uniformBuffers; // created from SRDs
+    HashMap<std::string, uint32_t> m_uniformBufferSizes;    // created from SRDs
 
     std::vector<rhi::ShaderResourceDescriptor> m_sampledTextures;
     std::vector<rhi::ShaderResourceDescriptor> m_storageBuffers;

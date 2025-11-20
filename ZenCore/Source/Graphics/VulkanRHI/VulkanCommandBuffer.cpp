@@ -170,10 +170,10 @@ void VulkanCommandBuffer::Begin()
     else
     {
         VERIFY_EXPR(m_state == State::eReadyForBegin);
-        if (m_state != State::eReadyForBegin)
-        {
-            int a = 1;
-        }
+        // if (m_state != State::eReadyForBegin)
+        // {
+        //     int a = 1;
+        // }
     }
     m_state = State::eHasBegun;
     VkCommandBufferBeginInfo beginInfo;

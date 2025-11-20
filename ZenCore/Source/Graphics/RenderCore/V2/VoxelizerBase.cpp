@@ -11,7 +11,7 @@ void VoxelizerBase::PrepareTextures()
 {
     using namespace zen::rhi;
     {
-        rhi::SamplerInfo samplerInfo{};
+        rhi::RHISamplerCreateInfo samplerInfo{};
         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
         samplerInfo.mipFilter = rhi::SamplerFilter::eLinear;
@@ -21,7 +21,7 @@ void VoxelizerBase::PrepareTextures()
 
     // offscreen depth texture sampler
     {
-        rhi::SamplerInfo samplerInfo{};
+        rhi::RHISamplerCreateInfo samplerInfo{};
         samplerInfo.borderColor = rhi::SamplerBorderColor::eFloatOpaqueWhite;
         samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
         samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;

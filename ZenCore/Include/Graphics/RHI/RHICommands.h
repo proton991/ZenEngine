@@ -4,6 +4,9 @@
 
 namespace zen::rhi
 {
+class RHIBuffer;
+class RHITexture;
+
 class RHICommandListContext
 {
 public:
@@ -35,39 +38,38 @@ public:
                                     const std::vector<BufferTransition>& bufferTransitions,
                                     const std::vector<TextureTransition>& textureTransitions) = 0;
 
-    virtual void ClearBuffer(BufferHandle bufferHandle, uint32_t offset, uint32_t size) = 0;
+    virtual void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) = 0;
 
-    virtual void CopyBuffer(BufferHandle srcBufferHandle,
-                            BufferHandle dstBufferHandle,
+    virtual void CopyBuffer(RHIBuffer* srcBuffer,
+                            RHIBuffer* dstBuffer,
                             const BufferCopyRegion& region) = 0;
 
-    virtual void ClearTexture(TextureHandle textureHandle,
+    virtual void ClearTexture(RHITexture* textureHandle,
                               const Color& color,
                               const TextureSubResourceRange& range) = 0;
 
-    virtual void CopyTexture(TextureHandle srcTextureHandle,
-                             TextureHandle dstTextureHandle,
+    virtual void CopyTexture(RHITexture* srcTextureHandle,
+                             RHITexture* dstTextureHandle,
                              VectorView<TextureCopyRegion> regions) = 0;
 
-    virtual void CopyTextureToBuffer(TextureHandle textureHandle,
-                                     BufferHandle bufferHandle,
+    virtual void CopyTextureToBuffer(RHITexture* textureHandle,
+                                     RHIBuffer* buffer,
                                      VectorView<BufferTextureCopyRegion> regions) = 0;
 
-    virtual void CopyBufferToTexture(BufferHandle bufferHandle,
-                                     TextureHandle textureHandle,
+    virtual void CopyBufferToTexture(RHIBuffer* buffer,
+                                     RHITexture* textureHandle,
                                      VectorView<BufferTextureCopyRegion> regions) = 0;
 
-    virtual void ResolveTexture(TextureHandle srcTextureHandle,
-                                TextureHandle dstTextureHandle,
+    virtual void ResolveTexture(RHITexture* srcTextureHandle,
+                                RHITexture* dstTextureHandle,
                                 uint32_t srcLayer,
                                 uint32_t srcMipmap,
                                 uint32_t dstLayer,
                                 uint32_t dstMipmap) = 0;
 
-    virtual void BindIndexBuffer(BufferHandle bufferHandle, DataFormat format, uint32_t offset) = 0;
+    virtual void BindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint32_t offset) = 0;
 
-    virtual void BindVertexBuffers(VectorView<BufferHandle> bufferHandles,
-                                   const uint64_t* offsets) = 0;
+    virtual void BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets) = 0;
 
     virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
 
@@ -98,14 +100,14 @@ public:
                              int32_t vertexOffset,
                              uint32_t firstInstance) = 0;
 
-    virtual void DrawIndexedIndirect(BufferHandle indirectBuffer,
+    virtual void DrawIndexedIndirect(RHIBuffer* indirectBuffer,
                                      uint32_t offset,
                                      uint32_t drawCount,
                                      uint32_t stride) = 0;
 
     virtual void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
-    virtual void DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset) = 0;
+    virtual void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset) = 0;
 
     virtual void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) = 0;
 
@@ -121,8 +123,8 @@ public:
 
     virtual void SetBlendConstants(const Color& color) = 0;
 
-    virtual void GenerateTextureMipmaps(TextureHandle textureHandle) = 0;
+    virtual void GenerateTextureMipmaps(RHITexture* textureHandle) = 0;
 
-    virtual void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) = 0;
+    virtual void ChangeTextureLayout(RHITexture* textureHandle, TextureLayout newLayout) = 0;
 };
 } // namespace zen::rhi

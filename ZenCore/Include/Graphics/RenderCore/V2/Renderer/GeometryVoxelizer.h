@@ -35,7 +35,7 @@ protected:
 
     void UpdateUniformData() final;
 
-    rhi::BufferHandle m_voxelVBO;
+    rhi::RHIBuffer* m_voxelVBO;
     struct
     {
         GraphicsPass voxelization;

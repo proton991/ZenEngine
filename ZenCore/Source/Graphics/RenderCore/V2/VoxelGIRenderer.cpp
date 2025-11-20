@@ -195,7 +195,7 @@ void VoxelGIRenderer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_textures.voxelRadiance->GetHandle());
+                                  m_textures.voxelRadiance);
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
@@ -209,21 +209,19 @@ void VoxelGIRenderer::UpdatePassResources()
 
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  m_voxelizer->GetVoxelSampler(),
-                                  voxelTextures.albedoProxy->GetHandle());
+                                  m_voxelizer->GetVoxelSampler(), voxelTextures.albedoProxy);
         ADD_SHADER_BINDING_SINGLE(set0bindings, 1, ShaderResourceType::eImage,
-                                  voxelTextures.normalProxy->GetHandle());
+                                  voxelTextures.normalProxy);
         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eImage,
-                                  m_textures.voxelRadiance->GetHandle());
+                                  m_textures.voxelRadiance);
         ADD_SHADER_BINDING_SINGLE(set0bindings, 3, ShaderResourceType::eImage,
-                                  voxelTextures.emissiveProxy->GetHandle());
+                                  voxelTextures.emissiveProxy);
 
         // set-1 bindings
         ShadowMapRenderer* shadowMapRenderer =
             m_renderDevice->GetRendererServer()->RequestShadowMapRenderer();
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                  shadowMapRenderer->GetColorSampler(),
-                                  m_textures.shadowMap->GetHandle());
+                                  shadowMapRenderer->GetColorSampler(), m_textures.shadowMap);
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(
             set2bindings, 0, ShaderResourceType::eUniformBuffer,

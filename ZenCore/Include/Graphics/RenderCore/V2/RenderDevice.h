@@ -21,7 +21,6 @@ class RenderGraph;
 class RendererServer;
 class TextureManager;
 class SkyboxRenderer;
-class TextureRD;
 
 class GraphicsPassBuilder
 {
@@ -41,7 +40,7 @@ public:
     }
 
     // GraphicsPassBuilder& AddColorRenderTarget(DataFormat format,
-    //                                           const rhi::TextureHandle& handle,
+    //                                           const rhi::RHITexture* handle,
     //                                           bool clear = true);
 
     GraphicsPassBuilder& AddViewportColorRT(
@@ -55,12 +54,12 @@ public:
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& AddColorRenderTarget(
-        const TextureRD* colorRT,
+        rhi::RHITexture* colorRT,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
-        const TextureRD* depthStencilRT,
+        rhi::RHITexture* depthStencilRT,
         rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
         rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
 
@@ -72,7 +71,7 @@ public:
 
     // GraphicsPassBuilder& SetDepthStencilTarget(
     //     DataFormat format,
-    //     const rhi::TextureHandle& handle,
+    //     const rhi::RHITexture* handle,
     //     rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
     //     rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
 
@@ -219,7 +218,7 @@ struct StagingSubmitResult
     StagingFlushAction flushAction{StagingFlushAction::eNone};
     uint32_t writeOffset{0};
     uint32_t writeSize{0};
-    rhi::BufferHandle buffer;
+    rhi::RHIBuffer* buffer;
 };
 
 class TextureStagingManager
@@ -229,9 +228,9 @@ public:
         m_renderDevice(renderDevice), m_usedMemory(0), m_pendingFreeMemorySize(0)
     {}
 
-    rhi::BufferHandle RequireBuffer(uint32_t requiredSize);
+    rhi::RHIBuffer* RequireBuffer(uint32_t requiredSize);
 
-    void ReleaseBuffer(const rhi::BufferHandle& buffer);
+    void ReleaseBuffer(const rhi::RHIBuffer* buffer);
 
     void ProcessPendingFrees();
 
@@ -253,7 +252,7 @@ private:
     struct Entry
     {
         uint32_t size;
-        rhi::BufferHandle buffer;
+        rhi::RHIBuffer* buffer;
         uint32_t usedFrame;
     };
 
@@ -261,7 +260,7 @@ private:
     std::vector<Entry> m_pendingFreeBuffers;
     std::vector<Entry> m_freeBuffers;
     // for memory management
-    std::vector<rhi::BufferHandle> m_allocatedBuffers;
+    std::vector<rhi::RHIBuffer*> m_allocatedBuffers;
     uint32_t m_usedMemory;
     uint32_t m_pendingFreeMemorySize;
 };
@@ -310,7 +309,7 @@ private:
 
     struct StagingBuffer
     {
-        rhi::BufferHandle handle;
+        rhi::RHIBuffer* buffer;
         uint64_t usedFrame;
         uint32_t occupiedSize;
     };
@@ -328,7 +327,7 @@ struct RenderFrame
     rhi::RHICommandList* uploadCmdList{nullptr};
     rhi::RHICommandList* drawCmdList{nullptr};
     bool cmdSubmitted{false};
-    std::vector<TextureRD*> texturesPendingFree;
+    std::vector<rhi::RHITexture*> texturesPendingFree;
 };
 
 struct RenderDeviceFeatures
@@ -360,62 +359,61 @@ public:
 
     void ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg);
 
-    TextureRD* CreateTextureColorRT(const TextureFormat& texFormat,
-                                    TextureUsageHint usageHint,
-                                    std::string name);
+    rhi::RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
+                                          TextureUsageHint usageHint,
+                                          std::string name);
 
-    TextureRD* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
-                                           TextureUsageHint usageHint,
-                                           std::string name);
+    rhi::RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+                                                 TextureUsageHint usageHint,
+                                                 std::string name);
 
-    TextureRD* CreateTextureStorage(const TextureFormat& texFormat,
-                                    TextureUsageHint usageHint,
-                                    std::string name);
+    rhi::RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
+                                          TextureUsageHint usageHint,
+                                          std::string name);
 
-    TextureRD* CreateTextureSampled(const TextureFormat& texFormat,
-                                    TextureUsageHint usageHint,
-                                    std::string name);
+    rhi::RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
+                                          TextureUsageHint usageHint,
+                                          std::string name);
 
-    TextureRD* CreateTextureDummy(const TextureFormat& texFormat,
-                                  TextureUsageHint usageHint,
-                                  std::string name);
+    rhi::RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
+                                        TextureUsageHint usageHint,
+                                        std::string name);
 
-    TextureRD* CreateTextureProxy(TextureRD* baseTexture,
-                                  const TextureProxyFormat& proxyFormat,
-                                  std::string name);
+    rhi::RHITexture* CreateTextureProxy(rhi::RHITexture* baseTexture,
+                                        const TextureProxyFormat& proxyFormat,
+                                        std::string name);
 
-    TextureRD* GetTextureRDFromHandle(const rhi::TextureHandle& handle);
+    // rhi::RHITexture* GetTextureRDFromHandle(const rhi::RHITexture* handle);
 
-    void DestroyTexture(TextureRD* textureRD);
+    void DestroyTexture(rhi::RHITexture* texture);
 
-    // rhi::TextureHandle CreateTexture(const rhi::TextureInfo& textureInfo);
+    // rhi::RHITexture* CreateTexture(const rhi::TextureInfo& textureInfo);
     //
-    // rhi::TextureHandle CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+    // rhi::RHITexture* CreateTextureProxy(const rhi::RHITexture* baseTexture,
     //                                       const rhi::TextureProxyInfo& proxyInfo);
 
-    // rhi::TextureHandle GetBaseTextureForProxy(const rhi::TextureHandle& handle) const;
+    // rhi::RHITexture* GetBaseTextureForProxy(const rhi::RHITexture* handle) const;
 
-    // bool IsProxyTexture(const rhi::TextureHandle& handle) const;
+    // bool IsProxyTexture(const rhi::RHITexture* handle) const;
 
-    void GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
-                                rhi::RHICommandList* cmdList);
+    void GenerateTextureMipmaps(rhi::RHITexture* textureHandle, rhi::RHICommandList* cmdList);
 
-    rhi::BufferHandle CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::BufferHandle CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::BufferHandle CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::BufferHandle CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::BufferHandle CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    void UpdateBuffer(const rhi::BufferHandle& bufferHandle,
+    void UpdateBuffer(rhi::RHIBuffer* bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
                       uint32_t offset = 0);
 
-    void DestroyBuffer(const rhi::BufferHandle& bufferHandle);
+    void DestroyBuffer(rhi::RHIBuffer* bufferHandle);
 
     rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
 
@@ -442,17 +440,17 @@ public:
 
     void UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport);
 
-    // rhi::TextureHandle LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    // rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    TextureRD* LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::RHITexture*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* texture);
 
-    rhi::SamplerHandle CreateSampler(const rhi::SamplerInfo& samplerInfo);
+    rhi::RHISampler* CreateSampler(const rhi::RHISamplerCreateInfo& samplerInfo);
 
-    rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::TextureHandle handle);
+    // rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::RHITexture* handle);
 
     auto* GetRHI() const
     {
@@ -509,17 +507,17 @@ private:
 
     void ProcessPendingFreeResources(uint32_t frameIndex);
 
-    void UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
+    void UpdateBufferInternal(rhi::RHIBuffer* bufferHandle,
                               uint32_t offset,
                               uint32_t dataSize,
                               const uint8_t* pData);
 
-    void UpdateTextureOneTime(rhi::TextureHandle textureHandle,
+    void UpdateTextureOneTime(rhi::RHITexture* textureHandle,
                               const Vec3i& textureSize,
                               uint32_t dataSize,
                               const uint8_t* pData);
 
-    void UpdateTextureBatch(rhi::TextureHandle textureHandle,
+    void UpdateTextureBatch(rhi::RHITexture* textureHandle,
                             const Vec3i& textureSize,
                             const uint8_t* pData);
 
@@ -542,7 +540,7 @@ private:
 
     static size_t CalcComputePipelineHash(const rhi::ShaderHandle& shader);
 
-    static size_t CalcSamplerHash(const rhi::SamplerInfo& info);
+    static size_t CalcSamplerHash(const rhi::RHISamplerCreateInfo& info);
 
     size_t PadUniformBufferSize(size_t originalSize);
 
@@ -568,9 +566,9 @@ private:
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
     HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
-    HashMap<size_t, rhi::SamplerHandle> m_samplerCache;
-    HashMap<rhi::TextureHandle, TextureRD*> m_textureMap;
-    std::vector<rhi::BufferHandle> m_buffers;
+    HashMap<size_t, rhi::RHISampler*> m_samplerCache;
+    // HashMap<rhi::RHITexture*, rhi::RHITexture*> m_textureMap;
+    std::vector<rhi::RHIBuffer*> m_buffers;
     std::vector<GraphicsPass> m_gfxPasses;
     std::vector<ComputePass> m_computePasses;
     std::vector<rhi::RHIViewport*> m_viewports;

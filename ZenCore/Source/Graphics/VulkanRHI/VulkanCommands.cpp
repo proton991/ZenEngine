@@ -70,18 +70,18 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
 
     for (const auto& bufferTransition : bufferTransitions)
     {
-        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferTransition.bufferHandle);
+        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferTransition.buffer);
         VkAccessFlags srcAccess =
             BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
         VkAccessFlags dstAccess =
             BufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode);
-        barrier.AddBufferBarrier(vulkanBuffer->buffer, bufferTransition.offset,
+        barrier.AddBufferBarrier(vulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
     }
 
     for (const auto& textureTransition : textureTransitions)
     {
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureTransition.textureHandle);
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureTransition.texture);
 
         VkAccessFlags srcAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
@@ -89,7 +89,7 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
             textureTransition.newUsage, textureTransition.newAccessMode));
         // VkImageLayout oldLayout =
         //     ToVkImageLayout(TextureUsageToLayout(textureTransition.oldUsage));
-        VkImageLayout oldLayout = m_vkRHI->GetImageCurrentLayout(vulkanTexture->image);
+        VkImageLayout oldLayout = m_vkRHI->GetImageCurrentLayout(vulkanTexture->GetVkImage());
         VkImageLayout newLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.newUsage));
         // filter
         if (oldLayout == newLayout)
@@ -103,48 +103,46 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
         subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
         subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
 
-        barrier.AddImageBarrier(vulkanTexture->image, oldLayout, newLayout, subresourceRange,
+        barrier.AddImageBarrier(vulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange,
                                 srcAccess, dstAccess);
-        m_vkRHI->UpdateImageLayout(vulkanTexture->image, newLayout);
+        m_vkRHI->UpdateImageLayout(vulkanTexture->GetVkImage(), newLayout);
     }
     barrier.Execute(m_cmdBufferManager->GetActiveCommandBufferDirect(), srcStages, dstStages);
 }
 
-void VulkanCommandList::ClearBuffer(BufferHandle bufferHandle, uint32_t offset, uint32_t size)
+void VulkanCommandList::ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size)
 {
-    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferHandle);
-    vkCmdFillBuffer(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset, size, 0);
+    vkCmdFillBuffer(m_cmdBuffer->GetVkHandle(), TO_VK_BUFFER(buffer)->GetVkBuffer(), offset, size,
+                    0);
 }
 
-void VulkanCommandList::CopyBuffer(BufferHandle srcBufferHandle,
-                                   BufferHandle dstBufferHandle,
+void VulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
+                                   RHIBuffer* dstBuffer,
                                    const BufferCopyRegion& region)
 {
-    VulkanBuffer* srcBuffer = TO_VK_BUFFER(srcBufferHandle);
-    VulkanBuffer* dstBuffer = TO_VK_BUFFER(dstBufferHandle);
     VkBufferCopy bufferCopy;
     bufferCopy.srcOffset = region.srcOffset;
     bufferCopy.dstOffset = region.dstOffset;
     bufferCopy.size      = region.size;
-    vkCmdCopyBuffer(m_cmdBuffer->GetVkHandle(), srcBuffer->buffer, dstBuffer->buffer, 1,
-                    &bufferCopy);
+
+    vkCmdCopyBuffer(m_cmdBuffer->GetVkHandle(), TO_VK_BUFFER(srcBuffer)->GetVkBuffer(),
+                    TO_VK_BUFFER(dstBuffer)->GetVkBuffer(), 1, &bufferCopy);
 }
 
-void VulkanCommandList::ClearTexture(TextureHandle textureHandle,
+void VulkanCommandList::ClearTexture(RHITexture* texture,
                                      const Color& color,
                                      const TextureSubResourceRange& range)
 {
-    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
     VkImageSubresourceRange vkRange;
     ToVkImageSubresourceRange(range, &vkRange);
     VkClearColorValue colorValue;
     ToVkClearColor(color, &colorValue);
-    vkCmdClearColorImage(m_cmdBuffer->GetVkHandle(), texture->image,
+    vkCmdClearColorImage(m_cmdBuffer->GetVkHandle(), TO_VK_TEXTURE(texture)->GetVkImage(),
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
 }
 
-void VulkanCommandList::CopyTexture(TextureHandle srcTextureHandle,
-                                    TextureHandle dstTextureHandle,
+void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
+                                    RHITexture* dstTexture,
                                     VectorView<TextureCopyRegion> regions)
 {
     std::vector<VkImageCopy> copies(regions.size());
@@ -152,15 +150,14 @@ void VulkanCommandList::CopyTexture(TextureHandle srcTextureHandle,
     {
         ToVkImageCopy(regions[i], &copies[i]);
     }
-    VulkanTexture* srcTexture = TO_VK_TEXTURE(srcTextureHandle);
-    VulkanTexture* dstTexture = TO_VK_TEXTURE(dstTextureHandle);
-    vkCmdCopyImage(m_cmdBuffer->GetVkHandle(), srcTexture->image,
-                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstTexture->image,
+
+    vkCmdCopyImage(m_cmdBuffer->GetVkHandle(), TO_VK_TEXTURE(srcTexture)->GetVkImage(),
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(dstTexture)->GetVkImage(),
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
-void VulkanCommandList::CopyTextureToBuffer(TextureHandle textureHandle,
-                                            BufferHandle bufferHandle,
+void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
+                                            RHIBuffer* buffer,
                                             VectorView<BufferTextureCopyRegion> regions)
 {
     std::vector<VkBufferImageCopy> copies(regions.size());
@@ -168,16 +165,14 @@ void VulkanCommandList::CopyTextureToBuffer(TextureHandle textureHandle,
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
     }
-    VulkanTexture* srcTexture = TO_VK_TEXTURE(textureHandle);
-    VulkanBuffer* dstBuffer   = TO_VK_BUFFER(bufferHandle);
 
-    vkCmdCopyImageToBuffer(m_cmdBuffer->GetVkHandle(), srcTexture->image,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstBuffer->buffer, copies.size(),
-                           copies.data());
+    vkCmdCopyImageToBuffer(m_cmdBuffer->GetVkHandle(), TO_VK_TEXTURE(texture)->GetVkImage(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           TO_VK_BUFFER(buffer)->GetVkBuffer(), copies.size(), copies.data());
 }
 
-void VulkanCommandList::CopyBufferToTexture(BufferHandle bufferHandle,
-                                            TextureHandle textureHandle,
+void VulkanCommandList::CopyBufferToTexture(RHIBuffer* buffer,
+                                            RHITexture* texture,
                                             VectorView<BufferTextureCopyRegion> regions)
 {
     std::vector<VkBufferImageCopy> copies(regions.size());
@@ -185,22 +180,20 @@ void VulkanCommandList::CopyBufferToTexture(BufferHandle bufferHandle,
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
     }
-    VulkanBuffer* srcBuffer   = TO_VK_BUFFER(bufferHandle);
-    VulkanTexture* dstTexture = TO_VK_TEXTURE(textureHandle);
 
-    vkCmdCopyBufferToImage(m_cmdBuffer->GetVkHandle(), srcBuffer->buffer, dstTexture->image,
+
+    vkCmdCopyBufferToImage(m_cmdBuffer->GetVkHandle(), TO_VK_BUFFER(buffer)->GetVkBuffer(),
+                           TO_VK_TEXTURE(texture)->GetVkImage(),
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
-void VulkanCommandList::ResolveTexture(TextureHandle srcTextureHandle,
-                                       TextureHandle dstTextureHandle,
+void VulkanCommandList::ResolveTexture(RHITexture* srcTexture,
+                                       RHITexture* dstTexture,
                                        uint32_t srcLayer,
                                        uint32_t srcMipmap,
                                        uint32_t dstLayer,
                                        uint32_t dstMipmap)
 {
-    VulkanTexture* srcTexture = TO_VK_TEXTURE(srcTextureHandle);
-    VulkanTexture* dstTexture = TO_VK_TEXTURE(dstTextureHandle);
     VkImageResolve region{};
     region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     region.srcSubresource.mipLevel       = srcMipmap;
@@ -210,35 +203,31 @@ void VulkanCommandList::ResolveTexture(TextureHandle srcTextureHandle,
     region.dstSubresource.mipLevel       = dstMipmap;
     region.dstSubresource.baseArrayLayer = dstLayer;
     region.dstSubresource.layerCount     = 1;
-    region.extent.width  = std::max(1u, srcTexture->imageCI.extent.width >> srcMipmap);
-    region.extent.height = std::max(1u, srcTexture->imageCI.extent.height >> srcMipmap);
-    region.extent.depth  = std::max(1u, srcTexture->imageCI.extent.depth >> srcMipmap);
-    vkCmdResolveImage(m_cmdBuffer->GetVkHandle(), srcTexture->image,
-                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstTexture->image,
+    region.extent.width  = std::max(1u, srcTexture->GetBaseInfo().width >> srcMipmap);
+    region.extent.height = std::max(1u, srcTexture->GetBaseInfo().height >> srcMipmap);
+    region.extent.depth  = std::max(1u, srcTexture->GetBaseInfo().depth >> srcMipmap);
+    vkCmdResolveImage(m_cmdBuffer->GetVkHandle(), TO_VK_TEXTURE(srcTexture)->GetVkImage(),
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(dstTexture)->GetVkImage(),
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-void VulkanCommandList::BindIndexBuffer(BufferHandle bufferHandle,
-                                        DataFormat format,
-                                        uint32_t offset)
+void VulkanCommandList::BindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint32_t offset)
 {
-    VulkanBuffer* indexBuffer = TO_VK_BUFFER(bufferHandle);
     VkIndexType indexType =
         format == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-    vkCmdBindIndexBuffer(m_cmdBuffer->GetVkHandle(), indexBuffer->buffer, offset, indexType);
+    vkCmdBindIndexBuffer(m_cmdBuffer->GetVkHandle(), TO_VK_BUFFER(buffer)->GetVkBuffer(), offset,
+                         indexType);
 }
 
-void VulkanCommandList::BindVertexBuffers(VectorView<BufferHandle> bufferHandles,
-                                          const uint64_t* offsets)
+void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets)
 {
-    std::vector<VkBuffer> buffers;
-    for (BufferHandle handle : bufferHandles)
+    std::vector<VkBuffer> bufferHandles;
+    for (RHIBuffer* buffer : buffers)
     {
-        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(handle);
-        buffers.push_back(vulkanBuffer->buffer);
+        bufferHandles.push_back(TO_VK_BUFFER(buffer)->GetVkBuffer());
     }
-    vkCmdBindVertexBuffers(m_cmdBuffer->GetVkHandle(), 0, bufferHandles.size(), buffers.data(),
-                           offsets);
+    vkCmdBindVertexBuffers(m_cmdBuffer->GetVkHandle(), 0, bufferHandles.size(),
+                           bufferHandles.data(), offsets);
 }
 
 void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle)
@@ -327,10 +316,10 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
     for (uint32_t i = 0; i < colorRTs.size(); i++)
     {
         const RenderTarget& colorRT  = colorRTs[i];
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(colorRT.handle);
+        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(colorRT.texture);
         VkRenderingAttachmentInfoKHR colorAttachment{};
         InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-        colorAttachment.imageView        = vulkanTexture->imageView;
+        colorAttachment.imageView        = vulkanTexture->GetVkImageView();
         colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
         colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
@@ -345,8 +334,8 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
     if (rpLayout.HasDepthStencilRenderTarget())
     {
         const RenderTarget& depthStencilRT = rpLayout.GetDepthStencilRenderTarget();
-        VulkanTexture* vulkanTexture       = TO_VK_TEXTURE(depthStencilRT.handle);
-        depthStencilAttachment.imageView   = vulkanTexture->imageView;
+        VulkanTexture* vulkanTexture       = TO_VK_TEXTURE(depthStencilRT.texture);
+        depthStencilAttachment.imageView   = vulkanTexture->GetVkImageView();
         depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
         depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
@@ -381,14 +370,14 @@ void VulkanCommandList::DrawIndexed(uint32_t indexCount,
                      vertexOffset, firstInstance);
 }
 
-void VulkanCommandList::DrawIndexedIndirect(BufferHandle indirectBuffer,
+void VulkanCommandList::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
                                             uint32_t offset,
                                             uint32_t drawCount,
                                             uint32_t stride)
 {
     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
-    vkCmdDrawIndexedIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset, drawCount,
-                             stride);
+    vkCmdDrawIndexedIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->GetVkBuffer(), offset,
+                             drawCount, stride);
 }
 
 
@@ -397,10 +386,10 @@ void VulkanCommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uin
     vkCmdDispatch(m_cmdBuffer->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
-void VulkanCommandList::DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset)
+void VulkanCommandList::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset)
 {
     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
-    vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->buffer, offset);
+    vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->GetVkBuffer(), offset);
 }
 
 void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
@@ -460,23 +449,22 @@ void VulkanCommandList::SetBlendConstants(const Color& color)
     vkCmdSetBlendConstants(m_cmdBuffer->GetVkHandle(), constants);
 }
 
-void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
+void VulkanCommandList::GenerateTextureMipmaps(RHITexture* texture)
 {
-    VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
-    VkImage vkImage        = texture->image;
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(texture);
+    VkImage vkImage              = vulkanTexture->GetVkImage();
     // Get texture attributes
-    const uint32_t mipLevels = texture->imageCI.mipLevels;
-    const uint32_t texWidth  = texture->imageCI.extent.width;
-    const uint32_t texHeight = texture->imageCI.extent.height;
+    // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
+    const uint32_t texWidth  = texture->GetBaseInfo().width;
+    const uint32_t texHeight = texture->GetBaseInfo().height;
 
     // store image's original layout
     VkImageLayout originLayout = m_vkRHI->GetImageCurrentLayout(vkImage);
     // Transition first mip level to transfer source for read during blit
     ChangeImageLayout(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                      VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0,
-                                                         texture->imageCI.arrayLayers));
+                      vulkanTexture->GetVkSubresourceRange());
     // Copy down mips from n-1 to n
-    for (uint32_t i = 1; i < mipLevels; i++)
+    for (uint32_t i = 1; i < texture->GetBaseInfo().mipmaps; i++)
     {
         VkImageBlit imageBlit{};
 
@@ -518,28 +506,31 @@ void VulkanCommandList::GenerateTextureMipmaps(TextureHandle textureHandle)
     // After the loop, all mip layers are in TRANSFER_SRC layout,
     // need to restore its layout.
     ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage), originLayout,
-                      VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, mipLevels, 0,
-                                                         texture->imageCI.arrayLayers));
+                      vulkanTexture->GetVkSubresourceRange());
 }
 
-void VulkanCommandList::ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout)
+void VulkanCommandList::ChangeTextureLayout(RHITexture* texture, TextureLayout newLayout)
 {
-    VulkanTexture* vkTexture = TO_VK_TEXTURE(textureHandle);
-    uint32_t levelCount      = vkTexture->imageCI.mipLevels;
-    uint32_t layerCount      = vkTexture->imageCI.arrayLayers;
+    VulkanTexture* vkTexture = TO_VK_TEXTURE(texture);
 
-    VkImageLayout srcLayout = m_vkRHI->GetImageCurrentLayout(vkTexture->image);
+    // const VkImageCreateInfo& imageCI = vk
+    //
+    //     uint32_t levelCount = vkTexture->imageCI.mipLevels;
+    // uint32_t layerCount     = vkTexture->imageCI.arrayLayers;
+
+    VkImageLayout srcLayout = m_vkRHI->GetImageCurrentLayout(vkTexture->GetVkImage());
     VkImageLayout dstLayout = ToVkImageLayout(newLayout);
 
-    VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-    if (vkTexture->imageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-    {
-        aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-
-    VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(aspectFlags, 0, levelCount, 0, layerCount);
-    ChangeImageLayout(vkTexture->image, srcLayout, dstLayout, range);
+    // VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    // if (vkTexture->GetVkImageUsage() & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    // {
+    //     aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    // }
+    //
+    // VkImageSubresourceRange range =
+    //     VulkanTexture::GetVkSubresourceRange(aspectFlags, 0, levelCount, 0, layerCount);
+    ChangeImageLayout(vkTexture->GetVkImage(), srcLayout, dstLayout,
+                      vkTexture->GetVkSubresourceRange());
 }
 
 void VulkanCommandList::ChangeImageLayout(VkImage image,

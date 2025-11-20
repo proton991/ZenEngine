@@ -21,18 +21,17 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
         return obj;
     }
 
-    template <typename T, typename... Args>
-    static T* Alloc(PagedAllocator<VersatileResourceTemplate>& allocator, Args&&... args)
+    template <typename T> static T* AllocMem(PagedAllocator<VersatileResourceTemplate>& allocator)
     {
         T* obj = (T*)(allocator.Alloc());
-        new (obj) T(std::forward<Args>(args)...);
+        // new (obj) T(std::forward<Args>(args)...);
         return obj;
     }
 
     template <typename T>
     static void Free(PagedAllocator<VersatileResourceTemplate>& p_allocator, T* p_object)
     {
-        p_object->~T();
+        // p_object->~T();
         p_allocator.Free((VersatileResourceTemplate*)p_object);
     }
 };

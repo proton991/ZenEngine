@@ -197,18 +197,20 @@ public:
     RDGResourceTrackerPool();
     ~RDGResourceTrackerPool();
 
-    RDGResourceTracker* GetTracker(const rhi::Handle& handle);
+    RDGResourceTracker* GetTracker(const rhi::RHIResource* resource);
 
-    void UpdateTrackerState(const rhi::TextureHandle& handle,
+    void UpdateTrackerState(const rhi::RHITexture* texture,
                             rhi::AccessMode accessMode,
                             rhi::TextureUsage usage);
 
-    void UpdateTrackerState(const rhi::BufferHandle& handle,
+    void UpdateTrackerState(const rhi::RHIBuffer* buffer,
                             rhi::AccessMode accessMode,
                             rhi::BufferUsage usage);
 
 private:
-    HashMap<rhi::Handle, RDGResourceTracker*> m_trackerMap;
+    // HashMap<rhi::Handle, RDGResourceTracker*> m_trackerMap;
+    HashMap<const rhi::RHIResource*, RDGResourceTracker*> m_trackerMap;
+    // HashMap<const rhi::TextureHandle, RDGResourceTracker*> m_trackerMap2;
     // std::vector<RDGResourceTracker*> m_trackers;
 };
 
@@ -227,7 +229,7 @@ struct RDGResource
 {
     RDG_ID id{-1};
     std::string tag;
-    rhi::Handle physicalHandle;
+    rhi::RHIResource* physicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
     HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
 };
@@ -274,29 +276,29 @@ struct RDGGraphicsPassNode : RDGPassNode
 
 struct RDGBufferClearNode : RDGNodeBase
 {
-    rhi::BufferHandle buffer;
+    rhi::RHIBuffer* buffer;
     uint32_t offset{0};
     uint32_t size{0};
 };
 
 struct RDGBufferCopyNode : RDGNodeBase
 {
-    rhi::BufferHandle srcBuffer;
-    rhi::BufferHandle dstBuffer;
+    rhi::RHIBuffer* srcBuffer;
+    rhi::RHIBuffer* dstBuffer;
     rhi::BufferCopyRegion region;
 };
 
 struct RDGBufferUpdateNode : RDGNodeBase
 {
     std::vector<rhi::BufferCopySource> sources;
-    rhi::BufferHandle dstBuffer;
+    rhi::RHIBuffer* dstBuffer;
 };
 
 struct RDGTextureClearNode : RDGNodeBase
 {
     // rhi::TextureHandle texture;
     // rhi::TextureSubResourceRange range;
-    TextureRD* texture;
+    rhi::RHITexture* texture;
     Color color;
 };
 
@@ -305,8 +307,8 @@ struct RDGTextureCopyNode : RDGNodeBase
     // rhi::TextureHandle srcTexture;
     // rhi::TextureHandle dstTexture;
     uint32_t numCopyRegions;
-    TextureRD* srcTexture;
-    TextureRD* dstTexture;
+    rhi::RHITexture* srcTexture;
+    rhi::RHITexture* dstTexture;
     // rhi::TextureCopyRegion* copyRegions;
 
     rhi::TextureCopyRegion* TextureCopyRegions()
@@ -325,8 +327,8 @@ struct RDGTextureReadNode : RDGNodeBase
 {
     // rhi::TextureHandle srcTexture;
     uint32_t numCopyRegions;
-    TextureRD* srcTexture;
-    rhi::BufferHandle dstBuffer;
+    rhi::RHITexture* srcTexture;
+    rhi::RHIBuffer* dstBuffer;
     // std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
 
     rhi::BufferTextureCopyRegion* BufferTextureCopyRegions()
@@ -345,7 +347,7 @@ struct RDGTextureUpdateNode : RDGNodeBase
     // std::vector<rhi::BufferTextureCopySource> sources;
     // rhi::TextureHandle dstTexture;
     uint32_t numCopySources;
-    TextureRD* dstTexture;
+    rhi::RHITexture* dstTexture;
 
     rhi::BufferTextureCopySource* TextureCopySources()
     {
@@ -362,8 +364,8 @@ struct RDGTextureResolveNode : RDGNodeBase
 {
     // rhi::TextureHandle srcTexture;
     // rhi::TextureHandle dstTexture;
-    TextureRD* srcTexture;
-    TextureRD* dstTexture;
+    rhi::RHITexture* srcTexture;
+    rhi::RHITexture* dstTexture;
     uint32_t srcLayer{0};
     uint32_t srcMipmap{0};
     uint32_t dstLayer{0};
@@ -373,38 +375,38 @@ struct RDGTextureResolveNode : RDGNodeBase
 struct RDGTextureMipmapGenNode : RDGNodeBase
 {
     // rhi::TextureHandle texture;
-    TextureRD* texture;
+    rhi::RHITexture* texture;
 };
 
 struct RDGBindIndexBufferNode : RDGPassChildNode
 {
-    rhi::BufferHandle buffer;
+    rhi::RHIBuffer* buffer;
     DataFormat format;
     uint32_t offset;
 };
 
 // struct RDGBindVertexBufferNode : RDGPassChildNode
 // {
-//     std::vector<rhi::BufferHandle> vertexBuffers;
+//     std::vector<rhi::RHIBuffer*> vertexBuffers;
 //     std::vector<uint64_t> offsets;
 // };
 
 struct RDGBindVertexBufferNode : RDGPassChildNode
 {
     uint32_t numBuffers{0};
-    // rhi::BufferHandle* vertexBuffers{nullptr};
+    // rhi::RHIBuffer** vertexBuffers{nullptr};
     // uint64_t* offsets{nullptr};
-    // std::vector<rhi::BufferHandle> vertexBuffers;
+    // std::vector<rhi::RHIBuffer*> vertexBuffers;
     // std::vector<uint64_t> offsets;
 
-    rhi::BufferHandle* VertexBuffers()
+    rhi::RHIBuffer** VertexBuffers()
     {
-        return reinterpret_cast<rhi::BufferHandle*>(&this[1]);
+        return reinterpret_cast<rhi::RHIBuffer**>(&this[1]);
     }
 
-    const rhi::BufferHandle* VertexBuffers() const
+    rhi::RHIBuffer* const* VertexBuffers() const
     {
-        return reinterpret_cast<const rhi::BufferHandle*>(&this[1]);
+        return reinterpret_cast<rhi::RHIBuffer* const*>(&this[1]);
     }
 
     uint64_t* VertexBufferOffsets()
@@ -416,6 +418,16 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
     {
         return reinterpret_cast<const uint64_t*>(&VertexBuffers()[numBuffers]);
     }
+
+    // uint64_t* VertexBufferOffsets()
+    // {
+    //     return reinterpret_cast<uint64_t*>(&VertexBuffers()[numBuffers]);
+    // }
+    //
+    // const uint64_t* VertexBufferOffsets() const
+    // {
+    //     return reinterpret_cast<const uint64_t*>(&VertexBuffers()[numBuffers]);
+    // }
 };
 
 struct RDGBindPipelineNode : RDGPassChildNode
@@ -441,7 +453,7 @@ struct RDGDrawIndexedNode : RDGPassChildNode
 
 struct RDGDrawIndexedIndirectNode : RDGPassChildNode
 {
-    rhi::BufferHandle indirectBuffer;
+    rhi::RHIBuffer* indirectBuffer;
     uint32_t offset{0};
     uint32_t drawCount{0};
     uint32_t stride{0};
@@ -456,7 +468,7 @@ struct RDGDispatchNode : RDGPassChildNode
 
 struct RDGDispatchIndirectNode : RDGPassChildNode
 {
-    rhi::BufferHandle indirectBuffer;
+    rhi::RHIBuffer* indirectBuffer;
     uint32_t offset{0};
 };
 
@@ -531,7 +543,7 @@ public:
                                     uint32_t groupCountZ);
 
     void AddComputePassDispatchIndirectNode(RDGPassNode* parent,
-                                            rhi::BufferHandle indirectBuffer,
+                                            rhi::RHIBuffer* indirectBuffer,
                                             uint32_t offset);
 
     RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
@@ -547,12 +559,12 @@ public:
                                      std::string tag);
 
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
-                                            rhi::BufferHandle bufferHandle,
+                                            rhi::RHIBuffer* bufferHandle,
                                             DataFormat format,
                                             uint32_t offset = 0);
 
     void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
-                                             VectorView<rhi::BufferHandle> vertexBuffers,
+                                             VectorView<rhi::RHIBuffer*> vertexBuffers,
                                              VectorView<uint32_t> offsets);
 
     void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
@@ -569,7 +581,7 @@ public:
                                         uint32_t firstInstance = 0);
 
     void AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
-                                                rhi::BufferHandle indirectBuffer,
+                                                rhi::RHIBuffer* indirectBuffer,
                                                 uint32_t offset,
                                                 uint32_t drawCount,
                                                 uint32_t stride);
@@ -587,38 +599,38 @@ public:
                                          float depthBiasClamp,
                                          float depthBiasSlopeFactor);
 
-    void AddBufferClearNode(rhi::BufferHandle bufferHandle, uint32_t offset, uint64_t size);
+    void AddBufferClearNode(rhi::RHIBuffer* bufferHandle, uint32_t offset, uint64_t size);
 
-    void AddBufferCopyNode(rhi::BufferHandle srcBufferHandle,
-                           rhi::BufferHandle dstBufferHandle,
+    void AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
+                           rhi::RHIBuffer* dstBufferHandle,
                            const rhi::BufferCopyRegion& copyRegion);
 
-    void AddBufferUpdateNode(rhi::BufferHandle dstBufferHandle,
+    void AddBufferUpdateNode(rhi::RHIBuffer* dstBufferHandle,
                              const VectorView<rhi::BufferCopySource>& sources);
 
-    void AddTextureClearNode(TextureRD* texture,
+    void AddTextureClearNode(rhi::RHITexture* texture,
                              const Color& color,
                              const rhi::TextureSubResourceRange& range);
 
-    void AddTextureCopyNode(TextureRD* srcTexture,
-                            TextureRD* dstTexture,
+    void AddTextureCopyNode(rhi::RHITexture* srcTexture,
+                            rhi::RHITexture* dstTexture,
                             const VectorView<rhi::TextureCopyRegion>& regions);
 
-    void AddTextureReadNode(TextureRD* srcTexture,
-                            rhi::BufferHandle dstBufferHandle,
+    void AddTextureReadNode(rhi::RHITexture* srcTexture,
+                            rhi::RHIBuffer* dstBufferHandle,
                             const VectorView<rhi::BufferTextureCopyRegion>& regions);
 
-    void AddTextureUpdateNode(TextureRD* dstTexture,
+    void AddTextureUpdateNode(rhi::RHITexture* dstTexture,
                               const VectorView<rhi::BufferTextureCopySource>& sources);
 
-    void AddTextureResolveNode(TextureRD* srcTexture,
-                               TextureRD* dstTexture,
+    void AddTextureResolveNode(rhi::RHITexture* srcTexture,
+                               rhi::RHITexture* dstTexture,
                                uint32_t srcLayer,
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
 
-    void AddTextureMipmapGenNode(TextureRD* texture);
+    void AddTextureMipmapGenNode(rhi::RHITexture* texture);
 
 
     void Begin();
@@ -629,14 +641,14 @@ public:
 
 private:
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     const rhi::TextureHandle& textureHandle,
+                                     rhi::RHITexture* texture,
                                      rhi::TextureUsage usage,
                                      const rhi::TextureSubResourceRange& range,
                                      rhi::AccessMode accessMode,
                                      std::string tag = "");
 
     void DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                    const rhi::BufferHandle& bufferHandle,
+                                    rhi::RHIBuffer* buffer,
                                     rhi::BufferUsage usage,
                                     rhi::AccessMode accessMode,
                                     std::string tag = "");
@@ -753,24 +765,26 @@ private:
         return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     }
 
-    RDGResource* GetOrAllocResource(rhi::Handle handle, RDGResourceType type, const RDG_ID& nodeId)
+    RDGResource* GetOrAllocResource(rhi::RHIResource* resourceRHI,
+                                    RDGResourceType type,
+                                    const RDG_ID& nodeId)
     {
         RDGResource* resource;
-        if (!m_resourceMap.contains(handle))
+        if (!m_resourceMap.contains(resourceRHI))
         {
-            resource                 = m_resourceAllocator.Alloc();
-            resource->id             = static_cast<int32_t>(m_resources.size());
-            resource->type           = type;
-            resource->physicalHandle = handle;
+            resource              = m_resourceAllocator.Alloc();
+            resource->id          = static_cast<int32_t>(m_resources.size());
+            resource->type        = type;
+            resource->physicalRes = resourceRHI;
 
             m_resources.push_back(resource);
-            m_resourceMap[handle] = resource;
+            m_resourceMap[resourceRHI] = resource;
             // track first used node
             m_resourceFirstUseNodeMap[resource->id] = nodeId;
         }
         else
         {
-            resource = m_resourceMap[handle];
+            resource = m_resourceMap[resourceRHI];
         }
         return resource;
     }
@@ -805,7 +819,7 @@ private:
     // tracked resources
     std::vector<RDGResource*> m_resources;
     PagedAllocator<RDGResource> m_resourceAllocator;
-    HashMap<rhi::Handle, RDGResource*> m_resourceMap;
+    HashMap<rhi::RHIResource*, RDGResource*> m_resourceMap;
     // resource id -> node id
     HashMap<RDG_ID, RDG_ID> m_resourceFirstUseNodeMap;
     HashMap<RDG_ID, std::vector<RDGAccess>> m_nodeAccessMap;

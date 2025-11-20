@@ -113,7 +113,7 @@ void ShadowMapRenderer::PrepareTextures()
             texFormat, {.copyUsage = false}, "shadowmap_render_depth");
     }
     {
-        SamplerInfo samplerInfo{};
+        RHISamplerCreateInfo samplerInfo{};
         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
         samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
         samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;

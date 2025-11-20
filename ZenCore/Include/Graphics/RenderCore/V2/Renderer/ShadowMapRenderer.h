@@ -12,7 +12,7 @@ namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
-class TextureRD;
+
 
 class ShadowMapRenderer
 {
@@ -32,12 +32,12 @@ public:
         return m_rdg.Get();
     };
 
-    TextureRD* GetShadowMapTexture() const
+    rhi::RHITexture* GetShadowMapTexture() const
     {
         return m_offscreenTextures.shadowMap;
     }
 
-    const rhi::SamplerHandle& GetColorSampler() const
+    rhi::RHISampler* GetColorSampler() const
     {
         return m_colorSampler;
     }
@@ -79,11 +79,11 @@ private:
 
     struct
     {
-        TextureRD* shadowMap{nullptr};
-        TextureRD* depth{nullptr};
+        rhi::RHITexture* shadowMap{nullptr};
+        rhi::RHITexture* depth{nullptr};
     } m_offscreenTextures;
 
-    rhi::SamplerHandle m_colorSampler;
+    rhi::RHISampler* m_colorSampler;
 
     UniquePtr<sg::Camera> m_lightView;
 };

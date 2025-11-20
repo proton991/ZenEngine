@@ -61,12 +61,12 @@ protected:
     struct
     {
         // voxelization pass
-        rhi::BufferHandle computeIndirectBuffer;
-        rhi::BufferHandle largeTriangleBuffer;
+        rhi::RHIBuffer* computeIndirectBuffer;
+        rhi::RHIBuffer* largeTriangleBuffer;
         // voxel pre-draw pass
-        rhi::BufferHandle instancePositionBuffer;
-        rhi::BufferHandle instanceColorBuffer;
-        rhi::BufferHandle drawIndirectBuffer;
+        rhi::RHIBuffer* instancePositionBuffer;
+        rhi::RHIBuffer* instanceColorBuffer;
+        rhi::RHIBuffer* drawIndirectBuffer;
     } m_buffers;
 
     struct

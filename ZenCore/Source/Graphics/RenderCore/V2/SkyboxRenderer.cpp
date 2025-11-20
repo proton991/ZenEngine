@@ -199,8 +199,8 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
     for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
     {
-        TextureRD* cubemapTexture;
-        TextureRD* offscreenTexture;
+        rhi::RHITexture* cubemapTexture;
+        rhi::RHITexture* offscreenTexture;
         uint32_t dim;
         DataFormat format;
         GraphicsPass* gfxPass;
@@ -235,7 +235,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         //
         const uint32_t numMips = CalculateTextureMipLevels(dim);
 
-        SamplerInfo samplerInfo{};
+        RHISamplerCreateInfo samplerInfo{};
         samplerInfo.minFilter     = SamplerFilter::eLinear;
         samplerInfo.magFilter     = SamplerFilter::eLinear;
         samplerInfo.repeatU       = SamplerRepeatMode::eClampToEdge;
@@ -264,7 +264,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         {
             std::vector<ShaderResourceBinding> textureBindings;
             ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                      m_samplers.cubemapSampler, texture->skybox->GetHandle());
+                                      m_samplers.cubemapSampler, texture->skybox);
 
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
             updater.SetShaderResourceBinding(0, textureBindings).Update();
@@ -352,21 +352,21 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
             // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
-            //     cubemapTexture->GetHandle(), TextureLayout::eShaderReadOnly);
+            //     cubemapTexture, TextureLayout::eShaderReadOnly);
 
             if (target == IRRADIANCE)
             {
                 texture->irradiance        = cubemapTexture;
                 texture->irradianceSampler = m_samplers.cubemapSampler;
-                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->irradiance->GetHandle(),
+                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->irradiance,
                                                                    "EnvIrradiance");
             }
             else
             {
                 texture->prefiltered        = cubemapTexture;
                 texture->prefilteredSampler = m_samplers.cubemapSampler;
-                m_renderDevice->GetRHIDebug()->SetTextureDebugName(
-                    texture->prefiltered->GetHandle(), "EnvPrefiltered");
+                m_renderDevice->GetRHIDebug()->SetTextureDebugName(texture->prefiltered,
+                                                                   "EnvPrefiltered");
             }
         }
     }
@@ -404,7 +404,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     texture->lutBRDF =
         m_renderDevice->CreateTextureColorRT(texFormat, {.copyUsage = false}, "env_lut_brdf");
 
-    SamplerInfo samplerInfo{};
+    RHISamplerCreateInfo samplerInfo{};
     samplerInfo.minFilter     = SamplerFilter::eLinear;
     samplerInfo.magFilter     = SamplerFilter::eLinear;
     samplerInfo.repeatU       = SamplerRepeatMode::eClampToEdge;
@@ -468,7 +468,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 
     m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
-    // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF->GetHandle(),
+    // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
     //                                                                TextureLayout::eShaderReadOnly);
 }
 
@@ -494,8 +494,7 @@ void SkyboxRenderer::UpdateGraphicsPassResources()
         m_gfxPasses.skybox.shaderProgram->GetUniformBufferHandle("uCameraData"))
 
     ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
-                              m_samplers.cubemapSampler,
-                              m_scene->GetEnvTexture().skybox->GetHandle())
+                              m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
 
     GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
     updater.SetShaderResourceBinding(0, bufferBindings)

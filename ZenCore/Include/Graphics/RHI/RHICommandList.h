@@ -22,17 +22,17 @@ public:
 
     virtual void RHIBindGfxPipeline(const PipelineHandle& pipeline) = 0;
 
-    virtual void RHIBindVertexBuffer(const BufferHandle& buffer, uint64_t offset) = 0;
+    virtual void RHIBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) = 0;
 
-    virtual void RHIDrawIndexed(BufferHandle buffer,
+    virtual void RHIDrawIndexed(RHIBuffer* buffer,
                                 uint32_t indexCount,
                                 uint32_t instanceCount,
                                 uint32_t firstIndex,
                                 int32_t vertexOffset,
                                 uint32_t firstInstance) = 0;
 
-    virtual void RHIDrawIndexedIndirect(const BufferHandle& indirectBuffer,
-                                        const BufferHandle& indexBuffer,
+    virtual void RHIDrawIndexedIndirect(RHIBuffer* indirectBuffer,
+                                        RHIBuffer* indexBuffer,
                                         uint32_t offset,
                                         uint32_t drawCount,
                                         uint32_t stride) = 0;
@@ -97,7 +97,7 @@ struct RHICommand : public RHICommandBase
 
 struct RHICommandDrawParam
 {
-    BufferHandle indexBuffer;
+    RHIBuffer* indexBuffer;
     uint32_t offset;
     uint32_t indexCount;
     uint32_t instanceCount;
@@ -153,10 +153,10 @@ struct RHICommandSetViewport final : public RHICommand
 
 struct RHICommandBindVertexBuffer final : public RHICommand
 {
-    BufferHandle vertexBuffer;
+    RHIBuffer* vertexBuffer;
     uint64_t offset;
 
-    RHICommandBindVertexBuffer(const BufferHandle& buffer, uint64_t offset) :
+    RHICommandBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) :
         vertexBuffer(buffer), offset(offset)
     {}
 
@@ -169,7 +169,7 @@ struct RHICommandBindVertexBuffer final : public RHICommand
 struct RHICommandDrawIndexed final : public RHICommand
 {
     // note: For now index buffer format is UINT32 only
-    BufferHandle indexBuffer;
+    RHIBuffer* indexBuffer;
     uint32_t offset;
     uint32_t indexCount;
     uint32_t instanceCount;
@@ -196,14 +196,14 @@ struct RHICommandDrawIndexed final : public RHICommand
 
 struct RHICommandDrawIndexedIndirect final : public RHICommand
 {
-    BufferHandle indirectBuffer;
-    BufferHandle indexBuffer;
+    RHIBuffer* indirectBuffer;
+    RHIBuffer* indexBuffer;
     uint32_t offset;
     uint32_t drawCount;
     uint32_t stride;
 
-    RHICommandDrawIndexedIndirect(const BufferHandle& indirectBuffer,
-                                  const BufferHandle& indexBuffer,
+    RHICommandDrawIndexedIndirect(RHIBuffer* indirectBuffer,
+                                  RHIBuffer* indexBuffer,
                                   uint32_t offset,
                                   uint32_t drawCount,
                                   uint32_t stride) :
@@ -231,7 +231,7 @@ public:
     virtual void BindGraphicsPipeline(const PipelineHandle& pipeline);
 
     // All vertex attributes packed in 1 buffer
-    virtual void BindVertexBuffer(const BufferHandle& buffer, uint64_t offset);
+    virtual void BindVertexBuffer(RHIBuffer* buffer, uint64_t offset);
 
     virtual void DrawIndexed(const RHICommandDrawParam& param);
 };

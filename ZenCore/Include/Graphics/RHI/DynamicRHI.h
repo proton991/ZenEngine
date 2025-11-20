@@ -71,34 +71,36 @@ public:
 
     virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 
-    virtual SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) = 0;
+    // virtual SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) = 0;
 
-    virtual void DestroySampler(SamplerHandle samplerHandle) = 0;
+    virtual void DestroySampler(RHISampler* sampler) = 0;
 
-    virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
+    // virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
+    //
+    // virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
+    //                                          const TextureProxyInfo& textureProxyInfo) = 0;
 
-    virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
-                                             const TextureProxyInfo& textureProxyInfo) = 0;
+    // virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 
-    virtual void DestroyTexture(TextureHandle textureHandle) = 0;
+    virtual void DestroyTexture(RHITexture* texture) = 0;
 
-    virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
+    // virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
 
-    virtual TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
+    // virtual TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
 
-    virtual BufferHandle CreateBuffer(uint32_t size,
-                                      BitField<BufferUsageFlagBits> usageFlags,
-                                      BufferAllocateType allocateType) = 0;
-
+    // virtual BufferHandle CreateBuffer(uint32_t size,
+    //                                   BitField<BufferUsageFlagBits> usageFlags,
+    //                                   BufferAllocateType allocateType) = 0;
+    //
     virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
-
-    virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
-
-    virtual void UnmapBuffer(BufferHandle bufferHandle) = 0;
-
-    virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
-
-    virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
+    //
+    // virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
+    //
+    // virtual void UnmapBuffer(BufferHandle bufferHandle) = 0;
+    //
+    // virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
+    //
+    // virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
 
     virtual DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle,
                                                     uint32_t setIndex) = 0;

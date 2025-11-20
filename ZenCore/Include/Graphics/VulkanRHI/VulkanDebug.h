@@ -12,7 +12,7 @@ public:
 
     void SetPipelineDebugName(PipelineHandle pipelineHandle, const std::string& debugName) final;
 
-    void SetTextureDebugName(TextureHandle textureHandle, const std::string& debugName) final;
+    void SetTextureDebugName(RHITexture* texture, const std::string& debugName) final;
 
     void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                 const std::string& debugName) final;

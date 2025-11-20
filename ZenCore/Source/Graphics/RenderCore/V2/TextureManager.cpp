@@ -14,7 +14,7 @@ void TextureManager::Destroy()
 {
     for (auto& kv : m_textureCache)
     {
-        kv.second->DecreaseRefCount();
+        kv.second->ReleaseReference();
     }
 }
 
@@ -38,7 +38,7 @@ void TextureManager::Destroy()
 //     return m_textureCache.at(proxyInfo.name);
 // }
 
-TextureRD* TextureManager::LoadTexture2D(const std::string& file, bool requireMipmap)
+rhi::RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     // if (m_textureCache.contains(file))
     // {
@@ -73,14 +73,15 @@ TextureRD* TextureManager::LoadTexture2D(const std::string& file, bool requireMi
             rhi::CalculateTextureMipLevels(rawTextureInfo.width, rawTextureInfo.height) :
             1;
 
-    TextureRD* texture = m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, file);
+    rhi::RHITexture* texture =
+        m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, file);
 
     // rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
 
     if (requireMipmap)
     {
         UpdateTexture(texture, rawTextureInfo.data.size(), rawTextureInfo.data.data());
-        m_renderDevice->GetCurrentUploadCmdList()->GenerateTextureMipmaps(texture->GetHandle());
+        m_renderDevice->GetCurrentUploadCmdList()->GenerateTextureMipmaps(texture);
     }
     else
     {
@@ -91,7 +92,8 @@ TextureRD* TextureManager::LoadTexture2D(const std::string& file, bool requireMi
     return texture;
 }
 
-void TextureManager::LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures)
+void TextureManager::LoadSceneTextures(const sg::Scene* scene,
+                                       std::vector<rhi::RHITexture*>& outTextures)
 {
     std::vector<sg::Texture*> sgTextures = scene->GetComponents<sg::Texture>();
     for (sg::Texture* sgTexture : sgTextures)
@@ -130,8 +132,8 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene, std::vector<Textu
         texFormat.arrayLayers = 1;
         texFormat.mipmaps     = 1;
 
-        TextureRD* texture = m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true},
-                                                                  sgTexture->GetName());
+        rhi::RHITexture* texture = m_renderDevice->CreateTextureSampled(
+            texFormat, {.copyUsage = true}, sgTexture->GetName());
         UpdateTexture(texture, sgTexture->bytesData.size(), sgTexture->bytesData.data());
         m_textureCache[sgTexture->GetName()] = texture;
         outTextures.push_back(texture);
@@ -171,7 +173,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     texFormat.arrayLayers = 6;
     texFormat.mipmaps     = mipLevels;
 
-    TextureRD* texture =
+    rhi::RHITexture* texture =
         m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, "env_skybox");
 
     // rhi::TextureHandle texture = m_RHI->CreateTexture(textureInfo);
@@ -197,15 +199,14 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
         }
     }
 
-    UpdateTextureCube(texture->GetHandle(), regions, texCube.size(),
+    UpdateTextureCube(texture, regions, texCube.size(),
                       static_cast<const uint8_t*>(texCube.data()));
 
     m_textureCache[file] = texture;
 
     outTexture->skybox = texture;
 
-    m_renderDevice->GetRHIDebug()->SetTextureDebugName(outTexture->skybox->GetHandle(),
-                                                       "SkyboxTexture");
+    m_renderDevice->GetRHIDebug()->SetTextureDebugName(outTexture->skybox, "SkyboxTexture");
 
     const auto irradianceTag  = outTexture->tag + "_irradiance";
     const auto prefilteredTag = outTexture->tag + "_prefiltered";
@@ -221,33 +222,32 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     m_textureCache[outTexture->lutBRDF->GetName()] = outTexture->lutBRDF;
 }
 
-void TextureManager::UpdateTexture(const TextureRD* texture,
+void TextureManager::UpdateTexture(rhi::RHITexture* texture,
                                    uint32_t dataSize,
                                    const uint8_t* pData)
 {
-    rhi::TextureHandle textureHandle = texture->GetHandle();
-    rhi::RHICommandList* cmdList     = m_renderDevice->GetCurrentUploadCmdList();
+    rhi::RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
     // transfer layout to eTransferDst
-    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eTransferDst);
+    cmdList->ChangeTextureLayout(texture, rhi::TextureLayout::eTransferDst);
 
-    rhi::BufferHandle stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
+    rhi::RHIBuffer* stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
     // map staging buffer
-    uint8_t* dataPtr = m_RHI->MapBuffer(stagingBuffer);
+    uint8_t* dataPtr = stagingBuffer->Map();
     // copy
     memcpy(dataPtr, pData, dataSize);
     // unmap
-    m_RHI->UnmapBuffer(stagingBuffer);
+    stagingBuffer->Unmap();
     // copy to gpu memory
     rhi::BufferTextureCopyRegion copyRegion{};
     copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
     copyRegion.bufferOffset  = 0;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = {texture->GetWidth(), texture->GetHeight(), texture->GetDepth()};
-    cmdList->CopyBufferToTexture(stagingBuffer, textureHandle, copyRegion);
+    cmdList->CopyBufferToTexture(stagingBuffer, texture, copyRegion);
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
     // transfer layout to eShaderReadOnly
-    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eShaderReadOnly);
+    cmdList->ChangeTextureLayout(texture, rhi::TextureLayout::eShaderReadOnly);
 
     if (m_stagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
     {
@@ -256,28 +256,28 @@ void TextureManager::UpdateTexture(const TextureRD* texture,
     }
 }
 
-void TextureManager::UpdateTextureCube(const rhi::TextureHandle& textureHandle,
+void TextureManager::UpdateTextureCube(rhi::RHITexture* texture,
                                        const std::vector<rhi::BufferTextureCopyRegion>& regions,
                                        uint32_t dataSize,
                                        const uint8_t* pData)
 {
     rhi::RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
     // transfer layout to eTransferDst
-    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eTransferDst);
+    cmdList->ChangeTextureLayout(texture, rhi::TextureLayout::eTransferDst);
 
-    rhi::BufferHandle stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
+    rhi::RHIBuffer* stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
     // map staging buffer
-    uint8_t* dataPtr = m_RHI->MapBuffer(stagingBuffer);
+    uint8_t* dataPtr = stagingBuffer->Map();
     // copy
     memcpy(dataPtr, pData, dataSize);
     // unmap
-    m_RHI->UnmapBuffer(stagingBuffer);
+    stagingBuffer->Unmap();
     // copy to gpu memory
-    cmdList->CopyBufferToTexture(stagingBuffer, textureHandle, regions);
+    cmdList->CopyBufferToTexture(stagingBuffer, texture, regions);
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
     // transfer layout to eShaderReadOnly
-    cmdList->ChangeTextureLayout(textureHandle, rhi::TextureLayout::eShaderReadOnly);
+    cmdList->ChangeTextureLayout(texture, rhi::TextureLayout::eShaderReadOnly);
 
     m_renderDevice->WaitForAllFrames();
     m_stagingMgr->ProcessPendingFrees();

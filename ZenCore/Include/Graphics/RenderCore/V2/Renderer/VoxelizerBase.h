@@ -7,7 +7,7 @@ namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
-class TextureRD;
+
 // 3D textures (written by voxelizer)
 // struct VoxelTextures
 // {
@@ -22,13 +22,13 @@ class TextureRD;
 
 struct VoxelTextures
 {
-    TextureRD* staticFlag{nullptr};
-    TextureRD* albedo{nullptr};
-    TextureRD* albedoProxy{nullptr};
-    TextureRD* normal{nullptr};
-    TextureRD* normalProxy{nullptr};
-    TextureRD* emissive{nullptr};
-    TextureRD* emissiveProxy{nullptr};
+    rhi::RHITexture* staticFlag{nullptr};
+    rhi::RHITexture* albedo{nullptr};
+    rhi::RHITexture* albedoProxy{nullptr};
+    rhi::RHITexture* normal{nullptr};
+    rhi::RHITexture* normalProxy{nullptr};
+    rhi::RHITexture* emissive{nullptr};
+    rhi::RHITexture* emissiveProxy{nullptr};
 };
 
 class VoxelizerBase
@@ -58,7 +58,7 @@ public:
         return m_voxelTextures;
     }
 
-    const rhi::SamplerHandle& GetVoxelSampler() const
+    rhi::RHISampler* GetVoxelSampler() const
     {
         return m_voxelSampler;
     }
@@ -111,8 +111,8 @@ protected:
 
     VoxelTextures m_voxelTextures;
 
-    rhi::SamplerHandle m_voxelSampler;
-    rhi::SamplerHandle m_colorSampler;
+    rhi::RHISampler* m_voxelSampler;
+    rhi::RHISampler* m_colorSampler;
 
     uint32_t m_voxelTexResolution;
     float m_voxelSize;

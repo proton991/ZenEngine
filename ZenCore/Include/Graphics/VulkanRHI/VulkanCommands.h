@@ -51,45 +51,45 @@ public:
                             const std::vector<BufferTransition>& bufferTransitions,
                             const std::vector<TextureTransition>& textureTransitions) final;
 
-    void ClearBuffer(BufferHandle bufferHandle, uint32_t offset, uint32_t size) final;
+    void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) final;
 
-    void CopyBuffer(BufferHandle srcBufferHandle,
-                    BufferHandle dstBufferHandle,
+    void CopyBuffer(RHIBuffer* srcBuffer,
+                    RHIBuffer* dstBuffer,
                     const BufferCopyRegion& region) final;
 
-    void ClearTexture(TextureHandle textureHandle,
+    void ClearTexture(RHITexture* texture,
                       const Color& color,
                       const TextureSubResourceRange& range) final;
 
-    void CopyTexture(TextureHandle srcTextureHandle,
-                     TextureHandle dstTextureHandle,
+    void CopyTexture(RHITexture* srcTexture,
+                     RHITexture* dstTexture,
                      VectorView<TextureCopyRegion> regions) final;
 
-    void CopyTextureToBuffer(TextureHandle textureHandle,
-                             BufferHandle bufferHandle,
+    void CopyTextureToBuffer(RHITexture* texture,
+                             RHIBuffer* buffer,
                              VectorView<BufferTextureCopyRegion> regions) final;
 
-    void CopyBufferToTexture(BufferHandle bufferHandle,
-                             TextureHandle textureHandle,
+    void CopyBufferToTexture(RHIBuffer* buffer,
+                             RHITexture* texture,
                              VectorView<BufferTextureCopyRegion> regions) final;
 
-    void ResolveTexture(TextureHandle srcTextureHandle,
-                        TextureHandle dstTextureHandle,
+    void ResolveTexture(RHITexture* srcTexture,
+                        RHITexture* dstTexture,
                         uint32_t srcLayer,
                         uint32_t srcMipmap,
                         uint32_t dstLayer,
                         uint32_t dstMipmap) final;
 
-    void BindIndexBuffer(BufferHandle bufferHandle, DataFormat format, uint32_t offset) final;
+    void BindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint32_t offset) final;
 
-    void BindVertexBuffers(VectorView<BufferHandle> bufferHandles, const uint64_t* offsets) final;
+    void BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets) final;
 
     void BindGfxPipeline(PipelineHandle pipelineHandle) final;
 
     void BindComputePipeline(PipelineHandle pipelineHandle) final;
 
     void BeginRenderPass(RenderPassHandle renderPassHandle,
-                         FramebufferHandle framebufferHandle,
+                         FramebufferHandle framebuffer,
                          const Rect2<int>& area,
                          VectorView<RenderPassClearValue> clearValues) final;
 
@@ -112,14 +112,14 @@ public:
                      int32_t vertexOffset,
                      uint32_t firstInstance) final;
 
-    void DrawIndexedIndirect(BufferHandle indirectBuffer,
+    void DrawIndexedIndirect(RHIBuffer* indirectBuffer,
                              uint32_t offset,
                              uint32_t drawCount,
                              uint32_t stride) final;
 
     void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) final;
 
-    void DispatchIndirect(BufferHandle indirectBuffer, uint32_t offset) final;
+    void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset) final;
 
     void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) final;
 
@@ -141,9 +141,9 @@ public:
         return m_cmdBufferManager;
     }
 
-    void ChangeTextureLayout(TextureHandle textureHandle, TextureLayout newLayout) final;
+    void ChangeTextureLayout(RHITexture* texture, TextureLayout newLayout) final;
 
-    void GenerateTextureMipmaps(TextureHandle textureHandle) final;
+    void GenerateTextureMipmaps(RHITexture* texture) final;
 
     void ChangeImageLayout(VkImage image,
                            VkImageLayout srcLayout,

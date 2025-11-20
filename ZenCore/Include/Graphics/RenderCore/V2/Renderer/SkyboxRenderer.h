@@ -8,7 +8,7 @@ namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
-class TextureRD;
+
 
 class SkyboxRenderer
 {
@@ -77,19 +77,19 @@ private:
 
     struct
     {
-        TextureRD* irradiance{nullptr};
-        TextureRD* prefiltered{nullptr};
+        rhi::RHITexture* irradiance{nullptr};
+        rhi::RHITexture* prefiltered{nullptr};
     } m_offscreenTextures;
 
     UniquePtr<RenderGraph> m_rdg;
 
-    rhi::BufferHandle m_vertexBuffer;
-    rhi::BufferHandle m_indexBuffer;
+    rhi::RHIBuffer* m_vertexBuffer;
+    rhi::RHIBuffer* m_indexBuffer;
 
     struct
     {
-        rhi::SamplerHandle cubemapSampler;
-        rhi::SamplerHandle lutBRDFSampler;
+        rhi::RHISampler* cubemapSampler;
+        rhi::RHISampler* lutBRDFSampler;
     } m_samplers;
 
     struct PushConstantIrradiance

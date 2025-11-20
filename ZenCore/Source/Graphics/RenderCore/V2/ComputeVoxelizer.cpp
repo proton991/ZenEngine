@@ -322,7 +322,7 @@ void ComputeVoxelizer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo->GetHandle());
+                                  m_voxelTextures.albedo);
         ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
@@ -344,7 +344,7 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set5bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo->GetHandle());
+                                  m_voxelTextures.albedo);
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(
             set1bindings, 0, ShaderResourceType::eUniformBuffer,
@@ -399,7 +399,7 @@ void ComputeVoxelizer::UpdatePassResources()
 
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo->GetHandle());
+                                  m_voxelTextures.albedo);
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.instancePositionBuffer);
@@ -534,7 +534,7 @@ void ComputeVoxelizer::WarmupTextureAllocation()
         texFormat.arrayLayers = 1;
         texFormat.mipmaps     = 1;
 
-        TextureRD* dummyTex =
+        rhi::RHITexture* dummyTex =
             m_renderDevice->CreateTextureDummy(texFormat, {.copyUsage = false}, texName);
         m_renderDevice->DestroyTexture(dummyTex);
     }

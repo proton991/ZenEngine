@@ -18,7 +18,7 @@ namespace zen::rc
 class RenderScene;
 class RenderDevice;
 class SkyboxRenderer;
-class TextureRD;
+
 
 class DeferredLightingRenderer
 {
@@ -86,15 +86,15 @@ private:
 
     struct
     {
-        TextureRD* position{nullptr};
-        TextureRD* normal{nullptr};
-        TextureRD* albedo{nullptr};
-        TextureRD* metallicRoughness{nullptr};
-        TextureRD* emissiveOcclusion{nullptr};
-        TextureRD* depth{nullptr};
+        rhi::RHITexture* position{nullptr};
+        rhi::RHITexture* normal{nullptr};
+        rhi::RHITexture* albedo{nullptr};
+        rhi::RHITexture* metallicRoughness{nullptr};
+        rhi::RHITexture* emissiveOcclusion{nullptr};
+        rhi::RHITexture* depth{nullptr};
     } m_offscreenTextures;
 
-    rhi::SamplerHandle m_colorSampler;
-    rhi::SamplerHandle m_depthSampler;
+    rhi::RHISampler* m_colorSampler;
+    rhi::RHISampler* m_depthSampler;
 };
 } // namespace zen::rc

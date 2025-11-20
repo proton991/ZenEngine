@@ -11,7 +11,9 @@ enum class ResourceType : uint32_t
     eNone     = 0,
     eViewport = 1,
     eBuffer   = 2,
-    eMax      = 3
+    eTexture  = 3,
+    eSampler  = 4,
+    eCount    = 5
 };
 
 class RHIResource
@@ -24,7 +26,10 @@ public:
         VERIFY_EXPR(m_counter.GetValue() == 0);
     }
 
-    explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType) {}
+    explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType)
+    {
+        AddReference();
+    }
 
     uint32_t AddReference()
     {
@@ -47,6 +52,7 @@ public:
         return m_counter.GetValue();
     }
 
+protected:
     virtual void Init() = 0;
 
     virtual void Destroy() = 0;
@@ -77,7 +83,7 @@ private:
     };
 
     mutable AtomicCounter m_counter;
-    ResourceType m_resourceType{ResourceType::eMax};
+    ResourceType m_resourceType{ResourceType::eCount};
 };
 
 class ShaderGroupSource : public RefCounted
@@ -254,6 +260,8 @@ inline uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint3
     return static_cast<uint32_t>(floor(log2(maxDim)) + 1);
 }
 
+class RHITexture;
+
 class RHIViewport : public RHIResource
 {
 public:
@@ -278,11 +286,11 @@ public:
 
     virtual DataFormat GetDepthStencilFormat() = 0;
 
-    virtual TextureHandle GetColorBackBuffer() = 0;
+    virtual RHITexture* GetColorBackBuffer() = 0;
 
     virtual TextureSubResourceRange GetColorBackBufferRange() = 0;
 
-    virtual TextureHandle GetDepthStencilBackBuffer() = 0;
+    virtual RHITexture* GetDepthStencilBackBuffer() = 0;
 
     virtual TextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
@@ -301,9 +309,7 @@ protected:
         m_width(width),
         m_height(height),
         m_enableVSync(enableVSync)
-    {
-        AddReference();
-    }
+    {}
 
     void* m_pWindow{nullptr};
     uint32_t m_width{0};
@@ -331,8 +337,14 @@ public:
 
     virtual void SetTexelFormat(DataFormat format) = 0;
 
+    uint32_t GetRequiredSize() const
+    {
+        return m_requiredSize;
+    }
+
 protected:
     explicit RHIBuffer(const RHIBufferCreateInfo& createInfo) :
+        RHIResource(ResourceType::eBuffer),
         m_requiredSize(createInfo.size),
         m_usageFlags(createInfo.usageFlags),
         m_allocateType(createInfo.allocateType)
@@ -361,15 +373,125 @@ struct RHITextureCreateInfo
     std::string name;
 };
 
-class RHITexture
+struct RHITextureProxyCreateInfo
+{
+    DataFormat format{DataFormat::eUndefined};
+    TextureType type{TextureType::e1D};
+    uint32_t arrayLayers{1};
+    uint32_t mipmaps{1};
+    std::string name;
+};
+
+inline uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
+{
+    // TODO: Support compressed texture format
+    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
+
+    uint32_t w = info.width;
+    uint32_t h = info.height;
+    uint32_t d = info.depth;
+
+    uint32_t size = 0;
+    for (uint32_t i = 0; i < info.mipmaps; i++)
+    {
+        uint32_t numPixels = w * h * d;
+        size += numPixels * pixelSize;
+        w >>= 1;
+        h >>= 1;
+        d >>= 1;
+    }
+    return size;
+}
+
+class RHITexture : public RHIResource
 {
 public:
-    RHITexture* Create(const RHITextureCreateInfo& createInfo);
+    // todo: Wrap in DynamicRHI
+    static RHITexture* Create(const RHITextureCreateInfo& createInfo);
 
-private:
-    RHITexture(const RHITextureCreateInfo& createInfo);
+    RHITexture* CreateProxy(const RHITextureProxyCreateInfo& proxyInfo);
+
+    DataFormat GetFormat() const
+    {
+        return m_baseInfo.format;
+    }
+
+    const RHITextureCreateInfo& GetBaseInfo() const
+    {
+        return m_baseInfo;
+    }
+
+    const TextureSubResourceRange& GetSubResourceRange() const
+    {
+        return m_subResourceRange;
+    }
+
+    uint32_t GetWidth() const
+    {
+        return m_baseInfo.width;
+    }
+
+    uint32_t GetHeight() const
+    {
+        return m_baseInfo.height;
+    }
+
+    uint32_t GetDepth()
+    {
+        return m_baseInfo.depth;
+    }
+
+    // todo: impl Hash function
+    uint32_t GetHash32() const
+    {
+        return 0;
+    }
+
+    const std::string& GetName() const
+    {
+        return m_baseInfo.name;
+    }
+
+protected:
+    explicit RHITexture(const RHITextureCreateInfo& createInfo) :
+        RHIResource(ResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
+    {
+        if (FormatIsDepthOnly(m_baseInfo.format))
+        {
+            m_subResourceRange = TextureSubResourceRange::Depth();
+        }
+        else if (FormatIsStencilOnly(m_baseInfo.format))
+        {
+            m_subResourceRange = TextureSubResourceRange::Stencil();
+        }
+        else if (FormatIsDepthStencil(m_baseInfo.format))
+        {
+            m_subResourceRange = TextureSubResourceRange::DepthStencil();
+        }
+        else
+        {
+            m_subResourceRange = TextureSubResourceRange::Color();
+        }
+        m_subResourceRange.layerCount = m_baseInfo.arrayLayers;
+        m_subResourceRange.levelCount = m_baseInfo.mipmaps;
+    }
+
+    RHITexture(const RHITexture* pBaseTexture, const RHITextureProxyCreateInfo& proxyInfo) :
+        RHIResource(ResourceType::eTexture),
+        m_pBaseTexture(pBaseTexture),
+        m_proxyInfo(proxyInfo),
+        m_isProxy(true)
+    {}
+
+    const RHITexture* m_pBaseTexture{nullptr};
 
     RHITextureCreateInfo m_baseInfo{};
+
+    RHITextureProxyCreateInfo m_proxyInfo{};
+
+    bool m_isProxy{};
+
+    TextureSubResourceRange m_subResourceRange{};
 };
 
 struct RHISamplerCreateInfo
@@ -389,5 +511,18 @@ struct RHISamplerCreateInfo
     float maxLod{1e20}; // Something very large should do.
     SamplerBorderColor borderColor{SamplerBorderColor::eFloatOpaqueBlack};
     bool unnormalizedUVW{false};
+};
+
+class RHISampler : public RHIResource
+{
+public:
+    static RHISampler* Create(const RHISamplerCreateInfo& createInfo);
+
+protected:
+    explicit RHISampler(const RHISamplerCreateInfo& createInfo) :
+        RHIResource(ResourceType::eSampler), m_baseInfo(createInfo)
+    {}
+
+    RHISamplerCreateInfo m_baseInfo{};
 };
 } // namespace zen::rhi

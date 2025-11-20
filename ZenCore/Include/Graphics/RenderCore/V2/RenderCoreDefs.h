@@ -1,16 +1,16 @@
 #pragma once
 #include "Graphics/RHI/DynamicRHI.h"
 
-#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                           \
-    {                                                                                      \
-        rhi::ShaderResourceBinding binding{};                                              \
-        binding.binding = index_;                                                          \
-        binding.type    = type_;                                                           \
-        {                                                                                  \
-            std::initializer_list<Handle> handles = {__VA_ARGS__};                         \
-            binding.handles.insert(binding.handles.end(), handles.begin(), handles.end()); \
-        }                                                                                  \
-        bindings_.emplace_back(std::move(binding));                                        \
+#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                                   \
+    {                                                                                              \
+        rhi::ShaderResourceBinding binding{};                                                      \
+        binding.binding = index_;                                                                  \
+        binding.type    = type_;                                                                   \
+        {                                                                                          \
+            std::initializer_list<rhi::RHIResource*> resources = {__VA_ARGS__};                    \
+            binding.resources.insert(binding.resources.end(), resources.begin(), resources.end()); \
+        }                                                                                          \
+        bindings_.emplace_back(std::move(binding));                                                \
     }
 
 #define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \
@@ -18,10 +18,10 @@
         rhi::ShaderResourceBinding binding{};                                           \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (const rc::TextureRD* texture : textures_)                                  \
+        for (rhi::RHITexture * texture : (textures_))                                   \
         {                                                                               \
-            binding.handles.push_back(sampler_);                                        \
-            binding.handles.push_back(texture->GetHandle());                            \
+            binding.resources.push_back(sampler_);                                      \
+            binding.resources.push_back(texture);                                       \
         }                                                                               \
         bindings_.emplace_back(std::move(binding));                                     \
     }
@@ -29,7 +29,6 @@
 namespace zen::rc
 {
 class ShaderProgram;
-class TextureRD;
 
 enum class TextureDimension : uint32_t
 {
@@ -105,9 +104,9 @@ enum class PassResourceType
 struct PassResourceTracker
 {
     std::string name;
-    std::vector<TextureRD*> textures;
+    std::vector<rhi::RHITexture*> textures;
     // rhi::TextureHandle textureHandle;
-    rhi::BufferHandle bufferHandle;
+    rhi::RHIBuffer* buffer;
     PassResourceType resourceType{PassResourceType::eMax};
     rhi::AccessMode accessMode{rhi::AccessMode::eNone};
     BitField<rhi::AccessFlagBits> accessFlags;
@@ -148,13 +147,13 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    TextureRD* skybox;
-    TextureRD* irradiance;
-    TextureRD* prefiltered;
-    TextureRD* lutBRDF;
-    rhi::SamplerHandle irradianceSampler;
-    rhi::SamplerHandle prefilteredSampler;
-    rhi::SamplerHandle lutBRDFSampler;
+    rhi::RHITexture* skybox;
+    rhi::RHITexture* irradiance;
+    rhi::RHITexture* prefiltered;
+    rhi::RHITexture* lutBRDF;
+    rhi::RHISampler* irradianceSampler;
+    rhi::RHISampler* prefilteredSampler;
+    rhi::RHISampler* lutBRDFSampler;
     std::string tag;
 };
 } // namespace zen::rc

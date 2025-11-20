@@ -19,6 +19,10 @@
 
 namespace zen::rhi
 {
+class RHIResource;
+class RHIBuffer;
+class RHITexture;
+
 enum class GraphicsAPIType
 {
     eVulkan = 0,
@@ -224,7 +228,7 @@ struct ShaderResourceBinding
 {
     ShaderResourceType type{ShaderResourceType::eMax};
     uint32_t binding{0};
-    std::vector<Handle> handles;
+    std::vector<RHIResource*> resources;
 };
 
 struct VertexInputAttribute
@@ -561,7 +565,7 @@ struct BufferCopyRegion
 
 struct BufferCopySource
 {
-    BufferHandle buffer;
+    RHIBuffer* buffer;
     BufferCopyRegion region;
 };
 
@@ -759,7 +763,7 @@ struct BufferTextureCopyRegion
 
 struct BufferTextureCopySource
 {
-    BufferHandle buffer;
+    RHIBuffer* buffer;
     BufferTextureCopyRegion region;
 };
 
@@ -803,7 +807,7 @@ struct RenderTarget
     SampleCount numSamples{SampleCount::e1};
     RenderTargetLoadOp loadOp{RenderTargetLoadOp::eNone};
     RenderTargetStoreOp storeOp{RenderTargetStoreOp::eStore};
-    TextureHandle handle;
+    RHITexture* texture{nullptr};
     TextureSubResourceRange subresourceRange;
     // TextureUsage usage{TextureUsage::eMax};
 };
@@ -834,7 +838,7 @@ public:
     }
 
     void AddColorRenderTarget(DataFormat format,
-                              const TextureHandle& handle,
+                              RHITexture* texture,
                               const TextureSubResourceRange& subResourceRange,
                               RenderTargetLoadOp loadOp,
                               RenderTargetStoreOp storeOp,
@@ -842,21 +846,21 @@ public:
     {
         RenderTarget colorRT;
         colorRT.format           = format;
-        colorRT.handle           = handle;
+        colorRT.texture          = texture;
         colorRT.subresourceRange = subResourceRange;
 
         colorRT.numSamples = numSamples;
         colorRT.loadOp     = loadOp;
         colorRT.storeOp    = storeOp;
 
-        m_colorRTs.emplace_back(std::move(colorRT));
+        m_colorRTs.emplace_back(colorRT);
         m_numColorRT++;
         // m_rtHandles.push_back(handle);
         // m_rtSubResRanges.emplace_back(subResourceRange);
     }
 
     void SetDepthStencilRenderTarget(DataFormat format,
-                                     const TextureHandle& handle,
+                                     RHITexture* texture,
                                      TextureSubResourceRange subResourceRange,
                                      RenderTargetLoadOp loadOp,
                                      RenderTargetStoreOp storeOp)
@@ -864,7 +868,7 @@ public:
         if (!m_hasDepthStencilRT)
         {
             m_depthStencilRT.format           = format;
-            m_depthStencilRT.handle           = handle;
+            m_depthStencilRT.texture          = texture;
             m_depthStencilRT.subresourceRange = subResourceRange;
             m_depthStencilRT.loadOp           = loadOp;
             m_depthStencilRT.storeOp          = storeOp;
@@ -992,7 +996,7 @@ private:
 struct FramebufferInfo
 {
     uint32_t numRenderTarget{0};
-    TextureHandle* renderTargets{nullptr};
+    RHITexture** renderTargets{nullptr};
     uint32_t width{0};
     uint32_t height{0};
     uint32_t depth{1};
@@ -1263,7 +1267,7 @@ struct TextureTransition
 {
     AccessMode oldAccessMode;
     AccessMode newAccessMode;
-    TextureHandle textureHandle;
+    RHITexture* texture;
     TextureUsage oldUsage;
     TextureUsage newUsage;
     TextureSubResourceRange subResourceRange;
@@ -1273,7 +1277,7 @@ struct BufferTransition
 {
     AccessMode oldAccessMode;
     AccessMode newAccessMode;
-    BufferHandle bufferHandle;
+    RHIBuffer* buffer;
     BufferUsage oldUsage;
     BufferUsage newUsage;
     uint64_t offset{0};

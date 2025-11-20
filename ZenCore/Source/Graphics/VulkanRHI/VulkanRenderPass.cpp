@@ -109,7 +109,7 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {
         VulkanTexture* texture = TO_VK_TEXTURE(fbInfo.renderTargets[i]);
-        imageViews[i]          = texture->imageView;
+        imageViews[i]          = texture->GetVkImageView();
     }
     VkFramebufferCreateInfo framebufferCI;
     InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);

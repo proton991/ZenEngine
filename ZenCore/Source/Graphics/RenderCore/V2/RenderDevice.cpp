@@ -40,7 +40,7 @@ static void CopyRegion(uint8_t const* pSrc,
 }
 
 // GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format,
-//                                                                const rhi::TextureHandle& handle,
+//                                                                const rhi::RHITexture* handle,
 //                                                                bool clear)
 // {
 //     m_rpLayout.AddColorRenderTarget(format, rhi::TextureUsage::eColorAttachment, handle,
@@ -78,12 +78,12 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(const TextureRD* colorRT,
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(rhi::RHITexture* colorRT,
                                                                rhi::RenderTargetLoadOp loadOp,
                                                                rhi::RenderTargetStoreOp storeOp)
 {
-    m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT->GetHandle(),
-                                    colorRT->GetTextureSubResourceRange(), loadOp, storeOp);
+    m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT, colorRT->GetSubResourceRange(),
+                                    loadOp, storeOp);
     // m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
     //                                              rhi::RenderTargetLoadOp::eLoad,
     // rhi::RenderTargetStoreOp::eStore);
@@ -91,20 +91,19 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(const TextureRD* 
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(const TextureRD* depthStencilRT,
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture* depthStencilRT,
                                                                 rhi::RenderTargetLoadOp loadOp,
                                                                 rhi::RenderTargetStoreOp storeOp)
 {
-    m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT->GetHandle(),
-                                           depthStencilRT->GetTextureSubResourceRange(), loadOp,
-                                           storeOp);
+    m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT,
+                                           depthStencilRT->GetSubResourceRange(), loadOp, storeOp);
     // m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
 
 // GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(DataFormat format,
-//                                                                 const rhi::TextureHandle& handle,
+//                                                                 const rhi::RHITexture* handle,
 //                                                                 rhi::RenderTargetLoadOp loadOp,
 //                                                                 rhi::RenderTargetStoreOp storeOp)
 // {
@@ -120,12 +119,12 @@ GraphicsPass GraphicsPassBuilder::Build()
     using namespace zen::rhi;
     DynamicRHI* RHI = m_renderDevice->GetRHI();
 
-    std::vector<TextureHandle> rtHandles;
+    std::vector<RHITexture*> rtHandles;
     rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
 
     for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
     {
-        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].handle;
+        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].texture;
     }
 
     // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
@@ -268,20 +267,19 @@ void GraphicsPassResourceUpdater::Update()
             bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
                 srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
-            while (index < srb.handles.size())
+            while (index < srb.resources.size())
             {
-                rhi::Handle handle = srb.handles[hasSampler ? index + 1 : index];
+                rhi::RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(
-                        m_renderDevice->GetTextureRDFromHandle(TO_TEX_HANDLE(handle)));
+                    tracker.textures.emplace_back(dynamic_cast<rhi::RHITexture*>(resource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.bufferHandle = TO_BUF_HANDLE(handle);
+                    tracker.buffer = dynamic_cast<rhi::RHIBuffer*>(resource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
@@ -297,7 +295,7 @@ void GraphicsPassResourceUpdater::Update()
             // if (tracker.resourceType == PassResourceType::eTexture)
             // {
             //     // check if a texture is a proxy
-            //     // rhi::TextureHandle textureHandle = TO_TEX_HANDLE(handle);
+            //     // rhi::RHITexture* textureHandle = TO_TEX_HANDLE(handle);
             //     // if (m_renderDevice->IsProxyTexture(textureHandle))
             //     // {
             //     //     textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
@@ -416,20 +414,19 @@ void ComputePassResourceUpdater::Update()
             bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
                 srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
-            while (index < srb.handles.size())
+            while (index < srb.resources.size())
             {
-                rhi::Handle handle = srb.handles[hasSampler ? index + 1 : index];
+                rhi::RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(
-                        m_renderDevice->GetTextureRDFromHandle(TO_TEX_HANDLE(handle)));
+                    tracker.textures.emplace_back(dynamic_cast<rhi::RHITexture*>(resource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.bufferHandle = TO_BUF_HANDLE(handle);
+                    tracker.buffer = dynamic_cast<rhi::RHIBuffer*>(resource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
@@ -457,7 +454,7 @@ void ComputePassResourceUpdater::Update()
     }
 }
 
-rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
+rhi::RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
 {
     for (uint32_t i = 0; i < m_freeBuffers.size(); i++)
     {
@@ -471,12 +468,15 @@ rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
         }
     }
 
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size = requiredSize;
+    createInfo.usageFlags.SetFlag(rhi::BufferUsageFlagBits::eTransferSrcBuffer);
+    createInfo.allocateType = rhi::BufferAllocateType::eCPU;
+
     Entry newEntry{};
     newEntry.size      = requiredSize;
     newEntry.usedFrame = m_renderDevice->GetFramesCounter();
-    newEntry.buffer    = m_renderDevice->GetRHI()->CreateBuffer(
-        requiredSize, BitField(rhi::BufferUsageFlagBits::eTransferSrcBuffer),
-        rhi::BufferAllocateType::eCPU);
+    newEntry.buffer    = rhi::RHIBuffer::Create(createInfo);
 
     m_usedBuffers.push_back(newEntry);
 
@@ -487,11 +487,11 @@ rhi::BufferHandle TextureStagingManager::RequireBuffer(uint32_t requiredSize)
     return newEntry.buffer;
 }
 
-void TextureStagingManager::ReleaseBuffer(const rhi::BufferHandle& buffer)
+void TextureStagingManager::ReleaseBuffer(const rhi::RHIBuffer* buffer)
 {
     for (uint32_t i = 0; i < m_usedBuffers.size(); i++)
     {
-        if (m_usedBuffers[i].buffer.value == buffer.value)
+        if (m_usedBuffers[i].buffer == buffer)
         {
             Entry entry = m_usedBuffers[i];
             m_usedBuffers.erase(m_usedBuffers.begin() + i);
@@ -519,7 +519,7 @@ void TextureStagingManager::ProcessPendingFrees()
 
 void TextureStagingManager::Destroy()
 {
-    for (rhi::BufferHandle& buffer : m_allocatedBuffers)
+    for (rhi::RHIBuffer* buffer : m_allocatedBuffers)
     {
         m_renderDevice->GetRHI()->DestroyBuffer(buffer);
     }
@@ -553,19 +553,22 @@ void BufferStagingManager::Destroy()
 {
     for (auto& buffer : m_bufferBlocks)
     {
-        m_RHI->DestroyBuffer(buffer.handle);
+        m_RHI->DestroyBuffer(buffer.buffer);
     }
 }
 
 void BufferStagingManager::InsertNewBlock()
 {
-    StagingBuffer buffer;
-    buffer.handle =
-        m_RHI->CreateBuffer(BUFFER_SIZE, BitField(rhi::BufferUsageFlagBits::eTransferSrcBuffer),
-                            rhi::BufferAllocateType::eCPU);
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = BUFFER_SIZE;
+    createInfo.allocateType = rhi::BufferAllocateType::eCPU;
+    createInfo.usageFlags.SetFlag(rhi::BufferUsageFlagBits::eTransferSrcBuffer);
+
+    StagingBuffer buffer{};
+    buffer.buffer       = rhi::RHIBuffer::Create(createInfo);
     buffer.usedFrame    = 0;
     buffer.occupiedSize = 0;
-    m_bufferBlocks.insert(m_bufferBlocks.begin() + m_currentBlockIndex, std::move(buffer));
+    m_bufferBlocks.insert(m_bufferBlocks.begin() + m_currentBlockIndex, buffer);
 }
 
 bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
@@ -656,7 +659,7 @@ void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
         break;
     }
     result->success     = true;
-    result->buffer      = m_bufferBlocks[m_currentBlockIndex].handle;
+    result->buffer      = m_bufferBlocks[m_currentBlockIndex].buffer;
     m_stagingBufferUsed = true;
 }
 
@@ -818,11 +821,11 @@ void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg
     m_RHI->WaitForCommandList(cmdList);
 }
 
-TextureRD* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
-                                              TextureUsageHint usageHint,
-                                              std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
+                                                    TextureUsageHint usageHint,
+                                                    std::string name)
 {
-    rhi::TextureInfo texInfo{};
+    rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
@@ -842,20 +845,20 @@ TextureRD* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
-    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
-    textureRD->Init(this, handle);
+    rhi::RHITexture* textureRD = rhi::RHITexture::Create(texInfo);
+    // rhi::RHITexture* handle    = m_RHI->CreateTexture(texInfo);
+    // textureRD->Init(this, handle);
 
-    m_textureMap[handle] = textureRD;
+    // m_textureMap[handle] = textureRD;
 
     return textureRD;
 }
 
-TextureRD* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
-                                                     TextureUsageHint usageHint,
-                                                     std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+                                                           TextureUsageHint usageHint,
+                                                           std::string name)
 {
-    rhi::TextureInfo texInfo{};
+    rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
@@ -875,21 +878,16 @@ TextureRD* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFor
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
-    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
+    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
 
-    textureRD->Init(this, handle);
-
-    m_textureMap[handle] = textureRD;
-
-    return textureRD;
+    return texture;
 }
 
-TextureRD* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
-                                              TextureUsageHint usageHint,
-                                              std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
+                                                    TextureUsageHint usageHint,
+                                                    std::string name)
 {
-    rhi::TextureInfo texInfo{};
+    rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
@@ -910,20 +908,16 @@ TextureRD* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
-    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
-    textureRD->Init(this, handle);
+    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
 
-    m_textureMap[handle] = textureRD;
-
-    return textureRD;
+    return texture;
 }
 
-TextureRD* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
-                                              TextureUsageHint usageHint,
-                                              std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
+                                                    TextureUsageHint usageHint,
+                                                    std::string name)
 {
-    rhi::TextureInfo texInfo{};
+    rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
@@ -942,20 +936,16 @@ TextureRD* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
-    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
-    textureRD->Init(this, handle);
+    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
 
-    m_textureMap[handle] = textureRD;
-
-    return textureRD;
+    return texture;
 }
 
-TextureRD* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
-                                            TextureUsageHint usageHint,
-                                            std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
+                                                  TextureUsageHint usageHint,
+                                                  std::string name)
 {
-    rhi::TextureInfo texInfo{};
+    rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
@@ -974,115 +964,122 @@ TextureRD* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    TextureRD* textureRD      = TextureRD::Create(texFormat, texInfo.name);
-    rhi::TextureHandle handle = m_RHI->CreateTexture(texInfo);
-    textureRD->Init(this, handle);
+    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
 
-    return textureRD;
+    return texture;
 }
 
-TextureRD* RenderDevice::CreateTextureProxy(TextureRD* baseTexture,
-                                            const TextureProxyFormat& proxyFormat,
-                                            std::string name)
+rhi::RHITexture* RenderDevice::CreateTextureProxy(rhi::RHITexture* baseTexture,
+                                                  const TextureProxyFormat& proxyFormat,
+                                                  std::string name)
 {
-    rhi::TextureProxyInfo textureProxyInfo{};
+    rhi::RHITextureProxyCreateInfo textureProxyInfo{};
     textureProxyInfo.type        = static_cast<rhi::TextureType>(proxyFormat.dimension);
     textureProxyInfo.arrayLayers = proxyFormat.arrayLayers;
     textureProxyInfo.mipmaps     = proxyFormat.mipmaps;
     textureProxyInfo.format      = proxyFormat.format;
     textureProxyInfo.name        = std::move(name);
 
-    TextureRD* textureRD = TextureRD::CreateProxy(baseTexture, proxyFormat, textureProxyInfo.name);
-    rhi::TextureHandle handle =
-        m_RHI->CreateTextureProxy(baseTexture->GetHandle(), textureProxyInfo);
-    textureRD->Init(this, handle);
+    rhi::RHITexture* texture = baseTexture->CreateProxy(textureProxyInfo);
 
-    m_textureMap[handle] = textureRD;
-
-    return textureRD;
+    return texture;
 }
 
-TextureRD* RenderDevice::GetTextureRDFromHandle(const rhi::TextureHandle& handle)
-{
-    return m_textureMap[handle];
-}
+// rhi::RHITexture* RenderDevice::GetTextureRDFromHandle(const rhi::RHITexture* handle)
+// {
+//     return m_textureMap[handle];
+// }
 
-void RenderDevice::DestroyTexture(TextureRD* textureRD)
+void RenderDevice::DestroyTexture(rhi::RHITexture* texture)
 {
     // if (textureRD->IsProxy())
     // {
     //     textureRD->GetBaseTexture()->DecreaseRefCount();
     // }
     // textureRD->DecreaseRefCount();
-    m_textureMap.erase(textureRD->GetHandle());
-    m_frames[m_currentFrame].texturesPendingFree.emplace_back(textureRD);
+    // m_textureMap.erase(textureRD->GetHandle());
+    m_frames[m_currentFrame].texturesPendingFree.emplace_back(texture);
 }
 
-// rhi::TextureHandle RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
+// rhi::RHITexture* RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
 // {
 //     ASSERT(!textureInfo.name.empty());
 //     return m_textureManager->CreateTexture(textureInfo);
 // }
 
-// rhi::TextureHandle RenderDevice::CreateTextureProxy(const rhi::TextureHandle& baseTexture,
+// rhi::RHITexture* RenderDevice::CreateTextureProxy(const rhi::RHITexture* baseTexture,
 //                                                     const rhi::TextureProxyInfo& proxyInfo)
 // {
 //     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
 // }
 
-// rhi::TextureHandle RenderDevice::GetBaseTextureForProxy(const rhi::TextureHandle& handle) const
+// rhi::RHITexture* RenderDevice::GetBaseTextureForProxy(const rhi::RHITexture* handle) const
 // {
 //     return m_textureManager->GetBaseTextureForProxy(handle);
 // }
 //
-// bool RenderDevice::IsProxyTexture(const rhi::TextureHandle& handle) const
+// bool RenderDevice::IsProxyTexture(const rhi::RHITexture* handle) const
 // {
 //     return m_textureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(const rhi::TextureHandle& textureHandle,
+void RenderDevice::GenerateTextureMipmaps(rhi::RHITexture* textureHandle,
                                           rhi::RHICommandList* cmdList)
 {
     cmdList->GenerateTextureMipmaps(textureHandle);
 }
 
-rhi::BufferHandle RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eVertexBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
 
-    rhi::BufferHandle vertexBuffer =
-        m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = dataSize;
+    createInfo.usageFlags   = usages;
+    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+
+    rhi::RHIBuffer* vertexBuffer = rhi::RHIBuffer::Create(createInfo);
     UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
     m_buffers.push_back(vertexBuffer);
     return vertexBuffer;
 }
 
-rhi::BufferHandle RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eIndexBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
 
-    rhi::BufferHandle indexBuffer =
-        m_RHI->CreateBuffer(dataSize, usages, rhi::BufferAllocateType::eGPU);
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = dataSize;
+    createInfo.usageFlags   = usages;
+    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+
+    rhi::RHIBuffer* indexBuffer = rhi::RHIBuffer::Create(createInfo);
     UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
     m_buffers.push_back(indexBuffer);
     return indexBuffer;
 }
 
-rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eUniformBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadUniformBufferSize(dataSize);
-    rhi::BufferHandle uniformBuffer =
-        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
+
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = paddedSize;
+    createInfo.usageFlags   = usages;
+    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+
+
+    rhi::RHIBuffer* uniformBuffer = rhi::RHIBuffer::Create(createInfo);
     if (pData != nullptr)
     {
         UpdateBufferInternal(uniformBuffer, 0, paddedSize, pData);
@@ -1091,15 +1088,21 @@ rhi::BufferHandle RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uin
     return uniformBuffer;
 }
 
-rhi::BufferHandle RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadStorageBufferSize(dataSize);
-    rhi::BufferHandle storageBuffer =
-        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
+
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = paddedSize;
+    createInfo.usageFlags   = usages;
+    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+
+    rhi::RHIBuffer* storageBuffer = rhi::RHIBuffer::Create(createInfo);
+
     if (pData != nullptr)
     {
         UpdateBufferInternal(storageBuffer, 0, paddedSize, pData);
@@ -1108,7 +1111,7 @@ rhi::BufferHandle RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uin
     return storageBuffer;
 }
 
-rhi::BufferHandle RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
@@ -1116,8 +1119,14 @@ rhi::BufferHandle RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const ui
     usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadStorageBufferSize(dataSize);
-    rhi::BufferHandle indirectBuffer =
-        m_RHI->CreateBuffer(paddedSize, usages, rhi::BufferAllocateType::eGPU);
+
+    rhi::RHIBufferCreateInfo createInfo{};
+    createInfo.size         = paddedSize;
+    createInfo.usageFlags   = usages;
+    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+
+    rhi::RHIBuffer* indirectBuffer = rhi::RHIBuffer::Create(createInfo);
+
     if (pData != nullptr)
     {
         UpdateBufferInternal(indirectBuffer, 0, paddedSize, pData);
@@ -1140,15 +1149,15 @@ size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
     return alignedSize;
 }
 
-void RenderDevice::UpdateBuffer(const rhi::BufferHandle& bufferHandle,
+void RenderDevice::UpdateBuffer(rhi::RHIBuffer* buffer,
                                 uint32_t dataSize,
                                 const uint8_t* pData,
                                 uint32_t offset)
 {
-    UpdateBufferInternal(bufferHandle, offset, dataSize, pData);
+    UpdateBufferInternal(buffer, offset, dataSize, pData);
 }
 
-void RenderDevice::DestroyBuffer(const rhi::BufferHandle& bufferHandle)
+void RenderDevice::DestroyBuffer(rhi::RHIBuffer* bufferHandle)
 {
     m_RHI->DestroyBuffer(bufferHandle);
 }
@@ -1264,28 +1273,29 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIVie
     }
 }
 
-rhi::SamplerHandle RenderDevice::CreateSampler(const rhi::SamplerInfo& samplerInfo)
+rhi::RHISampler* RenderDevice::CreateSampler(const rhi::RHISamplerCreateInfo& samplerInfo)
 {
     const size_t samplerHash = CalcSamplerHash(samplerInfo);
     if (!m_samplerCache.contains(samplerHash))
     {
-        m_samplerCache[samplerHash] = m_RHI->CreateSampler(samplerInfo);
+        m_samplerCache[samplerHash] = rhi::RHISampler::Create(samplerInfo);
     }
 
     return m_samplerCache[samplerHash];
 }
 
-rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::TextureHandle handle)
-{
-    return m_RHI->GetTextureSubResourceRange(handle);
-}
+// rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::RHITexture* handle)
+// {
+//     return m_RHI->GetTextureSubResourceRange(handle);
+// }
 
-TextureRD* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
+rhi::RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     return m_textureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* scene, std::vector<TextureRD*>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
+                                     std::vector<rhi::RHITexture*>& outTextures)
 {
     m_textureManager->LoadSceneTextures(scene, outTextures);
 }
@@ -1296,7 +1306,7 @@ void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* texture)
     m_textureManager->LoadTextureEnv(fullPath, texture);
 }
 
-void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
+void RenderDevice::UpdateTextureOneTime(rhi::RHITexture* textureHandle,
                                         const Vec3i& textureSize,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1319,14 +1329,14 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
     // map staging buffer
-    uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
+    uint8_t* dataPtr = submitResult.buffer->Map();
     dataPtr += submitResult.writeOffset;
 
     // copy
     memcpy(dataPtr, pData, submitResult.writeSize);
 
     // unmap
-    m_RHI->UnmapBuffer(submitResult.buffer);
+    submitResult.buffer->Unmap();
     // copy to gpu memory
     rhi::BufferTextureCopyRegion copyRegion{};
     copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
@@ -1339,7 +1349,7 @@ void RenderDevice::UpdateTextureOneTime(rhi::TextureHandle textureHandle,
     m_bufferStagingMgr->EndSubmit(&submitResult);
 }
 
-void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
+void RenderDevice::UpdateTextureBatch(rhi::RHITexture* textureHandle,
                                       const Vec3i& textureSize,
                                       const uint8_t* pData)
 {
@@ -1374,12 +1384,12 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
                 m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
                 // map staging buffer
-                uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
+                uint8_t* dataPtr = submitResult.buffer->Map();
                 // copy
                 CopyRegion(pData, dataPtr + submitResult.writeOffset, x, y, regionWidth,
                            regionHeight, width, imageStride, pixelSize);
                 // unmap
-                m_RHI->UnmapBuffer(submitResult.buffer);
+                submitResult.buffer->Unmap();
                 // copy to gpu memory
                 rhi::BufferTextureCopyRegion copyRegion{};
                 copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
@@ -1395,7 +1405,7 @@ void RenderDevice::UpdateTextureBatch(rhi::TextureHandle textureHandle,
     }
 }
 
-void RenderDevice::UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
+void RenderDevice::UpdateBufferInternal(rhi::RHIBuffer* bufferHandle,
                                         uint32_t offset,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1419,11 +1429,11 @@ void RenderDevice::UpdateBufferInternal(const rhi::BufferHandle& bufferHandle,
         m_bufferStagingMgr->PerformAction(submitResult.flushAction);
 
         // map staging buffer
-        uint8_t* dataPtr = m_RHI->MapBuffer(submitResult.buffer);
+        uint8_t* dataPtr = submitResult.buffer->Map();
         // copy
         memcpy(dataPtr + submitResult.writeOffset, pData + writePosition, submitResult.writeSize);
         // unmap
-        m_RHI->UnmapBuffer(submitResult.buffer);
+        submitResult.buffer->Unmap();
         // copy to gpu memory
         rhi::BufferCopyRegion copyRegion;
         copyRegion.srcOffset = submitResult.writeOffset;
@@ -1467,7 +1477,7 @@ void RenderDevice::WaitForAllFrames()
 
 void RenderDevice::NextFrame()
 {
-    // for (TextureRD* texture : GetCurrentFrame()->texturesPendingFree)
+    // for (rhi::RHITexture* texture : GetCurrentFrame()->texturesPendingFree)
     // {
     //     texture->DecreaseRefCount();
     // }
@@ -1498,9 +1508,9 @@ void RenderDevice::EndFrame()
 
 void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {
-    for (TextureRD* texture : m_frames[frameIndex].texturesPendingFree)
+    for (rhi::RHITexture* texture : m_frames[frameIndex].texturesPendingFree)
     {
-        texture->DecreaseRefCount();
+        texture->ReleaseReference();
     }
     m_frames[frameIndex].texturesPendingFree.clear();
 }
@@ -1563,7 +1573,8 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
     seed ^= uint64Hasher(renderPassHandle.value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     for (uint32_t i = 0; i < info.numRenderTarget; i++)
     {
-        seed ^= uint64Hasher(info.renderTargets[i].value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= uint64Hasher(info.renderTargets[i]->GetHash32()) + 0x9e3779b9 + (seed << 6) +
+            (seed >> 2);
     }
     return seed;
 }
@@ -1613,11 +1624,11 @@ size_t RenderDevice::CalcGfxPipelineHash(
     // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
     for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
     {
-        combineHash(colorRT.handle.value);
+        combineHash(colorRT.texture);
     }
     if (renderPassLayout.HasDepthStencilRenderTarget())
     {
-        combineHash(renderPassLayout.GetDepthStencilRenderTarget().handle.value);
+        combineHash(renderPassLayout.GetDepthStencilRenderTarget().texture);
     }
     combineHash(pso.primitiveType);
     for (auto& spc : specializationConstants)
@@ -1646,7 +1657,7 @@ size_t RenderDevice::CalcComputePipelineHash(const rhi::ShaderHandle& shader)
     return seed;
 }
 
-size_t RenderDevice::CalcSamplerHash(const rhi::SamplerInfo& info)
+size_t RenderDevice::CalcSamplerHash(const rhi::RHISamplerCreateInfo& info)
 {
     using namespace zen::util;
 

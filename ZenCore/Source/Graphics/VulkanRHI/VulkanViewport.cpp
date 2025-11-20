@@ -14,15 +14,17 @@ namespace zen::rhi
 {
 RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
 {
-    RHIViewport* pViewport =
-        static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
-
-    new (pViewport)
-        VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
-
-    pViewport->Init();
+    RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
 
     return pViewport;
+    //     static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
+    //
+    // new (pViewport)
+    //     VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
+    //
+    // pViewport->Init();
+    //
+    // return pViewport;
 }
 
 // RHIViewport* VulkanRHI::CreateViewport(void* windowPtr,
@@ -59,12 +61,23 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
     }
 }
 
-VulkanViewport::VulkanViewport(VulkanRHI* RHI,
-                               void* windowPtr,
-                               uint32_t width,
-                               uint32_t height,
-                               bool enableVSync) :
-    RHIViewport(windowPtr, width, height, enableVSync), m_RHI(RHI), m_device(m_RHI->GetDevice())
+VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
+                                             uint32_t width,
+                                             uint32_t height,
+                                             bool enableVSync)
+{
+    VulkanViewport* pViewport =
+        static_cast<VulkanViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
+
+    new (pViewport) VulkanViewport(pWindow, width, height, enableVSync);
+
+    pViewport->Init();
+
+    return pViewport;
+}
+
+VulkanViewport::VulkanViewport(void* windowPtr, uint32_t width, uint32_t height, bool enableVSync) :
+    RHIViewport(windowPtr, width, height, enableVSync), m_device(GVulkanRHI->GetDevice())
 // m_windowPtr(windowPtr),
 // m_width(width),
 // m_height(height),
@@ -84,12 +97,12 @@ VulkanViewport::VulkanViewport(VulkanRHI* RHI,
 
 void VulkanViewport::Init()
 {
-    m_depthFormat = m_RHI->GetSupportedDepthFormat();
+    m_depthFormat = GVulkanRHI->GetSupportedDepthFormat();
     LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
     CreateSwapchain(nullptr);
     for (uint32_t i = 0; i < m_swapchain->GetNumSwapchainImages(); i++)
     {
-        auto* semaphore = m_RHI->GetDevice()->GetSemaphoreManager()->GetOrCreateSemaphore();
+        auto* semaphore = GVulkanRHI->GetDevice()->GetSemaphoreManager()->GetOrCreateSemaphore();
         const std::string debugName = "RenderComplete-" + std::to_string(i);
         semaphore->SetDebugName(debugName.c_str());
         m_renderingCompleteSemaphores[i] = semaphore;
@@ -101,13 +114,13 @@ void VulkanViewport::Destroy()
     DestroySwapchain(nullptr);
     for (auto& semaphore : m_renderingCompleteSemaphores)
     {
-        m_RHI->GetDevice()->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
+        m_device->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
     }
 
     // m_renderingCompleteSemaphores.clear();
     for (auto& kv : m_framebufferCache)
     {
-        m_RHI->DestroyFramebuffer(FramebufferHandle(kv.second));
+        GVulkanRHI->DestroyFramebuffer(FramebufferHandle(kv.second));
     }
 
     this->~VulkanViewport();
@@ -137,8 +150,8 @@ void VulkanViewport::IssueFrameEvent()
 {
     if (RHIOptions::GetInstance().WaitForFrameCompletion())
     {
-        m_RHI->GetDevice()->GetGfxQueue()->GetLastSubmitInfo(m_lastFrameCmdBuffer,
-                                                             &m_lastFenceSignaledCounter);
+        m_device->GetGfxQueue()->GetLastSubmitInfo(m_lastFrameCmdBuffer,
+                                                   &m_lastFenceSignaledCounter);
     }
 }
 
@@ -148,7 +161,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_depthStencilBackBuffer = nullptr;
 
     m_swapchain =
-        new VulkanSwapchain(m_RHI, m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
+        new VulkanSwapchain(GVulkanRHI, m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
     const VkImage* images    = m_swapchain->GetSwapchainImages();
     const uint32_t numImages = m_swapchain->GetNumSwapchainImages();
     // m_renderingCompleteSemaphores.resize(numImages);
@@ -160,7 +173,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
 
     const VkImageSubresourceRange range =
-        VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+        VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
     VkClearColorValue clearColor{0.1f, 0.1f, 0.1f, 1.0f};
     for (uint32_t i = 0; i < numImages; i++)
     {
@@ -172,31 +185,30 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
         cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
     }
-    TextureInfo colorTexInfo{};
+    RHITextureCreateInfo colorTexInfo{};
     colorTexInfo.width  = m_width;
     colorTexInfo.height = m_height;
     colorTexInfo.format = GetSwapchainFormat();
     colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
     colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
     colorTexInfo.type = TextureType::e2D;
-    m_colorBackBuffer = TO_VK_TEXTURE(m_RHI->CreateTexture(colorTexInfo));
+    m_colorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
 
-    TextureInfo depthStencilTexInfo{};
+    RHITextureCreateInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
     depthStencilTexInfo.height = m_height;
     depthStencilTexInfo.format = GetDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
     depthStencilTexInfo.type = TextureType::e2D;
-    m_depthStencilBackBuffer = TO_VK_TEXTURE(m_RHI->CreateTexture(depthStencilTexInfo));
+    m_depthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
     // add image barriers, transfer back buffer layout
     VulkanPipelineBarrier barrier;
-    barrier.AddImageBarrier(m_colorBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+    barrier.AddImageBarrier(m_colorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1));
-    barrier.AddImageBarrier(m_depthStencilBackBuffer->image, VK_IMAGE_LAYOUT_UNDEFINED,
+                            m_colorBackBuffer->GetVkSubresourceRange());
+    barrier.AddImageBarrier(m_depthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                            VulkanTexture::GetSubresourceRange(
-                                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1));
+                            m_depthStencilBackBuffer->GetVkSubresourceRange());
     barrier.Execute(cmdBuffer);
     cmdList->EndUpload();
 
@@ -205,7 +217,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 
 void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 {
-    m_RHI->GetDevice()->WaitForIdle();
+    m_device->WaitForIdle();
     if (m_swapchain != nullptr)
     {
         for (uint32_t i = 0; i < m_swapchain->GetNumSwapchainImages(); i++)
@@ -218,12 +230,12 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     }
     if (m_colorBackBuffer)
     {
-        m_RHI->DestroyTexture(TextureHandle(m_colorBackBuffer));
+        GVulkanRHI->DestroyTexture(m_colorBackBuffer);
         m_colorBackBuffer = nullptr;
     }
     if (m_depthStencilBackBuffer)
     {
-        m_RHI->DestroyTexture(TextureHandle(m_depthStencilBackBuffer));
+        GVulkanRHI->DestroyTexture(m_depthStencilBackBuffer);
         m_depthStencilBackBuffer = nullptr;
     }
 }
@@ -259,12 +271,12 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
     const VkImageLayout prevLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     {
         VulkanPipelineBarrier barrier;
-        barrier.AddImageBarrier(
-            m_colorBackBuffer->image, prevLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+        barrier.AddImageBarrier(m_colorBackBuffer->GetVkImage(), prevLayout,
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                m_colorBackBuffer->GetVkSubresourceRange());
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+            VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.Execute(cmdBuffer);
     }
     if (m_width != windowWidth || m_height != windowHeight)
@@ -288,7 +300,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
-        vkCmdBlitImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->image,
+        vkCmdBlitImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->GetVkImage(),
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
     }
@@ -312,18 +324,18 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
         region.dstSubresource.mipLevel       = 0;
-        vkCmdCopyImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->image,
+        vkCmdCopyImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->GetVkImage(),
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
     {
         VulkanPipelineBarrier barrier;
-        barrier.AddImageBarrier(
-            m_colorBackBuffer->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
-            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+        barrier.AddImageBarrier(m_colorBackBuffer->GetVkImage(),
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevLayout,
+                                m_colorBackBuffer->GetVkSubresourceRange());
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            VulkanTexture::GetSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
+            VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
         barrier.Execute(cmdBuffer);
     }
 }
@@ -394,7 +406,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     if (!RHIOptions::GetInstance().UseDynamicRendering())
     {
         // create new one
-        std::vector<TextureHandle> renderTargets;
+        std::vector<RHITexture*> renderTargets;
         renderTargets.push_back(GetColorBackBuffer());
         renderTargets.push_back(GetDepthStencilBackBuffer());
         FramebufferInfo fbInfo{};
@@ -413,7 +425,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
                 vkDestroyFramebuffer(m_device->GetVkHandle(), vkFramebuffer->GetVkHandle(),
                                      nullptr);
                 VulkanFramebuffer* newFramebuffer =
-                    new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+                    new VulkanFramebuffer(GVulkanRHI, renderPass, fbInfo);
                 m_framebufferCache[RenderPassHandle(renderPass)] = newFramebuffer;
             }
         }
@@ -428,7 +440,7 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
         !m_framebufferCache.contains(renderPassHandle))
     {
-        std::vector<TextureHandle> renderTargets;
+        std::vector<RHITexture*> renderTargets;
         renderTargets.push_back(GetColorBackBuffer());
         renderTargets.push_back(GetDepthStencilBackBuffer());
         FramebufferInfo fbInfo{};
@@ -437,7 +449,8 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
         fbInfo.numRenderTarget = 2;
         fbInfo.renderTargets   = renderTargets.data();
         // save to cache
-        m_framebufferCache[renderPassHandle] = new VulkanFramebuffer(m_RHI, renderPass, fbInfo);
+        m_framebufferCache[renderPassHandle] =
+            new VulkanFramebuffer(GVulkanRHI, renderPass, fbInfo);
     }
     return FramebufferHandle(m_framebufferCache[renderPassHandle]);
 }
@@ -451,8 +464,19 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle rend
         !m_framebufferCache.contains(renderPassHandle))
     {
         // save to cache
-        m_framebufferCache[renderPassHandle] = new VulkanFramebuffer(m_RHI, renderPass, *fbInfo);
+        m_framebufferCache[renderPassHandle] =
+            new VulkanFramebuffer(GVulkanRHI, renderPass, *fbInfo);
     }
     return FramebufferHandle(m_framebufferCache[renderPassHandle]);
+}
+
+RHITexture* VulkanViewport::GetColorBackBuffer()
+{
+    return m_colorBackBuffer;
+}
+
+RHITexture* VulkanViewport::GetDepthStencilBackBuffer()
+{
+    return m_depthStencilBackBuffer;
 }
 } // namespace zen::rhi

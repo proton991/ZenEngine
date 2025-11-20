@@ -17,7 +17,7 @@ void FRHICommandList::BindGraphicsPipeline(const PipelineHandle& pipeline)
     ALLOC_CMD(RHICommandBindGraphicsPipeline)(pipeline);
 }
 
-void FRHICommandList::BindVertexBuffer(const BufferHandle& buffer, uint64_t offset)
+void FRHICommandList::BindVertexBuffer(RHIBuffer* buffer, uint64_t offset)
 {
     ALLOC_CMD(RHICommandBindVertexBuffer)(buffer, offset);
 }

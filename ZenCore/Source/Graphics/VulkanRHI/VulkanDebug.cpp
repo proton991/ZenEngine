@@ -24,16 +24,16 @@ void VulkanDebug::SetPipelineDebugName(PipelineHandle pipelineHandle, const std:
                    "Failed to set debug object name");
 }
 
-void VulkanDebug::SetTextureDebugName(TextureHandle textureHandle, const std::string& debugName)
+void VulkanDebug::SetTextureDebugName(RHITexture* texture, const std::string& debugName)
 {
     VulkanRHI* vkRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureHandle);
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(texture);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_IMAGE;
-    info.objectHandle = reinterpret_cast<uint64_t>(vulkanTexture->image);
+    info.objectHandle = reinterpret_cast<uint64_t>(vulkanTexture->GetVkImage());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(vkRHI->GetDevice()->GetVkHandle(), &info),

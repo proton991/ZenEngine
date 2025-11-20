@@ -19,11 +19,10 @@ struct VulkanTexture;
 class VulkanViewport : public RHIViewport
 {
 public:
-    VulkanViewport(VulkanRHI* RHI,
-                   void* windowPtr,
-                   uint32_t width,
-                   uint32_t height,
-                   bool enableVSync);
+    static VulkanViewport* CreateObject(void* pWindow,
+                                        uint32_t width,
+                                        uint32_t height,
+                                        bool enableVSync);
 
     ~VulkanViewport() {}
 
@@ -53,10 +52,7 @@ public:
 
     bool Present(VulkanCommandBuffer* cmdBuffer);
 
-    TextureHandle GetColorBackBuffer() final
-    {
-        return TextureHandle(m_colorBackBuffer);
-    }
+    RHITexture* GetColorBackBuffer() final;
 
     TextureSubResourceRange GetColorBackBufferRange() final
     {
@@ -69,10 +65,7 @@ public:
         return range;
     }
 
-    TextureHandle GetDepthStencilBackBuffer() final
-    {
-        return TextureHandle(m_depthStencilBackBuffer);
-    }
+    RHITexture* GetDepthStencilBackBuffer() final;
 
     TextureSubResourceRange GetDepthStencilBackBufferRange() final
     {
@@ -94,11 +87,14 @@ public:
 
     void Resize(uint32_t width, uint32_t height) final;
 
+protected:
     void Init() override;
 
     void Destroy() override;
 
 private:
+    VulkanViewport(void* windowPtr, uint32_t width, uint32_t height, bool enableVSync);
+
     void CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
     void DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
     bool TryAcquireNextImage();
@@ -108,7 +104,7 @@ private:
                                     uint32_t windowWidth,
                                     uint32_t windowHeight);
 
-    VulkanRHI* m_RHI{nullptr};
+    // VulkanRHI* m_RHI{nullptr};
     VulkanDevice* m_device{nullptr};
     // void* m_windowPtr{nullptr};
     // uint32_t m_width{0};

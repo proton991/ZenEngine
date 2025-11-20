@@ -203,13 +203,13 @@ void GeometryVoxelizer::UpdatePassResources()
 
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedo->GetHandle());
+                                  m_voxelTextures.albedo);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 1, ShaderResourceType::eImage,
-                                  m_voxelTextures.normal->GetHandle());
+                                  m_voxelTextures.normal);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 2, ShaderResourceType::eImage,
-                                  m_voxelTextures.emissive->GetHandle());
+                                  m_voxelTextures.emissive);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 3, ShaderResourceType::eImage,
-                                  m_voxelTextures.staticFlag->GetHandle());
+                                  m_voxelTextures.staticFlag);
         // set-2 bindings: texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0, ShaderResourceType::eSamplerWithTexture,
                                          m_colorSampler, m_scene->GetSceneTextures())
@@ -224,7 +224,7 @@ void GeometryVoxelizer::UpdatePassResources()
     {
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
-                                  m_voxelTextures.albedoProxy->GetHandle());
+                                  m_voxelTextures.albedoProxy);
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, ShaderResourceType::eUniformBuffer,
             m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
