@@ -456,6 +456,20 @@ protected:
     explicit RHITexture(const RHITextureCreateInfo& createInfo) :
         RHIResource(ResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
     {
+        InitSubresourceRange();
+    }
+
+    RHITexture(const RHITexture* pBaseTexture, const RHITextureProxyCreateInfo& proxyInfo) :
+        RHIResource(ResourceType::eTexture),
+        m_pBaseTexture(pBaseTexture),
+        m_proxyInfo(proxyInfo),
+        m_isProxy(true)
+    {
+        InitSubresourceRange();
+    }
+
+    void InitSubresourceRange()
+    {
         if (FormatIsDepthOnly(m_baseInfo.format))
         {
             m_subResourceRange = TextureSubResourceRange::Depth();
@@ -475,13 +489,6 @@ protected:
         m_subResourceRange.layerCount = m_baseInfo.arrayLayers;
         m_subResourceRange.levelCount = m_baseInfo.mipmaps;
     }
-
-    RHITexture(const RHITexture* pBaseTexture, const RHITextureProxyCreateInfo& proxyInfo) :
-        RHIResource(ResourceType::eTexture),
-        m_pBaseTexture(pBaseTexture),
-        m_proxyInfo(proxyInfo),
-        m_isProxy(true)
-    {}
 
     const RHITexture* m_pBaseTexture{nullptr};
 
