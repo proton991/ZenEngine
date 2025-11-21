@@ -265,7 +265,7 @@ class RHITexture;
 class RHIViewport : public RHIResource
 {
 public:
-    static RHIViewport* Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync);
+    // static RHIViewport* Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync);
 
     // RHIViewport() : RHIResource(ResourceType::eViewport)
     // {
@@ -327,7 +327,7 @@ struct RHIBufferCreateInfo
 class RHIBuffer : public RHIResource
 {
 public:
-    static RHIBuffer* Create(const RHIBufferCreateInfo& createInfo);
+    // static RHIBuffer* Create(const RHIBufferCreateInfo& createInfo);
 
     ~RHIBuffer() {}
 
@@ -406,8 +406,7 @@ inline uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
 class RHITexture : public RHIResource
 {
 public:
-    // todo: Wrap in DynamicRHI
-    static RHITexture* Create(const RHITextureCreateInfo& createInfo);
+    // static RHITexture* Create(const RHITextureCreateInfo& createInfo);
 
     RHITexture* CreateProxy(const RHITextureProxyCreateInfo& proxyInfo);
 
@@ -523,7 +522,8 @@ struct RHISamplerCreateInfo
 class RHISampler : public RHIResource
 {
 public:
-    static RHISampler* Create(const RHISamplerCreateInfo& createInfo);
+    // static RHISampler* Create(const RHISamplerCreateInfo& createInfo);
+    ~RHISampler() {}
 
 protected:
     explicit RHISampler(const RHISamplerCreateInfo& createInfo) :
@@ -531,5 +531,17 @@ protected:
     {}
 
     RHISamplerCreateInfo m_baseInfo{};
+};
+
+class RHIResourceFactory
+{
+public:
+    virtual ~RHIResourceFactory() = default;
+
+    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
+
+    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
+
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
 };
 } // namespace zen::rhi

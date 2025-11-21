@@ -37,7 +37,7 @@ ShaderProgram::ShaderProgram(RenderDevice* renderDevice, std::string name) :
 
 ShaderProgram::~ShaderProgram()
 {
-    m_renderDevice->GetRHI()->DestroyShader(m_shader);
+    GDynamicRHI->DestroyShader(m_shader);
 }
 
 void ShaderProgram::UpdateUniformBuffer(const std::string& name,
@@ -62,7 +62,7 @@ void ShaderProgram::Init()
     rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
     shaderGroupInfo.name = m_name;
 
-    m_shader = m_renderDevice->GetRHI()->CreateShader(shaderGroupInfo);
+    m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
     m_SRDs   = std::move(shaderGroupInfo.SRDs);
 
     for (auto& setSRD : m_SRDs)
@@ -124,7 +124,7 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
         }
     }
 
-    m_shader = m_renderDevice->GetRHI()->CreateShader(shaderGroupInfo);
+    m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
     m_SRDs   = std::move(shaderGroupInfo.SRDs);
 
     for (auto& setSRD : m_SRDs)

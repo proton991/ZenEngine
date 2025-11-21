@@ -52,7 +52,11 @@ class VulkanRHI : public DynamicRHI
 {
 public:
     VulkanRHI();
-    ~VulkanRHI() override = default;
+
+    ~VulkanRHI() override
+    {
+        delete m_resourceFactory;
+    }
 
     RHICommandListContext* CreateCmdListContext() override;
 
@@ -89,10 +93,10 @@ public:
 
     VkDevice GetVkDevice() const;
 
-    // RHIViewport* CreateViewport(void* windowPtr,
-    //                             uint32_t width,
-    //                             uint32_t height,
-    //                             bool enableVSync) final;
+    RHIViewport* CreateViewport(void* pWindow,
+                                uint32_t width,
+                                uint32_t height,
+                                bool enableVSync) final;
 
     void DestroyViewport(RHIViewport* viewport) final;
 
@@ -135,6 +139,7 @@ public:
     void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 
     // SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) final;
+    RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 
     void DestroySampler(RHISampler* sampler) final;
 
@@ -144,6 +149,8 @@ public:
     //                                  const TextureProxyInfo& textureProxyInfo) final;
     //
     // void DestroyTexture(TextureHandle textureHandle) final;
+
+    RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
     void DestroyTexture(RHITexture* texture) final;
 
@@ -161,6 +168,9 @@ public:
     //
     // void DestroyBuffer(BufferHandle bufferHandle) final;
     //
+
+    RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
+
     void DestroyBuffer(RHIBuffer* pBuffer) final;
     //
     // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
@@ -217,7 +227,7 @@ private:
     VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
 
     // allocator for memory
-    VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
+    // VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
     // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
@@ -226,6 +236,16 @@ private:
     // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
     // primarily applied outside the RenderGraph.
     HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
+};
+
+class VulkanResourceFactory : public RHIResourceFactory
+{
+public:
+    RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
+
+    RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
+
+    RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 };
 
 extern VulkanMemoryAllocator* GVkMemAllocator;

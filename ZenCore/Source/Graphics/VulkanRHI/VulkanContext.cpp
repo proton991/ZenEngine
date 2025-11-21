@@ -234,8 +234,8 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
         LOG_ERROR_AND_THROW("Failed to initialize volk!");
     }
     m_resourceAllocator.Init();
-    m_vkMemAllocator = new VulkanMemoryAllocator();
-    GVkMemAllocator  = new VulkanMemoryAllocator();
+    // m_vkMemAllocator = new VulkanMemoryAllocator();
+    GVkMemAllocator = new VulkanMemoryAllocator();
 
     GVulkanRHI = this;
 }
@@ -270,6 +270,8 @@ VulkanCommandListContext::~VulkanCommandListContext()
 
 void VulkanRHI::Init()
 {
+    m_resourceFactory = new VulkanResourceFactory();
+
     CreateInstance();
     SelectGPU();
     m_device->Init();
@@ -280,8 +282,8 @@ void VulkanRHI::Init()
     m_gpuInfo.storageBufferAlignment =
         m_device->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
 
-    m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
-                           m_device->GetVkHandle());
+    // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
+    //                        m_device->GetVkHandle());
 
     GVkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(), m_device->GetVkHandle());
 
@@ -290,7 +292,7 @@ void VulkanRHI::Init()
 
 void VulkanRHI::Destroy()
 {
-    delete m_vkMemAllocator;
+    // delete m_vkMemAllocator;
 
     delete GVkMemAllocator;
 

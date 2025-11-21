@@ -6,7 +6,7 @@ namespace zen::rhi
 class RHIDebug
 {
 public:
-    static RHIDebug* Create(DynamicRHI* RHI);
+    static RHIDebug* Create();
 
     virtual ~RHIDebug() = default;
 
@@ -22,8 +22,9 @@ public:
                                            const std::string& debugName) = 0;
 
 protected:
-    explicit RHIDebug(DynamicRHI* RHI) : m_RHI(RHI) {}
+    // explicit RHIDebug(DynamicRHI* RHI) : m_RHI(RHI) {}
+    RHIDebug() {}
 
-    DynamicRHI* m_RHI{nullptr};
+    // DynamicRHI* m_RHI{nullptr};
 };
 } // namespace zen::rhi

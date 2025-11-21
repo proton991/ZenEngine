@@ -47,7 +47,7 @@ private:
 
     RenderScene* m_scene{nullptr};
 
-    rhi::DynamicRHI* m_RHI{nullptr};
+    // rhi::DynamicRHI* m_RHI{nullptr};
 
     rhi::RHIViewport* m_viewport{nullptr};
 

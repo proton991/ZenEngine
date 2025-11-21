@@ -5,10 +5,10 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 
+zen::rhi::DynamicRHI* GDynamicRHI = nullptr;
+
 namespace zen::rhi
 {
-DynamicRHI* GDynamicRHI = nullptr;
-
 DynamicRHI* DynamicRHI::Create(GraphicsAPIType type)
 {
     DynamicRHI* RHI = nullptr;
@@ -22,17 +22,19 @@ DynamicRHI* DynamicRHI::Create(GraphicsAPIType type)
         LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
     }
 
+    RHI->Init();
+
     GDynamicRHI = RHI;
 
     return RHI;
 }
 
-RHIDebug* RHIDebug::Create(DynamicRHI* RHI)
+RHIDebug* RHIDebug::Create()
 {
-    VERIFY_EXPR(RHI != nullptr);
-    if (RHI != nullptr && RHI->GetAPIType() == GraphicsAPIType::eVulkan)
+    // VERIFY_EXPR(RHI != nullptr);
+    if (GDynamicRHI != nullptr && GDynamicRHI->GetAPIType() == GraphicsAPIType::eVulkan)
     {
-        return new VulkanDebug(RHI);
+        return new VulkanDebug();
     }
     LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
 

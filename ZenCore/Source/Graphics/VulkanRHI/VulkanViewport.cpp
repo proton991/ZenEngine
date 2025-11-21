@@ -12,29 +12,30 @@
 
 namespace zen::rhi
 {
-RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
+// RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
+// {
+//     RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
+//
+//     return pViewport;
+//     //     static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
+//     //
+//     // new (pViewport)
+//     //     VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
+//     //
+//     // pViewport->Init();
+//     //
+//     // return pViewport;
+// }
+
+RHIViewport* VulkanRHI::CreateViewport(void* pWindow,
+                                       uint32_t width,
+                                       uint32_t height,
+                                       bool enableVSync)
 {
     RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
 
     return pViewport;
-    //     static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
-    //
-    // new (pViewport)
-    //     VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
-    //
-    // pViewport->Init();
-    //
-    // return pViewport;
 }
-
-// RHIViewport* VulkanRHI::CreateViewport(void* windowPtr,
-//                                        uint32_t width,
-//                                        uint32_t height,
-//                                        bool enableVSync)
-// {
-//     RHIViewport* viewport = new VulkanViewport(this, windowPtr, width, height, enableVSync);
-//     return viewport;
-// }
 
 void VulkanRHI::DestroyViewport(RHIViewport* viewport)
 {

@@ -39,17 +39,30 @@ namespace zen::rhi
 //     return SamplerHandle(sampler);
 // }
 
-void VulkanRHI::DestroySampler(RHISampler* sampler)
-{
-    sampler->ReleaseReference();
-}
-
-RHISampler* RHISampler::Create(const RHISamplerCreateInfo& createInfo)
+RHISampler* VulkanResourceFactory::CreateSampler(const RHISamplerCreateInfo& createInfo)
 {
     RHISampler* pSampler = VulkanSampler::CreateObject(createInfo);
 
     return pSampler;
 }
+
+RHISampler* VulkanRHI::CreateSampler(const RHISamplerCreateInfo& createInfo)
+{
+    return GVulkanRHI->GetResourceFactory()->CreateSampler(createInfo);
+}
+
+void VulkanRHI::DestroySampler(RHISampler* sampler)
+{
+    sampler->ReleaseReference();
+}
+
+// RHISampler* RHISampler::Create(const RHISamplerCreateInfo& createInfo)
+// {
+//     // RHISampler* pSampler = VulkanSampler::CreateObject(createInfo);
+//     //
+//     // return pSampler;
+//     return GVulkanRHI->GetResourceFactory()->CreateSampler(createInfo);
+// }
 
 VulkanSampler* VulkanSampler::CreateObject(const RHISamplerCreateInfo& createInfo)
 {
@@ -95,10 +108,30 @@ void VulkanSampler::Destroy()
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
+RHITexture* VulkanResourceFactory::CreateTexture(const RHITextureCreateInfo& createInfo)
+{
+    RHITexture* pTexture = VulkanTexture::CreateObject(createInfo);
+
+    return pTexture;
+}
+
+RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
+{
+    return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
+}
+
 void VulkanRHI::DestroyTexture(RHITexture* texture)
 {
     texture->ReleaseReference();
 }
+
+// RHITexture* RHITexture::Create(const RHITextureCreateInfo& createInfo)
+// {
+//     // RHITexture* pTexture = VulkanTexture::CreateObject(createInfo);
+//     //
+//     // return pTexture;
+//     return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
+// }
 
 void VulkanTexture::CreateImageViewHelper()
 {
@@ -307,14 +340,6 @@ void VulkanTexture::Destroy()
 //     m_imageLayoutCache[texture->image] = VK_IMAGE_LAYOUT_UNDEFINED;
 //     return TextureHandle(texture);
 // }
-
-RHITexture* RHITexture::Create(const RHITextureCreateInfo& createInfo)
-{
-    // todo: later call through with RHIFactory
-    RHITexture* pTexture = VulkanTexture::CreateObject(createInfo);
-
-    return pTexture;
-}
 
 RHITexture* RHITexture::CreateProxy(const RHITextureProxyCreateInfo& proxyInfo)
 {

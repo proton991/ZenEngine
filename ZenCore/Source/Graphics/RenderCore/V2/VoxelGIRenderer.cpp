@@ -13,7 +13,7 @@ namespace zen::rc
 VoxelGIRenderer::VoxelGIRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {
-    m_RHI       = m_renderDevice->GetRHI();
+    // m_RHI       = m_renderDevice->GetRHI();
     m_voxelizer = m_renderDevice->GetRendererServer()->RequestVoxelizer();
 }
 

@@ -11,7 +11,7 @@ public:
     TextureManager(RenderDevice* renderDevice, TextureStagingManager* stagingMgr) :
         m_renderDevice(renderDevice), m_stagingMgr(stagingMgr)
     {
-        m_RHI = m_renderDevice->GetRHI();
+        // m_RHI = m_renderDevice->GetRHI();
     }
 
     void Destroy();
@@ -49,7 +49,7 @@ private:
     //                        uint32_t dataSize,
     //                        const uint8_t* pData);
 
-    rhi::DynamicRHI* m_RHI{nullptr};
+    // rhi::DynamicRHI* m_RHI{nullptr};
 
     RenderDevice* m_renderDevice{nullptr};
 

@@ -31,10 +31,10 @@ public:
 
     virtual DataFormat GetSupportedDepthFormat() = 0;
 
-    // virtual RHIViewport* CreateViewport(void* windowPtr,
-    //                                     uint32_t width,
-    //                                     uint32_t height,
-    //                                     bool enableVSync) = 0;
+    virtual RHIViewport* CreateViewport(void* pWindow,
+                                        uint32_t width,
+                                        uint32_t height,
+                                        bool enableVSync) = 0;
 
     virtual void DestroyViewport(RHIViewport* viewport) = 0;
 
@@ -71,11 +71,17 @@ public:
 
     virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 
-    // virtual SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) = 0;
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+    // {
+    //     return m_resourceFactory->CreateSampler(samplerInfo);
+    // }
 
     virtual void DestroySampler(RHISampler* sampler) = 0;
 
-    // virtual TextureHandle CreateTexture(const TextureInfo& textureInfo) = 0;
+    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
+    // {
+    //     return m_resourceFactory->CreateTexture(textureInfo);
+    // }
     //
     // virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
     //                                          const TextureProxyInfo& textureProxyInfo) = 0;
@@ -92,6 +98,9 @@ public:
     //                                   BitField<BufferUsageFlagBits> usageFlags,
     //                                   BufferAllocateType allocateType) = 0;
     //
+
+    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
+
     virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
     //
     // virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
@@ -116,8 +125,16 @@ public:
     virtual void WaitDeviceIdle() = 0;
 
     virtual const GPUInfo& QueryGPUInfo() const = 0;
+
+    RHIResourceFactory* GetResourceFactory() const
+    {
+        return m_resourceFactory;
+    }
+
+protected:
+    RHIResourceFactory* m_resourceFactory{nullptr};
 };
 
 // Global instance pointer
-extern DynamicRHI* GDynamicRHI;
 } // namespace zen::rhi
+extern zen::rhi::DynamicRHI* GDynamicRHI;

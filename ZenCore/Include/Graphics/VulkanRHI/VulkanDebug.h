@@ -6,7 +6,7 @@ namespace zen::rhi
 class VulkanDebug : public RHIDebug
 {
 public:
-    explicit VulkanDebug(DynamicRHI* RHI);
+    explicit VulkanDebug();
 
     ~VulkanDebug() final = default;
 

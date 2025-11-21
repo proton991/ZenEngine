@@ -7,17 +7,31 @@
 
 namespace zen::rhi
 {
+
+RHIBuffer* VulkanRHI::CreateBuffer(const RHIBufferCreateInfo& createInfo)
+{
+    return GVulkanRHI->GetResourceFactory()->CreateBuffer(createInfo);
+}
+
 void VulkanRHI::DestroyBuffer(RHIBuffer* pBuffer)
 {
     pBuffer->ReleaseReference();
 }
-// todo: refactor all rhi::BufferHandle related functions, use RHIBuffer* instead of BufferHandle
-RHIBuffer* RHIBuffer::Create(const RHIBufferCreateInfo& createInfo)
+
+RHIBuffer* VulkanResourceFactory::CreateBuffer(const RHIBufferCreateInfo& createInfo)
 {
     RHIBuffer* pBuffer = VulkanBuffer::CreateObject(createInfo);
 
     return pBuffer;
 }
+
+// RHIBuffer* RHIBuffer::Create(const RHIBufferCreateInfo& createInfo)
+// {
+//     // RHIBuffer* pBuffer = VulkanBuffer::CreateObject(createInfo);
+//     //
+//     // return pBuffer;
+//     return GVulkanRHI->GetResourceFactory()->CreateBuffer(createInfo);
+// }
 
 VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 {

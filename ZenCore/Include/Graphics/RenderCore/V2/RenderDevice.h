@@ -305,7 +305,7 @@ private:
     uint32_t BUFFER_SIZE;
     uint64_t POOL_SIZE;
     RenderDevice* m_renderDevice{nullptr};
-    rhi::DynamicRHI* m_RHI{nullptr};
+    // rhi::DynamicRHI* GDynamicRHI{nullptr};
 
     struct StagingBuffer
     {
@@ -339,13 +339,7 @@ struct RenderDeviceFeatures
 class RenderDevice
 {
 public:
-    explicit RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames) :
-        m_APIType(APIType), m_numFrames(numFrames)
-    {
-        m_RHI = rhi::DynamicRHI::Create(m_APIType);
-        m_RHI->Init();
-        m_RHIDebug = rhi::RHIDebug::Create(m_RHI);
-    }
+    explicit RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames);
 
     void Init(rhi::RHIViewport* mainViewport);
 
@@ -452,10 +446,10 @@ public:
 
     // rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::RHITexture* handle);
 
-    auto* GetRHI() const
-    {
-        return m_RHI;
-    }
+    // auto* GetRHI() const
+    // {
+    //     return GDynamicRHI;
+    // }
 
     auto* GetRHIDebug() const
     {
@@ -492,12 +486,12 @@ public:
 
     void WaitForIdle() const
     {
-        m_RHI->WaitDeviceIdle();
+        GDynamicRHI->WaitDeviceIdle();
     }
 
     const rhi::GPUInfo& GetGPUInfo() const
     {
-        return m_RHI->QueryGPUInfo();
+        return GDynamicRHI->QueryGPUInfo();
     }
 
 private:
@@ -552,7 +546,7 @@ private:
     uint64_t m_framesCounter{0};
     std::vector<RenderFrame> m_frames;
 
-    rhi::DynamicRHI* m_RHI{nullptr};
+    // rhi::DynamicRHI* GDynamicRHI{nullptr};
     rhi::RHIDebug* m_RHIDebug{nullptr};
 
 

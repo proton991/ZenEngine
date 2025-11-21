@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
@@ -117,7 +118,7 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture*
 GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
-    DynamicRHI* RHI = m_renderDevice->GetRHI();
+    // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
 
     std::vector<RHITexture*> rtHandles;
     rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
@@ -234,7 +235,7 @@ GraphicsPass GraphicsPassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
-        gfxPass.descriptorSets[setIndex] = RHI->CreateDescriptorSet(shader, setIndex);
+        gfxPass.descriptorSets[setIndex] = GDynamicRHI->CreateDescriptorSet(shader, setIndex);
     }
 
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
@@ -242,7 +243,7 @@ GraphicsPass GraphicsPassBuilder::Build()
     {
         const auto setIndex  = kv.first;
         const auto& bindings = kv.second;
-        RHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
+        GDynamicRHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
     }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
@@ -253,13 +254,13 @@ GraphicsPass GraphicsPassBuilder::Build()
 
 void GraphicsPassResourceUpdater::Update()
 {
-    rhi::DynamicRHI* RHI = m_renderDevice->GetRHI();
+    // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
         const auto setIndex               = kv.first;
         const auto& bindings              = kv.second;
         rhi::DescriptorSetHandle dsHandle = m_gfxPass->descriptorSets[setIndex];
-        RHI->UpdateDescriptorSet(dsHandle, bindings);
+        GDynamicRHI->UpdateDescriptorSet(dsHandle, bindings);
         // set pass tracker handle values here
         for (auto& srb : bindings)
         {
@@ -320,7 +321,7 @@ ComputePass ComputePassBuilder::Build()
 {
     using namespace zen::rhi;
 
-    DynamicRHI* RHI = m_renderDevice->GetRHI();
+    // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     ComputePass computePass;
 
     ShaderProgram* shaderProgram =
@@ -387,7 +388,7 @@ ComputePass ComputePassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
-        computePass.descriptorSets[setIndex] = RHI->CreateDescriptorSet(shader, setIndex);
+        computePass.descriptorSets[setIndex] = GDynamicRHI->CreateDescriptorSet(shader, setIndex);
     }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(computePass.pipeline, m_tag + "_Pipeline");
@@ -399,13 +400,13 @@ ComputePass ComputePassBuilder::Build()
 
 void ComputePassResourceUpdater::Update()
 {
-    rhi::DynamicRHI* RHI = m_renderDevice->GetRHI();
+    // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
         const auto setIndex               = kv.first;
         const auto& bindings              = kv.second;
         rhi::DescriptorSetHandle dsHandle = m_computePass->descriptorSets[setIndex];
-        RHI->UpdateDescriptorSet(dsHandle, bindings);
+        GDynamicRHI->UpdateDescriptorSet(dsHandle, bindings);
         // set pass tracker handle values here
         rhi::Handle handle;
         for (auto& srb : bindings)
@@ -476,7 +477,7 @@ rhi::RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
     Entry newEntry{};
     newEntry.size      = requiredSize;
     newEntry.usedFrame = m_renderDevice->GetFramesCounter();
-    newEntry.buffer    = rhi::RHIBuffer::Create(createInfo);
+    newEntry.buffer    = GDynamicRHI->CreateBuffer(createInfo);
 
     m_usedBuffers.push_back(newEntry);
 
@@ -521,7 +522,7 @@ void TextureStagingManager::Destroy()
 {
     for (rhi::RHIBuffer* buffer : m_allocatedBuffers)
     {
-        m_renderDevice->GetRHI()->DestroyBuffer(buffer);
+        GDynamicRHI->DestroyBuffer(buffer);
     }
     LOGI("Texture Staging Memory Used: {} bytes.", m_usedMemory);
 }
@@ -532,7 +533,7 @@ BufferStagingManager::BufferStagingManager(RenderDevice* renderDevice,
     BUFFER_SIZE(blockSize),
     POOL_SIZE(poolSize),
     m_renderDevice(renderDevice),
-    m_RHI(renderDevice->GetRHI()),
+    // GDynamicRHI(renderDevice->GetRHI()),
     m_currentBlockIndex(0)
 {
     if (POOL_SIZE < BUFFER_SIZE * 4)
@@ -553,7 +554,7 @@ void BufferStagingManager::Destroy()
 {
     for (auto& buffer : m_bufferBlocks)
     {
-        m_RHI->DestroyBuffer(buffer.buffer);
+        GDynamicRHI->DestroyBuffer(buffer.buffer);
     }
 }
 
@@ -565,7 +566,7 @@ void BufferStagingManager::InsertNewBlock()
     createInfo.usageFlags.SetFlag(rhi::BufferUsageFlagBits::eTransferSrcBuffer);
 
     StagingBuffer buffer{};
-    buffer.buffer       = rhi::RHIBuffer::Create(createInfo);
+    buffer.buffer       = GDynamicRHI->CreateBuffer(createInfo);
     buffer.usedFrame    = 0;
     buffer.occupiedSize = 0;
     m_bufferBlocks.insert(m_bufferBlocks.begin() + m_currentBlockIndex, buffer);
@@ -693,6 +694,14 @@ void BufferStagingManager::PerformAction(StagingFlushAction action)
     }
 }
 
+RenderDevice::RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames) :
+    m_APIType(APIType), m_numFrames(numFrames)
+{
+    rhi::DynamicRHI::Create(m_APIType);
+    m_RHIDebug = rhi::RHIDebug::Create();
+}
+
+
 void RenderDevice::Init(rhi::RHIViewport* mainViewport)
 {
     m_bufferStagingMgr =
@@ -704,7 +713,7 @@ void RenderDevice::Init(rhi::RHIViewport* mainViewport)
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
-        frame.cmdListContext = m_RHI->CreateCmdListContext();
+        frame.cmdListContext = GDynamicRHI->CreateCmdListContext();
         frame.drawCmdList    = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
         frame.uploadCmdList  = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
         m_frames.emplace_back(frame);
@@ -723,27 +732,27 @@ void RenderDevice::Destroy()
 {
     for (auto* viewport : m_viewports)
     {
-        m_RHI->DestroyViewport(viewport);
+        GDynamicRHI->DestroyViewport(viewport);
         // delete viewport;
     }
     for (auto& kv : m_renderPassCache)
     {
-        m_RHI->DestroyRenderPass(kv.second);
+        GDynamicRHI->DestroyRenderPass(kv.second);
     }
     for (auto& kv : m_pipelineCache)
     {
-        m_RHI->DestroyPipeline(kv.second);
+        GDynamicRHI->DestroyPipeline(kv.second);
     }
     for (auto& kv : m_samplerCache)
     {
-        m_RHI->DestroySampler(kv.second);
+        GDynamicRHI->DestroySampler(kv.second);
     }
 
     for (auto& rp : m_gfxPasses)
     {
         for (const auto& ds : rp.descriptorSets)
         {
-            m_RHI->DestroyDescriptorSet(ds);
+            GDynamicRHI->DestroyDescriptorSet(ds);
         }
     }
 
@@ -751,13 +760,13 @@ void RenderDevice::Destroy()
     {
         for (const auto& ds : rp.descriptorSets)
         {
-            m_RHI->DestroyDescriptorSet(ds);
+            GDynamicRHI->DestroyDescriptorSet(ds);
         }
     }
 
     for (auto& buffer : m_buffers)
     {
-        m_RHI->DestroyBuffer(buffer);
+        GDynamicRHI->DestroyBuffer(buffer);
     }
 
     m_deletionQueue.Flush();
@@ -787,38 +796,38 @@ void RenderDevice::Destroy()
 
     delete m_RHIDebug;
 
-    m_RHI->Destroy();
-    delete m_RHI;
+    GDynamicRHI->Destroy();
+    delete GDynamicRHI;
 }
 
 void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present)
 {
-    m_RHI->BeginDrawingViewport(viewport);
+    GDynamicRHI->BeginDrawingViewport(viewport);
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
     EndFrame();
-    m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
 }
 
 void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport,
                                 const std::vector<RenderGraph*>& rdgs,
                                 bool present)
 {
-    m_RHI->BeginDrawingViewport(viewport);
+    GDynamicRHI->BeginDrawingViewport(viewport);
     for (auto* rdg : rdgs)
     {
         rdg->Execute(m_frames[m_currentFrame].drawCmdList);
     }
     EndFrame();
-    m_RHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
 }
 
 void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg)
 {
-    rhi::RHICommandList* cmdList = m_RHI->GetImmediateCommandList();
+    rhi::RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
     cmdList->BeginRender();
     rdg->Execute(cmdList);
     cmdList->EndRender();
-    m_RHI->WaitForCommandList(cmdList);
+    GDynamicRHI->WaitForCommandList(cmdList);
 }
 
 rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
@@ -845,8 +854,8 @@ rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texForm
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* textureRD = rhi::RHITexture::Create(texInfo);
-    // rhi::RHITexture* handle    = m_RHI->CreateTexture(texInfo);
+    rhi::RHITexture* textureRD = GDynamicRHI->CreateTexture(texInfo);
+    // rhi::RHITexture* handle    = GDynamicRHI->CreateTexture(texInfo);
     // textureRD->Init(this, handle);
 
     // m_textureMap[handle] = textureRD;
@@ -878,7 +887,7 @@ rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& 
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
+    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
@@ -908,7 +917,7 @@ rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texForm
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
+    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
@@ -936,7 +945,7 @@ rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texForm
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
+    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
@@ -964,7 +973,7 @@ rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat
                                     rhi::TextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = rhi::RHITexture::Create(texInfo);
+    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
@@ -1041,7 +1050,7 @@ rhi::RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* vertexBuffer = rhi::RHIBuffer::Create(createInfo);
+    rhi::RHIBuffer* vertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
     UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
     m_buffers.push_back(vertexBuffer);
     return vertexBuffer;
@@ -1059,7 +1068,7 @@ rhi::RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* indexBuffer = rhi::RHIBuffer::Create(createInfo);
+    rhi::RHIBuffer* indexBuffer = GDynamicRHI->CreateBuffer(createInfo);
     UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
     m_buffers.push_back(indexBuffer);
     return indexBuffer;
@@ -1079,7 +1088,7 @@ rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
 
 
-    rhi::RHIBuffer* uniformBuffer = rhi::RHIBuffer::Create(createInfo);
+    rhi::RHIBuffer* uniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
     if (pData != nullptr)
     {
         UpdateBufferInternal(uniformBuffer, 0, paddedSize, pData);
@@ -1101,7 +1110,7 @@ rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* storageBuffer = rhi::RHIBuffer::Create(createInfo);
+    rhi::RHIBuffer* storageBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
@@ -1125,7 +1134,7 @@ rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* indirectBuffer = rhi::RHIBuffer::Create(createInfo);
+    rhi::RHIBuffer* indirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
@@ -1137,14 +1146,14 @@ rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint
 
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
 {
-    auto minUboAlignment = m_RHI->QueryGPUInfo().uniformBufferAlignment;
+    auto minUboAlignment = GDynamicRHI->QueryGPUInfo().uniformBufferAlignment;
     size_t alignedSize   = (originalSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
     return alignedSize;
 }
 
 size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
 {
-    auto minAlignment  = m_RHI->QueryGPUInfo().storageBufferAlignment;
+    auto minAlignment  = GDynamicRHI->QueryGPUInfo().storageBufferAlignment;
     size_t alignedSize = (originalSize + minAlignment - 1) & ~(minAlignment - 1);
     return alignedSize;
 }
@@ -1159,7 +1168,7 @@ void RenderDevice::UpdateBuffer(rhi::RHIBuffer* buffer,
 
 void RenderDevice::DestroyBuffer(rhi::RHIBuffer* bufferHandle)
 {
-    m_RHI->DestroyBuffer(bufferHandle);
+    GDynamicRHI->DestroyBuffer(bufferHandle);
 }
 
 rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassLayout& layout)
@@ -1168,7 +1177,7 @@ rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassL
     if (!m_renderPassCache.contains(hash))
     {
         // create new one
-        m_renderPassCache[hash] = m_RHI->CreateRenderPass(layout);
+        m_renderPassCache[hash] = GDynamicRHI->CreateRenderPass(layout);
     }
     return m_renderPassCache[hash];
 }
@@ -1183,7 +1192,7 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
-        m_pipelineCache[hash] = m_RHI->CreateGfxPipeline(shader, PSO, renderPass, 0);
+        m_pipelineCache[hash] = GDynamicRHI->CreateGfxPipeline(shader, PSO, renderPass, 0);
     }
     return m_pipelineCache[hash];
 }
@@ -1198,7 +1207,7 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
-        m_pipelineCache[hash] = m_RHI->CreateGfxPipeline(shader, PSO, renderPassLayout, 0);
+        m_pipelineCache[hash] = GDynamicRHI->CreateGfxPipeline(shader, PSO, renderPassLayout, 0);
     }
     return m_pipelineCache[hash];
 }
@@ -1208,7 +1217,7 @@ rhi::PipelineHandle RenderDevice::GetOrCreateComputePipeline(const rhi::ShaderHa
     auto hash = CalcComputePipelineHash(shader);
     if (!m_pipelineCache.contains(hash))
     {
-        m_pipelineCache[hash] = m_RHI->CreateComputePipeline(shader);
+        m_pipelineCache[hash] = GDynamicRHI->CreateComputePipeline(shader);
     }
     return m_pipelineCache[hash];
 }
@@ -1218,8 +1227,8 @@ rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                                uint32_t height,
                                                bool enableVSync)
 {
-    // auto* viewport = m_RHI->CreateViewport(pWindow, width, height, enableVSync);
-    auto* viewport = rhi::RHIViewport::Create(pWindow, width, height, enableVSync);
+    // auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
+    auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
     m_viewports.push_back(viewport);
     return viewport;
 }
@@ -1235,14 +1244,14 @@ void RenderDevice::DestroyViewport(rhi::RHIViewport* viewport)
             break;
         }
     }
-    m_RHI->DestroyViewport(viewport);
+    GDynamicRHI->DestroyViewport(viewport);
 }
 
 void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height)
 {
     if (viewport != nullptr && (viewport->GetWidth() != width || viewport->GetHeight() != height))
     {
-        m_RHI->SubmitAllGPUCommands();
+        GDynamicRHI->SubmitAllGPUCommands();
         viewport->Resize(width, height);
         BeginFrame();
     }
@@ -1278,7 +1287,7 @@ rhi::RHISampler* RenderDevice::CreateSampler(const rhi::RHISamplerCreateInfo& sa
     const size_t samplerHash = CalcSamplerHash(samplerInfo);
     if (!m_samplerCache.contains(samplerHash))
     {
-        m_samplerCache[samplerHash] = rhi::RHISampler::Create(samplerInfo);
+        m_samplerCache[samplerHash] = GDynamicRHI->CreateSampler(samplerInfo);
     }
 
     return m_samplerCache[samplerHash];
@@ -1286,7 +1295,7 @@ rhi::RHISampler* RenderDevice::CreateSampler(const rhi::RHISamplerCreateInfo& sa
 
 // rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::RHITexture* handle)
 // {
-//     return m_RHI->GetTextureSubResourceRange(handle);
+//     return GDynamicRHI->GetTextureSubResourceRange(handle);
 // }
 
 rhi::RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
@@ -1460,8 +1469,8 @@ void RenderDevice::WaitForPreviousFrames()
     {
         if (m_frames[i].cmdSubmitted)
         {
-            m_RHI->WaitForCommandList(m_frames[i].uploadCmdList);
-            m_RHI->WaitForCommandList(m_frames[i].drawCmdList);
+            GDynamicRHI->WaitForCommandList(m_frames[i].uploadCmdList);
+            GDynamicRHI->WaitForCommandList(m_frames[i].drawCmdList);
             m_frames[i].cmdSubmitted = false;
         }
     }
