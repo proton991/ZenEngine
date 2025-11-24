@@ -27,7 +27,7 @@ class GraphicsPassBuilder
 public:
     explicit GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
 
-    GraphicsPassBuilder& AddShaderStage(rhi::ShaderStage stage, std::string path)
+    GraphicsPassBuilder& AddShaderStage(rhi::RHIShaderStage stage, std::string path)
     {
         m_shaderStages[stage] = std::move(path);
         return *this;
@@ -127,7 +127,7 @@ private:
     rhi::RHIViewport* m_viewport{nullptr};
     std::string m_tag;
     GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eRuntime};
-    HashMap<rhi::ShaderStage, std::string> m_shaderStages;
+    HashMap<rhi::RHIShaderStage, std::string> m_shaderStages;
     std::string m_shaderProgramName;
     rhi::GfxPipelineStates m_PSO{};
     rhi::RenderPassLayout m_rpLayout{};
@@ -413,17 +413,17 @@ public:
 
     rhi::PipelineHandle GetOrCreateGfxPipeline(
         rhi::GfxPipelineStates& PSO,
-        const rhi::ShaderHandle& shader,
+        rhi::RHIShader* shader,
         const rhi::RenderPassHandle& renderPass,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
     rhi::PipelineHandle GetOrCreateGfxPipeline(
         rhi::GfxPipelineStates& PSO,
-        const rhi::ShaderHandle& shader,
+        rhi::RHIShader* shader,
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
-    rhi::PipelineHandle GetOrCreateComputePipeline(const rhi::ShaderHandle& shader);
+    rhi::PipelineHandle GetOrCreateComputePipeline(rhi::RHIShader* shader);
 
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
@@ -520,19 +520,21 @@ private:
     static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
     static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
                                       rhi::RenderPassHandle renderPassHandle);
+
+    // todo: refactor Hash calculation, do not use pointer address as hash value
     static size_t CalcGfxPipelineHash(
         const rhi::GfxPipelineStates& pso,
-        const rhi::ShaderHandle& shader,
+        rhi::RHIShader* shader,
         const rhi::RenderPassHandle& renderPass,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
     static size_t CalcGfxPipelineHash(
         const rhi::GfxPipelineStates& pso,
-        const rhi::ShaderHandle& shader,
+        rhi::RHIShader* shader,
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
 
-    static size_t CalcComputePipelineHash(const rhi::ShaderHandle& shader);
+    static size_t CalcComputePipelineHash(rhi::RHIShader* shader);
 
     static size_t CalcSamplerHash(const rhi::RHISamplerCreateInfo& info);
 

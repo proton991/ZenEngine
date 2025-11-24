@@ -102,7 +102,7 @@ enum class ShaderLanguage : uint32_t
     eMax  = 1
 };
 
-enum class ShaderStage : uint32_t
+enum class RHIShaderStage : uint32_t
 {
     eVertex                = 0,
     eTesselationControl    = 1,
@@ -113,7 +113,7 @@ enum class ShaderStage : uint32_t
     eMax                   = 6
 };
 
-enum class ShaderStageFlagBits : uint32_t
+enum class RHIShaderStageFlagBits : uint32_t
 {
     eVertex                = 1 << 0,
     eTesselationControl    = 1 << 1,
@@ -124,34 +124,58 @@ enum class ShaderStageFlagBits : uint32_t
     eMax                   = 1 << 6
 };
 
-static std::string ShaderStageToString(ShaderStage stage)
+
+
+// enum class RHIShaderStage : uint32_t
+// {
+//     eVertex                = 0,
+//     eTesselationControl    = 1,
+//     eTesselationEvaluation = 2,
+//     eGeometry              = 3,
+//     eFragment              = 4,
+//     eCompute               = 5,
+//     eMax                   = 6
+// };
+//
+// enum class RHIShaderStageFlagBits : uint32_t
+// {
+//     eVertex                = 1 << 0,
+//     eTesselationControl    = 1 << 1,
+//     eTesselationEvaluation = 1 << 2,
+//     eGeometry              = 1 << 3,
+//     eFragment              = 1 << 4,
+//     eCompute               = 1 << 5,
+//     eMax                   = 1 << 6
+// };
+
+static std::string ShaderStageToString(RHIShaderStage stage)
 {
-    static const char* SHADER_STAGE_NAMES[ToUnderlying(ShaderStage::eMax)] = {
+    static const char* SHADER_STAGE_NAMES[ToUnderlying(RHIShaderStage::eMax)] = {
         "Vertex", "Fragment", "TesselationControl", "TesselationEvaluation", "Geometry", "Compute",
     };
     return SHADER_STAGE_NAMES[ToUnderlying(stage)];
 }
 
-static std::string ShaderStageFlagToString(BitField<ShaderStageFlagBits> stageFlags)
+static std::string ShaderStageFlagToString(BitField<RHIShaderStageFlagBits> stageFlags)
 {
     std::string str;
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eVertex))
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eVertex))
     {
         str += "Vertex ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eFragment))
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eFragment))
     {
         str += "Fragment ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eTesselationControl))
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eTesselationControl))
     {
         str += "TesselationControl ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eTesselationEvaluation))
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eTesselationEvaluation))
     {
         str += "TesselationEvaluation ";
     }
-    if (stageFlags.HasFlag(ShaderStageFlagBits::eCompute))
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eCompute))
     {
         str += "Compute ";
     }
@@ -159,9 +183,9 @@ static std::string ShaderStageFlagToString(BitField<ShaderStageFlagBits> stageFl
     return str;
 }
 
-static ShaderStageFlagBits ShaderStageToFlagBits(ShaderStage stage)
+static RHIShaderStageFlagBits ShaderStageToFlagBits(RHIShaderStage stage)
 {
-    return static_cast<ShaderStageFlagBits>(1 << ToUnderlying(stage));
+    return static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage));
 }
 
 enum class ShaderSpecializationConstantType : uint32_t
@@ -183,7 +207,7 @@ struct ShaderSpecializationConstant
 
     ShaderSpecializationConstantType type{ShaderSpecializationConstantType::eMax};
     uint32_t constantId{0};
-    BitField<ShaderStageFlagBits> stages;
+    BitField<RHIShaderStageFlagBits> stages;
 };
 
 enum class ShaderResourceType : uint32_t
@@ -215,7 +239,7 @@ struct ShaderResourceDescriptor
 {
     std::string name;
     ShaderResourceType type{ShaderResourceType::eMax};
-    BitField<ShaderStageFlagBits> stageFlags;
+    BitField<RHIShaderStageFlagBits> stageFlags;
     bool writable{false}; // for storage image/buffer
     // Size of arrays (in total elements), or ubos (in bytes * total elements).
     uint32_t arraySize{1};
@@ -244,13 +268,13 @@ struct ShaderPushConstants
 {
     std::string name;
     uint32_t size{0};
-    BitField<ShaderStageFlagBits> stageFlags;
+    BitField<RHIShaderStageFlagBits> stageFlags;
 };
 
 // .vert .frag .compute together
 struct ShaderGroupInfo
 {
-    HashMap<ShaderStage, std::vector<uint8_t>> sprivCode;
+    HashMap<RHIShaderStage, std::vector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
     // vertex input attribute
     std::vector<VertexInputAttribute> vertexInputAttributes;

@@ -13,7 +13,8 @@ enum class ResourceType : uint32_t
     eBuffer   = 2,
     eTexture  = 3,
     eSampler  = 4,
-    eCount    = 5
+    eShader   = 5,
+    eMax      = 6
 };
 
 class RHIResource
@@ -83,7 +84,7 @@ private:
     };
 
     mutable AtomicCounter m_counter;
-    ResourceType m_resourceType{ResourceType::eCount};
+    ResourceType m_resourceType{ResourceType::eMax};
 };
 
 class ShaderGroupSource : public RefCounted
@@ -91,21 +92,21 @@ class ShaderGroupSource : public RefCounted
 public:
     ShaderGroupSource() = default;
 
-    void SetStageSource(ShaderStage stage, const std::string& source)
+    void SetStageSource(RHIShaderStage stage, const std::string& source)
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
         m_source[ToUnderlying(stage)] = source;
     }
 
-    const std::string& GetStageSource(ShaderStage stage) const
+    const std::string& GetStageSource(RHIShaderStage stage) const
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_source[ToUnderlying(stage)];
     }
 
 private:
     ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
-    std::string m_source[ToUnderlying(ShaderStage::eMax)];
+    std::string m_source[ToUnderlying(RHIShaderStage::eMax)];
 };
 
 class ShaderGroupSPIRV : public RefCounted
@@ -113,45 +114,50 @@ class ShaderGroupSPIRV : public RefCounted
 public:
     ShaderGroupSPIRV() = default;
 
-    void SetStageSPIRV(ShaderStage stage, const std::vector<uint8_t>& source)
+    void SetStageFlags(int64_t flags)
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
-        m_stageFlags.SetFlag(static_cast<ShaderStageFlagBits>(1 << ToUnderlying(stage)));
+        m_stageFlags = flags;
+    }
+
+    void SetStageSPIRV(RHIShaderStage stage, const std::vector<uint8_t>& source)
+    {
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
+        m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
         m_spirv[static_cast<uint32_t>(stage)] = source;
     }
 
-    std::vector<uint8_t> GetStageSPIRV(ShaderStage stage) const
+    std::vector<uint8_t> GetStageSPIRV(RHIShaderStage stage) const
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_spirv[ToUnderlying(stage)];
     }
 
-    void SetStageCompileError(ShaderStage stage, const std::string& error)
+    void SetStageCompileError(RHIShaderStage stage, const std::string& error)
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
         m_compileErrors[ToUnderlying(stage)] = error;
     }
 
-    const std::string& GetStageCompileError(ShaderStage stage) const
+    const std::string& GetStageCompileError(RHIShaderStage stage) const
     {
-        VERIFY_EXPR(stage < ShaderStage::eMax);
+        VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_compileErrors[ToUnderlying(stage)];
     }
 
-    bool HasShaderStage(ShaderStage stage) const
+    bool HasShaderStage(RHIShaderStage stage) const
     {
-        return m_stageFlags.HasFlag(static_cast<ShaderStageFlagBits>(1 << ToUnderlying(stage)));
+        return m_stageFlags.HasFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
     }
 
 private:
     // shader flags
-    BitField<ShaderStageFlagBits> m_stageFlags;
+    BitField<RHIShaderStageFlagBits> m_stageFlags;
     // shader language
     ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
     // spirv code
-    std::vector<uint8_t> m_spirv[ToUnderlying(ShaderStage::eMax)];
+    std::vector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
     // compile errors
-    std::string m_compileErrors[ToUnderlying(ShaderStage::eMax)];
+    std::string m_compileErrors[ToUnderlying(RHIShaderStage::eMax)];
 };
 
 using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;
@@ -533,6 +539,48 @@ protected:
     RHISamplerCreateInfo m_baseInfo{};
 };
 
+struct RHIShaderCreateInfo
+{
+    std::string spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
+    BitField<RHIShaderStageFlagBits> stageFlags;
+    HashMap<uint32_t, int> specializationConstants;
+    std::string name;
+};
+
+// Includes all stages used
+class RHIShader : public RHIResource
+{
+public:
+    ~RHIShader() override = default;
+
+    virtual void GetShaderResourceDescriptors(
+        std::vector<std::vector<rhi::ShaderResourceDescriptor>>& outSRDs)
+    {
+        outSRDs = m_SRDs;
+    }
+
+protected:
+    explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
+        RHIResource(ResourceType::eShader),
+        m_shaderGroupSPIRV(MakeRefCountPtr<ShaderGroupSPIRV>()),
+        m_shaderStageFlags(createInfo.stageFlags),
+        m_specializationConstants(createInfo.specializationConstants),
+        m_name(createInfo.name)
+    {
+
+        std::ranges::copy(createInfo.spirvFileName, std::begin(m_spirvFileName));
+
+        m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
+    }
+
+    ShaderGroupSPIRVPtr m_shaderGroupSPIRV{};
+    std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
+    BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
+    HashMap<uint32_t, int> m_specializationConstants;
+    std::vector<std::vector<ShaderResourceDescriptor>> m_SRDs; // todo: use fixed-size array
+    std::string m_name;
+};
+
 class RHIResourceFactory
 {
 public:
@@ -543,5 +591,7 @@ public:
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
 
     virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+
+    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
 };
 } // namespace zen::rhi

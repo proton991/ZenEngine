@@ -97,8 +97,8 @@ void OffscreenApp::BuildGraphicsPasses()
         pso.rasterizationState.cullMode = PolygonCullMode::eFront;
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreenShaded =
-            builder.AddShaderStage(rhi::ShaderStage::eVertex, "Offscreen/phong.vert.spv")
-                .AddShaderStage(rhi::ShaderStage::eFragment, "Offscreen/phong.frag.spv")
+            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "Offscreen/phong.vert.spv")
+                .AddShaderStage(rhi::RHIShaderStage::eFragment, "Offscreen/phong.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
                                       m_offscreenTextures.color)
@@ -138,8 +138,8 @@ void OffscreenApp::BuildGraphicsPasses()
         pso.rasterizationState.cullMode = PolygonCullMode::eDisabled;
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.mirror =
-            builder.AddShaderStage(rhi::ShaderStage::eVertex, "Offscreen/mirror.vert.spv")
-                .AddShaderStage(rhi::ShaderStage::eFragment, "Offscreen/mirror.frag.spv")
+            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "Offscreen/mirror.vert.spv")
+                .AddShaderStage(rhi::RHIShaderStage::eFragment, "Offscreen/mirror.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                       TextureUsage::eColorAttachment,

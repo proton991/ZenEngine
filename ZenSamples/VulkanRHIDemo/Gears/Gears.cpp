@@ -96,8 +96,8 @@ void GearsApp::BuildGraphicsPasses()
 
     rc::GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPass =
-        builder.AddShaderStage(rhi::ShaderStage::eVertex, "gears.vert.spv")
-            .AddShaderStage(rhi::ShaderStage::eFragment, "gears.frag.spv")
+        builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "gears.vert.spv")
+            .AddShaderStage(rhi::RHIShaderStage::eFragment, "gears.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
                                   m_viewport->GetColorBackBuffer())

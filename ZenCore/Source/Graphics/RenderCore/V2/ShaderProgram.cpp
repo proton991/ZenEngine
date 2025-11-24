@@ -53,17 +53,31 @@ void ShaderProgram::UpdateUniformBuffer(const std::string& name,
 
 void ShaderProgram::Init()
 {
-    auto shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // auto shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // for (const auto& kv : m_stages)
+    // {
+    //     shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
+    // }
+    // rhi::ShaderGroupInfo shaderGroupInfo{};
+    // rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    // shaderGroupInfo.name = m_name;
+
+    rhi::RHIShaderCreateInfo shaderCreateInfo{};
+
     for (const auto& kv : m_stages)
     {
-        shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
-    }
-    rhi::ShaderGroupInfo shaderGroupInfo{};
-    rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
-    shaderGroupInfo.name = m_name;
+        shaderCreateInfo.spirvFileName[rhi::ToUnderlying(kv.first)] = kv.second;
+        shaderCreateInfo.stageFlags.SetFlag(
+            static_cast<rhi::RHIShaderStageFlagBits>(1 << rhi::ToUnderlying(kv.first)));
 
-    m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
-    m_SRDs   = std::move(shaderGroupInfo.SRDs);
+        // shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
+    }
+    shaderCreateInfo.name = m_name;
+
+    m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
+
+    m_shader->GetShaderResourceDescriptors(m_SRDs);
+    // m_SRDs   = std::move(shaderGroupInfo.SRDs);
 
     for (auto& setSRD : m_SRDs)
     {
@@ -94,38 +108,51 @@ void ShaderProgram::Init()
 
 void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
 {
-    auto shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // rhi::ShaderGroupSPIRVPtr shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // for (const auto& kv : m_stages)
+    // {
+    //     shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
+    // }
+    // rhi::ShaderGroupInfo shaderGroupInfo{};
+    // rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    //
+    // if (!specializationConstants.empty())
+    // {
+    //     // set specialization constants
+    //     for (auto& spc : m_shader->GetSpecializationConstants())
+    //     {
+    //         switch (spc.type)
+    //         {
+    //
+    //             case rhi::ShaderSpecializationConstantType::eBool:
+    //                 spc.boolValue = static_cast<bool>(specializationConstants.at(spc.constantId));
+    //                 break;
+    //             case rhi::ShaderSpecializationConstantType::eInt:
+    //                 spc.intValue = specializationConstants.at(spc.constantId);
+    //                 break;
+    //             case rhi::ShaderSpecializationConstantType::eFloat:
+    //                 spc.floatValue = static_cast<float>(specializationConstants.at(spc.constantId));
+    //                 break;
+    //             default: break;
+    //         }
+    //     }
+    // }
+    rhi::RHIShaderCreateInfo shaderCreateInfo{};
+
     for (const auto& kv : m_stages)
     {
-        shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
+        shaderCreateInfo.spirvFileName[rhi::ToUnderlying(kv.first)] = kv.second;
+        shaderCreateInfo.stageFlags.SetFlag(
+            static_cast<rhi::RHIShaderStageFlagBits>(1 << rhi::ToUnderlying(kv.first)));
+
+        // shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
     }
-    rhi::ShaderGroupInfo shaderGroupInfo{};
-    rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    shaderCreateInfo.name                    = m_name;
+    shaderCreateInfo.specializationConstants = specializationConstants;
 
-    if (!specializationConstants.empty())
-    {
-        // set specialization constants
-        for (auto& spc : shaderGroupInfo.specializationConstants)
-        {
-            switch (spc.type)
-            {
-
-                case rhi::ShaderSpecializationConstantType::eBool:
-                    spc.boolValue = static_cast<bool>(specializationConstants.at(spc.constantId));
-                    break;
-                case rhi::ShaderSpecializationConstantType::eInt:
-                    spc.intValue = specializationConstants.at(spc.constantId);
-                    break;
-                case rhi::ShaderSpecializationConstantType::eFloat:
-                    spc.floatValue = static_cast<float>(specializationConstants.at(spc.constantId));
-                    break;
-                default: break;
-            }
-        }
-    }
-
-    m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
-    m_SRDs   = std::move(shaderGroupInfo.SRDs);
+    m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
+    // m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
+    m_shader->GetShaderResourceDescriptors(m_SRDs);
 
     for (auto& setSRD : m_SRDs)
     {

@@ -72,8 +72,8 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // phone
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.phong = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
-                                .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.phong = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
+                                .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
                                 .SetShaderSpecializationConstants(0, 0)
                                 .SetShaderSpecializationConstants(1, 0.0f)
                                 .SetNumSamples(SampleCount::e1)
@@ -92,8 +92,8 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // toon
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.toon = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
-                               .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.toon = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
+                               .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
                                .SetShaderSpecializationConstants(0, 1)
                                .SetShaderSpecializationConstants(1, 0.0f)
                                .SetNumSamples(SampleCount::e1)
@@ -112,8 +112,8 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // textured
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.textured = builder.AddShaderStage(rhi::ShaderStage::eVertex, "uber.vert.spv")
-                                   .AddShaderStage(rhi::ShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.textured = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
+                                   .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
                                    .SetShaderSpecializationConstants(0, 2)
                                    .SetShaderSpecializationConstants(1, 0.0f)
                                    .SetNumSamples(SampleCount::e1)

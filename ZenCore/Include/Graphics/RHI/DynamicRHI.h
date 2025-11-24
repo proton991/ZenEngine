@@ -44,21 +44,25 @@ public:
                                     RHICommandListContext* cmdListContext,
                                     bool present) = 0;
 
-    virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
+    // virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
 
-    virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
+    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
 
-    virtual PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+    // virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
+
+    virtual void DestroyShader(RHIShader* shader) = 0;
+
+    virtual PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
                                              const GfxPipelineStates& states,
                                              RenderPassHandle renderPassHandle,
                                              uint32_t subpass) = 0;
 
-    virtual PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+    virtual PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
                                              const GfxPipelineStates& states,
                                              const RenderPassLayout& renderPassLayout,
                                              uint32_t subpass) = 0;
 
-    virtual PipelineHandle CreateComputePipeline(ShaderHandle shaderHandle) = 0;
+    virtual PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) = 0;
 
     virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
 
@@ -111,8 +115,7 @@ public:
     //
     // virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
 
-    virtual DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle,
-                                                    uint32_t setIndex) = 0;
+    virtual DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) = 0;
 
     virtual void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) = 0;
 

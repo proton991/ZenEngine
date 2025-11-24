@@ -47,28 +47,28 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(ShaderResourceType shaderR
     return type;
 }
 
-VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage)
+VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage)
 {
     switch (stage)
     {
-        case ShaderStage::eVertex: return VK_SHADER_STAGE_VERTEX_BIT;
-        case ShaderStage::eTesselationControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case ShaderStage::eTesselationEvaluation:
+        case RHIShaderStage::eVertex: return VK_SHADER_STAGE_VERTEX_BIT;
+        case RHIShaderStage::eTesselationControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case RHIShaderStage::eTesselationEvaluation:
             return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case ShaderStage::eGeometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case ShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case ShaderStage::eCompute: return VK_SHADER_STAGE_COMPUTE_BIT;
+        case RHIShaderStage::eGeometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case RHIShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case RHIShaderStage::eCompute: return VK_SHADER_STAGE_COMPUTE_BIT;
         default: return VK_SHADER_STAGE_ALL;
     }
 }
 
 VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
-    BitField<ShaderStageFlagBits> stageFlags)
+    BitField<RHIShaderStageFlagBits> stageFlags)
 {
     VkShaderStageFlags flags{};
-    for (uint32_t k = 0; k < ToUnderlying(ShaderStage::eMax); k++)
+    for (uint32_t k = 0; k < ToUnderlying(RHIShaderStage::eMax); k++)
     {
-        ShaderStage stage = static_cast<ShaderStage>(k);
+        RHIShaderStage stage = static_cast<RHIShaderStage>(k);
         if (stageFlags.HasFlag(ShaderStageToFlagBits(stage)))
         {
             flags |= ShaderStageToVkShaderStageFlagBits(stage);

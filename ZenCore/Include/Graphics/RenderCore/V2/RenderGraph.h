@@ -474,7 +474,7 @@ struct RDGDispatchIndirectNode : RDGPassChildNode
 
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
-    rhi::ShaderHandle shader;
+    rhi::RHIShader* shader;
     uint32_t dataSize{0};
 
     uint8_t* Data()

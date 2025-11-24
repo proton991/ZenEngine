@@ -8,6 +8,12 @@ template <typename T> class BitField
 public:
     constexpr BitField() = default;
 
+    BitField<T>& operator=(int64_t value)
+    {
+        m_value = value;
+        return *this;
+    }
+
     BitField<T>& SetFlag(T flag)
     {
         m_value |= static_cast<int64_t>(flag);

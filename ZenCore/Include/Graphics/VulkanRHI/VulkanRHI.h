@@ -21,7 +21,7 @@
 #define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>((handle).value)
 #define TO_VK_FRAMEBUFFER(handle) reinterpret_cast<VulkanFramebuffer*>((handle).value)
 #define TO_VK_RENDER_PASS(handle) reinterpret_cast<VkRenderPass>((handle).value)
-#define TO_VK_SHADER(handle)      reinterpret_cast<VulkanShader*>((handle).value)
+#define TO_VK_SHADER(handle)      (dynamic_cast<FVulkanShader*>(handle))
 #define TO_VK_SAMPLER(sampler)    (dynamic_cast<VulkanSampler*>(sampler))
 
 namespace zen::rhi
@@ -31,6 +31,7 @@ class VulkanViewport;
 class VulkanCommandBufferManager;
 class VulkanDescriptorPoolManager;
 struct VulkanShader;
+class FVulkanShader;
 struct VulkanTexture;
 class VulkanBuffer;
 class VulkanSampler;
@@ -42,6 +43,7 @@ class VulkanMemoryAllocator;
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
 using VersatileResource = VersatileResourceTemplate<VulkanShader,
+                                                    FVulkanShader,
                                                     VulkanTexture,
                                                     VulkanSampler,
                                                     VulkanBuffer,
@@ -106,26 +108,30 @@ public:
                             RHICommandListContext* cmdListContext,
                             bool present) final;
 
-    ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
+    // ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
 
-    void DestroyShader(ShaderHandle shaderHandle) final;
+    // void DestroyShader(ShaderHandle shaderHandle) final;
+
+    RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
+
+    void DestroyShader(RHIShader* shader) final;
 
     InstanceExtensionFlags& GetInstanceExtensionFlags()
     {
         return m_instanceExtensionFlags;
     }
 
-    PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+    PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
                                      const GfxPipelineStates& states,
                                      RenderPassHandle renderPassHandle,
                                      uint32_t subpass) final;
 
-    PipelineHandle CreateGfxPipeline(ShaderHandle shaderHandle,
+    PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
                                      const GfxPipelineStates& states,
                                      const RenderPassLayout& renderPassLayout,
                                      uint32_t subpass) final;
 
-    PipelineHandle CreateComputePipeline(ShaderHandle shaderHandle) final;
+    PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
 
     void DestroyPipeline(PipelineHandle pipelineHandle) final;
 
@@ -175,7 +181,7 @@ public:
     //
     // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
 
-    DescriptorSetHandle CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex) final;
+    DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) final;
 
     void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) final;
 
@@ -231,7 +237,7 @@ private:
     // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
-    HashMap<ShaderHandle, VulkanPipeline*> m_shaderPipelines;
+    HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
 
     // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
     // primarily applied outside the RenderGraph.
@@ -246,6 +252,8 @@ public:
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
+
+    RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
 };
 
 extern VulkanMemoryAllocator* GVkMemAllocator;

@@ -11,10 +11,10 @@ namespace zen::rhi
  */
 VkDescriptorType ShaderResourceTypeToVkDescriptorType(ShaderResourceType shaderResourceType);
 
-VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(ShaderStage stage);
+VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage);
 
 VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
-    BitField<ShaderStageFlagBits> stageFlags);
+    BitField<RHIShaderStageFlagBits> stageFlags);
 
 VkPrimitiveTopology ToVkPrimitiveTopology(DrawPrimitiveType type);
 

@@ -56,6 +56,75 @@ struct VulkanShader
     VulkanDescriptorPoolKey descriptorPoolKey{};
 };
 
+class FVulkanShader : public RHIShader
+{
+public:
+    static FVulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
+
+    uint32_t GetNumShaderStages() const
+    {
+        return m_stageCreateInfos.size();
+    }
+
+    const VkPipelineShaderStageCreateInfo* GetStageCreateInfoData() const
+    {
+        return m_stageCreateInfos.data();
+    }
+
+    VkPipelineLayout GetVkPipelineLayout() const
+    {
+        return m_pipelineLayout;
+    }
+
+    const VkDescriptorSetLayout* GetDescriptorSetLayoutData() const
+    {
+        return m_descriptorSetLayouts.data();
+    }
+
+    uint32_t GetNumDescriptorSetLayouts() const
+    {
+        return m_descriptorSetLayouts.size();
+    }
+
+    VkShaderStageFlags GetPushConstantsStageFlags() const
+    {
+        return m_pushConstantsStageFlags;
+    }
+
+    const VkPipelineVertexInputStateCreateInfo* GetVertexInputStateCreateInfoData() const
+    {
+        return &m_vertexInputInfo.stateCI;
+    }
+
+    const VulkanDescriptorPoolKey& GetDescriptorPoolKey() const
+    {
+        return m_descriptorPoolKey;
+    }
+
+protected:
+    void Init() override;
+
+    void Destroy() override;
+
+
+private:
+    FVulkanShader(const RHIShaderCreateInfo& createInfo) : RHIShader(createInfo) {}
+
+    struct VertexInputInfo
+    {
+        SmallVector<VkVertexInputBindingDescription> vkBindings;
+        SmallVector<VkVertexInputAttributeDescription> vkAttributes;
+        VkPipelineVertexInputStateCreateInfo stateCI;
+    } m_vertexInputInfo;
+    std::vector<VkSpecializationMapEntry> m_spcMapEntries{};
+    VkSpecializationInfo m_specializationInfo{};
+    VkShaderStageFlags m_pushConstantsStageFlags;
+    SmallVector<VkPipelineShaderStageCreateInfo> m_stageCreateInfos;
+    SmallVector<VkDescriptorSetLayout> m_descriptorSetLayouts;
+    VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
+    VulkanDescriptorPoolKey m_descriptorPoolKey{};
+};
+
 using VulkanDescriptorPools = HashMap<VulkanDescriptorPoolKey, HashMap<VkDescriptorPool, uint32_t>>;
 using VulkanDescriptorPoolsIt = VulkanDescriptorPools::iterator;
 

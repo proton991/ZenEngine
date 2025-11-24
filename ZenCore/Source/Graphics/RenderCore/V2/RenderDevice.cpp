@@ -131,7 +131,7 @@ GraphicsPass GraphicsPassBuilder::Build()
     // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
     m_framebufferInfo.renderTargets = rtHandles.data();
 
-    ShaderHandle shader;
+    // ShaderHandle shader;
     std::vector<ShaderSpecializationConstant> specializationConstants;
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs;
 
@@ -163,8 +163,8 @@ GraphicsPass GraphicsPassBuilder::Build()
         shaderProgram->Init(m_specializationConstants);
     }
 
-    shader = shaderProgram->GetShaderHandle();
-    SRDs   = shaderProgram->GetSRDs();
+    RHIShader* shader = shaderProgram->GetShader();
+    SRDs              = shaderProgram->GetSRDs();
 
     gfxPass.shaderProgram = shaderProgram;
 
@@ -326,7 +326,7 @@ ComputePass ComputePassBuilder::Build()
 
     ShaderProgram* shaderProgram =
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
-    ShaderHandle shader = shaderProgram->GetShaderHandle();
+    RHIShader* shader = shaderProgram->GetShader();
 
     std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs = shaderProgram->GetSRDs();
 
@@ -1184,7 +1184,7 @@ rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassL
 
 rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
-    const rhi::ShaderHandle& shader,
+    rhi::RHIShader* shader,
     const rhi::RenderPassHandle& renderPass,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
@@ -1199,7 +1199,7 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
 
 rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
-    const rhi::ShaderHandle& shader,
+    rhi::RHIShader* shader,
     const rhi::RenderPassLayout& renderPassLayout,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
@@ -1212,7 +1212,7 @@ rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
     return m_pipelineCache[hash];
 }
 
-rhi::PipelineHandle RenderDevice::GetOrCreateComputePipeline(const rhi::ShaderHandle& shader)
+rhi::PipelineHandle RenderDevice::GetOrCreateComputePipeline(rhi::RHIShader* shader)
 {
     auto hash = CalcComputePipelineHash(shader);
     if (!m_pipelineCache.contains(hash))
@@ -1590,7 +1590,7 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
 
 size_t RenderDevice::CalcGfxPipelineHash(
     const rhi::GfxPipelineStates& pso,
-    const rhi::ShaderHandle& shader,
+    rhi::RHIShader* shader,
     const rhi::RenderPassHandle& renderPass,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
@@ -1600,7 +1600,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader.value);
+    combineHash(shader);
     combineHash(renderPass.value);
     combineHash(pso.primitiveType);
     for (auto& spc : specializationConstants)
@@ -1619,7 +1619,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
 
 size_t RenderDevice::CalcGfxPipelineHash(
     const rhi::GfxPipelineStates& pso,
-    const rhi::ShaderHandle& shader,
+    rhi::RHIShader* shader,
     const rhi::RenderPassLayout& renderPassLayout,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
@@ -1629,7 +1629,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader.value);
+    combineHash(shader);
     // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
     for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
     {
@@ -1654,7 +1654,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
     return seed;
 }
 
-size_t RenderDevice::CalcComputePipelineHash(const rhi::ShaderHandle& shader)
+size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -1662,7 +1662,7 @@ size_t RenderDevice::CalcComputePipelineHash(const rhi::ShaderHandle& shader)
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader.value);
+    combineHash(shader);
     return seed;
 }
 

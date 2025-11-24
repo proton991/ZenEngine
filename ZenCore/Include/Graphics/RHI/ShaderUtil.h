@@ -88,7 +88,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
     }
 }
 
-static void ParseSpvPushConstants(ShaderStage stage,
+static void ParseSpvPushConstants(RHIShaderStage stage,
                                   const SpvReflectShaderModule* module,
                                   ShaderGroupInfo& shaderGroupInfo)
 {
@@ -115,7 +115,7 @@ static void ParseSpvPushConstants(ShaderStage stage,
     shaderGroupInfo.pushConstants.name = pconstants[0]->type_description->type_name;
 }
 
-static void ParseSpvSpecializationConstant(ShaderStage stage,
+static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                                            const SpvReflectShaderModule* module,
                                            ShaderGroupInfo& shaderGroupInfo)
 {
@@ -320,7 +320,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     }
 }
 
-static void MergeOrAddSRDs(ShaderStage stage,
+static void MergeOrAddSRDs(RHIShaderStage stage,
                            ShaderResourceDescriptor& srd,
                            ShaderGroupInfo& shaderGroupInfo)
 {
@@ -378,9 +378,9 @@ static void MergeOrAddSRDs(ShaderStage stage,
 inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSpirv,
                                                ShaderGroupInfo& shaderGroupInfo)
 {
-    for (uint32_t i = 0; i < ToUnderlying(ShaderStage::eMax); i++)
+    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
     {
-        ShaderStage stage = static_cast<ShaderStage>(i);
+        RHIShaderStage stage = static_cast<RHIShaderStage>(i);
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
             shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
@@ -419,7 +419,7 @@ inline void ShaderUtil::ReflectShaderGroupInfo(ShaderGroupSPIRVPtr shaderGroupSp
             // Specialization Constants
             ParseSpvSpecializationConstant(stage, &module, shaderGroupInfo);
             // Parse vertex input
-            if (stage == ShaderStage::eVertex)
+            if (stage == RHIShaderStage::eVertex)
             {
                 ParseSpvVertexInput(&module, shaderGroupInfo);
             }

@@ -37,8 +37,8 @@ void HelloTriangleApp::BuildGraphicsPasses()
 
     rc::GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPass =
-        builder.AddShaderStage(rhi::ShaderStage::eVertex, "triangle.vert.spv")
-            .AddShaderStage(rhi::ShaderStage::eFragment, "triangle_fixed.frag.spv")
+        builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "triangle.vert.spv")
+            .AddShaderStage(rhi::RHIShaderStage::eFragment, "triangle_fixed.frag.spv")
             .SetNumSamples(SampleCount::e1)
             .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
                                   m_viewport->GetColorBackBuffer())

@@ -1,11 +1,12 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
-
 #include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/RHI/ShaderUtil.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
+#include "Platform/FileSystem.h"
 
 namespace zen::rhi
 {
@@ -41,19 +42,83 @@ static uint32_t DecideDescriptorCount(
     }
 }
 
-
-ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
+RHIShader* VulkanResourceFactory::CreateShader(const RHIShaderCreateInfo& createInfo)
 {
-    VulkanShader* shader = VersatileResource::Alloc<VulkanShader>(m_resourceAllocator);
+    RHIShader* pShader = FVulkanShader::CreateObject(createInfo);
+
+    return pShader;
+}
+
+RHIShader* VulkanRHI::CreateShader(const RHIShaderCreateInfo& createInfo)
+{
+    return GDynamicRHI->GetResourceFactory()->CreateShader(createInfo);
+}
+
+void VulkanRHI::DestroyShader(RHIShader* shader)
+{
+    shader->ReleaseReference();
+}
+
+FVulkanShader* FVulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
+{
+    FVulkanShader* pShader =
+        VersatileResource::AllocMem<FVulkanShader>(GVulkanRHI->GetResourceAllocator());
+
+    new (pShader) FVulkanShader(createInfo);
+
+    pShader->Init();
+
+    return pShader;
+}
+
+void FVulkanShader::Init()
+{
+    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
+    {
+        RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+        if (m_shaderGroupSPIRV->HasShaderStage(stage))
+        {
+            m_shaderGroupSPIRV->SetStageSPIRV(
+                stage, platform::FileSystem::LoadSpvFile(m_spirvFileName[i]));
+        }
+    }
+
+    rhi::ShaderGroupInfo sgInfo{};
+    rhi::ShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
+    sgInfo.name = m_name;
+    m_SRDs      = sgInfo.SRDs;
+
+    if (!m_specializationConstants.empty())
+    {
+        // set specialization constants
+        for (auto& spc : sgInfo.specializationConstants)
+        {
+            switch (spc.type)
+            {
+
+                case rhi::ShaderSpecializationConstantType::eBool:
+                    spc.boolValue = static_cast<bool>(m_specializationConstants.at(spc.constantId));
+                    break;
+                case rhi::ShaderSpecializationConstantType::eInt:
+                    spc.intValue = m_specializationConstants.at(spc.constantId);
+                    break;
+                case rhi::ShaderSpecializationConstantType::eFloat:
+                    spc.floatValue =
+                        static_cast<float>(m_specializationConstants.at(spc.constantId));
+                    break;
+                default: break;
+            }
+        }
+    }
 
     // Create specialization info from tracked state. This is shared by all shaders.
     const auto& specConstants = sgInfo.specializationConstants;
     if (!specConstants.empty())
     {
-        shader->entries.resize(specConstants.size());
+        m_spcMapEntries.resize(specConstants.size());
         for (uint32_t i = 0; i < specConstants.size(); i++)
         {
-            VkSpecializationMapEntry& entry = shader->entries[i];
+            VkSpecializationMapEntry& entry = m_spcMapEntries[i];
             // fill in data
             entry.constantID = specConstants[i].constantId;
             switch (specConstants[i].type)
@@ -84,12 +149,10 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
             }
         }
     }
-    shader->specializationInfo.mapEntryCount = static_cast<uint32_t>(shader->entries.size());
-    shader->specializationInfo.pMapEntries =
-        shader->entries.empty() ? nullptr : shader->entries.data();
-    shader->specializationInfo.dataSize =
-        specConstants.size() * sizeof(ShaderSpecializationConstant);
-    shader->specializationInfo.pData = specConstants.empty() ? nullptr : specConstants.data();
+    m_specializationInfo.mapEntryCount = static_cast<uint32_t>(m_spcMapEntries.size());
+    m_specializationInfo.pMapEntries   = m_spcMapEntries.empty() ? nullptr : m_spcMapEntries.data();
+    m_specializationInfo.dataSize = specConstants.size() * sizeof(ShaderSpecializationConstant);
+    m_specializationInfo.pData    = specConstants.empty() ? nullptr : specConstants.data();
 
     for (auto& kv : sgInfo.sprivCode)
     {
@@ -98,19 +161,19 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         shaderModuleCI.codeSize = kv.second.size();
         shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(kv.second.data());
         VkShaderModule module{VK_NULL_HANDLE};
-        VKCHECK(vkCreateShaderModule(GetVkDevice(), &shaderModuleCI, nullptr, &module));
+        VKCHECK(vkCreateShaderModule(GVulkanRHI->GetVkDevice(), &shaderModuleCI, nullptr, &module));
 
         VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
         InitVkStruct(pipelineShaderStageCI, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO);
         pipelineShaderStageCI.stage               = ShaderStageToVkShaderStageFlagBits(kv.first);
         pipelineShaderStageCI.pName               = "main";
         pipelineShaderStageCI.module              = module;
-        pipelineShaderStageCI.pSpecializationInfo = &shader->specializationInfo;
+        pipelineShaderStageCI.pSpecializationInfo = &m_specializationInfo;
 
-        shader->stageCreateInfos.push_back(pipelineShaderStageCI);
+        m_stageCreateInfos.push_back(pipelineShaderStageCI);
     }
     // Create descriptor pool key while createing descriptor set layouts
-    VulkanDescriptorPoolKey descriptorPoolKey{};
+    // VulkanDescriptorPoolKey descriptorPoolKey{};
     // Create descriptorSetLayouts
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
     const auto setCount = sgInfo.SRDs.size();
@@ -123,10 +186,11 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         {
             const ShaderResourceDescriptor& srd = sgInfo.SRDs[i][j];
             VkDescriptorSetLayoutBinding binding{};
-            binding.binding         = srd.binding;
-            binding.descriptorType  = ShaderResourceTypeToVkDescriptorType(srd.type);
-            binding.descriptorCount = DecideDescriptorCount(
-                binding.descriptorType, srd.arraySize, m_device->GetDescriptorIndexingProperties());
+            binding.binding        = srd.binding;
+            binding.descriptorType = ShaderResourceTypeToVkDescriptorType(srd.type);
+            binding.descriptorCount =
+                DecideDescriptorCount(binding.descriptorType, srd.arraySize,
+                                      GVulkanRHI->GetDevice()->GetDescriptorIndexingProperties());
             binding.stageFlags = ShaderStageFlagsBitsToVkShaderStageFlags(srd.stageFlags);
             if (binding.descriptorCount > 1)
             {
@@ -137,7 +201,7 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
                 bindingFlags.push_back(0);
             }
             dsBindings[i].push_back(binding);
-            descriptorPoolKey.descriptorCount[ToUnderlying(srd.type)] += binding.descriptorCount;
+            m_descriptorPoolKey.descriptorCount[ToUnderlying(srd.type)] += binding.descriptorCount;
         }
         if (dsBindings[i].empty())
             continue;
@@ -156,56 +220,53 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         layoutCI.pNext                       = &bindingFlagsCreateInfo;
 
         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
-        VKCHECK(
-            vkCreateDescriptorSetLayout(GetVkDevice(), &layoutCI, nullptr, &descriptorSetLayout));
-        shader->descriptorSetLayouts.push_back(descriptorSetLayout);
+        VKCHECK(vkCreateDescriptorSetLayout(GVulkanRHI->GetVkDevice(), &layoutCI, nullptr,
+                                            &descriptorSetLayout));
+        m_descriptorSetLayouts.push_back(descriptorSetLayout);
     }
     // vertex input state
     const auto vertexInputCount = sgInfo.vertexInputAttributes.size();
     if (vertexInputCount > 0)
     {
-        shader->vertexInputInfo.vkAttributes.resize(vertexInputCount);
+        m_vertexInputInfo.vkAttributes.resize(vertexInputCount);
         // packed data for vertex inputs, only 1 binding
         VkVertexInputBindingDescription vkBinding{};
         vkBinding.binding   = 0;
         vkBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         vkBinding.stride    = sgInfo.vertexBindingStride;
-        shader->vertexInputInfo.vkBindings.emplace_back(vkBinding);
+        m_vertexInputInfo.vkBindings.emplace_back(vkBinding);
         // populate attributes
         for (uint32_t i = 0; i < vertexInputCount; i++)
         {
-            shader->vertexInputInfo.vkAttributes[i].binding =
-                sgInfo.vertexInputAttributes[i].binding;
-            shader->vertexInputInfo.vkAttributes[i].location =
-                sgInfo.vertexInputAttributes[i].location;
-            shader->vertexInputInfo.vkAttributes[i].offset = sgInfo.vertexInputAttributes[i].offset;
-            shader->vertexInputInfo.vkAttributes[i].format =
+            m_vertexInputInfo.vkAttributes[i].binding  = sgInfo.vertexInputAttributes[i].binding;
+            m_vertexInputInfo.vkAttributes[i].location = sgInfo.vertexInputAttributes[i].location;
+            m_vertexInputInfo.vkAttributes[i].offset   = sgInfo.vertexInputAttributes[i].offset;
+            m_vertexInputInfo.vkAttributes[i].format =
                 static_cast<VkFormat>(sgInfo.vertexInputAttributes[i].format);
         }
-        InitVkStruct(shader->vertexInputInfo.stateCI,
+        InitVkStruct(m_vertexInputInfo.stateCI,
                      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
-        shader->vertexInputInfo.stateCI.vertexAttributeDescriptionCount =
-            shader->vertexInputInfo.vkAttributes.size();
-        shader->vertexInputInfo.stateCI.pVertexAttributeDescriptions =
-            shader->vertexInputInfo.vkAttributes.data();
-        shader->vertexInputInfo.stateCI.vertexBindingDescriptionCount =
-            shader->vertexInputInfo.vkBindings.size();
-        shader->vertexInputInfo.stateCI.pVertexBindingDescriptions =
-            shader->vertexInputInfo.vkBindings.data();
+        m_vertexInputInfo.stateCI.vertexAttributeDescriptionCount =
+            m_vertexInputInfo.vkAttributes.size();
+        m_vertexInputInfo.stateCI.pVertexAttributeDescriptions =
+            m_vertexInputInfo.vkAttributes.data();
+        m_vertexInputInfo.stateCI.vertexBindingDescriptionCount =
+            m_vertexInputInfo.vkBindings.size();
+        m_vertexInputInfo.stateCI.pVertexBindingDescriptions = m_vertexInputInfo.vkBindings.data();
     }
     else
     {
-        InitVkStruct(shader->vertexInputInfo.stateCI,
+        InitVkStruct(m_vertexInputInfo.stateCI,
                      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
-        shader->vertexInputInfo.stateCI.vertexAttributeDescriptionCount = 0;
-        shader->vertexInputInfo.stateCI.pVertexAttributeDescriptions    = nullptr;
-        shader->vertexInputInfo.stateCI.vertexBindingDescriptionCount   = 0;
-        shader->vertexInputInfo.stateCI.pVertexBindingDescriptions      = nullptr;
+        m_vertexInputInfo.stateCI.vertexAttributeDescriptionCount = 0;
+        m_vertexInputInfo.stateCI.pVertexAttributeDescriptions    = nullptr;
+        m_vertexInputInfo.stateCI.vertexBindingDescriptionCount   = 0;
+        m_vertexInputInfo.stateCI.pVertexBindingDescriptions      = nullptr;
     }
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutCI;
     InitVkStruct(pipelineLayoutCI, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
-    pipelineLayoutCI.pSetLayouts    = shader->descriptorSetLayouts.data();
+    pipelineLayoutCI.pSetLayouts    = m_descriptorSetLayouts.data();
     pipelineLayoutCI.setLayoutCount = setCount;
     VkPushConstantRange prc{};
     const auto& pc = sgInfo.pushConstants;
@@ -216,40 +277,245 @@ ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
         pipelineLayoutCI.pushConstantRangeCount = 1;
         pipelineLayoutCI.pPushConstantRanges    = &prc;
     }
-    vkCreatePipelineLayout(GetVkDevice(), &pipelineLayoutCI, nullptr, &shader->pipelineLayout);
+    vkCreatePipelineLayout(GVulkanRHI->GetVkDevice(), &pipelineLayoutCI, nullptr,
+                           &m_pipelineLayout);
 
-    shader->descriptorPoolKey = descriptorPoolKey;
-    shader->pushConstantsStageFlags =
+    // descriptorPoolKey = descriptorPoolKey;
+    m_pushConstantsStageFlags =
         ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
 
     auto debugName = sgInfo.name + "_PipelineLayout";
-    m_device->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
-                            reinterpret_cast<uint64_t>(shader->pipelineLayout), debugName.c_str());
-
-    return ShaderHandle(shader);
+    GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                                           reinterpret_cast<uint64_t>(m_pipelineLayout),
+                                           debugName.c_str());
 }
 
-void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
+void FVulkanShader::Destroy()
 {
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
-
-    for (auto& dsLayout : shader->descriptorSetLayouts)
+    for (auto& dsLayout : m_descriptorSetLayouts)
     {
-        vkDestroyDescriptorSetLayout(GetVkDevice(), dsLayout, nullptr);
+        vkDestroyDescriptorSetLayout(GVulkanRHI->GetVkDevice(), dsLayout, nullptr);
     }
 
-    for (auto& stageCreateInfo : shader->stageCreateInfos)
+    for (auto& stageCreateInfo : m_stageCreateInfos)
     {
-        vkDestroyShaderModule(GetVkDevice(), stageCreateInfo.module, nullptr);
+        vkDestroyShaderModule(GVulkanRHI->GetVkDevice(), stageCreateInfo.module, nullptr);
     }
-    if (shader->pipelineLayout != VK_NULL_HANDLE)
+    if (m_pipelineLayout != VK_NULL_HANDLE)
     {
-        vkDestroyPipelineLayout(GetVkDevice(), shader->pipelineLayout, nullptr);
+        vkDestroyPipelineLayout(GVulkanRHI->GetVkDevice(), m_pipelineLayout, nullptr);
     }
-    VersatileResource::Free(m_resourceAllocator, shader);
+    VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
-PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
+// ShaderHandle VulkanRHI::CreateShader(const ShaderGroupInfo& sgInfo)
+// {
+//     VulkanShader* shader = VersatileResource::Alloc<VulkanShader>(m_resourceAllocator);
+//
+//     // Create specialization info from tracked state. This is shared by all shaders.
+//     const auto& specConstants = sgInfo.specializationConstants;
+//     if (!specConstants.empty())
+//     {
+//         shader->m_spcMapEntries.resize(specConstants.size());
+//         for (uint32_t i = 0; i < specConstants.size(); i++)
+//         {
+//             VkSpecializationMapEntry& entry = shader->m_spcMapEntries[i];
+//             // fill in data
+//             entry.constantID = specConstants[i].constantId;
+//             switch (specConstants[i].type)
+//             {
+//
+//                 case ShaderSpecializationConstantType::eBool:
+//                 {
+//                     entry.size   = sizeof(bool);
+//                     entry.offset = reinterpret_cast<const char*>(&specConstants[i].boolValue) -
+//                         reinterpret_cast<const char*>(specConstants.data());
+//                 }
+//                 break;
+//                 case ShaderSpecializationConstantType::eInt:
+//                 {
+//                     entry.size   = sizeof(int);
+//                     entry.offset = reinterpret_cast<const char*>(&specConstants[i].intValue) -
+//                         reinterpret_cast<const char*>(specConstants.data());
+//                 }
+//                 break;
+//                 case ShaderSpecializationConstantType::eFloat:
+//                 {
+//                     entry.size   = sizeof(float);
+//                     entry.offset = reinterpret_cast<const char*>(&specConstants[i].floatValue) -
+//                         reinterpret_cast<const char*>(specConstants.data());
+//                 }
+//                 break;
+//                 default: break;
+//             }
+//         }
+//     }
+//     shader->m_specializationInfo.mapEntryCount = static_cast<uint32_t>(shader->m_spcMapEntries.size());
+//     shader->m_specializationInfo.pMapEntries =
+//         shader->m_spcMapEntries.empty() ? nullptr : shader->m_spcMapEntries.data();
+//     shader->m_specializationInfo.dataSize =
+//         specConstants.size() * sizeof(ShaderSpecializationConstant);
+//     shader->m_specializationInfo.pData = specConstants.empty() ? nullptr : specConstants.data();
+//
+//     for (auto& kv : sgInfo.sprivCode)
+//     {
+//         VkShaderModuleCreateInfo shaderModuleCI;
+//         InitVkStruct(shaderModuleCI, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
+//         shaderModuleCI.codeSize = kv.second.size();
+//         shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(kv.second.data());
+//         VkShaderModule module{VK_NULL_HANDLE};
+//         VKCHECK(vkCreateShaderModule(GetVkDevice(), &shaderModuleCI, nullptr, &module));
+//
+//         VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
+//         InitVkStruct(pipelineShaderStageCI, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO);
+//         pipelineShaderStageCI.stage               = ShaderStageToVkShaderStageFlagBits(kv.first);
+//         pipelineShaderStageCI.pName               = "main";
+//         pipelineShaderStageCI.module              = module;
+//         pipelineShaderStageCI.pSpecializationInfo = &shader->m_specializationInfo;
+//
+//         shader->m_stageCreateInfos.push_back(pipelineShaderStageCI);
+//     }
+//     // Create descriptor pool key while createing descriptor set layouts
+//     VulkanDescriptorPoolKey descriptorPoolKey{};
+//     // Create descriptorSetLayouts
+//     std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
+//     const auto setCount = sgInfo.SRDs.size();
+//     dsBindings.resize(setCount);
+//     for (uint32_t i = 0; i < setCount; i++)
+//     {
+//         std::vector<VkDescriptorBindingFlags> bindingFlags;
+//         // collect bindings for set i
+//         for (uint32_t j = 0; j < sgInfo.SRDs[i].size(); j++)
+//         {
+//             const ShaderResourceDescriptor& srd = sgInfo.SRDs[i][j];
+//             VkDescriptorSetLayoutBinding binding{};
+//             binding.binding         = srd.binding;
+//             binding.descriptorType  = ShaderResourceTypeToVkDescriptorType(srd.type);
+//             binding.descriptorCount = DecideDescriptorCount(
+//                 binding.descriptorType, srd.arraySize, m_device->GetDescriptorIndexingProperties());
+//             binding.stageFlags = ShaderStageFlagsBitsToVkShaderStageFlags(srd.stageFlags);
+//             if (binding.descriptorCount > 1)
+//             {
+//                 bindingFlags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+//             }
+//             else
+//             {
+//                 bindingFlags.push_back(0);
+//             }
+//             dsBindings[i].push_back(binding);
+//             descriptorPoolKey.descriptorCount[ToUnderlying(srd.type)] += binding.descriptorCount;
+//         }
+//         if (dsBindings[i].empty())
+//             continue;
+//         // create descriptor set layout for set i
+//         VkDescriptorSetLayoutCreateInfo layoutCI;
+//         InitVkStruct(layoutCI, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
+//         layoutCI.bindingCount = dsBindings[i].size();
+//         layoutCI.pBindings    = dsBindings[i].data();
+//         layoutCI.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+//         // set binding flags
+//         VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCreateInfo;
+//         InitVkStruct(bindingFlagsCreateInfo,
+//                      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
+//         bindingFlagsCreateInfo.bindingCount  = bindingFlags.size();
+//         bindingFlagsCreateInfo.pBindingFlags = bindingFlags.data();
+//         layoutCI.pNext                       = &bindingFlagsCreateInfo;
+//
+//         VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+//         VKCHECK(
+//             vkCreateDescriptorSetLayout(GetVkDevice(), &layoutCI, nullptr, &descriptorSetLayout));
+//         shader->descriptorSetLayouts.push_back(descriptorSetLayout);
+//     }
+//     // vertex input state
+//     const auto vertexInputCount = sgInfo.vertexInputAttributes.size();
+//     if (vertexInputCount > 0)
+//     {
+//         shader->m_vertexInputInfo.vkAttributes.resize(vertexInputCount);
+//         // packed data for vertex inputs, only 1 binding
+//         VkVertexInputBindingDescription vkBinding{};
+//         vkBinding.binding   = 0;
+//         vkBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+//         vkBinding.stride    = sgInfo.vertexBindingStride;
+//         shader->m_vertexInputInfo.vkBindings.emplace_back(vkBinding);
+//         // populate attributes
+//         for (uint32_t i = 0; i < vertexInputCount; i++)
+//         {
+//             shader->m_vertexInputInfo.vkAttributes[i].binding =
+//                 sgInfo.vertexInputAttributes[i].binding;
+//             shader->m_vertexInputInfo.vkAttributes[i].location =
+//                 sgInfo.vertexInputAttributes[i].location;
+//             shader->m_vertexInputInfo.vkAttributes[i].offset = sgInfo.vertexInputAttributes[i].offset;
+//             shader->m_vertexInputInfo.vkAttributes[i].format =
+//                 static_cast<VkFormat>(sgInfo.vertexInputAttributes[i].format);
+//         }
+//         InitVkStruct(shader->m_vertexInputInfo.stateCI,
+//                      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
+//         shader->m_vertexInputInfo.stateCI.vertexAttributeDescriptionCount =
+//             shader->m_vertexInputInfo.vkAttributes.size();
+//         shader->m_vertexInputInfo.stateCI.pVertexAttributeDescriptions =
+//             shader->m_vertexInputInfo.vkAttributes.data();
+//         shader->m_vertexInputInfo.stateCI.vertexBindingDescriptionCount =
+//             shader->m_vertexInputInfo.vkBindings.size();
+//         shader->m_vertexInputInfo.stateCI.pVertexBindingDescriptions =
+//             shader->m_vertexInputInfo.vkBindings.data();
+//     }
+//     else
+//     {
+//         InitVkStruct(shader->m_vertexInputInfo.stateCI,
+//                      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO);
+//         shader->m_vertexInputInfo.stateCI.vertexAttributeDescriptionCount = 0;
+//         shader->m_vertexInputInfo.stateCI.pVertexAttributeDescriptions    = nullptr;
+//         shader->m_vertexInputInfo.stateCI.vertexBindingDescriptionCount   = 0;
+//         shader->m_vertexInputInfo.stateCI.pVertexBindingDescriptions      = nullptr;
+//     }
+//     // Create pipeline layout
+//     VkPipelineLayoutCreateInfo pipelineLayoutCI;
+//     InitVkStruct(pipelineLayoutCI, VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
+//     pipelineLayoutCI.pSetLayouts    = shader->descriptorSetLayouts.data();
+//     pipelineLayoutCI.setLayoutCount = setCount;
+//     VkPushConstantRange prc{};
+//     const auto& pc = sgInfo.pushConstants;
+//     if (pc.size > 0)
+//     {
+//         prc.stageFlags = ShaderStageFlagsBitsToVkShaderStageFlags(pc.stageFlags);
+//         prc.size       = pc.size;
+//         pipelineLayoutCI.pushConstantRangeCount = 1;
+//         pipelineLayoutCI.pPushConstantRanges    = &prc;
+//     }
+//     vkCreatePipelineLayout(GetVkDevice(), &pipelineLayoutCI, nullptr, &shader->pipelineLayout);
+//
+//     shader->descriptorPoolKey = descriptorPoolKey;
+//     shader->pushConstantsStageFlags =
+//         ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
+//
+//     auto debugName = sgInfo.name + "_PipelineLayout";
+//     m_device->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+//                             reinterpret_cast<uint64_t>(shader->pipelineLayout), debugName.c_str());
+//
+//     return ShaderHandle(shader);
+// }
+
+// void VulkanRHI::DestroyShader(ShaderHandle shaderHandle)
+// {
+//     VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+//
+//     for (auto& dsLayout : shader->descriptorSetLayouts)
+//     {
+//         vkDestroyDescriptorSetLayout(GetVkDevice(), dsLayout, nullptr);
+//     }
+//
+//     for (auto& stageCreateInfo : shader->m_stageCreateInfos)
+//     {
+//         vkDestroyShaderModule(GetVkDevice(), stageCreateInfo.module, nullptr);
+//     }
+//     if (shader->pipelineLayout != VK_NULL_HANDLE)
+//     {
+//         vkDestroyPipelineLayout(GetVkDevice(), shader->pipelineLayout, nullptr);
+//     }
+//     VersatileResource::Free(m_resourceAllocator, shader);
+// }
+
+PipelineHandle VulkanRHI::CreateGfxPipeline(RHIShader* shaderHandle,
                                             const GfxPipelineStates& states,
                                             RenderPassHandle renderPassHandle,
                                             uint32_t subpass)
@@ -382,13 +648,13 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(states.dynamicStates.size());
     dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
 
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+    FVulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkGraphicsPipelineCreateInfo pipelineCI;
     InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
-    pipelineCI.stageCount          = shader->stageCreateInfos.size();
-    pipelineCI.pStages             = shader->stageCreateInfos.data();
-    pipelineCI.pVertexInputState   = &shader->vertexInputInfo.stateCI;
+    pipelineCI.stageCount          = shader->GetNumShaderStages();
+    pipelineCI.pStages             = shader->GetStageCreateInfoData();
+    pipelineCI.pVertexInputState   = shader->GetVertexInputStateCreateInfoData();
     pipelineCI.pInputAssemblyState = &IAStateCI;
     pipelineCI.pViewportState      = &VPStateCI;
     pipelineCI.pRasterizationState = &rasterizationCI;
@@ -396,7 +662,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     pipelineCI.pDepthStencilState  = &DSStateCI;
     pipelineCI.pColorBlendState    = &CBStateCI;
     pipelineCI.pDynamicState       = &dynamicStateCI;
-    pipelineCI.layout              = shader->pipelineLayout;
+    pipelineCI.layout              = shader->GetVkPipelineLayout();
     pipelineCI.renderPass          = TO_VK_RENDER_PASS(renderPassHandle);
     pipelineCI.subpass             = subpass;
 
@@ -406,9 +672,9 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
 
     VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
     pipeline->pipeline           = gfxPipeline;
-    pipeline->pipelineLayout     = shader->pipelineLayout;
-    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
-    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
+    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
+    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
     //    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
     m_shaderPipelines[shaderHandle] = pipeline;
@@ -416,7 +682,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     return PipelineHandle(pipeline);
 }
 
-PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
+PipelineHandle VulkanRHI::CreateGfxPipeline(RHIShader* shaderHandle,
                                             const GfxPipelineStates& states,
                                             const RenderPassLayout& renderPassLayout,
                                             uint32_t subpass)
@@ -550,13 +816,13 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(states.dynamicStates.size());
     dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
 
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+    FVulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkGraphicsPipelineCreateInfo pipelineCI;
     InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
-    pipelineCI.stageCount          = shader->stageCreateInfos.size();
-    pipelineCI.pStages             = shader->stageCreateInfos.data();
-    pipelineCI.pVertexInputState   = &shader->vertexInputInfo.stateCI;
+    pipelineCI.stageCount          = shader->GetNumShaderStages();
+    pipelineCI.pStages             = shader->GetStageCreateInfoData();
+    pipelineCI.pVertexInputState   = shader->GetVertexInputStateCreateInfoData();
     pipelineCI.pInputAssemblyState = &IAStateCI;
     pipelineCI.pViewportState      = &VPStateCI;
     pipelineCI.pRasterizationState = &rasterizationCI;
@@ -564,7 +830,7 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     pipelineCI.pDepthStencilState  = &DSStateCI;
     pipelineCI.pColorBlendState    = &CBStateCI;
     pipelineCI.pDynamicState       = &dynamicStateCI;
-    pipelineCI.layout              = shader->pipelineLayout;
+    pipelineCI.layout              = shader->GetVkPipelineLayout();
     pipelineCI.renderPass          = VK_NULL_HANDLE;
     pipelineCI.subpass             = subpass;
 
@@ -594,9 +860,9 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
 
     VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
     pipeline->pipeline           = gfxPipeline;
-    pipeline->pipelineLayout     = shader->pipelineLayout;
-    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
-    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
+    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
+    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
     //    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
     m_shaderPipelines[shaderHandle] = pipeline;
@@ -604,14 +870,14 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(ShaderHandle shaderHandle,
     return PipelineHandle(pipeline);
 }
 
-PipelineHandle VulkanRHI::CreateComputePipeline(ShaderHandle shaderHandle)
+PipelineHandle VulkanRHI::CreateComputePipeline(RHIShader* shaderHandle)
 {
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+    FVulkanShader* shader = TO_VK_SHADER(shaderHandle);
 
     VkComputePipelineCreateInfo pipelineCI{};
     pipelineCI.sType  = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipelineCI.stage  = shader->stageCreateInfos[0];
-    pipelineCI.layout = shader->pipelineLayout;
+    pipelineCI.stage  = shader->GetStageCreateInfoData()[0];
+    pipelineCI.layout = shader->GetVkPipelineLayout();
 
     VkPipeline computePipeline{VK_NULL_HANDLE};
     VKCHECK(vkCreateComputePipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
@@ -619,9 +885,9 @@ PipelineHandle VulkanRHI::CreateComputePipeline(ShaderHandle shaderHandle)
 
     VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
     pipeline->pipeline           = computePipeline;
-    pipeline->pipelineLayout     = shader->pipelineLayout;
-    pipeline->descriptorSetCount = static_cast<uint32_t>(shader->descriptorSetLayouts.size());
-    pipeline->pushConstantsStageFlags = shader->pushConstantsStageFlags;
+    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
+    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
 
     m_shaderPipelines[shaderHandle] = pipeline;
 
@@ -794,24 +1060,24 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
     }
 }
 
-DescriptorSetHandle VulkanRHI::CreateDescriptorSet(ShaderHandle shaderHandle, uint32_t setIndex)
+DescriptorSetHandle VulkanRHI::CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex)
 {
     if (!m_shaderPipelines.contains(shaderHandle))
     {
         LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
     }
 
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+    FVulkanShader* shader = TO_VK_SHADER(shaderHandle);
     VulkanDescriptorPoolsIt iter{};
     VkDescriptorPool pool =
-        m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->descriptorPoolKey, &iter);
+        m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->GetDescriptorPoolKey(), &iter);
     VERIFY_EXPR(pool != VK_NULL_HANDLE);
 
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
     InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
     descriptorSetAllocateInfo.descriptorPool     = pool;
     descriptorSetAllocateInfo.descriptorSetCount = 1;
-    descriptorSetAllocateInfo.pSetLayouts        = &shader->descriptorSetLayouts[setIndex];
+    descriptorSetAllocateInfo.pSetLayouts        = &shader->GetDescriptorSetLayoutData()[setIndex];
 
     VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
     VkResult result = vkAllocateDescriptorSets(m_device->GetVkHandle(), &descriptorSetAllocateInfo,

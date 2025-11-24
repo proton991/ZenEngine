@@ -100,7 +100,7 @@ void ShadowMappingApp::BuildGraphicsPasses()
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
             builder
-                .AddShaderStage(rhi::ShaderStage::eVertex, "ShadowMapping/offscreen.vert.spv")
+                .AddShaderStage(rhi::RHIShaderStage::eVertex, "ShadowMapping/offscreen.vert.spv")
                 //                .SetFragmentShader("ShadowMapping/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .SetDepthStencilTarget(cOffscreenDepthFormat, m_offscreenDepthTexture,
@@ -141,8 +141,8 @@ void ShadowMappingApp::BuildGraphicsPasses()
         }
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneShadow =
-            builder.AddShaderStage(rhi::ShaderStage::eVertex, "ShadowMapping/scene.vert.spv")
-                .AddShaderStage(rhi::ShaderStage::eFragment, "ShadowMapping/scene.frag.spv")
+            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "ShadowMapping/scene.vert.spv")
+                .AddShaderStage(rhi::RHIShaderStage::eFragment, "ShadowMapping/scene.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
                                       TextureUsage::eColorAttachment,

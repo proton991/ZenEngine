@@ -12,7 +12,7 @@ ShaderModule::ShaderModule(const Device& device,
                            RuntimeArraySizes runtimeArraySizes) :
     DeviceObject(device), m_stage(stage), m_runtimeArraySizes(std::move(runtimeArraySizes))
 {
-    m_spirvCode = platform::FileSystem::LoadSpvFile(name);
+    m_spirvCode = platform::FileSystem::LoadSpvFile<uint32_t>(name);
 
     // create a new shader module, using the buffer we loaded
     VkShaderModuleCreateInfo createInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
