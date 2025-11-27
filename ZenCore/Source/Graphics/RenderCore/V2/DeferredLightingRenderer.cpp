@@ -271,7 +271,7 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
 
 void DeferredLightingRenderer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("deferred_lighting_rdg");
     m_rdg->Begin();
     // offscreen pass
     {

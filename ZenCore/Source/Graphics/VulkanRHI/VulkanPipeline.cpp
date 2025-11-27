@@ -670,14 +670,14 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(RHIShader* shaderHandle,
     VKCHECK(
         vkCreateGraphicsPipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr, &gfxPipeline));
 
-    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
-    pipeline->pipeline           = gfxPipeline;
-    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
-    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    VulkanPipeline* pipeline = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline       = gfxPipeline;
+    pipeline->pipelineLayout = shader->GetVkPipelineLayout();
+    // pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
     pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
     //    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
-    m_shaderPipelines[shaderHandle] = pipeline;
+    // m_shaderPipelines[shaderHandle] = pipeline;
 
     return PipelineHandle(pipeline);
 }
@@ -858,14 +858,14 @@ PipelineHandle VulkanRHI::CreateGfxPipeline(RHIShader* shaderHandle,
     VKCHECK(
         vkCreateGraphicsPipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr, &gfxPipeline));
 
-    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
-    pipeline->pipeline           = gfxPipeline;
-    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
-    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    VulkanPipeline* pipeline = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline       = gfxPipeline;
+    pipeline->pipelineLayout = shader->GetVkPipelineLayout();
+    // pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
     pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
     //    pipeline->descriptorSets.resize(pipeline->descriptorSetCount);
 
-    m_shaderPipelines[shaderHandle] = pipeline;
+    // m_shaderPipelines[shaderHandle] = pipeline;
 
     return PipelineHandle(pipeline);
 }
@@ -883,13 +883,13 @@ PipelineHandle VulkanRHI::CreateComputePipeline(RHIShader* shaderHandle)
     VKCHECK(vkCreateComputePipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
                                      &computePipeline));
 
-    VulkanPipeline* pipeline     = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
-    pipeline->pipeline           = computePipeline;
-    pipeline->pipelineLayout     = shader->GetVkPipelineLayout();
-    pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
+    VulkanPipeline* pipeline = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
+    pipeline->pipeline       = computePipeline;
+    pipeline->pipelineLayout = shader->GetVkPipelineLayout();
+    // pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
     pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
 
-    m_shaderPipelines[shaderHandle] = pipeline;
+    // m_shaderPipelines[shaderHandle] = pipeline;
 
     return PipelineHandle(pipeline);
 }
@@ -1059,13 +1059,13 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
         }
     }
 }
-
+// todo: store shader in pipeline, implement RHIPipeline and turn this into a member function of it
 DescriptorSetHandle VulkanRHI::CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex)
 {
-    if (!m_shaderPipelines.contains(shaderHandle))
-    {
-        LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
-    }
+    // if (!m_shaderPipelines.contains(shaderHandle))
+    // {
+    //     LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
+    // }
 
     FVulkanShader* shader = TO_VK_SHADER(shaderHandle);
     VulkanDescriptorPoolsIt iter{};
@@ -1094,7 +1094,10 @@ DescriptorSetHandle VulkanRHI::CreateDescriptorSet(RHIShader* shaderHandle, uint
     descriptorSet->descriptorPool = pool;
     descriptorSet->descriptorSet  = vkDescriptorSet;
 
-    m_shaderPipelines[shaderHandle]->descriptorSets[setIndex] = descriptorSet;
+    // VulkanPipeline* vulkanPipeline           = TO_VK_PIPELINE(pipeline);
+    // vulkanPipeline->descriptorSets[setIndex] = descriptorSet;
+
+    // m_shaderPipelines[shaderHandle]->descriptorSets[setIndex] = descriptorSet;
 
     return DescriptorSetHandle(descriptorSet);
 }

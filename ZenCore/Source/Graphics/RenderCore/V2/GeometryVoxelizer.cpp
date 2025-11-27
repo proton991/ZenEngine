@@ -44,7 +44,7 @@ void GeometryVoxelizer::PrepareBuffers()
 
 void GeometryVoxelizer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("geom_voxelize_rdg");
     m_rdg->Begin();
     // voxelization pass
     if (m_needVoxelization)

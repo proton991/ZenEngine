@@ -256,7 +256,9 @@ struct RDGPassNode : RDGNodeBase
 };
 
 struct RDGComputePassNode : RDGPassNode
-{};
+{
+    const ComputePass* computePass{nullptr};
+};
 
 struct RDGGraphicsPassNode : RDGPassNode
 {
@@ -268,6 +270,7 @@ struct RDGGraphicsPassNode : RDGPassNode
     rhi::RenderPassClearValue clearValues[8];
     rhi::RenderPassLayout renderPassLayout;
     bool dynamic;
+    const GraphicsPass* graphicsPass{nullptr};
 };
 
 /*****************************/
@@ -518,10 +521,12 @@ struct RDGSetDepthBiasNode : RDGPassChildNode
     float depthBiasSlopeFactor;
 };
 
+// todo: unify tags/names with RHIResource
 class RenderGraph
 {
 public:
-    RenderGraph() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
+    RenderGraph(std::string tag) :
+        m_rdgTag(std::move(tag)), m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
     {
         m_resourceAllocator.Init();
     }
@@ -803,6 +808,7 @@ private:
         return static_cast<RDGNodeBase*>(derived);
     }
 
+    std::string m_rdgTag;
     // RHI CommandList
     rhi::RHICommandList* m_cmdList{nullptr};
     // stores dependency between graph nodes

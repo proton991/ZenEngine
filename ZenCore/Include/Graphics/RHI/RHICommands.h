@@ -71,9 +71,15 @@ public:
 
     virtual void BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets) = 0;
 
-    virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
+    // virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
 
-    virtual void BindComputePipeline(PipelineHandle pipelineHandle) = 0;
+    virtual void BindGfxPipeline(PipelineHandle pipelineHandle,
+                                 const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
+
+    // virtual void BindComputePipeline(PipelineHandle pipelineHandle) = 0;
+
+    virtual void BindComputePipeline(PipelineHandle pipelineHandle,
+                                     const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
 
     virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
                                  FramebufferHandle framebufferHandle,

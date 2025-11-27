@@ -53,10 +53,17 @@ public:
         return m_counter.GetValue();
     }
 
+    const std::string& GetResourceTag() const
+    {
+        return m_resourceTag;
+    }
+
 protected:
     virtual void Init() = 0;
 
     virtual void Destroy() = 0;
+
+    std::string m_resourceTag;
 
 private:
     class AtomicCounter
@@ -461,6 +468,7 @@ protected:
     explicit RHITexture(const RHITextureCreateInfo& createInfo) :
         RHIResource(ResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
     {
+        m_resourceTag = createInfo.name;
         InitSubresourceRange();
     }
 

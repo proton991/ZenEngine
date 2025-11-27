@@ -120,6 +120,7 @@ public:
         return *this;
     }
 
+    // todo: allocate GraphicsPass on heap
     GraphicsPass Build();
 
 private:
@@ -174,6 +175,8 @@ public:
         m_tag = std::move(tag);
         return *this;
     }
+
+    // todo: allocate ComputePass on heap
     ComputePass Build();
 
 private:

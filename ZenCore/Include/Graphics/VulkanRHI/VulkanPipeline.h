@@ -154,9 +154,11 @@ struct VulkanPipeline
 {
     VkPipeline pipeline{VK_NULL_HANDLE};
     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
-    uint32_t descriptorSetCount{0};
+    // uint32_t descriptorSetCount{0};
     VkShaderStageFlags pushConstantsStageFlags;
     //    std::vector<VulkanDescriptorSet*> descriptorSets;
-    VulkanDescriptorSet* descriptorSets[8]; // todo: set size based on GPU limits
+    // Reason: When building GraphicsPass/ComputePass and pipeline cache is hit, the latter ones will overwrite the descriptorSet
+    // VulkanPipeline and VulkanDescriptorSet should be kept separately
+    // VulkanDescriptorSet* descriptorSets[8];
 };
 } // namespace zen::rhi

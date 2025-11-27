@@ -73,7 +73,7 @@ private:
     VoxelizerBase* m_voxelizer{nullptr};
     // VoxelRenderer* m_voxelRenderer{nullptr};
     ShadowMapRenderer* m_shadowMapRenderer{nullptr};
-    // VoxelGIRenderer* m_voxelGIRenderer{nullptr};
+    VoxelGIRenderer* m_voxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
 };

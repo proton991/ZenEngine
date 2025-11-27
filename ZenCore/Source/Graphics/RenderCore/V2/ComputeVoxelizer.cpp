@@ -92,7 +92,7 @@ void ComputeVoxelizer::PrepareBuffers()
 void ComputeVoxelizer::BuildRenderGraph()
 {
     VERIFY_EXPR(m_scene != nullptr);
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("comp_voxelize_rdg");
     m_rdg->Begin();
     int workgroupCount;
     // voxelization pass

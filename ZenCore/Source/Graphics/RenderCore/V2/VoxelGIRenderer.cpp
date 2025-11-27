@@ -75,11 +75,13 @@ void VoxelGIRenderer::PrepareTextures()
         //                   "voxel_radiance", TextureUsageFlagBits::eStorage,
         //                   TextureUsageFlagBits::eSampled);
         TextureFormat texFormat{};
-        texFormat.format    = voxelTexFormat;
-        texFormat.dimension = TextureDimension::e3D;
-        texFormat.width     = voxelTexResolution;
-        texFormat.height    = voxelTexResolution;
-        texFormat.depth     = voxelTexResolution;
+        texFormat.format      = voxelTexFormat;
+        texFormat.dimension   = TextureDimension::e3D;
+        texFormat.width       = voxelTexResolution;
+        texFormat.height      = voxelTexResolution;
+        texFormat.depth       = voxelTexResolution;
+        texFormat.arrayLayers = 1;
+        texFormat.mipmaps     = 1;
 
         m_textures.voxelRadiance =
             m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, "voxel_radiance");
@@ -113,7 +115,7 @@ void VoxelGIRenderer::PrepareBuffers() {}
 
 void VoxelGIRenderer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("voxel_gi_rdg");
     m_rdg->Begin();
 
 
@@ -122,7 +124,7 @@ void VoxelGIRenderer::BuildRenderGraph()
     {
         auto* pass =
             m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture, "reset_voxel_radiance");
-        pass->tag = "reset_voxel_texture";
+        // pass->tag = "reset_voxel_texture";
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_textures.voxelRadiance, TextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),

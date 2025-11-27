@@ -35,8 +35,8 @@ void RendererServer::Init()
     m_shadowMapRenderer = new ShadowMapRenderer(m_renderDevice, m_viewport);
     m_shadowMapRenderer->Init();
 
-    // m_voxelGIRenderer = new VoxelGIRenderer(m_renderDevice, m_viewport);
-    // m_voxelGIRenderer->Init();
+    m_voxelGIRenderer = new VoxelGIRenderer(m_renderDevice, m_viewport);
+    m_voxelGIRenderer->Init();
 }
 
 void RendererServer::Destroy()
@@ -49,6 +49,9 @@ void RendererServer::Destroy()
 
     m_skyboxRenderer->Destroy();
     delete m_skyboxRenderer;
+
+    m_voxelGIRenderer->Destroy();
+    delete m_voxelGIRenderer;
 
     m_voxelizer->Destroy();
     delete m_voxelizer;
@@ -70,12 +73,12 @@ void RendererServer::DispatchRenderWorkloads()
         // m_voxelRenderer->PrepareRenderWorkload();
         m_voxelizer->PrepareRenderWorkload();
         m_shadowMapRenderer->PrepareRenderWorkload();
-        // m_voxelGIRenderer->PrepareRenderWorkload();
+        m_voxelGIRenderer->PrepareRenderWorkload();
         RDGs.push_back(m_skyboxRenderer->GetRenderGraph());
         RDGs.push_back(m_shadowMapRenderer->GetRenderGraph()); // shadowMap
         // RDGs.push_back(m_voxelRenderer->GetRenderGraph());     // voxel
-        RDGs.push_back(m_voxelizer->GetRenderGraph()); // voxelization
-        // RDGs.push_back(m_voxelGIRenderer->GetRenderGraph()); // voxel GI
+        RDGs.push_back(m_voxelizer->GetRenderGraph());       // voxelization
+        RDGs.push_back(m_voxelGIRenderer->GetRenderGraph()); // voxel GI
     }
     else
     {
@@ -96,7 +99,7 @@ void RendererServer::SetRenderScene(RenderScene* scene)
     m_deferredLightingRenderer->SetRenderScene(scene);
     m_voxelizer->SetRenderScene(scene);
     m_shadowMapRenderer->SetRenderScene(scene);
-    // m_voxelGIRenderer->SetRenderScene(scene);
+    m_voxelGIRenderer->SetRenderScene(scene);
 }
 
 void RendererServer::ViewportResizeCallback()

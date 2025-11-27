@@ -157,7 +157,7 @@ void ShadowMapRenderer::BuildGraphicsPasses()
 
 void ShadowMapRenderer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("shadowmap_rdg");
     m_rdg->Begin();
     // offscreen pass
     {

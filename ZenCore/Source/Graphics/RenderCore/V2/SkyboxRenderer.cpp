@@ -35,7 +35,7 @@ void SkyboxRenderer::Init()
         m_renderDevice->CreateIndexBuffer(cSkyboxIndices.size() * sizeof(uint32_t),
                                           reinterpret_cast<const uint8_t*>(cSkyboxIndices.data()));
 
-    m_rdg = MakeUnique<RenderGraph>();
+    m_rdg = MakeUnique<RenderGraph>("skybox_draw_rdg");
 
     PrepareTextures();
 
@@ -269,7 +269,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
             updater.SetShaderResourceBinding(0, textureBindings).Update();
 
-            UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>();
+            UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("env_cubmap_gen_rdg");
             rdg->Begin();
             std::vector<RenderPassClearValue> clearValues(1);
             clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
@@ -441,7 +441,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
                               .Build();
 
     // build rdg
-    UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>();
+    UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("lut_brdf_ge_rdg");
     rdg->Begin();
     std::vector<RenderPassClearValue> clearValues(1);
     clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};

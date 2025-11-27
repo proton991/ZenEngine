@@ -67,9 +67,10 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std
 {
     VERIFY_EXPR_MSG(!tag.empty(), "compute pass node tag should not be empty");
 
-    auto* node = AllocNode<RDGComputePassNode>();
-    node->type = RDGNodeType::eComputePass;
-    node->tag  = std::move(tag);
+    auto* node        = AllocNode<RDGComputePassNode>();
+    node->type        = RDGNodeType::eComputePass;
+    node->tag         = std::move(tag);
+    node->computePass = &computePass;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
     for (uint32_t i = 0; i < computePass.shaderProgram->GetSRDs().size(); i++)
     {
@@ -163,6 +164,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
     auto* node             = AllocNode<RDGGraphicsPassNode>();
+    node->graphicsPass     = &gfxPass;
     node->renderPass       = std::move(gfxPass.renderPass);
     node->framebuffer      = std::move(gfxPass.framebuffer);
     node->renderArea       = area;
@@ -1022,9 +1024,9 @@ void RenderGraph::SortNodesV2()
 
         // Merge writers and readers into one timeline
         std::vector<std::pair<RDG_ID, rhi::AccessMode>> accesses;
-        for (auto w : writers)
+        for (const auto& w : writers)
             accesses.emplace_back(w, rhi::AccessMode::eReadWrite);
-        for (auto r : readers)
+        for (const auto& r : readers)
             accesses.emplace_back(r, rhi::AccessMode::eRead);
 
         // Sort by node ID to get a consistent order
@@ -1257,7 +1259,9 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eBindPipeline:
                     {
                         auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
-                        m_cmdList->BindComputePipeline(cmdNode->pipeline);
+                        // m_cmdList->BindComputePipeline(cmdNode->pipeline);
+                        m_cmdList->BindComputePipeline(cmdNode->pipeline,
+                                                       node->computePass->descriptorSets);
                     }
                     break;
                     case RDGPassCmdType::eDispatch:
@@ -1334,7 +1338,9 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eBindPipeline:
                     {
                         auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
-                        m_cmdList->BindGfxPipeline(cmdNode->pipeline);
+                        // m_cmdList->BindGfxPipeline(cmdNode->pipeline);
+                        m_cmdList->BindGfxPipeline(cmdNode->pipeline,
+                                                   node->graphicsPass->descriptorSets);
                     }
                     break;
                     case RDGPassCmdType::eClearAttachment: break;

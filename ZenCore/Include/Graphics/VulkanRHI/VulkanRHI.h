@@ -237,7 +237,8 @@ private:
     // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
-    HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
+    // todo: remove incorrect 1 to 1 binding
+    // HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
 
     // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
     // primarily applied outside the RenderGraph.
