@@ -11,6 +11,7 @@ set(ZEN_CORE_HEADERS
     Include/Templates/HashMap.h
     Include/Templates/Queue.h
     Include/Templates/SmallVector.h
+    Include/Templates/ArenaVector.h
 
     Include/Utils/ConditionVariable.h
     Include/Utils/Counter.h
@@ -28,6 +29,8 @@ set(ZEN_CORE_HEADERS
 
     Include/Memory/Memory.h
     Include/Memory/PagedAllocator.h
+    Include/Memory/LinearAllocator.h
+    Include/Memory/PoolAllocator.h
 
     Include/Graphics/Common/Format.h
     Include/Graphics/Common/Color.h

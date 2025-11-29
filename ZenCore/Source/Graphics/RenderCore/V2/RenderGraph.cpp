@@ -393,7 +393,10 @@ void RenderGraph::AddBufferClearNode(rhi::RHIBuffer* buffer, uint32_t offset, ui
     access.bufferUsage = rhi::BufferUsage::eTransferDst;
 
     RDGResource* resource = GetOrAllocResource(buffer, RDGResourceType::eBuffer, node->id);
-    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+
+    resource->writtenByNodeIds.push_back(node->id);
+
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
@@ -418,7 +421,8 @@ void RenderGraph::AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
 
         RDGResource* resource =
             GetOrAllocResource(srcBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -432,7 +436,8 @@ void RenderGraph::AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -459,7 +464,8 @@ void RenderGraph::AddBufferUpdateNode(rhi::RHIBuffer* dstBufferHandle,
     writeAccess.nodeId      = node->id;
 
     RDGResource* resource = GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    resource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -483,7 +489,8 @@ void RenderGraph::AddTextureClearNode(rhi::RHITexture* texture,
     access.textureSubResourceRange = range;
 
     RDGResource* resource = GetOrAllocResource(texture, RDGResourceType::eTexture, node->id);
-    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    resource->writtenByNodeIds.push_back(node->id);
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
@@ -527,7 +534,8 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     {
         srcResource->tag = "src_texture";
     }
-    srcResource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+    // srcResource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+    srcResource->readByNodeIds.push_back(node->id);
     readAccess.resourceId = srcResource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -544,7 +552,8 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     {
         dstResource->tag = "dst_texture";
     }
-    dstResource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // dstResource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    dstResource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = dstResource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -579,7 +588,8 @@ void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
         readAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(srcTexture, RDGResourceType::eTexture, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -593,7 +603,8 @@ void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -629,7 +640,8 @@ void RenderGraph::AddTextureUpdateNode(rhi::RHITexture* dstTexture,
     writeAccess.nodeId       = node->id;
 
     RDGResource* resource = GetOrAllocResource(dstTexture, RDGResourceType::eTexture, node->id);
-    resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    resource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -658,7 +670,8 @@ void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
         readAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(srcTexture, RDGResourceType::eTexture, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(readAccess));
@@ -671,7 +684,8 @@ void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
         writeAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(dstTexture, RDGResourceType::eTexture, node->id);
-        resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
         m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
@@ -694,7 +708,17 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                               std::string tag)
 {
     RDGResource* resource = GetOrAllocResource(texture, RDGResourceType::eTexture, passNode->id);
-    resource->accessNodeMap[accessMode].push_back(passNode->id);
+
+    if (accessMode == rhi::AccessMode::eReadWrite)
+    {
+        resource->writtenByNodeIds.push_back(passNode->id);
+    }
+    else if (accessMode == rhi::AccessMode::eRead)
+    {
+        resource->readByNodeIds.push_back(passNode->id);
+    }
+    // resource->accessNodeMap[accessMode].push_back(passNode->id);
+
     if (resource->tag.empty())
         resource->tag = tag;
 
@@ -737,7 +761,15 @@ void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
                                              std::string tag)
 {
     RDGResource* resource = GetOrAllocResource(buffer, RDGResourceType::eBuffer, passNode->id);
-    resource->accessNodeMap[accessMode].push_back(passNode->id);
+    // resource->accessNodeMap[accessMode].push_back(passNode->id);
+    if (accessMode == rhi::AccessMode::eReadWrite)
+    {
+        resource->writtenByNodeIds.push_back(passNode->id);
+    }
+    else if (accessMode == rhi::AccessMode::eRead)
+    {
+        resource->readByNodeIds.push_back(passNode->id);
+    }
     if (resource->tag.empty())
         resource->tag = tag;
 
@@ -858,159 +890,159 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
     return addInDegree;
 }
 
-void RenderGraph::SortNodes()
-{
-    // resolve node dependencies
-    HashMap<RDG_ID, std::vector<RDG_ID>> nodeDpedencies;
-    std::vector<uint32_t> inDegrees(m_nodeCount, 0);
-    for (RDGResource* resource : m_resources)
-    {
-        if (resource->accessNodeMap.contains(rhi::AccessMode::eReadWrite) &&
-            resource->accessNodeMap.contains(rhi::AccessMode::eRead))
-        {
-            bool isTexture         = resource->type == RDGResourceType::eTexture;
-            auto& writtenByNodeIds = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
-            auto& readByNodeIDs    = resource->accessNodeMap[rhi::AccessMode::eRead];
-            std::ranges::sort(writtenByNodeIds);
-            std::ranges::sort(readByNodeIDs);
-            // Combine write and read access nodes into a single vector while preserving the order
-            std::vector<RDG_ID> accessNodes = writtenByNodeIds;
-            accessNodes.insert(accessNodes.end(), readByNodeIDs.begin(), readByNodeIDs.end());
-
-            // Sort the combined access nodes by RDG_ID to maintain proper order
-            std::ranges::sort(accessNodes.begin(), accessNodes.end());
-
-            // Create dependencies between consecutive nodes
-            for (size_t i = 1; i < accessNodes.size(); ++i)
-            {
-                RDG_ID srcNodeId = accessNodes[i - 1];
-                RDG_ID dstNodeId = accessNodes[i];
-
-                auto nodePairId = CreateNodePairKey(srcNodeId, dstNodeId);
-
-                if (srcNodeId == dstNodeId)
-                    continue;
-                auto srcNodeTag = GetNodeBaseById(srcNodeId)->tag;
-                auto dstNodeTag = GetNodeBaseById(dstNodeId)->tag;
-#if defined(ZEN_DEBUG)
-
-                if (!srcNodeTag.empty() && !dstNodeTag.empty())
-                {
-                    LOGI("RDG Node dependency: {} -> {}, resource: {}", srcNodeTag, dstNodeTag,
-                         resource->tag);
-                }
-#endif
-                // Add the dependency src -> dst
-                nodeDpedencies[srcNodeId].push_back(dstNodeId);
-
-                uint32_t oldUsage = 0;
-                uint32_t newUsage = 0;
-                rhi::AccessMode oldAccessMode;
-                rhi::AccessMode newAccessMode;
-                rhi::TextureSubResourceRange textureSubResourceRange;
-                for (const auto& access : m_nodeAccessMap[srcNodeId])
-                {
-                    if (access.resourceId == resource->id)
-                    {
-                        if (isTexture)
-                        {
-                            oldUsage                = ToUnderlying(access.textureUsage);
-                            textureSubResourceRange = access.textureSubResourceRange;
-                        }
-                        else
-                        {
-                            oldUsage = ToUnderlying(access.bufferUsage);
-                        }
-                        oldAccessMode = access.accessMode;
-                    }
-                }
-                for (const auto& access : m_nodeAccessMap[dstNodeId])
-                {
-                    if (access.resourceId == resource->id)
-                    {
-                        if (isTexture)
-                        {
-                            newUsage                = ToUnderlying(access.textureUsage);
-                            textureSubResourceRange = access.textureSubResourceRange;
-
-                            // RDGResourceUsageTracker::GetInstance().TrackTextureUsage(
-                            //     resource->physicalHandle, access.textureUsage);
-                        }
-                        else
-                        {
-                            newUsage = ToUnderlying(access.bufferUsage);
-
-                            // RDGResourceUsageTracker::GetInstance().TrackBufferUsage(
-                            //     resource->physicalHandle, access.bufferUsage);
-                        }
-                        newAccessMode = access.accessMode;
-                    }
-                }
-                if (resource->type == RDGResourceType::eBuffer)
-                {
-                    rhi::BufferTransition bufferTransition;
-                    bufferTransition.buffer = dynamic_cast<rhi::RHIBuffer*>(resource->physicalRes);
-                    bufferTransition.oldAccessMode = oldAccessMode;
-                    bufferTransition.newAccessMode = newAccessMode;
-                    bufferTransition.oldUsage      = static_cast<rhi::BufferUsage>(oldUsage);
-                    bufferTransition.newUsage      = static_cast<rhi::BufferUsage>(newUsage);
-                    m_bufferTransitions[nodePairId].emplace_back(bufferTransition);
-                }
-                else if (resource->type == RDGResourceType::eTexture)
-                {
-                    rhi::TextureTransition textureTransition;
-                    textureTransition.texture =
-                        dynamic_cast<rhi::RHITexture*>(resource->physicalRes);
-                    textureTransition.oldAccessMode    = oldAccessMode;
-                    textureTransition.newAccessMode    = newAccessMode;
-                    textureTransition.oldUsage         = static_cast<rhi::TextureUsage>(oldUsage);
-                    textureTransition.newUsage         = static_cast<rhi::TextureUsage>(newUsage);
-                    textureTransition.subResourceRange = textureSubResourceRange;
-                    m_textureTransitions[nodePairId].emplace_back(textureTransition);
-                }
-                else
-                {
-                    LOGE("Invalid RDGResource type!");
-                }
-                inDegrees[dstNodeId]++;
-            }
-        }
-    }
-    std::queue<RDG_ID> queue;
-    for (auto id = 0; id < inDegrees.size(); id++)
-    {
-        if (inDegrees[id] == 0)
-        {
-            queue.emplace(id);
-        }
-    }
-    uint32_t sortedCount = 0;
-    while (!queue.empty())
-    {
-        std::vector<RDG_ID> currentLevel;
-        const auto levelSize = queue.size();
-        for (auto i = 0; i < levelSize; i++)
-        {
-            RDG_ID nodeId = queue.front();
-            queue.pop();
-            currentLevel.push_back(nodeId);
-            sortedCount++;
-            for (auto& neighbour : nodeDpedencies[nodeId])
-            {
-                inDegrees[neighbour]--;
-                if (inDegrees[neighbour] == 0)
-                {
-                    queue.push(neighbour);
-                }
-            }
-        }
-        m_sortedNodes.push_back(std::move(currentLevel));
-    }
-    if (sortedCount != m_nodeCount)
-    {
-        LOGE("Cycle detected in RenderGraph");
-    }
-}
+// void RenderGraph::SortNodes()
+// {
+//     // resolve node dependencies
+//     HashMap<RDG_ID, std::vector<RDG_ID>> nodeDpedencies;
+//     std::vector<uint32_t> inDegrees(m_nodeCount, 0);
+//     for (RDGResource* resource : m_resources)
+//     {
+//         if (resource->accessNodeMap.contains(rhi::AccessMode::eReadWrite) &&
+//             resource->accessNodeMap.contains(rhi::AccessMode::eRead))
+//         {
+//             bool isTexture         = resource->type == RDGResourceType::eTexture;
+//             auto& writtenByNodeIds = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
+//             auto& readByNodeIDs    = resource->accessNodeMap[rhi::AccessMode::eRead];
+//             std::ranges::sort(writtenByNodeIds);
+//             std::ranges::sort(readByNodeIDs);
+//             // Combine write and read access nodes into a single vector while preserving the order
+//             std::vector<RDG_ID> accessNodes = writtenByNodeIds;
+//             accessNodes.insert(accessNodes.end(), readByNodeIDs.begin(), readByNodeIDs.end());
+//
+//             // Sort the combined access nodes by RDG_ID to maintain proper order
+//             std::ranges::sort(accessNodes.begin(), accessNodes.end());
+//
+//             // Create dependencies between consecutive nodes
+//             for (size_t i = 1; i < accessNodes.size(); ++i)
+//             {
+//                 RDG_ID srcNodeId = accessNodes[i - 1];
+//                 RDG_ID dstNodeId = accessNodes[i];
+//
+//                 auto nodePairId = CreateNodePairKey(srcNodeId, dstNodeId);
+//
+//                 if (srcNodeId == dstNodeId)
+//                     continue;
+//                 auto srcNodeTag = GetNodeBaseById(srcNodeId)->tag;
+//                 auto dstNodeTag = GetNodeBaseById(dstNodeId)->tag;
+// #if defined(ZEN_DEBUG)
+//
+//                 if (!srcNodeTag.empty() && !dstNodeTag.empty())
+//                 {
+//                     LOGI("RDG Node dependency: {} -> {}, resource: {}", srcNodeTag, dstNodeTag,
+//                          resource->tag);
+//                 }
+// #endif
+//                 // Add the dependency src -> dst
+//                 nodeDpedencies[srcNodeId].push_back(dstNodeId);
+//
+//                 uint32_t oldUsage = 0;
+//                 uint32_t newUsage = 0;
+//                 rhi::AccessMode oldAccessMode;
+//                 rhi::AccessMode newAccessMode;
+//                 rhi::TextureSubResourceRange textureSubResourceRange;
+//                 for (const auto& access : m_nodeAccessMap[srcNodeId])
+//                 {
+//                     if (access.resourceId == resource->id)
+//                     {
+//                         if (isTexture)
+//                         {
+//                             oldUsage                = ToUnderlying(access.textureUsage);
+//                             textureSubResourceRange = access.textureSubResourceRange;
+//                         }
+//                         else
+//                         {
+//                             oldUsage = ToUnderlying(access.bufferUsage);
+//                         }
+//                         oldAccessMode = access.accessMode;
+//                     }
+//                 }
+//                 for (const auto& access : m_nodeAccessMap[dstNodeId])
+//                 {
+//                     if (access.resourceId == resource->id)
+//                     {
+//                         if (isTexture)
+//                         {
+//                             newUsage                = ToUnderlying(access.textureUsage);
+//                             textureSubResourceRange = access.textureSubResourceRange;
+//
+//                             // RDGResourceUsageTracker::GetInstance().TrackTextureUsage(
+//                             //     resource->physicalHandle, access.textureUsage);
+//                         }
+//                         else
+//                         {
+//                             newUsage = ToUnderlying(access.bufferUsage);
+//
+//                             // RDGResourceUsageTracker::GetInstance().TrackBufferUsage(
+//                             //     resource->physicalHandle, access.bufferUsage);
+//                         }
+//                         newAccessMode = access.accessMode;
+//                     }
+//                 }
+//                 if (resource->type == RDGResourceType::eBuffer)
+//                 {
+//                     rhi::BufferTransition bufferTransition;
+//                     bufferTransition.buffer = dynamic_cast<rhi::RHIBuffer*>(resource->physicalRes);
+//                     bufferTransition.oldAccessMode = oldAccessMode;
+//                     bufferTransition.newAccessMode = newAccessMode;
+//                     bufferTransition.oldUsage      = static_cast<rhi::BufferUsage>(oldUsage);
+//                     bufferTransition.newUsage      = static_cast<rhi::BufferUsage>(newUsage);
+//                     m_bufferTransitions[nodePairId].emplace_back(bufferTransition);
+//                 }
+//                 else if (resource->type == RDGResourceType::eTexture)
+//                 {
+//                     rhi::TextureTransition textureTransition;
+//                     textureTransition.texture =
+//                         dynamic_cast<rhi::RHITexture*>(resource->physicalRes);
+//                     textureTransition.oldAccessMode    = oldAccessMode;
+//                     textureTransition.newAccessMode    = newAccessMode;
+//                     textureTransition.oldUsage         = static_cast<rhi::TextureUsage>(oldUsage);
+//                     textureTransition.newUsage         = static_cast<rhi::TextureUsage>(newUsage);
+//                     textureTransition.subResourceRange = textureSubResourceRange;
+//                     m_textureTransitions[nodePairId].emplace_back(textureTransition);
+//                 }
+//                 else
+//                 {
+//                     LOGE("Invalid RDGResource type!");
+//                 }
+//                 inDegrees[dstNodeId]++;
+//             }
+//         }
+//     }
+//     std::queue<RDG_ID> queue;
+//     for (auto id = 0; id < inDegrees.size(); id++)
+//     {
+//         if (inDegrees[id] == 0)
+//         {
+//             queue.emplace(id);
+//         }
+//     }
+//     uint32_t sortedCount = 0;
+//     while (!queue.empty())
+//     {
+//         std::vector<RDG_ID> currentLevel;
+//         const auto levelSize = queue.size();
+//         for (auto i = 0; i < levelSize; i++)
+//         {
+//             RDG_ID nodeId = queue.front();
+//             queue.pop();
+//             currentLevel.push_back(nodeId);
+//             sortedCount++;
+//             for (auto& neighbour : nodeDpedencies[nodeId])
+//             {
+//                 inDegrees[neighbour]--;
+//                 if (inDegrees[neighbour] == 0)
+//                 {
+//                     queue.push(neighbour);
+//                 }
+//             }
+//         }
+//         m_sortedNodes.push_back(std::move(currentLevel));
+//     }
+//     if (sortedCount != m_nodeCount)
+//     {
+//         LOGE("Cycle detected in RenderGraph");
+//     }
+// }
 
 void RenderGraph::SortNodesV2()
 {
@@ -1019,14 +1051,14 @@ void RenderGraph::SortNodesV2()
     // resolve node dependencies
     for (auto* resource : m_resources)
     {
-        auto& writers = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
-        auto& readers = resource->accessNodeMap[rhi::AccessMode::eRead];
+        // auto& writers = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
+        // auto& readers = resource->accessNodeMap[rhi::AccessMode::eRead];
 
         // Merge writers and readers into one timeline
         std::vector<std::pair<RDG_ID, rhi::AccessMode>> accesses;
-        for (const auto& w : writers)
+        for (const auto& w : resource->writtenByNodeIds)
             accesses.emplace_back(w, rhi::AccessMode::eReadWrite);
-        for (const auto& r : readers)
+        for (const auto& r : resource->readByNodeIds)
             accesses.emplace_back(r, rhi::AccessMode::eRead);
 
         // Sort by node ID to get a consistent order
@@ -1101,18 +1133,22 @@ void RenderGraph::SortNodesV2()
 
 void RenderGraph::Destroy()
 {
-    for (RDGPassChildNode* child : m_allChildNodes)
-    {
-        ZEN_MEM_FREE(child);
-        // delete child;
-    }
-    m_allChildNodes.clear();
+    // for (RDGPassChildNode* child : m_allChildNodes)
+    // {
+    //     ZEN_MEM_FREE(child);
+    //     // delete child;
+    // }
+    // m_allChildNodes.clear();
+
     for (RDGResource* resource : m_resources)
     {
         m_resourceAllocator.Free(resource);
     }
-    m_nodeData.clear();
-    m_nodeDataOffset.clear();
+
+    m_poolAlloc.Reset();
+
+    // m_nodeData.clear();
+    // m_nodeDataOffset.clear();
 }
 
 void RenderGraph::Begin()
@@ -1123,8 +1159,8 @@ void RenderGraph::Begin()
     {
         m_resourceAllocator.Free(resource);
     }
-    m_nodeData.clear();
-    m_nodeDataOffset.clear();
+    // m_nodeData.clear();
+    // m_nodeDataOffset.clear();
     m_sortedNodes.clear();
     m_resources.clear();
     m_nodeAccessMap.clear();
@@ -1252,7 +1288,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         {
             RDGComputePassNode* node = reinterpret_cast<RDGComputePassNode*>(base);
             // for (RDGPassChildNode* child : node->childNodes)
-            for (RDGPassChildNode* child : m_passChildNodes[node->id])
+            for (RDGPassChildNode* child : m_passChildNodeMap[node->id])
             {
                 switch (child->type)
                 {
@@ -1281,7 +1317,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
                         rhi::PipelineHandle pipelineHandle;
-                        for (auto* sibling : m_passChildNodes[node->id])
+                        for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
                             {
@@ -1316,7 +1352,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
 
             // m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
             //                            VectorView(node->clearValues, node->numAttachments));
-            for (RDGPassChildNode* child : m_passChildNodes[node->id])
+            for (RDGPassChildNode* child : m_passChildNodeMap[node->id])
             {
                 switch (child->type)
                 {
@@ -1373,7 +1409,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
                         rhi::PipelineHandle pipelineHandle;
-                        for (auto* sibling : m_passChildNodes[node->id])
+                        for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
                             {

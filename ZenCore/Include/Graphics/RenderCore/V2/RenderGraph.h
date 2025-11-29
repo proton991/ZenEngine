@@ -1,6 +1,8 @@
 #pragma once
 #include "Utils/Errors.h"
+#include "Templates/ArenaVector.h"
 #include "Memory/PagedAllocator.h"
+#include "Memory/PoolAllocator.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHICommands.h"
 #include "RenderCoreDefs.h"
@@ -227,11 +229,17 @@ struct RDGAccess
 
 struct RDGResource
 {
+    RDGResource(PoolAllocator<LinearAllocator>* alloc) :
+        readByNodeIds(alloc), writtenByNodeIds(alloc)
+    {}
+
     RDG_ID id{-1};
     std::string tag;
     rhi::RHIResource* physicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
-    HashMap<rhi::AccessMode, std::vector<RDG_ID>> accessNodeMap;
+
+    ArenaVector<RDG_ID, PoolAllocator<LinearAllocator>> readByNodeIds;
+    ArenaVector<RDG_ID, PoolAllocator<LinearAllocator>> writtenByNodeIds;
 };
 
 struct RDGNodeBase
@@ -526,7 +534,9 @@ class RenderGraph
 {
 public:
     RenderGraph(std::string tag) :
-        m_rdgTag(std::move(tag)), m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
+        m_rdgTag(std::move(tag)),
+        m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false),
+        m_poolAlloc(8 * 1024) // 8KB initial size
     {
         m_resourceAllocator.Init();
     }
@@ -669,10 +679,10 @@ private:
 
     void RunNode(RDGNodeBase* node);
 
-    void SortNodes();
+    // void SortNodes();
 
     bool AddNodeDepsForResource(RDGResource* resource,
-                                HashMap<RDG_ID, std::vector<RDG_ID>>& nodeDepedencies,
+                                HashMap<RDG_ID, std::vector<RDG_ID>>& nodeDependencies,
                                 const RDG_ID& srcNodeId,
                                 const RDG_ID& dstNodeId);
 
@@ -686,17 +696,19 @@ private:
         requires std::derived_from<T, RDGNodeBase>
     T* AllocNode()
     {
-        uint32_t nodeDataOffset = m_nodeData.size();
-        m_nodeDataOffset.push_back(nodeDataOffset);
-        m_nodeData.resize(m_nodeData.size() + sizeof(T));
-        T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+        // uint32_t nodeDataOffset = m_nodeData.size();
+        // m_nodeDataOffset.push_back(nodeDataOffset);
+        // m_nodeData.resize(m_nodeData.size() + sizeof(T));
+        // T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
 
         new (newNode) T();
         // *newNode   = T();
 
         newNode->id = m_nodeCount;
         m_nodeCount++;
-        m_allNodes.push_back(newNode);
+        m_baseNodeMap[newNode->id] = newNode;
+        // m_allNodes.push_back(newNode);
         return newNode;
     }
 
@@ -704,17 +716,18 @@ private:
         requires std::derived_from<T, RDGNodeBase>
     T* AllocNode(size_t nodeSize)
     {
-        uint32_t nodeDataOffset = m_nodeData.size();
-        m_nodeDataOffset.push_back(nodeDataOffset);
-        m_nodeData.resize(m_nodeData.size() + nodeSize);
-        T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
-
+        // uint32_t nodeDataOffset = m_nodeData.size();
+        // m_nodeDataOffset.push_back(nodeDataOffset);
+        // m_nodeData.resize(m_nodeData.size() + nodeSize);
+        // T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
+        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
         new (newNode) T();
         // *newNode   = T();
 
         newNode->id = m_nodeCount;
         m_nodeCount++;
-        m_allNodes.push_back(newNode);
+        m_baseNodeMap[newNode->id] = newNode;
+        // m_allNodes.push_back(newNode);
         return newNode;
     }
 
@@ -723,11 +736,12 @@ private:
     T* AllocPassChildNode(RDGPassNode* passNode)
     {
         // T* newNode      = new T();
-        T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
+        // T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
+        T* newNode      = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
         newNode->parent = passNode;
         // passNode->childNodes.push_back(newNode);
-        m_passChildNodes[passNode->id].push_back(newNode);
-        m_allChildNodes.push_back(newNode);
+        m_passChildNodeMap[passNode->id].push_back(newNode);
+        // m_allChildNodes.push_back(newNode);
         return newNode;
     }
 
@@ -735,7 +749,8 @@ private:
         requires std::derived_from<T, RDGPassChildNode>
     T* AllocPassChildNode(RDGPassNode* passNode, size_t nodeSize)
     {
-        T* newNode = static_cast<T*>(ZEN_MEM_ALLOC(nodeSize));
+        // T* newNode = static_cast<T*>(ZEN_MEM_ALLOC(nodeSize));
+        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
         // new (newNode) T;
 
         // T* newNode      = new T();
@@ -747,28 +762,30 @@ private:
 
         // new (newNode) T();
         // passNode->childNodes.push_back(newNode);
-        m_passChildNodes[passNode->id].push_back(newNode);
-        m_allChildNodes.push_back(newNode);
+        m_passChildNodeMap[passNode->id].push_back(newNode);
+        // m_allChildNodes.push_back(newNode);
         return newNode;
     }
 
     const RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId) const
     {
-        const auto dataOffset = m_nodeDataOffset[nodeId];
-        return reinterpret_cast<const RDGNodeBase*>(&m_nodeData[dataOffset]);
+        return m_baseNodeMap.at(nodeId);
+        // const auto dataOffset = m_nodeDataOffset[nodeId];
+        // return reinterpret_cast<const RDGNodeBase*>(&m_nodeData[dataOffset]);
     }
 
     RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId)
     {
-        const auto dataOffset = m_nodeDataOffset[nodeId];
-        return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
+        return m_baseNodeMap.at(nodeId);
+        // const auto dataOffset = m_nodeDataOffset[nodeId];
+        // return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     }
 
-    RDGNodeBase* GetNodeBaseById(int32_t idx)
-    {
-        const auto dataOffset = m_nodeDataOffset[idx];
-        return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
-    }
+    // RDGNodeBase* GetNodeBaseById(int32_t idx)
+    // {
+    //     const auto dataOffset = m_nodeDataOffset[idx];
+    //     return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
+    // }
 
     RDGResource* GetOrAllocResource(rhi::RHIResource* resourceRHI,
                                     RDGResourceType type,
@@ -777,7 +794,7 @@ private:
         RDGResource* resource;
         if (!m_resourceMap.contains(resourceRHI))
         {
-            resource              = m_resourceAllocator.Alloc();
+            resource              = m_resourceAllocator.Alloc(&m_poolAlloc);
             resource->id          = static_cast<int32_t>(m_resources.size());
             resource->type        = type;
             resource->physicalRes = resourceRHI;
@@ -814,17 +831,22 @@ private:
     // stores dependency between graph nodes
     HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;
     // nodes
-    std::vector<uint8_t> m_nodeData;
-    std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
-    std::vector<RDGNodeBase*> m_allNodes;
+    // std::vector<uint8_t> m_nodeData;
+    // std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
+    // std::vector<RDGNodeBase*> m_allNodes;
     uint32_t m_nodeCount{0};
     std::vector<std::vector<RDG_ID>> m_sortedNodes;
-    std::vector<RDGPassChildNode*> m_allChildNodes;
-    HashMap<RDG_ID, std::vector<RDGPassChildNode*>> m_passChildNodes;
+    // std::vector<RDGPassChildNode*> m_allChildNodes;
+
+    HashMap<RDG_ID, RDGNodeBase*> m_baseNodeMap;
+    HashMap<RDG_ID, std::vector<RDGPassChildNode*>> m_passChildNodeMap;
 
     // tracked resources
     std::vector<RDGResource*> m_resources;
     PagedAllocator<RDGResource> m_resourceAllocator;
+
+    PoolAllocator<LinearAllocator> m_poolAlloc;
+
     HashMap<rhi::RHIResource*, RDGResource*> m_resourceMap;
     // resource id -> node id
     HashMap<RDG_ID, RDG_ID> m_resourceFirstUseNodeMap;
