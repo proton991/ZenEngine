@@ -358,27 +358,27 @@ public:
 
     rhi::RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
-                                          std::string name);
+                                          std::string texName);
 
     rhi::RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
                                                  TextureUsageHint usageHint,
-                                                 std::string name);
+                                                 std::string texName);
 
     rhi::RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
-                                          std::string name);
+                                          std::string texName);
 
     rhi::RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
-                                          std::string name);
+                                          std::string texName);
 
     rhi::RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
                                         TextureUsageHint usageHint,
-                                        std::string name);
+                                        std::string texName);
 
     rhi::RHITexture* CreateTextureProxy(rhi::RHITexture* baseTexture,
                                         const TextureProxyFormat& proxyFormat,
-                                        std::string name);
+                                        std::string texName);
 
     // rhi::RHITexture* GetTextureRDFromHandle(const rhi::RHITexture* handle);
 
@@ -401,9 +401,13 @@ public:
 
     rhi::RHIBuffer* CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::RHIBuffer* CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateStorageBuffer(uint32_t dataSize,
+                                        const uint8_t* pData,
+                                        std::string bufferName);
 
-    rhi::RHIBuffer* CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateIndirectBuffer(uint32_t dataSize,
+                                         const uint8_t* pData,
+                                         std::string bufferName);
 
     void UpdateBuffer(rhi::RHIBuffer* bufferHandle,
                       uint32_t dataSize,

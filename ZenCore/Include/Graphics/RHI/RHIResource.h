@@ -335,6 +335,7 @@ struct RHIBufferCreateInfo
     uint32_t size{0};
     BitField<BufferUsageFlagBits> usageFlags{0};
     BufferAllocateType allocateType{BufferAllocateType::eNone};
+    std::string tag;
 };
 
 class RHIBuffer : public RHIResource
@@ -361,7 +362,9 @@ protected:
         m_requiredSize(createInfo.size),
         m_usageFlags(createInfo.usageFlags),
         m_allocateType(createInfo.allocateType)
-    {}
+    {
+        m_resourceTag = createInfo.tag;
+    }
 
     uint32_t m_requiredSize{0};
     BitField<BufferUsageFlagBits> m_usageFlags;
@@ -383,7 +386,7 @@ struct RHITextureCreateInfo
     // memory flags
     bool cpuReadable{false};
     bool mutableFormat{false};
-    std::string name;
+    std::string tag;
 };
 
 struct RHITextureProxyCreateInfo
@@ -392,7 +395,7 @@ struct RHITextureProxyCreateInfo
     TextureType type{TextureType::e1D};
     uint32_t arrayLayers{1};
     uint32_t mipmaps{1};
-    std::string name;
+    std::string tag;
 };
 
 inline uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
@@ -448,7 +451,7 @@ public:
         return m_baseInfo.height;
     }
 
-    uint32_t GetDepth()
+    uint32_t GetDepth() const
     {
         return m_baseInfo.depth;
     }
@@ -459,16 +462,11 @@ public:
         return 0;
     }
 
-    const std::string& GetName() const
-    {
-        return m_baseInfo.name;
-    }
-
 protected:
     explicit RHITexture(const RHITextureCreateInfo& createInfo) :
         RHIResource(ResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
     {
-        m_resourceTag = createInfo.name;
+        m_resourceTag = createInfo.tag;
         InitSubresourceRange();
     }
 
@@ -478,6 +476,7 @@ protected:
         m_proxyInfo(proxyInfo),
         m_isProxy(true)
     {
+        m_resourceTag = proxyInfo.tag;
         InitSubresourceRange();
     }
 

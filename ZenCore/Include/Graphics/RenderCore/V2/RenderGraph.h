@@ -659,14 +659,12 @@ private:
                                      rhi::RHITexture* texture,
                                      rhi::TextureUsage usage,
                                      const rhi::TextureSubResourceRange& range,
-                                     rhi::AccessMode accessMode,
-                                     std::string tag = "");
+                                     rhi::AccessMode accessMode);
 
     void DeclareBufferAccessForPass(const RDGPassNode* passNode,
                                     rhi::RHIBuffer* buffer,
                                     rhi::BufferUsage usage,
-                                    rhi::AccessMode accessMode,
-                                    std::string tag = "");
+                                    rhi::AccessMode accessMode);
 
     void Destroy();
 

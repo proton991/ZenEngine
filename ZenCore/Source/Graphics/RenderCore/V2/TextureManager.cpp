@@ -215,11 +215,11 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     SkyboxRenderer* skyboxRenderer = m_renderDevice->GetRendererServer()->RequestSkyboxRenderer();
     // note: only generate once
     skyboxRenderer->GenerateEnvCubemaps(outTexture);
-    m_textureCache[outTexture->irradiance->GetName()]  = outTexture->irradiance;
-    m_textureCache[outTexture->prefiltered->GetName()] = outTexture->prefiltered;
+    m_textureCache[outTexture->irradiance->GetResourceTag()]  = outTexture->irradiance;
+    m_textureCache[outTexture->prefiltered->GetResourceTag()] = outTexture->prefiltered;
 
     skyboxRenderer->GenerateLutBRDF(outTexture);
-    m_textureCache[outTexture->lutBRDF->GetName()] = outTexture->lutBRDF;
+    m_textureCache[outTexture->lutBRDF->GetResourceTag()] = outTexture->lutBRDF;
 }
 
 void TextureManager::UpdateTexture(rhi::RHITexture* texture,

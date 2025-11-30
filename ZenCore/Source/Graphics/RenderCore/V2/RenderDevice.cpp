@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 
 #include "Graphics/RHI/RHIOptions.h"
@@ -832,7 +834,7 @@ void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg
 
 rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
-                                                    std::string name)
+                                                    std::string texName)
 {
     rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
@@ -844,7 +846,7 @@ rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texForm
     texInfo.arrayLayers   = texFormat.arrayLayers;
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
-    texInfo.name          = std::move(name);
+    texInfo.tag           = std::move(texName);
     texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eColorAttachment,
                                 rhi::TextureUsageFlagBits::eSampled);
 
@@ -865,7 +867,7 @@ rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texForm
 
 rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
                                                            TextureUsageHint usageHint,
-                                                           std::string name)
+                                                           std::string texName)
 {
     rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
@@ -877,7 +879,7 @@ rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& 
     texInfo.arrayLayers   = texFormat.arrayLayers;
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
-    texInfo.name          = std::move(name);
+    texInfo.tag           = std::move(texName);
     texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eDepthStencilAttachment,
                                 rhi::TextureUsageFlagBits::eSampled);
 
@@ -894,7 +896,7 @@ rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& 
 
 rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
-                                                    std::string name)
+                                                    std::string texName)
 {
     rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
@@ -906,7 +908,7 @@ rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texForm
     texInfo.arrayLayers   = texFormat.arrayLayers;
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
-    texInfo.name          = std::move(name);
+    texInfo.tag           = std::move(texName);
 
     texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eStorage,
                                 rhi::TextureUsageFlagBits::eSampled);
@@ -924,7 +926,7 @@ rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texForm
 
 rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
-                                                    std::string name)
+                                                    std::string texName)
 {
     rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
@@ -936,7 +938,7 @@ rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texForm
     texInfo.arrayLayers   = texFormat.arrayLayers;
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
-    texInfo.name          = std::move(name);
+    texInfo.tag           = std::move(texName);
     texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
@@ -952,7 +954,7 @@ rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texForm
 
 rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
                                                   TextureUsageHint usageHint,
-                                                  std::string name)
+                                                  std::string texName)
 {
     rhi::RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
@@ -964,7 +966,7 @@ rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat
     texInfo.arrayLayers   = texFormat.arrayLayers;
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
-    texInfo.name          = std::move(name);
+    texInfo.tag           = std::move(texName);
     texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
@@ -980,14 +982,14 @@ rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat
 
 rhi::RHITexture* RenderDevice::CreateTextureProxy(rhi::RHITexture* baseTexture,
                                                   const TextureProxyFormat& proxyFormat,
-                                                  std::string name)
+                                                  std::string texName)
 {
     rhi::RHITextureProxyCreateInfo textureProxyInfo{};
     textureProxyInfo.type        = static_cast<rhi::TextureType>(proxyFormat.dimension);
     textureProxyInfo.arrayLayers = proxyFormat.arrayLayers;
     textureProxyInfo.mipmaps     = proxyFormat.mipmaps;
     textureProxyInfo.format      = proxyFormat.format;
-    textureProxyInfo.name        = std::move(name);
+    textureProxyInfo.tag         = std::move(texName);
 
     rhi::RHITexture* texture = baseTexture->CreateProxy(textureProxyInfo);
 
@@ -1097,7 +1099,9 @@ rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8
     return uniformBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
+                                                  const uint8_t* pData,
+                                                  std::string bufferName)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
@@ -1109,6 +1113,7 @@ rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.tag          = std::move(bufferName);
 
     rhi::RHIBuffer* storageBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
@@ -1120,7 +1125,9 @@ rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize, const uint8
     return storageBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
+                                                   const uint8_t* pData,
+                                                   std::string bufferName)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
@@ -1133,6 +1140,7 @@ rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize, const uint
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.tag          = std::move(bufferName);
 
     rhi::RHIBuffer* indirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
 

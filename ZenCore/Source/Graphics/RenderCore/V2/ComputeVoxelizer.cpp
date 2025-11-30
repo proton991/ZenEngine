@@ -58,16 +58,17 @@ void ComputeVoxelizer::PrepareBuffers()
     indirectCommand.y               = 1;
     indirectCommand.z               = 1;
     m_buffers.computeIndirectBuffer = m_renderDevice->CreateIndirectBuffer(
-        sizeof(ComputeIndirectCommand), reinterpret_cast<const uint8_t*>(&indirectCommand));
+        sizeof(ComputeIndirectCommand), reinterpret_cast<const uint8_t*>(&indirectCommand),
+        "voxel_comp_indirect_buffer");
 
-    m_buffers.largeTriangleBuffer =
-        m_renderDevice->CreateStorageBuffer(sizeof(LargeTriangle) * 200000, nullptr);
+    m_buffers.largeTriangleBuffer = m_renderDevice->CreateStorageBuffer(
+        sizeof(LargeTriangle) * 200000, nullptr, "large_triangle_buffer");
 
-    m_buffers.instancePositionBuffer =
-        m_renderDevice->CreateStorageBuffer(sizeof(Vec4) * 3000000, nullptr);
+    m_buffers.instancePositionBuffer = m_renderDevice->CreateStorageBuffer(
+        sizeof(Vec4) * 3000000, nullptr, "instance_position_buffer");
 
-    m_buffers.instanceColorBuffer =
-        m_renderDevice->CreateStorageBuffer(sizeof(Vec4) * 3000000, nullptr);
+    m_buffers.instanceColorBuffer = m_renderDevice->CreateStorageBuffer(
+        sizeof(Vec4) * 3000000, nullptr, "instance_color_buffer");
 
     DrawIndexedIndirectCommand drawIndirectCmd{};
     drawIndirectCmd.instanceCount = 1;
@@ -77,7 +78,8 @@ void ComputeVoxelizer::PrepareBuffers()
     drawIndirectCmd.vertexOffset  = 0;
 
     m_buffers.drawIndirectBuffer = m_renderDevice->CreateIndirectBuffer(
-        sizeof(DrawIndexedIndirectCommand), reinterpret_cast<const uint8_t*>(&drawIndirectCmd));
+        sizeof(DrawIndexedIndirectCommand), reinterpret_cast<const uint8_t*>(&drawIndirectCmd),
+        "voxel_draw_indirect_buffer");
 }
 
 // static glm::mat4 get_model()

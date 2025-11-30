@@ -237,11 +237,11 @@ void VulkanTexture::Init()
         // create image view
         CreateImageViewHelper();
 
-        if (!m_baseInfo.name.empty())
+        if (!m_baseInfo.tag.empty())
         {
             GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_IMAGE,
                                                    reinterpret_cast<uint64_t>(m_vkImage),
-                                                   m_baseInfo.name.c_str());
+                                                   m_baseInfo.tag.c_str());
         }
         // set layout as undefined when first created
         GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
@@ -366,11 +366,11 @@ void VulkanTexture::InitProxy()
 
     CreateImageViewHelper();
 
-    if (!m_proxyInfo.name.empty())
+    if (!m_proxyInfo.tag.empty())
     {
         GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_IMAGE_VIEW,
                                                reinterpret_cast<uint64_t>(m_vkImageView),
-                                               m_proxyInfo.name.c_str());
+                                               m_proxyInfo.tag.c_str());
     }
 }
 

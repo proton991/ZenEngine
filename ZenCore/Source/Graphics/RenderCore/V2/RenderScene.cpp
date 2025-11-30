@@ -98,17 +98,17 @@ void RenderScene::PrepareBuffers()
 
     m_triangleMapBuffer = m_renderDevice->CreateStorageBuffer(
         sizeof(uint32_t) * triangleSubMeshMap.size(),
-        reinterpret_cast<const uint8_t*>(triangleSubMeshMap.data()));
+        reinterpret_cast<const uint8_t*>(triangleSubMeshMap.data()), "triangle_map_storage_buffer");
 
     // nodes data ssbo
-    m_nodeSSBO =
-        m_renderDevice->CreateStorageBuffer(sizeof(sg::NodeData) * m_nodesData.size(),
-                                            reinterpret_cast<const uint8_t*>(m_nodesData.data()));
+    m_nodeSSBO = m_renderDevice->CreateStorageBuffer(
+        sizeof(sg::NodeData) * m_nodesData.size(),
+        reinterpret_cast<const uint8_t*>(m_nodesData.data()), "node_data_ssbo");
 
     // material data ssbo
     m_materialSSBO = m_renderDevice->CreateStorageBuffer(
         sizeof(sg::MaterialData) * m_materialsData.size(),
-        reinterpret_cast<const uint8_t*>(m_materialsData.data()));
+        reinterpret_cast<const uint8_t*>(m_materialsData.data()), "material_data_ssbo");
 }
 
 void RenderScene::Update()
