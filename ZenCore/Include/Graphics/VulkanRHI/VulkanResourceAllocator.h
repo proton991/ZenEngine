@@ -23,7 +23,7 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
 
     template <typename T> static T* AllocMem(PagedAllocator<VersatileResourceTemplate>& allocator)
     {
-        T* obj = (T*)(allocator.Alloc());
+        T* obj = (T*)allocator.Alloc();
         // new (obj) T(std::forward<Args>(args)...);
         return obj;
     }

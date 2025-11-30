@@ -418,19 +418,19 @@ public:
 
     rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
 
-    rhi::PipelineHandle GetOrCreateGfxPipeline(
+    rhi::RHIPipeline* GetOrCreateGfxPipeline(
         rhi::GfxPipelineStates& PSO,
         rhi::RHIShader* shader,
         const rhi::RenderPassHandle& renderPass,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
-    rhi::PipelineHandle GetOrCreateGfxPipeline(
+    rhi::RHIPipeline* GetOrCreateGfxPipeline(
         rhi::GfxPipelineStates& PSO,
         rhi::RHIShader* shader,
         const rhi::RenderPassLayout& renderPassLayout,
         const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
 
-    rhi::PipelineHandle GetOrCreateComputePipeline(rhi::RHIShader* shader);
+    rhi::RHIPipeline* GetOrCreateComputePipeline(rhi::RHIShader* shader);
 
     rhi::RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
@@ -568,7 +568,7 @@ private:
     DeletionQueue m_deletionQueue;
 
     HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
-    HashMap<size_t, rhi::PipelineHandle> m_pipelineCache;
+    HashMap<size_t, rhi::RHIPipeline*> m_pipelineCache;
     HashMap<size_t, rhi::RHISampler*> m_samplerCache;
     // HashMap<rhi::RHITexture*, rhi::RHITexture*> m_textureMap;
     std::vector<rhi::RHIBuffer*> m_buffers;

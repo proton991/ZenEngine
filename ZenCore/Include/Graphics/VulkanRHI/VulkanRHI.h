@@ -18,10 +18,10 @@
 #define TO_VK_TEXTURE(tex)        (dynamic_cast<VulkanTexture*>(tex))
 #define TO_CVK_TEXTURE(tex)       (dynamic_cast<const VulkanTexture*>(tex))
 #define TO_VK_BUFFER(buffer)      (dynamic_cast<VulkanBuffer*>(buffer))
-#define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>((handle).value)
+#define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>(handle)
 #define TO_VK_FRAMEBUFFER(handle) reinterpret_cast<VulkanFramebuffer*>((handle).value)
 #define TO_VK_RENDER_PASS(handle) reinterpret_cast<VkRenderPass>((handle).value)
-#define TO_VK_SHADER(handle)      (dynamic_cast<FVulkanShader*>(handle))
+#define TO_VK_SHADER(handle)      (dynamic_cast<VulkanShader*>(handle))
 #define TO_VK_SAMPLER(sampler)    (dynamic_cast<VulkanSampler*>(sampler))
 
 namespace zen::rhi
@@ -30,20 +30,18 @@ class VulkanDevice;
 class VulkanViewport;
 class VulkanCommandBufferManager;
 class VulkanDescriptorPoolManager;
-struct VulkanShader;
-class FVulkanShader;
+class VulkanShader;
 struct VulkanTexture;
 class VulkanBuffer;
 class VulkanSampler;
 struct VulkanDescriptorSet;
-struct VulkanPipeline;
+class VulkanPipeline;
 class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
 
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
 using VersatileResource = VersatileResourceTemplate<VulkanShader,
-                                                    FVulkanShader,
                                                     VulkanTexture,
                                                     VulkanSampler,
                                                     VulkanBuffer,
@@ -67,6 +65,7 @@ public:
     RHICommandList* GetImmediateCommandList() override;
 
     void Init() override;
+
     void Destroy() override;
 
     GraphicsAPIType GetAPIType() override
@@ -116,24 +115,23 @@ public:
 
     void DestroyShader(RHIShader* shader) final;
 
-    InstanceExtensionFlags& GetInstanceExtensionFlags()
-    {
-        return m_instanceExtensionFlags;
-    }
+    RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) final;
 
-    PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-                                     const GfxPipelineStates& states,
-                                     RenderPassHandle renderPassHandle,
-                                     uint32_t subpass) final;
+    RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 
-    PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-                                     const GfxPipelineStates& states,
-                                     const RenderPassLayout& renderPassLayout,
-                                     uint32_t subpass) final;
+    // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
+    //                                  const GfxPipelineStates& states,
+    //                                  RenderPassHandle renderPassHandle,
+    //                                  uint32_t subpass) final;
 
-    PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
+    // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
+    //                                  const GfxPipelineStates& states,
+    //                                  const RenderPassLayout& renderPassLayout,
+    //                                  uint32_t subpass) final;
 
-    void DestroyPipeline(PipelineHandle pipelineHandle) final;
+    // PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
+
+    void DestroyPipeline(RHIPipeline* pipeline) final;
 
     RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) final;
 
@@ -205,6 +203,11 @@ public:
         return m_resourceAllocator;
     }
 
+    InstanceExtensionFlags& GetInstanceExtensionFlags()
+    {
+        return m_instanceExtensionFlags;
+    }
+
 protected:
     void CreateInstance();
 
@@ -255,6 +258,10 @@ public:
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 
     RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
+
+    RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) final;
+
+    RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 };
 
 extern VulkanMemoryAllocator* GVkMemAllocator;

@@ -6,6 +6,7 @@ namespace zen::rhi
 {
 class RHIBuffer;
 class RHITexture;
+class RHIPipeline;
 
 class RHICommandListContext
 {
@@ -73,12 +74,12 @@ public:
 
     // virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
 
-    virtual void BindGfxPipeline(PipelineHandle pipelineHandle,
+    virtual void BindGfxPipeline(RHIPipeline* pipelineHandle,
                                  const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
 
     // virtual void BindComputePipeline(PipelineHandle pipelineHandle) = 0;
 
-    virtual void BindComputePipeline(PipelineHandle pipelineHandle,
+    virtual void BindComputePipeline(RHIPipeline* pipelineHandle,
                                      const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
 
     virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
@@ -115,7 +116,7 @@ public:
 
     virtual void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset) = 0;
 
-    virtual void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) = 0;
+    virtual void SetPushConstants(RHIPipeline* pipelineHandle, VectorView<uint8_t> data) = 0;
 
     virtual void SetViewports(VectorView<Rect2<float>> viewports) = 0;
 

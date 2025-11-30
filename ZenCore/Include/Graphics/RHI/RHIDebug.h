@@ -10,7 +10,7 @@ public:
 
     virtual ~RHIDebug() = default;
 
-    virtual void SetPipelineDebugName(PipelineHandle pipelineHandle,
+    virtual void SetPipelineDebugName(RHIPipeline* pipelineHandle,
                                       const std::string& debugName) = 0;
 
     virtual void SetTextureDebugName(RHITexture* texture, const std::string& debugName) = 0;

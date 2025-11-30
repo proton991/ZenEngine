@@ -17,6 +17,7 @@
 #define ALLOCA_ARRAY(m_type, m_count) ((m_type*)ALLOCA(sizeof(m_type) * (m_count)))
 #define ALLOCA_SINGLE(m_type)         ALLOCA_ARRAY(m_type, 1)
 
+// todo: refactor naming of RHI structs/class, remove rhi namespace, use RHIXXX
 namespace zen::rhi
 {
 class RHIResource;

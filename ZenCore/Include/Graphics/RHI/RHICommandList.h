@@ -4,6 +4,7 @@
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
 namespace zen::rhi
 {
+class RHIPipeline;
 
 struct RHICommandBase
 {
@@ -20,7 +21,7 @@ public:
 
     virtual void RHISetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) = 0;
 
-    virtual void RHIBindGfxPipeline(const PipelineHandle& pipeline) = 0;
+    virtual void RHIBindGfxPipeline(RHIPipeline* pipeline) = 0;
 
     virtual void RHIBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) = 0;
 
@@ -108,8 +109,8 @@ struct RHICommandDrawParam
 
 struct RHICommandBindGraphicsPipeline final : public RHICommand
 {
-    PipelineHandle pipeline;
-    explicit RHICommandBindGraphicsPipeline(const PipelineHandle& pipeline) : pipeline(pipeline) {}
+    RHIPipeline* pipeline;
+    explicit RHICommandBindGraphicsPipeline(RHIPipeline* pipeline) : pipeline(pipeline) {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
@@ -228,7 +229,7 @@ public:
 
     virtual void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
-    virtual void BindGraphicsPipeline(const PipelineHandle& pipeline);
+    virtual void BindGraphicsPipeline(RHIPipeline* pipeline);
 
     // All vertex attributes packed in 1 buffer
     virtual void BindVertexBuffer(RHIBuffer* buffer, uint64_t offset);

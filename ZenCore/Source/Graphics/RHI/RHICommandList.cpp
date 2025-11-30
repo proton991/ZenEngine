@@ -12,7 +12,7 @@ void FRHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, ui
     ALLOC_CMD(RHICommandSetScissor)(minX, minY, maxX, maxY);
 }
 
-void FRHICommandList::BindGraphicsPipeline(const PipelineHandle& pipeline)
+void FRHICommandList::BindGraphicsPipeline(RHIPipeline* pipeline)
 {
     ALLOC_CMD(RHICommandBindGraphicsPipeline)(pipeline);
 }

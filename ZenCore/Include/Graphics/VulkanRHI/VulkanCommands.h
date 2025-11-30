@@ -86,12 +86,12 @@ public:
 
     // void BindGfxPipeline(PipelineHandle pipelineHandle) final;
 
-    void BindGfxPipeline(PipelineHandle pipelineHandle,
+    void BindGfxPipeline(RHIPipeline* pipelineHandle,
                          const std::vector<DescriptorSetHandle>& descriptorSets) final;
 
     // void BindComputePipeline(PipelineHandle pipelineHandle) final;
 
-    void BindComputePipeline(PipelineHandle pipelineHandle,
+    void BindComputePipeline(RHIPipeline* pipelineHandle,
                              const std::vector<DescriptorSetHandle>& descriptorSets) final;
 
     void BeginRenderPass(RenderPassHandle renderPassHandle,
@@ -127,7 +127,7 @@ public:
 
     void DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset) final;
 
-    void SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data) final;
+    void SetPushConstants(RHIPipeline* pipelineHandle, VectorView<uint8_t> data) final;
 
     void SetViewports(VectorView<Rect2<float>> viewports) final;
 

@@ -1,8 +1,9 @@
 #pragma once
 #include "VulkanHeaders.h"
 #include "Templates/SmallVector.h"
-#include "Utils/Helpers.h"
 #include "Templates/HashMap.h"
+#include "Utils/Helpers.h"
+#include "Graphics/RHI/RHIResource.h"
 
 namespace zen::rhi
 {
@@ -37,29 +38,29 @@ template <> struct hash<zen::rhi::VulkanDescriptorPoolKey>
 
 namespace zen::rhi
 {
-struct VulkanShader
-{
-    VulkanShader() = default;
+// struct VulkanShader
+// {
+//     VulkanShader() = default;
+//
+//     struct VertexInputInfo
+//     {
+//         SmallVector<VkVertexInputBindingDescription> vkBindings;
+//         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
+//         VkPipelineVertexInputStateCreateInfo stateCI;
+//     } vertexInputInfo;
+//     std::vector<VkSpecializationMapEntry> entries{};
+//     VkSpecializationInfo specializationInfo{};
+//     VkShaderStageFlags pushConstantsStageFlags;
+//     SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
+//     SmallVector<VkDescriptorSetLayout> descriptorSetLayouts;
+//     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+//     VulkanDescriptorPoolKey descriptorPoolKey{};
+// };
 
-    struct VertexInputInfo
-    {
-        SmallVector<VkVertexInputBindingDescription> vkBindings;
-        SmallVector<VkVertexInputAttributeDescription> vkAttributes;
-        VkPipelineVertexInputStateCreateInfo stateCI;
-    } vertexInputInfo;
-    std::vector<VkSpecializationMapEntry> entries{};
-    VkSpecializationInfo specializationInfo{};
-    VkShaderStageFlags pushConstantsStageFlags;
-    SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
-    SmallVector<VkDescriptorSetLayout> descriptorSetLayouts;
-    VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
-    VulkanDescriptorPoolKey descriptorPoolKey{};
-};
-
-class FVulkanShader : public RHIShader
+class VulkanShader : public RHIShader
 {
 public:
-    static FVulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
+    static VulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
 
     uint32_t GetNumShaderStages() const
     {
@@ -108,7 +109,7 @@ protected:
 
 
 private:
-    FVulkanShader(const RHIShaderCreateInfo& createInfo) : RHIShader(createInfo) {}
+    VulkanShader(const RHIShaderCreateInfo& createInfo) : RHIShader(createInfo) {}
 
     struct VertexInputInfo
     {
@@ -150,15 +151,55 @@ struct VulkanDescriptorSet
     VulkanDescriptorPoolsIt iter;
 };
 
-struct VulkanPipeline
+// struct VulkanPipeline
+// {
+//     VkPipeline pipeline{VK_NULL_HANDLE};
+//     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+//     // uint32_t descriptorSetCount{0};
+//     VkShaderStageFlags pushConstantsStageFlags;
+//     //    std::vector<VulkanDescriptorSet*> descriptorSets;
+//     // Reason: When building GraphicsPass/ComputePass and pipeline cache is hit, the latter ones will overwrite the descriptorSet
+//     // VulkanPipeline and VulkanDescriptorSet should be kept separately
+//     // VulkanDescriptorSet* descriptorSets[8];
+// };
+
+class VulkanPipeline : public RHIPipeline
 {
-    VkPipeline pipeline{VK_NULL_HANDLE};
-    VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
-    // uint32_t descriptorSetCount{0};
-    VkShaderStageFlags pushConstantsStageFlags;
-    //    std::vector<VulkanDescriptorSet*> descriptorSets;
-    // Reason: When building GraphicsPass/ComputePass and pipeline cache is hit, the latter ones will overwrite the descriptorSet
-    // VulkanPipeline and VulkanDescriptorSet should be kept separately
-    // VulkanDescriptorSet* descriptorSets[8];
+public:
+    static VulkanPipeline* CreateObject(const RHIGfxPipelineCreateInfo& createInfo);
+
+    static VulkanPipeline* CreateObject(const RHIComputePipelineCreateInfo& createInfo);
+
+    VkPipeline GetVkPipeline() const
+    {
+        return m_vkPipeline;
+    }
+
+    VkPipelineLayout GetVkPipelineLayout() const
+    {
+        return TO_VK_SHADER(m_shader)->GetVkPipelineLayout();
+    }
+
+    VkShaderStageFlags GetPushConstantsStageFlags() const
+    {
+        return m_pushConstantsStageFlags;
+    }
+
+protected:
+    void Init() override;
+
+    void Destroy() override;
+
+private:
+    VulkanPipeline(const RHIGfxPipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
+
+    VulkanPipeline(const RHIComputePipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
+
+    void InitGraphics();
+
+    void InitCompute();
+
+    VkPipeline m_vkPipeline{VK_NULL_HANDLE};
+    VkShaderStageFlags m_pushConstantsStageFlags;
 };
 } // namespace zen::rhi

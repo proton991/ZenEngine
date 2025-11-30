@@ -10,7 +10,7 @@ public:
 
     ~VulkanDebug() final = default;
 
-    void SetPipelineDebugName(PipelineHandle pipelineHandle, const std::string& debugName) final;
+    void SetPipelineDebugName(RHIPipeline* pipelineHandle, const std::string& debugName) final;
 
     void SetTextureDebugName(RHITexture* texture, const std::string& debugName) final;
 

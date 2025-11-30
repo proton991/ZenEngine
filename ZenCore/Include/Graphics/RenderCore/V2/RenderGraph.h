@@ -443,7 +443,7 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
 
 struct RDGBindPipelineNode : RDGPassChildNode
 {
-    rhi::PipelineHandle pipeline;
+    rhi::RHIPipeline* pipeline;
     rhi::PipelineType pipelineType{rhi::PipelineType::eNone};
 };
 
@@ -547,7 +547,7 @@ public:
     }
 
     void AddPassBindPipelineNode(RDGPassNode* parent,
-                                 rhi::PipelineHandle pipelineHandle,
+                                 rhi::RHIPipeline* pipelineHandle,
                                  rhi::PipelineType pipelineType);
 
     RDGPassNode* AddComputePassNode(const ComputePass& computePass, std::string tag);

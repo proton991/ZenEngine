@@ -52,19 +52,23 @@ public:
 
     virtual void DestroyShader(RHIShader* shader) = 0;
 
-    virtual PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-                                             const GfxPipelineStates& states,
-                                             RenderPassHandle renderPassHandle,
-                                             uint32_t subpass) = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
 
-    virtual PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-                                             const GfxPipelineStates& states,
-                                             const RenderPassLayout& renderPassLayout,
-                                             uint32_t subpass) = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
 
-    virtual PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) = 0;
+    // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
+    //                                        const GfxPipelineStates& states,
+    //                                        RenderPassHandle renderPassHandle,
+    //                                        uint32_t subpass) = 0;
 
-    virtual void DestroyPipeline(PipelineHandle pipelineHandle) = 0;
+    // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
+    //                                        const GfxPipelineStates& states,
+    //                                        const RenderPassLayout& renderPassLayout,
+    //                                        uint32_t subpass) = 0;
+
+    // virtual RHIPipeline* CreateComputePipeline(RHIShader* shaderHandle) = 0;
+
+    virtual void DestroyPipeline(RHIPipeline* pipeline) = 0;
 
     virtual RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) = 0;
 

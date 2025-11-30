@@ -54,7 +54,7 @@ void RDGResourceTrackerPool::UpdateTrackerState(const rhi::RHIBuffer* buffer,
 }
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
-                                          rhi::PipelineHandle pipelineHandle,
+                                          rhi::RHIPipeline* pipelineHandle,
                                           rhi::PipelineType pipelineType)
 {
     auto* node         = AllocPassChildNode<RDGBindPipelineNode>(parent);
@@ -1317,7 +1317,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        rhi::PipelineHandle pipelineHandle;
+                        rhi::RHIPipeline* pipelineHandle;
                         for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
@@ -1409,7 +1409,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        rhi::PipelineHandle pipelineHandle;
+                        rhi::RHIPipeline* pipelineHandle;
                         for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)

@@ -1190,42 +1190,57 @@ rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassL
     return m_renderPassCache[hash];
 }
 
-rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
+rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
     rhi::RHIShader* shader,
     const rhi::RenderPassHandle& renderPass,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
+    rhi::RHIGfxPipelineCreateInfo createInfo{};
+    createInfo.shader           = shader;
+    createInfo.states           = PSO;
+    createInfo.renderPassHandle = renderPass;
+    createInfo.subpassIdx       = 0;
+
     auto hash = CalcGfxPipelineHash(PSO, shader, renderPass, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
-        m_pipelineCache[hash] = GDynamicRHI->CreateGfxPipeline(shader, PSO, renderPass, 0);
+        m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
     }
     return m_pipelineCache[hash];
 }
 
-rhi::PipelineHandle RenderDevice::GetOrCreateGfxPipeline(
+rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
     rhi::RHIShader* shader,
     const rhi::RenderPassLayout& renderPassLayout,
     const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
 {
+    rhi::RHIGfxPipelineCreateInfo createInfo{};
+    createInfo.shader           = shader;
+    createInfo.states           = PSO;
+    createInfo.renderPassLayout = renderPassLayout;
+    createInfo.subpassIdx       = 0;
+
     auto hash = CalcGfxPipelineHash(PSO, shader, renderPassLayout, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
-        m_pipelineCache[hash] = GDynamicRHI->CreateGfxPipeline(shader, PSO, renderPassLayout, 0);
+        m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
     }
     return m_pipelineCache[hash];
 }
 
-rhi::PipelineHandle RenderDevice::GetOrCreateComputePipeline(rhi::RHIShader* shader)
+rhi::RHIPipeline* RenderDevice::GetOrCreateComputePipeline(rhi::RHIShader* shader)
 {
+    rhi::RHIComputePipelineCreateInfo createInfo{};
+    createInfo.shader = shader;
+
     auto hash = CalcComputePipelineHash(shader);
     if (!m_pipelineCache.contains(hash))
     {
-        m_pipelineCache[hash] = GDynamicRHI->CreateComputePipeline(shader);
+        m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
     }
     return m_pipelineCache[hash];
 }
@@ -1670,6 +1685,7 @@ size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
+    // todo: use shader->GetHans()
     combineHash(shader);
     return seed;
 }

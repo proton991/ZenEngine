@@ -250,7 +250,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const 
 //                       vulkanPipeline->pipeline);
 // }
 
-void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle,
+void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
                                         const std::vector<DescriptorSetHandle>& descriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
@@ -264,14 +264,14 @@ void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle,
                 reinterpret_cast<VulkanDescriptorSet*>(descriptorSets[i].value)->descriptorSet);
         }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                vulkanPipeline->pipelineLayout, 0, vkDescriptorSets.size(),
+                                vulkanPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),
                                 vkDescriptorSets.data(), 0, nullptr);
     }
     vkCmdBindPipeline(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      vulkanPipeline->pipeline);
+                      vulkanPipeline->GetVkPipeline());
 }
 
-void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle,
+void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
                                             const std::vector<DescriptorSetHandle>& descriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
@@ -286,11 +286,11 @@ void VulkanCommandList::BindComputePipeline(PipelineHandle pipelineHandle,
             vkDescriptorSets.push_back(vkDescriptorSet);
         }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                                vulkanPipeline->pipelineLayout, 0, vkDescriptorSets.size(),
+                                vulkanPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),
                                 vkDescriptorSets.data(), 0, nullptr);
     }
     vkCmdBindPipeline(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                      vulkanPipeline->pipeline);
+                      vulkanPipeline->GetVkPipeline());
 }
 
 
@@ -436,11 +436,11 @@ void VulkanCommandList::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t off
     vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->GetVkBuffer(), offset);
 }
 
-void VulkanCommandList::SetPushConstants(PipelineHandle pipelineHandle, VectorView<uint8_t> data)
+void VulkanCommandList::SetPushConstants(RHIPipeline* pipelineHandle, VectorView<uint8_t> data)
 {
     VulkanPipeline* pipeline = TO_VK_PIPELINE(pipelineHandle);
-    vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), pipeline->pipelineLayout,
-                       pipeline->pushConstantsStageFlags, 0, data.size(), data.data());
+    vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), pipeline->GetVkPipelineLayout(),
+                       pipeline->GetPushConstantsStageFlags(), 0, data.size(), data.data());
 }
 
 void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)

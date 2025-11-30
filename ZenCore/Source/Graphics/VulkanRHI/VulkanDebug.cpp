@@ -8,7 +8,7 @@ namespace zen::rhi
 {
 VulkanDebug::VulkanDebug() {}
 
-void VulkanDebug::SetPipelineDebugName(PipelineHandle pipelineHandle, const std::string& debugName)
+void VulkanDebug::SetPipelineDebugName(RHIPipeline* pipelineHandle, const std::string& debugName)
 {
     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
@@ -17,7 +17,7 @@ void VulkanDebug::SetPipelineDebugName(PipelineHandle pipelineHandle, const std:
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_PIPELINE;
-    info.objectHandle = reinterpret_cast<uint64_t>(vulkanPipeline->pipeline);
+    info.objectHandle = reinterpret_cast<uint64_t>(vulkanPipeline->GetVkPipeline());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),

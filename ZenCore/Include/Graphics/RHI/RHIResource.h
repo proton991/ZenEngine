@@ -14,7 +14,8 @@ enum class ResourceType : uint32_t
     eTexture  = 3,
     eSampler  = 4,
     eShader   = 5,
-    eMax      = 6
+    ePipeline = 6,
+    eMax      = 7
 };
 
 class RHIResource
@@ -588,6 +589,60 @@ protected:
     std::string m_name;
 };
 
+struct RHIGfxPipelineCreateInfo
+{
+    RHIShader* shader;
+    GfxPipelineStates states;
+    RenderPassLayout renderPassLayout;
+    RenderPassHandle renderPassHandle;
+    uint32_t subpassIdx;
+};
+
+struct RHIComputePipelineCreateInfo
+{
+    RHIShader* shader;
+};
+
+enum class RHIPipelineType : uint32_t
+{
+    eNone     = 0,
+    eGraphics = 1,
+    eCompute  = 2,
+    eMax      = 3
+};
+
+class RHIPipeline : public RHIResource
+{
+public:
+    ~RHIPipeline() override = default;
+
+protected:
+    RHIPipeline(const RHIGfxPipelineCreateInfo& createInfo) :
+        RHIResource(ResourceType::ePipeline),
+        m_type(RHIPipelineType::eGraphics),
+        m_shader(createInfo.shader),
+        m_gfxStates(createInfo.states),
+        m_renderPassLayout(createInfo.renderPassLayout),
+        m_subpassIdx(createInfo.subpassIdx)
+    {}
+
+    RHIPipeline(const RHIComputePipelineCreateInfo& createInfo) :
+        RHIResource(ResourceType::ePipeline),
+        m_type(RHIPipelineType::eCompute),
+        m_shader(createInfo.shader)
+    {}
+
+    RHIPipelineType m_type{RHIPipelineType::eNone};
+
+    RHIShader* m_shader{nullptr};
+
+    // for graphics pipeline
+    GfxPipelineStates m_gfxStates;
+    RenderPassLayout m_renderPassLayout;
+    RenderPassHandle m_renderPassHandle{0LLU};
+    uint32_t m_subpassIdx;
+};
+
 class RHIResourceFactory
 {
 public:
@@ -600,5 +655,9 @@ public:
     virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
 
     virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
+
+    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
+
+    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
 };
 } // namespace zen::rhi

@@ -119,7 +119,7 @@ struct GraphicsPass
 {
     rhi::FramebufferHandle framebuffer;
     rhi::RenderPassHandle renderPass;
-    rhi::PipelineHandle pipeline;
+    rhi::RHIPipeline* pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
     ShaderProgram* shaderProgram;
     rhi::RenderPassLayout renderPassLayout;
@@ -130,7 +130,7 @@ struct GraphicsPass
 
 struct ComputePass
 {
-    rhi::PipelineHandle pipeline;
+    rhi::RHIPipeline* pipeline;
     std::vector<rhi::DescriptorSetHandle> descriptorSets;
     ShaderProgram* shaderProgram;
     // setIndex as vector index, bindingIndex as inner map key
