@@ -251,7 +251,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const 
 // }
 
 void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
-                                        const std::vector<DescriptorSetHandle>& descriptorSets)
+                                        const std::vector<RHIDescriptorSet*>& descriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (!descriptorSets.empty())
@@ -261,7 +261,7 @@ void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
         for (uint32_t i = 0; i < descriptorSets.size(); i++)
         {
             vkDescriptorSets.push_back(
-                reinterpret_cast<VulkanDescriptorSet*>(descriptorSets[i].value)->descriptorSet);
+                TO_VK_DESCRIPTORSET(descriptorSets[i])->GetVkDescriptorSet());
         }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 vulkanPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),
@@ -272,7 +272,7 @@ void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
 }
 
 void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
-                                            const std::vector<DescriptorSetHandle>& descriptorSets)
+                                            const std::vector<RHIDescriptorSet*>& descriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (!descriptorSets.empty())
@@ -281,9 +281,8 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
         vkDescriptorSets.reserve(descriptorSets.size());
         for (uint32_t i = 0; i < descriptorSets.size(); i++)
         {
-            VkDescriptorSet vkDescriptorSet =
-                reinterpret_cast<VulkanDescriptorSet*>(descriptorSets[i].value)->descriptorSet;
-            vkDescriptorSets.push_back(vkDescriptorSet);
+            vkDescriptorSets.push_back(
+                TO_VK_DESCRIPTORSET(descriptorSets[i])->GetVkDescriptorSet());
         }
         vkCmdBindDescriptorSets(m_cmdBuffer->GetVkHandle(), VK_PIPELINE_BIND_POINT_COMPUTE,
                                 vulkanPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),

@@ -107,6 +107,19 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
     return pShader;
 }
 
+RHIDescriptorSet* VulkanShader::CreateDescriptorSet(uint32_t setIndex)
+{
+    VulkanDescriptorSet* pDescriptorSet =
+        VersatileResource::AllocMem<VulkanDescriptorSet>(GVulkanRHI->GetResourceAllocator());
+
+    new (pDescriptorSet) VulkanDescriptorSet(this, setIndex);
+
+    pDescriptorSet->Init();
+
+    return pDescriptorSet;
+}
+
+
 void VulkanShader::Init()
 {
     for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
@@ -1327,70 +1340,11 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
         }
     }
 }
-// todo: store shader in pipeline, implement RHIPipeline and turn this into a member function of it
-DescriptorSetHandle VulkanRHI::CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex)
-{
-    // if (!m_shaderPipelines.contains(shaderHandle))
-    // {
-    //     LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
-    // }
 
-    VulkanShader* shader = TO_VK_SHADER(shaderHandle);
-    VulkanDescriptorPoolsIt iter{};
-    VkDescriptorPool pool =
-        m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->GetDescriptorPoolKey(), &iter);
-    VERIFY_EXPR(pool != VK_NULL_HANDLE);
-
-    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-    InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
-    descriptorSetAllocateInfo.descriptorPool     = pool;
-    descriptorSetAllocateInfo.descriptorSetCount = 1;
-    descriptorSetAllocateInfo.pSetLayouts        = &shader->GetDescriptorSetLayoutData()[setIndex];
-
-    VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
-    VkResult result = vkAllocateDescriptorSets(m_device->GetVkHandle(), &descriptorSetAllocateInfo,
-                                               &vkDescriptorSet);
-    if (result != VK_SUCCESS)
-    {
-        m_descriptorPoolManager->UnRefDescriptorPool(iter, pool);
-        LOGE("Failed to allocate descriptor set");
-    }
-
-    VulkanDescriptorSet* descriptorSet =
-        VersatileResource::Alloc<VulkanDescriptorSet>(m_resourceAllocator);
-    descriptorSet->iter           = iter;
-    descriptorSet->descriptorPool = pool;
-    descriptorSet->descriptorSet  = vkDescriptorSet;
-
-    // VulkanPipeline* vulkanPipeline           = TO_VK_PIPELINE(pipeline);
-    // vulkanPipeline->descriptorSets[setIndex] = descriptorSet;
-
-    // m_shaderPipelines[shaderHandle]->descriptorSets[setIndex] = descriptorSet;
-
-    return DescriptorSetHandle(descriptorSet);
-}
-
-void VulkanRHI::DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle)
-{
-    VulkanDescriptorSet* descriptorSet =
-        reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
-
-    vkFreeDescriptorSets(m_device->GetVkHandle(), descriptorSet->descriptorPool, 1,
-                         &descriptorSet->descriptorSet);
-
-    m_descriptorPoolManager->UnRefDescriptorPool(descriptorSet->iter,
-                                                 descriptorSet->descriptorPool);
-    VersatileResource::Free(m_resourceAllocator, descriptorSet);
-}
-
-void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-                                    const std::vector<ShaderResourceBinding>& resourceBindings)
+void VulkanDescriptorSet::Update(const std::vector<ShaderResourceBinding>& resourceBindings)
 {
     std::vector<VkWriteDescriptorSet> writes;
     writes.resize(resourceBindings.size());
-    // std::vector<VkDescriptorImageInfo> imageInfos;
-    // std::vector<VkDescriptorBufferInfo> bufferInfos;
-    // std::vector<VkBufferView> bufferViews;
 
     for (uint32_t i = 0; i < resourceBindings.size(); i++)
     {
@@ -1399,9 +1353,6 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
         writes[i].dstBinding = srb.binding;
 
         uint32_t numDescriptors = 1;
-        // VkDescriptorBufferInfo* currBufferInfos = bufferInfos.data() + bufferInfos.size();
-        // VkDescriptorImageInfo* currImageInfos   = imageInfos.data() + imageInfos.size();
-        // VkBufferView* currBufferViews           = bufferViews.data() + bufferViews.size();
 
         switch (srb.type)
         {
@@ -1596,10 +1547,316 @@ void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     }
     for (auto& write : writes)
     {
-        VulkanDescriptorSet* descriptorSet =
-            reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
-        write.dstSet = descriptorSet->descriptorSet;
+        write.dstSet = m_vkDescriptorSet;
     }
-    vkUpdateDescriptorSets(m_device->GetVkHandle(), writes.size(), writes.data(), 0, nullptr);
+    vkUpdateDescriptorSets(GVulkanRHI->GetVkDevice(), writes.size(), writes.data(), 0, nullptr);
 }
+
+VulkanDescriptorSet::VulkanDescriptorSet(const RHIShader* pShader, uint32_t setIndex) :
+    RHIDescriptorSet(pShader, setIndex)
+{}
+
+void VulkanDescriptorSet::Init()
+{
+    const VulkanShader* shader            = TO_CVK_SHADER(m_pShader);
+    VulkanDescriptorPoolManager* poolMngr = GVulkanRHI->GetDescriptorPoolManager();
+    VulkanDescriptorPoolsIt iter{};
+    VkDescriptorPool pool =
+        poolMngr->GetOrCreateDescriptorPool(shader->GetDescriptorPoolKey(), &iter);
+    VERIFY_EXPR(pool != VK_NULL_HANDLE);
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+    InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
+    descriptorSetAllocateInfo.descriptorPool     = pool;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts = &shader->GetDescriptorSetLayoutData()[m_setIndex];
+
+    VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
+    VkResult result = vkAllocateDescriptorSets(GVulkanRHI->GetVkDevice(),
+                                               &descriptorSetAllocateInfo, &vkDescriptorSet);
+    if (result != VK_SUCCESS)
+    {
+        poolMngr->UnRefDescriptorPool(iter, pool);
+        LOGE("Failed to allocate descriptor set");
+    }
+
+    m_poolIter         = iter;
+    m_vkDescriptorPool = pool;
+    m_vkDescriptorSet  = vkDescriptorSet;
+}
+
+void VulkanDescriptorSet::Destroy()
+{
+    vkFreeDescriptorSets(GVulkanRHI->GetVkDevice(), m_vkDescriptorPool, 1, &m_vkDescriptorSet);
+
+    GVulkanRHI->GetDescriptorPoolManager()->UnRefDescriptorPool(m_poolIter, m_vkDescriptorPool);
+    VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
+}
+
+// DescriptorSetHandle VulkanRHI::CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex)
+// {
+//     // if (!m_shaderPipelines.contains(shaderHandle))
+//     // {
+//     //     LOG_FATAL_ERROR("Pipeline should be created before allocating descriptorSets");
+//     // }
+//
+//     VulkanShader* shader = TO_VK_SHADER(shaderHandle);
+//     VulkanDescriptorPoolsIt iter{};
+//     VkDescriptorPool pool =
+//         m_descriptorPoolManager->GetOrCreateDescriptorPool(shader->GetDescriptorPoolKey(), &iter);
+//     VERIFY_EXPR(pool != VK_NULL_HANDLE);
+//
+//     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+//     InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
+//     descriptorSetAllocateInfo.descriptorPool     = pool;
+//     descriptorSetAllocateInfo.descriptorSetCount = 1;
+//     descriptorSetAllocateInfo.pSetLayouts        = &shader->GetDescriptorSetLayoutData()[setIndex];
+//
+//     VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
+//     VkResult result = vkAllocateDescriptorSets(m_device->GetVkHandle(), &descriptorSetAllocateInfo,
+//                                                &vkDescriptorSet);
+//     if (result != VK_SUCCESS)
+//     {
+//         m_descriptorPoolManager->UnRefDescriptorPool(iter, pool);
+//         LOGE("Failed to allocate descriptor set");
+//     }
+//
+//     VulkanDescriptorSet* descriptorSet =
+//         VersatileResource::Alloc<VulkanDescriptorSet>(m_resourceAllocator);
+//     descriptorSet->iter           = iter;
+//     descriptorSet->descriptorPool = pool;
+//     descriptorSet->descriptorSet  = vkDescriptorSet;
+//
+//     // VulkanPipeline* vulkanPipeline           = TO_VK_PIPELINE(pipeline);
+//     // vulkanPipeline->descriptorSets[setIndex] = descriptorSet;
+//
+//     // m_shaderPipelines[shaderHandle]->descriptorSets[setIndex] = descriptorSet;
+//
+//     return DescriptorSetHandle(descriptorSet);
+// }
+//
+void VulkanRHI::DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet)
+{
+    pDescriptorSet->ReleaseReference();
+}
+//
+// void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
+//                                     const std::vector<ShaderResourceBinding>& resourceBindings)
+// {
+//     std::vector<VkWriteDescriptorSet> writes;
+//     writes.resize(resourceBindings.size());
+//     // std::vector<VkDescriptorImageInfo> imageInfos;
+//     // std::vector<VkDescriptorBufferInfo> bufferInfos;
+//     // std::vector<VkBufferView> bufferViews;
+//
+//     for (uint32_t i = 0; i < resourceBindings.size(); i++)
+//     {
+//         const auto& srb = resourceBindings[i];
+//         InitVkStruct(writes[i], VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
+//         writes[i].dstBinding = srb.binding;
+//
+//         uint32_t numDescriptors = 1;
+//         // VkDescriptorBufferInfo* currBufferInfos = bufferInfos.data() + bufferInfos.size();
+//         // VkDescriptorImageInfo* currImageInfos   = imageInfos.data() + imageInfos.size();
+//         // VkBufferView* currBufferViews           = bufferViews.data() + bufferViews.size();
+//
+//         switch (srb.type)
+//         {
+//             case ShaderResourceType::eSampler:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler     = TO_VK_SAMPLER(srb.resources[j])->GetVkSampler();
+//                     imageInfo.imageView   = VK_NULL_HANDLE;
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+//                     imageInfos[j]         = imageInfo;
+//                 }
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+//                 writes[i].pImageInfo     = imageInfos;
+//             }
+//             break;
+//             case ShaderResourceType::eTexture:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler     = VK_NULL_HANDLE;
+//                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+//                     imageInfos[j]         = imageInfo;
+//                 }
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+//                 writes[i].pImageInfo     = imageInfos;
+//             }
+//             break;
+//             case ShaderResourceType::eSamplerWithTexture:
+//             {
+//                 VERIFY_EXPR(srb.resources.size() % 2 == 0 && srb.resources.size() >= 2);
+//                 numDescriptors = srb.resources.size() / 2;
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler   = TO_VK_SAMPLER(srb.resources[j * 2 + 0])->GetVkSampler();
+//                     imageInfo.imageView = TO_VK_TEXTURE(srb.resources[j * 2 + 1])->GetVkImageView();
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+//                     imageInfos[j]         = imageInfo;
+//                 }
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//                 writes[i].pImageInfo     = imageInfos;
+//             }
+//             break;
+//             case ShaderResourceType::eImage:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler     = VK_NULL_HANDLE;
+//                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+//                     imageInfos[j]         = imageInfo;
+//                 }
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+//                 writes[i].pImageInfo     = imageInfos;
+//             }
+//             break;
+//             case ShaderResourceType::eTextureBuffer:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorBufferInfo* bufferInfos =
+//                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+//                 VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
+//                     VkDescriptorBufferInfo bufferInfo{};
+//                     bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
+//                     bufferInfo.range  = vulkanBuffer->GetRequiredSize();
+//                     bufferViews[j]    = vulkanBuffer->GetVkBufferView();
+//                     bufferInfos[j]    = bufferInfo;
+//                 }
+//                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+//                 writes[i].pBufferInfo      = bufferInfos;
+//                 writes[i].pTexelBufferView = bufferViews;
+//             }
+//             break;
+//             case ShaderResourceType::eSamplerWithTextureBuffer:
+//             {
+//                 VERIFY_EXPR(srb.resources.size() % 2 == 0 && srb.resources.size() >= 2);
+//                 numDescriptors = srb.resources.size() / 2;
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 VkDescriptorBufferInfo* bufferInfos =
+//                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+//                 VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler     = TO_VK_SAMPLER(srb.resources[j * 2 + 0])->GetVkSampler();
+//                     imageInfo.imageView   = VK_NULL_HANDLE;
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+//                     imageInfos[j]         = imageInfo;
+//
+//                     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j * 2 + 1]);
+//                     VkDescriptorBufferInfo bufferInfo{};
+//                     bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
+//                     bufferInfo.range  = vulkanBuffer->GetRequiredSize();
+//                     bufferViews[j]    = vulkanBuffer->GetVkBufferView();
+//                     bufferInfos[j]    = bufferInfo;
+//                 }
+//                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+//                 writes[i].pImageInfo       = imageInfos;
+//                 writes[i].pBufferInfo      = bufferInfos;
+//                 writes[i].pTexelBufferView = bufferViews;
+//             }
+//             break;
+//             case ShaderResourceType::eImageBuffer:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorBufferInfo* bufferInfos =
+//                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
+//                 VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
+//                     VkDescriptorBufferInfo bufferInfo{};
+//                     bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
+//                     bufferInfo.range  = vulkanBuffer->GetRequiredSize();
+//                     bufferViews[j]    = vulkanBuffer->GetVkBufferView();
+//                     bufferInfos[j]    = bufferInfo;
+//                 }
+//                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+//                 writes[i].pBufferInfo      = bufferInfos;
+//                 writes[i].pTexelBufferView = bufferViews;
+//             }
+//             break;
+//             case ShaderResourceType::eUniformBuffer:
+//             {
+//                 VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
+//                 VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+//
+//                 *bufferInfo        = {};
+//                 bufferInfo->buffer = vulkanBuffer->GetVkBuffer();
+//                 bufferInfo->range  = vulkanBuffer->GetRequiredSize();
+//
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+//                 writes[i].pBufferInfo    = bufferInfo;
+//             }
+//             break;
+//             case ShaderResourceType::eStorageBuffer:
+//             {
+//                 VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
+//                 VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+//
+//                 *bufferInfo        = {};
+//                 bufferInfo->buffer = vulkanBuffer->GetVkBuffer();
+//                 bufferInfo->range  = vulkanBuffer->GetRequiredSize();
+//
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+//                 writes[i].pBufferInfo    = bufferInfo;
+//             }
+//             break;
+//             case ShaderResourceType::eInputAttachment:
+//             {
+//                 numDescriptors = srb.resources.size();
+//                 VkDescriptorImageInfo* imageInfos =
+//                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
+//                 for (uint32_t j = 0; j < numDescriptors; j++)
+//                 {
+//                     VkDescriptorImageInfo imageInfo{};
+//                     imageInfo.sampler     = VK_NULL_HANDLE;
+//                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
+//                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+//                     imageInfos[j]         = imageInfo;
+//                 }
+//                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+//                 writes[i].pImageInfo     = imageInfos;
+//             }
+//             break;
+//             default:
+//             {
+//                 LOGE("Invalid descriptor type");
+//             }
+//         }
+//         writes[i].descriptorCount = numDescriptors;
+//     }
+//     for (auto& write : writes)
+//     {
+//         VulkanDescriptorSet* descriptorSet =
+//             reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
+//         write.dstSet = descriptorSet->descriptorSet;
+//     }
+//     vkUpdateDescriptorSets(m_device->GetVkHandle(), writes.size(), writes.data(), 0, nullptr);
+// }
 } // namespace zen::rhi

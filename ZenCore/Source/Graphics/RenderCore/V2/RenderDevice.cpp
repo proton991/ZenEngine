@@ -237,7 +237,7 @@ GraphicsPass GraphicsPassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
-        gfxPass.descriptorSets[setIndex] = GDynamicRHI->CreateDescriptorSet(shader, setIndex);
+        gfxPass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
 
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
@@ -245,7 +245,7 @@ GraphicsPass GraphicsPassBuilder::Build()
     {
         const auto setIndex  = kv.first;
         const auto& bindings = kv.second;
-        GDynamicRHI->UpdateDescriptorSet(gfxPass.descriptorSets[setIndex], bindings);
+        gfxPass.descriptorSets[setIndex]->Update(bindings);
     }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
@@ -259,10 +259,10 @@ void GraphicsPassResourceUpdater::Update()
     // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
-        const auto setIndex               = kv.first;
-        const auto& bindings              = kv.second;
-        rhi::DescriptorSetHandle dsHandle = m_gfxPass->descriptorSets[setIndex];
-        GDynamicRHI->UpdateDescriptorSet(dsHandle, bindings);
+        const auto setIndex             = kv.first;
+        const auto& bindings            = kv.second;
+        rhi::RHIDescriptorSet* dsHandle = m_gfxPass->descriptorSets[setIndex];
+        dsHandle->Update(bindings);
         // set pass tracker handle values here
         for (auto& srb : bindings)
         {
@@ -390,7 +390,7 @@ ComputePass ComputePassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
     {
-        computePass.descriptorSets[setIndex] = GDynamicRHI->CreateDescriptorSet(shader, setIndex);
+        computePass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
 
     m_renderDevice->GetRHIDebug()->SetPipelineDebugName(computePass.pipeline, m_tag + "_Pipeline");
@@ -405,10 +405,10 @@ void ComputePassResourceUpdater::Update()
     // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
-        const auto setIndex               = kv.first;
-        const auto& bindings              = kv.second;
-        rhi::DescriptorSetHandle dsHandle = m_computePass->descriptorSets[setIndex];
-        GDynamicRHI->UpdateDescriptorSet(dsHandle, bindings);
+        const auto setIndex             = kv.first;
+        const auto& bindings            = kv.second;
+        rhi::RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
+        dsHandle->Update(bindings);
         // set pass tracker handle values here
         rhi::Handle handle;
         for (auto& srb : bindings)
@@ -1685,7 +1685,7 @@ size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    // todo: use shader->GetHans()
+    // todo: use shader->GetHash()
     combineHash(shader);
     return seed;
 }

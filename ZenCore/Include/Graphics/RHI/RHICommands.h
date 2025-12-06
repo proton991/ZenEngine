@@ -7,6 +7,7 @@ namespace zen::rhi
 class RHIBuffer;
 class RHITexture;
 class RHIPipeline;
+class RHIDescriptorSet;
 
 class RHICommandListContext
 {
@@ -75,12 +76,12 @@ public:
     // virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual void BindGfxPipeline(RHIPipeline* pipelineHandle,
-                                 const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
+                                 const std::vector<RHIDescriptorSet*>& descriptorSets) = 0;
 
     // virtual void BindComputePipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual void BindComputePipeline(RHIPipeline* pipelineHandle,
-                                     const std::vector<DescriptorSetHandle>& descriptorSets) = 0;
+                                     const std::vector<RHIDescriptorSet*>& descriptorSets) = 0;
 
     virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
                                  FramebufferHandle framebufferHandle,

@@ -120,7 +120,7 @@ struct GraphicsPass
     rhi::FramebufferHandle framebuffer;
     rhi::RenderPassHandle renderPass;
     rhi::RHIPipeline* pipeline;
-    std::vector<rhi::DescriptorSetHandle> descriptorSets;
+    std::vector<rhi::RHIDescriptorSet*> descriptorSets;
     ShaderProgram* shaderProgram;
     rhi::RenderPassLayout renderPassLayout;
     // setIndex as vector index, bindingIndex as inner map key
@@ -131,7 +131,7 @@ struct GraphicsPass
 struct ComputePass
 {
     rhi::RHIPipeline* pipeline;
-    std::vector<rhi::DescriptorSetHandle> descriptorSets;
+    std::vector<rhi::RHIDescriptorSet*> descriptorSets;
     ShaderProgram* shaderProgram;
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies

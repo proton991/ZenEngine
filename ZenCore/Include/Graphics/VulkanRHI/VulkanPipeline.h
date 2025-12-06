@@ -62,6 +62,8 @@ class VulkanShader : public RHIShader
 public:
     static VulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
 
+    RHIDescriptorSet* CreateDescriptorSet(uint32_t setIndex) override;
+
     uint32_t GetNumShaderStages() const
     {
         return m_stageCreateInfos.size();
@@ -144,11 +146,36 @@ private:
     VulkanDescriptorPools m_pools;
 };
 
-struct VulkanDescriptorSet
+// struct VulkanDescriptorSet
+// {
+//     VkDescriptorSet descriptorSet{VK_NULL_HANDLE};
+//     VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
+//     VulkanDescriptorPoolsIt iter;
+// };
+
+class VulkanDescriptorSet : public RHIDescriptorSet
 {
-    VkDescriptorSet descriptorSet{VK_NULL_HANDLE};
-    VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
-    VulkanDescriptorPoolsIt iter;
+public:
+    void Update(const std::vector<ShaderResourceBinding>& resourceBindings) override;
+
+    VkDescriptorSet GetVkDescriptorSet() const
+    {
+        return m_vkDescriptorSet;
+    }
+
+protected:
+    void Init() override;
+
+    void Destroy() override;
+
+private:
+    VulkanDescriptorSet(const RHIShader* pShader, uint32_t setIndex);
+
+    VkDescriptorSet m_vkDescriptorSet{VK_NULL_HANDLE};
+    VkDescriptorPool m_vkDescriptorPool{VK_NULL_HANDLE};
+    VulkanDescriptorPoolsIt m_poolIter;
+
+    friend class VulkanShader;
 };
 
 // struct VulkanPipeline

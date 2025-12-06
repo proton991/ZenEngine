@@ -90,16 +90,14 @@ namespace zen::rhi
 // RHI_DEFINE_HANDLE(Swapchain);
 //RHI_DEFINE_HANDLE(CommandPool);
 //RHI_DEFINE_HANDLE(CommandBuffer);
-// todo: Remove ShaderHandle, implement RHIShader
 // RHI_DEFINE_HANDLE(Shader);
 RHI_DEFINE_HANDLE(RenderPass);
 RHI_DEFINE_HANDLE(Framebuffer);
 // RHI_DEFINE_HANDLE(Sampler);
-// todo: Remove PipelineHandle and DescriptorSetHandle, implement RHIPipeline
 // RHI_DEFINE_HANDLE(Pipeline);
 // RHI_DEFINE_HANDLE(Texture);
 // RHI_DEFINE_HANDLE(Buffer);
-RHI_DEFINE_HANDLE(DescriptorSet);
+// RHI_DEFINE_HANDLE(DescriptorSet);
 
 // #define TO_TEX_HANDLE(handle) rhi::TextureHandle(handle.value)
 // #define TO_BUF_HANDLE(handle) rhi::BufferHandle(handle.value)

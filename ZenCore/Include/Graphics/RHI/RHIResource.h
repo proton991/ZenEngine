@@ -8,14 +8,15 @@ namespace zen::rhi
 {
 enum class ResourceType : uint32_t
 {
-    eNone     = 0,
-    eViewport = 1,
-    eBuffer   = 2,
-    eTexture  = 3,
-    eSampler  = 4,
-    eShader   = 5,
-    ePipeline = 6,
-    eMax      = 7
+    eNone          = 0,
+    eViewport      = 1,
+    eBuffer        = 2,
+    eTexture       = 3,
+    eSampler       = 4,
+    eShader        = 5,
+    ePipeline      = 6,
+    eDescriptorSet = 7,
+    eMax           = 8
 };
 
 class RHIResource
@@ -547,6 +548,24 @@ protected:
     RHISamplerCreateInfo m_baseInfo{};
 };
 
+class RHIShader;
+
+class RHIDescriptorSet : public RHIResource
+{
+public:
+    ~RHIDescriptorSet() override = default;
+
+    virtual void Update(const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
+
+protected:
+    RHIDescriptorSet(const RHIShader* pShader, uint32_t setIndex) :
+        RHIResource(ResourceType::eDescriptorSet), m_pShader(pShader), m_setIndex(setIndex)
+    {}
+
+    const RHIShader* m_pShader;
+    uint32_t m_setIndex{0};
+};
+
 struct RHIShaderCreateInfo
 {
     std::string spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
@@ -567,6 +586,8 @@ public:
         outSRDs = m_SRDs;
     }
 
+    virtual RHIDescriptorSet* CreateDescriptorSet(uint32_t setIndex) = 0;
+
 protected:
     explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
         RHIResource(ResourceType::eShader),
@@ -585,7 +606,8 @@ protected:
     std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
     HashMap<uint32_t, int> m_specializationConstants;
-    std::vector<std::vector<ShaderResourceDescriptor>> m_SRDs; // todo: use fixed-size array
+    std::vector<std::vector<ShaderResourceDescriptor>>
+        m_SRDs; // todo: use fixed-size array or pre-allocate memory for it
     std::string m_name;
 };
 

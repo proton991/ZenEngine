@@ -57,18 +57,17 @@ void VulkanDebug::SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                    "Failed to set debug object name");
 }
 
-void VulkanDebug::SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+void VulkanDebug::SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
                                             const std::string& debugName)
 {
     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanDescriptorSet* descriptorSet =
-        reinterpret_cast<VulkanDescriptorSet*>(descriptorSetHandle.value);
+    VulkanDescriptorSet* descriptorSet = TO_VK_DESCRIPTORSET(descriptorSetHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_DESCRIPTOR_SET;
-    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet->descriptorSet);
+    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet->GetVkDescriptorSet());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),

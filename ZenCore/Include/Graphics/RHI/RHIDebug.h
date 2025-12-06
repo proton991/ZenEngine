@@ -18,7 +18,7 @@ public:
     virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                         const std::string& debugName) = 0;
 
-    virtual void SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+    virtual void SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
                                            const std::string& debugName) = 0;
 
 protected:

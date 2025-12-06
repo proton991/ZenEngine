@@ -119,13 +119,13 @@ public:
     //
     // virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
 
-    virtual DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) = 0;
+    // virtual DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) = 0;
 
-    virtual void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) = 0;
+    virtual void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) = 0;
 
-    virtual void UpdateDescriptorSet(
-        DescriptorSetHandle descriptorSetHandle,
-        const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
+    // virtual void UpdateDescriptorSet(
+    //     DescriptorSetHandle descriptorSetHandle,
+    //     const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 

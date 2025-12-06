@@ -17,7 +17,7 @@ public:
     void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
                                 const std::string& debugName) final;
 
-    void SetDescriptorSetDebugName(DescriptorSetHandle descriptorSetHandle,
+    void SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
                                    const std::string& debugName) final;
 };
 

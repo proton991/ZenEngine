@@ -15,14 +15,16 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-#define TO_VK_TEXTURE(tex)        (dynamic_cast<VulkanTexture*>(tex))
-#define TO_CVK_TEXTURE(tex)       (dynamic_cast<const VulkanTexture*>(tex))
-#define TO_VK_BUFFER(buffer)      (dynamic_cast<VulkanBuffer*>(buffer))
-#define TO_VK_PIPELINE(handle)    reinterpret_cast<VulkanPipeline*>(handle)
-#define TO_VK_FRAMEBUFFER(handle) reinterpret_cast<VulkanFramebuffer*>((handle).value)
-#define TO_VK_RENDER_PASS(handle) reinterpret_cast<VkRenderPass>((handle).value)
-#define TO_VK_SHADER(handle)      (dynamic_cast<VulkanShader*>(handle))
-#define TO_VK_SAMPLER(sampler)    (dynamic_cast<VulkanSampler*>(sampler))
+#define TO_VK_TEXTURE(tex)          (dynamic_cast<VulkanTexture*>(tex))
+#define TO_CVK_TEXTURE(tex)         (dynamic_cast<const VulkanTexture*>(tex))
+#define TO_VK_BUFFER(buffer)        (dynamic_cast<VulkanBuffer*>(buffer))
+#define TO_VK_PIPELINE(handle)      (dynamic_cast<VulkanPipeline*>(handle))
+#define TO_VK_DESCRIPTORSET(handle) (dynamic_cast<VulkanDescriptorSet*>(handle))
+#define TO_VK_FRAMEBUFFER(handle)   reinterpret_cast<VulkanFramebuffer*>((handle).value)
+#define TO_VK_RENDER_PASS(handle)   reinterpret_cast<VkRenderPass>((handle).value)
+#define TO_VK_SHADER(handle)        (dynamic_cast<VulkanShader*>(handle))
+#define TO_CVK_SHADER(handle)       (dynamic_cast<const VulkanShader*>(handle))
+#define TO_VK_SAMPLER(sampler)      (dynamic_cast<VulkanSampler*>(sampler))
 
 namespace zen::rhi
 {
@@ -31,10 +33,10 @@ class VulkanViewport;
 class VulkanCommandBufferManager;
 class VulkanDescriptorPoolManager;
 class VulkanShader;
-struct VulkanTexture;
+class VulkanTexture;
 class VulkanBuffer;
 class VulkanSampler;
-struct VulkanDescriptorSet;
+class VulkanDescriptorSet;
 class VulkanPipeline;
 class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
@@ -179,12 +181,12 @@ public:
     //
     // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
 
-    DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) final;
+    // DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) final;
 
-    void DestroyDescriptorSet(DescriptorSetHandle descriptorSetHandle) final;
+    void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
 
-    void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-                             const std::vector<ShaderResourceBinding>& resourceBindings) final;
+    // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
+    //                          const std::vector<ShaderResourceBinding>& resourceBindings) final;
 
     void SubmitAllGPUCommands() final;
 
@@ -201,6 +203,11 @@ public:
     auto& GetResourceAllocator()
     {
         return m_resourceAllocator;
+    }
+
+    VulkanDescriptorPoolManager* GetDescriptorPoolManager() const
+    {
+        return m_descriptorPoolManager;
     }
 
     InstanceExtensionFlags& GetInstanceExtensionFlags()
@@ -240,7 +247,6 @@ private:
     // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
-    // todo: remove incorrect 1 to 1 binding
     // HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
 
     // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
