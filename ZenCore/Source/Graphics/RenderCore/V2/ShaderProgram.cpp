@@ -76,10 +76,10 @@ void ShaderProgram::Init()
 
     m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
 
-    m_shader->GetShaderResourceDescriptors(m_SRDs);
+    m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
     // m_SRDs   = std::move(shaderGroupInfo.SRDs);
 
-    for (auto& setSRD : m_SRDs)
+    for (auto& setSRD : m_SRDTable)
     {
         for (const auto& srd : setSRD)
         {
@@ -152,9 +152,9 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
 
     m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
     // m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
-    m_shader->GetShaderResourceDescriptors(m_SRDs);
+    m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
 
-    for (auto& setSRD : m_SRDs)
+    for (auto& setSRD : m_SRDTable)
     {
         for (const auto& srd : setSRD)
         {

@@ -580,10 +580,9 @@ class RHIShader : public RHIResource
 public:
     ~RHIShader() override = default;
 
-    virtual void GetShaderResourceDescriptors(
-        std::vector<std::vector<rhi::ShaderResourceDescriptor>>& outSRDs)
+    virtual void GetShaderResourceDescriptorTable(ShaderResourceDescriptorTable& outSRDs)
     {
-        outSRDs = m_SRDs;
+        outSRDs = m_SRDTable;
     }
 
     virtual RHIDescriptorSet* CreateDescriptorSet(uint32_t setIndex) = 0;
@@ -606,8 +605,7 @@ protected:
     std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
     HashMap<uint32_t, int> m_specializationConstants;
-    std::vector<std::vector<ShaderResourceDescriptor>>
-        m_SRDs; // todo: use fixed-size array or pre-allocate memory for it
+    ShaderResourceDescriptorTable m_SRDTable;
     std::string m_name;
 };
 

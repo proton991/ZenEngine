@@ -135,7 +135,7 @@ void VulkanShader::Init()
     rhi::ShaderGroupInfo sgInfo{};
     rhi::ShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
     sgInfo.name = m_name;
-    m_SRDs      = sgInfo.SRDs;
+    m_SRDTable  = sgInfo.SRDTable;
 
     if (!m_specializationConstants.empty())
     {
@@ -225,15 +225,15 @@ void VulkanShader::Init()
     // VulkanDescriptorPoolKey descriptorPoolKey{};
     // Create descriptorSetLayouts
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
-    const auto setCount = sgInfo.SRDs.size();
+    const auto setCount = sgInfo.SRDTable.size();
     dsBindings.resize(setCount);
     for (uint32_t i = 0; i < setCount; i++)
     {
         std::vector<VkDescriptorBindingFlags> bindingFlags;
         // collect bindings for set i
-        for (uint32_t j = 0; j < sgInfo.SRDs[i].size(); j++)
+        for (uint32_t j = 0; j < sgInfo.SRDTable[i].size(); j++)
         {
-            const ShaderResourceDescriptor& srd = sgInfo.SRDs[i][j];
+            const ShaderResourceDescriptor& srd = sgInfo.SRDTable[i][j];
             VkDescriptorSetLayoutBinding binding{};
             binding.binding        = srd.binding;
             binding.descriptorType = ShaderResourceTypeToVkDescriptorType(srd.type);

@@ -328,7 +328,7 @@ static void MergeOrAddSRDs(RHIShaderStage stage,
     const auto setIndex  = srd.set;
     bool existed         = false;
 
-    std::vector<std::vector<ShaderResourceDescriptor>>& allSRDs = shaderGroupInfo.SRDs;
+    ShaderResourceDescriptorTable& allSRDs = shaderGroupInfo.SRDTable;
     if (setIndex < allSRDs.size())
     {
         for (uint32_t k = 0; k < allSRDs[setIndex].size(); k++)
@@ -439,8 +439,8 @@ inline void ShaderUtil::PrintShaderGroupInfo(const ShaderGroupInfo& sgInfo)
     }
     LOGI("Shader Stages: {}", stagesStr);
     LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name, sgInfo.pushConstants.size);
-    LOGI("SRD Set Count={}", sgInfo.SRDs.size());
-    for (const auto& setSRD : sgInfo.SRDs)
+    LOGI("SRD Set Count={}", sgInfo.SRDTable.size());
+    for (const auto& setSRD : sgInfo.SRDTable)
     {
         for (const auto& srd : setSRD)
         {

@@ -5,11 +5,15 @@
 #include "Templates/BitField.h"
 #include "Templates/HashMap.h"
 #include "Math/Math.h"
+#include "Templates/SmallVector.h"
+
 #include <string>
 #include <vector>
 
 #define MAX_COLOR_ATTACHMENT_COUNT 8
 #define MAX_SUBPASS_COUNT          8
+
+#define MAX_NUM_DESCRIPTOR_SETS 8
 
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
 
@@ -272,6 +276,8 @@ struct ShaderPushConstants
     BitField<RHIShaderStageFlagBits> stageFlags;
 };
 
+using ShaderResourceDescriptorTable =
+    SmallVector<SmallVector<ShaderResourceDescriptor>, MAX_NUM_DESCRIPTOR_SETS>;
 // .vert .frag .compute together
 struct ShaderGroupInfo
 {
@@ -282,7 +288,8 @@ struct ShaderGroupInfo
     // vertex binding stride
     uint32_t vertexBindingStride{0};
     // per set shader resources
-    std::vector<std::vector<ShaderResourceDescriptor>> SRDs;
+    // std::vector<std::vector<ShaderResourceDescriptor>> SRDs;
+    ShaderResourceDescriptorTable SRDTable;
     // specialization constants
     std::vector<ShaderSpecializationConstant> specializationConstants;
     std::string name;

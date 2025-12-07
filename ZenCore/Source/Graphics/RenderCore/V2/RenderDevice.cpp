@@ -135,7 +135,7 @@ GraphicsPass GraphicsPassBuilder::Build()
 
     // ShaderHandle shader;
     std::vector<ShaderSpecializationConstant> specializationConstants;
-    std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs;
+    // ShaderResourceDescriptorTable SRDs;
 
     GraphicsPass gfxPass;
     if (!RHIOptions::GetInstance().UseDynamicRendering())
@@ -165,8 +165,8 @@ GraphicsPass GraphicsPassBuilder::Build()
         shaderProgram->Init(m_specializationConstants);
     }
 
-    RHIShader* shader = shaderProgram->GetShader();
-    SRDs              = shaderProgram->GetSRDs();
+    RHIShader* shader                         = shaderProgram->GetShader();
+    const ShaderResourceDescriptorTable& SRDs = shaderProgram->GetSRDTable();
 
     gfxPass.shaderProgram = shaderProgram;
 
@@ -330,7 +330,7 @@ ComputePass ComputePassBuilder::Build()
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
     RHIShader* shader = shaderProgram->GetShader();
 
-    std::vector<std::vector<rhi::ShaderResourceDescriptor>> SRDs = shaderProgram->GetSRDs();
+    const ShaderResourceDescriptorTable& SRDs = shaderProgram->GetSRDTable();
 
     computePass.shaderProgram = shaderProgram;
     computePass.pipeline      = m_renderDevice->GetOrCreateComputePipeline(shader);

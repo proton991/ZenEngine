@@ -48,9 +48,9 @@ public:
         return m_shader;
     }
 
-    const std::vector<std::vector<rhi::ShaderResourceDescriptor>>& GetSRDs() const
+    const rhi::ShaderResourceDescriptorTable& GetSRDTable() const
     {
-        return m_SRDs;
+        return m_SRDTable;
     }
 
     rhi::RHIBuffer* GetUniformBufferHandle(const std::string& name)
@@ -90,8 +90,8 @@ protected:
 private:
     RenderDevice* m_renderDevice{nullptr};
     std::string m_name;
-    HashMap<rhi::RHIShaderStage, std::string> m_stages;             // stage -> path
-    std::vector<std::vector<rhi::ShaderResourceDescriptor>> m_SRDs; // todo: use fixed-size array
+    HashMap<rhi::RHIShaderStage, std::string> m_stages; // stage -> path
+    rhi::ShaderResourceDescriptorTable m_SRDTable;
     rhi::RHIShader* m_shader;
 
     HashMap<std::string, rhi::RHIBuffer*> m_uniformBuffers; // created from SRDs

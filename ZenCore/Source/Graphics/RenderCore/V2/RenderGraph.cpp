@@ -72,7 +72,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std
     node->tag         = std::move(tag);
     node->computePass = &computePass;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
-    for (uint32_t i = 0; i < computePass.shaderProgram->GetSRDs().size(); i++)
+    for (uint32_t i = 0; i < computePass.resourceTrackers.size(); i++)
     {
         auto& setTrackers = computePass.resourceTrackers[i];
         for (auto& kv : setTrackers)
@@ -201,7 +201,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                     depthStencilRT.subresourceRange, rhi::AccessMode::eReadWrite);
     }
     AddPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
-    for (uint32_t i = 0; i < gfxPass.shaderProgram->GetSRDs().size(); i++)
+    for (uint32_t i = 0; i < gfxPass.resourceTrackers.size(); i++)
     {
         auto& setTrackers = gfxPass.resourceTrackers[i];
         for (auto& kv : setTrackers)
