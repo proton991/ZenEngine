@@ -528,7 +528,6 @@ private:
     static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
                                       rhi::RenderPassHandle renderPassHandle);
 
-    // todo: refactor Hash calculation, do not use pointer address as hash value
     static size_t CalcGfxPipelineHash(
         const rhi::GfxPipelineStates& pso,
         rhi::RHIShader* shader,

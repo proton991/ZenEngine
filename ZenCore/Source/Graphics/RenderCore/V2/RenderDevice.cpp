@@ -1623,7 +1623,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader);
+    combineHash(shader->GetHash32());
     combineHash(renderPass.value);
     combineHash(pso.primitiveType);
     for (auto& spc : specializationConstants)
@@ -1652,7 +1652,7 @@ size_t RenderDevice::CalcGfxPipelineHash(
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader);
+    combineHash(shader->GetHash32());
     // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
     for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
     {
@@ -1685,8 +1685,7 @@ size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    // todo: use shader->GetHash()
-    combineHash(shader);
+    combineHash(shader->GetHash32());
     return seed;
 }
 

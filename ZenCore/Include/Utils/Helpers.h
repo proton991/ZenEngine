@@ -4,6 +4,19 @@
 
 namespace zen::util
 {
+// todo: refactor Hash functions
+inline void HashCombine32(uint32_t& seed, uint32_t value)
+{
+    // 32-bit hash combine (boost-like)
+    seed ^= value + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+}
+
+template <class T> inline void HashCombine32T(uint32_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
 template <class T> inline void HashCombine(size_t& seed, const T& v)
 {
     std::hash<T> hasher;

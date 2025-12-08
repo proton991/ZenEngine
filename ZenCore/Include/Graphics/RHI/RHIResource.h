@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include "Utils/RefCountPtr.h"
+#include "Utils/Helpers.h"
 #include "RHICommon.h"
 #include "Utils/Errors.h"
 
@@ -156,6 +157,31 @@ public:
     bool HasShaderStage(RHIShaderStage stage) const
     {
         return m_stageFlags.HasFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
+    }
+
+    uint32_t GetHash32() const
+    {
+        uint32_t hash = 0;
+
+        // Hash SPIR-V bytecode for each stage
+        for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
+        {
+            if (!HasShaderStage(static_cast<RHIShaderStage>(i)))
+                continue;
+
+            const auto& code = m_spirv[i];
+
+            uint32_t spirvHash = 0;
+            for (uint8_t b : code)
+            {
+                spirvHash ^= b;
+                spirvHash *= 0x01000193u;
+            }
+
+            util::HashCombine32(hash, spirvHash);
+        }
+
+        return hash;
     }
 
 private:
@@ -586,6 +612,29 @@ public:
     }
 
     virtual RHIDescriptorSet* CreateDescriptorSet(uint32_t setIndex) = 0;
+
+    uint32_t GetHash32() const
+    {
+        uint32_t hash = 0;
+
+        // Shader stage flags
+        util::HashCombine32(hash, m_shaderStageFlags);
+
+        // Hash the SPIR-V src
+        util::HashCombine32(hash, m_shaderGroupSPIRV->GetHash32());
+
+        // Hash specialization constants
+        for (auto& [key, val] : m_specializationConstants)
+        {
+            uint32_t kv = (key << 16) ^ (static_cast<uint32_t>(val) & 0xFFFFu);
+            util::HashCombine32(hash, kv);
+        }
+
+        // Hash shader name
+        util::HashCombine32T(hash, m_name);
+
+        return hash;
+    }
 
 protected:
     explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
