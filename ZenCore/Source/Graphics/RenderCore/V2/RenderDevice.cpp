@@ -203,6 +203,16 @@ GraphicsPass GraphicsPassBuilder::Build()
         }
         gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
     }
+    for (auto& srd : shaderProgram->GetUniformBufferSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eBuffer;
+        tracker.bufferUsage  = BufferUsage::eUniformBuffer;
+        tracker.accessMode   = AccessMode::eRead;
+        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
         PassResourceTracker tracker;
@@ -367,6 +377,16 @@ ComputePass ComputePassBuilder::Build()
             tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
             tracker.accessMode = AccessMode::eReadWrite;
         }
+        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+    }
+    for (auto& srd : shaderProgram->GetUniformBufferSRDs())
+    {
+        PassResourceTracker tracker;
+        tracker.name         = srd.name;
+        tracker.resourceType = PassResourceType::eBuffer;
+        tracker.bufferUsage  = BufferUsage::eUniformBuffer;
+        tracker.accessMode   = AccessMode::eRead;
+        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
         computePass.resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
@@ -1076,7 +1096,9 @@ rhi::RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t
     return indexBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData)
+rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
+                                                  const uint8_t* pData,
+                                                  std::string bufferName)
 {
     BitField<rhi::BufferUsageFlagBits> usages;
     usages.SetFlag(rhi::BufferUsageFlagBits::eUniformBuffer);
@@ -1088,6 +1110,7 @@ rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize, const uint8
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
     createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.tag          = std::move(bufferName);
 
 
     rhi::RHIBuffer* uniformBuffer = GDynamicRHI->CreateBuffer(createInfo);

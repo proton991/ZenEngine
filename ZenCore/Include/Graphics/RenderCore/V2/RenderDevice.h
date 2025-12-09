@@ -120,7 +120,7 @@ public:
         return *this;
     }
 
-    // todo: allocate GraphicsPass on heap
+    // todo: allocate GraphicsPass on heap, mem size of GraphicsPass could be pre-calculated
     GraphicsPass Build();
 
 private:
@@ -399,7 +399,9 @@ public:
 
     rhi::RHIBuffer* CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::RHIBuffer* CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData);
+    rhi::RHIBuffer* CreateUniformBuffer(uint32_t dataSize,
+                                        const uint8_t* pData,
+                                        std::string bufferName);
 
     rhi::RHIBuffer* CreateStorageBuffer(uint32_t dataSize,
                                         const uint8_t* pData,

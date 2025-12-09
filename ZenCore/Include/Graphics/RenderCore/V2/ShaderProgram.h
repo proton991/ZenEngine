@@ -55,21 +55,26 @@ public:
 
     rhi::RHIBuffer* GetUniformBufferHandle(const std::string& name)
     {
-        VERIFY_EXPR(m_uniformBuffers.contains(name) != false);
+        VERIFY_EXPR(m_uniformBufferMap.contains(name) != false);
 
-        return m_uniformBuffers[name];
+        return m_uniformBufferMap[name];
     }
 
     void UpdateUniformBuffer(const std::string& name, const uint8_t* data, uint32_t offset);
 
-    const auto& GetSampledTextureSRDs() const
+    const auto& GetUniformBufferSRDs() const
     {
-        return m_sampledTextures;
+        return m_uniformBuffers;
     }
 
     const auto& GetStorageBufferSRDs() const
     {
         return m_storageBuffers;
+    }
+
+    const auto& GetSampledTextureSRDs() const
+    {
+        return m_sampledTextures;
     }
 
     const auto& GetStorageImageSRDs() const
@@ -94,11 +99,12 @@ private:
     rhi::ShaderResourceDescriptorTable m_SRDTable;
     rhi::RHIShader* m_shader;
 
-    HashMap<std::string, rhi::RHIBuffer*> m_uniformBuffers; // created from SRDs
-    HashMap<std::string, uint32_t> m_uniformBufferSizes;    // created from SRDs
+    HashMap<std::string, rhi::RHIBuffer*> m_uniformBufferMap; // created from SRDs
+    HashMap<std::string, uint32_t> m_uniformBufferSizes;      // created from SRDs
 
-    std::vector<rhi::ShaderResourceDescriptor> m_sampledTextures;
+    std::vector<rhi::ShaderResourceDescriptor> m_uniformBuffers;
     std::vector<rhi::ShaderResourceDescriptor> m_storageBuffers;
+    std::vector<rhi::ShaderResourceDescriptor> m_sampledTextures;
     std::vector<rhi::ShaderResourceDescriptor> m_storageImages;
 
     friend class GraphicsPassBuilder;

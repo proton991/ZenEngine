@@ -44,9 +44,9 @@ void ShaderProgram::UpdateUniformBuffer(const std::string& name,
                                         const uint8_t* data,
                                         uint32_t offset)
 {
-    if (m_uniformBuffers.contains(name))
+    if (m_uniformBufferMap.contains(name))
     {
-        m_renderDevice->UpdateBuffer(m_uniformBuffers[name], m_uniformBufferSizes[name], data,
+        m_renderDevice->UpdateBuffer(m_uniformBufferMap[name], m_uniformBufferSizes[name], data,
                                      offset);
     }
 }
@@ -85,9 +85,10 @@ void ShaderProgram::Init()
         {
             if (srd.type == rhi::ShaderResourceType::eUniformBuffer)
             {
-                m_uniformBuffers[srd.name] =
-                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr);
+                m_uniformBufferMap[srd.name] =
+                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
                 m_uniformBufferSizes[srd.name] = srd.blockSize;
+                m_uniformBuffers.emplace_back(srd);
             }
             else if (srd.type == rhi::ShaderResourceType::eStorageBuffer)
             {
@@ -154,14 +155,15 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     // m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
     m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
 
+    // todo: lack srd parsing, refer to ShaderProgram::Init()
     for (auto& setSRD : m_SRDTable)
     {
         for (const auto& srd : setSRD)
         {
             if (srd.type == rhi::ShaderResourceType::eUniformBuffer)
             {
-                m_uniformBuffers[srd.name] =
-                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr);
+                m_uniformBufferMap[srd.name] =
+                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
             }
         }
     }
