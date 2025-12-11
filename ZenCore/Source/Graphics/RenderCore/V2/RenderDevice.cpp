@@ -121,33 +121,6 @@ GraphicsPass GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
-
-    std::vector<RHITexture*> rtHandles;
-    rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
-
-    for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
-    {
-        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].texture;
-    }
-
-    // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
-    m_framebufferInfo.renderTargets = rtHandles.data();
-
-    // ShaderHandle shader;
-    std::vector<ShaderSpecializationConstant> specializationConstants;
-    // ShaderResourceDescriptorTable SRDs;
-
-    GraphicsPass gfxPass;
-    if (!RHIOptions::GetInstance().UseDynamicRendering())
-    {
-        gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-        gfxPass.framebuffer =
-            m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
-        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
-                                                              m_tag + "_RenderPass");
-    }
-    gfxPass.renderPassLayout = std::move(m_rpLayout);
-
     ShaderProgram* shaderProgram;
     if (m_shaderMode == GfxPassShaderMode::ePreCompiled)
     {
@@ -165,13 +138,42 @@ GraphicsPass GraphicsPassBuilder::Build()
         shaderProgram->Init(m_specializationConstants);
     }
 
-    RHIShader* shader                         = shaderProgram->GetShader();
-    const ShaderResourceDescriptorTable& SRDs = shaderProgram->GetSRDTable();
+    std::vector<RHITexture*> rtHandles;
+    rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
 
-    gfxPass.shaderProgram = shaderProgram;
+    for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
+    {
+        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].texture;
+    }
+
+    // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
+    m_framebufferInfo.renderTargets = rtHandles.data();
+
+    RHIShader* shader = shaderProgram->GetShader();
+
+    GraphicsPass gfxPass;
+    gfxPass.shaderProgram     = shaderProgram;
+    gfxPass.numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+    gfxPass.renderPassLayout  = m_rpLayout;
+
+    std::vector<ShaderSpecializationConstant> specializationConstants;
+    if (!RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+        gfxPass.framebuffer =
+            m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
+        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
+                                                              m_tag + "_RenderPass");
+        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
+                                                                  specializationConstants);
+    }
+    else
+    {
+        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+            m_PSO, shader, gfxPass.renderPassLayout, specializationConstants);
+    }
 
     // set up resource trackers
-    gfxPass.resourceTrackers.resize(SRDs.size());
     // build PassTextureTracker and PassBufferTracker
     // PassTextureTracker's handle is not available until UpdatePassResource is called
     for (auto& srd : shaderProgram->GetSampledTextureSRDs())
@@ -232,20 +234,7 @@ GraphicsPass GraphicsPassBuilder::Build()
         gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
     }
 
-    if (RHIOptions::GetInstance().UseDynamicRendering())
-    {
-        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-            m_PSO, shader, gfxPass.renderPassLayout, specializationConstants);
-    }
-    else
-    {
-        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
-                                                                  specializationConstants);
-    }
-
-    gfxPass.descriptorSets.resize(SRDs.size());
-
-    for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < gfxPass.numDescriptorSets; ++setIndex)
     {
         gfxPass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
@@ -334,20 +323,17 @@ ComputePass ComputePassBuilder::Build()
     using namespace zen::rhi;
 
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
-    ComputePass computePass;
 
     ShaderProgram* shaderProgram =
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
     RHIShader* shader = shaderProgram->GetShader();
 
-    const ShaderResourceDescriptorTable& SRDs = shaderProgram->GetSRDTable();
-
-    computePass.shaderProgram = shaderProgram;
-    computePass.pipeline      = m_renderDevice->GetOrCreateComputePipeline(shader);
-    computePass.descriptorSets.resize(SRDs.size());
+    ComputePass computePass;
+    computePass.shaderProgram     = shaderProgram;
+    computePass.pipeline          = m_renderDevice->GetOrCreateComputePipeline(shader);
+    computePass.numDescriptorSets = shaderProgram->GetNumDescriptorSets();
 
     // set up resource trackers
-    computePass.resourceTrackers.resize(SRDs.size());
     // build PassTextureTracker and PassBufferTracker
     // PassTextureTracker's handle is not available until UpdatePassResource is called
     for (auto& srd : shaderProgram->GetSampledTextureSRDs())
@@ -408,7 +394,7 @@ ComputePass ComputePassBuilder::Build()
         computePass.resourceTrackers[srd.set][srd.binding] = tracker;
     }
 
-    for (uint32_t setIndex = 0; setIndex < SRDs.size(); ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < computePass.numDescriptorSets; ++setIndex)
     {
         computePass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
@@ -770,19 +756,19 @@ void RenderDevice::Destroy()
         GDynamicRHI->DestroySampler(kv.second);
     }
 
-    for (auto& rp : m_gfxPasses)
+    for (auto& gfxPass : m_gfxPasses)
     {
-        for (const auto& ds : rp.descriptorSets)
+        for (uint32_t i = 0; i < gfxPass.numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(ds);
+            GDynamicRHI->DestroyDescriptorSet(gfxPass.descriptorSets[i]);
         }
     }
 
-    for (auto& rp : m_computePasses)
+    for (auto& computePass : m_computePasses)
     {
-        for (const auto& ds : rp.descriptorSets)
+        for (uint32_t i = 0; i < computePass.numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(ds);
+            GDynamicRHI->DestroyDescriptorSet(computePass.descriptorSets[i]);
         }
     }
 

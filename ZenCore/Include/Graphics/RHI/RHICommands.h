@@ -76,12 +76,14 @@ public:
     // virtual void BindGfxPipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual void BindGfxPipeline(RHIPipeline* pipelineHandle,
-                                 const std::vector<RHIDescriptorSet*>& descriptorSets) = 0;
+                                 uint32_t numDescriptorSets,
+                                 const RHIDescriptorSet* const* pDescriptorSets) = 0;
 
     // virtual void BindComputePipeline(PipelineHandle pipelineHandle) = 0;
 
     virtual void BindComputePipeline(RHIPipeline* pipelineHandle,
-                                     const std::vector<RHIDescriptorSet*>& descriptorSets) = 0;
+                                     uint32_t numDescriptorSets,
+                                     const RHIDescriptorSet* const* pDescriptorSets) = 0;
 
     virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
                                  FramebufferHandle framebufferHandle,

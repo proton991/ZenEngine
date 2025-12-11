@@ -87,12 +87,14 @@ public:
     // void BindGfxPipeline(PipelineHandle pipelineHandle) final;
 
     void BindGfxPipeline(RHIPipeline* pipelineHandle,
-                         const std::vector<RHIDescriptorSet*>& descriptorSets) final;
+                         uint32_t numDescriptorSets,
+                         const RHIDescriptorSet* const* pDescriptorSets) final;
 
     // void BindComputePipeline(PipelineHandle pipelineHandle) final;
 
     void BindComputePipeline(RHIPipeline* pipelineHandle,
-                             const std::vector<RHIDescriptorSet*>& descriptorSets) final;
+                             uint32_t numDescriptorSets,
+                             const RHIDescriptorSet* const* pDescriptorSets) final;
 
     void BeginRenderPass(RenderPassHandle renderPassHandle,
                          FramebufferHandle framebuffer,

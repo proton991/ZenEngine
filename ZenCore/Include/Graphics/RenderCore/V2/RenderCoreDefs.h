@@ -120,29 +120,32 @@ struct GraphicsPass
     rhi::FramebufferHandle framebuffer;
     rhi::RenderPassHandle renderPass;
     rhi::RHIPipeline* pipeline;
-    std::vector<rhi::RHIDescriptorSet*> descriptorSets;
+    rhi::RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    uint32_t numDescriptorSets{0};
     ShaderProgram* shaderProgram;
     rhi::RenderPassLayout renderPassLayout;
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
-    std::vector<HashMap<uint32_t, PassResourceTracker>> resourceTrackers;
+    HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
 };
 
 struct ComputePass
 {
     rhi::RHIPipeline* pipeline;
-    std::vector<rhi::RHIDescriptorSet*> descriptorSets;
+    rhi::RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    uint32_t numDescriptorSets{0};
     ShaderProgram* shaderProgram;
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
-    std::vector<HashMap<uint32_t, PassResourceTracker>> resourceTrackers;
+    HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
 };
 
 enum class GfxPassShaderMode : uint32_t
 {
-    ePreCompiled = 0,
-    eRuntime     = 1,
-    eMax         = 2
+    eNone        = 0,
+    ePreCompiled = 1,
+    eRuntime     = 2,
+    eMax         = 3
 };
 
 struct EnvTexture

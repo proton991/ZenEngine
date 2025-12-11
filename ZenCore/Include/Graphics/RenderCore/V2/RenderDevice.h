@@ -127,7 +127,7 @@ private:
     RenderDevice* m_renderDevice{nullptr};
     rhi::RHIViewport* m_viewport{nullptr};
     std::string m_tag;
-    GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eRuntime};
+    GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eNone};
     HashMap<rhi::RHIShaderStage, std::string> m_shaderStages;
     std::string m_shaderProgramName;
     rhi::GfxPipelineStates m_PSO{};

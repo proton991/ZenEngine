@@ -72,7 +72,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std
     node->tag         = std::move(tag);
     node->computePass = &computePass;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
-    for (uint32_t i = 0; i < computePass.resourceTrackers.size(); i++)
+    for (uint32_t i = 0; i < computePass.numDescriptorSets; i++)
     {
         auto& setTrackers = computePass.resourceTrackers[i];
         for (auto& kv : setTrackers)
@@ -201,7 +201,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                     depthStencilRT.subresourceRange, rhi::AccessMode::eReadWrite);
     }
     AddPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
-    for (uint32_t i = 0; i < gfxPass.resourceTrackers.size(); i++)
+    for (uint32_t i = 0; i < gfxPass.numDescriptorSets; i++)
     {
         auto& setTrackers = gfxPass.resourceTrackers[i];
         for (auto& kv : setTrackers)
@@ -1298,6 +1298,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
                         // m_cmdList->BindComputePipeline(cmdNode->pipeline);
                         m_cmdList->BindComputePipeline(cmdNode->pipeline,
+                                                       node->computePass->numDescriptorSets,
                                                        node->computePass->descriptorSets);
                     }
                     break;
@@ -1377,6 +1378,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
                         // m_cmdList->BindGfxPipeline(cmdNode->pipeline);
                         m_cmdList->BindGfxPipeline(cmdNode->pipeline,
+                                                   node->graphicsPass->numDescriptorSets,
                                                    node->graphicsPass->descriptorSets);
                     }
                     break;

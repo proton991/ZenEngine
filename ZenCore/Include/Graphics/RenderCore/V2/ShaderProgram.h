@@ -53,6 +53,11 @@ public:
         return m_SRDTable;
     }
 
+    uint32_t GetNumDescriptorSets() const
+    {
+        return m_SRDTable.size();
+    }
+
     rhi::RHIBuffer* GetUniformBufferHandle(const std::string& name)
     {
         VERIFY_EXPR(m_uniformBufferMap.contains(name) != false);
