@@ -156,7 +156,6 @@ GraphicsPass GraphicsPassBuilder::Build()
     gfxPass.numDescriptorSets = shaderProgram->GetNumDescriptorSets();
     gfxPass.renderPassLayout  = m_rpLayout;
 
-    std::vector<ShaderSpecializationConstant> specializationConstants;
     if (!RHIOptions::GetInstance().UseDynamicRendering())
     {
         gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
@@ -165,12 +164,12 @@ GraphicsPass GraphicsPassBuilder::Build()
         m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
                                                               m_tag + "_RenderPass");
         gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
-                                                                  specializationConstants);
+                                                                  m_specializationConstants);
     }
     else
     {
         gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-            m_PSO, shader, gfxPass.renderPassLayout, specializationConstants);
+            m_PSO, shader, gfxPass.renderPassLayout, m_specializationConstants);
     }
 
     // set up resource trackers
@@ -1203,7 +1202,7 @@ rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
     rhi::RHIShader* shader,
     const rhi::RenderPassHandle& renderPass,
-    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+    const HashMap<uint32_t, int>& specializationConstants)
 {
     rhi::RHIGfxPipelineCreateInfo createInfo{};
     createInfo.shader           = shader;
@@ -1224,7 +1223,7 @@ rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     rhi::GfxPipelineStates& PSO,
     rhi::RHIShader* shader,
     const rhi::RenderPassLayout& renderPassLayout,
-    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+    const HashMap<uint32_t, int>& specializationConstants)
 {
     rhi::RHIGfxPipelineCreateInfo createInfo{};
     createInfo.shader           = shader;
@@ -1620,11 +1619,10 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(
-    const rhi::GfxPipelineStates& pso,
-    rhi::RHIShader* shader,
-    const rhi::RenderPassHandle& renderPass,
-    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                         rhi::RHIShader* shader,
+                                         const rhi::RenderPassHandle& renderPass,
+                                         const HashMap<uint32_t, int>& specializationConstants)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -1635,25 +1633,18 @@ size_t RenderDevice::CalcGfxPipelineHash(
     combineHash(shader->GetHash32());
     combineHash(renderPass.value);
     combineHash(pso.primitiveType);
-    for (auto& spc : specializationConstants)
+    for (auto& kv : specializationConstants)
     {
-        switch (spc.type)
-        {
-
-            case rhi::ShaderSpecializationConstantType::eBool: combineHash(spc.boolValue); break;
-            case rhi::ShaderSpecializationConstantType::eInt: combineHash(spc.intValue); break;
-            case rhi::ShaderSpecializationConstantType::eFloat: combineHash(spc.floatValue); break;
-            default: break;
-        }
+        combineHash(kv.first);
+        combineHash(kv.second);
     }
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(
-    const rhi::GfxPipelineStates& pso,
-    rhi::RHIShader* shader,
-    const rhi::RenderPassLayout& renderPassLayout,
-    const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants)
+size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                         rhi::RHIShader* shader,
+                                         const rhi::RenderPassLayout& renderPassLayout,
+                                         const HashMap<uint32_t, int>& specializationConstants)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -1672,16 +1663,10 @@ size_t RenderDevice::CalcGfxPipelineHash(
         combineHash(renderPassLayout.GetDepthStencilRenderTarget().texture);
     }
     combineHash(pso.primitiveType);
-    for (auto& spc : specializationConstants)
+    for (auto& kv : specializationConstants)
     {
-        switch (spc.type)
-        {
-
-            case rhi::ShaderSpecializationConstantType::eBool: combineHash(spc.boolValue); break;
-            case rhi::ShaderSpecializationConstantType::eInt: combineHash(spc.intValue); break;
-            case rhi::ShaderSpecializationConstantType::eFloat: combineHash(spc.floatValue); break;
-            default: break;
-        }
+        combineHash(kv.first);
+        combineHash(kv.second);
     }
     return seed;
 }

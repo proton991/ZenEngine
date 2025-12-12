@@ -420,17 +420,15 @@ public:
 
     rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
 
-    rhi::RHIPipeline* GetOrCreateGfxPipeline(
-        rhi::GfxPipelineStates& PSO,
-        rhi::RHIShader* shader,
-        const rhi::RenderPassHandle& renderPass,
-        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
+    rhi::RHIPipeline* GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
+                                             rhi::RHIShader* shader,
+                                             const rhi::RenderPassHandle& renderPass,
+                                             const HashMap<uint32_t, int>& specializationConstants);
 
-    rhi::RHIPipeline* GetOrCreateGfxPipeline(
-        rhi::GfxPipelineStates& PSO,
-        rhi::RHIShader* shader,
-        const rhi::RenderPassLayout& renderPassLayout,
-        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants = {});
+    rhi::RHIPipeline* GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
+                                             rhi::RHIShader* shader,
+                                             const rhi::RenderPassLayout& renderPassLayout,
+                                             const HashMap<uint32_t, int>& specializationConstants);
 
     rhi::RHIPipeline* GetOrCreateComputePipeline(rhi::RHIShader* shader);
 
@@ -530,17 +528,15 @@ private:
     static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
                                       rhi::RenderPassHandle renderPassHandle);
 
-    static size_t CalcGfxPipelineHash(
-        const rhi::GfxPipelineStates& pso,
-        rhi::RHIShader* shader,
-        const rhi::RenderPassHandle& renderPass,
-        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
+    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                      rhi::RHIShader* shader,
+                                      const rhi::RenderPassHandle& renderPass,
+                                      const HashMap<uint32_t, int>& specializationConstants);
 
-    static size_t CalcGfxPipelineHash(
-        const rhi::GfxPipelineStates& pso,
-        rhi::RHIShader* shader,
-        const rhi::RenderPassLayout& renderPassLayout,
-        const std::vector<rhi::ShaderSpecializationConstant>& specializationConstants);
+    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
+                                      rhi::RHIShader* shader,
+                                      const rhi::RenderPassLayout& renderPassLayout,
+                                      const HashMap<uint32_t, int>& specializationConstants);
 
     static size_t CalcComputePipelineHash(rhi::RHIShader* shader);
 
