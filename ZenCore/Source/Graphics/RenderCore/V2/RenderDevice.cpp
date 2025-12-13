@@ -117,7 +117,7 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture*
 //     return *this;
 // }
 
-GraphicsPass GraphicsPassBuilder::Build()
+GraphicsPass* GraphicsPassBuilder::Build()
 {
     using namespace zen::rhi;
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
@@ -151,25 +151,27 @@ GraphicsPass GraphicsPassBuilder::Build()
 
     RHIShader* shader = shaderProgram->GetShader();
 
-    GraphicsPass gfxPass;
-    gfxPass.shaderProgram     = shaderProgram;
-    gfxPass.numDescriptorSets = shaderProgram->GetNumDescriptorSets();
-    gfxPass.renderPassLayout  = m_rpLayout;
+    GraphicsPass* pGfxPass = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
+    new (pGfxPass) GraphicsPass();
+
+    pGfxPass->shaderProgram     = shaderProgram;
+    pGfxPass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+    pGfxPass->renderPassLayout  = m_rpLayout;
 
     if (!RHIOptions::GetInstance().UseDynamicRendering())
     {
-        gfxPass.renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-        gfxPass.framebuffer =
-            m_viewport->GetCompatibleFramebuffer(gfxPass.renderPass, &m_framebufferInfo);
-        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(gfxPass.renderPass,
+        pGfxPass->renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+        pGfxPass->framebuffer =
+            m_viewport->GetCompatibleFramebuffer(pGfxPass->renderPass, &m_framebufferInfo);
+        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(pGfxPass->renderPass,
                                                               m_tag + "_RenderPass");
-        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(m_PSO, shader, gfxPass.renderPass,
-                                                                  m_specializationConstants);
+        pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+            m_PSO, shader, pGfxPass->renderPass, m_specializationConstants);
     }
     else
     {
-        gfxPass.pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-            m_PSO, shader, gfxPass.renderPassLayout, m_specializationConstants);
+        pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+            m_PSO, shader, pGfxPass->renderPassLayout, m_specializationConstants);
     }
 
     // set up resource trackers
@@ -184,7 +186,7 @@ GraphicsPass GraphicsPassBuilder::Build()
         tracker.resourceType = PassResourceType::eTexture;
         tracker.accessMode   = AccessMode::eRead;
         tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
     {
@@ -202,7 +204,7 @@ GraphicsPass GraphicsPassBuilder::Build()
             tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
             tracker.accessMode = AccessMode::eReadWrite;
         }
-        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetUniformBufferSRDs())
     {
@@ -212,7 +214,7 @@ GraphicsPass GraphicsPassBuilder::Build()
         tracker.bufferUsage  = BufferUsage::eUniformBuffer;
         tracker.accessMode   = AccessMode::eRead;
         tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
@@ -230,12 +232,12 @@ GraphicsPass GraphicsPassBuilder::Build()
             tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
             tracker.accessMode = AccessMode::eReadWrite;
         }
-        gfxPass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
 
-    for (uint32_t setIndex = 0; setIndex < gfxPass.numDescriptorSets; ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < pGfxPass->numDescriptorSets; ++setIndex)
     {
-        gfxPass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
+        pGfxPass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
 
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
@@ -243,13 +245,13 @@ GraphicsPass GraphicsPassBuilder::Build()
     {
         const auto setIndex  = kv.first;
         const auto& bindings = kv.second;
-        gfxPass.descriptorSets[setIndex]->Update(bindings);
+        pGfxPass->descriptorSets[setIndex]->Update(bindings);
     }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(gfxPass.pipeline, m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(pGfxPass->pipeline, m_tag + "_Pipeline");
 
-    m_renderDevice->m_gfxPasses.push_back(gfxPass);
-    return gfxPass;
+    m_renderDevice->m_gfxPasses.push_back(pGfxPass);
+    return pGfxPass;
 }
 
 void GraphicsPassResourceUpdater::Update()
@@ -317,7 +319,7 @@ void GraphicsPassResourceUpdater::Update()
     }
 }
 
-ComputePass ComputePassBuilder::Build()
+ComputePass* ComputePassBuilder::Build()
 {
     using namespace zen::rhi;
 
@@ -327,10 +329,12 @@ ComputePass ComputePassBuilder::Build()
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
     RHIShader* shader = shaderProgram->GetShader();
 
-    ComputePass computePass;
-    computePass.shaderProgram     = shaderProgram;
-    computePass.pipeline          = m_renderDevice->GetOrCreateComputePipeline(shader);
-    computePass.numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+    ComputePass* pComputePass = static_cast<ComputePass*>(ZEN_MEM_ALLOC(sizeof(ComputePass)));
+    new (pComputePass) ComputePass();
+
+    pComputePass->shaderProgram     = shaderProgram;
+    pComputePass->pipeline          = m_renderDevice->GetOrCreateComputePipeline(shader);
+    pComputePass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
 
     // set up resource trackers
     // build PassTextureTracker and PassBufferTracker
@@ -344,7 +348,7 @@ ComputePass ComputePassBuilder::Build()
         tracker.textureUsage = TextureUsage::eSampled;
         tracker.accessMode   = AccessMode::eRead;
         tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
     {
@@ -362,7 +366,7 @@ ComputePass ComputePassBuilder::Build()
             tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
             tracker.accessMode = AccessMode::eReadWrite;
         }
-        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetUniformBufferSRDs())
     {
@@ -372,7 +376,7 @@ ComputePass ComputePassBuilder::Build()
         tracker.bufferUsage  = BufferUsage::eUniformBuffer;
         tracker.accessMode   = AccessMode::eRead;
         tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
@@ -390,18 +394,19 @@ ComputePass ComputePassBuilder::Build()
             tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
             tracker.accessMode = AccessMode::eReadWrite;
         }
-        computePass.resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
 
-    for (uint32_t setIndex = 0; setIndex < computePass.numDescriptorSets; ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < pComputePass->numDescriptorSets; ++setIndex)
     {
-        computePass.descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
+        pComputePass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(computePass.pipeline, m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(pComputePass->pipeline,
+                                                        m_tag + "_Pipeline");
 
-    m_renderDevice->m_computePasses.push_back(computePass);
-    return computePass;
+    m_renderDevice->m_computePasses.push_back(pComputePass);
+    return pComputePass;
 }
 
 
@@ -755,20 +760,22 @@ void RenderDevice::Destroy()
         GDynamicRHI->DestroySampler(kv.second);
     }
 
-    for (auto& gfxPass : m_gfxPasses)
+    for (auto* pGfxPass : m_gfxPasses)
     {
-        for (uint32_t i = 0; i < gfxPass.numDescriptorSets; i++)
+        for (uint32_t i = 0; i < pGfxPass->numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(gfxPass.descriptorSets[i]);
+            GDynamicRHI->DestroyDescriptorSet(pGfxPass->descriptorSets[i]);
         }
+        ZEN_MEM_FREE(pGfxPass);
     }
 
-    for (auto& computePass : m_computePasses)
+    for (auto* pComputePass : m_computePasses)
     {
-        for (uint32_t i = 0; i < computePass.numDescriptorSets; i++)
+        for (uint32_t i = 0; i < pComputePass->numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(computePass.descriptorSets[i]);
+            GDynamicRHI->DestroyDescriptorSet(pComputePass->descriptorSets[i]);
         }
+        ZEN_MEM_FREE(pComputePass);
     }
 
     for (auto& buffer : m_buffers)
@@ -1288,28 +1295,29 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, ui
     }
 }
 
-void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport)
+void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIViewport* viewport)
 {
     if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
     {
         rhi::RenderTargetLoadOp oldColorRTLoadOp =
-            gfxPass.renderPassLayout.GetColorRenderTargets()[0].loadOp;
+            pGfxPass->renderPassLayout.GetColorRenderTargets()[0].loadOp;
         rhi::RenderTargetStoreOp oldColorRTStoreOp =
-            gfxPass.renderPassLayout.GetColorRenderTargets()[0].storeOp;
-        gfxPass.renderPassLayout.ClearRenderTargetInfo();
-        gfxPass.renderPassLayout.AddColorRenderTarget(
+            pGfxPass->renderPassLayout.GetColorRenderTargets()[0].storeOp;
+        pGfxPass->renderPassLayout.ClearRenderTargetInfo();
+        pGfxPass->renderPassLayout.AddColorRenderTarget(
             viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
             viewport->GetColorBackBufferRange(), oldColorRTLoadOp, oldColorRTStoreOp);
 
 
-        gfxPass.renderPassLayout.SetDepthStencilRenderTarget(
+        pGfxPass->renderPassLayout.SetDepthStencilRenderTarget(
             viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
             viewport->GetDepthStencilBackBufferRange(), rhi::RenderTargetLoadOp::eClear,
             rhi::RenderTargetStoreOp::eStore);
     }
     else
     {
-        gfxPass.framebuffer = viewport->GetCompatibleFramebufferForBackBuffer(gfxPass.renderPass);
+        pGfxPass->framebuffer =
+            viewport->GetCompatibleFramebufferForBackBuffer(pGfxPass->renderPass);
     }
 }
 

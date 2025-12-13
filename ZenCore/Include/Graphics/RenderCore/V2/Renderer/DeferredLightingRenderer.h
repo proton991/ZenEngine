@@ -68,8 +68,8 @@ private:
 
     struct GraphicsPasses
     {
-        GraphicsPass offscreen;
-        GraphicsPass sceneLighting;
+        GraphicsPass* offscreen;
+        GraphicsPass* sceneLighting;
     } m_gfxPasses;
 
     RenderScene* m_scene{nullptr};

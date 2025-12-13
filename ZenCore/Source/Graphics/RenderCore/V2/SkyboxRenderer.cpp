@@ -207,7 +207,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         std::string targetName = "";
         if (target == IRRADIANCE)
         {
-            gfxPass          = &m_gfxPasses.irradiance;
+            gfxPass          = m_gfxPasses.irradiance;
             offscreenTexture = m_offscreenTextures.irradiance;
             format           = cIrradianceFormat;
             dim              = IRRADIANCE_DIM;
@@ -215,7 +215,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         }
         else
         {
-            gfxPass          = &m_gfxPasses.prefiltered;
+            gfxPass          = m_gfxPasses.prefiltered;
             offscreenTexture = m_offscreenTextures.prefiltered;
             format           = cPrefilteredFormat;
             dim              = PREFILTERED_DIM;
@@ -301,7 +301,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
                     std::string passTag =
                         targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
-                    auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, passTag);
+                    auto* pass = rdg->AddGraphicsPassNode(gfxPass, area, clearValues, passTag);
                     // rdg->DeclareTextureAccessForPass(
                     //     pass, offscreenTexture, TextureUsage::eColorAttachment,
                     //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
@@ -479,8 +479,8 @@ void SkyboxRenderer::PrepareRenderWorkload()
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
-    m_gfxPasses.skybox.shaderProgram->UpdateUniformBuffer("uCameraData",
-                                                          m_scene->GetCameraUniformData(), 0);
+    m_gfxPasses.skybox->shaderProgram->UpdateUniformBuffer("uCameraData",
+                                                           m_scene->GetCameraUniformData(), 0);
 }
 
 
@@ -491,12 +491,12 @@ void SkyboxRenderer::UpdateGraphicsPassResources()
     std::vector<ShaderResourceBinding> textureBindings;
     ADD_SHADER_BINDING_SINGLE(
         bufferBindings, 0, ShaderResourceType::eUniformBuffer,
-        m_gfxPasses.skybox.shaderProgram->GetUniformBufferHandle("uCameraData"))
+        m_gfxPasses.skybox->shaderProgram->GetUniformBufferHandle("uCameraData"))
 
     ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
                               m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
 
-    GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.skybox);
+    GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.skybox);
     updater.SetShaderResourceBinding(0, bufferBindings)
         .SetShaderResourceBinding(1, textureBindings)
         .Update();

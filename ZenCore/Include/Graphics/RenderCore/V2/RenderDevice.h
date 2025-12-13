@@ -120,8 +120,7 @@ public:
         return *this;
     }
 
-    // todo: allocate GraphicsPass on heap, mem size of GraphicsPass could be pre-calculated
-    GraphicsPass Build();
+    GraphicsPass* Build();
 
 private:
     RenderDevice* m_renderDevice{nullptr};
@@ -176,8 +175,7 @@ public:
         return *this;
     }
 
-    // todo: allocate ComputePass on heap
-    ComputePass Build();
+    ComputePass* Build();
 
 private:
     RenderDevice* m_renderDevice{nullptr};
@@ -439,7 +437,7 @@ public:
 
     void ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height);
 
-    void UpdateGraphicsPassOnResize(GraphicsPass& gfxPass, rhi::RHIViewport* viewport);
+    void UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIViewport* viewport);
 
     // rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
@@ -569,8 +567,8 @@ private:
     HashMap<size_t, rhi::RHISampler*> m_samplerCache;
     // HashMap<rhi::RHITexture*, rhi::RHITexture*> m_textureMap;
     std::vector<rhi::RHIBuffer*> m_buffers;
-    std::vector<GraphicsPass> m_gfxPasses;
-    std::vector<ComputePass> m_computePasses;
+    std::vector<GraphicsPass*> m_gfxPasses;
+    std::vector<ComputePass*> m_computePasses;
     std::vector<rhi::RHIViewport*> m_viewports;
     rhi::RHIViewport* m_mainViewport{nullptr};
 

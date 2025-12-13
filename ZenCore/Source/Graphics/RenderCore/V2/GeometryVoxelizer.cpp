@@ -50,7 +50,7 @@ void GeometryVoxelizer::BuildRenderGraph()
     if (m_needVoxelization)
     {
         VoxelizationSP* shaderProgram =
-            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization->shaderProgram);
         const uint32_t cFbSize = m_voxelTexResolution;
         std::vector<RenderPassClearValue> clearValues(0);
         // clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -99,7 +99,7 @@ void GeometryVoxelizer::BuildRenderGraph()
     // voxel draw pass
     {
         VoxelDrawSP* shaderProgram =
-            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw.shaderProgram);
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw->shaderProgram);
 
         std::vector<RenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -197,7 +197,7 @@ void GeometryVoxelizer::UpdatePassResources()
                                   m_scene->GetNodesDataSSBO());
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, ShaderResourceType::eUniformBuffer,
-            m_gfxPasses.voxelization.shaderProgram->GetUniformBufferHandle("uVoxelConfig"));
+            m_gfxPasses.voxelization->shaderProgram->GetUniformBufferHandle("uVoxelConfig"));
         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetMaterialsDataSSBO());
 
@@ -214,7 +214,7 @@ void GeometryVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0, ShaderResourceType::eSamplerWithTexture,
                                          m_colorSampler, m_scene->GetSceneTextures())
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelization);
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelization);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -227,9 +227,9 @@ void GeometryVoxelizer::UpdatePassResources()
                                   m_voxelTextures.albedoProxy);
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, ShaderResourceType::eUniformBuffer,
-            m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
+            m_gfxPasses.voxelDraw->shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelDraw);
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelDraw);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
 }
@@ -247,7 +247,7 @@ void GeometryVoxelizer::UpdateUniformData()
 
         // view matrices
         VoxelizationSP* shaderProgram =
-            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization.shaderProgram);
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization->shaderProgram);
         shaderProgram->voxelConfigData.viewProjectionMatrices[0] =
             glm::lookAt(center - Vec3(halfSize, 0.0f, 0.0f), center, Vec3(0.0f, 1.0f, 0.0f));
         shaderProgram->voxelConfigData.viewProjectionMatrices[1] =
@@ -273,7 +273,7 @@ void GeometryVoxelizer::UpdateUniformData()
         const auto* cameraUniformData =
             reinterpret_cast<const sg::CameraUniformData*>(m_scene->GetCameraUniformData());
         VoxelDrawSP* shaderProgram =
-            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw.shaderProgram);
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw->shaderProgram);
         uint32_t drawMipLevel = 0;
         auto vDimension  = static_cast<unsigned>(m_voxelTexResolution / pow(2.0f, drawMipLevel));
         auto vSize       = m_sceneExtent / vDimension;

@@ -63,18 +63,18 @@ void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
     node->type         = RDGPassCmdType::eBindPipeline;
 }
 
-RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std::string tag)
+RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass* pComputePass, std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "compute pass node tag should not be empty");
 
     auto* node        = AllocNode<RDGComputePassNode>();
     node->type        = RDGNodeType::eComputePass;
     node->tag         = std::move(tag);
-    node->computePass = &computePass;
+    node->computePass = pComputePass;
     node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
-    for (uint32_t i = 0; i < computePass.numDescriptorSets; i++)
+    for (uint32_t i = 0; i < pComputePass->numDescriptorSets; i++)
     {
-        auto& setTrackers = computePass.resourceTrackers[i];
+        auto& setTrackers = pComputePass->resourceTrackers[i];
         for (auto& kv : setTrackers)
         {
             const PassResourceTracker& tracker = kv.second;
@@ -96,7 +96,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass& computePass, std
             }
         }
     }
-    AddPassBindPipelineNode(node, computePass.pipeline, rhi::PipelineType::eCompute);
+    AddPassBindPipelineNode(node, pComputePass->pipeline, rhi::PipelineType::eCompute);
     return node;
 }
 
@@ -156,20 +156,20 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
     return node;
 }
 
-RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
+RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
                                               Rect2<int> area,
                                               VectorView<rhi::RenderPassClearValue> clearValues,
                                               std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
     auto* node             = AllocNode<RDGGraphicsPassNode>();
-    node->graphicsPass     = &gfxPass;
-    node->renderPass       = std::move(gfxPass.renderPass);
-    node->framebuffer      = std::move(gfxPass.framebuffer);
+    node->graphicsPass     = pGfxPass;
+    node->renderPass       = std::move(pGfxPass->renderPass);
+    node->framebuffer      = std::move(pGfxPass->framebuffer);
     node->renderArea       = area;
     node->type             = RDGNodeType::eGraphicsPass;
     node->numAttachments   = clearValues.size();
-    node->renderPassLayout = std::move(gfxPass.renderPassLayout);
+    node->renderPassLayout = std::move(pGfxPass->renderPassLayout);
     node->dynamic          = rhi::RHIOptions::GetInstance().UseDynamicRendering();
     node->tag              = std::move(tag);
 
@@ -200,10 +200,10 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
                                     rhi::TextureUsage::eDepthStencilAttachment,
                                     depthStencilRT.subresourceRange, rhi::AccessMode::eReadWrite);
     }
-    AddPassBindPipelineNode(node, gfxPass.pipeline, rhi::PipelineType::eGraphics);
-    for (uint32_t i = 0; i < gfxPass.numDescriptorSets; i++)
+    AddPassBindPipelineNode(node, pGfxPass->pipeline, rhi::PipelineType::eGraphics);
+    for (uint32_t i = 0; i < pGfxPass->numDescriptorSets; i++)
     {
-        auto& setTrackers = gfxPass.resourceTrackers[i];
+        auto& setTrackers = pGfxPass->resourceTrackers[i];
         for (auto& kv : setTrackers)
         {
             const PassResourceTracker& tracker = kv.second;

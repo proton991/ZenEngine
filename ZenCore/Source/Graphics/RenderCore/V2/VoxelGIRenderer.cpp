@@ -142,7 +142,7 @@ void VoxelGIRenderer::BuildRenderGraph()
         //     m_renderDevice->GetTextureSubResourceRange(textures[1]),
         // };
         VoxelInjectRadianceSP* shaderProgram =
-            dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance.shaderProgram);
+            dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance->shaderProgram);
         shaderProgram->pushConstantsData.normalWeightedLambert = m_config.normalWeightedLambert;
         shaderProgram->pushConstantsData.traceShadowHit        = m_config.traceShadowHit;
 
@@ -198,7 +198,7 @@ void VoxelGIRenderer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
                                   m_textures.voxelRadiance);
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // inject radiance pass
@@ -227,12 +227,12 @@ void VoxelGIRenderer::UpdatePassResources()
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(
             set2bindings, 0, ShaderResourceType::eUniformBuffer,
-            m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uLightInfo"));
+            m_computePasses.injectRadiance->shaderProgram->GetUniformBufferHandle("uLightInfo"));
         // ADD_SHADER_BINDING_SINGLE(
         //     set2bindings, 1, ShaderResourceType::eUniformBuffer,
         //     m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.injectRadiance);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.injectRadiance);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -244,7 +244,7 @@ void VoxelGIRenderer::UpdateUniformData()
 {
     {
         VoxelInjectRadianceSP* shaderProgram =
-            dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance.shaderProgram);
+            dynamic_cast<VoxelInjectRadianceSP*>(m_computePasses.injectRadiance->shaderProgram);
 
         shaderProgram->pushConstantsData.volumeDimension = m_voxelizer->GetVoxelTexResolution();
         shaderProgram->pushConstantsData.voxelSize       = m_voxelizer->GetVoxelSize();

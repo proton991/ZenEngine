@@ -550,7 +550,7 @@ public:
                                  rhi::RHIPipeline* pipelineHandle,
                                  rhi::PipelineType pipelineType);
 
-    RDGPassNode* AddComputePassNode(const ComputePass& computePass, std::string tag);
+    RDGPassNode* AddComputePassNode(const ComputePass* pComputePass, std::string tag);
 
     void AddComputePassDispatchNode(RDGPassNode* parent,
                                     uint32_t groupCountX,
@@ -568,7 +568,7 @@ public:
                                      bool hasColorTarget,
                                      bool hasDepthTarget = false);
 
-    RDGPassNode* AddGraphicsPassNode(const rc::GraphicsPass& gfxPass,
+    RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass,
                                      Rect2<int> area,
                                      VectorView<rhi::RenderPassClearValue> clearValues,
                                      std::string tag);

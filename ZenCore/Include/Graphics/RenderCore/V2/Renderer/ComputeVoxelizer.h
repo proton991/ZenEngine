@@ -71,17 +71,17 @@ protected:
 
     struct
     {
-        ComputePass resetVoxelTexture;
-        ComputePass resetComputeIndirect;
-        ComputePass resetDrawIndirect;
-        ComputePass voxelization;
-        ComputePass voxelizationLargeTriangle;
-        ComputePass voxelPreDraw; // calculate position and color for voxel draw pass
+        ComputePass* resetVoxelTexture;
+        ComputePass* resetComputeIndirect;
+        ComputePass* resetDrawIndirect;
+        ComputePass* voxelization;
+        ComputePass* voxelizationLargeTriangle;
+        ComputePass* voxelPreDraw; // calculate position and color for voxel draw pass
     } m_computePasses;
 
     struct
     {
-        GraphicsPass voxelDraw;
+        GraphicsPass* voxelDraw;
     } m_gfxPasses;
 
     RenderObject* m_cube;

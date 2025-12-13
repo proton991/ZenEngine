@@ -38,8 +38,8 @@ protected:
     rhi::RHIBuffer* m_voxelVBO;
     struct
     {
-        GraphicsPass voxelization;
-        GraphicsPass voxelDraw;
+        GraphicsPass* voxelization;
+        GraphicsPass* voxelDraw;
     } m_gfxPasses;
 };
 } // namespace zen::rc

@@ -69,10 +69,10 @@ private:
 
     struct
     {
-        GraphicsPass irradiance;
-        GraphicsPass prefiltered;
-        GraphicsPass lutBRDF;
-        GraphicsPass skybox;
+        GraphicsPass* irradiance;
+        GraphicsPass* prefiltered;
+        GraphicsPass* lutBRDF;
+        GraphicsPass* skybox;
     } m_gfxPasses;
 
     struct

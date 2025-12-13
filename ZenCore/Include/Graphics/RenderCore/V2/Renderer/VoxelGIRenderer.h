@@ -73,11 +73,11 @@ private:
 
     struct
     {
-        ComputePass resetVoxelTexture;
-        ComputePass injectRadiance;
-        ComputePass injectPropagation;
-        ComputePass genMipMapBase;
-        ComputePass genMipMapVolume;
+        ComputePass* resetVoxelTexture;
+        ComputePass* injectRadiance;
+        ComputePass* injectPropagation;
+        ComputePass* genMipMapBase;
+        ComputePass* genMipMapVolume;
     } m_computePasses;
 
     struct

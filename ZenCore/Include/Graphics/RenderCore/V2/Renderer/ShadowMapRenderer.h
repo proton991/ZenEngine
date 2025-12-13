@@ -64,8 +64,8 @@ private:
 
     struct GraphicsPasses
     {
-        GraphicsPass evsm;
-        GraphicsPass blurShadowMap;
+        GraphicsPass* evsm;
+        GraphicsPass* blurShadowMap;
     } m_gfxPasses;
 
     struct

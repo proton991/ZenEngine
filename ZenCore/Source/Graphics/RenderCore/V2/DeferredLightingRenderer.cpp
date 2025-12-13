@@ -42,10 +42,10 @@ void DeferredLightingRenderer::PrepareRenderWorkload()
         BuildRenderGraph();
         m_rebuildRDG = false;
     }
-    m_gfxPasses.offscreen.shaderProgram->UpdateUniformBuffer("uCameraData",
-                                                             m_scene->GetCameraUniformData(), 0);
-    m_gfxPasses.sceneLighting.shaderProgram->UpdateUniformBuffer("uSceneData",
-                                                                 m_scene->GetSceneUniformData(), 0);
+    m_gfxPasses.offscreen->shaderProgram->UpdateUniformBuffer("uCameraData",
+                                                              m_scene->GetCameraUniformData(), 0);
+    m_gfxPasses.sceneLighting->shaderProgram->UpdateUniformBuffer(
+        "uSceneData", m_scene->GetSceneUniformData(), 0);
 }
 
 void DeferredLightingRenderer::OnResize()
@@ -372,7 +372,7 @@ void DeferredLightingRenderer::AddMeshDrawNodes(RDGPassNode* pass,
                                                 const Rect2<int>& area,
                                                 const Rect2<float>& viewport)
 {
-    GBufferSP* shaderProgram = dynamic_cast<GBufferSP*>(m_gfxPasses.offscreen.shaderProgram);
+    GBufferSP* shaderProgram = dynamic_cast<GBufferSP*>(m_gfxPasses.offscreen->shaderProgram);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                               DataFormat::eR32UInt);
@@ -401,7 +401,7 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
         // buffers
         ADD_SHADER_BINDING_SINGLE(
             bufferBindings, 0, ShaderResourceType::eUniformBuffer,
-            m_gfxPasses.offscreen.shaderProgram->GetUniformBufferHandle("uCameraData"));
+            m_gfxPasses.offscreen->shaderProgram->GetUniformBufferHandle("uCameraData"));
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetNodesDataSSBO());
         ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, ShaderResourceType::eStorageBuffer,
@@ -411,7 +411,7 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
                                          ShaderResourceType::eSamplerWithTexture, m_colorSampler,
                                          m_scene->GetSceneTextures())
 
-        GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.offscreen);
+        GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.offscreen);
         updater.SetShaderResourceBinding(0, bufferBindings)
             .SetShaderResourceBinding(1, textureBindings)
             .Update();
@@ -422,7 +422,7 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
         // buffer
         ADD_SHADER_BINDING_SINGLE(
             bufferBindings, 0, ShaderResourceType::eUniformBuffer,
-            m_gfxPasses.sceneLighting.shaderProgram->GetUniformBufferHandle("uSceneData"));
+            m_gfxPasses.sceneLighting->shaderProgram->GetUniformBufferHandle("uSceneData"));
         // textures
         ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.position);
@@ -443,7 +443,7 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
         ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
                                   envTexture.lutBRDFSampler, envTexture.lutBRDF);
 
-        GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.sceneLighting);
+        GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.sceneLighting);
         updater.SetShaderResourceBinding(0, textureBindings)
             .SetShaderResourceBinding(1, bufferBindings)
             .Update();

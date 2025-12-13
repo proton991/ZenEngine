@@ -162,7 +162,7 @@ void ShadowMapRenderer::BuildRenderGraph()
     // offscreen pass
     {
         ShadowMapRenderSP* shaderProgram =
-            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm.shaderProgram);
+            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
         std::vector<RenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[1].depth   = 1.0f;
@@ -211,7 +211,7 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
 {
     {
         ShadowMapRenderSP* shaderProgram =
-            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm.shaderProgram);
+            dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
         std::vector<ShaderResourceBinding> set0bindings;
         std::vector<ShaderResourceBinding> set1bindings;
         // set-0 bindings
@@ -227,7 +227,7 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set1bindings, 0, ShaderResourceType::eSamplerWithTexture,
                                          m_colorSampler, m_scene->GetSceneTextures())
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.evsm);
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.evsm);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .Update();
@@ -238,7 +238,7 @@ void ShadowMapRenderer::UpdateUniformData()
 {
     const auto* cameraUniformData =
         reinterpret_cast<const sg::CameraUniformData*>(m_scene->GetCameraUniformData());
-    m_gfxPasses.evsm.shaderProgram->UpdateUniformBuffer(
+    m_gfxPasses.evsm->shaderProgram->UpdateUniformBuffer(
         "uLightInfo", reinterpret_cast<const uint8_t*>(&cameraUniformData->projViewMatrix), 0);
 }
 } // namespace zen::rc

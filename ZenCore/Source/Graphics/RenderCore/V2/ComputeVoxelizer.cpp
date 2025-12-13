@@ -132,7 +132,7 @@ void ComputeVoxelizer::BuildRenderGraph()
         // voxelize small triangles
         {
             VoxelizationCompSP* shaderProgram =
-                dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
+                dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization->shaderProgram);
             auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization,
                                                    "voxelization_compute_small_triangles");
 
@@ -317,7 +317,7 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.drawIndirectBuffer);
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetDrawIndirect);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetDrawIndirect);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // reset voxel texture
@@ -325,7 +325,7 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
                                   m_voxelTextures.albedo);
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetVoxelTexture);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // reset compute indirect
@@ -333,7 +333,7 @@ void ComputeVoxelizer::UpdatePassResources()
         std::vector<ShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.computeIndirectBuffer);
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.resetComputeIndirect);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetComputeIndirect);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // voxelization pass
@@ -350,7 +350,7 @@ void ComputeVoxelizer::UpdatePassResources()
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(
             set1bindings, 0, ShaderResourceType::eUniformBuffer,
-            m_computePasses.voxelization.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
+            m_computePasses.voxelization->shaderProgram->GetUniformBufferHandle("uSceneInfo"));
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(set2bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetVertexBuffer());
@@ -371,7 +371,7 @@ void ComputeVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set5bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_scene->GetTriangleMapBuffer());
 
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelization);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.voxelization);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -382,7 +382,7 @@ void ComputeVoxelizer::UpdatePassResources()
 
         // large triangles
         ComputePassResourceUpdater updater2(m_renderDevice,
-                                            &m_computePasses.voxelizationLargeTriangle);
+                                            m_computePasses.voxelizationLargeTriangle);
         updater2.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -414,10 +414,10 @@ void ComputeVoxelizer::UpdatePassResources()
         // set-4 bindings
         ADD_SHADER_BINDING_SINGLE(
             set4bindings, 0, ShaderResourceType::eUniformBuffer,
-            m_computePasses.voxelPreDraw.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
+            m_computePasses.voxelPreDraw->shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 
 
-        ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelPreDraw);
+        ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.voxelPreDraw);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -428,7 +428,7 @@ void ComputeVoxelizer::UpdatePassResources()
     // voxel draw pass
     {
         VoxelDrawSP2* shaderProgram =
-            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw.shaderProgram);
+            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw->shaderProgram);
 
         std::vector<ShaderResourceBinding> set0bindings;
         std::vector<ShaderResourceBinding> set1bindings;
@@ -442,7 +442,7 @@ void ComputeVoxelizer::UpdatePassResources()
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(set2bindings, 0, ShaderResourceType::eStorageBuffer,
                                   m_buffers.instanceColorBuffer);
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelDraw);
+        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelDraw);
         updater.SetShaderResourceBinding(0, set0bindings)
             .SetShaderResourceBinding(1, set1bindings)
             .SetShaderResourceBinding(2, set2bindings)
@@ -454,7 +454,7 @@ void ComputeVoxelizer::UpdateUniformData()
 {
     {
         VoxelizationCompSP* shaderProgram =
-            dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization.shaderProgram);
+            dynamic_cast<VoxelizationCompSP*>(m_computePasses.voxelization->shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
@@ -462,21 +462,21 @@ void ComputeVoxelizer::UpdateUniformData()
     {
         VoxelizationLargeTriangleCompSP* shaderProgram =
             dynamic_cast<VoxelizationLargeTriangleCompSP*>(
-                m_computePasses.voxelizationLargeTriangle.shaderProgram);
+                m_computePasses.voxelizationLargeTriangle->shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
         VoxelPreDrawSP* shaderProgram =
-            dynamic_cast<VoxelPreDrawSP*>(m_computePasses.voxelPreDraw.shaderProgram);
+            dynamic_cast<VoxelPreDrawSP*>(m_computePasses.voxelPreDraw->shaderProgram);
         shaderProgram->sceneInfo.aabbMax = Vec4(m_voxelAABB.GetMax(), 1.0f);
         shaderProgram->sceneInfo.aabbMin = Vec4(m_voxelAABB.GetMin(), 1.0f);
         shaderProgram->UpdateUniformBuffer("uSceneInfo", shaderProgram->GetSceneInfoData(), 0);
     }
     {
         VoxelDrawSP2* shaderProgram =
-            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw.shaderProgram);
+            dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw->shaderProgram);
         shaderProgram->transformData.modelMatrix = m_voxelTransform;
         shaderProgram->transformData.projMatrix  = m_scene->GetCamera()->GetProjectionMatrix();
         shaderProgram->transformData.viewMatrix  = m_scene->GetCamera()->GetViewMatrix();
