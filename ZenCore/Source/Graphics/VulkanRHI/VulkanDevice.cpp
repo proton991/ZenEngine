@@ -7,7 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanDevice::VulkanDevice(VulkanRHI* RHI, VkPhysicalDevice gpu) :
     m_RHI(RHI), m_device(VK_NULL_HANDLE), m_gpu(gpu)
@@ -59,7 +59,7 @@ DataFormat VulkanRHI::GetSupportedDepthFormat()
 }
 
 
-const GPUInfo& VulkanRHI::QueryGPUInfo() const
+const RHIGPUInfo& VulkanRHI::QueryGPUInfo() const
 {
     return m_gpuInfo;
 }
@@ -328,4 +328,4 @@ void VulkanRHI::WaitDeviceIdle()
 {
     m_device->WaitForIdle();
 }
-} // namespace zen::rhi
+} // namespace zen

@@ -5,9 +5,9 @@
 #include "RHICommon.h"
 #include "Utils/Errors.h"
 
-namespace zen::rhi
+namespace zen
 {
-enum class ResourceType : uint32_t
+enum class RHIResourceType : uint32_t
 {
     eNone          = 0,
     eViewport      = 1,
@@ -30,7 +30,7 @@ public:
         VERIFY_EXPR(m_counter.GetValue() == 0);
     }
 
-    explicit RHIResource(ResourceType resourceType) : m_resourceType(resourceType)
+    explicit RHIResource(RHIResourceType resourceType) : m_resourceType(resourceType)
     {
         AddReference();
     }
@@ -94,13 +94,13 @@ private:
     };
 
     mutable AtomicCounter m_counter;
-    ResourceType m_resourceType{ResourceType::eMax};
+    RHIResourceType m_resourceType{RHIResourceType::eMax};
 };
 
-class ShaderGroupSource : public RefCounted
+class RHIShaderGroupSource : public RefCounted
 {
 public:
-    ShaderGroupSource() = default;
+    RHIShaderGroupSource() = default;
 
     void SetStageSource(RHIShaderStage stage, const std::string& source)
     {
@@ -115,14 +115,14 @@ public:
     }
 
 private:
-    ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
+    RHIShaderLanguage m_shaderLanguage{RHIShaderLanguage::eGLSL};
     std::string m_source[ToUnderlying(RHIShaderStage::eMax)];
 };
 
-class ShaderGroupSPIRV : public RefCounted
+class RHIShaderGroupSPIRV : public RefCounted
 {
 public:
-    ShaderGroupSPIRV() = default;
+    RHIShaderGroupSPIRV() = default;
 
     void SetStageFlags(int64_t flags)
     {
@@ -188,118 +188,100 @@ private:
     // shader flags
     BitField<RHIShaderStageFlagBits> m_stageFlags;
     // shader language
-    ShaderLanguage m_shaderLanguage{ShaderLanguage::eGLSL};
+    RHIShaderLanguage m_shaderLanguage{RHIShaderLanguage::eGLSL};
     // spirv code
     std::vector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
     // compile errors
     std::string m_compileErrors[ToUnderlying(RHIShaderStage::eMax)];
 };
 
-using ShaderGroupSourcePtr = RefCountPtr<ShaderGroupSource>;
-using ShaderGroupSPIRVPtr  = RefCountPtr<ShaderGroupSPIRV>;
+using RHIShaderGroupSourcePtr = RefCountPtr<RHIShaderGroupSource>;
+using RHIShaderGroupSPIRVPtr  = RefCountPtr<RHIShaderGroupSPIRV>;
 
 /*****************************/
 /********** Sampler **********/
 /*****************************/
-struct SamplerInfo
+struct RHISamplerInfo
 {
-    SamplerFilter magFilter{SamplerFilter::eNearest};
-    SamplerFilter minFilter{SamplerFilter::eNearest};
-    SamplerFilter mipFilter{SamplerFilter::eNearest};
-    SamplerRepeatMode repeatU{SamplerRepeatMode::eClampToEdge};
-    SamplerRepeatMode repeatV{SamplerRepeatMode::eClampToEdge};
-    SamplerRepeatMode repeatW{SamplerRepeatMode::eClampToEdge};
+    RHISamplerFilter magFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter minFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter mipFilter{RHISamplerFilter::eNearest};
+    RHISamplerRepeatMode repeatU{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode repeatV{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode repeatW{RHISamplerRepeatMode::eClampToEdge};
     float lodBias{0.0f};
     bool useAnisotropy{false};
     float maxAnisotropy{1.0f};
     bool enableCompare{false};
-    CompareOperator compareOp{CompareOperator::eAlways};
+    RHIDepthCompareOperator compareOp{RHIDepthCompareOperator::eAlways};
     float minLod{0.0f};
     float maxLod{1e20}; // Something very large should do.
-    SamplerBorderColor borderColor{SamplerBorderColor::eFloatOpaqueBlack};
+    RHISamplerBorderColor borderColor{RHISamplerBorderColor::eFloatOpaqueBlack};
     bool unnormalizedUVW{false};
 };
 
 /*****************************/
 /********* Textures **********/
 /*****************************/
-struct TextureInfo
-{
-    DataFormat format{DataFormat::eUndefined};
-    SampleCount samples{SampleCount::e1};
-    BitField<TextureUsageFlagBits> usageFlags;
-    TextureType type{TextureType::e1D};
-    uint32_t width{1};
-    uint32_t height{1};
-    uint32_t depth{1};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
-    // memory flags
-    bool cpuReadable{false};
-    bool mutableFormat{false};
-    std::string name;
-};
+// struct TextureInfo
+// {
+//     DataFormat format{DataFormat::eUndefined};
+//     SampleCount samples{SampleCount::e1};
+//     BitField<RHITextureUsageFlagBits> usageFlags;
+//     RHITextureType type{RHITextureType::e1D};
+//     uint32_t width{1};
+//     uint32_t height{1};
+//     uint32_t depth{1};
+//     uint32_t arrayLayers{1};
+//     uint32_t mipmaps{1};
+//     // memory flags
+//     bool cpuReadable{false};
+//     bool mutableFormat{false};
+//     std::string name;
+// };
 
-struct TextureProxyInfo
-{
-    DataFormat format{DataFormat::eUndefined};
-    TextureType type{TextureType::e1D};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
-    std::string name;
-};
+// struct TextureProxyInfo
+// {
+//     DataFormat format{DataFormat::eUndefined};
+//     RHITextureType type{RHITextureType::e1D};
+//     uint32_t arrayLayers{1};
+//     uint32_t mipmaps{1};
+//     std::string name;
+// };
 
-#define INIT_TEXTURE_INFO(info, type_, format_, width_, height_, depth_, mipmaps_, arrayLayers_, \
-                          samples_, name_, ...)                                                  \
-    rhi::TextureInfo info{};                                                                     \
-    info.type        = type_;                                                                    \
-    info.format      = format_;                                                                  \
-    info.width       = width_;                                                                   \
-    info.height      = height_;                                                                  \
-    info.depth       = depth_;                                                                   \
-    info.mipmaps     = mipmaps_;                                                                 \
-    info.arrayLayers = arrayLayers_;                                                             \
-    info.samples     = SampleCount::e1;                                                          \
-    info.name        = name_;                                                                    \
-    info.usageFlags.SetFlags(__VA_ARGS__);
+// #define INIT_TEXTURE_INFO(info, type_, format_, width_, height_, depth_, mipmaps_, arrayLayers_, \
+//                           samples_, name_, ...)                                                  \
+//     TextureInfo info{};                                                                     \
+//     info.type        = type_;                                                                    \
+//     info.format      = format_;                                                                  \
+//     info.width       = width_;                                                                   \
+//     info.height      = height_;                                                                  \
+//     info.depth       = depth_;                                                                   \
+//     info.mipmaps     = mipmaps_;                                                                 \
+//     info.arrayLayers = arrayLayers_;                                                             \
+//     info.samples     = SampleCount::e1;                                                          \
+//     info.name        = name_;                                                                    \
+//     info.usageFlags.SetFlags(__VA_ARGS__);
 
-inline uint32_t CalculateTextureSize(const TextureInfo& info)
-{
-    // TODO: Support compressed texture format
-    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
-
-    uint32_t w = info.width;
-    uint32_t h = info.height;
-    uint32_t d = info.depth;
-
-    uint32_t size = 0;
-    for (uint32_t i = 0; i < info.mipmaps; i++)
-    {
-        uint32_t numPixels = w * h * d;
-        size += numPixels * pixelSize;
-        w >>= 1;
-        h >>= 1;
-        d >>= 1;
-    }
-    return size;
-}
-
-inline uint32_t CalculateTextureMipLevels(uint32_t dim)
-{
-    return static_cast<uint32_t>(floor(log2(dim)) + 1);
-}
-
-
-inline uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height)
-{
-    return static_cast<uint32_t>(floor(log2(std::max(width, height))) + 1);
-}
-
-inline uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint32_t depth)
-{
-    uint32_t maxDim = std::max(std::max(width, height), depth);
-    return static_cast<uint32_t>(floor(log2(maxDim)) + 1);
-}
+// inline uint32_t CalculateTextureSize(const TextureInfo& info)
+// {
+//     uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
+//
+//     uint32_t w = info.width;
+//     uint32_t h = info.height;
+//     uint32_t d = info.depth;
+//
+//     uint32_t size = 0;
+//     for (uint32_t i = 0; i < info.mipmaps; i++)
+//     {
+//         uint32_t numPixels = w * h * d;
+//         size += numPixels * pixelSize;
+//         w >>= 1;
+//         h >>= 1;
+//         d >>= 1;
+//     }
+//     return size;
+// }
 
 class RHITexture;
 
@@ -308,7 +290,7 @@ class RHIViewport : public RHIResource
 public:
     // static RHIViewport* Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync);
 
-    // RHIViewport() : RHIResource(ResourceType::eViewport)
+    // RHIViewport() : RHIResource(RHIResourceType::eViewport)
     // {
     //     AddReference();
     // }
@@ -329,14 +311,14 @@ public:
 
     virtual RHITexture* GetColorBackBuffer() = 0;
 
-    virtual TextureSubResourceRange GetColorBackBufferRange() = 0;
+    virtual RHITextureSubResourceRange GetColorBackBufferRange() = 0;
 
     virtual RHITexture* GetDepthStencilBackBuffer() = 0;
 
-    virtual TextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
+    virtual RHITextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
     virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                                       const FramebufferInfo* fbInfo) = 0;
+                                                       const RHIFramebufferInfo* fbInfo) = 0;
 
     virtual FramebufferHandle GetCompatibleFramebufferForBackBuffer(
         RenderPassHandle renderPassHandle) = 0;
@@ -345,7 +327,7 @@ public:
 
 protected:
     RHIViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) :
-        RHIResource(ResourceType::eViewport),
+        RHIResource(RHIResourceType::eViewport),
         m_pWindow(pWindow),
         m_width(width),
         m_height(height),
@@ -361,8 +343,8 @@ protected:
 struct RHIBufferCreateInfo
 {
     uint32_t size{0};
-    BitField<BufferUsageFlagBits> usageFlags{0};
-    BufferAllocateType allocateType{BufferAllocateType::eNone};
+    BitField<RHIBufferUsageFlagBits> usageFlags{0};
+    RHIBufferAllocateType allocateType{RHIBufferAllocateType::eNone};
     std::string tag;
 };
 
@@ -386,7 +368,7 @@ public:
 
 protected:
     explicit RHIBuffer(const RHIBufferCreateInfo& createInfo) :
-        RHIResource(ResourceType::eBuffer),
+        RHIResource(RHIResourceType::eBuffer),
         m_requiredSize(createInfo.size),
         m_usageFlags(createInfo.usageFlags),
         m_allocateType(createInfo.allocateType)
@@ -395,8 +377,8 @@ protected:
     }
 
     uint32_t m_requiredSize{0};
-    BitField<BufferUsageFlagBits> m_usageFlags;
-    BufferAllocateType m_allocateType{BufferAllocateType::eNone};
+    BitField<RHIBufferUsageFlagBits> m_usageFlags;
+    RHIBufferAllocateType m_allocateType{RHIBufferAllocateType::eNone};
     // BufferHandle m_handle;
 };
 
@@ -404,8 +386,8 @@ struct RHITextureCreateInfo
 {
     DataFormat format{DataFormat::eUndefined};
     SampleCount samples{SampleCount::e1};
-    BitField<TextureUsageFlagBits> usageFlags;
-    TextureType type{TextureType::e1D};
+    BitField<RHITextureUsageFlagBits> usageFlags;
+    RHITextureType type{RHITextureType::e1D};
     uint32_t width{1};
     uint32_t height{1};
     uint32_t depth{1};
@@ -420,32 +402,11 @@ struct RHITextureCreateInfo
 struct RHITextureProxyCreateInfo
 {
     DataFormat format{DataFormat::eUndefined};
-    TextureType type{TextureType::e1D};
+    RHITextureType type{RHITextureType::e1D};
     uint32_t arrayLayers{1};
     uint32_t mipmaps{1};
     std::string tag;
 };
-
-inline uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
-{
-    // TODO: Support compressed texture format
-    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
-
-    uint32_t w = info.width;
-    uint32_t h = info.height;
-    uint32_t d = info.depth;
-
-    uint32_t size = 0;
-    for (uint32_t i = 0; i < info.mipmaps; i++)
-    {
-        uint32_t numPixels = w * h * d;
-        size += numPixels * pixelSize;
-        w >>= 1;
-        h >>= 1;
-        d >>= 1;
-    }
-    return size;
-}
 
 class RHITexture : public RHIResource
 {
@@ -464,7 +425,7 @@ public:
         return m_baseInfo;
     }
 
-    const TextureSubResourceRange& GetSubResourceRange() const
+    const RHITextureSubResourceRange& GetSubResourceRange() const
     {
         return m_subResourceRange;
     }
@@ -490,16 +451,33 @@ public:
         return 0;
     }
 
+    static uint32_t CalculateTextureMipLevels(uint32_t dim)
+    {
+        return static_cast<uint32_t>(floor(log2(dim)) + 1);
+    }
+
+
+    static uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height)
+    {
+        return static_cast<uint32_t>(floor(log2(std::max(width, height))) + 1);
+    }
+
+    static uint32_t CalculateTextureMipLevels(uint32_t width, uint32_t height, uint32_t depth)
+    {
+        uint32_t maxDim = std::max(std::max(width, height), depth);
+        return static_cast<uint32_t>(floor(log2(maxDim)) + 1);
+    }
+
 protected:
     explicit RHITexture(const RHITextureCreateInfo& createInfo) :
-        RHIResource(ResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
+        RHIResource(RHIResourceType::eTexture), m_baseInfo(createInfo), m_isProxy(false)
     {
         m_resourceTag = createInfo.tag;
         InitSubresourceRange();
     }
 
     RHITexture(const RHITexture* pBaseTexture, const RHITextureProxyCreateInfo& proxyInfo) :
-        RHIResource(ResourceType::eTexture),
+        RHIResource(RHIResourceType::eTexture),
         m_pBaseTexture(pBaseTexture),
         m_proxyInfo(proxyInfo),
         m_isProxy(true)
@@ -512,19 +490,19 @@ protected:
     {
         if (FormatIsDepthOnly(m_baseInfo.format))
         {
-            m_subResourceRange = TextureSubResourceRange::Depth();
+            m_subResourceRange = RHITextureSubResourceRange::Depth();
         }
         else if (FormatIsStencilOnly(m_baseInfo.format))
         {
-            m_subResourceRange = TextureSubResourceRange::Stencil();
+            m_subResourceRange = RHITextureSubResourceRange::Stencil();
         }
         else if (FormatIsDepthStencil(m_baseInfo.format))
         {
-            m_subResourceRange = TextureSubResourceRange::DepthStencil();
+            m_subResourceRange = RHITextureSubResourceRange::DepthStencil();
         }
         else
         {
-            m_subResourceRange = TextureSubResourceRange::Color();
+            m_subResourceRange = RHITextureSubResourceRange::Color();
         }
         m_subResourceRange.layerCount = m_baseInfo.arrayLayers;
         m_subResourceRange.levelCount = m_baseInfo.mipmaps;
@@ -538,25 +516,25 @@ protected:
 
     bool m_isProxy{};
 
-    TextureSubResourceRange m_subResourceRange{};
+    RHITextureSubResourceRange m_subResourceRange{};
 };
 
 struct RHISamplerCreateInfo
 {
-    SamplerFilter magFilter{SamplerFilter::eNearest};
-    SamplerFilter minFilter{SamplerFilter::eNearest};
-    SamplerFilter mipFilter{SamplerFilter::eNearest};
-    SamplerRepeatMode repeatU{SamplerRepeatMode::eClampToEdge};
-    SamplerRepeatMode repeatV{SamplerRepeatMode::eClampToEdge};
-    SamplerRepeatMode repeatW{SamplerRepeatMode::eClampToEdge};
+    RHISamplerFilter magFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter minFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter mipFilter{RHISamplerFilter::eNearest};
+    RHISamplerRepeatMode repeatU{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode repeatV{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode repeatW{RHISamplerRepeatMode::eClampToEdge};
     float lodBias{0.0f};
     bool useAnisotropy{false};
     float maxAnisotropy{1.0f};
     bool enableCompare{false};
-    CompareOperator compareOp{CompareOperator::eAlways};
+    RHIDepthCompareOperator compareOp{RHIDepthCompareOperator::eAlways};
     float minLod{0.0f};
     float maxLod{1e20}; // Something very large should do.
-    SamplerBorderColor borderColor{SamplerBorderColor::eFloatOpaqueBlack};
+    RHISamplerBorderColor borderColor{RHISamplerBorderColor::eFloatOpaqueBlack};
     bool unnormalizedUVW{false};
 };
 
@@ -568,7 +546,7 @@ public:
 
 protected:
     explicit RHISampler(const RHISamplerCreateInfo& createInfo) :
-        RHIResource(ResourceType::eSampler), m_baseInfo(createInfo)
+        RHIResource(RHIResourceType::eSampler), m_baseInfo(createInfo)
     {}
 
     RHISamplerCreateInfo m_baseInfo{};
@@ -581,11 +559,11 @@ class RHIDescriptorSet : public RHIResource
 public:
     ~RHIDescriptorSet() override = default;
 
-    virtual void Update(const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
+    virtual void Update(const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
 protected:
     RHIDescriptorSet(const RHIShader* pShader, uint32_t setIndex) :
-        RHIResource(ResourceType::eDescriptorSet), m_pShader(pShader), m_setIndex(setIndex)
+        RHIResource(RHIResourceType::eDescriptorSet), m_pShader(pShader), m_setIndex(setIndex)
     {}
 
     const RHIShader* m_pShader;
@@ -606,7 +584,7 @@ class RHIShader : public RHIResource
 public:
     ~RHIShader() override = default;
 
-    virtual void GetShaderResourceDescriptorTable(ShaderResourceDescriptorTable& outSRDs)
+    virtual void GetShaderResourceDescriptorTable(RHIShaderResourceDescriptorTable& outSRDs)
     {
         outSRDs = m_SRDTable;
     }
@@ -638,8 +616,8 @@ public:
 
 protected:
     explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
-        RHIResource(ResourceType::eShader),
-        m_shaderGroupSPIRV(MakeRefCountPtr<ShaderGroupSPIRV>()),
+        RHIResource(RHIResourceType::eShader),
+        m_shaderGroupSPIRV(MakeRefCountPtr<RHIShaderGroupSPIRV>()),
         m_shaderStageFlags(createInfo.stageFlags),
         m_specializationConstants(createInfo.specializationConstants),
         m_name(createInfo.name)
@@ -650,19 +628,19 @@ protected:
         m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
     }
 
-    ShaderGroupSPIRVPtr m_shaderGroupSPIRV{};
+    RHIShaderGroupSPIRVPtr m_shaderGroupSPIRV{};
     std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
     HashMap<uint32_t, int> m_specializationConstants;
-    ShaderResourceDescriptorTable m_SRDTable;
+    RHIShaderResourceDescriptorTable m_SRDTable;
     std::string m_name;
 };
 
 struct RHIGfxPipelineCreateInfo
 {
     RHIShader* shader;
-    GfxPipelineStates states;
-    RenderPassLayout renderPassLayout;
+    RHIGfxPipelineStates states;
+    RHIRenderPassLayout renderPassLayout;
     RenderPassHandle renderPassHandle;
     uint32_t subpassIdx;
 };
@@ -672,13 +650,13 @@ struct RHIComputePipelineCreateInfo
     RHIShader* shader;
 };
 
-enum class RHIPipelineType : uint32_t
-{
-    eNone     = 0,
-    eGraphics = 1,
-    eCompute  = 2,
-    eMax      = 3
-};
+// enum class RHIPipelineType : uint32_t
+// {
+//     eNone     = 0,
+//     eGraphics = 1,
+//     eCompute  = 2,
+//     eMax      = 3
+// };
 
 class RHIPipeline : public RHIResource
 {
@@ -687,7 +665,7 @@ public:
 
 protected:
     RHIPipeline(const RHIGfxPipelineCreateInfo& createInfo) :
-        RHIResource(ResourceType::ePipeline),
+        RHIResource(RHIResourceType::ePipeline),
         m_type(RHIPipelineType::eGraphics),
         m_shader(createInfo.shader),
         m_gfxStates(createInfo.states),
@@ -696,7 +674,7 @@ protected:
     {}
 
     RHIPipeline(const RHIComputePipelineCreateInfo& createInfo) :
-        RHIResource(ResourceType::ePipeline),
+        RHIResource(RHIResourceType::ePipeline),
         m_type(RHIPipelineType::eCompute),
         m_shader(createInfo.shader)
     {}
@@ -706,8 +684,8 @@ protected:
     RHIShader* m_shader{nullptr};
 
     // for graphics pipeline
-    GfxPipelineStates m_gfxStates;
-    RenderPassLayout m_renderPassLayout;
+    RHIGfxPipelineStates m_gfxStates;
+    RHIRenderPassLayout m_renderPassLayout;
     RenderPassHandle m_renderPassHandle{0LLU};
     uint32_t m_subpassIdx;
 };
@@ -729,4 +707,4 @@ public:
 
     virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
 };
-} // namespace zen::rhi
+} // namespace zen

@@ -10,7 +10,7 @@
 
 namespace zen::rc
 {
-RendererServer::RendererServer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+RendererServer::RendererServer(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 

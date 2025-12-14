@@ -6,7 +6,7 @@
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanFence::VulkanFence(VulkanFenceManager* owner, bool createSignaled) :
     m_owner(owner), m_state(createSignaled ? State::eSignaled : State::eInitial)
@@ -279,8 +279,8 @@ void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
 }
 
 void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
-                                    BitField<PipelineStageBits> srcStages,
-                                    BitField<PipelineStageBits> dstStages)
+                                    BitField<RHIPipelineStageBits> srcStages,
+                                    BitField<RHIPipelineStageBits> dstStages)
 {
     if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
     {
@@ -372,4 +372,4 @@ VkAccessFlags VulkanPipelineBarrier::VkLayoutToAccessFlags(VkImageLayout layout)
     }
     return flags;
 }
-} // namespace zen::rhi
+} // namespace zen

@@ -5,12 +5,12 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
 
-using namespace zen::rhi;
+
 
 
 namespace zen::rc
 {
-VoxelGIRenderer::VoxelGIRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+VoxelGIRenderer::VoxelGIRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {
     // m_RHI       = m_renderDevice->GetRHI();
@@ -70,10 +70,10 @@ void VoxelGIRenderer::PrepareTextures()
     DataFormat voxelTexFormat   = DataFormat::eR8G8B8A8UNORM;
     uint32_t voxelTexResolution = m_voxelizer->GetVoxelTexResolution();
     {
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, voxelTexResolution,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, voxelTexFormat, voxelTexResolution,
         //                   voxelTexResolution, voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_radiance", TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
+        //                   "voxel_radiance", RHITextureUsageFlagBits::eStorage,
+        //                   RHITextureUsageFlagBits::eSampled);
         TextureFormat texFormat{};
         texFormat.format      = voxelTexFormat;
         texFormat.dimension   = TextureDimension::e3D;
@@ -90,22 +90,22 @@ void VoxelGIRenderer::PrepareTextures()
     for (uint32_t i = 0; i < 6; i++)
     {
         const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, voxelTexFormat, halfDim, halfDim, halfDim,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, voxelTexFormat, halfDim, halfDim, halfDim,
         //                   CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1, SampleCount::e1,
-        //                   texName, TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+        //                   texName, RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
         TextureFormat texFormat{};
         texFormat.format    = voxelTexFormat;
         texFormat.dimension = TextureDimension::e3D;
         texFormat.width     = halfDim;
         texFormat.height    = halfDim;
         texFormat.depth     = halfDim;
-        texFormat.mipmaps   = CalculateTextureMipLevels(halfDim, halfDim, halfDim);
+        texFormat.mipmaps   = RHITexture::CalculateTextureMipLevels(halfDim, halfDim, halfDim);
 
         m_textures.voxelMipmaps[i] =
             m_renderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, texName);
         //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-        //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-        //                                   TextureLayout::eGeneral);
+        //                                   m_voxelTextures.mipmaps[i], RHITextureLayout::eUndefined,
+        //                                   RHITextureLayout::eGeneral);
     }
     m_textures.shadowMap =
         m_renderDevice->GetRendererServer()->RequestShadowMapRenderer()->GetShadowMapTexture();
@@ -126,9 +126,9 @@ void VoxelGIRenderer::BuildRenderGraph()
             m_rdg->AddComputePassNode(m_computePasses.resetVoxelTexture, "reset_voxel_radiance");
         // pass->tag = "reset_voxel_texture";
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_textures.voxelRadiance, TextureUsage::eStorage,
+        //     pass, m_textures.voxelRadiance, RHITextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
-        //     AccessMode::eReadWrite);
+        //     RHIAccessMode::eReadWrite);
         workgroupCount = 1;
         m_rdg->AddComputePassDispatchNode(pass, workgroupCount, workgroupCount, workgroupCount);
     }
@@ -136,8 +136,8 @@ void VoxelGIRenderer::BuildRenderGraph()
     // inject radiance
     {
         auto& voxelTextures = m_voxelizer->GetVoxelTextures();
-        // rhi::TextureHandle textures[]         = {voxelTextures.normal, voxelTextures.emissive};
-        // rhi::TextureSubResourceRange ranges[] = {
+        // TextureHandle textures[]         = {voxelTextures.normal, voxelTextures.emissive};
+        // RHITextureSubResourceRange ranges[] = {
         //     m_renderDevice->GetTextureSubResourceRange(textures[0]),
         //     m_renderDevice->GetTextureSubResourceRange(textures[1]),
         // };
@@ -148,18 +148,18 @@ void VoxelGIRenderer::BuildRenderGraph()
 
         auto* pass =
             m_rdg->AddComputePassNode(m_computePasses.injectRadiance, "inject_voxel_radiance");
-        // m_rdg->DeclareTextureAccessForPass(pass, 2, textures, TextureUsage::eStorage, ranges,
-        //                                    AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(pass, 2, textures, RHITextureUsage::eStorage, ranges,
+        //                                    RHIAccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, voxelTextures.albedo, TextureUsage::eSampled,
-        //     m_renderDevice->GetTextureSubResourceRange(voxelTextures.albedo), AccessMode::eRead);
+        //     pass, voxelTextures.albedo, RHITextureUsage::eSampled,
+        //     m_renderDevice->GetTextureSubResourceRange(voxelTextures.albedo), RHIAccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_textures.shadowMap, TextureUsage::eSampled,
-        //     m_renderDevice->GetTextureSubResourceRange(m_textures.shadowMap), AccessMode::eRead);
+        //     pass, m_textures.shadowMap, RHITextureUsage::eSampled,
+        //     m_renderDevice->GetTextureSubResourceRange(m_textures.shadowMap), RHIAccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_textures.voxelRadiance, TextureUsage::eStorage,
+        //     pass, m_textures.voxelRadiance, RHITextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.voxelRadiance),
-        //     AccessMode::eReadWrite);
+        //     RHIAccessMode::eReadWrite);
 
         m_rdg->AddComputePassSetPushConstants(pass, &shaderProgram->pushConstantsData,
                                               sizeof(VoxelInjectRadianceSP::PushConstantsData));
@@ -195,41 +195,41 @@ void VoxelGIRenderer::UpdatePassResources()
 {
     // reset voxel texture
     {
-        std::vector<ShaderResourceBinding> set0bindings;
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
+        std::vector<RHIShaderResourceBinding> set0bindings;
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
                                   m_textures.voxelRadiance);
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetVoxelTexture);
         updater.SetShaderResourceBinding(0, set0bindings).Update();
     }
     // inject radiance pass
     {
-        std::vector<ShaderResourceBinding> set0bindings;
-        std::vector<ShaderResourceBinding> set1bindings;
-        std::vector<ShaderResourceBinding> set2bindings;
+        std::vector<RHIShaderResourceBinding> set0bindings;
+        std::vector<RHIShaderResourceBinding> set1bindings;
+        std::vector<RHIShaderResourceBinding> set2bindings;
 
         auto& voxelTextures = m_voxelizer->GetVoxelTextures();
 
         // set-0 bindings
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eSamplerWithTexture,
                                   m_voxelizer->GetVoxelSampler(), voxelTextures.albedoProxy);
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 1, ShaderResourceType::eImage,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 1, RHIShaderResourceType::eImage,
                                   voxelTextures.normalProxy);
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eImage,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 2, RHIShaderResourceType::eImage,
                                   m_textures.voxelRadiance);
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 3, ShaderResourceType::eImage,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 3, RHIShaderResourceType::eImage,
                                   voxelTextures.emissiveProxy);
 
         // set-1 bindings
         ShadowMapRenderer* shadowMapRenderer =
             m_renderDevice->GetRendererServer()->RequestShadowMapRenderer();
-        ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(set1bindings, 0, RHIShaderResourceType::eSamplerWithTexture,
                                   shadowMapRenderer->GetColorSampler(), m_textures.shadowMap);
         // set-2 bindings
         ADD_SHADER_BINDING_SINGLE(
-            set2bindings, 0, ShaderResourceType::eUniformBuffer,
+            set2bindings, 0, RHIShaderResourceType::eUniformBuffer,
             m_computePasses.injectRadiance->shaderProgram->GetUniformBufferHandle("uLightInfo"));
         // ADD_SHADER_BINDING_SINGLE(
-        //     set2bindings, 1, ShaderResourceType::eUniformBuffer,
+        //     set2bindings, 1, RHIShaderResourceType::eUniformBuffer,
         //     m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.injectRadiance);

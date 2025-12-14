@@ -27,7 +27,7 @@
 #define TO_CVK_SHADER(handle)        (dynamic_cast<const VulkanShader*>(handle))
 #define TO_VK_SAMPLER(sampler)       (dynamic_cast<VulkanSampler*>(sampler))
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanDevice;
 class VulkanViewport;
@@ -71,9 +71,9 @@ public:
 
     void Destroy() override;
 
-    GraphicsAPIType GetAPIType() override
+    RHIAPIType GetAPIType() override
     {
-        return GraphicsAPIType::eVulkan;
+        return RHIAPIType::eVulkan;
     }
 
     const char* GetName() override
@@ -110,7 +110,7 @@ public:
                             RHICommandListContext* cmdListContext,
                             bool present) final;
 
-    // ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) final;
+    // ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) final;
 
     // void DestroyShader(ShaderHandle shaderHandle) final;
 
@@ -123,29 +123,29 @@ public:
     RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 
     // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                  const GfxPipelineStates& states,
+    //                                  const RHIGfxPipelineStates& states,
     //                                  RenderPassHandle renderPassHandle,
     //                                  uint32_t subpass) final;
 
     // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                  const GfxPipelineStates& states,
-    //                                  const RenderPassLayout& renderPassLayout,
+    //                                  const RHIGfxPipelineStates& states,
+    //                                  const RHIRenderPassLayout& renderPassLayout,
     //                                  uint32_t subpass) final;
 
     // PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
 
     void DestroyPipeline(RHIPipeline* pipeline) final;
 
-    RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) final;
+    RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) final;
 
     void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
 
     FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                        const FramebufferInfo& fbInfo) final;
+                                        const RHIFramebufferInfo& fbInfo) final;
 
     void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 
-    // SamplerHandle CreateSampler(const SamplerInfo& samplerInfo) final;
+    // SamplerHandle CreateSampler(const RHISamplerInfo& samplerInfo) final;
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 
     void DestroySampler(RHISampler* sampler) final;
@@ -163,11 +163,11 @@ public:
 
     // DataFormat GetTextureFormat(TextureHandle textureHandle) final;
     //
-    // TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
+    // RHITextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
 
     // BufferHandle CreateBuffer(uint32_t size,
-    //                           BitField<BufferUsageFlagBits> usageFlags,
-    //                           BufferAllocateType allocateType) final;
+    //                           BitField<RHIBufferUsageFlagBits> usageFlags,
+    //                           RHIBufferAllocateType allocateType) final;
     //
     // uint8_t* MapBuffer(BufferHandle bufferHandle) final;
     //
@@ -187,13 +187,13 @@ public:
     void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
 
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-    //                          const std::vector<ShaderResourceBinding>& resourceBindings) final;
+    //                          const std::vector<RHIShaderResourceBinding>& resourceBindings) final;
 
     void SubmitAllGPUCommands() final;
 
     void WaitDeviceIdle() final;
 
-    const GPUInfo& QueryGPUInfo() const final;
+    const RHIGPUInfo& QueryGPUInfo() const final;
 
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
 
@@ -236,7 +236,7 @@ private:
 
     VulkanDevice* m_device{nullptr};
 
-    GPUInfo m_gpuInfo{};
+    RHIGPUInfo m_gpuInfo{};
 
     VulkanViewport* m_currentViewport{nullptr};
 
@@ -250,7 +250,7 @@ private:
 
     // HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
 
-    // used when RHI::ChangeTextureLayout or RHI::AddPipelineBarrier is called,
+    // used when ChangeTextureLayout or AddPipelineBarrier is called,
     // primarily applied outside the RenderGraph.
     HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
 };
@@ -273,4 +273,4 @@ public:
 
 extern VulkanMemoryAllocator* GVkMemAllocator;
 extern VulkanRHI* GVulkanRHI;
-} // namespace zen::rhi
+} // namespace zen

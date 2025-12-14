@@ -5,7 +5,7 @@ Application::Application(const platform::WindowConfig& windowConfig, sg::CameraT
 {
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
-    m_renderDevice = new rc::RenderDevice(GraphicsAPIType::eVulkan, 3);
+    m_renderDevice = new rc::RenderDevice(RHIAPIType::eVulkan, 3);
 
     m_viewport =
         m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);

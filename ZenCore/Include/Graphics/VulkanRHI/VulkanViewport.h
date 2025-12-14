@@ -6,7 +6,7 @@
 #include "Graphics/RHI/RHIResource.h"
 // #define NUM_FRAMES 3
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 class VulkanQueue;
@@ -54,10 +54,10 @@ public:
 
     RHITexture* GetColorBackBuffer() final;
 
-    TextureSubResourceRange GetColorBackBufferRange() final
+    RHITextureSubResourceRange GetColorBackBufferRange() final
     {
-        TextureSubResourceRange range;
-        range.aspect.SetFlag(TextureAspectFlagBits::eColor);
+        RHITextureSubResourceRange range;
+        range.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
         range.layerCount     = 1;
         range.levelCount     = 1;
         range.baseMipLevel   = 0;
@@ -67,11 +67,11 @@ public:
 
     RHITexture* GetDepthStencilBackBuffer() final;
 
-    TextureSubResourceRange GetDepthStencilBackBufferRange() final
+    RHITextureSubResourceRange GetDepthStencilBackBufferRange() final
     {
-        TextureSubResourceRange range{};
-        range.aspect.SetFlag(TextureAspectFlagBits::eDepth);
-        range.aspect.SetFlag(TextureAspectFlagBits::eStencil);
+        RHITextureSubResourceRange range{};
+        range.aspect.SetFlag(RHITextureAspectFlagBits::eDepth);
+        range.aspect.SetFlag(RHITextureAspectFlagBits::eStencil);
         range.layerCount     = 1;
         range.levelCount     = 1;
         range.baseMipLevel   = 0;
@@ -80,7 +80,7 @@ public:
     }
 
     FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                               const FramebufferInfo* fbInfo) final;
+                                               const RHIFramebufferInfo* fbInfo) final;
 
     FramebufferHandle GetCompatibleFramebufferForBackBuffer(
         RenderPassHandle renderPassHandle) final;
@@ -124,4 +124,4 @@ private:
     HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 };
-} // namespace zen::rhi
+} // namespace zen

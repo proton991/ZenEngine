@@ -3,7 +3,7 @@
 #include "Templates/HashMap.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanQueue;
 class VulkanDevice;
@@ -213,4 +213,4 @@ private:
     // upload cmd buffer semaphores waited by upload cmd buffer
     std::vector<VulkanSemaphore*> m_renderCompleteSemaphores;
 };
-} // namespace zen::rhi
+} // namespace zen

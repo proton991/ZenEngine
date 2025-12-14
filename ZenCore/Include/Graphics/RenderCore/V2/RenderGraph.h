@@ -187,10 +187,10 @@ enum class RDGResourceUsage
 
 struct RDGResourceTracker
 {
-    rhi::AccessMode accessMode{rhi::AccessMode::eNone};
-    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eNone};
-    rhi::TextureUsage textureUsage{rhi::TextureUsage::eNone};
-    rhi::TextureSubResourceRange textureSubResourceRange;
+    RHIAccessMode accessMode{RHIAccessMode::eNone};
+    RHIBufferUsage bufferUsage{RHIBufferUsage::eNone};
+    RHITextureUsage textureUsage{RHITextureUsage::eNone};
+    RHITextureSubResourceRange textureSubResourceRange;
 };
 
 class RDGResourceTrackerPool
@@ -199,32 +199,32 @@ public:
     RDGResourceTrackerPool();
     ~RDGResourceTrackerPool();
 
-    RDGResourceTracker* GetTracker(const rhi::RHIResource* resource);
+    RDGResourceTracker* GetTracker(const RHIResource* resource);
 
-    void UpdateTrackerState(const rhi::RHITexture* texture,
-                            rhi::AccessMode accessMode,
-                            rhi::TextureUsage usage);
+    void UpdateTrackerState(const RHITexture* texture,
+                            RHIAccessMode accessMode,
+                            RHITextureUsage usage);
 
-    void UpdateTrackerState(const rhi::RHIBuffer* buffer,
-                            rhi::AccessMode accessMode,
-                            rhi::BufferUsage usage);
+    void UpdateTrackerState(const RHIBuffer* buffer,
+                            RHIAccessMode accessMode,
+                            RHIBufferUsage usage);
 
 private:
-    // HashMap<rhi::Handle, RDGResourceTracker*> m_trackerMap;
-    HashMap<const rhi::RHIResource*, RDGResourceTracker*> m_trackerMap;
-    // HashMap<const rhi::TextureHandle, RDGResourceTracker*> m_trackerMap2;
+    // HashMap<Handle, RDGResourceTracker*> m_trackerMap;
+    HashMap<const RHIResource*, RDGResourceTracker*> m_trackerMap;
+    // HashMap<const TextureHandle, RDGResourceTracker*> m_trackerMap2;
     // std::vector<RDGResourceTracker*> m_trackers;
 };
 
 struct RDGAccess
 {
-    rhi::AccessMode accessMode{};
+    RHIAccessMode accessMode{};
     RDG_ID nodeId{-1};
     RDG_ID resourceId{-1};
-    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eMax};
-    rhi::TextureUsage textureUsage{rhi::TextureUsage::eMax};
-    BitField<rhi::AccessFlagBits> accessFlags;
-    rhi::TextureSubResourceRange textureSubResourceRange;
+    RHIBufferUsage bufferUsage{RHIBufferUsage::eMax};
+    RHITextureUsage textureUsage{RHITextureUsage::eMax};
+    BitField<RHIAccessFlagBits> accessFlags;
+    RHITextureSubResourceRange textureSubResourceRange;
 };
 
 struct RDGResource
@@ -235,7 +235,7 @@ struct RDGResource
 
     RDG_ID id{-1};
     std::string tag;
-    rhi::RHIResource* physicalRes{nullptr};
+    RHIResource* physicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
 
     ArenaVector<RDG_ID, PoolAllocator<LinearAllocator>> readByNodeIds;
@@ -247,7 +247,7 @@ struct RDGNodeBase
     RDG_ID id{-1};
     std::string tag;
     RDGNodeType type{RDGNodeType::eNone};
-    BitField<rhi::PipelineStageBits> selfStages;
+    BitField<RHIPipelineStageBits> selfStages;
 };
 
 struct RDGPassNode;
@@ -270,13 +270,13 @@ struct RDGComputePassNode : RDGPassNode
 
 struct RDGGraphicsPassNode : RDGPassNode
 {
-    rhi::RenderPassHandle renderPass;
-    rhi::FramebufferHandle framebuffer;
+    RenderPassHandle renderPass;
+    FramebufferHandle framebuffer;
     Rect2<int> renderArea;
     // todo: maxColorAttachments + 1, set based on GPU limits
     uint32_t numAttachments;
-    rhi::RenderPassClearValue clearValues[8];
-    rhi::RenderPassLayout renderPassLayout;
+    RHIRenderPassClearValue clearValues[8];
+    RHIRenderPassLayout renderPassLayout;
     bool dynamic;
     const GraphicsPass* graphicsPass{nullptr};
 };
@@ -287,96 +287,96 @@ struct RDGGraphicsPassNode : RDGPassNode
 
 struct RDGBufferClearNode : RDGNodeBase
 {
-    rhi::RHIBuffer* buffer;
+    RHIBuffer* buffer;
     uint32_t offset{0};
     uint32_t size{0};
 };
 
 struct RDGBufferCopyNode : RDGNodeBase
 {
-    rhi::RHIBuffer* srcBuffer;
-    rhi::RHIBuffer* dstBuffer;
-    rhi::BufferCopyRegion region;
+    RHIBuffer* srcBuffer;
+    RHIBuffer* dstBuffer;
+    RHIBufferCopyRegion region;
 };
 
 struct RDGBufferUpdateNode : RDGNodeBase
 {
-    std::vector<rhi::BufferCopySource> sources;
-    rhi::RHIBuffer* dstBuffer;
+    std::vector<RHIBufferCopySource> sources;
+    RHIBuffer* dstBuffer;
 };
 
 struct RDGTextureClearNode : RDGNodeBase
 {
-    // rhi::TextureHandle texture;
-    // rhi::TextureSubResourceRange range;
-    rhi::RHITexture* texture;
+    // TextureHandle texture;
+    // RHITextureSubResourceRange range;
+    RHITexture* texture;
     Color color;
 };
 
 struct RDGTextureCopyNode : RDGNodeBase
 {
-    // rhi::TextureHandle srcTexture;
-    // rhi::TextureHandle dstTexture;
+    // TextureHandle srcTexture;
+    // TextureHandle dstTexture;
     uint32_t numCopyRegions;
-    rhi::RHITexture* srcTexture;
-    rhi::RHITexture* dstTexture;
-    // rhi::TextureCopyRegion* copyRegions;
+    RHITexture* srcTexture;
+    RHITexture* dstTexture;
+    // RHITextureCopyRegion* copyRegions;
 
-    rhi::TextureCopyRegion* TextureCopyRegions()
+    RHITextureCopyRegion* TextureCopyRegions()
     {
-        return reinterpret_cast<rhi::TextureCopyRegion*>(&this[1]);
+        return reinterpret_cast<RHITextureCopyRegion*>(&this[1]);
     }
 
-    const rhi::TextureCopyRegion* TextureCopyRegions() const
+    const RHITextureCopyRegion* TextureCopyRegions() const
     {
-        return reinterpret_cast<const rhi::TextureCopyRegion*>(&this[1]);
+        return reinterpret_cast<const RHITextureCopyRegion*>(&this[1]);
     }
-    // std::vector<rhi::TextureCopyRegion> copyRegions;
+    // std::vector<RHITextureCopyRegion> copyRegions;
 };
 
 struct RDGTextureReadNode : RDGNodeBase
 {
-    // rhi::TextureHandle srcTexture;
+    // TextureHandle srcTexture;
     uint32_t numCopyRegions;
-    rhi::RHITexture* srcTexture;
-    rhi::RHIBuffer* dstBuffer;
-    // std::vector<rhi::BufferTextureCopyRegion> bufferTextureCopyRegions;
+    RHITexture* srcTexture;
+    RHIBuffer* dstBuffer;
+    // std::vector<RHIBufferTextureCopyRegion> bufferTextureCopyRegions;
 
-    rhi::BufferTextureCopyRegion* BufferTextureCopyRegions()
+    RHIBufferTextureCopyRegion* BufferTextureCopyRegions()
     {
-        return reinterpret_cast<rhi::BufferTextureCopyRegion*>(&this[1]);
+        return reinterpret_cast<RHIBufferTextureCopyRegion*>(&this[1]);
     }
 
-    const rhi::BufferTextureCopyRegion* BufferTextureCopyRegions() const
+    const RHIBufferTextureCopyRegion* BufferTextureCopyRegions() const
     {
-        return reinterpret_cast<const rhi::BufferTextureCopyRegion*>(&this[1]);
+        return reinterpret_cast<const RHIBufferTextureCopyRegion*>(&this[1]);
     }
 };
 
 struct RDGTextureUpdateNode : RDGNodeBase
 {
-    // std::vector<rhi::BufferTextureCopySource> sources;
-    // rhi::TextureHandle dstTexture;
+    // std::vector<RHIBufferTextureCopySource> sources;
+    // TextureHandle dstTexture;
     uint32_t numCopySources;
-    rhi::RHITexture* dstTexture;
+    RHITexture* dstTexture;
 
-    rhi::BufferTextureCopySource* TextureCopySources()
+    RHIBufferTextureCopySource* TextureCopySources()
     {
-        return reinterpret_cast<rhi::BufferTextureCopySource*>(&this[1]);
+        return reinterpret_cast<RHIBufferTextureCopySource*>(&this[1]);
     }
 
-    const rhi::BufferTextureCopySource* TextureCopySources() const
+    const RHIBufferTextureCopySource* TextureCopySources() const
     {
-        return reinterpret_cast<const rhi::BufferTextureCopySource*>(&this[1]);
+        return reinterpret_cast<const RHIBufferTextureCopySource*>(&this[1]);
     }
 };
 
 struct RDGTextureResolveNode : RDGNodeBase
 {
-    // rhi::TextureHandle srcTexture;
-    // rhi::TextureHandle dstTexture;
-    rhi::RHITexture* srcTexture;
-    rhi::RHITexture* dstTexture;
+    // TextureHandle srcTexture;
+    // TextureHandle dstTexture;
+    RHITexture* srcTexture;
+    RHITexture* dstTexture;
     uint32_t srcLayer{0};
     uint32_t srcMipmap{0};
     uint32_t dstLayer{0};
@@ -385,39 +385,39 @@ struct RDGTextureResolveNode : RDGNodeBase
 
 struct RDGTextureMipmapGenNode : RDGNodeBase
 {
-    // rhi::TextureHandle texture;
-    rhi::RHITexture* texture;
+    // TextureHandle texture;
+    RHITexture* texture;
 };
 
 struct RDGBindIndexBufferNode : RDGPassChildNode
 {
-    rhi::RHIBuffer* buffer;
+    RHIBuffer* buffer;
     DataFormat format;
     uint32_t offset;
 };
 
 // struct RDGBindVertexBufferNode : RDGPassChildNode
 // {
-//     std::vector<rhi::RHIBuffer*> vertexBuffers;
+//     std::vector<RHIBuffer*> vertexBuffers;
 //     std::vector<uint64_t> offsets;
 // };
 
 struct RDGBindVertexBufferNode : RDGPassChildNode
 {
     uint32_t numBuffers{0};
-    // rhi::RHIBuffer** vertexBuffers{nullptr};
+    // RHIBuffer** vertexBuffers{nullptr};
     // uint64_t* offsets{nullptr};
-    // std::vector<rhi::RHIBuffer*> vertexBuffers;
+    // std::vector<RHIBuffer*> vertexBuffers;
     // std::vector<uint64_t> offsets;
 
-    rhi::RHIBuffer** VertexBuffers()
+    RHIBuffer** VertexBuffers()
     {
-        return reinterpret_cast<rhi::RHIBuffer**>(&this[1]);
+        return reinterpret_cast<RHIBuffer**>(&this[1]);
     }
 
-    rhi::RHIBuffer* const* VertexBuffers() const
+    RHIBuffer* const* VertexBuffers() const
     {
-        return reinterpret_cast<rhi::RHIBuffer* const*>(&this[1]);
+        return reinterpret_cast<RHIBuffer* const*>(&this[1]);
     }
 
     uint64_t* VertexBufferOffsets()
@@ -443,8 +443,8 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
 
 struct RDGBindPipelineNode : RDGPassChildNode
 {
-    rhi::RHIPipeline* pipeline;
-    rhi::PipelineType pipelineType{rhi::PipelineType::eNone};
+    RHIPipeline* pipeline;
+    RHIPipelineType pipelineType{RHIPipelineType::eNone};
 };
 
 struct RDGDrawNode : RDGPassChildNode
@@ -464,7 +464,7 @@ struct RDGDrawIndexedNode : RDGPassChildNode
 
 struct RDGDrawIndexedIndirectNode : RDGPassChildNode
 {
-    rhi::RHIBuffer* indirectBuffer;
+    RHIBuffer* indirectBuffer;
     uint32_t offset{0};
     uint32_t drawCount{0};
     uint32_t stride{0};
@@ -479,13 +479,13 @@ struct RDGDispatchNode : RDGPassChildNode
 
 struct RDGDispatchIndirectNode : RDGPassChildNode
 {
-    rhi::RHIBuffer* indirectBuffer;
+    RHIBuffer* indirectBuffer;
     uint32_t offset{0};
 };
 
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
-    rhi::RHIShader* shader;
+    RHIShader* shader;
     uint32_t dataSize{0};
 
     uint8_t* Data()
@@ -547,8 +547,8 @@ public:
     }
 
     void AddPassBindPipelineNode(RDGPassNode* parent,
-                                 rhi::RHIPipeline* pipelineHandle,
-                                 rhi::PipelineType pipelineType);
+                                 RHIPipeline* pipelineHandle,
+                                 RHIPipelineType pipelineType);
 
     RDGPassNode* AddComputePassNode(const ComputePass* pComputePass, std::string tag);
 
@@ -558,28 +558,28 @@ public:
                                     uint32_t groupCountZ);
 
     void AddComputePassDispatchIndirectNode(RDGPassNode* parent,
-                                            rhi::RHIBuffer* indirectBuffer,
+                                            RHIBuffer* indirectBuffer,
                                             uint32_t offset);
 
-    RDGPassNode* AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
-                                     rhi::FramebufferHandle framebufferHandle,
+    RDGPassNode* AddGraphicsPassNode(RenderPassHandle renderPassHandle,
+                                     FramebufferHandle framebufferHandle,
                                      Rect2<int> area,
-                                     VectorView<rhi::RenderPassClearValue> clearValues,
+                                     VectorView<RHIRenderPassClearValue> clearValues,
                                      bool hasColorTarget,
                                      bool hasDepthTarget = false);
 
     RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass,
                                      Rect2<int> area,
-                                     VectorView<rhi::RenderPassClearValue> clearValues,
+                                     VectorView<RHIRenderPassClearValue> clearValues,
                                      std::string tag);
 
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
-                                            rhi::RHIBuffer* bufferHandle,
+                                            RHIBuffer* bufferHandle,
                                             DataFormat format,
                                             uint32_t offset = 0);
 
     void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
-                                             VectorView<rhi::RHIBuffer*> vertexBuffers,
+                                             VectorView<RHIBuffer*> vertexBuffers,
                                              VectorView<uint32_t> offsets);
 
     void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
@@ -596,7 +596,7 @@ public:
                                         uint32_t firstInstance = 0);
 
     void AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
-                                                rhi::RHIBuffer* indirectBuffer,
+                                                RHIBuffer* indirectBuffer,
                                                 uint32_t offset,
                                                 uint32_t drawCount,
                                                 uint32_t stride);
@@ -614,57 +614,57 @@ public:
                                          float depthBiasClamp,
                                          float depthBiasSlopeFactor);
 
-    void AddBufferClearNode(rhi::RHIBuffer* bufferHandle, uint32_t offset, uint64_t size);
+    void AddBufferClearNode(RHIBuffer* bufferHandle, uint32_t offset, uint64_t size);
 
-    void AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
-                           rhi::RHIBuffer* dstBufferHandle,
-                           const rhi::BufferCopyRegion& copyRegion);
+    void AddBufferCopyNode(RHIBuffer* srcBufferHandle,
+                           RHIBuffer* dstBufferHandle,
+                           const RHIBufferCopyRegion& copyRegion);
 
-    void AddBufferUpdateNode(rhi::RHIBuffer* dstBufferHandle,
-                             const VectorView<rhi::BufferCopySource>& sources);
+    void AddBufferUpdateNode(RHIBuffer* dstBufferHandle,
+                             const VectorView<RHIBufferCopySource>& sources);
 
-    void AddTextureClearNode(rhi::RHITexture* texture,
+    void AddTextureClearNode(RHITexture* texture,
                              const Color& color,
-                             const rhi::TextureSubResourceRange& range);
+                             const RHITextureSubResourceRange& range);
 
-    void AddTextureCopyNode(rhi::RHITexture* srcTexture,
-                            rhi::RHITexture* dstTexture,
-                            const VectorView<rhi::TextureCopyRegion>& regions);
+    void AddTextureCopyNode(RHITexture* srcTexture,
+                            RHITexture* dstTexture,
+                            const VectorView<RHITextureCopyRegion>& regions);
 
-    void AddTextureReadNode(rhi::RHITexture* srcTexture,
-                            rhi::RHIBuffer* dstBufferHandle,
-                            const VectorView<rhi::BufferTextureCopyRegion>& regions);
+    void AddTextureReadNode(RHITexture* srcTexture,
+                            RHIBuffer* dstBufferHandle,
+                            const VectorView<RHIBufferTextureCopyRegion>& regions);
 
-    void AddTextureUpdateNode(rhi::RHITexture* dstTexture,
-                              const VectorView<rhi::BufferTextureCopySource>& sources);
+    void AddTextureUpdateNode(RHITexture* dstTexture,
+                              const VectorView<RHIBufferTextureCopySource>& sources);
 
-    void AddTextureResolveNode(rhi::RHITexture* srcTexture,
-                               rhi::RHITexture* dstTexture,
+    void AddTextureResolveNode(RHITexture* srcTexture,
+                               RHITexture* dstTexture,
                                uint32_t srcLayer,
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
 
-    void AddTextureMipmapGenNode(rhi::RHITexture* texture);
+    void AddTextureMipmapGenNode(RHITexture* texture);
 
 
     void Begin();
 
     void End();
 
-    void Execute(rhi::RHICommandList* cmdList);
+    void Execute(RHICommandList* cmdList);
 
 private:
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     rhi::RHITexture* texture,
-                                     rhi::TextureUsage usage,
-                                     const rhi::TextureSubResourceRange& range,
-                                     rhi::AccessMode accessMode);
+                                     RHITexture* texture,
+                                     RHITextureUsage usage,
+                                     const RHITextureSubResourceRange& range,
+                                     RHIAccessMode accessMode);
 
     void DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                    rhi::RHIBuffer* buffer,
-                                    rhi::BufferUsage usage,
-                                    rhi::AccessMode accessMode);
+                                    RHIBuffer* buffer,
+                                    RHIBufferUsage usage,
+                                    RHIAccessMode accessMode);
 
     void Destroy();
 
@@ -785,7 +785,7 @@ private:
     //     return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     // }
 
-    RDGResource* GetOrAllocResource(rhi::RHIResource* resourceRHI,
+    RDGResource* GetOrAllocResource(RHIResource* resourceRHI,
                                     RDGResourceType type,
                                     const RDG_ID& nodeId)
     {
@@ -825,7 +825,7 @@ private:
 
     std::string m_rdgTag;
     // RHI CommandList
-    rhi::RHICommandList* m_cmdList{nullptr};
+    RHICommandList* m_cmdList{nullptr};
     // stores dependency between graph nodes
     HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;
     // nodes
@@ -845,13 +845,13 @@ private:
 
     PoolAllocator<LinearAllocator> m_poolAlloc;
 
-    HashMap<rhi::RHIResource*, RDGResource*> m_resourceMap;
+    HashMap<RHIResource*, RDGResource*> m_resourceMap;
     // resource id -> node id
     HashMap<RDG_ID, RDG_ID> m_resourceFirstUseNodeMap;
     HashMap<RDG_ID, std::vector<RDGAccess>> m_nodeAccessMap;
     // transitions
-    HashMap<uint64_t, std::vector<rhi::BufferTransition>> m_bufferTransitions;
-    HashMap<uint64_t, std::vector<rhi::TextureTransition>> m_textureTransitions;
+    HashMap<uint64_t, std::vector<RHIBufferTransition>> m_bufferTransitions;
+    HashMap<uint64_t, std::vector<RHITextureTransition>> m_textureTransitions;
     // track resource state across multiple RDG instances
     static RDGResourceTrackerPool s_trackerPool;
 };

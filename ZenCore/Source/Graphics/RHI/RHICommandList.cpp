@@ -1,6 +1,6 @@
 #include "Graphics/RHI/RHICommandList.h"
 
-namespace zen::rhi
+namespace zen
 {
 void FRHICommandList::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
@@ -27,4 +27,4 @@ void FRHICommandList::DrawIndexed(const RHICommandDrawParam& param)
     ALLOC_CMD(RHICommandDrawIndexed)(param);
 }
 
-} // namespace zen::rhi
+} // namespace zen

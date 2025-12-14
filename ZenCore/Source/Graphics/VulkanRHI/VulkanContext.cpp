@@ -7,7 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanMemoryAllocator* GVkMemAllocator = nullptr;
 VulkanRHI* GVulkanRHI                  = nullptr;
@@ -310,4 +310,4 @@ void VulkanRHI::Destroy()
     // destroy instance
     vkDestroyInstance(m_instance, nullptr);
 }
-} // namespace zen::rhi
+} // namespace zen

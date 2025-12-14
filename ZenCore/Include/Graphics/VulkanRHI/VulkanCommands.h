@@ -3,7 +3,7 @@
 #include "Templates/SmallVector.h"
 #include "Graphics/RHI/RHICommands.h"
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 class VulkanDevice;
@@ -45,33 +45,33 @@ public:
     void BeginUpload() final;
     void EndUpload() final;
 
-    void AddPipelineBarrier(BitField<PipelineStageBits> srcStages,
-                            BitField<PipelineStageBits> dstStages,
-                            const std::vector<MemoryTransition>& memoryTransitions,
-                            const std::vector<BufferTransition>& bufferTransitions,
-                            const std::vector<TextureTransition>& textureTransitions) final;
+    void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,
+                            BitField<RHIPipelineStageBits> dstStages,
+                            const std::vector<RHIMemoryTransition>& memoryTransitions,
+                            const std::vector<RHIBufferTransition>& bufferTransitions,
+                            const std::vector<RHITextureTransition>& textureTransitions) final;
 
     void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) final;
 
     void CopyBuffer(RHIBuffer* srcBuffer,
                     RHIBuffer* dstBuffer,
-                    const BufferCopyRegion& region) final;
+                    const RHIBufferCopyRegion& region) final;
 
     void ClearTexture(RHITexture* texture,
                       const Color& color,
-                      const TextureSubResourceRange& range) final;
+                      const RHITextureSubResourceRange& range) final;
 
     void CopyTexture(RHITexture* srcTexture,
                      RHITexture* dstTexture,
-                     VectorView<TextureCopyRegion> regions) final;
+                     VectorView<RHITextureCopyRegion> regions) final;
 
     void CopyTextureToBuffer(RHITexture* texture,
                              RHIBuffer* buffer,
-                             VectorView<BufferTextureCopyRegion> regions) final;
+                             VectorView<RHIBufferTextureCopyRegion> regions) final;
 
     void CopyBufferToTexture(RHIBuffer* buffer,
                              RHITexture* texture,
-                             VectorView<BufferTextureCopyRegion> regions) final;
+                             VectorView<RHIBufferTextureCopyRegion> regions) final;
 
     void ResolveTexture(RHITexture* srcTexture,
                         RHITexture* dstTexture,
@@ -99,13 +99,13 @@ public:
     void BeginRenderPass(RenderPassHandle renderPassHandle,
                          FramebufferHandle framebuffer,
                          const Rect2<int>& area,
-                         VectorView<RenderPassClearValue> clearValues) final;
+                         VectorView<RHIRenderPassClearValue> clearValues) final;
 
     void EndRenderPass() final;
 
-    void BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
+    void BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayout,
                                 const Rect2<int>& area,
-                                VectorView<RenderPassClearValue> clearValues) final;
+                                VectorView<RHIRenderPassClearValue> clearValues) final;
 
     void EndRenderPassDynamic() final;
 
@@ -149,7 +149,7 @@ public:
         return m_cmdBufferManager;
     }
 
-    void ChangeTextureLayout(RHITexture* texture, TextureLayout newLayout) final;
+    void ChangeTextureLayout(RHITexture* texture, RHITextureLayout newLayout) final;
 
     void GenerateTextureMipmaps(RHITexture* texture) final;
 
@@ -165,4 +165,4 @@ private:
 
     friend class VulkanRHI;
 };
-} // namespace zen::rhi
+} // namespace zen

@@ -3,11 +3,11 @@
 
 #define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                                   \
     {                                                                                              \
-        rhi::ShaderResourceBinding binding{};                                                      \
+        RHIShaderResourceBinding binding{};                                                   \
         binding.binding = index_;                                                                  \
         binding.type    = type_;                                                                   \
         {                                                                                          \
-            std::initializer_list<rhi::RHIResource*> resources = {__VA_ARGS__};                    \
+            std::initializer_list<RHIResource*> resources = {__VA_ARGS__};                    \
             binding.resources.insert(binding.resources.end(), resources.begin(), resources.end()); \
         }                                                                                          \
         bindings_.emplace_back(std::move(binding));                                                \
@@ -15,10 +15,10 @@
 
 #define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \
     {                                                                                   \
-        rhi::ShaderResourceBinding binding{};                                           \
+        RHIShaderResourceBinding binding{};                                        \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (rhi::RHITexture * texture : (textures_))                                   \
+        for (RHITexture * texture : (textures_))                                   \
         {                                                                               \
             binding.resources.push_back(sampler_);                                      \
             binding.resources.push_back(texture);                                       \
@@ -104,26 +104,26 @@ enum class PassResourceType
 struct PassResourceTracker
 {
     std::string name;
-    std::vector<rhi::RHITexture*> textures;
-    // rhi::TextureHandle textureHandle;
-    rhi::RHIBuffer* buffer;
+    std::vector<RHITexture*> textures;
+    // TextureHandle textureHandle;
+    RHIBuffer* buffer;
     PassResourceType resourceType{PassResourceType::eMax};
-    rhi::AccessMode accessMode{rhi::AccessMode::eNone};
-    BitField<rhi::AccessFlagBits> accessFlags;
-    rhi::BufferUsage bufferUsage{rhi::BufferUsage::eNone};
-    rhi::TextureUsage textureUsage{rhi::TextureUsage::eNone};
-    // rhi::TextureSubResourceRange textureSubResRange;
+    RHIAccessMode accessMode{RHIAccessMode::eNone};
+    BitField<RHIAccessFlagBits> accessFlags;
+    RHIBufferUsage bufferUsage{RHIBufferUsage::eNone};
+    RHITextureUsage textureUsage{RHITextureUsage::eNone};
+    // RHITextureSubResourceRange textureSubResRange;
 };
 
 struct GraphicsPass
 {
-    rhi::FramebufferHandle framebuffer;
-    rhi::RenderPassHandle renderPass;
-    rhi::RHIPipeline* pipeline;
-    rhi::RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    FramebufferHandle framebuffer;
+    RenderPassHandle renderPass;
+    RHIPipeline* pipeline;
+    RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
     ShaderProgram* shaderProgram;
-    rhi::RenderPassLayout renderPassLayout;
+    RHIRenderPassLayout renderPassLayout;
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
     HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
@@ -131,8 +131,8 @@ struct GraphicsPass
 
 struct ComputePass
 {
-    rhi::RHIPipeline* pipeline;
-    rhi::RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    RHIPipeline* pipeline;
+    RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
     ShaderProgram* shaderProgram;
     // setIndex as vector index, bindingIndex as inner map key
@@ -150,13 +150,13 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    rhi::RHITexture* skybox;
-    rhi::RHITexture* irradiance;
-    rhi::RHITexture* prefiltered;
-    rhi::RHITexture* lutBRDF;
-    rhi::RHISampler* irradianceSampler;
-    rhi::RHISampler* prefilteredSampler;
-    rhi::RHISampler* lutBRDFSampler;
+    RHITexture* skybox;
+    RHITexture* irradiance;
+    RHITexture* prefiltered;
+    RHITexture* lutBRDF;
+    RHISampler* irradianceSampler;
+    RHISampler* prefilteredSampler;
+    RHISampler* lutBRDFSampler;
     std::string tag;
 };
 } // namespace zen::rc

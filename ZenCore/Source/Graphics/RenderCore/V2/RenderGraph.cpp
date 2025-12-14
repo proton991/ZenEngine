@@ -20,7 +20,7 @@ RDGResourceTrackerPool::~RDGResourceTrackerPool()
     }
 }
 
-RDGResourceTracker* RDGResourceTrackerPool::GetTracker(const rhi::RHIResource* resource)
+RDGResourceTracker* RDGResourceTrackerPool::GetTracker(const RHIResource* resource)
 {
     if (!m_trackerMap.contains(resource))
     {
@@ -29,9 +29,9 @@ RDGResourceTracker* RDGResourceTrackerPool::GetTracker(const rhi::RHIResource* r
     return m_trackerMap[resource];
 }
 
-void RDGResourceTrackerPool::UpdateTrackerState(const rhi::RHITexture* texture,
-                                                rhi::AccessMode accessMode,
-                                                rhi::TextureUsage usage)
+void RDGResourceTrackerPool::UpdateTrackerState(const RHITexture* texture,
+                                                RHIAccessMode accessMode,
+                                                RHITextureUsage usage)
 {
     if (m_trackerMap.contains(texture))
     {
@@ -41,9 +41,9 @@ void RDGResourceTrackerPool::UpdateTrackerState(const rhi::RHITexture* texture,
     }
 }
 
-void RDGResourceTrackerPool::UpdateTrackerState(const rhi::RHIBuffer* buffer,
-                                                rhi::AccessMode accessMode,
-                                                rhi::BufferUsage usage)
+void RDGResourceTrackerPool::UpdateTrackerState(const RHIBuffer* buffer,
+                                                RHIAccessMode accessMode,
+                                                RHIBufferUsage usage)
 {
     if (m_trackerMap.contains(buffer))
     {
@@ -54,8 +54,8 @@ void RDGResourceTrackerPool::UpdateTrackerState(const rhi::RHIBuffer* buffer,
 }
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* parent,
-                                          rhi::RHIPipeline* pipelineHandle,
-                                          rhi::PipelineType pipelineType)
+                                          RHIPipeline* pipelineHandle,
+                                          RHIPipelineType pipelineType)
 {
     auto* node         = AllocPassChildNode<RDGBindPipelineNode>(parent);
     node->pipeline     = std::move(pipelineHandle);
@@ -71,7 +71,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass* pComputePass, st
     node->type        = RDGNodeType::eComputePass;
     node->tag         = std::move(tag);
     node->computePass = pComputePass;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eComputeShader);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eComputeShader);
     for (uint32_t i = 0; i < pComputePass->numDescriptorSets; i++)
     {
         auto& setTrackers = pComputePass->resourceTrackers[i];
@@ -96,7 +96,7 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass* pComputePass, st
             }
         }
     }
-    AddPassBindPipelineNode(node, pComputePass->pipeline, rhi::PipelineType::eCompute);
+    AddPassBindPipelineNode(node, pComputePass->pipeline, RHIPipelineType::eCompute);
     return node;
 }
 
@@ -113,7 +113,7 @@ void RenderGraph::AddComputePassDispatchNode(RDGPassNode* parent,
 }
 
 void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
-                                                     rhi::RHIBuffer* indirectBuffer,
+                                                     RHIBuffer* indirectBuffer,
                                                      uint32_t offset)
 {
     auto* node           = AllocPassChildNode<RDGDispatchIndirectNode>(parent);
@@ -121,14 +121,14 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
     node->indirectBuffer = std::move(indirectBuffer);
     node->offset         = offset;
 
-    DeclareBufferAccessForPass(parent, indirectBuffer, rhi::BufferUsage::eIndirectBuffer,
-                               rhi::AccessMode::eRead);
+    DeclareBufferAccessForPass(parent, indirectBuffer, RHIBufferUsage::eIndirectBuffer,
+                               RHIAccessMode::eRead);
 }
 
-RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHandle,
-                                              rhi::FramebufferHandle framebufferHandle,
+RDGPassNode* RenderGraph::AddGraphicsPassNode(RenderPassHandle renderPassHandle,
+                                              FramebufferHandle framebufferHandle,
                                               Rect2<int> area,
-                                              VectorView<rhi::RenderPassClearValue> clearValues,
+                                              VectorView<RHIRenderPassClearValue> clearValues,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
 {
@@ -145,12 +145,12 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
     }
     if (hasColorTarget)
     {
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eColorAttachmentOutput);
+        node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
     }
     if (hasDepthTarget)
     {
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eEarlyFragmentTests);
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eLateFragmentTests);
+        node->selfStages.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
+        node->selfStages.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
     }
 
     return node;
@@ -158,7 +158,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(rhi::RenderPassHandle renderPassHa
 
 RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
                                               Rect2<int> area,
-                                              VectorView<rhi::RenderPassClearValue> clearValues,
+                                              VectorView<RHIRenderPassClearValue> clearValues,
                                               std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
@@ -170,7 +170,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
     node->type             = RDGNodeType::eGraphicsPass;
     node->numAttachments   = clearValues.size();
     node->renderPassLayout = std::move(pGfxPass->renderPassLayout);
-    node->dynamic          = rhi::RHIOptions::GetInstance().UseDynamicRendering();
+    node->dynamic          = RHIOptions::GetInstance().UseDynamicRendering();
     node->tag              = std::move(tag);
 
     for (auto i = 0; i < clearValues.size(); i++)
@@ -179,28 +179,28 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
     }
     if (node->renderPassLayout.HasColorRenderTarget())
     {
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eColorAttachmentOutput);
-        // const rhi::TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
+        node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
+        // const TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
         // const auto& rtSubresourceRanges   = node->renderPassLayout.GetRTSubResourceRanges();
         const auto& colorRTs = node->renderPassLayout.GetColorRenderTargets();
         for (uint32_t i = 0; i < node->renderPassLayout.GetNumColorRenderTargets(); i++)
         {
             const std::string textureTag = node->tag + "_color_rt_" + std::to_string(i);
             DeclareTextureAccessForPass(node, colorRTs[i].texture,
-                                        rhi::TextureUsage::eColorAttachment,
-                                        colorRTs[i].subresourceRange, rhi::AccessMode::eReadWrite);
+                                        RHITextureUsage::eColorAttachment,
+                                        colorRTs[i].subresourceRange, RHIAccessMode::eReadWrite);
         }
     }
     if (node->renderPassLayout.HasDepthStencilRenderTarget())
     {
         const auto& depthStencilRT = node->renderPassLayout.GetDepthStencilRenderTarget();
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eEarlyFragmentTests);
-        node->selfStages.SetFlag(rhi::PipelineStageBits::eLateFragmentTests);
+        node->selfStages.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
+        node->selfStages.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
         DeclareTextureAccessForPass(node, depthStencilRT.texture,
-                                    rhi::TextureUsage::eDepthStencilAttachment,
-                                    depthStencilRT.subresourceRange, rhi::AccessMode::eReadWrite);
+                                    RHITextureUsage::eDepthStencilAttachment,
+                                    depthStencilRT.subresourceRange, RHIAccessMode::eReadWrite);
     }
-    AddPassBindPipelineNode(node, pGfxPass->pipeline, rhi::PipelineType::eGraphics);
+    AddPassBindPipelineNode(node, pGfxPass->pipeline, RHIPipelineType::eGraphics);
     for (uint32_t i = 0; i < pGfxPass->numDescriptorSets; i++)
     {
         auto& setTrackers = pGfxPass->resourceTrackers[i];
@@ -230,7 +230,7 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
 }
 
 void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
-                                                     rhi::RHIBuffer* buffer,
+                                                     RHIBuffer* buffer,
                                                      DataFormat format,
                                                      uint32_t offset)
 {
@@ -239,22 +239,22 @@ void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
     node->format = format;
     node->offset = offset;
     node->type   = RDGPassCmdType::eBindIndexBuffer;
-    node->parent->selfStages.SetFlag(rhi::PipelineStageBits::eVertexShader);
+    node->parent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
 }
 
 void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
-                                                      VectorView<rhi::RHIBuffer*> vertexBuffers,
+                                                      VectorView<RHIBuffer*> vertexBuffers,
                                                       VectorView<uint32_t> offsets)
 {
     const uint32_t numBuffers = vertexBuffers.size();
-    size_t nodeSize = sizeof(RDGBindVertexBufferNode) + sizeof(rhi::RHIBuffer*) * numBuffers +
+    size_t nodeSize           = sizeof(RDGBindVertexBufferNode) + sizeof(RHIBuffer*) * numBuffers +
         sizeof(uint64_t) * numBuffers;
     auto* node = AllocPassChildNode<RDGBindVertexBufferNode>(parent, nodeSize);
 
     node->numBuffers = numBuffers;
 
-    rhi::RHIBuffer** pVertexBuffers = node->VertexBuffers();
-    uint64_t* pVertexBufferOffsets  = node->VertexBufferOffsets();
+    RHIBuffer** pVertexBuffers     = node->VertexBuffers();
+    uint64_t* pVertexBufferOffsets = node->VertexBufferOffsets();
 
     for (auto i = 0; i < numBuffers; i++)
     {
@@ -264,7 +264,7 @@ void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
 
     // node->offsets = pVertexBufferOffsets;
     node->type = RDGPassCmdType::eBindVertexBuffer;
-    node->parent->selfStages.SetFlag(rhi::PipelineStageBits::eVertexShader);
+    node->parent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
 }
 
 void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* parent,
@@ -318,7 +318,7 @@ void RenderGraph::AddGraphicsPassDrawIndexedNode(RDGPassNode* parent,
 }
 
 void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
-                                                         rhi::RHIBuffer* indirectBuffer,
+                                                         RHIBuffer* indirectBuffer,
                                                          uint32_t offset,
                                                          uint32_t drawCount,
                                                          uint32_t stride)
@@ -329,10 +329,10 @@ void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
     node->offset         = offset;
     node->drawCount      = drawCount;
     node->stride         = stride;
-    node->parent->selfStages.SetFlags(rhi::PipelineStageBits::eDrawIndirect);
+    node->parent->selfStages.SetFlags(RHIPipelineStageBits::eDrawIndirect);
 
-    DeclareBufferAccessForPass(parent, indirectBuffer, rhi::BufferUsage::eIndirectBuffer,
-                               rhi::AccessMode::eRead);
+    DeclareBufferAccessForPass(parent, indirectBuffer, RHIBufferUsage::eIndirectBuffer,
+                               RHIAccessMode::eRead);
 }
 
 void RenderGraph::AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const Color& color)
@@ -375,22 +375,22 @@ void RenderGraph::AddGraphicsPassSetDepthBiasNode(RDGPassNode* parent,
     node->type                    = RDGPassCmdType::eSetDepthBias;
 }
 
-void RenderGraph::AddBufferClearNode(rhi::RHIBuffer* buffer, uint32_t offset, uint64_t size)
+void RenderGraph::AddBufferClearNode(RHIBuffer* buffer, uint32_t offset, uint64_t size)
 {
     auto* node   = AllocNode<RDGBufferClearNode>();
     node->buffer = std::move(buffer);
     node->offset = offset;
     node->size   = size;
     node->type   = RDGNodeType::eClearBuffer;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
     RDGAccess access{};
-    access.accessMode  = rhi::AccessMode::eReadWrite;
+    access.accessMode  = RHIAccessMode::eReadWrite;
     access.nodeId      = node->id;
-    access.bufferUsage = rhi::BufferUsage::eTransferDst;
+    access.bufferUsage = RHIBufferUsage::eTransferDst;
 
     RDGResource* resource = GetOrAllocResource(buffer, RDGResourceType::eBuffer, node->id);
-    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
 
     resource->writtenByNodeIds.push_back(node->id);
 
@@ -399,26 +399,26 @@ void RenderGraph::AddBufferClearNode(rhi::RHIBuffer* buffer, uint32_t offset, ui
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
 }
 
-void RenderGraph::AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
-                                    rhi::RHIBuffer* dstBufferHandle,
-                                    const rhi::BufferCopyRegion& copyRegion)
+void RenderGraph::AddBufferCopyNode(RHIBuffer* srcBufferHandle,
+                                    RHIBuffer* dstBufferHandle,
+                                    const RHIBufferCopyRegion& copyRegion)
 {
     auto* node      = AllocNode<RDGBufferCopyNode>();
     node->srcBuffer = std::move(srcBufferHandle);
     node->dstBuffer = std::move(dstBufferHandle);
     node->region    = copyRegion;
     node->type      = RDGNodeType::eCopyBuffer;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // read access to src buffer
     {
         RDGAccess readAccess{};
-        readAccess.accessMode  = rhi::AccessMode::eRead;
-        readAccess.bufferUsage = rhi::BufferUsage::eTransferSrc;
+        readAccess.accessMode  = RHIAccessMode::eRead;
+        readAccess.bufferUsage = RHIBufferUsage::eTransferSrc;
         readAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(srcBufferHandle, RDGResourceType::eBuffer, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
         resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
@@ -427,13 +427,13 @@ void RenderGraph::AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
     // write access to dst buffer
     {
         RDGAccess writeAccess{};
-        writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
-        writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
+        writeAccess.accessMode  = RHIAccessMode::eReadWrite;
+        writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
@@ -441,8 +441,8 @@ void RenderGraph::AddBufferCopyNode(rhi::RHIBuffer* srcBufferHandle,
     }
 }
 
-void RenderGraph::AddBufferUpdateNode(rhi::RHIBuffer* dstBufferHandle,
-                                      const VectorView<rhi::BufferCopySource>& sources)
+void RenderGraph::AddBufferUpdateNode(RHIBuffer* dstBufferHandle,
+                                      const VectorView<RHIBufferCopySource>& sources)
 {
     auto* node = AllocNode<RDGBufferUpdateNode>();
     for (const auto& source : sources)
@@ -451,55 +451,55 @@ void RenderGraph::AddBufferUpdateNode(rhi::RHIBuffer* dstBufferHandle,
     }
     node->dstBuffer = std::move(dstBufferHandle);
     node->type      = RDGNodeType::eCopyBuffer;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // only support update through staging buffer
     // staging buffer is neither owned nor managed by RDG
     // write access to dst buffer
     RDGAccess writeAccess{};
-    writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
-    writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
+    writeAccess.accessMode  = RHIAccessMode::eReadWrite;
+    writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
     writeAccess.nodeId      = node->id;
 
     RDGResource* resource = GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     resource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureClearNode(rhi::RHITexture* texture,
+void RenderGraph::AddTextureClearNode(RHITexture* texture,
                                       const Color& color,
-                                      const rhi::TextureSubResourceRange& range)
+                                      const RHITextureSubResourceRange& range)
 {
     auto* node  = AllocNode<RDGTextureClearNode>();
     node->color = color;
     // node->range   = range;
     node->texture = texture;
     node->type    = RDGNodeType::eClearTexture;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
     RDGAccess access{};
-    access.accessMode              = rhi::AccessMode::eReadWrite;
+    access.accessMode              = RHIAccessMode::eReadWrite;
     access.nodeId                  = node->id;
-    access.textureUsage            = rhi::TextureUsage::eTransferDst;
+    access.textureUsage            = RHITextureUsage::eTransferDst;
     access.textureSubResourceRange = range;
 
     RDGResource* resource = GetOrAllocResource(texture, RDGResourceType::eTexture, node->id);
-    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     resource->writtenByNodeIds.push_back(node->id);
     access.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(access));
 }
 
-void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
-                                     rhi::RHITexture* dstTexture,
-                                     const VectorView<rhi::TextureCopyRegion>& regions)
+void RenderGraph::AddTextureCopyNode(RHITexture* srcTexture,
+                                     RHITexture* dstTexture,
+                                     const VectorView<RHITextureCopyRegion>& regions)
 {
     const uint32_t numCopyRegions = regions.size();
     const size_t nodeSize =
-        sizeof(RDGTextureCopyNode) + sizeof(rhi::TextureCopyRegion) * numCopyRegions;
+        sizeof(RDGTextureCopyNode) + sizeof(RHITextureCopyRegion) * numCopyRegions;
 
     auto* node           = AllocNode<RDGTextureCopyNode>(nodeSize);
     node->numCopyRegions = numCopyRegions;
@@ -507,9 +507,9 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     node->srcTexture     = srcTexture;
     node->dstTexture     = dstTexture;
     node->tag            = "texture_copy";
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
-    rhi::TextureCopyRegion* pCopyRegions = node->TextureCopyRegions();
+    RHITextureCopyRegion* pCopyRegions = node->TextureCopyRegions();
 
     for (uint32_t i = 0; i < numCopyRegions; ++i)
     {
@@ -522,8 +522,8 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     // read access to src texture
     RDGAccess readAccess{};
     readAccess.textureSubResourceRange = srcTexture->GetSubResourceRange();
-    readAccess.accessMode              = rhi::AccessMode::eRead;
-    readAccess.textureUsage            = rhi::TextureUsage::eTransferSrc;
+    readAccess.accessMode              = RHIAccessMode::eRead;
+    readAccess.textureUsage            = RHITextureUsage::eTransferSrc;
     readAccess.nodeId                  = node->id;
 
     RDGResource* srcResource = GetOrAllocResource(srcTexture, RDGResourceType::eTexture, node->id);
@@ -532,7 +532,7 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     // {
     //     srcResource->tag = "src_texture";
     // }
-    // srcResource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+    // srcResource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
     srcResource->readByNodeIds.push_back(node->id);
     readAccess.resourceId = srcResource->id;
 
@@ -541,8 +541,8 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     // write access to dst texture
     RDGAccess writeAccess{};
     writeAccess.textureSubResourceRange = dstTexture->GetSubResourceRange();
-    writeAccess.accessMode              = rhi::AccessMode::eReadWrite;
-    writeAccess.textureUsage            = rhi::TextureUsage::eTransferDst;
+    writeAccess.accessMode              = RHIAccessMode::eReadWrite;
+    writeAccess.textureUsage            = RHITextureUsage::eTransferDst;
     writeAccess.nodeId                  = node->id;
 
     RDGResource* dstResource = GetOrAllocResource(dstTexture, RDGResourceType::eTexture, node->id);
@@ -551,25 +551,25 @@ void RenderGraph::AddTextureCopyNode(rhi::RHITexture* srcTexture,
     // {
     //     dstResource->tag = "dst_texture";
     // }
-    // dstResource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // dstResource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     dstResource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = dstResource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
-                                     rhi::RHIBuffer* dstBufferHandle,
-                                     const VectorView<rhi::BufferTextureCopyRegion>& regions)
+void RenderGraph::AddTextureReadNode(RHITexture* srcTexture,
+                                     RHIBuffer* dstBufferHandle,
+                                     const VectorView<RHIBufferTextureCopyRegion>& regions)
 {
     const size_t numCopyRegions = regions.size();
     const size_t nodeSize =
-        sizeof(RDGTextureReadNode) + sizeof(rhi::BufferTextureCopyRegion) * numCopyRegions;
+        sizeof(RDGTextureReadNode) + sizeof(RHIBufferTextureCopyRegion) * numCopyRegions;
     auto* node           = AllocNode<RDGTextureReadNode>(nodeSize);
     node->numCopyRegions = numCopyRegions;
     node->srcTexture     = srcTexture;
     node->dstBuffer      = dstBufferHandle;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
     auto* pCopyRegions = node->BufferTextureCopyRegions();
 
@@ -582,12 +582,12 @@ void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
     // read access to src texture
     {
         RDGAccess readAccess{};
-        readAccess.accessMode   = rhi::AccessMode::eRead;
-        readAccess.textureUsage = rhi::TextureUsage::eTransferSrc;
+        readAccess.accessMode   = RHIAccessMode::eRead;
+        readAccess.textureUsage = RHITextureUsage::eTransferSrc;
         readAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(srcTexture, RDGResourceType::eTexture, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
         resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
@@ -596,13 +596,13 @@ void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
     // write access to dst buffer
     {
         RDGAccess writeAccess{};
-        writeAccess.accessMode  = rhi::AccessMode::eReadWrite;
-        writeAccess.bufferUsage = rhi::BufferUsage::eTransferDst;
+        writeAccess.accessMode  = RHIAccessMode::eReadWrite;
+        writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = node->id;
 
         RDGResource* resource =
             GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
@@ -610,12 +610,12 @@ void RenderGraph::AddTextureReadNode(rhi::RHITexture* srcTexture,
     }
 }
 
-void RenderGraph::AddTextureUpdateNode(rhi::RHITexture* dstTexture,
-                                       const VectorView<rhi::BufferTextureCopySource>& sources)
+void RenderGraph::AddTextureUpdateNode(RHITexture* dstTexture,
+                                       const VectorView<RHIBufferTextureCopySource>& sources)
 {
     const uint32_t numCopySources = sources.size();
-    const size_t nodeSize         = sizeof(rhi::BufferTextureCopySource) +
-        sizeof(rhi::BufferTextureCopySource) * numCopySources;
+    const size_t nodeSize =
+        sizeof(RHIBufferTextureCopySource) + sizeof(RHIBufferTextureCopySource) * numCopySources;
     auto* node         = AllocNode<RDGTextureUpdateNode>(nodeSize);
     auto* pCopySources = node->TextureCopySources();
     for (uint32_t i = 0; i < numCopySources; ++i)
@@ -629,25 +629,25 @@ void RenderGraph::AddTextureUpdateNode(rhi::RHITexture* dstTexture,
     node->numCopySources = numCopySources;
     node->dstTexture     = dstTexture;
     node->type           = RDGNodeType::eCopyBuffer;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // only support update through staging buffer
     // staging buffer is neither owned nor managed by RDG
     // write access to dst texture
     RDGAccess writeAccess{};
-    writeAccess.accessMode   = rhi::AccessMode::eReadWrite;
-    writeAccess.textureUsage = rhi::TextureUsage::eTransferDst;
+    writeAccess.accessMode   = RHIAccessMode::eReadWrite;
+    writeAccess.textureUsage = RHITextureUsage::eTransferDst;
     writeAccess.nodeId       = node->id;
 
     RDGResource* resource = GetOrAllocResource(dstTexture, RDGResourceType::eTexture, node->id);
-    // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+    // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     resource->writtenByNodeIds.push_back(node->id);
     writeAccess.resourceId = resource->id;
 
     m_nodeAccessMap[node->id].emplace_back(std::move(writeAccess));
 }
 
-void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
-                                        rhi::RHITexture* dstTexture,
+void RenderGraph::AddTextureResolveNode(RHITexture* srcTexture,
+                                        RHITexture* dstTexture,
                                         uint32_t srcLayer,
                                         uint32_t srcMipmap,
                                         uint32_t dstLayer,
@@ -660,16 +660,16 @@ void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
     node->srcMipmap  = srcMipmap;
     node->dstLayer   = dstLayer;
     node->dstMipmap  = dstMipMap;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // read access to src texture
     {
         RDGAccess readAccess{};
-        readAccess.accessMode   = rhi::AccessMode::eRead;
-        readAccess.textureUsage = rhi::TextureUsage::eTransferSrc;
+        readAccess.accessMode   = RHIAccessMode::eRead;
+        readAccess.textureUsage = RHITextureUsage::eTransferSrc;
         readAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(srcTexture, RDGResourceType::eTexture, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eRead].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
         resource->readByNodeIds.push_back(node->id);
         readAccess.resourceId = resource->id;
 
@@ -678,12 +678,12 @@ void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
     // write access to dst texture
     {
         RDGAccess writeAccess{};
-        writeAccess.accessMode   = rhi::AccessMode::eReadWrite;
-        writeAccess.textureUsage = rhi::TextureUsage::eTransferDst;
+        writeAccess.accessMode   = RHIAccessMode::eReadWrite;
+        writeAccess.textureUsage = RHITextureUsage::eTransferDst;
         writeAccess.nodeId       = node->id;
 
         RDGResource* resource = GetOrAllocResource(dstTexture, RDGResourceType::eTexture, node->id);
-        // resource->accessNodeMap[rhi::AccessMode::eReadWrite].push_back(node->id);
+        // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
 
@@ -691,27 +691,27 @@ void RenderGraph::AddTextureResolveNode(rhi::RHITexture* srcTexture,
     }
 }
 
-void RenderGraph::AddTextureMipmapGenNode(rhi::RHITexture* texture)
+void RenderGraph::AddTextureMipmapGenNode(RHITexture* texture)
 {
     auto* node    = AllocNode<RDGTextureMipmapGenNode>();
     node->type    = RDGNodeType::eGenTextureMipmap;
     node->texture = texture;
-    node->selfStages.SetFlag(rhi::PipelineStageBits::eTransfer);
+    node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 }
 
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                              rhi::RHITexture* texture,
-                                              rhi::TextureUsage usage,
-                                              const rhi::TextureSubResourceRange& range,
-                                              rhi::AccessMode accessMode)
+                                              RHITexture* texture,
+                                              RHITextureUsage usage,
+                                              const RHITextureSubResourceRange& range,
+                                              RHIAccessMode accessMode)
 {
     RDGResource* resource = GetOrAllocResource(texture, RDGResourceType::eTexture, passNode->id);
 
-    if (accessMode == rhi::AccessMode::eReadWrite)
+    if (accessMode == RHIAccessMode::eReadWrite)
     {
         resource->writtenByNodeIds.push_back(passNode->id);
     }
-    else if (accessMode == rhi::AccessMode::eRead)
+    else if (accessMode == RHIAccessMode::eRead)
     {
         resource->readByNodeIds.push_back(passNode->id);
     }
@@ -732,40 +732,40 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* passNode,
     access.textureSubResourceRange = range;
     m_nodeAccessMap[passNode->id].emplace_back(std::move(access));
 
-    if (usage == rhi::TextureUsage::eSampled)
+    if (usage == RHITextureUsage::eSampled)
     {
-        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+        baseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
     }
-    if (usage == rhi::TextureUsage::eDepthStencilAttachment)
+    if (usage == RHITextureUsage::eDepthStencilAttachment)
     {
-        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eEarlyFragmentTests,
-                                      rhi::PipelineStageBits::eLateFragmentTests);
+        baseNode->selfStages.SetFlags(RHIPipelineStageBits::eEarlyFragmentTests,
+                                      RHIPipelineStageBits::eLateFragmentTests);
     }
-    if (usage == rhi::TextureUsage::eStorage)
+    if (usage == RHITextureUsage::eStorage)
     {
         if (passNode->type == RDGNodeType::eGraphicsPass)
         {
-            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+            baseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
         }
         if (passNode->type == RDGNodeType::eComputePass)
         {
-            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eComputeShader);
+            baseNode->selfStages.SetFlags(RHIPipelineStageBits::eComputeShader);
         }
     }
 }
 
 void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                             rhi::RHIBuffer* buffer,
-                                             rhi::BufferUsage usage,
-                                             rhi::AccessMode accessMode)
+                                             RHIBuffer* buffer,
+                                             RHIBufferUsage usage,
+                                             RHIAccessMode accessMode)
 {
     RDGResource* resource = GetOrAllocResource(buffer, RDGResourceType::eBuffer, passNode->id);
     // resource->accessNodeMap[accessMode].push_back(passNode->id);
-    if (accessMode == rhi::AccessMode::eReadWrite)
+    if (accessMode == RHIAccessMode::eReadWrite)
     {
         resource->writtenByNodeIds.push_back(passNode->id);
     }
-    else if (accessMode == rhi::AccessMode::eRead)
+    else if (accessMode == RHIAccessMode::eRead)
     {
         resource->readByNodeIds.push_back(passNode->id);
     }
@@ -785,15 +785,15 @@ void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* passNode,
 
     if (passNode->type == RDGNodeType::eGraphicsPass)
     {
-        if (usage == rhi::BufferUsage::eIndirectBuffer)
+        if (usage == RHIBufferUsage::eIndirectBuffer)
         {
-            baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eDrawIndirect);
+            baseNode->selfStages.SetFlags(RHIPipelineStageBits::eDrawIndirect);
         }
-        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eFragmentShader);
+        baseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
     }
     if (passNode->type == RDGNodeType::eComputePass)
     {
-        baseNode->selfStages.SetFlags(rhi::PipelineStageBits::eAllCommands);
+        baseNode->selfStages.SetFlags(RHIPipelineStageBits::eAllCommands);
     }
 }
 
@@ -817,9 +817,9 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
 
     uint32_t oldUsage = 0;
     uint32_t newUsage = 0;
-    rhi::AccessMode oldAccessMode;
-    rhi::AccessMode newAccessMode;
-    rhi::TextureSubResourceRange textureSubResourceRange;
+    RHIAccessMode oldAccessMode;
+    RHIAccessMode newAccessMode;
+    RHITextureSubResourceRange textureSubResourceRange;
 
     bool isTexture = resource->type == RDGResourceType::eTexture;
     for (const auto& access : m_nodeAccessMap[srcNodeId])
@@ -864,22 +864,22 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
     // }
     if (resource->type == RDGResourceType::eBuffer)
     {
-        rhi::BufferTransition bufferTransition;
-        bufferTransition.buffer        = dynamic_cast<rhi::RHIBuffer*>(resource->physicalRes);
+        RHIBufferTransition bufferTransition;
+        bufferTransition.buffer        = dynamic_cast<RHIBuffer*>(resource->physicalRes);
         bufferTransition.oldAccessMode = oldAccessMode;
         bufferTransition.newAccessMode = newAccessMode;
-        bufferTransition.oldUsage      = static_cast<rhi::BufferUsage>(oldUsage);
-        bufferTransition.newUsage      = static_cast<rhi::BufferUsage>(newUsage);
+        bufferTransition.oldUsage      = static_cast<RHIBufferUsage>(oldUsage);
+        bufferTransition.newUsage      = static_cast<RHIBufferUsage>(newUsage);
         m_bufferTransitions[nodePairId].emplace_back(bufferTransition);
     }
     else if (resource->type == RDGResourceType::eTexture)
     {
-        rhi::TextureTransition textureTransition;
-        textureTransition.texture          = dynamic_cast<rhi::RHITexture*>(resource->physicalRes);
+        RHITextureTransition textureTransition;
+        textureTransition.texture          = dynamic_cast<RHITexture*>(resource->physicalRes);
         textureTransition.oldAccessMode    = oldAccessMode;
         textureTransition.newAccessMode    = newAccessMode;
-        textureTransition.oldUsage         = static_cast<rhi::TextureUsage>(oldUsage);
-        textureTransition.newUsage         = static_cast<rhi::TextureUsage>(newUsage);
+        textureTransition.oldUsage         = static_cast<RHITextureUsage>(oldUsage);
+        textureTransition.newUsage         = static_cast<RHITextureUsage>(newUsage);
         textureTransition.subResourceRange = textureSubResourceRange;
         m_textureTransitions[nodePairId].emplace_back(textureTransition);
     }
@@ -898,12 +898,12 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
 //     std::vector<uint32_t> inDegrees(m_nodeCount, 0);
 //     for (RDGResource* resource : m_resources)
 //     {
-//         if (resource->accessNodeMap.contains(rhi::AccessMode::eReadWrite) &&
-//             resource->accessNodeMap.contains(rhi::AccessMode::eRead))
+//         if (resource->accessNodeMap.contains(RHIAccessMode::eReadWrite) &&
+//             resource->accessNodeMap.contains(RHIAccessMode::eRead))
 //         {
 //             bool isTexture         = resource->type == RDGResourceType::eTexture;
-//             auto& writtenByNodeIds = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
-//             auto& readByNodeIDs    = resource->accessNodeMap[rhi::AccessMode::eRead];
+//             auto& writtenByNodeIds = resource->accessNodeMap[RHIAccessMode::eReadWrite];
+//             auto& readByNodeIDs    = resource->accessNodeMap[RHIAccessMode::eRead];
 //             std::ranges::sort(writtenByNodeIds);
 //             std::ranges::sort(readByNodeIDs);
 //             // Combine write and read access nodes into a single vector while preserving the order
@@ -938,9 +938,9 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
 //
 //                 uint32_t oldUsage = 0;
 //                 uint32_t newUsage = 0;
-//                 rhi::AccessMode oldAccessMode;
-//                 rhi::AccessMode newAccessMode;
-//                 rhi::TextureSubResourceRange textureSubResourceRange;
+//                 RHIAccessMode oldAccessMode;
+//                 RHIAccessMode newAccessMode;
+//                 RHITextureSubResourceRange textureSubResourceRange;
 //                 for (const auto& access : m_nodeAccessMap[srcNodeId])
 //                 {
 //                     if (access.resourceId == resource->id)
@@ -981,23 +981,23 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* resource,
 //                 }
 //                 if (resource->type == RDGResourceType::eBuffer)
 //                 {
-//                     rhi::BufferTransition bufferTransition;
-//                     bufferTransition.buffer = dynamic_cast<rhi::RHIBuffer*>(resource->physicalRes);
+//                     RHIBufferTransition bufferTransition;
+//                     bufferTransition.buffer = dynamic_cast<RHIBuffer*>(resource->physicalRes);
 //                     bufferTransition.oldAccessMode = oldAccessMode;
 //                     bufferTransition.newAccessMode = newAccessMode;
-//                     bufferTransition.oldUsage      = static_cast<rhi::BufferUsage>(oldUsage);
-//                     bufferTransition.newUsage      = static_cast<rhi::BufferUsage>(newUsage);
+//                     bufferTransition.oldUsage      = static_cast<RHIBufferUsage>(oldUsage);
+//                     bufferTransition.newUsage      = static_cast<RHIBufferUsage>(newUsage);
 //                     m_bufferTransitions[nodePairId].emplace_back(bufferTransition);
 //                 }
 //                 else if (resource->type == RDGResourceType::eTexture)
 //                 {
-//                     rhi::TextureTransition textureTransition;
+//                     RHITextureTransition textureTransition;
 //                     textureTransition.texture =
-//                         dynamic_cast<rhi::RHITexture*>(resource->physicalRes);
+//                         dynamic_cast<RHITexture*>(resource->physicalRes);
 //                     textureTransition.oldAccessMode    = oldAccessMode;
 //                     textureTransition.newAccessMode    = newAccessMode;
-//                     textureTransition.oldUsage         = static_cast<rhi::TextureUsage>(oldUsage);
-//                     textureTransition.newUsage         = static_cast<rhi::TextureUsage>(newUsage);
+//                     textureTransition.oldUsage         = static_cast<RHITextureUsage>(oldUsage);
+//                     textureTransition.newUsage         = static_cast<RHITextureUsage>(newUsage);
 //                     textureTransition.subResourceRange = textureSubResourceRange;
 //                     m_textureTransitions[nodePairId].emplace_back(textureTransition);
 //                 }
@@ -1052,15 +1052,15 @@ void RenderGraph::SortNodesV2()
     // resolve node dependencies
     for (auto* resource : m_resources)
     {
-        // auto& writers = resource->accessNodeMap[rhi::AccessMode::eReadWrite];
-        // auto& readers = resource->accessNodeMap[rhi::AccessMode::eRead];
+        // auto& writers = resource->accessNodeMap[RHIAccessMode::eReadWrite];
+        // auto& readers = resource->accessNodeMap[RHIAccessMode::eRead];
 
         // Merge writers and readers into one timeline
-        std::vector<std::pair<RDG_ID, rhi::AccessMode>> accesses;
+        std::vector<std::pair<RDG_ID, RHIAccessMode>> accesses;
         for (const auto& w : resource->writtenByNodeIds)
-            accesses.emplace_back(w, rhi::AccessMode::eReadWrite);
+            accesses.emplace_back(w, RHIAccessMode::eReadWrite);
         for (const auto& r : resource->readByNodeIds)
-            accesses.emplace_back(r, rhi::AccessMode::eRead);
+            accesses.emplace_back(r, RHIAccessMode::eRead);
 
         // Sort by node ID to get a consistent order
         std::ranges::sort(accesses, [](auto& a, auto& b) { return a.first < b.first; });
@@ -1070,7 +1070,7 @@ void RenderGraph::SortNodesV2()
 
         for (const auto& [nodeId, mode] : accesses)
         {
-            if (mode == rhi::AccessMode::eReadWrite)
+            if (mode == RHIAccessMode::eReadWrite)
             {
                 // WAW dependency: this writer depends on the last writer
                 if (lastWriter.IsValid())
@@ -1087,7 +1087,7 @@ void RenderGraph::SortNodesV2()
                 // Update last writer
                 lastWriter = nodeId;
             }
-            else if (mode == rhi::AccessMode::eRead)
+            else if (mode == RHIAccessMode::eRead)
             {
                 // RAW dependency: this reader depends on the last writer
                 if (lastWriter.IsValid())
@@ -1193,7 +1193,7 @@ void RenderGraph::End()
     LOGI("==========Render Graph End==========");
 }
 
-void RenderGraph::Execute(rhi::RHICommandList* cmdList)
+void RenderGraph::Execute(RHICommandList* cmdList)
 {
     m_cmdList = cmdList;
     // execute node level by level
@@ -1265,7 +1265,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             // for (auto& source : node->sources)
             for (uint32_t i = 0; i < node->numCopySources; i++)
             {
-                const rhi::BufferTextureCopySource& source = node->TextureCopySources()[i];
+                const RHIBufferTextureCopySource& source = node->TextureCopySources()[i];
                 m_cmdList->CopyBufferToTexture(source.buffer, node->dstTexture, source.region);
             }
         }
@@ -1318,7 +1318,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        rhi::RHIPipeline* pipelineHandle;
+                        RHIPipeline* pipelineHandle;
                         for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
@@ -1411,7 +1411,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        rhi::RHIPipeline* pipelineHandle;
+                        RHIPipeline* pipelineHandle;
                         for (auto* sibling : m_passChildNodeMap[node->id])
                         {
                             if (sibling->type == RDGPassCmdType::eBindPipeline)
@@ -1486,10 +1486,10 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
     }
     const auto& currLevel = m_sortedNodes[level];
     const auto& nextLevel = m_sortedNodes[level + 1];
-    std::vector<rhi::BufferTransition> bufferTransitions;
-    std::vector<rhi::TextureTransition> textureTransitions;
-    BitField<rhi::PipelineStageBits> srcStages;
-    BitField<rhi::PipelineStageBits> dstStages;
+    std::vector<RHIBufferTransition> bufferTransitions;
+    std::vector<RHITextureTransition> textureTransitions;
+    BitField<RHIPipelineStageBits> srcStages;
+    BitField<RHIPipelineStageBits> dstStages;
     for (const auto& srcNodeId : currLevel)
     {
         for (const auto& dstNodeId : nextLevel)
@@ -1503,8 +1503,8 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
 
                 // for (auto& transition : transitions)
                 // {
-                //     srcStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.oldUsage));
-                //     dstStages.SetFlag(rhi::BufferUsageToPipelineStage(transition.newUsage));
+                //     srcStages.SetFlag(RHIBufferUsageToPipelineStage(transition.oldUsage));
+                //     dstStages.SetFlag(RHIBufferUsageToPipelineStage(transition.newUsage));
                 // }
                 for (auto& transition : transitions)
                 {
@@ -1520,8 +1520,8 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
                 auto& transitions = m_textureTransitions[nodePairKey];
                 // for (auto& transition : transitions)
                 // {
-                //     srcStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.oldUsage));
-                //     dstStages.SetFlag(rhi::TextureUsageToPipelineStage(transition.newUsage));
+                //     srcStages.SetFlag(RHITextureUsageToPipelineStage(transition.oldUsage));
+                //     dstStages.SetFlag(RHITextureUsageToPipelineStage(transition.newUsage));
                 // }
                 for (auto& transition : transitions)
                 {
@@ -1540,11 +1540,11 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
 
 void RenderGraph::EmitInitializationBarriers(uint32_t level)
 {
-    std::vector<rhi::TextureTransition> textureTransitions;
-    std::vector<rhi::BufferTransition> bufferTransitions;
-    BitField<rhi::PipelineStageBits> srcStages;
-    BitField<rhi::PipelineStageBits> dstStages;
-    srcStages.SetFlag(rhi::PipelineStageBits::eAllCommands); // todo: is it correct?
+    std::vector<RHITextureTransition> textureTransitions;
+    std::vector<RHIBufferTransition> bufferTransitions;
+    BitField<RHIPipelineStageBits> srcStages;
+    BitField<RHIPipelineStageBits> dstStages;
+    srcStages.SetFlag(RHIPipelineStageBits::eAllCommands); // todo: is it correct?
 
     const auto& currLevel = m_sortedNodes[level];
     for (const auto& kv : m_resourceFirstUseNodeMap)
@@ -1567,9 +1567,9 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                         {
                             RDGResourceTracker* tracker =
                                 s_trackerPool.GetTracker(resource->physicalRes);
-                            rhi::TextureTransition textureTransition;
+                            RHITextureTransition textureTransition;
                             textureTransition.texture =
-                                dynamic_cast<rhi::RHITexture*>(resource->physicalRes);
+                                dynamic_cast<RHITexture*>(resource->physicalRes);
                             // set oldUsage and access based on RDGResourceTracker
                             textureTransition.oldUsage         = tracker->textureUsage;
                             textureTransition.newUsage         = access.textureUsage;
@@ -1584,15 +1584,15 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                                                              textureTransition.newUsage);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             // dstStages.SetFlag(
-                            //     rhi::TextureUsageToPipelineStage(textureTransition.newUsage));
+                            //     RHITextureUsageToPipelineStage(textureTransition.newUsage));
                         }
                         if (resource->type == RDGResourceType::eBuffer)
                         {
                             RDGResourceTracker* tracker =
                                 s_trackerPool.GetTracker(resource->physicalRes);
-                            rhi::BufferTransition bufferTransition;
+                            RHIBufferTransition bufferTransition;
                             bufferTransition.buffer =
-                                dynamic_cast<rhi::RHIBuffer*>(resource->physicalRes);
+                                dynamic_cast<RHIBuffer*>(resource->physicalRes);
                             bufferTransition.oldUsage      = tracker->bufferUsage;
                             bufferTransition.newUsage      = access.bufferUsage;
                             bufferTransition.oldAccessMode = tracker->accessMode;
@@ -1606,7 +1606,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
                                                              bufferTransition.newUsage);
                             // dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
                             // dstStages.SetFlag(
-                            //     rhi::BufferUsageToPipelineStage(bufferTransition.newUsage));
+                            //     RHIBufferUsageToPipelineStage(bufferTransition.newUsage));
                         }
                     }
                 }

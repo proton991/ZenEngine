@@ -5,11 +5,11 @@
 // #include "SceneGraph/Scene.h"
 // #include "SceneGraph/Camera.h"
 //
-// using namespace zen::rhi;
+//
 //
 // namespace zen::rc
 // {
-// VoxelRenderer::VoxelRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+// VoxelRenderer::VoxelRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
 //     m_renderDevice(renderDevice), m_viewport(viewport)
 // {
 //     m_RHI = m_renderDevice->GetRHI();
@@ -51,39 +51,39 @@
 //
 // void VoxelRenderer::PrepareTextures()
 // {
-//     using namespace zen::rhi;
+//
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8SRGB,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e2D, DataFormat::eR8G8B8A8SRGB,
 //                           m_config.volumeDimension, m_config.volumeDimension, 1, 1, 1,
 //                           SampleCount::e1, "voxel_offscreen1",
-//                           TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eColorAttachment, RHITextureUsageFlagBits::eSampled);
 //         m_voxelTextures.offscreen1 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e2D, DataFormat::eR8G8B8A8UNORM,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e2D, DataFormat::eR8G8B8A8UNORM,
 //                           m_viewport->GetWidth(), m_viewport->GetHeight(), 1, 1, 1, SampleCount::e1,
-//                           "voxel_offscreen2", TextureUsageFlagBits::eColorAttachment,
-//                           TextureUsageFlagBits::eSampled);
+//                           "voxel_offscreen2", RHITextureUsageFlagBits::eColorAttachment,
+//                           RHITextureUsageFlagBits::eSampled);
 //         m_voxelTextures.offscreen2 = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, DataFormat::eR8UNORM,
 //                           m_config.volumeDimension, m_config.volumeDimension,
 //                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_static_flag",
-//                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
 //         m_voxelTextures.staticFlag = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_config.voxelTexFormat,
 //                           m_config.volumeDimension, m_config.volumeDimension,
 //                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_albedo",
-//                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
 //         texInfo.mutableFormat  = true;
 //         m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         rhi::TextureProxyInfo textureProxyInfo{};
-//         textureProxyInfo.type        = rhi::TextureType::e3D;
+//         TextureProxyInfo textureProxyInfo{};
+//         textureProxyInfo.type        = RHITextureType::e3D;
 //         textureProxyInfo.arrayLayers = 1;
 //         textureProxyInfo.mipmaps     = 1;
 //         textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
@@ -92,16 +92,16 @@
 //             m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_config.voxelTexFormat,
 //                           m_config.volumeDimension, m_config.volumeDimension,
 //                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_normal",
-//                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
 //         texInfo.mutableFormat  = true;
 //         m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         rhi::TextureProxyInfo textureProxyInfo{};
-//         textureProxyInfo.type        = rhi::TextureType::e3D;
+//         TextureProxyInfo textureProxyInfo{};
+//         textureProxyInfo.type        = RHITextureType::e3D;
 //         textureProxyInfo.arrayLayers = 1;
 //         textureProxyInfo.mipmaps     = 1;
 //         textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
@@ -110,16 +110,16 @@
 //             m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_config.voxelTexFormat,
 //                           m_config.volumeDimension, m_config.volumeDimension,
 //                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_emissive",
-//                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
 //         texInfo.mutableFormat    = true;
 //         m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     {
-//         rhi::TextureProxyInfo textureProxyInfo{};
-//         textureProxyInfo.type        = rhi::TextureType::e3D;
+//         TextureProxyInfo textureProxyInfo{};
+//         textureProxyInfo.type        = RHITextureType::e3D;
 //         textureProxyInfo.arrayLayers = 1;
 //         textureProxyInfo.mipmaps     = 1;
 //         textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
@@ -128,47 +128,47 @@
 //             m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
 //     }
 //     {
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_config.voxelTexFormat,
 //                           m_config.volumeDimension, m_config.volumeDimension,
 //                           m_config.volumeDimension, 1, 1, SampleCount::e1, "voxel_radiance",
-//                           TextureUsageFlagBits::eStorage, TextureUsageFlagBits::eSampled);
+//                           RHITextureUsageFlagBits::eStorage, RHITextureUsageFlagBits::eSampled);
 //         m_voxelTextures.radiance = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //     }
 //     const auto halfDim = m_config.volumeDimension / 2;
 //     for (uint32_t i = 0; i < 6; i++)
 //     {
 //         const auto texName = "voxel_mipmap_face_" + std::to_string(i);
-//         INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_config.voxelTexFormat, halfDim, halfDim,
+//         INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_config.voxelTexFormat, halfDim, halfDim,
 //                           halfDim, CalculateTextureMipLevels(halfDim, halfDim, halfDim), 1,
-//                           SampleCount::e1, texName, TextureUsageFlagBits::eStorage,
-//                           TextureUsageFlagBits::eSampled);
+//                           SampleCount::e1, texName, RHITextureUsageFlagBits::eStorage,
+//                           RHITextureUsageFlagBits::eSampled);
 //         m_voxelTextures.mipmaps[i] = m_renderDevice->CreateTexture(texInfo, texInfo.name);
 //         //        m_RHI->ChangeTextureLayout(m_renderDevice->GetCurrentUploadCmdList(),
-//         //                                   m_voxelTextures.mipmaps[i], TextureLayout::eUndefined,
-//         //                                   TextureLayout::eGeneral);
+//         //                                   m_voxelTextures.mipmaps[i], RHITextureLayout::eUndefined,
+//         //                                   RHITextureLayout::eGeneral);
 //     }
 //
 //     m_RHI->WaitForCommandList(m_renderDevice->GetCurrentUploadCmdList());
 //     {
-//         rhi::SamplerInfo samplerInfo{};
-//         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-//         samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-//         samplerInfo.mipFilter = rhi::SamplerFilter::eLinear;
+//         RHISamplerInfo samplerInfo{};
+//         samplerInfo.magFilter = RHISamplerFilter::eLinear;
+//         samplerInfo.magFilter = RHISamplerFilter::eLinear;
+//         samplerInfo.mipFilter = RHISamplerFilter::eLinear;
 //
 //         m_voxelSampler = m_renderDevice->CreateSampler(samplerInfo);
 //     }
 //
 //     // offscreen depth texture sampler
 //     {
-//         SamplerInfo samplerInfo{};
-//         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
-//         samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
-//         samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
-//         samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
-//         samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
-//         samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
-//         samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
-//         samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+//         RHISamplerInfo samplerInfo{};
+//         samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
+//         samplerInfo.minFilter   = RHISamplerFilter::eLinear;
+//         samplerInfo.magFilter   = RHISamplerFilter::eLinear;
+//         samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
+//         samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
+//         samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
+//         samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
+//         samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
 //
 //         m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
 //     }
@@ -209,7 +209,7 @@
 //         VoxelizationProgram* shaderProgram =
 //             dynamic_cast<VoxelizationProgram*>(m_gfxPasses.voxelization.shaderProgram);
 //         const uint32_t cFbSize = m_config.volumeDimension;
-//         std::vector<RenderPassClearValue> clearValues(1);
+//         std::vector<RHIRenderPassClearValue> clearValues(1);
 //         clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
 //         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
 //         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
@@ -217,15 +217,15 @@
 //         auto* pass =
 //             m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues, false, false);
 //
-//         rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
+//         TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
 //                                                  m_voxelTextures.normal, m_voxelTextures.emissive};
-//         rhi::TextureSubResourceRange ranges[] = {
+//         RHITextureSubResourceRange ranges[] = {
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
 //
-//         m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
+//         m_rdg->DeclareTextureAccessForPass(pass, 4, textures, RHITextureUsage::eStorage, ranges,
 //                                            RDGAccessType::eReadWrite);
 //         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
 //         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
@@ -259,7 +259,7 @@
 //         VoxelDrawShaderProgram* shaderProgram =
 //             dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
 //
-//         std::vector<RenderPassClearValue> clearValues(2);
+//         std::vector<RHIRenderPassClearValue> clearValues(2);
 //         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
 //         clearValues[1].depth   = 1.0f;
 //         clearValues[1].stencil = 0;
@@ -295,22 +295,22 @@
 //         VoxelizationCompProgram* shaderProgram =
 //             dynamic_cast<VoxelizationCompProgram*>(m_computePasses.voxelization.shaderProgram);
 //         const uint32_t cFbSize = m_config.volumeDimension;
-//         std::vector<RenderPassClearValue> clearValues(1);
+//         std::vector<RHIRenderPassClearValue> clearValues(1);
 //         clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
 //         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
 //         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
 //
 //         auto* pass = m_rdg->AddComputePassNode(m_computePasses.voxelization);
 //
-//         rhi::TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
+//         TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
 //                                                  m_voxelTextures.normal, m_voxelTextures.emissive};
-//         rhi::TextureSubResourceRange ranges[] = {
+//         RHITextureSubResourceRange ranges[] = {
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
 //             m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
 //
-//         m_rdg->DeclareTextureAccessForPass(pass, 4, textures, TextureUsage::eStorage, ranges,
+//         m_rdg->DeclareTextureAccessForPass(pass, 4, textures, RHITextureUsage::eStorage, ranges,
 //                                            RDGAccessType::eReadWrite);
 //
 //
@@ -347,7 +347,7 @@
 //     {
 //         VoxelDrawShaderProgram* shaderProgram =
 //             dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
-//         std::vector<RenderPassClearValue> clearValues(2);
+//         std::vector<RHIRenderPassClearValue> clearValues(2);
 //         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
 //         clearValues[1].depth   = 1.0f;
 //         clearValues[1].stencil = 0;
@@ -375,21 +375,21 @@
 //     // voxelization graphics pass, set static flag
 //     {
 //         // disable depth cull, color write, depth stencil test and write.
-//         GfxPipelineStates pso{};
+//         RHIGfxPipelineStates pso{};
 //         pso.rasterizationState = {};
 //         pso.depthStencilState =
-//             GfxPipelineDepthStencilState::Create(false, false, CompareOperator::eNever);
+//             RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eNever);
 //         pso.multiSampleState = {};
-//         pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled();
-//         pso.dynamicStates.push_back(DynamicState::eScissor);
-//         pso.dynamicStates.push_back(DynamicState::eViewPort);
+//         pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled();
+//         pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+//         pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 //
 //         rc::GraphicsPassBuilder builder(m_renderDevice);
 //         m_gfxPasses.voxelization =
 //             builder.SetShaderProgramName("VoxelizationSP")
 //                 .SetNumSamples(SampleCount::e1)
 //                 .SetPipelineState(pso)
-//                 //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
+//                 //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, RHITextureUsage::eColorAttachment,
 //                 //                      m_voxelTextures.offscreen1)
 //                 .SetFramebufferInfo(m_viewport, m_config.volumeDimension, m_config.volumeDimension)
 //                 .SetTag("Voxelization")
@@ -397,18 +397,18 @@
 //     }
 //     // voxel draw graphics pass
 //     {
-//         GfxPipelineStates pso{};
-//         pso.primitiveType                = DrawPrimitiveType::ePointList;
+//         RHIGfxPipelineStates pso{};
+//         pso.primitiveType                = RHIDrawPrimitiveType::ePointList;
 //         pso.rasterizationState           = {};
-//         pso.rasterizationState.cullMode  = PolygonCullMode::eBack;
-//         pso.rasterizationState.frontFace = PolygonFrontFace::eCounterClockWise;
+//         pso.rasterizationState.cullMode  = RHIPolygonCullMode::eBack;
+//         pso.rasterizationState.frontFace = RHIPolygonFrontFace::eCounterClockWise;
 //
 //         pso.depthStencilState =
-//             GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLess);
+//             RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
 //         pso.multiSampleState = {};
-//         pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
-//         pso.dynamicStates.push_back(DynamicState::eScissor);
-//         pso.dynamicStates.push_back(DynamicState::eViewPort);
+//         pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+//         pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+//         pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 //
 //         rc::GraphicsPassBuilder builder(m_renderDevice);
 //         m_gfxPasses.voxelDraw =
@@ -416,11 +416,11 @@
 //                 .SetNumSamples(SampleCount::e1)
 //                 .SetPipelineState(pso)
 //                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-//                                       TextureUsage::eColorAttachment,
+//                                       RHITextureUsage::eColorAttachment,
 //                                       m_viewport->GetColorBackBuffer())
 //                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
 //                                        m_viewport->GetDepthStencilBackBuffer(),
-//                                        RenderTargetLoadOp::eClear, RenderTargetStoreOp::eStore)
+//                                        RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore)
 //                 .SetFramebufferInfo(m_viewport)
 //                 .SetTag("VoxelDraw")
 //                 .Build();
@@ -440,29 +440,29 @@
 // {
 //     // voxelization pass
 //     {
-//         std::vector<ShaderResourceBinding> set0bindings;
-//         std::vector<ShaderResourceBinding> set1bindings;
-//         std::vector<ShaderResourceBinding> set2bindings;
+//         std::vector<RHIShaderResourceBinding> set0bindings;
+//         std::vector<RHIShaderResourceBinding> set1bindings;
+//         std::vector<RHIShaderResourceBinding> set2bindings;
 //         // set-0 bindings
-//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eStorageBuffer,
 //                                   m_scene->GetNodesDataSSBO());
 //         ADD_SHADER_BINDING_SINGLE(
-//             set0bindings, 1, ShaderResourceType::eUniformBuffer,
+//             set0bindings, 1, RHIShaderResourceType::eUniformBuffer,
 //             m_gfxPasses.voxelization.shaderProgram->GetUniformBufferHandle("uVoxelConfig"));
-//         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, RHIShaderResourceType::eStorageBuffer,
 //                                   m_scene->GetMaterialsDataSSBO());
 //
 //         // set-1 bindings
-//         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, ShaderResourceType::eImage,
+//         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.albedo);
-//         ADD_SHADER_BINDING_SINGLE(set1bindings, 1, ShaderResourceType::eImage,
+//         ADD_SHADER_BINDING_SINGLE(set1bindings, 1, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.normal);
-//         ADD_SHADER_BINDING_SINGLE(set1bindings, 2, ShaderResourceType::eImage,
+//         ADD_SHADER_BINDING_SINGLE(set1bindings, 2, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.emissive);
-//         ADD_SHADER_BINDING_SINGLE(set1bindings, 3, ShaderResourceType::eImage,
+//         ADD_SHADER_BINDING_SINGLE(set1bindings, 3, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.staticFlag);
 //         // set-2 bindings: texture array
-//         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0, ShaderResourceType::eSamplerWithTexture,
+//         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0, RHIShaderResourceType::eSamplerWithTexture,
 //                                          m_colorSampler, m_scene->GetSceneTextures())
 //
 //         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelization);
@@ -473,11 +473,11 @@
 //     }
 //     // voxel draw pass
 //     {
-//         std::vector<ShaderResourceBinding> set0bindings;
-//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
+//         std::vector<RHIShaderResourceBinding> set0bindings;
+//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.albedoProxy);
 //         ADD_SHADER_BINDING_SINGLE(
-//             set0bindings, 1, ShaderResourceType::eUniformBuffer,
+//             set0bindings, 1, RHIShaderResourceType::eUniformBuffer,
 //             m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
 //
 //         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelDraw);
@@ -489,35 +489,35 @@
 // {
 //     // voxelization pass
 //     {
-//         std::vector<ShaderResourceBinding> set0bindings;
-//         std::vector<ShaderResourceBinding> set1bindings;
-//         std::vector<ShaderResourceBinding> set2bindings;
-//         std::vector<ShaderResourceBinding> set3bindings;
-//         std::vector<ShaderResourceBinding> set4bindings;
-//         std::vector<ShaderResourceBinding> set5bindings;
-//         std::vector<ShaderResourceBinding> set6bindings;
+//         std::vector<RHIShaderResourceBinding> set0bindings;
+//         std::vector<RHIShaderResourceBinding> set1bindings;
+//         std::vector<RHIShaderResourceBinding> set2bindings;
+//         std::vector<RHIShaderResourceBinding> set3bindings;
+//         std::vector<RHIShaderResourceBinding> set4bindings;
+//         std::vector<RHIShaderResourceBinding> set5bindings;
+//         std::vector<RHIShaderResourceBinding> set6bindings;
 //         // set-0 bindings
-//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
+//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.albedo);
 //         // set-1 bindings
 //         ADD_SHADER_BINDING_SINGLE(
-//             set1bindings, 0, ShaderResourceType::eUniformBuffer,
+//             set1bindings, 0, RHIShaderResourceType::eUniformBuffer,
 //             m_computePasses.voxelization.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 //         // set-2 bindings
-//         ADD_SHADER_BINDING_SINGLE(set2bindings, 0, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set2bindings, 0, RHIShaderResourceType::eStorageBuffer,
 //                                   m_scene->GetVertexBuffer());
-//         ADD_SHADER_BINDING_SINGLE(set2bindings, 1, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set2bindings, 1, RHIShaderResourceType::eStorageBuffer,
 //                                   m_scene->GetIndexBuffer());
-//         ADD_SHADER_BINDING_SINGLE(set6bindings, 0, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set6bindings, 0, RHIShaderResourceType::eStorageBuffer,
 //                                   m_scene->GetNodesDataSSBO());
 //         // set-3 bindings: texture array
-//         ADD_SHADER_BINDING_TEXTURE_ARRAY(set3bindings, 0, ShaderResourceType::eSamplerWithTexture,
+//         ADD_SHADER_BINDING_TEXTURE_ARRAY(set3bindings, 0, RHIShaderResourceType::eSamplerWithTexture,
 //                                          m_colorSampler, m_scene->GetSceneTextures())
 //         // set-4 bindings
-//         ADD_SHADER_BINDING_SINGLE(set4bindings, 0, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set4bindings, 0, RHIShaderResourceType::eStorageBuffer,
 //                                   m_buffers.computeIndirectBuffer);
 //         // set-5 bindings
-//         ADD_SHADER_BINDING_SINGLE(set5bindings, 0, ShaderResourceType::eStorageBuffer,
+//         ADD_SHADER_BINDING_SINGLE(set5bindings, 0, RHIShaderResourceType::eStorageBuffer,
 //                                   m_buffers.largeTriangleBuffer);
 //
 //         rc::ComputePassResourceUpdater updater(m_renderDevice, &m_computePasses.voxelization);
@@ -532,11 +532,11 @@
 //     }
 //     // voxel draw pass
 //     {
-//         std::vector<ShaderResourceBinding> set0bindings;
-//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eImage,
+//         std::vector<RHIShaderResourceBinding> set0bindings;
+//         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
 //                                   m_voxelTextures.albedoProxy);
 //         ADD_SHADER_BINDING_SINGLE(
-//             set0bindings, 1, ShaderResourceType::eUniformBuffer,
+//             set0bindings, 1, RHIShaderResourceType::eUniformBuffer,
 //             m_gfxPasses.voxelDraw.shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
 //
 //         rc::GraphicsPassResourceUpdater updater(m_renderDevice, &m_gfxPasses.voxelDraw);

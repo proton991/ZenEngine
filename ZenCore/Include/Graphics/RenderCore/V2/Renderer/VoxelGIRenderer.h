@@ -11,7 +11,7 @@ class RenderScene;
 class VoxelGIRenderer
 {
 public:
-    VoxelGIRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    VoxelGIRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
     void Init();
 
@@ -47,9 +47,9 @@ private:
 
     RenderScene* m_scene{nullptr};
 
-    // rhi::DynamicRHI* m_RHI{nullptr};
+    // DynamicRHI* m_RHI{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     VoxelizerBase* m_voxelizer{nullptr};
 
@@ -82,10 +82,10 @@ private:
 
     struct
     {
-        rhi::RHITexture* voxelRadiance;
-        rhi::RHITexture* voxelMipmaps[6];
+        RHITexture* voxelRadiance;
+        RHITexture* voxelMipmaps[6];
         // from ShadowMapRenderer
-        rhi::RHITexture* shadowMap;
+        RHITexture* shadowMap;
     } m_textures;
 };
 } // namespace zen::rc

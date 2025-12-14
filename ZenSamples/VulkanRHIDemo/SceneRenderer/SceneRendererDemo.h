@@ -4,8 +4,9 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/GlfwWindow.h"
 
-using namespace zen;
 
+namespace zen
+{
 class SceneRendererDemo
 {
 public:
@@ -29,7 +30,7 @@ private:
 
     platform::GlfwWindowImpl* m_window{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     UniquePtr<platform::Timer> m_timer;
     // Defines a frame rate independent timer value clamped from -1.0...1.0
@@ -37,3 +38,4 @@ private:
     float m_animationTimer{0.0f};
     float m_animationSpeed{0.25f};
 };
+} // namespace zen

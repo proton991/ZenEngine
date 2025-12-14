@@ -5,7 +5,7 @@
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
-namespace zen::rhi
+namespace zen
 {
 
 RHIBuffer* VulkanRHI::CreateBuffer(const RHIBufferCreateInfo& createInfo)
@@ -95,8 +95,8 @@ void VulkanBuffer::SetTexelFormat(DataFormat format)
 
 
 // BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
-//                                      BitField<BufferUsageFlagBits> usageFlags,
-//                                      BufferAllocateType allocateType)
+//                                      BitField<RHIBufferUsageFlagBits> usageFlags,
+//                                      RHIBufferAllocateType allocateType)
 // {
 //     VulkanBuffer* vulkanBuffer = VersatileResource::Alloc<VulkanBuffer>(m_resourceAllocator);
 //
@@ -153,4 +153,4 @@ void VulkanBuffer::SetTexelFormat(DataFormat format)
 //         vkCreateBufferView(m_device->GetVkHandle(), &bufferViewCI, nullptr, &buffer->bufferView));
 // }
 
-} // namespace zen::rhi
+} // namespace zen

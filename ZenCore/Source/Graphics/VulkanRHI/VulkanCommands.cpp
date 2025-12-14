@@ -9,7 +9,7 @@
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanCommandList::VulkanCommandList(VulkanCommandListContext* context) :
     m_vkRHI(context->GetVkRHI()), m_cmdBufferManager(context->GetCmdBufferManager())
@@ -27,7 +27,7 @@ void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
 RHICommandList* VulkanRHI::GetImmediateCommandList()
 {
     // VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
-    // return RHICommandList::Create(GraphicsAPIType::eVulkan, context);
+    // return RHICommandList::Create(RHIAPIType::eVulkan, context);
     return m_device->GetImmediateCommandList();
 }
 
@@ -54,11 +54,12 @@ void VulkanCommandList::EndUpload()
     m_cmdBufferManager->SubmitUploadCmdBuffer();
 }
 
-void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages,
-                                           BitField<PipelineStageBits> dstStages,
-                                           const std::vector<MemoryTransition>& memoryTransitions,
-                                           const std::vector<BufferTransition>& bufferTransitions,
-                                           const std::vector<TextureTransition>& textureTransitions)
+void VulkanCommandList::AddPipelineBarrier(
+    BitField<RHIPipelineStageBits> srcStages,
+    BitField<RHIPipelineStageBits> dstStages,
+    const std::vector<RHIMemoryTransition>& memoryTransitions,
+    const std::vector<RHIBufferTransition>& bufferTransitions,
+    const std::vector<RHITextureTransition>& textureTransitions)
 {
     VulkanPipelineBarrier barrier;
 
@@ -71,10 +72,10 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
     for (const auto& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferTransition.buffer);
-        VkAccessFlags srcAccess =
-            BufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
-        VkAccessFlags dstAccess =
-            BufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode);
+        VkAccessFlags srcAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
+                                                                    bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
+                                                                    bufferTransition.newAccessMode);
         barrier.AddBufferBarrier(vulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
     }
@@ -83,14 +84,15 @@ void VulkanCommandList::AddPipelineBarrier(BitField<PipelineStageBits> srcStages
     {
         VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureTransition.texture);
 
-        VkAccessFlags srcAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
+        VkAccessFlags srcAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
-        VkAccessFlags dstAccess = ToVkAccessFlags(TextureUsageToAccessFlagBits(
+        VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
         // VkImageLayout oldLayout =
-        //     ToVkImageLayout(TextureUsageToLayout(textureTransition.oldUsage));
+        //     ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout oldLayout = m_vkRHI->GetImageCurrentLayout(vulkanTexture->GetVkImage());
-        VkImageLayout newLayout = ToVkImageLayout(TextureUsageToLayout(textureTransition.newUsage));
+        VkImageLayout newLayout =
+            ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
         // filter
         if (oldLayout == newLayout)
         {
@@ -118,7 +120,7 @@ void VulkanCommandList::ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t
 
 void VulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
                                    RHIBuffer* dstBuffer,
-                                   const BufferCopyRegion& region)
+                                   const RHIBufferCopyRegion& region)
 {
     VkBufferCopy bufferCopy;
     bufferCopy.srcOffset = region.srcOffset;
@@ -131,7 +133,7 @@ void VulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
 
 void VulkanCommandList::ClearTexture(RHITexture* texture,
                                      const Color& color,
-                                     const TextureSubResourceRange& range)
+                                     const RHITextureSubResourceRange& range)
 {
     VkImageSubresourceRange vkRange;
     ToVkImageSubresourceRange(range, &vkRange);
@@ -143,7 +145,7 @@ void VulkanCommandList::ClearTexture(RHITexture* texture,
 
 void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
                                     RHITexture* dstTexture,
-                                    VectorView<TextureCopyRegion> regions)
+                                    VectorView<RHITextureCopyRegion> regions)
 {
     std::vector<VkImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -158,7 +160,7 @@ void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
 
 void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
                                             RHIBuffer* buffer,
-                                            VectorView<BufferTextureCopyRegion> regions)
+                                            VectorView<RHIBufferTextureCopyRegion> regions)
 {
     std::vector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -173,7 +175,7 @@ void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
 
 void VulkanCommandList::CopyBufferToTexture(RHIBuffer* buffer,
                                             RHITexture* texture,
-                                            VectorView<BufferTextureCopyRegion> regions)
+                                            VectorView<RHIBufferTextureCopyRegion> regions)
 {
     std::vector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -318,7 +320,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
 void VulkanCommandList::BeginRenderPass(RenderPassHandle renderPassHandle,
                                         FramebufferHandle framebufferHandle,
                                         const Rect2<int>& area,
-                                        VectorView<RenderPassClearValue> clearValues)
+                                        VectorView<RHIRenderPassClearValue> clearValues)
 {
     VkFramebuffer framebuffer = TO_VK_FRAMEBUFFER(framebufferHandle)->GetVkHandle();
     VkRenderPassBeginInfo rpBeginInfo;
@@ -340,11 +342,11 @@ void VulkanCommandList::EndRenderPass()
     vkCmdEndRenderPass(m_cmdBuffer->GetVkHandle());
 }
 
-void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
+void VulkanCommandList::BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayout,
                                                const Rect2<int>& area,
-                                               VectorView<RenderPassClearValue> clearValues)
+                                               VectorView<RHIRenderPassClearValue> clearValues)
 {
-    const std::vector<RenderTarget>& colorRTs = rpLayout.GetColorRenderTargets();
+    const std::vector<RHIRenderTarget>& colorRTs = rpLayout.GetColorRenderTargets();
     VkRenderingInfoKHR renderingInfo{};
     InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
     renderingInfo.layerCount               = 1;
@@ -360,8 +362,8 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
 
     for (uint32_t i = 0; i < colorRTs.size(); i++)
     {
-        const RenderTarget& colorRT  = colorRTs[i];
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(colorRT.texture);
+        const RHIRenderTarget& colorRT = colorRTs[i];
+        VulkanTexture* vulkanTexture   = TO_VK_TEXTURE(colorRT.texture);
         VkRenderingAttachmentInfoKHR colorAttachment{};
         InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
         colorAttachment.imageView        = vulkanTexture->GetVkImageView();
@@ -378,12 +380,12 @@ void VulkanCommandList::BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
     InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
     if (rpLayout.HasDepthStencilRenderTarget())
     {
-        const RenderTarget& depthStencilRT = rpLayout.GetDepthStencilRenderTarget();
-        VulkanTexture* vulkanTexture       = TO_VK_TEXTURE(depthStencilRT.texture);
-        depthStencilAttachment.imageView   = vulkanTexture->GetVkImageView();
-        depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
-        depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
+        const RHIRenderTarget& depthStencilRT = rpLayout.GetDepthStencilRenderTarget();
+        VulkanTexture* vulkanTexture          = TO_VK_TEXTURE(depthStencilRT.texture);
+        depthStencilAttachment.imageView      = vulkanTexture->GetVkImageView();
+        depthStencilAttachment.imageLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthStencilAttachment.loadOp         = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
+        depthStencilAttachment.storeOp        = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
         depthStencilAttachment.clearValue.depthStencil = ToVkClearDepthStencil(clearValues.back());
 
         renderingInfo.pDepthAttachment = &depthStencilAttachment;
@@ -554,7 +556,7 @@ void VulkanCommandList::GenerateTextureMipmaps(RHITexture* texture)
                       vulkanTexture->GetVkSubresourceRange());
 }
 
-void VulkanCommandList::ChangeTextureLayout(RHITexture* texture, TextureLayout newLayout)
+void VulkanCommandList::ChangeTextureLayout(RHITexture* texture, RHITextureLayout newLayout)
 {
     VulkanTexture* vkTexture = TO_VK_TEXTURE(texture);
 
@@ -588,4 +590,4 @@ void VulkanCommandList::ChangeImageLayout(VkImage image,
     barrier.Execute(m_cmdBuffer);
     m_vkRHI->UpdateImageLayout(image, dstLayout);
 }
-} // namespace zen::rhi
+} // namespace zen

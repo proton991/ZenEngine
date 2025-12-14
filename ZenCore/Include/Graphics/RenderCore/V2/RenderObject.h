@@ -28,12 +28,12 @@ public:
         return m_scene->GetRenderableNodes();
     }
 
-    rhi::RHIBuffer* GetVertexBuffer() const
+    RHIBuffer* GetVertexBuffer() const
     {
         return m_vertexBuffer;
     }
 
-    rhi::RHIBuffer* GetIndexBuffer() const
+    RHIBuffer* GetIndexBuffer() const
     {
         return m_indexBuffer;
     }
@@ -48,14 +48,14 @@ private:
     UniquePtr<sg::Scene> m_scene;
 
     std::vector<sg::MaterialData> m_materialsData;
-    rhi::RHIBuffer* m_materialSSBO;
+    RHIBuffer* m_materialSSBO;
 
     std::vector<sg::NodeData> m_nodesData;
-    rhi::RHIBuffer* m_nodeSSBO;
+    RHIBuffer* m_nodeSSBO;
 
-    rhi::RHIBuffer* m_vertexBuffer;
-    rhi::RHIBuffer* m_indexBuffer;
+    RHIBuffer* m_vertexBuffer;
+    RHIBuffer* m_indexBuffer;
 
-    std::vector<rhi::RHITexture*> m_sceneTextures;
+    std::vector<RHITexture*> m_sceneTextures;
 };
 } // namespace zen::rc

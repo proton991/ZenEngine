@@ -9,7 +9,7 @@
 #include "Math/Math.h"
 #include "Graphics/RenderCore/TextureManager.h"
 #include "AssetLib/GLTFLoader.h"
-#include "Common/ThreadPool.h"
+#include "Utils/ThreadPool.h"
 
 namespace zen
 {

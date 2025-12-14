@@ -17,10 +17,9 @@ struct Win32WindowData
 typedef Win32WindowData WindowData;
 } // namespace zen
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanInstanceExtension;
-class InstanceExtensionArray;
 
 class VulkanWindowsPlatform
 {
@@ -32,6 +31,6 @@ public:
     static void DestroySurface(VkInstance instance, VkSurfaceKHR surface);
 };
 typedef VulkanWindowsPlatform VulkanPlatform;
-} // namespace zen::rhi
+} // namespace zen
 
 #endif

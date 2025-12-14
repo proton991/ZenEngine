@@ -1,4 +1,4 @@
-#include "Graphics/RHI/ShaderUtil.h"
+#include "Graphics/RHI/RHIShaderUtil.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Utils/Errors.h"
@@ -53,22 +53,22 @@ void ShaderProgram::UpdateUniformBuffer(const std::string& name,
 
 void ShaderProgram::Init()
 {
-    // auto shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // auto shaderGroupSpirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
     // for (const auto& kv : m_stages)
     // {
     //     shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
     // }
-    // rhi::ShaderGroupInfo shaderGroupInfo{};
-    // rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    // RHIShaderGroupInfo shaderGroupInfo{};
+    // RHIShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
     // shaderGroupInfo.name = m_name;
 
-    rhi::RHIShaderCreateInfo shaderCreateInfo{};
+    RHIShaderCreateInfo shaderCreateInfo{};
 
     for (const auto& kv : m_stages)
     {
-        shaderCreateInfo.spirvFileName[rhi::ToUnderlying(kv.first)] = kv.second;
+        shaderCreateInfo.spirvFileName[ToUnderlying(kv.first)] = kv.second;
         shaderCreateInfo.stageFlags.SetFlag(
-            static_cast<rhi::RHIShaderStageFlagBits>(1 << rhi::ToUnderlying(kv.first)));
+            static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(kv.first)));
 
         // shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
     }
@@ -83,23 +83,23 @@ void ShaderProgram::Init()
     {
         for (const auto& srd : setSRD)
         {
-            if (srd.type == rhi::ShaderResourceType::eUniformBuffer)
+            if (srd.type == RHIShaderResourceType::eUniformBuffer)
             {
                 m_uniformBufferMap[srd.name] =
                     m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
                 m_uniformBufferSizes[srd.name] = srd.blockSize;
                 m_uniformBuffers.emplace_back(srd);
             }
-            else if (srd.type == rhi::ShaderResourceType::eStorageBuffer)
+            else if (srd.type == RHIShaderResourceType::eStorageBuffer)
             {
                 m_storageBuffers.emplace_back(srd);
             }
-            else if (srd.type == rhi::ShaderResourceType::eImage)
+            else if (srd.type == RHIShaderResourceType::eImage)
             {
                 m_storageImages.emplace_back(srd);
             }
-            else if (srd.type == rhi::ShaderResourceType::eTexture ||
-                     srd.type == rhi::ShaderResourceType::eSamplerWithTexture)
+            else if (srd.type == RHIShaderResourceType::eTexture ||
+                     srd.type == RHIShaderResourceType::eSamplerWithTexture)
             {
                 m_sampledTextures.emplace_back(srd);
             }
@@ -109,13 +109,13 @@ void ShaderProgram::Init()
 
 void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
 {
-    // rhi::ShaderGroupSPIRVPtr shaderGroupSpirv = MakeRefCountPtr<rhi::ShaderGroupSPIRV>();
+    // RHIShaderGroupSPIRVPtr shaderGroupSpirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
     // for (const auto& kv : m_stages)
     // {
     //     shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
     // }
-    // rhi::ShaderGroupInfo shaderGroupInfo{};
-    // rhi::ShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
+    // RHIShaderGroupInfo shaderGroupInfo{};
+    // RHIShaderUtil::ReflectShaderGroupInfo(shaderGroupSpirv, shaderGroupInfo);
     //
     // if (!specializationConstants.empty())
     // {
@@ -125,26 +125,26 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     //         switch (spc.type)
     //         {
     //
-    //             case rhi::ShaderSpecializationConstantType::eBool:
+    //             case RHIShaderSpecializationConstantType::eBool:
     //                 spc.boolValue = static_cast<bool>(specializationConstants.at(spc.constantId));
     //                 break;
-    //             case rhi::ShaderSpecializationConstantType::eInt:
+    //             case RHIShaderSpecializationConstantType::eInt:
     //                 spc.intValue = specializationConstants.at(spc.constantId);
     //                 break;
-    //             case rhi::ShaderSpecializationConstantType::eFloat:
+    //             case RHIShaderSpecializationConstantType::eFloat:
     //                 spc.floatValue = static_cast<float>(specializationConstants.at(spc.constantId));
     //                 break;
     //             default: break;
     //         }
     //     }
     // }
-    rhi::RHIShaderCreateInfo shaderCreateInfo{};
+    RHIShaderCreateInfo shaderCreateInfo{};
 
     for (const auto& kv : m_stages)
     {
-        shaderCreateInfo.spirvFileName[rhi::ToUnderlying(kv.first)] = kv.second;
+        shaderCreateInfo.spirvFileName[ToUnderlying(kv.first)] = kv.second;
         shaderCreateInfo.stageFlags.SetFlag(
-            static_cast<rhi::RHIShaderStageFlagBits>(1 << rhi::ToUnderlying(kv.first)));
+            static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(kv.first)));
 
         // shaderGroupSpirv->SetStageSPIRV(kv.first, LoadSpirvCode(kv.second));
     }
@@ -155,15 +155,29 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     // m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
     m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
 
-    // todo: lack srd parsing, refer to ShaderProgram::Init()
     for (auto& setSRD : m_SRDTable)
     {
         for (const auto& srd : setSRD)
         {
-            if (srd.type == rhi::ShaderResourceType::eUniformBuffer)
+            if (srd.type == RHIShaderResourceType::eUniformBuffer)
             {
                 m_uniformBufferMap[srd.name] =
                     m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
+                m_uniformBufferSizes[srd.name] = srd.blockSize;
+                m_uniformBuffers.emplace_back(srd);
+            }
+            else if (srd.type == RHIShaderResourceType::eStorageBuffer)
+            {
+                m_storageBuffers.emplace_back(srd);
+            }
+            else if (srd.type == RHIShaderResourceType::eImage)
+            {
+                m_storageImages.emplace_back(srd);
+            }
+            else if (srd.type == RHIShaderResourceType::eTexture ||
+                     srd.type == RHIShaderResourceType::eSamplerWithTexture)
+            {
+                m_sampledTextures.emplace_back(srd);
             }
         }
     }

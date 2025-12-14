@@ -7,13 +7,14 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/InputController.h"
 
-
+namespace zen
+{
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sg::CameraType type)
 {
     m_window = new platform::GlfwWindowImpl(windowConfig);
 
-    m_renderDevice = MakeUnique<rc::RenderDevice>(rhi::GraphicsAPIType::eVulkan,
+    m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan,
                                                   rc::RenderConfig::GetInstance().numFrames);
 
     m_viewport =
@@ -120,11 +121,16 @@ void SceneRendererDemo::Run()
     }
 }
 
+} // namespace zen
+
 int main(int argc, char** argv)
 {
+    using namespace zen;
+
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
 
-    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
+    SceneRendererDemo* demo =
+        new zen::SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
 
     demo->Prepare();
 

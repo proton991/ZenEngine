@@ -1,6 +1,6 @@
 #include "SceneGraphDemo.h"
 
-using namespace zen;
+
 using namespace zen::platform;
 
 int main()

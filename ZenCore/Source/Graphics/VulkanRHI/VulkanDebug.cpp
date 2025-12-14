@@ -4,7 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanDebug::VulkanDebug() {}
 
@@ -74,4 +74,4 @@ void VulkanDebug::SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandl
                    "Failed to set debug object name");
 }
 
-} // namespace zen::rhi
+} // namespace zen

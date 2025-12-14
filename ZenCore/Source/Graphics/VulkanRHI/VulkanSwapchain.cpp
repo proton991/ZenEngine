@@ -7,7 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
 
-namespace zen::rhi
+namespace zen
 {
 static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
 {
@@ -281,4 +281,4 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* recreateInfo)
     }
     m_surface = VK_NULL_HANDLE;
 }
-} // namespace zen::rhi
+} // namespace zen

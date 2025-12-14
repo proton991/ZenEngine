@@ -2,7 +2,7 @@
 #include "VulkanCommon.h"
 #include "Graphics/RHI/RHICommon.h"
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 
@@ -11,7 +11,7 @@ class VulkanRenderPassBuilder
 public:
     VulkanRenderPassBuilder() = default;
 
-    VkRenderPassCreateInfo BuildRenderPassCreateInfo(const RenderPassLayout& renderPassLayout);
+    VkRenderPassCreateInfo BuildRenderPassCreateInfo(const RHIRenderPassLayout& renderPassLayout);
 
 private:
     // TODO: Support resolve attachments
@@ -31,7 +31,7 @@ private:
 class VulkanFramebuffer
 {
 public:
-    VulkanFramebuffer(VulkanRHI* vkRHI, VkRenderPass renderPass, const FramebufferInfo& fbInfo);
+    VulkanFramebuffer(VulkanRHI* vkRHI, VkRenderPass renderPass, const RHIFramebufferInfo& fbInfo);
 
     VkFramebuffer GetVkHandle() const
     {
@@ -61,4 +61,4 @@ private:
     uint32_t m_height{0};
     uint32_t m_layers{1};
 };
-} // namespace zen::rhi
+} // namespace zen

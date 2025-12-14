@@ -4,7 +4,7 @@
 #include "VulkanMemory.h"
 
 
-namespace zen::rhi
+namespace zen
 {
 // struct VulkanBuffer
 // {
@@ -49,4 +49,4 @@ private:
     VkBufferView m_bufferView{VK_NULL_HANDLE};
     VulkanMemoryAllocation m_memAlloc{};
 };
-} // namespace zen::rhi
+} // namespace zen

@@ -2,79 +2,79 @@
 #include "VulkanHeaders.h"
 #include "Graphics/RHI/RHICommon.h"
 
-namespace zen::rhi
+namespace zen
 {
 /**
- * Convert RHI ShaderResourceType to VkDescriptorType
- * @param shaderResourceType ShaderResourceType
+ * Convert RHI RHIShaderResourceType to VkDescriptorType
+ * @param shaderResourceType RHIShaderResourceType
  * @return Corresponding VkDescriptorType
  */
-VkDescriptorType ShaderResourceTypeToVkDescriptorType(ShaderResourceType shaderResourceType);
+VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shaderResourceType);
 
 VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage);
 
 VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
     BitField<RHIShaderStageFlagBits> stageFlags);
 
-VkPrimitiveTopology ToVkPrimitiveTopology(DrawPrimitiveType type);
+VkPrimitiveTopology ToVkPrimitiveTopology(RHIDrawPrimitiveType type);
 
-VkCullModeFlags ToVkCullModeFlags(PolygonCullMode mode);
+VkCullModeFlags ToVkCullModeFlags(RHIPolygonCullMode mode);
 
-VkFrontFace ToVkFrontFace(PolygonFrontFace frontFace);
+VkFrontFace ToVkFrontFace(RHIPolygonFrontFace frontFace);
 
 VkSampleCountFlagBits ToVkSampleCountFlagBits(SampleCount count);
 
-VkCompareOp ToVkCompareOp(CompareOperator op);
+VkCompareOp ToVkCompareOp(RHIDepthCompareOperator op);
 
-VkStencilOp ToVkStencilOp(StencilOperation op);
+VkStencilOp ToVkStencilOp(RHIStencilOp op);
 
-VkLogicOp ToVkLogicOp(LogicOperation op);
+VkLogicOp ToVkLogicOp(RHIBlendLogicOp op);
 
-VkBlendOp ToVkBlendOp(BlendOperation op);
+VkBlendOp ToVkBlendOp(RHIBlendOp op);
 
-VkBlendFactor ToVkBlendFactor(BlendFactor factor);
+VkBlendFactor ToVkBlendFactor(RHIBlendFactor factor);
 
-VkDynamicState ToVkDynamicState(DynamicState state);
+VkDynamicState ToVkDynamicState(RHIDynamicState state);
 
-VkImageType ToVkImageType(TextureType type);
+VkImageType ToVkImageType(RHITextureType type);
 
-VkImageViewType ToVkImageViewType(TextureType type);
+VkImageViewType ToVkImageViewType(RHITextureType type);
 
-VkImageUsageFlags ToVkImageUsageFlags(BitField<TextureUsageFlagBits> flags);
+VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flags);
 
-VkBufferUsageFlags ToVkBufferUsageFlags(BitField<BufferUsageFlagBits> flags);
+VkBufferUsageFlags ToVkBufferUsageFlags(BitField<RHIBufferUsageFlagBits> flags);
 
 VkFormat ToVkFormat(DataFormat format);
 
-VkAttachmentLoadOp ToVkAttachmentLoadOp(RenderTargetLoadOp loadOp);
+VkAttachmentLoadOp ToVkAttachmentLoadOp(RHIRenderTargetLoadOp loadOp);
 
-VkAttachmentStoreOp ToVkAttachmentStoreOp(RenderTargetStoreOp storeOp);
+VkAttachmentStoreOp ToVkAttachmentStoreOp(RHIRenderTargetStoreOp storeOp);
 
-VkImageLayout ToVkImageLayout(TextureLayout layout);
+VkImageLayout ToVkImageLayout(RHITextureLayout layout);
 
-VkAccessFlags ToVkAccessFlags(BitField<AccessFlagBits> access);
+VkAccessFlags ToVkAccessFlags(BitField<RHIAccessFlagBits> access);
 
-VkImageAspectFlags ToVkAspectFlags(BitField<TextureAspectFlagBits> aspect);
+VkImageAspectFlags ToVkAspectFlags(BitField<RHITextureAspectFlagBits> aspect);
 
-VkFilter ToVkFilter(SamplerFilter filter);
+VkFilter ToVkFilter(RHISamplerFilter filter);
 
-VkSamplerAddressMode ToVkSamplerAddressMode(SamplerRepeatMode mode);
+VkSamplerAddressMode ToVkSamplerAddressMode(RHISamplerRepeatMode mode);
 
-VkBorderColor ToVkBorderColor(SamplerBorderColor color);
+VkBorderColor ToVkBorderColor(RHISamplerBorderColor color);
 
-VkClearColorValue ToVkClearColor(const RenderPassClearValue& clearValue);
+VkClearColorValue ToVkClearColor(const RHIRenderPassClearValue& clearValue);
 
-VkClearDepthStencilValue ToVkClearDepthStencil(const RenderPassClearValue& clearValue);
+VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderPassClearValue& clearValue);
 
 void ToVkClearColor(const Color& color, VkClearColorValue* colorValue);
 
-void ToVkImageSubresourceRange(const TextureSubResourceRange& range,
+void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,
                                VkImageSubresourceRange* vkRange);
 
-void ToVkImageSubresourceLayers(const TextureSubresourceLayers& layers,
+void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
                                 VkImageSubresourceLayers* vkLayers);
 
-void ToVkImageCopy(const TextureCopyRegion& region, VkImageCopy* copy);
+void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* copy);
 
-void ToVkBufferImageCopy(const BufferTextureCopyRegion& region, VkBufferImageCopy* copy);
-} // namespace zen::rhi
+void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* copy);
+} // namespace zen

@@ -2,7 +2,7 @@
 #include "RHICommon.h"
 #include "Templates/SmallVector.h"
 
-namespace zen::rhi
+namespace zen
 {
 class RHIBuffer;
 class RHITexture;
@@ -22,7 +22,7 @@ public:
 class RHICommandList
 {
 public:
-    static RHICommandList* Create(GraphicsAPIType type, RHICommandListContext* context);
+    static RHICommandList* Create(RHIAPIType type, RHICommandListContext* context);
 
     virtual void BeginRender() = 0;
 
@@ -34,33 +34,34 @@ public:
 
     virtual ~RHICommandList() = default;
 
-    virtual void AddPipelineBarrier(BitField<PipelineStageBits> srcStages,
-                                    BitField<PipelineStageBits> dstStages,
-                                    const std::vector<MemoryTransition>& memoryTransitions,
-                                    const std::vector<BufferTransition>& bufferTransitions,
-                                    const std::vector<TextureTransition>& textureTransitions) = 0;
+    virtual void AddPipelineBarrier(
+        BitField<RHIPipelineStageBits> srcStages,
+        BitField<RHIPipelineStageBits> dstStages,
+        const std::vector<RHIMemoryTransition>& memoryTransitions,
+        const std::vector<RHIBufferTransition>& bufferTransitions,
+        const std::vector<RHITextureTransition>& textureTransitions) = 0;
 
     virtual void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) = 0;
 
     virtual void CopyBuffer(RHIBuffer* srcBuffer,
                             RHIBuffer* dstBuffer,
-                            const BufferCopyRegion& region) = 0;
+                            const RHIBufferCopyRegion& region) = 0;
 
     virtual void ClearTexture(RHITexture* textureHandle,
                               const Color& color,
-                              const TextureSubResourceRange& range) = 0;
+                              const RHITextureSubResourceRange& range) = 0;
 
     virtual void CopyTexture(RHITexture* srcTextureHandle,
                              RHITexture* dstTextureHandle,
-                             VectorView<TextureCopyRegion> regions) = 0;
+                             VectorView<RHITextureCopyRegion> regions) = 0;
 
     virtual void CopyTextureToBuffer(RHITexture* textureHandle,
                                      RHIBuffer* buffer,
-                                     VectorView<BufferTextureCopyRegion> regions) = 0;
+                                     VectorView<RHIBufferTextureCopyRegion> regions) = 0;
 
     virtual void CopyBufferToTexture(RHIBuffer* buffer,
                                      RHITexture* textureHandle,
-                                     VectorView<BufferTextureCopyRegion> regions) = 0;
+                                     VectorView<RHIBufferTextureCopyRegion> regions) = 0;
 
     virtual void ResolveTexture(RHITexture* srcTextureHandle,
                                 RHITexture* dstTextureHandle,
@@ -88,13 +89,13 @@ public:
     virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
                                  FramebufferHandle framebufferHandle,
                                  const Rect2<int>& area,
-                                 VectorView<RenderPassClearValue> clearValues) = 0;
+                                 VectorView<RHIRenderPassClearValue> clearValues) = 0;
 
     virtual void EndRenderPass() = 0;
 
-    virtual void BeginRenderPassDynamic(const RenderPassLayout& rpLayout,
+    virtual void BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayout,
                                         const Rect2<int>& area,
-                                        VectorView<RenderPassClearValue> clearValues) = 0;
+                                        VectorView<RHIRenderPassClearValue> clearValues) = 0;
 
     virtual void EndRenderPassDynamic() = 0;
 
@@ -135,6 +136,6 @@ public:
 
     virtual void GenerateTextureMipmaps(RHITexture* textureHandle) = 0;
 
-    virtual void ChangeTextureLayout(RHITexture* textureHandle, TextureLayout newLayout) = 0;
+    virtual void ChangeTextureLayout(RHITexture* textureHandle, RHITextureLayout newLayout) = 0;
 };
-} // namespace zen::rhi
+} // namespace zen

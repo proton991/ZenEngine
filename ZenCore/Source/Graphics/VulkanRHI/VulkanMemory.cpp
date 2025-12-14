@@ -3,7 +3,7 @@
 
 
 
-namespace zen::rhi
+namespace zen
 {
 static constexpr uint32_t SMALL_VK_ALLOCATION_SIZE = 4096;
 
@@ -88,12 +88,12 @@ void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocatio
 
 void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
                                         const VkBufferCreateInfo* bufferCI,
-                                        BufferAllocateType allocType,
+                                        RHIBufferAllocateType allocType,
                                         VkBuffer* buffer,
                                         VulkanMemoryAllocation* allocation)
 {
     VmaAllocationCreateInfo vmaAllocationCI{};
-    if (allocType == BufferAllocateType::eCPU)
+    if (allocType == RHIBufferAllocateType::eCPU)
     {
         bool isSrc = false;
         bool isDst = false;
@@ -119,7 +119,7 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
         vmaAllocationCI.requiredFlags =
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     }
-    else if (allocType == BufferAllocateType::eGPU)
+    else if (allocType == RHIBufferAllocateType::eGPU)
     {
         vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
         if (size <= SMALL_VK_ALLOCATION_SIZE)
@@ -174,4 +174,4 @@ VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTyp
 
     return pool;
 }
-} // namespace zen::rhi
+} // namespace zen

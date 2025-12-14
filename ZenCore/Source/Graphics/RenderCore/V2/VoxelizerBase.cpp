@@ -3,42 +3,42 @@
 
 namespace zen::rc
 {
-VoxelizerBase::VoxelizerBase(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+VoxelizerBase::VoxelizerBase(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
 void VoxelizerBase::PrepareTextures()
 {
-    using namespace zen::rhi;
+
     {
-        rhi::RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-        samplerInfo.magFilter = rhi::SamplerFilter::eLinear;
-        samplerInfo.mipFilter = rhi::SamplerFilter::eLinear;
+        RHISamplerCreateInfo samplerInfo{};
+        samplerInfo.magFilter = RHISamplerFilter::eLinear;
+        samplerInfo.magFilter = RHISamplerFilter::eLinear;
+        samplerInfo.mipFilter = RHISamplerFilter::eLinear;
 
         m_voxelSampler = m_renderDevice->CreateSampler(samplerInfo);
     }
 
     // offscreen depth texture sampler
     {
-        rhi::RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = rhi::SamplerBorderColor::eFloatOpaqueWhite;
-        samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.borderColor = rhi::SamplerBorderColor::eFloatOpaqueWhite;
+        RHISamplerCreateInfo samplerInfo{};
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.minFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.magFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
 
         m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
     }
     TextureUsageHint usageHint{.copyUsage = false};
     {
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, DataFormat::eR8UNORM,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, DataFormat::eR8UNORM,
         //                   m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
-        //                   SampleCount::e1, "voxel_static_flag", TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
+        //                   SampleCount::e1, "voxel_static_flag", RHITextureUsageFlagBits::eStorage,
+        //                   RHITextureUsageFlagBits::eSampled);
         TextureFormat texFormat{};
         texFormat.dimension   = TextureDimension::e3D;
         texFormat.format      = DataFormat::eR8UNORM;
@@ -52,10 +52,10 @@ void VoxelizerBase::PrepareTextures()
             m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_static_flag");
     }
     {
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
         //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_albedo", TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
+        //                   "voxel_albedo", RHITextureUsageFlagBits::eStorage,
+        //                   RHITextureUsageFlagBits::eSampled);
         // texInfo.mutableFormat  = true;
         // m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo);
 
@@ -73,8 +73,8 @@ void VoxelizerBase::PrepareTextures()
             m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_albedo");
     }
     {
-        // rhi::TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = rhi::TextureType::e3D;
+        // TextureProxyInfo textureProxyInfo{};
+        // textureProxyInfo.type        = RHITextureType::e3D;
         // textureProxyInfo.arrayLayers = 1;
         // textureProxyInfo.mipmaps     = 1;
         // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
@@ -92,10 +92,10 @@ void VoxelizerBase::PrepareTextures()
             m_voxelTextures.albedo, proxyFormat, "voxel_albedo_proxy");
     }
     {
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
         //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_normal", TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
+        //                   "voxel_normal", RHITextureUsageFlagBits::eStorage,
+        //                   RHITextureUsageFlagBits::eSampled);
         // texInfo.mutableFormat  = true;
         // m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo);
 
@@ -113,8 +113,8 @@ void VoxelizerBase::PrepareTextures()
             m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_normal");
     }
     {
-        // rhi::TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = rhi::TextureType::e3D;
+        // TextureProxyInfo textureProxyInfo{};
+        // textureProxyInfo.type        = RHITextureType::e3D;
         // textureProxyInfo.arrayLayers = 1;
         // textureProxyInfo.mipmaps     = 1;
         // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
@@ -131,10 +131,10 @@ void VoxelizerBase::PrepareTextures()
             m_voxelTextures.normal, proxyFormat, "voxel_normal_proxy");
     }
     {
-        // INIT_TEXTURE_INFO(texInfo, rhi::TextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
+        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
         //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_emissive", TextureUsageFlagBits::eStorage,
-        //                   TextureUsageFlagBits::eSampled);
+        //                   "voxel_emissive", RHITextureUsageFlagBits::eStorage,
+        //                   RHITextureUsageFlagBits::eSampled);
         // texInfo.mutableFormat    = true;
         // m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo);
         TextureFormat texFormat{};
@@ -160,8 +160,8 @@ void VoxelizerBase::PrepareTextures()
         m_voxelTextures.emissiveProxy = m_renderDevice->CreateTextureProxy(
             m_voxelTextures.normal, proxyFormat, "voxel_emissive_proxy");
 
-        // rhi::TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = rhi::TextureType::e3D;
+        // TextureProxyInfo textureProxyInfo{};
+        // textureProxyInfo.type        = RHITextureType::e3D;
         // textureProxyInfo.arrayLayers = 1;
         // textureProxyInfo.mipmaps     = 1;
         // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;

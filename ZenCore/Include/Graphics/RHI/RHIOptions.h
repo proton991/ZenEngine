@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace zen::rhi
+namespace zen
 {
 class RHIOptions
 {
@@ -58,4 +58,4 @@ private:
         uint32_t maxDescriptorSetPerPool;
     } m_VkRHIOptions;
 };
-} // namespace zen::rhi
+} // namespace zen

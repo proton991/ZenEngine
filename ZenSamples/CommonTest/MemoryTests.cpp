@@ -21,7 +21,7 @@ private:
 class EmptyClass
 {};
 
-using namespace zen;
+
 
 TEST(mem_alloc_test, allocator)
 {

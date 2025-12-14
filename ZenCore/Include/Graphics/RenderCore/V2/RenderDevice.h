@@ -27,7 +27,7 @@ class GraphicsPassBuilder
 public:
     explicit GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
 
-    GraphicsPassBuilder& AddShaderStage(rhi::RHIShaderStage stage, std::string path)
+    GraphicsPassBuilder& AddShaderStage(RHIShaderStage stage, std::string path)
     {
         m_shaderStages[stage] = std::move(path);
         return *this;
@@ -40,28 +40,28 @@ public:
     }
 
     // GraphicsPassBuilder& AddColorRenderTarget(DataFormat format,
-    //                                           const rhi::RHITexture* handle,
+    //                                           const RHITexture* handle,
     //                                           bool clear = true);
 
     GraphicsPassBuilder& AddViewportColorRT(
-        rhi::RHIViewport* viewport,
-        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
+        RHIViewport* viewport,
+        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+        RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& SetViewportDepthStencilRT(
-        rhi::RHIViewport* viewport,
-        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
+        RHIViewport* viewport,
+        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+        RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& AddColorRenderTarget(
-        rhi::RHITexture* colorRT,
-        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
+        RHITexture* colorRT,
+        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+        RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore);
 
     GraphicsPassBuilder& SetDepthStencilTarget(
-        rhi::RHITexture* depthStencilRT,
-        rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-        rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eStore);
+        RHITexture* depthStencilRT,
+        RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+        RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore);
 
     // GraphicsPassBuilder& SetNumSamples(SampleCount sampleCount)
     // {
@@ -71,19 +71,19 @@ public:
 
     // GraphicsPassBuilder& SetDepthStencilTarget(
     //     DataFormat format,
-    //     const rhi::RHITexture* handle,
-    //     rhi::RenderTargetLoadOp loadOp   = rhi::RenderTargetLoadOp::eClear,
-    //     rhi::RenderTargetStoreOp storeOp = rhi::RenderTargetStoreOp::eNone);
+    //     const RHITexture* handle,
+    //     RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
+    //     RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eNone);
 
     GraphicsPassBuilder& SetShaderResourceBinding(
         uint32_t setIndex,
-        const std::vector<rhi::ShaderResourceBinding>& bindings)
+        const std::vector<RHIShaderResourceBinding>& bindings)
     {
         m_dsBindings[setIndex] = bindings;
         return *this;
     }
 
-    GraphicsPassBuilder& SetPipelineState(const rhi::GfxPipelineStates& pso)
+    GraphicsPassBuilder& SetPipelineState(const RHIGfxPipelineStates& pso)
     {
         m_PSO = pso;
         return *this;
@@ -95,7 +95,7 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& SetFramebufferInfo(rhi::RHIViewport* viewport,
+    GraphicsPassBuilder& SetFramebufferInfo(RHIViewport* viewport,
                                             uint32_t width,
                                             uint32_t height)
     {
@@ -105,7 +105,7 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& SetFramebufferInfo(rhi::RHIViewport* viewport)
+    GraphicsPassBuilder& SetFramebufferInfo(RHIViewport* viewport)
     {
         m_framebufferInfo.width  = viewport->GetWidth();
         m_framebufferInfo.height = viewport->GetHeight();
@@ -124,15 +124,15 @@ public:
 
 private:
     RenderDevice* m_renderDevice{nullptr};
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
     std::string m_tag;
     GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eNone};
-    HashMap<rhi::RHIShaderStage, std::string> m_shaderStages;
+    HashMap<RHIShaderStage, std::string> m_shaderStages;
     std::string m_shaderProgramName;
-    rhi::GfxPipelineStates m_PSO{};
-    rhi::RenderPassLayout m_rpLayout{};
-    rhi::FramebufferInfo m_framebufferInfo{};
-    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+    RHIGfxPipelineStates m_PSO{};
+    RHIRenderPassLayout m_rpLayout{};
+    RHIFramebufferInfo m_framebufferInfo{};
+    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
     HashMap<uint32_t, int> m_specializationConstants;
 };
 
@@ -145,7 +145,7 @@ public:
 
     GraphicsPassResourceUpdater& SetShaderResourceBinding(
         uint32_t setIndex,
-        const std::vector<rhi::ShaderResourceBinding>& bindings)
+        const std::vector<RHIShaderResourceBinding>& bindings)
     {
         m_dsBindings[setIndex] = bindings;
         return *this;
@@ -156,7 +156,7 @@ public:
 private:
     RenderDevice* m_renderDevice{nullptr};
     GraphicsPass* m_gfxPass{nullptr};
-    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
 };
 
 class ComputePassBuilder
@@ -192,7 +192,7 @@ public:
 
     ComputePassResourceUpdater& SetShaderResourceBinding(
         uint32_t setIndex,
-        const std::vector<rhi::ShaderResourceBinding>& bindings)
+        const std::vector<RHIShaderResourceBinding>& bindings)
     {
         m_dsBindings[setIndex] = bindings;
         return *this;
@@ -203,7 +203,7 @@ public:
 private:
     RenderDevice* m_renderDevice{nullptr};
     ComputePass* m_computePass{nullptr};
-    HashMap<uint32_t, std::vector<rhi::ShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
 };
 
 enum class StagingFlushAction : uint32_t
@@ -219,7 +219,7 @@ struct StagingSubmitResult
     StagingFlushAction flushAction{StagingFlushAction::eNone};
     uint32_t writeOffset{0};
     uint32_t writeSize{0};
-    rhi::RHIBuffer* buffer;
+    RHIBuffer* buffer;
 };
 
 class TextureStagingManager
@@ -229,9 +229,9 @@ public:
         m_renderDevice(renderDevice), m_usedMemory(0), m_pendingFreeMemorySize(0)
     {}
 
-    rhi::RHIBuffer* RequireBuffer(uint32_t requiredSize);
+    RHIBuffer* RequireBuffer(uint32_t requiredSize);
 
-    void ReleaseBuffer(const rhi::RHIBuffer* buffer);
+    void ReleaseBuffer(const RHIBuffer* buffer);
 
     void ProcessPendingFrees();
 
@@ -253,7 +253,7 @@ private:
     struct Entry
     {
         uint32_t size;
-        rhi::RHIBuffer* buffer;
+        RHIBuffer* buffer;
         uint32_t usedFrame;
     };
 
@@ -261,7 +261,7 @@ private:
     std::vector<Entry> m_pendingFreeBuffers;
     std::vector<Entry> m_freeBuffers;
     // for memory management
-    std::vector<rhi::RHIBuffer*> m_allocatedBuffers;
+    std::vector<RHIBuffer*> m_allocatedBuffers;
     uint32_t m_usedMemory;
     uint32_t m_pendingFreeMemorySize;
 };
@@ -306,11 +306,11 @@ private:
     uint32_t BUFFER_SIZE;
     uint64_t POOL_SIZE;
     RenderDevice* m_renderDevice{nullptr};
-    // rhi::DynamicRHI* GDynamicRHI{nullptr};
+    // DynamicRHI* GDynamicRHI{nullptr};
 
     struct StagingBuffer
     {
-        rhi::RHIBuffer* buffer;
+        RHIBuffer* buffer;
         uint64_t usedFrame;
         uint32_t occupiedSize;
     };
@@ -324,11 +324,11 @@ private:
 
 struct RenderFrame
 {
-    rhi::RHICommandListContext* cmdListContext{nullptr};
-    rhi::RHICommandList* uploadCmdList{nullptr};
-    rhi::RHICommandList* drawCmdList{nullptr};
+    RHICommandListContext* cmdListContext{nullptr};
+    RHICommandList* uploadCmdList{nullptr};
+    RHICommandList* drawCmdList{nullptr};
     bool cmdSubmitted{false};
-    std::vector<rhi::RHITexture*> texturesPendingFree;
+    std::vector<RHITexture*> texturesPendingFree;
 };
 
 struct RenderDeviceFeatures
@@ -340,116 +340,116 @@ struct RenderDeviceFeatures
 class RenderDevice
 {
 public:
-    explicit RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames);
+    explicit RenderDevice(RHIAPIType APIType, uint32_t numFrames);
 
-    void Init(rhi::RHIViewport* mainViewport);
+    void Init(RHIViewport* mainViewport);
 
     void Destroy();
 
-    void ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present = true);
+    void ExecuteFrame(RHIViewport* viewport, RenderGraph* rdg, bool present = true);
 
-    void ExecuteFrame(rhi::RHIViewport* viewport,
+    void ExecuteFrame(RHIViewport* viewport,
                       const std::vector<RenderGraph*>& rdgs,
                       bool present = true);
 
-    void ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg);
+    void ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg);
 
-    rhi::RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
+    RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
                                           std::string texName);
 
-    rhi::RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+    RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
                                                  TextureUsageHint usageHint,
                                                  std::string texName);
 
-    rhi::RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
+    RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
                                           std::string texName);
 
-    rhi::RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
+    RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
                                           TextureUsageHint usageHint,
                                           std::string texName);
 
-    rhi::RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
+    RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
                                         TextureUsageHint usageHint,
                                         std::string texName);
 
-    rhi::RHITexture* CreateTextureProxy(rhi::RHITexture* baseTexture,
+    RHITexture* CreateTextureProxy(RHITexture* baseTexture,
                                         const TextureProxyFormat& proxyFormat,
                                         std::string texName);
 
-    // rhi::RHITexture* GetTextureRDFromHandle(const rhi::RHITexture* handle);
+    // RHITexture* GetTextureRDFromHandle(const RHITexture* handle);
 
-    void DestroyTexture(rhi::RHITexture* texture);
+    void DestroyTexture(RHITexture* texture);
 
-    // rhi::RHITexture* CreateTexture(const rhi::TextureInfo& textureInfo);
+    // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
-    // rhi::RHITexture* CreateTextureProxy(const rhi::RHITexture* baseTexture,
-    //                                       const rhi::TextureProxyInfo& proxyInfo);
+    // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+    //                                       const TextureProxyInfo& proxyInfo);
 
-    // rhi::RHITexture* GetBaseTextureForProxy(const rhi::RHITexture* handle) const;
+    // RHITexture* GetBaseTextureForProxy(const RHITexture* handle) const;
 
-    // bool IsProxyTexture(const rhi::RHITexture* handle) const;
+    // bool IsProxyTexture(const RHITexture* handle) const;
 
-    void GenerateTextureMipmaps(rhi::RHITexture* textureHandle, rhi::RHICommandList* cmdList);
+    void GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* cmdList);
 
-    rhi::RHIBuffer* CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
+    RHIBuffer* CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::RHIBuffer* CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
+    RHIBuffer* CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    rhi::RHIBuffer* CreateUniformBuffer(uint32_t dataSize,
+    RHIBuffer* CreateUniformBuffer(uint32_t dataSize,
                                         const uint8_t* pData,
                                         std::string bufferName);
 
-    rhi::RHIBuffer* CreateStorageBuffer(uint32_t dataSize,
+    RHIBuffer* CreateStorageBuffer(uint32_t dataSize,
                                         const uint8_t* pData,
                                         std::string bufferName);
 
-    rhi::RHIBuffer* CreateIndirectBuffer(uint32_t dataSize,
+    RHIBuffer* CreateIndirectBuffer(uint32_t dataSize,
                                          const uint8_t* pData,
                                          std::string bufferName);
 
-    void UpdateBuffer(rhi::RHIBuffer* bufferHandle,
+    void UpdateBuffer(RHIBuffer* bufferHandle,
                       uint32_t dataSize,
                       const uint8_t* pData,
                       uint32_t offset = 0);
 
-    void DestroyBuffer(rhi::RHIBuffer* bufferHandle);
+    void DestroyBuffer(RHIBuffer* bufferHandle);
 
-    rhi::RenderPassHandle GetOrCreateRenderPass(const rhi::RenderPassLayout& layout);
+    RenderPassHandle GetOrCreateRenderPass(const RHIRenderPassLayout& layout);
 
-    rhi::RHIPipeline* GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
-                                             rhi::RHIShader* shader,
-                                             const rhi::RenderPassHandle& renderPass,
+    RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
+                                             RHIShader* shader,
+                                             const RenderPassHandle& renderPass,
                                              const HashMap<uint32_t, int>& specializationConstants);
 
-    rhi::RHIPipeline* GetOrCreateGfxPipeline(rhi::GfxPipelineStates& PSO,
-                                             rhi::RHIShader* shader,
-                                             const rhi::RenderPassLayout& renderPassLayout,
+    RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
+                                             RHIShader* shader,
+                                             const RHIRenderPassLayout& renderPassLayout,
                                              const HashMap<uint32_t, int>& specializationConstants);
 
-    rhi::RHIPipeline* GetOrCreateComputePipeline(rhi::RHIShader* shader);
+    RHIPipeline* GetOrCreateComputePipeline(RHIShader* shader);
 
-    rhi::RHIViewport* CreateViewport(void* pWindow,
+    RHIViewport* CreateViewport(void* pWindow,
                                      uint32_t width,
                                      uint32_t height,
                                      bool enableVSync = true);
 
-    void ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height);
+    void ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height);
 
-    void UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIViewport* viewport);
+    void UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewport* viewport);
 
-    // rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    // RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::RHITexture*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<RHITexture*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* texture);
 
-    rhi::RHISampler* CreateSampler(const rhi::RHISamplerCreateInfo& samplerInfo);
+    RHISampler* CreateSampler(const RHISamplerCreateInfo& samplerInfo);
 
-    // rhi::TextureSubResourceRange GetTextureSubResourceRange(rhi::RHITexture* handle);
+    // RHITextureSubResourceRange GetTextureSubResourceRange(RHITexture* handle);
 
     // auto* GetRHI() const
     // {
@@ -466,12 +466,12 @@ public:
         return m_framesCounter;
     }
 
-    rhi::RHICommandList* GetCurrentUploadCmdList() const
+    RHICommandList* GetCurrentUploadCmdList() const
     {
         return m_frames[m_currentFrame].uploadCmdList;
     }
 
-    rhi::RHICommandList* GetCurrentDrawCmdList() const
+    RHICommandList* GetCurrentDrawCmdList() const
     {
         return m_frames[m_currentFrame].drawCmdList;
     }
@@ -494,7 +494,7 @@ public:
         GDynamicRHI->WaitDeviceIdle();
     }
 
-    const rhi::GPUInfo& GetGPUInfo() const
+    const RHIGPUInfo& GetGPUInfo() const
     {
         return GDynamicRHI->QueryGPUInfo();
     }
@@ -506,52 +506,52 @@ private:
 
     void ProcessPendingFreeResources(uint32_t frameIndex);
 
-    void UpdateBufferInternal(rhi::RHIBuffer* bufferHandle,
+    void UpdateBufferInternal(RHIBuffer* bufferHandle,
                               uint32_t offset,
                               uint32_t dataSize,
                               const uint8_t* pData);
 
-    void UpdateTextureOneTime(rhi::RHITexture* textureHandle,
+    void UpdateTextureOneTime(RHITexture* textureHandle,
                               const Vec3i& textureSize,
                               uint32_t dataSize,
                               const uint8_t* pData);
 
-    void UpdateTextureBatch(rhi::RHITexture* textureHandle,
+    void UpdateTextureBatch(RHITexture* textureHandle,
                             const Vec3i& textureSize,
                             const uint8_t* pData);
 
-    void DestroyViewport(rhi::RHIViewport* viewport);
+    void DestroyViewport(RHIViewport* viewport);
 
-    static size_t CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout);
-    static size_t CalcFramebufferHash(const rhi::FramebufferInfo& info,
-                                      rhi::RenderPassHandle renderPassHandle);
+    static size_t CalcRenderPassLayoutHash(const RHIRenderPassLayout& layout);
+    static size_t CalcFramebufferHash(const RHIFramebufferInfo& info,
+                                      RenderPassHandle renderPassHandle);
 
-    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                      rhi::RHIShader* shader,
-                                      const rhi::RenderPassHandle& renderPass,
+    static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+                                      RHIShader* shader,
+                                      const RenderPassHandle& renderPass,
                                       const HashMap<uint32_t, int>& specializationConstants);
 
-    static size_t CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                      rhi::RHIShader* shader,
-                                      const rhi::RenderPassLayout& renderPassLayout,
+    static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+                                      RHIShader* shader,
+                                      const RHIRenderPassLayout& renderPassLayout,
                                       const HashMap<uint32_t, int>& specializationConstants);
 
-    static size_t CalcComputePipelineHash(rhi::RHIShader* shader);
+    static size_t CalcComputePipelineHash(RHIShader* shader);
 
-    static size_t CalcSamplerHash(const rhi::RHISamplerCreateInfo& info);
+    static size_t CalcSamplerHash(const RHISamplerCreateInfo& info);
 
     size_t PadUniformBufferSize(size_t originalSize);
 
     size_t PadStorageBufferSize(size_t originalSize);
 
-    const rhi::GraphicsAPIType m_APIType;
+    const RHIAPIType m_APIType;
     const uint32_t m_numFrames;
     uint32_t m_currentFrame{0};
     uint64_t m_framesCounter{0};
     std::vector<RenderFrame> m_frames;
 
-    // rhi::DynamicRHI* GDynamicRHI{nullptr};
-    rhi::RHIDebug* m_RHIDebug{nullptr};
+    // DynamicRHI* GDynamicRHI{nullptr};
+    RHIDebug* m_RHIDebug{nullptr};
 
 
     BufferStagingManager* m_bufferStagingMgr{nullptr};
@@ -562,15 +562,15 @@ private:
 
     DeletionQueue m_deletionQueue;
 
-    HashMap<size_t, rhi::RenderPassHandle> m_renderPassCache;
-    HashMap<size_t, rhi::RHIPipeline*> m_pipelineCache;
-    HashMap<size_t, rhi::RHISampler*> m_samplerCache;
-    // HashMap<rhi::RHITexture*, rhi::RHITexture*> m_textureMap;
-    std::vector<rhi::RHIBuffer*> m_buffers;
+    HashMap<size_t, RenderPassHandle> m_renderPassCache;
+    HashMap<size_t, RHIPipeline*> m_pipelineCache;
+    HashMap<size_t, RHISampler*> m_samplerCache;
+    // HashMap<RHITexture*, RHITexture*> m_textureMap;
+    std::vector<RHIBuffer*> m_buffers;
     std::vector<GraphicsPass*> m_gfxPasses;
     std::vector<ComputePass*> m_computePasses;
-    std::vector<rhi::RHIViewport*> m_viewports;
-    rhi::RHIViewport* m_mainViewport{nullptr};
+    std::vector<RHIViewport*> m_viewports;
+    RHIViewport* m_mainViewport{nullptr};
 
     friend class GraphicsPassBuilder;
     friend class ComputePassBuilder;

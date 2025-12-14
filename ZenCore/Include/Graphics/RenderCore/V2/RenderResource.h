@@ -7,16 +7,16 @@
 // {
 // class RenderDevice;
 //
-// class rhi::RHITexture : public ObjectBase
+// class RHITexture : public ObjectBase
 // {
 // public:
-//     static rhi::RHITexture* Create(const TextureFormat& texFormat, std::string name);
+//     static RHITexture* Create(const TextureFormat& texFormat, std::string name);
 //
-//     static rhi::RHITexture* CreateProxy(rhi::RHITexture* baseTex,
+//     static RHITexture* CreateProxy(RHITexture* baseTex,
 //                                   const TextureProxyFormat& proxyFormat,
 //                                   std::string name);
 //
-//     void Init(RenderDevice* device, rhi::RHITexture* handle);
+//     void Init(RenderDevice* device, RHITexture* handle);
 //
 //     void DecreaseRefCount() override
 //     {
@@ -27,7 +27,7 @@
 //         ObjectBase::DecreaseRefCount();
 //     }
 //
-//     rhi::RHITexture* GetHandle() const
+//     RHITexture* GetHandle() const
 //     {
 //         return m_handle;
 //     }
@@ -52,12 +52,12 @@
 //         return m_depth;
 //     }
 //
-//     const rhi::TextureSubResourceRange& GetTextureSubResourceRange() const
+//     const RHITextureSubResourceRange& GetTextureSubResourceRange() const
 //     {
 //         return m_subResourceRange;
 //     }
 //
-//     rhi::RHITexture* GetBaseTexture() const
+//     RHITexture* GetBaseTexture() const
 //     {
 //         return m_baseTex;
 //     }
@@ -81,7 +81,7 @@
 //     void Destroy() final;
 //
 // private:
-//     rhi::RHITexture(const TextureFormat& texFormat, std::string name) :
+//     RHITexture(const TextureFormat& texFormat, std::string name) :
 //         m_name(std::move(name)),
 //         m_sampleCount(texFormat.sampleCount),
 //         m_format(texFormat.format),
@@ -92,7 +92,7 @@
 //         m_mipmaps(texFormat.mipmaps)
 //     {}
 //
-//     rhi::RHITexture(rhi::RHITexture* baseTex, const TextureProxyFormat& proxyFormat, std::string name) :
+//     RHITexture(RHITexture* baseTex, const TextureProxyFormat& proxyFormat, std::string name) :
 //         m_name(std::move(name)),
 //         m_format(proxyFormat.format),
 //         m_arrayLayers(proxyFormat.arrayLayers),
@@ -104,8 +104,8 @@
 //     }
 //
 //     RenderDevice* m_renderDevice{nullptr};
-//     rhi::RHITexture* m_handle;
-//     rhi::TextureSubResourceRange m_subResourceRange;
+//     RHITexture* m_handle;
+//     RHITextureSubResourceRange m_subResourceRange;
 //     SampleCount m_sampleCount{SampleCount::e1};
 //     std::string m_name;
 //     DataFormat m_format{DataFormat::eUndefined};
@@ -115,7 +115,7 @@
 //     uint32_t m_arrayLayers{1};
 //     uint32_t m_mipmaps{1};
 //
-//     rhi::RHITexture* m_baseTex{nullptr};
+//     RHITexture* m_baseTex{nullptr};
 //     bool m_isProxy{false};
 // };
 // } // namespace zen::rc

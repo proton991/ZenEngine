@@ -11,30 +11,30 @@ class RenderDevice;
 // 3D textures (written by voxelizer)
 // struct VoxelTextures
 // {
-//     rhi::TextureHandle staticFlag;
-//     rhi::TextureHandle albedo;
-//     rhi::TextureHandle albedoProxy;
-//     rhi::TextureHandle normal;
-//     rhi::TextureHandle normalProxy;
-//     rhi::TextureHandle emissive;
-//     rhi::TextureHandle emissiveProxy;
+//     TextureHandle staticFlag;
+//     TextureHandle albedo;
+//     TextureHandle albedoProxy;
+//     TextureHandle normal;
+//     TextureHandle normalProxy;
+//     TextureHandle emissive;
+//     TextureHandle emissiveProxy;
 // };
 
 struct VoxelTextures
 {
-    rhi::RHITexture* staticFlag{nullptr};
-    rhi::RHITexture* albedo{nullptr};
-    rhi::RHITexture* albedoProxy{nullptr};
-    rhi::RHITexture* normal{nullptr};
-    rhi::RHITexture* normalProxy{nullptr};
-    rhi::RHITexture* emissive{nullptr};
-    rhi::RHITexture* emissiveProxy{nullptr};
+    RHITexture* staticFlag{nullptr};
+    RHITexture* albedo{nullptr};
+    RHITexture* albedoProxy{nullptr};
+    RHITexture* normal{nullptr};
+    RHITexture* normalProxy{nullptr};
+    RHITexture* emissive{nullptr};
+    RHITexture* emissiveProxy{nullptr};
 };
 
 class VoxelizerBase
 {
 public:
-    VoxelizerBase(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    VoxelizerBase(RenderDevice* renderDevice, RHIViewport* viewport);
 
     virtual ~VoxelizerBase() = default;
 
@@ -58,7 +58,7 @@ public:
         return m_voxelTextures;
     }
 
-    rhi::RHISampler* GetVoxelSampler() const
+    RHISampler* GetVoxelSampler() const
     {
         return m_voxelSampler;
     }
@@ -105,14 +105,14 @@ protected:
 
     RenderDevice* m_renderDevice{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     RenderScene* m_scene{nullptr};
 
     VoxelTextures m_voxelTextures;
 
-    rhi::RHISampler* m_voxelSampler;
-    rhi::RHISampler* m_colorSampler;
+    RHISampler* m_voxelSampler;
+    RHISampler* m_colorSampler;
 
     uint32_t m_voxelTexResolution;
     float m_voxelSize;

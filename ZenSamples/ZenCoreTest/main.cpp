@@ -9,7 +9,7 @@
 
 //using namespace zen::val;
 //using namespace zen::platform;
-using namespace zen;
+
 int main(int argc, char** argv)
 {
     platform::WindowConfig windowConfig;

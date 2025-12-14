@@ -4,7 +4,7 @@
 #include "VulkanPipeline.h"
 #include "Memory/PagedAllocator.h"
 
-namespace zen::rhi
+namespace zen
 {
 // This helps using a single paged allocator for many resource types.
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
@@ -35,4 +35,4 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
         p_allocator.Free((VersatileResourceTemplate*)p_object);
     }
 };
-} // namespace zen::rhi
+} // namespace zen

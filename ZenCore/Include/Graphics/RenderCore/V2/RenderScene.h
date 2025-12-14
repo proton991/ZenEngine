@@ -55,17 +55,17 @@ public:
 
     void Update();
 
-    rhi::RHIBuffer* GetVertexBuffer() const
+    RHIBuffer* GetVertexBuffer() const
     {
         return m_vertexBuffer;
     }
 
-    rhi::RHIBuffer* GetIndexBuffer() const
+    RHIBuffer* GetIndexBuffer() const
     {
         return m_indexBuffer;
     }
 
-    rhi::RHIBuffer* GetTriangleMapBuffer() const
+    RHIBuffer* GetTriangleMapBuffer() const
     {
         return m_triangleMapBuffer;
     }
@@ -75,12 +75,12 @@ public:
         return m_numIndices;
     }
 
-    rhi::RHIBuffer* GetNodesDataSSBO() const
+    RHIBuffer* GetNodesDataSSBO() const
     {
         return m_nodeSSBO;
     }
 
-    rhi::RHIBuffer* GetMaterialsDataSSBO() const
+    RHIBuffer* GetMaterialsDataSSBO() const
     {
         return m_materialSSBO;
     }
@@ -90,7 +90,7 @@ public:
         return m_envTexture;
     }
 
-    const std::vector<rhi::RHITexture*>& GetSceneTextures() const
+    const std::vector<RHITexture*>& GetSceneTextures() const
     {
         return m_sceneTextures;
     }
@@ -127,25 +127,25 @@ private:
     sg::Camera* m_camera{nullptr};
 
     std::vector<sg::NodeData> m_nodesData;
-    rhi::RHIBuffer* m_nodeSSBO;
+    RHIBuffer* m_nodeSSBO;
 
     std::vector<sg::MaterialData> m_materialsData;
-    rhi::RHIBuffer* m_materialSSBO;
+    RHIBuffer* m_materialSSBO;
 
     SceneUniformData m_sceneUniformData{};
 
-    rhi::RHIBuffer* m_vertexBuffer;
-    rhi::RHIBuffer* m_indexBuffer;
+    RHIBuffer* m_vertexBuffer;
+    RHIBuffer* m_indexBuffer;
 
-    rhi::RHIBuffer* m_triangleMapBuffer;
+    RHIBuffer* m_triangleMapBuffer;
 
     uint32_t m_numIndices{0};
 
-    // std::vector<rhi::TextureHandle> m_sceneTextures;
-    std::vector<rhi::RHITexture*> m_sceneTextures;
+    // std::vector<TextureHandle> m_sceneTextures;
+    std::vector<RHITexture*> m_sceneTextures;
     std::string m_envTextureName;
     EnvTexture m_envTexture;
-    rhi::RHITexture* m_defaultBaseColorTexture;
-    // rhi::TextureHandle m_defaultBaseColorTexture;
+    RHITexture* m_defaultBaseColorTexture;
+    // TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

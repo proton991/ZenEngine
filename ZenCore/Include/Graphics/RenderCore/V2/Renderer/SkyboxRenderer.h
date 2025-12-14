@@ -13,7 +13,7 @@ class RenderDevice;
 class SkyboxRenderer
 {
 public:
-    SkyboxRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    SkyboxRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
     void Init();
 
@@ -61,7 +61,7 @@ private:
 
     RenderDevice* m_renderDevice{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     RenderScene* m_scene{nullptr};
 
@@ -77,19 +77,19 @@ private:
 
     struct
     {
-        rhi::RHITexture* irradiance{nullptr};
-        rhi::RHITexture* prefiltered{nullptr};
+        RHITexture* irradiance{nullptr};
+        RHITexture* prefiltered{nullptr};
     } m_offscreenTextures;
 
     UniquePtr<RenderGraph> m_rdg;
 
-    rhi::RHIBuffer* m_vertexBuffer;
-    rhi::RHIBuffer* m_indexBuffer;
+    RHIBuffer* m_vertexBuffer;
+    RHIBuffer* m_indexBuffer;
 
     struct
     {
-        rhi::RHISampler* cubemapSampler;
-        rhi::RHISampler* lutBRDFSampler;
+        RHISampler* cubemapSampler;
+        RHISampler* lutBRDFSampler;
     } m_samplers;
 
     struct PushConstantIrradiance

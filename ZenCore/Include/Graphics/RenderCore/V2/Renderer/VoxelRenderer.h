@@ -29,7 +29,7 @@
 // class VoxelRenderer
 // {
 // public:
-//     VoxelRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+//     VoxelRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 //
 //     void Init();
 //
@@ -57,7 +57,7 @@
 //         return m_rdg.Get();
 //     };
 //
-//     const rhi::TextureHandle& GetVoxelAlbedo() const
+//     const TextureHandle& GetVoxelAlbedo() const
 //     {
 //         return m_voxelTextures.albedo;
 //     }
@@ -91,38 +91,38 @@
 //
 //     RenderDevice* m_renderDevice{nullptr};
 //
-//     rhi::DynamicRHI* m_RHI{nullptr};
+//     DynamicRHI* m_RHI{nullptr};
 //
-//     rhi::RHIViewport* m_viewport{nullptr};
+//     RHIViewport* m_viewport{nullptr};
 //
 //     RenderScene* m_scene{nullptr};
 //
 //     // 3D textures (written by voxelizer)
 //     struct
 //     {
-//         rhi::TextureHandle offscreen1;
-//         rhi::TextureHandle offscreen2;
-//         rhi::TextureHandle staticFlag;
-//         rhi::TextureHandle albedo;
-//         rhi::TextureHandle albedoProxy;
-//         rhi::TextureHandle normal;
-//         rhi::TextureHandle normalProxy;
-//         rhi::TextureHandle emissive;
-//         rhi::TextureHandle emissiveProxy;
-//         rhi::TextureHandle radiance;
-//         rhi::TextureHandle mipmaps[6]; // per face
+//         TextureHandle offscreen1;
+//         TextureHandle offscreen2;
+//         TextureHandle staticFlag;
+//         TextureHandle albedo;
+//         TextureHandle albedoProxy;
+//         TextureHandle normal;
+//         TextureHandle normalProxy;
+//         TextureHandle emissive;
+//         TextureHandle emissiveProxy;
+//         TextureHandle radiance;
+//         TextureHandle mipmaps[6]; // per face
 //     } m_voxelTextures;
 //
 //     struct
 //     {
-//         rhi::BufferHandle computeIndirectBuffer;
-//         rhi::BufferHandle largeTriangleBuffer;
+//         BufferHandle computeIndirectBuffer;
+//         BufferHandle largeTriangleBuffer;
 //     } m_buffers;
 //
-//     rhi::SamplerHandle m_voxelSampler;
-//     rhi::SamplerHandle m_colorSampler;
+//     SamplerHandle m_voxelSampler;
+//     SamplerHandle m_colorSampler;
 //
-//     rhi::BufferHandle m_voxelVBO;
+//     BufferHandle m_voxelVBO;
 //
 //     struct
 //     {

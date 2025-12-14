@@ -3,7 +3,7 @@
 #include "VulkanMemory.h"
 #include "Graphics/RHI/RHIResource.h"
 
-namespace zen::rhi
+namespace zen
 {
 // struct VulkanTexture
 // {
@@ -148,4 +148,4 @@ private:
 
     // VulkanTexture* m_pBaseTexture{nullptr};
 };
-} // namespace zen::rhi
+} // namespace zen

@@ -1,7 +1,7 @@
 #pragma once
 #include "Graphics/RHI/RHIDebug.h"
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanDebug : public RHIDebug
 {
@@ -21,4 +21,4 @@ public:
                                    const std::string& debugName) final;
 };
 
-} // namespace zen::rhi
+} // namespace zen

@@ -5,26 +5,26 @@
 #include "Utils/Helpers.h"
 #include "Graphics/RHI/RHIResource.h"
 
-namespace zen::rhi
+namespace zen
 {
 struct VulkanDescriptorPoolKey
 {
     VulkanDescriptorPoolKey() = default;
 
-    uint32_t descriptorCount[ToUnderlying(ShaderResourceType::eMax)] = {};
+    uint32_t descriptorCount[ToUnderlying(RHIShaderResourceType::eMax)] = {};
 
     bool operator==(const VulkanDescriptorPoolKey& other) const
     {
         return memcmp(descriptorCount, other.descriptorCount, sizeof(descriptorCount)) == 0;
     }
 };
-} // namespace zen::rhi
+} // namespace zen
 
 namespace std
 {
-template <> struct hash<zen::rhi::VulkanDescriptorPoolKey>
+template <> struct hash<zen::VulkanDescriptorPoolKey>
 {
-    size_t operator()(const zen::rhi::VulkanDescriptorPoolKey& key) const
+    size_t operator()(const zen::VulkanDescriptorPoolKey& key) const
     {
         size_t seed = 0;
         for (uint32_t count : key.descriptorCount)
@@ -36,7 +36,7 @@ template <> struct hash<zen::rhi::VulkanDescriptorPoolKey>
 };
 } // namespace std
 
-namespace zen::rhi
+namespace zen
 {
 // struct VulkanShader
 // {
@@ -156,7 +156,7 @@ private:
 class VulkanDescriptorSet : public RHIDescriptorSet
 {
 public:
-    void Update(const std::vector<ShaderResourceBinding>& resourceBindings) override;
+    void Update(const std::vector<RHIShaderResourceBinding>& resourceBindings) override;
 
     VkDescriptorSet GetVkDescriptorSet() const
     {
@@ -229,4 +229,4 @@ private:
     VkPipeline m_vkPipeline{VK_NULL_HANDLE};
     VkShaderStageFlags m_pushConstantsStageFlags;
 };
-} // namespace zen::rhi
+} // namespace zen

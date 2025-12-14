@@ -19,11 +19,10 @@ struct MacOSWindowData
 typedef MacOSWindowData WindowData;
 } // namespace zen
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 class VulkanInstanceExtension;
-class InstanceExtensionArray;
 class VulkanMacOSPlatform
 {
 public:
@@ -35,6 +34,6 @@ public:
 };
 
 typedef VulkanMacOSPlatform VulkanPlatform;
-} // namespace zen::rhi
+} // namespace zen
 
 #endif

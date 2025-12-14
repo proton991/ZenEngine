@@ -43,35 +43,35 @@ static void CopyRegion(uint8_t const* pSrc,
 }
 
 // GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(DataFormat format,
-//                                                                const rhi::RHITexture* handle,
+//                                                                const RHITexture* handle,
 //                                                                bool clear)
 // {
-//     m_rpLayout.AddColorRenderTarget(format, rhi::TextureUsage::eColorAttachment, handle,
+//     m_rpLayout.AddColorRenderTarget(format, RHITextureUsage::eColorAttachment, handle,
 //                                     m_renderDevice->GetTextureSubResourceRange(handle));
-//     m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-//                                                  rhi::RenderTargetLoadOp::eLoad,
-//                                          rhi::RenderTargetStoreOp::eStore);
+//     m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
+//                                                  RHIRenderTargetLoadOp::eLoad,
+//                                          RHIRenderTargetStoreOp::eStore);
 //     m_framebufferInfo.numRenderTarget++;
 //     return *this;
 // }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(rhi::RHIViewport* viewport,
-                                                             rhi::RenderTargetLoadOp loadOp,
-                                                             rhi::RenderTargetStoreOp storeOp)
+GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* viewport,
+                                                             RHIRenderTargetLoadOp loadOp,
+                                                             RHIRenderTargetStoreOp storeOp)
 {
     m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
                                     viewport->GetColorBackBufferRange(), loadOp, storeOp);
-    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-    //                                              rhi::RenderTargetLoadOp::eLoad,
-    //                                      rhi::RenderTargetStoreOp::eStore);
+    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
+    //                                              RHIRenderTargetLoadOp::eLoad,
+    //                                      RHIRenderTargetStoreOp::eStore);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
 
 GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
-    rhi::RHIViewport* viewport,
-    rhi::RenderTargetLoadOp loadOp,
-    rhi::RenderTargetStoreOp storeOp)
+    RHIViewport* viewport,
+    RHIRenderTargetLoadOp loadOp,
+    RHIRenderTargetStoreOp storeOp)
 {
     m_rpLayout.SetDepthStencilRenderTarget(
         viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
@@ -81,22 +81,22 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(rhi::RHITexture* colorRT,
-                                                               rhi::RenderTargetLoadOp loadOp,
-                                                               rhi::RenderTargetStoreOp storeOp)
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(RHITexture* colorRT,
+                                                               RHIRenderTargetLoadOp loadOp,
+                                                               RHIRenderTargetStoreOp storeOp)
 {
     m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT, colorRT->GetSubResourceRange(),
                                     loadOp, storeOp);
-    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? rhi::RenderTargetLoadOp::eClear :
-    //                                              rhi::RenderTargetLoadOp::eLoad,
-    // rhi::RenderTargetStoreOp::eStore);
+    // m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
+    //                                              RHIRenderTargetLoadOp::eLoad,
+    // RHIRenderTargetStoreOp::eStore);
     m_framebufferInfo.numRenderTarget++;
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture* depthStencilRT,
-                                                                rhi::RenderTargetLoadOp loadOp,
-                                                                rhi::RenderTargetStoreOp storeOp)
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(RHITexture* depthStencilRT,
+                                                                RHIRenderTargetLoadOp loadOp,
+                                                                RHIRenderTargetStoreOp storeOp)
 {
     m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT,
                                            depthStencilRT->GetSubResourceRange(), loadOp, storeOp);
@@ -106,9 +106,9 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture*
 }
 
 // GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(DataFormat format,
-//                                                                 const rhi::RHITexture* handle,
-//                                                                 rhi::RenderTargetLoadOp loadOp,
-//                                                                 rhi::RenderTargetStoreOp storeOp)
+//                                                                 const RHITexture* handle,
+//                                                                 RHIRenderTargetLoadOp loadOp,
+//                                                                 RHIRenderTargetStoreOp storeOp)
 // {
 //     m_rpLayout.SetDepthStencilRenderTarget(format, handle,
 //                                            m_renderDevice->GetTextureSubResourceRange(handle));
@@ -119,7 +119,7 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(rhi::RHITexture*
 
 GraphicsPass* GraphicsPassBuilder::Build()
 {
-    using namespace zen::rhi;
+
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     ShaderProgram* shaderProgram;
     if (m_shaderMode == GfxPassShaderMode::ePreCompiled)
@@ -182,10 +182,10 @@ GraphicsPass* GraphicsPassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name = srd.name;
         // for combined image samplers,
-        tracker.textureUsage = TextureUsage::eSampled;
+        tracker.textureUsage = RHITextureUsage::eSampled;
         tracker.resourceType = PassResourceType::eTexture;
-        tracker.accessMode   = AccessMode::eRead;
-        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        tracker.accessMode   = RHIAccessMode::eRead;
+        tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
@@ -193,16 +193,17 @@ GraphicsPass* GraphicsPassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eTexture;
-        tracker.textureUsage = TextureUsage::eStorage;
+        tracker.textureUsage = RHITextureUsage::eStorage;
         if (!srd.writable)
         {
-            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-            tracker.accessMode = AccessMode::eRead;
+            tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
+            tracker.accessMode = RHIAccessMode::eRead;
         }
         else
         {
-            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
-            tracker.accessMode = AccessMode::eReadWrite;
+            tracker.accessFlags.SetFlags(RHIAccessFlagBits::eShaderRead,
+                                         RHIAccessFlagBits::eShaderWrite);
+            tracker.accessMode = RHIAccessMode::eReadWrite;
         }
         pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
@@ -211,9 +212,9 @@ GraphicsPass* GraphicsPassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eBuffer;
-        tracker.bufferUsage  = BufferUsage::eUniformBuffer;
-        tracker.accessMode   = AccessMode::eRead;
-        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        tracker.bufferUsage  = RHIBufferUsage::eUniformBuffer;
+        tracker.accessMode   = RHIAccessMode::eRead;
+        tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
@@ -221,16 +222,17 @@ GraphicsPass* GraphicsPassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eBuffer;
-        tracker.bufferUsage  = BufferUsage::eStorageBuffer;
+        tracker.bufferUsage  = RHIBufferUsage::eStorageBuffer;
         if (!srd.writable)
         {
-            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-            tracker.accessMode = AccessMode::eRead;
+            tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
+            tracker.accessMode = RHIAccessMode::eRead;
         }
         else
         {
-            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
-            tracker.accessMode = AccessMode::eReadWrite;
+            tracker.accessFlags.SetFlags(RHIAccessFlagBits::eShaderRead,
+                                         RHIAccessFlagBits::eShaderWrite);
+            tracker.accessMode = RHIAccessMode::eReadWrite;
         }
         pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
@@ -256,38 +258,38 @@ GraphicsPass* GraphicsPassBuilder::Build()
 
 void GraphicsPassResourceUpdater::Update()
 {
-    // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
+    // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
         const auto setIndex             = kv.first;
         const auto& bindings            = kv.second;
-        rhi::RHIDescriptorSet* dsHandle = m_gfxPass->descriptorSets[setIndex];
+        RHIDescriptorSet* dsHandle = m_gfxPass->descriptorSets[setIndex];
         dsHandle->Update(bindings);
         // set pass tracker handle values here
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_gfxPass->resourceTrackers[setIndex][srb.binding];
-            bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
+            bool hasSampler = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+                srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
             {
-                rhi::RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
+                RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(dynamic_cast<rhi::RHITexture*>(resource));
+                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(resource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.buffer = dynamic_cast<rhi::RHIBuffer*>(resource);
+                    tracker.buffer = dynamic_cast<RHIBuffer*>(resource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
-            // if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-            //     srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            // if (srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+            //     srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer)
             // {
             //     handle = srb.handles[1];
             // }
@@ -298,7 +300,7 @@ void GraphicsPassResourceUpdater::Update()
             // if (tracker.resourceType == PassResourceType::eTexture)
             // {
             //     // check if a texture is a proxy
-            //     // rhi::RHITexture* textureHandle = TO_TEX_HANDLE(handle);
+            //     // RHITexture* textureHandle = TO_TEX_HANDLE(handle);
             //     // if (m_renderDevice->IsProxyTexture(textureHandle))
             //     // {
             //     //     textureHandle = m_renderDevice->GetBaseTextureForProxy(textureHandle);
@@ -321,7 +323,7 @@ void GraphicsPassResourceUpdater::Update()
 
 ComputePass* ComputePassBuilder::Build()
 {
-    using namespace zen::rhi;
+
 
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
 
@@ -345,9 +347,9 @@ ComputePass* ComputePassBuilder::Build()
         tracker.name = srd.name;
         // for combined image samplers,
         tracker.resourceType = PassResourceType::eTexture;
-        tracker.textureUsage = TextureUsage::eSampled;
-        tracker.accessMode   = AccessMode::eRead;
-        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        tracker.textureUsage = RHITextureUsage::eSampled;
+        tracker.accessMode   = RHIAccessMode::eRead;
+        tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
@@ -355,16 +357,17 @@ ComputePass* ComputePassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eTexture;
-        tracker.textureUsage = TextureUsage::eStorage;
+        tracker.textureUsage = RHITextureUsage::eStorage;
         if (!srd.writable)
         {
-            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-            tracker.accessMode = AccessMode::eRead;
+            tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
+            tracker.accessMode = RHIAccessMode::eRead;
         }
         else
         {
-            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
-            tracker.accessMode = AccessMode::eReadWrite;
+            tracker.accessFlags.SetFlags(RHIAccessFlagBits::eShaderRead,
+                                         RHIAccessFlagBits::eShaderWrite);
+            tracker.accessMode = RHIAccessMode::eReadWrite;
         }
         pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
@@ -373,9 +376,9 @@ ComputePass* ComputePassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eBuffer;
-        tracker.bufferUsage  = BufferUsage::eUniformBuffer;
-        tracker.accessMode   = AccessMode::eRead;
-        tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
+        tracker.bufferUsage  = RHIBufferUsage::eUniformBuffer;
+        tracker.accessMode   = RHIAccessMode::eRead;
+        tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
@@ -383,16 +386,17 @@ ComputePass* ComputePassBuilder::Build()
         PassResourceTracker tracker;
         tracker.name         = srd.name;
         tracker.resourceType = PassResourceType::eBuffer;
-        tracker.bufferUsage  = BufferUsage::eStorageBuffer;
+        tracker.bufferUsage  = RHIBufferUsage::eStorageBuffer;
         if (!srd.writable)
         {
-            tracker.accessFlags.SetFlag(AccessFlagBits::eShaderRead);
-            tracker.accessMode = AccessMode::eRead;
+            tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
+            tracker.accessMode = RHIAccessMode::eRead;
         }
         else
         {
-            tracker.accessFlags.SetFlags(AccessFlagBits::eShaderRead, AccessFlagBits::eShaderWrite);
-            tracker.accessMode = AccessMode::eReadWrite;
+            tracker.accessFlags.SetFlags(RHIAccessFlagBits::eShaderRead,
+                                         RHIAccessFlagBits::eShaderWrite);
+            tracker.accessMode = RHIAccessMode::eReadWrite;
         }
         pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
@@ -412,40 +416,40 @@ ComputePass* ComputePassBuilder::Build()
 
 void ComputePassResourceUpdater::Update()
 {
-    // rhi::DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
+    // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
         const auto setIndex             = kv.first;
         const auto& bindings            = kv.second;
-        rhi::RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
+        RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
         dsHandle->Update(bindings);
         // set pass tracker handle values here
-        rhi::Handle handle;
+        Handle handle;
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
-            bool hasSampler = srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-                srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer;
+            bool hasSampler = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+                srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
             {
-                rhi::RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
+                RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(dynamic_cast<rhi::RHITexture*>(resource));
+                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(resource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.buffer = dynamic_cast<rhi::RHIBuffer*>(resource);
+                    tracker.buffer = dynamic_cast<RHIBuffer*>(resource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
             // PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
-            // if (srb.type == rhi::ShaderResourceType::eSamplerWithTexture ||
-            //     srb.type == rhi::ShaderResourceType::eSamplerWithTextureBuffer)
+            // if (srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+            //     srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer)
             // {
             //     handle = srb.handles[1];
             // }
@@ -467,7 +471,7 @@ void ComputePassResourceUpdater::Update()
     }
 }
 
-rhi::RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
+RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
 {
     for (uint32_t i = 0; i < m_freeBuffers.size(); i++)
     {
@@ -481,10 +485,10 @@ rhi::RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
         }
     }
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size = requiredSize;
-    createInfo.usageFlags.SetFlag(rhi::BufferUsageFlagBits::eTransferSrcBuffer);
-    createInfo.allocateType = rhi::BufferAllocateType::eCPU;
+    createInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+    createInfo.allocateType = RHIBufferAllocateType::eCPU;
 
     Entry newEntry{};
     newEntry.size      = requiredSize;
@@ -500,7 +504,7 @@ rhi::RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
     return newEntry.buffer;
 }
 
-void TextureStagingManager::ReleaseBuffer(const rhi::RHIBuffer* buffer)
+void TextureStagingManager::ReleaseBuffer(const RHIBuffer* buffer)
 {
     for (uint32_t i = 0; i < m_usedBuffers.size(); i++)
     {
@@ -532,7 +536,7 @@ void TextureStagingManager::ProcessPendingFrees()
 
 void TextureStagingManager::Destroy()
 {
-    for (rhi::RHIBuffer* buffer : m_allocatedBuffers)
+    for (RHIBuffer* buffer : m_allocatedBuffers)
     {
         GDynamicRHI->DestroyBuffer(buffer);
     }
@@ -572,10 +576,10 @@ void BufferStagingManager::Destroy()
 
 void BufferStagingManager::InsertNewBlock()
 {
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = BUFFER_SIZE;
-    createInfo.allocateType = rhi::BufferAllocateType::eCPU;
-    createInfo.usageFlags.SetFlag(rhi::BufferUsageFlagBits::eTransferSrcBuffer);
+    createInfo.allocateType = RHIBufferAllocateType::eCPU;
+    createInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
 
     StagingBuffer buffer{};
     buffer.buffer       = GDynamicRHI->CreateBuffer(createInfo);
@@ -706,15 +710,15 @@ void BufferStagingManager::PerformAction(StagingFlushAction action)
     }
 }
 
-RenderDevice::RenderDevice(rhi::GraphicsAPIType APIType, uint32_t numFrames) :
+RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
     m_APIType(APIType), m_numFrames(numFrames)
 {
-    rhi::DynamicRHI::Create(m_APIType);
-    m_RHIDebug = rhi::RHIDebug::Create();
+    DynamicRHI::Create(m_APIType);
+    m_RHIDebug = RHIDebug::Create();
 }
 
 
-void RenderDevice::Init(rhi::RHIViewport* mainViewport)
+void RenderDevice::Init(RHIViewport* mainViewport)
 {
     m_bufferStagingMgr =
         new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
@@ -726,8 +730,8 @@ void RenderDevice::Init(rhi::RHIViewport* mainViewport)
     {
         RenderFrame frame{};
         frame.cmdListContext = GDynamicRHI->CreateCmdListContext();
-        frame.drawCmdList    = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
-        frame.uploadCmdList  = rhi::RHICommandList::Create(m_APIType, frame.cmdListContext);
+        frame.drawCmdList    = RHICommandList::Create(m_APIType, frame.cmdListContext);
+        frame.uploadCmdList  = RHICommandList::Create(m_APIType, frame.cmdListContext);
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
@@ -814,7 +818,7 @@ void RenderDevice::Destroy()
     delete GDynamicRHI;
 }
 
-void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bool present)
+void RenderDevice::ExecuteFrame(RHIViewport* viewport, RenderGraph* rdg, bool present)
 {
     GDynamicRHI->BeginDrawingViewport(viewport);
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
@@ -822,7 +826,7 @@ void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport, RenderGraph* rdg, bo
     GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
 }
 
-void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport,
+void RenderDevice::ExecuteFrame(RHIViewport* viewport,
                                 const std::vector<RenderGraph*>& rdgs,
                                 bool present)
 {
@@ -835,21 +839,21 @@ void RenderDevice::ExecuteFrame(rhi::RHIViewport* viewport,
     GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
 }
 
-void RenderDevice::ExecuteImmediate(rhi::RHIViewport* viewport, RenderGraph* rdg)
+void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
 {
-    rhi::RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
+    RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
     cmdList->BeginRender();
     rdg->Execute(cmdList);
     cmdList->EndRender();
     GDynamicRHI->WaitForCommandList(cmdList);
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
+RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
                                                     std::string texName)
 {
-    rhi::RHITextureCreateInfo texInfo{};
-    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    RHITextureCreateInfo texInfo{};
+    texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
     texInfo.height        = texFormat.height;
@@ -859,17 +863,17 @@ rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texForm
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
     texInfo.tag           = std::move(texName);
-    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eColorAttachment,
-                                rhi::TextureUsageFlagBits::eSampled);
+    texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+                                RHITextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
     {
-        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
-                                    rhi::TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
+                                    RHITextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* textureRD = GDynamicRHI->CreateTexture(texInfo);
-    // rhi::RHITexture* handle    = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* textureRD = GDynamicRHI->CreateTexture(texInfo);
+    // RHITexture* handle    = GDynamicRHI->CreateTexture(texInfo);
     // textureRD->Init(this, handle);
 
     // m_textureMap[handle] = textureRD;
@@ -877,12 +881,12 @@ rhi::RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texForm
     return textureRD;
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
+RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
                                                            TextureUsageHint usageHint,
                                                            std::string texName)
 {
-    rhi::RHITextureCreateInfo texInfo{};
-    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    RHITextureCreateInfo texInfo{};
+    texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
     texInfo.height        = texFormat.height;
@@ -892,26 +896,26 @@ rhi::RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& 
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
     texInfo.tag           = std::move(texName);
-    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eDepthStencilAttachment,
-                                rhi::TextureUsageFlagBits::eSampled);
+    texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eDepthStencilAttachment,
+                                RHITextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
     {
-        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
-                                    rhi::TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
+                                    RHITextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
+RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
                                                     std::string texName)
 {
-    rhi::RHITextureCreateInfo texInfo{};
-    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    RHITextureCreateInfo texInfo{};
+    texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
     texInfo.height        = texFormat.height;
@@ -922,26 +926,26 @@ rhi::RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texForm
     texInfo.mutableFormat = texFormat.mutableFormat;
     texInfo.tag           = std::move(texName);
 
-    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eStorage,
-                                rhi::TextureUsageFlagBits::eSampled);
+    texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage,
+                                RHITextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
     {
-        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
-                                    rhi::TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
+                                    RHITextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
+RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
                                                     TextureUsageHint usageHint,
                                                     std::string texName)
 {
-    rhi::RHITextureCreateInfo texInfo{};
-    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    RHITextureCreateInfo texInfo{};
+    texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
     texInfo.height        = texFormat.height;
@@ -951,25 +955,25 @@ rhi::RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texForm
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
     texInfo.tag           = std::move(texName);
-    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
+    texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
     {
-        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
-                                    rhi::TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
+                                    RHITextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
+RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
                                                   TextureUsageHint usageHint,
                                                   std::string texName)
 {
-    rhi::RHITextureCreateInfo texInfo{};
-    texInfo.type          = static_cast<rhi::TextureType>(texFormat.dimension);
+    RHITextureCreateInfo texInfo{};
+    texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
     texInfo.format        = texFormat.format;
     texInfo.width         = texFormat.width;
     texInfo.height        = texFormat.height;
@@ -979,41 +983,41 @@ rhi::RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat
     texInfo.samples       = texFormat.sampleCount;
     texInfo.mutableFormat = texFormat.mutableFormat;
     texInfo.tag           = std::move(texName);
-    texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eSampled);
+    texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled);
 
     if (usageHint.copyUsage)
     {
-        texInfo.usageFlags.SetFlags(rhi::TextureUsageFlagBits::eTransferSrc,
-                                    rhi::TextureUsageFlagBits::eTransferDst);
+        texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
+                                    RHITextureUsageFlagBits::eTransferDst);
     }
 
-    rhi::RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
 
     return texture;
 }
 
-rhi::RHITexture* RenderDevice::CreateTextureProxy(rhi::RHITexture* baseTexture,
+RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
                                                   const TextureProxyFormat& proxyFormat,
                                                   std::string texName)
 {
-    rhi::RHITextureProxyCreateInfo textureProxyInfo{};
-    textureProxyInfo.type        = static_cast<rhi::TextureType>(proxyFormat.dimension);
+    RHITextureProxyCreateInfo textureProxyInfo{};
+    textureProxyInfo.type        = static_cast<RHITextureType>(proxyFormat.dimension);
     textureProxyInfo.arrayLayers = proxyFormat.arrayLayers;
     textureProxyInfo.mipmaps     = proxyFormat.mipmaps;
     textureProxyInfo.format      = proxyFormat.format;
     textureProxyInfo.tag         = std::move(texName);
 
-    rhi::RHITexture* texture = baseTexture->CreateProxy(textureProxyInfo);
+    RHITexture* texture = baseTexture->CreateProxy(textureProxyInfo);
 
     return texture;
 }
 
-// rhi::RHITexture* RenderDevice::GetTextureRDFromHandle(const rhi::RHITexture* handle)
+// RHITexture* RenderDevice::GetTextureRDFromHandle(const RHITexture* handle)
 // {
 //     return m_textureMap[handle];
 // }
 
-void RenderDevice::DestroyTexture(rhi::RHITexture* texture)
+void RenderDevice::DestroyTexture(RHITexture* texture)
 {
     // if (textureRD->IsProxy())
     // {
@@ -1024,88 +1028,88 @@ void RenderDevice::DestroyTexture(rhi::RHITexture* texture)
     m_frames[m_currentFrame].texturesPendingFree.emplace_back(texture);
 }
 
-// rhi::RHITexture* RenderDevice::CreateTexture(const rhi::TextureInfo& textureInfo)
+// RHITexture* RenderDevice::CreateTexture(const TextureInfo& textureInfo)
 // {
 //     ASSERT(!textureInfo.name.empty());
 //     return m_textureManager->CreateTexture(textureInfo);
 // }
 
-// rhi::RHITexture* RenderDevice::CreateTextureProxy(const rhi::RHITexture* baseTexture,
-//                                                     const rhi::TextureProxyInfo& proxyInfo)
+// RHITexture* RenderDevice::CreateTextureProxy(const RHITexture* baseTexture,
+//                                                     const TextureProxyInfo& proxyInfo)
 // {
 //     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
 // }
 
-// rhi::RHITexture* RenderDevice::GetBaseTextureForProxy(const rhi::RHITexture* handle) const
+// RHITexture* RenderDevice::GetBaseTextureForProxy(const RHITexture* handle) const
 // {
 //     return m_textureManager->GetBaseTextureForProxy(handle);
 // }
 //
-// bool RenderDevice::IsProxyTexture(const rhi::RHITexture* handle) const
+// bool RenderDevice::IsProxyTexture(const RHITexture* handle) const
 // {
 //     return m_textureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(rhi::RHITexture* textureHandle,
-                                          rhi::RHICommandList* cmdList)
+void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle,
+                                          RHICommandList* cmdList)
 {
     cmdList->GenerateTextureMipmaps(textureHandle);
 }
 
-rhi::RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
+RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
-    BitField<rhi::BufferUsageFlagBits> usages;
-    usages.SetFlag(rhi::BufferUsageFlagBits::eVertexBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
+    BitField<RHIBufferUsageFlagBits> usages;
+    usages.SetFlag(RHIBufferUsageFlagBits::eVertexBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = dataSize;
     createInfo.usageFlags   = usages;
-    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* vertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* vertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
     UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
     m_buffers.push_back(vertexBuffer);
     return vertexBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
+RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
-    BitField<rhi::BufferUsageFlagBits> usages;
-    usages.SetFlag(rhi::BufferUsageFlagBits::eIndexBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
+    BitField<RHIBufferUsageFlagBits> usages;
+    usages.SetFlag(RHIBufferUsageFlagBits::eIndexBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = dataSize;
     createInfo.usageFlags   = usages;
-    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    rhi::RHIBuffer* indexBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* indexBuffer = GDynamicRHI->CreateBuffer(createInfo);
     UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
     m_buffers.push_back(indexBuffer);
     return indexBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
+RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
                                                   const uint8_t* pData,
                                                   std::string bufferName)
 {
-    BitField<rhi::BufferUsageFlagBits> usages;
-    usages.SetFlag(rhi::BufferUsageFlagBits::eUniformBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+    BitField<RHIBufferUsageFlagBits> usages;
+    usages.SetFlag(RHIBufferUsageFlagBits::eUniformBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadUniformBufferSize(dataSize);
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
-    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = std::move(bufferName);
 
 
-    rhi::RHIBuffer* uniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* uniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
     if (pData != nullptr)
     {
         UpdateBufferInternal(uniformBuffer, 0, paddedSize, pData);
@@ -1114,23 +1118,23 @@ rhi::RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
     return uniformBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
+RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
                                                   const uint8_t* pData,
                                                   std::string bufferName)
 {
-    BitField<rhi::BufferUsageFlagBits> usages;
-    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+    BitField<RHIBufferUsageFlagBits> usages;
+    usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadStorageBufferSize(dataSize);
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
-    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = std::move(bufferName);
 
-    rhi::RHIBuffer* storageBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* storageBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
@@ -1140,24 +1144,24 @@ rhi::RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
     return storageBuffer;
 }
 
-rhi::RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
+RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
                                                    const uint8_t* pData,
                                                    std::string bufferName)
 {
-    BitField<rhi::BufferUsageFlagBits> usages;
-    usages.SetFlag(rhi::BufferUsageFlagBits::eStorageBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eIndirectBuffer);
-    usages.SetFlag(rhi::BufferUsageFlagBits::eTransferDstBuffer);
+    BitField<RHIBufferUsageFlagBits> usages;
+    usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eIndirectBuffer);
+    usages.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
     uint32_t paddedSize = PadStorageBufferSize(dataSize);
 
-    rhi::RHIBufferCreateInfo createInfo{};
+    RHIBufferCreateInfo createInfo{};
     createInfo.size         = paddedSize;
     createInfo.usageFlags   = usages;
-    createInfo.allocateType = rhi::BufferAllocateType::eGPU;
+    createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = std::move(bufferName);
 
-    rhi::RHIBuffer* indirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* indirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
@@ -1181,7 +1185,7 @@ size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
     return alignedSize;
 }
 
-void RenderDevice::UpdateBuffer(rhi::RHIBuffer* buffer,
+void RenderDevice::UpdateBuffer(RHIBuffer* buffer,
                                 uint32_t dataSize,
                                 const uint8_t* pData,
                                 uint32_t offset)
@@ -1189,12 +1193,12 @@ void RenderDevice::UpdateBuffer(rhi::RHIBuffer* buffer,
     UpdateBufferInternal(buffer, offset, dataSize, pData);
 }
 
-void RenderDevice::DestroyBuffer(rhi::RHIBuffer* bufferHandle)
+void RenderDevice::DestroyBuffer(RHIBuffer* bufferHandle)
 {
     GDynamicRHI->DestroyBuffer(bufferHandle);
 }
 
-rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassLayout& layout)
+RenderPassHandle RenderDevice::GetOrCreateRenderPass(const RHIRenderPassLayout& layout)
 {
     auto hash = CalcRenderPassLayoutHash(layout);
     if (!m_renderPassCache.contains(hash))
@@ -1205,13 +1209,13 @@ rhi::RenderPassHandle RenderDevice::GetOrCreateRenderPass(const rhi::RenderPassL
     return m_renderPassCache[hash];
 }
 
-rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
-    rhi::GfxPipelineStates& PSO,
-    rhi::RHIShader* shader,
-    const rhi::RenderPassHandle& renderPass,
+RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
+    RHIGfxPipelineStates& PSO,
+    RHIShader* shader,
+    const RenderPassHandle& renderPass,
     const HashMap<uint32_t, int>& specializationConstants)
 {
-    rhi::RHIGfxPipelineCreateInfo createInfo{};
+    RHIGfxPipelineCreateInfo createInfo{};
     createInfo.shader           = shader;
     createInfo.states           = PSO;
     createInfo.renderPassHandle = renderPass;
@@ -1226,13 +1230,13 @@ rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     return m_pipelineCache[hash];
 }
 
-rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
-    rhi::GfxPipelineStates& PSO,
-    rhi::RHIShader* shader,
-    const rhi::RenderPassLayout& renderPassLayout,
+RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
+    RHIGfxPipelineStates& PSO,
+    RHIShader* shader,
+    const RHIRenderPassLayout& renderPassLayout,
     const HashMap<uint32_t, int>& specializationConstants)
 {
-    rhi::RHIGfxPipelineCreateInfo createInfo{};
+    RHIGfxPipelineCreateInfo createInfo{};
     createInfo.shader           = shader;
     createInfo.states           = PSO;
     createInfo.renderPassLayout = renderPassLayout;
@@ -1247,9 +1251,9 @@ rhi::RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     return m_pipelineCache[hash];
 }
 
-rhi::RHIPipeline* RenderDevice::GetOrCreateComputePipeline(rhi::RHIShader* shader)
+RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader)
 {
-    rhi::RHIComputePipelineCreateInfo createInfo{};
+    RHIComputePipelineCreateInfo createInfo{};
     createInfo.shader = shader;
 
     auto hash = CalcComputePipelineHash(shader);
@@ -1260,7 +1264,7 @@ rhi::RHIPipeline* RenderDevice::GetOrCreateComputePipeline(rhi::RHIShader* shade
     return m_pipelineCache[hash];
 }
 
-rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
+RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                                uint32_t width,
                                                uint32_t height,
                                                bool enableVSync)
@@ -1271,7 +1275,7 @@ rhi::RHIViewport* RenderDevice::CreateViewport(void* pWindow,
     return viewport;
 }
 
-void RenderDevice::DestroyViewport(rhi::RHIViewport* viewport)
+void RenderDevice::DestroyViewport(RHIViewport* viewport)
 {
     auto it = m_viewports.begin();
     while (it != m_viewports.end())
@@ -1285,7 +1289,7 @@ void RenderDevice::DestroyViewport(rhi::RHIViewport* viewport)
     GDynamicRHI->DestroyViewport(viewport);
 }
 
-void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, uint32_t height)
+void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height)
 {
     if (viewport != nullptr && (viewport->GetWidth() != width || viewport->GetHeight() != height))
     {
@@ -1295,13 +1299,13 @@ void RenderDevice::ResizeViewport(rhi::RHIViewport* viewport, uint32_t width, ui
     }
 }
 
-void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIViewport* viewport)
+void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewport* viewport)
 {
-    if (rhi::RHIOptions::GetInstance().UseDynamicRendering())
+    if (RHIOptions::GetInstance().UseDynamicRendering())
     {
-        rhi::RenderTargetLoadOp oldColorRTLoadOp =
+        RHIRenderTargetLoadOp oldColorRTLoadOp =
             pGfxPass->renderPassLayout.GetColorRenderTargets()[0].loadOp;
-        rhi::RenderTargetStoreOp oldColorRTStoreOp =
+        RHIRenderTargetStoreOp oldColorRTStoreOp =
             pGfxPass->renderPassLayout.GetColorRenderTargets()[0].storeOp;
         pGfxPass->renderPassLayout.ClearRenderTargetInfo();
         pGfxPass->renderPassLayout.AddColorRenderTarget(
@@ -1311,8 +1315,8 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIVi
 
         pGfxPass->renderPassLayout.SetDepthStencilRenderTarget(
             viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-            viewport->GetDepthStencilBackBufferRange(), rhi::RenderTargetLoadOp::eClear,
-            rhi::RenderTargetStoreOp::eStore);
+            viewport->GetDepthStencilBackBufferRange(), RHIRenderTargetLoadOp::eClear,
+            RHIRenderTargetStoreOp::eStore);
     }
     else
     {
@@ -1321,7 +1325,7 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, rhi::RHIVi
     }
 }
 
-rhi::RHISampler* RenderDevice::CreateSampler(const rhi::RHISamplerCreateInfo& samplerInfo)
+RHISampler* RenderDevice::CreateSampler(const RHISamplerCreateInfo& samplerInfo)
 {
     const size_t samplerHash = CalcSamplerHash(samplerInfo);
     if (!m_samplerCache.contains(samplerHash))
@@ -1332,18 +1336,18 @@ rhi::RHISampler* RenderDevice::CreateSampler(const rhi::RHISamplerCreateInfo& sa
     return m_samplerCache[samplerHash];
 }
 
-// rhi::TextureSubResourceRange RenderDevice::GetTextureSubResourceRange(rhi::RHITexture* handle)
+// RHITextureSubResourceRange RenderDevice::GetTextureSubResourceRange(RHITexture* handle)
 // {
 //     return GDynamicRHI->GetTextureSubResourceRange(handle);
 // }
 
-rhi::RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
+RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
     return m_textureManager->LoadTexture2D(file, requireMipmap);
 }
 
 void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
-                                     std::vector<rhi::RHITexture*>& outTextures)
+                                     std::vector<RHITexture*>& outTextures)
 {
     m_textureManager->LoadSceneTextures(scene, outTextures);
 }
@@ -1354,7 +1358,7 @@ void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* texture)
     m_textureManager->LoadTextureEnv(fullPath, texture);
 }
 
-void RenderDevice::UpdateTextureOneTime(rhi::RHITexture* textureHandle,
+void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
                                         const Vec3i& textureSize,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1386,8 +1390,8 @@ void RenderDevice::UpdateTextureOneTime(rhi::RHITexture* textureHandle,
     // unmap
     submitResult.buffer->Unmap();
     // copy to gpu memory
-    rhi::BufferTextureCopyRegion copyRegion{};
-    copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
+    RHIBufferTextureCopyRegion copyRegion{};
+    copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
@@ -1397,7 +1401,7 @@ void RenderDevice::UpdateTextureOneTime(rhi::RHITexture* textureHandle,
     m_bufferStagingMgr->EndSubmit(&submitResult);
 }
 
-void RenderDevice::UpdateTextureBatch(rhi::RHITexture* textureHandle,
+void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                                       const Vec3i& textureSize,
                                       const uint8_t* pData)
 {
@@ -1439,8 +1443,9 @@ void RenderDevice::UpdateTextureBatch(rhi::RHITexture* textureHandle,
                 // unmap
                 submitResult.buffer->Unmap();
                 // copy to gpu memory
-                rhi::BufferTextureCopyRegion copyRegion{};
-                copyRegion.textureSubresources.aspect.SetFlag(rhi::TextureAspectFlagBits::eColor);
+                RHIBufferTextureCopyRegion copyRegion{};
+                copyRegion.textureSubresources.aspect.SetFlag(
+                    RHITextureAspectFlagBits::eColor);
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
@@ -1453,7 +1458,7 @@ void RenderDevice::UpdateTextureBatch(rhi::RHITexture* textureHandle,
     }
 }
 
-void RenderDevice::UpdateBufferInternal(rhi::RHIBuffer* bufferHandle,
+void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
                                         uint32_t offset,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1483,7 +1488,7 @@ void RenderDevice::UpdateBufferInternal(rhi::RHIBuffer* bufferHandle,
         // unmap
         submitResult.buffer->Unmap();
         // copy to gpu memory
-        rhi::BufferCopyRegion copyRegion;
+        RHIBufferCopyRegion copyRegion;
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
@@ -1525,7 +1530,7 @@ void RenderDevice::WaitForAllFrames()
 
 void RenderDevice::NextFrame()
 {
-    // for (rhi::RHITexture* texture : GetCurrentFrame()->texturesPendingFree)
+    // for (RHITexture* texture : GetCurrentFrame()->texturesPendingFree)
     // {
     //     texture->DecreaseRefCount();
     // }
@@ -1556,7 +1561,7 @@ void RenderDevice::EndFrame()
 
 void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {
-    for (rhi::RHITexture* texture : m_frames[frameIndex].texturesPendingFree)
+    for (RHITexture* texture : m_frames[frameIndex].texturesPendingFree)
     {
         texture->ReleaseReference();
     }
@@ -1564,7 +1569,7 @@ void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 }
 
 // todo: consider attachment size when calculating hash
-size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layout)
+size_t RenderDevice::CalcRenderPassLayoutHash(const RHIRenderPassLayout& layout)
 {
     std::size_t seed = 0;
 
@@ -1586,7 +1591,7 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layou
     // Hash color render targets
     for (const auto& rt : layout.GetColorRenderTargets())
     {
-        // Assuming RenderTarget is hashable
+        // Assuming RHIRenderTarget is hashable
         combineHash(rt.format);
         combineHash(rt.numSamples);
         combineHash(rt.loadOp);
@@ -1595,7 +1600,7 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layou
     }
     if (layout.HasDepthStencilRenderTarget())
     {
-        // Hash depth stencil render target (assuming RenderTarget is hashable)
+        // Hash depth stencil render target (assuming RHIRenderTarget is hashable)
         combineHash(layout.GetDepthStencilRenderTarget().format);
     }
 
@@ -1604,8 +1609,8 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const rhi::RenderPassLayout& layou
     return seed;
 }
 
-size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
-                                         rhi::RenderPassHandle renderPassHandle)
+size_t RenderDevice::CalcFramebufferHash(const RHIFramebufferInfo& info,
+                                         RenderPassHandle renderPassHandle)
 {
     std::size_t seed = 0;
 
@@ -1627,9 +1632,9 @@ size_t RenderDevice::CalcFramebufferHash(const rhi::FramebufferInfo& info,
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                         rhi::RHIShader* shader,
-                                         const rhi::RenderPassHandle& renderPass,
+size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+                                         RHIShader* shader,
+                                         const RenderPassHandle& renderPass,
                                          const HashMap<uint32_t, int>& specializationConstants)
 {
     std::size_t seed = 0;
@@ -1649,9 +1654,9 @@ size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
-                                         rhi::RHIShader* shader,
-                                         const rhi::RenderPassLayout& renderPassLayout,
+size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+                                         RHIShader* shader,
+                                         const RHIRenderPassLayout& renderPassLayout,
                                          const HashMap<uint32_t, int>& specializationConstants)
 {
     std::size_t seed = 0;
@@ -1679,7 +1684,7 @@ size_t RenderDevice::CalcGfxPipelineHash(const rhi::GfxPipelineStates& pso,
     return seed;
 }
 
-size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
+size_t RenderDevice::CalcComputePipelineHash(RHIShader* shader)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -1691,7 +1696,7 @@ size_t RenderDevice::CalcComputePipelineHash(rhi::RHIShader* shader)
     return seed;
 }
 
-size_t RenderDevice::CalcSamplerHash(const rhi::RHISamplerCreateInfo& info)
+size_t RenderDevice::CalcSamplerHash(const RHISamplerCreateInfo& info)
 {
     using namespace zen::util;
 

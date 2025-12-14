@@ -2,7 +2,7 @@
 #include "VulkanHeaders.h"
 #include <vector>
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanDevice;
 class VulkanCommandBuffer;
@@ -52,4 +52,4 @@ private:
 
     VulkanCommandBuffer* m_lastSubmittedCmdBuffer{nullptr};
 };
-} // namespace zen::rhi
+} // namespace zen

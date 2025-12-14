@@ -34,37 +34,37 @@ void SpecializationConstantsApp::Destroy()
 
 void SpecializationConstantsApp::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType = RHIDrawPrimitiveType::eTriangleList;
 
     pso.rasterizationState          = {};
-    pso.rasterizationState.cullMode = PolygonCullMode::eBack;
+    pso.rasterizationState.cullMode = RHIPolygonCullMode::eBack;
 
-    pso.colorBlendState   = GfxPipelineColorBlendState::CreateDisabled();
+    pso.colorBlendState   = RHIGfxPipelineColorBlendState::CreateDisabled();
     pso.depthStencilState = {};
     pso.multiSampleState  = {};
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
-    std::vector<ShaderResourceBinding> uboBindings;
+    std::vector<RHIShaderResourceBinding> uboBindings;
     {
-        ShaderResourceBinding binding0{};
+        RHIShaderResourceBinding binding0{};
         binding0.binding = 0;
-        binding0.type    = ShaderResourceType::eUniformBuffer;
+        binding0.type    = RHIShaderResourceType::eUniformBuffer;
         binding0.handles.push_back(m_cameraUBO);
         uboBindings.emplace_back(std::move(binding0));
 
-        ShaderResourceBinding binding1{};
+        RHIShaderResourceBinding binding1{};
         binding1.binding = 1;
-        binding1.type    = ShaderResourceType::eUniformBuffer;
+        binding1.type    = RHIShaderResourceType::eUniformBuffer;
         binding1.handles.push_back(m_sceneUBO);
         uboBindings.emplace_back(std::move(binding1));
     }
-    std::vector<ShaderResourceBinding> textureBindings;
+    std::vector<RHIShaderResourceBinding> textureBindings;
     {
-        ShaderResourceBinding binding{};
+        RHIShaderResourceBinding binding{};
         binding.binding = 0;
-        binding.type    = ShaderResourceType::eSamplerWithTexture;
+        binding.type    = RHIShaderResourceType::eSamplerWithTexture;
         binding.handles.push_back(m_sampler);
         binding.handles.push_back(m_texture);
         textureBindings.emplace_back(std::move(binding));
@@ -72,13 +72,13 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // phone
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.phong = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
-                                .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.phong = builder.AddShaderStage(RHIShaderStage::eVertex, "uber.vert.spv")
+                                .AddShaderStage(RHIShaderStage::eFragment, "uber.frag.spv")
                                 .SetShaderSpecializationConstants(0, 0)
                                 .SetShaderSpecializationConstants(1, 0.0f)
                                 .SetNumSamples(SampleCount::e1)
                                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                      TextureUsage::eColorAttachment,
+                                                      RHITextureUsage::eColorAttachment,
                                                       m_viewport->GetColorBackBuffer())
                                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                                        m_viewport->GetDepthStencilBackBuffer())
@@ -92,13 +92,13 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // toon
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.toon = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
-                               .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.toon = builder.AddShaderStage(RHIShaderStage::eVertex, "uber.vert.spv")
+                               .AddShaderStage(RHIShaderStage::eFragment, "uber.frag.spv")
                                .SetShaderSpecializationConstants(0, 1)
                                .SetShaderSpecializationConstants(1, 0.0f)
                                .SetNumSamples(SampleCount::e1)
                                .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                     TextureUsage::eColorAttachment,
+                                                     RHITextureUsage::eColorAttachment,
                                                      m_viewport->GetColorBackBuffer())
                                .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                                       m_viewport->GetDepthStencilBackBuffer())
@@ -112,13 +112,13 @@ void SpecializationConstantsApp::BuildGraphicsPasses()
     // textured
     {
         rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.textured = builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "uber.vert.spv")
-                                   .AddShaderStage(rhi::RHIShaderStage::eFragment, "uber.frag.spv")
+        m_gfxPasses.textured = builder.AddShaderStage(RHIShaderStage::eVertex, "uber.vert.spv")
+                                   .AddShaderStage(RHIShaderStage::eFragment, "uber.frag.spv")
                                    .SetShaderSpecializationConstants(0, 2)
                                    .SetShaderSpecializationConstants(1, 0.0f)
                                    .SetNumSamples(SampleCount::e1)
                                    .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                                         TextureUsage::eColorAttachment,
+                                                         RHITextureUsage::eColorAttachment,
                                                          m_viewport->GetColorBackBuffer())
                                    .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                                           m_viewport->GetDepthStencilBackBuffer())
@@ -135,7 +135,7 @@ void SpecializationConstantsApp::LoadResources()
 {
     Application::LoadResources();
     // load texture
-    SamplerInfo samplerInfo{};
+    RHISamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
     m_texture = m_renderDevice->LoadTexture2D("wood.png");
 
@@ -167,7 +167,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     area.maxX = (int)m_window->GetExtent2D().width;
     area.maxY = (int)m_window->GetExtent2D().height;
 
-    std::vector<RenderPassClearValue> clearValues(2);
+    std::vector<RHIRenderPassClearValue> clearValues(2);
     clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
@@ -182,7 +182,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
         m_gfxPasses.phong.renderPass, m_gfxPasses.phong.framebuffer, area, clearValues, true);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     // phone
-    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.phong.pipeline, PipelineType::eGraphics);
+    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.phong.pipeline, RHIPipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, leftVP);
@@ -201,7 +201,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     middleVP.maxX = 2 * (float)m_window->GetExtent2D().width / 3.0f;
     middleVP.maxY = (float)m_window->GetExtent2D().height;
 
-    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.toon.pipeline, PipelineType::eGraphics);
+    m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.toon.pipeline, RHIPipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, middleVP);
@@ -222,7 +222,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     rightVP.maxY = (float)m_window->GetExtent2D().height;
 
     m_rdg->AddPassBindPipelineNode(mainPass, m_gfxPasses.textured.pipeline,
-                                   PipelineType::eGraphics);
+                                   RHIPipelineType::eGraphics);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, rightVP);

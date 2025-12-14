@@ -28,7 +28,7 @@ public:
         eBindTextures = 1 << 0
     };
 
-    DeferredLightingRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    DeferredLightingRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
     void Init();
 
@@ -61,7 +61,7 @@ private:
 
     RenderDevice* m_renderDevice{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
@@ -76,25 +76,25 @@ private:
 
     // struct
     // {
-    //     rhi::TextureHandle position;
-    //     rhi::TextureHandle normal;
-    //     rhi::TextureHandle albedo;
-    //     rhi::TextureHandle metallicRoughness;
-    //     rhi::TextureHandle emissiveOcclusion;
-    //     rhi::TextureHandle depth;
+    //     TextureHandle position;
+    //     TextureHandle normal;
+    //     TextureHandle albedo;
+    //     TextureHandle metallicRoughness;
+    //     TextureHandle emissiveOcclusion;
+    //     TextureHandle depth;
     // } m_offscreenTextures;
 
     struct
     {
-        rhi::RHITexture* position{nullptr};
-        rhi::RHITexture* normal{nullptr};
-        rhi::RHITexture* albedo{nullptr};
-        rhi::RHITexture* metallicRoughness{nullptr};
-        rhi::RHITexture* emissiveOcclusion{nullptr};
-        rhi::RHITexture* depth{nullptr};
+        RHITexture* position{nullptr};
+        RHITexture* normal{nullptr};
+        RHITexture* albedo{nullptr};
+        RHITexture* metallicRoughness{nullptr};
+        RHITexture* emissiveOcclusion{nullptr};
+        RHITexture* depth{nullptr};
     } m_offscreenTextures;
 
-    rhi::RHISampler* m_colorSampler;
-    rhi::RHISampler* m_depthSampler;
+    RHISampler* m_colorSampler;
+    RHISampler* m_depthSampler;
 };
 } // namespace zen::rc

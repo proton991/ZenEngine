@@ -3,7 +3,7 @@
 #include "Templates/HashMap.h"
 #include "Graphics/RHI/RHICommon.h"
 
-namespace zen::rhi
+namespace zen
 {
 struct VulkanMemoryAllocation
 {
@@ -32,7 +32,7 @@ public:
 
     void AllocBuffer(uint32_t size,
                      const VkBufferCreateInfo* bufferCI,
-                     BufferAllocateType allocType,
+                     RHIBufferAllocateType allocType,
                      VkBuffer* buffer,
                      VulkanMemoryAllocation* allocation);
 
@@ -48,4 +48,4 @@ private:
     VmaAllocator m_vmaAllocator{VK_NULL_HANDLE};
     HashMap<MemoryTypeIndex, VmaPool> m_smallPools;
 };
-} // namespace zen::rhi
+} // namespace zen

@@ -4,7 +4,7 @@
 
 #define ZEN_NUM_FRAMES_IN_FLIGHT 3u
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 class VulkanDevice;
@@ -74,4 +74,4 @@ private:
 
     friend class VulkanViewport;
 };
-} // namespace zen::rhi
+} // namespace zen

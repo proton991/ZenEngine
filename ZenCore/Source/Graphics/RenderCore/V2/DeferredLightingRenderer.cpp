@@ -9,12 +9,12 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "SceneGraph/Camera.h"
 
-using namespace zen::rhi;
+
 
 namespace zen::rc
 {
 DeferredLightingRenderer::DeferredLightingRenderer(RenderDevice* renderDevice,
-                                                   rhi::RHIViewport* viewport) :
+                                                   RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
@@ -59,8 +59,8 @@ void DeferredLightingRenderer::PrepareTextures()
     TextureUsageHint usageHint{.copyUsage = false};
     // (World space) Positions
     {
-        // rhi::TextureInfo texInfo{};
-        // texInfo.type        = rhi::TextureType::e2D;
+        // TextureInfo texInfo{};
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.format      = DataFormat::eR16G16B16A16SFloat;
         // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
         // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
@@ -69,8 +69,8 @@ void DeferredLightingRenderer::PrepareTextures()
         // texInfo.arrayLayers = 1;
         // texInfo.samples     = SampleCount::e1;
         // texInfo.name        = "offscreen_position";
-        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+        //                             RHITextureUsageFlagBits::eSampled);
         // m_offscreenTextures.position = m_renderDevice->CreateTexture(texInfo);
 
         TextureFormat texFormat{};
@@ -87,8 +87,8 @@ void DeferredLightingRenderer::PrepareTextures()
     }
     // (World space) Normals
     {
-        // rhi::TextureInfo texInfo{};
-        // texInfo.type        = rhi::TextureType::e2D;
+        // TextureInfo texInfo{};
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.format      = DataFormat::eR16G16B16A16SFloat;
         // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
         // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
@@ -97,8 +97,8 @@ void DeferredLightingRenderer::PrepareTextures()
         // texInfo.arrayLayers = 1;
         // texInfo.samples     = SampleCount::e1;
         // texInfo.name        = "offscreen_normal";
-        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+        //                             RHITextureUsageFlagBits::eSampled);
         // m_offscreenTextures.normal = m_renderDevice->CreateTexture(texInfo);
 
         TextureFormat texFormat{};
@@ -115,8 +115,8 @@ void DeferredLightingRenderer::PrepareTextures()
     }
     // color
     {
-        // rhi::TextureInfo texInfo{};
-        // texInfo.type        = rhi::TextureType::e2D;
+        // TextureInfo texInfo{};
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.format      = DataFormat::eR8G8B8A8UNORM;
         // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
         // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
@@ -124,8 +124,8 @@ void DeferredLightingRenderer::PrepareTextures()
         // texInfo.mipmaps     = 1;
         // texInfo.arrayLayers = 1;
         // texInfo.samples     = SampleCount::e1;
-        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+        //                             RHITextureUsageFlagBits::eSampled);
         //
         // texInfo.name               = "offscreen_albedo";
         // m_offscreenTextures.albedo = m_renderDevice->CreateTexture(texInfo);
@@ -156,18 +156,18 @@ void DeferredLightingRenderer::PrepareTextures()
     }
     // depth
     {
-        // rhi::TextureInfo texInfo{};
-        // texInfo.type        = rhi::TextureType::e2D;
+        // TextureInfo texInfo{};
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.format      = m_viewport->GetDepthStencilFormat();
-        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.width       = RenderConfig::GetInstance().offScreenFbSize;
         // texInfo.height      = RenderConfig::GetInstance().offScreenFbSize;
         // texInfo.depth       = 1;
         // texInfo.arrayLayers = 1;
         // texInfo.mipmaps     = 1;
         // texInfo.name        = "offscreen_depth";
-        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
-        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eDepthStencilAttachment,
+        //                             RHITextureUsageFlagBits::eSampled);
         // m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
 
         TextureFormat texFormat{};
@@ -185,20 +185,20 @@ void DeferredLightingRenderer::PrepareTextures()
     // offscreen color texture sampler
     {
         RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
         m_depthSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
     // offscreen depth texture sampler
     {
         RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
-        samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.minFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.magFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
         m_colorSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
 }
@@ -207,16 +207,16 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
 {
     // offscreen
     {
-        GfxPipelineStates pso{};
+        RHIGfxPipelineStates pso{};
         pso.rasterizationState          = {};
-        pso.rasterizationState.cullMode = PolygonCullMode::eBack;
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eBack;
 
         pso.depthStencilState =
-            GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLess);
+            RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
         pso.multiSampleState = {};
-        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(5);
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
+        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(5);
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
@@ -233,8 +233,8 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
                 .AddColorRenderTarget(m_offscreenTextures.metallicRoughness)
                 // emissiveOcclusion
                 .AddColorRenderTarget(m_offscreenTextures.emissiveOcclusion)
-                .SetDepthStencilTarget(m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
-                                       rhi::RenderTargetStoreOp::eStore)
+                .SetDepthStencilTarget(m_offscreenTextures.depth, RHIRenderTargetLoadOp::eClear,
+                                       RHIRenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, RenderConfig::GetInstance().offScreenFbSize,
                                     RenderConfig::GetInstance().offScreenFbSize)
@@ -244,24 +244,24 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
 
     // scene lighting
     {
-        GfxPipelineStates pso{};
-        pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+        RHIGfxPipelineStates pso{};
+        pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
         pso.rasterizationState = {};
         pso.multiSampleState   = {};
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
-        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled(1);
-        pso.depthStencilState =
-            GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLessOrEqual);
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.colorBlendState   = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+        pso.depthStencilState = RHIGfxPipelineDepthStencilState::Create(
+            true, true, RHIDepthCompareOperator::eLessOrEqual);
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneLighting =
             builder
                 .SetShaderProgramName("DeferredLightingSP")
                 // .SetNumSamples(SampleCount::e1)
-                .AddViewportColorRT(m_viewport, RenderTargetLoadOp::eLoad)
-                .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
-                                           RenderTargetStoreOp::eStore)
+                .AddViewportColorRT(m_viewport, RHIRenderTargetLoadOp::eLoad)
+                .SetViewportDepthStencilRT(m_viewport, RHIRenderTargetLoadOp::eClear,
+                                           RHIRenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport)
                 .SetTag("SceneLighting")
@@ -276,7 +276,7 @@ void DeferredLightingRenderer::BuildRenderGraph()
     // offscreen pass
     {
         const uint32_t cFbSize = RenderConfig::GetInstance().offScreenFbSize;
-        std::vector<RenderPassClearValue> clearValues(6);
+        std::vector<RHIRenderPassClearValue> clearValues(6);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[1].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[2].color   = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -300,28 +300,28 @@ void DeferredLightingRenderer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues,
                                                 "offscreen_gbuffer");
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.position, TextureUsage::eColorAttachment,
-        //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.position, RHITextureUsage::eColorAttachment,
+        //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.normal, TextureUsage::eColorAttachment,
-        //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.normal, RHITextureUsage::eColorAttachment,
+        //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.albedo, TextureUsage::eColorAttachment,
-        //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.albedo, RHITextureUsage::eColorAttachment,
+        //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.metallicRoughness, TextureUsage::eColorAttachment,
-        //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.metallicRoughness, RHITextureUsage::eColorAttachment,
+        //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.emissiveOcclusion, TextureUsage::eColorAttachment,
-        //     TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.emissiveOcclusion, RHITextureUsage::eColorAttachment,
+        //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
-        //     TextureSubResourceRange::DepthStencil(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.depth, RHITextureUsage::eDepthStencilAttachment,
+        //     RHITextureSubResourceRange::DepthStencil(), RHIAccessMode::eReadWrite);
         AddMeshDrawNodes(pass, area, vp);
     }
     // scene lighting pass
     {
-        std::vector<RenderPassClearValue> clearValues(2);
+        std::vector<RHIRenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.8f, 0.8f, 0.8f, 1.0f};
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 0;
@@ -341,23 +341,23 @@ void DeferredLightingRenderer::BuildRenderGraph()
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues,
                                                 "deferred_lighting");
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
-        //                                    TextureUsage::eSampled, TextureSubResourceRange::Color(),
-        //                                    rhi::AccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.normal, TextureUsage::eSampled,
-        //                                    TextureSubResourceRange::Color(),
-        //                                    rhi::AccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.albedo, TextureUsage::eSampled,
-        //                                    TextureSubResourceRange::Color(),
-        //                                    rhi::AccessMode::eRead);
+        //                                    RHITextureUsage::eSampled, RHITextureSubResourceRange::Color(),
+        //                                    RHIAccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.normal, RHITextureUsage::eSampled,
+        //                                    RHITextureSubResourceRange::Color(),
+        //                                    RHIAccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.albedo, RHITextureUsage::eSampled,
+        //                                    RHITextureSubResourceRange::Color(),
+        //                                    RHIAccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.metallicRoughness,
-        //                                    TextureUsage::eSampled, TextureSubResourceRange::Color(),
-        //                                    rhi::AccessMode::eRead);
+        //                                    RHITextureUsage::eSampled, RHITextureSubResourceRange::Color(),
+        //                                    RHIAccessMode::eRead);
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.emissiveOcclusion,
-        //                                    TextureUsage::eSampled, TextureSubResourceRange::Color(),
-        //                                    rhi::AccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.depth, TextureUsage::eSampled,
-        //                                    TextureSubResourceRange::DepthStencil(),
-        //                                    rhi::AccessMode::eRead);
+        //                                    RHITextureUsage::eSampled, RHITextureSubResourceRange::Color(),
+        //                                    RHIAccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.depth, RHITextureUsage::eSampled,
+        //                                    RHITextureSubResourceRange::DepthStencil(),
+        //                                    RHIAccessMode::eRead);
         // Final composition
         // This is done by simply drawing a full screen quad
         // The fragment shader then combines the deferred attachments into the final image
@@ -396,19 +396,19 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
 {
     const EnvTexture& envTexture = m_scene->GetEnvTexture();
     {
-        std::vector<ShaderResourceBinding> bufferBindings;
-        std::vector<ShaderResourceBinding> textureBindings;
+        std::vector<RHIShaderResourceBinding> bufferBindings;
+        std::vector<RHIShaderResourceBinding> textureBindings;
         // buffers
         ADD_SHADER_BINDING_SINGLE(
-            bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+            bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
             m_gfxPasses.offscreen->shaderProgram->GetUniformBufferHandle("uCameraData"));
-        ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 1, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetNodesDataSSBO());
-        ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(bufferBindings, 2, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetMaterialsDataSSBO());
         // texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(textureBindings, 0,
-                                         ShaderResourceType::eSamplerWithTexture, m_colorSampler,
+                                         RHIShaderResourceType::eSamplerWithTexture, m_colorSampler,
                                          m_scene->GetSceneTextures())
 
         GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.offscreen);
@@ -417,30 +417,30 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
             .Update();
     }
     {
-        std::vector<ShaderResourceBinding> bufferBindings;
-        std::vector<ShaderResourceBinding> textureBindings;
+        std::vector<RHIShaderResourceBinding> bufferBindings;
+        std::vector<RHIShaderResourceBinding> textureBindings;
         // buffer
         ADD_SHADER_BINDING_SINGLE(
-            bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+            bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
             m_gfxPasses.sceneLighting->shaderProgram->GetUniformBufferHandle("uSceneData"));
         // textures
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 0, RHIShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.position);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 1, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 1, RHIShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.normal);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 2, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 2, RHIShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.albedo);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 3, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 3, RHIShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.metallicRoughness);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 4, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 4, RHIShaderResourceType::eSamplerWithTexture,
                                   m_colorSampler, m_offscreenTextures.emissiveOcclusion);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 5, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 5, RHIShaderResourceType::eSamplerWithTexture,
                                   m_depthSampler, m_offscreenTextures.depth);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 6, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 6, RHIShaderResourceType::eSamplerWithTexture,
                                   envTexture.irradianceSampler, envTexture.irradiance);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 7, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 7, RHIShaderResourceType::eSamplerWithTexture,
                                   envTexture.prefilteredSampler, envTexture.prefiltered);
-        ADD_SHADER_BINDING_SINGLE(textureBindings, 8, ShaderResourceType::eSamplerWithTexture,
+        ADD_SHADER_BINDING_SINGLE(textureBindings, 8, RHIShaderResourceType::eSamplerWithTexture,
                                   envTexture.lutBRDFSampler, envTexture.lutBRDF);
 
         GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.sceneLighting);

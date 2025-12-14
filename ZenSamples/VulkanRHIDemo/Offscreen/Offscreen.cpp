@@ -39,68 +39,68 @@ void OffscreenApp::PrepareOffscreenTextures()
 {
     // offscreen color
     {
-        rhi::TextureInfo textureInfo{};
+        TextureInfo textureInfo{};
         textureInfo.format      = DataFormat::eR8G8B8A8SRGB;
-        textureInfo.type        = rhi::TextureType::e2D;
+        textureInfo.type        = RHITextureType::e2D;
         textureInfo.width       = OFFSCREEN_TEXTURE_DIM;
         textureInfo.height      = OFFSCREEN_TEXTURE_DIM;
         textureInfo.depth       = 1;
         textureInfo.arrayLayers = 1;
         textureInfo.mipmaps     = 1;
-        textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eColorAttachment);
-        textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+        textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+        textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
         m_offscreenTextures.color = m_renderDevice->CreateTexture(textureInfo, "offscreen_color");
     }
     // offscreen depth stencil
     {
-        rhi::TextureInfo textureInfo{};
+        TextureInfo textureInfo{};
         textureInfo.format      = DataFormat::eD32SFloatS8UInt;
-        textureInfo.type        = rhi::TextureType::e2D;
+        textureInfo.type        = RHITextureType::e2D;
         textureInfo.width       = OFFSCREEN_TEXTURE_DIM;
         textureInfo.height      = OFFSCREEN_TEXTURE_DIM;
         textureInfo.depth       = 1;
         textureInfo.arrayLayers = 1;
         textureInfo.mipmaps     = 1;
-        textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eDepthStencilAttachment);
+        textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
         m_offscreenTextures.depth = m_renderDevice->CreateTexture(textureInfo, "offscreen_depth");
     }
 }
 
 void OffscreenApp::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
-    pso.colorBlendState    = GfxPipelineColorBlendState::CreateDisabled();
+    pso.colorBlendState    = RHIGfxPipelineColorBlendState::CreateDisabled();
     pso.depthStencilState =
-        GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLessOrEqual);
+        RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
     // offscreen
     {
-        std::vector<ShaderResourceBinding> uboBindings;
+        std::vector<RHIShaderResourceBinding> uboBindings;
         {
-            ShaderResourceBinding binding0{};
+            RHIShaderResourceBinding binding0{};
             binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.type    = RHIShaderResourceType::eUniformBuffer;
             binding0.handles.push_back(m_cameraUBO);
             uboBindings.emplace_back(std::move(binding0));
 
-            ShaderResourceBinding binding1{};
+            RHIShaderResourceBinding binding1{};
             binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eUniformBuffer;
+            binding1.type    = RHIShaderResourceType::eUniformBuffer;
             binding1.handles.push_back(m_sceneUBO);
             uboBindings.emplace_back(std::move(binding1));
         }
-        pso.rasterizationState.cullMode = PolygonCullMode::eFront;
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eFront;
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreenShaded =
-            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "Offscreen/phong.vert.spv")
-                .AddShaderStage(rhi::RHIShaderStage::eFragment, "Offscreen/phong.frag.spv")
+            builder.AddShaderStage(RHIShaderStage::eVertex, "Offscreen/phong.vert.spv")
+                .AddShaderStage(RHIShaderStage::eFragment, "Offscreen/phong.frag.spv")
                 .SetNumSamples(SampleCount::e1)
-                .AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, TextureUsage::eColorAttachment,
+                .AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, RHITextureUsage::eColorAttachment,
                                       m_offscreenTextures.color)
                 .SetDepthStencilTarget(DataFormat::eD32SFloatS8UInt, m_offscreenTextures.depth)
                 .SetShaderResourceBinding(0, uboBindings)
@@ -112,37 +112,37 @@ void OffscreenApp::BuildGraphicsPasses()
 
     // mirror
     {
-        std::vector<ShaderResourceBinding> uboBindings;
+        std::vector<RHIShaderResourceBinding> uboBindings;
         {
-            ShaderResourceBinding binding0{};
+            RHIShaderResourceBinding binding0{};
             binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.type    = RHIShaderResourceType::eUniformBuffer;
             binding0.handles.push_back(m_cameraUBO);
             uboBindings.emplace_back(std::move(binding0));
 
-            ShaderResourceBinding binding1{};
+            RHIShaderResourceBinding binding1{};
             binding1.binding = 1;
-            binding1.type    = ShaderResourceType::eUniformBuffer;
+            binding1.type    = RHIShaderResourceType::eUniformBuffer;
             binding1.handles.push_back(m_sceneUBO);
             uboBindings.emplace_back(std::move(binding1));
         }
-        std::vector<ShaderResourceBinding> textureBindings;
+        std::vector<RHIShaderResourceBinding> textureBindings;
         {
-            ShaderResourceBinding binding{};
+            RHIShaderResourceBinding binding{};
             binding.binding = 0;
-            binding.type    = ShaderResourceType::eSamplerWithTexture;
+            binding.type    = RHIShaderResourceType::eSamplerWithTexture;
             binding.handles.push_back(m_sampler);
             binding.handles.push_back(m_offscreenTextures.color);
             textureBindings.emplace_back(std::move(binding));
         }
-        pso.rasterizationState.cullMode = PolygonCullMode::eDisabled;
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.mirror =
-            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "Offscreen/mirror.vert.spv")
-                .AddShaderStage(rhi::RHIShaderStage::eFragment, "Offscreen/mirror.frag.spv")
+            builder.AddShaderStage(RHIShaderStage::eVertex, "Offscreen/mirror.vert.spv")
+                .AddShaderStage(RHIShaderStage::eFragment, "Offscreen/mirror.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment,
+                                      RHITextureUsage::eColorAttachment,
                                       m_viewport->GetColorBackBuffer())
                 .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                        m_viewport->GetDepthStencilBackBuffer())
@@ -159,7 +159,7 @@ void OffscreenApp::LoadResources()
 {
     Application::LoadResources();
     // load texture
-    SamplerInfo samplerInfo{};
+    RHISamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
     m_texture = m_renderDevice->LoadTexture2D("wood.png");
 
@@ -189,7 +189,7 @@ void OffscreenApp::BuildRenderGraph()
 
     // offscreen pass
     {
-        std::vector<RenderPassClearValue> clearValues(2);
+        std::vector<RHIRenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 1.0f;
@@ -209,8 +209,8 @@ void OffscreenApp::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreenShaded, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
-            pass, m_offscreenTextures.color, TextureUsage::eColorAttachment,
-            TextureSubResourceRange::Color(), rhi::AccessMode::eReadWrite);
+            pass, m_offscreenTextures.color, RHITextureUsage::eColorAttachment,
+            RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -227,7 +227,7 @@ void OffscreenApp::BuildRenderGraph()
     }
     // mirror pass
     {
-        std::vector<RenderPassClearValue> clearValues(2);
+        std::vector<RHIRenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 1.0f;
@@ -245,9 +245,9 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxY = (float)m_window->GetExtent2D().height;
 
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.mirror, area, clearValues, true);
-        m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, TextureUsage::eSampled,
-                                           TextureSubResourceRange::Color(),
-                                           rhi::AccessMode::eRead);
+        m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, RHITextureUsage::eSampled,
+                                           RHITextureSubResourceRange::Color(),
+                                           RHIAccessMode::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

@@ -1,7 +1,7 @@
 #pragma once
 #include "DynamicRHI.h"
 
-namespace zen::rhi
+namespace zen
 {
 class RHIDebug
 {
@@ -27,4 +27,4 @@ protected:
 
     // DynamicRHI* m_RHI{nullptr};
 };
-} // namespace zen::rhi
+} // namespace zen

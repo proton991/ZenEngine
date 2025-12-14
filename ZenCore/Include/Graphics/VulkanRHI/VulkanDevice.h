@@ -3,7 +3,7 @@
 #include "Utils/UniquePtr.h"
 #include <vector>
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanRHI;
 class VulkanDeviceExtension;
@@ -130,4 +130,4 @@ private:
     VulkanCommandListContext* m_immediateContext{nullptr};
     VulkanCommandList* m_immediateCommandList{nullptr};
 };
-} // namespace zen::rhi
+} // namespace zen

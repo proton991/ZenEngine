@@ -1,7 +1,7 @@
 #pragma once
 #include "Platform/GlfwWindow.h"
 
-namespace zen::rhi
+namespace zen
 {
 struct VulkanSurface
 {
@@ -10,4 +10,4 @@ struct VulkanSurface
     uint32_t height{0};
 };
 
-} // namespace zen::rhi
+} // namespace zen

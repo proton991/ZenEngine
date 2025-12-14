@@ -16,48 +16,48 @@ public:
 
     void Destroy();
 
-    // rhi::RHITexture* CreateTexture(const rhi::TextureInfo& textureInfo);
+    // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
-    // rhi::RHITexture* CreateTextureProxy(const rhi::RHITexture* baseTexture,
-    //                                       const rhi::TextureProxyInfo& proxyInfo);
+    // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+    //                                       const TextureProxyInfo& proxyInfo);
 
-    rhi::RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
+    RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<rhi::RHITexture*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* scene, std::vector<RHITexture*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
 
-    // rhi::RHITexture* GetBaseTextureForProxy(const rhi::RHITexture* handle) const;
+    // RHITexture* GetBaseTextureForProxy(const RHITexture* handle) const;
     //
-    // bool IsProxyTexture(const rhi::RHITexture* textureHandle) const;
+    // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
-    void UpdateTexture(rhi::RHITexture* texture, uint32_t dataSize, const uint8_t* pData);
+    void UpdateTexture(RHITexture* texture, uint32_t dataSize, const uint8_t* pData);
 
-    void UpdateTextureCube(rhi::RHITexture* texture,
-                           const std::vector<rhi::BufferTextureCopyRegion>& regions,
+    void UpdateTextureCube(RHITexture* texture,
+                           const std::vector<RHIBufferTextureCopyRegion>& regions,
                            uint32_t dataSize,
                            const uint8_t* pData);
 
-    // void UpdateTexture(const rhi::RHITexture* textureHandle,
+    // void UpdateTexture(const RHITexture* textureHandle,
     //                    const Vec3i& textureSize,
     //                    uint32_t dataSize,
     //                    const uint8_t* pData);
     //
-    // void UpdateTextureCube(const rhi::RHITexture* textureHandle,
-    //                        const std::vector<rhi::BufferTextureCopyRegion>& regions,
+    // void UpdateTextureCube(const RHITexture* textureHandle,
+    //                        const std::vector<RHIBufferTextureCopyRegion>& regions,
     //                        uint32_t dataSize,
     //                        const uint8_t* pData);
 
-    // rhi::DynamicRHI* m_RHI{nullptr};
+    // DynamicRHI* m_RHI{nullptr};
 
     RenderDevice* m_renderDevice{nullptr};
 
     TextureStagingManager* m_stagingMgr{nullptr};
 
-    // HashMap<std::string, rhi::RHITexture*> m_textureCache;
-    HashMap<std::string, rhi::RHITexture*> m_textureCache;
+    // HashMap<std::string, RHITexture*> m_textureCache;
+    HashMap<std::string, RHITexture*> m_textureCache;
 
-    HashMap<rhi::RHITexture*, rhi::RHITexture*> m_textureProxyMap; // proxy tex -> base tex
+    HashMap<RHITexture*, RHITexture*> m_textureProxyMap; // proxy tex -> base tex
 };
 } // namespace zen::rc

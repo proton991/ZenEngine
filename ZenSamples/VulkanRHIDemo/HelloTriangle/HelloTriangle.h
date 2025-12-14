@@ -5,8 +5,8 @@ namespace zen::rc
 {
 class RenderDevice;
 }
-using namespace zen;
-using namespace zen::rhi;
+
+
 
 
 class HelloTriangleApp : public Application

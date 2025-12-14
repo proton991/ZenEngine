@@ -1,7 +1,7 @@
 #pragma once
 #include <functional>
 
-namespace zen::rhi
+namespace zen
 {
 enum class Status : uint32_t
 {
@@ -57,13 +57,13 @@ public:
         explicit m_name##Handle(void* ptr) : Handle((size_t)ptr) {}          \
         m_name##Handle() = default;                                          \
     };
-} // namespace zen::rhi
+} // namespace zen
 
 namespace std
 {
-template <> struct hash<zen::rhi::Handle>
+template <> struct hash<zen::Handle>
 {
-    size_t operator()(const zen::rhi::Handle& handle) const noexcept
+    size_t operator()(const zen::Handle& handle) const noexcept
     {
         return std::hash<size_t>{}(handle.value);
     }
@@ -72,19 +72,19 @@ template <> struct hash<zen::rhi::Handle>
 
 
 
-#define HASH_DEFINE(m_name)                                                      \
-    namespace std                                                                \
-    {                                                                            \
-    template <> struct hash<zen::rhi::m_name##Handle>                            \
-    {                                                                            \
-        size_t operator()(const zen::rhi::m_name##Handle& handle) const noexcept \
-        {                                                                        \
-            return std::hash<size_t>{}(handle.value);                            \
-        }                                                                        \
-    };                                                                           \
+#define HASH_DEFINE(m_name)                                                 \
+    namespace std                                                           \
+    {                                                                       \
+    template <> struct hash<zen::m_name##Handle>                            \
+    {                                                                       \
+        size_t operator()(const zen::m_name##Handle& handle) const noexcept \
+        {                                                                   \
+            return std::hash<size_t>{}(handle.value);                       \
+        }                                                                   \
+    };                                                                      \
     }
 
-namespace zen::rhi
+namespace zen
 {
 // RHI_DEFINE_HANDLE(Surface);
 // RHI_DEFINE_HANDLE(Swapchain);
@@ -99,9 +99,9 @@ RHI_DEFINE_HANDLE(Framebuffer);
 // RHI_DEFINE_HANDLE(Buffer);
 // RHI_DEFINE_HANDLE(DescriptorSet);
 
-// #define TO_TEX_HANDLE(handle) rhi::TextureHandle(handle.value)
-// #define TO_BUF_HANDLE(handle) rhi::BufferHandle(handle.value)
-} // namespace zen::rhi
+// #define TO_TEX_HANDLE(handle) TextureHandle(handle.value)
+// #define TO_BUF_HANDLE(handle) BufferHandle(handle.value)
+} // namespace zen
 
 // HASH_DEFINE(Texture)
 // HASH_DEFINE(Shader)

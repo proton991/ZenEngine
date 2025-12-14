@@ -21,7 +21,7 @@ static const std::vector<Mat4> cMatrices = {
     glm::rotate(Mat4(1.0f), glm::radians(180.0f), Vec3(0.0f, 0.0f, 1.0f)),
 };
 
-SkyboxRenderer::SkyboxRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+SkyboxRenderer::SkyboxRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
@@ -52,9 +52,9 @@ void SkyboxRenderer::PrepareTextures()
         // offscreenTexInfo.width  = IRRADIANCE_DIM;
         // offscreenTexInfo.height = IRRADIANCE_DIM;
         // offscreenTexInfo.format = cIrradianceFormat;
-        // offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-        //                                      TextureUsageFlagBits::eTransferSrc);
-        // offscreenTexInfo.type = TextureType::e2D;
+        // offscreenTexInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+        //                                      RHITextureUsageFlagBits::eTransferSrc);
+        // offscreenTexInfo.type = RHITextureType::e2D;
         // offscreenTexInfo.name = "EnvIrradianceOffscreen";
 
         TextureFormat texFormat{};
@@ -74,9 +74,9 @@ void SkyboxRenderer::PrepareTextures()
         // offscreenTexInfo.width  = PREFILTERED_DIM;
         // offscreenTexInfo.height = PREFILTERED_DIM;
         // offscreenTexInfo.format = cPrefilteredFormat;
-        // offscreenTexInfo.usageFlags.SetFlags(TextureUsageFlagBits::eColorAttachment,
-        //                                      TextureUsageFlagBits::eTransferSrc);
-        // offscreenTexInfo.type = TextureType::e2D;
+        // offscreenTexInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+        //                                      RHITextureUsageFlagBits::eTransferSrc);
+        // offscreenTexInfo.type = RHITextureType::e2D;
         // offscreenTexInfo.name = "EnvPrefilteredOffscreen";
         //
         // m_offscreenTextures.prefiltered = m_renderDevice->CreateTexture(offscreenTexInfo);
@@ -99,7 +99,7 @@ void SkyboxRenderer::BuildRenderGraph()
 {
     // build rdg
     m_rdg->Begin();
-    std::vector<rhi::RenderPassClearValue> clearValues(2);
+    std::vector<RHIRenderPassClearValue> clearValues(2);
     clearValues[0].color   = {0.0f, 0.0f, 0.2f, 0.0f};
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 0;
@@ -127,16 +127,15 @@ void SkyboxRenderer::BuildRenderGraph()
 
 void SkyboxRenderer::BuildGraphicsPasses()
 {
-    using namespace zen::rhi;
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
-    pso.depthStencilState =
-        GfxPipelineDepthStencilState::Create(false, false, CompareOperator::eLessOrEqual);
+    pso.depthStencilState  = RHIGfxPipelineDepthStencilState::Create(
+        false, false, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
-    pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
     {
         GraphicsPassBuilder builder(m_renderDevice);
@@ -168,39 +167,40 @@ void SkyboxRenderer::BuildGraphicsPasses()
         // build skybox draw pass
         pso = {};
 
-        pso.primitiveType               = DrawPrimitiveType::eTriangleList;
+        pso.primitiveType               = RHIDrawPrimitiveType::eTriangleList;
         pso.rasterizationState          = {};
-        pso.rasterizationState.cullMode = PolygonCullMode::eFront;
-        pso.depthStencilState =
-            GfxPipelineDepthStencilState::Create(true, false, CompareOperator::eLessOrEqual);
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eFront;
+        pso.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
+            true, false, RHIDepthCompareOperator::eLessOrEqual);
         pso.multiSampleState = {};
-        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
+        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
         GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.skybox = builder
-                                 .SetShaderProgramName("SkyboxRenderSP")
-                                 // .SetNumSamples(SampleCount::e1)
-                                 // offscreen texture
-                                 .AddViewportColorRT(m_viewport)
-                                 .SetViewportDepthStencilRT(m_viewport, RenderTargetLoadOp::eClear,
-                                                            RenderTargetStoreOp::eStore)
-                                 .SetPipelineState(pso)
-                                 .SetFramebufferInfo(m_viewport)
-                                 .SetTag("SkyboxDraw")
-                                 .Build();
+        m_gfxPasses.skybox =
+            builder
+                .SetShaderProgramName("SkyboxRenderSP")
+                // .SetNumSamples(SampleCount::e1)
+                // offscreen texture
+                .AddViewportColorRT(m_viewport)
+                .SetViewportDepthStencilRT(m_viewport, RHIRenderTargetLoadOp::eClear,
+                                           RHIRenderTargetStoreOp::eStore)
+                .SetPipelineState(pso)
+                .SetFramebufferInfo(m_viewport)
+                .SetTag("SkyboxDraw")
+                .Build();
     }
 }
 
 void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 {
-    using namespace zen::rhi;
+
 
     for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
     {
-        rhi::RHITexture* cubemapTexture;
-        rhi::RHITexture* offscreenTexture;
+        RHITexture* cubemapTexture;
+        RHITexture* offscreenTexture;
         uint32_t dim;
         DataFormat format;
         GraphicsPass* gfxPass;
@@ -226,25 +226,25 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         // textureInfo.format      = format;
         // textureInfo.width       = dim;
         // textureInfo.height      = dim;
-        // textureInfo.type        = TextureType::eCube;
+        // textureInfo.type        = RHITextureType::eCube;
         // textureInfo.depth       = 1;
         // textureInfo.arrayLayers = 6;
         // textureInfo.mipmaps     = CalculateTextureMipLevels(dim);
-        // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferDst);
-        // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+        // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferDst);
+        // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
         //
-        const uint32_t numMips = CalculateTextureMipLevels(dim);
+        const uint32_t numMips = RHITexture::CalculateTextureMipLevels(dim);
 
         RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.minFilter     = SamplerFilter::eLinear;
-        samplerInfo.magFilter     = SamplerFilter::eLinear;
-        samplerInfo.repeatU       = SamplerRepeatMode::eClampToEdge;
-        samplerInfo.repeatV       = SamplerRepeatMode::eClampToEdge;
-        samplerInfo.repeatW       = SamplerRepeatMode::eClampToEdge;
+        samplerInfo.minFilter     = RHISamplerFilter::eLinear;
+        samplerInfo.magFilter     = RHISamplerFilter::eLinear;
+        samplerInfo.repeatU       = RHISamplerRepeatMode::eClampToEdge;
+        samplerInfo.repeatV       = RHISamplerRepeatMode::eClampToEdge;
+        samplerInfo.repeatW       = RHISamplerRepeatMode::eClampToEdge;
         samplerInfo.minLod        = 0.0f;
         samplerInfo.maxLod        = static_cast<float>(numMips);
         samplerInfo.maxAnisotropy = 1.0f;
-        samplerInfo.borderColor   = SamplerBorderColor::eFloatOpaqueBlack;
+        samplerInfo.borderColor   = RHISamplerBorderColor::eFloatOpaqueBlack;
 
         m_samplers.cubemapSampler = m_renderDevice->CreateSampler(samplerInfo);
 
@@ -262,8 +262,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
         // offscreen
         {
-            std::vector<ShaderResourceBinding> textureBindings;
-            ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+            std::vector<RHIShaderResourceBinding> textureBindings;
+            ADD_SHADER_BINDING_SINGLE(textureBindings, 0,
+                                      RHIShaderResourceType::eSamplerWithTexture,
                                       m_samplers.cubemapSampler, texture->skybox);
 
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
@@ -271,7 +272,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
             UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("env_cubmap_gen_rdg");
             rdg->Begin();
-            std::vector<RenderPassClearValue> clearValues(1);
+            std::vector<RHIRenderPassClearValue> clearValues(1);
             clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
             Rect2i area;
@@ -282,9 +283,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
             // 1st pass: render to offscreen texture (6 faces)
             // auto* pass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, targetName);
-            // // rdg->DeclareTextureAccessForPass(pass, offscreenTexture, TextureUsage::eColorAttachment,
+            // // rdg->DeclareTextureAccessForPass(pass, offscreenTexture, RHITextureUsage::eColorAttachment,
             // //                                  m_RHI->GetTextureSubResourceRange(offscreenTexture),
-            // //                                  rhi::AccessMode::eReadWrite);
+            // //                                  RHIAccessMode::eReadWrite);
             // rdg->AddGraphicsPassSetScissorNode(pass, area);
             // rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
             // rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
@@ -303,9 +304,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                         targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
                     auto* pass = rdg->AddGraphicsPassNode(gfxPass, area, clearValues, passTag);
                     // rdg->DeclareTextureAccessForPass(
-                    //     pass, offscreenTexture, TextureUsage::eColorAttachment,
+                    //     pass, offscreenTexture, RHITextureUsage::eColorAttachment,
                     //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
-                    //     rhi::AccessMode::eReadWrite);
+                    //     RHIAccessMode::eReadWrite);
                     rdg->AddGraphicsPassSetScissorNode(pass, area);
                     rdg->AddGraphicsPassSetViewportNode(pass, vp);
                     rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -334,10 +335,10 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
                     rdg->AddGraphicsPassDrawIndexedNode(pass, cSkyboxIndices.size(), 1, 0, 0, 0);
 
                     // 2nd pass: copy to env texture cubemap
-                    TextureCopyRegion copyRegion{};
-                    copyRegion.srcSubresources.aspect.SetFlag(TextureAspectFlagBits::eColor);
+                    RHITextureCopyRegion copyRegion{};
+                    copyRegion.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
                     copyRegion.srcOffset = {0, 0, 0};
-                    copyRegion.dstSubresources.aspect.SetFlag(TextureAspectFlagBits::eColor);
+                    copyRegion.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
                     copyRegion.dstSubresources.baseArrayLayer = f;
                     copyRegion.dstSubresources.mipmap         = m;
                     copyRegion.dstOffset                      = {0, 0, 0};
@@ -352,7 +353,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
             // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
-            //     cubemapTexture, TextureLayout::eShaderReadOnly);
+            //     cubemapTexture, RHITextureLayout::eShaderReadOnly);
 
             if (target == IRRADIANCE)
             {
@@ -377,7 +378,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
 void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
 {
-    using namespace zen::rhi;
+
 
     const uint32_t dim      = 512;
     const DataFormat format = DataFormat::eR16G16SFloat;
@@ -386,9 +387,9 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     // textureInfo.format = format;
     // textureInfo.width  = dim;
     // textureInfo.height = dim;
-    // textureInfo.type   = TextureType::e2D;
-    // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-    // textureInfo.usageFlags.SetFlag(TextureUsageFlagBits::eSampled);
+    // textureInfo.type   = RHITextureType::e2D;
+    // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+    // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
     //
     // texture->lutBRDF = m_RHI->CreateTexture(textureInfo);
 
@@ -405,29 +406,29 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
         m_renderDevice->CreateTextureColorRT(texFormat, {.copyUsage = false}, "env_lut_brdf");
 
     RHISamplerCreateInfo samplerInfo{};
-    samplerInfo.minFilter     = SamplerFilter::eLinear;
-    samplerInfo.magFilter     = SamplerFilter::eLinear;
-    samplerInfo.repeatU       = SamplerRepeatMode::eClampToEdge;
-    samplerInfo.repeatV       = SamplerRepeatMode::eClampToEdge;
-    samplerInfo.repeatW       = SamplerRepeatMode::eClampToEdge;
+    samplerInfo.minFilter     = RHISamplerFilter::eLinear;
+    samplerInfo.magFilter     = RHISamplerFilter::eLinear;
+    samplerInfo.repeatU       = RHISamplerRepeatMode::eClampToEdge;
+    samplerInfo.repeatV       = RHISamplerRepeatMode::eClampToEdge;
+    samplerInfo.repeatW       = RHISamplerRepeatMode::eClampToEdge;
     samplerInfo.minLod        = 0.0f;
     samplerInfo.maxLod        = 1.0f;
     samplerInfo.maxAnisotropy = 1.0f;
-    samplerInfo.borderColor   = SamplerBorderColor::eFloatOpaqueWhite;
+    samplerInfo.borderColor   = RHISamplerBorderColor::eFloatOpaqueWhite;
 
     m_samplers.lutBRDFSampler = m_renderDevice->CreateSampler(samplerInfo);
     texture->lutBRDFSampler   = m_samplers.lutBRDFSampler;
 
     // build lutBRDF gen pass
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
-    pso.depthStencilState =
-        GfxPipelineDepthStencilState::Create(false, false, CompareOperator::eLessOrEqual);
+    pso.depthStencilState  = RHIGfxPipelineDepthStencilState::Create(
+        false, false, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
-    pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
     GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPasses.lutBRDF = builder
@@ -443,7 +444,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     // build rdg
     UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("lut_brdf_ge_rdg");
     rdg->Begin();
-    std::vector<RenderPassClearValue> clearValues(1);
+    std::vector<RHIRenderPassClearValue> clearValues(1);
     clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
     Rect2i area;
@@ -458,9 +459,9 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     vp.maxX    = static_cast<float>(dim);
     vp.maxY    = static_cast<float>(dim);
     auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, "lut_brdf_gen");
-    // rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, TextureUsage::eColorAttachment,
+    // rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, RHITextureUsage::eColorAttachment,
     //                                  m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
-    //                                  rhi::AccessMode::eReadWrite);
+    //                                  RHIAccessMode::eReadWrite);
     rdg->AddGraphicsPassSetScissorNode(pass, area);
     rdg->AddGraphicsPassSetViewportNode(pass, vp);
     rdg->AddGraphicsPassDrawNode(pass, 3, 1);
@@ -469,7 +470,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
     // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
-    //                                                                TextureLayout::eShaderReadOnly);
+    //                                                                RHITextureLayout::eShaderReadOnly);
 }
 
 void SkyboxRenderer::PrepareRenderWorkload()
@@ -486,14 +487,14 @@ void SkyboxRenderer::PrepareRenderWorkload()
 
 void SkyboxRenderer::UpdateGraphicsPassResources()
 {
-    using namespace zen::rhi;
-    std::vector<ShaderResourceBinding> bufferBindings;
-    std::vector<ShaderResourceBinding> textureBindings;
+
+    std::vector<RHIShaderResourceBinding> bufferBindings;
+    std::vector<RHIShaderResourceBinding> textureBindings;
     ADD_SHADER_BINDING_SINGLE(
-        bufferBindings, 0, ShaderResourceType::eUniformBuffer,
+        bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
         m_gfxPasses.skybox->shaderProgram->GetUniformBufferHandle("uCameraData"))
 
-    ADD_SHADER_BINDING_SINGLE(textureBindings, 0, ShaderResourceType::eSamplerWithTexture,
+    ADD_SHADER_BINDING_SINGLE(textureBindings, 0, RHIShaderResourceType::eSamplerWithTexture,
                               m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
 
     GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.skybox);

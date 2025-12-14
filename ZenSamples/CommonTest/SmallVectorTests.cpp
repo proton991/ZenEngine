@@ -2,7 +2,7 @@
 #include "Templates/SmallVector.h"
 #include "Utils/Errors.h"
 
-using namespace zen;
+
 TEST(small_vector_tests, constructors)
 {
     SmallVector<std::string> sv0;

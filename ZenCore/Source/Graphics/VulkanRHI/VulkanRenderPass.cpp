@@ -3,10 +3,10 @@
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
-namespace zen::rhi
+namespace zen
 {
 VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
-    const RenderPassLayout& renderPassLayout)
+    const RHIRenderPassLayout& renderPassLayout)
 {
     const auto& colorRTs = renderPassLayout.GetColorRenderTargets();
 
@@ -14,7 +14,7 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     for (uint32_t i = 0; i < renderPassLayout.GetNumColorRenderTargets(); i++)
     {
         VkAttachmentDescription& description = m_attachmentDescriptions[i];
-        const RenderTarget& colorRT          = colorRTs[i];
+        const RHIRenderTarget& colorRT          = colorRTs[i];
         // set field values
         description.format         = ToVkFormat(colorRT.format);
         description.samples        = ToVkSampleCountFlagBits(colorRT.numSamples);
@@ -22,7 +22,7 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.storeOp        = ToVkAttachmentStoreOp(colorRT.storeOp);
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        description.initialLayout  = colorRT.loadOp == RenderTargetLoadOp::eClear ?
+        description.initialLayout  = colorRT.loadOp == RHIRenderTargetLoadOp::eClear ?
              VK_IMAGE_LAYOUT_UNDEFINED :
              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -38,14 +38,14 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     if (renderPassLayout.HasDepthStencilRenderTarget())
     {
         VkAttachmentDescription& description = m_attachmentDescriptions[m_numAttachments];
-        const RenderTarget& depthStencilRT   = renderPassLayout.GetDepthStencilRenderTarget();
+        const RHIRenderTarget& depthStencilRT   = renderPassLayout.GetDepthStencilRenderTarget();
         description.format  = ToVkFormat(renderPassLayout.GetDepthStencilRenderTarget().format);
         description.samples = ToVkSampleCountFlagBits(depthStencilRT.numSamples);
         description.loadOp  = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
         description.storeOp = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        description.initialLayout  = depthStencilRT.loadOp == RenderTargetLoadOp::eClear ?
+        description.initialLayout  = depthStencilRT.loadOp == RHIRenderTargetLoadOp::eClear ?
              VK_IMAGE_LAYOUT_UNDEFINED :
              VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -79,7 +79,7 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     return renderPassCI;
 }
 
-RenderPassHandle VulkanRHI::CreateRenderPass(const RenderPassLayout& renderPassLayout)
+RenderPassHandle VulkanRHI::CreateRenderPass(const RHIRenderPassLayout& renderPassLayout)
 {
     VulkanRenderPassBuilder builder;
     VkRenderPassCreateInfo renderPassCI = builder.BuildRenderPassCreateInfo(renderPassLayout);
@@ -97,7 +97,7 @@ void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
 
 VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
                                      VkRenderPass renderPass,
-                                     const FramebufferInfo& fbInfo) :
+                                     const RHIFramebufferInfo& fbInfo) :
     m_vkRHI(vkRHI),
     m_renderPass(renderPass),
     m_width(fbInfo.width),
@@ -123,7 +123,7 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
 }
 
 FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                               const FramebufferInfo& fbInfo)
+                                               const RHIFramebufferInfo& fbInfo)
 {
     VulkanFramebuffer* framebuffer =
         new VulkanFramebuffer(this, TO_VK_RENDER_PASS(renderPassHandle), fbInfo);
@@ -137,4 +137,4 @@ void VulkanRHI::DestroyFramebuffer(FramebufferHandle framebufferHandle)
     delete framebuffer;
 }
 
-} // namespace zen::rhi
+} // namespace zen

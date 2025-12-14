@@ -3,7 +3,7 @@
 #include "RHIResource.h"
 #include "RHIDefs.h"
 
-namespace zen::rhi
+namespace zen
 {
 class RHICommandList;
 class RHICommandListContext;
@@ -11,7 +11,7 @@ class RHICommandListContext;
 class DynamicRHI
 {
 public:
-    static DynamicRHI* Create(GraphicsAPIType type);
+    static DynamicRHI* Create(RHIAPIType type);
 
     virtual ~DynamicRHI() = default;
 
@@ -25,7 +25,7 @@ public:
 
     virtual RHICommandList* GetImmediateCommandList() = 0;
 
-    virtual GraphicsAPIType GetAPIType() = 0;
+    virtual RHIAPIType GetAPIType() = 0;
 
     virtual const char* GetName() = 0;
 
@@ -44,7 +44,7 @@ public:
                                     RHICommandListContext* cmdListContext,
                                     bool present) = 0;
 
-    // virtual ShaderHandle CreateShader(const ShaderGroupInfo& shaderGroupInfo) = 0;
+    // virtual ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) = 0;
 
     virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
 
@@ -57,25 +57,25 @@ public:
     virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
 
     // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                        const GfxPipelineStates& states,
+    //                                        const RHIGfxPipelineStates& states,
     //                                        RenderPassHandle renderPassHandle,
     //                                        uint32_t subpass) = 0;
 
     // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                        const GfxPipelineStates& states,
-    //                                        const RenderPassLayout& renderPassLayout,
+    //                                        const RHIGfxPipelineStates& states,
+    //                                        const RHIRenderPassLayout& renderPassLayout,
     //                                        uint32_t subpass) = 0;
 
     // virtual RHIPipeline* CreateComputePipeline(RHIShader* shaderHandle) = 0;
 
     virtual void DestroyPipeline(RHIPipeline* pipeline) = 0;
 
-    virtual RenderPassHandle CreateRenderPass(const RenderPassLayout& renderPassLayout) = 0;
+    virtual RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) = 0;
 
     virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
 
     virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                                const FramebufferInfo& fbInfo) = 0;
+                                                const RHIFramebufferInfo& fbInfo) = 0;
 
     virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 
@@ -100,11 +100,11 @@ public:
 
     // virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
 
-    // virtual TextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
+    // virtual RHITextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
 
     // virtual BufferHandle CreateBuffer(uint32_t size,
-    //                                   BitField<BufferUsageFlagBits> usageFlags,
-    //                                   BufferAllocateType allocateType) = 0;
+    //                                   BitField<RHIBufferUsageFlagBits> usageFlags,
+    //                                   RHIBufferAllocateType allocateType) = 0;
     //
 
     virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
@@ -125,13 +125,13 @@ public:
 
     // virtual void UpdateDescriptorSet(
     //     DescriptorSetHandle descriptorSetHandle,
-    //     const std::vector<ShaderResourceBinding>& resourceBindings) = 0;
+    //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 
     virtual void WaitDeviceIdle() = 0;
 
-    virtual const GPUInfo& QueryGPUInfo() const = 0;
+    virtual const RHIGPUInfo& QueryGPUInfo() const = 0;
 
     RHIResourceFactory* GetResourceFactory() const
     {
@@ -143,5 +143,5 @@ protected:
 };
 
 // Global instance pointer
-} // namespace zen::rhi
-extern zen::rhi::DynamicRHI* GDynamicRHI;
+} // namespace zen
+extern zen::DynamicRHI* GDynamicRHI;

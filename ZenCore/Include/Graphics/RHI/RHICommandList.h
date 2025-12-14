@@ -2,7 +2,7 @@
 #include "RHICommon.h"
 #include "Memory/Memory.h"
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
-namespace zen::rhi
+namespace zen
 {
 class RHIPipeline;
 
@@ -236,4 +236,4 @@ public:
 
     virtual void DrawIndexed(const RHICommandDrawParam& param);
 };
-} // namespace zen::rhi
+} // namespace zen

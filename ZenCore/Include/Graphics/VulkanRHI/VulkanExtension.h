@@ -3,7 +3,7 @@
 #include "Utils/UniquePtr.h"
 #include <string>
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanDevice;
 
@@ -120,4 +120,4 @@ protected:
     VulkanDevice* m_device{nullptr};
 };
 
-} // namespace zen::rhi
+} // namespace zen

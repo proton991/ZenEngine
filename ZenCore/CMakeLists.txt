@@ -92,7 +92,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/RHIResource.h
     Include/Graphics/RHI/RHIDefs.h
     Include/Graphics/RHI/RHIOptions.h
-    Include/Graphics/RHI/ShaderUtil.h
+    Include/Graphics/RHI/RHIShaderUtil.h
 
     Include/Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h
     Include/Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h

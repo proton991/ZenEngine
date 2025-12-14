@@ -38,39 +38,39 @@ void PushConstantsApp::Destroy()
 
 void PushConstantsApp::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType = RHIDrawPrimitiveType::eTriangleList;
 
     pso.rasterizationState          = {};
-    pso.rasterizationState.cullMode = PolygonCullMode::eBack;
+    pso.rasterizationState.cullMode = RHIPolygonCullMode::eBack;
 
-    pso.colorBlendState   = GfxPipelineColorBlendState::CreateDisabled();
+    pso.colorBlendState   = RHIGfxPipelineColorBlendState::CreateDisabled();
     pso.depthStencilState = {};
     pso.multiSampleState  = {};
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
-    std::vector<ShaderResourceBinding> uboBindings;
+    std::vector<RHIShaderResourceBinding> uboBindings;
     {
-        ShaderResourceBinding binding0{};
+        RHIShaderResourceBinding binding0{};
         binding0.binding = 0;
-        binding0.type    = ShaderResourceType::eUniformBuffer;
+        binding0.type    = RHIShaderResourceType::eUniformBuffer;
         binding0.handles.push_back(m_cameraUBO);
         uboBindings.emplace_back(std::move(binding0));
 
-        ShaderResourceBinding binding1{};
+        RHIShaderResourceBinding binding1{};
         binding1.binding = 1;
-        binding1.type    = ShaderResourceType::eUniformBuffer;
+        binding1.type    = RHIShaderResourceType::eUniformBuffer;
         binding1.handles.push_back(m_modelUBO);
         uboBindings.emplace_back(std::move(binding1));
     }
 
     rc::GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPass =
-        builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "push_constants.vert.spv")
-            .AddShaderStage(rhi::RHIShaderStage::eFragment, "push_constants.frag.spv")
+        builder.AddShaderStage(RHIShaderStage::eVertex, "push_constants.vert.spv")
+            .AddShaderStage(RHIShaderStage::eFragment, "push_constants.frag.spv")
             .SetNumSamples(SampleCount::e1)
-            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
+            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), RHITextureUsage::eColorAttachment,
                                   m_viewport->GetColorBackBuffer())
             .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                    m_viewport->GetDepthStencilBackBuffer())
@@ -127,7 +127,7 @@ void PushConstantsApp::BuildRenderGraph()
     vp.maxX = (float)m_window->GetExtent2D().width;
     vp.maxY = (float)m_window->GetExtent2D().height;
 
-    std::vector<RenderPassClearValue> clearValues(2);
+    std::vector<RHIRenderPassClearValue> clearValues(2);
     clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;

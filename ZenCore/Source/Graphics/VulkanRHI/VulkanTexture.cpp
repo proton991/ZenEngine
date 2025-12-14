@@ -8,15 +8,36 @@
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
-namespace zen::rhi
+namespace zen
 {
-// SamplerHandle VulkanRHI::CreateSampler(const SamplerInfo& samplerInfo)
+static uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
+{
+    // TODO: Support compressed texture format
+    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
+
+    uint32_t w = info.width;
+    uint32_t h = info.height;
+    uint32_t d = info.depth;
+
+    uint32_t size = 0;
+    for (uint32_t i = 0; i < info.mipmaps; i++)
+    {
+        uint32_t numPixels = w * h * d;
+        size += numPixels * pixelSize;
+        w >>= 1;
+        h >>= 1;
+        d >>= 1;
+    }
+    return size;
+}
+
+// SamplerHandle VulkanRHI::CreateSampler(const RHISamplerInfo& samplerInfo)
 // {
 //     VkSamplerCreateInfo samplerCI;
 //     InitVkStruct(samplerCI, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 //     samplerCI.magFilter        = ToVkFilter(samplerInfo.magFilter);
 //     samplerCI.minFilter        = ToVkFilter(samplerInfo.minFilter);
-//     samplerCI.mipmapMode       = samplerInfo.mipFilter == SamplerFilter::eLinear ?
+//     samplerCI.mipmapMode       = samplerInfo.mipFilter == RHISamplerFilter::eLinear ?
 //               VK_SAMPLER_MIPMAP_MODE_LINEAR :
 //               VK_SAMPLER_MIPMAP_MODE_NEAREST;
 //     samplerCI.addressModeU     = ToVkSamplerAddressMode(samplerInfo.repeatU);
@@ -82,7 +103,7 @@ void VulkanSampler::Init()
     InitVkStruct(samplerCI, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
     samplerCI.magFilter        = ToVkFilter(m_baseInfo.magFilter);
     samplerCI.minFilter        = ToVkFilter(m_baseInfo.minFilter);
-    samplerCI.mipmapMode       = m_baseInfo.mipFilter == SamplerFilter::eLinear ?
+    samplerCI.mipmapMode       = m_baseInfo.mipFilter == RHISamplerFilter::eLinear ?
               VK_SAMPLER_MIPMAP_MODE_LINEAR :
               VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerCI.addressModeU     = ToVkSamplerAddressMode(m_baseInfo.repeatU);
@@ -146,7 +167,7 @@ void VulkanTexture::CreateImageViewHelper()
     imageViewCI.image                       = m_vkImage;
     imageViewCI.subresourceRange.layerCount = m_vkImageCI.arrayLayers;
     imageViewCI.subresourceRange.levelCount = m_vkImageCI.mipLevels;
-    if (m_baseInfo.usageFlags.HasFlag(TextureUsageFlagBits::eDepthStencilAttachment))
+    if (m_baseInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
     {
         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     }
@@ -212,7 +233,7 @@ void VulkanTexture::Init()
         imageCI.mipLevels     = m_baseInfo.mipmaps;
         imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-        if (m_baseInfo.type == TextureType::eCube)
+        if (m_baseInfo.type == RHITextureType::eCube)
         {
             imageCI.imageType = VK_IMAGE_TYPE_2D;
             imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -281,7 +302,7 @@ void VulkanTexture::Destroy()
 //     imageCI.mipLevels     = info.mipmaps;
 //     imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 //     imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-//     if (info.type == TextureType::eCube)
+//     if (info.type == RHITextureType::eCube)
 //     {
 //         imageCI.imageType = VK_IMAGE_TYPE_2D;
 //         imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -314,7 +335,7 @@ void VulkanTexture::Destroy()
 //     imageViewCI.image                       = texture->image;
 //     imageViewCI.subresourceRange.layerCount = imageCI.arrayLayers;
 //     imageViewCI.subresourceRange.levelCount = imageCI.mipLevels;
-//     if (info.usageFlags.HasFlag(TextureUsageFlagBits::eDepthStencilAttachment))
+//     if (info.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
 //     {
 //         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 //     }
@@ -435,26 +456,26 @@ void VulkanTexture::InitProxy()
 //     return static_cast<DataFormat>(texture->imageCI.format);
 // }
 //
-// TextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle textureHandle)
+// RHITextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle textureHandle)
 // {
-//     TextureSubResourceRange range;
+//     RHITextureSubResourceRange range;
 //     DataFormat dataFormat = GetTextureFormat(textureHandle);
 //
 //     if (FormatIsDepthOnly(dataFormat))
 //     {
-//         range = TextureSubResourceRange::Depth();
+//         range = RHITextureSubResourceRange::Depth();
 //     }
 //     else if (FormatIsStencilOnly(dataFormat))
 //     {
-//         range = TextureSubResourceRange::Stencil();
+//         range = RHITextureSubResourceRange::Stencil();
 //     }
 //     else if (FormatIsDepthStencil(dataFormat))
 //     {
-//         range = TextureSubResourceRange::DepthStencil();
+//         range = RHITextureSubResourceRange::DepthStencil();
 //     }
 //     else
 //     {
-//         range = TextureSubResourceRange::Color();
+//         range = RHITextureSubResourceRange::Color();
 //     }
 //
 //     VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
@@ -502,4 +523,4 @@ VkImageLayout VulkanRHI::GetImageCurrentLayout(VkImage image)
     return layout;
 }
 
-} // namespace zen::rhi
+} // namespace zen

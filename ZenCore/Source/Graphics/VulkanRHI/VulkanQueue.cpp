@@ -3,7 +3,7 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanQueue::VulkanQueue(VulkanDevice* device, uint32_t familyIndex) :
     m_device(device), m_familyIndex(familyIndex), m_queueIndex(0)
@@ -69,4 +69,4 @@ void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer)
 {
     m_lastSubmittedCmdBuffer = cmdBuffer;
 }
-} // namespace zen::rhi
+} // namespace zen

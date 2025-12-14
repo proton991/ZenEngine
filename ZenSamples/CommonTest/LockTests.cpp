@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 #include <thread>
 
-using namespace zen;
+
 
 SpinLock spinLock;
 

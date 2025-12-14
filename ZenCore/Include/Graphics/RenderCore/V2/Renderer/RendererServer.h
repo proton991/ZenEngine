@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace zen::rhi
+namespace zen
 {
 class RHIViewport;
 }
@@ -26,7 +26,7 @@ enum class RenderOption : uint32_t
 class RendererServer
 {
 public:
-    RendererServer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    RendererServer(RenderDevice* renderDevice, RHIViewport* viewport);
 
     void Init();
 
@@ -64,7 +64,7 @@ public:
     }
 
 private:
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
     RenderDevice* m_renderDevice{nullptr};
     RenderScene* m_scene{nullptr};
 

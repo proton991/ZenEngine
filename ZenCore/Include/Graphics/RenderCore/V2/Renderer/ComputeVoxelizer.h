@@ -16,7 +16,7 @@ class RenderObject;
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
-    ComputeVoxelizer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+    ComputeVoxelizer(RenderDevice* renderDevice, RHIViewport* viewport) :
         VoxelizerBase(renderDevice, viewport)
     {}
 
@@ -61,12 +61,12 @@ protected:
     struct
     {
         // voxelization pass
-        rhi::RHIBuffer* computeIndirectBuffer;
-        rhi::RHIBuffer* largeTriangleBuffer;
+        RHIBuffer* computeIndirectBuffer;
+        RHIBuffer* largeTriangleBuffer;
         // voxel pre-draw pass
-        rhi::RHIBuffer* instancePositionBuffer;
-        rhi::RHIBuffer* instanceColorBuffer;
-        rhi::RHIBuffer* drawIndirectBuffer;
+        RHIBuffer* instancePositionBuffer;
+        RHIBuffer* instanceColorBuffer;
+        RHIBuffer* drawIndirectBuffer;
     } m_buffers;
 
     struct

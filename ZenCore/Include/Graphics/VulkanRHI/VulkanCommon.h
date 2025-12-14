@@ -4,11 +4,11 @@
 #include "VulkanHeaders.h"
 
 #ifndef VKCHECK
-#    define VKCHECK(result) zen::rhi::CheckVkResult(result, __FILE__, __LINE__);
+#    define VKCHECK(result) zen::CheckVkResult(result, __FILE__, __LINE__);
 #endif
 
 
-namespace zen::rhi
+namespace zen
 {
 static const char* GetResultString(VkResult result)
 {
@@ -322,4 +322,4 @@ template <class T> void InitVkStruct(T& vkStruct, uint32_t vkStructureType)
     std::memset((uint8_t*)&vkStruct, 0, sizeof(T));
     (uint32_t&)vkStruct.sType = vkStructureType;
 }
-} // namespace zen::rhi
+} // namespace zen

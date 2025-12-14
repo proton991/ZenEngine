@@ -17,7 +17,7 @@ class RenderDevice;
 class ShadowMapRenderer
 {
 public:
-    ShadowMapRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport);
+    ShadowMapRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
 
     void Init();
 
@@ -32,12 +32,12 @@ public:
         return m_rdg.Get();
     };
 
-    rhi::RHITexture* GetShadowMapTexture() const
+    RHITexture* GetShadowMapTexture() const
     {
         return m_offscreenTextures.shadowMap;
     }
 
-    rhi::RHISampler* GetColorSampler() const
+    RHISampler* GetColorSampler() const
     {
         return m_colorSampler;
     }
@@ -55,7 +55,7 @@ private:
 
     RenderDevice* m_renderDevice{nullptr};
 
-    rhi::RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_viewport{nullptr};
 
     RenderScene* m_scene{nullptr};
 
@@ -79,11 +79,11 @@ private:
 
     struct
     {
-        rhi::RHITexture* shadowMap{nullptr};
-        rhi::RHITexture* depth{nullptr};
+        RHITexture* shadowMap{nullptr};
+        RHITexture* depth{nullptr};
     } m_offscreenTextures;
 
-    rhi::RHISampler* m_colorSampler;
+    RHISampler* m_colorSampler;
 
     UniquePtr<sg::Camera> m_lightView;
 };

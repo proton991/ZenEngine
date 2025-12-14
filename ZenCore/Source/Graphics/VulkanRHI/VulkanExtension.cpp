@@ -11,7 +11,7 @@
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
 #endif
 
-namespace zen::rhi
+namespace zen
 {
 
 template <typename ExistingChainType, typename NewStructType>
@@ -408,4 +408,4 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
 
 
-} // namespace zen::rhi
+} // namespace zen

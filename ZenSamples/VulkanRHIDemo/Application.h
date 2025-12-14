@@ -5,8 +5,8 @@
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
 
-using namespace zen;
-using namespace zen::rhi;
+
+
 
 namespace zen::rc
 {

@@ -10,7 +10,7 @@ class RenderScene;
 class GeometryVoxelizer : public VoxelizerBase
 {
 public:
-    GeometryVoxelizer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+    GeometryVoxelizer(RenderDevice* renderDevice, RHIViewport* viewport) :
         VoxelizerBase(renderDevice, viewport)
     {}
 
@@ -35,7 +35,7 @@ protected:
 
     void UpdateUniformData() final;
 
-    rhi::RHIBuffer* m_voxelVBO;
+    RHIBuffer* m_voxelVBO;
     struct
     {
         GraphicsPass* voxelization;

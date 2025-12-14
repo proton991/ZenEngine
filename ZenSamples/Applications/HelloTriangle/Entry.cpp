@@ -1,6 +1,6 @@
 #include "HelloTriangle.h"
 
-using namespace zen;
+
 
 int main()
 {

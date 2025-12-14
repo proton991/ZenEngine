@@ -10,7 +10,7 @@
 #include "Graphics/VulkanRHI/VulkanRenderPass.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
-namespace zen::rhi
+namespace zen
 {
 // RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
 // {
@@ -190,17 +190,17 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     colorTexInfo.width  = m_width;
     colorTexInfo.height = m_height;
     colorTexInfo.format = GetSwapchainFormat();
-    colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eColorAttachment);
-    colorTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eTransferSrc);
-    colorTexInfo.type = TextureType::e2D;
+    colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+    colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
+    colorTexInfo.type = RHITextureType::e2D;
     m_colorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
 
     RHITextureCreateInfo depthStencilTexInfo{};
     depthStencilTexInfo.width  = m_width;
     depthStencilTexInfo.height = m_height;
     depthStencilTexInfo.format = GetDepthStencilFormat();
-    depthStencilTexInfo.usageFlags.SetFlag(TextureUsageFlagBits::eDepthStencilAttachment);
-    depthStencilTexInfo.type = TextureType::e2D;
+    depthStencilTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
+    depthStencilTexInfo.type = RHITextureType::e2D;
     m_depthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
     // add image barriers, transfer back buffer layout
     VulkanPipelineBarrier barrier;
@@ -410,7 +410,7 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
         std::vector<RHITexture*> renderTargets;
         renderTargets.push_back(GetColorBackBuffer());
         renderTargets.push_back(GetDepthStencilBackBuffer());
-        FramebufferInfo fbInfo{};
+        RHIFramebufferInfo fbInfo{};
         fbInfo.width           = m_width;
         fbInfo.height          = m_height;
         fbInfo.numRenderTarget = 2;
@@ -444,7 +444,7 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
         std::vector<RHITexture*> renderTargets;
         renderTargets.push_back(GetColorBackBuffer());
         renderTargets.push_back(GetDepthStencilBackBuffer());
-        FramebufferInfo fbInfo{};
+        RHIFramebufferInfo fbInfo{};
         fbInfo.width           = m_width;
         fbInfo.height          = m_height;
         fbInfo.numRenderTarget = 2;
@@ -457,7 +457,7 @@ FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
 }
 
 FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                                           const FramebufferInfo* fbInfo)
+                                                           const RHIFramebufferInfo* fbInfo)
 {
     VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
     if ((m_framebufferCache.contains(renderPassHandle) &&
@@ -480,4 +480,4 @@ RHITexture* VulkanViewport::GetDepthStencilBackBuffer()
 {
     return m_depthStencilBackBuffer;
 }
-} // namespace zen::rhi
+} // namespace zen

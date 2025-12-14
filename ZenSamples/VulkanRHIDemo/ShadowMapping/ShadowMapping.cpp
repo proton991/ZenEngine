@@ -49,63 +49,63 @@ void ShadowMappingApp::Destroy()
 void ShadowMappingApp::PrepareOffscreen()
 {
     // offscreen depth texture
-    rhi::TextureInfo textureInfo{};
+    TextureInfo textureInfo{};
     textureInfo.format      = cOffscreenDepthFormat;
-    textureInfo.type        = rhi::TextureType::e2D;
+    textureInfo.type        = RHITextureType::e2D;
     textureInfo.width       = cShadowMapSize;
     textureInfo.height      = cShadowMapSize;
     textureInfo.depth       = 1;
     textureInfo.arrayLayers = 1;
     textureInfo.mipmaps     = 1;
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eDepthStencilAttachment);
-    textureInfo.usageFlags.SetFlag(rhi::TextureUsageFlagBits::eSampled);
+    textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
+    textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
     m_offscreenDepthTexture = m_renderDevice->CreateTexture(textureInfo, "offscreen_depth");
     // offscreen depth texture sampler
-    SamplerInfo samplerInfo{};
-    samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+    RHISamplerInfo samplerInfo{};
+    samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
     m_depthSampler          = m_renderDevice->CreateSampler(samplerInfo);
 }
 
 void ShadowMappingApp::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
-    //    pso.colorBlendState    = GfxPipelineColorBlendState::CreateDisabled();
+    //    pso.colorBlendState    = RHIGfxPipelineColorBlendState::CreateDisabled();
     pso.depthStencilState =
-        GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLessOrEqual);
-    pso.depthStencilState.frontOp.fail      = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.pass      = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.depthFail = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.frontOp.compare   = rhi::CompareOperator::eNever;
-    pso.depthStencilState.backOp.fail       = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.backOp.pass       = rhi::StencilOperation::eKeep;
-    pso.depthStencilState.backOp.depthFail  = rhi::StencilOperation::eKeep;
+        RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLessOrEqual);
+    pso.depthStencilState.frontOp.fail      = RHIStencilOp::eKeep;
+    pso.depthStencilState.frontOp.pass      = RHIStencilOp::eKeep;
+    pso.depthStencilState.frontOp.depthFail = RHIStencilOp::eKeep;
+    pso.depthStencilState.frontOp.compare   = RHIDepthCompareOperator::eNever;
+    pso.depthStencilState.backOp.fail       = RHIStencilOp::eKeep;
+    pso.depthStencilState.backOp.pass       = RHIStencilOp::eKeep;
+    pso.depthStencilState.backOp.depthFail  = RHIStencilOp::eKeep;
     pso.multiSampleState                    = {};
 
     // offscreen
     {
 
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
-        pso.dynamicStates.push_back(DynamicState::eDepthBias);
-        std::vector<ShaderResourceBinding> uboBindings;
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.dynamicStates.push_back(RHIDynamicState::eDepthBias);
+        std::vector<RHIShaderResourceBinding> uboBindings;
         {
-            ShaderResourceBinding binding0{};
+            RHIShaderResourceBinding binding0{};
             binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.type    = RHIShaderResourceType::eUniformBuffer;
             binding0.handles.push_back(m_offscreenUBO);
             uboBindings.emplace_back(std::move(binding0));
         }
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
             builder
-                .AddShaderStage(rhi::RHIShaderStage::eVertex, "ShadowMapping/offscreen.vert.spv")
+                .AddShaderStage(RHIShaderStage::eVertex, "ShadowMapping/offscreen.vert.spv")
                 //                .SetFragmentShader("ShadowMapping/offscreen.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .SetDepthStencilTarget(cOffscreenDepthFormat, m_offscreenDepthTexture,
-                                       rhi::RenderTargetLoadOp::eClear,
-                                       rhi::RenderTargetStoreOp::eStore)
+                                       RHIRenderTargetLoadOp::eClear,
+                                       RHIRenderTargetStoreOp::eStore)
                 .SetShaderResourceBinding(0, uboBindings)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, cShadowMapSize, cShadowMapSize)
@@ -116,40 +116,40 @@ void ShadowMappingApp::BuildGraphicsPasses()
     // scene shadow
     {
         pso.dynamicStates.clear();
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
-        pso.colorBlendState = GfxPipelineColorBlendState::CreateDisabled();
+        pso.colorBlendState = RHIGfxPipelineColorBlendState::CreateDisabled();
 
-        pso.rasterizationState.cullMode = rhi::PolygonCullMode::eBack;
-        std::vector<ShaderResourceBinding> uboBindings;
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eBack;
+        std::vector<RHIShaderResourceBinding> uboBindings;
         {
-            ShaderResourceBinding binding0{};
+            RHIShaderResourceBinding binding0{};
             binding0.binding = 0;
-            binding0.type    = ShaderResourceType::eUniformBuffer;
+            binding0.type    = RHIShaderResourceType::eUniformBuffer;
             binding0.handles.push_back(m_sceneUBO);
             uboBindings.emplace_back(std::move(binding0));
         }
-        std::vector<ShaderResourceBinding> textureBindings;
+        std::vector<RHIShaderResourceBinding> textureBindings;
         {
-            ShaderResourceBinding binding{};
+            RHIShaderResourceBinding binding{};
             binding.binding = 0;
-            binding.type    = ShaderResourceType::eSamplerWithTexture;
+            binding.type    = RHIShaderResourceType::eSamplerWithTexture;
             binding.handles.push_back(m_depthSampler);
             binding.handles.push_back(m_offscreenDepthTexture);
             textureBindings.emplace_back(std::move(binding));
         }
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.sceneShadow =
-            builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "ShadowMapping/scene.vert.spv")
-                .AddShaderStage(rhi::RHIShaderStage::eFragment, "ShadowMapping/scene.frag.spv")
+            builder.AddShaderStage(RHIShaderStage::eVertex, "ShadowMapping/scene.vert.spv")
+                .AddShaderStage(RHIShaderStage::eFragment, "ShadowMapping/scene.frag.spv")
                 .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_viewport->GetSwapchainFormat(),
-                                      TextureUsage::eColorAttachment,
+                                      RHITextureUsage::eColorAttachment,
                                       m_viewport->GetColorBackBuffer())
                 .SetDepthStencilTarget(
                     m_viewport->GetDepthStencilFormat(), m_viewport->GetDepthStencilBackBuffer(),
-                    rhi::RenderTargetLoadOp::eClear, rhi::RenderTargetStoreOp::eStore)
+                    RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore)
                 .SetShaderResourceBinding(0, uboBindings)
                 .SetShaderResourceBinding(1, textureBindings)
                 .SetPipelineState(pso)
@@ -218,7 +218,7 @@ void ShadowMappingApp::BuildRenderGraph()
 
     // offscreen pass
     {
-        std::vector<RenderPassClearValue> clearValues(1);
+        std::vector<RHIRenderPassClearValue> clearValues(1);
         //        clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
         clearValues[0].depth   = 1.0f;
         clearValues[0].stencil = 0;
@@ -238,8 +238,8 @@ void ShadowMappingApp::BuildRenderGraph()
 
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenDepthTexture, TextureUsage::eDepthStencilAttachment,
-        //     TextureSubResourceRange::DepthStencil(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenDepthTexture, RHITextureUsage::eDepthStencilAttachment,
+        //     RHITextureSubResourceRange::DepthStencil(), RHIAccessMode::eReadWrite);
 
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -258,7 +258,7 @@ void ShadowMappingApp::BuildRenderGraph()
     }
     // scene shadow pass
     {
-        std::vector<RenderPassClearValue> clearValues(2);
+        std::vector<RHIRenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.8f, 0.8f, 0.8f, 1.0f};
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 0;
@@ -276,9 +276,9 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxY = (float)m_window->GetExtent2D().height;
 
         auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneShadow, area, clearValues, true);
-        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, TextureUsage::eSampled,
-        //                                    TextureSubResourceRange::DepthStencil(),
-        //                                    rhi::AccessMode::eRead);
+        // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, RHITextureUsage::eSampled,
+        //                                    RHITextureSubResourceRange::DepthStencil(),
+        //                                    RHIAccessMode::eRead);
         m_rdg->AddGraphicsPassSetScissorNode(pass, area);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);

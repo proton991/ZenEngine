@@ -6,11 +6,11 @@
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "SceneGraph/Scene.h"
 
-using namespace zen::rhi;
+
 
 namespace zen::rc
 {
-ShadowMapRenderer::ShadowMapRenderer(RenderDevice* renderDevice, rhi::RHIViewport* viewport) :
+ShadowMapRenderer::ShadowMapRenderer(RenderDevice* renderDevice, RHIViewport* viewport) :
     m_renderDevice(renderDevice), m_viewport(viewport)
 {}
 
@@ -54,7 +54,7 @@ void ShadowMapRenderer::PrepareTextures()
     TextureUsageHint usageHint{.copyUsage = false};
     {
         // TextureInfo texInfo{};
-        // texInfo.type   = rhi::TextureType::e2D;
+        // texInfo.type   = RHITextureType::e2D;
         // texInfo.format = m_config.shadowMapFormat;
         // texInfo.width  = m_config.shadowMapWidth;
         // texInfo.height = m_config.shadowMapHeight;
@@ -64,8 +64,8 @@ void ShadowMapRenderer::PrepareTextures()
         // texInfo.arrayLayers = 1;
         // texInfo.samples     = SampleCount::e1;
         // texInfo.usageFlags.SetFlags(
-        //     TextureUsageFlagBits::eColorAttachment, TextureUsageFlagBits::eSampled,
-        //     TextureUsageFlagBits::eTransferSrc, TextureUsageFlagBits::eTransferDst);
+        //     RHITextureUsageFlagBits::eColorAttachment, RHITextureUsageFlagBits::eSampled,
+        //     RHITextureUsageFlagBits::eTransferSrc, RHITextureUsageFlagBits::eTransferDst);
         // texInfo.name                  = "shadowmap";
         // m_offscreenTextures.shadowMap = m_renderDevice->CreateTexture(texInfo);
 
@@ -76,8 +76,8 @@ void ShadowMapRenderer::PrepareTextures()
         texFormat.height      = m_config.shadowMapHeight;
         texFormat.depth       = 1;
         texFormat.arrayLayers = 1;
-        texFormat.mipmaps =
-            CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
+        texFormat.mipmaps     = RHITexture::CalculateTextureMipLevels(m_config.shadowMapWidth,
+                                                                      m_config.shadowMapHeight);
 
         m_offscreenTextures.shadowMap =
             m_renderDevice->CreateTextureColorRT(texFormat, {.copyUsage = true}, "shadowmap");
@@ -85,17 +85,17 @@ void ShadowMapRenderer::PrepareTextures()
     // depth
     {
 
-        // rhi::TextureInfo texInfo{};
-        // texInfo.type        = rhi::TextureType::e2D;
+        // TextureInfo texInfo{};
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.format      = m_viewport->GetDepthStencilFormat();
-        // texInfo.type        = rhi::TextureType::e2D;
+        // texInfo.type        = RHITextureType::e2D;
         // texInfo.width       = m_config.shadowMapWidth;
         // texInfo.height      = m_config.shadowMapHeight;
         // texInfo.depth       = 1;
         // texInfo.arrayLayers = 1;
         // texInfo.mipmaps     = 1;
-        // texInfo.usageFlags.SetFlags(TextureUsageFlagBits::eDepthStencilAttachment,
-        //                             TextureUsageFlagBits::eSampled);
+        // texInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eDepthStencilAttachment,
+        //                             RHITextureUsageFlagBits::eSampled);
         // texInfo.name              = "shadowmap_render_depth";
         // m_offscreenTextures.depth = m_renderDevice->CreateTexture(texInfo);
 
@@ -106,22 +106,22 @@ void ShadowMapRenderer::PrepareTextures()
         texFormat.height      = m_config.shadowMapHeight;
         texFormat.depth       = 1;
         texFormat.arrayLayers = 1;
-        texFormat.mipmaps =
-            CalculateTextureMipLevels(m_config.shadowMapWidth, m_config.shadowMapHeight);
+        texFormat.mipmaps     = RHITexture::CalculateTextureMipLevels(m_config.shadowMapWidth,
+                                                                      m_config.shadowMapHeight);
 
         m_offscreenTextures.depth = m_renderDevice->CreateTextureDepthStencilRT(
             texFormat, {.copyUsage = false}, "shadowmap_render_depth");
     }
     {
         RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
-        samplerInfo.minFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.magFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.mipFilter   = rhi::SamplerFilter::eLinear;
-        samplerInfo.repeatU     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatV     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.repeatW     = rhi::SamplerRepeatMode::eRepeat;
-        samplerInfo.borderColor = SamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
+        samplerInfo.minFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.magFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
+        samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
+        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
         m_colorSampler          = m_renderDevice->CreateSampler(samplerInfo);
     }
 }
@@ -129,16 +129,16 @@ void ShadowMapRenderer::PrepareTextures()
 void ShadowMapRenderer::BuildGraphicsPasses()
 {
     {
-        GfxPipelineStates pso{};
+        RHIGfxPipelineStates pso{};
         pso.rasterizationState          = {};
-        pso.rasterizationState.cullMode = PolygonCullMode::eDisabled;
+        pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
 
         pso.depthStencilState =
-            GfxPipelineDepthStencilState::Create(true, true, CompareOperator::eLess);
+            RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
         pso.multiSampleState = {};
-        pso.colorBlendState  = GfxPipelineColorBlendState::CreateDisabled(1);
-        pso.dynamicStates.push_back(DynamicState::eScissor);
-        pso.dynamicStates.push_back(DynamicState::eViewPort);
+        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.evsm =
@@ -146,8 +146,8 @@ void ShadowMapRenderer::BuildGraphicsPasses()
                 .SetShaderProgramName("ShadowMapRenderSP")
                 // .SetNumSamples(SampleCount::e1)
                 .AddColorRenderTarget(m_offscreenTextures.shadowMap)
-                .SetDepthStencilTarget(m_offscreenTextures.depth, rhi::RenderTargetLoadOp::eClear,
-                                       rhi::RenderTargetStoreOp::eStore)
+                .SetDepthStencilTarget(m_offscreenTextures.depth, RHIRenderTargetLoadOp::eClear,
+                                       RHIRenderTargetStoreOp::eStore)
                 .SetPipelineState(pso)
                 .SetFramebufferInfo(m_viewport, m_config.shadowMapWidth, m_config.shadowMapHeight)
                 .SetTag("evsm")
@@ -163,7 +163,7 @@ void ShadowMapRenderer::BuildRenderGraph()
     {
         ShadowMapRenderSP* shaderProgram =
             dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
-        std::vector<RenderPassClearValue> clearValues(2);
+        std::vector<RHIRenderPassClearValue> clearValues(2);
         clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         clearValues[1].depth   = 1.0f;
         clearValues[1].stencil = 0;
@@ -176,12 +176,12 @@ void ShadowMapRenderer::BuildRenderGraph()
         auto* pass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, "shadowmap_offscreen");
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.shadowMap, TextureUsage::eColorAttachment,
+        //     pass, m_offscreenTextures.shadowMap, RHITextureUsage::eColorAttachment,
         //     m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),
-        //     rhi::AccessMode::eReadWrite);
+        //     RHIAccessMode::eReadWrite);
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_offscreenTextures.depth, TextureUsage::eDepthStencilAttachment,
-        //     TextureSubResourceRange::DepthStencil(), rhi::AccessMode::eReadWrite);
+        //     pass, m_offscreenTextures.depth, RHITextureUsage::eDepthStencilAttachment,
+        //     RHITextureSubResourceRange::DepthStencil(), RHIAccessMode::eReadWrite);
         m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
         m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);
@@ -212,20 +212,21 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
     {
         ShadowMapRenderSP* shaderProgram =
             dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
-        std::vector<ShaderResourceBinding> set0bindings;
-        std::vector<ShaderResourceBinding> set1bindings;
+        std::vector<RHIShaderResourceBinding> set0bindings;
+        std::vector<RHIShaderResourceBinding> set1bindings;
         // set-0 bindings
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, ShaderResourceType::eUniformBuffer,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eUniformBuffer,
                                   shaderProgram->GetUniformBufferHandle("uLightInfo"));
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 1, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 1, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetNodesDataSSBO());
-        ADD_SHADER_BINDING_SINGLE(set0bindings, 2, ShaderResourceType::eStorageBuffer,
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 2, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetMaterialsDataSSBO());
 
         // set-1 bindings
         // texture array
-        ADD_SHADER_BINDING_TEXTURE_ARRAY(set1bindings, 0, ShaderResourceType::eSamplerWithTexture,
-                                         m_colorSampler, m_scene->GetSceneTextures())
+        ADD_SHADER_BINDING_TEXTURE_ARRAY(set1bindings, 0,
+                                         RHIShaderResourceType::eSamplerWithTexture, m_colorSampler,
+                                         m_scene->GetSceneTextures())
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.evsm);
         updater.SetShaderResourceBinding(0, set0bindings)

@@ -3,7 +3,7 @@
 #include "VulkanCommon.h"
 #include "Graphics/RHI/RHIResource.h"
 
-namespace zen::rhi
+namespace zen
 {
 class VulkanDevice;
 class VulkanFenceManager;
@@ -145,8 +145,8 @@ public:
     void Execute(VulkanCommandBuffer* cmdBuffer);
 
     void Execute(VulkanCommandBuffer* cmdBuffer,
-                 BitField<PipelineStageBits> srcStages,
-                 BitField<PipelineStageBits> dstStages);
+                 BitField<RHIPipelineStageBits> srcStages,
+                 BitField<RHIPipelineStageBits> dstStages);
 
 private:
     static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);
@@ -159,4 +159,4 @@ private:
     std::vector<VkMemoryBarrier> m_memoryBarriers;
     std::vector<VkBufferMemoryBarrier> m_bufferBarriers;
 };
-} // namespace zen::rhi
+} // namespace zen

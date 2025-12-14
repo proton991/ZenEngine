@@ -8,28 +8,28 @@ HelloTriangleApp::HelloTriangleApp(const platform::WindowConfig& windowConfig) :
 
 void HelloTriangleApp::BuildGraphicsPasses()
 {
-    GfxPipelineStates pso{};
-    pso.primitiveType      = DrawPrimitiveType::eTriangleList;
+    RHIGfxPipelineStates pso{};
+    pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState = {};
-    pso.colorBlendState    = GfxPipelineColorBlendState::CreateDisabled();
+    pso.colorBlendState    = RHIGfxPipelineColorBlendState::CreateDisabled();
     pso.depthStencilState  = {};
     pso.multiSampleState   = {};
-    pso.dynamicStates.push_back(DynamicState::eScissor);
-    pso.dynamicStates.push_back(DynamicState::eViewPort);
+    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
+    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
 
-    std::vector<ShaderResourceBinding> bindings;
+    std::vector<RHIShaderResourceBinding> bindings;
     {
-        ShaderResourceBinding binding{};
+        RHIShaderResourceBinding binding{};
         binding.binding = 0;
-        binding.type    = ShaderResourceType::eUniformBuffer;
+        binding.type    = RHIShaderResourceType::eUniformBuffer;
         binding.handles.push_back(m_cameraUBO);
         bindings.emplace_back(std::move(binding));
     }
-    std::vector<ShaderResourceBinding> textureBindings;
+    std::vector<RHIShaderResourceBinding> textureBindings;
     {
-        ShaderResourceBinding binding{};
+        RHIShaderResourceBinding binding{};
         binding.binding = 0;
-        binding.type    = ShaderResourceType::eSamplerWithTexture;
+        binding.type    = RHIShaderResourceType::eSamplerWithTexture;
         binding.handles.push_back(m_sampler);
         binding.handles.push_back(m_texture);
         textureBindings.emplace_back(std::move(binding));
@@ -37,10 +37,10 @@ void HelloTriangleApp::BuildGraphicsPasses()
 
     rc::GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPass =
-        builder.AddShaderStage(rhi::RHIShaderStage::eVertex, "triangle.vert.spv")
-            .AddShaderStage(rhi::RHIShaderStage::eFragment, "triangle_fixed.frag.spv")
+        builder.AddShaderStage(RHIShaderStage::eVertex, "triangle.vert.spv")
+            .AddShaderStage(RHIShaderStage::eFragment, "triangle_fixed.frag.spv")
             .SetNumSamples(SampleCount::e1)
-            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), TextureUsage::eColorAttachment,
+            .AddColorRenderTarget(m_viewport->GetSwapchainFormat(), RHITextureUsage::eColorAttachment,
                                   m_viewport->GetColorBackBuffer())
             .SetDepthStencilTarget(m_viewport->GetDepthStencilFormat(),
                                    m_viewport->GetDepthStencilBackBuffer())
@@ -69,7 +69,7 @@ void HelloTriangleApp::LoadResources()
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 
     // load texture
-    SamplerInfo samplerInfo{};
+    RHISamplerInfo samplerInfo{};
     m_sampler = m_renderDevice->CreateSampler(samplerInfo);
     m_texture = m_renderDevice->LoadTexture2D("wood.png", true);
 }
@@ -90,15 +90,15 @@ void HelloTriangleApp::BuildRenderGraph()
     vp.maxX = (float)m_window->GetExtent2D().width;
     vp.maxY = (float)m_window->GetExtent2D().height;
 
-    std::vector<RenderPassClearValue> clearValues(2);
+    std::vector<RHIRenderPassClearValue> clearValues(2);
     clearValues[0].color   = {0.2f, 0.2f, 0.2f, 1.0f};
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
     auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
-    // m_rdg->DeclareTextureAccessForPass(mainPass, m_texture, TextureUsage::eSampled,
+    // m_rdg->DeclareTextureAccessForPass(mainPass, m_texture, RHITextureUsage::eSampled,
     //                                    m_renderDevice->GetTextureSubResourceRange(m_texture),
-    //                                    rhi::AccessMode::eRead);
+    //                                    RHIAccessMode::eRead);
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);
     m_rdg->AddGraphicsPassSetViewportNode(mainPass, vp);

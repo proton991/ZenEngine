@@ -5,7 +5,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
-namespace zen::rhi
+namespace zen
 {
 VulkanCommandBufferPool::~VulkanCommandBufferPool()
 {
@@ -395,4 +395,4 @@ void VulkanCommandBufferManager::WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer
     VERIFY_EXPR(success);
     cmdBuffer->RefreshFenceStatus();
 }
-} // namespace zen::rhi
+} // namespace zen
