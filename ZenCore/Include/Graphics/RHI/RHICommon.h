@@ -780,6 +780,50 @@ enum class RHIRenderTargetStoreOp : uint32_t
     eMax   = 2
 };
 
+struct RHIRenderTargetClearValue
+{
+    union
+    {
+        Color color;
+        struct
+        {
+            float depth;
+            uint32_t stencil;
+        };
+    };
+
+    RHIRenderTargetClearValue() {}
+
+    RHIRenderTargetClearValue(Color c) : color(c) {}
+
+    RHIRenderTargetClearValue(float depth, uint32_t stencil) : depth(depth), stencil(stencil) {}
+
+    static RHIRenderTargetClearValue ColorClear(Color c)
+    {
+        return RHIRenderTargetClearValue(c);
+    }
+
+    static RHIRenderTargetClearValue DefaultColorClear()
+    {
+        return RHIRenderTargetClearValue(Color(0.8f, 0.8f, 0.8f, 1.0f));
+    }
+
+    static RHIRenderTargetClearValue DepthStencilClear(float depth, uint32_t stencil)
+    {
+        return RHIRenderTargetClearValue(depth, stencil);
+    }
+
+    static RHIRenderTargetClearValue DefaultDepthStencilClear()
+    {
+        return RHIRenderTargetClearValue(1.0f, 0.0f);
+    }
+};
+
+inline RHIRenderTargetClearValue DEFAULT_COLOR_CLEAR_VALUE =
+    RHIRenderTargetClearValue(Color(0.8f, 0.8f, 0.8f, 0.0f));
+
+inline RHIRenderTargetClearValue DEFAULT_DS_CLEAR_VALUE = RHIRenderTargetClearValue(1.0f, 0);
+
 struct RHIRenderTarget
 {
     DataFormat format{DataFormat::eUndefined};
@@ -787,8 +831,7 @@ struct RHIRenderTarget
     RHIRenderTargetLoadOp loadOp{RHIRenderTargetLoadOp::eNone};
     RHIRenderTargetStoreOp storeOp{RHIRenderTargetStoreOp::eStore};
     RHITexture* texture{nullptr};
-    RHITextureSubResourceRange subresourceRange;
-    // RHITextureUsage usage{RHITextureUsage::eMax};
+    RHIRenderTargetClearValue clearValue;
 };
 
 union RHIRenderPassClearValue
@@ -802,6 +845,66 @@ union RHIRenderPassClearValue
     };
 
     RHIRenderPassClearValue() {}
+};
+
+struct RHIRenderingLayout
+{
+    Rect2<int> renderArea;
+    uint32_t numColorRenderTargets{0};
+    bool hasDepthStencilRT{false};
+    RHIRenderTarget colorRenderTargets[MAX_COLOR_ATTACHMENT_COUNT];
+    RHIRenderTarget depthStencilRenderTarget;
+
+    void SetRenderArea(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
+    {
+        renderArea.minX = offsetX;
+        renderArea.maxX = offsetX + static_cast<int32_t>(width);
+        renderArea.minY = offsetY;
+        renderArea.maxY = offsetY + static_cast<int32_t>(height);
+    }
+
+    void AddColorRenderTarget(DataFormat format,
+                              RHITexture* texture,
+                              RHIRenderTargetLoadOp loadOp,
+                              RHIRenderTargetStoreOp storeOp,
+                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE,
+                              SampleCount numSamples               = SampleCount::e1)
+    {
+        RHIRenderTarget colorRT;
+        colorRT.format     = format;
+        colorRT.texture    = texture;
+        colorRT.loadOp     = loadOp;
+        colorRT.storeOp    = storeOp;
+        colorRT.clearValue = clearValue;
+        colorRT.numSamples = numSamples;
+
+        colorRenderTargets[numColorRenderTargets++] = colorRT;
+    }
+
+    void AddDepthStencilRenderTarget(DataFormat format,
+                                     RHITexture* texture,
+                                     RHIRenderTargetLoadOp loadOp,
+                                     RHIRenderTargetStoreOp storeOp,
+                                     RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
+    {
+        if (!hasDepthStencilRT)
+        {
+            depthStencilRenderTarget.format     = format;
+            depthStencilRenderTarget.texture    = texture;
+            depthStencilRenderTarget.loadOp     = loadOp;
+            depthStencilRenderTarget.storeOp    = storeOp;
+            depthStencilRenderTarget.clearValue = clearValue;
+            hasDepthStencilRT                   = true;
+        }
+    }
+
+    void ClearRenderTargetInfo()
+    {
+        std::ranges::fill(colorRenderTargets, RHIRenderTarget{});
+        depthStencilRenderTarget = {};
+        hasDepthStencilRT        = false;
+        numColorRenderTargets    = 0;
+    }
 };
 
 class RHIRenderPassLayout
@@ -824,9 +927,9 @@ public:
                               SampleCount numSamples = SampleCount::e1)
     {
         RHIRenderTarget colorRT;
-        colorRT.format           = format;
-        colorRT.texture          = texture;
-        colorRT.subresourceRange = subResourceRange;
+        colorRT.format  = format;
+        colorRT.texture = texture;
+        // colorRT.subresourceRange = subResourceRange;
 
         colorRT.numSamples = numSamples;
         colorRT.loadOp     = loadOp;
@@ -846,11 +949,11 @@ public:
     {
         if (!m_hasDepthStencilRT)
         {
-            m_depthStencilRT.format           = format;
-            m_depthStencilRT.texture          = texture;
-            m_depthStencilRT.subresourceRange = subResourceRange;
-            m_depthStencilRT.loadOp           = loadOp;
-            m_depthStencilRT.storeOp          = storeOp;
+            m_depthStencilRT.format  = format;
+            m_depthStencilRT.texture = texture;
+            // m_depthStencilRT.subresourceRange = subResourceRange;
+            m_depthStencilRT.loadOp  = loadOp;
+            m_depthStencilRT.storeOp = storeOp;
             // m_depthStencilRT.usage  = RHITextureUsage::eDepthStencilAttachment;
             m_hasDepthStencilRT = true;
             // m_rtHandles.push_back(handle);

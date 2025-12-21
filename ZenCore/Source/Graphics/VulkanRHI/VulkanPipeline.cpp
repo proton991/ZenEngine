@@ -929,20 +929,20 @@ void VulkanPipeline::InitGraphics()
     }
     else
     {
-        colorAttachmentFormats.reserve(m_renderPassLayout.GetNumColorRenderTargets());
-        for (uint32_t i = 0; i < m_renderPassLayout.GetNumColorRenderTargets(); i++)
+        pipelineCI.renderPass = VK_NULL_HANDLE;
+        colorAttachmentFormats.reserve(m_pRenderingLayout->numColorRenderTargets);
+        for (uint32_t i = 0; i < m_pRenderingLayout->numColorRenderTargets; i++)
         {
-            VkFormat colorFormat = ToVkFormat(m_renderPassLayout.GetColorRenderTargets()[i].format);
+            VkFormat colorFormat = ToVkFormat(m_pRenderingLayout->colorRenderTargets[i].format);
             colorAttachmentFormats.emplace_back(colorFormat);
         }
         InitVkStruct(renderingCI, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
-        renderingCI.colorAttachmentCount    = static_cast<uint32_t>(colorAttachmentFormats.size());
+        renderingCI.colorAttachmentCount    = m_pRenderingLayout->numColorRenderTargets;
         renderingCI.pColorAttachmentFormats = colorAttachmentFormats.data();
 
-        if (m_renderPassLayout.HasDepthStencilRenderTarget())
+        if (m_pRenderingLayout->hasDepthStencilRT)
         {
-            VkFormat depthFormat =
-                ToVkFormat(m_renderPassLayout.GetDepthStencilRenderTarget().format);
+            VkFormat depthFormat = ToVkFormat(m_pRenderingLayout->depthStencilRenderTarget.format);
             renderingCI.depthAttachmentFormat   = depthFormat;
             renderingCI.stencilAttachmentFormat = depthFormat;
         }

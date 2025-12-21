@@ -12,9 +12,12 @@ void FRHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, ui
     ALLOC_CMD(RHICommandSetScissor)(minX, minY, maxX, maxY);
 }
 
-void FRHICommandList::BindGraphicsPipeline(RHIPipeline* pipeline)
+void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
+                                   RHIPipeline* pPipeline,
+                                   uint32_t numDescriptorSets,
+                                   RHIDescriptorSet* const* pDescriptorSets)
 {
-    ALLOC_CMD(RHICommandBindGraphicsPipeline)(pipeline);
+    ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline, numDescriptorSets, pDescriptorSets);
 }
 
 void FRHICommandList::BindVertexBuffer(RHIBuffer* buffer, uint64_t offset)

@@ -88,7 +88,7 @@ public:
 
     void BindGfxPipeline(RHIPipeline* pipelineHandle,
                          uint32_t numDescriptorSets,
-                         const RHIDescriptorSet* const* pDescriptorSets) final;
+                         RHIDescriptorSet* const* pDescriptorSets) final;
 
     // void BindComputePipeline(PipelineHandle pipelineHandle) final;
 
@@ -108,6 +108,10 @@ public:
                                 VectorView<RHIRenderPassClearValue> clearValues) final;
 
     void EndRenderPassDynamic() final;
+
+    void BeginRendering(const RHIRenderingLayout* pRenderingLayout) final;
+
+    void EndRendering() final;
 
     void Draw(uint32_t vertexCount,
               uint32_t instanceCount,

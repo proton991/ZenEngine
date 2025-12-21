@@ -313,6 +313,26 @@ VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderPassClearValue& cl
     return depthStencilValue;
 }
 
+VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue)
+{
+    VkClearColorValue colorValue{};
+    colorValue.float32[0] = clearValue.color.r;
+    colorValue.float32[1] = clearValue.color.g;
+    colorValue.float32[2] = clearValue.color.b;
+    colorValue.float32[3] = clearValue.color.a;
+
+    return colorValue;
+}
+
+VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue)
+{
+    VkClearDepthStencilValue depthStencilValue{};
+    depthStencilValue.depth   = clearValue.depth;
+    depthStencilValue.stencil = clearValue.stencil;
+
+    return depthStencilValue;
+}
+
 void ToVkClearColor(const Color& color, VkClearColorValue* colorValue)
 {
     *colorValue            = {};

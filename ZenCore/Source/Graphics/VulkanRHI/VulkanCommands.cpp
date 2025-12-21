@@ -1,4 +1,5 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
@@ -254,7 +255,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const 
 
 void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
                                         uint32_t numDescriptorSets,
-                                        const RHIDescriptorSet* const* pDescriptorSets)
+                                        RHIDescriptorSet* const* pDescriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (numDescriptorSets > 0)
@@ -397,6 +398,76 @@ void VulkanCommandList::BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayo
 void VulkanCommandList::EndRenderPassDynamic()
 {
     vkCmdEndRenderingKHR(m_cmdBuffer->GetVkHandle());
+}
+
+void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
+{
+    if (RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        VkRenderingInfoKHR renderingInfo{};
+
+        const Rect2<int>& area = pRenderingLayout->renderArea;
+
+        InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
+        renderingInfo.layerCount               = 1;
+        renderingInfo.viewMask                 = 0;
+        renderingInfo.flags                    = 0;
+        renderingInfo.renderArea.offset.x      = area.minX;
+        renderingInfo.renderArea.offset.y      = area.minY;
+        renderingInfo.renderArea.extent.width  = area.Width();
+        renderingInfo.renderArea.extent.height = area.Height();
+
+        std::vector<VkRenderingAttachmentInfoKHR> colorAttachments;
+        colorAttachments.reserve(pRenderingLayout->numColorRenderTargets);
+
+        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
+        {
+            const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
+            VulkanTexture* vulkanTexture   = TO_VK_TEXTURE(colorRT.texture);
+            VkRenderingAttachmentInfoKHR colorAttachment{};
+            InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+            colorAttachment.imageView        = vulkanTexture->GetVkImageView();
+            colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
+            colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
+            colorAttachment.clearValue.color = ToVkClearColor(colorRT.clearValue);
+            colorAttachments.emplace_back(colorAttachment);
+        }
+        renderingInfo.colorAttachmentCount = pRenderingLayout->numColorRenderTargets;
+        renderingInfo.pColorAttachments    = colorAttachments.data();
+
+        VkRenderingAttachmentInfoKHR depthStencilAttachment;
+        InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+        if (pRenderingLayout->hasDepthStencilRT)
+        {
+            const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
+            VulkanTexture* vulkanTexture          = TO_VK_TEXTURE(depthStencilRT.texture);
+            depthStencilAttachment.imageView      = vulkanTexture->GetVkImageView();
+            depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
+            depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
+            depthStencilAttachment.clearValue.depthStencil =
+                ToVkClearDepthStencil(depthStencilRT.clearValue);
+
+            renderingInfo.pDepthAttachment = &depthStencilAttachment;
+        }
+
+        vkCmdBeginRenderingKHR(m_cmdBuffer->GetVkHandle(), &renderingInfo);
+    }
+    else
+    {
+    }
+}
+
+void VulkanCommandList::EndRendering()
+{
+    if (RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        vkCmdEndRenderingKHR(m_cmdBuffer->GetVkHandle());
+    }
+    else
+    {
+    }
 }
 
 void VulkanCommandList::Draw(uint32_t vertexCount,

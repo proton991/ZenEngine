@@ -270,12 +270,11 @@ struct RDGComputePassNode : RDGPassNode
 
 struct RDGGraphicsPassNode : RDGPassNode
 {
-    RenderPassHandle renderPass;
-    FramebufferHandle framebuffer;
-    Rect2<int> renderArea;
-    // todo: maxColorAttachments + 1, set based on GPU limits
-    uint32_t numAttachments;
-    RHIRenderPassClearValue clearValues[8];
+    // RenderPassHandle renderPass;
+    // FramebufferHandle framebuffer;
+    // Rect2<int> renderArea;
+    // uint32_t numAttachments;
+    // RHIRenderPassClearValue clearValues[8];
     RHIRenderPassLayout renderPassLayout;
     bool dynamic;
     const GraphicsPass* graphicsPass{nullptr};

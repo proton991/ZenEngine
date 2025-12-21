@@ -4,6 +4,7 @@
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
 namespace zen
 {
+class RHIDescriptorSet;
 class RHIPipeline;
 
 struct RHICommandBase
@@ -21,9 +22,14 @@ public:
 
     virtual void RHISetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) = 0;
 
-    virtual void RHIBindGfxPipeline(RHIPipeline* pipeline) = 0;
+    virtual void RHIBindPipeline(RHIPipelineType pipelineType,
+                                 RHIPipeline* pPipeline,
+                                 uint32_t numDescriptorSets,
+                                 RHIDescriptorSet* const* pDescriptorSets) = 0;
 
     virtual void RHIBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) = 0;
+
+    virtual void RHIBindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint64_t offset) = 0;
 
     virtual void RHIDrawIndexed(RHIBuffer* buffer,
                                 uint32_t indexCount,
@@ -96,25 +102,30 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
-struct RHICommandDrawParam
-{
-    RHIBuffer* indexBuffer;
-    uint32_t offset;
-    uint32_t indexCount;
-    uint32_t instanceCount;
-    uint32_t firstIndex;
-    int32_t vertexOffset;
-    uint32_t firstInstance;
-};
+struct RHICommandBeginRendering final : public RHICommand
+{};
 
-struct RHICommandBindGraphicsPipeline final : public RHICommand
+struct RHICommandBindPipeline final : public RHICommand
 {
-    RHIPipeline* pipeline;
-    explicit RHICommandBindGraphicsPipeline(RHIPipeline* pipeline) : pipeline(pipeline) {}
+    RHIPipelineType pipelineType;
+    RHIPipeline* pPipeline;
+    uint32_t numDescriptorSets;
+    RHIDescriptorSet* const* pDescriptorSets;
+
+    explicit RHICommandBindPipeline(RHIPipelineType pipelineType,
+                                    RHIPipeline* pPipeline,
+                                    uint32_t numDescriptorSets,
+                                    RHIDescriptorSet* const* pDescriptorSets) :
+        pipelineType(pipelineType),
+        pPipeline(pPipeline),
+        numDescriptorSets(numDescriptorSets),
+        pDescriptorSets(pDescriptorSets)
+    {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBindGfxPipeline(pipeline);
+        cmdList.GetContext()->RHIBindPipeline(pipelineType, pPipeline, numDescriptorSets,
+                                              pDescriptorSets);
     }
 };
 
@@ -152,6 +163,22 @@ struct RHICommandSetViewport final : public RHICommand
     }
 };
 
+struct RHICommandBindIndexBuffer final : public RHICommand
+{
+    RHIBuffer* indexBuffer;
+    DataFormat format;
+    uint64_t offset;
+
+    RHICommandBindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint64_t offset) :
+        indexBuffer(buffer), format(format), offset(offset)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBindIndexBuffer(indexBuffer, format, offset);
+    }
+};
+
 struct RHICommandBindVertexBuffer final : public RHICommand
 {
     RHIBuffer* vertexBuffer;
@@ -165,6 +192,17 @@ struct RHICommandBindVertexBuffer final : public RHICommand
     {
         cmdList.GetContext()->RHIBindVertexBuffer(vertexBuffer, offset);
     }
+};
+
+struct RHICommandDrawParam
+{
+    RHIBuffer* indexBuffer;
+    uint32_t offset;
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int32_t vertexOffset;
+    uint32_t firstInstance;
 };
 
 struct RHICommandDrawIndexed final : public RHICommand
@@ -229,7 +267,10 @@ public:
 
     virtual void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
-    virtual void BindGraphicsPipeline(RHIPipeline* pipeline);
+    virtual void BindPipeline(RHIPipelineType pipelineType,
+                              RHIPipeline* pPipeline,
+                              uint32_t numDescriptorSets,
+                              RHIDescriptorSet* const* pDescriptorSets);
 
     // All vertex attributes packed in 1 buffer
     virtual void BindVertexBuffer(RHIBuffer* buffer, uint64_t offset);

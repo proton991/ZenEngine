@@ -3,11 +3,11 @@
 
 #define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                                   \
     {                                                                                              \
-        RHIShaderResourceBinding binding{};                                                   \
+        RHIShaderResourceBinding binding{};                                                        \
         binding.binding = index_;                                                                  \
         binding.type    = type_;                                                                   \
         {                                                                                          \
-            std::initializer_list<RHIResource*> resources = {__VA_ARGS__};                    \
+            std::initializer_list<RHIResource*> resources = {__VA_ARGS__};                         \
             binding.resources.insert(binding.resources.end(), resources.begin(), resources.end()); \
         }                                                                                          \
         bindings_.emplace_back(std::move(binding));                                                \
@@ -15,10 +15,10 @@
 
 #define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \
     {                                                                                   \
-        RHIShaderResourceBinding binding{};                                        \
+        RHIShaderResourceBinding binding{};                                             \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (RHITexture * texture : (textures_))                                   \
+        for (RHITexture * texture : (textures_))                                        \
         {                                                                               \
             binding.resources.push_back(sampler_);                                      \
             binding.resources.push_back(texture);                                       \
@@ -123,7 +123,8 @@ struct GraphicsPass
     RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
     ShaderProgram* shaderProgram;
-    RHIRenderPassLayout renderPassLayout;
+    // RHIRenderPassLayout renderPassLayout;
+    RHIRenderingLayout* pRenderingLayout{nullptr};
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
     HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];

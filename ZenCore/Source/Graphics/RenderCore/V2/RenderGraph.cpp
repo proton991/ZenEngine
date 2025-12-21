@@ -132,17 +132,17 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(RenderPassHandle renderPassHandle,
                                               bool hasColorTarget,
                                               bool hasDepthTarget)
 {
-    auto* node           = AllocNode<RDGGraphicsPassNode>();
-    node->renderPass     = std::move(renderPassHandle);
-    node->framebuffer    = std::move(framebufferHandle);
-    node->renderArea     = area;
-    node->type           = RDGNodeType::eGraphicsPass;
-    node->numAttachments = clearValues.size();
+    auto* node = AllocNode<RDGGraphicsPassNode>();
+    // node->renderPass  = std::move(renderPassHandle);
+    // node->framebuffer = std::move(framebufferHandle);
+    // node->renderArea  = area;
+    node->type = RDGNodeType::eGraphicsPass;
+    // node->numAttachments = clearValues.size();
 
-    for (auto i = 0; i < clearValues.size(); i++)
-    {
-        node->clearValues[i] = clearValues[i];
-    }
+    // for (auto i = 0; i < clearValues.size(); i++)
+    // {
+    //     node->clearValues[i] = clearValues[i];
+    // }
     if (hasColorTarget)
     {
         node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
@@ -162,43 +162,45 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
                                               std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
-    auto* node             = AllocNode<RDGGraphicsPassNode>();
-    node->graphicsPass     = pGfxPass;
-    node->renderPass       = std::move(pGfxPass->renderPass);
-    node->framebuffer      = std::move(pGfxPass->framebuffer);
-    node->renderArea       = area;
-    node->type             = RDGNodeType::eGraphicsPass;
-    node->numAttachments   = clearValues.size();
-    node->renderPassLayout = std::move(pGfxPass->renderPassLayout);
-    node->dynamic          = RHIOptions::GetInstance().UseDynamicRendering();
-    node->tag              = std::move(tag);
+    auto* node         = AllocNode<RDGGraphicsPassNode>();
+    node->graphicsPass = pGfxPass;
+    // node->renderPass       = std::move(pGfxPass->renderPass);
+    // node->framebuffer      = std::move(pGfxPass->framebuffer);
+    // node->renderArea       = area;
+    node->type = RDGNodeType::eGraphicsPass;
+    // node->numAttachments   = clearValues.size();
+    // node->renderPassLayout = std::move(pGfxPass->renderPassLayout);
+    // node->dynamic          = RHIOptions::GetInstance().UseDynamicRendering();
+    node->tag = std::move(tag);
 
-    for (auto i = 0; i < clearValues.size(); i++)
-    {
-        node->clearValues[i] = clearValues[i];
-    }
-    if (node->renderPassLayout.HasColorRenderTarget())
+    const RHIRenderingLayout* pRenderingLayout = node->graphicsPass->pRenderingLayout;
+
+    // for (auto i = 0; i < clearValues.size(); i++)
+    // {
+    //     node->clearValues[i] = clearValues[i];
+    // }
+    if (pRenderingLayout->numColorRenderTargets > 0)
     {
         node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
         // const TextureHandle* handles = node->renderPassLayout.GetRenderTargetHandles();
         // const auto& rtSubresourceRanges   = node->renderPassLayout.GetRTSubResourceRanges();
-        const auto& colorRTs = node->renderPassLayout.GetColorRenderTargets();
-        for (uint32_t i = 0; i < node->renderPassLayout.GetNumColorRenderTargets(); i++)
+        const auto& colorRTs = pRenderingLayout->colorRenderTargets;
+        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
             const std::string textureTag = node->tag + "_color_rt_" + std::to_string(i);
-            DeclareTextureAccessForPass(node, colorRTs[i].texture,
-                                        RHITextureUsage::eColorAttachment,
-                                        colorRTs[i].subresourceRange, RHIAccessMode::eReadWrite);
+            DeclareTextureAccessForPass(
+                node, colorRTs[i].texture, RHITextureUsage::eColorAttachment,
+                colorRTs[i].texture->GetSubResourceRange(), RHIAccessMode::eReadWrite);
         }
     }
-    if (node->renderPassLayout.HasDepthStencilRenderTarget())
+    if (pRenderingLayout->hasDepthStencilRT)
     {
-        const auto& depthStencilRT = node->renderPassLayout.GetDepthStencilRenderTarget();
+        const auto& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
         node->selfStages.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
         node->selfStages.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
-        DeclareTextureAccessForPass(node, depthStencilRT.texture,
-                                    RHITextureUsage::eDepthStencilAttachment,
-                                    depthStencilRT.subresourceRange, RHIAccessMode::eReadWrite);
+        DeclareTextureAccessForPass(
+            node, depthStencilRT.texture, RHITextureUsage::eDepthStencilAttachment,
+            depthStencilRT.texture->GetSubResourceRange(), RHIAccessMode::eReadWrite);
     }
     AddPassBindPipelineNode(node, pGfxPass->pipeline, RHIPipelineType::eGraphics);
     for (uint32_t i = 0; i < pGfxPass->numDescriptorSets; i++)
@@ -1340,17 +1342,18 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         case RDGNodeType::eGraphicsPass:
         {
             RDGGraphicsPassNode* node = reinterpret_cast<RDGGraphicsPassNode*>(base);
-            if (node->dynamic)
-            {
-                m_cmdList->BeginRenderPassDynamic(
-                    node->renderPassLayout, node->renderArea,
-                    VectorView(node->clearValues, node->numAttachments));
-            }
-            else
-            {
-                m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
-                                           VectorView(node->clearValues, node->numAttachments));
-            }
+            m_cmdList->BeginRendering(node->graphicsPass->pRenderingLayout);
+            // if (node->dynamic)
+            // {
+            //     m_cmdList->BeginRenderPassDynamic(
+            //         node->renderPassLayout, node->renderArea,
+            //         VectorView(node->clearValues, node->numAttachments));
+            // }
+            // else
+            // {
+            //     m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
+            //                                VectorView(node->clearValues, node->numAttachments));
+            // }
 
             // m_cmdList->BeginRenderPass(node->renderPass, node->framebuffer, node->renderArea,
             //                            VectorView(node->clearValues, node->numAttachments));
@@ -1461,14 +1464,15 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eMax: break;
                 }
             }
-            if (node->dynamic)
-            {
-                m_cmdList->EndRenderPassDynamic();
-            }
-            else
-            {
-                m_cmdList->EndRenderPass();
-            }
+            m_cmdList->EndRendering();
+            // if (node->dynamic)
+            // {
+            //     m_cmdList->EndRenderPassDynamic();
+            // }
+            // else
+            // {
+            //     m_cmdList->EndRenderPass();
+            // }
         }
         break;
         case RDGNodeType::eNone:

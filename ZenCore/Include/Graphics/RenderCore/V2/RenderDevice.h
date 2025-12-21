@@ -25,7 +25,7 @@ class SkyboxRenderer;
 class GraphicsPassBuilder
 {
 public:
-    explicit GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice) {}
+    explicit GraphicsPassBuilder(RenderDevice* renderDevice);
 
     GraphicsPassBuilder& AddShaderStage(RHIShaderStage stage, std::string path)
     {
@@ -95,13 +95,12 @@ public:
         return *this;
     }
 
-    GraphicsPassBuilder& SetFramebufferInfo(RHIViewport* viewport,
-                                            uint32_t width,
-                                            uint32_t height)
+    GraphicsPassBuilder& SetFramebufferInfo(RHIViewport* viewport, uint32_t width, uint32_t height)
     {
         m_framebufferInfo.width  = width;
         m_framebufferInfo.height = height;
         m_viewport               = viewport;
+        m_pGfxPass->pRenderingLayout->SetRenderArea(0, 0, width, height);
         return *this;
     }
 
@@ -110,6 +109,8 @@ public:
         m_framebufferInfo.width  = viewport->GetWidth();
         m_framebufferInfo.height = viewport->GetHeight();
         m_viewport               = viewport;
+        m_pGfxPass->pRenderingLayout->SetRenderArea(0, 0, viewport->GetWidth(),
+                                                    viewport->GetHeight());
         return *this;
     }
 
@@ -126,11 +127,13 @@ private:
     RenderDevice* m_renderDevice{nullptr};
     RHIViewport* m_viewport{nullptr};
     std::string m_tag;
+    GraphicsPass* m_pGfxPass{nullptr};
     GfxPassShaderMode m_shaderMode{GfxPassShaderMode::eNone};
     HashMap<RHIShaderStage, std::string> m_shaderStages;
     std::string m_shaderProgramName;
     RHIGfxPipelineStates m_PSO{};
-    RHIRenderPassLayout m_rpLayout{};
+    // RHIRenderingLayout* m_pRenderingLayout{nullptr};
+    // RHIRenderPassLayout m_rpLayout{};
     RHIFramebufferInfo m_framebufferInfo{};
     HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
     HashMap<uint32_t, int> m_specializationConstants;
@@ -354,29 +357,34 @@ public:
 
     void ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg);
 
+    // todo: implement pool based recycle mechanism
+    RHIRenderingLayout* AcquireRenderingLayout();
+
+    void DestroyRenderingLayout(RHIRenderingLayout* pLayout);
+
     RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
-                                          TextureUsageHint usageHint,
-                                          std::string texName);
+                                     TextureUsageHint usageHint,
+                                     std::string texName);
 
     RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
-                                                 TextureUsageHint usageHint,
-                                                 std::string texName);
+                                            TextureUsageHint usageHint,
+                                            std::string texName);
 
     RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
-                                          TextureUsageHint usageHint,
-                                          std::string texName);
+                                     TextureUsageHint usageHint,
+                                     std::string texName);
 
     RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
-                                          TextureUsageHint usageHint,
-                                          std::string texName);
+                                     TextureUsageHint usageHint,
+                                     std::string texName);
 
     RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
-                                        TextureUsageHint usageHint,
-                                        std::string texName);
+                                   TextureUsageHint usageHint,
+                                   std::string texName);
 
     RHITexture* CreateTextureProxy(RHITexture* baseTexture,
-                                        const TextureProxyFormat& proxyFormat,
-                                        std::string texName);
+                                   const TextureProxyFormat& proxyFormat,
+                                   std::string texName);
 
     // RHITexture* GetTextureRDFromHandle(const RHITexture* handle);
 
@@ -397,17 +405,13 @@ public:
 
     RHIBuffer* CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData);
 
-    RHIBuffer* CreateUniformBuffer(uint32_t dataSize,
-                                        const uint8_t* pData,
-                                        std::string bufferName);
+    RHIBuffer* CreateUniformBuffer(uint32_t dataSize, const uint8_t* pData, std::string bufferName);
 
-    RHIBuffer* CreateStorageBuffer(uint32_t dataSize,
-                                        const uint8_t* pData,
-                                        std::string bufferName);
+    RHIBuffer* CreateStorageBuffer(uint32_t dataSize, const uint8_t* pData, std::string bufferName);
 
     RHIBuffer* CreateIndirectBuffer(uint32_t dataSize,
-                                         const uint8_t* pData,
-                                         std::string bufferName);
+                                    const uint8_t* pData,
+                                    std::string bufferName);
 
     void UpdateBuffer(RHIBuffer* bufferHandle,
                       uint32_t dataSize,
@@ -419,21 +423,21 @@ public:
     RenderPassHandle GetOrCreateRenderPass(const RHIRenderPassLayout& layout);
 
     RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
-                                             RHIShader* shader,
-                                             const RenderPassHandle& renderPass,
-                                             const HashMap<uint32_t, int>& specializationConstants);
+                                        RHIShader* shader,
+                                        const RenderPassHandle& renderPass,
+                                        const HashMap<uint32_t, int>& specializationConstants);
 
     RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
-                                             RHIShader* shader,
-                                             const RHIRenderPassLayout& renderPassLayout,
-                                             const HashMap<uint32_t, int>& specializationConstants);
+                                        RHIShader* shader,
+                                        const RHIRenderingLayout* pRenderingLayout,
+                                        const HashMap<uint32_t, int>& specializationConstants);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* shader);
 
     RHIViewport* CreateViewport(void* pWindow,
-                                     uint32_t width,
-                                     uint32_t height,
-                                     bool enableVSync = true);
+                                uint32_t width,
+                                uint32_t height,
+                                bool enableVSync = true);
 
     void ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height);
 
@@ -526,14 +530,14 @@ private:
     static size_t CalcFramebufferHash(const RHIFramebufferInfo& info,
                                       RenderPassHandle renderPassHandle);
 
-    static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
-                                      RHIShader* shader,
-                                      const RenderPassHandle& renderPass,
-                                      const HashMap<uint32_t, int>& specializationConstants);
+    // static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+    //                                   RHIShader* shader,
+    //                                   const RenderPassHandle& renderPass,
+    //                                   const HashMap<uint32_t, int>& specializationConstants);
 
     static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
                                       RHIShader* shader,
-                                      const RHIRenderPassLayout& renderPassLayout,
+                                      // const RHIRenderPassLayout& renderPassLayout,
                                       const HashMap<uint32_t, int>& specializationConstants);
 
     static size_t CalcComputePipelineHash(RHIShader* shader);

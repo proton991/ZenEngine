@@ -55,12 +55,21 @@ static void CopyRegion(uint8_t const* pSrc,
 //     return *this;
 // }
 
+GraphicsPassBuilder::GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice)
+{
+    m_pGfxPass = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
+    new (m_pGfxPass) GraphicsPass();
+    m_pGfxPass->pRenderingLayout = m_renderDevice->AcquireRenderingLayout();
+}
+
 GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* viewport,
                                                              RHIRenderTargetLoadOp loadOp,
                                                              RHIRenderTargetStoreOp storeOp)
 {
-    m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
-                                    viewport->GetColorBackBufferRange(), loadOp, storeOp);
+    m_pGfxPass->pRenderingLayout->AddColorRenderTarget(
+        viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(), loadOp, storeOp);
+    // m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
+    //                                 viewport->GetColorBackBufferRange(), loadOp, storeOp);
     // m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
     //                                              RHIRenderTargetLoadOp::eLoad,
     //                                      RHIRenderTargetStoreOp::eStore);
@@ -68,14 +77,15 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* viewpo
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(
-    RHIViewport* viewport,
-    RHIRenderTargetLoadOp loadOp,
-    RHIRenderTargetStoreOp storeOp)
+GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(RHIViewport* viewport,
+                                                                    RHIRenderTargetLoadOp loadOp,
+                                                                    RHIRenderTargetStoreOp storeOp)
 {
-    m_rpLayout.SetDepthStencilRenderTarget(
-        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-        viewport->GetDepthStencilBackBufferRange(), loadOp, storeOp);
+    m_pGfxPass->pRenderingLayout->AddDepthStencilRenderTarget(
+        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(), loadOp, storeOp);
+    // m_rpLayout.SetDepthStencilRenderTarget(
+    //     viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+    //     viewport->GetDepthStencilBackBufferRange(), loadOp, storeOp);
     // m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
@@ -85,8 +95,10 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(RHITexture* color
                                                                RHIRenderTargetLoadOp loadOp,
                                                                RHIRenderTargetStoreOp storeOp)
 {
-    m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT, colorRT->GetSubResourceRange(),
-                                    loadOp, storeOp);
+    m_pGfxPass->pRenderingLayout->AddColorRenderTarget(colorRT->GetFormat(), colorRT, loadOp,
+                                                       storeOp);
+    // m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT, colorRT->GetSubResourceRange(),
+    //                                 loadOp, storeOp);
     // m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
     //                                              RHIRenderTargetLoadOp::eLoad,
     // RHIRenderTargetStoreOp::eStore);
@@ -98,8 +110,11 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(RHITexture* dept
                                                                 RHIRenderTargetLoadOp loadOp,
                                                                 RHIRenderTargetStoreOp storeOp)
 {
-    m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT,
-                                           depthStencilRT->GetSubResourceRange(), loadOp, storeOp);
+    m_pGfxPass->pRenderingLayout->AddDepthStencilRenderTarget(depthStencilRT->GetFormat(),
+                                                              depthStencilRT, loadOp, storeOp);
+
+    // m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT,
+    //                                        depthStencilRT->GetSubResourceRange(), loadOp, storeOp);
     // m_rpLayout.SetDepthStencilTargetLoadStoreOp(loadOp, storeOp);
     m_framebufferInfo.numRenderTarget++;
     return *this;
@@ -138,41 +153,44 @@ GraphicsPass* GraphicsPassBuilder::Build()
         shaderProgram->Init(m_specializationConstants);
     }
 
-    std::vector<RHITexture*> rtHandles;
-    rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
-
-    for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
-    {
-        rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].texture;
-    }
+    // std::vector<RHITexture*> rtHandles;
+    // rtHandles.resize(m_rpLayout.GetNumColorRenderTargets());
+    //
+    // for (uint32_t i = 0; i < m_rpLayout.GetNumColorRenderTargets(); i++)
+    // {
+    //     rtHandles[i] = m_rpLayout.GetColorRenderTargets()[i].texture;
+    // }
 
     // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
-    m_framebufferInfo.renderTargets = rtHandles.data();
+    // m_framebufferInfo.renderTargets = rtHandles.data();
 
     RHIShader* shader = shaderProgram->GetShader();
 
-    GraphicsPass* pGfxPass = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
-    new (pGfxPass) GraphicsPass();
 
-    pGfxPass->shaderProgram     = shaderProgram;
-    pGfxPass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
-    pGfxPass->renderPassLayout  = m_rpLayout;
 
-    if (!RHIOptions::GetInstance().UseDynamicRendering())
-    {
-        pGfxPass->renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-        pGfxPass->framebuffer =
-            m_viewport->GetCompatibleFramebuffer(pGfxPass->renderPass, &m_framebufferInfo);
-        m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(pGfxPass->renderPass,
-                                                              m_tag + "_RenderPass");
-        pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-            m_PSO, shader, pGfxPass->renderPass, m_specializationConstants);
-    }
-    else
-    {
-        pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-            m_PSO, shader, pGfxPass->renderPassLayout, m_specializationConstants);
-    }
+    m_pGfxPass->shaderProgram     = shaderProgram;
+    m_pGfxPass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+
+    // m_pGfxPass->renderPassLayout  = m_rpLayout;
+
+    // todo: missing legacy render pass implementation
+    // if (!RHIOptions::GetInstance().UseDynamicRendering())
+    // {
+    //     m_pGfxPass->renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
+    //     m_pGfxPass->framebuffer =
+    //         m_viewport->GetCompatibleFramebuffer(m_pGfxPass->renderPass, &m_framebufferInfo);
+    //     m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(m_pGfxPass->renderPass,
+    //                                                           m_tag + "_RenderPass");
+    //     m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+    //         m_PSO, shader, m_pGfxPass->renderPass, m_specializationConstants);
+    // }
+    // else
+    // {
+    //     m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+    //         m_PSO, shader, m_pGfxPass->renderPassLayout, m_specializationConstants);
+    // }
+    m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
+        m_PSO, shader, m_pGfxPass->pRenderingLayout, m_specializationConstants);
 
     // set up resource trackers
     // build PassTextureTracker and PassBufferTracker
@@ -186,7 +204,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.resourceType = PassResourceType::eTexture;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
     {
@@ -205,7 +223,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetUniformBufferSRDs())
     {
@@ -215,7 +233,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.bufferUsage  = RHIBufferUsage::eUniformBuffer;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
@@ -234,12 +252,12 @@ GraphicsPass* GraphicsPassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
     }
 
-    for (uint32_t setIndex = 0; setIndex < pGfxPass->numDescriptorSets; ++setIndex)
+    for (uint32_t setIndex = 0; setIndex < m_pGfxPass->numDescriptorSets; ++setIndex)
     {
-        pGfxPass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
+        m_pGfxPass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
     }
 
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
@@ -247,13 +265,13 @@ GraphicsPass* GraphicsPassBuilder::Build()
     {
         const auto setIndex  = kv.first;
         const auto& bindings = kv.second;
-        pGfxPass->descriptorSets[setIndex]->Update(bindings);
+        m_pGfxPass->descriptorSets[setIndex]->Update(bindings);
     }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(pGfxPass->pipeline, m_tag + "_Pipeline");
+    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(m_pGfxPass->pipeline, m_tag + "_Pipeline");
 
-    m_renderDevice->m_gfxPasses.push_back(pGfxPass);
-    return pGfxPass;
+    m_renderDevice->m_gfxPasses.push_back(m_pGfxPass);
+    return m_pGfxPass;
 }
 
 void GraphicsPassResourceUpdater::Update()
@@ -261,15 +279,15 @@ void GraphicsPassResourceUpdater::Update()
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
-        const auto setIndex             = kv.first;
-        const auto& bindings            = kv.second;
+        const auto setIndex        = kv.first;
+        const auto& bindings       = kv.second;
         RHIDescriptorSet* dsHandle = m_gfxPass->descriptorSets[setIndex];
         dsHandle->Update(bindings);
         // set pass tracker handle values here
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_gfxPass->resourceTrackers[setIndex][srb.binding];
-            bool hasSampler = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+            bool hasSampler              = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
                 srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
@@ -419,8 +437,8 @@ void ComputePassResourceUpdater::Update()
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
     for (const auto& kv : m_dsBindings)
     {
-        const auto setIndex             = kv.first;
-        const auto& bindings            = kv.second;
+        const auto setIndex        = kv.first;
+        const auto& bindings       = kv.second;
         RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
         dsHandle->Update(bindings);
         // set pass tracker handle values here
@@ -428,7 +446,7 @@ void ComputePassResourceUpdater::Update()
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
-            bool hasSampler = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
+            bool hasSampler              = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
                 srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
@@ -770,6 +788,10 @@ void RenderDevice::Destroy()
         {
             GDynamicRHI->DestroyDescriptorSet(pGfxPass->descriptorSets[i]);
         }
+        if (pGfxPass->pRenderingLayout != nullptr)
+        {
+            ZEN_MEM_FREE(pGfxPass->pRenderingLayout);
+        }
         ZEN_MEM_FREE(pGfxPass);
     }
 
@@ -848,9 +870,23 @@ void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
     GDynamicRHI->WaitForCommandList(cmdList);
 }
 
+RHIRenderingLayout* RenderDevice::AcquireRenderingLayout()
+{
+    RHIRenderingLayout* pLayout =
+        static_cast<RHIRenderingLayout*>(ZEN_MEM_ALLOC(sizeof(RHIRenderingLayout)));
+    new (pLayout) RHIRenderingLayout;
+
+    return pLayout;
+}
+
+void RenderDevice::DestroyRenderingLayout(RHIRenderingLayout* pLayout)
+{
+    ZEN_MEM_FREE(pLayout);
+}
+
 RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
-                                                    TextureUsageHint usageHint,
-                                                    std::string texName)
+                                               TextureUsageHint usageHint,
+                                               std::string texName)
 {
     RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
@@ -882,8 +918,8 @@ RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
 }
 
 RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
-                                                           TextureUsageHint usageHint,
-                                                           std::string texName)
+                                                      TextureUsageHint usageHint,
+                                                      std::string texName)
 {
     RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
@@ -911,8 +947,8 @@ RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFo
 }
 
 RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
-                                                    TextureUsageHint usageHint,
-                                                    std::string texName)
+                                               TextureUsageHint usageHint,
+                                               std::string texName)
 {
     RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
@@ -941,8 +977,8 @@ RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
 }
 
 RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
-                                                    TextureUsageHint usageHint,
-                                                    std::string texName)
+                                               TextureUsageHint usageHint,
+                                               std::string texName)
 {
     RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
@@ -969,8 +1005,8 @@ RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
 }
 
 RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
-                                                  TextureUsageHint usageHint,
-                                                  std::string texName)
+                                             TextureUsageHint usageHint,
+                                             std::string texName)
 {
     RHITextureCreateInfo texInfo{};
     texInfo.type          = static_cast<RHITextureType>(texFormat.dimension);
@@ -997,8 +1033,8 @@ RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
 }
 
 RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
-                                                  const TextureProxyFormat& proxyFormat,
-                                                  std::string texName)
+                                             const TextureProxyFormat& proxyFormat,
+                                             std::string texName)
 {
     RHITextureProxyCreateInfo textureProxyInfo{};
     textureProxyInfo.type        = static_cast<RHITextureType>(proxyFormat.dimension);
@@ -1050,8 +1086,7 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
 //     return m_textureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle,
-                                          RHICommandList* cmdList)
+void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* cmdList)
 {
     cmdList->GenerateTextureMipmaps(textureHandle);
 }
@@ -1093,8 +1128,8 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
 }
 
 RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
-                                                  const uint8_t* pData,
-                                                  std::string bufferName)
+                                             const uint8_t* pData,
+                                             std::string bufferName)
 {
     BitField<RHIBufferUsageFlagBits> usages;
     usages.SetFlag(RHIBufferUsageFlagBits::eUniformBuffer);
@@ -1119,8 +1154,8 @@ RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
 }
 
 RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
-                                                  const uint8_t* pData,
-                                                  std::string bufferName)
+                                             const uint8_t* pData,
+                                             std::string bufferName)
 {
     BitField<RHIBufferUsageFlagBits> usages;
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
@@ -1145,8 +1180,8 @@ RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
 }
 
 RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
-                                                   const uint8_t* pData,
-                                                   std::string bufferName)
+                                              const uint8_t* pData,
+                                              std::string bufferName)
 {
     BitField<RHIBufferUsageFlagBits> usages;
     usages.SetFlag(RHIBufferUsageFlagBits::eStorageBuffer);
@@ -1221,11 +1256,15 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     createInfo.renderPassHandle = renderPass;
     createInfo.subpassIdx       = 0;
 
-    auto hash = CalcGfxPipelineHash(PSO, shader, renderPass, specializationConstants);
+    auto hash = CalcGfxPipelineHash(PSO, shader, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
+    }
+    else
+    {
+        int a = 1;
     }
     return m_pipelineCache[hash];
 }
@@ -1233,20 +1272,24 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
 RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     RHIGfxPipelineStates& PSO,
     RHIShader* shader,
-    const RHIRenderPassLayout& renderPassLayout,
+    const RHIRenderingLayout* pRenderingLayout,
     const HashMap<uint32_t, int>& specializationConstants)
 {
     RHIGfxPipelineCreateInfo createInfo{};
     createInfo.shader           = shader;
     createInfo.states           = PSO;
-    createInfo.renderPassLayout = renderPassLayout;
+    createInfo.pRenderingLayout = pRenderingLayout;
     createInfo.subpassIdx       = 0;
 
-    auto hash = CalcGfxPipelineHash(PSO, shader, renderPassLayout, specializationConstants);
+    auto hash = CalcGfxPipelineHash(PSO, shader, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
+    }
+    else
+    {
+        int a = 1;
     }
     return m_pipelineCache[hash];
 }
@@ -1265,9 +1308,9 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader)
 }
 
 RHIViewport* RenderDevice::CreateViewport(void* pWindow,
-                                               uint32_t width,
-                                               uint32_t height,
-                                               bool enableVSync)
+                                          uint32_t width,
+                                          uint32_t height,
+                                          bool enableVSync)
 {
     // auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
     auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
@@ -1303,20 +1346,40 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewpor
 {
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
-        RHIRenderTargetLoadOp oldColorRTLoadOp =
-            pGfxPass->renderPassLayout.GetColorRenderTargets()[0].loadOp;
-        RHIRenderTargetStoreOp oldColorRTStoreOp =
-            pGfxPass->renderPassLayout.GetColorRenderTargets()[0].storeOp;
-        pGfxPass->renderPassLayout.ClearRenderTargetInfo();
-        pGfxPass->renderPassLayout.AddColorRenderTarget(
-            viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
-            viewport->GetColorBackBufferRange(), oldColorRTLoadOp, oldColorRTStoreOp);
+        // RHIRenderTargetLoadOp oldColorRTLoadOp =
+        //     pGfxPass->renderPassLayout.GetColorRenderTargets()[0].loadOp;
+        // RHIRenderTargetStoreOp oldColorRTStoreOp =
+        //     pGfxPass->renderPassLayout.GetColorRenderTargets()[0].storeOp;
+        // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
+        // pGfxPass->renderPassLayout.AddColorRenderTarget(
+        //     viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
+        //     viewport->GetColorBackBufferRange(), oldColorRTLoadOp, oldColorRTStoreOp);
+        //
+        //
+        // pGfxPass->renderPassLayout.SetDepthStencilRenderTarget(
+        //     viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+        //     viewport->GetDepthStencilBackBufferRange(), RHIRenderTargetLoadOp::eClear,
+        //     RHIRenderTargetStoreOp::eStore);
+        RHIRenderingLayout* pRenderingLayout     = pGfxPass->pRenderingLayout;
+        RHIRenderTargetLoadOp oldColorRTLoadOp   = pRenderingLayout->colorRenderTargets[0].loadOp;
+        RHIRenderTargetStoreOp oldColorRTStoreOp = pRenderingLayout->colorRenderTargets[0].storeOp;
+        RHIRenderTargetLoadOp oldDepthStencilRTLoadOp =
+            pRenderingLayout->colorRenderTargets[0].loadOp;
+        RHIRenderTargetStoreOp oldDepthStencilRTStoreOp =
+            pRenderingLayout->colorRenderTargets[0].storeOp;
+
+        pRenderingLayout->ClearRenderTargetInfo();
+        // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
+        pRenderingLayout->AddColorRenderTarget(viewport->GetSwapchainFormat(),
+                                               viewport->GetColorBackBuffer(), oldColorRTLoadOp,
+                                               oldColorRTStoreOp);
 
 
-        pGfxPass->renderPassLayout.SetDepthStencilRenderTarget(
+        pRenderingLayout->AddDepthStencilRenderTarget(
             viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-            viewport->GetDepthStencilBackBufferRange(), RHIRenderTargetLoadOp::eClear,
-            RHIRenderTargetStoreOp::eStore);
+            oldDepthStencilRTLoadOp, oldDepthStencilRTStoreOp);
+
+        pRenderingLayout->SetRenderArea(0, 0, viewport->GetWidth(), viewport->GetHeight());
     }
     else
     {
@@ -1346,8 +1409,7 @@ RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMip
     return m_textureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* scene,
-                                     std::vector<RHITexture*>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* scene, std::vector<RHITexture*>& outTextures)
 {
     m_textureManager->LoadSceneTextures(scene, outTextures);
 }
@@ -1444,8 +1506,7 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 submitResult.buffer->Unmap();
                 // copy to gpu memory
                 RHIBufferTextureCopyRegion copyRegion{};
-                copyRegion.textureSubresources.aspect.SetFlag(
-                    RHITextureAspectFlagBits::eColor);
+                copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
@@ -1632,31 +1693,31 @@ size_t RenderDevice::CalcFramebufferHash(const RHIFramebufferInfo& info,
     return seed;
 }
 
-size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
-                                         RHIShader* shader,
-                                         const RenderPassHandle& renderPass,
-                                         const HashMap<uint32_t, int>& specializationConstants)
-{
-    std::size_t seed = 0;
-    // Hashing utility
-    auto combineHash = [&seed](auto&& value) {
-        seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
-            (seed >> 2);
-    };
-    combineHash(shader->GetHash32());
-    combineHash(renderPass.value);
-    combineHash(pso.primitiveType);
-    for (auto& kv : specializationConstants)
-    {
-        combineHash(kv.first);
-        combineHash(kv.second);
-    }
-    return seed;
-}
+// size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
+//                                          RHIShader* shader,
+//                                          const RenderPassHandle& renderPass,
+//                                          const HashMap<uint32_t, int>& specializationConstants)
+// {
+//     std::size_t seed = 0;
+//     // Hashing utility
+//     auto combineHash = [&seed](auto&& value) {
+//         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
+//             (seed >> 2);
+//     };
+//     combineHash(shader->GetHash32());
+//     combineHash(renderPass.value);
+//     combineHash(pso.primitiveType);
+//     for (auto& kv : specializationConstants)
+//     {
+//         combineHash(kv.first);
+//         combineHash(kv.second);
+//     }
+//     return seed;
+// }
 
 size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
                                          RHIShader* shader,
-                                         const RHIRenderPassLayout& renderPassLayout,
+                                         // const RHIRenderPassLayout& renderPassLayout,
                                          const HashMap<uint32_t, int>& specializationConstants)
 {
     std::size_t seed = 0;
@@ -1667,14 +1728,14 @@ size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
     };
     combineHash(shader->GetHash32());
     // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
-    for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
-    {
-        combineHash(colorRT.texture);
-    }
-    if (renderPassLayout.HasDepthStencilRenderTarget())
-    {
-        combineHash(renderPassLayout.GetDepthStencilRenderTarget().texture);
-    }
+    // for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
+    // {
+    //     combineHash(colorRT.texture);
+    // }
+    // if (renderPassLayout.HasDepthStencilRenderTarget())
+    // {
+    //     combineHash(renderPassLayout.GetDepthStencilRenderTarget().texture);
+    // }
     combineHash(pso.primitiveType);
     for (auto& kv : specializationConstants)
     {

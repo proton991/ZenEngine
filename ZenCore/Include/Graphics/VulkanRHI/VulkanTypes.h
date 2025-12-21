@@ -66,6 +66,10 @@ VkClearColorValue ToVkClearColor(const RHIRenderPassClearValue& clearValue);
 
 VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderPassClearValue& clearValue);
 
+VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue);
+
+VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue);
+
 void ToVkClearColor(const Color& color, VkClearColorValue* colorValue);
 
 void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,

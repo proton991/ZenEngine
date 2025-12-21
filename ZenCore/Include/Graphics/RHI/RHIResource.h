@@ -640,7 +640,8 @@ struct RHIGfxPipelineCreateInfo
 {
     RHIShader* shader;
     RHIGfxPipelineStates states;
-    RHIRenderPassLayout renderPassLayout;
+    // RHIRenderPassLayout renderPassLayout;
+    const RHIRenderingLayout* pRenderingLayout;
     RenderPassHandle renderPassHandle;
     uint32_t subpassIdx;
 };
@@ -669,7 +670,8 @@ protected:
         m_type(RHIPipelineType::eGraphics),
         m_shader(createInfo.shader),
         m_gfxStates(createInfo.states),
-        m_renderPassLayout(createInfo.renderPassLayout),
+        // m_renderPassLayout(createInfo.renderPassLayout),
+        m_pRenderingLayout(createInfo.pRenderingLayout),
         m_subpassIdx(createInfo.subpassIdx)
     {}
 
@@ -685,7 +687,8 @@ protected:
 
     // for graphics pipeline
     RHIGfxPipelineStates m_gfxStates;
-    RHIRenderPassLayout m_renderPassLayout;
+    // RHIRenderPassLayout m_renderPassLayout;
+    const RHIRenderingLayout* m_pRenderingLayout;
     RenderPassHandle m_renderPassHandle{0LLU};
     uint32_t m_subpassIdx;
 };
