@@ -34,23 +34,23 @@ RHICommandList* VulkanRHI::GetImmediateCommandList()
 
 VulkanCommandList::~VulkanCommandList() {}
 
-void VulkanCommandList::BeginRender()
+void VulkanCommandList::BeginRenderWorkload()
 {
     m_cmdBuffer = m_cmdBufferManager->GetActiveCommandBuffer();
 }
 
-void VulkanCommandList::EndRender()
+void VulkanCommandList::EndRenderWorkload()
 {
     m_cmdBufferManager->SubmitActiveCmdBuffer();
     m_cmdBufferManager->SetupNewActiveCmdBuffer();
 }
 
-void VulkanCommandList::BeginUpload()
+void VulkanCommandList::BeginTranferWorkload()
 {
     m_cmdBuffer = m_cmdBufferManager->GetUploadCommandBuffer();
 }
 
-void VulkanCommandList::EndUpload()
+void VulkanCommandList::EndTransferWorkload()
 {
     m_cmdBufferManager->SubmitUploadCmdBuffer();
 }

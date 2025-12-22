@@ -24,13 +24,13 @@ class RHICommandList
 public:
     static RHICommandList* Create(RHIAPIType type, RHICommandListContext* context);
 
-    virtual void BeginRender() = 0;
+    virtual void BeginRenderWorkload() = 0;
 
-    virtual void EndRender() = 0;
+    virtual void EndRenderWorkload() = 0;
 
-    virtual void BeginUpload() = 0;
+    virtual void BeginTranferWorkload() = 0;
 
-    virtual void EndUpload() = 0;
+    virtual void EndTransferWorkload() = 0;
 
     virtual ~RHICommandList() = default;
 

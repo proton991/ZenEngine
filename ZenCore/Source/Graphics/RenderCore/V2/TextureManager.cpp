@@ -81,7 +81,7 @@ RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireM
     if (requireMipmap)
     {
         UpdateTexture(texture, rawTextureInfo.data.size(), rawTextureInfo.data.data());
-        m_renderDevice->GetCurrentUploadCmdList()->GenerateTextureMipmaps(texture);
+        m_renderDevice->GetCurrentTransferCmdList()->GenerateTextureMipmaps(texture);
     }
     else
     {
@@ -132,8 +132,8 @@ void TextureManager::LoadSceneTextures(const sg::Scene* scene,
         texFormat.arrayLayers = 1;
         texFormat.mipmaps     = 1;
 
-        RHITexture* texture = m_renderDevice->CreateTextureSampled(
-            texFormat, {.copyUsage = true}, sgTexture->GetName());
+        RHITexture* texture = m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true},
+                                                                   sgTexture->GetName());
         UpdateTexture(texture, sgTexture->bytesData.size(), sgTexture->bytesData.data());
         m_textureCache[sgTexture->GetName()] = texture;
         outTextures.push_back(texture);
@@ -222,11 +222,9 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* outText
     m_textureCache[outTexture->lutBRDF->GetResourceTag()] = outTexture->lutBRDF;
 }
 
-void TextureManager::UpdateTexture(RHITexture* texture,
-                                   uint32_t dataSize,
-                                   const uint8_t* pData)
+void TextureManager::UpdateTexture(RHITexture* texture, uint32_t dataSize, const uint8_t* pData)
 {
-    RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
+    RHICommandList* cmdList = m_renderDevice->GetCurrentTransferCmdList();
     // transfer layout to eTransferDst
     cmdList->ChangeTextureLayout(texture, RHITextureLayout::eTransferDst);
 
@@ -261,7 +259,7 @@ void TextureManager::UpdateTextureCube(RHITexture* texture,
                                        uint32_t dataSize,
                                        const uint8_t* pData)
 {
-    RHICommandList* cmdList = m_renderDevice->GetCurrentUploadCmdList();
+    RHICommandList* cmdList = m_renderDevice->GetCurrentTransferCmdList();
     // transfer layout to eTransferDst
     cmdList->ChangeTextureLayout(texture, RHITextureLayout::eTransferDst);
 

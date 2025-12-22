@@ -747,14 +747,14 @@ void RenderDevice::Init(RHIViewport* mainViewport)
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
-        frame.cmdListContext = GDynamicRHI->CreateCmdListContext();
-        frame.drawCmdList    = RHICommandList::Create(m_APIType, frame.cmdListContext);
-        frame.uploadCmdList  = RHICommandList::Create(m_APIType, frame.cmdListContext);
+        frame.cmdListContext  = GDynamicRHI->CreateCmdListContext();
+        frame.drawCmdList     = RHICommandList::Create(m_APIType, frame.cmdListContext);
+        frame.transferCmdList = RHICommandList::Create(m_APIType, frame.cmdListContext);
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
-    m_frames[m_currentFrame].uploadCmdList->BeginUpload();
-    m_frames[m_currentFrame].drawCmdList->BeginRender();
+    m_frames[m_currentFrame].transferCmdList->BeginTranferWorkload();
+    m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 
     m_mainViewport = mainViewport;
 
@@ -830,7 +830,7 @@ void RenderDevice::Destroy()
 
     for (RenderFrame& frame : m_frames)
     {
-        delete frame.uploadCmdList;
+        delete frame.transferCmdList;
         delete frame.drawCmdList;
     }
 
@@ -864,9 +864,9 @@ void RenderDevice::ExecuteFrame(RHIViewport* viewport,
 void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
 {
     RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
-    cmdList->BeginRender();
+    cmdList->BeginRenderWorkload();
     rdg->Execute(cmdList);
-    cmdList->EndRender();
+    cmdList->EndRenderWorkload();
     GDynamicRHI->WaitForCommandList(cmdList);
 }
 
@@ -1262,10 +1262,6 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
         // create new one
         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
     }
-    else
-    {
-        int a = 1;
-    }
     return m_pipelineCache[hash];
 }
 
@@ -1286,10 +1282,6 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     {
         // create new one
         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
-    }
-    else
-    {
-        int a = 1;
     }
     return m_pipelineCache[hash];
 }
@@ -1457,8 +1449,8 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
-    m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
-                                                                copyRegion);
+    m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(submitResult.buffer,
+                                                                  textureHandle, copyRegion);
 
     m_bufferStagingMgr->EndSubmit(&submitResult);
 }
@@ -1510,7 +1502,7 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_frames[m_currentFrame].uploadCmdList->CopyBufferToTexture(
+                m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(
                     submitResult.buffer, textureHandle, copyRegion);
 
                 m_bufferStagingMgr->EndSubmit(&submitResult);
@@ -1553,8 +1545,8 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
-        m_frames[m_currentFrame].uploadCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
-                                                           copyRegion);
+        m_frames[m_currentFrame].transferCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
+                                                             copyRegion);
 
         m_bufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
@@ -1574,7 +1566,7 @@ void RenderDevice::WaitForPreviousFrames()
     {
         if (m_frames[i].cmdSubmitted)
         {
-            GDynamicRHI->WaitForCommandList(m_frames[i].uploadCmdList);
+            GDynamicRHI->WaitForCommandList(m_frames[i].transferCmdList);
             GDynamicRHI->WaitForCommandList(m_frames[i].drawCmdList);
             m_frames[i].cmdSubmitted = false;
         }
@@ -1609,14 +1601,14 @@ void RenderDevice::BeginFrame()
         m_bufferStagingMgr->UpdateBlockIndex();
         m_bufferStagingMgr->m_stagingBufferUsed = false;
     }
-    m_frames[m_currentFrame].uploadCmdList->BeginUpload();
-    m_frames[m_currentFrame].drawCmdList->BeginRender();
+    m_frames[m_currentFrame].transferCmdList->BeginTranferWorkload();
+    m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 }
 
 void RenderDevice::EndFrame()
 {
-    m_frames[m_currentFrame].uploadCmdList->EndUpload();
-    m_frames[m_currentFrame].drawCmdList->EndRender();
+    m_frames[m_currentFrame].transferCmdList->EndTransferWorkload();
+    m_frames[m_currentFrame].drawCmdList->EndRenderWorkload();
     m_frames[m_currentFrame].cmdSubmitted = true;
 }
 

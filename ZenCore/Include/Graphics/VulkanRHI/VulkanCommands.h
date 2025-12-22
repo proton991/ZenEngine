@@ -39,11 +39,11 @@ public:
 
     ~VulkanCommandList() override;
 
-    void BeginRender() final;
-    void EndRender() final;
+    void BeginRenderWorkload() final;
+    void EndRenderWorkload() final;
 
-    void BeginUpload() final;
-    void EndUpload() final;
+    void BeginTranferWorkload() final;
+    void EndTransferWorkload() final;
 
     void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,
                             BitField<RHIPipelineStageBits> dstStages,

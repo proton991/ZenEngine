@@ -328,7 +328,7 @@ private:
 struct RenderFrame
 {
     RHICommandListContext* cmdListContext{nullptr};
-    RHICommandList* uploadCmdList{nullptr};
+    RHICommandList* transferCmdList{nullptr};
     RHICommandList* drawCmdList{nullptr};
     bool cmdSubmitted{false};
     std::vector<RHITexture*> texturesPendingFree;
@@ -470,9 +470,9 @@ public:
         return m_framesCounter;
     }
 
-    RHICommandList* GetCurrentUploadCmdList() const
+    RHICommandList* GetCurrentTransferCmdList() const
     {
-        return m_frames[m_currentFrame].uploadCmdList;
+        return m_frames[m_currentFrame].transferCmdList;
     }
 
     RHICommandList* GetCurrentDrawCmdList() const

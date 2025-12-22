@@ -170,7 +170,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 
     // VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
     VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
-    cmdList->BeginUpload();
+    cmdList->BeginTranferWorkload();
     VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
 
     const VkImageSubresourceRange range =
@@ -211,7 +211,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_depthStencilBackBuffer->GetVkSubresourceRange());
     barrier.Execute(cmdBuffer);
-    cmdList->EndUpload();
+    cmdList->EndTransferWorkload();
 
     m_acquiredImageIndex = -1;
 }
