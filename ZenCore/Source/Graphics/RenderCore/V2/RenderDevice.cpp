@@ -173,22 +173,6 @@ GraphicsPass* GraphicsPassBuilder::Build()
 
     // m_pGfxPass->renderPassLayout  = m_rpLayout;
 
-    // todo: missing legacy render pass implementation
-    // if (!RHIOptions::GetInstance().UseDynamicRendering())
-    // {
-    //     m_pGfxPass->renderPass = m_renderDevice->GetOrCreateRenderPass(m_rpLayout);
-    //     m_pGfxPass->framebuffer =
-    //         m_viewport->GetCompatibleFramebuffer(m_pGfxPass->renderPass, &m_framebufferInfo);
-    //     m_renderDevice->GetRHIDebug()->SetRenderPassDebugName(m_pGfxPass->renderPass,
-    //                                                           m_tag + "_RenderPass");
-    //     m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-    //         m_PSO, shader, m_pGfxPass->renderPass, m_specializationConstants);
-    // }
-    // else
-    // {
-    //     m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-    //         m_PSO, shader, m_pGfxPass->renderPassLayout, m_specializationConstants);
-    // }
     m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
         m_PSO, shader, m_pGfxPass->pRenderingLayout, m_specializationConstants);
 
@@ -1336,48 +1320,25 @@ void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_
 
 void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewport* viewport)
 {
-    if (RHIOptions::GetInstance().UseDynamicRendering())
-    {
-        // RHIRenderTargetLoadOp oldColorRTLoadOp =
-        //     pGfxPass->renderPassLayout.GetColorRenderTargets()[0].loadOp;
-        // RHIRenderTargetStoreOp oldColorRTStoreOp =
-        //     pGfxPass->renderPassLayout.GetColorRenderTargets()[0].storeOp;
-        // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
-        // pGfxPass->renderPassLayout.AddColorRenderTarget(
-        //     viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
-        //     viewport->GetColorBackBufferRange(), oldColorRTLoadOp, oldColorRTStoreOp);
-        //
-        //
-        // pGfxPass->renderPassLayout.SetDepthStencilRenderTarget(
-        //     viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-        //     viewport->GetDepthStencilBackBufferRange(), RHIRenderTargetLoadOp::eClear,
-        //     RHIRenderTargetStoreOp::eStore);
-        RHIRenderingLayout* pRenderingLayout     = pGfxPass->pRenderingLayout;
-        RHIRenderTargetLoadOp oldColorRTLoadOp   = pRenderingLayout->colorRenderTargets[0].loadOp;
-        RHIRenderTargetStoreOp oldColorRTStoreOp = pRenderingLayout->colorRenderTargets[0].storeOp;
-        RHIRenderTargetLoadOp oldDepthStencilRTLoadOp =
-            pRenderingLayout->colorRenderTargets[0].loadOp;
-        RHIRenderTargetStoreOp oldDepthStencilRTStoreOp =
-            pRenderingLayout->colorRenderTargets[0].storeOp;
+    RHIRenderingLayout* pRenderingLayout          = pGfxPass->pRenderingLayout;
+    RHIRenderTargetLoadOp oldColorRTLoadOp        = pRenderingLayout->colorRenderTargets[0].loadOp;
+    RHIRenderTargetStoreOp oldColorRTStoreOp      = pRenderingLayout->colorRenderTargets[0].storeOp;
+    RHIRenderTargetLoadOp oldDepthStencilRTLoadOp = pRenderingLayout->colorRenderTargets[0].loadOp;
+    RHIRenderTargetStoreOp oldDepthStencilRTStoreOp =
+        pRenderingLayout->colorRenderTargets[0].storeOp;
 
-        pRenderingLayout->ClearRenderTargetInfo();
-        // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
-        pRenderingLayout->AddColorRenderTarget(viewport->GetSwapchainFormat(),
-                                               viewport->GetColorBackBuffer(), oldColorRTLoadOp,
-                                               oldColorRTStoreOp);
+    pRenderingLayout->ClearRenderTargetInfo();
+    // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
+    pRenderingLayout->AddColorRenderTarget(viewport->GetSwapchainFormat(),
+                                           viewport->GetColorBackBuffer(), oldColorRTLoadOp,
+                                           oldColorRTStoreOp);
 
 
-        pRenderingLayout->AddDepthStencilRenderTarget(
-            viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
-            oldDepthStencilRTLoadOp, oldDepthStencilRTStoreOp);
+    pRenderingLayout->AddDepthStencilRenderTarget(
+        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+        oldDepthStencilRTLoadOp, oldDepthStencilRTStoreOp);
 
-        pRenderingLayout->SetRenderArea(0, 0, viewport->GetWidth(), viewport->GetHeight());
-    }
-    else
-    {
-        pGfxPass->framebuffer =
-            viewport->GetCompatibleFramebufferForBackBuffer(pGfxPass->renderPass);
-    }
+    pRenderingLayout->SetRenderArea(0, 0, viewport->GetWidth(), viewport->GetHeight());
 }
 
 RHISampler* RenderDevice::CreateSampler(const RHISamplerCreateInfo& samplerInfo)

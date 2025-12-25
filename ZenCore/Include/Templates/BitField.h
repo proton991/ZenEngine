@@ -22,7 +22,7 @@ public:
 
     template <typename... Flags> BitField<T>& SetFlags(Flags... flags)
     {
-        uint32_t values = (... | (uint32_t)flags);
+        uint32_t values = (... | static_cast<int64_t>(flags));
         m_value |= values;
         return *this;
     }
@@ -36,6 +36,12 @@ public:
     bool HasFlag(T flag) const
     {
         return m_value & static_cast<int64_t>(flag);
+    }
+
+    template <typename... Flags> bool HasFlags(Flags... flags) const
+    {
+        int64_t mask = (static_cast<int64_t>(flags) | ...);
+        return (m_value & mask);
     }
 
     bool IsEmpty() const

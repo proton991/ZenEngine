@@ -118,10 +118,9 @@ void VulkanViewport::Destroy()
         m_device->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
     }
 
-    // m_renderingCompleteSemaphores.clear();
-    for (auto& kv : m_framebufferCache)
+    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
     {
-        GVulkanRHI->DestroyFramebuffer(FramebufferHandle(kv.second));
+        vkDestroyFramebuffer(GVulkanRHI->GetVkDevice(), m_framebuffer.vkHandle, nullptr);
     }
 
     this->~VulkanViewport();
@@ -193,6 +192,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
     colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
     colorTexInfo.type = RHITextureType::e2D;
+    colorTexInfo.tag  = "color_back_buffer";
     m_colorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
 
     RHITextureCreateInfo depthStencilTexInfo{};
@@ -201,6 +201,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     depthStencilTexInfo.format = GetDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
     depthStencilTexInfo.type = RHITextureType::e2D;
+    depthStencilTexInfo.tag  = "depth_stencil_back_buffer";
     m_depthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
     // add image barriers, transfer back buffer layout
     VulkanPipelineBarrier barrier;
@@ -404,72 +405,53 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     m_width  = width;
     m_height = height;
     RecreateSwapchain();
-    if (!RHIOptions::GetInstance().UseDynamicRendering())
+    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
     {
-        // create new one
-        std::vector<RHITexture*> renderTargets;
-        renderTargets.push_back(GetColorBackBuffer());
-        renderTargets.push_back(GetDepthStencilBackBuffer());
-        RHIFramebufferInfo fbInfo{};
-        fbInfo.width           = m_width;
-        fbInfo.height          = m_height;
-        fbInfo.numRenderTarget = 2;
-        fbInfo.renderTargets   = renderTargets.data();
-
-        for (auto& kv : m_framebufferCache)
-        {
-            VulkanFramebuffer* vkFramebuffer = kv.second;
-            VkRenderPass renderPass          = vkFramebuffer->GetVkRenderPass();
-            if (vkFramebuffer->GetWidth() == oldWidth && vkFramebuffer->GetHeight() == oldHeight)
-            {
-                // update old frame buffer
-                vkDestroyFramebuffer(m_device->GetVkHandle(), vkFramebuffer->GetVkHandle(),
-                                     nullptr);
-                VulkanFramebuffer* newFramebuffer =
-                    new VulkanFramebuffer(GVulkanRHI, renderPass, fbInfo);
-                m_framebufferCache[RenderPassHandle(renderPass)] = newFramebuffer;
-            }
-        }
+        vkDestroyFramebuffer(m_device->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
+        m_framebuffer.vkHandle = VK_NULL_HANDLE;
     }
 }
 
-FramebufferHandle VulkanViewport::GetCompatibleFramebufferForBackBuffer(
-    RenderPassHandle renderPassHandle)
+VkFramebuffer VulkanViewport::GetCompatibleFramebufferForBackBuffer(VkRenderPass renderPass)
 {
-    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
-    if ((m_framebufferCache.contains(renderPassHandle) &&
-         m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
-        !m_framebufferCache.contains(renderPassHandle))
+
+    if (m_framebuffer.vkHandle == VK_NULL_HANDLE)
     {
-        std::vector<RHITexture*> renderTargets;
-        renderTargets.push_back(GetColorBackBuffer());
-        renderTargets.push_back(GetDepthStencilBackBuffer());
-        RHIFramebufferInfo fbInfo{};
-        fbInfo.width           = m_width;
-        fbInfo.height          = m_height;
-        fbInfo.numRenderTarget = 2;
-        fbInfo.renderTargets   = renderTargets.data();
-        // save to cache
-        m_framebufferCache[renderPassHandle] =
-            new VulkanFramebuffer(GVulkanRHI, renderPass, fbInfo);
+        const uint32_t numAttachments = 2;
+        VkImageView imageViews[numAttachments];
+
+        imageViews[0] = m_colorBackBuffer->GetVkImageView();
+        imageViews[1] = m_depthStencilBackBuffer->GetVkImageView();
+
+        VkFramebufferCreateInfo framebufferCI;
+        InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
+        framebufferCI.renderPass      = renderPass;
+        framebufferCI.width           = m_width;
+        framebufferCI.height          = m_height;
+        framebufferCI.layers          = 1;
+        framebufferCI.attachmentCount = numAttachments;
+        framebufferCI.pAttachments    = imageViews;
+        VKCHECK(vkCreateFramebuffer(GVulkanRHI->GetVkDevice(), &framebufferCI, nullptr,
+                                    &m_framebuffer.vkHandle));
+        m_framebuffer.vkRenderPass = renderPass;
     }
-    return FramebufferHandle(m_framebufferCache[renderPassHandle]);
+    return m_framebuffer.vkHandle;
 }
 
-FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                                           const RHIFramebufferInfo* fbInfo)
-{
-    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
-    if ((m_framebufferCache.contains(renderPassHandle) &&
-         m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
-        !m_framebufferCache.contains(renderPassHandle))
-    {
-        // save to cache
-        m_framebufferCache[renderPassHandle] =
-            new VulkanFramebuffer(GVulkanRHI, renderPass, *fbInfo);
-    }
-    return FramebufferHandle(m_framebufferCache[renderPassHandle]);
-}
+// FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
+//                                                            const RHIFramebufferInfo* fbInfo)
+// {
+//     VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
+//     if ((m_framebufferCache.contains(renderPassHandle) &&
+//          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
+//         !m_framebufferCache.contains(renderPassHandle))
+//     {
+//         // save to cache
+//         m_framebufferCache[renderPassHandle] =
+//             new VulkanFramebuffer(GVulkanRHI, renderPass, *fbInfo);
+//     }
+//     return FramebufferHandle(m_framebufferCache[renderPassHandle]);
+// }
 
 RHITexture* VulkanViewport::GetColorBackBuffer()
 {

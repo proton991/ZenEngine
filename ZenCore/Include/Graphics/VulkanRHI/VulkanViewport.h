@@ -79,11 +79,10 @@ public:
         return range;
     }
 
-    FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                               const RHIFramebufferInfo* fbInfo) final;
+    // FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
+    //                                            const RHIFramebufferInfo* fbInfo) final;
 
-    FramebufferHandle GetCompatibleFramebufferForBackBuffer(
-        RenderPassHandle renderPassHandle) final;
+    VkFramebuffer GetCompatibleFramebufferForBackBuffer(VkRenderPass renderPass);
 
     void Resize(uint32_t width, uint32_t height) final;
 
@@ -105,6 +104,7 @@ private:
                                     uint32_t windowHeight);
 
     // VulkanRHI* m_RHI{nullptr};
+    // todo: remove all device and RHI member variables
     VulkanDevice* m_device{nullptr};
     // void* m_windowPtr{nullptr};
     // uint32_t m_width{0};
@@ -121,7 +121,14 @@ private:
     VkImage m_backBufferImages[ZEN_NUM_FRAMES_IN_FLIGHT];
     VulkanTexture* m_colorBackBuffer{nullptr};
     VulkanTexture* m_depthStencilBackBuffer{nullptr};
-    HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
+
+    struct
+    {
+        VkFramebuffer vkHandle{VK_NULL_HANDLE};
+        VkRenderPass vkRenderPass{VK_NULL_HANDLE};
+    } m_framebuffer;
+
+    // HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 };
 } // namespace zen

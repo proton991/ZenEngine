@@ -923,9 +923,10 @@ void VulkanPipeline::InitGraphics()
     std::vector<VkFormat> colorAttachmentFormats;
     VkPipelineRenderingCreateInfoKHR renderingCI;
 
-    if (m_renderPassHandle.value != 0)
+    if (!RHIOptions::GetInstance().UseDynamicRendering())
     {
-        pipelineCI.renderPass = VK_NULL_HANDLE;
+        // build render pass here
+        pipelineCI.renderPass = GVulkanRHI->GetOrCreateRenderPass(m_pRenderingLayout);
     }
     else
     {

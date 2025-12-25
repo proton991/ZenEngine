@@ -456,6 +456,34 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
     }
     else
     {
+        uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
+        VkClearValue clearValues[numAttachments];
+        RHIRenderTargetClearValue clearValuesRHI[numAttachments];
+        pRenderingLayout->GetRHIRenderTargetClearValueData(clearValuesRHI);
+
+        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
+        {
+            clearValues[i].color = ToVkClearColor(clearValuesRHI[i]);
+        }
+        if (pRenderingLayout->hasDepthStencilRT)
+        {
+            clearValues[numAttachments - 1].depthStencil =
+                ToVkClearDepthStencil(clearValuesRHI[numAttachments - 1]);
+        }
+
+        VkRenderPassBeginInfo rpBeginInfo;
+        InitVkStruct(rpBeginInfo, VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO);
+        rpBeginInfo.renderPass = GVulkanRHI->GetOrCreateRenderPass(pRenderingLayout);
+        rpBeginInfo.framebuffer =
+            GVulkanRHI->GetOrCreateFramebuffer(pRenderingLayout, rpBeginInfo.renderPass);
+        rpBeginInfo.renderArea.offset.x      = pRenderingLayout->renderArea.minX;
+        rpBeginInfo.renderArea.offset.y      = pRenderingLayout->renderArea.minY;
+        rpBeginInfo.renderArea.extent.width  = pRenderingLayout->renderArea.Width();
+        rpBeginInfo.renderArea.extent.height = pRenderingLayout->renderArea.Height();
+        rpBeginInfo.clearValueCount          = numAttachments;
+        rpBeginInfo.pClearValues             = clearValues;
+
+        vkCmdBeginRenderPass(m_cmdBuffer->GetVkHandle(), &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     }
 }
 
@@ -467,6 +495,7 @@ void VulkanCommandList::EndRendering()
     }
     else
     {
+        vkCmdEndRenderPass(m_cmdBuffer->GetVkHandle());
     }
 }
 

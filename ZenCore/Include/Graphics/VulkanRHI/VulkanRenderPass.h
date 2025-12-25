@@ -13,6 +13,8 @@ public:
 
     VkRenderPassCreateInfo BuildRenderPassCreateInfo(const RHIRenderPassLayout& renderPassLayout);
 
+    VkRenderPassCreateInfo BuildRenderPassCreateInfo(const RHIRenderingLayout* pLayout);
+
 private:
     // TODO: Support resolve attachments
     VkAttachmentDescription m_attachmentDescriptions[MAX_COLOR_ATTACHMENT_COUNT + 1]{};

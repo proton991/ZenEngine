@@ -847,66 +847,6 @@ union RHIRenderPassClearValue
     RHIRenderPassClearValue() {}
 };
 
-struct RHIRenderingLayout
-{
-    Rect2<int> renderArea;
-    uint32_t numColorRenderTargets{0};
-    bool hasDepthStencilRT{false};
-    RHIRenderTarget colorRenderTargets[MAX_COLOR_ATTACHMENT_COUNT];
-    RHIRenderTarget depthStencilRenderTarget;
-
-    void SetRenderArea(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
-    {
-        renderArea.minX = offsetX;
-        renderArea.maxX = offsetX + static_cast<int32_t>(width);
-        renderArea.minY = offsetY;
-        renderArea.maxY = offsetY + static_cast<int32_t>(height);
-    }
-
-    void AddColorRenderTarget(DataFormat format,
-                              RHITexture* texture,
-                              RHIRenderTargetLoadOp loadOp,
-                              RHIRenderTargetStoreOp storeOp,
-                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE,
-                              SampleCount numSamples               = SampleCount::e1)
-    {
-        RHIRenderTarget colorRT;
-        colorRT.format     = format;
-        colorRT.texture    = texture;
-        colorRT.loadOp     = loadOp;
-        colorRT.storeOp    = storeOp;
-        colorRT.clearValue = clearValue;
-        colorRT.numSamples = numSamples;
-
-        colorRenderTargets[numColorRenderTargets++] = colorRT;
-    }
-
-    void AddDepthStencilRenderTarget(DataFormat format,
-                                     RHITexture* texture,
-                                     RHIRenderTargetLoadOp loadOp,
-                                     RHIRenderTargetStoreOp storeOp,
-                                     RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
-    {
-        if (!hasDepthStencilRT)
-        {
-            depthStencilRenderTarget.format     = format;
-            depthStencilRenderTarget.texture    = texture;
-            depthStencilRenderTarget.loadOp     = loadOp;
-            depthStencilRenderTarget.storeOp    = storeOp;
-            depthStencilRenderTarget.clearValue = clearValue;
-            hasDepthStencilRT                   = true;
-        }
-    }
-
-    void ClearRenderTargetInfo()
-    {
-        std::ranges::fill(colorRenderTargets, RHIRenderTarget{});
-        depthStencilRenderTarget = {};
-        hasDepthStencilRT        = false;
-        numColorRenderTargets    = 0;
-    }
-};
-
 class RHIRenderPassLayout
 {
 public:

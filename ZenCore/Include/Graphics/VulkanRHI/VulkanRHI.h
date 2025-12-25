@@ -201,6 +201,16 @@ public:
 
     VkImageLayout GetImageCurrentLayout(VkImage image);
 
+    VkRenderPass GetOrCreateRenderPass(const RHIRenderingLayout* pRenderingLayout);
+
+    VkFramebuffer GetOrCreateFramebuffer(const RHIRenderingLayout* pRenderingLayout,
+                                         VkRenderPass renderPass);
+
+    VulkanViewport* GetCurrentViewport() const
+    {
+        return m_currentViewport;
+    }
+
     auto& GetResourceAllocator()
     {
         return m_resourceAllocator;
@@ -253,6 +263,10 @@ private:
     // used when ChangeTextureLayout or AddPipelineBarrier is called,
     // primarily applied outside the RenderGraph.
     HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
+
+    HashMap<uint32_t, VkRenderPass> m_renderPassCache;
+
+    HashMap<uint32_t, VkFramebuffer> m_framebufferCache;
 };
 
 class VulkanResourceFactory : public RHIResourceFactory

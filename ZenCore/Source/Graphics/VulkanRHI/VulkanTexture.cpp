@@ -166,7 +166,7 @@ void VulkanTexture::CreateImageViewHelper()
     imageViewCI.format                      = m_vkImageCI.format;
     imageViewCI.image                       = m_vkImage;
     imageViewCI.subresourceRange.layerCount = m_vkImageCI.arrayLayers;
-    imageViewCI.subresourceRange.levelCount = m_vkImageCI.mipLevels;
+    imageViewCI.subresourceRange.levelCount = IsRenderTarget() ? 1 : m_vkImageCI.mipLevels;
     if (m_baseInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
     {
         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;

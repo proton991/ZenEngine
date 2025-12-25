@@ -303,6 +303,16 @@ void VulkanRHI::Destroy()
         delete context;
     }
 
+    for (const auto& kv : m_renderPassCache)
+    {
+        vkDestroyRenderPass(m_device->GetVkHandle(), kv.second, nullptr);
+    }
+
+    for (const auto& kv : m_framebufferCache)
+    {
+        vkDestroyFramebuffer(m_device->GetVkHandle(), kv.second, nullptr);
+    }
+
     m_device->Destroy();
     delete m_device;
     // destroy debug utils messenger

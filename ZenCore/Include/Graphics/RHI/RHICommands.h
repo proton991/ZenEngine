@@ -8,6 +8,7 @@ class RHIBuffer;
 class RHITexture;
 class RHIPipeline;
 class RHIDescriptorSet;
+struct RHIRenderingLayout;
 
 class RHICommandListContext
 {

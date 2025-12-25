@@ -317,11 +317,11 @@ public:
 
     virtual RHITextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
-    virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-                                                       const RHIFramebufferInfo* fbInfo) = 0;
+    // virtual FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
+    //                                                    const RHIFramebufferInfo* fbInfo) = 0;
 
-    virtual FramebufferHandle GetCompatibleFramebufferForBackBuffer(
-        RenderPassHandle renderPassHandle) = 0;
+    // virtual FramebufferHandle GetCompatibleFramebufferForBackBuffer(
+    //     RenderPassHandle renderPassHandle) = 0;
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
 
@@ -413,6 +413,7 @@ class RHITexture : public RHIResource
 public:
     // static RHITexture* Create(const RHITextureCreateInfo& createInfo);
 
+    // todo: use factory pattern
     RHITexture* CreateProxy(const RHITextureProxyCreateInfo& proxyInfo);
 
     DataFormat GetFormat() const
@@ -443,6 +444,17 @@ public:
     uint32_t GetDepth() const
     {
         return m_baseInfo.depth;
+    }
+
+    uint32_t GetNumMipmaps() const
+    {
+        return m_baseInfo.mipmaps;
+    }
+
+    bool IsRenderTarget() const
+    {
+        return m_baseInfo.usageFlags.HasFlags(RHITextureUsageFlagBits::eColorAttachment,
+                                              RHITextureUsageFlagBits::eDepthStencilAttachment);
     }
 
     // todo: impl Hash function
@@ -634,6 +646,133 @@ protected:
     HashMap<uint32_t, int> m_specializationConstants;
     RHIShaderResourceDescriptorTable m_SRDTable;
     std::string m_name;
+};
+
+struct RHIRenderingLayout
+{
+    Rect2<int> renderArea;
+    uint32_t numLayers{1};
+    uint32_t numColorRenderTargets{0};
+    bool hasDepthStencilRT{false};
+    RHIRenderTarget colorRenderTargets[MAX_COLOR_ATTACHMENT_COUNT];
+    RHIRenderTarget depthStencilRenderTarget;
+
+    uint32_t GetTotalNumRenderTarges() const
+    {
+        return hasDepthStencilRT ? numColorRenderTargets + 1 : numColorRenderTargets;
+    }
+
+    void GetRHIRenderTargetClearValueData(RHIRenderTargetClearValue* ppClearValues) const
+    {
+        uint32_t rtIdx = 0;
+        for (; rtIdx < numColorRenderTargets; rtIdx++)
+        {
+            ppClearValues[rtIdx] = colorRenderTargets[rtIdx].clearValue;
+        }
+        if (hasDepthStencilRT)
+        {
+            ppClearValues[rtIdx] = depthStencilRenderTarget.clearValue;
+        }
+    }
+
+    void GetRHITextureData(RHITexture** ppTextures) const
+    {
+        uint32_t rtIdx = 0;
+        for (; rtIdx < numColorRenderTargets; rtIdx++)
+        {
+            ppTextures[rtIdx] = colorRenderTargets[rtIdx].texture;
+        }
+        if (hasDepthStencilRT)
+        {
+            ppTextures[rtIdx] = depthStencilRenderTarget.texture;
+        }
+    }
+
+    void SetRenderArea(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
+    {
+        renderArea.minX = offsetX;
+        renderArea.maxX = offsetX + static_cast<int32_t>(width);
+        renderArea.minY = offsetY;
+        renderArea.maxY = offsetY + static_cast<int32_t>(height);
+    }
+
+    void AddColorRenderTarget(DataFormat format,
+                              RHITexture* texture,
+                              RHIRenderTargetLoadOp loadOp,
+                              RHIRenderTargetStoreOp storeOp,
+                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE,
+                              SampleCount numSamples               = SampleCount::e1)
+    {
+        RHIRenderTarget colorRT;
+        colorRT.format     = format;
+        colorRT.texture    = texture;
+        colorRT.loadOp     = loadOp;
+        colorRT.storeOp    = storeOp;
+        colorRT.clearValue = clearValue;
+        colorRT.numSamples = numSamples;
+
+        colorRenderTargets[numColorRenderTargets++] = colorRT;
+
+        if (texture->GetNumMipmaps() > 1)
+        {
+            int a = 1;
+        }
+        numLayers = std::max(numLayers, texture->GetNumMipmaps());
+    }
+
+    void AddDepthStencilRenderTarget(DataFormat format,
+                                     RHITexture* texture,
+                                     RHIRenderTargetLoadOp loadOp,
+                                     RHIRenderTargetStoreOp storeOp,
+                                     RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
+    {
+        if (!hasDepthStencilRT)
+        {
+            depthStencilRenderTarget.format     = format;
+            depthStencilRenderTarget.texture    = texture;
+            depthStencilRenderTarget.loadOp     = loadOp;
+            depthStencilRenderTarget.storeOp    = storeOp;
+            depthStencilRenderTarget.clearValue = clearValue;
+            hasDepthStencilRT                   = true;
+
+            numLayers = std::max(numLayers, texture->GetNumMipmaps());
+        }
+    }
+
+    void ClearRenderTargetInfo()
+    {
+        std::ranges::fill(colorRenderTargets, RHIRenderTarget{});
+        depthStencilRenderTarget = {};
+        hasDepthStencilRT        = false;
+        numColorRenderTargets    = 0;
+    }
+
+    uint32_t GetHash32() const
+    {
+        uint32_t seed = 0;
+        // Hash basic types
+        util::HashCombine32(seed, numColorRenderTargets);
+        util::HashCombine32(seed, hasDepthStencilRT);
+        util::HashCombine32(seed, renderArea.minX);
+        util::HashCombine32(seed, renderArea.minY);
+        util::HashCombine32(seed, renderArea.maxX);
+        util::HashCombine32(seed, renderArea.maxY);
+        for (uint32_t i = 0; i < numColorRenderTargets; ++i)
+        {
+            const RHIRenderTarget& rt = colorRenderTargets[i];
+            util::HashCombine32T(seed, rt.loadOp);
+            util::HashCombine32T(seed, rt.storeOp);
+            util::HashCombine32T(seed, rt.numSamples);
+            util::HashCombine32T(seed, rt.format);
+        }
+        if (hasDepthStencilRT)
+        {
+            util::HashCombine32T(seed, depthStencilRenderTarget.loadOp);
+            util::HashCombine32T(seed, depthStencilRenderTarget.storeOp);
+            util::HashCombine32T(seed, depthStencilRenderTarget.format);
+        }
+        return seed;
+    }
 };
 
 struct RHIGfxPipelineCreateInfo
