@@ -186,10 +186,12 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
         const uint32_t layoutHash = pRenderingLayout->GetHash32();
         if (!m_framebufferCache.contains(layoutHash))
         {
-            uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
-            VkImageView imageViews[numAttachments];
-            RHITexture* pTextures[numAttachments];
-            pRenderingLayout->GetRHITextureData(pTextures);
+            const uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
+            std::vector<VkImageView> imageViews;
+            imageViews.resize(numAttachments);
+            std::vector<RHITexture*> pTextures;
+            pTextures.resize(numAttachments);
+            pRenderingLayout->GetRHITextureData(pTextures.data());
 
             for (uint32_t i = 0; i < numAttachments; i++)
             {
@@ -203,7 +205,7 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
             framebufferCI.height          = fbHeight;
             framebufferCI.layers          = 1;
             framebufferCI.attachmentCount = numAttachments;
-            framebufferCI.pAttachments    = imageViews;
+            framebufferCI.pAttachments    = imageViews.data();
             VKCHECK(vkCreateFramebuffer(GVulkanRHI->GetVkDevice(), &framebufferCI, nullptr,
                                         &framebuffer));
 

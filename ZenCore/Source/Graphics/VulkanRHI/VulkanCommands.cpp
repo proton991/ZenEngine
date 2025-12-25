@@ -457,9 +457,11 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
     else
     {
         uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
-        VkClearValue clearValues[numAttachments];
-        RHIRenderTargetClearValue clearValuesRHI[numAttachments];
-        pRenderingLayout->GetRHIRenderTargetClearValueData(clearValuesRHI);
+        std::vector<VkClearValue> clearValues;
+        clearValues.resize(numAttachments);
+        std::vector<RHIRenderTargetClearValue> clearValuesRHI;
+        clearValuesRHI.resize(numAttachments);
+        pRenderingLayout->GetRHIRenderTargetClearValueData(clearValuesRHI.data());
 
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
@@ -481,7 +483,7 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
         rpBeginInfo.renderArea.extent.width  = pRenderingLayout->renderArea.Width();
         rpBeginInfo.renderArea.extent.height = pRenderingLayout->renderArea.Height();
         rpBeginInfo.clearValueCount          = numAttachments;
-        rpBeginInfo.pClearValues             = clearValues;
+        rpBeginInfo.pClearValues             = clearValues.data();
 
         vkCmdBeginRenderPass(m_cmdBuffer->GetVkHandle(), &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
     }
