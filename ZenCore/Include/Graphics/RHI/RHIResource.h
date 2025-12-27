@@ -413,8 +413,7 @@ class RHITexture : public RHIResource
 public:
     // static RHITexture* Create(const RHITextureCreateInfo& createInfo);
 
-    // todo: use factory pattern
-    RHITexture* CreateProxy(const RHITextureProxyCreateInfo& proxyInfo);
+    // RHITexture* CreateProxy(const RHITextureProxyCreateInfo& proxyInfo);
 
     DataFormat GetFormat() const
     {

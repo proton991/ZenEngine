@@ -141,6 +141,16 @@ RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
     return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
 }
 
+RHITexture* VulkanRHI::CreateTextureProxy(const RHITexture* baseTexture,
+                                          const RHITextureProxyCreateInfo& proxyInfo)
+{
+    RHITexture* pProxyTexture = VulkanTexture::CreateProxyObject(
+        dynamic_cast<const VulkanTexture*>(baseTexture), proxyInfo);
+
+    return pProxyTexture;
+}
+
+
 void VulkanRHI::DestroyTexture(RHITexture* texture)
 {
     texture->ReleaseReference();
@@ -362,13 +372,13 @@ void VulkanTexture::Destroy()
 //     return TextureHandle(texture);
 // }
 
-RHITexture* RHITexture::CreateProxy(const RHITextureProxyCreateInfo& proxyInfo)
-{
-    RHITexture* pProxyTexture =
-        VulkanTexture::CreateProxyObject(dynamic_cast<const VulkanTexture*>(this), proxyInfo);
-
-    return pProxyTexture;
-}
+// RHITexture* RHITexture::CreateProxy(const RHITextureProxyCreateInfo& proxyInfo)
+// {
+//     RHITexture* pProxyTexture =
+//         VulkanTexture::CreateProxyObject(dynamic_cast<const VulkanTexture*>(this), proxyInfo);
+//
+//     return pProxyTexture;
+// }
 
 void VulkanTexture::InitProxy()
 {

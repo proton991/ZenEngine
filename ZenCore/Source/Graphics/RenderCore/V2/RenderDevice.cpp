@@ -1027,7 +1027,7 @@ RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
     textureProxyInfo.format      = proxyFormat.format;
     textureProxyInfo.tag         = std::move(texName);
 
-    RHITexture* texture = baseTexture->CreateProxy(textureProxyInfo);
+    RHITexture* texture = GDynamicRHI->CreateTextureProxy(baseTexture, textureProxyInfo);
 
     return texture;
 }

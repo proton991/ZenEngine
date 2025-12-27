@@ -87,6 +87,9 @@ public:
     virtual void DestroySampler(RHISampler* sampler) = 0;
 
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
+
+    virtual RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+                                           const RHITextureProxyCreateInfo& proxyInfo) = 0;
     // {
     //     return m_resourceFactory->CreateTexture(textureInfo);
     // }

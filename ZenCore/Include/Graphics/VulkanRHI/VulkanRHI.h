@@ -159,6 +159,9 @@ public:
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
+    RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+                                   const RHITextureProxyCreateInfo& proxyInfo) final;
+
     void DestroyTexture(RHITexture* texture) final;
 
     // DataFormat GetTextureFormat(TextureHandle textureHandle) final;
