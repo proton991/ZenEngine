@@ -737,7 +737,7 @@ void RenderDevice::Init(RHIViewport* mainViewport)
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
-    m_frames[m_currentFrame].transferCmdList->BeginTranferWorkload();
+    m_frames[m_currentFrame].transferCmdList->BeginTransferWorkload();
     m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 
     m_mainViewport = mainViewport;
@@ -1562,7 +1562,7 @@ void RenderDevice::BeginFrame()
         m_bufferStagingMgr->UpdateBlockIndex();
         m_bufferStagingMgr->m_stagingBufferUsed = false;
     }
-    m_frames[m_currentFrame].transferCmdList->BeginTranferWorkload();
+    m_frames[m_currentFrame].transferCmdList->BeginTransferWorkload();
     m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 }
 

@@ -29,7 +29,7 @@ public:
 
     virtual void EndRenderWorkload() = 0;
 
-    virtual void BeginTranferWorkload() = 0;
+    virtual void BeginTransferWorkload() = 0;
 
     virtual void EndTransferWorkload() = 0;
 

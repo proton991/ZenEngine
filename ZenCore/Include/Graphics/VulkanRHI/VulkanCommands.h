@@ -42,7 +42,7 @@ public:
     void BeginRenderWorkload() final;
     void EndRenderWorkload() final;
 
-    void BeginTranferWorkload() final;
+    void BeginTransferWorkload() final;
     void EndTransferWorkload() final;
 
     void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,

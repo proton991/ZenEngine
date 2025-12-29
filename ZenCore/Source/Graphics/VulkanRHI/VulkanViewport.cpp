@@ -168,7 +168,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
 
     // VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
     VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
-    cmdList->BeginTranferWorkload();
+    cmdList->BeginTransferWorkload();
     VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
 
     const VkImageSubresourceRange range =

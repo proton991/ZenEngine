@@ -45,7 +45,7 @@ void VulkanCommandList::EndRenderWorkload()
     m_cmdBufferManager->SetupNewActiveCmdBuffer();
 }
 
-void VulkanCommandList::BeginTranferWorkload()
+void VulkanCommandList::BeginTransferWorkload()
 {
     m_cmdBuffer = m_cmdBufferManager->GetUploadCommandBuffer();
 }
