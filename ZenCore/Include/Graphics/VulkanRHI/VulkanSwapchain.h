@@ -20,8 +20,7 @@ struct VulkanSwapchainRecreateInfo
 class VulkanSwapchain
 {
 public:
-    VulkanSwapchain(VulkanRHI* RHI,
-                    void* windowPtr,
+    VulkanSwapchain(void* windowPtr,
                     uint32_t width,
                     uint32_t height,
                     bool enableVSync,
@@ -54,7 +53,7 @@ public:
     void Destroy(VulkanSwapchainRecreateInfo* recreateInfo);
 
 private:
-    VulkanRHI* m_RHI{nullptr};
+    // VulkanRHI* m_RHI{nullptr};
     VulkanDevice* m_device{nullptr};
     VkSwapchainKHR m_swaphchain{VK_NULL_HANDLE};
     VkSurfaceKHR m_surface{VK_NULL_HANDLE};

@@ -160,8 +160,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_colorBackBuffer        = nullptr;
     m_depthStencilBackBuffer = nullptr;
 
-    m_swapchain =
-        new VulkanSwapchain(GVulkanRHI, m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
+    m_swapchain = new VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
     const VkImage* images    = m_swapchain->GetSwapchainImages();
     const uint32_t numImages = m_swapchain->GetNumSwapchainImages();
     // m_renderingCompleteSemaphores.resize(numImages);

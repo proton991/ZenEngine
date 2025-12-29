@@ -104,7 +104,6 @@ private:
                                     uint32_t windowHeight);
 
     // VulkanRHI* m_RHI{nullptr};
-    // todo: remove all device and RHI member variables
     VulkanDevice* m_device{nullptr};
     // void* m_windowPtr{nullptr};
     // uint32_t m_width{0};

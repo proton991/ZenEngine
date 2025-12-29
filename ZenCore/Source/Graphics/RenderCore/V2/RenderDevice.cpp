@@ -774,7 +774,7 @@ void RenderDevice::Destroy()
         }
         if (pGfxPass->pRenderingLayout != nullptr)
         {
-            ZEN_MEM_FREE(pGfxPass->pRenderingLayout);
+            DestroyRenderingLayout(pGfxPass->pRenderingLayout);
         }
         ZEN_MEM_FREE(pGfxPass);
     }

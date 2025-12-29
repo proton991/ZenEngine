@@ -9,8 +9,7 @@
 
 namespace zen
 {
-VulkanDevice::VulkanDevice(VulkanRHI* RHI, VkPhysicalDevice gpu) :
-    m_RHI(RHI), m_device(VK_NULL_HANDLE), m_gpu(gpu)
+VulkanDevice::VulkanDevice(VkPhysicalDevice gpu) : m_device(VK_NULL_HANDLE), m_gpu(gpu)
 {
     vkGetPhysicalDeviceProperties(m_gpu, &m_gpuProps);
 }
@@ -81,7 +80,7 @@ void VulkanDevice::Init()
     vkGetPhysicalDeviceQueueFamilyProperties(m_gpu, &count, m_queueFamilyProps.data());
 
     VulkanDeviceExtensionArray extensionArray = VulkanDeviceExtension::GetEnabledExtensions(this);
-    if (m_RHI->GetInstanceExtensionFlags().hasGetPhysicalDeviceProperties)
+    if (GVulkanRHI->GetInstanceExtensionFlags().hasGetPhysicalDeviceProperties)
     {
         VkPhysicalDeviceFeatures2 physicalDeviceFeatures2;
         InitVkStruct(physicalDeviceFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
@@ -128,7 +127,7 @@ void VulkanDevice::Init()
     m_fenceManager    = new VulkanFenceManager(this);
     m_semaphoreManger = new VulkanSemaphoreManager(this);
 
-    m_immediateContext     = new VulkanCommandListContext(m_RHI);
+    m_immediateContext     = new VulkanCommandListContext(GVulkanRHI);
     m_immediateCommandList = new VulkanCommandList(m_immediateContext);
 }
 

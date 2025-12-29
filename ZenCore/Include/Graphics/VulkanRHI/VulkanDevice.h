@@ -29,7 +29,7 @@ struct DeviceExtensionFlags
 class VulkanDevice
 {
 public:
-    VulkanDevice(VulkanRHI* RHI, VkPhysicalDevice gpu);
+    explicit VulkanDevice(VkPhysicalDevice gpu);
 
     void Init();
 
@@ -99,7 +99,7 @@ public:
 private:
     void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
-    VulkanRHI* m_RHI;
+    // VulkanRHI* m_RHI;
 
     VkPhysicalDevice m_gpu{VK_NULL_HANDLE};
     // gpu hardware properties

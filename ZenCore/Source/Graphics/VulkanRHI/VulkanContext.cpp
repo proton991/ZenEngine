@@ -221,7 +221,7 @@ void VulkanRHI::SelectGPU()
             found = true;
         }
     }
-    m_device = new VulkanDevice(this, physicalDevices[index]);
+    m_device = new VulkanDevice(physicalDevices[index]);
 }
 
 VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)

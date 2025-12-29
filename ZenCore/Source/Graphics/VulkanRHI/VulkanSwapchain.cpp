@@ -111,17 +111,16 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
     return VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR;
 }
 
-VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
-                                 void* windowPtr,
+VulkanSwapchain::VulkanSwapchain(void* windowPtr,
                                  uint32_t width,
                                  uint32_t height,
                                  bool enableVSync,
                                  VulkanSwapchainRecreateInfo* recreateInfo) :
-    m_RHI(RHI), m_device(RHI->GetDevice())
+    m_device(GVulkanRHI->GetDevice())
 {
 
-    VkDevice device      = m_RHI->GetDevice()->GetVkHandle();
-    VkPhysicalDevice gpu = m_RHI->GetPhysicalDevice();
+    VkDevice device      = m_device->GetVkHandle();
+    VkPhysicalDevice gpu = GVulkanRHI->GetPhysicalDevice();
     if (recreateInfo != nullptr)
     {
         m_surface             = recreateInfo->surface;
@@ -131,7 +130,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanRHI* RHI,
     {
         WindowData windowData{static_cast<platform::GlfwWindowImpl*>(windowPtr)->GetHandle(), width,
                               height};
-        m_surface = VulkanPlatform::CreateSurface(m_RHI->GetInstance(), &windowData);
+        m_surface = VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
     }
 
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
@@ -277,7 +276,7 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* recreateInfo)
     // m_imageAcquiredSemaphores.clear();
     if (recreateInfo == nullptr)
     {
-        VulkanPlatform::DestroySurface(m_RHI->GetInstance(), m_surface);
+        VulkanPlatform::DestroySurface(GVulkanRHI->GetInstance(), m_surface);
     }
     m_surface = VK_NULL_HANDLE;
 }
