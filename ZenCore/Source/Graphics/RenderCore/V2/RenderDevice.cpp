@@ -425,8 +425,7 @@ void ComputePassResourceUpdater::Update()
         const auto& bindings       = kv.second;
         RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
         dsHandle->Update(bindings);
-        // set pass tracker handle values here
-        Handle handle;
+
         for (auto& srb : bindings)
         {
             PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
@@ -753,10 +752,10 @@ void RenderDevice::Destroy()
         GDynamicRHI->DestroyViewport(viewport);
         // delete viewport;
     }
-    for (auto& kv : m_renderPassCache)
-    {
-        GDynamicRHI->DestroyRenderPass(kv.second);
-    }
+    // for (auto& kv : m_renderPassCache)
+    // {
+    //     GDynamicRHI->DestroyRenderPass(kv.second);
+    // }
     for (auto& kv : m_pipelineCache)
     {
         GDynamicRHI->DestroyPipeline(kv.second);
@@ -1217,37 +1216,37 @@ void RenderDevice::DestroyBuffer(RHIBuffer* bufferHandle)
     GDynamicRHI->DestroyBuffer(bufferHandle);
 }
 
-RenderPassHandle RenderDevice::GetOrCreateRenderPass(const RHIRenderPassLayout& layout)
-{
-    auto hash = CalcRenderPassLayoutHash(layout);
-    if (!m_renderPassCache.contains(hash))
-    {
-        // create new one
-        m_renderPassCache[hash] = GDynamicRHI->CreateRenderPass(layout);
-    }
-    return m_renderPassCache[hash];
-}
+// RenderPassHandle RenderDevice::GetOrCreateRenderPass(const RHIRenderPassLayout& layout)
+// {
+//     auto hash = CalcRenderPassLayoutHash(layout);
+//     if (!m_renderPassCache.contains(hash))
+//     {
+//         // create new one
+//         m_renderPassCache[hash] = GDynamicRHI->CreateRenderPass(layout);
+//     }
+//     return m_renderPassCache[hash];
+// }
 
-RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
-    RHIGfxPipelineStates& PSO,
-    RHIShader* shader,
-    const RenderPassHandle& renderPass,
-    const HashMap<uint32_t, int>& specializationConstants)
-{
-    RHIGfxPipelineCreateInfo createInfo{};
-    createInfo.shader           = shader;
-    createInfo.states           = PSO;
-    createInfo.renderPassHandle = renderPass;
-    createInfo.subpassIdx       = 0;
-
-    auto hash = CalcGfxPipelineHash(PSO, shader, specializationConstants);
-    if (!m_pipelineCache.contains(hash))
-    {
-        // create new one
-        m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
-    }
-    return m_pipelineCache[hash];
-}
+// RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
+//     RHIGfxPipelineStates& PSO,
+//     RHIShader* shader,
+//     const RenderPassHandle& renderPass,
+//     const HashMap<uint32_t, int>& specializationConstants)
+// {
+//     RHIGfxPipelineCreateInfo createInfo{};
+//     createInfo.shader           = shader;
+//     createInfo.states           = PSO;
+//     createInfo.renderPassHandle = renderPass;
+//     createInfo.subpassIdx       = 0;
+//
+//     auto hash = CalcGfxPipelineHash(PSO, shader, specializationConstants);
+//     if (!m_pipelineCache.contains(hash))
+//     {
+//         // create new one
+//         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
+//     }
+//     return m_pipelineCache[hash];
+// }
 
 RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     RHIGfxPipelineStates& PSO,
@@ -1623,28 +1622,28 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const RHIRenderPassLayout& layout)
     return seed;
 }
 
-size_t RenderDevice::CalcFramebufferHash(const RHIFramebufferInfo& info,
-                                         RenderPassHandle renderPassHandle)
-{
-    std::size_t seed = 0;
-
-    // Hash each member and combine the result
-    std::hash<uint32_t> uint32Hasher;
-    std::hash<uint64_t> uint64Hasher;
-
-    // Hash the individual members
-    seed ^= uint32Hasher(info.numRenderTarget) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= uint32Hasher(info.width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= uint32Hasher(info.height) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= uint32Hasher(info.depth) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= uint64Hasher(renderPassHandle.value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    for (uint32_t i = 0; i < info.numRenderTarget; i++)
-    {
-        seed ^= uint64Hasher(info.renderTargets[i]->GetHash32()) + 0x9e3779b9 + (seed << 6) +
-            (seed >> 2);
-    }
-    return seed;
-}
+// size_t RenderDevice::CalcFramebufferHash(const RHIFramebufferInfo& info,
+//                                          RenderPassHandle renderPassHandle)
+// {
+//     std::size_t seed = 0;
+//
+//     // Hash each member and combine the result
+//     std::hash<uint32_t> uint32Hasher;
+//     std::hash<uint64_t> uint64Hasher;
+//
+//     // Hash the individual members
+//     seed ^= uint32Hasher(info.numRenderTarget) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+//     seed ^= uint32Hasher(info.width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+//     seed ^= uint32Hasher(info.height) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+//     seed ^= uint32Hasher(info.depth) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+//     seed ^= uint64Hasher(renderPassHandle.value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+//     for (uint32_t i = 0; i < info.numRenderTarget; i++)
+//     {
+//         seed ^= uint64Hasher(info.renderTargets[i]->GetHash32()) + 0x9e3779b9 + (seed << 6) +
+//             (seed >> 2);
+//     }
+//     return seed;
+// }
 
 // size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
 //                                          RHIShader* shader,

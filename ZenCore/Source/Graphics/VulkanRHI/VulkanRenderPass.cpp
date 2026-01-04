@@ -221,21 +221,21 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
 }
 
 
-RenderPassHandle VulkanRHI::CreateRenderPass(const RHIRenderPassLayout& renderPassLayout)
-{
-    VulkanRenderPassBuilder builder;
-    VkRenderPassCreateInfo renderPassCI = builder.BuildRenderPassCreateInfo(renderPassLayout);
-    VkRenderPass renderPass{VK_NULL_HANDLE};
-    VKCHECK(vkCreateRenderPass(GetVkDevice(), &renderPassCI, nullptr, &renderPass));
+// RenderPassHandle VulkanRHI::CreateRenderPass(const RHIRenderPassLayout& renderPassLayout)
+// {
+//     VulkanRenderPassBuilder builder;
+//     VkRenderPassCreateInfo renderPassCI = builder.BuildRenderPassCreateInfo(renderPassLayout);
+//     VkRenderPass renderPass{VK_NULL_HANDLE};
+//     VKCHECK(vkCreateRenderPass(GetVkDevice(), &renderPassCI, nullptr, &renderPass));
+//
+//     return RenderPassHandle(renderPass);
+// }
 
-    return RenderPassHandle(renderPass);
-}
-
-void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
-{
-    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
-    vkDestroyRenderPass(GetVkDevice(), renderPass, nullptr);
-}
+// void VulkanRHI::DestroyRenderPass(RenderPassHandle renderPassHandle)
+// {
+//     VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
+//     vkDestroyRenderPass(GetVkDevice(), renderPass, nullptr);
+// }
 
 VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
                                      VkRenderPass renderPass,
@@ -264,19 +264,19 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     VKCHECK(vkCreateFramebuffer(vkRHI->GetVkDevice(), &framebufferCI, nullptr, &m_framebuffer));
 }
 
-FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                               const RHIFramebufferInfo& fbInfo)
-{
-    VulkanFramebuffer* framebuffer =
-        new VulkanFramebuffer(this, TO_VK_RENDER_PASS(renderPassHandle), fbInfo);
-    return FramebufferHandle(framebuffer);
-}
+// FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle,
+//                                                const RHIFramebufferInfo& fbInfo)
+// {
+//     VulkanFramebuffer* framebuffer =
+//         new VulkanFramebuffer(this, TO_VK_RENDER_PASS(renderPassHandle), fbInfo);
+//     return FramebufferHandle(framebuffer);
+// }
 
-void VulkanRHI::DestroyFramebuffer(FramebufferHandle framebufferHandle)
-{
-    VulkanFramebuffer* framebuffer = TO_VK_FRAMEBUFFER(framebufferHandle);
-    vkDestroyFramebuffer(GetVkDevice(), framebuffer->GetVkHandle(), nullptr);
-    delete framebuffer;
-}
+// void VulkanRHI::DestroyFramebuffer(FramebufferHandle framebufferHandle)
+// {
+//     VulkanFramebuffer* framebuffer = TO_VK_FRAMEBUFFER(framebufferHandle);
+//     vkDestroyFramebuffer(GetVkDevice(), framebuffer->GetVkHandle(), nullptr);
+//     delete framebuffer;
+// }
 
 } // namespace zen

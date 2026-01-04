@@ -320,16 +320,16 @@ struct RDGTextureCopyNode : RDGNodeBase
     RHITexture* srcTexture;
     RHITexture* dstTexture;
     // RHITextureCopyRegion* copyRegions;
-
-    RHITextureCopyRegion* TextureCopyRegions()
-    {
-        return reinterpret_cast<RHITextureCopyRegion*>(&this[1]);
-    }
-
-    const RHITextureCopyRegion* TextureCopyRegions() const
-    {
-        return reinterpret_cast<const RHITextureCopyRegion*>(&this[1]);
-    }
+    PRIVATE_ARRAY_DEF(RHITextureCopyRegion, TextureCopyRegions, &this[1])
+    // RHITextureCopyRegion* TextureCopyRegions()
+    // {
+    //     return reinterpret_cast<RHITextureCopyRegion*>(&this[1]);
+    // }
+    //
+    // const RHITextureCopyRegion* TextureCopyRegions() const
+    // {
+    //     return reinterpret_cast<const RHITextureCopyRegion*>(&this[1]);
+    // }
     // std::vector<RHITextureCopyRegion> copyRegions;
 };
 
@@ -340,16 +340,17 @@ struct RDGTextureReadNode : RDGNodeBase
     RHITexture* srcTexture;
     RHIBuffer* dstBuffer;
     // std::vector<RHIBufferTextureCopyRegion> bufferTextureCopyRegions;
+    PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, BufferTextureCopyRegions, &this[1])
 
-    RHIBufferTextureCopyRegion* BufferTextureCopyRegions()
-    {
-        return reinterpret_cast<RHIBufferTextureCopyRegion*>(&this[1]);
-    }
-
-    const RHIBufferTextureCopyRegion* BufferTextureCopyRegions() const
-    {
-        return reinterpret_cast<const RHIBufferTextureCopyRegion*>(&this[1]);
-    }
+    // RHIBufferTextureCopyRegion* BufferTextureCopyRegions()
+    // {
+    //     return reinterpret_cast<RHIBufferTextureCopyRegion*>(&this[1]);
+    // }
+    //
+    // const RHIBufferTextureCopyRegion* BufferTextureCopyRegions() const
+    // {
+    //     return reinterpret_cast<const RHIBufferTextureCopyRegion*>(&this[1]);
+    // }
 };
 
 struct RDGTextureUpdateNode : RDGNodeBase
@@ -358,16 +359,17 @@ struct RDGTextureUpdateNode : RDGNodeBase
     // TextureHandle dstTexture;
     uint32_t numCopySources;
     RHITexture* dstTexture;
+    PRIVATE_ARRAY_DEF(RHIBufferTextureCopySource, TextureCopySources, &this[1])
 
-    RHIBufferTextureCopySource* TextureCopySources()
-    {
-        return reinterpret_cast<RHIBufferTextureCopySource*>(&this[1]);
-    }
-
-    const RHIBufferTextureCopySource* TextureCopySources() const
-    {
-        return reinterpret_cast<const RHIBufferTextureCopySource*>(&this[1]);
-    }
+    // RHIBufferTextureCopySource* TextureCopySources()
+    // {
+    //     return reinterpret_cast<RHIBufferTextureCopySource*>(&this[1]);
+    // }
+    //
+    // const RHIBufferTextureCopySource* TextureCopySources() const
+    // {
+    //     return reinterpret_cast<const RHIBufferTextureCopySource*>(&this[1]);
+    // }
 };
 
 struct RDGTextureResolveNode : RDGNodeBase
@@ -408,26 +410,28 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
     // uint64_t* offsets{nullptr};
     // std::vector<RHIBuffer*> vertexBuffers;
     // std::vector<uint64_t> offsets;
+    PRIVATE_ARRAY_DEF(RHIBuffer*, VertexBuffers, &this[1])
+    PRIVATE_ARRAY_DEF(uint64_t, VertexBufferOffsets, &VertexBuffers()[numBuffers])
 
-    RHIBuffer** VertexBuffers()
-    {
-        return reinterpret_cast<RHIBuffer**>(&this[1]);
-    }
+    // RHIBuffer** VertexBuffers()
+    // {
+    //     return reinterpret_cast<RHIBuffer**>(&this[1]);
+    // }
+    //
+    // RHIBuffer* const* VertexBuffers() const
+    // {
+    //     return reinterpret_cast<RHIBuffer* const*>(&this[1]);
+    // }
 
-    RHIBuffer* const* VertexBuffers() const
-    {
-        return reinterpret_cast<RHIBuffer* const*>(&this[1]);
-    }
-
-    uint64_t* VertexBufferOffsets()
-    {
-        return reinterpret_cast<uint64_t*>(&VertexBuffers()[numBuffers]);
-    }
-
-    const uint64_t* VertexBufferOffsets() const
-    {
-        return reinterpret_cast<const uint64_t*>(&VertexBuffers()[numBuffers]);
-    }
+    // uint64_t* VertexBufferOffsets()
+    // {
+    //     return reinterpret_cast<uint64_t*>(&VertexBuffers()[numBuffers]);
+    // }
+    //
+    // const uint64_t* VertexBufferOffsets() const
+    // {
+    //     return reinterpret_cast<const uint64_t*>(&VertexBuffers()[numBuffers]);
+    // }
 
     // uint64_t* VertexBufferOffsets()
     // {
@@ -487,15 +491,17 @@ struct RDGSetPushConstantsNode : RDGPassChildNode
     RHIShader* shader;
     uint32_t dataSize{0};
 
-    uint8_t* Data()
-    {
-        return reinterpret_cast<uint8_t*>(&this[1]);
-    }
+    PRIVATE_ARRAY_DEF(uint8_t, PCData, &this[1])
 
-    const uint8_t* Data() const
-    {
-        return reinterpret_cast<const uint8_t*>(&this[1]);
-    }
+    // uint8_t* Data()
+    // {
+    //     return reinterpret_cast<uint8_t*>(&this[1]);
+    // }
+    //
+    // const uint8_t* Data() const
+    // {
+    //     return reinterpret_cast<const uint8_t*>(&this[1]);
+    // }
 
 
     // std::vector<uint8_t> data;
@@ -560,12 +566,12 @@ public:
                                             RHIBuffer* indirectBuffer,
                                             uint32_t offset);
 
-    RDGPassNode* AddGraphicsPassNode(RenderPassHandle renderPassHandle,
-                                     FramebufferHandle framebufferHandle,
-                                     Rect2<int> area,
-                                     VectorView<RHIRenderPassClearValue> clearValues,
-                                     bool hasColorTarget,
-                                     bool hasDepthTarget = false);
+    // RDGPassNode* AddGraphicsPassNode(RenderPassHandle renderPassHandle,
+    //                                  FramebufferHandle framebufferHandle,
+    //                                  Rect2<int> area,
+    //                                  VectorView<RHIRenderPassClearValue> clearValues,
+    //                                  bool hasColorTarget,
+    //                                  bool hasDepthTarget = false);
 
     RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass,
                                      Rect2<int> area,

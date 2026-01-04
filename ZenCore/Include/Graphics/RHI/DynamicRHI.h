@@ -1,7 +1,6 @@
 #pragma once
 #include "RHICommon.h"
 #include "RHIResource.h"
-#include "RHIDefs.h"
 
 namespace zen
 {
@@ -70,14 +69,14 @@ public:
 
     virtual void DestroyPipeline(RHIPipeline* pipeline) = 0;
 
-    virtual RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) = 0;
+    // virtual RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) = 0;
 
-    virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
+    // virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
 
-    virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                                const RHIFramebufferInfo& fbInfo) = 0;
+    // virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
+    //                                             const RHIFramebufferInfo& fbInfo) = 0;
 
-    virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
+    // virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
 
     virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
     // {

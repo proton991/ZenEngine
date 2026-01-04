@@ -1,12 +1,10 @@
 #pragma once
 #include "Graphics/Common/Format.h"
 #include "Graphics/Common/Color.h"
-#include "RHIDefs.h"
 #include "Templates/BitField.h"
 #include "Templates/HashMap.h"
-#include "Math/Math.h"
 #include "Templates/SmallVector.h"
-
+#include "Math/Math.h"
 #include <string>
 #include <vector>
 

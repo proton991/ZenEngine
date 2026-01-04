@@ -4,6 +4,18 @@
 #include <new>
 
 #define ZEN_DEFAULT_ALIGNMENT 16
+
+#define PRIVATE_ARRAY_DEF(Type, Name, BasePtr)          \
+    Type* Name()                                        \
+    {                                                   \
+        return reinterpret_cast<Type*>(BasePtr);        \
+    }                                                   \
+                                                        \
+    Type* const* Name() const                           \
+    {                                                   \
+        return reinterpret_cast<Type* const*>(BasePtr); \
+    }
+
 namespace zen
 {
 /// Determines if a value is a power of two.

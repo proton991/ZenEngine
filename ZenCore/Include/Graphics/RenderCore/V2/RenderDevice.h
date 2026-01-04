@@ -420,12 +420,12 @@ public:
 
     void DestroyBuffer(RHIBuffer* bufferHandle);
 
-    RenderPassHandle GetOrCreateRenderPass(const RHIRenderPassLayout& layout);
+    // RenderPassHandle GetOrCreateRenderPass(const RHIRenderPassLayout& layout);
 
-    RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
-                                        RHIShader* shader,
-                                        const RenderPassHandle& renderPass,
-                                        const HashMap<uint32_t, int>& specializationConstants);
+    // RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
+    //                                     RHIShader* shader,
+    //                                     const RenderPassHandle& renderPass,
+    //                                     const HashMap<uint32_t, int>& specializationConstants);
 
     RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
                                         RHIShader* shader,
@@ -527,8 +527,8 @@ private:
     void DestroyViewport(RHIViewport* viewport);
 
     static size_t CalcRenderPassLayoutHash(const RHIRenderPassLayout& layout);
-    static size_t CalcFramebufferHash(const RHIFramebufferInfo& info,
-                                      RenderPassHandle renderPassHandle);
+    // static size_t CalcFramebufferHash(const RHIFramebufferInfo& info,
+    //                                   RenderPassHandle renderPassHandle);
 
     // static size_t CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
     //                                   RHIShader* shader,
@@ -566,7 +566,7 @@ private:
 
     DeletionQueue m_deletionQueue;
 
-    HashMap<size_t, RenderPassHandle> m_renderPassCache;
+    // HashMap<size_t, RenderPassHandle> m_renderPassCache;
     HashMap<size_t, RHIPipeline*> m_pipelineCache;
     HashMap<size_t, RHISampler*> m_samplerCache;
     // HashMap<RHITexture*, RHITexture*> m_textureMap;

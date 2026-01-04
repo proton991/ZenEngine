@@ -277,8 +277,11 @@ void TextureManager::UpdateTextureCube(RHITexture* texture,
     // transfer layout to eShaderReadOnly
     cmdList->ChangeTextureLayout(texture, RHITextureLayout::eShaderReadOnly);
 
-    m_renderDevice->WaitForAllFrames();
-    m_stagingMgr->ProcessPendingFrees();
+    if (m_stagingMgr->GetPendingFreeMemorySize() > MAX_TEXTURE_STAGING_PENDING_FREE_SIZE)
+    {
+        m_renderDevice->WaitForAllFrames();
+        m_stagingMgr->ProcessPendingFrees();
+    }
 }
 
 // TextureHandle TextureManager::GetBaseTextureForProxy(const TextureHandle& handle) const

@@ -125,36 +125,36 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
                                RHIAccessMode::eRead);
 }
 
-RDGPassNode* RenderGraph::AddGraphicsPassNode(RenderPassHandle renderPassHandle,
-                                              FramebufferHandle framebufferHandle,
-                                              Rect2<int> area,
-                                              VectorView<RHIRenderPassClearValue> clearValues,
-                                              bool hasColorTarget,
-                                              bool hasDepthTarget)
-{
-    auto* node = AllocNode<RDGGraphicsPassNode>();
-    // node->renderPass  = std::move(renderPassHandle);
-    // node->framebuffer = std::move(framebufferHandle);
-    // node->renderArea  = area;
-    node->type = RDGNodeType::eGraphicsPass;
-    // node->numAttachments = clearValues.size();
-
-    // for (auto i = 0; i < clearValues.size(); i++)
-    // {
-    //     node->clearValues[i] = clearValues[i];
-    // }
-    if (hasColorTarget)
-    {
-        node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
-    }
-    if (hasDepthTarget)
-    {
-        node->selfStages.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
-        node->selfStages.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
-    }
-
-    return node;
-}
+// RDGPassNode* RenderGraph::AddGraphicsPassNode(RenderPassHandle renderPassHandle,
+//                                               FramebufferHandle framebufferHandle,
+//                                               Rect2<int> area,
+//                                               VectorView<RHIRenderPassClearValue> clearValues,
+//                                               bool hasColorTarget,
+//                                               bool hasDepthTarget)
+// {
+//     auto* node = AllocNode<RDGGraphicsPassNode>();
+//     // node->renderPass  = std::move(renderPassHandle);
+//     // node->framebuffer = std::move(framebufferHandle);
+//     // node->renderArea  = area;
+//     node->type = RDGNodeType::eGraphicsPass;
+//     // node->numAttachments = clearValues.size();
+//
+//     // for (auto i = 0; i < clearValues.size(); i++)
+//     // {
+//     //     node->clearValues[i] = clearValues[i];
+//     // }
+//     if (hasColorTarget)
+//     {
+//         node->selfStages.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
+//     }
+//     if (hasDepthTarget)
+//     {
+//         node->selfStages.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
+//         node->selfStages.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
+//     }
+//
+//     return node;
+// }
 
 RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
                                               Rect2<int> area,
@@ -278,7 +278,7 @@ void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* parent,
     node->type            = RDGPassCmdType::eSetPushConstant;
     node->dataSize        = dataSize;
     // node->data.resize(dataSize);
-    std::memcpy(node->Data(), data, dataSize);
+    std::memcpy(node->PCData(), data, dataSize);
 }
 
 void RenderGraph::AddComputePassSetPushConstants(RDGPassNode* parent,
@@ -290,7 +290,7 @@ void RenderGraph::AddComputePassSetPushConstants(RDGPassNode* parent,
     node->type            = RDGPassCmdType::eSetPushConstant;
     node->dataSize        = dataSize;
     // node->data.resize(dataSize);
-    std::memcpy(node->Data(), data, dataSize);
+    std::memcpy(node->PCData(), data, dataSize);
 }
 
 void RenderGraph::AddGraphicsPassDrawNode(RDGPassNode* parent,
@@ -1329,8 +1329,8 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                                 pipelineHandle = casted->pipeline;
                             }
                         }
-                        m_cmdList->SetPushConstants(pipelineHandle,
-                                                    VectorView(cmdNode->Data(), cmdNode->dataSize));
+                        m_cmdList->SetPushConstants(
+                            pipelineHandle, VectorView(cmdNode->PCData(), cmdNode->dataSize));
                     }
                     break;
                     default: break;
@@ -1423,8 +1423,8 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                                 pipelineHandle = casted->pipeline;
                             }
                         }
-                        m_cmdList->SetPushConstants(pipelineHandle,
-                                                    VectorView(cmdNode->Data(), cmdNode->dataSize));
+                        m_cmdList->SetPushConstants(
+                            pipelineHandle, VectorView(cmdNode->PCData(), cmdNode->dataSize));
                     }
                     break;
                     case RDGPassCmdType::eSetLineWidth:

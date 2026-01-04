@@ -15,8 +15,8 @@ public:
 
     virtual void SetTextureDebugName(RHITexture* texture, const std::string& debugName) = 0;
 
-    virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
-                                        const std::string& debugName) = 0;
+    // virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
+    //                                     const std::string& debugName) = 0;
 
     virtual void SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
                                            const std::string& debugName) = 0;

@@ -40,22 +40,22 @@ void VulkanDebug::SetTextureDebugName(RHITexture* texture, const std::string& de
                    "Failed to set debug object name");
 }
 
-void VulkanDebug::SetRenderPassDebugName(RenderPassHandle renderPassHandle,
-                                         const std::string& debugName)
-{
-    // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
-
-    VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
-    VkDebugUtilsObjectNameInfoEXT info{};
-    info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-    info.pNext        = nullptr;
-    info.objectType   = VK_OBJECT_TYPE_RENDER_PASS;
-    info.objectHandle = reinterpret_cast<uint64_t>(renderPass);
-    info.pObjectName  = debugName.data();
-
-    CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),
-                   "Failed to set debug object name");
-}
+// void VulkanDebug::SetRenderPassDebugName(RenderPassHandle renderPassHandle,
+//                                          const std::string& debugName)
+// {
+//     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
+//
+//     VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
+//     VkDebugUtilsObjectNameInfoEXT info{};
+//     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+//     info.pNext        = nullptr;
+//     info.objectType   = VK_OBJECT_TYPE_RENDER_PASS;
+//     info.objectHandle = reinterpret_cast<uint64_t>(renderPass);
+//     info.pObjectName  = debugName.data();
+//
+//     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),
+//                    "Failed to set debug object name");
+// }
 
 void VulkanDebug::SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
                                             const std::string& debugName)

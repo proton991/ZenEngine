@@ -91,8 +91,8 @@ namespace zen
 //RHI_DEFINE_HANDLE(CommandPool);
 //RHI_DEFINE_HANDLE(CommandBuffer);
 // RHI_DEFINE_HANDLE(Shader);
-RHI_DEFINE_HANDLE(RenderPass);
-RHI_DEFINE_HANDLE(Framebuffer);
+// RHI_DEFINE_HANDLE(RenderPass);
+// RHI_DEFINE_HANDLE(Framebuffer);
 // RHI_DEFINE_HANDLE(Sampler);
 // RHI_DEFINE_HANDLE(Pipeline);
 // RHI_DEFINE_HANDLE(Texture);
@@ -105,4 +105,4 @@ RHI_DEFINE_HANDLE(Framebuffer);
 
 // HASH_DEFINE(Texture)
 // HASH_DEFINE(Shader)
-HASH_DEFINE(RenderPass)
+// HASH_DEFINE(RenderPass)

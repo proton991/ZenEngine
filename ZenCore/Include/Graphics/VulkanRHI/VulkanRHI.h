@@ -136,14 +136,14 @@ public:
 
     void DestroyPipeline(RHIPipeline* pipeline) final;
 
-    RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) final;
+    // RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) final;
 
-    void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
+    // void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
 
-    FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-                                        const RHIFramebufferInfo& fbInfo) final;
+    // FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
+    //                                     const RHIFramebufferInfo& fbInfo) final;
 
-    void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
+    // void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
 
     // SamplerHandle CreateSampler(const RHISamplerInfo& samplerInfo) final;
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;

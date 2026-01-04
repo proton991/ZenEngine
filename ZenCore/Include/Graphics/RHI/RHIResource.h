@@ -780,7 +780,7 @@ struct RHIGfxPipelineCreateInfo
     RHIGfxPipelineStates states;
     // RHIRenderPassLayout renderPassLayout;
     const RHIRenderingLayout* pRenderingLayout;
-    RenderPassHandle renderPassHandle;
+    // RenderPassHandle renderPassHandle;
     uint32_t subpassIdx;
 };
 
@@ -827,7 +827,7 @@ protected:
     RHIGfxPipelineStates m_gfxStates;
     // RHIRenderPassLayout m_renderPassLayout;
     const RHIRenderingLayout* m_pRenderingLayout;
-    RenderPassHandle m_renderPassHandle{0LLU};
+    // RenderPassHandle m_renderPassHandle{0LLU};
     uint32_t m_subpassIdx;
 };
 

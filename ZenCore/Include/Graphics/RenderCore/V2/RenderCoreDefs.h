@@ -117,8 +117,8 @@ struct PassResourceTracker
 
 struct GraphicsPass
 {
-    FramebufferHandle framebuffer;
-    RenderPassHandle renderPass;
+    // FramebufferHandle framebuffer;
+    // RenderPassHandle renderPass;
     RHIPipeline* pipeline;
     RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};

@@ -87,18 +87,18 @@ public:
                                      uint32_t numDescriptorSets,
                                      const RHIDescriptorSet* const* pDescriptorSets) = 0;
 
-    virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
-                                 FramebufferHandle framebufferHandle,
-                                 const Rect2<int>& area,
-                                 VectorView<RHIRenderPassClearValue> clearValues) = 0;
+    // virtual void BeginRenderPass(RenderPassHandle renderPassHandle,
+    //                              FramebufferHandle framebufferHandle,
+    //                              const Rect2<int>& area,
+    //                              VectorView<RHIRenderPassClearValue> clearValues) = 0;
 
-    virtual void EndRenderPass() = 0;
+    // virtual void EndRenderPass() = 0;
 
-    virtual void BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayout,
-                                        const Rect2<int>& area,
-                                        VectorView<RHIRenderPassClearValue> clearValues) = 0;
+    // virtual void BeginRenderPassDynamic(const RHIRenderPassLayout& rpLayout,
+    //                                     const Rect2<int>& area,
+    //                                     VectorView<RHIRenderPassClearValue> clearValues) = 0;
 
-    virtual void EndRenderPassDynamic() = 0;
+    // virtual void EndRenderPassDynamic() = 0;
 
     virtual void BeginRendering(const RHIRenderingLayout* pRenderingLayout) = 0;
 

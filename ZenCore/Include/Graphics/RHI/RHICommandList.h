@@ -1,6 +1,8 @@
 #pragma once
-#include "RHICommon.h"
+// #include "RHICommon.h"
+#include "RHIResource.h"
 #include "Memory/Memory.h"
+
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
 namespace zen
 {
@@ -9,7 +11,7 @@ class RHIPipeline;
 
 struct RHICommandBase
 {
-    RHICommandBase* nextCmd{nullptr};
+    RHICommandBase* pNextCmd{nullptr};
 };
 
 
@@ -18,31 +20,65 @@ class IRHICommandContext
 public:
     virtual ~IRHICommandContext() {}
 
+    virtual void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) = 0;
+
+    virtual void RHIEndRendering() = 0;
+
     virtual void RHISetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) = 0;
 
     virtual void RHISetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) = 0;
+
+    virtual void RHISetDepthBias(float depthBiasConstantFactor,
+                                 float depthBiasClamp,
+                                 float depthBiasSlopeFactor) = 0;
+
+    virtual void RHISetLineWidth(float lineWidth) = 0;
+
+    virtual void RHISetBlendConstants(const Color& blendConstants) = 0;
 
     virtual void RHIBindPipeline(RHIPipelineType pipelineType,
                                  RHIPipeline* pPipeline,
                                  uint32_t numDescriptorSets,
                                  RHIDescriptorSet* const* pDescriptorSets) = 0;
 
-    virtual void RHIBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) = 0;
+    virtual void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset) = 0;
 
-    virtual void RHIBindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint64_t offset) = 0;
+    virtual void RHIBindIndexBuffer(RHIBuffer* pBuffer, DataFormat format, uint64_t offset) = 0;
 
-    virtual void RHIDrawIndexed(RHIBuffer* buffer,
+    virtual void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                 uint32_t indexCount,
                                 uint32_t instanceCount,
                                 uint32_t firstIndex,
                                 int32_t vertexOffset,
                                 uint32_t firstInstance) = 0;
 
-    virtual void RHIDrawIndexedIndirect(RHIBuffer* indirectBuffer,
-                                        RHIBuffer* indexBuffer,
+    virtual void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
+                                        RHIBuffer* pIndexBuffer,
                                         uint32_t offset,
                                         uint32_t drawCount,
                                         uint32_t stride) = 0;
+
+    virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
+
+    virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
+                                   BitField<RHIPipelineStageBits> dstStages,
+                                   uint32_t numMemoryTransitions,
+                                   RHIMemoryTransition* pMemoryTransitions,
+                                   uint32_t numBufferTransitions,
+                                   RHIBufferTransition* pBufferTransitions,
+                                   uint32_t numTextureTransitions,
+                                   RHITextureTransition* pTextureTransitions) = 0;
+
+    virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
+
+    virtual void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                                        RHITexture* pDstTexture,
+                                        uint32_t numRegions,
+                                        RHIBufferTextureCopyRegion* pRegions) = 0;
+
+    virtual void RHIGenTextureMipmaps(RHITexture* pTexture) = 0;
+
+    virtual void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) = 0;
 };
 
 class RHICommandListBase
@@ -50,47 +86,47 @@ class RHICommandListBase
 public:
     virtual ~RHICommandListBase()
     {
-        RHICommandBase* cmd = m_cmdHead;
-        while (cmd)
+        RHICommandBase* pCmd = m_pCmdHead;
+        while (pCmd)
         {
-            RHICommandBase* next = cmd->nextCmd; // Save next before freeing
-            DefaultAllocator::Free(cmd);
-            cmd = next;
+            RHICommandBase* next = pCmd->pNextCmd; // Save next before freeing
+            DefaultAllocator::Free(pCmd);
+            pCmd = next;
         }
 
-        m_cmdHead         = nullptr;
-        m_cmdPtr          = nullptr;
-        m_numCommands     = 0;
-        m_graphicsContext = nullptr;
-        m_computeContext  = nullptr;
+        m_pCmdHead         = nullptr;
+        m_ppCmdPtr         = nullptr;
+        m_numCommands      = 0;
+        m_pGraphicsContext = nullptr;
+        m_pComputeContext  = nullptr;
     }
 
     void* AllocateCmd(uint32_t size, uint32_t alignment)
     {
-        RHICommandBase* cmd =
+        RHICommandBase* pCmd =
             static_cast<RHICommandBase*>(DefaultAllocator::Alloc(size, alignment));
-        *m_cmdPtr = cmd;
-        m_cmdPtr  = &cmd->nextCmd;
+        *m_ppCmdPtr = pCmd;
+        m_ppCmdPtr  = &pCmd->pNextCmd;
         ++m_numCommands;
-        return cmd;
+        return pCmd;
     }
 
     IRHICommandContext* GetContext() const
     {
-        return m_graphicsContext;
+        return m_pGraphicsContext;
     }
 
 protected:
     RHICommandListBase()
     {
-        m_cmdPtr = &m_cmdHead;
+        m_ppCmdPtr = &m_pCmdHead;
     }
 
-    RHICommandBase* m_cmdHead{nullptr};
-    RHICommandBase** m_cmdPtr{nullptr};
+    RHICommandBase* m_pCmdHead{nullptr};
+    RHICommandBase** m_ppCmdPtr{nullptr};
 
-    IRHICommandContext* m_graphicsContext{nullptr};
-    IRHICommandContext* m_computeContext{nullptr};
+    IRHICommandContext* m_pGraphicsContext{nullptr};
+    IRHICommandContext* m_pComputeContext{nullptr};
 
     uint32_t m_numCommands{0};
 };
@@ -102,8 +138,47 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
+struct RHICommandCopyBufferToTexture : public RHICommand
+{
+    RHIBuffer* pSrcBuffer;
+    RHITexture* pDstTexture;
+    uint32_t numCopyRegions;
+
+    PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, CopyRegions, &this[1])
+
+    RHICommandCopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                                  RHITexture* pDstTexture,
+                                  uint32_t numCopyRegions) :
+        pSrcBuffer(pSrcBuffer), pDstTexture(pDstTexture), numCopyRegions(numCopyRegions)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHICopyBufferToTexture(pSrcBuffer, pDstTexture, numCopyRegions,
+                                                     CopyRegions());
+    }
+};
+
 struct RHICommandBeginRendering final : public RHICommand
-{};
+{
+    const RHIRenderingLayout* pRenderingLayout;
+    explicit RHICommandBeginRendering(const RHIRenderingLayout* pRenderingLayout) :
+        pRenderingLayout(pRenderingLayout)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBeginRendering(pRenderingLayout);
+    }
+};
+
+struct RHICommandEndRendering final : public RHICommand
+{
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIEndRendering();
+    }
+};
 
 struct RHICommandBindPipeline final : public RHICommand
 {
@@ -163,52 +238,98 @@ struct RHICommandSetViewport final : public RHICommand
     }
 };
 
-struct RHICommandBindIndexBuffer final : public RHICommand
+struct RHICommandSetDepthBias : public RHICommand
 {
-    RHIBuffer* indexBuffer;
-    DataFormat format;
-    uint64_t offset;
+    float depthBiasConstantFactor;
+    float depthBiasClamp;
+    float depthBiasSlopeFactor;
 
-    RHICommandBindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint64_t offset) :
-        indexBuffer(buffer), format(format), offset(offset)
+    RHICommandSetDepthBias(float depthBiasConstantFactor,
+                           float depthBiasClamp,
+                           float depthBiasSlopeFactor) :
+        depthBiasConstantFactor(depthBiasConstantFactor),
+        depthBiasClamp(depthBiasClamp),
+        depthBiasSlopeFactor(depthBiasSlopeFactor)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBindIndexBuffer(indexBuffer, format, offset);
+        cmdList.GetContext()->RHISetDepthBias(depthBiasConstantFactor, depthBiasClamp,
+                                              depthBiasSlopeFactor);
+    }
+};
+
+struct RHICommandSetLineWidth : public RHICommand
+{
+    float lineWidth;
+
+    explicit RHICommandSetLineWidth(float lineWidth) : lineWidth(lineWidth) {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHISetLineWidth(lineWidth);
+    }
+};
+
+struct RHICommandSetBlendConstants : public RHICommand
+{
+    Color blendConstants;
+
+    explicit RHICommandSetBlendConstants(Color blendConstants) :
+        blendConstants(std::move(blendConstants))
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHISetBlendConstants(blendConstants);
+    }
+};
+struct RHICommandBindIndexBuffer final : public RHICommand
+{
+    RHIBuffer* pIndexBuffer;
+    DataFormat format;
+    uint64_t offset;
+
+    RHICommandBindIndexBuffer(RHIBuffer* pIndexBuffer, DataFormat format, uint64_t offset) :
+        pIndexBuffer(pIndexBuffer), format(format), offset(offset)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBindIndexBuffer(pIndexBuffer, format, offset);
     }
 };
 
 struct RHICommandBindVertexBuffer final : public RHICommand
 {
-    RHIBuffer* vertexBuffer;
+    RHIBuffer* pVertexBuffer;
     uint64_t offset;
 
-    RHICommandBindVertexBuffer(RHIBuffer* buffer, uint64_t offset) :
-        vertexBuffer(buffer), offset(offset)
+    RHICommandBindVertexBuffer(RHIBuffer* pVertexBuffer, uint64_t offset) :
+        pVertexBuffer(pVertexBuffer), offset(offset)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBindVertexBuffer(vertexBuffer, offset);
+        cmdList.GetContext()->RHIBindVertexBuffer(pVertexBuffer, offset);
     }
-};
-
-struct RHICommandDrawParam
-{
-    RHIBuffer* indexBuffer;
-    uint32_t offset;
-    uint32_t indexCount;
-    uint32_t instanceCount;
-    uint32_t firstIndex;
-    int32_t vertexOffset;
-    uint32_t firstInstance;
 };
 
 struct RHICommandDrawIndexed final : public RHICommand
 {
+    struct Param
+    {
+        RHIBuffer* pIndexBuffer;
+        uint32_t offset;
+        uint32_t indexCount;
+        uint32_t instanceCount;
+        uint32_t firstIndex;
+        int32_t vertexOffset;
+        uint32_t firstInstance;
+    };
+
     // note: For now index buffer format is UINT32 only
-    RHIBuffer* indexBuffer;
+    RHIBuffer* pIndexBuffer;
     uint32_t offset;
     uint32_t indexCount;
     uint32_t instanceCount;
@@ -216,8 +337,8 @@ struct RHICommandDrawIndexed final : public RHICommand
     int32_t vertexOffset;
     uint32_t firstInstance;
 
-    explicit RHICommandDrawIndexed(const RHICommandDrawParam& param) :
-        indexBuffer(param.indexBuffer),
+    explicit RHICommandDrawIndexed(const Param& param) :
+        pIndexBuffer(param.pIndexBuffer),
         offset(param.offset),
         indexCount(param.indexCount),
         instanceCount(param.instanceCount),
@@ -228,41 +349,144 @@ struct RHICommandDrawIndexed final : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIDrawIndexed(indexBuffer, indexCount, instanceCount, firstIndex,
+        cmdList.GetContext()->RHIDrawIndexed(pIndexBuffer, indexCount, instanceCount, firstIndex,
                                              vertexOffset, firstInstance);
     }
 };
 
 struct RHICommandDrawIndexedIndirect final : public RHICommand
 {
-    RHIBuffer* indirectBuffer;
-    RHIBuffer* indexBuffer;
+    struct Param
+    {
+        RHIBuffer* pIndirectBuffer;
+        RHIBuffer* pIndexBuffer;
+        uint32_t offset;
+        uint32_t drawCount;
+        uint32_t stride;
+    };
+
+    RHIBuffer* pIndirectBuffer;
+    RHIBuffer* pIndexBuffer;
     uint32_t offset;
     uint32_t drawCount;
     uint32_t stride;
 
-    RHICommandDrawIndexedIndirect(RHIBuffer* indirectBuffer,
-                                  RHIBuffer* indexBuffer,
-                                  uint32_t offset,
-                                  uint32_t drawCount,
-                                  uint32_t stride) :
-        indirectBuffer(indirectBuffer),
-        indexBuffer(indexBuffer),
-        offset(offset),
-        drawCount(drawCount),
-        stride(stride)
+    explicit RHICommandDrawIndexedIndirect(const Param& param) :
+        pIndirectBuffer(param.pIndirectBuffer),
+        pIndexBuffer(param.pIndexBuffer),
+        offset(param.offset),
+        drawCount(param.drawCount),
+        stride(param.stride)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIDrawIndexedIndirect(indirectBuffer, indexBuffer, offset, drawCount,
-                                                     stride);
+        cmdList.GetContext()->RHIDrawIndexedIndirect(pIndirectBuffer, pIndexBuffer, offset,
+                                                     drawCount, stride);
+    }
+};
+
+struct RHICommandDispatch final : public RHICommand
+{
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
+
+    RHICommandDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) :
+        groupCountX(groupCountX), groupCountY(groupCountY), groupCountZ(groupCountZ)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIDispatch(groupCountX, groupCountY, groupCountZ);
+    }
+};
+
+struct RHICommandDispatchIndirect final : public RHICommand
+{
+    RHIBuffer* pIndirectBuffer;
+    uint32_t offset;
+
+    RHICommandDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) :
+        pIndirectBuffer(pIndirectBuffer), offset(offset)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIDispatchIndirect(pIndirectBuffer, offset);
+    }
+};
+
+struct RHICommandAddTransitions final : public RHICommand
+{
+    BitField<RHIPipelineStageBits> srcStages;
+    BitField<RHIPipelineStageBits> dstStages;
+    uint32_t numMemoryTransitions;
+    uint32_t numBufferTransitions;
+    uint32_t numTextureTransitions;
+    PRIVATE_ARRAY_DEF(RHIMemoryTransition, MemoryTransitions, &this[1])
+    PRIVATE_ARRAY_DEF(RHIBufferTransition,
+                      BufferTransitions,
+                      &MemoryTransitions()[numMemoryTransitions])
+    PRIVATE_ARRAY_DEF(RHITextureTransition,
+                      TextureTransitions,
+                      &BufferTransitions()[numBufferTransitions])
+
+    RHICommandAddTransitions(BitField<RHIPipelineStageBits> srcStages,
+                             BitField<RHIPipelineStageBits> dstStages,
+                             uint32_t numMemoryTransitions,
+                             uint32_t numBufferTransitions,
+                             uint32_t numTextureTransitions) :
+        srcStages(srcStages),
+        dstStages(dstStages),
+        numMemoryTransitions(numMemoryTransitions),
+        numBufferTransitions(numBufferTransitions),
+        numTextureTransitions(numTextureTransitions)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIAddTransitions(
+            srcStages, dstStages, numMemoryTransitions, MemoryTransitions(), numBufferTransitions,
+            BufferTransitions(), numTextureTransitions, TextureTransitions());
+    }
+};
+
+struct RHICommandAddTextureTransition : public RHICommand
+{
+    RHITexture* pTexture;
+
+    RHITextureLayout newLayout;
+
+    RHICommandAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) :
+        pTexture(pTexture), newLayout(newLayout)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIAddTextureTransition(pTexture, newLayout);
+    }
+};
+
+struct RHICommandGenTextureMipmaps : public RHICommand
+{
+    RHITexture* pTexture;
+
+    RHICommandGenTextureMipmaps(RHITexture* pTexture) : pTexture(pTexture) {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIGenTextureMipmaps(pTexture);
     }
 };
 
 class FRHICommandList : public RHICommandListBase
 {
 public:
+    virtual void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                                     RHITexture* pDstTexture,
+                                     VectorView<RHIBufferTextureCopyRegion> regions);
+
     virtual void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
     virtual void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
@@ -273,8 +497,20 @@ public:
                               RHIDescriptorSet* const* pDescriptorSets);
 
     // All vertex attributes packed in 1 buffer
-    virtual void BindVertexBuffer(RHIBuffer* buffer, uint64_t offset);
+    virtual void BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset);
 
-    virtual void DrawIndexed(const RHICommandDrawParam& param);
+    virtual void DrawIndexed(const RHICommandDrawIndexed::Param& param);
+
+    virtual void DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param);
+
+    virtual void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
+                                BitField<RHIPipelineStageBits> dstStages,
+                                const std::vector<RHIMemoryTransition>& memoryTransitions,
+                                const std::vector<RHIBufferTransition>& bufferTransitions,
+                                const std::vector<RHITextureTransition>& textureTransitions);
+
+    virtual void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
+
+    virtual void GenTextureMipmaps(RHITexture* pTexture);
 };
 } // namespace zen
