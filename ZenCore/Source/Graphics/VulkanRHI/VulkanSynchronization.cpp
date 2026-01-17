@@ -25,7 +25,7 @@ void VulkanFenceManager::Destroy()
         VulkanFence* fence = m_freeFences.front();
         m_freeFences.pop();
         DestroyFence(fence);
-        delete fence;
+        ZEN_DELETE(fence);
     }
 }
 
@@ -41,7 +41,7 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
         }
         return fence;
     }
-    VulkanFence* newFence = new VulkanFence(this, createSignaled);
+    VulkanFence* newFence = ZEN_NEW() VulkanFence(this, createSignaled);
     m_usedFences.push_back(newFence);
     return newFence;
 }
@@ -155,11 +155,11 @@ void VulkanSemaphoreManager::Destroy()
     {
         VulkanSemaphore* sem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
-        delete sem;
+        ZEN_DELETE(sem);
     }
     for (VulkanSemaphore* sem : m_usedSemaphores)
     {
-        delete sem;
+        ZEN_DELETE(sem);
     }
 }
 
@@ -172,7 +172,7 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
         m_usedSemaphores.push_back(sem);
         return sem;
     }
-    VulkanSemaphore* newSem = new VulkanSemaphore(m_device);
+    VulkanSemaphore* newSem = ZEN_NEW() VulkanSemaphore(m_device);
     m_usedSemaphores.push_back(newSem);
     m_allocatedSemaphoreCount++;
     return newSem;

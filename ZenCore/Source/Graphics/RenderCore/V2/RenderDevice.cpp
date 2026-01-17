@@ -57,8 +57,9 @@ static void CopyRegion(uint8_t const* pSrc,
 
 GraphicsPassBuilder::GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice)
 {
-    m_pGfxPass = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
-    new (m_pGfxPass) GraphicsPass();
+    // m_pGfxPass                   = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
+
+    m_pGfxPass                   = ZEN_NEW() GraphicsPass();
     m_pGfxPass->pRenderingLayout = m_renderDevice->AcquireRenderingLayout();
 }
 
@@ -333,8 +334,7 @@ ComputePass* ComputePassBuilder::Build()
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
     RHIShader* shader = shaderProgram->GetShader();
 
-    ComputePass* pComputePass = static_cast<ComputePass*>(ZEN_MEM_ALLOC(sizeof(ComputePass)));
-    new (pComputePass) ComputePass();
+    ComputePass* pComputePass = ZEN_NEW() ComputePass();
 
     pComputePass->shaderProgram     = shaderProgram;
     pComputePass->pipeline          = m_renderDevice->GetOrCreateComputePipeline(shader);
@@ -722,10 +722,10 @@ RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
 void RenderDevice::Init(RHIViewport* mainViewport)
 {
     m_bufferStagingMgr =
-        new BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
+        ZEN_NEW() BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
     m_bufferStagingMgr->Init(m_numFrames);
-    m_textureStagingMgr = new TextureStagingManager(this);
-    m_textureManager    = new TextureManager(this, m_textureStagingMgr);
+    m_textureStagingMgr = ZEN_NEW() TextureStagingManager(this);
+    m_textureManager    = ZEN_NEW() TextureManager(this, m_textureStagingMgr);
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
@@ -741,7 +741,7 @@ void RenderDevice::Init(RHIViewport* mainViewport)
 
     m_mainViewport = mainViewport;
 
-    m_rendererServer = new RendererServer(this, m_mainViewport);
+    m_rendererServer = ZEN_NEW() RendererServer(this, m_mainViewport);
     m_rendererServer->Init();
 }
 
@@ -775,7 +775,7 @@ void RenderDevice::Destroy()
         {
             DestroyRenderingLayout(pGfxPass->pRenderingLayout);
         }
-        ZEN_MEM_FREE(pGfxPass);
+        ZEN_DELETE(pGfxPass);
     }
 
     for (auto* pComputePass : m_computePasses)
@@ -784,7 +784,7 @@ void RenderDevice::Destroy()
         {
             GDynamicRHI->DestroyDescriptorSet(pComputePass->descriptorSets[i]);
         }
-        ZEN_MEM_FREE(pComputePass);
+        ZEN_DELETE(pComputePass);
     }
 
     for (auto& buffer : m_buffers)
@@ -795,16 +795,16 @@ void RenderDevice::Destroy()
     m_deletionQueue.Flush();
 
     m_bufferStagingMgr->Destroy();
-    delete m_bufferStagingMgr;
+    ZEN_DELETE(m_bufferStagingMgr);
 
     m_textureManager->Destroy();
-    delete m_textureManager;
+    ZEN_DELETE(m_textureManager);
 
     m_textureStagingMgr->Destroy();
-    delete m_textureStagingMgr;
+    ZEN_DELETE(m_textureStagingMgr);
 
     m_rendererServer->Destroy();
-    delete m_rendererServer;
+    ZEN_DELETE(m_rendererServer);
 
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
@@ -813,14 +813,14 @@ void RenderDevice::Destroy()
 
     for (RenderFrame& frame : m_frames)
     {
-        delete frame.transferCmdList;
-        delete frame.drawCmdList;
+        ZEN_DELETE(frame.transferCmdList);
+        ZEN_DELETE(frame.drawCmdList);
     }
 
-    delete m_RHIDebug;
+    ZEN_DELETE(m_RHIDebug);
 
     GDynamicRHI->Destroy();
-    delete GDynamicRHI;
+    ZEN_DELETE(GDynamicRHI);
 }
 
 void RenderDevice::ExecuteFrame(RHIViewport* viewport, RenderGraph* rdg, bool present)
@@ -855,16 +855,16 @@ void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
 
 RHIRenderingLayout* RenderDevice::AcquireRenderingLayout()
 {
-    RHIRenderingLayout* pLayout =
-        static_cast<RHIRenderingLayout*>(ZEN_MEM_ALLOC(sizeof(RHIRenderingLayout)));
-    new (pLayout) RHIRenderingLayout;
+    RHIRenderingLayout* pLayout = ZEN_NEW() RHIRenderingLayout();
+    // static_cast<RHIRenderingLayout*>(ZEN_MEM_ALLOC(sizeof(RHIRenderingLayout)));
+    // new (pLayout) RHIRenderingLayout;
 
     return pLayout;
 }
 
 void RenderDevice::DestroyRenderingLayout(RHIRenderingLayout* pLayout)
 {
-    ZEN_MEM_FREE(pLayout);
+    ZEN_DELETE(pLayout);
 }
 
 RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,

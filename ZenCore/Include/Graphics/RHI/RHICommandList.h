@@ -90,7 +90,7 @@ public:
         while (pCmd)
         {
             RHICommandBase* next = pCmd->pNextCmd; // Save next before freeing
-            DefaultAllocator::Free(pCmd);
+            ZEN_MEM_FREE(pCmd);
             pCmd = next;
         }
 
@@ -103,10 +103,9 @@ public:
 
     void* AllocateCmd(uint32_t size, uint32_t alignment)
     {
-        RHICommandBase* pCmd =
-            static_cast<RHICommandBase*>(DefaultAllocator::Alloc(size, alignment));
-        *m_ppCmdPtr = pCmd;
-        m_ppCmdPtr  = &pCmd->pNextCmd;
+        RHICommandBase* pCmd = static_cast<RHICommandBase*>(ZEN_MEM_ALLOC_ALIGNED(size, alignment));
+        *m_ppCmdPtr          = pCmd;
+        m_ppCmdPtr           = &pCmd->pNextCmd;
         ++m_numCommands;
         return pCmd;
     }

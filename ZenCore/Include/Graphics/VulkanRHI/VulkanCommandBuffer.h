@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Templates/HashMap.h"
-#include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "VulkanHeaders.h"
 
 namespace zen
 {
@@ -73,6 +73,8 @@ public:
         eNeedReset
     };
 
+    ~VulkanCommandBuffer();
+
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem);
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
@@ -116,7 +118,6 @@ public:
 
 protected:
     VulkanCommandBuffer(VulkanCommandBufferPool* pool, bool isUploadOnly);
-    ~VulkanCommandBuffer();
 
 private:
     void AllocMemory();

@@ -1,6 +1,7 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Memory/Memory.h"
 #include "Utils/Errors.h"
 #include <fstream>
 
@@ -186,7 +187,7 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
 ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* renderDevice,
                                                          const std::string& name)
 {
-    ShaderProgram* shaderProgram = new ShaderProgram(renderDevice, name);
+    ShaderProgram* shaderProgram = ZEN_NEW() ShaderProgram(renderDevice, name);
     m_programCache[name]         = shaderProgram;
     return shaderProgram;
 }
@@ -195,81 +196,81 @@ void ShaderProgramManager::Destroy()
 {
     for (auto& kv : m_programCache)
     {
-        delete kv.second;
+        ZEN_DELETE(kv.second);
     }
 }
 
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
 {
     {
-        ShaderProgram* shaderProgram             = new GBufferSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() GBufferSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new DeferredLightingSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() DeferredLightingSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new EnvMapIrradianceSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapIrradianceSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new EnvMapPrefilteredSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapPrefilteredSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new SkyboxRenderSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() SkyboxRenderSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new EnvMapBRDFLutGenSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapBRDFLutGenSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     if (renderDevice->GetGPUInfo().supportGeometryShader)
     {
         {
-            ShaderProgram* shaderProgram             = new VoxelizationSP(renderDevice);
+            ShaderProgram* shaderProgram             = ZEN_NEW() VoxelizationSP(renderDevice);
             m_programCache[shaderProgram->GetName()] = shaderProgram;
         }
         {
-            ShaderProgram* shaderProgram             = new VoxelDrawSP(renderDevice);
+            ShaderProgram* shaderProgram             = ZEN_NEW() VoxelDrawSP(renderDevice);
             m_programCache[shaderProgram->GetName()] = shaderProgram;
         }
     }
     {
-        ShaderProgram* shaderProgram             = new ResetComputeIndirectSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() ResetComputeIndirectSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new ResetDrawIndirectSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() ResetDrawIndirectSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new ResetVoxelTextureSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() ResetVoxelTextureSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new VoxelizationCompSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelizationCompSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram = new VoxelizationLargeTriangleCompSP(renderDevice);
+        ShaderProgram* shaderProgram = ZEN_NEW() VoxelizationLargeTriangleCompSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new VoxelPreDrawSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelPreDrawSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new VoxelDrawSP2(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelDrawSP2(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new ShadowMapRenderSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() ShadowMapRenderSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = new VoxelInjectRadianceSP(renderDevice);
+        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelInjectRadianceSP(renderDevice);
         m_programCache[shaderProgram->GetName()] = shaderProgram;
     }
 }

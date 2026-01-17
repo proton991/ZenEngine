@@ -15,18 +15,6 @@
 #define ZEN_VK_APP_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 #define ZEN_ENGINE_VERSION VK_MAKE_API_VERSION(0, 1, 0, 0)
 
-#define TO_VK_TEXTURE(tex)           (dynamic_cast<VulkanTexture*>(tex))
-#define TO_CVK_TEXTURE(tex)          (dynamic_cast<const VulkanTexture*>(tex))
-#define TO_VK_BUFFER(buffer)         (dynamic_cast<VulkanBuffer*>(buffer))
-#define TO_VK_PIPELINE(handle)       (dynamic_cast<VulkanPipeline*>(handle))
-#define TO_VK_DESCRIPTORSET(handle)  (dynamic_cast<VulkanDescriptorSet*>(handle))
-#define TO_CVK_DESCRIPTORSET(handle) (dynamic_cast<const VulkanDescriptorSet*>(handle))
-#define TO_VK_FRAMEBUFFER(handle)    reinterpret_cast<VulkanFramebuffer*>((handle).value)
-#define TO_VK_RENDER_PASS(handle)    reinterpret_cast<VkRenderPass>((handle).value)
-#define TO_VK_SHADER(handle)         (dynamic_cast<VulkanShader*>(handle))
-#define TO_CVK_SHADER(handle)        (dynamic_cast<const VulkanShader*>(handle))
-#define TO_VK_SAMPLER(sampler)       (dynamic_cast<VulkanSampler*>(sampler))
-
 namespace zen
 {
 class VulkanDevice;
@@ -58,7 +46,7 @@ public:
 
     ~VulkanRHI() override
     {
-        delete m_resourceFactory;
+        // delete m_resourceFactory;
     }
 
     RHICommandListContext* CreateCmdListContext() override;

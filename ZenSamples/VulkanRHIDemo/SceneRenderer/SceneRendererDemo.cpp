@@ -5,7 +5,19 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Memory/Memory.h"
 #include "Platform/InputController.h"
+
+// #if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
+// #    define _CRTDBG_MAP_ALLOC
+// #    include <crtdbg.h>
+// static int CrtReportHook(int reportType, char* message, int* returnValue)
+// {
+//     fprintf(stderr, "%s", message);
+//     // LOGE("{}", message);
+//     return FALSE; // let CRT continue processing
+// }
+// #endif
 
 namespace zen
 {
@@ -125,6 +137,10 @@ void SceneRendererDemo::Run()
 
 int main(int argc, char** argv)
 {
+#if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
     using namespace zen;
 
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
@@ -139,4 +155,8 @@ int main(int argc, char** argv)
     demo->Destroy();
 
     delete demo;
+
+#if defined(ZEN_DEBUG)
+    DefaultAllocator::ReportMemUsage();
+#endif
 }

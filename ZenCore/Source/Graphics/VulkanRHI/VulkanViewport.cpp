@@ -67,10 +67,7 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
                                              uint32_t height,
                                              bool enableVSync)
 {
-    VulkanViewport* pViewport =
-        static_cast<VulkanViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
-
-    new (pViewport) VulkanViewport(pWindow, width, height, enableVSync);
+    VulkanViewport* pViewport = ZEN_NEW() VulkanViewport(pWindow, width, height, enableVSync);
 
     pViewport->Init();
 
@@ -125,7 +122,7 @@ void VulkanViewport::Destroy()
 
     this->~VulkanViewport();
 
-    ZEN_MEM_FREE(this);
+    ZEN_DELETE(this);
 }
 
 void VulkanViewport::WaitForFrameCompletion()
@@ -160,7 +157,8 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     m_colorBackBuffer        = nullptr;
     m_depthStencilBackBuffer = nullptr;
 
-    m_swapchain = new VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
+    m_swapchain =
+        ZEN_NEW() VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, recreateInfo);
     const VkImage* images    = m_swapchain->GetSwapchainImages();
     const uint32_t numImages = m_swapchain->GetNumSwapchainImages();
     // m_renderingCompleteSemaphores.resize(numImages);
@@ -226,7 +224,7 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
             m_backBufferImages[i] = VK_NULL_HANDLE;
         }
         m_swapchain->Destroy(recreateInfo);
-        delete m_swapchain;
+        ZEN_DELETE(m_swapchain);
         m_swapchain = nullptr;
     }
     if (m_colorBackBuffer)

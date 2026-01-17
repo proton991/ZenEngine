@@ -92,6 +92,8 @@ template <> struct hash<RDG_ID>
 
 namespace zen::rc
 {
+template <typename T> using RDGVector = ArenaVector<T, PoolAllocator<LinearAllocator>>;
+
 // Singleton class to generate IDs
 class RDGIDGenerator
 {
@@ -229,7 +231,7 @@ struct RDGAccess
 
 struct RDGResource
 {
-    RDGResource(PoolAllocator<LinearAllocator>* alloc) :
+    explicit RDGResource(PoolAllocator<LinearAllocator>* alloc) :
         readByNodeIds(alloc), writtenByNodeIds(alloc)
     {}
 
@@ -238,8 +240,8 @@ struct RDGResource
     RHIResource* physicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
 
-    ArenaVector<RDG_ID, PoolAllocator<LinearAllocator>> readByNodeIds;
-    ArenaVector<RDG_ID, PoolAllocator<LinearAllocator>> writtenByNodeIds;
+    RDGVector<RDG_ID> readByNodeIds;
+    RDGVector<RDG_ID> writtenByNodeIds;
 };
 
 struct RDGNodeBase

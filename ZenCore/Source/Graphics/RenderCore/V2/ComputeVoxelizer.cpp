@@ -33,13 +33,13 @@ void ComputeVoxelizer::Init()
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
-    delete m_cube;
+    ZEN_DELETE(m_cube);
 }
 
 void ComputeVoxelizer::LoadCubeModel()
 {
-    m_cube = new RenderObject(m_renderDevice,
-                              platform::ConfigLoader::GetInstance().GetGLTFModelPath("Box"));
+    m_cube = ZEN_NEW()
+        RenderObject(m_renderDevice, platform::ConfigLoader::GetInstance().GetGLTFModelPath("Box"));
 }
 
 void ComputeVoxelizer::PrepareTextures()

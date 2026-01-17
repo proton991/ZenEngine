@@ -124,11 +124,11 @@ void VulkanDevice::Init()
 
     SetupDevice(extensionArray);
 
-    m_fenceManager    = new VulkanFenceManager(this);
-    m_semaphoreManger = new VulkanSemaphoreManager(this);
+    m_fenceManager    = ZEN_NEW() VulkanFenceManager(this);
+    m_semaphoreManger = ZEN_NEW() VulkanSemaphoreManager(this);
 
-    m_immediateContext     = new VulkanCommandListContext(GVulkanRHI);
-    m_immediateCommandList = new VulkanCommandList(m_immediateContext);
+    m_immediateContext     = ZEN_NEW() VulkanCommandListContext(GVulkanRHI);
+    m_immediateCommandList = ZEN_NEW() VulkanCommandList(m_immediateContext);
 }
 
 void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions)
@@ -233,17 +233,17 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
     // load device func
     volkLoadDevice(m_device);
     // setup queues
-    m_gfxQueue = new VulkanQueue(this, graphicsQueueFamilyIndex);
+    m_gfxQueue = ZEN_NEW() VulkanQueue(this, graphicsQueueFamilyIndex);
     if (computeQueueFamilyIndex == -1)
     {
         computeQueueFamilyIndex = graphicsQueueFamilyIndex;
     }
-    m_computeQueue = new VulkanQueue(this, computeQueueFamilyIndex);
+    m_computeQueue = ZEN_NEW() VulkanQueue(this, computeQueueFamilyIndex);
     if (transferQueueFamilyIndex == -1)
     {
         transferQueueFamilyIndex = computeQueueFamilyIndex;
     }
-    m_transferQueue = new VulkanQueue(this, transferQueueFamilyIndex);
+    m_transferQueue = ZEN_NEW() VulkanQueue(this, transferQueueFamilyIndex);
 }
 
 void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char* name)
@@ -279,18 +279,18 @@ void VulkanDevice::WaitForIdle()
 void VulkanDevice::Destroy()
 {
     m_semaphoreManger->Destroy();
-    delete m_semaphoreManger;
+    ZEN_DELETE(m_semaphoreManger);
 
-    delete m_immediateContext;
+    ZEN_DELETE(m_immediateContext);
 
-    delete m_immediateCommandList;
+    ZEN_DELETE(m_immediateCommandList);
 
     m_fenceManager->Destroy();
-    delete m_fenceManager;
+    ZEN_DELETE(m_fenceManager);
 
-    delete m_computeQueue;
-    delete m_gfxQueue;
-    delete m_transferQueue;
+    ZEN_DELETE(m_computeQueue);
+    ZEN_DELETE(m_gfxQueue);
+    ZEN_DELETE(m_transferQueue);
 
     vkDestroyDevice(m_device, nullptr);
 }

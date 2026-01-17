@@ -16,45 +16,45 @@ RendererServer::RendererServer(RenderDevice* renderDevice, RHIViewport* viewport
 
 void RendererServer::Init()
 {
-    m_deferredLightingRenderer = new DeferredLightingRenderer(m_renderDevice, m_viewport);
+    m_deferredLightingRenderer = ZEN_NEW() DeferredLightingRenderer(m_renderDevice, m_viewport);
     m_deferredLightingRenderer->Init();
 
-    m_skyboxRenderer = new SkyboxRenderer(m_renderDevice, m_viewport);
+    m_skyboxRenderer = ZEN_NEW() SkyboxRenderer(m_renderDevice, m_viewport);
     m_skyboxRenderer->Init();
 
     if (m_renderDevice->GetGPUInfo().supportGeometryShader)
     {
-        m_voxelizer = new GeometryVoxelizer(m_renderDevice, m_viewport);
+        m_voxelizer = ZEN_NEW() GeometryVoxelizer(m_renderDevice, m_viewport);
     }
     else
     {
-        m_voxelizer = new ComputeVoxelizer(m_renderDevice, m_viewport);
+        m_voxelizer = ZEN_NEW() ComputeVoxelizer(m_renderDevice, m_viewport);
     }
     m_voxelizer->Init();
 
-    m_shadowMapRenderer = new ShadowMapRenderer(m_renderDevice, m_viewport);
+    m_shadowMapRenderer = ZEN_NEW() ShadowMapRenderer(m_renderDevice, m_viewport);
     m_shadowMapRenderer->Init();
 
-    m_voxelGIRenderer = new VoxelGIRenderer(m_renderDevice, m_viewport);
+    m_voxelGIRenderer = ZEN_NEW() VoxelGIRenderer(m_renderDevice, m_viewport);
     m_voxelGIRenderer->Init();
 }
 
 void RendererServer::Destroy()
 {
     m_deferredLightingRenderer->Destroy();
-    delete m_deferredLightingRenderer;
+    ZEN_DELETE(m_deferredLightingRenderer);
 
     m_shadowMapRenderer->Destroy();
-    delete m_shadowMapRenderer;
+    ZEN_DELETE(m_shadowMapRenderer);
 
     m_skyboxRenderer->Destroy();
-    delete m_skyboxRenderer;
+    ZEN_DELETE(m_skyboxRenderer);
 
     m_voxelGIRenderer->Destroy();
-    delete m_voxelGIRenderer;
+    ZEN_DELETE(m_voxelGIRenderer);
 
     m_voxelizer->Destroy();
-    delete m_voxelizer;
+    ZEN_DELETE(m_voxelizer);
 }
 
 void RendererServer::DispatchRenderWorkloads()

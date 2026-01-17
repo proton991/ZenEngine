@@ -221,7 +221,7 @@ void VulkanRHI::SelectGPU()
             found = true;
         }
     }
-    m_device = new VulkanDevice(physicalDevices[index]);
+    m_device = ZEN_NEW() VulkanDevice(physicalDevices[index]);
 }
 
 VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
@@ -235,7 +235,7 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
     }
     m_resourceAllocator.Init();
     // m_vkMemAllocator = new VulkanMemoryAllocator();
-    GVkMemAllocator = new VulkanMemoryAllocator();
+    GVkMemAllocator = ZEN_NEW() VulkanMemoryAllocator();
 
     GVulkanRHI = this;
 }
@@ -252,7 +252,7 @@ VkDevice VulkanRHI::GetVkDevice() const
 
 RHICommandListContext* VulkanRHI::CreateCmdListContext()
 {
-    RHICommandListContext* context = new VulkanCommandListContext(this);
+    RHICommandListContext* context = ZEN_NEW() VulkanCommandListContext(this);
     m_cmdListContexts.push_back(context);
     return context;
 }
@@ -260,17 +260,17 @@ RHICommandListContext* VulkanRHI::CreateCmdListContext()
 VulkanCommandListContext::VulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI)
 {
     m_cmdBufferMgr =
-        new VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
+        ZEN_NEW() VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
 }
 
 VulkanCommandListContext::~VulkanCommandListContext()
 {
-    delete m_cmdBufferMgr;
+    ZEN_DELETE(m_cmdBufferMgr);
 }
 
 void VulkanRHI::Init()
 {
-    m_resourceFactory = new VulkanResourceFactory();
+    m_resourceFactory = ZEN_NEW() VulkanResourceFactory();
 
     CreateInstance();
     SelectGPU();
@@ -287,20 +287,20 @@ void VulkanRHI::Init()
 
     GVkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(), m_device->GetVkHandle());
 
-    m_descriptorPoolManager = new VulkanDescriptorPoolManager(m_device);
+    m_descriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_device);
 }
 
 void VulkanRHI::Destroy()
 {
     // delete m_vkMemAllocator;
 
-    delete GVkMemAllocator;
+    ZEN_DELETE(GVkMemAllocator);
 
-    delete m_descriptorPoolManager;
+    ZEN_DELETE(m_descriptorPoolManager);
 
     for (auto* context : m_cmdListContexts)
     {
-        delete context;
+        ZEN_DELETE(context);
     }
 
     for (const auto& kv : m_renderPassCache)
@@ -314,7 +314,10 @@ void VulkanRHI::Destroy()
     }
 
     m_device->Destroy();
-    delete m_device;
+    ZEN_DELETE(m_device);
+
+    ZEN_DELETE(m_resourceFactory);
+
     // destroy debug utils messenger
     vkDestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);
     // destroy instance

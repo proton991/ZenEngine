@@ -15,6 +15,8 @@ class VulkanFence
 public:
     explicit VulkanFence(VulkanFenceManager* owner, bool createSignaled = false);
 
+    ~VulkanFence() = default;
+
     VkFence GetVkHandle() const
     {
         return m_fence;
@@ -31,8 +33,6 @@ public:
     }
 
 private:
-    ~VulkanFence() = default;
-
     enum class State
     {
         eInitial,

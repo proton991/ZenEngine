@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanHeaders.h"
+#include "VulkanTypes.h"
 #include "Templates/SmallVector.h"
 #include "Templates/HashMap.h"
 #include "Utils/Helpers.h"

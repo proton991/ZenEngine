@@ -1,11 +1,131 @@
 #include "Memory/Memory.h"
 #include "Utils/Errors.h"
 
-// #if defined(ZEN_DEBUG)
-// #endif
-
 namespace zen
 {
+#if defined(ZEN_DEBUG)
+std::atomic<size_t> DefaultAllocator::s_TotalAllocated{0};
+std::atomic<size_t> DefaultAllocator::s_TotalFreed{0};
+std::atomic<size_t> DefaultAllocator::s_CurrentUsage{0};
+std::atomic<size_t> DefaultAllocator::s_PeakUsage{0};
+#endif
+
+void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNum)
+{
+#if defined(ZEN_DEBUG)
+    const size_t totalSize = sizeof(AllocationHeader) + s;
+    AllocationHeader* header =
+        static_cast<AllocationHeader*>(DefaultAllocImpl(totalSize, alignment));
+
+    ASSERT(header != nullptr);
+
+    header->size_      = s;
+    header->pFileName  = pFileName;
+    header->lineNumber = lineNum;
+
+    s_TotalAllocated += s;
+    s_CurrentUsage += s;
+
+    size_t peak = s_PeakUsage.load();
+    while (s_CurrentUsage > peak && !s_PeakUsage.compare_exchange_weak(peak, s_CurrentUsage))
+    {
+    }
+
+    return header + 1;
+#else
+    void* pMemory = DefaultAllocImpl(size, alignment);
+    return pMemory;
+#endif
+}
+
+void* DefaultAllocator::Calloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNumm)
+{
+    void* p = Alloc(s, alignment, pFileName, lineNumm);
+    std::memset(p, 0, s);
+    return p;
+}
+
+void DefaultAllocator::Free(void* pMemory, const char* pFileName, uint32_t lineNumm)
+{
+    if (!pMemory)
+        return;
+
+#if defined(ZEN_DEBUG)
+    auto* header = static_cast<AllocationHeader*>(pMemory) - 1;
+    size_t size  = header->size_;
+
+    s_TotalFreed += size;
+    s_CurrentUsage -= size;
+
+    DefaultFreeImpl(header);
+#else
+    DefaultFreeImpl(pMemory);
+#endif
+}
+
+void* DefaultAllocator::Realloc(void* ptr,
+                                size_t newSize,
+                                size_t alignment,
+                                const char* pFileName,
+                                uint32_t lineNumm)
+{
+#if defined(ZEN_DEBUG)
+    if (!ptr)
+        return Alloc(newSize, alignment, pFileName, lineNumm);
+
+    auto* oldHeader = reinterpret_cast<AllocationHeader*>(ptr) - 1;
+    size_t oldSize  = oldHeader->size_;
+
+    const size_t totalSize = sizeof(AllocationHeader) + newSize;
+    void* raw              = DefaultReallocImpl(oldHeader, totalSize, alignment);
+    assert(raw);
+
+    auto* newHeader  = reinterpret_cast<AllocationHeader*>(raw);
+    newHeader->size_ = newSize;
+
+    if (newSize > oldSize)
+    {
+        s_TotalAllocated += (newSize - oldSize);
+        s_CurrentUsage += (newSize - oldSize);
+    }
+    else
+    {
+        s_TotalFreed += (oldSize - newSize);
+        s_CurrentUsage -= (oldSize - newSize);
+    }
+
+    size_t peak = s_PeakUsage.load();
+    while (s_CurrentUsage > peak && !s_PeakUsage.compare_exchange_weak(peak, s_CurrentUsage))
+    {
+    }
+
+    return newHeader + 1;
+#else
+    return DefaultReallocImpl(ptr, newSize, alignment);
+#endif
+}
+
+#if defined(ZEN_DEBUG)
+void DefaultAllocator::ReportMemUsage()
+{
+    LOGI("========== DefaultAllocator Memory Report ==========");
+    LOGI("Total Allocated : {} bytes", s_TotalAllocated.load());
+    LOGI("Total Freed     : {} bytes", s_TotalFreed.load());
+    LOGI("Current Usage   : {} bytes", s_CurrentUsage.load());
+    LOGI("Peak Usage      : {} bytes", s_PeakUsage.load());
+
+    if (s_CurrentUsage != 0)
+    {
+        LOGE("MEMORY LEAK DETECTED ({} bytes)", s_CurrentUsage.load());
+    }
+    else
+    {
+        LOGI("No memory leaks detected");
+    }
+    LOGI("====================================================");
+}
+#endif
+
 void* DefaultAllocator::DefaultAllocImpl(size_t size, size_t alignment)
 {
     void* pMem;
@@ -115,3 +235,36 @@ void DefaultAllocator::DefaultFreeImpl(void* pMem)
 //         DefaultAllocator::Free(ptr);
 //     }
 // }
+
+void* ZEN_CDECL operator new(size_t s, const char* pFileName, uint32_t lineNum) noexcept
+{
+    return zen::DefaultAllocator::Calloc(s, 1, pFileName, lineNum);
+}
+
+// void ZEN_CDECL operator delete(void* pMem)
+// {
+//     if (pMem)
+//     {
+//         zen::DefaultAllocator::Free(pMem);
+//     }
+// }
+
+void* operator new[](size_t s, const char* pFileName, uint32_t lineNum) noexcept
+{
+    return zen::DefaultAllocator::Calloc(s, 1, pFileName, lineNum);
+}
+
+void operator delete(void* pMem, const char* pFileName, uint32_t lineNum) noexcept
+{
+    if (pMem)
+    {
+        zen::DefaultAllocator::Free(pMem, pFileName, lineNum);
+    }
+}
+void operator delete[](void* pMem, const char* pFileName, uint32_t lineNum) noexcept
+{
+    if (pMem)
+    {
+        zen::DefaultAllocator::Free(pMem, pFileName, lineNum);
+    }
+}

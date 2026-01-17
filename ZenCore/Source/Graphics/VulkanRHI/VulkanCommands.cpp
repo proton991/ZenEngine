@@ -1,5 +1,6 @@
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"

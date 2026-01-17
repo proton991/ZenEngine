@@ -15,7 +15,7 @@ DynamicRHI* DynamicRHI::Create(RHIAPIType type)
 
     if (type == RHIAPIType::eVulkan)
     {
-        RHI = new VulkanRHI();
+        RHI = ZEN_NEW() VulkanRHI();
     }
     else
     {
@@ -34,7 +34,7 @@ RHIDebug* RHIDebug::Create()
     // VERIFY_EXPR(RHI != nullptr);
     if (GDynamicRHI != nullptr && GDynamicRHI->GetAPIType() == RHIAPIType::eVulkan)
     {
-        return new VulkanDebug();
+        return ZEN_NEW() VulkanDebug();
     }
     LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
 
@@ -46,7 +46,7 @@ RHICommandList* RHICommandList::Create(RHIAPIType type, RHICommandListContext* c
     VERIFY_EXPR(context != nullptr);
     if (context != nullptr && type == RHIAPIType::eVulkan)
     {
-        return new VulkanCommandList(dynamic_cast<VulkanCommandListContext*>(context));
+        return ZEN_NEW() VulkanCommandList(dynamic_cast<VulkanCommandListContext*>(context));
     }
     LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
 

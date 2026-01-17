@@ -1,3 +1,4 @@
+#include "Memory/Memory.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
@@ -11,11 +12,11 @@ VulkanCommandBufferPool::~VulkanCommandBufferPool()
 {
     for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers)
     {
-        delete cmdBuffer;
+        ZEN_DELETE(cmdBuffer);
     }
     for (VulkanCommandBuffer* cmdBuffer : m_freeCmdBuffers)
     {
-        delete cmdBuffer;
+        ZEN_DELETE(cmdBuffer);
     }
     vkDestroyCommandPool(m_device->GetVkHandle(), m_cmdPool, nullptr);
 }
@@ -55,7 +56,7 @@ VulkanCommandBuffer* VulkanCommandBufferPool::CreateCmdBuffer(bool isUploadOnly)
             return cmdBuffer;
         }
     }
-    VulkanCommandBuffer* newCmdBuffer = new VulkanCommandBuffer(this, isUploadOnly);
+    VulkanCommandBuffer* newCmdBuffer = ZEN_NEW() VulkanCommandBuffer(this, isUploadOnly);
     m_usedCmdBuffers.push_back(newCmdBuffer);
     return newCmdBuffer;
 }
