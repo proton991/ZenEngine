@@ -2,6 +2,7 @@
 #include "VulkanBuffer.h"
 #include "VulkanTexture.h"
 #include "VulkanPipeline.h"
+#include "VulkanViewport.h"
 #include "Memory/PagedAllocator.h"
 
 namespace zen

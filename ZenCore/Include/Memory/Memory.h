@@ -115,15 +115,15 @@ private:
 #endif
 };
 
-template <typename T, typename... Args> T* MemNew(Args&&... args)
-{
-    void* pMemory = DefaultAllocator::Alloc(sizeof(T));
-    if (!pMemory)
-    {
-        throw std::bad_alloc();
-    }
-    return new (pMemory) T(std::forward<Args>(args)...);
-}
+// template <typename T, typename... Args> T* MemNew(Args&&... args)
+// {
+//     void* pMemory = DefaultAllocator::Alloc(sizeof(T));
+//     if (!pMemory)
+//     {
+//         throw std::bad_alloc();
+//     }
+//     return new (pMemory) T(std::forward<Args>(args)...);
+// }
 } // namespace zen
 
 

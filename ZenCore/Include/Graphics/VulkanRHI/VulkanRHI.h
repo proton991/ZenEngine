@@ -37,7 +37,8 @@ using VersatileResource = VersatileResourceTemplate<VulkanShader,
                                                     VulkanSampler,
                                                     VulkanBuffer,
                                                     VulkanDescriptorSet,
-                                                    VulkanPipeline>;
+                                                    VulkanPipeline,
+                                                    VulkanViewport>;
 
 class VulkanRHI : public DynamicRHI
 {

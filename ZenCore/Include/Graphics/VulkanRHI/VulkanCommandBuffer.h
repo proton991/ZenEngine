@@ -1,6 +1,5 @@
 #pragma once
-
-#include "Templates/HashMap.h"
+#include <vector>
 #include "VulkanHeaders.h"
 
 namespace zen

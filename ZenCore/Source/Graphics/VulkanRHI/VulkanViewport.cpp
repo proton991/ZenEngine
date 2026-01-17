@@ -8,6 +8,7 @@
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanRenderPass.h"
+#include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 
 namespace zen
@@ -67,7 +68,10 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
                                              uint32_t height,
                                              bool enableVSync)
 {
-    VulkanViewport* pViewport = ZEN_NEW() VulkanViewport(pWindow, width, height, enableVSync);
+    VulkanViewport* pViewport =
+        VersatileResource::AllocMem<VulkanViewport>(GVulkanRHI->GetResourceAllocator());
+
+    new (pViewport) VulkanViewport(pWindow, width, height, enableVSync);
 
     pViewport->Init();
 
@@ -122,7 +126,7 @@ void VulkanViewport::Destroy()
 
     this->~VulkanViewport();
 
-    ZEN_DELETE(this);
+    VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
 void VulkanViewport::WaitForFrameCompletion()
