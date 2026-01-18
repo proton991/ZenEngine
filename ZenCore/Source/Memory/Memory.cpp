@@ -105,18 +105,24 @@ void* DefaultAllocator::Realloc(void* ptr,
 #endif
 }
 
+static double BytesToMB(size_t bytes)
+{
+    return static_cast<double>(bytes) / (1024.0 * 1024.0);
+}
+
 #if defined(ZEN_DEBUG)
 void DefaultAllocator::ReportMemUsage()
 {
     LOGI("========== DefaultAllocator Memory Report ==========");
-    LOGI("Total Allocated : {} bytes", s_TotalAllocated.load());
-    LOGI("Total Freed     : {} bytes", s_TotalFreed.load());
-    LOGI("Current Usage   : {} bytes", s_CurrentUsage.load());
-    LOGI("Peak Usage      : {} bytes", s_PeakUsage.load());
+
+    LOGI("Total Allocated : {:.2f} MB", BytesToMB(s_TotalAllocated.load()));
+    LOGI("Total Freed     : {:.2f} MB", BytesToMB(s_TotalFreed.load()));
+    LOGI("Current Usage   : {:.2f} MB", BytesToMB(s_CurrentUsage.load()));
+    LOGI("Peak Usage      : {:.2f} MB", BytesToMB(s_PeakUsage.load()));
 
     if (s_CurrentUsage != 0)
     {
-        LOGE("MEMORY LEAK DETECTED ({} bytes)", s_CurrentUsage.load());
+        LOGE("MEMORY LEAK DETECTED ({} MB)", BytesToMB(s_CurrentUsage.load()));
     }
     else
     {
