@@ -1490,8 +1490,8 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
     }
     const auto& currLevel = m_sortedNodes[level];
     const auto& nextLevel = m_sortedNodes[level + 1];
-    std::vector<RHIBufferTransition> bufferTransitions;
-    std::vector<RHITextureTransition> textureTransitions;
+    HeapVector<RHIBufferTransition> bufferTransitions;
+    HeapVector<RHITextureTransition> textureTransitions;
     BitField<RHIPipelineStageBits> srcStages;
     BitField<RHIPipelineStageBits> dstStages;
     for (const auto& srcNodeId : currLevel)
@@ -1515,9 +1515,10 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
                     // update tracker state
                     s_trackerPool.UpdateTrackerState(transition.buffer, transition.newAccessMode,
                                                      transition.newUsage);
+                    bufferTransitions.emplace_back(transition);
                 }
-                bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
-                                         transitions.end());
+                // bufferTransitions.insert(bufferTransitions.end(), transitions.begin(),
+                //                          transitions.end());
             }
             if (m_textureTransitions.contains(nodePairKey))
             {
@@ -1532,10 +1533,11 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
                     // update tracker state
                     s_trackerPool.UpdateTrackerState(transition.texture, transition.newAccessMode,
                                                      transition.newUsage);
+                    textureTransitions.emplace_back(transition);
                 }
 
-                textureTransitions.insert(textureTransitions.end(), transitions.begin(),
-                                          transitions.end());
+                // textureTransitions.insert(textureTransitions.end(), transitions.begin(),
+                //                           transitions.end());
             }
         }
     }
@@ -1544,8 +1546,8 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
 
 void RenderGraph::EmitInitializationBarriers(uint32_t level)
 {
-    std::vector<RHITextureTransition> textureTransitions;
-    std::vector<RHIBufferTransition> bufferTransitions;
+    HeapVector<RHITextureTransition> textureTransitions;
+    HeapVector<RHIBufferTransition> bufferTransitions;
     BitField<RHIPipelineStageBits> srcStages;
     BitField<RHIPipelineStageBits> dstStages;
     srcStages.SetFlag(RHIPipelineStageBits::eAllCommands); // todo: is it correct?

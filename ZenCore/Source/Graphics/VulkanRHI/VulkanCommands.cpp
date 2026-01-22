@@ -59,9 +59,9 @@ void VulkanCommandList::EndTransferWorkload()
 void VulkanCommandList::AddPipelineBarrier(
     BitField<RHIPipelineStageBits> srcStages,
     BitField<RHIPipelineStageBits> dstStages,
-    const std::vector<RHIMemoryTransition>& memoryTransitions,
-    const std::vector<RHIBufferTransition>& bufferTransitions,
-    const std::vector<RHITextureTransition>& textureTransitions)
+    const HeapVector<RHIMemoryTransition>& memoryTransitions,
+    const HeapVector<RHIBufferTransition>& bufferTransitions,
+    const HeapVector<RHITextureTransition>& textureTransitions)
 {
     VulkanPipelineBarrier barrier;
 

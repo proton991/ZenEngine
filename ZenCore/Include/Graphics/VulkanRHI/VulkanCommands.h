@@ -47,9 +47,9 @@ public:
 
     void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,
                             BitField<RHIPipelineStageBits> dstStages,
-                            const std::vector<RHIMemoryTransition>& memoryTransitions,
-                            const std::vector<RHIBufferTransition>& bufferTransitions,
-                            const std::vector<RHITextureTransition>& textureTransitions) final;
+                            const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                            const HeapVector<RHIBufferTransition>& bufferTransitions,
+                            const HeapVector<RHITextureTransition>& textureTransitions) final;
 
     void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) final;
 

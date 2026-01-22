@@ -1,8 +1,8 @@
 #pragma once
-#include "Utils/Errors.h"
 #include <fstream>
 #include <string>
 #include <vector>
+#include "Utils/Errors.h"
 
 namespace zen::platform
 {

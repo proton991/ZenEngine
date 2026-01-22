@@ -8,10 +8,12 @@ set(ZEN_CORE_HEADERS
 
     Include/Templates/ArrayView.h
     Include/Templates/BitField.h
+    Include/Templates/BitMask.h
     Include/Templates/HashMap.h
     Include/Templates/Queue.h
     Include/Templates/SmallVector.h
     Include/Templates/ArenaVector.h
+    Include/Templates/HeapVector.h
 
     Include/Utils/ConditionVariable.h
     Include/Utils/Counter.h

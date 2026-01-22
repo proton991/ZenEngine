@@ -2,6 +2,7 @@
 // #include "RHICommon.h"
 #include "RHIResource.h"
 #include "Memory/Memory.h"
+#include "Templates/HeapVector.h"
 
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
 namespace zen
@@ -504,9 +505,9 @@ public:
 
     virtual void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                 BitField<RHIPipelineStageBits> dstStages,
-                                const std::vector<RHIMemoryTransition>& memoryTransitions,
-                                const std::vector<RHIBufferTransition>& bufferTransitions,
-                                const std::vector<RHITextureTransition>& textureTransitions);
+                                const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                                const HeapVector<RHIBufferTransition>& bufferTransitions,
+                                const HeapVector<RHITextureTransition>& textureTransitions);
 
     virtual void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
 

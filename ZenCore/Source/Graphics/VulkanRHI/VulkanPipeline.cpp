@@ -203,23 +203,31 @@ void VulkanShader::Init()
     m_specializationInfo.dataSize = specConstants.size() * sizeof(RHIShaderSpecializationConstant);
     m_specializationInfo.pData    = specConstants.empty() ? nullptr : specConstants.data();
 
-    for (auto& kv : sgInfo.sprivCode)
+    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
     {
-        VkShaderModuleCreateInfo shaderModuleCI;
-        InitVkStruct(shaderModuleCI, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
-        shaderModuleCI.codeSize = kv.second.size();
-        shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(kv.second.data());
-        VkShaderModule module{VK_NULL_HANDLE};
-        VKCHECK(vkCreateShaderModule(GVulkanRHI->GetVkDevice(), &shaderModuleCI, nullptr, &module));
+        RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+        if (m_shaderGroupSPIRV->HasShaderStage(stage))
+        {
+            const std::vector<uint8_t>& spirvCode = m_shaderGroupSPIRV->GetStageSPIRV(stage);
 
-        VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
-        InitVkStruct(pipelineShaderStageCI, VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO);
-        pipelineShaderStageCI.stage               = ShaderStageToVkShaderStageFlagBits(kv.first);
-        pipelineShaderStageCI.pName               = "main";
-        pipelineShaderStageCI.module              = module;
-        pipelineShaderStageCI.pSpecializationInfo = &m_specializationInfo;
+            VkShaderModuleCreateInfo shaderModuleCI;
+            InitVkStruct(shaderModuleCI, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
+            shaderModuleCI.codeSize = spirvCode.size();
+            shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(spirvCode.data());
+            VkShaderModule module{VK_NULL_HANDLE};
+            VKCHECK(
+                vkCreateShaderModule(GVulkanRHI->GetVkDevice(), &shaderModuleCI, nullptr, &module));
 
-        m_stageCreateInfos.push_back(pipelineShaderStageCI);
+            VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
+            InitVkStruct(pipelineShaderStageCI,
+                         VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO);
+            pipelineShaderStageCI.stage               = ShaderStageToVkShaderStageFlagBits(stage);
+            pipelineShaderStageCI.pName               = "main";
+            pipelineShaderStageCI.module              = module;
+            pipelineShaderStageCI.pSpecializationInfo = &m_specializationInfo;
+
+            m_stageCreateInfos.push_back(pipelineShaderStageCI);
+        }
     }
     // Create descriptor pool key while createing descriptor set layouts
     // VulkanDescriptorPoolKey descriptorPoolKey{};
@@ -811,9 +819,8 @@ void VulkanPipeline::InitGraphics()
     MSStateCI.sampleShadingEnable   = multisampleState.enableSampleShading;
     MSStateCI.minSampleShading      = multisampleState.minSampleShading;
     MSStateCI.alphaToCoverageEnable = multisampleState.enableAlphaToCoverage;
-    MSStateCI.alphaToOneEnable      = multisampleState.enbaleAlphaToOne;
-    MSStateCI.pSampleMask =
-        multisampleState.sampleMasks.empty() ? nullptr : multisampleState.sampleMasks.data();
+    MSStateCI.alphaToOneEnable      = multisampleState.enableAlphaToOne;
+    MSStateCI.pSampleMask           = &multisampleState.sampleMasks;
 
     // Depth Stencil
     const auto& depthStencilState = m_gfxStates.depthStencilState;
@@ -847,8 +854,8 @@ void VulkanPipeline::InitGraphics()
     // Color Blend State
     const auto& colorBlendState = m_gfxStates.colorBlendState;
     std::vector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
-    vkCBAttStates.resize(colorBlendState.attachments.size());
-    for (uint32_t i = 0; i < colorBlendState.attachments.size(); i++)
+    vkCBAttStates.resize(colorBlendState.attachmentsMask.Count());
+    for (uint32_t i : colorBlendState.attachmentsMask)
     {
         vkCBAttStates[i].blendEnable = colorBlendState.attachments[i].enableBlend;
 
@@ -862,24 +869,28 @@ void VulkanPipeline::InitGraphics()
             ToVkBlendFactor(colorBlendState.attachments[i].srcAlphaBlendFactor);
         vkCBAttStates[i].dstAlphaBlendFactor =
             ToVkBlendFactor(colorBlendState.attachments[i].dstAlphaBlendFactor);
-        vkCBAttStates[i].alphaBlendOp = ToVkBlendOp(colorBlendState.attachments[i].alphaBlendOp);
+        vkCBAttStates[i].alphaBlendOp   = ToVkBlendOp(colorBlendState.attachments[i].alphaBlendOp);
+        vkCBAttStates[i].colorWriteMask = colorBlendState.attachments[i].colorWriteMask;
 
-        if (colorBlendState.attachments[i].writeR)
-        {
-            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
-        }
-        if (colorBlendState.attachments[i].writeG)
-        {
-            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
-        }
-        if (colorBlendState.attachments[i].writeB)
-        {
-            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
-        }
-        if (colorBlendState.attachments[i].writeA)
-        {
-            vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
-        }
+        // vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        //     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+        // if (colorBlendState.attachments[i].writeR)
+        // {
+        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
+        // }
+        // if (colorBlendState.attachments[i].writeG)
+        // {
+        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
+        // }
+        // if (colorBlendState.attachments[i].writeB)
+        // {
+        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
+        // }
+        // if (colorBlendState.attachments[i].writeA)
+        // {
+        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
+        // }
     }
     VkPipelineColorBlendStateCreateInfo CBStateCI;
     InitVkStruct(CBStateCI, VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO);
@@ -895,13 +906,15 @@ void VulkanPipeline::InitGraphics()
     // Dynamic States
     VkPipelineDynamicStateCreateInfo dynamicStateCI;
     InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
-    std::vector<VkDynamicState> vkDynamicStates(m_gfxStates.dynamicStates.size());
-    for (uint32_t i = 0; i < m_gfxStates.dynamicStates.size(); i++)
+
+    uint32_t numDynamicStates = m_gfxStates.dynamicStates.enabledStates.Count();
+    std::vector<VkDynamicState> vkDynamicStates(numDynamicStates);
+    for (uint32_t i : m_gfxStates.dynamicStates.enabledStates)
     {
-        vkDynamicStates[i] = ToVkDynamicState(m_gfxStates.dynamicStates[i]);
+        vkDynamicStates[i] = ToVkDynamicState(static_cast<RHIDynamicState>(i));
     }
-    dynamicStateCI.dynamicStateCount = static_cast<uint32_t>(m_gfxStates.dynamicStates.size());
-    dynamicStateCI.pDynamicStates    = vkDynamicStates.empty() ? nullptr : vkDynamicStates.data();
+    dynamicStateCI.dynamicStateCount = numDynamicStates;
+    dynamicStateCI.pDynamicStates    = numDynamicStates == 0 ? nullptr : vkDynamicStates.data();
 
     VulkanShader* shader = TO_VK_SHADER(m_shader);
 

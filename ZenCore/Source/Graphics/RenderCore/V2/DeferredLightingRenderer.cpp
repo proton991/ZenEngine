@@ -214,9 +214,8 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
         pso.depthStencilState =
             RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
         pso.multiSampleState = {};
-        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(5);
-        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.colorBlendState.AddAttachments(5);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.offscreen =
@@ -248,9 +247,9 @@ void DeferredLightingRenderer::BuildGraphicsPasses()
         pso.primitiveType      = RHIDrawPrimitiveType::eTriangleList;
         pso.rasterizationState = {};
         pso.multiSampleState   = {};
-        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
-        pso.colorBlendState   = RHIGfxPipelineColorBlendState::CreateDisabled(1);
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
+        pso.colorBlendState.AddAttachment();
         pso.depthStencilState = RHIGfxPipelineDepthStencilState::Create(
             true, true, RHIDepthCompareOperator::eLessOrEqual);
 

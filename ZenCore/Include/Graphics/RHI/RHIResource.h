@@ -1,9 +1,9 @@
 #pragma once
-#include <atomic>
+#include "RHICommon.h"
 #include "Utils/RefCountPtr.h"
 #include "Utils/Helpers.h"
-#include "RHICommon.h"
 #include "Utils/Errors.h"
+#include "Templates/HashMap.h"
 
 namespace zen
 {
@@ -653,7 +653,7 @@ struct RHIRenderingLayout
     uint32_t numLayers{1};
     uint32_t numColorRenderTargets{0};
     bool hasDepthStencilRT{false};
-    RHIRenderTarget colorRenderTargets[MAX_COLOR_ATTACHMENT_COUNT];
+    RHIRenderTarget colorRenderTargets[MAX_NUM_COLOR_ATTACHMENTS];
     RHIRenderTarget depthStencilRenderTarget;
 
     uint32_t GetTotalNumRenderTarges() const

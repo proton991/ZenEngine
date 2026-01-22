@@ -133,9 +133,8 @@ void SkyboxRenderer::BuildGraphicsPasses()
     pso.depthStencilState  = RHIGfxPipelineDepthStencilState::Create(
         false, false, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
-    pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
-    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+    pso.colorBlendState.AddAttachment();
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
     {
         GraphicsPassBuilder builder(m_renderDevice);
@@ -173,9 +172,8 @@ void SkyboxRenderer::BuildGraphicsPasses()
         pso.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
             true, false, RHIDepthCompareOperator::eLessOrEqual);
         pso.multiSampleState = {};
-        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
-        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.colorBlendState.AddAttachment();
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
         GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.skybox =
@@ -426,9 +424,8 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     pso.depthStencilState  = RHIGfxPipelineDepthStencilState::Create(
         false, false, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
-    pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
-    pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-    pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+    pso.colorBlendState.AddAttachment();
+    pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
     GraphicsPassBuilder builder(m_renderDevice);
     m_gfxPasses.lutBRDF = builder

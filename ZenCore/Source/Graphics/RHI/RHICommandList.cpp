@@ -50,9 +50,9 @@ void FRHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::P
 
 void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                      BitField<RHIPipelineStageBits> dstStages,
-                                     const std::vector<RHIMemoryTransition>& memoryTransitions,
-                                     const std::vector<RHIBufferTransition>& bufferTransitions,
-                                     const std::vector<RHITextureTransition>& textureTransitions)
+                                     const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                                     const HeapVector<RHIBufferTransition>& bufferTransitions,
+                                     const HeapVector<RHITextureTransition>& textureTransitions)
 {
     const uint32_t numMemoryTransitions  = memoryTransitions.size();
     const uint32_t numBufferTransitions  = bufferTransitions.size();

@@ -2,14 +2,14 @@
 #include "Graphics/Common/Format.h"
 #include "Graphics/Common/Color.h"
 #include "Templates/BitField.h"
-#include "Templates/HashMap.h"
 #include "Templates/SmallVector.h"
 #include "Math/Math.h"
+#include "Templates/BitMask.h"
+#include "Templates/HeapVector.h"
 #include <string>
-#include <vector>
 
-#define MAX_COLOR_ATTACHMENT_COUNT 8
-#define MAX_SUBPASS_COUNT          8
+#define MAX_NUM_COLOR_ATTACHMENTS 8
+#define MAX_NUM_SUBPASSES         8
 
 #define MAX_NUM_DESCRIPTOR_SETS 8
 
@@ -226,17 +226,17 @@ struct RHIShaderGroupInfo
         BitField<RHIShaderStageFlagBits> stageFlags;
     };
 
-    HashMap<RHIShaderStage, std::vector<uint8_t>> sprivCode;
+    // HashMap<RHIShaderStage, HeapVector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
     // vertex input attribute
-    std::vector<VertexInputAttribute> vertexInputAttributes;
+    HeapVector<VertexInputAttribute> vertexInputAttributes;
     // vertex binding stride
     uint32_t vertexBindingStride{0};
     // per set shader resources
-    // std::vector<std::vector<RHIShaderResourceDescriptor>> SRDs;
+    // HeapVector<HeapVector<RHIShaderResourceDescriptor>> SRDs;
     RHIShaderResourceDescriptorTable SRDTable;
     // specialization constants
-    std::vector<RHIShaderSpecializationConstant> specializationConstants;
+    HeapVector<RHIShaderSpecializationConstant> specializationConstants;
     std::string name;
 };
 
@@ -329,8 +329,13 @@ struct RHIGfxPipelineMultiSampleState
     bool enableSampleShading{false};
     float minSampleShading{0.0f};
     bool enableAlphaToCoverage{false};
-    bool enbaleAlphaToOne{false};
-    std::vector<uint32_t> sampleMasks;
+    bool enableAlphaToOne{false};
+    uint32_t sampleMasks{0};
+
+    RHIGfxPipelineMultiSampleState()
+    {
+        sampleMasks = 1u << ToUnderlying(sampleCount);
+    }
 };
 
 enum class RHIStencilOp : uint32_t
@@ -416,6 +421,15 @@ enum class RHIBlendOp : uint32_t
     eMax              = 5
 };
 
+enum class RHIColorComponent : uint32_t
+{
+    eRed   = 0x00000001,
+    eGreen = 0x00000002,
+    eBlue  = 0x00000004,
+    eAlpha = 0x00000008,
+    eMax   = 0x7FFFFFFF
+};
+
 struct RHIGfxPipelineColorBlendState
 {
     bool enableLogicOp{false};
@@ -430,55 +444,103 @@ struct RHIGfxPipelineColorBlendState
         RHIBlendFactor srcAlphaBlendFactor{RHIBlendFactor::eZero};
         RHIBlendFactor dstAlphaBlendFactor{RHIBlendFactor::eZero};
         RHIBlendOp alphaBlendOp{RHIBlendOp::eAdd};
-        bool writeR{true};
-        bool writeG{true};
-        bool writeB{true};
-        bool writeA{true};
+        // bool writeR{true};
+        // bool writeG{true};
+        // bool writeB{true};
+        // bool writeA{true};
+        BitField<RHIColorComponent> colorWriteMask;
     };
 
-    static RHIGfxPipelineColorBlendState CreateColorWriteDisabled(int count = 1)
+    // adds 1 default color attachment state
+    RHIGfxPipelineColorBlendState& AddAttachment()
     {
-        RHIGfxPipelineColorBlendState bs;
-        for (int i = 0; i < count; i++)
+        ASSERT(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS);
+
+        attachmentsMask.Set(attachmentIdx);
+
+        Attachment attachment{};
+        attachment.enableBlend = false;
+        attachment.colorWriteMask.SetFlags(RHIColorComponent::eRed, RHIColorComponent::eGreen,
+                                           RHIColorComponent::eBlue, RHIColorComponent::eAlpha);
+        attachments[attachmentIdx++] = attachment;
+        return *this;
+    }
+
+    // adds multiple color attachment states
+    RHIGfxPipelineColorBlendState& AddAttachments(uint32_t count)
+    {
+        ASSERT(attachmentIdx + count < MAX_NUM_COLOR_ATTACHMENTS);
+
+        for (uint32_t i = 0; i < count; i++)
         {
+            attachmentsMask.Set(attachmentIdx);
+
             Attachment attachment{};
-            attachment.writeR = false;
-            attachment.writeG = false;
-            attachment.writeB = false;
-            attachment.writeA = false;
-            bs.attachments.emplace_back(attachment);
+            attachment.enableBlend = false;
+            attachment.colorWriteMask.SetFlags(RHIColorComponent::eRed, RHIColorComponent::eGreen,
+                                               RHIColorComponent::eBlue, RHIColorComponent::eAlpha);
+            attachments[attachmentIdx++] = attachment;
         }
-        return bs;
+
+        return *this;
     }
 
-    static RHIGfxPipelineColorBlendState CreateDisabled(int count = 1)
+    // adds user-defined attachment state
+    RHIGfxPipelineColorBlendState& AddAttachment(Attachment attachment)
     {
-        RHIGfxPipelineColorBlendState bs;
-        for (int i = 0; i < count; i++)
-        {
-            bs.attachments.emplace_back();
-        }
-        return bs;
+        ASSERT(attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS);
+
+        attachmentsMask.Set(attachmentIdx);
+
+        attachments[attachmentIdx++] = std::move(attachment);
+        return *this;
     }
 
-    static RHIGfxPipelineColorBlendState CreateBlend(int count = 1)
-    {
-        RHIGfxPipelineColorBlendState bs;
-        for (int i = 0; i < count; i++)
-        {
-            Attachment ba;
-            ba.enableBlend         = true;
-            ba.srcColorBlendFactor = RHIBlendFactor::eSrcAlpha;
-            ba.dstColorBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
-            ba.srcAlphaBlendFactor = RHIBlendFactor::eSrcAlpha;
-            ba.dstAlphaBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
+    // static RHIGfxPipelineColorBlendState CreateColorWriteDisabled(int count = 1)
+    // {
+    //     RHIGfxPipelineColorBlendState bs;
+    //     for (int i = 0; i < count; i++)
+    //     {
+    //         Attachment attachment{};
+    //         attachment.writeR = false;
+    //         attachment.writeG = false;
+    //         attachment.writeB = false;
+    //         attachment.writeA = false;
+    //         bs.attachments[].emplace_back(attachment);
+    //     }
+    //     return bs;
+    // }
 
-            bs.attachments.emplace_back(ba);
-        }
-        return bs;
-    }
+    // static RHIGfxPipelineColorBlendState CreateDisabled(int count = 1)
+    // {
+    //     RHIGfxPipelineColorBlendState bs;
+    //     for (int i = 0; i < count; i++)
+    //     {
+    //         bs.attachments.emplace_back();
+    //     }
+    //     return bs;
+    // }
 
-    std::vector<Attachment> attachments; // One per render target texture.
+    // static RHIGfxPipelineColorBlendState CreateBlend(int count = 1)
+    // {
+    //     RHIGfxPipelineColorBlendState bs;
+    //     for (int i = 0; i < count; i++)
+    //     {
+    //         Attachment ba;
+    //         ba.enableBlend         = true;
+    //         ba.srcColorBlendFactor = RHIBlendFactor::eSrcAlpha;
+    //         ba.dstColorBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
+    //         ba.srcAlphaBlendFactor = RHIBlendFactor::eSrcAlpha;
+    //         ba.dstAlphaBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
+    //
+    //         bs.attachments.emplace_back(ba);
+    //     }
+    //     return bs;
+    // }
+
+    uint32_t attachmentIdx{0};
+    BitMask<MAX_NUM_COLOR_ATTACHMENTS> attachmentsMask;
+    Attachment attachments[MAX_NUM_COLOR_ATTACHMENTS]; // One per render target texture.
     Color blendConstants;
 };
 
@@ -491,6 +553,22 @@ enum class RHIDynamicState : uint32_t
     eMax       = 4
 };
 
+struct RHIDynamicStateArray
+{
+    EnumBitMask<RHIDynamicState> enabledStates;
+
+    void Enable(RHIDynamicState state)
+    {
+        enabledStates.Set(ToUnderlying(state));
+    }
+
+    template <typename... States> void Enable(RHIDynamicState first, States... rest)
+    {
+        Enable(first);
+        (Enable(rest), ...);
+    }
+};
+
 struct RHIGfxPipelineStates
 {
     RHIDrawPrimitiveType primitiveType{RHIDrawPrimitiveType::eTriangleList};
@@ -498,7 +576,7 @@ struct RHIGfxPipelineStates
     RHIGfxPipelineMultiSampleState multiSampleState;
     RHIGfxPipelineDepthStencilState depthStencilState;
     RHIGfxPipelineColorBlendState colorBlendState;
-    std::vector<RHIDynamicState> dynamicStates;
+    RHIDynamicStateArray dynamicStates;
 };
 
 /*****************************/
@@ -1001,15 +1079,15 @@ public:
 
 private:
     uint32_t m_numColorRT{0};
-    std::vector<RHIRenderTarget> m_colorRTs;
+    HeapVector<RHIRenderTarget> m_colorRTs;
     RHIRenderTarget m_depthStencilRT;
     // SampleCount m_numSamples{SampleCount::e1};
     // RHIRenderTargetLoadOp m_colorRToadOp{RHIRenderTargetLoadOp::eNone};
     // RHIRenderTargetStoreOp m_colorRTStoreOp{RHIRenderTargetStoreOp::eNone};
     // RHIRenderTargetLoadOp m_depthStencilRTLoadOp{RHIRenderTargetLoadOp::eNone};
     // RHIRenderTargetStoreOp m_depthStencilRTStoreOp{RHIRenderTargetStoreOp::eNone};
-    // std::vector<TextureHandle> m_rtHandles;
-    // std::vector<RHITextureSubResourceRange> m_rtSubResRanges;
+    // HeapVector<TextureHandle> m_rtHandles;
+    // HeapVector<RHITextureSubResourceRange> m_rtSubResRanges;
     bool m_hasDepthStencilRT{false};
 };
 

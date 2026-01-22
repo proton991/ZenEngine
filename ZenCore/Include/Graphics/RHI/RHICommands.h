@@ -1,5 +1,6 @@
 #pragma once
 #include "RHICommon.h"
+#include "Templates/HeapVector.h"
 #include "Templates/SmallVector.h"
 
 namespace zen
@@ -35,12 +36,11 @@ public:
 
     virtual ~RHICommandList() = default;
 
-    virtual void AddPipelineBarrier(
-        BitField<RHIPipelineStageBits> srcStages,
-        BitField<RHIPipelineStageBits> dstStages,
-        const std::vector<RHIMemoryTransition>& memoryTransitions,
-        const std::vector<RHIBufferTransition>& bufferTransitions,
-        const std::vector<RHITextureTransition>& textureTransitions) = 0;
+    virtual void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,
+                                    BitField<RHIPipelineStageBits> dstStages,
+                                    const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                                    const HeapVector<RHIBufferTransition>& bufferTransitions,
+                                    const HeapVector<RHITextureTransition>& textureTransitions) = 0;
 
     virtual void ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size) = 0;
 

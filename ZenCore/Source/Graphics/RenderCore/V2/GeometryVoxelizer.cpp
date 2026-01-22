@@ -139,9 +139,8 @@ void GeometryVoxelizer::BuildGraphicsPasses()
         pso.depthStencilState =
             RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eNever);
         pso.multiSampleState = {};
-        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled();
-        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.colorBlendState.AddAttachment();
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.voxelization =
@@ -166,9 +165,9 @@ void GeometryVoxelizer::BuildGraphicsPasses()
         pso.depthStencilState =
             RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
         pso.multiSampleState = {};
-        pso.colorBlendState  = RHIGfxPipelineColorBlendState::CreateDisabled(1);
-        pso.dynamicStates.push_back(RHIDynamicState::eScissor);
-        pso.dynamicStates.push_back(RHIDynamicState::eViewPort);
+        pso.colorBlendState.AddAttachment();
+        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
 
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.voxelDraw =

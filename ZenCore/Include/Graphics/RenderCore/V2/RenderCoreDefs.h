@@ -1,16 +1,19 @@
 #pragma once
 #include "Graphics/RHI/DynamicRHI.h"
 
-#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)                                   \
-    {                                                                                              \
-        RHIShaderResourceBinding binding{};                                                        \
-        binding.binding = index_;                                                                  \
-        binding.type    = type_;                                                                   \
-        {                                                                                          \
-            std::initializer_list<RHIResource*> resources = {__VA_ARGS__};                         \
-            binding.resources.insert(binding.resources.end(), resources.begin(), resources.end()); \
-        }                                                                                          \
-        bindings_.emplace_back(std::move(binding));                                                \
+#define ADD_SHADER_BINDING_SINGLE(bindings_, index_, type_, ...)           \
+    {                                                                      \
+        RHIShaderResourceBinding binding{};                                \
+        binding.binding = index_;                                          \
+        binding.type    = type_;                                           \
+        {                                                                  \
+            std::initializer_list<RHIResource*> resources = {__VA_ARGS__}; \
+            for (RHIResource * resource : resources)                       \
+            {                                                              \
+                binding.resources.push_back(resource);                     \
+            }                                                              \
+        }                                                                  \
+        bindings_.emplace_back(std::move(binding));                        \
     }
 
 #define ADD_SHADER_BINDING_TEXTURE_ARRAY(bindings_, index_, type_, sampler_, textures_) \

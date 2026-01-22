@@ -384,9 +384,9 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
         RHIShaderStage stage = static_cast<RHIShaderStage>(i);
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
-            shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
+            // shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
             SpvReflectShaderModule module;
-            const std::vector<uint8_t>& spirvCode = shaderGroupInfo.sprivCode[stage];
+            const std::vector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
             SpvReflectResult result =
                 spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
             if (result != SPV_REFLECT_RESULT_SUCCESS)
@@ -434,10 +434,10 @@ inline void RHIShaderUtil::PrintShaderGroupInfo(const RHIShaderGroupInfo& sgInfo
 {
     LOGI("======= Begin Printing RHIShaderGroupInfo =======")
     std::string stagesStr;
-    for (const auto& kv : sgInfo.sprivCode)
-    {
-        stagesStr += RHIShaderStageToString(kv.first) + " ";
-    }
+    // for (const auto& kv : sgInfo.sprivCode)
+    // {
+    //     stagesStr += RHIShaderStageToString(kv.first) + " ";
+    // }
     LOGI("Shader Stages: {}", stagesStr);
     LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name, sgInfo.pushConstants.size);
     LOGI("SRD Set Count={}", sgInfo.SRDTable.size());
