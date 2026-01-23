@@ -202,7 +202,7 @@ struct RHIShaderResourceBinding
 {
     RHIShaderResourceType type{RHIShaderResourceType::eMax};
     uint32_t binding{0};
-    std::vector<RHIResource*> resources;
+    HeapVector<RHIResource*> resources;
 };
 
 using RHIShaderResourceDescriptorTable =

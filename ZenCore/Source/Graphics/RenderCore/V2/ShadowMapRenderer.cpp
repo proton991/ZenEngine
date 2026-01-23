@@ -139,7 +139,6 @@ void ShadowMapRenderer::BuildGraphicsPasses()
         pso.colorBlendState.AddAttachment();
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
-
         rc::GraphicsPassBuilder builder(m_renderDevice);
         m_gfxPasses.evsm =
             builder
@@ -163,18 +162,17 @@ void ShadowMapRenderer::BuildRenderGraph()
     {
         ShadowMapRenderSP* shaderProgram =
             dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
-        std::vector<RHIRenderPassClearValue> clearValues(2);
-        clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[1].depth   = 1.0f;
-        clearValues[1].stencil = 0;
+        // std::vector<RHIRenderPassClearValue> clearValues(2);
+        // clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[1].depth   = 1.0f;
+        // clearValues[1].stencil = 0;
 
         Rect2<int> area(0, static_cast<int>(m_config.shadowMapWidth), 0,
                         static_cast<int>(m_config.shadowMapHeight));
         Rect2<float> viewport(static_cast<float>(m_config.shadowMapWidth),
                               static_cast<float>(m_config.shadowMapHeight));
 
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, area, clearValues, "shadowmap_offscreen");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.evsm, "shadowmap_offscreen");
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenTextures.shadowMap, RHITextureUsage::eColorAttachment,
         //     m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),
@@ -212,8 +210,8 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
     {
         ShadowMapRenderSP* shaderProgram =
             dynamic_cast<ShadowMapRenderSP*>(m_gfxPasses.evsm->shaderProgram);
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eUniformBuffer,
                                   shaderProgram->GetUniformBufferHandle("uLightInfo"));
@@ -229,8 +227,8 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
                                          m_scene->GetSceneTextures())
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.evsm);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
             .Update();
     }
 }

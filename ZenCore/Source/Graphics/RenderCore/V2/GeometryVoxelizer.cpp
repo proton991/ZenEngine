@@ -52,13 +52,12 @@ void GeometryVoxelizer::BuildRenderGraph()
         VoxelizationSP* shaderProgram =
             dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization->shaderProgram);
         const uint32_t cFbSize = m_voxelTexResolution;
-        std::vector<RHIRenderPassClearValue> clearValues(0);
+        // std::vector<RHIRenderPassClearValue> clearValues(0);
         // clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, area, clearValues,
-                                                "geom_voxelization");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, "geom_voxelization");
 
         // TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
         //                                          m_voxelTextures.normal, m_voxelTextures.emissive};
@@ -101,18 +100,17 @@ void GeometryVoxelizer::BuildRenderGraph()
         VoxelDrawSP* shaderProgram =
             dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw->shaderProgram);
 
-        std::vector<RHIRenderPassClearValue> clearValues(2);
-        clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[1].depth   = 1.0f;
-        clearValues[1].stencil = 0;
+        // std::vector<RHIRenderPassClearValue> clearValues(2);
+        // clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[1].depth   = 1.0f;
+        // clearValues[1].stencil = 0;
 
         Rect2<int> area(0, static_cast<int>(m_viewport->GetWidth()), 0,
                         static_cast<int>(m_viewport->GetHeight()));
         Rect2<float> viewport(static_cast<float>(m_viewport->GetWidth()),
                               static_cast<float>(m_viewport->GetHeight()));
 
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, "geom_voxel_draw");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, "geom_voxel_draw");
 
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_voxelTextures.albedo, RHITextureUsage::eStorage,
@@ -188,9 +186,9 @@ void GeometryVoxelizer::UpdatePassResources()
 {
     // voxelization pass
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
-        std::vector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetNodesDataSSBO());
@@ -215,14 +213,14 @@ void GeometryVoxelizer::UpdatePassResources()
                                          m_scene->GetSceneTextures())
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelization);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
             .Update();
     }
     // voxel draw pass
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
                                   m_voxelTextures.albedoProxy);
         ADD_SHADER_BINDING_SINGLE(
@@ -230,7 +228,7 @@ void GeometryVoxelizer::UpdatePassResources()
             m_gfxPasses.voxelDraw->shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
 
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelDraw);
-        updater.SetShaderResourceBinding(0, set0bindings).Update();
+        updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
 }
 

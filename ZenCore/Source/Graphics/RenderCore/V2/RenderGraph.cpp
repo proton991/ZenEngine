@@ -156,10 +156,7 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* parent,
 //     return node;
 // }
 
-RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass,
-                                              Rect2<int> area,
-                                              VectorView<RHIRenderPassClearValue> clearValues,
-                                              std::string tag)
+RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass, std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
     auto* node         = AllocNode<RDGGraphicsPassNode>();

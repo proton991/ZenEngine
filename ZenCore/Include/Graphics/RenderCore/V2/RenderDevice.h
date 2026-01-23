@@ -75,11 +75,10 @@ public:
     //     RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
     //     RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eNone);
 
-    GraphicsPassBuilder& SetShaderResourceBinding(
-        uint32_t setIndex,
-        const std::vector<RHIShaderResourceBinding>& bindings)
+    GraphicsPassBuilder& SetShaderResourceBinding(uint32_t setIndex,
+                                                  HeapVector<RHIShaderResourceBinding>&& bindings)
     {
-        m_dsBindings[setIndex] = bindings;
+        m_dsBindings[setIndex] = std::move(bindings);
         return *this;
     }
 
@@ -135,7 +134,7 @@ private:
     // RHIRenderingLayout* m_pRenderingLayout{nullptr};
     // RHIRenderPassLayout m_rpLayout{};
     RHIFramebufferInfo m_framebufferInfo{};
-    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, HeapVector<RHIShaderResourceBinding>> m_dsBindings;
     HashMap<uint32_t, int> m_specializationConstants;
 };
 
@@ -148,9 +147,9 @@ public:
 
     GraphicsPassResourceUpdater& SetShaderResourceBinding(
         uint32_t setIndex,
-        const std::vector<RHIShaderResourceBinding>& bindings)
+        HeapVector<RHIShaderResourceBinding>&& bindings)
     {
-        m_dsBindings[setIndex] = bindings;
+        m_dsBindings[setIndex] = std::move(bindings);
         return *this;
     }
 
@@ -159,7 +158,7 @@ public:
 private:
     RenderDevice* m_renderDevice{nullptr};
     GraphicsPass* m_gfxPass{nullptr};
-    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, HeapVector<RHIShaderResourceBinding>> m_dsBindings;
 };
 
 class ComputePassBuilder
@@ -195,9 +194,9 @@ public:
 
     ComputePassResourceUpdater& SetShaderResourceBinding(
         uint32_t setIndex,
-        const std::vector<RHIShaderResourceBinding>& bindings)
+        HeapVector<RHIShaderResourceBinding>&& bindings)
     {
-        m_dsBindings[setIndex] = bindings;
+        m_dsBindings[setIndex] = std::move(bindings);
         return *this;
     }
 
@@ -206,7 +205,7 @@ public:
 private:
     RenderDevice* m_renderDevice{nullptr};
     ComputePass* m_computePass{nullptr};
-    HashMap<uint32_t, std::vector<RHIShaderResourceBinding>> m_dsBindings;
+    HashMap<uint32_t, HeapVector<RHIShaderResourceBinding>> m_dsBindings;
 };
 
 enum class StagingFlushAction : uint32_t

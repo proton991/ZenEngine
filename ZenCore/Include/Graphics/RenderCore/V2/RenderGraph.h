@@ -575,10 +575,7 @@ public:
     //                                  bool hasColorTarget,
     //                                  bool hasDepthTarget = false);
 
-    RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass,
-                                     Rect2<int> area,
-                                     VectorView<RHIRenderPassClearValue> clearValues,
-                                     std::string tag);
+    RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass, std::string tag);
 
     void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
                                             RHIBuffer* bufferHandle,

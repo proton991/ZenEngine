@@ -99,10 +99,10 @@ void SkyboxRenderer::BuildRenderGraph()
 {
     // build rdg
     m_rdg->Begin();
-    std::vector<RHIRenderPassClearValue> clearValues(2);
-    clearValues[0].color   = {0.0f, 0.0f, 0.2f, 0.0f};
-    clearValues[1].depth   = 1.0f;
-    clearValues[1].stencil = 0;
+    // std::vector<RHIRenderPassClearValue> clearValues(2);
+    // clearValues[0].color   = {0.0f, 0.0f, 0.2f, 0.0f};
+    // clearValues[1].depth   = 1.0f;
+    // clearValues[1].stencil = 0;
     Rect2i area;
     area.minX = 0;
     area.minY = 0;
@@ -115,7 +115,7 @@ void SkyboxRenderer::BuildRenderGraph()
     vp.maxX = static_cast<float>(m_viewport->GetWidth());
     vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-    auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.skybox, area, clearValues, "skybox_draw");
+    auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.skybox, "skybox_draw");
     m_rdg->AddGraphicsPassSetScissorNode(pass, area);
     m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
     m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
@@ -260,18 +260,18 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
         // offscreen
         {
-            std::vector<RHIShaderResourceBinding> textureBindings;
+            HeapVector<RHIShaderResourceBinding> textureBindings;
             ADD_SHADER_BINDING_SINGLE(textureBindings, 0,
                                       RHIShaderResourceType::eSamplerWithTexture,
                                       m_samplers.cubemapSampler, texture->skybox);
 
             GraphicsPassResourceUpdater updater(m_renderDevice, gfxPass);
-            updater.SetShaderResourceBinding(0, textureBindings).Update();
+            updater.SetShaderResourceBinding(0, std::move(textureBindings)).Update();
 
             UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("env_cubmap_gen_rdg");
             rdg->Begin();
-            std::vector<RHIRenderPassClearValue> clearValues(1);
-            clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
+            // std::vector<RHIRenderPassClearValue> clearValues(1);
+            // clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
             Rect2i area;
             area.minX = 0;
@@ -300,7 +300,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
                     std::string passTag =
                         targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
-                    auto* pass = rdg->AddGraphicsPassNode(gfxPass, area, clearValues, passTag);
+                    auto* pass = rdg->AddGraphicsPassNode(gfxPass, passTag);
                     // rdg->DeclareTextureAccessForPass(
                     //     pass, offscreenTexture, RHITextureUsage::eColorAttachment,
                     //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
@@ -441,8 +441,8 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     // build rdg
     UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("lut_brdf_ge_rdg");
     rdg->Begin();
-    std::vector<RHIRenderPassClearValue> clearValues(1);
-    clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
+    // std::vector<RHIRenderPassClearValue> clearValues(1);
+    // clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
 
     Rect2i area;
     area.minX = 0;
@@ -455,7 +455,7 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     vp.minY    = 0.0f;
     vp.maxX    = static_cast<float>(dim);
     vp.maxY    = static_cast<float>(dim);
-    auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, area, clearValues, "lut_brdf_gen");
+    auto* pass = rdg->AddGraphicsPassNode(m_gfxPasses.lutBRDF, "lut_brdf_gen");
     // rdg->DeclareTextureAccessForPass(pass, texture->lutBRDF, RHITextureUsage::eColorAttachment,
     //                                  m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
     //                                  RHIAccessMode::eReadWrite);
@@ -485,8 +485,8 @@ void SkyboxRenderer::PrepareRenderWorkload()
 void SkyboxRenderer::UpdateGraphicsPassResources()
 {
 
-    std::vector<RHIShaderResourceBinding> bufferBindings;
-    std::vector<RHIShaderResourceBinding> textureBindings;
+    HeapVector<RHIShaderResourceBinding> bufferBindings;
+    HeapVector<RHIShaderResourceBinding> textureBindings;
     ADD_SHADER_BINDING_SINGLE(
         bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
         m_gfxPasses.skybox->shaderProgram->GetUniformBufferHandle("uCameraData"))
@@ -495,8 +495,8 @@ void SkyboxRenderer::UpdateGraphicsPassResources()
                               m_samplers.cubemapSampler, m_scene->GetEnvTexture().skybox)
 
     GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.skybox);
-    updater.SetShaderResourceBinding(0, bufferBindings)
-        .SetShaderResourceBinding(1, textureBindings)
+    updater.SetShaderResourceBinding(0, std::move(bufferBindings))
+        .SetShaderResourceBinding(1, std::move(textureBindings))
         .Update();
 }
 

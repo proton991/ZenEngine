@@ -275,14 +275,14 @@ void DeferredLightingRenderer::BuildRenderGraph()
     // offscreen pass
     {
         const uint32_t cFbSize = RenderConfig::GetInstance().offScreenFbSize;
-        std::vector<RHIRenderPassClearValue> clearValues(6);
-        clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[1].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[2].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[3].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[4].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[5].depth   = 1.0f;
-        clearValues[5].stencil = 0;
+        // std::vector<RHIRenderPassClearValue> clearValues(6);
+        // clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[1].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[2].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[3].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[4].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[5].depth   = 1.0f;
+        // clearValues[5].stencil = 0;
 
         Rect2i area;
         area.minX = 0;
@@ -296,8 +296,7 @@ void DeferredLightingRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(cFbSize);
         vp.maxY = static_cast<float>(cFbSize);
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues,
-                                                "offscreen_gbuffer");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, "offscreen_gbuffer");
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenTextures.position, RHITextureUsage::eColorAttachment,
         //     RHITextureSubResourceRange::Color(), RHIAccessMode::eReadWrite);
@@ -320,10 +319,10 @@ void DeferredLightingRenderer::BuildRenderGraph()
     }
     // scene lighting pass
     {
-        std::vector<RHIRenderPassClearValue> clearValues(2);
-        clearValues[0].color   = {0.8f, 0.8f, 0.8f, 1.0f};
-        clearValues[1].depth   = 1.0f;
-        clearValues[1].stencil = 0;
+        // std::vector<RHIRenderPassClearValue> clearValues(2);
+        // clearValues[0].color   = {0.8f, 0.8f, 0.8f, 1.0f};
+        // clearValues[1].depth   = 1.0f;
+        // clearValues[1].stencil = 0;
 
         Rect2i area;
         area.minX = 0;
@@ -337,8 +336,7 @@ void DeferredLightingRenderer::BuildRenderGraph()
         vp.maxX = static_cast<float>(m_viewport->GetWidth());
         vp.maxY = static_cast<float>(m_viewport->GetHeight());
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, area, clearValues,
-                                                "deferred_lighting");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneLighting, "deferred_lighting");
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.position,
         //                                    RHITextureUsage::eSampled, RHITextureSubResourceRange::Color(),
         //                                    RHIAccessMode::eRead);
@@ -395,8 +393,8 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
 {
     const EnvTexture& envTexture = m_scene->GetEnvTexture();
     {
-        std::vector<RHIShaderResourceBinding> bufferBindings;
-        std::vector<RHIShaderResourceBinding> textureBindings;
+        HeapVector<RHIShaderResourceBinding> bufferBindings;
+        HeapVector<RHIShaderResourceBinding> textureBindings;
         // buffers
         ADD_SHADER_BINDING_SINGLE(
             bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
@@ -411,13 +409,13 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
                                          m_scene->GetSceneTextures())
 
         GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.offscreen);
-        updater.SetShaderResourceBinding(0, bufferBindings)
-            .SetShaderResourceBinding(1, textureBindings)
+        updater.SetShaderResourceBinding(0, std::move(bufferBindings))
+            .SetShaderResourceBinding(1, std::move(textureBindings))
             .Update();
     }
     {
-        std::vector<RHIShaderResourceBinding> bufferBindings;
-        std::vector<RHIShaderResourceBinding> textureBindings;
+        HeapVector<RHIShaderResourceBinding> bufferBindings;
+        HeapVector<RHIShaderResourceBinding> textureBindings;
         // buffer
         ADD_SHADER_BINDING_SINGLE(
             bufferBindings, 0, RHIShaderResourceType::eUniformBuffer,
@@ -443,8 +441,8 @@ void DeferredLightingRenderer::UpdateGraphicsPassResources()
                                   envTexture.lutBRDFSampler, envTexture.lutBRDF);
 
         GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.sceneLighting);
-        updater.SetShaderResourceBinding(0, textureBindings)
-            .SetShaderResourceBinding(1, bufferBindings)
+        updater.SetShaderResourceBinding(0, std::move(textureBindings))
+            .SetShaderResourceBinding(1, std::move(bufferBindings))
             .Update();
     }
 }

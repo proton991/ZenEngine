@@ -570,7 +570,7 @@ class RHIDescriptorSet : public RHIResource
 public:
     ~RHIDescriptorSet() override = default;
 
-    virtual void Update(const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
+    virtual void Update(const HeapVector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
 protected:
     RHIDescriptorSet(const RHIShader* pShader, uint32_t setIndex) :

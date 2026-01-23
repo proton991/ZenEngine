@@ -157,7 +157,7 @@ private:
 class VulkanDescriptorSet : public RHIDescriptorSet
 {
 public:
-    void Update(const std::vector<RHIShaderResourceBinding>& resourceBindings) override;
+    void Update(const HeapVector<RHIShaderResourceBinding>& resourceBindings) override;
 
     VkDescriptorSet GetVkDescriptorSet() const
     {

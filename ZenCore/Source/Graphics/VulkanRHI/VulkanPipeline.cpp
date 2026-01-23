@@ -1355,7 +1355,7 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
     }
 }
 
-void VulkanDescriptorSet::Update(const std::vector<RHIShaderResourceBinding>& resourceBindings)
+void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& resourceBindings)
 {
     std::vector<VkWriteDescriptorSet> writes;
     writes.resize(resourceBindings.size());

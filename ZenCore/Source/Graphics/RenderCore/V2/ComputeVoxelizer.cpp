@@ -208,16 +208,15 @@ void ComputeVoxelizer::BuildRenderGraph()
 
     // voxel draw pass
     {
-        std::vector<RHIRenderPassClearValue> clearValues(2);
-        clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
-        clearValues[1].depth   = 1.0f;
-        clearValues[1].stencil = 0;
+        // std::vector<RHIRenderPassClearValue> clearValues(2);
+        // clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
+        // clearValues[1].depth   = 1.0f;
+        // clearValues[1].stencil = 0;
         Rect2<int> area(0, static_cast<int>(m_viewport->GetWidth()), 0,
                         static_cast<int>(m_viewport->GetHeight()));
         Rect2<float> viewport(static_cast<float>(m_viewport->GetWidth()),
                               static_cast<float>(m_viewport->GetHeight()));
-        auto* pass =
-            m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, area, clearValues, "voxel_draw2");
+        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, "voxel_draw2");
         // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instancePositionBuffer,
         //                                   RHIBufferUsage::eStorageBuffer, RHIAccessMode::eRead);
         // m_rdg->DeclareBufferAccessForPass(pass, m_buffers.instanceColorBuffer,
@@ -315,36 +314,36 @@ void ComputeVoxelizer::UpdatePassResources()
 {
     // reset draw indirect
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eStorageBuffer,
                                   m_buffers.drawIndirectBuffer);
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetDrawIndirect);
-        updater.SetShaderResourceBinding(0, set0bindings).Update();
+        updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
     // reset voxel texture
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
                                   m_voxelTextures.albedo);
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetVoxelTexture);
-        updater.SetShaderResourceBinding(0, set0bindings).Update();
+        updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
     // reset compute indirect
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eStorageBuffer,
                                   m_buffers.computeIndirectBuffer);
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetComputeIndirect);
-        updater.SetShaderResourceBinding(0, set0bindings).Update();
+        updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
-    // voxelization pass
+    // voxelization pass - small triangles
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
-        std::vector<RHIShaderResourceBinding> set2bindings;
-        std::vector<RHIShaderResourceBinding> set3bindings;
-        std::vector<RHIShaderResourceBinding> set4bindings;
-        std::vector<RHIShaderResourceBinding> set5bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set3bindings;
+        HeapVector<RHIShaderResourceBinding> set4bindings;
+        HeapVector<RHIShaderResourceBinding> set5bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
                                   m_voxelTextures.albedo);
@@ -373,33 +372,69 @@ void ComputeVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set5bindings, 0, RHIShaderResourceType::eStorageBuffer,
                                   m_scene->GetTriangleMapBuffer());
 
+        // small triangle
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.voxelization);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
-            .SetShaderResourceBinding(3, set3bindings)
-            .SetShaderResourceBinding(4, set4bindings)
-            .SetShaderResourceBinding(5, set5bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
+            .SetShaderResourceBinding(3, std::move(set3bindings))
+            .SetShaderResourceBinding(4, std::move(set4bindings))
+            .SetShaderResourceBinding(5, std::move(set5bindings))
             .Update();
+    }
+    // voxelization pass - large triangles
+    {
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set3bindings;
+        HeapVector<RHIShaderResourceBinding> set4bindings;
+        HeapVector<RHIShaderResourceBinding> set5bindings;
+        // set-0 bindings
+        ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
+                                  m_voxelTextures.albedo);
+        // set-1 bindings
+        ADD_SHADER_BINDING_SINGLE(
+            set1bindings, 0, RHIShaderResourceType::eUniformBuffer,
+            m_computePasses.voxelization->shaderProgram->GetUniformBufferHandle("uSceneInfo"));
+        // set-2 bindings
+        ADD_SHADER_BINDING_SINGLE(set2bindings, 0, RHIShaderResourceType::eStorageBuffer,
+                                  m_scene->GetVertexBuffer());
+        ADD_SHADER_BINDING_SINGLE(set2bindings, 1, RHIShaderResourceType::eStorageBuffer,
+                                  m_scene->GetIndexBuffer());
+        ADD_SHADER_BINDING_SINGLE(set2bindings, 2, RHIShaderResourceType::eStorageBuffer,
+                                  m_scene->GetNodesDataSSBO());
+        // set-3 bindings: texture array
+        ADD_SHADER_BINDING_TEXTURE_ARRAY(set3bindings, 0,
+                                         RHIShaderResourceType::eSamplerWithTexture, m_colorSampler,
+                                         m_scene->GetSceneTextures())
+        // set-4 bindings
+        ADD_SHADER_BINDING_SINGLE(set4bindings, 0, RHIShaderResourceType::eStorageBuffer,
+                                  m_buffers.computeIndirectBuffer);
+        ADD_SHADER_BINDING_SINGLE(set4bindings, 1, RHIShaderResourceType::eStorageBuffer,
+                                  m_buffers.largeTriangleBuffer);
 
-        // large triangles
+        // set-5 bindings
+        ADD_SHADER_BINDING_SINGLE(set5bindings, 0, RHIShaderResourceType::eStorageBuffer,
+                                  m_scene->GetTriangleMapBuffer());
+
         ComputePassResourceUpdater updater2(m_renderDevice,
                                             m_computePasses.voxelizationLargeTriangle);
-        updater2.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
-            .SetShaderResourceBinding(3, set3bindings)
-            .SetShaderResourceBinding(4, set4bindings)
-            .SetShaderResourceBinding(5, set5bindings)
+        updater2.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
+            .SetShaderResourceBinding(3, std::move(set3bindings))
+            .SetShaderResourceBinding(4, std::move(set4bindings))
+            .SetShaderResourceBinding(5, std::move(set5bindings))
             .Update();
     }
     // voxel pre-draw pass
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
-        std::vector<RHIShaderResourceBinding> set2bindings;
-        std::vector<RHIShaderResourceBinding> set3bindings;
-        std::vector<RHIShaderResourceBinding> set4bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set3bindings;
+        HeapVector<RHIShaderResourceBinding> set4bindings;
 
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
@@ -420,11 +455,11 @@ void ComputeVoxelizer::UpdatePassResources()
 
 
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.voxelPreDraw);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
-            .SetShaderResourceBinding(3, set3bindings)
-            .SetShaderResourceBinding(4, set4bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
+            .SetShaderResourceBinding(3, std::move(set3bindings))
+            .SetShaderResourceBinding(4, std::move(set4bindings))
             .Update();
     }
     // voxel draw pass
@@ -432,9 +467,9 @@ void ComputeVoxelizer::UpdatePassResources()
         VoxelDrawSP2* shaderProgram =
             dynamic_cast<VoxelDrawSP2*>(m_gfxPasses.voxelDraw->shaderProgram);
 
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
-        std::vector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eUniformBuffer,
                                   shaderProgram->GetUniformBufferHandle("uTransformData"));
@@ -445,9 +480,9 @@ void ComputeVoxelizer::UpdatePassResources()
         ADD_SHADER_BINDING_SINGLE(set2bindings, 0, RHIShaderResourceType::eStorageBuffer,
                                   m_buffers.instanceColorBuffer);
         rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelDraw);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
             .Update();
     }
 }

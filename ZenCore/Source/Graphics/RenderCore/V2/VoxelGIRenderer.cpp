@@ -195,17 +195,17 @@ void VoxelGIRenderer::UpdatePassResources()
 {
     // reset voxel texture
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
                                   m_textures.voxelRadiance);
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.resetVoxelTexture);
-        updater.SetShaderResourceBinding(0, set0bindings).Update();
+        updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
     // inject radiance pass
     {
-        std::vector<RHIShaderResourceBinding> set0bindings;
-        std::vector<RHIShaderResourceBinding> set1bindings;
-        std::vector<RHIShaderResourceBinding> set2bindings;
+        HeapVector<RHIShaderResourceBinding> set0bindings;
+        HeapVector<RHIShaderResourceBinding> set1bindings;
+        HeapVector<RHIShaderResourceBinding> set2bindings;
 
         auto& voxelTextures = m_voxelizer->GetVoxelTextures();
 
@@ -233,9 +233,9 @@ void VoxelGIRenderer::UpdatePassResources()
         //     m_computePasses.injectRadiance.shaderProgram->GetUniformBufferHandle("uSceneInfo"));
 
         ComputePassResourceUpdater updater(m_renderDevice, m_computePasses.injectRadiance);
-        updater.SetShaderResourceBinding(0, set0bindings)
-            .SetShaderResourceBinding(1, set1bindings)
-            .SetShaderResourceBinding(2, set2bindings)
+        updater.SetShaderResourceBinding(0, std::move(set0bindings))
+            .SetShaderResourceBinding(1, std::move(set1bindings))
+            .SetShaderResourceBinding(2, std::move(set2bindings))
             .Update();
     }
 }
