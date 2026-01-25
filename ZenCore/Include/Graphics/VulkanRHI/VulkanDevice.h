@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanHeaders.h"
 #include "Utils/UniquePtr.h"
-#include <vector>
+#include "Templates/HeapVector.h"
 
 namespace zen
 {
@@ -97,7 +97,7 @@ public:
     void WaitForIdle();
 
 private:
-    void SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions);
+    void SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
     // VulkanRHI* m_RHI;
 
@@ -115,9 +115,9 @@ private:
 
     DeviceExtensionFlags m_extensionFlags{};
 
-    std::vector<VkQueueFamilyProperties> m_queueFamilyProps;
+    HeapVector<VkQueueFamilyProperties> m_queueFamilyProps;
 
-    std::vector<const char*> m_extensions;
+    HeapVector<const char*> m_extensions;
 
     // queue infos
     VulkanQueue* m_gfxQueue{nullptr};

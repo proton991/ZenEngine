@@ -75,6 +75,8 @@ template <typename T> T HandleFromVoidPtr(void* pData)
 class DefaultAllocator
 {
 public:
+    static DefaultAllocator* GetInstance();
+
     static void* Alloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNum);
 
     static void* Calloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNumm);
@@ -87,11 +89,15 @@ public:
                          const char* pFileName,
                          uint32_t lineNumm);
 
-#if defined(ZEN_DEBUG)
     static void ReportMemUsage();
-#endif
 
 private:
+    static void TrackMemAlloc(size_t s);
+
+    static void TrackMemReAlloc(size_t oldSize, size_t newSize);
+
+    static void TrackMemFree(size_t s);
+
     static void* DefaultAllocImpl(size_t size, size_t alignment);
 
     static void* DefaultCallocImpl(size_t size, size_t alignment);
@@ -100,7 +106,6 @@ private:
 
     static void DefaultFreeImpl(void* pMem);
 
-#if defined(ZEN_DEBUG)
     struct AllocationHeader
     {
         size_t size_;
@@ -108,11 +113,10 @@ private:
         uint32_t lineNumber;
     };
 
-    static std::atomic<size_t> s_TotalAllocated;
-    static std::atomic<size_t> s_TotalFreed;
-    static std::atomic<size_t> s_CurrentUsage;
-    static std::atomic<size_t> s_PeakUsage;
-#endif
+    std::atomic<size_t> m_totalAllocated{0};
+    std::atomic<size_t> m_totalFreed{0};
+    std::atomic<size_t> m_currentUsage{0};
+    std::atomic<size_t> m_peakUsage{0};
 };
 
 // template <typename T, typename... Args> T* MemNew(Args&&... args)

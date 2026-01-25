@@ -6,7 +6,7 @@
 namespace zen
 {
 void VulkanMacOSPlatform::AddInstanceExtensions(
-    std::vector<UniquePtr<VulkanInstanceExtension>>& extensions)
+    HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions)
 {
     extensions.emplace_back(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME));

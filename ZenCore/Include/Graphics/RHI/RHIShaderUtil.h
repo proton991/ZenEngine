@@ -40,7 +40,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
     uint32_t inputVarCount{0};
     SpvReflectResult result = spvReflectEnumerateInputVariables(module, &inputVarCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
-    std::vector<SpvReflectInterfaceVariable*> inputVars;
+    HeapVector<SpvReflectInterfaceVariable*> inputVars;
     if (inputVarCount > 0)
     {
 
@@ -96,7 +96,7 @@ static void ParseSpvPushConstants(RHIShaderStage stage,
     uint32_t pcCount{0};
     SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(module, &pcCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
-    std::vector<SpvReflectBlockVariable*> pconstants;
+    HeapVector<SpvReflectBlockVariable*> pconstants;
 
     if (pcCount > 1)
     {
@@ -129,7 +129,7 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
     }
     if (scCount > 0)
     {
-        std::vector<SpvReflectSpecializationConstant*> specConstants;
+        HeapVector<SpvReflectSpecializationConstant*> specConstants;
         specConstants.resize(scCount);
         spvReflectEnumerateSpecializationConstants(module, &scCount, specConstants.data());
         int existed = -1;
@@ -396,7 +396,7 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
             uint32_t setCount{0};
             result = spvReflectEnumerateDescriptorSets(&module, &setCount, nullptr);
             VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
-            std::vector<SpvReflectDescriptorSet*> sets(setCount);
+            HeapVector<SpvReflectDescriptorSet*> sets(setCount);
             result = spvReflectEnumerateDescriptorSets(&module, &setCount, sets.data());
             VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
 

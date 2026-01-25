@@ -26,7 +26,7 @@ void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer,
     submitInfo.signalSemaphoreCount = numSignalSemaphores;
     submitInfo.pSignalSemaphores    = signalSemaphores;
 
-    std::vector<VkSemaphore> waitSemaphores;
+    HeapVector<VkSemaphore> waitSemaphores;
     if (!cmdBuffer->m_waitSemaphores.empty())
     {
         waitSemaphores.reserve(cmdBuffer->m_waitSemaphores.size());

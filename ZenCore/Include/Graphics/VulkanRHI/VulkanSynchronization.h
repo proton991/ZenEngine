@@ -73,7 +73,7 @@ private:
     void DestroyFence(VulkanFence* fence);
 
     VulkanDevice* m_device{nullptr};
-    std::vector<VulkanFence*> m_usedFences;
+    HeapVector<VulkanFence*> m_usedFences;
     std::queue<VulkanFence*> m_freeFences;
 };
 
@@ -110,7 +110,7 @@ public:
 
 private:
     VulkanDevice* m_device{nullptr};
-    std::vector<VulkanSemaphore*> m_usedSemaphores;
+    HeapVector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
 #if defined(ZEN_DEBUG)
     uint32_t m_allocatedSemaphoreCount{0};
@@ -155,8 +155,8 @@ private:
     VkPipelineStageFlags m_srcStageFlags{0};
     VkPipelineStageFlags m_dstStageFlags{0};
 
-    std::vector<VkImageMemoryBarrier> m_imageBarriers;
-    std::vector<VkMemoryBarrier> m_memoryBarriers;
-    std::vector<VkBufferMemoryBarrier> m_bufferBarriers;
+    HeapVector<VkImageMemoryBarrier> m_imageBarriers;
+    HeapVector<VkMemoryBarrier> m_memoryBarriers;
+    HeapVector<VkBufferMemoryBarrier> m_bufferBarriers;
 };
 } // namespace zen

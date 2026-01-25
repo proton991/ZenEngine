@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanPlatformCommon.h"
 #include "Graphics/RHI/RHIDefs.h"
+#include "Templates/HeapVector.h"
 
 #if defined(ZEN_MACOS)
 
@@ -26,7 +27,7 @@ class VulkanInstanceExtension;
 class VulkanMacOSPlatform
 {
 public:
-    static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
+    static void AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
     static VkSurfaceKHR CreateSurface(VkInstance instance, void* windowData);
 

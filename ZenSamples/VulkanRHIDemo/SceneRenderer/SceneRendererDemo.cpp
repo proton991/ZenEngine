@@ -137,16 +137,11 @@ void SceneRendererDemo::Run()
 
 int main(int argc, char** argv)
 {
-#if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
-    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-#endif
-
     using namespace zen;
 
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
 
-    SceneRendererDemo* demo =
-        new zen::SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
+    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
 
     demo->Prepare();
 
@@ -155,8 +150,4 @@ int main(int argc, char** argv)
     demo->Destroy();
 
     delete demo;
-
-#if defined(ZEN_DEBUG)
-    DefaultAllocator::ReportMemUsage();
-#endif
 }

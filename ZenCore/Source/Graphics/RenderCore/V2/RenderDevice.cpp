@@ -189,7 +189,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.resourceType = PassResourceType::eTexture;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
     {
@@ -208,7 +208,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetUniformBufferSRDs())
     {
@@ -218,7 +218,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.bufferUsage  = RHIBufferUsage::eUniformBuffer;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
@@ -237,7 +237,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = tracker;
+        m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
 
     for (uint32_t setIndex = 0; setIndex < m_pGfxPass->numDescriptorSets; ++setIndex)
@@ -352,7 +352,7 @@ ComputePass* ComputePassBuilder::Build()
         tracker.textureUsage = RHITextureUsage::eSampled;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetStorageImageSRDs())
     {
@@ -371,7 +371,7 @@ ComputePass* ComputePassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetUniformBufferSRDs())
     {
@@ -381,7 +381,7 @@ ComputePass* ComputePassBuilder::Build()
         tracker.bufferUsage  = RHIBufferUsage::eUniformBuffer;
         tracker.accessMode   = RHIAccessMode::eRead;
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
-        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
     for (auto& srd : shaderProgram->GetStorageBufferSRDs())
     {
@@ -400,7 +400,7 @@ ComputePass* ComputePassBuilder::Build()
                                          RHIAccessFlagBits::eShaderWrite);
             tracker.accessMode = RHIAccessMode::eReadWrite;
         }
-        pComputePass->resourceTrackers[srd.set][srd.binding] = tracker;
+        pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
 
     for (uint32_t setIndex = 0; setIndex < pComputePass->numDescriptorSets; ++setIndex)

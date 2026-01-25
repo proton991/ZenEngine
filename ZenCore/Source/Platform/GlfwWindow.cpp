@@ -44,11 +44,16 @@ VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
     return surface;
 }
 
-std::vector<const char*> GlfwWindowImpl::GetInstanceExtensions()
+HeapVector<const char*> GlfwWindowImpl::GetInstanceExtensions()
 {
     uint32_t count;
     const char** ext = glfwGetRequiredInstanceExtensions(&count);
-    return {ext, ext + count};
+    HeapVector<const char*> result(count);
+    for (uint32_t i = 0; i < count; i++)
+    {
+        result[i] = ext[i];
+    }
+    return result;
 }
 
 void GlfwWindowImpl::Destroy()

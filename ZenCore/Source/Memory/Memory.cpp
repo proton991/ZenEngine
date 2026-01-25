@@ -3,12 +3,63 @@
 
 namespace zen
 {
-#if defined(ZEN_DEBUG)
-std::atomic<size_t> DefaultAllocator::s_TotalAllocated{0};
-std::atomic<size_t> DefaultAllocator::s_TotalFreed{0};
-std::atomic<size_t> DefaultAllocator::s_CurrentUsage{0};
-std::atomic<size_t> DefaultAllocator::s_PeakUsage{0};
-#endif
+struct MemoryFreeHelper
+{
+    ~MemoryFreeHelper()
+    {
+        DefaultAllocator::ReportMemUsage();
+    }
+};
+
+MemoryFreeHelper g_memoryFreeHelper;
+
+DefaultAllocator* DefaultAllocator::GetInstance()
+{
+    static DefaultAllocator instance;
+    return &instance;
+}
+
+void DefaultAllocator::TrackMemAlloc(size_t s)
+{
+    DefaultAllocator* pAllocator = GetInstance();
+    pAllocator->m_totalAllocated += s;
+    pAllocator->m_currentUsage += s;
+
+    size_t peak = pAllocator->m_peakUsage.load();
+    while (pAllocator->m_currentUsage > peak &&
+           !pAllocator->m_peakUsage.compare_exchange_weak(peak, pAllocator->m_currentUsage))
+    {
+    }
+}
+
+void DefaultAllocator::TrackMemReAlloc(size_t oldSize, size_t newSize)
+{
+    DefaultAllocator* pAllocator = GetInstance();
+
+    if (newSize > oldSize)
+    {
+        pAllocator->m_totalAllocated += (newSize - oldSize);
+        pAllocator->m_currentUsage += (newSize - oldSize);
+    }
+    else
+    {
+        pAllocator->m_totalFreed += (oldSize - newSize);
+        pAllocator->m_currentUsage -= (oldSize - newSize);
+    }
+
+    size_t peak = pAllocator->m_peakUsage.load();
+    while (pAllocator->m_currentUsage > peak &&
+           !pAllocator->m_peakUsage.compare_exchange_weak(peak, pAllocator->m_currentUsage))
+    {
+    }
+}
+
+void DefaultAllocator::TrackMemFree(size_t s)
+{
+    DefaultAllocator* pAllocator = GetInstance();
+    pAllocator->m_totalFreed += s;
+    pAllocator->m_currentUsage -= s;
+}
 
 void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNum)
 {
@@ -23,13 +74,7 @@ void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName,
     header->pFileName  = pFileName;
     header->lineNumber = lineNum;
 
-    s_TotalAllocated += s;
-    s_CurrentUsage += s;
-
-    size_t peak = s_PeakUsage.load();
-    while (s_CurrentUsage > peak && !s_PeakUsage.compare_exchange_weak(peak, s_CurrentUsage))
-    {
-    }
+    TrackMemAlloc(s);
 
     return header + 1;
 #else
@@ -52,10 +97,8 @@ void DefaultAllocator::Free(void* pMemory, const char* pFileName, uint32_t lineN
 
 #if defined(ZEN_DEBUG)
     auto* header = static_cast<AllocationHeader*>(pMemory) - 1;
-    size_t size  = header->size_;
 
-    s_TotalFreed += size;
-    s_CurrentUsage -= size;
+    TrackMemFree(header->size_);
 
     DefaultFreeImpl(header);
 #else
@@ -83,21 +126,7 @@ void* DefaultAllocator::Realloc(void* ptr,
     auto* newHeader  = reinterpret_cast<AllocationHeader*>(raw);
     newHeader->size_ = newSize;
 
-    if (newSize > oldSize)
-    {
-        s_TotalAllocated += (newSize - oldSize);
-        s_CurrentUsage += (newSize - oldSize);
-    }
-    else
-    {
-        s_TotalFreed += (oldSize - newSize);
-        s_CurrentUsage -= (oldSize - newSize);
-    }
-
-    size_t peak = s_PeakUsage.load();
-    while (s_CurrentUsage > peak && !s_PeakUsage.compare_exchange_weak(peak, s_CurrentUsage))
-    {
-    }
+    TrackMemReAlloc(oldSize, newSize);
 
     return newHeader + 1;
 #else
@@ -110,27 +139,88 @@ static double BytesToMB(size_t bytes)
     return static_cast<double>(bytes) / (1024.0 * 1024.0);
 }
 
-#if defined(ZEN_DEBUG)
-void DefaultAllocator::ReportMemUsage()
+static void PrintMemorySize(size_t bytes)
 {
-    LOGI("========== DefaultAllocator Memory Report ==========");
+    constexpr double KB = 1024.0;
+    constexpr double MB = KB * 1024.0;
+    constexpr double GB = MB * 1024.0;
 
-    LOGI("Total Allocated : {:.2f} MB", BytesToMB(s_TotalAllocated.load()));
-    LOGI("Total Freed     : {:.2f} MB", BytesToMB(s_TotalFreed.load()));
-    LOGI("Current Usage   : {:.2f} MB", BytesToMB(s_CurrentUsage.load()));
-    LOGI("Peak Usage      : {:.2f} MB", BytesToMB(s_PeakUsage.load()));
-
-    if (s_CurrentUsage != 0)
+    if (bytes < KB)
     {
-        LOGE("MEMORY LEAK DETECTED ({} MB)", BytesToMB(s_CurrentUsage.load()));
+        printf("%zu B", bytes);
+    }
+    else if (bytes < MB)
+    {
+        printf("%.2f KB", bytes / KB);
+    }
+    else if (bytes < GB)
+    {
+        printf("%.2f MB", bytes / MB);
     }
     else
     {
-        LOGI("No memory leaks detected");
+        printf("%.2f GB", bytes / GB);
     }
-    LOGI("====================================================");
 }
-#endif
+
+static void PrintMemoryLine(const char* label, size_t bytes)
+{
+    printf("%-16s : ", label);
+    PrintMemorySize(bytes);
+    printf("\n");
+}
+
+void DefaultAllocator::ReportMemUsage()
+{
+    DefaultAllocator* alloc = GetInstance();
+
+    const size_t totalAllocated = alloc->m_totalAllocated.load();
+    const size_t totalFreed     = alloc->m_totalFreed.load();
+    const size_t currentUsage   = alloc->m_currentUsage.load();
+    const size_t peakUsage      = alloc->m_peakUsage.load();
+
+    printf("\n========== DefaultAllocator Memory Report ==========\n");
+
+    PrintMemoryLine("Total Allocated", totalAllocated);
+    PrintMemoryLine("Total Freed", totalFreed);
+    PrintMemoryLine("Current Usage", currentUsage);
+    PrintMemoryLine("Peak Usage", peakUsage);
+
+    if (currentUsage != 0)
+    {
+        printf("\n[ERROR] MEMORY LEAK DETECTED: ");
+        PrintMemorySize(currentUsage);
+        printf("\n");
+    }
+    else
+    {
+        printf("\n[OK] No memory leaks detected\n");
+    }
+
+    printf("====================================================\n");
+}
+
+// void DefaultAllocator::ReportMemUsage()
+// {
+//     DefaultAllocator* pAllocator = GetInstance();
+//
+//     printf("========== DefaultAllocator Memory Report ==========\n");
+//     printf("Total Allocated : %.2f MB\n", BytesToMB(pAllocator->m_totalAllocated));
+//     printf("Total Freed     : %.2f MB\n", BytesToMB(pAllocator->m_totalFreed));
+//     printf("Current Usage   : %.2f MB\n", BytesToMB(pAllocator->m_currentUsage));
+//     printf("Peak Usage      : %.2f MB\n", BytesToMB(pAllocator->m_peakUsage));
+//
+//     size_t currentUsage = pAllocator->m_currentUsage.load();
+//     if (currentUsage != 0)
+//     {
+//         printf("[ERROR] MEMORY LEAK DETECTED: %.2f MB\n", BytesToMB(currentUsage));
+//     }
+//     else
+//     {
+//         printf("[OK] Everything is fine\n]");
+//     }
+//     printf("====================================================");
+// }
 
 void* DefaultAllocator::DefaultAllocImpl(size_t size, size_t alignment)
 {

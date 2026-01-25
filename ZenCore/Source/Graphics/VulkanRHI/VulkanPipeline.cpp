@@ -232,12 +232,12 @@ void VulkanShader::Init()
     // Create descriptor pool key while createing descriptor set layouts
     // VulkanDescriptorPoolKey descriptorPoolKey{};
     // Create descriptorSetLayouts
-    std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
+    HeapVector<HeapVector<VkDescriptorSetLayoutBinding>> dsBindings;
     const auto setCount = sgInfo.SRDTable.size();
     dsBindings.resize(setCount);
     for (uint32_t i = 0; i < setCount; i++)
     {
-        std::vector<VkDescriptorBindingFlags> bindingFlags;
+        HeapVector<VkDescriptorBindingFlags> bindingFlags;
         // collect bindings for set i
         for (uint32_t j = 0; j < sgInfo.SRDTable[i].size(); j++)
         {
@@ -435,12 +435,12 @@ void VulkanShader::Destroy()
 //     // Create descriptor pool key while createing descriptor set layouts
 //     VulkanDescriptorPoolKey descriptorPoolKey{};
 //     // Create descriptorSetLayouts
-//     std::vector<std::vector<VkDescriptorSetLayoutBinding>> dsBindings;
+//     HeapVector<HeapVector<VkDescriptorSetLayoutBinding>> dsBindings;
 //     const auto setCount = sgInfo.SRDs.size();
 //     dsBindings.resize(setCount);
 //     for (uint32_t i = 0; i < setCount; i++)
 //     {
-//         std::vector<VkDescriptorBindingFlags> bindingFlags;
+//         HeapVector<VkDescriptorBindingFlags> bindingFlags;
 //         // collect bindings for set i
 //         for (uint32_t j = 0; j < sgInfo.SRDs[i].size(); j++)
 //         {
@@ -648,7 +648,7 @@ void VulkanShader::Destroy()
 //
 //     // Color Blend State
 //     const auto& colorBlendState = states.colorBlendState;
-//     std::vector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
+//     HeapVector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
 //     vkCBAttStates.resize(colorBlendState.attachments.size());
 //     for (uint32_t i = 0; i < colorBlendState.attachments.size(); i++)
 //     {
@@ -697,7 +697,7 @@ void VulkanShader::Destroy()
 //     // Dynamic States
 //     VkPipelineDynamicStateCreateInfo dynamicStateCI;
 //     InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
-//     std::vector<VkDynamicState> vkDynamicStates(states.dynamicStates.size());
+//     HeapVector<VkDynamicState> vkDynamicStates(states.dynamicStates.size());
 //     for (uint32_t i = 0; i < states.dynamicStates.size(); i++)
 //     {
 //         vkDynamicStates[i] = ToVkDynamicState(states.dynamicStates[i]);
@@ -853,7 +853,7 @@ void VulkanPipeline::InitGraphics()
 
     // Color Blend State
     const auto& colorBlendState = m_gfxStates.colorBlendState;
-    std::vector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
+    HeapVector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
     vkCBAttStates.resize(colorBlendState.attachmentsMask.Count());
     for (uint32_t i : colorBlendState.attachmentsMask)
     {
@@ -908,7 +908,7 @@ void VulkanPipeline::InitGraphics()
     InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
 
     uint32_t numDynamicStates = m_gfxStates.dynamicStates.enabledStates.Count();
-    std::vector<VkDynamicState> vkDynamicStates(numDynamicStates);
+    HeapVector<VkDynamicState> vkDynamicStates(numDynamicStates);
     for (uint32_t i : m_gfxStates.dynamicStates.enabledStates)
     {
         vkDynamicStates[i] = ToVkDynamicState(static_cast<RHIDynamicState>(i));
@@ -933,7 +933,7 @@ void VulkanPipeline::InitGraphics()
     pipelineCI.layout              = shader->GetVkPipelineLayout();
     pipelineCI.subpass             = m_subpassIdx;
 
-    std::vector<VkFormat> colorAttachmentFormats;
+    HeapVector<VkFormat> colorAttachmentFormats;
     VkPipelineRenderingCreateInfoKHR renderingCI;
 
     if (!RHIOptions::GetInstance().UseDynamicRendering())
@@ -1061,7 +1061,7 @@ void VulkanPipeline::InitCompute()
 //
 //     // Color Blend State
 //     const auto& colorBlendState = states.colorBlendState;
-//     std::vector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
+//     HeapVector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
 //     vkCBAttStates.resize(colorBlendState.attachments.size());
 //     for (uint32_t i = 0; i < colorBlendState.attachments.size(); i++)
 //     {
@@ -1110,7 +1110,7 @@ void VulkanPipeline::InitCompute()
 //     // Dynamic States
 //     VkPipelineDynamicStateCreateInfo dynamicStateCI;
 //     InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
-//     std::vector<VkDynamicState> vkDynamicStates(states.dynamicStates.size());
+//     HeapVector<VkDynamicState> vkDynamicStates(states.dynamicStates.size());
 //     for (uint32_t i = 0; i < states.dynamicStates.size(); i++)
 //     {
 //         vkDynamicStates[i] = ToVkDynamicState(states.dynamicStates[i]);
@@ -1136,7 +1136,7 @@ void VulkanPipeline::InitCompute()
 //     pipelineCI.renderPass          = VK_NULL_HANDLE;
 //     pipelineCI.subpass             = subpass;
 //
-//     std::vector<VkFormat> colorAttachmentFormats;
+//     HeapVector<VkFormat> colorAttachmentFormats;
 //     colorAttachmentFormats.reserve(renderPassLayout.GetNumColorRenderTargets());
 //     for (uint32_t i = 0; i < renderPassLayout.GetNumColorRenderTargets(); i++)
 //     {
@@ -1357,7 +1357,7 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
 
 void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& resourceBindings)
 {
-    std::vector<VkWriteDescriptorSet> writes;
+    HeapVector<VkWriteDescriptorSet> writes;
     writes.resize(resourceBindings.size());
 
     for (uint32_t i = 0; i < resourceBindings.size(); i++)
@@ -1655,13 +1655,13 @@ void VulkanRHI::DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet)
 }
 //
 // void VulkanRHI::UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-//                                     const std::vector<RHIShaderResourceBinding>& resourceBindings)
+//                                     const HeapVector<RHIShaderResourceBinding>& resourceBindings)
 // {
-//     std::vector<VkWriteDescriptorSet> writes;
+//     HeapVector<VkWriteDescriptorSet> writes;
 //     writes.resize(resourceBindings.size());
-//     // std::vector<VkDescriptorImageInfo> imageInfos;
-//     // std::vector<VkDescriptorBufferInfo> bufferInfos;
-//     // std::vector<VkBufferView> bufferViews;
+//     // HeapVector<VkDescriptorImageInfo> imageInfos;
+//     // HeapVector<VkDescriptorBufferInfo> bufferInfos;
+//     // HeapVector<VkBufferView> bufferViews;
 //
 //     for (uint32_t i = 0; i < resourceBindings.size(); i++)
 //     {

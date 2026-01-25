@@ -1,5 +1,5 @@
 #pragma once
-#include <vector>
+#include "Templates/HeapVector.h"
 #include "VulkanHeaders.h"
 
 namespace zen
@@ -52,8 +52,8 @@ private:
     VulkanDevice* m_device{nullptr};
     VulkanCommandBufferManager* m_owner;
     VkCommandPool m_cmdPool{VK_NULL_HANDLE};
-    std::vector<VulkanCommandBuffer*> m_usedCmdBuffers;
-    std::vector<VulkanCommandBuffer*> m_freeCmdBuffers;
+    HeapVector<VulkanCommandBuffer*> m_usedCmdBuffers;
+    HeapVector<VulkanCommandBuffer*> m_freeCmdBuffers;
 
     friend class VulkanCommandBufferManager;
 };
@@ -76,8 +76,7 @@ public:
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem);
 
-    void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
-                          const std::vector<VulkanSemaphore*>& sems);
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags, const HeapVector<VulkanSemaphore*>& sems);
 
     VkCommandBuffer GetVkHandle() const
     {
@@ -128,7 +127,7 @@ private:
     void MarkSemaphoresAsSubmitted()
     {
         m_waitFlags.clear();
-        m_submittedWaitSemaphores = m_waitSemaphores;
+        m_submittedWaitSemaphores = std::move(m_waitSemaphores);
         m_waitSemaphores.clear();
     }
 
@@ -138,10 +137,10 @@ private:
     State m_state{State::eNotAllocated};
 
     // Sync objects
-    std::vector<VkPipelineStageFlags> m_waitFlags;
+    HeapVector<VkPipelineStageFlags> m_waitFlags;
     // DO NOT own the semaphores, only hold reference
-    std::vector<VulkanSemaphore*> m_waitSemaphores;
-    std::vector<VulkanSemaphore*> m_submittedWaitSemaphores;
+    HeapVector<VulkanSemaphore*> m_waitSemaphores;
+    HeapVector<VulkanSemaphore*> m_submittedWaitSemaphores;
     VulkanFence* m_fence;
     uint64_t m_fenceSignaledCounter{0};
 
@@ -165,7 +164,7 @@ public:
 
     VulkanCommandBuffer* GetUploadCommandBuffer();
 
-    void SubmitActiveCmdBuffer(const std::vector<VulkanSemaphore*>& signalSemaphores);
+    void SubmitActiveCmdBuffer(const HeapVector<VulkanSemaphore*>& signalSemaphores);
 
     void SubmitActiveCmdBuffer(VulkanSemaphore* signalSemaphore);
 
@@ -209,8 +208,8 @@ private:
     VulkanSemaphore* m_activeCmdBufferSemaphore{nullptr};
     VulkanSemaphore* m_uploadCmdBufferSemaphore{nullptr};
     // upload cmd buffer semaphores waited by active cmd buffer
-    std::vector<VulkanSemaphore*> m_uploadCompleteSemaphores;
+    HeapVector<VulkanSemaphore*> m_uploadCompleteSemaphores;
     // upload cmd buffer semaphores waited by upload cmd buffer
-    std::vector<VulkanSemaphore*> m_renderCompleteSemaphores;
+    HeapVector<VulkanSemaphore*> m_renderCompleteSemaphores;
 };
 } // namespace zen

@@ -150,7 +150,7 @@ void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
                                     RHITexture* dstTexture,
                                     VectorView<RHITextureCopyRegion> regions)
 {
-    std::vector<VkImageCopy> copies(regions.size());
+    HeapVector<VkImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkImageCopy(regions[i], &copies[i]);
@@ -165,7 +165,7 @@ void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
                                             RHIBuffer* buffer,
                                             VectorView<RHIBufferTextureCopyRegion> regions)
 {
-    std::vector<VkBufferImageCopy> copies(regions.size());
+    HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
@@ -180,7 +180,7 @@ void VulkanCommandList::CopyBufferToTexture(RHIBuffer* buffer,
                                             RHITexture* texture,
                                             VectorView<RHIBufferTextureCopyRegion> regions)
 {
-    std::vector<VkBufferImageCopy> copies(regions.size());
+    HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
@@ -226,7 +226,7 @@ void VulkanCommandList::BindIndexBuffer(RHIBuffer* buffer, DataFormat format, ui
 
 void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets)
 {
-    std::vector<VkBuffer> bufferHandles;
+    HeapVector<VkBuffer> bufferHandles;
     for (RHIBuffer* buffer : buffers)
     {
         bufferHandles.push_back(TO_VK_BUFFER(buffer)->GetVkBuffer());
@@ -240,7 +240,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const 
 //     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
 //     if (vulkanPipeline->descriptorSetCount > 0)
 //     {
-//         std::vector<VkDescriptorSet> descriptorSets;
+//         HeapVector<VkDescriptorSet> descriptorSets;
 //         descriptorSets.reserve(vulkanPipeline->descriptorSetCount);
 //         for (uint32_t i = 0; i < vulkanPipeline->descriptorSetCount; i++)
 //         {
@@ -262,7 +262,7 @@ void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (numDescriptorSets > 0)
     {
-        std::vector<VkDescriptorSet> vkDescriptorSets;
+        HeapVector<VkDescriptorSet> vkDescriptorSets;
         vkDescriptorSets.reserve(numDescriptorSets);
         for (uint32_t i = 0; i < numDescriptorSets; i++)
         {
@@ -284,7 +284,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (numDescriptorSets > 0)
     {
-        std::vector<VkDescriptorSet> vkDescriptorSets;
+        HeapVector<VkDescriptorSet> vkDescriptorSets;
         vkDescriptorSets.reserve(numDescriptorSets);
         for (uint32_t i = 0; i < numDescriptorSets; i++)
         {
@@ -305,7 +305,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
 //     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
 //     if (vulkanPipeline->descriptorSetCount > 0)
 //     {
-//         std::vector<VkDescriptorSet> descriptorSets;
+//         HeapVector<VkDescriptorSet> descriptorSets;
 //         descriptorSets.reserve(vulkanPipeline->descriptorSetCount);
 //         for (uint32_t i = 0; i < vulkanPipeline->descriptorSetCount; i++)
 //         {
@@ -349,7 +349,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
 //                                                const Rect2<int>& area,
 //                                                VectorView<RHIRenderPassClearValue> clearValues)
 // {
-//     const std::vector<RHIRenderTarget>& colorRTs = rpLayout.GetColorRenderTargets();
+//     const HeapVector<RHIRenderTarget>& colorRTs = rpLayout.GetColorRenderTargets();
 //     VkRenderingInfoKHR renderingInfo{};
 //     InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
 //     renderingInfo.layerCount               = 1;
@@ -360,7 +360,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
 //     renderingInfo.renderArea.extent.width  = area.Width();
 //     renderingInfo.renderArea.extent.height = area.Height();
 //
-//     std::vector<VkRenderingAttachmentInfoKHR> colorAttachments;
+//     HeapVector<VkRenderingAttachmentInfoKHR> colorAttachments;
 //     colorAttachments.reserve(colorRTs.size());
 //
 //     for (uint32_t i = 0; i < colorRTs.size(); i++)
@@ -419,7 +419,7 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
         renderingInfo.renderArea.extent.width  = area.Width();
         renderingInfo.renderArea.extent.height = area.Height();
 
-        std::vector<VkRenderingAttachmentInfoKHR> colorAttachments;
+        HeapVector<VkRenderingAttachmentInfoKHR> colorAttachments;
         colorAttachments.reserve(pRenderingLayout->numColorRenderTargets);
 
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
@@ -459,9 +459,9 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
     else
     {
         uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
-        std::vector<VkClearValue> clearValues;
+        HeapVector<VkClearValue> clearValues;
         clearValues.resize(numAttachments);
-        std::vector<RHIRenderTargetClearValue> clearValuesRHI;
+        HeapVector<RHIRenderTargetClearValue> clearValuesRHI;
         clearValuesRHI.resize(numAttachments);
         pRenderingLayout->GetRHIRenderTargetClearValueData(clearValuesRHI.data());
 
@@ -552,7 +552,7 @@ void VulkanCommandList::SetPushConstants(RHIPipeline* pipelineHandle, VectorView
 
 void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
 {
-    std::vector<VkViewport> vkViewports;
+    HeapVector<VkViewport> vkViewports;
     vkViewports.resize(viewports.size());
     for (uint32_t i = 0; i < viewports.size(); i++)
     {
@@ -569,7 +569,7 @@ void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
 
 void VulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
 {
-    std::vector<VkRect2D> vkScissors;
+    HeapVector<VkRect2D> vkScissors;
     vkScissors.resize(scissors.size());
     for (uint32_t i = 0; i < scissors.size(); i++)
     {

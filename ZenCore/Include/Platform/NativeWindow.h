@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include "ObjectBase.h"
-#include <vector>
+#include "Templates/HeapVector.h"
 #include <string>
 
 namespace zen::platform
@@ -25,8 +25,8 @@ public:
 
     virtual VkSurfaceKHR CreateSurface(VkInstance instance) const = 0;
 
-    virtual std::vector<const char*> GetInstanceExtensions() = 0;
-    virtual std::vector<const char*> GetDeviceExtensions()
+    virtual HeapVector<const char*> GetInstanceExtensions() = 0;
+    virtual HeapVector<const char*> GetDeviceExtensions()
     {
         return {"VK_KHR_swapchain"};
     }

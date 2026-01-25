@@ -1,7 +1,7 @@
 #pragma once
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Utils/UniquePtr.h"
-#include <string>
+#include "Templates/HeapVector.h"
 
 namespace zen
 {
@@ -64,7 +64,7 @@ private:
     bool m_enabled{false};
 };
 class VulkanInstanceExtension;
-using VulkanInstanceExtensionArray = std::vector<UniquePtr<VulkanInstanceExtension>>;
+using VulkanInstanceExtensionArray = HeapVector<UniquePtr<VulkanInstanceExtension>>;
 
 class VulkanInstanceExtension : public VulkanExtension
 {
@@ -74,7 +74,7 @@ public:
         VulkanExtension(extensionName, enableMode)
     {}
 
-    static std::vector<VkExtensionProperties> GetSupportedInstanceExtensions(
+    static HeapVector<VkExtensionProperties> GetSupportedInstanceExtensions(
         const char* layerName = nullptr);
 
     static VulkanInstanceExtensionArray GetEnabledInstanceExtensions(
@@ -82,7 +82,7 @@ public:
 };
 
 class VulkanDeviceExtension;
-using VulkanDeviceExtensionArray = std::vector<UniquePtr<VulkanDeviceExtension>>;
+using VulkanDeviceExtensionArray = HeapVector<UniquePtr<VulkanDeviceExtension>>;
 
 class VulkanDeviceExtension : public VulkanExtension
 {
@@ -95,7 +95,7 @@ public:
 
     virtual ~VulkanDeviceExtension() = default;
 
-    static std::vector<VkExtensionProperties> GetSupportedExtensions(VkPhysicalDevice gpu);
+    static HeapVector<VkExtensionProperties> GetSupportedExtensions(VkPhysicalDevice gpu);
 
     static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* device);
 

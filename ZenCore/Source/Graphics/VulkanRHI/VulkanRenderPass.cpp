@@ -187,9 +187,9 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
         if (!m_framebufferCache.contains(layoutHash))
         {
             const uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
-            std::vector<VkImageView> imageViews;
+            HeapVector<VkImageView> imageViews;
             imageViews.resize(numAttachments);
-            std::vector<RHITexture*> pTextures;
+            HeapVector<RHITexture*> pTextures;
             pTextures.resize(numAttachments);
             pRenderingLayout->GetRHITextureData(pTextures.data());
 
@@ -246,7 +246,7 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     m_height(fbInfo.height),
     m_layers(fbInfo.depth)
 {
-    std::vector<VkImageView> imageViews;
+    HeapVector<VkImageView> imageViews;
     imageViews.resize(fbInfo.numRenderTarget);
     for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {

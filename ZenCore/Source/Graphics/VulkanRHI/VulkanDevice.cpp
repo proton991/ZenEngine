@@ -39,9 +39,9 @@ static std::string GetQueuePropString(const VkQueueFamilyProperties& queueProp)
 DataFormat VulkanRHI::GetSupportedDepthFormat()
 {
     VkFormat defaulFormat{VK_FORMAT_D16_UNORM};
-    const std::vector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,
-                                              VK_FORMAT_D24_UNORM_S8_UINT,
-                                              VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM};
+    const HeapVector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,
+                                             VK_FORMAT_D24_UNORM_S8_UINT,
+                                             VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM};
     for (auto& format : formatList)
     {
         VkFormatProperties formatProps;
@@ -131,7 +131,7 @@ void VulkanDevice::Init()
     m_immediateCommandList = ZEN_NEW() VulkanCommandList(m_immediateContext);
 }
 
-void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& extensions)
+void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions)
 {
     VkDeviceCreateInfo deviceInfo;
     InitVkStruct(deviceInfo, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
@@ -147,7 +147,7 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
     // for glsl shader debug printf ext
     m_extensions.emplace_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
     // set up queue info
-    std::vector<VkDeviceQueueCreateInfo> deviceQueueInfos;
+    HeapVector<VkDeviceQueueCreateInfo> deviceQueueInfos;
 
     int32_t graphicsQueueFamilyIndex = -1;
     int32_t computeQueueFamilyIndex  = -1;
@@ -202,7 +202,7 @@ void VulkanDevice::SetupDevice(std::vector<UniquePtr<VulkanDeviceExtension>>& ex
         LOGI("Initializing Queue Family at index {} ({})", queueFamilyIndex,
              GetQueuePropString(queueFamilyProp));
     }
-    std::vector<float> queuePriorities;
+    HeapVector<float> queuePriorities;
     queuePriorities.resize(numPriorities);
     float* currentPriority = queuePriorities.data();
     for (auto i = 0; i < deviceQueueInfos.size(); i++)

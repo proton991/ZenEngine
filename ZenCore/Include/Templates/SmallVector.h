@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <exception>
 #include <algorithm>
+#include "Templates/HeapVector.h"
+
 namespace zen
 {
 template <class T, size_t N> class AlignedBuffer
@@ -122,6 +124,8 @@ public:
     VectorView(T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
 
     VectorView(const std::vector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
+
+    VectorView(const HeapVector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
 
 protected:
     T* m_ptr{nullptr};

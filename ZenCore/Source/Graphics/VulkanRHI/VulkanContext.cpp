@@ -15,7 +15,7 @@ VulkanRHI* GVulkanRHI                  = nullptr;
 struct VulkanLayer
 {
     VkLayerProperties layerProperties;
-    std::vector<VkExtensionProperties> layerExtensions;
+    HeapVector<VkExtensionProperties> layerExtensions;
 };
 
 VKAPI_ATTR VkBool32 VKAPI_CALL
@@ -57,10 +57,10 @@ void VulkanRHI::PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfo
     dbgMessengerCI.pUserData       = this;
 }
 
-static std::vector<VulkanLayer> GetSupportedLayers()
+static HeapVector<VulkanLayer> GetSupportedLayers()
 {
-    std::vector<VulkanLayer> layers;
-    std::vector<VkLayerProperties> layerProperties;
+    HeapVector<VulkanLayer> layers;
+    HeapVector<VkLayerProperties> layerProperties;
 
     uint32_t count = 0;
     VKCHECK(vkEnumerateInstanceLayerProperties(&count, nullptr));
@@ -84,7 +84,7 @@ static std::vector<VulkanLayer> GetSupportedLayers()
 
 void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtensions)
 {
-    std::vector<VulkanLayer> supportedLayers = GetSupportedLayers();
+    HeapVector<VulkanLayer> supportedLayers = GetSupportedLayers();
     for (const auto& layer : supportedLayers)
     {
         LOGI("Supported Layer: {}", layer.layerProperties.layerName);
@@ -162,7 +162,7 @@ void VulkanRHI::CreateInstance()
     VkDebugUtilsMessengerCreateInfoEXT debugMessengerCI;
     PopulateDebugMessengerCreateInfo(debugMessengerCI);
 
-    std::vector<VkValidationFeatureEnableEXT> validationFeatureEnables = {
+    HeapVector<VkValidationFeatureEnableEXT> validationFeatureEnables = {
         VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
 
     VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
@@ -204,7 +204,7 @@ void VulkanRHI::SelectGPU()
     }
     VKCHECK(result);
     VERIFY_EXPR(gpuCount >= 1);
-    std::vector<VkPhysicalDevice> physicalDevices;
+    HeapVector<VkPhysicalDevice> physicalDevices;
     physicalDevices.resize(gpuCount);
     VKCHECK(vkEnumeratePhysicalDevices(m_instance, &gpuCount, physicalDevices.data()));
     // select first discrete device

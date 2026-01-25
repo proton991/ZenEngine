@@ -112,12 +112,12 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 
 void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem)
 {
-    std::vector<VulkanSemaphore*> vec = {sem};
+    HeapVector<VulkanSemaphore*> vec = {sem};
     AddWaitSemaphore(waitFlags, vec);
 }
 
 void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags,
-                                           const std::vector<VulkanSemaphore*>& sems)
+                                           const HeapVector<VulkanSemaphore*>& sems)
 {
     for (auto sem : sems)
     {
@@ -247,9 +247,9 @@ VulkanCommandBuffer* VulkanCommandBufferManager::GetUploadCommandBuffer()
 }
 
 void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
-    const std::vector<VulkanSemaphore*>& signalSemaphores)
+    const HeapVector<VulkanSemaphore*>& signalSemaphores)
 {
-    std::vector<VkSemaphore> semaphoreHandles;
+    HeapVector<VkSemaphore> semaphoreHandles;
     semaphoreHandles.reserve(signalSemaphores.size());
     for (VulkanSemaphore* sem : signalSemaphores)
     {
@@ -286,13 +286,13 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
 
 void VulkanCommandBufferManager::SubmitActiveCmdBuffer(VulkanSemaphore* signalSemaphore)
 {
-    std::vector<VulkanSemaphore*> vec = {signalSemaphore};
+    HeapVector<VulkanSemaphore*> vec = {signalSemaphore};
     SubmitActiveCmdBuffer(vec);
 }
 
 void VulkanCommandBufferManager::SubmitActiveCmdBuffer()
 {
-    std::vector<VulkanSemaphore*> vec = {};
+    HeapVector<VulkanSemaphore*> vec = {};
     SubmitActiveCmdBuffer(vec);
 }
 

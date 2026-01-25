@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include <functional>
 #include "NativeWindow.h"
+#include "Templates/HeapVector.h"
 
 namespace zen::platform
 {
@@ -15,7 +16,7 @@ public:
 
     VkSurfaceKHR CreateSurface(VkInstance instance) const override;
 
-    std::vector<const char*> GetInstanceExtensions() override;
+    HeapVector<const char*> GetInstanceExtensions() override;
 
     void Update();
 

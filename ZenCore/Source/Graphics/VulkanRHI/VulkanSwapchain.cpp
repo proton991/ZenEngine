@@ -26,7 +26,7 @@ static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
                                           VkImageUsageFlags supportedUsage,
                                           VkFormat surfaceFormat)
 {
-    static const std::vector<VkImageUsageFlagBits> defaultImageUsageFlags = {
+    static constexpr VkImageUsageFlagBits defaultImageUsageFlags[] = {
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT};
     VkFormatProperties formatProperties;
@@ -72,7 +72,7 @@ static VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR sur
 
     if (!vsync)
         return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    static const std::vector<VkPresentModeKHR> presentModePriorityList = {
+    static constexpr VkPresentModeKHR presentModePriorityList[] = {
         VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
     for (const auto& presentMode : presentModePriorityList)
     {
@@ -94,7 +94,7 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
         return request;
     }
 
-    static const std::vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
+    static constexpr VkCompositeAlphaFlagBitsKHR compositeAlphaFlags[] = {
         VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
         VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
 

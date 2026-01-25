@@ -49,7 +49,7 @@ namespace zen
 //         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
 //         VkPipelineVertexInputStateCreateInfo stateCI;
 //     } vertexInputInfo;
-//     std::vector<VkSpecializationMapEntry> entries{};
+//     HeapVector<VkSpecializationMapEntry> entries{};
 //     VkSpecializationInfo specializationInfo{};
 //     VkShaderStageFlags pushConstantsStageFlags;
 //     SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
@@ -120,7 +120,7 @@ private:
         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
         VkPipelineVertexInputStateCreateInfo stateCI;
     } m_vertexInputInfo;
-    std::vector<VkSpecializationMapEntry> m_spcMapEntries{};
+    HeapVector<VkSpecializationMapEntry> m_spcMapEntries{};
     VkSpecializationInfo m_specializationInfo{};
     VkShaderStageFlags m_pushConstantsStageFlags;
     SmallVector<VkPipelineShaderStageCreateInfo> m_stageCreateInfos;
@@ -185,7 +185,7 @@ private:
 //     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
 //     // uint32_t descriptorSetCount{0};
 //     VkShaderStageFlags pushConstantsStageFlags;
-//     //    std::vector<VulkanDescriptorSet*> descriptorSets;
+//     //    HeapVector<VulkanDescriptorSet*> descriptorSets;
 //     // Reason: When building GraphicsPass/ComputePass and pipeline cache is hit, the latter ones will overwrite the descriptorSet
 //     // VulkanPipeline and VulkanDescriptorSet should be kept separately
 //     // VulkanDescriptorSet* descriptorSets[8];

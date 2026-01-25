@@ -107,7 +107,7 @@ enum class PassResourceType
 struct PassResourceTracker
 {
     std::string name;
-    std::vector<RHITexture*> textures;
+    HeapVector<RHITexture*> textures;
     // TextureHandle textureHandle;
     RHIBuffer* buffer;
     PassResourceType resourceType{PassResourceType::eMax};

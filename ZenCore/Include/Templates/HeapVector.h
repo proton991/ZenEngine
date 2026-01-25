@@ -16,10 +16,15 @@ public:
 
     HeapVector() = default;
 
-    explicit HeapVector(size_type reserveCount)
+    explicit HeapVector(size_type count)
     {
-        reserve(reserveCount);
+        resize(count);
     }
+
+    // explicit HeapVector(size_type reserveCount)
+    // {
+    //     reserve(reserveCount);
+    // }
 
     HeapVector(std::initializer_list<T> init)
     {
@@ -97,6 +102,67 @@ public:
         destroy_range(0, m_size);
         m_size = 0;
     }
+
+    iterator erase(const_iterator pos)
+    {
+        ASSERT(pos >= begin() && pos < end());
+
+        const size_type index = static_cast<size_type>(pos - begin());
+
+        // Destroy the element at pos
+        m_data[index].~T();
+
+        // Move elements left
+        if constexpr (std::is_trivially_move_assignable_v<T>)
+        {
+            std::memmove(m_data + index, m_data + index + 1, sizeof(T) * (m_size - index - 1));
+        }
+        else
+        {
+            for (size_type i = index; i < m_size - 1; ++i)
+            {
+                new (&m_data[i]) T(std::move(m_data[i + 1]));
+                m_data[i + 1].~T();
+            }
+        }
+
+        --m_size;
+        return m_data + index;
+    }
+
+    iterator erase(const_iterator first, const_iterator last)
+    {
+        ASSERT(first >= begin() && first <= end());
+        ASSERT(last >= first && last <= end());
+
+        const size_type firstIndex = static_cast<size_type>(first - begin());
+        const size_type lastIndex  = static_cast<size_type>(last - begin());
+        const size_type count      = lastIndex - firstIndex;
+
+        if (count == 0)
+            return m_data + firstIndex;
+
+        // Destroy erased elements
+        destroy_range(firstIndex, lastIndex);
+
+        // Move tail
+        if constexpr (std::is_trivially_move_assignable_v<T>)
+        {
+            std::memmove(m_data + firstIndex, m_data + lastIndex, sizeof(T) * (m_size - lastIndex));
+        }
+        else
+        {
+            for (size_type i = firstIndex; i < m_size - count; ++i)
+            {
+                new (&m_data[i]) T(std::move(m_data[i + count]));
+                m_data[i + count].~T();
+            }
+        }
+
+        m_size -= count;
+        return m_data + firstIndex;
+    }
+
 
     // ----------- element access -----------
 
@@ -221,6 +287,50 @@ private:
 
         m_capacity = newCapacity;
     }
+
+    // void grow(size_type newCapacity)
+    // {
+    //     const size_t newBytes   = sizeof(T) * newCapacity;
+    //     constexpr size_t kAlign = alignof(T);
+    //
+    //     if constexpr (std::is_trivially_move_constructible_v<T>)
+    //     {
+    //         if constexpr (kAlign <= ZEN_DEFAULT_ALIGNMENT)
+    //         {
+    //             m_data = static_cast<T*>(ZEN_MEM_REALLOC(m_data, newBytes));
+    //         }
+    //         else
+    //         {
+    //             m_data = static_cast<T*>(ZEN_MEM_REALLOC_ALIGNED(m_data, newBytes, kAlign));
+    //         }
+    //     }
+    //     else
+    //     {
+    //         T* newMem = nullptr;
+    //
+    //         if constexpr (kAlign <= ZEN_DEFAULT_ALIGNMENT)
+    //         {
+    //             newMem = static_cast<T*>(ZEN_MEM_ALLOC(newBytes));
+    //         }
+    //         else
+    //         {
+    //             newMem = static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(newBytes, kAlign));
+    //         }
+    //
+    //         for (size_type i = 0; i < m_size; ++i)
+    //         {
+    //             new (&newMem[i]) T(std::move(m_data[i]));
+    //             m_data[i].~T();
+    //         }
+    //
+    //         if (m_data)
+    //             ZEN_MEM_FREE(m_data);
+    //
+    //         m_data = newMem;
+    //     }
+    //
+    //     m_capacity = newCapacity;
+    // }
 
     void destroy_range(size_type begin, size_type end)
     {

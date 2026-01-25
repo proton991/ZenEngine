@@ -272,7 +272,7 @@ private:
 };
 
 static int FindExtensionIndex(const char* extensionName,
-                              const std::vector<VkExtensionProperties>& supported)
+                              const HeapVector<VkExtensionProperties>& supported)
 {
     auto it = std::find_if(supported.begin(), supported.end(),
                            [&extensionName](const VkExtensionProperties& extProp) {
@@ -287,8 +287,8 @@ static int FindExtensionIndex(const char* extensionName,
 }
 
 template <class ExtensionType>
-static void FlagExtensionSupported(std::vector<ExtensionType>& extensions,
-                                   const std::vector<VkExtensionProperties>& supported)
+static void FlagExtensionSupported(HeapVector<ExtensionType>& extensions,
+                                   const HeapVector<VkExtensionProperties>& supported)
 {
     for (ExtensionType& extension : extensions)
     {
@@ -300,10 +300,10 @@ static void FlagExtensionSupported(std::vector<ExtensionType>& extensions,
     }
 }
 
-std::vector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceExtensions(
+HeapVector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceExtensions(
     const char* layerName)
 {
-    std::vector<VkExtensionProperties> extensions;
+    HeapVector<VkExtensionProperties> extensions;
 
     uint32_t count = 0;
     VKCHECK(vkEnumerateInstanceExtensionProperties(layerName, &count, nullptr));
@@ -345,10 +345,10 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     return enabledExtensions;
 }
 
-std::vector<VkExtensionProperties> VulkanDeviceExtension::GetSupportedExtensions(
+HeapVector<VkExtensionProperties> VulkanDeviceExtension::GetSupportedExtensions(
     VkPhysicalDevice gpu)
 {
-    std::vector<VkExtensionProperties> extensions;
+    HeapVector<VkExtensionProperties> extensions;
 
     uint32_t count = 0;
     VKCHECK(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, nullptr));

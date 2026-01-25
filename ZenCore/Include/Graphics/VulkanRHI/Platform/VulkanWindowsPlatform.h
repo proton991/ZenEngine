@@ -2,7 +2,7 @@
 #if defined(ZEN_WIN32)
 #    include "Graphics/RHI/RHIDefs.h"
 #    include "VulkanPlatformCommon.h"
-#    include <vector>
+#    include "Templates/HeapVector.h"
 #    include "Utils/UniquePtr.h"
 #    define VK_USE_PLATFORM_WIN32_KHR
 
@@ -24,7 +24,7 @@ class VulkanInstanceExtension;
 class VulkanWindowsPlatform
 {
 public:
-    static void AddInstanceExtensions(std::vector<UniquePtr<VulkanInstanceExtension>>& extensions);
+    static void AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions);
 
     static VkSurfaceKHR CreateSurface(VkInstance instance, void* windowData);
 

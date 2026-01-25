@@ -1,7 +1,5 @@
 #pragma once
-#include <vector>
-#include <cstddef>
-#include <cassert>
+#include "Templates/HeapVector.h"
 
 namespace zen
 {
@@ -65,7 +63,7 @@ private:
     }
 
 private:
-    std::vector<T*> m_allocators;
+    HeapVector<T*> m_allocators;
     size_t m_currentIndex = 0;
     size_t m_initialSize;
 };

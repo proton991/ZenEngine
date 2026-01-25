@@ -129,14 +129,14 @@ public:
         m_stageFlags = flags;
     }
 
-    void SetStageSPIRV(RHIShaderStage stage, const std::vector<uint8_t>& source)
+    void SetStageSPIRV(RHIShaderStage stage, std::vector<uint8_t>&& source)
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
         m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
-        m_spirv[static_cast<uint32_t>(stage)] = source;
+        m_spirv[static_cast<uint32_t>(stage)] = std::move(source);
     }
 
-    std::vector<uint8_t> GetStageSPIRV(RHIShaderStage stage) const
+    const std::vector<uint8_t>& GetStageSPIRV(RHIShaderStage stage) const
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_spirv[ToUnderlying(stage)];

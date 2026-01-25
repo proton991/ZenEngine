@@ -7,7 +7,7 @@
 namespace zen
 {
 void VulkanWindowsPlatform::AddInstanceExtensions(
-    std::vector<UniquePtr<VulkanInstanceExtension>>& extensions)
+    HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions)
 {
     extensions.emplace_back(MakeUnique<VulkanInstanceExtension>("VK_KHR_win32_surface"));
     extensions.emplace_back(

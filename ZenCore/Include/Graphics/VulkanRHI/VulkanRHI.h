@@ -179,7 +179,7 @@ public:
     void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
 
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-    //                          const std::vector<RHIShaderResourceBinding>& resourceBindings) final;
+    //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
 
     void SubmitAllGPUCommands() final;
 
@@ -231,8 +231,8 @@ private:
     VkInstance m_instance{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT m_messenger{VK_NULL_HANDLE};
 
-    std::vector<const char*> m_instanceLayers;
-    std::vector<const char*> m_instanceExtensions;
+    HeapVector<const char*> m_instanceLayers;
+    HeapVector<const char*> m_instanceExtensions;
 
     InstanceExtensionFlags m_instanceExtensionFlags{};
 
@@ -242,7 +242,7 @@ private:
 
     VulkanViewport* m_currentViewport{nullptr};
 
-    std::vector<RHICommandListContext*> m_cmdListContexts;
+    HeapVector<RHICommandListContext*> m_cmdListContexts;
     VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
 
     // allocator for memory
