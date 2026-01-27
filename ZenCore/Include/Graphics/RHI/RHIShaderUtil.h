@@ -386,7 +386,7 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
         {
             // shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
             SpvReflectShaderModule module;
-            const std::vector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
+            const HeapVector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
             SpvReflectResult result =
                 spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
             if (result != SPV_REFLECT_RESULT_SUCCESS)

@@ -124,19 +124,24 @@ class RHIShaderGroupSPIRV : public RefCounted
 public:
     RHIShaderGroupSPIRV() = default;
 
+    ~RHIShaderGroupSPIRV()
+    {
+        int a = 1;
+    }
+
     void SetStageFlags(int64_t flags)
     {
         m_stageFlags = flags;
     }
 
-    void SetStageSPIRV(RHIShaderStage stage, std::vector<uint8_t>&& source)
+    void SetStageSPIRV(RHIShaderStage stage, HeapVector<uint8_t>&& source)
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
         m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
         m_spirv[static_cast<uint32_t>(stage)] = std::move(source);
     }
 
-    const std::vector<uint8_t>& GetStageSPIRV(RHIShaderStage stage) const
+    const HeapVector<uint8_t>& GetStageSPIRV(RHIShaderStage stage) const
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_spirv[ToUnderlying(stage)];
@@ -190,7 +195,7 @@ private:
     // shader language
     RHIShaderLanguage m_shaderLanguage{RHIShaderLanguage::eGLSL};
     // spirv code
-    std::vector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
+    HeapVector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
     // compile errors
     std::string m_compileErrors[ToUnderlying(RHIShaderStage::eMax)];
 };

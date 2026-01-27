@@ -1,8 +1,8 @@
 #pragma once
 #include <fstream>
 #include <string>
-#include <vector>
 #include "Utils/Errors.h"
+#include "Templates/HeapVector.h"
 
 namespace zen::platform
 {
@@ -11,7 +11,7 @@ class FileSystem
 public:
     static std::string LoadTextFile(const std::string& path);
 
-    template <typename T = uint8_t> static std::vector<T> LoadSpvFile(const std::string& name)
+    template <typename T = uint8_t> static HeapVector<T> LoadSpvFile(const std::string& name)
     {
         const auto path = std::string(SPV_SHADER_PATH) + name;
         std::ifstream file(path, std::ios::ate | std::ios::binary);
@@ -21,7 +21,11 @@ public:
         size_t fileSize = file.tellg();
 
         //spir-v expects the buffer to be on uint32, so make sure to reserve an int vector big enough for the entire file
-        std::vector<T> buffer(fileSize / sizeof(T));
+        HeapVector<T> buffer(fileSize / sizeof(T));
+
+        ASSERT(fileSize % sizeof(uint32_t) == 0);
+        ASSERT(fileSize == buffer.size());
+        ASSERT(reinterpret_cast<uintptr_t>(buffer.data()) % alignof(uint32_t) == 0);
 
         //put file cursor at beginning
         file.seekg(0);

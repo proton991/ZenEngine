@@ -208,7 +208,7 @@ void VulkanShader::Init()
         RHIShaderStage stage = static_cast<RHIShaderStage>(i);
         if (m_shaderGroupSPIRV->HasShaderStage(stage))
         {
-            const std::vector<uint8_t>& spirvCode = m_shaderGroupSPIRV->GetStageSPIRV(stage);
+            const HeapVector<uint8_t>& spirvCode = m_shaderGroupSPIRV->GetStageSPIRV(stage);
 
             VkShaderModuleCreateInfo shaderModuleCI;
             InitVkStruct(shaderModuleCI, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
@@ -363,6 +363,7 @@ void VulkanShader::Destroy()
         vkDestroyPipelineLayout(GVulkanRHI->GetVkDevice(), m_pipelineLayout, nullptr);
     }
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
+    m_shaderGroupSPIRV->Release();
 }
 
 // ShaderHandle VulkanRHI::CreateShader(const RHIShaderGroupInfo& sgInfo)
