@@ -3,6 +3,7 @@ lib/
 .vs/
 build/
 .idea/
+out/
 
 Data/SpvShaders
 Data/engine.cfg

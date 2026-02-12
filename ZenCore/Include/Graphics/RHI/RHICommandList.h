@@ -5,6 +5,7 @@
 #include "Templates/HeapVector.h"
 
 #define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
+
 namespace zen
 {
 class RHIDescriptorSet;
@@ -15,6 +16,12 @@ struct RHICommandBase
     RHICommandBase* pNextCmd{nullptr};
 };
 
+enum class RHICommandContextType : uint32_t
+{
+    eGraphics,
+    eAsyncCompute,
+    eTransfer
+};
 
 class IRHICommandContext
 {
@@ -37,14 +44,11 @@ public:
 
     virtual void RHISetBlendConstants(const Color& blendConstants) = 0;
 
-    virtual void RHIBindPipeline(RHIPipelineType pipelineType,
-                                 RHIPipeline* pPipeline,
+    virtual void RHIBindPipeline(RHIPipeline* pPipeline,
                                  uint32_t numDescriptorSets,
                                  RHIDescriptorSet* const* pDescriptorSets) = 0;
 
     virtual void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset) = 0;
-
-    virtual void RHIBindIndexBuffer(RHIBuffer* pBuffer, DataFormat format, uint64_t offset) = 0;
 
     virtual void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                 uint32_t indexCount,
@@ -63,12 +67,9 @@ public:
 
     virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                    BitField<RHIPipelineStageBits> dstStages,
-                                   uint32_t numMemoryTransitions,
-                                   RHIMemoryTransition* pMemoryTransitions,
-                                   uint32_t numBufferTransitions,
-                                   RHIBufferTransition* pBufferTransitions,
-                                   uint32_t numTextureTransitions,
-                                   RHITextureTransition* pTextureTransitions) = 0;
+                                   const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                                   const HeapVector<RHIBufferTransition>& bufferTransitions,
+                                   const HeapVector<RHITextureTransition>& textureTransitions) = 0;
 
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
 
@@ -162,6 +163,7 @@ struct RHICommandCopyBufferToTexture : public RHICommand
 struct RHICommandBeginRendering final : public RHICommand
 {
     const RHIRenderingLayout* pRenderingLayout;
+
     explicit RHICommandBeginRendering(const RHIRenderingLayout* pRenderingLayout) :
         pRenderingLayout(pRenderingLayout)
     {}
@@ -199,8 +201,7 @@ struct RHICommandBindPipeline final : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBindPipeline(pipelineType, pPipeline, numDescriptorSets,
-                                              pDescriptorSets);
+        cmdList.GetContext()->RHIBindPipeline(pPipeline, numDescriptorSets, pDescriptorSets);
     }
 };
 
@@ -282,21 +283,6 @@ struct RHICommandSetBlendConstants : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHISetBlendConstants(blendConstants);
-    }
-};
-struct RHICommandBindIndexBuffer final : public RHICommand
-{
-    RHIBuffer* pIndexBuffer;
-    DataFormat format;
-    uint64_t offset;
-
-    RHICommandBindIndexBuffer(RHIBuffer* pIndexBuffer, DataFormat format, uint64_t offset) :
-        pIndexBuffer(pIndexBuffer), format(format), offset(offset)
-    {}
-
-    void Execute(RHICommandListBase& cmdList) override
-    {
-        cmdList.GetContext()->RHIBindIndexBuffer(pIndexBuffer, format, offset);
     }
 };
 
@@ -446,9 +432,10 @@ struct RHICommandAddTransitions final : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIAddTransitions(
-            srcStages, dstStages, numMemoryTransitions, MemoryTransitions(), numBufferTransitions,
-            BufferTransitions(), numTextureTransitions, TextureTransitions());
+        cmdList.GetContext()->RHIAddTransitions(srcStages, dstStages,
+                                                {MemoryTransitions(), numMemoryTransitions},
+                                                {BufferTransitions(), numBufferTransitions},
+                                                {TextureTransitions(), numTextureTransitions});
     }
 };
 

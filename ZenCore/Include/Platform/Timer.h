@@ -98,6 +98,11 @@ public:
         return duration.count();
     }
 
+    template <typename T = DefaultResolution> static double Now()
+    {
+        return std::chrono::duration<double, T>(Clock::now().time_since_epoch()).count();
+    }
+
     /**
 	 * @brief Check if the timer is running
 	 */

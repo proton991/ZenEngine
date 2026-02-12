@@ -278,6 +278,19 @@ void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
     }
 }
 
+void VulkanPipelineBarrier::Execute(VkCommandBuffer cmdBuffer,
+                                    VkPipelineStageFlags srcStageFlags,
+                                    VkPipelineStageFlags dstStageFlags)
+{
+    if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
+    {
+        vkCmdPipelineBarrier(cmdBuffer, srcStageFlags, dstStageFlags, 0, m_memoryBarriers.size(),
+                             m_memoryBarriers.data(), m_bufferBarriers.size(),
+                             m_bufferBarriers.data(), m_imageBarriers.size(),
+                             m_imageBarriers.data());
+    }
+}
+
 void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
                                     BitField<RHIPipelineStageBits> srcStages,
                                     BitField<RHIPipelineStageBits> dstStages)

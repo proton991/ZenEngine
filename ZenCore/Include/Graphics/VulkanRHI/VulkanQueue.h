@@ -1,16 +1,24 @@
 #pragma once
+#include "VulkanCommandBuffer.h"
 #include "VulkanHeaders.h"
-#include <vector>
+#include "Templates/HeapVector.h"
+#include "Templates/Queue.h"
 
 namespace zen
 {
+class VulkanWorkload;
 class VulkanDevice;
 class VulkanCommandBuffer;
+class FVulkanCommandBufferPool;
 
 class VulkanQueue
 {
 public:
     VulkanQueue(VulkanDevice* device, uint32_t familyIndex);
+
+    FVulkanCommandBufferPool* AcquireCommandBufferPool(VulkanCommandBufferType type);
+
+    void RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool);
 
     uint32_t GetFamilyIndex() const
     {
@@ -51,5 +59,9 @@ private:
     uint32_t m_queueIndex;
 
     VulkanCommandBuffer* m_lastSubmittedCmdBuffer{nullptr};
+
+    HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
+
+    Queue<VulkanWorkload*> m_workloadsPendingProcess;
 };
 } // namespace zen

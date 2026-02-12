@@ -33,6 +33,28 @@ public:
             emplace_back(v);
     }
 
+    HeapVector(const T* srcData, size_type count)
+    {
+        if (count == 0)
+            return;
+
+        reserve(count);
+
+        if constexpr (std::is_trivially_copy_constructible_v<T>)
+        {
+            std::memcpy(m_data, srcData, sizeof(T) * count);
+            m_size = count;
+        }
+        else
+        {
+            for (size_type i = 0; i < count; ++i)
+            {
+                new (&m_data[i]) T(srcData[i]);
+            }
+            m_size = count;
+        }
+    }
+
     ~HeapVector()
     {
         destroy_range(0, m_size);
@@ -161,6 +183,30 @@ public:
 
         m_size -= count;
         return m_data + firstIndex;
+    }
+
+    void remove(size_type index)
+    {
+        ASSERT(index < m_size);
+
+        // Destroy target element
+        m_data[index].~T();
+
+        // Move elements left
+        if constexpr (std::is_trivially_move_assignable_v<T>)
+        {
+            std::memmove(m_data + index, m_data + index + 1, sizeof(T) * (m_size - index - 1));
+        }
+        else
+        {
+            for (size_type i = index; i < m_size - 1; ++i)
+            {
+                new (&m_data[i]) T(std::move(m_data[i + 1]));
+                m_data[i + 1].~T();
+            }
+        }
+
+        --m_size;
     }
 
 

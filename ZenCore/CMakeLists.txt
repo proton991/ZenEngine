@@ -110,6 +110,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanViewport.h
     Include/Graphics/VulkanRHI/VulkanCommandBuffer.h
     Include/Graphics/VulkanRHI/VulkanCommands.h
+    Include/Graphics/VulkanRHI/VulkanCommandList.h
     Include/Graphics/VulkanRHI/VulkanTypes.h
     Include/Graphics/VulkanRHI/VulkanPipeline.h
     Include/Graphics/VulkanRHI/VulkanRenderPass.h
@@ -200,6 +201,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanViewport.cpp
     Source/Graphics/VulkanRHI/VulkanCommandBuffer.cpp
     Source/Graphics/VulkanRHI/VulkanCommands.cpp
+    Source/Graphics/VulkanRHI/VulkanCommandList.cpp
     Source/Graphics/VulkanRHI/VulkanTypes.cpp
     Source/Graphics/VulkanRHI/VulkanPipeline.cpp
     Source/Graphics/VulkanRHI/VulkanRenderPass.cpp

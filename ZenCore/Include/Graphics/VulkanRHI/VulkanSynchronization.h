@@ -144,6 +144,10 @@ public:
     // for Image-only transitions
     void Execute(VulkanCommandBuffer* cmdBuffer);
 
+    void Execute(VkCommandBuffer cmdBuffer,
+                 VkPipelineStageFlags srcStageFlags,
+                 VkPipelineStageFlags dstStageFlags);
+
     void Execute(VulkanCommandBuffer* cmdBuffer,
                  BitField<RHIPipelineStageBits> srcStages,
                  BitField<RHIPipelineStageBits> dstStages);

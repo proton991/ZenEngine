@@ -11,6 +11,13 @@ class VulkanCommandBuffer;
 class VulkanFence;
 class VulkanSemaphore;
 
+
+enum class VulkanCommandBufferType
+{
+    ePrimary   = 0,
+    eSecondary = 1
+};
+
 struct VulkanCommandPool
 {
     VkCommandPool vkHandle{VK_NULL_HANDLE};

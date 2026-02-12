@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanHeaders.h"
+#include "Graphics/RHI/RHICommandList.h"
 #include "Utils/UniquePtr.h"
 #include "Templates/HeapVector.h"
 
@@ -74,6 +75,33 @@ public:
 
     VulkanQueue* GetGfxQueue() const
     {
+        return m_gfxQueue;
+    }
+
+    VulkanQueue* GetComputeQueue() const
+    {
+        return m_computeQueue;
+    }
+
+    VulkanQueue* GetTransferQueue() const
+    {
+        return m_transferQueue;
+    }
+
+    VulkanQueue* GetQueue(RHICommandContextType type)
+    {
+        if (type == RHICommandContextType::eGraphics)
+        {
+            return m_gfxQueue;
+        }
+        if (type == RHICommandContextType::eAsyncCompute)
+        {
+            return m_computeQueue;
+        }
+        if (type == RHICommandContextType::eTransfer)
+        {
+            return m_transferQueue;
+        }
         return m_gfxQueue;
     }
 

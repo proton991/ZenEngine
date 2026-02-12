@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
+#include "Graphics/VulkanRHI/VulkanCommandList.h"
 
 namespace zen
 {
@@ -9,6 +10,27 @@ VulkanQueue::VulkanQueue(VulkanDevice* device, uint32_t familyIndex) :
     m_device(device), m_familyIndex(familyIndex), m_queueIndex(0)
 {
     vkGetDeviceQueue(m_device->GetVkHandle(), m_familyIndex, m_queueIndex, &m_handle);
+}
+
+FVulkanCommandBufferPool* VulkanQueue::AcquireCommandBufferPool(VulkanCommandBufferType type)
+{
+    FVulkanCommandBufferPool* result = nullptr;
+    if (!m_cmdBufferPools.empty())
+    {
+        result = m_cmdBufferPools.back();
+        m_cmdBufferPools.pop_back();
+    }
+    else
+    {
+        result = ZEN_NEW() FVulkanCommandBufferPool(this, type);
+    }
+    return result;
+}
+
+void VulkanQueue::RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool)
+{
+    VERIFY_EXPR(pCmdBufferPool->GetQueue() == this);
+    m_cmdBufferPools.emplace_back(pCmdBufferPool);
 }
 
 void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer,

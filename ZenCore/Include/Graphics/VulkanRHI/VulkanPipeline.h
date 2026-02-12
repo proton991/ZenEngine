@@ -39,6 +39,7 @@ template <> struct hash<zen::VulkanDescriptorPoolKey>
 
 namespace zen
 {
+class VulkanDevice;
 // struct VulkanShader
 // {
 //     VulkanShader() = default;
