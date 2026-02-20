@@ -3,6 +3,7 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 
 namespace zen
 {
@@ -90,5 +91,66 @@ void VulkanQueue::GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer,
 void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer)
 {
     m_lastSubmittedCmdBuffer = cmdBuffer;
+}
+
+void VulkanQueue::SubmitWorkloads()
+{
+    HeapVector<VkCommandBuffer> commandBuffers;
+
+    // When using fences, submit workload one by one
+    while (!m_workloadsPendingSubmit.Empty())
+    {
+        VulkanWorkload* pWorkload = nullptr;
+        m_workloadsPendingSubmit.Pop(pWorkload);
+        pWorkload->m_pFence = GVulkanRHI->GetDevice()->GetFenceManager()->CreateFence();
+
+        VkSubmitInfo submitInfo;
+        InitVkStruct(submitInfo, VK_STRUCTURE_TYPE_SUBMIT_INFO);
+        HeapVector<VkSemaphore> waitSemaphores;
+        HeapVector<VkSemaphore> signalSemaphores;
+
+        for (VulkanSemaphore* sem : pWorkload->m_waitSemaphores)
+        {
+            waitSemaphores.push_back(sem->GetVkHandle());
+        }
+        for (VulkanSemaphore* sem : pWorkload->m_signalSemaphores)
+        {
+            signalSemaphores.push_back(sem->GetVkHandle());
+        }
+
+        VkCommandBuffer cmdBuffer = pWorkload->m_pCmdBuffer->GetVkHandle();
+
+        submitInfo.commandBufferCount   = 1;
+        submitInfo.pCommandBuffers      = &cmdBuffer;
+        submitInfo.signalSemaphoreCount = signalSemaphores.size();
+        submitInfo.pSignalSemaphores    = signalSemaphores.data();
+        submitInfo.waitSemaphoreCount   = waitSemaphores.size();
+        submitInfo.pWaitSemaphores      = waitSemaphores.data();
+        submitInfo.pWaitDstStageMask    = pWorkload->m_waitFlags.data();
+
+        VKCHECK(vkQueueSubmit(m_handle, 1, &submitInfo, pWorkload->m_pFence->GetVkHandle()));
+        pWorkload->m_pCmdBuffer->SetSubmitted();
+
+        m_workloadsPendingProcess.Push(pWorkload);
+    }
+}
+
+void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWait)
+{
+    VulkanFenceManager* pFenceManager = GVulkanRHI->GetDevice()->GetFenceManager();
+    while (!m_workloadsPendingProcess.Empty())
+    {
+        VulkanWorkload* pWorkload = nullptr;
+        m_workloadsPendingProcess.Pop(pWorkload);
+        VulkanFence* pFence = pWorkload->m_pFence;
+
+        bool success = pFenceManager->WaitForFence(pFence, (uint64_t)(timeToWait * 1e9));
+        VERIFY_EXPR(success);
+
+        if (pFenceManager->IsFenceSignaled(pFence))
+        {
+            pFence->GetOwner()->ResetFence(pFence);
+        }
+    }
 }
 } // namespace zen

@@ -2,6 +2,24 @@
 
 namespace zen
 {
+FRHICommandList* FRHICommandList::Create(IRHICommandContext* pContext)
+{
+    FRHICommandList* pCmdList         = ZEN_NEW() FRHICommandList();
+    RHICommandContextType contextType = pContext->GetContextType();
+    if (contextType == RHICommandContextType::eGraphics)
+    {
+        pCmdList->m_pGraphicsContext = pContext;
+        pCmdList->m_pComputeContext  = pContext;
+    }
+    else if (contextType == RHICommandContextType::eAsyncCompute)
+    {
+        pCmdList->m_pGraphicsContext = nullptr;
+        pCmdList->m_pComputeContext  = pContext;
+    }
+
+    return pCmdList;
+}
+
 void FRHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                           RHITexture* pDstTexture,
                                           VectorView<RHIBufferTextureCopyRegion> regions)

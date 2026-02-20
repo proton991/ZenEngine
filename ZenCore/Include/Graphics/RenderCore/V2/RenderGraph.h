@@ -7,6 +7,10 @@
 #include "Graphics/RHI/RHICommands.h"
 #include "RenderCoreDefs.h"
 
+namespace zen
+{
+class FRHICommandList;
+}
 // RDG_ID class
 class RDG_ID
 {
@@ -830,6 +834,9 @@ private:
     std::string m_rdgTag;
     // RHI CommandList
     RHICommandList* m_cmdList{nullptr};
+
+    FRHICommandList* m_pCmdList{nullptr};
+
     // stores dependency between graph nodes
     HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;
     // nodes

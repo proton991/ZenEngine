@@ -158,6 +158,8 @@ private:
 class VulkanWorkload
 {
     friend class VulkanCommandContextBase;
+    friend class VulkanQueue;
+    friend class VulkanRHI;
 
 public:
     explicit VulkanWorkload(VulkanQueue* pQueue) : m_pQueue(pQueue) {}
@@ -185,6 +187,8 @@ public:
     VulkanCommandContextBase(VulkanQueue* pQueue, VulkanCommandBufferType type) :
         m_pQueue(pQueue), m_pCmdBufferPool(pQueue->AcquireCommandBufferPool(type))
     {}
+
+    virtual ~VulkanCommandContextBase();
 
     FVulkanCommandBuffer* GetCommandBuffer()
     {
@@ -235,6 +239,12 @@ public:
         {
             pCurrentWorkload->m_signalSemaphores.emplace_back(signalSemaphores[i]);
         }
+    }
+
+    void Finalize(HeapVector<VulkanWorkload*>& outWorkloads)
+    {
+        EndWorkload();
+        outWorkloads.emplace_back(m_pCurrentWorkload);
     }
 
 private:
@@ -307,7 +317,9 @@ class FVulkanCommandListContext : public IRHICommandContext, public VulkanComman
 public:
     FVulkanCommandListContext(RHICommandContextType contextType, VulkanDevice* pDevice);
 
-    ~FVulkanCommandListContext() override;
+    virtual ~FVulkanCommandListContext();
+
+    RHICommandContextType GetContextType() override;
 
     void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) override;
 
@@ -365,6 +377,8 @@ public:
 
     // todo: need a function to collect recorded workload in this context
 private:
+    RHICommandContextType m_contextType;
+
     VulkanDevice* m_pDevice{nullptr};
 
     VulkanGfxState* m_pGfxState{nullptr};

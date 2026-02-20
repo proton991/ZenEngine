@@ -212,7 +212,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     barrier.AddImageBarrier(m_depthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_depthStencilBackBuffer->GetVkSubresourceRange());
-    barrier.Execute(cmdBuffer);
+    barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
     cmdList->EndTransferWorkload();
 
     m_acquiredImageIndex = -1;
@@ -280,7 +280,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.Execute(cmdBuffer);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
     }
     if (m_width != windowWidth || m_height != windowHeight)
     {
@@ -339,7 +339,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.Execute(cmdBuffer);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
     }
 }
 

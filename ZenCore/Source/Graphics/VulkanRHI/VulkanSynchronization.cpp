@@ -262,7 +262,7 @@ void VulkanPipelineBarrier::AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFl
     m_memoryBarriers.emplace_back(memoryBarrier);
 }
 
-void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
+void VulkanPipelineBarrier::ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer)
 {
     VkPipelineStageFlags srcStageFlags = 0;
     VkPipelineStageFlags dstStageFlags = 0;
@@ -273,8 +273,9 @@ void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer)
     }
     if (!m_imageBarriers.empty())
     {
-        vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStageFlags, dstStageFlags, 0, 0, nullptr,
-                             0, nullptr, m_imageBarriers.size(), m_imageBarriers.data());
+        vkCmdPipelineBarrier(cmdBuffer, srcStageFlags, dstStageFlags, 0, 0, nullptr, 0, nullptr,
+                             m_imageBarriers.size(), m_imageBarriers.data());
+        m_imageBarriers.clear();
     }
 }
 
@@ -288,21 +289,25 @@ void VulkanPipelineBarrier::Execute(VkCommandBuffer cmdBuffer,
                              m_memoryBarriers.data(), m_bufferBarriers.size(),
                              m_bufferBarriers.data(), m_imageBarriers.size(),
                              m_imageBarriers.data());
+
+        m_memoryBarriers.clear();
+        m_bufferBarriers.clear();
+        m_imageBarriers.clear();
     }
 }
 
-void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
-                                    BitField<RHIPipelineStageBits> srcStages,
-                                    BitField<RHIPipelineStageBits> dstStages)
-{
-    if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
-    {
-        vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStages, dstStages, 0,
-                             m_memoryBarriers.size(), m_memoryBarriers.data(),
-                             m_bufferBarriers.size(), m_bufferBarriers.data(),
-                             m_imageBarriers.size(), m_imageBarriers.data());
-    }
-}
+// void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
+//                                     BitField<RHIPipelineStageBits> srcStages,
+//                                     BitField<RHIPipelineStageBits> dstStages)
+// {
+//     if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
+//     {
+//         vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStages, dstStages, 0,
+//                              m_memoryBarriers.size(), m_memoryBarriers.data(),
+//                              m_bufferBarriers.size(), m_bufferBarriers.data(),
+//                              m_imageBarriers.size(), m_imageBarriers.data());
+//     }
+// }
 
 VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImageLayout layout)
 {

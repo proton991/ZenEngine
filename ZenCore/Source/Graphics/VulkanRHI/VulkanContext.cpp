@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
+#include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
@@ -248,6 +249,11 @@ VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
 VkDevice VulkanRHI::GetVkDevice() const
 {
     return m_device->GetVkHandle();
+}
+
+IRHICommandContext* VulkanRHI::GetCommandContext(RHICommandContextType contextType)
+{
+    return new FVulkanCommandListContext(contextType, m_device);
 }
 
 RHICommandListContext* VulkanRHI::CreateCmdListContext()

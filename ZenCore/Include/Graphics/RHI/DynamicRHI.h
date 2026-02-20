@@ -1,4 +1,5 @@
 #pragma once
+#include "RHICommandList.h"
 #include "RHICommon.h"
 #include "RHIResource.h"
 
@@ -17,6 +18,8 @@ public:
     virtual void Init() = 0;
 
     virtual void Destroy() = 0;
+
+    virtual IRHICommandContext* GetCommandContext(RHICommandContextType contextType) = 0;
 
     virtual RHICommandListContext* CreateCmdListContext() = 0;
 
@@ -128,6 +131,8 @@ public:
     // virtual void UpdateDescriptorSet(
     //     DescriptorSetHandle descriptorSetHandle,
     //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
+
+    virtual void SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 

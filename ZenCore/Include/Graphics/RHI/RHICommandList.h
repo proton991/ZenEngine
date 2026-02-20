@@ -18,14 +18,17 @@ struct RHICommandBase
 
 enum class RHICommandContextType : uint32_t
 {
-    eGraphics,
-    eAsyncCompute,
-    eTransfer
+    eGraphics     = 0,
+    eAsyncCompute = 1,
+    eTransfer     = 2,
+    eMax          = 3
 };
 
 class IRHICommandContext
 {
 public:
+    virtual RHICommandContextType GetContextType() = 0;
+
     virtual ~IRHICommandContext() {}
 
     virtual void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) = 0;
@@ -470,34 +473,38 @@ struct RHICommandGenTextureMipmaps : public RHICommand
 class FRHICommandList : public RHICommandListBase
 {
 public:
-    virtual void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                     RHITexture* pDstTexture,
-                                     VectorView<RHIBufferTextureCopyRegion> regions);
+    static FRHICommandList* Create(IRHICommandContext* pContext);
 
-    virtual void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
+    FRHICommandList() = default;
 
-    virtual void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
+    void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                             RHITexture* pDstTexture,
+                             VectorView<RHIBufferTextureCopyRegion> regions);
 
-    virtual void BindPipeline(RHIPipelineType pipelineType,
-                              RHIPipeline* pPipeline,
-                              uint32_t numDescriptorSets,
-                              RHIDescriptorSet* const* pDescriptorSets);
+    void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
+
+    void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
+
+    void BindPipeline(RHIPipelineType pipelineType,
+                      RHIPipeline* pPipeline,
+                      uint32_t numDescriptorSets,
+                      RHIDescriptorSet* const* pDescriptorSets);
 
     // All vertex attributes packed in 1 buffer
-    virtual void BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset);
+    void BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset);
 
-    virtual void DrawIndexed(const RHICommandDrawIndexed::Param& param);
+    void DrawIndexed(const RHICommandDrawIndexed::Param& param);
 
-    virtual void DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param);
+    void DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param);
 
-    virtual void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                                BitField<RHIPipelineStageBits> dstStages,
-                                const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                                const HeapVector<RHIBufferTransition>& bufferTransitions,
-                                const HeapVector<RHITextureTransition>& textureTransitions);
+    void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
+                        BitField<RHIPipelineStageBits> dstStages,
+                        const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                        const HeapVector<RHIBufferTransition>& bufferTransitions,
+                        const HeapVector<RHITextureTransition>& textureTransitions);
 
-    virtual void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
+    void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
 
-    virtual void GenTextureMipmaps(RHITexture* pTexture);
+    void GenTextureMipmaps(RHITexture* pTexture);
 };
 } // namespace zen

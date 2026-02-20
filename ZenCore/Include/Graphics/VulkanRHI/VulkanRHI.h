@@ -50,6 +50,8 @@ public:
         // delete m_resourceFactory;
     }
 
+    IRHICommandContext* GetCommandContext(RHICommandContextType contextType) override;
+
     RHICommandListContext* CreateCmdListContext() override;
 
     void WaitForCommandList(RHICommandList* cmdList) override;
@@ -180,6 +182,8 @@ public:
 
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
+
+    void SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists) final;
 
     void SubmitAllGPUCommands() final;
 

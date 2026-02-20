@@ -192,6 +192,11 @@ VulkanWorkload::~VulkanWorkload()
     // release semaphores and fence
 }
 
+VulkanCommandContextBase::~VulkanCommandContextBase()
+{
+    m_pQueue->RecycleCommandBufferPool(m_pCmdBufferPool);
+}
+
 void VulkanCommandContextBase::SetupNewCommandBuffer()
 {
     LockAuto lock(&m_pCmdBufferPool->m_mutex);
@@ -323,6 +328,7 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
                                                      VulkanDevice* pDevice) :
     VulkanCommandContextBase(pDevice->GetQueue(contextType), VulkanCommandBufferType::ePrimary),
+    m_contextType(contextType),
     m_pDevice(pDevice)
 {
     m_pGfxState = ZEN_NEW() VulkanGfxState();
@@ -332,6 +338,11 @@ FVulkanCommandListContext::~FVulkanCommandListContext()
 {
     ZEN_DELETE(m_pGfxState);
     m_pGfxState = nullptr;
+}
+
+RHICommandContextType FVulkanCommandListContext::GetContextType()
+{
+    return m_contextType;
 }
 
 void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout)
@@ -593,11 +604,138 @@ void FVulkanCommandListContext::RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                                        RHITexture* pDstTexture,
                                                        uint32_t numRegions,
                                                        RHIBufferTextureCopyRegion* pRegions)
-{}
+{
+    HeapVector<VkBufferImageCopy> copies(numRegions);
+    for (uint32_t i = 0; i < numRegions; i++)
+    {
+        ToVkBufferImageCopy(pRegions[i], &copies[i]);
+    }
 
-void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture) {}
+    vkCmdCopyBufferToImage(GetCommandBuffer()->GetVkHandle(),
+                           TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
+                           TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
+}
+
+void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
+{
+    VulkanPipelineBarrier barrier;
+    VkCommandBuffer cmdBuffer = GetCommandBuffer()->GetVkHandle();
+
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(pTexture);
+    VkImage vkImage              = vulkanTexture->GetVkImage();
+    // Get texture attributes
+    // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
+    const uint32_t texWidth  = pTexture->GetBaseInfo().width;
+    const uint32_t texHeight = pTexture->GetBaseInfo().height;
+
+    // store image's original layout
+    VkImageLayout originLayout = GVulkanRHI->GetImageCurrentLayout(vkImage);
+    // Transition first mip level to transfer source for read during blit
+    // ChangeImageLayout(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    //                   vulkanTexture->GetVkSubresourceRange());
+
+    barrier.AddImageBarrier(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            vulkanTexture->GetVkSubresourceRange());
+    barrier.ExecuteImageBarriersOnly(cmdBuffer);
+
+    // Copy down mips from n-1 to n
+    for (uint32_t i = 1; i < pTexture->GetBaseInfo().mipmaps; i++)
+    {
+        VkImageBlit imageBlit{};
+
+        // Source
+        imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.srcSubresource.layerCount = 1;
+        imageBlit.srcSubresource.mipLevel   = i - 1;
+        imageBlit.srcOffsets[1].x           = static_cast<int32_t>(texWidth >> (i - 1));
+        imageBlit.srcOffsets[1].y           = static_cast<int32_t>(texHeight >> (i - 1));
+        imageBlit.srcOffsets[1].z           = 1;
+
+        // Destination
+        imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlit.dstSubresource.layerCount = 1;
+        imageBlit.dstSubresource.mipLevel   = i;
+        imageBlit.dstOffsets[1].x           = static_cast<int32_t>(texWidth >> i);
+        imageBlit.dstOffsets[1].y           = static_cast<int32_t>(texHeight >> i);
+        imageBlit.dstOffsets[1].z           = 1;
+
+        VkImageSubresourceRange mipSubRange = {};
+        mipSubRange.aspectMask              = VK_IMAGE_ASPECT_COLOR_BIT;
+        mipSubRange.baseMipLevel            = i;
+        mipSubRange.levelCount              = 1;
+        mipSubRange.layerCount              = 1;
+
+        // Prepare current mip level as image blit destination
+        // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage),
+        //                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
+        barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer);
+        // Blit from previous level
+        vkCmdBlitImage(GetCommandBuffer()->GetVkHandle(), vkImage,
+                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vkImage,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit, VK_FILTER_LINEAR);
+
+        // Prepare the current mip level as image blit source for the next level
+        // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage),
+        //                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+
+        barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer);
+    }
+    // After the loop, all mip layers are in TRANSFER_SRC layout,
+    // need to restore its layout.
+    // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage), originLayout,
+    //                   vulkanTexture->GetVkSubresourceRange());
+    barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, originLayout,
+                            vulkanTexture->GetVkSubresourceRange());
+    barrier.ExecuteImageBarriersOnly(cmdBuffer);
+}
 
 void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture* pTexture,
                                                         RHITextureLayout newLayout)
-{}
+{
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(pTexture);
+    VkImage vkImage              = vulkanTexture->GetVkImage();
+
+    VkImageLayout srcLayout = GVulkanRHI->GetImageCurrentLayout(vkImage);
+    VkImageLayout dstLayout = ToVkImageLayout(newLayout);
+
+    VulkanPipelineBarrier barrier;
+    barrier.AddImageBarrier(vkImage, srcLayout, dstLayout, vulkanTexture->GetVkSubresourceRange());
+    barrier.ExecuteImageBarriersOnly(GetCommandBuffer()->GetVkHandle());
+    GVulkanRHI->UpdateImageLayout(vkImage, dstLayout);
+}
+
+void VulkanRHI::SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists)
+{
+    HeapVector<VulkanWorkload*> workloads;
+
+    for (uint32_t i = 0; i < numCmdLists; i++)
+    {
+        FVulkanCommandListContext* pContext =
+            static_cast<FVulkanCommandListContext*>(ppCmdList[i]->GetContext());
+        pContext->Finalize(workloads);
+    }
+    for (VulkanWorkload* pWorkload : workloads)
+    {
+        pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+    }
+
+    // Call VulkanQueue's SubmitWorkloads function
+    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+    {
+        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        pQueue->SubmitWorkloads();
+    }
+
+    // Wait for completion
+    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+    {
+        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        pQueue->ProcessPendingWorkloads(0);
+    }
+}
 } // namespace zen

@@ -112,7 +112,8 @@ void VulkanCommandList::AddPipelineBarrier(
                                 srcAccess, dstAccess);
         m_vkRHI->UpdateImageLayout(vulkanTexture->GetVkImage(), newLayout);
     }
-    barrier.Execute(m_cmdBufferManager->GetActiveCommandBufferDirect(), srcStages, dstStages);
+    barrier.Execute(m_cmdBufferManager->GetActiveCommandBufferDirect()->GetVkHandle(), srcStages,
+                    dstStages);
 }
 
 void VulkanCommandList::ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size)
@@ -600,22 +601,30 @@ void VulkanCommandList::SetBlendConstants(const Color& color)
     vkCmdSetBlendConstants(m_cmdBuffer->GetVkHandle(), constants);
 }
 
-void VulkanCommandList::GenerateTextureMipmaps(RHITexture* texture)
+void VulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
 {
-    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(texture);
+    VulkanPipelineBarrier barrier;
+    VkCommandBuffer cmdBuffer = m_cmdBuffer->GetVkHandle();
+
+    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(pTexture);
     VkImage vkImage              = vulkanTexture->GetVkImage();
     // Get texture attributes
     // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
-    const uint32_t texWidth  = texture->GetBaseInfo().width;
-    const uint32_t texHeight = texture->GetBaseInfo().height;
+    const uint32_t texWidth  = pTexture->GetBaseInfo().width;
+    const uint32_t texHeight = pTexture->GetBaseInfo().height;
 
     // store image's original layout
-    VkImageLayout originLayout = m_vkRHI->GetImageCurrentLayout(vkImage);
+    VkImageLayout originLayout = GVulkanRHI->GetImageCurrentLayout(vkImage);
     // Transition first mip level to transfer source for read during blit
-    ChangeImageLayout(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                      vulkanTexture->GetVkSubresourceRange());
+    // ChangeImageLayout(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    //                   vulkanTexture->GetVkSubresourceRange());
+
+    barrier.AddImageBarrier(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            vulkanTexture->GetVkSubresourceRange());
+    barrier.ExecuteImageBarriersOnly(cmdBuffer);
+
     // Copy down mips from n-1 to n
-    for (uint32_t i = 1; i < texture->GetBaseInfo().mipmaps; i++)
+    for (uint32_t i = 1; i < pTexture->GetBaseInfo().mipmaps; i++)
     {
         VkImageBlit imageBlit{};
 
@@ -642,22 +651,30 @@ void VulkanCommandList::GenerateTextureMipmaps(RHITexture* texture)
         mipSubRange.layerCount              = 1;
 
         // Prepare current mip level as image blit destination
-        ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage),
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
-
+        // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage),
+        //                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
+        barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipSubRange);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer);
         // Blit from previous level
-        vkCmdBlitImage(m_cmdBuffer->GetVkHandle(), vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit,
-                       VK_FILTER_LINEAR);
+        vkCmdBlitImage(cmdBuffer, vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vkImage,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageBlit, VK_FILTER_LINEAR);
 
         // Prepare the current mip level as image blit source for the next level
-        ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage),
-                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+        // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage),
+        //                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+
+        barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mipSubRange);
+        barrier.ExecuteImageBarriersOnly(cmdBuffer);
     }
     // After the loop, all mip layers are in TRANSFER_SRC layout,
     // need to restore its layout.
-    ChangeImageLayout(vkImage, m_vkRHI->GetImageCurrentLayout(vkImage), originLayout,
-                      vulkanTexture->GetVkSubresourceRange());
+    // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage), originLayout,
+    //                   vulkanTexture->GetVkSubresourceRange());
+    barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, originLayout,
+                            vulkanTexture->GetVkSubresourceRange());
+    barrier.ExecuteImageBarriersOnly(cmdBuffer);
 }
 
 void VulkanCommandList::ChangeTextureLayout(RHITexture* texture, RHITextureLayout newLayout)
@@ -691,7 +708,7 @@ void VulkanCommandList::ChangeImageLayout(VkImage image,
 {
     VulkanPipelineBarrier barrier;
     barrier.AddImageBarrier(image, srcLayout, dstLayout, range);
-    barrier.Execute(m_cmdBuffer);
+    barrier.ExecuteImageBarriersOnly(m_cmdBuffer->GetVkHandle());
     m_vkRHI->UpdateImageLayout(image, dstLayout);
 }
 } // namespace zen

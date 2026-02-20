@@ -142,15 +142,15 @@ public:
     void AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
     // for Image-only transitions
-    void Execute(VulkanCommandBuffer* cmdBuffer);
+    void ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer);
 
     void Execute(VkCommandBuffer cmdBuffer,
                  VkPipelineStageFlags srcStageFlags,
                  VkPipelineStageFlags dstStageFlags);
 
-    void Execute(VulkanCommandBuffer* cmdBuffer,
-                 BitField<RHIPipelineStageBits> srcStages,
-                 BitField<RHIPipelineStageBits> dstStages);
+    // void Execute(VulkanCommandBuffer* cmdBuffer,
+    //              BitField<RHIPipelineStageBits> srcStages,
+    //              BitField<RHIPipelineStageBits> dstStages);
 
 private:
     static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);

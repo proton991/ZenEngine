@@ -50,6 +50,10 @@ public:
 
     void Submit(VulkanCommandBuffer* cmdBuffer);
 
+    void SubmitWorkloads();
+
+    void ProcessPendingWorkloads(uint64_t timeToWait);
+
 private:
     void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer);
 
@@ -62,6 +66,9 @@ private:
 
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
 
-    Queue<VulkanWorkload*> m_workloadsPendingProcess;
+    Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
+    Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
+
+    friend class VulkanRHI;
 };
 } // namespace zen
