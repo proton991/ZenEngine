@@ -116,6 +116,7 @@ public:
 
     ~FVulkanCommandBufferPool();
 
+    // todo: call this in EndFrame()
     void FreeUnusedCommandBuffers();
 
     Mutex* GetMutex()

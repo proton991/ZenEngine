@@ -190,6 +190,10 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
 VulkanWorkload::~VulkanWorkload()
 {
     // release semaphores and fence
+    if (m_pFence)
+    {
+        m_pFence->GetOwner()->ReleaseFence(m_pFence);
+    }
 }
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
@@ -736,6 +740,11 @@ void VulkanRHI::SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLi
     {
         VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
         pQueue->ProcessPendingWorkloads(0);
+    }
+
+    for (VulkanWorkload* pWorkload : workloads)
+    {
+        ZEN_DELETE(pWorkload);
     }
 }
 } // namespace zen
