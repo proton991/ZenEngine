@@ -225,7 +225,8 @@ void VulkanCommandList::BindIndexBuffer(RHIBuffer* buffer, DataFormat format, ui
                          indexType);
 }
 
-void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets)
+void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers,
+                                          VectorView<uint64_t> offsets)
 {
     HeapVector<VkBuffer> bufferHandles;
     for (RHIBuffer* buffer : buffers)
@@ -233,7 +234,7 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers, const 
         bufferHandles.push_back(TO_VK_BUFFER(buffer)->GetVkBuffer());
     }
     vkCmdBindVertexBuffers(m_cmdBuffer->GetVkHandle(), 0, bufferHandles.size(),
-                           bufferHandles.data(), offsets);
+                           bufferHandles.data(), offsets.data());
 }
 
 // void VulkanCommandList::BindGfxPipeline(PipelineHandle pipelineHandle)

@@ -1,5 +1,4 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include "ObjectBase.h"
 #include "Templates/HeapVector.h"
 #include <string>

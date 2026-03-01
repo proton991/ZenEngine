@@ -82,7 +82,7 @@ public:
 
     void BindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint32_t offset) final;
 
-    void BindVertexBuffers(VectorView<RHIBuffer*> buffers, const uint64_t* offsets) final;
+    void BindVertexBuffers(VectorView<RHIBuffer*> buffers, VectorView<uint64_t> offsets) final;
 
     // void BindGfxPipeline(PipelineHandle pipelineHandle) final;
 

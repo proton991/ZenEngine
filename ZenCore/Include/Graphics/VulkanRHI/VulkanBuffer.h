@@ -26,6 +26,11 @@ public:
 
     void SetTexelFormat(DataFormat format) override;
 
+    uint32_t GetOffset() const
+    {
+        return m_memAlloc.info.offset;
+    }
+
     VkBuffer GetVkBuffer() const
     {
         return m_vkBuffer;

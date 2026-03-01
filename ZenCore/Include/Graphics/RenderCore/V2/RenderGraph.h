@@ -322,11 +322,24 @@ struct RDGTextureCopyNode : RDGNodeBase
 {
     // TextureHandle srcTexture;
     // TextureHandle dstTexture;
-    uint32_t numCopyRegions;
-    RHITexture* srcTexture;
-    RHITexture* dstTexture;
+    RHITexture* pSrcTexture;
+    RHITexture* pDstTexture;
     // RHITextureCopyRegion* copyRegions;
-    PRIVATE_ARRAY_DEF(RHITextureCopyRegion, TextureCopyRegions, &this[1])
+    VectorView<RHITextureCopyRegion> textureCopyRegions;
+    uint32_t numCopyRegions;
+
+    RDGTextureCopyNode() {}
+
+    RDGTextureCopyNode(RHITexture* pSrcTex,
+                       RHITexture* pDstTex,
+                       VectorView<RHITextureCopyRegion> textureCopyRegions) :
+        pSrcTexture(pSrcTex),
+        pDstTexture(pDstTex),
+        textureCopyRegions(textureCopyRegions),
+        numCopyRegions(textureCopyRegions.size())
+    {}
+
+    //PRIVATE_ARRAY_DEF(RHITextureCopyRegion, TextureCopyRegions, &this[1])
     // RHITextureCopyRegion* TextureCopyRegions()
     // {
     //     return reinterpret_cast<RHITextureCopyRegion*>(&this[1]);
@@ -342,11 +355,21 @@ struct RDGTextureCopyNode : RDGNodeBase
 struct RDGTextureReadNode : RDGNodeBase
 {
     // TextureHandle srcTexture;
+    RHITexture* pSrcTexture;
+    RHIBuffer* pDstBuffer;
+    VectorView<RHIBufferTextureCopyRegion> bufferTextureCopyRegions;
     uint32_t numCopyRegions;
-    RHITexture* srcTexture;
-    RHIBuffer* dstBuffer;
+
+    RDGTextureReadNode(RHITexture* pSrcTex,
+                       RHIBuffer* pDstBuf,
+                       VectorView<RHIBufferTextureCopyRegion> copyRegions) :
+        pSrcTexture(pSrcTex),
+        pDstBuffer(pDstBuf),
+        bufferTextureCopyRegions(copyRegions),
+        numCopyRegions(copyRegions.size())
+    {}
     // std::vector<RHIBufferTextureCopyRegion> bufferTextureCopyRegions;
-    PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, BufferTextureCopyRegions, &this[1])
+    //PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, BufferTextureCopyRegions, &this[1])
 
     // RHIBufferTextureCopyRegion* BufferTextureCopyRegions()
     // {
@@ -363,9 +386,15 @@ struct RDGTextureUpdateNode : RDGNodeBase
 {
     // std::vector<RHIBufferTextureCopySource> sources;
     // TextureHandle dstTexture;
+    RHITexture* pDstTexture;
+    VectorView<RHIBufferTextureCopySource> copySources;
     uint32_t numCopySources;
-    RHITexture* dstTexture;
-    PRIVATE_ARRAY_DEF(RHIBufferTextureCopySource, TextureCopySources, &this[1])
+
+    RDGTextureUpdateNode(RHITexture* pTex, VectorView<RHIBufferTextureCopySource> sources) :
+        pDstTexture(pTex), copySources(sources), numCopySources(sources.size())
+    {}
+
+    //PRIVATE_ARRAY_DEF(RHIBufferTextureCopySource, TextureCopySources, &this[1])
 
     // RHIBufferTextureCopySource* TextureCopySources()
     // {
@@ -411,13 +440,20 @@ struct RDGBindIndexBufferNode : RDGPassChildNode
 
 struct RDGBindVertexBufferNode : RDGPassChildNode
 {
+    VectorView<RHIBuffer*> vertexBuffers;
+    VectorView<uint64_t> offsets;
     uint32_t numBuffers{0};
+
+    RDGBindVertexBufferNode(VectorView<RHIBuffer*> vertexBuffers, VectorView<uint64_t> offsets) :
+        vertexBuffers(vertexBuffers), offsets(offsets), numBuffers(vertexBuffers.size())
+    {}
+
     // RHIBuffer** vertexBuffers{nullptr};
     // uint64_t* offsets{nullptr};
     // std::vector<RHIBuffer*> vertexBuffers;
     // std::vector<uint64_t> offsets;
-    PRIVATE_ARRAY_DEF(RHIBuffer*, VertexBuffers, &this[1])
-    PRIVATE_ARRAY_DEF(uint64_t, VertexBufferOffsets, &VertexBuffers()[numBuffers])
+    //PRIVATE_ARRAY_DEF(RHIBuffer*, VertexBuffers, &this[1])
+    //PRIVATE_ARRAY_DEF(uint64_t, VertexBufferOffsets, &VertexBuffers()[numBuffers])
 
     // RHIBuffer** VertexBuffers()
     // {
@@ -494,10 +530,13 @@ struct RDGDispatchIndirectNode : RDGPassChildNode
 
 struct RDGSetPushConstantsNode : RDGPassChildNode
 {
-    RHIShader* shader;
+    //RHIShader* pShader;
+    VectorView<uint8_t> pcData;
     uint32_t dataSize{0};
 
-    PRIVATE_ARRAY_DEF(uint8_t, PCData, &this[1])
+    RDGSetPushConstantsNode(VectorView<uint8_t> data) : pcData(data), dataSize(data.size()) {}
+
+    //PRIVATE_ARRAY_DEF(uint8_t, PCData, &this[1])
 
     // uint8_t* Data()
     // {
@@ -588,7 +627,7 @@ public:
 
     void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
                                              VectorView<RHIBuffer*> vertexBuffers,
-                                             VectorView<uint32_t> offsets);
+                                             VectorView<uint64_t> offsets);
 
     void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
 
@@ -718,6 +757,19 @@ private:
         return newNode;
     }
 
+    template <class T, class... Args>
+        requires std::derived_from<T, RDGNodeBase>
+    T* AllocNode(Args&&... args)
+    {
+        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        new (newNode) T(std::forward<Args>(args)...);
+
+        newNode->id                = m_nodeCount++;
+        m_baseNodeMap[newNode->id] = newNode;
+
+        return newNode;
+    }
+
     template <class T>
         requires std::derived_from<T, RDGNodeBase>
     T* AllocNode(size_t nodeSize)
@@ -734,6 +786,22 @@ private:
         m_nodeCount++;
         m_baseNodeMap[newNode->id] = newNode;
         // m_allNodes.push_back(newNode);
+        return newNode;
+    }
+
+    template <class T, class... Args>
+        requires std::derived_from<T, RDGPassChildNode>
+    T* AllocPassChildNode(RDGPassNode* passNode, Args&&... args)
+    {
+        // T* newNode      = new T();
+        // T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
+        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T), alignof(T)));
+        new (newNode) T(std::forward<Args>(args)...);
+
+        newNode->parent = passNode;
+        // passNode->childNodes.push_back(newNode);
+        m_passChildNodeMap[passNode->id].push_back(newNode);
+        // m_allChildNodes.push_back(newNode);
         return newNode;
     }
 

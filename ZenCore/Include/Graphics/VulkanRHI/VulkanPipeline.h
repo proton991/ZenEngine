@@ -199,6 +199,11 @@ public:
 
     static VulkanPipeline* CreateObject(const RHIComputePipelineCreateInfo& createInfo);
 
+    VkPipelineBindPoint GetVkPipelineBindPoint() const
+    {
+        return m_bindPoint;
+    }
+
     VkPipeline GetVkPipeline() const
     {
         return m_vkPipeline;
@@ -229,6 +234,7 @@ private:
     void InitCompute();
 
     VkPipeline m_vkPipeline{VK_NULL_HANDLE};
+    VkPipelineBindPoint m_bindPoint;
     VkShaderStageFlags m_pushConstantsStageFlags;
 };
 } // namespace zen

@@ -243,51 +243,78 @@ void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
 
 void RenderGraph::AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
                                                       VectorView<RHIBuffer*> vertexBuffers,
-                                                      VectorView<uint32_t> offsets)
+                                                      VectorView<uint64_t> offsets)
 {
     const uint32_t numBuffers = vertexBuffers.size();
-    size_t nodeSize           = sizeof(RDGBindVertexBufferNode) + sizeof(RHIBuffer*) * numBuffers +
-        sizeof(uint64_t) * numBuffers;
-    auto* node = AllocPassChildNode<RDGBindVertexBufferNode>(parent, nodeSize);
+    //size_t nodeSize           = sizeof(RDGBindVertexBufferNode) + sizeof(RHIBuffer*) * numBuffers +
+    //    sizeof(uint64_t) * numBuffers;
+    //auto* node = AllocPassChildNode<RDGBindVertexBufferNode>(parent, nodeSize);
 
-    node->numBuffers = numBuffers;
+    //node->numBuffers = numBuffers;
 
-    RHIBuffer** pVertexBuffers     = node->VertexBuffers();
-    uint64_t* pVertexBufferOffsets = node->VertexBufferOffsets();
+    RHIBuffer** ppBuffers = static_cast<RHIBuffer**>(
+        m_poolAlloc.Alloc(numBuffers * sizeof(RHIBuffer*), alignof(RHIBuffer*)));
+    std::ranges::copy(vertexBuffers, ppBuffers);
 
-    for (auto i = 0; i < numBuffers; i++)
-    {
-        pVertexBuffers[i]       = vertexBuffers[i];
-        pVertexBufferOffsets[i] = offsets[i];
-    }
+    uint64_t* pOffsets = static_cast<uint64_t*>(m_poolAlloc.Alloc(numBuffers * sizeof(uint64_t)));
+    std::ranges::copy(offsets, pOffsets);
 
-    // node->offsets = pVertexBufferOffsets;
-    node->type = RDGPassCmdType::eBindVertexBuffer;
-    node->parent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
+    auto* pNode = AllocPassChildNode<RDGBindVertexBufferNode>(
+        parent, MakeVecView(ppBuffers, numBuffers), MakeVecView(pOffsets, numBuffers));
+
+    pNode->numBuffers = numBuffers;
+    pNode->type       = RDGPassCmdType::eBindVertexBuffer;
+    pNode->parent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
+
+
+    //RHIBuffer** pVertexBuffers     = node->VertexBuffers();
+    //uint64_t* pVertexBufferOffsets = node->VertexBufferOffsets();
+
+    //for (auto i = 0; i < numBuffers; i++)
+    //{
+    //    pVertexBuffers[i]       = vertexBuffers[i];
+    //    pVertexBufferOffsets[i] = offsets[i];
+    //}
+
+    //// node->offsets = pVertexBufferOffsets;
+    //node->type = RDGPassCmdType::eBindVertexBuffer;
+    //node->parent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
 }
 
 void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* parent,
                                                   const void* data,
                                                   uint32_t dataSize)
 {
-    const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
-    auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
-    node->type            = RDGPassCmdType::eSetPushConstant;
-    node->dataSize        = dataSize;
+    auto* pData =
+        static_cast<uint8_t*>(m_poolAlloc.Alloc(sizeof(uint8_t) * dataSize, alignof(uint8_t)));
+    std::memcpy(pData, data, dataSize);
+
+    auto* node = AllocPassChildNode<RDGSetPushConstantsNode>(parent, MakeVecView(pData, dataSize));
+
+    //const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
+    //auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
+    node->type = RDGPassCmdType::eSetPushConstant;
+    //node->dataSize        = dataSize;
     // node->data.resize(dataSize);
-    std::memcpy(node->PCData(), data, dataSize);
+    //std::memcpy(node->PCData(), data, dataSize);
 }
 
 void RenderGraph::AddComputePassSetPushConstants(RDGPassNode* parent,
                                                  const void* data,
                                                  uint32_t dataSize)
 {
-    const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
-    auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
-    node->type            = RDGPassCmdType::eSetPushConstant;
-    node->dataSize        = dataSize;
+    auto* pData =
+        static_cast<uint8_t*>(m_poolAlloc.Alloc(sizeof(uint8_t) * dataSize, alignof(uint8_t)));
+    std::memcpy(pData, data, dataSize);
+
+    auto* node = AllocPassChildNode<RDGSetPushConstantsNode>(parent, MakeVecView(pData, dataSize));
+
+    //const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
+    //auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
+    node->type = RDGPassCmdType::eSetPushConstant;
+    //node->dataSize        = dataSize;
     // node->data.resize(dataSize);
-    std::memcpy(node->PCData(), data, dataSize);
+    //std::memcpy(node->PCData(), data, dataSize);
 }
 
 void RenderGraph::AddGraphicsPassDrawNode(RDGPassNode* parent,
@@ -496,25 +523,32 @@ void RenderGraph::AddTextureCopyNode(RHITexture* srcTexture,
                                      RHITexture* dstTexture,
                                      const VectorView<RHITextureCopyRegion>& regions)
 {
-    const uint32_t numCopyRegions = regions.size();
-    const size_t nodeSize =
-        sizeof(RDGTextureCopyNode) + sizeof(RHITextureCopyRegion) * numCopyRegions;
+    const uint32_t numCopyRegions      = regions.size();
+    RHITextureCopyRegion* pCopyRegions = static_cast<RHITextureCopyRegion*>(m_poolAlloc.Alloc(
+        sizeof(RHITextureCopyRegion) * numCopyRegions, alignof(RHITextureCopyRegion)));
+    std::ranges::copy(regions, pCopyRegions);
 
-    auto* node           = AllocNode<RDGTextureCopyNode>(nodeSize);
-    node->numCopyRegions = numCopyRegions;
-    node->type           = RDGNodeType::eCopyTexture;
-    node->srcTexture     = srcTexture;
-    node->dstTexture     = dstTexture;
-    node->tag            = "texture_copy";
+    auto* node = AllocNode<RDGTextureCopyNode>(srcTexture, dstTexture,
+                                               MakeVecView(pCopyRegions, numCopyRegions));
+
+    //const size_t nodeSize =
+    //    sizeof(RDGTextureCopyNode) + sizeof(RHITextureCopyRegion) * numCopyRegions;
+
+    //auto* node = AllocNode<RDGTextureCopyNode>(nodeSize);
+    //node->numCopyRegions = numCopyRegions;
+    node->type = RDGNodeType::eCopyTexture;
+    //node->pSrcTexture    = srcTexture;
+    //node->pDstTexture    = dstTexture;
+    node->tag = "texture_copy";
     node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
-    RHITextureCopyRegion* pCopyRegions = node->TextureCopyRegions();
+    //RHITextureCopyRegion* pCopyRegions = node->TextureCopyRegions();
 
-    for (uint32_t i = 0; i < numCopyRegions; ++i)
-    {
-        // node->copyRegions.push_back(regions[i]);
-        pCopyRegions[i] = regions[i];
-    }
+    //for (uint32_t i = 0; i < numCopyRegions; ++i)
+    //{
+    //    // node->copyRegions.push_back(regions[i]);
+    //    pCopyRegions[i] = regions[i];
+    //}
 
     // node->copyRegions = pCopyRegions;
 
@@ -558,26 +592,36 @@ void RenderGraph::AddTextureCopyNode(RHITexture* srcTexture,
 }
 
 void RenderGraph::AddTextureReadNode(RHITexture* srcTexture,
-                                     RHIBuffer* dstBufferHandle,
+                                     RHIBuffer* dstBuffer,
                                      const VectorView<RHIBufferTextureCopyRegion>& regions)
 {
     const size_t numCopyRegions = regions.size();
-    const size_t nodeSize =
-        sizeof(RDGTextureReadNode) + sizeof(RHIBufferTextureCopyRegion) * numCopyRegions;
-    auto* node           = AllocNode<RDGTextureReadNode>(nodeSize);
-    node->numCopyRegions = numCopyRegions;
-    node->srcTexture     = srcTexture;
-    node->dstBuffer      = dstBufferHandle;
+
+    auto* pCopyRegions = static_cast<RHIBufferTextureCopyRegion*>(m_poolAlloc.Alloc(
+        sizeof(RHIBufferTextureCopyRegion) * numCopyRegions, alignof(RHIBufferTextureCopyRegion)));
+    std::ranges::copy(regions, pCopyRegions);
+
+    auto* node = AllocNode<RDGTextureReadNode>(srcTexture, dstBuffer,
+                                               MakeVecView(pCopyRegions, numCopyRegions));
+    node->tag  = "texture_read";
+    node->type = RDGNodeType::eReadTexture;
+
+    //const size_t nodeSize =
+    //    sizeof(RDGTextureReadNode) + sizeof(RHIBufferTextureCopyRegion) * numCopyRegions;
+    //auto* node           = AllocNode<RDGTextureReadNode>(nodeSize);
+    //node->numCopyRegions = numCopyRegions;
+    //node->srcTexture     = srcTexture;
+    //node->dstBuffer      = dstBufferHandle;
     node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
-    auto* pCopyRegions = node->BufferTextureCopyRegions();
+    //auto* pCopyRegions = node->BufferTextureCopyRegions();
 
-    // for (auto& region : regions)
-    for (uint32_t i = 0; i < numCopyRegions; ++i)
-    {
-        pCopyRegions[i] = regions[i];
-        // node->bufferTextureCopyRegions.push_back(region);
-    }
+    //// for (auto& region : regions)
+    //for (uint32_t i = 0; i < numCopyRegions; ++i)
+    //{
+    //    pCopyRegions[i] = regions[i];
+    //    // node->bufferTextureCopyRegions.push_back(region);
+    //}
     // read access to src texture
     {
         RDGAccess readAccess{};
@@ -599,8 +643,7 @@ void RenderGraph::AddTextureReadNode(RHITexture* srcTexture,
         writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = node->id;
 
-        RDGResource* resource =
-            GetOrAllocResource(dstBufferHandle, RDGResourceType::eBuffer, node->id);
+        RDGResource* resource = GetOrAllocResource(dstBuffer, RDGResourceType::eBuffer, node->id);
         // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         resource->writtenByNodeIds.push_back(node->id);
         writeAccess.resourceId = resource->id;
@@ -613,21 +656,28 @@ void RenderGraph::AddTextureUpdateNode(RHITexture* dstTexture,
                                        const VectorView<RHIBufferTextureCopySource>& sources)
 {
     const uint32_t numCopySources = sources.size();
-    const size_t nodeSize =
-        sizeof(RHIBufferTextureCopySource) + sizeof(RHIBufferTextureCopySource) * numCopySources;
-    auto* node         = AllocNode<RDGTextureUpdateNode>(nodeSize);
-    auto* pCopySources = node->TextureCopySources();
-    for (uint32_t i = 0; i < numCopySources; ++i)
-    {
-        pCopySources[i] = sources[i];
-    }
+    auto* pCopySources            = static_cast<RHIBufferTextureCopySource*>(m_poolAlloc.Alloc(
+        sizeof(RHIBufferTextureCopySource) * numCopySources, alignof(RHIBufferTextureCopySource)));
+    std::ranges::copy(sources, pCopySources);
+
+    auto* node =
+        AllocNode<RDGTextureUpdateNode>(dstTexture, MakeVecView(pCopySources, numCopySources));
+
+    //const size_t nodeSize =
+    //    sizeof(RHIBufferTextureCopySource) + sizeof(RHIBufferTextureCopySource) * numCopySources;
+    //auto* node         = AllocNode<RDGTextureUpdateNode>(nodeSize);
+    //auto* pCopySources = node->TextureCopySources();
+    //for (uint32_t i = 0; i < numCopySources; ++i)
+    //{
+    //    pCopySources[i] = sources[i];
+    //}
     // for (const auto& source : sources)
     // {
     //     node->sources.push_back(source);
     // }
-    node->numCopySources = numCopySources;
-    node->dstTexture     = dstTexture;
-    node->type           = RDGNodeType::eCopyBuffer;
+    //node->numCopySources = numCopySources;
+    //node->dstTexture     = dstTexture;
+    node->type = RDGNodeType::eCopyBuffer;
     node->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // only support update through staging buffer
     // staging buffer is neither owned nor managed by RDG
@@ -1246,16 +1296,14 @@ void RenderGraph::RunNode(RDGNodeBase* base)
         case RDGNodeType::eCopyTexture:
         {
             RDGTextureCopyNode* node = reinterpret_cast<RDGTextureCopyNode*>(base);
-            m_cmdList->CopyTexture(node->srcTexture, node->dstTexture,
-                                   VectorView(node->TextureCopyRegions(), node->numCopyRegions));
+            m_cmdList->CopyTexture(node->pSrcTexture, node->pDstTexture, node->textureCopyRegions);
         }
         break;
         case RDGNodeType::eReadTexture:
         {
             RDGTextureReadNode* node = reinterpret_cast<RDGTextureReadNode*>(base);
-            m_cmdList->CopyTextureToBuffer(
-                node->srcTexture, node->dstBuffer,
-                VectorView(node->BufferTextureCopyRegions(), node->numCopyRegions));
+            m_cmdList->CopyTextureToBuffer(node->pSrcTexture, node->pDstBuffer,
+                                           node->bufferTextureCopyRegions);
         }
         break;
         case RDGNodeType::eUpdateTexture:
@@ -1264,8 +1312,8 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             // for (auto& source : node->sources)
             for (uint32_t i = 0; i < node->numCopySources; i++)
             {
-                const RHIBufferTextureCopySource& source = node->TextureCopySources()[i];
-                m_cmdList->CopyBufferToTexture(source.buffer, node->dstTexture, source.region);
+                const RHIBufferTextureCopySource& source = node->copySources[i];
+                m_cmdList->CopyBufferToTexture(source.buffer, node->pDstTexture, source.region);
             }
         }
         break;
@@ -1326,8 +1374,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                                 pipelineHandle = casted->pipeline;
                             }
                         }
-                        m_cmdList->SetPushConstants(
-                            pipelineHandle, VectorView(cmdNode->PCData(), cmdNode->dataSize));
+                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->pcData);
                     }
                     break;
                     default: break;
@@ -1368,9 +1415,10 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eBindVertexBuffer:
                     {
                         auto* cmdNode = reinterpret_cast<RDGBindVertexBufferNode*>(child);
-                        m_cmdList->BindVertexBuffers(
-                            VectorView(cmdNode->VertexBuffers(), cmdNode->numBuffers),
-                            cmdNode->VertexBufferOffsets());
+                        //m_cmdList->BindVertexBuffers(
+                        //    VectorView(cmdNode->VertexBuffers(), cmdNode->numBuffers),
+                        //    cmdNode->VertexBufferOffsets());
+                        m_cmdList->BindVertexBuffers(cmdNode->vertexBuffers, cmdNode->offsets);
                     }
                     break;
                     case RDGPassCmdType::eBindPipeline:
@@ -1420,8 +1468,7 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                                 pipelineHandle = casted->pipeline;
                             }
                         }
-                        m_cmdList->SetPushConstants(
-                            pipelineHandle, VectorView(cmdNode->PCData(), cmdNode->dataSize));
+                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->pcData);
                     }
                     break;
                     case RDGPassCmdType::eSetLineWidth:

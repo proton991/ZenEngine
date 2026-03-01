@@ -14,6 +14,8 @@ class RHIPipeline;
 struct RHICommandBase
 {
     RHICommandBase* pNextCmd{nullptr};
+
+    virtual ~RHICommandBase() {}
 };
 
 enum class RHICommandContextType : uint32_t
@@ -68,22 +70,48 @@ public:
 
     virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
-    virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                                   BitField<RHIPipelineStageBits> dstStages,
-                                   const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                                   const HeapVector<RHIBufferTransition>& bufferTransitions,
-                                   const HeapVector<RHITextureTransition>& textureTransitions) = 0;
-
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
 
-    virtual void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                        RHITexture* pDstTexture,
-                                        uint32_t numRegions,
-                                        RHIBufferTextureCopyRegion* pRegions) = 0;
+    virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
+                                   BitField<RHIPipelineStageBits> dstStages,
+                                   VectorView<RHIMemoryTransition> memoryTransitions,
+                                   VectorView<RHIBufferTransition> bufferTransitions,
+                                   VectorView<RHITextureTransition> textureTransitions) = 0;
 
     virtual void RHIGenTextureMipmaps(RHITexture* pTexture) = 0;
 
     virtual void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) = 0;
+
+    virtual void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) = 0;
+
+    virtual void RHICopyBuffer(RHIBuffer* pSrcBuffer,
+                               RHIBuffer* pDstBuffer,
+                               const RHIBufferCopyRegion& region) = 0;
+
+    virtual void RHIClearTexture(RHITexture* pTex,
+                                 const Color& color,
+                                 const RHITextureSubResourceRange& range) = 0;
+
+    virtual void RHICopyTexture(RHITexture* pSrcTexture,
+                                RHITexture* pDstTexture,
+                                VectorView<RHITextureCopyRegion> regions) = 0;
+
+
+    virtual void RHICopyTextureToBuffer(RHITexture* pSrcTex,
+                                        RHIBuffer* pDstBuffer,
+                                        VectorView<RHIBufferTextureCopyRegion> regions) = 0;
+
+
+    virtual void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                                        RHITexture* pDstTexture,
+                                        VectorView<RHIBufferTextureCopyRegion> regions) = 0;
+
+    virtual void RHIResolveTexture(RHITexture* pSrcTexture,
+                                   RHITexture* pDstTexture,
+                                   uint32_t srcLayer,
+                                   uint32_t srcMipmap,
+                                   uint32_t dstLayer,
+                                   uint32_t dstMipmap) = 0;
 };
 
 class RHICommandListBase
@@ -94,16 +122,30 @@ public:
         RHICommandBase* pCmd = m_pCmdHead;
         while (pCmd)
         {
-            RHICommandBase* next = pCmd->pNextCmd; // Save next before freeing
+            RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
+
+            pCmd->~RHICommandBase();
+
             ZEN_MEM_FREE(pCmd);
-            pCmd = next;
+
+            pCmd = pNext;
         }
 
-        m_pCmdHead         = nullptr;
-        m_ppCmdPtr         = nullptr;
-        m_numCommands      = 0;
-        m_pGraphicsContext = nullptr;
-        m_pComputeContext  = nullptr;
+        m_pCmdHead    = nullptr;
+        m_ppCmdPtr    = nullptr;
+        m_numCommands = 0;
+
+        if (m_pGraphicsContext)
+        {
+            ZEN_DELETE(m_pGraphicsContext);
+            m_pGraphicsContext = nullptr;
+        }
+
+        if (m_pComputeContext)
+        {
+            ZEN_DELETE(m_pComputeContext);
+            m_pComputeContext = nullptr;
+        }
     }
 
     void* AllocateCmd(uint32_t size, uint32_t alignment)
@@ -117,7 +159,7 @@ public:
 
     IRHICommandContext* GetContext() const
     {
-        return m_pGraphicsContext;
+        return m_pGraphicsContext != nullptr ? m_pGraphicsContext : m_pComputeContext;
     }
 
 protected:
@@ -142,24 +184,138 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
-struct RHICommandCopyBufferToTexture : public RHICommand
+
+
+struct RHICommandClearBuffer : public RHICommand
 {
-    RHIBuffer* pSrcBuffer;
-    RHITexture* pDstTexture;
-    uint32_t numCopyRegions;
+    RHIBuffer* pBuffer;
+    uint32_t offset;
+    uint32_t size;
 
-    PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, CopyRegions, &this[1])
-
-    RHICommandCopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                  RHITexture* pDstTexture,
-                                  uint32_t numCopyRegions) :
-        pSrcBuffer(pSrcBuffer), pDstTexture(pDstTexture), numCopyRegions(numCopyRegions)
+    RHICommandClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) :
+        pBuffer(pBuffer), offset(offset), size(size)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHICopyBufferToTexture(pSrcBuffer, pDstTexture, numCopyRegions,
-                                                     CopyRegions());
+        cmdList.GetContext()->RHIClearBuffer(pBuffer, offset, size);
+    }
+};
+
+struct RHICommandClearTexture : public RHICommand
+{
+    RHITexture* pTexture;
+    Color clearColor;
+    RHITextureSubResourceRange range;
+
+    RHICommandClearTexture(RHITexture* pTexture,
+                           const Color& color,
+                           const RHITextureSubResourceRange& range) :
+        pTexture(pTexture), clearColor(color), range(range)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIClearTexture(pTexture, clearColor, range);
+    }
+};
+
+struct RHICommandCopyTexture : public RHICommand
+{
+    RHITexture* pSrcTexture;
+    RHITexture* pDstTexture;
+    VectorView<RHITextureCopyRegion> copyRegions;
+    //uint32_t numCopyRegions;
+
+    //PRIVATE_ARRAY_DEF(RHITextureCopyRegion, CopyRegions, &this[1])
+
+    RHICommandCopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexture) :
+        pSrcTexture(pSrcTexture), pDstTexture(pDstTexture)
+    {}
+
+    ~RHICommandCopyTexture() override
+    {
+        ZEN_MEM_FREE(copyRegions.data());
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHICopyTexture(pSrcTexture, pDstTexture, copyRegions);
+    }
+};
+
+struct RHICommandCopyBufferToTexture : public RHICommand
+{
+    RHIBuffer* pSrcBuffer;
+    RHITexture* pDstTexture;
+    VectorView<RHIBufferTextureCopyRegion> copyRegions;
+    //uint32_t numCopyRegions;
+
+    //PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, CopyRegions, &this[1])
+
+    RHICommandCopyBufferToTexture(RHIBuffer* pSrcBuffer, RHITexture* pDstTexture) :
+        pSrcBuffer(pSrcBuffer), pDstTexture(pDstTexture)
+    {}
+
+    ~RHICommandCopyBufferToTexture() override
+    {
+        ZEN_MEM_FREE(copyRegions.data());
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHICopyBufferToTexture(pSrcBuffer, pDstTexture, copyRegions);
+    }
+};
+
+struct RHICommandCopyTextureToBuffer : public RHICommand
+{
+    RHITexture* pSrcTexture;
+    RHIBuffer* pDstBuffer;
+    VectorView<RHIBufferTextureCopyRegion> copyRegions;
+
+    RHICommandCopyTextureToBuffer(RHITexture* pSrcTexture, RHIBuffer* pDstBuffer) :
+        pSrcTexture(pSrcTexture), pDstBuffer(pDstBuffer)
+    {}
+
+    ~RHICommandCopyTextureToBuffer() override
+    {
+        ZEN_MEM_FREE(copyRegions.data());
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHICopyTextureToBuffer(pSrcTexture, pDstBuffer, copyRegions);
+    }
+};
+
+struct RHICommandResolveTexture : public RHICommand
+{
+    RHITexture* pSrcTexture;
+    RHITexture* pDstTexture;
+    uint32_t srcLayer;
+    uint32_t srcMipmap;
+    uint32_t dstLayer;
+    uint32_t dstMipmap;
+
+    RHICommandResolveTexture(RHITexture* pSrcTexture,
+                             RHITexture* pDstTexture,
+                             uint32_t srcLayer,
+                             uint32_t srcMipmap,
+                             uint32_t dstLayer,
+                             uint32_t dstMipmap) :
+        pSrcTexture(pSrcTexture),
+        pDstTexture(pDstTexture),
+        srcLayer(srcLayer),
+        srcMipmap(srcMipmap),
+        dstLayer(dstLayer),
+        dstMipmap(dstMipmap)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIResolveTexture(pSrcTexture, pDstTexture, srcLayer, srcMipmap,
+                                                dstLayer, dstMipmap);
     }
 };
 
@@ -410,35 +566,35 @@ struct RHICommandAddTransitions final : public RHICommand
 {
     BitField<RHIPipelineStageBits> srcStages;
     BitField<RHIPipelineStageBits> dstStages;
-    uint32_t numMemoryTransitions;
-    uint32_t numBufferTransitions;
-    uint32_t numTextureTransitions;
-    PRIVATE_ARRAY_DEF(RHIMemoryTransition, MemoryTransitions, &this[1])
-    PRIVATE_ARRAY_DEF(RHIBufferTransition,
-                      BufferTransitions,
-                      &MemoryTransitions()[numMemoryTransitions])
-    PRIVATE_ARRAY_DEF(RHITextureTransition,
-                      TextureTransitions,
-                      &BufferTransitions()[numBufferTransitions])
+
+    VectorView<RHIMemoryTransition> memoryTransitions;
+    VectorView<RHIBufferTransition> bufferTransitions;
+    VectorView<RHITextureTransition> textureTransitions;
+
+    ~RHICommandAddTransitions() override
+    {
+        ZEN_MEM_FREE(memoryTransitions.data());
+        ZEN_MEM_FREE(bufferTransitions.data());
+        ZEN_MEM_FREE(textureTransitions.data());
+    }
+
+    //PRIVATE_ARRAY_DEF(RHIMemoryTransition, MemoryTransitions, &this[1])
+    //PRIVATE_ARRAY_DEF(RHIBufferTransition,
+    //                  BufferTransitions,
+    //                  &MemoryTransitions()[numMemoryTransitions])
+    //PRIVATE_ARRAY_DEF(RHITextureTransition,
+    //                  TextureTransitions,
+    //                  &BufferTransitions()[numBufferTransitions])
 
     RHICommandAddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                             BitField<RHIPipelineStageBits> dstStages,
-                             uint32_t numMemoryTransitions,
-                             uint32_t numBufferTransitions,
-                             uint32_t numTextureTransitions) :
-        srcStages(srcStages),
-        dstStages(dstStages),
-        numMemoryTransitions(numMemoryTransitions),
-        numBufferTransitions(numBufferTransitions),
-        numTextureTransitions(numTextureTransitions)
+                             BitField<RHIPipelineStageBits> dstStages) :
+        srcStages(srcStages), dstStages(dstStages)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIAddTransitions(srcStages, dstStages,
-                                                {MemoryTransitions(), numMemoryTransitions},
-                                                {BufferTransitions(), numBufferTransitions},
-                                                {TextureTransitions(), numTextureTransitions});
+        cmdList.GetContext()->RHIAddTransitions(srcStages, dstStages, memoryTransitions,
+                                                bufferTransitions, textureTransitions);
     }
 };
 
@@ -477,13 +633,44 @@ public:
 
     FRHICommandList() = default;
 
+    void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
+
+    void CopyBuffer(RHIBuffer* srcBuffer, RHIBuffer* dstBuffer, const RHIBufferCopyRegion& region);
+
+    void ClearTexture(RHITexture* pTexture,
+                      const Color& color,
+                      const RHITextureSubResourceRange& range);
+
+    void CopyTexture(RHITexture* srcTextureHandle,
+                     RHITexture* dstTextureHandle,
+                     VectorView<RHITextureCopyRegion> regions);
+
+    void CopyTextureToBuffer(RHITexture* pSrcTex,
+                             RHIBuffer* pDstBuffer,
+                             VectorView<RHIBufferTextureCopyRegion> regions);
+
     void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                              RHITexture* pDstTexture,
                              VectorView<RHIBufferTextureCopyRegion> regions);
 
+    void ResolveTexture(RHITexture* srcTexture,
+                        RHITexture* dstTexture,
+                        uint32_t srcLayer,
+                        uint32_t srcMipmap,
+                        uint32_t dstLayer,
+                        uint32_t dstMipmap);
+
     void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
     void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
+
+    void SetDepthBias(float depthBiasConstantFactor,
+                      float depthBiasClamp,
+                      float depthBiasSlopeFactor);
+
+    void SetLineWidth(float width);
+
+    void SetBlendConstants(const Color& color);
 
     void BindPipeline(RHIPipelineType pipelineType,
                       RHIPipeline* pPipeline,

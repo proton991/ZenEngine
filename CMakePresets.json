@@ -1,0 +1,72 @@
+{
+    "version": 4,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "debug",
+            "hidden": true,
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "release",
+            "hidden": true,
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "reldbg",
+            "hidden": true,
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+
+        {
+            "name": "x64-windows-msvc-debug",
+            "inherits": [ "base", "debug" ]
+        },
+        {
+            "name": "x64-windows-msvc-release",
+            "inherits": [ "base", "reldbg" ]
+        },
+
+        {
+            "name": "arm64-apple-clang",
+            "hidden": true,
+            "architecture": {
+                "value": "arm64",
+                "strategy": "external"
+            }
+        },
+        {
+            "name": "arm64-apple-clang-debug",
+            "inherits": [ "base", "arm64-apple-clang", "debug" ]
+        },
+        {
+            "name": "arm64-apple-clang-release",
+            "inherits": [ "base", "arm64-apple-clang", "reldbg" ]
+        },
+
+        {
+            "name": "x64-linux-gcc",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "x64-linux-gcc-debug",
+            "inherits": [ "base", "x64-linux-gcc", "debug" ]
+        },
+        {
+            "name": "x64-linux-gcc-release",
+            "inherits": [ "base", "x64-linux-gcc", "release" ]
+        }
+    ]
+}

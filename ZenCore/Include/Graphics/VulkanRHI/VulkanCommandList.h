@@ -297,7 +297,7 @@ private:
     HeapVector<VulkanDescriptorSet*> m_descriptorSets{nullptr};
 
     HeapVector<VulkanBuffer*> m_vertexBuffers;
-    HeapVector<uint32_t> m_vertexBufferOffsets;
+    HeapVector<uint64_t> m_vertexBufferOffsets;
 
     struct RasterizationStates
     {
@@ -363,18 +363,42 @@ public:
 
     void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
                            BitField<RHIPipelineStageBits> dstStages,
-                           const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                           const HeapVector<RHIBufferTransition>& bufferTransitions,
-                           const HeapVector<RHITextureTransition>& textureTransitions) override;
-
-    void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                RHITexture* pDstTexture,
-                                uint32_t numRegions,
-                                RHIBufferTextureCopyRegion* pRegions) override;
+                           VectorView<RHIMemoryTransition> memoryTransitions,
+                           VectorView<RHIBufferTransition> bufferTransitions,
+                           VectorView<RHITextureTransition> textureTransitions) override;
 
     void RHIGenTextureMipmaps(RHITexture* pTexture) override;
 
     void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) override;
+
+    void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) override;
+
+    void RHICopyBuffer(RHIBuffer* pSrcBuffer,
+                       RHIBuffer* pDstBuffer,
+                       const RHIBufferCopyRegion& region) override;
+
+    void RHIClearTexture(RHITexture* texture,
+                         const Color& color,
+                         const RHITextureSubResourceRange& range) override;
+
+    void RHICopyTexture(RHITexture* pSrcTexture,
+                        RHITexture* pDstTexture,
+                        VectorView<RHITextureCopyRegion> regions) override;
+
+    void RHICopyTextureToBuffer(RHITexture* pSrcTex,
+                                RHIBuffer* pDstBuffer,
+                                VectorView<RHIBufferTextureCopyRegion> regions) override;
+
+    void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
+                                RHITexture* pDstTexture,
+                                VectorView<RHIBufferTextureCopyRegion> regions) override;
+
+    void RHIResolveTexture(RHITexture* pSrcTexture,
+                           RHITexture* pDstTexture,
+                           uint32_t srcLayer,
+                           uint32_t srcMipmap,
+                           uint32_t dstLayer,
+                           uint32_t dstMipmap) override;
 
     // todo: need a function to collect recorded workload in this context
 private:

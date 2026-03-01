@@ -11,10 +11,10 @@ layout(location = 0) in GS_OUT {
     uint faxis;
 } fs_in;
 
-layout(set = 1, binding = 0, r32ui) uniform volatile coherent uimage3D voxelAlbedo;
-layout(set = 1, binding = 1, r32ui) uniform volatile coherent uimage3D voxelNormal;
-layout(set = 1, binding = 2, r32ui) uniform volatile coherent uimage3D voxelEmissive;
-layout(set = 1, binding = 3, r8) uniform volatile coherent image3D staticVoxelFlag;
+layout(set = 1, binding = 0, r32ui) uniform volatile uimage3D voxelAlbedo;
+layout(set = 1, binding = 1, r32ui) uniform volatile uimage3D voxelNormal;
+layout(set = 1, binding = 2, r32ui) uniform volatile uimage3D voxelEmissive;
+layout(set = 1, binding = 3, r8) uniform volatile image3D staticVoxelFlag;
 
 layout (set = 2, binding = 0) uniform sampler2D uTextureArray[1024];
 

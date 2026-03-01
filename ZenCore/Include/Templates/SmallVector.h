@@ -111,9 +111,9 @@ public:
     }
 
     // Avoid sliced copies. Base class should only be read as a reference.
-    VectorView(const VectorView&) = delete;
+    VectorView(const VectorView&) = default;
 
-    void operator=(const VectorView&) = delete;
+    VectorView& operator=(const VectorView&) = default;
 
     VectorView() = default;
 
@@ -456,4 +456,61 @@ private:
     size_t m_capacity{0};
     AlignedBuffer<T, N> m_alignedBuffer;
 };
+
+// Pointer + size
+template <typename T> VectorView<T> MakeVecView(T* ptr, size_t size)
+{
+    return VectorView<T>(ptr, size);
+}
+
+// Const pointer + size
+template <typename T> VectorView<const T> MakeVecView(const T* ptr, size_t size)
+{
+    return VectorView<const T>(ptr, size);
+}
+
+// C-array
+template <typename T, size_t N> VectorView<T> MakeVecView(T (&arr)[N])
+{
+    return VectorView<T>(arr, N);
+}
+
+// const C-array
+template <typename T, size_t N> VectorView<const T> MakeVecView(const T (&arr)[N])
+{
+    return VectorView<const T>(arr, N);
+}
+
+// std::vector
+template <typename T> VectorView<T> MakeVecView(std::vector<T>& vec)
+{
+    return VectorView<T>(vec.data(), vec.size());
+}
+
+template <typename T> VectorView<const T> MakeVecView(const std::vector<T>& vec)
+{
+    return VectorView<const T>(vec.data(), vec.size());
+}
+
+// HeapVector
+template <typename T> VectorView<T> MakeVecView(HeapVector<T>& vec)
+{
+    return VectorView<T>(vec.data(), vec.size());
+}
+
+template <typename T> VectorView<const T> MakeVecView(const HeapVector<T>& vec)
+{
+    return VectorView<const T>(vec.data(), vec.size());
+}
+
+// Single element
+template <typename T> VectorView<T> MakeVecView(T& element)
+{
+    return VectorView<T>(&element, 1);
+}
+
+template <typename T> VectorView<const T> MakeVecView(const T& element)
+{
+    return VectorView<const T>(&element, 1);
+}
 } // namespace zen

@@ -769,10 +769,12 @@ void VulkanPipeline::Init()
     if (m_type == RHIPipelineType::eCompute)
     {
         InitCompute();
+        m_bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
     }
     else if (m_type == RHIPipelineType::eGraphics)
     {
         InitGraphics();
+        m_bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     }
 }
 

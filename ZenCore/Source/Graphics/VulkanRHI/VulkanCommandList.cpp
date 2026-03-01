@@ -289,6 +289,7 @@ void VulkanGfxState::SetLineWidth(float lineWidth)
 {
     m_rasterizationState.lineWidth = lineWidth;
 }
+
 void VulkanGfxState::SetDepthBias(float depthBiasConstantFactor,
                                   float depthBiasClamp,
                                   float depthBiasSlopeFactor)
@@ -309,7 +310,7 @@ void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers,
     for (uint32_t i = 0; i < numVertexBuffers; i++)
     {
         m_vertexBuffers[i]       = TO_VK_BUFFER(ppVertexBuffers[i]);
-        m_vertexBufferOffsets[i] = pOffsets[i];
+        m_vertexBufferOffsets[i] = pOffsets[i] + m_vertexBuffers[i]->GetOffset();
     }
 }
 void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline,
@@ -326,7 +327,51 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline,
 
 void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 {
-    FVulkanCommandBuffer* pCmdBuffer = pContext->GetCommandBuffer();
+    VkCommandBuffer cmdBuffer = pContext->GetCommandBuffer()->GetVkHandle();
+
+    // multi-viewports is not supported
+    if (!m_viewports.empty())
+    {
+        vkCmdSetViewport(cmdBuffer, 0, m_viewports.size(), m_viewports.data());
+    }
+    if (!m_scissors.empty())
+    {
+        vkCmdSetScissor(cmdBuffer, 0, m_scissors.size(), m_scissors.data());
+    }
+    if (m_pCurrentPipeline != nullptr)
+    {
+        vkCmdBindPipeline(cmdBuffer, m_pCurrentPipeline->GetVkPipelineBindPoint(),
+                          m_pCurrentPipeline->GetVkPipeline());
+    }
+    if (!m_descriptorSets.empty())
+    {
+        HeapVector<VkDescriptorSet> vkDescriptorSets;
+        vkDescriptorSets.reserve(m_descriptorSets.size());
+        for (const auto& pDescriptorSet : m_descriptorSets)
+        {
+            vkDescriptorSets.emplace_back(
+                TO_CVK_DESCRIPTORSET(pDescriptorSet)->GetVkDescriptorSet());
+        }
+        vkCmdBindDescriptorSets(cmdBuffer, m_pCurrentPipeline->GetVkPipelineBindPoint(),
+                                m_pCurrentPipeline->GetVkPipelineLayout(), 0,
+                                vkDescriptorSets.size(), vkDescriptorSets.data(), 0, nullptr);
+    }
+    if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
+    {
+        HeapVector<VkBuffer> vkBuffers;
+        for (VulkanBuffer* buffer : m_vertexBuffers)
+        {
+            vkBuffers.emplace_back(TO_VK_BUFFER(buffer)->GetVkBuffer());
+        }
+        vkCmdBindVertexBuffers(cmdBuffer, 0, m_vertexBuffers.size(), vkBuffers.data(),
+                               m_vertexBufferOffsets.data());
+    }
+    if (m_rasterizationState.depthBiasEnable)
+    {
+        vkCmdSetDepthBias(cmdBuffer, m_rasterizationState.depthBiasConstantFactor,
+                          m_rasterizationState.depthBiasClamp,
+                          m_rasterizationState.depthBiasSlopeFactor);
+    }
 }
 
 FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
@@ -506,10 +551,11 @@ void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
     m_pGfxState->PreDraw(this);
 
     FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
+    VulkanBuffer* pVkBuffer          = TO_VK_BUFFER(pIndexBuffer);
 
     // todo: get offset and index type info from buffers
-    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(), 0,
-                         VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), pVkBuffer->GetVkBuffer(),
+                         pVkBuffer->GetOffset(), VK_INDEX_TYPE_UINT32);
     vkCmdDrawIndexed(pCmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex, vertexOffset,
                      firstInstance);
 }
@@ -548,9 +594,9 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
 void FVulkanCommandListContext::RHIAddTransitions(
     BitField<RHIPipelineStageBits> srcStages,
     BitField<RHIPipelineStageBits> dstStages,
-    const HeapVector<RHIMemoryTransition>& memoryTransitions,
-    const HeapVector<RHIBufferTransition>& bufferTransitions,
-    const HeapVector<RHITextureTransition>& textureTransitions)
+    VectorView<RHIMemoryTransition> memoryTransitions,
+    VectorView<RHIBufferTransition> bufferTransitions,
+    VectorView<RHITextureTransition> textureTransitions)
 {
     VulkanPipelineBarrier barrier;
 
@@ -602,23 +648,6 @@ void FVulkanCommandListContext::RHIAddTransitions(
         GVulkanRHI->UpdateImageLayout(vulkanTexture->GetVkImage(), newLayout);
     }
     barrier.Execute(GetCommandBuffer()->GetVkHandle(), srcStages, dstStages);
-}
-
-void FVulkanCommandListContext::RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                                       RHITexture* pDstTexture,
-                                                       uint32_t numRegions,
-                                                       RHIBufferTextureCopyRegion* pRegions)
-{
-    HeapVector<VkBufferImageCopy> copies(numRegions);
-    for (uint32_t i = 0; i < numRegions; i++)
-    {
-        ToVkBufferImageCopy(pRegions[i], &copies[i]);
-    }
-
-    vkCmdCopyBufferToImage(GetCommandBuffer()->GetVkHandle(),
-                           TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
-                           TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
 void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
@@ -711,6 +740,110 @@ void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture* pTexture,
     barrier.AddImageBarrier(vkImage, srcLayout, dstLayout, vulkanTexture->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(GetCommandBuffer()->GetVkHandle());
     GVulkanRHI->UpdateImageLayout(vkImage, dstLayout);
+}
+
+void FVulkanCommandListContext::RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
+{
+    vkCmdFillBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pBuffer)->GetVkBuffer(), offset,
+                    size, 0);
+}
+
+void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer,
+                                              RHIBuffer* pDstBuffer,
+                                              const RHIBufferCopyRegion& region)
+{
+    VkBufferCopy bufferCopy;
+    bufferCopy.srcOffset = region.srcOffset;
+    bufferCopy.dstOffset = region.dstOffset;
+    bufferCopy.size      = region.size;
+
+    vkCmdCopyBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
+                    TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), 1, &bufferCopy);
+}
+
+void FVulkanCommandListContext::RHIClearTexture(RHITexture* texture,
+                                                const Color& color,
+                                                const RHITextureSubResourceRange& range)
+{
+    VkImageSubresourceRange vkRange;
+    ToVkImageSubresourceRange(range, &vkRange);
+    VkClearColorValue colorValue;
+    ToVkClearColor(color, &colorValue);
+    vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(texture)->GetVkImage(),
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
+}
+
+void FVulkanCommandListContext::RHICopyTexture(RHITexture* pSrcTexture,
+                                               RHITexture* pDstTexture,
+                                               VectorView<RHITextureCopyRegion> regions)
+{
+    HeapVector<VkImageCopy> copies(regions.size());
+    for (uint32_t i = 0; i < regions.size(); i++)
+    {
+        ToVkImageCopy(regions[i], &copies[i]);
+    }
+
+    vkCmdCopyImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
+}
+
+void FVulkanCommandListContext::RHICopyTextureToBuffer(
+    RHITexture* pSrcTex,
+    RHIBuffer* pDstBuffer,
+    VectorView<RHIBufferTextureCopyRegion> regions)
+{
+    HeapVector<VkBufferImageCopy> copies(regions.size());
+    for (uint32_t i = 0; i < regions.size(); i++)
+    {
+        ToVkBufferImageCopy(regions[i], &copies[i]);
+    }
+
+    vkCmdCopyImageToBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTex)->GetVkImage(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), copies.size(), copies.data());
+}
+
+void FVulkanCommandListContext::RHICopyBufferToTexture(
+    RHIBuffer* pSrcBuffer,
+    RHITexture* pDstTexture,
+    VectorView<RHIBufferTextureCopyRegion> regions)
+{
+    HeapVector<VkBufferImageCopy> copies(regions.size());
+    for (uint32_t i = 0; i < copies.size(); i++)
+    {
+        ToVkBufferImageCopy(regions[i], &copies[i]);
+    }
+
+    vkCmdCopyBufferToImage(GetCommandBuffer()->GetVkHandle(),
+                           TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
+                           TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
+}
+
+void FVulkanCommandListContext::RHIResolveTexture(RHITexture* pSrcTexture,
+                                                  RHITexture* pDstTexture,
+                                                  uint32_t srcLayer,
+                                                  uint32_t srcMipmap,
+                                                  uint32_t dstLayer,
+                                                  uint32_t dstMipmap)
+{
+    VkImageResolve region{};
+    region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcSubresource.mipLevel       = srcMipmap;
+    region.srcSubresource.baseArrayLayer = srcLayer;
+    region.srcSubresource.layerCount     = 1;
+    region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.dstSubresource.mipLevel       = dstMipmap;
+    region.dstSubresource.baseArrayLayer = dstLayer;
+    region.dstSubresource.layerCount     = 1;
+    region.extent.width  = std::max(1u, pSrcTexture->GetBaseInfo().width >> srcMipmap);
+    region.extent.height = std::max(1u, pSrcTexture->GetBaseInfo().height >> srcMipmap);
+    region.extent.depth  = std::max(1u, pSrcTexture->GetBaseInfo().depth >> srcMipmap);
+    vkCmdResolveImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                      TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
 void VulkanRHI::SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists)

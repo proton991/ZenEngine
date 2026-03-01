@@ -20,17 +20,83 @@ FRHICommandList* FRHICommandList::Create(IRHICommandContext* pContext)
     return pCmdList;
 }
 
+void FRHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
+{
+    ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
+}
+
+void FRHICommandList::CopyBuffer(RHIBuffer* srcBuffer,
+                                 RHIBuffer* dstBuffer,
+                                 const RHIBufferCopyRegion& region)
+{}
+
+void FRHICommandList::ClearTexture(RHITexture* pTexture,
+                                   const Color& color,
+                                   const RHITextureSubResourceRange& range)
+{
+    ALLOC_CMD(RHICommandClearTexture)(pTexture, color, range);
+}
+
+void FRHICommandList::CopyTexture(RHITexture* pSrcTexture,
+                                  RHITexture* pDstTexture,
+                                  VectorView<RHITextureCopyRegion> regions)
+{
+    RHICommandCopyTexture* pCmd = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
+
+    RHITextureCopyRegion* pRegions = static_cast<RHITextureCopyRegion*>(
+        ZEN_MEM_ALLOC(sizeof(RHITextureCopyRegion) * regions.size()));
+    std::ranges::copy(regions, pRegions);
+
+    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+    //RHITextureCopyRegion* pRegions = pCmd->copyRegions;
+    //for (uint32_t i = 0; i < regions.size(); i++)
+    //{
+    //    pRegions[i] = regions[i];
+    //}
+}
+
+void FRHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
+                                          RHIBuffer* pDstBuffer,
+                                          VectorView<RHIBufferTextureCopyRegion> regions)
+{
+    RHICommandCopyTextureToBuffer* pCmd =
+        ALLOC_CMD(RHICommandCopyTextureToBuffer)(pSrcTex, pDstBuffer);
+
+    RHIBufferTextureCopyRegion* pRegions = static_cast<RHIBufferTextureCopyRegion*>(
+        ZEN_MEM_ALLOC(sizeof(RHIBufferTextureCopyRegion) * regions.size()));
+    std::ranges::copy(regions, pRegions);
+
+    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+}
+
 void FRHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                           RHITexture* pDstTexture,
                                           VectorView<RHIBufferTextureCopyRegion> regions)
 {
     RHICommandCopyBufferToTexture* pCmd =
-        ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture, regions.size());
-    RHIBufferTextureCopyRegion* pRegions = pCmd->CopyRegions();
-    for (uint32_t i = 0; i < regions.size(); i++)
-    {
-        pRegions[i] = regions[i];
-    }
+        ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
+
+    RHIBufferTextureCopyRegion* pRegions = static_cast<RHIBufferTextureCopyRegion*>(
+        ZEN_MEM_ALLOC(sizeof(RHIBufferTextureCopyRegion) * regions.size()));
+    std::ranges::copy(regions, pRegions);
+
+    pCmd->copyRegions = MakeVecView(pRegions, regions.size());
+    //RHIBufferTextureCopyRegion* pRegions = pCmd->CopyRegions();
+    //for (uint32_t i = 0; i < regions.size(); i++)
+    //{
+    //    pRegions[i] = regions[i];
+    //}
+}
+
+void FRHICommandList::ResolveTexture(RHITexture* srcTexture,
+                                     RHITexture* dstTexture,
+                                     uint32_t srcLayer,
+                                     uint32_t srcMipmap,
+                                     uint32_t dstLayer,
+                                     uint32_t dstMipmap)
+{
+    ALLOC_CMD(RHICommandResolveTexture)(srcTexture, dstTexture, srcLayer, srcMipmap, dstLayer,
+                                        dstMipmap);
 }
 
 void FRHICommandList::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
@@ -41,6 +107,24 @@ void FRHICommandList::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, u
 void FRHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     ALLOC_CMD(RHICommandSetScissor)(minX, minY, maxX, maxY);
+}
+
+void FRHICommandList::SetDepthBias(float depthBiasConstantFactor,
+                                   float depthBiasClamp,
+                                   float depthBiasSlopeFactor)
+{
+    ALLOC_CMD(RHICommandSetDepthBias)(depthBiasConstantFactor, depthBiasClamp,
+                                      depthBiasSlopeFactor);
+}
+
+void FRHICommandList::SetLineWidth(float width)
+{
+    ALLOC_CMD(RHICommandSetLineWidth)(width);
+}
+
+void FRHICommandList::SetBlendConstants(const Color& color)
+{
+    ALLOC_CMD(RHICommandSetBlendConstants)(color);
 }
 
 void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
@@ -72,31 +156,38 @@ void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                      const HeapVector<RHIBufferTransition>& bufferTransitions,
                                      const HeapVector<RHITextureTransition>& textureTransitions)
 {
-    const uint32_t numMemoryTransitions  = memoryTransitions.size();
-    const uint32_t numBufferTransitions  = bufferTransitions.size();
-    const uint32_t numTextureTransitions = textureTransitions.size();
+    RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
 
-    RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(
-        srcStages, dstStages, numMemoryTransitions, numBufferTransitions, numTextureTransitions);
+    RHIMemoryTransition* pMemoryTransitions = static_cast<RHIMemoryTransition*>(
+        ZEN_MEM_ALLOC(sizeof(RHIMemoryTransition) * memoryTransitions.size()));
+    std::ranges::copy(memoryTransitions, pMemoryTransitions);
 
-    RHIMemoryTransition* pMemoryTransitions   = pCmd->MemoryTransitions();
-    RHIBufferTransition* pBufferTransitions   = pCmd->BufferTransitions();
-    RHITextureTransition* pTextureTransitions = pCmd->TextureTransitions();
+    RHIBufferTransition* pBufferTransitions = static_cast<RHIBufferTransition*>(
+        ZEN_MEM_ALLOC(sizeof(RHIMemoryTransition) * bufferTransitions.size()));
+    std::ranges::copy(bufferTransitions, pBufferTransitions);
 
-    for (uint32_t i = 0; i < numMemoryTransitions; ++i)
-    {
-        pMemoryTransitions[i] = memoryTransitions[i];
-    }
+    RHITextureTransition* pTextureTransitions = static_cast<RHITextureTransition*>(
+        ZEN_MEM_ALLOC(sizeof(RHIMemoryTransition) * textureTransitions.size()));
+    std::ranges::copy(textureTransitions, pTextureTransitions);
 
-    for (uint32_t i = 0; i < numBufferTransitions; ++i)
-    {
-        pBufferTransitions[i] = bufferTransitions[i];
-    }
+    pCmd->memoryTransitions  = MakeVecView(pMemoryTransitions, memoryTransitions.size());
+    pCmd->bufferTransitions  = MakeVecView(pBufferTransitions, bufferTransitions.size());
+    pCmd->textureTransitions = MakeVecView(pTextureTransitions, textureTransitions.size());
 
-    for (uint32_t i = 0; i < numTextureTransitions; ++i)
-    {
-        pTextureTransitions[i] = textureTransitions[i];
-    }
+    //for (uint32_t i = 0; i < numMemoryTransitions; ++i)
+    //{
+    //    pMemoryTransitions[i] = memoryTransitions[i];
+    //}
+
+    //for (uint32_t i = 0; i < numBufferTransitions; ++i)
+    //{
+    //    pBufferTransitions[i] = bufferTransitions[i];
+    //}
+
+    //for (uint32_t i = 0; i < numTextureTransitions; ++i)
+    //{
+    //    pTextureTransitions[i] = textureTransitions[i];
+    //}
 }
 
 void FRHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
