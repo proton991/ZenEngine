@@ -2,11 +2,43 @@
 
 namespace zen
 {
+void RHICommandListBase::Execute()
+{
+    RHICommandBase* pCmd = m_pCmdHead;
+    while (pCmd)
+    {
+        RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
+
+        dynamic_cast<RHICommand*>(pCmd)->Execute(*this);
+
+        pCmd = pNext;
+    }
+}
+
+void RHICommandListBase::Reset()
+{
+    RHICommandBase* pCmd = m_pCmdHead;
+    while (pCmd)
+    {
+        RHICommandBase* pNext = pCmd->pNextCmd;
+
+        pCmd->~RHICommandBase();
+        ZEN_MEM_FREE(pCmd);
+
+        pCmd = pNext;
+    }
+
+    m_pCmdHead    = nullptr;
+    m_ppCmdPtr    = &m_pCmdHead;
+    m_numCommands = 0;
+}
+
 FRHICommandList* FRHICommandList::Create(IRHICommandContext* pContext)
 {
     FRHICommandList* pCmdList         = ZEN_NEW() FRHICommandList();
     RHICommandContextType contextType = pContext->GetContextType();
-    if (contextType == RHICommandContextType::eGraphics)
+    if (contextType == RHICommandContextType::eGraphics ||
+        contextType == RHICommandContextType::eTransfer)
     {
         pCmdList->m_pGraphicsContext = pContext;
         pCmdList->m_pComputeContext  = pContext;
@@ -25,10 +57,12 @@ void FRHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t 
     ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
 }
 
-void FRHICommandList::CopyBuffer(RHIBuffer* srcBuffer,
-                                 RHIBuffer* dstBuffer,
+void FRHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer,
+                                 RHIBuffer* pDstBuffer,
                                  const RHIBufferCopyRegion& region)
-{}
+{
+    ALLOC_CMD(RHICommandCopyBuffer)(pSrcBuffer, pDstBuffer, region);
+}
 
 void FRHICommandList::ClearTexture(RHITexture* pTexture,
                                    const Color& color,
@@ -195,7 +229,7 @@ void FRHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayou
     ALLOC_CMD(RHICommandAddTextureTransition)(pTexture, newLayout);
 }
 
-void FRHICommandList::GenTextureMipmaps(RHITexture* pTexture)
+void FRHICommandList::GenerateTextureMipmaps(RHITexture* pTexture)
 {
     ALLOC_CMD(RHICommandGenTextureMipmaps)(pTexture);
 }

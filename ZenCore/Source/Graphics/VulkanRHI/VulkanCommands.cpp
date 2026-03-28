@@ -30,7 +30,8 @@ RHICommandList* VulkanRHI::GetImmediateCommandList()
 {
     // VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
     // return RHICommandList::Create(RHIAPIType::eVulkan, context);
-    return m_device->GetImmediateCommandList();
+    // return m_device->GetImmediateCommandList();
+    return m_immediateCommandList;
 }
 
 VulkanCommandList::~VulkanCommandList() {}
@@ -678,7 +679,7 @@ void VulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
 }
 
-void VulkanCommandList::ChangeTextureLayout(RHITexture* texture, RHITextureLayout newLayout)
+void VulkanCommandList::AddTextureTransition(RHITexture* texture, RHITextureLayout newLayout)
 {
     VulkanTexture* vkTexture = TO_VK_TEXTURE(texture);
 

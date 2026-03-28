@@ -1,6 +1,7 @@
 #pragma once
 #include <queue>
 #include <functional>
+#include "Utils/Errors.h"
 #include "Utils/Mutex.h"
 
 namespace zen
@@ -8,23 +9,24 @@ namespace zen
 template <class T> class ThreadSafeQueue
 {
 public:
-    bool Push(const T& value)
+    void Push(const T& value)
     {
         LockAuto lock(&m_mutex);
         m_q.push(value);
-        return true;
     }
 
-    bool Pop(T& out)
+    void Pop()
     {
         LockAuto lock(&m_mutex);
-        if (m_q.empty())
-        {
-            return false;
-        }
-        out = m_q.front();
+        VERIFY_EXPR(!m_q.empty());
         m_q.pop();
-        return true;
+    }
+
+    T Peek()
+    {
+        LockAuto lock(&m_mutex);
+        VERIFY_EXPR(!m_q.empty());
+        return m_q.front();
     }
 
     bool Empty()
@@ -41,21 +43,21 @@ private:
 template <class T> class Queue
 {
 public:
-    bool Push(const T& value)
+    void Push(const T& value)
     {
         m_q.push(value);
-        return true;
     }
 
-    bool Pop(T& out)
+    void Pop()
     {
-        if (m_q.empty())
-        {
-            return false;
-        }
-        out = m_q.front();
+        VERIFY_EXPR(!m_q.empty());
         m_q.pop();
-        return true;
+    }
+
+    T Peek()
+    {
+        VERIFY_EXPR(!m_q.empty());
+        return m_q.front();
     }
 
     bool Empty()

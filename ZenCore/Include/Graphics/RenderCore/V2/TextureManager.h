@@ -16,6 +16,9 @@ public:
 
     void Destroy();
 
+    void EnsureTransferBatch();
+
+    void FlushTransferBatch();
     // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
     // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
@@ -59,5 +62,12 @@ private:
     HashMap<std::string, RHITexture*> m_textureCache;
 
     HashMap<RHITexture*, RHITexture*> m_textureProxyMap; // proxy tex -> base tex
+
+    struct TextureTransferBatch
+    {
+        FRHICommandList* pCmdList{nullptr};
+        uint32_t textureCount{0};
+        bool recording{false};
+    } m_transferBatch;
 };
 } // namespace zen::rc

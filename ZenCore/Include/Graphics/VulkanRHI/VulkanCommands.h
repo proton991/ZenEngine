@@ -153,7 +153,7 @@ public:
         return m_cmdBufferManager;
     }
 
-    void ChangeTextureLayout(RHITexture* texture, RHITextureLayout newLayout) final;
+    void AddTextureTransition(RHITexture* texture, RHITextureLayout newLayout) final;
 
     void GenerateTextureMipmaps(RHITexture* texture) final;
 

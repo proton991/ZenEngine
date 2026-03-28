@@ -119,32 +119,19 @@ class RHICommandListBase
 public:
     virtual ~RHICommandListBase()
     {
-        RHICommandBase* pCmd = m_pCmdHead;
-        while (pCmd)
+        Reset();
+        m_ppCmdPtr = nullptr;
+
+        if (!m_pGraphicsContext && m_pComputeContext)
         {
-            RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
-
-            pCmd->~RHICommandBase();
-
-            ZEN_MEM_FREE(pCmd);
-
-            pCmd = pNext;
+            ZEN_DELETE(m_pComputeContext);
+            m_pComputeContext = nullptr;
         }
-
-        m_pCmdHead    = nullptr;
-        m_ppCmdPtr    = nullptr;
-        m_numCommands = 0;
 
         if (m_pGraphicsContext)
         {
             ZEN_DELETE(m_pGraphicsContext);
             m_pGraphicsContext = nullptr;
-        }
-
-        if (m_pComputeContext)
-        {
-            ZEN_DELETE(m_pComputeContext);
-            m_pComputeContext = nullptr;
         }
     }
 
@@ -161,6 +148,10 @@ public:
     {
         return m_pGraphicsContext != nullptr ? m_pGraphicsContext : m_pComputeContext;
     }
+
+    void Execute();
+
+    void Reset();
 
 protected:
     RHICommandListBase()
@@ -184,8 +175,6 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
-
-
 struct RHICommandClearBuffer : public RHICommand
 {
     RHIBuffer* pBuffer;
@@ -199,6 +188,24 @@ struct RHICommandClearBuffer : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIClearBuffer(pBuffer, offset, size);
+    }
+};
+
+struct RHICommandCopyBuffer : public RHICommand
+{
+    RHIBuffer* pSrcBuffer;
+    RHIBuffer* pDstBuffer;
+    RHIBufferCopyRegion copyRegion;
+
+    RHICommandCopyBuffer(RHIBuffer* pSrcBuffer,
+                         RHIBuffer* pDstBuffer,
+                         const RHIBufferCopyRegion& region) :
+        pSrcBuffer(pSrcBuffer), pDstBuffer(pDstBuffer), copyRegion(region)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHICopyBuffer(pSrcBuffer, pDstBuffer, copyRegion);
     }
 };
 
@@ -626,6 +633,7 @@ struct RHICommandGenTextureMipmaps : public RHICommand
     }
 };
 
+// todo: first use it to replace ImmediateCommandList in RenderDevice, then replace it in RenderFrame
 class FRHICommandList : public RHICommandListBase
 {
 public:
@@ -633,9 +641,13 @@ public:
 
     FRHICommandList() = default;
 
+    ~FRHICommandList() override = default;
+
     void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
 
-    void CopyBuffer(RHIBuffer* srcBuffer, RHIBuffer* dstBuffer, const RHIBufferCopyRegion& region);
+    void CopyBuffer(RHIBuffer* pSrcBuffer,
+                    RHIBuffer* pDstBuffer,
+                    const RHIBufferCopyRegion& region);
 
     void ClearTexture(RHITexture* pTexture,
                       const Color& color,
@@ -692,6 +704,7 @@ public:
 
     void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
 
-    void GenTextureMipmaps(RHITexture* pTexture);
+    void GenerateTextureMipmaps(RHITexture* pTexture);
+    // todo: add BeginRendering/EndRendering && BeginRenderPass
 };
 } // namespace zen

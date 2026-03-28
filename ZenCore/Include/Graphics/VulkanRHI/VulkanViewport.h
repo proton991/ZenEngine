@@ -15,6 +15,7 @@ class VulkanSemaphore;
 class VulkanCommandBuffer;
 class VulkanFramebuffer;
 struct VulkanTexture;
+struct FVulkanCommandListContext;
 
 class VulkanViewport : public RHIViewport
 {
@@ -51,6 +52,8 @@ public:
     }
 
     bool Present(VulkanCommandBuffer* cmdBuffer);
+
+    bool Present(FVulkanCommandListContext* pContext);
 
     RHITexture* GetColorBackBuffer() final;
 
@@ -98,7 +101,7 @@ private:
     void DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
     bool TryAcquireNextImage();
     void RecreateSwapchain();
-    void CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
+    void CopyToBackBufferForPresent(VkCommandBuffer cmdBufferVk,
                                     VkImage dstImage,
                                     uint32_t windowWidth,
                                     uint32_t windowHeight);

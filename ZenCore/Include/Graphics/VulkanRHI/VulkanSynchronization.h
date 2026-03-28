@@ -3,6 +3,8 @@
 #include "VulkanCommon.h"
 #include "Graphics/RHI/RHIResource.h"
 
+#define VK_WAIT_FENCE_TIME_NS (33 * 1000 * 1000LL)
+
 namespace zen
 {
 class VulkanDevice;

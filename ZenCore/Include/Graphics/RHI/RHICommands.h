@@ -142,6 +142,6 @@ public:
 
     virtual void GenerateTextureMipmaps(RHITexture* textureHandle) = 0;
 
-    virtual void ChangeTextureLayout(RHITexture* textureHandle, RHITextureLayout newLayout) = 0;
+    virtual void AddTextureTransition(RHITexture* textureHandle, RHITextureLayout newLayout) = 0;
 };
 } // namespace zen

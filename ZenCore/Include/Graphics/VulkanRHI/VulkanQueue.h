@@ -16,6 +16,8 @@ class VulkanQueue
 public:
     VulkanQueue(VulkanDevice* device, uint32_t familyIndex);
 
+    ~VulkanQueue();
+
     FVulkanCommandBufferPool* AcquireCommandBufferPool(VulkanCommandBufferType type);
 
     void RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool);
@@ -52,7 +54,7 @@ public:
 
     void SubmitWorkloads();
 
-    void ProcessPendingWorkloads(uint64_t timeToWait);
+    void ProcessPendingWorkloads(uint64_t timeToWaitNS);
 
 private:
     void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer);
@@ -70,5 +72,6 @@ private:
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
 
     friend class VulkanRHI;
+    friend class VulkanCommandContextBase;
 };
 } // namespace zen

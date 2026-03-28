@@ -1259,6 +1259,23 @@ void RenderGraph::Execute(RHICommandList* cmdList)
     }
 }
 
+void RenderGraph::Execute(FRHICommandList* pCmdList)
+{
+    m_pCmdList = pCmdList;
+    // execute node level by level
+    for (auto i = 0; i < m_sortedNodes.size(); i++)
+    {
+        const auto& currLevel = m_sortedNodes[i];
+        EmitInitializationBarriers(i);
+        for (auto& nodeId : currLevel)
+        {
+            RDGNodeBase* node = GetNodeBaseById(nodeId);
+            RunNode(node);
+        }
+        EmitTransitionBarriers(i);
+    }
+}
+
 void RenderGraph::RunNode(RDGNodeBase* base)
 {
 

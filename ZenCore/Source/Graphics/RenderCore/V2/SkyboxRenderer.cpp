@@ -42,7 +42,12 @@ void SkyboxRenderer::Init()
     BuildGraphicsPasses();
 }
 
-void SkyboxRenderer::Destroy() {}
+void SkyboxRenderer::Destroy()
+{
+    // free texture resources
+    m_renderDevice->DestroyTexture(m_offscreenTextures.irradiance);
+    m_renderDevice->DestroyTexture(m_offscreenTextures.prefiltered);
+}
 
 void SkyboxRenderer::PrepareTextures()
 {
@@ -191,10 +196,19 @@ void SkyboxRenderer::BuildGraphicsPasses()
     }
 }
 
-void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
+void SkyboxRenderer::PreprocessEnvTexture(EnvTexture* pTexture)
 {
+    HeapVector<UniquePtr<RenderGraph>> outRenderGraphs;
 
+    GenerateEnvCubemaps(pTexture, outRenderGraphs);
+    GenerateLutBRDF(pTexture, outRenderGraphs);
 
+    m_renderDevice->ExecuteImmediate(outRenderGraphs);
+}
+
+void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture,
+                                         HeapVector<UniquePtr<RenderGraph>>& outRDGs)
+{
     for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
     {
         RHITexture* cubemapTexture;
@@ -202,7 +216,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         uint32_t dim;
         DataFormat format;
         GraphicsPass* gfxPass;
-        std::string targetName = "";
+        std::string targetName  = "";
+        std::string textureName = "";
+
         if (target == IRRADIANCE)
         {
             gfxPass          = m_gfxPasses.irradiance;
@@ -210,6 +226,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             format           = cIrradianceFormat;
             dim              = IRRADIANCE_DIM;
             targetName       = "irradiance_cubemap_gen";
+            textureName      = "env_irradiance";
         }
         else
         {
@@ -218,19 +235,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             format           = cPrefilteredFormat;
             dim              = PREFILTERED_DIM;
             targetName       = "prefiltered_cubemap_gen";
+            textureName      = "env_prefiltered";
         }
 
-        // TextureInfo textureInfo{};
-        // textureInfo.format      = format;
-        // textureInfo.width       = dim;
-        // textureInfo.height      = dim;
-        // textureInfo.type        = RHITextureType::eCube;
-        // textureInfo.depth       = 1;
-        // textureInfo.arrayLayers = 6;
-        // textureInfo.mipmaps     = CalculateTextureMipLevels(dim);
-        // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferDst);
-        // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
-        //
         const uint32_t numMips = RHITexture::CalculateTextureMipLevels(dim);
 
         RHISamplerCreateInfo samplerInfo{};
@@ -256,7 +263,7 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
         texFormat.mipmaps     = numMips;
 
         cubemapTexture =
-            m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, targetName);
+            m_renderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, textureName);
 
         // offscreen
         {
@@ -348,7 +355,9 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
 
             rdg->End();
 
-            m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
+            outRDGs.emplace_back(rdg);
+
+            // m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
             // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
             //     cubemapTexture, RHITextureLayout::eShaderReadOnly);
@@ -369,27 +378,12 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* texture)
             }
         }
     }
-    // free texture resources
-    m_renderDevice->DestroyTexture(m_offscreenTextures.irradiance);
-    m_renderDevice->DestroyTexture(m_offscreenTextures.prefiltered);
 }
 
-void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
+void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture,
+                                     HeapVector<UniquePtr<RenderGraph>>& outRDGs)
 {
-
-
-    const uint32_t dim      = 512;
-    const DataFormat format = DataFormat::eR16G16SFloat;
-
-    // TextureInfo textureInfo{};
-    // textureInfo.format = format;
-    // textureInfo.width  = dim;
-    // textureInfo.height = dim;
-    // textureInfo.type   = RHITextureType::e2D;
-    // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
-    // textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eSampled);
-    //
-    // texture->lutBRDF = m_RHI->CreateTexture(textureInfo);
+    const uint32_t dim = 512;
 
     TextureFormat texFormat{};
     texFormat.format      = DataFormat::eR16G16SFloat;
@@ -464,7 +458,9 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* texture)
     rdg->AddGraphicsPassDrawNode(pass, 3, 1);
     rdg->End();
 
-    m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
+    outRDGs.emplace_back(rdg);
+
+    // m_renderDevice->ExecuteImmediate(m_viewport, rdg.Get());
 
     // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
     //                                                                RHITextureLayout::eShaderReadOnly);

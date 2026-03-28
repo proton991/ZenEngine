@@ -726,13 +726,19 @@ void RenderDevice::Init(RHIViewport* mainViewport)
     m_bufferStagingMgr->Init(m_numFrames);
     m_textureStagingMgr = ZEN_NEW() TextureStagingManager(this);
     m_textureManager    = ZEN_NEW() TextureManager(this, m_textureStagingMgr);
+    m_pTransferCmdList  = FRHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
+
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
+        // todo: replace with refactored FRHICommandList and IRHICommandContext
         frame.cmdListContext  = GDynamicRHI->CreateCmdListContext();
         frame.drawCmdList     = RHICommandList::Create(m_APIType, frame.cmdListContext);
         frame.transferCmdList = RHICommandList::Create(m_APIType, frame.cmdListContext);
+
+        // frame.pGfxCmdList = FRHICommandList::Create(
+        //     GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
@@ -794,6 +800,11 @@ void RenderDevice::Destroy()
 
     m_deletionQueue.Flush();
 
+    if (m_pTransferCmdList != nullptr)
+    {
+        ZEN_DELETE(m_pTransferCmdList);
+    }
+
     m_bufferStagingMgr->Destroy();
     ZEN_DELETE(m_bufferStagingMgr);
 
@@ -839,6 +850,7 @@ void RenderDevice::ExecuteFrame(RHIViewport* viewport,
     for (auto* rdg : rdgs)
     {
         rdg->Execute(m_frames[m_currentFrame].drawCmdList);
+        // rdg->Execute(m_frames[m_currentFrame].pGfxCmdList);
     }
     EndFrame();
     GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
@@ -851,6 +863,25 @@ void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
     rdg->Execute(cmdList);
     cmdList->EndRenderWorkload();
     GDynamicRHI->WaitForCommandList(cmdList);
+}
+
+void RenderDevice::ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs)
+{
+    RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
+    cmdList->BeginRenderWorkload();
+    for (auto& rdg : rdgs)
+    {
+        rdg->Execute(cmdList);
+    }
+    cmdList->EndRenderWorkload();
+    GDynamicRHI->WaitForCommandList(cmdList);
+}
+
+void RenderDevice::SubmitTransferCmdList()
+{
+    FRHICommandList* cmdLists[] = {m_pTransferCmdList};
+    GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
+    m_pTransferCmdList->Reset();
 }
 
 RHIRenderingLayout* RenderDevice::AcquireRenderingLayout()
@@ -1411,6 +1442,8 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
     copyRegion.textureSize   = textureSize;
     m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(submitResult.buffer,
                                                                   textureHandle, copyRegion);
+    // m_frames[m_currentFrame].pGfxCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
+    //                                                           copyRegion);
 
     m_bufferStagingMgr->EndSubmit(&submitResult);
 }
@@ -1464,6 +1497,8 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
                 m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(
                     submitResult.buffer, textureHandle, copyRegion);
+                // m_frames[m_currentFrame].pGfxCmdList->CopyBufferToTexture(
+                //     submitResult.buffer, textureHandle, copyRegion);
 
                 m_bufferStagingMgr->EndSubmit(&submitResult);
             }
@@ -1507,7 +1542,8 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
         copyRegion.size      = submitResult.writeSize;
         m_frames[m_currentFrame].transferCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
                                                              copyRegion);
-
+        // m_frames[m_currentFrame].pGfxCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
+        //                                                  copyRegion);
         m_bufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
         writePosition += submitResult.writeSize;
@@ -1561,6 +1597,11 @@ void RenderDevice::BeginFrame()
         m_bufferStagingMgr->UpdateBlockIndex();
         m_bufferStagingMgr->m_stagingBufferUsed = false;
     }
+    // if (m_frames[m_currentFrame].pGfxCmdList == nullptr)
+    // {
+    //     m_frames[m_currentFrame].pGfxCmdList = FRHICommandList::Create(
+    //         GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    // }
     m_frames[m_currentFrame].transferCmdList->BeginTransferWorkload();
     m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 }
@@ -1569,6 +1610,8 @@ void RenderDevice::EndFrame()
 {
     m_frames[m_currentFrame].transferCmdList->EndTransferWorkload();
     m_frames[m_currentFrame].drawCmdList->EndRenderWorkload();
+    // GDynamicRHI->SubmitCommandList({m_frames[m_currentFrame].pGfxCmdList});
+    // m_frames[m_currentFrame].pGfxCmdList  = nullptr;
     m_frames[m_currentFrame].cmdSubmitted = true;
 }
 

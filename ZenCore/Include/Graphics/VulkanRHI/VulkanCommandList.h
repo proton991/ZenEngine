@@ -1,6 +1,7 @@
 #pragma once
 #include "VulkanCommandList.h"
 #include "VulkanQueue.h"
+#include "VulkanRHI.h"
 #include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Templates/HeapVector.h"
@@ -246,7 +247,10 @@ public:
     {
         EndWorkload();
         outWorkloads.emplace_back(m_pCurrentWorkload);
+        m_pCurrentWorkload = nullptr;
     }
+
+    void FlushCommands();
 
 private:
     void SetupNewCommandBuffer();

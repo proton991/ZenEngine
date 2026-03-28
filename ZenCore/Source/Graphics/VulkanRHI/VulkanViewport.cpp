@@ -3,6 +3,7 @@
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
+#include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
@@ -60,6 +61,19 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
                                              ->GetCmdBufferManager()
                                              ->GetActiveCommandBuffer();
         m_currentViewport->Present(cmdBuffer);
+    }
+}
+
+void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
+                                   FRHICommandList* pCmdList,
+                                   bool present)
+{
+    VulkanViewport* viewport = dynamic_cast<VulkanViewport*>(viewportRHI);
+    VERIFY_EXPR(viewport == m_currentViewport);
+    if (present)
+    {
+        m_currentViewport->Present(
+            dynamic_cast<FVulkanCommandListContext*>(pCmdList->GetContext()));
     }
 }
 
@@ -168,8 +182,9 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     // m_renderingCompleteSemaphores.resize(numImages);
     // m_backBufferImages.resize(numImages);
 
-    // VulkanCommandList* cmdList = dynamic_cast<VulkanCommandList*>(m_RHI->GetImmediateCommandList());
-    VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
+    VulkanCommandList* cmdList =
+        dynamic_cast<VulkanCommandList*>(GVulkanRHI->GetImmediateCommandList());
+    // VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
     cmdList->BeginTransferWorkload();
     VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
 
@@ -266,7 +281,7 @@ bool VulkanViewport::TryAcquireNextImage()
     return false;
 }
 
-void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
+void VulkanViewport::CopyToBackBufferForPresent(VkCommandBuffer cmdBufferVk,
                                                 VkImage dstImage,
                                                 uint32_t windowWidth,
                                                 uint32_t windowHeight)
@@ -280,7 +295,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
+        barrier.ExecuteImageBarriersOnly(cmdBufferVk);
     }
     if (m_width != windowWidth || m_height != windowHeight)
     {
@@ -303,7 +318,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
-        vkCmdBlitImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->GetVkImage(),
+        vkCmdBlitImage(cmdBufferVk, m_colorBackBuffer->GetVkImage(),
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
     }
@@ -327,7 +342,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         region.dstSubresource.layerCount     = 1;
         region.dstSubresource.baseArrayLayer = 0;
         region.dstSubresource.mipLevel       = 0;
-        vkCmdCopyImage(cmdBuffer->GetVkHandle(), m_colorBackBuffer->GetVkImage(),
+        vkCmdCopyImage(cmdBufferVk, m_colorBackBuffer->GetVkImage(),
                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dstImage,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
@@ -339,7 +354,7 @@ void VulkanViewport::CopyToBackBufferForPresent(VulkanCommandBuffer* cmdBuffer,
         barrier.AddImageBarrier(
             dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1));
-        barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
+        barrier.ExecuteImageBarriersOnly(cmdBufferVk);
     }
 }
 
@@ -352,7 +367,8 @@ bool VulkanViewport::Present(VulkanCommandBuffer* cmdBuffer)
     {
         uint32_t windowWidth  = std::min(m_width, m_swapchain->m_internalWidth);
         uint32_t windowHeight = std::min(m_height, m_swapchain->m_internalHeight);
-        CopyToBackBufferForPresent(cmdBuffer, m_backBufferImages[m_acquiredImageIndex], windowWidth,
+        CopyToBackBufferForPresent(cmdBuffer->GetVkHandle(),
+                                   m_backBufferImages[m_acquiredImageIndex], windowWidth,
                                    windowHeight);
     }
     else
@@ -392,6 +408,65 @@ bool VulkanViewport::Present(VulkanCommandBuffer* cmdBuffer)
     {
         cmdBufferMgr->SetupNewActiveCmdBuffer();
     }
+    m_acquiredImageIndex = -1;
+    m_presentCount++;
+
+    return presentResult;
+}
+
+bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
+{
+    bool acquireImageFailed = false;
+
+    // VulkanCommandBuffer* cmdBuffer =
+    //     m_device->GetImmediateCmdContext()->GetCmdBufferManager()->GetActiveCommandBuffer();
+    if (TryAcquireNextImage())
+    {
+        uint32_t windowWidth  = std::min(m_width, m_swapchain->m_internalWidth);
+        uint32_t windowHeight = std::min(m_height, m_swapchain->m_internalHeight);
+        CopyToBackBufferForPresent(pContext->GetCommandBuffer()->GetVkHandle(),
+                                   m_backBufferImages[m_acquiredImageIndex], windowWidth,
+                                   windowHeight);
+    }
+    else
+    {
+        acquireImageFailed = true;
+    }
+
+    // VulkanCommandBufferManager* cmdBufferMgr = cmdBuffer->GetOwner()->GetManager();
+    // VulkanCommandBufferManager* cmdBufferMgr =
+    //     m_device->GetImmediateCmdContext()->GetCmdBufferManager();
+    if (!acquireImageFailed)
+    {
+        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_imageAcquiredSemaphore);
+        VulkanSemaphore* signalSemaphore = (m_acquiredImageIndex >= 0) ?
+            m_renderingCompleteSemaphores[m_acquiredImageIndex] :
+            nullptr;
+        pContext->AddSignalSemaphore(signalSemaphore);
+    }
+    else
+    {
+        // failed to acquire image from swapchain, do not present
+        // m_device->GetGfxQueue()->Submit(cmdBuffer);
+        RecreateSwapchain();
+        pContext->FlushCommands();
+        // m_device->WaitForIdle();
+        return true;
+    }
+    bool presentResult = m_swapchain->Present(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
+    if (RHIOptions::GetInstance().WaitForFrameCompletion())
+    {
+        WaitForFrameCompletion();
+        IssueFrameEvent();
+    }
+
+    pContext->FlushCommands();
+
+    // if (cmdBufferMgr->GetActiveCommandBufferDirect() &&
+    //     !cmdBufferMgr->GetActiveCommandBufferDirect()->HasBegun())
+    // {
+    //     cmdBufferMgr->SetupNewActiveCmdBuffer();
+    // }
     m_acquiredImageIndex = -1;
     m_presentCount++;
 

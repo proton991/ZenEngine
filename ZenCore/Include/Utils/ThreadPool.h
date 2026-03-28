@@ -92,16 +92,23 @@ public:
     // empty the queue
     void ClearQueue()
     {
-        std::function<FuncRetType(FuncArgs...)>* _f;
-        while (m_q.Pop(_f))
+        while (!m_q.Empty())
+        {
+            auto* _f = m_q.Peek();
+            m_q.Pop();
             delete _f; // empty the queue
+        }
     }
 
     // pops a functional wrapper to the original function
     std::function<FuncRetType(FuncArgs...)> Pop()
     {
-        std::function<FuncRetType(FuncArgs...)>* _f = nullptr;
-        m_q.Pop(_f);
+        if (m_q.Empty())
+        {
+            return {};
+        }
+        std::function<FuncRetType(FuncArgs...)>* _f = m_q.Peek();
+        m_q.Pop();
         // at return, delete the function even if an exception occurred
         UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(_f);
         std::function<FuncRetType(FuncArgs...)> f;
@@ -189,9 +196,14 @@ private:
         SharedPtr<std::atomic<bool>> flag(m_flags[i]); // a copy of the shared ptr to the flag
         auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
             std::atomic<bool>& _flag = *flag;
-            std::function<FuncRetType(FuncArgs...)>* _f;
+            std::function<FuncRetType(FuncArgs...)>* _f = nullptr;
 
-            bool isPop = m_q.Pop(_f);
+            bool isPop = !m_q.Empty();
+            if (isPop)
+            {
+                _f = m_q.Peek();
+                m_q.Pop();
+            }
             while (true)
             {
                 while (isPop) // if there is anything in the queue
@@ -202,13 +214,25 @@ private:
                     if (_flag)
                         return; // the thread is wanted to stop, return even if the queue is not empty yet
                     else
-                        isPop = m_q.Pop(_f);
+                    {
+                        isPop = !m_q.Empty();
+                        if (isPop)
+                        {
+                            _f = m_q.Peek();
+                            m_q.Pop();
+                        }
+                    }
                 }
                 // the queue is empty here, wait for the next command
                 LockAuto lock(&m_mutex);
                 ++m_nWaiting;
                 m_conVar.Wait(&m_mutex, [this, &_f, &isPop, &_flag]() {
-                    isPop = m_q.Pop(_f);
+                    isPop = !m_q.Empty();
+                    if (isPop)
+                    {
+                        _f = m_q.Peek();
+                        m_q.Pop();
+                    }
                     return isPop || m_finished || _flag;
                 });
                 --m_nWaiting;

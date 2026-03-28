@@ -35,10 +35,9 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
     {
         VulkanFence* fence = m_freeFences.front();
         m_freeFences.pop();
-        if (createSignaled)
-        {
-            fence->m_state = VulkanFence::State::eSignaled;
-        }
+        fence->m_state =
+            createSignaled ? VulkanFence::State::eSignaled : VulkanFence::State::eInitial;
+        m_usedFences.push_back(fence);
         return fence;
     }
     VulkanFence* newFence = ZEN_NEW() VulkanFence(this, createSignaled);
@@ -96,7 +95,12 @@ bool VulkanFenceManager::WaitForFence(VulkanFence* fence, uint64_t timeNS)
         fence->m_state = VulkanFence::State::eSignaled;
         return true;
     }
-    LOGE("vkWaitForFences Failed with error {}", result);
+    if (result == VK_TIMEOUT)
+    {
+        LOGI("vkWaitForFences timeout");
+        return false;
+    }
+
     return false;
 }
 

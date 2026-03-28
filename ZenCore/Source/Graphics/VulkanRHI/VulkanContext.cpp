@@ -253,7 +253,17 @@ VkDevice VulkanRHI::GetVkDevice() const
 
 IRHICommandContext* VulkanRHI::GetCommandContext(RHICommandContextType contextType)
 {
-    return new FVulkanCommandListContext(contextType, m_device);
+    return ZEN_NEW() FVulkanCommandListContext(contextType, m_device);
+}
+
+IRHICommandContext* VulkanRHI::GetTransferCommandContext()
+{
+    if (m_pTransferContext == nullptr)
+    {
+        m_pTransferContext =
+            ZEN_NEW() FVulkanCommandListContext(RHICommandContextType::eTransfer, m_device);
+    }
+    return m_pTransferContext;
 }
 
 RHICommandListContext* VulkanRHI::CreateCmdListContext()
@@ -272,6 +282,11 @@ VulkanCommandListContext::VulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI
 VulkanCommandListContext::~VulkanCommandListContext()
 {
     ZEN_DELETE(m_cmdBufferMgr);
+}
+
+VulkanCommandListContext* VulkanRHI::GetImmediateCmdContext() const
+{
+    return static_cast<VulkanCommandListContext*>(m_immediateContext);
 }
 
 void VulkanRHI::Init()
@@ -294,11 +309,23 @@ void VulkanRHI::Init()
     GVkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(), m_device->GetVkHandle());
 
     m_descriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_device);
+
+    m_immediateContext = ZEN_NEW() VulkanCommandListContext(this);
+    m_immediateCommandList =
+        ZEN_NEW() VulkanCommandList(static_cast<VulkanCommandListContext*>(m_immediateContext));
 }
 
 void VulkanRHI::Destroy()
 {
+    m_device->WaitForIdle();
     // delete m_vkMemAllocator;
+    ZEN_DELETE(m_immediateContext);
+    ZEN_DELETE(m_immediateCommandList);
+
+    // if (m_pTransferContext != nullptr)
+    // {
+    //     ZEN_DELETE(m_pTransferContext);
+    // }
 
     ZEN_DELETE(GVkMemAllocator);
 

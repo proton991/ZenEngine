@@ -21,6 +21,8 @@ public:
 
     virtual IRHICommandContext* GetCommandContext(RHICommandContextType contextType) = 0;
 
+    virtual IRHICommandContext* GetTransferCommandContext() = 0;
+
     virtual RHICommandListContext* CreateCmdListContext() = 0;
 
     virtual void WaitForCommandList(RHICommandList* cmdList) = 0;
@@ -44,6 +46,10 @@ public:
 
     virtual void EndDrawingViewport(RHIViewport* viewport,
                                     RHICommandListContext* cmdListContext,
+                                    bool present) = 0;
+
+    virtual void EndDrawingViewport(RHIViewport* viewportRHI,
+                                    FRHICommandList* pCmdList,
                                     bool present) = 0;
 
     // virtual ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) = 0;
@@ -132,7 +138,7 @@ public:
     //     DescriptorSetHandle descriptorSetHandle,
     //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
-    virtual void SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists) = 0;
+    virtual void SubmitCommandList(VectorView<FRHICommandList*> cmdLists) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 
@@ -147,6 +153,11 @@ public:
 
 protected:
     RHIResourceFactory* m_resourceFactory{nullptr};
+
+    RHICommandListContext* m_immediateContext{nullptr};
+    RHICommandList* m_immediateCommandList{nullptr};
+
+    IRHICommandContext* m_pTransferContext{nullptr};
 };
 
 // Global instance pointer

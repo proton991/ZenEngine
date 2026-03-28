@@ -13,6 +13,28 @@ VulkanQueue::VulkanQueue(VulkanDevice* device, uint32_t familyIndex) :
     vkGetDeviceQueue(m_device->GetVkHandle(), m_familyIndex, m_queueIndex, &m_handle);
 }
 
+VulkanQueue::~VulkanQueue()
+{
+    while (!m_workloadsPendingSubmit.Empty())
+    {
+        VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
+        m_workloadsPendingSubmit.Pop();
+        ZEN_DELETE(pWorkload);
+    }
+
+    while (!m_workloadsPendingProcess.Empty())
+    {
+        VulkanWorkload* pWorkload = m_workloadsPendingProcess.Peek();
+        m_workloadsPendingProcess.Pop();
+        ZEN_DELETE(pWorkload);
+    }
+
+    for (FVulkanCommandBufferPool* pCmdBufferPool : m_cmdBufferPools)
+    {
+        ZEN_DELETE(pCmdBufferPool);
+    }
+}
+
 FVulkanCommandBufferPool* VulkanQueue::AcquireCommandBufferPool(VulkanCommandBufferType type)
 {
     FVulkanCommandBufferPool* result = nullptr;
@@ -100,8 +122,8 @@ void VulkanQueue::SubmitWorkloads()
     // When using fences, submit workload one by one
     while (!m_workloadsPendingSubmit.Empty())
     {
-        VulkanWorkload* pWorkload = nullptr;
-        m_workloadsPendingSubmit.Pop(pWorkload);
+        VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
+        m_workloadsPendingSubmit.Pop();
         pWorkload->m_pFence = GVulkanRHI->GetDevice()->GetFenceManager()->CreateFence();
 
         VkSubmitInfo submitInfo;
@@ -135,22 +157,33 @@ void VulkanQueue::SubmitWorkloads()
     }
 }
 
-void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWait)
+void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
 {
     VulkanFenceManager* pFenceManager = GVulkanRHI->GetDevice()->GetFenceManager();
-    while (!m_workloadsPendingProcess.Empty())
+
+    while (true)
     {
-        VulkanWorkload* pWorkload = nullptr;
-        m_workloadsPendingProcess.Pop(pWorkload);
-        VulkanFence* pFence = pWorkload->m_pFence;
-
-        bool success = pFenceManager->WaitForFence(pFence, (uint64_t)(timeToWait * 1e9));
-        VERIFY_EXPR(success);
-
-        if (pFenceManager->IsFenceSignaled(pFence))
+        if (m_workloadsPendingProcess.Empty())
         {
-            pFence->GetOwner()->ResetFence(pFence);
+            break;
         }
+
+        VulkanWorkload* pWorkload = m_workloadsPendingProcess.Peek();
+        VulkanFence* pFence = pWorkload->m_pFence;
+        const bool success  = timeToWaitNS == 0 ? pFenceManager->IsFenceSignaled(pFence) :
+                                                  pFenceManager->WaitForFence(pFence, timeToWaitNS);
+
+        if (!success)
+        {
+            if (timeToWaitNS == 0)
+            {
+                break;
+            }
+            continue;
+        }
+
+        m_workloadsPendingProcess.Pop();
+        ZEN_DELETE(pWorkload);
     }
 }
 } // namespace zen

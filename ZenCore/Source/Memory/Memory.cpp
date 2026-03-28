@@ -1,6 +1,8 @@
 #include "Memory/Memory.h"
 #include "Utils/Errors.h"
 
+#include <algorithm>
+
 namespace zen
 {
 struct MemoryFreeHelper
@@ -78,7 +80,7 @@ void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName,
 
     return header + 1;
 #else
-    void* pMemory = DefaultAllocImpl(size, alignment);
+    void* pMemory = DefaultAllocImpl(s, alignment);
     return pMemory;
 #endif
 }
@@ -120,7 +122,8 @@ void* DefaultAllocator::Realloc(void* ptr,
     size_t oldSize  = oldHeader->size_;
 
     const size_t totalSize = sizeof(AllocationHeader) + newSize;
-    void* raw              = DefaultReallocImpl(oldHeader, totalSize, alignment);
+    void* raw              = DefaultReallocImpl(oldHeader, totalSize, alignment,
+                                   sizeof(AllocationHeader) + std::min(oldSize, newSize));
     assert(raw);
 
     auto* newHeader  = reinterpret_cast<AllocationHeader*>(raw);
@@ -185,6 +188,7 @@ void DefaultAllocator::ReportMemUsage()
     PrintMemoryLine("Total Freed", totalFreed);
     PrintMemoryLine("Current Usage", currentUsage);
     PrintMemoryLine("Peak Usage", peakUsage);
+    printf("\nNote: Total Allocated / Total Freed are lifetime counters, not current live memory.\n");
 
     if (currentUsage != 0)
     {
@@ -250,7 +254,10 @@ void* DefaultAllocator::DefaultCallocImpl(size_t size, size_t alignment)
     return pMem;
 }
 
-void* DefaultAllocator::DefaultReallocImpl(void* ptr, size_t size, size_t alignment)
+void* DefaultAllocator::DefaultReallocImpl(void* ptr,
+                                           size_t size,
+                                           size_t alignment,
+                                           size_t copySize)
 {
     // nullptr do alloc
     if (ptr == nullptr)
@@ -264,8 +271,8 @@ void* DefaultAllocator::DefaultReallocImpl(void* ptr, size_t size, size_t alignm
     pNewMem = DefaultAllocImpl(size, alignment);
     if (pNewMem)
     {
-        // Assuming we know the old size, for simplicity let's use memcpy
-        std::memcpy(pNewMem, ptr, size);
+        const size_t bytesToCopy = copySize > 0 ? copySize : size;
+        std::memcpy(pNewMem, ptr, bytesToCopy);
         DefaultFreeImpl(ptr);
     }
 #elif defined(_MSC_VER)

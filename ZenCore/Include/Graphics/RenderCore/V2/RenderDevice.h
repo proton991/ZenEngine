@@ -3,11 +3,12 @@
 #include "Templates/Queue.h"
 #include "Graphics/RHI/RHIDebug.h"
 #include "RenderCoreDefs.h"
+#include "Utils/UniquePtr.h"
 
 #define TEXTURE_UPLOAD_REGION_SIZE            64
 #define STAGING_BLOCK_SIZE_BYTES              (256 * 1024)
 #define STAGING_POOL_SIZE_BYTES               (128 * 1024 * 1024)
-#define MAX_TEXTURE_STAGING_PENDING_FREE_SIZE (4 * 1024 * 1024 * 10)
+#define MAX_TEXTURE_STAGING_PENDING_FREE_SIZE (64 * 1024 * 1024)
 
 namespace zen::sg
 {
@@ -329,6 +330,8 @@ struct RenderFrame
     RHICommandListContext* cmdListContext{nullptr};
     RHICommandList* transferCmdList{nullptr};
     RHICommandList* drawCmdList{nullptr};
+
+    // FRHICommandList* pGfxCmdList{nullptr};
     bool cmdSubmitted{false};
     std::vector<RHITexture*> texturesPendingFree;
 };
@@ -355,6 +358,8 @@ public:
                       bool present = true);
 
     void ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg);
+
+    void ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs);
 
     // todo: implement pool based recycle mechanism
     RHIRenderingLayout* AcquireRenderingLayout();
@@ -474,10 +479,22 @@ public:
         return m_frames[m_currentFrame].transferCmdList;
     }
 
-    RHICommandList* GetCurrentDrawCmdList() const
+    FRHICommandList* GetTransferCmdList() const
     {
-        return m_frames[m_currentFrame].drawCmdList;
+        return m_pTransferCmdList;
     }
+
+    void SubmitTransferCmdList();
+
+    // FRHICommandList* GetCurrentCmdList() const
+    // {
+    //     return m_frames[m_currentFrame].pGfxCmdList;
+    // }
+
+    // RHICommandList* GetCurrentDrawCmdList() const
+    // {
+    //     return m_frames[m_currentFrame].drawCmdList;
+    // }
 
     RendererServer* GetRendererServer() const
     {
@@ -556,7 +573,7 @@ private:
     // DynamicRHI* GDynamicRHI{nullptr};
     RHIDebug* m_RHIDebug{nullptr};
 
-
+    FRHICommandList* m_pTransferCmdList{nullptr};
     BufferStagingManager* m_bufferStagingMgr{nullptr};
     TextureStagingManager* m_textureStagingMgr{nullptr};
 

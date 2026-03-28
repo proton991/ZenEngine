@@ -103,7 +103,7 @@ private:
 
     static void* DefaultCallocImpl(size_t size, size_t alignment);
 
-    static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment);
+    static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment, size_t copySize = 0);
 
     static void DefaultFreeImpl(void* pMem);
 

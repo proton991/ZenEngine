@@ -19,9 +19,7 @@ public:
 
     void Destroy();
 
-    void GenerateEnvCubemaps(EnvTexture* texture);
-
-    void GenerateLutBRDF(EnvTexture* texture);
+    void PreprocessEnvTexture(EnvTexture* pTexture);
 
     void PrepareRenderWorkload();
 
@@ -53,6 +51,10 @@ private:
     void BuildGraphicsPasses();
 
     void UpdateGraphicsPassResources();
+
+    void GenerateEnvCubemaps(EnvTexture* texture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
+
+    void GenerateLutBRDF(EnvTexture* texture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
 
     struct SkyboxVertex
     {

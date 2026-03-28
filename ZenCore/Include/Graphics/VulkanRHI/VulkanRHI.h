@@ -29,6 +29,7 @@ class VulkanDescriptorSet;
 class VulkanPipeline;
 class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
+class VulkanCommandListContext;
 
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
@@ -51,6 +52,8 @@ public:
     }
 
     IRHICommandContext* GetCommandContext(RHICommandContextType contextType) override;
+
+    IRHICommandContext* GetTransferCommandContext() override;
 
     RHICommandListContext* CreateCmdListContext() override;
 
@@ -99,6 +102,10 @@ public:
 
     void EndDrawingViewport(RHIViewport* viewportRHI,
                             RHICommandListContext* cmdListContext,
+                            bool present) final;
+
+    void EndDrawingViewport(RHIViewport* viewportRHI,
+                            FRHICommandList* pCmdList,
                             bool present) final;
 
     // ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) final;
@@ -183,7 +190,7 @@ public:
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
 
-    void SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists) final;
+    void SubmitCommandList(VectorView<FRHICommandList*> cmdLists) final;
 
     void SubmitAllGPUCommands() final;
 
@@ -221,6 +228,8 @@ public:
     {
         return m_instanceExtensionFlags;
     }
+
+    VulkanCommandListContext* GetImmediateCmdContext() const;
 
 protected:
     void CreateInstance();

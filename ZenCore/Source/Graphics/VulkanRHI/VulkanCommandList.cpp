@@ -201,6 +201,19 @@ VulkanCommandContextBase::~VulkanCommandContextBase()
     m_pQueue->RecycleCommandBufferPool(m_pCmdBufferPool);
 }
 
+void VulkanCommandContextBase::FlushCommands()
+{
+    if (m_pCurrentWorkload != nullptr)
+    {
+        VulkanQueue* pQueue = m_pCurrentWorkload->m_pQueue;
+        pQueue->m_workloadsPendingSubmit.Push(m_pCurrentWorkload);
+        pQueue->SubmitWorkloads();
+        pQueue->ProcessPendingWorkloads(0);
+        // ZEN_DELETE(m_pCurrentWorkload);
+        m_pCurrentWorkload = nullptr;
+    }
+}
+
 void VulkanCommandContextBase::SetupNewCommandBuffer()
 {
     LockAuto lock(&m_pCmdBufferPool->m_mutex);
@@ -241,7 +254,7 @@ void VulkanCommandContextBase::EndWorkload()
         FVulkanCommandBuffer* pCommandBuffer = m_pCurrentWorkload->m_pCmdBuffer;
         if (pCommandBuffer != nullptr)
         {
-            if (!pCommandBuffer->HasEnded() &&
+            if (pCommandBuffer->IsInsideRenderPass() &&
                 pCommandBuffer->GetCommandBufferType() == VulkanCommandBufferType::ePrimary)
             {
                 if (RHIOptions::GetInstance().UseDynamicRendering())
@@ -846,16 +859,19 @@ void FVulkanCommandListContext::RHIResolveTexture(RHITexture* pSrcTexture,
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-void VulkanRHI::SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLists)
+// todo: optimize queue submit and sync
+void VulkanRHI::SubmitCommandList(VectorView<FRHICommandList*> cmdLists)
 {
     HeapVector<VulkanWorkload*> workloads;
 
-    for (uint32_t i = 0; i < numCmdLists; i++)
+    for (auto* pCmdList : cmdLists)
     {
+        pCmdList->Execute();
         FVulkanCommandListContext* pContext =
-            static_cast<FVulkanCommandListContext*>(ppCmdList[i]->GetContext());
+            static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
         pContext->Finalize(workloads);
     }
+
     for (VulkanWorkload* pWorkload : workloads)
     {
         pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
@@ -872,12 +888,17 @@ void VulkanRHI::SubmitCommandList(FRHICommandList** ppCmdList, uint32_t numCmdLi
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
         VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
-        pQueue->ProcessPendingWorkloads(0);
+        pQueue->ProcessPendingWorkloads(VK_WAIT_FENCE_TIME_NS);
     }
 
-    for (VulkanWorkload* pWorkload : workloads)
-    {
-        ZEN_DELETE(pWorkload);
-    }
+    // for (VulkanWorkload* pWorkload : workloads)
+    // {
+    //     ZEN_DELETE(pWorkload);
+    // }
+
+    // for (FRHICommandList* pCommandList : cmdLists)
+    // {
+    //     ZEN_DELETE(pCommandList);
+    // }
 }
 } // namespace zen

@@ -701,6 +701,8 @@ public:
 
     void Execute(RHICommandList* cmdList);
 
+    void Execute(FRHICommandList* pCmdList);
+
 private:
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
                                      RHITexture* texture,
