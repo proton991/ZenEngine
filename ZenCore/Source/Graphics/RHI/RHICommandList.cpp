@@ -1,4 +1,5 @@
 #include "Graphics/RHI/RHICommandList.h"
+#include "Utils/Errors.h"
 
 namespace zen
 {
@@ -161,6 +162,16 @@ void FRHICommandList::SetBlendConstants(const Color& color)
     ALLOC_CMD(RHICommandSetBlendConstants)(color);
 }
 
+void FRHICommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
+{
+    ALLOC_CMD(RHICommandBeginRendering)(pRenderingLayout);
+}
+
+void FRHICommandList::EndRendering()
+{
+    ALLOC_CMD(RHICommandEndRendering)();
+}
+
 void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
                                    RHIPipeline* pPipeline,
                                    uint32_t numDescriptorSets,
@@ -169,9 +180,35 @@ void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
     ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline, numDescriptorSets, pDescriptorSets);
 }
 
+void FRHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
+                                        VectorView<uint64_t> offsets)
+{
+    VERIFY_EXPR(vertexBuffers.size() == offsets.size());
+
+    RHICommandBindVertexBuffers* pCmd = ALLOC_CMD(RHICommandBindVertexBuffers)();
+
+    RHIBuffer** ppVertexBuffers = static_cast<RHIBuffer**>(
+        ZEN_MEM_ALLOC(sizeof(RHIBuffer*) * vertexBuffers.size()));
+    std::ranges::copy(vertexBuffers, ppVertexBuffers);
+
+    uint64_t* pOffsets = static_cast<uint64_t*>(ZEN_MEM_ALLOC(sizeof(uint64_t) * offsets.size()));
+    std::ranges::copy(offsets, pOffsets);
+
+    pCmd->vertexBuffers = MakeVecView(ppVertexBuffers, vertexBuffers.size());
+    pCmd->offsets       = MakeVecView(pOffsets, offsets.size());
+}
+
 void FRHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
 {
     ALLOC_CMD(RHICommandBindVertexBuffer)(pBuffer, offset);
+}
+
+void FRHICommandList::Draw(uint32_t vertexCount,
+                           uint32_t instanceCount,
+                           uint32_t firstVertex,
+                           uint32_t firstInstance)
+{
+    ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 void FRHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
@@ -182,6 +219,25 @@ void FRHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
 void FRHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
 {
     ALLOC_CMD(RHICommandDrawIndexedIndirect)(param);
+}
+
+void FRHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+{
+    ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ);
+}
+
+void FRHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
+{
+    ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset);
+}
+
+void FRHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data)
+{
+    RHICommandSetPushConstants* pCmd = ALLOC_CMD(RHICommandSetPushConstants)(pPipeline);
+
+    uint8_t* pData = static_cast<uint8_t*>(ZEN_MEM_ALLOC(sizeof(uint8_t) * data.size()));
+    std::ranges::copy(data, pData);
+    pCmd->data = MakeVecView(pData, data.size());
 }
 
 void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
@@ -197,11 +253,11 @@ void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
     std::ranges::copy(memoryTransitions, pMemoryTransitions);
 
     RHIBufferTransition* pBufferTransitions = static_cast<RHIBufferTransition*>(
-        ZEN_MEM_ALLOC(sizeof(RHIMemoryTransition) * bufferTransitions.size()));
+        ZEN_MEM_ALLOC(sizeof(RHIBufferTransition) * bufferTransitions.size()));
     std::ranges::copy(bufferTransitions, pBufferTransitions);
 
     RHITextureTransition* pTextureTransitions = static_cast<RHITextureTransition*>(
-        ZEN_MEM_ALLOC(sizeof(RHIMemoryTransition) * textureTransitions.size()));
+        ZEN_MEM_ALLOC(sizeof(RHITextureTransition) * textureTransitions.size()));
     std::ranges::copy(textureTransitions, pTextureTransitions);
 
     pCmd->memoryTransitions  = MakeVecView(pMemoryTransitions, memoryTransitions.size());

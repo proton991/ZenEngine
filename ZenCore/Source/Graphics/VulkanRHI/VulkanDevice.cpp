@@ -323,5 +323,11 @@ void VulkanRHI::SubmitAllGPUCommands()
 void VulkanRHI::WaitDeviceIdle()
 {
     m_device->WaitForIdle();
+
+    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+    {
+        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        pQueue->ProcessPendingWorkloads(0);
+    }
 }
 } // namespace zen

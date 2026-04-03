@@ -1,8 +1,7 @@
 #include <utility>
 
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-
-#include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
@@ -732,18 +731,11 @@ void RenderDevice::Init(RHIViewport* mainViewport)
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
-        // todo: replace with refactored FRHICommandList and IRHICommandContext
-        frame.cmdListContext  = GDynamicRHI->CreateCmdListContext();
-        frame.drawCmdList     = RHICommandList::Create(m_APIType, frame.cmdListContext);
-        frame.transferCmdList = RHICommandList::Create(m_APIType, frame.cmdListContext);
-
-        // frame.pGfxCmdList = FRHICommandList::Create(
-        //     GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+        frame.drawCmdList = FRHICommandList::Create(
+            GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
-    m_frames[m_currentFrame].transferCmdList->BeginTransferWorkload();
-    m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 
     m_mainViewport = mainViewport;
 
@@ -824,7 +816,6 @@ void RenderDevice::Destroy()
 
     for (RenderFrame& frame : m_frames)
     {
-        ZEN_DELETE(frame.transferCmdList);
         ZEN_DELETE(frame.drawCmdList);
     }
 
@@ -839,7 +830,8 @@ void RenderDevice::ExecuteFrame(RHIViewport* viewport, RenderGraph* rdg, bool pr
     GDynamicRHI->BeginDrawingViewport(viewport);
     rdg->Execute(m_frames[m_currentFrame].drawCmdList);
     EndFrame();
-    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].drawCmdList, present);
+    m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
 void RenderDevice::ExecuteFrame(RHIViewport* viewport,
@@ -850,31 +842,34 @@ void RenderDevice::ExecuteFrame(RHIViewport* viewport,
     for (auto* rdg : rdgs)
     {
         rdg->Execute(m_frames[m_currentFrame].drawCmdList);
-        // rdg->Execute(m_frames[m_currentFrame].pGfxCmdList);
     }
     EndFrame();
-    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].cmdListContext, present);
+    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].drawCmdList, present);
+    m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
 void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
 {
-    RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
-    cmdList->BeginRenderWorkload();
-    rdg->Execute(cmdList);
-    cmdList->EndRenderWorkload();
-    GDynamicRHI->WaitForCommandList(cmdList);
+    static_cast<void>(viewport);
+    FRHICommandList* pCmdList =
+        FRHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    rdg->Execute(pCmdList);
+    FRHICommandList* pCmdLists[] = {pCmdList};
+    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
+    ZEN_DELETE(pCmdList);
 }
 
 void RenderDevice::ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs)
 {
-    RHICommandList* cmdList = GDynamicRHI->GetImmediateCommandList();
-    cmdList->BeginRenderWorkload();
+    FRHICommandList* pCmdList =
+        FRHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
     for (auto& rdg : rdgs)
     {
-        rdg->Execute(cmdList);
+        rdg->Execute(pCmdList);
     }
-    cmdList->EndRenderWorkload();
-    GDynamicRHI->WaitForCommandList(cmdList);
+    FRHICommandList* pCmdLists[] = {pCmdList};
+    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
+    ZEN_DELETE(pCmdList);
 }
 
 void RenderDevice::SubmitTransferCmdList()
@@ -1100,9 +1095,9 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
 //     return m_textureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* cmdList)
+void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, FRHICommandList* pCmdList)
 {
-    cmdList->GenerateTextureMipmaps(textureHandle);
+    pCmdList->GenerateTextureMipmaps(textureHandle);
 }
 
 RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
@@ -1408,6 +1403,7 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
 {
+    bool submittedTransfer = false;
 
     // NOT support mipmap
     // TODO: remove hard code.
@@ -1440,12 +1436,16 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
-    m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(submitResult.buffer,
-                                                                  textureHandle, copyRegion);
-    // m_frames[m_currentFrame].pGfxCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
-    //                                                           copyRegion);
+    m_pTransferCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle, copyRegion);
+    submittedTransfer = true;
 
     m_bufferStagingMgr->EndSubmit(&submitResult);
+
+    if (submittedTransfer)
+    {
+        SubmitTransferCmdList();
+        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+    }
 }
 
 void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
@@ -1453,6 +1453,7 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                                       const uint8_t* pData)
 {
     // not support mipmap
+    bool submittedTransfer = false;
     uint32_t requiredAlign = 4;
     uint32_t regionSize    = TEXTURE_UPLOAD_REGION_SIZE;
 
@@ -1495,14 +1496,19 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_frames[m_currentFrame].transferCmdList->CopyBufferToTexture(
-                    submitResult.buffer, textureHandle, copyRegion);
-                // m_frames[m_currentFrame].pGfxCmdList->CopyBufferToTexture(
-                //     submitResult.buffer, textureHandle, copyRegion);
+                m_pTransferCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
+                                                        copyRegion);
+                submittedTransfer = true;
 
                 m_bufferStagingMgr->EndSubmit(&submitResult);
             }
         }
+    }
+
+    if (submittedTransfer)
+    {
+        SubmitTransferCmdList();
+        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
@@ -1513,6 +1519,7 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
 {
     uint32_t toSubmit      = dataSize;
     uint32_t writePosition = 0;
+    bool submittedTransfer = false;
     while (toSubmit > 0 && pData != nullptr)
     {
         StagingSubmitResult submitResult;
@@ -1540,13 +1547,17 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
-        m_frames[m_currentFrame].transferCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
-                                                             copyRegion);
-        // m_frames[m_currentFrame].pGfxCmdList->CopyBuffer(submitResult.buffer, bufferHandle,
-        //                                                  copyRegion);
+        m_pTransferCmdList->CopyBuffer(submitResult.buffer, bufferHandle, copyRegion);
+        submittedTransfer = true;
         m_bufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
         writePosition += submitResult.writeSize;
+    }
+
+    if (submittedTransfer)
+    {
+        SubmitTransferCmdList();
+        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
@@ -1562,8 +1573,7 @@ void RenderDevice::WaitForPreviousFrames()
     {
         if (m_frames[i].cmdSubmitted)
         {
-            GDynamicRHI->WaitForCommandList(m_frames[i].transferCmdList);
-            GDynamicRHI->WaitForCommandList(m_frames[i].drawCmdList);
+            m_frames[i].drawCmdList->WaitUntilCompleted();
             m_frames[i].cmdSubmitted = false;
         }
     }
@@ -1597,23 +1607,9 @@ void RenderDevice::BeginFrame()
         m_bufferStagingMgr->UpdateBlockIndex();
         m_bufferStagingMgr->m_stagingBufferUsed = false;
     }
-    // if (m_frames[m_currentFrame].pGfxCmdList == nullptr)
-    // {
-    //     m_frames[m_currentFrame].pGfxCmdList = FRHICommandList::Create(
-    //         GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
-    // }
-    m_frames[m_currentFrame].transferCmdList->BeginTransferWorkload();
-    m_frames[m_currentFrame].drawCmdList->BeginRenderWorkload();
 }
 
-void RenderDevice::EndFrame()
-{
-    m_frames[m_currentFrame].transferCmdList->EndTransferWorkload();
-    m_frames[m_currentFrame].drawCmdList->EndRenderWorkload();
-    // GDynamicRHI->SubmitCommandList({m_frames[m_currentFrame].pGfxCmdList});
-    // m_frames[m_currentFrame].pGfxCmdList  = nullptr;
-    m_frames[m_currentFrame].cmdSubmitted = true;
-}
+void RenderDevice::EndFrame() {}
 
 void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {

@@ -56,6 +56,8 @@ public:
 
     void ProcessPendingWorkloads(uint64_t timeToWaitNS);
 
+    void WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
+
 private:
     void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer);
 
@@ -70,6 +72,8 @@ private:
 
     Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
+    uint64_t m_nextSubmissionSerial{0};
+    uint64_t m_lastCompletedSubmissionSerial{0};
 
     friend class VulkanRHI;
     friend class VulkanCommandContextBase;

@@ -4,7 +4,6 @@
 #include "Memory/PagedAllocator.h"
 #include "Memory/PoolAllocator.h"
 #include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHICommands.h"
 #include "RenderCoreDefs.h"
 
 namespace zen
@@ -699,7 +698,7 @@ public:
 
     void End();
 
-    void Execute(RHICommandList* cmdList);
+    // void Execute(RHICommandList* cmdList);
 
     void Execute(FRHICommandList* pCmdList);
 
@@ -903,7 +902,7 @@ private:
 
     std::string m_rdgTag;
     // RHI CommandList
-    RHICommandList* m_cmdList{nullptr};
+    // RHICommandList* m_cmdList{nullptr};
 
     FRHICommandList* m_pCmdList{nullptr};
 

@@ -1,6 +1,6 @@
 #include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderResource.h"
-#include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 
 #ifdef ZEN_WIN32
@@ -1242,22 +1242,22 @@ void RenderGraph::End()
     LOGI("==========Render Graph End==========");
 }
 
-void RenderGraph::Execute(RHICommandList* cmdList)
-{
-    m_cmdList = cmdList;
-    // execute node level by level
-    for (auto i = 0; i < m_sortedNodes.size(); i++)
-    {
-        const auto& currLevel = m_sortedNodes[i];
-        EmitInitializationBarriers(i);
-        for (auto& nodeId : currLevel)
-        {
-            RDGNodeBase* node = GetNodeBaseById(nodeId);
-            RunNode(node);
-        }
-        EmitTransitionBarriers(i);
-    }
-}
+// void RenderGraph::Execute(RHICommandList* cmdList)
+// {
+//     m_cmdList = cmdList;
+//     // execute node level by level
+//     for (auto i = 0; i < m_sortedNodes.size(); i++)
+//     {
+//         const auto& currLevel = m_sortedNodes[i];
+//         EmitInitializationBarriers(i);
+//         for (auto& nodeId : currLevel)
+//         {
+//             RDGNodeBase* node = GetNodeBaseById(nodeId);
+//             RunNode(node);
+//         }
+//         EmitTransitionBarriers(i);
+//     }
+// }
 
 void RenderGraph::Execute(FRHICommandList* pCmdList)
 {
@@ -1278,20 +1278,20 @@ void RenderGraph::Execute(FRHICommandList* pCmdList)
 
 void RenderGraph::RunNode(RDGNodeBase* base)
 {
-
-    RDGNodeType type = base->type;
+    const bool useFRHI = m_pCmdList != nullptr;
+    RDGNodeType type   = base->type;
     switch (type)
     {
         case RDGNodeType::eClearBuffer:
         {
             RDGBufferClearNode* node = reinterpret_cast<RDGBufferClearNode*>(base);
-            m_cmdList->ClearBuffer(node->buffer, node->offset, node->size);
+            m_pCmdList->ClearBuffer(node->buffer, node->offset, node->size);
         }
         break;
         case RDGNodeType::eCopyBuffer:
         {
             RDGBufferCopyNode* node = reinterpret_cast<RDGBufferCopyNode*>(base);
-            m_cmdList->CopyBuffer(node->srcBuffer, node->dstBuffer, node->region);
+            m_pCmdList->CopyBuffer(node->srcBuffer, node->dstBuffer, node->region);
         }
         break;
         case RDGNodeType::eUpdateBuffer:
@@ -1299,28 +1299,28 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             RDGBufferUpdateNode* node = reinterpret_cast<RDGBufferUpdateNode*>(base);
             for (auto& source : node->sources)
             {
-                m_cmdList->CopyBuffer(source.buffer, node->dstBuffer, source.region);
+                m_pCmdList->CopyBuffer(source.buffer, node->dstBuffer, source.region);
             }
         }
         break;
         case RDGNodeType::eClearTexture:
         {
             RDGTextureClearNode* node = reinterpret_cast<RDGTextureClearNode*>(base);
-            m_cmdList->ClearTexture(node->texture, node->color,
-                                    node->texture->GetSubResourceRange());
+            m_pCmdList->ClearTexture(node->texture, node->color,
+                                     node->texture->GetSubResourceRange());
         }
         break;
         case RDGNodeType::eCopyTexture:
         {
             RDGTextureCopyNode* node = reinterpret_cast<RDGTextureCopyNode*>(base);
-            m_cmdList->CopyTexture(node->pSrcTexture, node->pDstTexture, node->textureCopyRegions);
+            m_pCmdList->CopyTexture(node->pSrcTexture, node->pDstTexture, node->textureCopyRegions);
         }
         break;
         case RDGNodeType::eReadTexture:
         {
             RDGTextureReadNode* node = reinterpret_cast<RDGTextureReadNode*>(base);
-            m_cmdList->CopyTextureToBuffer(node->pSrcTexture, node->pDstBuffer,
-                                           node->bufferTextureCopyRegions);
+            m_pCmdList->CopyTextureToBuffer(node->pSrcTexture, node->pDstBuffer,
+                                            node->bufferTextureCopyRegions);
         }
         break;
         case RDGNodeType::eUpdateTexture:
@@ -1330,28 +1330,29 @@ void RenderGraph::RunNode(RDGNodeBase* base)
             for (uint32_t i = 0; i < node->numCopySources; i++)
             {
                 const RHIBufferTextureCopySource& source = node->copySources[i];
-                m_cmdList->CopyBufferToTexture(source.buffer, node->pDstTexture, source.region);
+                m_pCmdList->CopyBufferToTexture(source.buffer, node->pDstTexture, source.region);
             }
         }
         break;
         case RDGNodeType::eResolveTexture:
         {
             RDGTextureResolveNode* node = reinterpret_cast<RDGTextureResolveNode*>(base);
-            m_cmdList->ResolveTexture(node->srcTexture, node->dstTexture, node->srcLayer,
-                                      node->srcMipmap, node->dstLayer, node->dstMipmap);
+            m_pCmdList->ResolveTexture(node->srcTexture, node->dstTexture, node->srcLayer,
+                                       node->srcMipmap, node->dstLayer, node->dstMipmap);
         }
         break;
 
         case RDGNodeType::eGenTextureMipmap:
         {
             RDGTextureMipmapGenNode* node = reinterpret_cast<RDGTextureMipmapGenNode*>(base);
-            m_cmdList->GenerateTextureMipmaps(node->texture);
+            m_pCmdList->GenerateTextureMipmaps(node->texture);
         }
         break;
 
         case RDGNodeType::eComputePass:
         {
-            RDGComputePassNode* node = reinterpret_cast<RDGComputePassNode*>(base);
+            RDGComputePassNode* node    = reinterpret_cast<RDGComputePassNode*>(base);
+            RHIPipeline* pBoundPipeline = nullptr;
             // for (RDGPassChildNode* child : node->childNodes)
             for (RDGPassChildNode* child : m_passChildNodeMap[node->id])
             {
@@ -1359,39 +1360,31 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                 {
                     case RDGPassCmdType::eBindPipeline:
                     {
-                        auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
-                        // m_cmdList->BindComputePipeline(cmdNode->pipeline);
-                        m_cmdList->BindComputePipeline(cmdNode->pipeline,
-                                                       node->computePass->numDescriptorSets,
-                                                       node->computePass->descriptorSets);
+                        auto* cmdNode  = reinterpret_cast<RDGBindPipelineNode*>(child);
+                        pBoundPipeline = cmdNode->pipeline;
+                        m_pCmdList->BindPipeline(cmdNode->pipelineType, cmdNode->pipeline,
+                                                 node->computePass->numDescriptorSets,
+                                                 node->computePass->descriptorSets);
                     }
                     break;
                     case RDGPassCmdType::eDispatch:
                     {
                         auto* cmdNode = reinterpret_cast<RDGDispatchNode*>(child);
-                        m_cmdList->Dispatch(cmdNode->groupCountX, cmdNode->groupCountY,
-                                            cmdNode->groupCountZ);
+                        m_pCmdList->Dispatch(cmdNode->groupCountX, cmdNode->groupCountY,
+                                             cmdNode->groupCountZ);
                     }
                     break;
                     case RDGPassCmdType::eDispatchIndirect:
                     {
                         auto* cmdNode = reinterpret_cast<RDGDispatchIndirectNode*>(child);
-                        m_cmdList->DispatchIndirect(cmdNode->indirectBuffer, cmdNode->offset);
+                        m_pCmdList->DispatchIndirect(cmdNode->indirectBuffer, cmdNode->offset);
                     }
                     break;
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        RHIPipeline* pipelineHandle;
-                        for (auto* sibling : m_passChildNodeMap[node->id])
-                        {
-                            if (sibling->type == RDGPassCmdType::eBindPipeline)
-                            {
-                                auto* casted   = reinterpret_cast<RDGBindPipelineNode*>(sibling);
-                                pipelineHandle = casted->pipeline;
-                            }
-                        }
-                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->pcData);
+                        VERIFY_EXPR(pBoundPipeline != nullptr);
+                        m_pCmdList->SetPushConstants(pBoundPipeline, cmdNode->pcData);
                     }
                     break;
                     default: break;
@@ -1402,8 +1395,14 @@ void RenderGraph::RunNode(RDGNodeBase* base)
 
         case RDGNodeType::eGraphicsPass:
         {
-            RDGGraphicsPassNode* node = reinterpret_cast<RDGGraphicsPassNode*>(base);
-            m_cmdList->BeginRendering(node->graphicsPass->pRenderingLayout);
+            RDGGraphicsPassNode* node    = reinterpret_cast<RDGGraphicsPassNode*>(base);
+            RHIPipeline* pBoundPipeline  = nullptr;
+            RHIBuffer* pBoundIndexBuffer = nullptr;
+            DataFormat boundIndexFormat  = DataFormat::eUndefined;
+            uint32_t boundIndexOffset    = 0;
+
+            m_pCmdList->BeginRendering(node->graphicsPass->pRenderingLayout);
+
             // if (node->dynamic)
             // {
             //     m_cmdList->BeginRenderPassDynamic(
@@ -1425,8 +1424,12 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eBindIndexBuffer:
                     {
                         auto* cmdNode = reinterpret_cast<RDGBindIndexBufferNode*>(child);
-                        m_cmdList->BindIndexBuffer(cmdNode->buffer, cmdNode->format,
-                                                   cmdNode->offset);
+
+                        pBoundIndexBuffer = cmdNode->buffer;
+                        boundIndexFormat  = cmdNode->format;
+                        boundIndexOffset  = cmdNode->offset;
+                        // m_cmdList->BindIndexBuffer(cmdNode->buffer, cmdNode->format,
+                        //                            cmdNode->offset);
                     }
                     break;
                     case RDGPassCmdType::eBindVertexBuffer:
@@ -1435,38 +1438,56 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                         //m_cmdList->BindVertexBuffers(
                         //    VectorView(cmdNode->VertexBuffers(), cmdNode->numBuffers),
                         //    cmdNode->VertexBufferOffsets());
-                        m_cmdList->BindVertexBuffers(cmdNode->vertexBuffers, cmdNode->offsets);
+                        m_pCmdList->BindVertexBuffers(cmdNode->vertexBuffers, cmdNode->offsets);
                     }
                     break;
                     case RDGPassCmdType::eBindPipeline:
                     {
-                        auto* cmdNode = reinterpret_cast<RDGBindPipelineNode*>(child);
-                        // m_cmdList->BindGfxPipeline(cmdNode->pipeline);
-                        m_cmdList->BindGfxPipeline(cmdNode->pipeline,
-                                                   node->graphicsPass->numDescriptorSets,
-                                                   node->graphicsPass->descriptorSets);
+                        auto* cmdNode  = reinterpret_cast<RDGBindPipelineNode*>(child);
+                        pBoundPipeline = cmdNode->pipeline;
+                        m_pCmdList->BindPipeline(cmdNode->pipelineType, cmdNode->pipeline,
+                                                 node->graphicsPass->numDescriptorSets,
+                                                 node->graphicsPass->descriptorSets);
                     }
                     break;
                     case RDGPassCmdType::eClearAttachment: break;
                     case RDGPassCmdType::eDraw:
                     {
                         auto* cmdNode = reinterpret_cast<RDGDrawNode*>(child);
-                        m_cmdList->Draw(cmdNode->vertexCount, cmdNode->instanceCount, 0, 0);
+                        m_pCmdList->Draw(cmdNode->vertexCount, cmdNode->instanceCount, 0, 0);
                     }
                     break;
                     case RDGPassCmdType::eDrawIndexed:
                     {
                         auto* cmdNode = reinterpret_cast<RDGDrawIndexedNode*>(child);
-                        m_cmdList->DrawIndexed(cmdNode->indexCount, cmdNode->instanceCount,
-                                               cmdNode->firstIndex, cmdNode->vertexOffset,
-                                               cmdNode->firstInstance);
+                        VERIFY_EXPR(pBoundIndexBuffer != nullptr);
+                        RHICommandDrawIndexed::Param param{};
+                        param.pIndexBuffer      = pBoundIndexBuffer;
+                        param.indexFormat       = boundIndexFormat;
+                        param.indexBufferOffset = boundIndexOffset;
+                        param.indexCount        = cmdNode->indexCount;
+                        param.instanceCount     = cmdNode->instanceCount;
+                        param.firstIndex        = cmdNode->firstIndex;
+                        param.vertexOffset      = cmdNode->vertexOffset;
+                        param.firstInstance     = cmdNode->firstInstance;
+
+                        m_pCmdList->DrawIndexed(param);
                     }
                     break;
                     case RDGPassCmdType::eDrawIndexedIndirect:
                     {
                         auto* cmdNode = reinterpret_cast<RDGDrawIndexedIndirectNode*>(child);
-                        m_cmdList->DrawIndexedIndirect(cmdNode->indirectBuffer, cmdNode->offset,
-                                                       cmdNode->drawCount, cmdNode->stride);
+                        VERIFY_EXPR(pBoundIndexBuffer != nullptr);
+                        RHICommandDrawIndexedIndirect::Param param{};
+                        param.pIndirectBuffer   = cmdNode->indirectBuffer;
+                        param.pIndexBuffer      = pBoundIndexBuffer;
+                        param.indexFormat       = boundIndexFormat;
+                        param.indexBufferOffset = boundIndexOffset;
+                        param.offset            = cmdNode->offset;
+                        param.drawCount         = cmdNode->drawCount;
+                        param.stride            = cmdNode->stride;
+
+                        m_pCmdList->DrawIndexedIndirect(param);
                     }
                     break;
                     case RDGPassCmdType::eExecuteCommands: break;
@@ -1476,48 +1497,44 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eSetPushConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetPushConstantsNode*>(child);
-                        RHIPipeline* pipelineHandle;
-                        for (auto* sibling : m_passChildNodeMap[node->id])
-                        {
-                            if (sibling->type == RDGPassCmdType::eBindPipeline)
-                            {
-                                auto* casted   = reinterpret_cast<RDGBindPipelineNode*>(sibling);
-                                pipelineHandle = casted->pipeline;
-                            }
-                        }
-                        m_cmdList->SetPushConstants(pipelineHandle, cmdNode->pcData);
+                        VERIFY_EXPR(pBoundPipeline != nullptr);
+                        m_pCmdList->SetPushConstants(pBoundPipeline, cmdNode->pcData);
                     }
                     break;
                     case RDGPassCmdType::eSetLineWidth:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetLineWidthNode*>(child);
-                        m_cmdList->SetLineWidth(cmdNode->width);
+                        m_pCmdList->SetLineWidth(cmdNode->width);
                     }
                     break;
                     case RDGPassCmdType::eSetBlendConstant:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetBlendConstantsNode*>(child);
-                        m_cmdList->SetBlendConstants(cmdNode->color);
+                        m_pCmdList->SetBlendConstants(cmdNode->color);
                     }
                     break;
                     case RDGPassCmdType::eSetScissor:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetScissorNode*>(child);
-                        m_cmdList->SetScissors(cmdNode->scissor);
+                        m_pCmdList->SetScissor(cmdNode->scissor.minX, cmdNode->scissor.minY,
+                                               cmdNode->scissor.maxX, cmdNode->scissor.maxY);
                     }
                     break;
                     case RDGPassCmdType::eSetViewport:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetViewportNode*>(child);
-                        m_cmdList->SetViewports(cmdNode->viewport);
+                        m_pCmdList->SetViewport(static_cast<uint32_t>(cmdNode->viewport.minX),
+                                                static_cast<uint32_t>(cmdNode->viewport.minY),
+                                                static_cast<uint32_t>(cmdNode->viewport.maxX),
+                                                static_cast<uint32_t>(cmdNode->viewport.maxY));
                     }
                     break;
                     case RDGPassCmdType::eSetDepthBias:
                     {
                         auto* cmdNode = reinterpret_cast<RDGSetDepthBiasNode*>(child);
-                        m_cmdList->SetDepthBias(cmdNode->depthBiasConstantFactor,
-                                                cmdNode->depthBiasClamp,
-                                                cmdNode->depthBiasSlopeFactor);
+                        m_pCmdList->SetDepthBias(cmdNode->depthBiasConstantFactor,
+                                                 cmdNode->depthBiasClamp,
+                                                 cmdNode->depthBiasSlopeFactor);
                     }
                     break;
 
@@ -1525,7 +1542,9 @@ void RenderGraph::RunNode(RDGNodeBase* base)
                     case RDGPassCmdType::eMax: break;
                 }
             }
-            m_cmdList->EndRendering();
+
+            m_pCmdList->EndRendering();
+
             // if (node->dynamic)
             // {
             //     m_cmdList->EndRenderPassDynamic();
@@ -1602,7 +1621,7 @@ void RenderGraph::EmitTransitionBarriers(uint32_t level)
             }
         }
     }
-    m_cmdList->AddPipelineBarrier(srcStages, dstStages, {}, bufferTransitions, textureTransitions);
+    m_pCmdList->AddTransitions(srcStages, dstStages, {}, bufferTransitions, textureTransitions);
 }
 
 void RenderGraph::EmitInitializationBarriers(uint32_t level)
@@ -1683,8 +1702,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
 
     if (!textureTransitions.empty() || !bufferTransitions.empty())
     {
-        m_cmdList->AddPipelineBarrier(srcStages, dstStages, {}, bufferTransitions,
-                                      textureTransitions);
+        m_pCmdList->AddTransitions(srcStages, dstStages, {}, bufferTransitions, textureTransitions);
     }
 }
 } // namespace zen::rc

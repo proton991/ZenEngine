@@ -327,11 +327,7 @@ private:
 
 struct RenderFrame
 {
-    RHICommandListContext* cmdListContext{nullptr};
-    RHICommandList* transferCmdList{nullptr};
-    RHICommandList* drawCmdList{nullptr};
-
-    // FRHICommandList* pGfxCmdList{nullptr};
+    FRHICommandList* drawCmdList{nullptr};
     bool cmdSubmitted{false};
     std::vector<RHITexture*> texturesPendingFree;
 };
@@ -403,7 +399,7 @@ public:
 
     // bool IsProxyTexture(const RHITexture* handle) const;
 
-    void GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* cmdList);
+    void GenerateTextureMipmaps(RHITexture* textureHandle, FRHICommandList* pCmdList);
 
     RHIBuffer* CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
@@ -472,11 +468,6 @@ public:
     auto GetFramesCounter() const
     {
         return m_framesCounter;
-    }
-
-    RHICommandList* GetCurrentTransferCmdList() const
-    {
-        return m_frames[m_currentFrame].transferCmdList;
     }
 
     FRHICommandList* GetTransferCmdList() const

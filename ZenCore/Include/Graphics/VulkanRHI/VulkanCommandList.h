@@ -171,6 +171,7 @@ public:
 private:
     VulkanQueue* m_pQueue{nullptr};
     FVulkanCommandBuffer* m_pCmdBuffer{nullptr};
+    uint64_t m_submissionSerial{0};
     HeapVector<VkPipelineStageFlags> m_waitFlags;
     // DO NOT own the semaphores, only hold reference
     HeapVector<VulkanSemaphore*> m_waitSemaphores;
@@ -246,11 +247,21 @@ public:
     void Finalize(HeapVector<VulkanWorkload*>& outWorkloads)
     {
         EndWorkload();
-        outWorkloads.emplace_back(m_pCurrentWorkload);
-        m_pCurrentWorkload = nullptr;
+        if (m_pCurrentWorkload != nullptr)
+        {
+            outWorkloads.emplace_back(m_pCurrentWorkload);
+            m_pCurrentWorkload = nullptr;
+        }
     }
 
     void FlushCommands();
+
+    void WaitForLastSubmittedWork(uint64_t timeToWaitNS);
+
+    void SetLastSubmittedSerial(uint64_t submissionSerial)
+    {
+        m_lastSubmittedSerial = submissionSerial;
+    }
 
 private:
     void SetupNewCommandBuffer();
@@ -264,6 +275,7 @@ private:
     FVulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
 
     VulkanWorkload* m_pCurrentWorkload{nullptr};
+    uint64_t m_lastSubmittedSerial{0};
 };
 
 
@@ -290,7 +302,6 @@ public:
                           uint32_t numDescriptorSets,
                           RHIDescriptorSet* const* ppDescriptorSets);
 
-
     void PreDraw(FVulkanCommandListContext* pContext);
 
 private:
@@ -315,6 +326,20 @@ private:
     RasterizationStates m_rasterizationState{};
 
     float m_blendConstants[4]{};
+};
+
+class VulkanComputeState
+{
+public:
+    void SetPipelineState(RHIPipeline* pPipeline,
+                          uint32_t numDescriptorSets,
+                          RHIDescriptorSet* const* ppDescriptorSets);
+
+    void PreDispatch(FVulkanCommandListContext* pContext);
+
+private:
+    VulkanPipeline* m_pCurrentPipeline{nullptr};
+    HeapVector<VulkanDescriptorSet*> m_descriptorSets{nullptr};
 };
 
 class FVulkanCommandListContext : public IRHICommandContext, public VulkanCommandContextBase
@@ -346,9 +371,19 @@ public:
                          uint32_t numDescriptorSets,
                          RHIDescriptorSet* const* pDescriptorSets) override;
 
+    void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
+                              VectorView<uint64_t> offsets) override;
+
     void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset) override;
 
+    void RHIDraw(uint32_t vertexCount,
+                 uint32_t instanceCount,
+                 uint32_t firstVertex,
+                 uint32_t firstInstance) override;
+
     void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
+                        DataFormat indexFormat,
+                        uint32_t indexBufferOffset,
                         uint32_t indexCount,
                         uint32_t instanceCount,
                         uint32_t firstIndex,
@@ -357,6 +392,8 @@ public:
 
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                 RHIBuffer* pIndexBuffer,
+                                DataFormat indexFormat,
+                                uint32_t indexBufferOffset,
                                 uint32_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override;
@@ -364,6 +401,8 @@ public:
     void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
 
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override;
+
+    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data) override;
 
     void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
                            BitField<RHIPipelineStageBits> dstStages,
@@ -404,6 +443,8 @@ public:
                            uint32_t dstLayer,
                            uint32_t dstMipmap) override;
 
+    void RHIWaitUntilCompleted() override;
+
     // todo: need a function to collect recorded workload in this context
 private:
     RHICommandContextType m_contextType;
@@ -411,5 +452,6 @@ private:
     VulkanDevice* m_pDevice{nullptr};
 
     VulkanGfxState* m_pGfxState{nullptr};
+    VulkanComputeState* m_pComputeState{nullptr};
 };
 } // namespace zen

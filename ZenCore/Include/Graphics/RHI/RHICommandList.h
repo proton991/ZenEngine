@@ -53,9 +53,19 @@ public:
                                  uint32_t numDescriptorSets,
                                  RHIDescriptorSet* const* pDescriptorSets) = 0;
 
+    virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
+                                      VectorView<uint64_t> offsets) = 0;
+
     virtual void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset) = 0;
 
+    virtual void RHIDraw(uint32_t vertexCount,
+                         uint32_t instanceCount,
+                         uint32_t firstVertex,
+                         uint32_t firstInstance) = 0;
+
     virtual void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
+                                DataFormat indexFormat,
+                                uint32_t indexBufferOffset,
                                 uint32_t indexCount,
                                 uint32_t instanceCount,
                                 uint32_t firstIndex,
@@ -64,6 +74,8 @@ public:
 
     virtual void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                         RHIBuffer* pIndexBuffer,
+                                        DataFormat indexFormat,
+                                        uint32_t indexBufferOffset,
                                         uint32_t offset,
                                         uint32_t drawCount,
                                         uint32_t stride) = 0;
@@ -71,6 +83,8 @@ public:
     virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
+
+    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data) = 0;
 
     virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                    BitField<RHIPipelineStageBits> dstStages,
@@ -112,6 +126,8 @@ public:
                                    uint32_t srcMipmap,
                                    uint32_t dstLayer,
                                    uint32_t dstMipmap) = 0;
+
+    virtual void RHIWaitUntilCompleted() = 0;
 };
 
 class RHICommandListBase
@@ -147,6 +163,14 @@ public:
     IRHICommandContext* GetContext() const
     {
         return m_pGraphicsContext != nullptr ? m_pGraphicsContext : m_pComputeContext;
+    }
+
+    void WaitUntilCompleted()
+    {
+        if (IRHICommandContext* pContext = GetContext())
+        {
+            pContext->RHIWaitUntilCompleted();
+        }
     }
 
     void Execute();
@@ -467,12 +491,55 @@ struct RHICommandBindVertexBuffer final : public RHICommand
     }
 };
 
+struct RHICommandBindVertexBuffers final : public RHICommand
+{
+    VectorView<RHIBuffer*> vertexBuffers;
+    VectorView<uint64_t> offsets;
+
+    RHICommandBindVertexBuffers() = default;
+
+    ~RHICommandBindVertexBuffers() override
+    {
+        ZEN_MEM_FREE(vertexBuffers.data());
+        ZEN_MEM_FREE(offsets.data());
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBindVertexBuffers(vertexBuffers, offsets);
+    }
+};
+
+struct RHICommandDraw final : public RHICommand
+{
+    uint32_t vertexCount;
+    uint32_t instanceCount;
+    uint32_t firstVertex;
+    uint32_t firstInstance;
+
+    RHICommandDraw(uint32_t vertexCount,
+                   uint32_t instanceCount,
+                   uint32_t firstVertex,
+                   uint32_t firstInstance) :
+        vertexCount(vertexCount),
+        instanceCount(instanceCount),
+        firstVertex(firstVertex),
+        firstInstance(firstInstance)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIDraw(vertexCount, instanceCount, firstVertex, firstInstance);
+    }
+};
+
 struct RHICommandDrawIndexed final : public RHICommand
 {
     struct Param
     {
         RHIBuffer* pIndexBuffer;
-        uint32_t offset;
+        DataFormat indexFormat;
+        uint32_t indexBufferOffset;
         uint32_t indexCount;
         uint32_t instanceCount;
         uint32_t firstIndex;
@@ -482,7 +549,8 @@ struct RHICommandDrawIndexed final : public RHICommand
 
     // note: For now index buffer format is UINT32 only
     RHIBuffer* pIndexBuffer;
-    uint32_t offset;
+    DataFormat indexFormat;
+    uint32_t indexBufferOffset;
     uint32_t indexCount;
     uint32_t instanceCount;
     uint32_t firstIndex;
@@ -491,7 +559,8 @@ struct RHICommandDrawIndexed final : public RHICommand
 
     explicit RHICommandDrawIndexed(const Param& param) :
         pIndexBuffer(param.pIndexBuffer),
-        offset(param.offset),
+        indexFormat(param.indexFormat),
+        indexBufferOffset(param.indexBufferOffset),
         indexCount(param.indexCount),
         instanceCount(param.instanceCount),
         firstIndex(param.firstIndex),
@@ -501,8 +570,9 @@ struct RHICommandDrawIndexed final : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIDrawIndexed(pIndexBuffer, indexCount, instanceCount, firstIndex,
-                                             vertexOffset, firstInstance);
+        cmdList.GetContext()->RHIDrawIndexed(pIndexBuffer, indexFormat, indexBufferOffset,
+                                             indexCount, instanceCount, firstIndex, vertexOffset,
+                                             firstInstance);
     }
 };
 
@@ -512,6 +582,8 @@ struct RHICommandDrawIndexedIndirect final : public RHICommand
     {
         RHIBuffer* pIndirectBuffer;
         RHIBuffer* pIndexBuffer;
+        DataFormat indexFormat;
+        uint32_t indexBufferOffset;
         uint32_t offset;
         uint32_t drawCount;
         uint32_t stride;
@@ -519,6 +591,8 @@ struct RHICommandDrawIndexedIndirect final : public RHICommand
 
     RHIBuffer* pIndirectBuffer;
     RHIBuffer* pIndexBuffer;
+    DataFormat indexFormat;
+    uint32_t indexBufferOffset;
     uint32_t offset;
     uint32_t drawCount;
     uint32_t stride;
@@ -526,6 +600,8 @@ struct RHICommandDrawIndexedIndirect final : public RHICommand
     explicit RHICommandDrawIndexedIndirect(const Param& param) :
         pIndirectBuffer(param.pIndirectBuffer),
         pIndexBuffer(param.pIndexBuffer),
+        indexFormat(param.indexFormat),
+        indexBufferOffset(param.indexBufferOffset),
         offset(param.offset),
         drawCount(param.drawCount),
         stride(param.stride)
@@ -533,8 +609,8 @@ struct RHICommandDrawIndexedIndirect final : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIDrawIndexedIndirect(pIndirectBuffer, pIndexBuffer, offset,
-                                                     drawCount, stride);
+        cmdList.GetContext()->RHIDrawIndexedIndirect(pIndirectBuffer, pIndexBuffer, indexFormat,
+                                                     indexBufferOffset, offset, drawCount, stride);
     }
 };
 
@@ -566,6 +642,24 @@ struct RHICommandDispatchIndirect final : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDispatchIndirect(pIndirectBuffer, offset);
+    }
+};
+
+struct RHICommandSetPushConstants final : public RHICommand
+{
+    RHIPipeline* pPipeline;
+    VectorView<uint8_t> data;
+
+    explicit RHICommandSetPushConstants(RHIPipeline* pPipeline) : pPipeline(pPipeline) {}
+
+    ~RHICommandSetPushConstants() override
+    {
+        ZEN_MEM_FREE(data.data());
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHISetPushConstants(pPipeline, data);
     }
 };
 
@@ -689,12 +783,29 @@ public:
                       uint32_t numDescriptorSets,
                       RHIDescriptorSet* const* pDescriptorSets);
 
+    void BeginRendering(const RHIRenderingLayout* pRenderingLayout);
+
+    void EndRendering();
+
+    void BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers, VectorView<uint64_t> offsets);
+
     // All vertex attributes packed in 1 buffer
     void BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset);
+
+    void Draw(uint32_t vertexCount,
+              uint32_t instanceCount,
+              uint32_t firstVertex,
+              uint32_t firstInstance);
 
     void DrawIndexed(const RHICommandDrawIndexed::Param& param);
 
     void DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param);
+
+    void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
+
+    void DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset);
+
+    void SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data);
 
     void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                         BitField<RHIPipelineStageBits> dstStages,

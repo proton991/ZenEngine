@@ -125,6 +125,7 @@ void VulkanQueue::SubmitWorkloads()
         VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
         m_workloadsPendingSubmit.Pop();
         pWorkload->m_pFence = GVulkanRHI->GetDevice()->GetFenceManager()->CreateFence();
+        pWorkload->m_submissionSerial = ++m_nextSubmissionSerial;
 
         VkSubmitInfo submitInfo;
         InitVkStruct(submitInfo, VK_STRUCTURE_TYPE_SUBMIT_INFO);
@@ -183,7 +184,21 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
         }
 
         m_workloadsPendingProcess.Pop();
+        m_lastCompletedSubmissionSerial = pWorkload->m_submissionSerial;
         ZEN_DELETE(pWorkload);
+    }
+}
+
+void VulkanQueue::WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS)
+{
+    if (submissionSerial == 0 || m_lastCompletedSubmissionSerial >= submissionSerial)
+    {
+        return;
+    }
+
+    while (m_lastCompletedSubmissionSerial < submissionSerial)
+    {
+        ProcessPendingWorkloads(timeToWaitNS);
     }
 }
 } // namespace zen

@@ -70,10 +70,17 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
 {
     VulkanViewport* viewport = dynamic_cast<VulkanViewport*>(viewportRHI);
     VERIFY_EXPR(viewport == m_currentViewport);
+    pCmdList->Execute();
+    pCmdList->Reset();
+
+    auto* pContext = dynamic_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
     if (present)
     {
-        m_currentViewport->Present(
-            dynamic_cast<FVulkanCommandListContext*>(pCmdList->GetContext()));
+        m_currentViewport->Present(pContext);
+    }
+    else
+    {
+        pContext->FlushCommands();
     }
 }
 
@@ -182,11 +189,9 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     // m_renderingCompleteSemaphores.resize(numImages);
     // m_backBufferImages.resize(numImages);
 
-    VulkanCommandList* cmdList =
-        dynamic_cast<VulkanCommandList*>(GVulkanRHI->GetImmediateCommandList());
-    // VulkanCommandList* cmdList = m_device->GetImmediateCommandList();
-    cmdList->BeginTransferWorkload();
-    VulkanCommandBuffer* cmdBuffer = cmdList->GetCmdBufferManager()->GetUploadCommandBuffer();
+    FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_device);
+    FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
+    VkCommandBuffer cmdBuffer        = pCmdBuffer->GetVkHandle();
 
     const VkImageSubresourceRange range =
         VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
@@ -194,12 +199,20 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     for (uint32_t i = 0; i < numImages; i++)
     {
         m_backBufferImages[i] = images[i];
-        cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_UNDEFINED,
-                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
-        vkCmdClearColorImage(cmdBuffer->GetVkHandle(), images[i],
-                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColor, 1, &range);
-        cmdList->ChangeImageLayout(images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+        {
+            VulkanPipelineBarrier barrier;
+            barrier.AddImageBarrier(images[i], VK_IMAGE_LAYOUT_UNDEFINED,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
+            barrier.ExecuteImageBarriersOnly(cmdBuffer);
+        }
+        vkCmdClearColorImage(cmdBuffer, images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             &clearColor, 1, &range);
+        {
+            VulkanPipelineBarrier barrier;
+            barrier.AddImageBarrier(images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+            barrier.ExecuteImageBarriersOnly(cmdBuffer);
+        }
     }
     RHITextureCreateInfo colorTexInfo{};
     colorTexInfo.width  = m_width;
@@ -227,8 +240,9 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo)
     barrier.AddImageBarrier(m_depthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_depthStencilBackBuffer->GetVkSubresourceRange());
-    barrier.ExecuteImageBarriersOnly(cmdBuffer->GetVkHandle());
-    cmdList->EndTransferWorkload();
+    barrier.ExecuteImageBarriersOnly(cmdBuffer);
+    context.FlushCommands();
+    // m_device->WaitForIdle();
 
     m_acquiredImageIndex = -1;
 }
@@ -381,7 +395,7 @@ bool VulkanViewport::Present(VulkanCommandBuffer* cmdBuffer)
     //     m_device->GetImmediateCmdContext()->GetCmdBufferManager();
     if (!acquireImageFailed)
     {
-        cmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_imageAcquiredSemaphore);
+        cmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_imageAcquiredSemaphore);
         VulkanSemaphore* signalSemaphore = (m_acquiredImageIndex >= 0) ?
             m_renderingCompleteSemaphores[m_acquiredImageIndex] :
             nullptr;
@@ -438,7 +452,7 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     //     m_device->GetImmediateCmdContext()->GetCmdBufferManager();
     if (!acquireImageFailed)
     {
-        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_imageAcquiredSemaphore);
+        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_imageAcquiredSemaphore);
         VulkanSemaphore* signalSemaphore = (m_acquiredImageIndex >= 0) ?
             m_renderingCompleteSemaphores[m_acquiredImageIndex] :
             nullptr;
@@ -453,14 +467,16 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
         // m_device->WaitForIdle();
         return true;
     }
-    bool presentResult = m_swapchain->Present(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
-    if (RHIOptions::GetInstance().WaitForFrameCompletion())
-    {
-        WaitForFrameCompletion();
-        IssueFrameEvent();
-    }
-
+    // Submit the rendering workload first so the present wait semaphore and image layout
+    // transition are both actually scheduled before vkQueuePresentKHR waits on them.
     pContext->FlushCommands();
+
+    bool presentResult = m_swapchain->Present(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
+    // if (RHIOptions::GetInstance().WaitForFrameCompletion())
+    // {
+    //     WaitForFrameCompletion();
+    //     IssueFrameEvent();
+    // }
 
     // if (cmdBufferMgr->GetActiveCommandBufferDirect() &&
     //     !cmdBufferMgr->GetActiveCommandBufferDirect()->HasBegun())

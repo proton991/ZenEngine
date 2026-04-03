@@ -13,6 +13,30 @@
 
 namespace zen
 {
+static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
+                                          VulkanPipeline* pPipeline,
+                                          const HeapVector<VulkanDescriptorSet*>& descriptorSets)
+{
+    if (pPipeline != nullptr)
+    {
+        vkCmdBindPipeline(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
+                          pPipeline->GetVkPipeline());
+    }
+
+    if (!descriptorSets.empty())
+    {
+        HeapVector<VkDescriptorSet> vkDescriptorSets;
+        vkDescriptorSets.reserve(descriptorSets.size());
+        for (const auto& pDescriptorSet : descriptorSets)
+        {
+            vkDescriptorSets.emplace_back(
+                TO_CVK_DESCRIPTORSET(pDescriptorSet)->GetVkDescriptorSet());
+        }
+        vkCmdBindDescriptorSets(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
+                                pPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),
+                                vkDescriptorSets.data(), 0, nullptr);
+    }
+}
 
 void FVulkanCommandBuffer::Begin()
 {
@@ -42,14 +66,14 @@ void FVulkanCommandBuffer::End()
 
 void FVulkanCommandBuffer::BeginRendering(const VkRenderingInfo* pRenderingInfo)
 {
-    vkCmdBeginRendering(m_vkHandle, pRenderingInfo);
+    vkCmdBeginRenderingKHR(m_vkHandle, pRenderingInfo);
     m_state              = State::eIsInsideRenderPass;
     m_lastRenderingFlags = pRenderingInfo->flags;
 }
 
 void FVulkanCommandBuffer::EndRendering()
 {
-    vkCmdEndRendering(m_vkHandle);
+    vkCmdEndRenderingKHR(m_vkHandle);
     m_state = State::eIsInsideBegin;
 }
 
@@ -205,13 +229,28 @@ void VulkanCommandContextBase::FlushCommands()
 {
     if (m_pCurrentWorkload != nullptr)
     {
+        EndWorkload();
+
+        VulkanWorkload* pSubmittedWorkload = m_pCurrentWorkload;
         VulkanQueue* pQueue = m_pCurrentWorkload->m_pQueue;
         pQueue->m_workloadsPendingSubmit.Push(m_pCurrentWorkload);
         pQueue->SubmitWorkloads();
+        m_lastSubmittedSerial = pSubmittedWorkload->m_submissionSerial;
         pQueue->ProcessPendingWorkloads(0);
         // ZEN_DELETE(m_pCurrentWorkload);
         m_pCurrentWorkload = nullptr;
     }
+}
+
+void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
+{
+    if (m_lastSubmittedSerial == 0)
+    {
+        return;
+    }
+
+    m_pQueue->WaitForSubmission(m_lastSubmittedSerial, timeToWaitNS);
+    m_lastSubmittedSerial = 0;
 }
 
 void VulkanCommandContextBase::SetupNewCommandBuffer()
@@ -275,10 +314,13 @@ void VulkanCommandContextBase::EndWorkload()
 void VulkanGfxState::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     m_viewports.resize(1);
-    m_viewports[0].x      = minX;
-    m_viewports[0].y      = minY;
-    m_viewports[0].width  = maxX - minX;
-    m_viewports[0].height = maxY - minY;
+    m_viewports[0]          = {};
+    m_viewports[0].x        = minX;
+    m_viewports[0].y        = minY;
+    m_viewports[0].width    = maxX - minX;
+    m_viewports[0].height   = maxY - minY;
+    m_viewports[0].minDepth = 0.0f;
+    m_viewports[0].maxDepth = 1.0f;
 }
 
 void VulkanGfxState::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
@@ -323,12 +365,24 @@ void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers,
     for (uint32_t i = 0; i < numVertexBuffers; i++)
     {
         m_vertexBuffers[i]       = TO_VK_BUFFER(ppVertexBuffers[i]);
-        m_vertexBufferOffsets[i] = pOffsets[i] + m_vertexBuffers[i]->GetOffset();
+        m_vertexBufferOffsets[i] = pOffsets[i];
     }
 }
 void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline,
                                       uint32_t numDescriptorSets,
                                       RHIDescriptorSet* const* ppDescriptorSets)
+{
+    m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
+    m_descriptorSets.resize(numDescriptorSets);
+    for (uint32_t i = 0; i < numDescriptorSets; i++)
+    {
+        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i]);
+    }
+}
+
+void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline,
+                                          uint32_t numDescriptorSets,
+                                          RHIDescriptorSet* const* ppDescriptorSets)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
     m_descriptorSets.resize(numDescriptorSets);
@@ -351,24 +405,16 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     {
         vkCmdSetScissor(cmdBuffer, 0, m_scissors.size(), m_scissors.data());
     }
-    if (m_pCurrentPipeline != nullptr)
+    if (m_rasterizationState.depthBiasEnable)
     {
-        vkCmdBindPipeline(cmdBuffer, m_pCurrentPipeline->GetVkPipelineBindPoint(),
-                          m_pCurrentPipeline->GetVkPipeline());
+        vkCmdSetDepthBias(cmdBuffer, m_rasterizationState.depthBiasConstantFactor,
+                          m_rasterizationState.depthBiasClamp,
+                          m_rasterizationState.depthBiasSlopeFactor);
     }
-    if (!m_descriptorSets.empty())
-    {
-        HeapVector<VkDescriptorSet> vkDescriptorSets;
-        vkDescriptorSets.reserve(m_descriptorSets.size());
-        for (const auto& pDescriptorSet : m_descriptorSets)
-        {
-            vkDescriptorSets.emplace_back(
-                TO_CVK_DESCRIPTORSET(pDescriptorSet)->GetVkDescriptorSet());
-        }
-        vkCmdBindDescriptorSets(cmdBuffer, m_pCurrentPipeline->GetVkPipelineBindPoint(),
-                                m_pCurrentPipeline->GetVkPipelineLayout(), 0,
-                                vkDescriptorSets.size(), vkDescriptorSets.data(), 0, nullptr);
-    }
+
+    vkCmdSetLineWidth(cmdBuffer, m_rasterizationState.lineWidth);
+    vkCmdSetBlendConstants(cmdBuffer, m_blendConstants);
+    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets);
     if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
     {
         HeapVector<VkBuffer> vkBuffers;
@@ -379,12 +425,12 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
         vkCmdBindVertexBuffers(cmdBuffer, 0, m_vertexBuffers.size(), vkBuffers.data(),
                                m_vertexBufferOffsets.data());
     }
-    if (m_rasterizationState.depthBiasEnable)
-    {
-        vkCmdSetDepthBias(cmdBuffer, m_rasterizationState.depthBiasConstantFactor,
-                          m_rasterizationState.depthBiasClamp,
-                          m_rasterizationState.depthBiasSlopeFactor);
-    }
+}
+
+void VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
+{
+    VkCommandBuffer cmdBuffer = pContext->GetCommandBuffer()->GetVkHandle();
+    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets);
 }
 
 FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
@@ -393,11 +439,15 @@ FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType conte
     m_contextType(contextType),
     m_pDevice(pDevice)
 {
-    m_pGfxState = ZEN_NEW() VulkanGfxState();
+    m_pGfxState     = ZEN_NEW() VulkanGfxState();
+    m_pComputeState = ZEN_NEW() VulkanComputeState();
 }
 
 FVulkanCommandListContext::~FVulkanCommandListContext()
 {
+    ZEN_DELETE(m_pComputeState);
+    m_pComputeState = nullptr;
+
     ZEN_DELETE(m_pGfxState);
     m_pGfxState = nullptr;
 }
@@ -545,7 +595,21 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline,
                                                 uint32_t numDescriptorSets,
                                                 RHIDescriptorSet* const* ppDescriptorSets)
 {
-    m_pGfxState->SetPipelineState(pPipeline, numDescriptorSets, ppDescriptorSets);
+    VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
+    if (pVkPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
+    {
+        m_pComputeState->SetPipelineState(pPipeline, numDescriptorSets, ppDescriptorSets);
+    }
+    else
+    {
+        m_pGfxState->SetPipelineState(pPipeline, numDescriptorSets, ppDescriptorSets);
+    }
+}
+
+void FVulkanCommandListContext::RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
+                                                     VectorView<uint64_t> offsets)
+{
+    m_pGfxState->SetVertexBuffers(pBuffers.size(), pBuffers.data(), offsets.data());
 }
 
 void FVulkanCommandListContext::RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
@@ -553,8 +617,20 @@ void FVulkanCommandListContext::RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t
     m_pGfxState->SetVertexBuffers(1, &pBuffer, &offset);
 }
 
+void FVulkanCommandListContext::RHIDraw(uint32_t vertexCount,
+                                        uint32_t instanceCount,
+                                        uint32_t firstVertex,
+                                        uint32_t firstInstance)
+{
+    m_pGfxState->PreDraw(this);
+    vkCmdDraw(GetCommandBuffer()->GetVkHandle(), vertexCount, instanceCount, firstVertex,
+              firstInstance);
+}
+
 
 void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
+                                               DataFormat indexFormat,
+                                               uint32_t indexBufferOffset,
                                                uint32_t indexCount,
                                                uint32_t instanceCount,
                                                uint32_t firstIndex,
@@ -565,16 +641,19 @@ void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
 
     FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
     VulkanBuffer* pVkBuffer          = TO_VK_BUFFER(pIndexBuffer);
+    VkIndexType vkIndexType =
+        indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-    // todo: get offset and index type info from buffers
-    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), pVkBuffer->GetVkBuffer(),
-                         pVkBuffer->GetOffset(), VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), pVkBuffer->GetVkBuffer(), indexBufferOffset,
+                         vkIndexType);
     vkCmdDrawIndexed(pCmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex, vertexOffset,
                      firstInstance);
 }
 
 void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                                        RHIBuffer* pIndexBuffer,
+                                                       DataFormat indexFormat,
+                                                       uint32_t indexBufferOffset,
                                                        uint32_t offset,
                                                        uint32_t drawCount,
                                                        uint32_t stride)
@@ -582,26 +661,38 @@ void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffe
     m_pGfxState->PreDraw(this);
 
     FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
+    VkIndexType vkIndexType =
+        indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-    // todo: get offset and index type info from buffers
-    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(), 0,
-                         VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexedIndirect(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(),
-                             offset, drawCount, stride);
+    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(),
+                         indexBufferOffset, vkIndexType);
+    vkCmdDrawIndexedIndirect(pCmdBuffer->GetVkHandle(),
+                             TO_VK_BUFFER(pIndirectBuffer)->GetVkBuffer(), offset, drawCount,
+                             stride);
 }
 
 void FVulkanCommandListContext::RHIDispatch(uint32_t groupCountX,
                                             uint32_t groupCountY,
                                             uint32_t groupCountZ)
 {
+    m_pComputeState->PreDispatch(this);
     vkCmdDispatch(GetCommandBuffer()->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
 void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
 {
+    m_pComputeState->PreDispatch(this);
     VulkanBuffer* pVkBuffer = TO_VK_BUFFER(pIndirectBuffer);
 
     vkCmdDispatchIndirect(GetCommandBuffer()->GetVkHandle(), pVkBuffer->GetVkBuffer(), offset);
+}
+
+void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline,
+                                                    VectorView<uint8_t> data)
+{
+    VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
+    vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pVkPipeline->GetVkPipelineLayout(),
+                       pVkPipeline->GetPushConstantsStageFlags(), 0, data.size(), data.data());
 }
 
 void FVulkanCommandListContext::RHIAddTransitions(
@@ -859,17 +950,28 @@ void FVulkanCommandListContext::RHIResolveTexture(RHITexture* pSrcTexture,
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
+void FVulkanCommandListContext::RHIWaitUntilCompleted()
+{
+    WaitForLastSubmittedWork(UINT64_MAX);
+}
+
 // todo: optimize queue submit and sync
 void VulkanRHI::SubmitCommandList(VectorView<FRHICommandList*> cmdLists)
 {
     HeapVector<VulkanWorkload*> workloads;
+    HeapVector<FVulkanCommandListContext*> contexts;
 
     for (auto* pCmdList : cmdLists)
     {
         pCmdList->Execute();
         FVulkanCommandListContext* pContext =
             static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
+        const uint32_t previousWorkloadCount = workloads.size();
         pContext->Finalize(workloads);
+        if (workloads.size() > previousWorkloadCount)
+        {
+            contexts.push_back(pContext);
+        }
     }
 
     for (VulkanWorkload* pWorkload : workloads)
@@ -882,6 +984,11 @@ void VulkanRHI::SubmitCommandList(VectorView<FRHICommandList*> cmdLists)
     {
         VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
         pQueue->SubmitWorkloads();
+    }
+
+    for (uint32_t i = 0; i < workloads.size(); ++i)
+    {
+        contexts[i]->SetLastSubmittedSerial(workloads[i]->m_submissionSerial);
     }
 
     // Wait for completion
