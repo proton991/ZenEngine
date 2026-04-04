@@ -131,10 +131,21 @@ void VulkanFenceManager::DestroyFence(VulkanFence* fence)
     fence->m_state = VulkanFence::State::eInitial;
 }
 
-VulkanSemaphore::VulkanSemaphore(VulkanDevice* device) : m_device(device)
+VulkanSemaphore::VulkanSemaphore(VulkanDevice* device,
+                                 VkSemaphoreType semaphoreType,
+                                 uint64_t initialValue) :
+    m_device(device), m_type(semaphoreType)
 {
     VkSemaphoreCreateInfo semaphoreCI;
     InitVkStruct(semaphoreCI, VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
+    VkSemaphoreTypeCreateInfo semaphoreTypeCI;
+    if (semaphoreType != VK_SEMAPHORE_TYPE_BINARY)
+    {
+        InitVkStruct(semaphoreTypeCI, VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO);
+        semaphoreTypeCI.semaphoreType = semaphoreType;
+        semaphoreTypeCI.initialValue  = initialValue;
+        semaphoreCI.pNext             = &semaphoreTypeCI;
+    }
     VKCHECK(vkCreateSemaphore(m_device->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
 }
 
@@ -142,6 +153,38 @@ void VulkanSemaphore::SetDebugName(const char* pName)
 {
     m_device->SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<uint64_t>(m_semaphore),
                             pName);
+}
+
+uint64_t VulkanSemaphore::GetCounterValue() const
+{
+    VERIFY_EXPR(IsTimeline());
+
+    uint64_t value = 0;
+    VKCHECK(vkGetSemaphoreCounterValue(m_device->GetVkHandle(), m_semaphore, &value));
+    return value;
+}
+
+bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
+{
+    VERIFY_EXPR(IsTimeline());
+
+    VkSemaphoreWaitInfo waitInfo;
+    InitVkStruct(waitInfo, VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO);
+    waitInfo.semaphoreCount = 1;
+    waitInfo.pSemaphores    = &m_semaphore;
+    waitInfo.pValues        = &value;
+
+    VkResult result = vkWaitSemaphores(m_device->GetVkHandle(), &waitInfo, timeNS);
+    if (result == VK_SUCCESS)
+    {
+        return true;
+    }
+    if (result == VK_TIMEOUT)
+    {
+        return false;
+    }
+
+    return false;
 }
 
 VulkanSemaphore::~VulkanSemaphore()

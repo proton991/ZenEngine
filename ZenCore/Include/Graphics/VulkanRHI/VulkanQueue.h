@@ -74,6 +74,7 @@ private:
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
     uint64_t m_nextSubmissionSerial{0};
     uint64_t m_lastCompletedSubmissionSerial{0};
+    VulkanSemaphore* m_pTimelineSemaphore{nullptr};
 
     friend class VulkanRHI;
     friend class VulkanCommandContextBase;

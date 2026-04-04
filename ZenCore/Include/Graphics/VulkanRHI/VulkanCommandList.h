@@ -168,14 +168,26 @@ public:
 
     ~VulkanWorkload();
 
+    struct WaitSemaphoreInfo
+    {
+        VkPipelineStageFlags waitFlags{0};
+        VulkanSemaphore* pSemaphore{nullptr};
+        uint64_t value{0};
+    };
+
+    struct SignalSemaphoreInfo
+    {
+        VulkanSemaphore* pSemaphore{nullptr};
+        uint64_t value{0};
+    };
+
 private:
     VulkanQueue* m_pQueue{nullptr};
     FVulkanCommandBuffer* m_pCmdBuffer{nullptr};
     uint64_t m_submissionSerial{0};
-    HeapVector<VkPipelineStageFlags> m_waitFlags;
     // DO NOT own the semaphores, only hold reference
-    HeapVector<VulkanSemaphore*> m_waitSemaphores;
-    HeapVector<VulkanSemaphore*> m_signalSemaphores;
+    HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
+    HeapVector<SignalSemaphoreInfo> m_signalSemaphoreInfos;
 
     VulkanFence* m_pFence{nullptr}; // Used at vkQueueSubmit
 };
@@ -216,7 +228,16 @@ public:
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pWaitSemaphore)
     {
-        AddWaitSemaphores(waitFlags, {pWaitSemaphore});
+        AddWaitSemaphore(waitFlags, pWaitSemaphore, 0);
+    }
+
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
+                          VulkanSemaphore* pWaitSemaphore,
+                          uint64_t value)
+    {
+        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
+            VulkanWorkload::WaitSemaphoreInfo{waitFlags, pWaitSemaphore, value});
     }
 
     void AddWaitSemaphores(VkPipelineStageFlags waitFlags,
@@ -225,14 +246,21 @@ public:
         VulkanWorkload* pCurrentWorkload = GetWorkload();
         for (uint32_t i = 0; i < waitSemaphores.size(); i++)
         {
-            pCurrentWorkload->m_waitFlags.emplace_back(waitFlags);
-            pCurrentWorkload->m_waitSemaphores.emplace_back(waitSemaphores[i]);
+            pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
+                VulkanWorkload::WaitSemaphoreInfo{waitFlags, waitSemaphores[i], 0});
         }
     }
 
     void AddSignalSemaphore(VulkanSemaphore* pSignalSemaphore)
     {
-        AddSignalSemaphores({pSignalSemaphore});
+        AddSignalSemaphore(pSignalSemaphore, 0);
+    }
+
+    void AddSignalSemaphore(VulkanSemaphore* pSignalSemaphore, uint64_t value)
+    {
+        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
+            VulkanWorkload::SignalSemaphoreInfo{pSignalSemaphore, value});
     }
 
     void AddSignalSemaphores(VectorView<VulkanSemaphore*> signalSemaphores)
@@ -240,7 +268,8 @@ public:
         VulkanWorkload* pCurrentWorkload = GetWorkload();
         for (uint32_t i = 0; i < signalSemaphores.size(); i++)
         {
-            pCurrentWorkload->m_signalSemaphores.emplace_back(signalSemaphores[i]);
+            pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
+                VulkanWorkload::SignalSemaphoreInfo{signalSemaphores[i], 0});
         }
     }
 

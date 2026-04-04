@@ -82,7 +82,9 @@ private:
 class VulkanSemaphore
 {
 public:
-    explicit VulkanSemaphore(VulkanDevice* device);
+    explicit VulkanSemaphore(VulkanDevice* device,
+                             VkSemaphoreType semaphoreType = VK_SEMAPHORE_TYPE_BINARY,
+                             uint64_t initialValue         = 0);
 
     virtual ~VulkanSemaphore();
 
@@ -93,9 +95,19 @@ public:
 
     void SetDebugName(const char* pName);
 
+    bool IsTimeline() const
+    {
+        return m_type == VK_SEMAPHORE_TYPE_TIMELINE;
+    }
+
+    uint64_t GetCounterValue() const;
+
+    bool Wait(uint64_t value, uint64_t timeNS) const;
+
 private:
     VulkanDevice* m_device{nullptr};
     VkSemaphore m_semaphore{VK_NULL_HANDLE};
+    VkSemaphoreType m_type{VK_SEMAPHORE_TYPE_BINARY};
 };
 
 

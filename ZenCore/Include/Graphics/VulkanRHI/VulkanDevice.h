@@ -21,6 +21,7 @@ struct DeviceExtensionFlags
     uint32_t hasRaytracingPipeline : 1;
     uint32_t hasRayQuery : 1;
     uint32_t hasDescriptorIndexing : 1;
+    uint32_t hasTimelineSemaphore : 1;
 
     uint32_t hasDeferredHostOperation : 1;
     uint32_t hasSPIRV_14 : 1;
@@ -108,6 +109,11 @@ public:
     const VkPhysicalDeviceFeatures& GetPhysicalDeviceFeatures()
     {
         return m_physicalDeviceFeatures;
+    }
+
+    bool SupportsTimelineSemaphore() const
+    {
+        return m_extensionFlags.hasTimelineSemaphore != 0;
     }
 
     // VulkanCommandListContext* GetImmediateCmdContext() const

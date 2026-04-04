@@ -109,6 +109,46 @@ private:
 };
 
 /**
+ * VK_KHR_timeline_semaphore / Vulkan 1.2 timeline semaphore
+ */
+class VulkanTimelineSemaphoreExtension : public VulkanDeviceExtension
+{
+public:
+    VulkanTimelineSemaphoreExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)
+    {
+        InitVkStruct(m_timelineSemaphoreFeatures,
+                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES);
+    }
+
+    void BeforePhysicalDeviceFeatures(
+        VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr) final
+    {
+        AddToPNext(physicalDeviceFeatures2Khr, m_timelineSemaphoreFeatures);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        if (m_timelineSemaphoreFeatures.timelineSemaphore == VK_TRUE)
+        {
+            SetSupport();
+            m_device->GetExtensionFlags().hasTimelineSemaphore = 1;
+        }
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& DeviceCI) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(DeviceCI, m_timelineSemaphoreFeatures);
+        }
+    }
+
+private:
+    VkPhysicalDeviceTimelineSemaphoreFeatures m_timelineSemaphoreFeatures{};
+};
+
+/**
  * VK_KHR_buffer_device_address
  */
 class VulkanBufferDeviceAddressExtension : public VulkanDeviceExtension
@@ -395,6 +435,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRaytracingPipelineExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRayQueryExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
+    ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
 
     FlagExtensionSupported(
         enabledExtensions,
