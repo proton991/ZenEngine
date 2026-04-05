@@ -47,6 +47,8 @@ public:
 
     void SetSubmitted();
 
+    void SetCompleted();
+
     bool IsInsideRenderPass() const
     {
         return m_state == State::eIsInsideRenderPass;

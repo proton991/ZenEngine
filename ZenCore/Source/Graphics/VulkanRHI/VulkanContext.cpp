@@ -317,7 +317,7 @@ void VulkanRHI::Init()
 
 void VulkanRHI::Destroy()
 {
-    m_device->WaitForIdle();
+    WaitDeviceIdle();
     // delete m_vkMemAllocator;
     ZEN_DELETE(m_immediateContext);
     ZEN_DELETE(m_immediateCommandList);

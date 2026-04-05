@@ -96,6 +96,15 @@ void FVulkanCommandBuffer::SetSubmitted()
     m_submitTime = platform::Timer::Now<>();
 }
 
+void FVulkanCommandBuffer::SetCompleted()
+{
+    LockAuto lock(m_pCmdBufferPool->GetMutex());
+    if (m_state == State::eSubmitted)
+    {
+        m_state = State::eNeedReset;
+    }
+}
+
 VulkanCommandBufferType FVulkanCommandBuffer::GetCommandBufferType() const
 {
     return m_pCmdBufferPool->GetCommandBufferType();

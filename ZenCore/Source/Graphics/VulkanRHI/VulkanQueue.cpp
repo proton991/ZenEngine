@@ -129,6 +129,10 @@ void VulkanQueue::SubmitWorkloads()
 {
     const bool useTimelineSemaphore = m_pTimelineSemaphore != nullptr;
 
+    // Retire previously completed submissions before appending new ones. This keeps the pending
+    // queue bounded to in-flight GPU work instead of growing for the whole app lifetime.
+    ProcessPendingWorkloads(0);
+
     // When using fences, submit workload one by one
     while (!m_workloadsPendingSubmit.Empty())
     {
@@ -179,7 +183,8 @@ void VulkanQueue::SubmitWorkloads()
             timelineSubmitInfo.pWaitSemaphoreValues      = waitSemaphoreValues.data();
             timelineSubmitInfo.signalSemaphoreValueCount = signalSemaphoreValues.size();
             timelineSubmitInfo.pSignalSemaphoreValues    = signalSemaphoreValues.data();
-            submitInfo.pNext                             = &timelineSubmitInfo;
+
+            submitInfo.pNext = &timelineSubmitInfo;
         }
 
         VkCommandBuffer cmdBuffer = pWorkload->m_pCmdBuffer->GetVkHandle();
@@ -247,6 +252,10 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
         }
 
         m_workloadsPendingProcess.Pop();
+        if (pWorkload->m_pCmdBuffer != nullptr)
+        {
+            pWorkload->m_pCmdBuffer->SetCompleted();
+        }
         if (m_lastCompletedSubmissionSerial < pWorkload->m_submissionSerial)
         {
             m_lastCompletedSubmissionSerial = pWorkload->m_submissionSerial;
