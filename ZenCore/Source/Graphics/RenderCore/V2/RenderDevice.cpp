@@ -725,13 +725,13 @@ void RenderDevice::Init(RHIViewport* mainViewport)
     m_bufferStagingMgr->Init(m_numFrames);
     m_textureStagingMgr = ZEN_NEW() TextureStagingManager(this);
     m_textureManager    = ZEN_NEW() TextureManager(this, m_textureStagingMgr);
-    m_pTransferCmdList  = FRHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
+    m_pTransferCmdList  = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
 
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
-        frame.drawCmdList = FRHICommandList::Create(
+        frame.drawCmdList = RHICommandList::Create(
             GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
         m_frames.emplace_back(frame);
     }
@@ -851,30 +851,30 @@ void RenderDevice::ExecuteFrame(RHIViewport* viewport,
 void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
 {
     static_cast<void>(viewport);
-    FRHICommandList* pCmdList =
-        FRHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    RHICommandList* pCmdList =
+        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
     rdg->Execute(pCmdList);
-    FRHICommandList* pCmdLists[] = {pCmdList};
+    RHICommandList* pCmdLists[] = {pCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
     ZEN_DELETE(pCmdList);
 }
 
 void RenderDevice::ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs)
 {
-    FRHICommandList* pCmdList =
-        FRHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    RHICommandList* pCmdList =
+        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
     for (auto& rdg : rdgs)
     {
         rdg->Execute(pCmdList);
     }
-    FRHICommandList* pCmdLists[] = {pCmdList};
+    RHICommandList* pCmdLists[] = {pCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
     ZEN_DELETE(pCmdList);
 }
 
 void RenderDevice::SubmitTransferCmdList()
 {
-    FRHICommandList* cmdLists[] = {m_pTransferCmdList};
+    RHICommandList* cmdLists[] = {m_pTransferCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
     m_pTransferCmdList->Reset();
 }
@@ -1095,7 +1095,7 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
 //     return m_textureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, FRHICommandList* pCmdList)
+void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* pCmdList)
 {
     pCmdList->GenerateTextureMipmaps(textureHandle);
 }

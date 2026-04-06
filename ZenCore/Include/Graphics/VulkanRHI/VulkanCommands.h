@@ -10,12 +10,14 @@ class VulkanDevice;
 class VulkanCommandBuffer;
 class VulkanCommandBufferManager;
 
-class VulkanCommandListContext : public RHICommandListContext
+// Legacy Vulkan command-list implementation. Active RenderCore/V2 code uses
+// FVulkanCommandListContext + RHICommandList instead.
+class LegacyVulkanCommandListContext : public LegacyRHICommandListContext
 {
 public:
-    explicit VulkanCommandListContext(VulkanRHI* RHI);
+    explicit LegacyVulkanCommandListContext(VulkanRHI* RHI);
 
-    ~VulkanCommandListContext() override;
+    ~LegacyVulkanCommandListContext() override;
 
     auto* GetCmdBufferManager() const
     {
@@ -32,12 +34,12 @@ private:
     VulkanCommandBufferManager* m_cmdBufferMgr{nullptr};
 };
 
-class VulkanCommandList : public RHICommandList
+class LegacyVulkanCommandList : public LegacyRHICommandList
 {
 public:
-    explicit VulkanCommandList(VulkanCommandListContext* context);
+    explicit LegacyVulkanCommandList(LegacyVulkanCommandListContext* context);
 
-    ~VulkanCommandList() override;
+    ~LegacyVulkanCommandList() override;
 
     void BeginRenderWorkload() final;
     void EndRenderWorkload() final;

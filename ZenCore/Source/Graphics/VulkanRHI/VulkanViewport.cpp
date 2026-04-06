@@ -50,22 +50,22 @@ void VulkanRHI::BeginDrawingViewport(RHIViewport* viewportRHI)
 }
 
 void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
-                                   RHICommandListContext* cmdListContext,
+                                   LegacyRHICommandListContext* cmdListContext,
                                    bool present)
 {
     VulkanViewport* viewport = dynamic_cast<VulkanViewport*>(viewportRHI);
     VERIFY_EXPR(viewport == m_currentViewport);
     if (present)
     {
-        VulkanCommandBuffer* cmdBuffer = dynamic_cast<VulkanCommandListContext*>(cmdListContext)
-                                             ->GetCmdBufferManager()
-                                             ->GetActiveCommandBuffer();
+        auto* legacyContext = dynamic_cast<LegacyVulkanCommandListContext*>(cmdListContext);
+        VulkanCommandBuffer* cmdBuffer =
+            legacyContext->GetCmdBufferManager()->GetActiveCommandBuffer();
         m_currentViewport->Present(cmdBuffer);
     }
 }
 
 void VulkanRHI::EndDrawingViewport(RHIViewport* viewportRHI,
-                                   FRHICommandList* pCmdList,
+                                   RHICommandList* pCmdList,
                                    bool present)
 {
     VulkanViewport* viewport = dynamic_cast<VulkanViewport*>(viewportRHI);

@@ -1,4 +1,4 @@
-#include "Graphics/RHI/RHICommands.h"
+#include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
@@ -237,7 +237,7 @@ void TextureManager::UpdateTexture(RHITexture* texture, uint32_t dataSize, const
 {
     EnsureTransferBatch();
 
-    FRHICommandList* cmdList = m_transferBatch.pCmdList;
+    RHICommandList* cmdList = m_transferBatch.pCmdList;
     cmdList->AddTextureTransition(texture, RHITextureLayout::eTransferDst);
 
     RHIBuffer* stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);
@@ -265,7 +265,7 @@ void TextureManager::UpdateTextureCube(RHITexture* texture,
                                        const uint8_t* pData)
 {
     EnsureTransferBatch();
-    FRHICommandList* cmdList = m_transferBatch.pCmdList;
+    RHICommandList* cmdList = m_transferBatch.pCmdList;
     cmdList->AddTextureTransition(texture, RHITextureLayout::eTransferDst);
 
     RHIBuffer* stagingBuffer = m_stagingMgr->RequireBuffer(dataSize);

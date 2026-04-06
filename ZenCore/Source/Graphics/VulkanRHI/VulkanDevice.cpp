@@ -128,8 +128,8 @@ void VulkanDevice::Init()
     m_fenceManager    = ZEN_NEW() VulkanFenceManager(this);
     m_semaphoreManger = ZEN_NEW() VulkanSemaphoreManager(this);
 
-    // m_immediateContext     = ZEN_NEW() VulkanCommandListContext(GVulkanRHI);
-    // m_immediateCommandList = ZEN_NEW() VulkanCommandList(m_immediateContext);
+    // m_legacyImmediateContext     = ZEN_NEW() LegacyVulkanCommandListContext(GVulkanRHI);
+    // m_legacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(m_legacyImmediateContext);
 }
 
 void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions)
@@ -259,7 +259,7 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char*
 
 void VulkanDevice::SubmitCommandsAndFlush()
 {
-    VulkanCommandBufferManager* mgr = GVulkanRHI->GetImmediateCmdContext()->GetCmdBufferManager();
+    auto* mgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
     if (mgr->HasPendingUploadCmdBuffer())
     {
         mgr->SubmitUploadCmdBuffer();
@@ -274,7 +274,7 @@ void VulkanDevice::SubmitCommandsAndFlush()
 void VulkanDevice::WaitForIdle()
 {
     VKCHECK(vkDeviceWaitIdle(m_device));
-    GVulkanRHI->GetImmediateCmdContext()->GetCmdBufferManager()->RefreshFenceStatus();
+    GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager()->RefreshFenceStatus();
 }
 
 void VulkanDevice::Destroy()
@@ -294,9 +294,9 @@ void VulkanDevice::Destroy()
 
 void VulkanRHI::SubmitAllGPUCommands()
 {
-    for (auto* ctx : m_cmdListContexts)
+    for (auto* ctx : m_legacyCmdListContexts)
     {
-        auto* vkCtx = dynamic_cast<VulkanCommandListContext*>(ctx);
+        auto* vkCtx = dynamic_cast<LegacyVulkanCommandListContext*>(ctx);
         if (vkCtx->GetCmdBufferManager()->HasPendingActiveCmdBuffer())
         {
             vkCtx->GetCmdBufferManager()->SubmitActiveCmdBuffer();
@@ -307,7 +307,7 @@ void VulkanRHI::SubmitAllGPUCommands()
             vkCtx->GetCmdBufferManager()->SubmitUploadCmdBuffer();
         }
     }
-    auto* immediateMgr = GVulkanRHI->GetImmediateCmdContext()->GetCmdBufferManager();
+    auto* immediateMgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
     if (immediateMgr->HasPendingUploadCmdBuffer())
     {
         immediateMgr->SubmitActiveCmdBuffer();

@@ -8,7 +8,7 @@
 
 namespace zen
 {
-class FRHICommandList;
+class RHICommandList;
 }
 // RDG_ID class
 class RDG_ID
@@ -700,7 +700,7 @@ public:
 
     // void Execute(RHICommandList* cmdList);
 
-    void Execute(FRHICommandList* pCmdList);
+    void Execute(RHICommandList* pCmdList);
 
 private:
     void DeclareTextureAccessForPass(const RDGPassNode* passNode,
@@ -904,7 +904,7 @@ private:
     // RHI CommandList
     // RHICommandList* m_cmdList{nullptr};
 
-    FRHICommandList* m_pCmdList{nullptr};
+    RHICommandList* m_pCmdList{nullptr};
 
     // stores dependency between graph nodes
     HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;

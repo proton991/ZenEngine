@@ -65,7 +65,7 @@ private:
 
     struct TextureTransferBatch
     {
-        FRHICommandList* pCmdList{nullptr};
+        RHICommandList* pCmdList{nullptr};
         uint32_t textureCount{0};
         bool recording{false};
     } m_transferBatch;

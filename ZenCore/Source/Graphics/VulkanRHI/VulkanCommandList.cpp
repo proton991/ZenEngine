@@ -965,7 +965,7 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
 }
 
 // todo: optimize queue submit and sync
-void VulkanRHI::SubmitCommandList(VectorView<FRHICommandList*> cmdLists)
+void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
 {
     HeapVector<VulkanWorkload*> workloads;
     HeapVector<FVulkanCommandListContext*> contexts;
@@ -1012,7 +1012,7 @@ void VulkanRHI::SubmitCommandList(VectorView<FRHICommandList*> cmdLists)
     //     ZEN_DELETE(pWorkload);
     // }
 
-    // for (FRHICommandList* pCommandList : cmdLists)
+    // for (RHICommandList* pCommandList : cmdLists)
     // {
     //     ZEN_DELETE(pCommandList);
     // }

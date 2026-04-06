@@ -727,15 +727,15 @@ struct RHICommandGenTextureMipmaps : public RHICommand
     }
 };
 
-// todo: first use it to replace ImmediateCommandList in RenderDevice, then replace it in RenderFrame
-class FRHICommandList : public RHICommandListBase
+// Recorded command-list API used by the active RenderCore/V2 path.
+class RHICommandList : public RHICommandListBase
 {
 public:
-    static FRHICommandList* Create(IRHICommandContext* pContext);
+    static RHICommandList* Create(IRHICommandContext* pContext);
 
-    FRHICommandList() = default;
+    RHICommandList() = default;
 
-    ~FRHICommandList() override = default;
+    ~RHICommandList() override = default;
 
     void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
 

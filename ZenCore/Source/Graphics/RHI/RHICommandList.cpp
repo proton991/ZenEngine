@@ -34,9 +34,9 @@ void RHICommandListBase::Reset()
     m_numCommands = 0;
 }
 
-FRHICommandList* FRHICommandList::Create(IRHICommandContext* pContext)
+RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
-    FRHICommandList* pCmdList         = ZEN_NEW() FRHICommandList();
+    RHICommandList* pCmdList         = ZEN_NEW() RHICommandList();
     RHICommandContextType contextType = pContext->GetContextType();
     if (contextType == RHICommandContextType::eGraphics ||
         contextType == RHICommandContextType::eTransfer)
@@ -53,26 +53,26 @@ FRHICommandList* FRHICommandList::Create(IRHICommandContext* pContext)
     return pCmdList;
 }
 
-void FRHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
+void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
 {
     ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
 }
 
-void FRHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer,
+void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer,
                                  RHIBuffer* pDstBuffer,
                                  const RHIBufferCopyRegion& region)
 {
     ALLOC_CMD(RHICommandCopyBuffer)(pSrcBuffer, pDstBuffer, region);
 }
 
-void FRHICommandList::ClearTexture(RHITexture* pTexture,
+void RHICommandList::ClearTexture(RHITexture* pTexture,
                                    const Color& color,
                                    const RHITextureSubResourceRange& range)
 {
     ALLOC_CMD(RHICommandClearTexture)(pTexture, color, range);
 }
 
-void FRHICommandList::CopyTexture(RHITexture* pSrcTexture,
+void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
                                   RHITexture* pDstTexture,
                                   VectorView<RHITextureCopyRegion> regions)
 {
@@ -90,7 +90,7 @@ void FRHICommandList::CopyTexture(RHITexture* pSrcTexture,
     //}
 }
 
-void FRHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
+void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
                                           RHIBuffer* pDstBuffer,
                                           VectorView<RHIBufferTextureCopyRegion> regions)
 {
@@ -104,7 +104,7 @@ void FRHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
     pCmd->copyRegions = MakeVecView(pRegions, regions.size());
 }
 
-void FRHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
+void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                           RHITexture* pDstTexture,
                                           VectorView<RHIBufferTextureCopyRegion> regions)
 {
@@ -123,7 +123,7 @@ void FRHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
     //}
 }
 
-void FRHICommandList::ResolveTexture(RHITexture* srcTexture,
+void RHICommandList::ResolveTexture(RHITexture* srcTexture,
                                      RHITexture* dstTexture,
                                      uint32_t srcLayer,
                                      uint32_t srcMipmap,
@@ -134,17 +134,17 @@ void FRHICommandList::ResolveTexture(RHITexture* srcTexture,
                                         dstMipmap);
 }
 
-void FRHICommandList::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
+void RHICommandList::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     ALLOC_CMD(RHICommandSetViewport)(minX, minY, maxX, maxY);
 }
 
-void FRHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
+void RHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     ALLOC_CMD(RHICommandSetScissor)(minX, minY, maxX, maxY);
 }
 
-void FRHICommandList::SetDepthBias(float depthBiasConstantFactor,
+void RHICommandList::SetDepthBias(float depthBiasConstantFactor,
                                    float depthBiasClamp,
                                    float depthBiasSlopeFactor)
 {
@@ -152,27 +152,27 @@ void FRHICommandList::SetDepthBias(float depthBiasConstantFactor,
                                       depthBiasSlopeFactor);
 }
 
-void FRHICommandList::SetLineWidth(float width)
+void RHICommandList::SetLineWidth(float width)
 {
     ALLOC_CMD(RHICommandSetLineWidth)(width);
 }
 
-void FRHICommandList::SetBlendConstants(const Color& color)
+void RHICommandList::SetBlendConstants(const Color& color)
 {
     ALLOC_CMD(RHICommandSetBlendConstants)(color);
 }
 
-void FRHICommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
+void RHICommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
 {
     ALLOC_CMD(RHICommandBeginRendering)(pRenderingLayout);
 }
 
-void FRHICommandList::EndRendering()
+void RHICommandList::EndRendering()
 {
     ALLOC_CMD(RHICommandEndRendering)();
 }
 
-void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
+void RHICommandList::BindPipeline(RHIPipelineType pipelineType,
                                    RHIPipeline* pPipeline,
                                    uint32_t numDescriptorSets,
                                    RHIDescriptorSet* const* pDescriptorSets)
@@ -180,7 +180,7 @@ void FRHICommandList::BindPipeline(RHIPipelineType pipelineType,
     ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline, numDescriptorSets, pDescriptorSets);
 }
 
-void FRHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
+void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
                                         VectorView<uint64_t> offsets)
 {
     VERIFY_EXPR(vertexBuffers.size() == offsets.size());
@@ -198,12 +198,12 @@ void FRHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
     pCmd->offsets       = MakeVecView(pOffsets, offsets.size());
 }
 
-void FRHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
+void RHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
 {
     ALLOC_CMD(RHICommandBindVertexBuffer)(pBuffer, offset);
 }
 
-void FRHICommandList::Draw(uint32_t vertexCount,
+void RHICommandList::Draw(uint32_t vertexCount,
                            uint32_t instanceCount,
                            uint32_t firstVertex,
                            uint32_t firstInstance)
@@ -211,27 +211,27 @@ void FRHICommandList::Draw(uint32_t vertexCount,
     ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
-void FRHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
+void RHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
 {
     ALLOC_CMD(RHICommandDrawIndexed)(param);
 }
 
-void FRHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
+void RHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
 {
     ALLOC_CMD(RHICommandDrawIndexedIndirect)(param);
 }
 
-void FRHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+void RHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
     ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ);
 }
 
-void FRHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
+void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
 {
     ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset);
 }
 
-void FRHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data)
+void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data)
 {
     RHICommandSetPushConstants* pCmd = ALLOC_CMD(RHICommandSetPushConstants)(pPipeline);
 
@@ -240,7 +240,7 @@ void FRHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_
     pCmd->data = MakeVecView(pData, data.size());
 }
 
-void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
+void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                      BitField<RHIPipelineStageBits> dstStages,
                                      const HeapVector<RHIMemoryTransition>& memoryTransitions,
                                      const HeapVector<RHIBufferTransition>& bufferTransitions,
@@ -280,12 +280,12 @@ void FRHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
     //}
 }
 
-void FRHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
+void RHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
 {
     ALLOC_CMD(RHICommandAddTextureTransition)(pTexture, newLayout);
 }
 
-void FRHICommandList::GenerateTextureMipmaps(RHITexture* pTexture)
+void RHICommandList::GenerateTextureMipmaps(RHITexture* pTexture)
 {
     ALLOC_CMD(RHICommandGenTextureMipmaps)(pTexture);
 }

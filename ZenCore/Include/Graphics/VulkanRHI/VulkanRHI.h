@@ -29,7 +29,7 @@ class VulkanDescriptorSet;
 class VulkanPipeline;
 class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
-class VulkanCommandListContext;
+class LegacyVulkanCommandListContext;
 
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
@@ -55,11 +55,11 @@ public:
 
     IRHICommandContext* GetTransferCommandContext() override;
 
-    RHICommandListContext* CreateCmdListContext() override;
+    LegacyRHICommandListContext* CreateLegacyCmdListContext() override;
 
-    void WaitForCommandList(RHICommandList* cmdList) override;
+    void WaitForLegacyCommandList(LegacyRHICommandList* cmdList) override;
 
-    RHICommandList* GetImmediateCommandList() override;
+    LegacyRHICommandList* GetLegacyImmediateCommandList() override;
 
     void Init() override;
 
@@ -100,12 +100,13 @@ public:
 
     void BeginDrawingViewport(RHIViewport* viewportRHI) final;
 
+    // Legacy immediate command-list path.
     void EndDrawingViewport(RHIViewport* viewportRHI,
-                            RHICommandListContext* cmdListContext,
+                            LegacyRHICommandListContext* cmdListContext,
                             bool present) final;
 
     void EndDrawingViewport(RHIViewport* viewportRHI,
-                            FRHICommandList* pCmdList,
+                            RHICommandList* pCmdList,
                             bool present) final;
 
     // ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) final;
@@ -190,7 +191,7 @@ public:
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
 
-    void SubmitCommandList(VectorView<FRHICommandList*> cmdLists) final;
+    void SubmitCommandList(VectorView<RHICommandList*> cmdLists) final;
 
     void SubmitAllGPUCommands() final;
 
@@ -229,7 +230,7 @@ public:
         return m_instanceExtensionFlags;
     }
 
-    VulkanCommandListContext* GetImmediateCmdContext() const;
+    LegacyVulkanCommandListContext* GetLegacyImmediateCmdContext() const;
 
 protected:
     void CreateInstance();
@@ -255,7 +256,7 @@ private:
 
     VulkanViewport* m_currentViewport{nullptr};
 
-    HeapVector<RHICommandListContext*> m_cmdListContexts;
+    HeapVector<LegacyRHICommandListContext*> m_legacyCmdListContexts;
     VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
 
     // allocator for memory

@@ -5,26 +5,27 @@
 
 namespace zen
 {
+// Legacy immediate command-list API. New code should use Graphics/RHI/RHICommandList.h.
 class RHIBuffer;
 class RHITexture;
 class RHIPipeline;
 class RHIDescriptorSet;
 struct RHIRenderingLayout;
 
-class RHICommandListContext
+class LegacyRHICommandListContext
 {
 public:
-    virtual ~RHICommandListContext() = default;
+    virtual ~LegacyRHICommandListContext() = default;
 };
 
 // todo: refactor this as follows:
-// RHICommandList API do not call gfx API directly, instead, allocate command and store them.
+// LegacyRHICommandList API do not call gfx API directly, instead, allocate command and store them.
 // Move command implementation to RHICommandContext
 // Implement other helper class to execute the command list
-class RHICommandList
+class LegacyRHICommandList
 {
 public:
-    static RHICommandList* Create(RHIAPIType type, RHICommandListContext* context);
+    static LegacyRHICommandList* Create(RHIAPIType type, LegacyRHICommandListContext* context);
 
     virtual void BeginRenderWorkload() = 0;
 
@@ -34,7 +35,7 @@ public:
 
     virtual void EndTransferWorkload() = 0;
 
-    virtual ~RHICommandList() = default;
+    virtual ~LegacyRHICommandList() = default;
 
     virtual void AddPipelineBarrier(BitField<RHIPipelineStageBits> srcStages,
                                     BitField<RHIPipelineStageBits> dstStages,

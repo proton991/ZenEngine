@@ -266,27 +266,27 @@ IRHICommandContext* VulkanRHI::GetTransferCommandContext()
     return m_pTransferContext;
 }
 
-RHICommandListContext* VulkanRHI::CreateCmdListContext()
+LegacyRHICommandListContext* VulkanRHI::CreateLegacyCmdListContext()
 {
-    RHICommandListContext* context = ZEN_NEW() VulkanCommandListContext(this);
-    m_cmdListContexts.push_back(context);
+    LegacyRHICommandListContext* context = ZEN_NEW() LegacyVulkanCommandListContext(this);
+    m_legacyCmdListContexts.push_back(context);
     return context;
 }
 
-VulkanCommandListContext::VulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI)
+LegacyVulkanCommandListContext::LegacyVulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI)
 {
     m_cmdBufferMgr =
         ZEN_NEW() VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
 }
 
-VulkanCommandListContext::~VulkanCommandListContext()
+LegacyVulkanCommandListContext::~LegacyVulkanCommandListContext()
 {
     ZEN_DELETE(m_cmdBufferMgr);
 }
 
-VulkanCommandListContext* VulkanRHI::GetImmediateCmdContext() const
+LegacyVulkanCommandListContext* VulkanRHI::GetLegacyImmediateCmdContext() const
 {
-    return static_cast<VulkanCommandListContext*>(m_immediateContext);
+    return static_cast<LegacyVulkanCommandListContext*>(m_legacyImmediateContext);
 }
 
 void VulkanRHI::Init()
@@ -310,17 +310,17 @@ void VulkanRHI::Init()
 
     m_descriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_device);
 
-    m_immediateContext = ZEN_NEW() VulkanCommandListContext(this);
-    m_immediateCommandList =
-        ZEN_NEW() VulkanCommandList(static_cast<VulkanCommandListContext*>(m_immediateContext));
+    m_legacyImmediateContext = ZEN_NEW() LegacyVulkanCommandListContext(this);
+    m_legacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(
+        static_cast<LegacyVulkanCommandListContext*>(m_legacyImmediateContext));
 }
 
 void VulkanRHI::Destroy()
 {
     WaitDeviceIdle();
     // delete m_vkMemAllocator;
-    ZEN_DELETE(m_immediateContext);
-    ZEN_DELETE(m_immediateCommandList);
+    ZEN_DELETE(m_legacyImmediateContext);
+    ZEN_DELETE(m_legacyImmediateCommandList);
 
     // if (m_pTransferContext != nullptr)
     // {
@@ -331,7 +331,7 @@ void VulkanRHI::Destroy()
 
     ZEN_DELETE(m_descriptorPoolManager);
 
-    for (auto* context : m_cmdListContexts)
+    for (auto* context : m_legacyCmdListContexts)
     {
         ZEN_DELETE(context);
     }

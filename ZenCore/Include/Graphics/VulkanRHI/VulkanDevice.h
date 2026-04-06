@@ -9,8 +9,8 @@ namespace zen
 class VulkanRHI;
 class VulkanDeviceExtension;
 class VulkanQueue;
-class VulkanCommandListContext;
-class VulkanCommandList;
+class LegacyVulkanCommandListContext;
+class LegacyVulkanCommandList;
 class VulkanFenceManager;
 class VulkanSemaphoreManager;
 
@@ -116,14 +116,14 @@ public:
         return m_extensionFlags.hasTimelineSemaphore != 0;
     }
 
-    // VulkanCommandListContext* GetImmediateCmdContext() const
+    // LegacyVulkanCommandListContext* GetLegacyImmediateCmdContext() const
     // {
-    //     return m_immediateContext;
+    //     return m_legacyImmediateContext;
     // }
     //
-    // VulkanCommandList* GetImmediateCommandList() const
+    // LegacyVulkanCommandList* GetLegacyImmediateCommandList() const
     // {
-    //     return m_immediateCommandList;
+    //     return m_legacyImmediateCommandList;
     // }
 
     void SubmitCommandsAndFlush();

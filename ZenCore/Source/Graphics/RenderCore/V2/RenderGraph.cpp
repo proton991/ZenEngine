@@ -1259,7 +1259,7 @@ void RenderGraph::End()
 //     }
 // }
 
-void RenderGraph::Execute(FRHICommandList* pCmdList)
+void RenderGraph::Execute(RHICommandList* pCmdList)
 {
     m_pCmdList = pCmdList;
     // execute node level by level

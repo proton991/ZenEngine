@@ -13,51 +13,51 @@
 
 namespace zen
 {
-VulkanCommandList::VulkanCommandList(VulkanCommandListContext* context) :
+LegacyVulkanCommandList::LegacyVulkanCommandList(LegacyVulkanCommandListContext* context) :
     m_vkRHI(context->GetVkRHI()), m_cmdBufferManager(context->GetCmdBufferManager())
 {}
 
-void VulkanRHI::WaitForCommandList(RHICommandList* cmdList)
+void VulkanRHI::WaitForLegacyCommandList(LegacyRHICommandList* cmdList)
 {
-    VulkanCommandList* vulkanCmdList = dynamic_cast<VulkanCommandList*>(cmdList);
+    auto* vulkanCmdList = dynamic_cast<LegacyVulkanCommandList*>(cmdList);
     if (vulkanCmdList->m_cmdBuffer != nullptr && vulkanCmdList->m_cmdBuffer->IsSubmitted())
     {
         vulkanCmdList->m_cmdBufferManager->WaitForCmdBuffer(vulkanCmdList->m_cmdBuffer);
     }
 }
 
-RHICommandList* VulkanRHI::GetImmediateCommandList()
+LegacyRHICommandList* VulkanRHI::GetLegacyImmediateCommandList()
 {
-    // VulkanCommandListContext* context = m_device->GetImmediateCmdContext();
-    // return RHICommandList::Create(RHIAPIType::eVulkan, context);
+    // LegacyVulkanCommandListContext* context = m_device->GetLegacyImmediateCmdContext();
+    // return LegacyRHICommandList::Create(RHIAPIType::eVulkan, context);
     // return m_device->GetImmediateCommandList();
-    return m_immediateCommandList;
+    return m_legacyImmediateCommandList;
 }
 
-VulkanCommandList::~VulkanCommandList() {}
+LegacyVulkanCommandList::~LegacyVulkanCommandList() {}
 
-void VulkanCommandList::BeginRenderWorkload()
+void LegacyVulkanCommandList::BeginRenderWorkload()
 {
     m_cmdBuffer = m_cmdBufferManager->GetActiveCommandBuffer();
 }
 
-void VulkanCommandList::EndRenderWorkload()
+void LegacyVulkanCommandList::EndRenderWorkload()
 {
     m_cmdBufferManager->SubmitActiveCmdBuffer();
     m_cmdBufferManager->SetupNewActiveCmdBuffer();
 }
 
-void VulkanCommandList::BeginTransferWorkload()
+void LegacyVulkanCommandList::BeginTransferWorkload()
 {
     m_cmdBuffer = m_cmdBufferManager->GetUploadCommandBuffer();
 }
 
-void VulkanCommandList::EndTransferWorkload()
+void LegacyVulkanCommandList::EndTransferWorkload()
 {
     m_cmdBufferManager->SubmitUploadCmdBuffer();
 }
 
-void VulkanCommandList::AddPipelineBarrier(
+void LegacyVulkanCommandList::AddPipelineBarrier(
     BitField<RHIPipelineStageBits> srcStages,
     BitField<RHIPipelineStageBits> dstStages,
     const HeapVector<RHIMemoryTransition>& memoryTransitions,
@@ -117,15 +117,15 @@ void VulkanCommandList::AddPipelineBarrier(
                     dstStages);
 }
 
-void VulkanCommandList::ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size)
+void LegacyVulkanCommandList::ClearBuffer(RHIBuffer* buffer, uint32_t offset, uint32_t size)
 {
     vkCmdFillBuffer(m_cmdBuffer->GetVkHandle(), TO_VK_BUFFER(buffer)->GetVkBuffer(), offset, size,
                     0);
 }
 
-void VulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
-                                   RHIBuffer* dstBuffer,
-                                   const RHIBufferCopyRegion& region)
+void LegacyVulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
+                                         RHIBuffer* dstBuffer,
+                                         const RHIBufferCopyRegion& region)
 {
     VkBufferCopy bufferCopy;
     bufferCopy.srcOffset = region.srcOffset;
@@ -136,9 +136,9 @@ void VulkanCommandList::CopyBuffer(RHIBuffer* srcBuffer,
                     TO_VK_BUFFER(dstBuffer)->GetVkBuffer(), 1, &bufferCopy);
 }
 
-void VulkanCommandList::ClearTexture(RHITexture* texture,
-                                     const Color& color,
-                                     const RHITextureSubResourceRange& range)
+void LegacyVulkanCommandList::ClearTexture(RHITexture* texture,
+                                           const Color& color,
+                                           const RHITextureSubResourceRange& range)
 {
     VkImageSubresourceRange vkRange;
     ToVkImageSubresourceRange(range, &vkRange);
@@ -148,9 +148,9 @@ void VulkanCommandList::ClearTexture(RHITexture* texture,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
 }
 
-void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
-                                    RHITexture* dstTexture,
-                                    VectorView<RHITextureCopyRegion> regions)
+void LegacyVulkanCommandList::CopyTexture(RHITexture* srcTexture,
+                                          RHITexture* dstTexture,
+                                          VectorView<RHITextureCopyRegion> regions)
 {
     HeapVector<VkImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -163,9 +163,10 @@ void VulkanCommandList::CopyTexture(RHITexture* srcTexture,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
-void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
-                                            RHIBuffer* buffer,
-                                            VectorView<RHIBufferTextureCopyRegion> regions)
+void LegacyVulkanCommandList::CopyTextureToBuffer(
+    RHITexture* texture,
+    RHIBuffer* buffer,
+    VectorView<RHIBufferTextureCopyRegion> regions)
 {
     HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -178,9 +179,10 @@ void VulkanCommandList::CopyTextureToBuffer(RHITexture* texture,
                            TO_VK_BUFFER(buffer)->GetVkBuffer(), copies.size(), copies.data());
 }
 
-void VulkanCommandList::CopyBufferToTexture(RHIBuffer* buffer,
-                                            RHITexture* texture,
-                                            VectorView<RHIBufferTextureCopyRegion> regions)
+void LegacyVulkanCommandList::CopyBufferToTexture(
+    RHIBuffer* buffer,
+    RHITexture* texture,
+    VectorView<RHIBufferTextureCopyRegion> regions)
 {
     HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -194,12 +196,12 @@ void VulkanCommandList::CopyBufferToTexture(RHIBuffer* buffer,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
-void VulkanCommandList::ResolveTexture(RHITexture* srcTexture,
-                                       RHITexture* dstTexture,
-                                       uint32_t srcLayer,
-                                       uint32_t srcMipmap,
-                                       uint32_t dstLayer,
-                                       uint32_t dstMipmap)
+void LegacyVulkanCommandList::ResolveTexture(RHITexture* srcTexture,
+                                             RHITexture* dstTexture,
+                                             uint32_t srcLayer,
+                                             uint32_t srcMipmap,
+                                             uint32_t dstLayer,
+                                             uint32_t dstMipmap)
 {
     VkImageResolve region{};
     region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -218,7 +220,9 @@ void VulkanCommandList::ResolveTexture(RHITexture* srcTexture,
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
-void VulkanCommandList::BindIndexBuffer(RHIBuffer* buffer, DataFormat format, uint32_t offset)
+void LegacyVulkanCommandList::BindIndexBuffer(RHIBuffer* buffer,
+                                              DataFormat format,
+                                              uint32_t offset)
 {
     VkIndexType indexType =
         format == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
@@ -226,8 +230,8 @@ void VulkanCommandList::BindIndexBuffer(RHIBuffer* buffer, DataFormat format, ui
                          indexType);
 }
 
-void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers,
-                                          VectorView<uint64_t> offsets)
+void LegacyVulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers,
+                                                VectorView<uint64_t> offsets)
 {
     HeapVector<VkBuffer> bufferHandles;
     for (RHIBuffer* buffer : buffers)
@@ -258,9 +262,9 @@ void VulkanCommandList::BindVertexBuffers(VectorView<RHIBuffer*> buffers,
 //                       vulkanPipeline->pipeline);
 // }
 
-void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
-                                        uint32_t numDescriptorSets,
-                                        RHIDescriptorSet* const* pDescriptorSets)
+void LegacyVulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
+                                              uint32_t numDescriptorSets,
+                                              RHIDescriptorSet* const* pDescriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (numDescriptorSets > 0)
@@ -280,9 +284,10 @@ void VulkanCommandList::BindGfxPipeline(RHIPipeline* pipelineHandle,
                       vulkanPipeline->GetVkPipeline());
 }
 
-void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
-                                            uint32_t numDescriptorSets,
-                                            const RHIDescriptorSet* const* pDescriptorSets)
+void LegacyVulkanCommandList::BindComputePipeline(
+    RHIPipeline* pipelineHandle,
+    uint32_t numDescriptorSets,
+    const RHIDescriptorSet* const* pDescriptorSets)
 {
     VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
     if (numDescriptorSets > 0)
@@ -405,7 +410,7 @@ void VulkanCommandList::BindComputePipeline(RHIPipeline* pipelineHandle,
 //     vkCmdEndRenderingKHR(m_cmdBuffer->GetVkHandle());
 // }
 
-void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
+void LegacyVulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
 {
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
@@ -494,7 +499,7 @@ void VulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayou
     }
 }
 
-void VulkanCommandList::EndRendering()
+void LegacyVulkanCommandList::EndRendering()
 {
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
@@ -506,28 +511,28 @@ void VulkanCommandList::EndRendering()
     }
 }
 
-void VulkanCommandList::Draw(uint32_t vertexCount,
-                             uint32_t instanceCount,
-                             uint32_t firstVertex,
-                             uint32_t firstInstance)
+void LegacyVulkanCommandList::Draw(uint32_t vertexCount,
+                                   uint32_t instanceCount,
+                                   uint32_t firstVertex,
+                                   uint32_t firstInstance)
 {
     vkCmdDraw(m_cmdBuffer->GetVkHandle(), vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
-void VulkanCommandList::DrawIndexed(uint32_t indexCount,
-                                    uint32_t instanceCount,
-                                    uint32_t firstIndex,
-                                    int32_t vertexOffset,
-                                    uint32_t firstInstance)
+void LegacyVulkanCommandList::DrawIndexed(uint32_t indexCount,
+                                          uint32_t instanceCount,
+                                          uint32_t firstIndex,
+                                          int32_t vertexOffset,
+                                          uint32_t firstInstance)
 {
     vkCmdDrawIndexed(m_cmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex,
                      vertexOffset, firstInstance);
 }
 
-void VulkanCommandList::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
-                                            uint32_t offset,
-                                            uint32_t drawCount,
-                                            uint32_t stride)
+void LegacyVulkanCommandList::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
+                                                  uint32_t offset,
+                                                  uint32_t drawCount,
+                                                  uint32_t stride)
 {
     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
     vkCmdDrawIndexedIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->GetVkBuffer(), offset,
@@ -535,25 +540,28 @@ void VulkanCommandList::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
 }
 
 
-void VulkanCommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+void LegacyVulkanCommandList::Dispatch(uint32_t groupCountX,
+                                       uint32_t groupCountY,
+                                       uint32_t groupCountZ)
 {
     vkCmdDispatch(m_cmdBuffer->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
-void VulkanCommandList::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset)
+void LegacyVulkanCommandList::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset)
 {
     VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(indirectBuffer);
     vkCmdDispatchIndirect(m_cmdBuffer->GetVkHandle(), vulkanBuffer->GetVkBuffer(), offset);
 }
 
-void VulkanCommandList::SetPushConstants(RHIPipeline* pipelineHandle, VectorView<uint8_t> data)
+void LegacyVulkanCommandList::SetPushConstants(RHIPipeline* pipelineHandle,
+                                               VectorView<uint8_t> data)
 {
     VulkanPipeline* pipeline = TO_VK_PIPELINE(pipelineHandle);
     vkCmdPushConstants(m_cmdBuffer->GetVkHandle(), pipeline->GetVkPipelineLayout(),
                        pipeline->GetPushConstantsStageFlags(), 0, data.size(), data.data());
 }
 
-void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
+void LegacyVulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
 {
     HeapVector<VkViewport> vkViewports;
     vkViewports.resize(viewports.size());
@@ -570,7 +578,7 @@ void VulkanCommandList::SetViewports(VectorView<Rect2<float>> viewports)
     vkCmdSetViewport(m_cmdBuffer->GetVkHandle(), 0, viewports.size(), vkViewports.data());
 }
 
-void VulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
+void LegacyVulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
 {
     HeapVector<VkRect2D> vkScissors;
     vkScissors.resize(scissors.size());
@@ -584,26 +592,26 @@ void VulkanCommandList::SetScissors(VectorView<Rect2<int>> scissors)
     vkCmdSetScissor(m_cmdBuffer->GetVkHandle(), 0, vkScissors.size(), vkScissors.data());
 }
 
-void VulkanCommandList::SetDepthBias(float depthBiasConstantFactor,
-                                     float depthBiasClamp,
-                                     float depthBiasSlopeFactor)
+void LegacyVulkanCommandList::SetDepthBias(float depthBiasConstantFactor,
+                                           float depthBiasClamp,
+                                           float depthBiasSlopeFactor)
 {
     vkCmdSetDepthBias(m_cmdBuffer->GetVkHandle(), depthBiasConstantFactor, depthBiasClamp,
                       depthBiasSlopeFactor);
 }
 
-void VulkanCommandList::SetLineWidth(float width)
+void LegacyVulkanCommandList::SetLineWidth(float width)
 {
     vkCmdSetLineWidth(m_cmdBuffer->GetVkHandle(), width);
 }
 
-void VulkanCommandList::SetBlendConstants(const Color& color)
+void LegacyVulkanCommandList::SetBlendConstants(const Color& color)
 {
     float constants[4] = {color.r, color.g, color.b, color.a};
     vkCmdSetBlendConstants(m_cmdBuffer->GetVkHandle(), constants);
 }
 
-void VulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
+void LegacyVulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
 {
     VulkanPipelineBarrier barrier;
     VkCommandBuffer cmdBuffer = m_cmdBuffer->GetVkHandle();
@@ -679,7 +687,8 @@ void VulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
 }
 
-void VulkanCommandList::AddTextureTransition(RHITexture* texture, RHITextureLayout newLayout)
+void LegacyVulkanCommandList::AddTextureTransition(RHITexture* texture,
+                                                   RHITextureLayout newLayout)
 {
     VulkanTexture* vkTexture = TO_VK_TEXTURE(texture);
 
@@ -703,10 +712,10 @@ void VulkanCommandList::AddTextureTransition(RHITexture* texture, RHITextureLayo
                       vkTexture->GetVkSubresourceRange());
 }
 
-void VulkanCommandList::ChangeImageLayout(VkImage image,
-                                          VkImageLayout srcLayout,
-                                          VkImageLayout dstLayout,
-                                          const VkImageSubresourceRange& range)
+void LegacyVulkanCommandList::ChangeImageLayout(VkImage image,
+                                                VkImageLayout srcLayout,
+                                                VkImageLayout dstLayout,
+                                                const VkImageSubresourceRange& range)
 {
     VulkanPipelineBarrier barrier;
     barrier.AddImageBarrier(image, srcLayout, dstLayout, range);
