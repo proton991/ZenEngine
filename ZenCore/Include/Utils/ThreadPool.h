@@ -92,23 +92,22 @@ public:
     // empty the queue
     void ClearQueue()
     {
-        while (!m_q.Empty())
+        while (auto popped = m_q.TryPop())
         {
-            auto* _f = m_q.Peek();
-            m_q.Pop();
-            delete _f; // empty the queue
+            delete *popped; // empty the queue
         }
     }
 
     // pops a functional wrapper to the original function
     std::function<FuncRetType(FuncArgs...)> Pop()
     {
-        if (m_q.Empty())
+        auto popped = m_q.TryPop();
+        if (!popped.has_value())
         {
             return {};
         }
-        std::function<FuncRetType(FuncArgs...)>* _f = m_q.Peek();
-        m_q.Pop();
+
+        std::function<FuncRetType(FuncArgs...)>* _f = *popped;
         // at return, delete the function even if an exception occurred
         UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(_f);
         std::function<FuncRetType(FuncArgs...)> f;
@@ -198,11 +197,11 @@ private:
             std::atomic<bool>& _flag = *flag;
             std::function<FuncRetType(FuncArgs...)>* _f = nullptr;
 
-            bool isPop = !m_q.Empty();
+            auto popped = m_q.TryPop();
+            bool isPop  = popped.has_value();
             if (isPop)
             {
-                _f = m_q.Peek();
-                m_q.Pop();
+                _f = *popped;
             }
             while (true)
             {
@@ -215,11 +214,11 @@ private:
                         return; // the thread is wanted to stop, return even if the queue is not empty yet
                     else
                     {
-                        isPop = !m_q.Empty();
+                        popped = m_q.TryPop();
+                        isPop  = popped.has_value();
                         if (isPop)
                         {
-                            _f = m_q.Peek();
-                            m_q.Pop();
+                            _f = *popped;
                         }
                     }
                 }
@@ -227,11 +226,11 @@ private:
                 LockAuto lock(&m_mutex);
                 ++m_nWaiting;
                 m_conVar.Wait(&m_mutex, [this, &_f, &isPop, &_flag]() {
-                    isPop = !m_q.Empty();
+                    auto popped = m_q.TryPop();
+                    isPop       = popped.has_value();
                     if (isPop)
                     {
-                        _f = m_q.Peek();
-                        m_q.Pop();
+                        _f = *popped;
                     }
                     return isPop || m_finished || _flag;
                 });

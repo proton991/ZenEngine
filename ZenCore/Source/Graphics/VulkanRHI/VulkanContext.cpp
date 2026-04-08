@@ -13,6 +13,18 @@ namespace zen
 VulkanMemoryAllocator* GVkMemAllocator = nullptr;
 VulkanRHI* GVulkanRHI                  = nullptr;
 
+namespace
+{
+static bool HasExtensionEnabled(const HeapVector<const char*>& extensions,
+                                const char* extensionName)
+{
+    return std::find_if(extensions.begin(), extensions.end(),
+                        [extensionName](const char* enabledExtension) {
+                            return strcmp(enabledExtension, extensionName) == 0;
+                        }) != extensions.end();
+}
+} // namespace
+
 struct VulkanLayer
 {
     VkLayerProperties layerProperties;
@@ -173,10 +185,12 @@ void VulkanRHI::CreateInstance()
 
     VkInstanceCreateInfo instanceInfo;
     InitVkStruct(instanceInfo, VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
-#if defined(ZEN_MACOS)
-    instanceInfo.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#if defined(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+    if (HasExtensionEnabled(m_instanceExtensions, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+    {
+        instanceInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    }
 #endif
-
     instanceInfo.pApplicationInfo    = &appInfo;
     instanceInfo.enabledLayerCount   = static_cast<uint32_t>(m_instanceLayers.size());
     instanceInfo.ppEnabledLayerNames = m_instanceLayers.empty() ? nullptr : m_instanceLayers.data();
@@ -310,7 +324,7 @@ void VulkanRHI::Init()
 
     m_descriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_device);
 
-    m_legacyImmediateContext = ZEN_NEW() LegacyVulkanCommandListContext(this);
+    m_legacyImmediateContext     = ZEN_NEW() LegacyVulkanCommandListContext(this);
     m_legacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(
         static_cast<LegacyVulkanCommandListContext*>(m_legacyImmediateContext));
 }

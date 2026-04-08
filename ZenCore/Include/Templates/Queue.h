@@ -1,6 +1,7 @@
 #pragma once
 #include <queue>
 #include <functional>
+#include <optional>
 #include "Utils/Errors.h"
 #include "Utils/Mutex.h"
 
@@ -27,6 +28,19 @@ public:
         LockAuto lock(&m_mutex);
         VERIFY_EXPR(!m_q.empty());
         return m_q.front();
+    }
+
+    std::optional<T> TryPop()
+    {
+        LockAuto lock(&m_mutex);
+        if (m_q.empty())
+        {
+            return std::nullopt;
+        }
+
+        T value = m_q.front();
+        m_q.pop();
+        return value;
     }
 
     bool Empty()
