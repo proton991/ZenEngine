@@ -4,6 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
+#include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
@@ -259,11 +260,24 @@ void VulkanTexture::Init()
             imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
         }
 
+        const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
+        const uint32_t transferQueueFamily = GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
+        if ((imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0 &&
+            graphicsQueueFamily != transferQueueFamily)
+        {
+            const uint32_t queueFamilyIndices[] = {graphicsQueueFamily, transferQueueFamily};
+            imageCI.sharingMode           = VK_SHARING_MODE_CONCURRENT;
+            imageCI.queueFamilyIndexCount = 2;
+            imageCI.pQueueFamilyIndices   = queueFamilyIndices;
+        }
+
         const auto textureSize = CalculateTextureSize(m_baseInfo);
 
         GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage, &m_memAlloc,
                                     textureSize);
-        m_vkImageCI = imageCI;
+        m_vkImageCI                    = imageCI;
+        m_vkImageCI.queueFamilyIndexCount = 0;
+        m_vkImageCI.pQueueFamilyIndices   = nullptr;
 
         // create image view
         CreateImageViewHelper();

@@ -196,7 +196,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
         }
         VkDeviceQueueCreateInfo queueInfo;
         InitVkStruct(queueInfo, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
-        queueInfo.queueFamilyIndex = deviceQueueInfos.size();
+        queueInfo.queueFamilyIndex = queueFamilyIndex;
         queueInfo.queueCount       = queueFamilyProp.queueCount;
         deviceQueueInfos.emplace_back(queueInfo);
         numPriorities += queueFamilyProp.queueCount;

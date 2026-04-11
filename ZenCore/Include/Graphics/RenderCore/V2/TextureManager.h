@@ -35,6 +35,8 @@ public:
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
+    void QueueShaderReadOnlyTransition(RHITexture* texture);
+
     void UpdateTexture(RHITexture* texture, uint32_t dataSize, const uint8_t* pData);
 
     void UpdateTextureCube(RHITexture* texture,
@@ -69,5 +71,7 @@ private:
         uint32_t textureCount{0};
         bool recording{false};
     } m_transferBatch;
+
+    HeapVector<RHITexture*> m_pendingShaderReadOnlyTransitions;
 };
 } // namespace zen::rc

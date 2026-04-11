@@ -876,6 +876,7 @@ void RenderDevice::SubmitTransferCmdList()
 {
     RHICommandList* cmdLists[] = {m_pTransferCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
+    m_pTransferCmdList->WaitUntilCompleted();
     m_pTransferCmdList->Reset();
 }
 

@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 
@@ -52,6 +53,17 @@ void VulkanBuffer::Init()
     bufferCI.size        = static_cast<VkDeviceSize>(m_requiredSize);
     bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferCI.usage       = ToVkBufferUsageFlags(m_usageFlags);
+
+    const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
+    const uint32_t transferQueueFamily = GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
+    if ((bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) != 0 &&
+        graphicsQueueFamily != transferQueueFamily)
+    {
+        const uint32_t queueFamilyIndices[] = {graphicsQueueFamily, transferQueueFamily};
+        bufferCI.sharingMode           = VK_SHARING_MODE_CONCURRENT;
+        bufferCI.queueFamilyIndexCount = 2;
+        bufferCI.pQueueFamilyIndices   = queueFamilyIndices;
+    }
 
     GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer,
                                  &m_memAlloc);

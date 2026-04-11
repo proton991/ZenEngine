@@ -10,6 +10,19 @@
 
 namespace zen::rc
 {
+void TextureManager::QueueShaderReadOnlyTransition(RHITexture* texture)
+{
+    for (RHITexture* pendingTexture : m_pendingShaderReadOnlyTransitions)
+    {
+        if (pendingTexture == texture)
+        {
+            return;
+        }
+    }
+
+    m_pendingShaderReadOnlyTransitions.emplace_back(texture);
+}
+
 void TextureManager::Destroy()
 {
     if (m_transferBatch.pCmdList != nullptr)
@@ -17,6 +30,8 @@ void TextureManager::Destroy()
         m_transferBatch.pCmdList  = nullptr;
         m_transferBatch.recording = false;
     }
+
+    m_pendingShaderReadOnlyTransitions.clear();
 
     for (auto& kv : m_textureCache)
     {
@@ -40,6 +55,25 @@ void TextureManager::FlushTransferBatch()
     }
 
     m_renderDevice->SubmitTransferCmdList();
+
+    if (!m_pendingShaderReadOnlyTransitions.empty())
+    {
+        // Sampled-image transitions must be recorded on a graphics-capable queue.
+        RHICommandList* gfxCmdList =
+            RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+
+        for (RHITexture* texture : m_pendingShaderReadOnlyTransitions)
+        {
+            gfxCmdList->AddTextureTransition(texture, RHITextureLayout::eShaderReadOnly);
+        }
+
+        RHICommandList* cmdLists[] = {gfxCmdList};
+        GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
+        gfxCmdList->WaitUntilCompleted();
+        ZEN_DELETE(gfxCmdList);
+
+        m_pendingShaderReadOnlyTransitions.clear();
+    }
 
     m_transferBatch.pCmdList  = nullptr;
     m_transferBatch.recording = false;
@@ -256,7 +290,7 @@ void TextureManager::UpdateTexture(RHITexture* texture, uint32_t dataSize, const
     cmdList->CopyBufferToTexture(stagingBuffer, texture, copyRegion);
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
-    cmdList->AddTextureTransition(texture, RHITextureLayout::eShaderReadOnly);
+    QueueShaderReadOnlyTransition(texture);
 }
 
 void TextureManager::UpdateTextureCube(RHITexture* texture,
@@ -279,7 +313,7 @@ void TextureManager::UpdateTextureCube(RHITexture* texture,
     cmdList->CopyBufferToTexture(stagingBuffer, texture, regions);
     m_stagingMgr->ReleaseBuffer(stagingBuffer);
 
-    cmdList->AddTextureTransition(texture, RHITextureLayout::eShaderReadOnly);
+    QueueShaderReadOnlyTransition(texture);
 }
 
 // TextureHandle TextureManager::GetBaseTextureForProxy(const TextureHandle& handle) const
