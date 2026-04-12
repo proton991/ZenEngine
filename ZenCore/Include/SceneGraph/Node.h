@@ -18,16 +18,16 @@ class Node
 public:
     explicit Node(uint32_t index, std::string name) : m_index(index), m_name(std::move(name)) {}
 
-    void AddComponent(Component* component)
+    void AddComponent(Component* pComponent)
     {
-        auto it = m_components.find(component->GetTypeId());
+        auto it = m_components.find(pComponent->GetTypeId());
         if (it != m_components.end())
         {
-            it->second = component;
+            it->second = pComponent;
         }
         else
         {
-            m_components.insert({component->GetTypeId(), component});
+            m_components.insert({pComponent->GetTypeId(), pComponent});
         }
     }
     template <class T> bool HasComponent() const
@@ -40,19 +40,19 @@ public:
         return dynamic_cast<T*>(m_components.at(typeid(T)));
     }
 
-    void AddChild(Node* child)
+    void AddChild(Node* pChild)
     {
-        m_children.push_back(child);
+        m_children.push_back(pChild);
     }
 
-    void SetParent(Node* node)
+    void SetParent(Node* pNode)
     {
-        m_parent = node;
+        m_pParent = pNode;
     }
 
     auto GetParent() const
     {
-        return m_parent;
+        return m_pParent;
     }
 
     auto& GetName() const
@@ -100,7 +100,7 @@ private:
 
     std::string m_name;
 
-    Node* m_parent{nullptr};
+    Node* m_pParent{nullptr};
 
     std::vector<Node*> m_children;
 

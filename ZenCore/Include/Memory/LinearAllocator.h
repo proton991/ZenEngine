@@ -13,7 +13,7 @@ class LinearAllocator
 public:
     LinearAllocator(size_t capacity) : m_capacity(capacity)
     {
-        m_buffer = static_cast<uint8_t*>(ZEN_MEM_ALLOC(capacity));
+        m_pBuffer = static_cast<uint8_t*>(ZEN_MEM_ALLOC(capacity));
         m_offset = 0;
     }
 
@@ -25,16 +25,16 @@ public:
 
     ~LinearAllocator()
     {
-        ZEN_MEM_FREE(m_buffer);
+        ZEN_MEM_FREE(m_pBuffer);
         // Set members to zero for safety/clarity (optional, but good practice)
-        m_buffer   = nullptr;
+        m_pBuffer   = nullptr;
         m_capacity = 0;
         m_offset   = 0;
     }
 
     void* Alloc(size_t size, size_t alignment = alignof(std::max_align_t))
     {
-        uintptr_t base    = reinterpret_cast<uintptr_t>(m_buffer);
+        uintptr_t base    = reinterpret_cast<uintptr_t>(m_pBuffer);
         uintptr_t cur     = base + m_offset;
         uintptr_t aligned = AlignUp(cur, alignment);
 
@@ -68,7 +68,7 @@ private:
     }
 
 
-    uint8_t* m_buffer = nullptr;
+    uint8_t* m_pBuffer = nullptr;
     size_t m_capacity = 0;
     size_t m_offset   = 0;
 };

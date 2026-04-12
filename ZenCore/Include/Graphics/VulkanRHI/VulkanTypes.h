@@ -82,15 +82,15 @@ VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue);
 
 VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue);
 
-void ToVkClearColor(const Color& color, VkClearColorValue* colorValue);
+void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue);
 
 void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,
-                               VkImageSubresourceRange* vkRange);
+                               VkImageSubresourceRange* pVkRange);
 
 void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
-                                VkImageSubresourceLayers* vkLayers);
+                                VkImageSubresourceLayers* pVkLayers);
 
-void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* copy);
+void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy);
 
-void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* copy);
+void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* pCopy);
 } // namespace zen

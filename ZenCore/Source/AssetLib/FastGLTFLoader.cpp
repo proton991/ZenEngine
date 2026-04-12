@@ -71,10 +71,10 @@ FastGLTFLoader::FastGLTFLoader()
         fastgltf::Options::GenerateMeshIndices;
 }
 
-void FastGLTFLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
+void FastGLTFLoader::LoadFromFile(const std::string& path, sg::Scene* pScene)
 {
     m_name = std::filesystem::path(path).stem().string();
-    scene->SetName(m_name);
+    pScene->SetName(m_name);
     auto gltfFile = fastgltf::MappedGltfFile::FromPath(path);
     if (!bool(gltfFile))
     {
@@ -88,40 +88,40 @@ void FastGLTFLoader::LoadFromFile(const std::string& path, sg::Scene* scene)
         LOGE("Failed to load glTF: {}", fastgltf::getErrorMessage(loadedAsset.error()));
     }
     m_gltfAsset = std::move(loadedAsset.get());
-    LoadGltfSamplers(scene);
-    LoadGltfTextures(scene);
-    LoadGltfMaterials(scene);
-    LoadGltfMeshes(scene);
-    LoadGltfRenderableNodes(scene);
-    scene->UpdateAABB();
+    LoadGltfSamplers(pScene);
+    LoadGltfTextures(pScene);
+    LoadGltfMaterials(pScene);
+    LoadGltfMeshes(pScene);
+    LoadGltfRenderableNodes(pScene);
+    pScene->UpdateAABB();
 }
 
-void FastGLTFLoader::LoadGltfSamplers(sg::Scene* scene)
+void FastGLTFLoader::LoadGltfSamplers(sg::Scene* pScene)
 { // Load Samplers
     std::vector<UniquePtr<sg::Sampler>> samplers;
     samplers.reserve(m_gltfAsset.samplers.size());
     for (const fastgltf::Sampler& s : m_gltfAsset.samplers)
     {
-        auto* sampler = new sg::Sampler(std::string(s.name));
+        auto* pSampler = new sg::Sampler(std::string(s.name));
         // set props
-        sampler->minFilter = FromFastGltfFilter(s.minFilter);
-        sampler->magFilter = FromFastGltfFilter(s.magFilter);
-        sampler->wrapS     = FromFastGltfWrap(s.wrapS);
-        sampler->wrapT     = FromFastGltfWrap(s.wrapT);
-        samplers.emplace_back(sampler);
+        pSampler->minFilter = FromFastGltfFilter(s.minFilter);
+        pSampler->magFilter = FromFastGltfFilter(s.magFilter);
+        pSampler->wrapS     = FromFastGltfWrap(s.wrapS);
+        pSampler->wrapT     = FromFastGltfWrap(s.wrapT);
+        samplers.emplace_back(pSampler);
     }
-    scene->SetComponents(std::move(samplers));
+    pScene->SetComponents(std::move(samplers));
 }
 
-static Format GetTextureFormat(uint32_t imageIndex, fastgltf::Asset* gltfAsset)
+static Format GetTextureFormat(uint32_t imageIndex, fastgltf::Asset* pGltfAsset)
 {
-    for (fastgltf::Material& material : gltfAsset->materials)
+    for (fastgltf::Material& material : pGltfAsset->materials)
     {
         if (material.pbrData.baseColorTexture
                 .has_value()) // albedo aka diffuse map aka bas color -> sRGB
         {
             uint32_t diffuseTextureIndex = material.pbrData.baseColorTexture.value().textureIndex;
-            auto& diffuseTexture         = gltfAsset->textures[diffuseTextureIndex];
+            auto& diffuseTexture         = pGltfAsset->textures[diffuseTextureIndex];
             if (imageIndex == diffuseTexture.imageIndex.value())
             {
                 return Format::R8G8B8A8_SRGB;
@@ -130,7 +130,7 @@ static Format GetTextureFormat(uint32_t imageIndex, fastgltf::Asset* gltfAsset)
         if (material.emissiveTexture.has_value())
         {
             uint32_t emissiveTextureIndex = material.emissiveTexture.value().textureIndex;
-            auto& emissiveTexture         = gltfAsset->textures[emissiveTextureIndex];
+            auto& emissiveTexture         = pGltfAsset->textures[emissiveTextureIndex];
             if (imageIndex == emissiveTexture.imageIndex.value())
             {
                 return Format::R8G8B8A8_SRGB;
@@ -148,7 +148,7 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
     fastgltf::Image& gltfImage    = m_gltfAsset.images[gltfTexture.imageIndex.value()];
     const std::string textureName = m_name + "Texture_" + std::to_string(imageIndex);
 
-    sg::Texture* sgTexture = new sg::Texture(textureName);
+    sg::Texture* pSgTexture = new sg::Texture(textureName);
     const int samplerIndex = gltfTexture.samplerIndex.has_value() ?
         static_cast<int>(gltfTexture.samplerIndex.value()) :
         -1;
@@ -163,7 +163,7 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
                                                 filePath.uri.path().end());
 
                 int width = 0, height = 0, nrChannels = 0;
-                unsigned char* buffer = stbi_load(imageFilepath.c_str(), &width, &height,
+                unsigned char* pBuffer = stbi_load(imageFilepath.c_str(), &width, &height,
                                                   &nrChannels, 4 /*int desired_channels*/);
                 size_t bufferSize     = width * height * 4;
 
@@ -171,18 +171,18 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
 
                 TextureInfo textureInfo{
                     (uint32_t)width, (uint32_t)height, GetTextureFormat(imageIndex, &m_gltfAsset),
-                    std::vector<uint8_t>(buffer, buffer + bufferSize), samplerIndex};
+                    std::vector<uint8_t>(pBuffer, pBuffer + bufferSize), samplerIndex};
 
-                sgTexture->Init(imageIndex, textureInfo);
+                pSgTexture->Init(imageIndex, textureInfo);
 
-                stbi_image_free(buffer);
+                stbi_image_free(pBuffer);
             },
             [&](fastgltf::sources::Array& vector) // load from memory
             {
                 int width = 0, height = 0, nrChannels = 0;
 
                 using byte = unsigned char;
-                byte* buffer =
+                byte* pBuffer =
                     stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data()),
                                           static_cast<int>(vector.bytes.size()), &width, &height,
                                           &nrChannels, 4 /*int desired_channels*/);
@@ -190,11 +190,11 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
 
                 TextureInfo textureInfo{
                     (uint32_t)width, (uint32_t)height, GetTextureFormat(imageIndex, &m_gltfAsset),
-                    std::vector<uint8_t>(buffer, buffer + bufferSize), samplerIndex};
+                    std::vector<uint8_t>(pBuffer, pBuffer + bufferSize), samplerIndex};
 
-                sgTexture->Init(imageIndex, textureInfo);
+                pSgTexture->Init(imageIndex, textureInfo);
 
-                stbi_image_free(buffer);
+                stbi_image_free(pBuffer);
             },
             [&](fastgltf::sources::BufferView& view) // load from buffer view
             {
@@ -211,7 +211,7 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
                                {
                                    int width = 0, height = 0, nrChannels = 0;
                                    using byte      = unsigned char;
-                                   stbi_uc* buffer = stbi_load_from_memory(
+                                   stbi_uc* pBuffer = stbi_load_from_memory(
                                        reinterpret_cast<const stbi_uc*>(vector.bytes.data() +
                                                                         bufferView.byteOffset),
                                        static_cast<int>(bufferView.byteLength), &width, &height,
@@ -221,11 +221,11 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
                                    TextureInfo textureInfo{
                                        (uint32_t)width, (uint32_t)height,
                                        GetTextureFormat(imageIndex, &m_gltfAsset),
-                                       std::vector<uint8_t>(buffer, buffer + bufferSize),
+                                       std::vector<uint8_t>(pBuffer, pBuffer + bufferSize),
                                        samplerIndex};
-                                   sgTexture->Init(imageIndex, textureInfo);
+                                   pSgTexture->Init(imageIndex, textureInfo);
 
-                                   stbi_image_free(buffer);
+                                   stbi_image_free(pBuffer);
                                }},
                            bufferFromBufferView.data);
             },
@@ -235,7 +235,7 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
             },
         },
         gltfImage.data);
-    return sgTexture;
+    return pSgTexture;
 }
 
 template <typename ReturnType, typename... Args> class Task
@@ -263,7 +263,7 @@ private:
     std::vector<std::future<ReturnType>> futures;
 };
 
-void FastGLTFLoader::LoadGltfTextures(sg::Scene* scene)
+void FastGLTFLoader::LoadGltfTextures(sg::Scene* pScene)
 {
     uint32_t groupSize = rc::RenderConfig::GetInstance().numThreads;
     auto threadPool    = MakeUnique<ThreadPool<void, uint32_t>>(groupSize);
@@ -289,8 +289,8 @@ void FastGLTFLoader::LoadGltfTextures(sg::Scene* scene)
             std::vector<sg::Texture*> batchResult;
             for (uint32_t j = startIdx; j < endIdx; j++)
             {
-                sg::Texture* texture = LoadGltfTextureVisitor(j);
-                batchResult.push_back(texture);
+                sg::Texture* pTexture = LoadGltfTextureVisitor(j);
+                batchResult.push_back(pTexture);
             }
             return batchResult;
         });
@@ -300,22 +300,22 @@ void FastGLTFLoader::LoadGltfTextures(sg::Scene* scene)
     for (auto& fut : futures)
     {
         std::vector<sg::Texture*> batch = fut.get();
-        for (auto* sgTex : batch)
+        for (auto* pSgTex : batch)
         {
-            textures[sgTex->index] = UniquePtr(sgTex);
+            textures[pSgTex->index] = UniquePtr(pSgTex);
         }
     }
     sg::Scene::LoadDefaultTextures(textures.size());
     sg::Scene::DefaultTextures defaultTextures = sg::Scene::GetDefaultTextures();
-    textures.emplace_back(defaultTextures.baseColor);
-    textures.emplace_back(defaultTextures.metallicRoughness);
-    textures.emplace_back(defaultTextures.normal);
-    textures.emplace_back(defaultTextures.emissive);
-    textures.emplace_back(defaultTextures.occlusion);
-    scene->SetComponents(std::move(textures));
+    textures.emplace_back(defaultTextures.pBaseColor);
+    textures.emplace_back(defaultTextures.pMetallicRoughness);
+    textures.emplace_back(defaultTextures.pNormal);
+    textures.emplace_back(defaultTextures.pEmissive);
+    textures.emplace_back(defaultTextures.pOcclusion);
+    pScene->SetComponents(std::move(textures));
 }
 
-void FastGLTFLoader::LoadGltfMaterials(sg::Scene* scene)
+void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 {
     sg::Scene::DefaultTextures defaultTextures = sg::Scene::GetDefaultTextures();
     std::vector<UniquePtr<sg::Material>> materials;
@@ -323,104 +323,104 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* scene)
     uint32_t currIndex = 0;
     for (const fastgltf::Material& mat : m_gltfAsset.materials)
     {
-        auto* sgMat            = new sg::Material(std::string(mat.name));
-        sgMat->index           = static_cast<uint32_t>(currIndex);
-        sgMat->doubleSided     = mat.doubleSided;
-        sgMat->alphaCutoff     = mat.alphaCutoff;
-        sgMat->baseColorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
-        sgMat->roughnessFactor = mat.pbrData.roughnessFactor;
-        sgMat->metallicFactor  = mat.pbrData.metallicFactor;
+        auto* pSgMat            = new sg::Material(std::string(mat.name));
+        pSgMat->index           = static_cast<uint32_t>(currIndex);
+        pSgMat->doubleSided     = mat.doubleSided;
+        pSgMat->alphaCutoff     = mat.alphaCutoff;
+        pSgMat->baseColorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+        pSgMat->roughnessFactor = mat.pbrData.roughnessFactor;
+        pSgMat->metallicFactor  = mat.pbrData.metallicFactor;
         if (mat.pbrData.baseColorTexture.has_value())
         {
             const auto& textureInfo       = mat.pbrData.baseColorTexture;
-            sgMat->texCoordSets.baseColor = textureInfo->texCoordIndex;
-            sgMat->baseColorTexture =
-                scene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->texCoordSets.baseColor = textureInfo->texCoordIndex;
+            pSgMat->m_pBaseColorTexture =
+                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
         }
         else
         {
-            sgMat->baseColorTexture = defaultTextures.baseColor;
+            pSgMat->m_pBaseColorTexture = defaultTextures.pBaseColor;
         }
 
         if (mat.pbrData.metallicRoughnessTexture.has_value())
         {
             const auto& textureInfo               = mat.pbrData.metallicRoughnessTexture;
-            sgMat->texCoordSets.metallicRoughness = textureInfo->texCoordIndex;
-            sgMat->metallicRoughnessTexture =
-                scene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->texCoordSets.metallicRoughness = textureInfo->texCoordIndex;
+            pSgMat->m_pMetallicRoughnessTexture =
+                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
         }
         else
         {
-            sgMat->metallicRoughnessTexture = defaultTextures.metallicRoughness;
+            pSgMat->m_pMetallicRoughnessTexture = defaultTextures.pMetallicRoughness;
         }
 
         if (mat.normalTexture.has_value())
         {
             const auto& textureInfo    = mat.normalTexture;
-            sgMat->texCoordSets.normal = textureInfo->texCoordIndex;
-            sgMat->normalTexture = scene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->texCoordSets.normal = textureInfo->texCoordIndex;
+            pSgMat->m_pNormalTexture = pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
         }
         else
         {
-            sgMat->normalTexture = defaultTextures.normal;
+            pSgMat->m_pNormalTexture = defaultTextures.pNormal;
         }
 
         if (mat.emissiveTexture.has_value())
         {
             const auto& textureInfo      = mat.emissiveTexture;
-            sgMat->texCoordSets.emissive = textureInfo->texCoordIndex;
-            sgMat->emissiveTexture = scene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->texCoordSets.emissive = textureInfo->texCoordIndex;
+            pSgMat->m_pEmissiveTexture = pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
         }
         else
         {
-            sgMat->emissiveTexture = defaultTextures.emissive;
+            pSgMat->m_pEmissiveTexture = defaultTextures.pEmissive;
         }
         {
-            sgMat->emissiveStrength = mat.emissiveStrength;
-            sgMat->emissiveFactor   = Vec4(glm::make_vec3(mat.emissiveFactor.data()), 0.0f);
+            pSgMat->emissiveStrength = mat.emissiveStrength;
+            pSgMat->emissiveFactor   = Vec4(glm::make_vec3(mat.emissiveFactor.data()), 0.0f);
         }
         if (mat.occlusionTexture.has_value())
         {
             const auto& textureInfo       = mat.occlusionTexture;
-            sgMat->texCoordSets.occlusion = textureInfo->texCoordIndex;
-            sgMat->occlusionTexture =
-                scene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->texCoordSets.occlusion = textureInfo->texCoordIndex;
+            pSgMat->m_pOcclusionTexture =
+                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
         }
         else
         {
-            sgMat->occlusionTexture = defaultTextures.occlusion;
+            pSgMat->m_pOcclusionTexture = defaultTextures.pOcclusion;
         }
 
         if (mat.alphaMode == fastgltf::AlphaMode::Blend)
         {
-            sgMat->alphaMode = sg::AlphaMode::Blend;
+            pSgMat->alphaMode = sg::AlphaMode::Blend;
         }
         else if (mat.alphaMode == fastgltf::AlphaMode::Mask)
         {
-            sgMat->alphaMode = sg::AlphaMode::Mask;
+            pSgMat->alphaMode = sg::AlphaMode::Mask;
         }
         else
         {
-            sgMat->alphaMode = sg::AlphaMode::Opaque;
+            pSgMat->alphaMode = sg::AlphaMode::Opaque;
         }
         // todo: support gltf extensions
 
-        sgMat->SetData();
-        materials[currIndex] = UniquePtr<sg::Material>(sgMat);
+        pSgMat->SetData();
+        materials[currIndex] = UniquePtr<sg::Material>(pSgMat);
         currIndex++;
     }
     // Push a default material at the end of the list for meshes with no material assigned
     UniquePtr<sg::Material> defaultMaterial   = sg::Material::CreateDefaultUnique();
-    defaultMaterial->baseColorTexture         = defaultTextures.baseColor;
-    defaultMaterial->metallicRoughnessTexture = defaultTextures.metallicRoughness;
-    defaultMaterial->normalTexture            = defaultTextures.normal;
-    defaultMaterial->occlusionTexture         = defaultTextures.occlusion;
-    defaultMaterial->emissiveTexture          = defaultTextures.emissive;
+    defaultMaterial->m_pBaseColorTexture         = defaultTextures.pBaseColor;
+    defaultMaterial->m_pMetallicRoughnessTexture = defaultTextures.pMetallicRoughness;
+    defaultMaterial->m_pNormalTexture            = defaultTextures.pNormal;
+    defaultMaterial->m_pOcclusionTexture         = defaultTextures.pOcclusion;
+    defaultMaterial->m_pEmissiveTexture          = defaultTextures.pEmissive;
     materials.emplace_back(defaultMaterial);
-    scene->SetComponents(std::move(materials));
+    pScene->SetComponents(std::move(materials));
 }
 
-void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
+void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
 {
     size_t totalVertexCount = 0;
     size_t totalIndexCount  = 0;
@@ -453,31 +453,31 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             Vec3 posMax{};
             Vec4 diffuseColor = Vec4(1.0f);
             // get sub mesh material
-            sg::Material* sgMaterial = nullptr;
+            sg::Material* pSgMaterial = nullptr;
             uint32_t materialIndex;
-            const auto& sgMaterials = scene->GetComponents<sg::Material>();
+            const auto& sgMaterials = pScene->GetComponents<sg::Material>();
             if (primitive.materialIndex.has_value())
             {
                 materialIndex = primitive.materialIndex.value();
-                sgMaterial    = sgMaterials[materialIndex];
+                pSgMaterial    = sgMaterials[materialIndex];
                 diffuseColor  = glm::make_vec4(
                     m_gltfAsset.materials[materialIndex].pbrData.baseColorFactor.data());
             }
             else
             {
                 materialIndex = sgMaterials.size() - 1;
-                sgMaterial    = sgMaterials.back();
+                pSgMaterial    = sgMaterials.back();
             }
 
             // Vertices
-            const float* bufferPos          = nullptr;
-            const float* bufferNormals      = nullptr;
-            const float* bufferTangents     = nullptr;
-            const float* bufferTexCoordSet0 = nullptr;
-            const float* bufferTexCoordSet1 = nullptr;
-            const void* bufferColorSet0     = nullptr;
-            const uint32_t* bufferJoints    = nullptr;
-            const float* bufferWeights      = nullptr;
+            const float* pBufferPos          = nullptr;
+            const float* pBufferNormals      = nullptr;
+            const float* pBufferTangents     = nullptr;
+            const float* pBufferTexCoordSet0 = nullptr;
+            const float* pBufferTexCoordSet1 = nullptr;
+            const void* pBufferColorSet0     = nullptr;
+            const uint32_t* pBufferJoints    = nullptr;
+            const float* pBufferWeights      = nullptr;
 
             fastgltf::ComponentType jointsBufferComponentType = fastgltf::ComponentType::Invalid;
             fastgltf::ComponentType colorBufferComponentType  = fastgltf::ComponentType::Invalid;
@@ -486,7 +486,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 fastgltf::Accessor& accessor =
                     m_gltfAsset.accessors[primitive.findAttribute("POSITION")->accessorIndex];
-                LoadAccessor<float>(accessor, bufferPos, &vertexCount);
+                LoadAccessor<float>(accessor, pBufferPos, &vertexCount);
                 auto minValues = *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.min));
                 auto maxValues = *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.max));
                 // update min max position
@@ -503,32 +503,32 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 {
                     case fastgltf::ComponentType::Float:
                     {
-                        const float* buffer;
+                        const float* pBuffer;
                         LoadAccessor<float>(
                             m_gltfAsset
                                 .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            buffer);
-                        bufferColorSet0 = buffer;
+                            pBuffer);
+                        pBufferColorSet0 = pBuffer;
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedShort:
                     {
-                        const uint16_t* buffer;
+                        const uint16_t* pBuffer;
                         LoadAccessor<uint16_t>(
                             m_gltfAsset
                                 .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            buffer);
-                        bufferColorSet0 = buffer;
+                            pBuffer);
+                        pBufferColorSet0 = pBuffer;
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedByte:
                     {
-                        const uint8_t* buffer;
+                        const uint8_t* pBuffer;
                         LoadAccessor<uint8_t>(
                             m_gltfAsset
                                 .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            buffer);
-                        bufferColorSet0 = buffer;
+                            pBuffer);
+                        pBufferColorSet0 = pBuffer;
                         break;
                     }
                     default:
@@ -543,14 +543,14 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 LoadAccessor<float>(
                     m_gltfAsset.accessors[primitive.findAttribute("NORMAL")->accessorIndex],
-                    bufferNormals);
+                    pBufferNormals);
             }
             // Get buffer data for vertex tangents
             if (primitive.findAttribute("TANGENT") != primitive.attributes.end())
             {
                 LoadAccessor<float>(
                     m_gltfAsset.accessors[primitive.findAttribute("TANGENT")->accessorIndex],
-                    bufferTangents);
+                    pBufferTangents);
             }
             // Get buffer data for vertex texture coordinates
             // glTF supports multiple sets
@@ -558,13 +558,13 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 LoadAccessor<float>(
                     m_gltfAsset.accessors[primitive.findAttribute("TEXCOORD_0")->accessorIndex],
-                    bufferTexCoordSet0);
+                    pBufferTexCoordSet0);
             }
             if (primitive.findAttribute("TEXCOORD_1") != primitive.attributes.end())
             {
                 LoadAccessor<float>(
                     m_gltfAsset.accessors[primitive.findAttribute("TEXCOORD_1")->accessorIndex],
-                    bufferTexCoordSet1);
+                    pBufferTexCoordSet1);
             }
 
             // Get buffer data for joints
@@ -572,7 +572,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 fastgltf::Accessor& accessor =
                     m_gltfAsset.accessors[primitive.findAttribute("JOINTS_0")->accessorIndex];
-                LoadAccessor<uint32_t>(accessor, bufferJoints);
+                LoadAccessor<uint32_t>(accessor, pBufferJoints);
                 jointsBufferComponentType = accessor.componentType;
             }
             // Get buffer data for joint weights
@@ -580,7 +580,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             {
                 LoadAccessor<float>(
                     m_gltfAsset.accessors[primitive.findAttribute("WEIGHTS_0")->accessorIndex],
-                    bufferWeights);
+                    pBufferWeights);
             }
             // Append data to model's vertex buffer
             for (size_t vertexIterator = 0; vertexIterator < vertexCount; ++vertexIterator)
@@ -588,7 +588,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 Vertex vertex{};
                 // position
                 auto position =
-                    bufferPos ? glm::make_vec3(&bufferPos[vertexIterator * 3]) : glm::vec3(0.0f);
+                    pBufferPos ? glm::make_vec3(&pBufferPos[vertexIterator * 3]) : glm::vec3(0.0f);
                 vertex.pos = glm::vec4(position.x, position.y, position.z, 1.0f);
                 // color
                 glm::vec3 vertexColor{1.0f};
@@ -596,29 +596,29 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 {
                     case fastgltf::ComponentType::Float:
                     {
-                        vertexColor = bufferColorSet0 ?
+                        vertexColor = pBufferColorSet0 ?
                             glm::make_vec3(&(
-                                (static_cast<const float*>(bufferColorSet0))[vertexIterator * 3])) :
+                                (static_cast<const float*>(pBufferColorSet0))[vertexIterator * 3])) :
                             glm::vec3(1.0f);
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedShort:
                     {
-                        const uint16_t* vec3 =
-                            &((static_cast<const uint16_t*>(bufferColorSet0))[vertexIterator * 3]);
+                        const uint16_t* pVec3 =
+                            &((static_cast<const uint16_t*>(pBufferColorSet0))[vertexIterator * 3]);
                         float norm  = 0xFFFF;
-                        vertexColor = bufferColorSet0 ?
-                            glm::vec3(vec3[0] / norm, vec3[1] / norm, vec3[2] / norm) :
+                        vertexColor = pBufferColorSet0 ?
+                            glm::vec3(pVec3[0] / norm, pVec3[1] / norm, pVec3[2] / norm) :
                             glm::vec3(1.0f);
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedByte:
                     {
-                        const uint8_t* vec3 =
-                            &((static_cast<const uint8_t*>(bufferColorSet0))[vertexIterator * 3]);
+                        const uint8_t* pVec3 =
+                            &((static_cast<const uint8_t*>(pBufferColorSet0))[vertexIterator * 3]);
                         float norm  = 0xFF;
-                        vertexColor = bufferColorSet0 ?
-                            glm::vec3(vec3[0] / norm, vec3[1] / norm, vec3[2] / norm) :
+                        vertexColor = pBufferColorSet0 ?
+                            glm::vec3(pVec3[0] / norm, pVec3[1] / norm, pVec3[2] / norm) :
                             glm::vec3(1.0f);
                         break;
                     }
@@ -631,27 +631,27 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                     glm::vec4(vertexColor.x, vertexColor.y, vertexColor.z, 1.0f) * diffuseColor;
                 // normal
                 vertex.normal = glm::normalize(glm::vec4(
-                    bufferNormals ?
-                        glm::vec4(glm::make_vec3(&bufferNormals[vertexIterator * 3]), 0.0f) :
+                    pBufferNormals ?
+                        glm::vec4(glm::make_vec3(&pBufferNormals[vertexIterator * 3]), 0.0f) :
                         glm::vec4(0.0f)));
                 // uv0
-                auto uv0   = bufferTexCoordSet0 ?
-                      glm::make_vec2(&bufferTexCoordSet0[vertexIterator * 2]) :
+                auto uv0   = pBufferTexCoordSet0 ?
+                      glm::make_vec2(&pBufferTexCoordSet0[vertexIterator * 2]) :
                       glm::vec3(0.0f);
                 vertex.uv0 = uv0;
                 // uv1
-                auto uv1   = bufferTexCoordSet1 ?
-                      glm::make_vec2(&bufferTexCoordSet1[vertexIterator * 2]) :
+                auto uv1   = pBufferTexCoordSet1 ?
+                      glm::make_vec2(&pBufferTexCoordSet1[vertexIterator * 2]) :
                       glm::vec3(0.0f);
                 vertex.uv1 = uv1;
                 // tangent
-                glm::vec4 tangent = bufferTangents ?
-                    glm::make_vec4(&bufferTangents[vertexIterator * 4]) :
+                glm::vec4 tangent = pBufferTangents ?
+                    glm::make_vec4(&pBufferTangents[vertexIterator * 4]) :
                     glm::vec4(0.0f);
                 vertex.tangent =
                     Vec4(glm::vec3(tangent.x, tangent.y, tangent.z) * tangent.w, tangent.w);
                 // joint indices and joint weights
-                if (bufferJoints && bufferWeights)
+                if (pBufferJoints && pBufferWeights)
                 {
                     switch (jointsBufferComponentType)
                     {
@@ -659,23 +659,23 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                         case fastgltf::ComponentType::UnsignedByte:
                             vertex.joint0 =
                                 glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int8_t*>(
-                                    bufferJoints)[vertexIterator * 4])));
+                                    pBufferJoints)[vertexIterator * 4])));
                             break;
                         case fastgltf::ComponentType::Short:
                         case fastgltf::ComponentType::UnsignedShort:
                             vertex.joint0 =
                                 glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int16_t*>(
-                                    bufferJoints)[vertexIterator * 4])));
+                                    pBufferJoints)[vertexIterator * 4])));
                             break;
                         case fastgltf::ComponentType::Int:
                         case fastgltf::ComponentType::UnsignedInt:
                             vertex.joint0 =
                                 glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int32_t*>(
-                                    bufferJoints)[vertexIterator * 4])));
+                                    pBufferJoints)[vertexIterator * 4])));
                             break;
                         default: LOGE("data type of joints buffer not found"); break;
                     }
-                    vertex.weight0 = glm::make_vec4(&bufferWeights[vertexIterator * 4]);
+                    vertex.weight0 = glm::make_vec4(&pBufferWeights[vertexIterator * 4]);
                 }
                 m_vertices[m_vertexPos] = vertex;
                 m_vertexPos++;
@@ -689,33 +689,33 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
                 {
                     case fastgltf::ComponentType::UnsignedInt:
                     {
-                        const uint32_t* bufferIndices = nullptr;
-                        LoadAccessor<uint32_t>(accessor, bufferIndices);
+                        const uint32_t* pBufferIndices = nullptr;
+                        LoadAccessor<uint32_t>(accessor, pBufferIndices);
                         for (size_t index = 0; index < accessor.count; index++)
                         {
-                            m_indices[m_indexPos] = bufferIndices[index] + vertexStart;
+                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
                             m_indexPos++;
                         }
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedShort:
                     {
-                        const uint16_t* bufferIndices = nullptr;
-                        LoadAccessor<uint16_t>(accessor, bufferIndices);
+                        const uint16_t* pBufferIndices = nullptr;
+                        LoadAccessor<uint16_t>(accessor, pBufferIndices);
                         for (size_t index = 0; index < accessor.count; index++)
                         {
-                            m_indices[m_indexPos] = bufferIndices[index] + vertexStart;
+                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
                             m_indexPos++;
                         }
                         break;
                     }
                     case fastgltf::ComponentType::UnsignedByte:
                     {
-                        const uint8_t* bufferIndices = nullptr;
-                        LoadAccessor<uint8_t>(accessor, bufferIndices);
+                        const uint8_t* pBufferIndices = nullptr;
+                        LoadAccessor<uint8_t>(accessor, pBufferIndices);
                         for (size_t index = 0; index < accessor.count; index++)
                         {
-                            m_indices[m_indexPos] = bufferIndices[index] + vertexStart;
+                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
                             m_indexPos++;
                         }
                         break;
@@ -729,20 +729,20 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* scene)
             // create sub mesh
             UniquePtr<sg::SubMesh> subMesh =
                 MakeUnique<sg::SubMesh>(subMeshName, indexStart, indexCount, vertexCount);
-            subMesh->SetMaterial(materialIndex, sgMaterial);
+            subMesh->SetMaterial(materialIndex, pSgMaterial);
             subMesh->SetAABB(posMin, posMax);
 
             sgMesh->AddSubMesh(subMesh.Get());
             sgMesh->SetAABB(posMin, posMax);
 
-            scene->AddComponent(std::move(subMesh));
+            pScene->AddComponent(std::move(subMesh));
             subMeshIndex++;
         }
-        scene->AddComponent(std::move(sgMesh));
+        pScene->AddComponent(std::move(sgMesh));
     }
 }
 
-void FastGLTFLoader::LoadGltfRenderableNodes(sg::Scene* scene)
+void FastGLTFLoader::LoadGltfRenderableNodes(sg::Scene* pScene)
 {
     std::vector<UniquePtr<sg::Node>> sgNodes;
     sgNodes.reserve(m_gltfAsset.nodes.size());
@@ -752,22 +752,22 @@ void FastGLTFLoader::LoadGltfRenderableNodes(sg::Scene* scene)
     for (size_t nodeIndex : gltfScene.nodeIndices)
     {
         //        const fastgltf::Node& node = m_gltfAsset.nodes[nodeIndex];
-        LoadGltfRenderableNodes(nodeIndex, nullptr, sgNodes, scene);
+        LoadGltfRenderableNodes(nodeIndex, nullptr, sgNodes, pScene);
     }
 
-    scene->SetNodes(std::move(sgNodes));
+    pScene->SetNodes(std::move(sgNodes));
 }
 
 void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
-                                             sg::Node* parent,
+                                             sg::Node* pParent,
                                              std::vector<UniquePtr<sg::Node>>& sgNodes,
-                                             sg::Scene* scene)
+                                             sg::Scene* pScene)
 {
     const auto& gltfNode = m_gltfAsset.nodes[nodeIndex];
 
     auto newNode   = MakeUnique<sg::Node>(nodeIndex, std::string(gltfNode.name));
     auto transform = MakeUnique<sg::Transform>(*newNode);
-    newNode->SetParent(parent);
+    newNode->SetParent(pParent);
 
     auto TRS = std::get_if<fastgltf::TRS>(&gltfNode.transform);
     if (TRS->translation.size() == 3)
@@ -790,27 +790,27 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
     {
         for (size_t child : gltfNode.children)
         {
-            LoadGltfRenderableNodes(child, newNode.Get(), sgNodes, scene);
+            LoadGltfRenderableNodes(child, newNode.Get(), sgNodes, pScene);
         }
     }
 
     if (gltfNode.meshIndex.has_value())
     {
         newNode->AddComponent(transform.Get());
-        scene->AddComponent(transform);
+        pScene->AddComponent(transform);
 
-        auto* sgMesh = scene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
-        newNode->AddComponent(sgMesh);
-        newNode->SetData(scene->GetRenderableCount(),
+        auto* pSgMesh = pScene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
+        newNode->AddComponent(pSgMesh);
+        newNode->SetData(pScene->GetRenderableCount(),
                          newNode->GetComponent<sg::Transform>()->GetWorldMatrix());
-        sgMesh->AddNode(newNode.Get());
+        pSgMesh->AddNode(newNode.Get());
         // store
-        scene->AddRenderableNode(newNode.Get());
+        pScene->AddRenderableNode(newNode.Get());
     }
 
-    if (parent)
+    if (pParent)
     {
-        parent->AddChild(newNode.Get());
+        pParent->AddChild(newNode.Get());
     }
     sgNodes.push_back(newNode);
 }

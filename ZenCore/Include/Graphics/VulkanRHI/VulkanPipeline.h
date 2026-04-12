@@ -136,15 +136,15 @@ using VulkanDescriptorPoolsIt = VulkanDescriptorPools::iterator;
 class VulkanDescriptorPoolManager
 {
 public:
-    explicit VulkanDescriptorPoolManager(VulkanDevice* device) : m_device(device) {}
+    explicit VulkanDescriptorPoolManager(VulkanDevice* pDevice) : m_pDevice(pDevice) {}
 
     VkDescriptorPool GetOrCreateDescriptorPool(const VulkanDescriptorPoolKey& poolKey,
-                                               VulkanDescriptorPoolsIt* iter);
+                                               VulkanDescriptorPoolsIt* pIter);
 
     void UnRefDescriptorPool(VulkanDescriptorPoolsIt poolsIter, VkDescriptorPool pool);
 
 private:
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     VulkanDescriptorPools m_pools;
 };
 
@@ -211,7 +211,7 @@ public:
 
     VkPipelineLayout GetVkPipelineLayout() const
     {
-        return TO_VK_SHADER(m_shader)->GetVkPipelineLayout();
+        return TO_VK_SHADER(m_pShader)->GetVkPipelineLayout();
     }
 
     VkShaderStageFlags GetPushConstantsStageFlags() const

@@ -12,10 +12,10 @@ namespace zen
 {
 static const char* GetResultString(VkResult result)
 {
-    const char* resultString = "unknown";
+    const char* pResultString = "unknown";
 
 #define STR(a) \
-    case a: resultString = #a; break;
+    case a: pResultString = #a; break;
 
     switch (result)
     {
@@ -68,10 +68,10 @@ static const char* GetResultString(VkResult result)
         default: break;
     }
 #undef STR
-    return resultString;
+    return pResultString;
 }
 
-static bool CheckVkResult(VkResult result, const char* file, int32_t line)
+static bool CheckVkResult(VkResult result, const char* pFile, int32_t line)
 {
     if (result == VK_SUCCESS)
     {
@@ -80,7 +80,7 @@ static bool CheckVkResult(VkResult result, const char* file, int32_t line)
 
     if (result < 0)
     {
-        LOGE("{}({}): \n Vulkan Error : {}", file, line, GetResultString(result));
+        LOGE("{}({}): \n Vulkan Error : {}", pFile, line, GetResultString(result));
         ASSERT(!"Critical Vulkan Error");
 
         return true;

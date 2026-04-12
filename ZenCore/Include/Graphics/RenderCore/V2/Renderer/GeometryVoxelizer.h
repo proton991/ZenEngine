@@ -10,8 +10,8 @@ class RenderScene;
 class GeometryVoxelizer : public VoxelizerBase
 {
 public:
-    GeometryVoxelizer(RenderDevice* renderDevice, RHIViewport* viewport) :
-        VoxelizerBase(renderDevice, viewport)
+    GeometryVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
+        VoxelizerBase(pRenderDevice, pViewport)
     {}
 
     void Init() final;
@@ -35,11 +35,11 @@ protected:
 
     void UpdateUniformData() final;
 
-    RHIBuffer* m_voxelVBO;
+    RHIBuffer* m_pVoxelVBO;
     struct
     {
-        GraphicsPass* voxelization;
-        GraphicsPass* voxelDraw;
+        GraphicsPass* pVoxelization;
+        GraphicsPass* pVoxelDraw;
     } m_gfxPasses;
 };
 } // namespace zen::rc

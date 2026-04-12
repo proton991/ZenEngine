@@ -172,14 +172,14 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
                                                 VkRenderPass renderPass)
 {
     VkFramebuffer framebuffer{VK_NULL_HANDLE};
-    VulkanViewport* viewport = GVulkanRHI->GetCurrentViewport();
+    VulkanViewport* pViewport = GVulkanRHI->GetCurrentViewport();
     const uint32_t fbWidth   = pRenderingLayout->renderArea.Width();
     const uint32_t fbHeight  = pRenderingLayout->renderArea.Height();
 
-    if ((viewport != nullptr) &&
-        (fbWidth == viewport->GetWidth() && fbHeight == viewport->GetHeight()))
+    if ((pViewport != nullptr) &&
+        (fbWidth == pViewport->GetWidth() && fbHeight == pViewport->GetHeight()))
     {
-        framebuffer = viewport->GetCompatibleFramebufferForBackBuffer(renderPass);
+        framebuffer = pViewport->GetCompatibleFramebufferForBackBuffer(renderPass);
     }
     else
     {
@@ -237,10 +237,10 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
 //     vkDestroyRenderPass(GetVkDevice(), renderPass, nullptr);
 // }
 
-VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
+VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* pVkRHI,
                                      VkRenderPass renderPass,
                                      const RHIFramebufferInfo& fbInfo) :
-    m_vkRHI(vkRHI),
+    m_pVkRHI(pVkRHI),
     m_renderPass(renderPass),
     m_width(fbInfo.width),
     m_height(fbInfo.height),
@@ -250,8 +250,8 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     imageViews.resize(fbInfo.numRenderTarget);
     for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {
-        VulkanTexture* texture = TO_VK_TEXTURE(fbInfo.renderTargets[i]);
-        imageViews[i]          = texture->GetVkImageView();
+        VulkanTexture* pTexture = TO_VK_TEXTURE(fbInfo.pRenderTargets[i]);
+        imageViews[i]          = pTexture->GetVkImageView();
     }
     VkFramebufferCreateInfo framebufferCI;
     InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
@@ -261,7 +261,7 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* vkRHI,
     framebufferCI.layers          = fbInfo.depth;
     framebufferCI.attachmentCount = imageViews.size();
     framebufferCI.pAttachments    = imageViews.data();
-    VKCHECK(vkCreateFramebuffer(vkRHI->GetVkDevice(), &framebufferCI, nullptr, &m_framebuffer));
+    VKCHECK(vkCreateFramebuffer(m_pVkRHI->GetVkDevice(), &framebufferCI, nullptr, &m_framebuffer));
 }
 
 // FramebufferHandle VulkanRHI::CreateFramebuffer(RenderPassHandle renderPassHandle,

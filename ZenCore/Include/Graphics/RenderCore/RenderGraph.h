@@ -192,11 +192,11 @@ public:
 
     void ReadFromInternalBuffer(const Tag& tag, val::BufferUsage usage);
 
-    void ReadFromExternalImage(const Tag& tag, val::Image* image);
+    void ReadFromExternalImage(const Tag& tag, val::Image* pImage);
 
     void ReadFromExternalImages(const Tag& tag, const std::vector<val::Image*>& images);
 
-    void ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer);
+    void ReadFromExternalBuffer(const Tag& tag, val::Buffer* pBuffer);
 
     const auto& GetIndex() const
     {
@@ -250,9 +250,9 @@ public:
                  VkShaderStageFlagBits shaderStage,
                  const std::string& shaderResourceName);
 
-    void BindSampler(const Tag& tag, val::Sampler* sampler)
+    void BindSampler(const Tag& tag, val::Sampler* pSampler)
     {
-        m_samplerBinding[tag] = sampler;
+        m_samplerBinding[tag] = pSampler;
     }
 
     auto& GetSRDBinding() const
@@ -331,12 +331,12 @@ struct ResourceState
 
 struct RDGPhysicalPass
 {
-    val::PipelineLayout* pipelineLayout{nullptr};
+    val::PipelineLayout* pPipelineLayout{nullptr};
     val::PipelineState pipelineState{};
-    val::GraphicsPipeline* graphicPipeline{nullptr};
-    val::RenderPass* renderPass{nullptr};
+    val::GraphicsPipeline* pGraphicPipeline{nullptr};
+    val::RenderPass* pRenderPass{nullptr};
     std::vector<VkDescriptorSet> descriptorSets;
-    val::Framebuffer* framebuffer;
+    val::Framebuffer* pFramebuffer;
     uint32_t index{0};
     bool descriptorSetsUpdated{false};
 
@@ -361,7 +361,7 @@ public:
 
     void Compile();
 
-    void Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext);
+    void Execute(val::CommandBuffer* pCommandBuffer, RenderContext* pRenderContext);
 
     const auto& GetResourceIndexMap() const
     {
@@ -399,23 +399,23 @@ private:
 
     void ResolveResourceState();
 
-    void BuildPhysicalImage(RDGImage* image);
+    void BuildPhysicalImage(RDGImage* pImage);
 
-    void BuildPhysicalBuffer(RDGBuffer* buffer);
+    void BuildPhysicalBuffer(RDGBuffer* pBuffer);
 
     void BuildPhysicalResources();
 
     void BuildPhysicalPasses();
 
-    void EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
+    void EmitPipelineBarrier(val::CommandBuffer* pCommandBuffer,
                              const HashMap<Tag, ImageTransition>& imageTransitions,
                              const HashMap<Tag, BufferTransition>& bufferTransitions);
 
-    void BeforeExecuteSetup(val::CommandBuffer* commandBuffer);
+    void BeforeExecuteSetup(val::CommandBuffer* pCommandBuffer);
 
-    void CopyToPresentImage(val::CommandBuffer* commandBuffer, const val::Image& presentImage);
+    void CopyToPresentImage(val::CommandBuffer* pCommandBuffer, const val::Image& presentImage);
 
-    void RunPass(RDGPhysicalPass& pass, val::CommandBuffer* primaryCmdBuffer);
+    void RunPass(RDGPhysicalPass& pass, val::CommandBuffer* pPrimaryCmdBuffer);
 
     void UpdateDescriptorSets(RDGPhysicalPass& pass);
 

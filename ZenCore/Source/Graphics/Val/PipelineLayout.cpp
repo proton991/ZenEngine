@@ -9,9 +9,9 @@ PipelineLayout::PipelineLayout(const Device& device,
                                const std::vector<ShaderModule*>& shaderModules) :
     DeviceObject(device), m_shaderModules(shaderModules)
 {
-    for (auto* shaderModule : shaderModules)
+    for (auto* pShaderModule : shaderModules)
     {
-        for (const auto& shaderResource : shaderModule->GetResources())
+        for (const auto& shaderResource : pShaderModule->GetResources())
         {
             std::string key = shaderResource.name;
             if (shaderResource.type == ShaderResourceType::Input ||

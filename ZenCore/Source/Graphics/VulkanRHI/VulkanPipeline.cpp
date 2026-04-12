@@ -73,13 +73,9 @@ RHIPipeline* VulkanRHI::CreatePipeline(const RHIGfxPipelineCreateInfo& createInf
     return GDynamicRHI->GetResourceFactory()->CreatePipeline(createInfo);
 }
 
-void VulkanRHI::DestroyPipeline(RHIPipeline* pipeline)
+void VulkanRHI::DestroyPipeline(RHIPipeline* pPipeline)
 {
-    if (pipeline->GetResourceTag() == "")
-    {
-        int a = 1;
-    }
-    pipeline->ReleaseReference();
+    pPipeline->ReleaseReference();
     // vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
     // VersatileResource::Free(m_resourceAllocator, pipeline);
 }
@@ -90,9 +86,9 @@ RHIShader* VulkanRHI::CreateShader(const RHIShaderCreateInfo& createInfo)
     return GDynamicRHI->GetResourceFactory()->CreateShader(createInfo);
 }
 
-void VulkanRHI::DestroyShader(RHIShader* shader)
+void VulkanRHI::DestroyShader(RHIShader* pShader)
 {
-    shader->ReleaseReference();
+    pShader->ReleaseReference();
 }
 
 VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
@@ -919,13 +915,13 @@ void VulkanPipeline::InitGraphics()
     dynamicStateCI.dynamicStateCount = numDynamicStates;
     dynamicStateCI.pDynamicStates    = numDynamicStates == 0 ? nullptr : vkDynamicStates.data();
 
-    VulkanShader* shader = TO_VK_SHADER(m_shader);
+    VulkanShader* pShader = TO_VK_SHADER(m_pShader);
 
     VkGraphicsPipelineCreateInfo pipelineCI;
     InitVkStruct(pipelineCI, VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO);
-    pipelineCI.stageCount          = shader->GetNumShaderStages();
-    pipelineCI.pStages             = shader->GetStageCreateInfoData();
-    pipelineCI.pVertexInputState   = shader->GetVertexInputStateCreateInfoData();
+    pipelineCI.stageCount          = pShader->GetNumShaderStages();
+    pipelineCI.pStages             = pShader->GetStageCreateInfoData();
+    pipelineCI.pVertexInputState   = pShader->GetVertexInputStateCreateInfoData();
     pipelineCI.pInputAssemblyState = &IAStateCI;
     pipelineCI.pViewportState      = &VPStateCI;
     pipelineCI.pRasterizationState = &rasterizationCI;
@@ -933,7 +929,7 @@ void VulkanPipeline::InitGraphics()
     pipelineCI.pDepthStencilState  = &DSStateCI;
     pipelineCI.pColorBlendState    = &CBStateCI;
     pipelineCI.pDynamicState       = &dynamicStateCI;
-    pipelineCI.layout              = shader->GetVkPipelineLayout();
+    pipelineCI.layout              = pShader->GetVkPipelineLayout();
     pipelineCI.subpass             = m_subpassIdx;
 
     HeapVector<VkFormat> colorAttachmentFormats;
@@ -969,22 +965,22 @@ void VulkanPipeline::InitGraphics()
     VKCHECK(vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
                                       &m_vkPipeline));
 
-    m_pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
+    m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
 
 void VulkanPipeline::InitCompute()
 {
-    VulkanShader* shader = TO_VK_SHADER(m_shader);
+    VulkanShader* pShader = TO_VK_SHADER(m_pShader);
 
     VkComputePipelineCreateInfo pipelineCI{};
     pipelineCI.sType  = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipelineCI.stage  = shader->GetStageCreateInfoData()[0];
-    pipelineCI.layout = shader->GetVkPipelineLayout();
+    pipelineCI.stage  = pShader->GetStageCreateInfoData()[0];
+    pipelineCI.layout = pShader->GetVkPipelineLayout();
 
     VkPipeline computePipeline{VK_NULL_HANDLE};
     VKCHECK(vkCreateComputePipelines(GVulkanRHI->GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
                                      &m_vkPipeline));
-    m_pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
+    m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
 
 // RHIPipeline* VulkanRHI::CreateGfxPipeline(RHIShader* shaderHandle,
@@ -1201,7 +1197,7 @@ void VulkanPipeline::InitCompute()
 
 VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
     const VulkanDescriptorPoolKey& poolKey,
-    VulkanDescriptorPoolsIt* iter)
+    VulkanDescriptorPoolsIt* pIter)
 {
     auto existed = m_pools.find(poolKey);
     if (existed != m_pools.end())
@@ -1211,8 +1207,8 @@ VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
             uint32_t descriptorCount = kv.second;
             if (descriptorCount < RHIOptions::GetInstance().MaxDescriptorSetPerPool())
             {
-                *iter = existed;
-                (*iter)->second[kv.first]++;
+                *pIter = existed;
+                (*pIter)->second[kv.first]++;
                 return kv.first;
             }
         }
@@ -1222,98 +1218,98 @@ VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
     uint32_t poolSizeCount = 0;
     {
         const auto MaxDescriptorPerPool = RHIOptions::GetInstance().MaxDescriptorSetPerPool();
-        auto* currPoolSize              = poolSizes;
+        auto* pCurrPoolSize              = poolSizes;
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eSampler)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLER;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eSampler)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eTexture)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eTexture)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eSamplerWithTexture)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eSamplerWithTexture)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eImage)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eImage)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eTextureBuffer)] ||
             poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eSamplerWithTextureBuffer)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+            pCurrPoolSize->descriptorCount =
                 (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eTextureBuffer)] +
                  poolKey.descriptorCount[ToUnderlying(
                      RHIShaderResourceType::eSamplerWithTextureBuffer)]) *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eImageBuffer)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eImageBuffer)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eUniformBuffer)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eUniformBuffer)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eStorageBuffer)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eStorageBuffer)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         if (poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eInputAttachment)])
         {
-            *currPoolSize      = {};
-            currPoolSize->type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-            currPoolSize->descriptorCount =
+            *pCurrPoolSize      = {};
+            pCurrPoolSize->type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+            pCurrPoolSize->descriptorCount =
                 poolKey.descriptorCount[ToUnderlying(RHIShaderResourceType::eInputAttachment)] *
                 MaxDescriptorPerPool;
-            currPoolSize++;
+            pCurrPoolSize++;
             poolSizeCount++;
         }
         VERIFY_EXPR(poolSizeCount <= ToUnderlying(RHIShaderResourceType::eMax));
@@ -1329,7 +1325,7 @@ VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
     poolCI.poolSizeCount = poolSizeCount;
 
     VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
-    VKCHECK(vkCreateDescriptorPool(m_device->GetVkHandle(), &poolCI, nullptr, &descriptorPool));
+    VKCHECK(vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &descriptorPool));
 
     if (existed == m_pools.end())
     {
@@ -1338,7 +1334,7 @@ VkDescriptorPool VulkanDescriptorPoolManager::GetOrCreateDescriptorPool(
     }
     HashMap<VkDescriptorPool, uint32_t>& poolDescriptorCount = existed->second;
     poolDescriptorCount[descriptorPool]++;
-    *iter = existed;
+    *pIter = existed;
     return descriptorPool;
 }
 
@@ -1349,7 +1345,7 @@ void VulkanDescriptorPoolManager::UnRefDescriptorPool(VulkanDescriptorPoolsIt po
     poolDescriptorIter->second--;
     if (poolDescriptorIter->second == 0)
     {
-        vkDestroyDescriptorPool(m_device->GetVkHandle(), pool, nullptr);
+        vkDestroyDescriptorPool(m_pDevice->GetVkHandle(), pool, nullptr);
         poolsIter->second.erase(pool);
         if (poolsIter->second.empty())
         {
@@ -1376,7 +1372,7 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
             case RHIShaderResourceType::eSampler:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
@@ -1384,16 +1380,16 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
                     imageInfo.sampler     = TO_VK_SAMPLER(srb.resources[j])->GetVkSampler();
                     imageInfo.imageView   = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                writes[i].pImageInfo     = imageInfos;
+                writes[i].pImageInfo     = pImageInfos;
             }
             break;
             case RHIShaderResourceType::eTexture:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
@@ -1401,17 +1397,17 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
                     imageInfo.sampler     = VK_NULL_HANDLE;
                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                writes[i].pImageInfo     = imageInfos;
+                writes[i].pImageInfo     = pImageInfos;
             }
             break;
             case RHIShaderResourceType::eSamplerWithTexture:
             {
                 VERIFY_EXPR(srb.resources.size() % 2 == 0 && srb.resources.size() >= 2);
                 numDescriptors = srb.resources.size() / 2;
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
@@ -1419,16 +1415,16 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
                     imageInfo.sampler   = TO_VK_SAMPLER(srb.resources[j * 2 + 0])->GetVkSampler();
                     imageInfo.imageView = TO_VK_TEXTURE(srb.resources[j * 2 + 1])->GetVkImageView();
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-                writes[i].pImageInfo     = imageInfos;
+                writes[i].pImageInfo     = pImageInfos;
             }
             break;
             case RHIShaderResourceType::eImage:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
@@ -1436,112 +1432,112 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
                     imageInfo.sampler     = VK_NULL_HANDLE;
                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                writes[i].pImageInfo     = imageInfos;
+                writes[i].pImageInfo     = pImageInfos;
             }
             break;
             case RHIShaderResourceType::eTextureBuffer:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorBufferInfo* bufferInfos =
+                VkDescriptorBufferInfo* pBufferInfos =
                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
-                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+                VkBufferView* pBufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
-                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
+                    VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
                     VkDescriptorBufferInfo bufferInfo{};
-                    bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
-                    bufferInfo.range  = vulkanBuffer->GetRequiredSize();
-                    bufferViews[j]    = vulkanBuffer->GetVkBufferView();
-                    bufferInfos[j]    = bufferInfo;
+                    bufferInfo.buffer = pVulkanBuffer->GetVkBuffer();
+                    bufferInfo.range  = pVulkanBuffer->GetRequiredSize();
+                    pBufferViews[j]    = pVulkanBuffer->GetVkBufferView();
+                    pBufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-                writes[i].pBufferInfo      = bufferInfos;
-                writes[i].pTexelBufferView = bufferViews;
+                writes[i].pBufferInfo      = pBufferInfos;
+                writes[i].pTexelBufferView = pBufferViews;
             }
             break;
             case RHIShaderResourceType::eSamplerWithTextureBuffer:
             {
                 VERIFY_EXPR(srb.resources.size() % 2 == 0 && srb.resources.size() >= 2);
                 numDescriptors = srb.resources.size() / 2;
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
-                VkDescriptorBufferInfo* bufferInfos =
+                VkDescriptorBufferInfo* pBufferInfos =
                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
-                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+                VkBufferView* pBufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
                     VkDescriptorImageInfo imageInfo{};
                     imageInfo.sampler     = TO_VK_SAMPLER(srb.resources[j * 2 + 0])->GetVkSampler();
                     imageInfo.imageView   = VK_NULL_HANDLE;
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
 
-                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j * 2 + 1]);
+                    VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(srb.resources[j * 2 + 1]);
                     VkDescriptorBufferInfo bufferInfo{};
-                    bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
-                    bufferInfo.range  = vulkanBuffer->GetRequiredSize();
-                    bufferViews[j]    = vulkanBuffer->GetVkBufferView();
-                    bufferInfos[j]    = bufferInfo;
+                    bufferInfo.buffer = pVulkanBuffer->GetVkBuffer();
+                    bufferInfo.range  = pVulkanBuffer->GetRequiredSize();
+                    pBufferViews[j]    = pVulkanBuffer->GetVkBufferView();
+                    pBufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-                writes[i].pImageInfo       = imageInfos;
-                writes[i].pBufferInfo      = bufferInfos;
-                writes[i].pTexelBufferView = bufferViews;
+                writes[i].pImageInfo       = pImageInfos;
+                writes[i].pBufferInfo      = pBufferInfos;
+                writes[i].pTexelBufferView = pBufferViews;
             }
             break;
             case RHIShaderResourceType::eImageBuffer:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorBufferInfo* bufferInfos =
+                VkDescriptorBufferInfo* pBufferInfos =
                     ALLOCA_ARRAY(VkDescriptorBufferInfo, numDescriptors);
-                VkBufferView* bufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
+                VkBufferView* pBufferViews = ALLOCA_ARRAY(VkBufferView, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
-                    VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
+                    VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(srb.resources[j]);
                     VkDescriptorBufferInfo bufferInfo{};
-                    bufferInfo.buffer = vulkanBuffer->GetVkBuffer();
-                    bufferInfo.range  = vulkanBuffer->GetRequiredSize();
-                    bufferViews[j]    = vulkanBuffer->GetVkBufferView();
-                    bufferInfos[j]    = bufferInfo;
+                    bufferInfo.buffer = pVulkanBuffer->GetVkBuffer();
+                    bufferInfo.range  = pVulkanBuffer->GetRequiredSize();
+                    pBufferViews[j]    = pVulkanBuffer->GetVkBufferView();
+                    pBufferInfos[j]    = bufferInfo;
                 }
                 writes[i].descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-                writes[i].pBufferInfo      = bufferInfos;
-                writes[i].pTexelBufferView = bufferViews;
+                writes[i].pBufferInfo      = pBufferInfos;
+                writes[i].pTexelBufferView = pBufferViews;
             }
             break;
             case RHIShaderResourceType::eUniformBuffer:
             {
-                VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
-                VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+                VulkanBuffer* pVulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
+                VkDescriptorBufferInfo* pBufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
 
-                *bufferInfo        = {};
-                bufferInfo->buffer = vulkanBuffer->GetVkBuffer();
-                bufferInfo->range  = vulkanBuffer->GetRequiredSize();
+                *pBufferInfo        = {};
+                pBufferInfo->buffer = pVulkanBuffer->GetVkBuffer();
+                pBufferInfo->range  = pVulkanBuffer->GetRequiredSize();
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                writes[i].pBufferInfo    = bufferInfo;
+                writes[i].pBufferInfo    = pBufferInfo;
             }
             break;
             case RHIShaderResourceType::eStorageBuffer:
             {
-                VulkanBuffer* vulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
-                VkDescriptorBufferInfo* bufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
+                VulkanBuffer* pVulkanBuffer         = TO_VK_BUFFER(srb.resources[0]);
+                VkDescriptorBufferInfo* pBufferInfo = ALLOCA_SINGLE(VkDescriptorBufferInfo);
 
-                *bufferInfo        = {};
-                bufferInfo->buffer = vulkanBuffer->GetVkBuffer();
-                bufferInfo->range  = vulkanBuffer->GetRequiredSize();
+                *pBufferInfo        = {};
+                pBufferInfo->buffer = pVulkanBuffer->GetVkBuffer();
+                pBufferInfo->range  = pVulkanBuffer->GetRequiredSize();
 
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                writes[i].pBufferInfo    = bufferInfo;
+                writes[i].pBufferInfo    = pBufferInfo;
             }
             break;
             case RHIShaderResourceType::eInputAttachment:
             {
                 numDescriptors = srb.resources.size();
-                VkDescriptorImageInfo* imageInfos =
+                VkDescriptorImageInfo* pImageInfos =
                     ALLOCA_ARRAY(VkDescriptorImageInfo, numDescriptors);
                 for (uint32_t j = 0; j < numDescriptors; j++)
                 {
@@ -1549,10 +1545,10 @@ void VulkanDescriptorSet::Update(const HeapVector<RHIShaderResourceBinding>& res
                     imageInfo.sampler     = VK_NULL_HANDLE;
                     imageInfo.imageView   = TO_VK_TEXTURE(srb.resources[j])->GetVkImageView();
                     imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfos[j]         = imageInfo;
+                    pImageInfos[j]         = imageInfo;
                 }
                 writes[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-                writes[i].pImageInfo     = imageInfos;
+                writes[i].pImageInfo     = pImageInfos;
             }
             break;
             default:
@@ -1575,25 +1571,25 @@ VulkanDescriptorSet::VulkanDescriptorSet(const RHIShader* pShader, uint32_t setI
 
 void VulkanDescriptorSet::Init()
 {
-    const VulkanShader* shader            = TO_CVK_SHADER(m_pShader);
-    VulkanDescriptorPoolManager* poolMngr = GVulkanRHI->GetDescriptorPoolManager();
+    const VulkanShader* pShader            = TO_CVK_SHADER(m_pShader);
+    VulkanDescriptorPoolManager* pPoolMngr = GVulkanRHI->GetDescriptorPoolManager();
     VulkanDescriptorPoolsIt iter{};
     VkDescriptorPool pool =
-        poolMngr->GetOrCreateDescriptorPool(shader->GetDescriptorPoolKey(), &iter);
+        pPoolMngr->GetOrCreateDescriptorPool(pShader->GetDescriptorPoolKey(), &iter);
     VERIFY_EXPR(pool != VK_NULL_HANDLE);
 
     VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
     InitVkStruct(descriptorSetAllocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
     descriptorSetAllocateInfo.descriptorPool     = pool;
     descriptorSetAllocateInfo.descriptorSetCount = 1;
-    descriptorSetAllocateInfo.pSetLayouts = &shader->GetDescriptorSetLayoutData()[m_setIndex];
+    descriptorSetAllocateInfo.pSetLayouts = &pShader->GetDescriptorSetLayoutData()[m_setIndex];
 
     VkDescriptorSet vkDescriptorSet{VK_NULL_HANDLE};
     VkResult result = vkAllocateDescriptorSets(GVulkanRHI->GetVkDevice(),
                                                &descriptorSetAllocateInfo, &vkDescriptorSet);
     if (result != VK_SUCCESS)
     {
-        poolMngr->UnRefDescriptorPool(iter, pool);
+        pPoolMngr->UnRefDescriptorPool(iter, pool);
         LOGE("Failed to allocate descriptor set");
     }
 

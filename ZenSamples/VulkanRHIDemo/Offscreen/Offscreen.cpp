@@ -206,7 +206,7 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxX = OFFSCREEN_TEXTURE_DIM;
         vp.maxY = OFFSCREEN_TEXTURE_DIM;
 
-        auto* pass =
+        auto* pPass =
             m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreenShaded, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(
             pass, m_offscreenTextures.color, RHITextureUsage::eColorAttachment,
@@ -244,7 +244,7 @@ void OffscreenApp::BuildRenderGraph()
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.mirror, area, clearValues, true);
+        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.mirror, area, clearValues, true);
         m_rdg->DeclareTextureAccessForPass(pass, m_offscreenTextures.color, RHITextureUsage::eSampled,
                                            RHITextureSubResourceRange::Color(),
                                            RHIAccessMode::eRead);

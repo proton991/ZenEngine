@@ -20,7 +20,7 @@ class FastGLTFLoader
 public:
     FastGLTFLoader();
 
-    void LoadFromFile(const std::string& path, sg::Scene* scene);
+    void LoadFromFile(const std::string& path, sg::Scene* pScene);
 
     const auto& GetVertices() const
     {
@@ -32,50 +32,50 @@ public:
     }
 
 private:
-    void LoadGltfSamplers(sg::Scene* scene);
+    void LoadGltfSamplers(sg::Scene* pScene);
 
-    void LoadGltfTextures(sg::Scene* scene);
+    void LoadGltfTextures(sg::Scene* pScene);
 
-    void LoadGltfMaterials(sg::Scene* scene);
+    void LoadGltfMaterials(sg::Scene* pScene);
 
-    void LoadGltfMeshes(sg::Scene* scene);
+    void LoadGltfMeshes(sg::Scene* pScene);
 
-    void LoadGltfRenderableNodes(sg::Scene* scene);
+    void LoadGltfRenderableNodes(sg::Scene* pScene);
 
     void LoadGltfRenderableNodes(
         // current node index
         uint32_t nodeIndex,
         // parent node
-        sg::Node* parent,
+        sg::Node* pParent,
         // store results
         std::vector<UniquePtr<sg::Node>>& sgNodes,
         // access materials
-        sg::Scene* scene);
+        sg::Scene* pScene);
 
     sg::Texture* LoadGltfTextureVisitor(uint32_t imageIndex);
 
     template <typename T> void LoadAccessor(const fastgltf::Accessor& accessor,
                                             const T*& bufferPtr,
-                                            uint32_t* count              = nullptr,
-                                            fastgltf::AccessorType* type = nullptr)
+                                            uint32_t* pCount              = nullptr,
+                                            fastgltf::AccessorType* pType = nullptr)
     {
         const fastgltf::BufferView& bufferView =
             m_gltfAsset.bufferViews[accessor.bufferViewIndex.value()];
         auto& buffer = m_gltfAsset.buffers[bufferView.bufferIndex];
 
-        const fastgltf::sources::Array* vector =
+        const fastgltf::sources::Array* pVector =
             std::get_if<fastgltf::sources::Array>(&buffer.data);
 
         size_t dataOffset = bufferView.byteOffset + accessor.byteOffset;
-        bufferPtr         = reinterpret_cast<const T*>(vector->bytes.data() + dataOffset);
+        bufferPtr         = reinterpret_cast<const T*>(pVector->bytes.data() + dataOffset);
 
-        if (count)
+        if (pCount)
         {
-            *count = accessor.count;
+            *pCount = accessor.count;
         }
-        if (type)
+        if (pType)
         {
-            *type = accessor.type;
+            *pType = accessor.type;
         }
     }
     std::string m_name;

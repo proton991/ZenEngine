@@ -24,21 +24,21 @@ namespace zen
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sg::CameraType type)
 {
-    m_window = new platform::GlfwWindowImpl(windowConfig);
+    m_pWindow = new platform::GlfwWindowImpl(windowConfig);
 
     m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan,
                                                   rc::RenderConfig::GetInstance().numFrames);
 
-    m_viewport =
-        m_renderDevice->CreateViewport(m_window, windowConfig.width, windowConfig.height, true);
+    m_pViewport =
+        m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height, true);
 
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
-    m_renderDevice->Init(m_viewport);
+    m_renderDevice->Init(m_pViewport);
 
-    float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_window->GetAspect();
-    m_window->SetOnResize([&](uint32_t width, uint32_t height) {
-        m_camera->UpdateAspect(m_window->GetAspect());
+    float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
+    m_pWindow->SetOnResize([&](uint32_t width, uint32_t height) {
+        m_camera->UpdateAspect(m_pWindow->GetAspect());
         m_renderDevice->ProcessViewportResize(width, height);
     });
 
@@ -51,7 +51,7 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
 SceneRendererDemo::~SceneRendererDemo()
 {
-    delete m_window;
+    delete m_pWindow;
 }
 
 void SceneRendererDemo::Prepare()
@@ -64,10 +64,10 @@ void SceneRendererDemo::Prepare()
     LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), timeUsed);
 
     rc::SceneData sceneData{};
-    sceneData.camera      = m_camera.Get();
-    sceneData.scene       = m_scene.Get();
-    sceneData.vertices    = gltfLoader->GetVertices().data();
-    sceneData.indices     = gltfLoader->GetIndices().data();
+    sceneData.pCamera      = m_camera.Get();
+    sceneData.pScene       = m_scene.Get();
+    sceneData.pVertices    = gltfLoader->GetVertices().data();
+    sceneData.pIndices     = gltfLoader->GetIndices().data();
     sceneData.numVertices = gltfLoader->GetVertices().size();
     sceneData.numIndices  = gltfLoader->GetIndices().size();
     // light info
@@ -104,7 +104,7 @@ void SceneRendererDemo::Destroy()
 void SceneRendererDemo::Run()
 {
 
-    while (!m_window->ShouldClose())
+    while (!m_pWindow->ShouldClose())
     {
         auto frameTime = static_cast<float>(m_timer->Tick());
         m_animationTimer += frameTime * m_animationSpeed;
@@ -113,7 +113,7 @@ void SceneRendererDemo::Run()
             m_animationTimer -= 1.0f;
         }
 
-        m_window->Update();
+        m_pWindow->Update();
 
         m_camera->Update(frameTime);
 
@@ -135,19 +135,19 @@ void SceneRendererDemo::Run()
 
 } // namespace zen
 
-int main(int argc, char** argv)
+int main(int argc, char** pArgv)
 {
     using namespace zen;
 
     platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
 
-    SceneRendererDemo* demo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
+    SceneRendererDemo* pDemo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
 
-    demo->Prepare();
+    pDemo->Prepare();
 
-    demo->Run();
+    pDemo->Run();
 
-    demo->Destroy();
+    pDemo->Destroy();
 
-    delete demo;
+    delete pDemo;
 }

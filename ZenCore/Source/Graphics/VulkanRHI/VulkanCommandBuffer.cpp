@@ -10,15 +10,15 @@ namespace zen
 {
 VulkanCommandBufferPool::~VulkanCommandBufferPool()
 {
-    for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers)
+    for (VulkanCommandBuffer* pCmdBuffer : m_usedCmdBuffers)
     {
-        ZEN_DELETE(cmdBuffer);
+        ZEN_DELETE(pCmdBuffer);
     }
-    for (VulkanCommandBuffer* cmdBuffer : m_freeCmdBuffers)
+    for (VulkanCommandBuffer* pCmdBuffer : m_freeCmdBuffers)
     {
-        ZEN_DELETE(cmdBuffer);
+        ZEN_DELETE(pCmdBuffer);
     }
-    vkDestroyCommandPool(m_device->GetVkHandle(), m_cmdPool, nullptr);
+    vkDestroyCommandPool(m_pDevice->GetVkHandle(), m_cmdPool, nullptr);
 }
 
 void VulkanCommandBufferPool::Init(uint32_t queueFamilyIndex)
@@ -27,16 +27,16 @@ void VulkanCommandBufferPool::Init(uint32_t queueFamilyIndex)
     InitVkStruct(cmdPoolCI, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
     cmdPoolCI.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // reset cmd buffer
     cmdPoolCI.queueFamilyIndex = queueFamilyIndex;
-    VKCHECK(vkCreateCommandPool(m_device->GetVkHandle(), &cmdPoolCI, nullptr, &m_cmdPool));
+    VKCHECK(vkCreateCommandPool(m_pDevice->GetVkHandle(), &cmdPoolCI, nullptr, &m_cmdPool));
 }
 
-void VulkanCommandBufferPool::RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer)
+void VulkanCommandBufferPool::RefreshFenceStatus(VulkanCommandBuffer* pSkipCmdBuffer)
 {
-    for (VulkanCommandBuffer* cmdBuffer : m_usedCmdBuffers)
+    for (VulkanCommandBuffer* pCmdBuffer : m_usedCmdBuffers)
     {
-        if (cmdBuffer != skipCmdBuffer)
+        if (pCmdBuffer != pSkipCmdBuffer)
         {
-            cmdBuffer->RefreshFenceStatus();
+            pCmdBuffer->RefreshFenceStatus();
         }
     }
 }
@@ -47,61 +47,61 @@ VulkanCommandBuffer* VulkanCommandBufferPool::CreateCmdBuffer(bool isUploadOnly)
     while (it != m_freeCmdBuffers.begin())
     {
         --it;
-        VulkanCommandBuffer* cmdBuffer = *it;
-        if (cmdBuffer->m_isUploadOnly == isUploadOnly)
+        VulkanCommandBuffer* pCmdBuffer = *it;
+        if (pCmdBuffer->m_isUploadOnly == isUploadOnly)
         {
             m_freeCmdBuffers.erase(it);
-            cmdBuffer->AllocMemory();
-            m_usedCmdBuffers.push_back(cmdBuffer);
-            return cmdBuffer;
+            pCmdBuffer->AllocMemory();
+            m_usedCmdBuffers.push_back(pCmdBuffer);
+            return pCmdBuffer;
         }
     }
-    VulkanCommandBuffer* newCmdBuffer = ZEN_NEW() VulkanCommandBuffer(this, isUploadOnly);
-    m_usedCmdBuffers.push_back(newCmdBuffer);
-    return newCmdBuffer;
+    VulkanCommandBuffer* pNewCmdBuffer = ZEN_NEW() VulkanCommandBuffer(this, isUploadOnly);
+    m_usedCmdBuffers.push_back(pNewCmdBuffer);
+    return pNewCmdBuffer;
 }
 
-void VulkanCommandBufferPool::FreeUnusedCmdBuffers(VulkanQueue* queue)
+void VulkanCommandBufferPool::FreeUnusedCmdBuffers(VulkanQueue* pQueue)
 {
-    VulkanCommandBuffer* lastSubmittedCommandBuffer = queue->GetLastSubmittedCmdBuffer();
+    VulkanCommandBuffer* pLastSubmittedCommandBuffer = pQueue->GetLastSubmittedCmdBuffer();
 
     auto it = m_usedCmdBuffers.end();
     while (it != m_usedCmdBuffers.begin())
     {
         --it;
-        VulkanCommandBuffer* cmdBuffer = *it;
-        if (cmdBuffer != lastSubmittedCommandBuffer &&
-                cmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
-            cmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
+        VulkanCommandBuffer* pCmdBuffer = *it;
+        if (pCmdBuffer != pLastSubmittedCommandBuffer &&
+                pCmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
+            pCmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
         {
-            cmdBuffer->FreeMemory();
+            pCmdBuffer->FreeMemory();
             it = m_usedCmdBuffers.erase(it);
-            m_freeCmdBuffers.push_back(cmdBuffer);
+            m_freeCmdBuffers.push_back(pCmdBuffer);
         }
     }
 }
 
-VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandBufferPool* pool, bool isUploadOnly) :
-    m_cmdBufferPool(pool), m_isUploadOnly(isUploadOnly)
+VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandBufferPool* pPool, bool isUploadOnly) :
+    m_pCmdBufferPool(pPool), m_isUploadOnly(isUploadOnly)
 {
     AllocMemory();
 
-    m_fence = m_cmdBufferPool->GetDevice()->GetFenceManager()->CreateFence();
+    m_pFence = m_pCmdBufferPool->GetDevice()->GetFenceManager()->CreateFence();
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer()
 {
-    VulkanFenceManager* fenceManager = m_cmdBufferPool->GetDevice()->GetFenceManager();
+    VulkanFenceManager* pFenceManager = m_pCmdBufferPool->GetDevice()->GetFenceManager();
 
     if (m_state == State::eSubmitted)
     {
         // wait 33ms
         uint64_t timeNS = 33 * 1000 * 1000LL;
-        fenceManager->WaitAndReleaseFence(m_fence, timeNS);
+        pFenceManager->WaitAndReleaseFence(m_pFence, timeNS);
     }
     else
     {
-        fenceManager->ReleaseFence(m_fence);
+        pFenceManager->ReleaseFence(m_pFence);
     }
 
     if (m_state != State::eNotAllocated)
@@ -110,9 +110,9 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
     }
 }
 
-void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem)
+void VulkanCommandBuffer::AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pSem)
 {
-    HeapVector<VulkanSemaphore*> vec = {sem};
+    HeapVector<VulkanSemaphore*> vec = {pSem};
     AddWaitSemaphore(waitFlags, vec);
 }
 
@@ -130,11 +130,11 @@ void VulkanCommandBuffer::AllocMemory()
 {
     VkCommandBufferAllocateInfo allocInfo;
     InitVkStruct(allocInfo, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO);
-    allocInfo.commandPool        = m_cmdBufferPool->GetVkCmdPool();
+    allocInfo.commandPool        = m_pCmdBufferPool->GetVkCmdPool();
     allocInfo.commandBufferCount = 1;
     allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-    VKCHECK(vkAllocateCommandBuffers(m_cmdBufferPool->GetDevice()->GetVkHandle(), &allocInfo,
+    VKCHECK(vkAllocateCommandBuffers(m_pCmdBufferPool->GetDevice()->GetVkHandle(), &allocInfo,
                                      &m_cmdBuffer));
     m_state = State::eReadyForBegin;
 }
@@ -143,11 +143,11 @@ void VulkanCommandBuffer::RefreshFenceStatus()
 {
     if (m_state == State::eSubmitted)
     {
-        VulkanFenceManager* fenceManager = m_cmdBufferPool->GetDevice()->GetFenceManager();
-        if (fenceManager->IsFenceSignaled(m_fence))
+        VulkanFenceManager* pFenceManager = m_pCmdBufferPool->GetDevice()->GetFenceManager();
+        if (pFenceManager->IsFenceSignaled(m_pFence))
         {
             m_submittedWaitSemaphores.clear();
-            m_fence->GetOwner()->ResetFence(m_fence);
+            m_pFence->GetOwner()->ResetFence(m_pFence);
             m_state = State::eNeedReset;
             m_fenceSignaledCounter++;
         }
@@ -156,8 +156,8 @@ void VulkanCommandBuffer::RefreshFenceStatus()
 
 void VulkanCommandBuffer::FreeMemory()
 {
-    vkFreeCommandBuffers(m_cmdBufferPool->GetDevice()->GetVkHandle(),
-                         m_cmdBufferPool->GetVkCmdPool(), 1, &m_cmdBuffer);
+    vkFreeCommandBuffers(m_pCmdBufferPool->GetDevice()->GetVkHandle(),
+                         m_pCmdBufferPool->GetVkCmdPool(), 1, &m_cmdBuffer);
     m_state     = State::eNotAllocated;
     m_cmdBuffer = VK_NULL_HANDLE;
 }
@@ -194,15 +194,15 @@ void VulkanCommandBuffer::EndRenderPass()
     vkCmdEndRenderPass(m_cmdBuffer);
 }
 
-VulkanCommandBufferManager::VulkanCommandBufferManager(VulkanDevice* device, VulkanQueue* queue) :
-    m_device(device), m_queue(queue), m_pool(device, this)
+VulkanCommandBufferManager::VulkanCommandBufferManager(VulkanDevice* pDevice, VulkanQueue* pQueue) :
+    m_pDevice(pDevice), m_pQueue(pQueue), m_pool(pDevice, this)
 {
-    m_pool.Init(queue->GetFamilyIndex());
+    m_pool.Init(pQueue->GetFamilyIndex());
     // allocate active cmd buffer
-    m_activeCmdBuffer = m_pool.CreateCmdBuffer(false);
+    m_pActiveCmdBuffer = m_pool.CreateCmdBuffer(false);
     if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
     {
-        m_activeCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
+        m_pActiveCmdBufferSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
     }
 }
 
@@ -212,38 +212,38 @@ VulkanCommandBuffer* VulkanCommandBufferManager::GetActiveCommandBuffer()
     // {
     //     SubmitUploadCmdBuffer();
     // }
-    m_activeCmdBuffer->Begin();
-    return m_activeCmdBuffer;
+    m_pActiveCmdBuffer->Begin();
+    return m_pActiveCmdBuffer;
 }
 
 VulkanCommandBuffer* VulkanCommandBufferManager::GetUploadCommandBuffer()
 {
-    if (!m_uploadCmdBuffer)
+    if (!m_pUploadCmdBuffer)
     {
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
         {
-            m_uploadCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
+            m_pUploadCmdBufferSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
         }
         for (auto i = 0; i < m_pool.m_usedCmdBuffers.size(); i++)
         {
-            VulkanCommandBuffer* cmdBuffer = m_pool.m_usedCmdBuffers[i];
-            cmdBuffer->RefreshFenceStatus();
-            if (cmdBuffer->m_isUploadOnly)
+            VulkanCommandBuffer* pCmdBuffer = m_pool.m_usedCmdBuffers[i];
+            pCmdBuffer->RefreshFenceStatus();
+            if (pCmdBuffer->m_isUploadOnly)
             {
-                if (cmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
-                    cmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
+                if (pCmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
+                    pCmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
                 {
-                    m_uploadCmdBuffer = cmdBuffer;
-                    cmdBuffer->Begin();
-                    return m_uploadCmdBuffer;
+                    m_pUploadCmdBuffer = pCmdBuffer;
+                    pCmdBuffer->Begin();
+                    return m_pUploadCmdBuffer;
                 }
             }
         }
         // create a new one
-        m_uploadCmdBuffer = m_pool.CreateCmdBuffer(true);
-        m_uploadCmdBuffer->Begin();
+        m_pUploadCmdBuffer = m_pool.CreateCmdBuffer(true);
+        m_pUploadCmdBuffer->Begin();
     }
-    return m_uploadCmdBuffer;
+    return m_pUploadCmdBuffer;
 }
 
 void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
@@ -251,42 +251,42 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer(
 {
     HeapVector<VkSemaphore> semaphoreHandles;
     semaphoreHandles.reserve(signalSemaphores.size());
-    for (VulkanSemaphore* sem : signalSemaphores)
+    for (VulkanSemaphore* pSem : signalSemaphores)
     {
-        semaphoreHandles.push_back(sem->GetVkHandle());
+        semaphoreHandles.push_back(pSem->GetVkHandle());
     }
-    if (!m_activeCmdBuffer->IsSubmitted() && m_activeCmdBuffer->HasBegun())
+    if (!m_pActiveCmdBuffer->IsSubmitted() && m_pActiveCmdBuffer->HasBegun())
     {
-        m_activeCmdBuffer->End();
+        m_pActiveCmdBuffer->End();
 
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
         {
-            for (VulkanSemaphore* sem : m_uploadCompleteSemaphores)
+            for (VulkanSemaphore* pSem : m_uploadCompleteSemaphores)
             {
-                m_activeCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, sem);
-                m_device->GetSemaphoreManager()->ReleaseSemaphore(sem);
+                m_pActiveCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pSem);
+                m_pDevice->GetSemaphoreManager()->ReleaseSemaphore(pSem);
             }
-            semaphoreHandles.push_back(m_activeCmdBufferSemaphore->GetVkHandle());
+            semaphoreHandles.push_back(m_pActiveCmdBufferSemaphore->GetVkHandle());
             // submit via VulkanQueue
-            m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
+            m_pQueue->Submit(m_pActiveCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
 
-            m_renderCompleteSemaphores.push_back(m_activeCmdBufferSemaphore);
-            m_activeCmdBufferSemaphore = nullptr;
+            m_renderCompleteSemaphores.push_back(m_pActiveCmdBufferSemaphore);
+            m_pActiveCmdBufferSemaphore = nullptr;
 
             m_uploadCompleteSemaphores.clear();
         }
         else
         {
-            m_queue->Submit(m_activeCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
+            m_pQueue->Submit(m_pActiveCmdBuffer, semaphoreHandles.size(), semaphoreHandles.data());
         }
     }
 
-    m_activeCmdBuffer = nullptr;
+    m_pActiveCmdBuffer = nullptr;
 }
 
-void VulkanCommandBufferManager::SubmitActiveCmdBuffer(VulkanSemaphore* signalSemaphore)
+void VulkanCommandBufferManager::SubmitActiveCmdBuffer(VulkanSemaphore* pSignalSemaphore)
 {
-    HeapVector<VulkanSemaphore*> vec = {signalSemaphore};
+    HeapVector<VulkanSemaphore*> vec = {pSignalSemaphore};
     SubmitActiveCmdBuffer(vec);
 }
 
@@ -296,104 +296,104 @@ void VulkanCommandBufferManager::SubmitActiveCmdBuffer()
     SubmitActiveCmdBuffer(vec);
 }
 
-void VulkanCommandBufferManager::SubmitActiveCmdBufferForPresent(VulkanSemaphore* signalSemaphore)
+void VulkanCommandBufferManager::SubmitActiveCmdBufferForPresent(VulkanSemaphore* pSignalSemaphore)
 {
     if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
     {
-        if (signalSemaphore)
+        if (pSignalSemaphore)
         {
-            VkSemaphore singalSems[2] = {signalSemaphore->GetVkHandle(),
-                                         m_activeCmdBufferSemaphore->GetVkHandle()};
-            m_queue->Submit(m_activeCmdBuffer, 2, singalSems);
+            VkSemaphore singalSems[2] = {pSignalSemaphore->GetVkHandle(),
+                                         m_pActiveCmdBufferSemaphore->GetVkHandle()};
+            m_pQueue->Submit(m_pActiveCmdBuffer, 2, singalSems);
         }
         else
         {
-            m_queue->Submit(m_activeCmdBuffer, m_activeCmdBufferSemaphore->GetVkHandle());
+            m_pQueue->Submit(m_pActiveCmdBuffer, m_pActiveCmdBufferSemaphore->GetVkHandle());
         }
 
-        m_renderCompleteSemaphores.push_back(m_activeCmdBufferSemaphore);
-        m_activeCmdBufferSemaphore = nullptr;
+        m_renderCompleteSemaphores.push_back(m_pActiveCmdBufferSemaphore);
+        m_pActiveCmdBufferSemaphore = nullptr;
     }
     else
     {
-        if (signalSemaphore)
+        if (pSignalSemaphore)
         {
-            m_queue->Submit(m_activeCmdBuffer, signalSemaphore->GetVkHandle());
+            m_pQueue->Submit(m_pActiveCmdBuffer, pSignalSemaphore->GetVkHandle());
         }
         else
         {
-            m_queue->Submit(m_activeCmdBuffer);
+            m_pQueue->Submit(m_pActiveCmdBuffer);
         }
     }
 }
 
 void VulkanCommandBufferManager::SubmitUploadCmdBuffer()
 {
-    if (!m_uploadCmdBuffer->IsSubmitted() && m_uploadCmdBuffer->HasBegun())
+    if (!m_pUploadCmdBuffer->IsSubmitted() && m_pUploadCmdBuffer->HasBegun())
     {
-        m_uploadCmdBuffer->End();
+        m_pUploadCmdBuffer->End();
         if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
         {
-            for (VulkanSemaphore* sem : m_renderCompleteSemaphores)
+            for (VulkanSemaphore* pSem : m_renderCompleteSemaphores)
             {
-                m_uploadCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, sem);
-                m_device->GetSemaphoreManager()->ReleaseSemaphore(sem);
+                m_pUploadCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, pSem);
+                m_pDevice->GetSemaphoreManager()->ReleaseSemaphore(pSem);
             }
-            VkSemaphore semaphore = m_uploadCmdBufferSemaphore->GetVkHandle();
-            m_queue->Submit(m_uploadCmdBuffer, 1, &semaphore);
+            VkSemaphore semaphore = m_pUploadCmdBufferSemaphore->GetVkHandle();
+            m_pQueue->Submit(m_pUploadCmdBuffer, 1, &semaphore);
 
-            m_uploadCompleteSemaphores.push_back(m_uploadCmdBufferSemaphore);
-            m_uploadCmdBufferSemaphore = nullptr;
+            m_uploadCompleteSemaphores.push_back(m_pUploadCmdBufferSemaphore);
+            m_pUploadCmdBufferSemaphore = nullptr;
 
             m_renderCompleteSemaphores.clear();
         }
         else
         {
-            m_queue->Submit(m_uploadCmdBuffer, 0, nullptr);
+            m_pQueue->Submit(m_pUploadCmdBuffer, 0, nullptr);
         }
     }
-    m_uploadCmdBuffer = nullptr;
+    m_pUploadCmdBuffer = nullptr;
 }
 
 void VulkanCommandBufferManager::SetupNewActiveCmdBuffer()
 {
     if (RHIOptions::GetInstance().VKUploadCmdBufferSemaphore())
     {
-        m_activeCmdBufferSemaphore = m_device->GetSemaphoreManager()->GetOrCreateSemaphore();
+        m_pActiveCmdBufferSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
     }
     for (auto i = 0; i < m_pool.m_usedCmdBuffers.size(); i++)
     {
-        VulkanCommandBuffer* cmdBuffer = m_pool.m_usedCmdBuffers[i];
-        cmdBuffer->RefreshFenceStatus();
-        if (!cmdBuffer->m_isUploadOnly)
+        VulkanCommandBuffer* pCmdBuffer = m_pool.m_usedCmdBuffers[i];
+        pCmdBuffer->RefreshFenceStatus();
+        if (!pCmdBuffer->m_isUploadOnly)
         {
-            if (cmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
-                cmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
+            if (pCmdBuffer->m_state == VulkanCommandBuffer::State::eReadyForBegin ||
+                pCmdBuffer->m_state == VulkanCommandBuffer::State::eNeedReset)
             {
-                m_activeCmdBuffer = cmdBuffer;
+                m_pActiveCmdBuffer = pCmdBuffer;
                 return;
             }
             else
             {
-                VERIFY_EXPR(cmdBuffer->m_state == VulkanCommandBuffer::State::eSubmitted);
+                VERIFY_EXPR(pCmdBuffer->m_state == VulkanCommandBuffer::State::eSubmitted);
             }
         }
     }
     // create a new one
-    m_activeCmdBuffer = m_pool.CreateCmdBuffer(false);
+    m_pActiveCmdBuffer = m_pool.CreateCmdBuffer(false);
 }
 
 void VulkanCommandBufferManager::FreeUnusedCmdBuffers()
 {
-    m_pool.FreeUnusedCmdBuffers(m_queue);
+    m_pool.FreeUnusedCmdBuffers(m_pQueue);
 }
 
-void VulkanCommandBufferManager::WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer,
+void VulkanCommandBufferManager::WaitForCmdBuffer(VulkanCommandBuffer* pCmdBuffer,
                                                   float timeInSecondsToWait)
 {
-    bool success = m_device->GetFenceManager()->WaitForFence(cmdBuffer->m_fence,
+    bool success = m_pDevice->GetFenceManager()->WaitForFence(pCmdBuffer->m_pFence,
                                                              (uint64_t)(timeInSecondsToWait * 1e9));
     VERIFY_EXPR(success);
-    cmdBuffer->RefreshFenceStatus();
+    pCmdBuffer->RefreshFenceStatus();
 }
 } // namespace zen

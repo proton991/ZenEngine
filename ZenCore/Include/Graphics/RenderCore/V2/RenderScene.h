@@ -17,12 +17,12 @@ namespace zen::rc
 {
 struct SceneData
 {
-    sg::Scene* scene;
-    const asset::Vertex* vertices;
-    const uint32_t* indices;
+    sg::Scene* pScene;
+    const asset::Vertex* pVertices;
+    const uint32_t* pIndices;
     uint32_t numVertices;
     uint32_t numIndices;
-    sg::Camera* camera;
+    sg::Camera* pCamera;
     Vec4 lightPositions[4];
     Vec4 lightColors[4];
     Vec4 lightIntensities[4];
@@ -41,7 +41,7 @@ struct SceneUniformData
 class RenderScene
 {
 public:
-    RenderScene(RenderDevice* renderDevice, const SceneData& sceneData);
+    RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData);
 
     void Init();
 
@@ -57,17 +57,17 @@ public:
 
     RHIBuffer* GetVertexBuffer() const
     {
-        return m_vertexBuffer;
+        return m_pVertexBuffer;
     }
 
     RHIBuffer* GetIndexBuffer() const
     {
-        return m_indexBuffer;
+        return m_pIndexBuffer;
     }
 
     RHIBuffer* GetTriangleMapBuffer() const
     {
-        return m_triangleMapBuffer;
+        return m_pTriangleMapBuffer;
     }
 
     auto GetNumIndices() const
@@ -77,12 +77,12 @@ public:
 
     RHIBuffer* GetNodesDataSSBO() const
     {
-        return m_nodeSSBO;
+        return m_pNodeSSBO;
     }
 
     RHIBuffer* GetMaterialsDataSSBO() const
     {
-        return m_materialSSBO;
+        return m_pMaterialSSBO;
     }
 
     const EnvTexture& GetEnvTexture() const
@@ -97,17 +97,17 @@ public:
 
     const auto& GetRenderableNodes() const
     {
-        return m_scene->GetRenderableNodes();
+        return m_pScene->GetRenderableNodes();
     }
 
     const sg::AABB& GetAABB() const
     {
-        return m_scene->GetAABB();
+        return m_pScene->GetAABB();
     }
 
     const sg::AABB& GetLocalAABB() const
     {
-        return m_scene->GetLocalAABB();
+        return m_pScene->GetLocalAABB();
     }
 
     const sg::Camera* GetCamera() const;
@@ -122,22 +122,22 @@ public:
     }
 
 private:
-    RenderDevice* m_renderDevice{nullptr};
-    sg::Scene* m_scene{nullptr};
-    sg::Camera* m_camera{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
+    sg::Scene* m_pScene{nullptr};
+    sg::Camera* m_pCamera{nullptr};
 
     std::vector<sg::NodeData> m_nodesData;
-    RHIBuffer* m_nodeSSBO;
+    RHIBuffer* m_pNodeSSBO;
 
     std::vector<sg::MaterialData> m_materialsData;
-    RHIBuffer* m_materialSSBO;
+    RHIBuffer* m_pMaterialSSBO;
 
     SceneUniformData m_sceneUniformData{};
 
-    RHIBuffer* m_vertexBuffer;
-    RHIBuffer* m_indexBuffer;
+    RHIBuffer* m_pVertexBuffer;
+    RHIBuffer* m_pIndexBuffer;
 
-    RHIBuffer* m_triangleMapBuffer;
+    RHIBuffer* m_pTriangleMapBuffer;
 
     uint32_t m_numIndices{0};
 
@@ -145,7 +145,7 @@ private:
     std::vector<RHITexture*> m_sceneTextures;
     std::string m_envTextureName;
     EnvTexture m_envTexture;
-    RHITexture* m_defaultBaseColorTexture;
+    RHITexture* m_pDefaultBaseColorTexture;
     // TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

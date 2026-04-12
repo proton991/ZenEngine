@@ -17,13 +17,13 @@ class RenderDevice;
 class ShadowMapRenderer
 {
 public:
-    ShadowMapRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
+    ShadowMapRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     void Init();
 
     void Destroy();
 
-    void SetRenderScene(RenderScene* renderScene);
+    void SetRenderScene(RenderScene* pRenderScene);
 
     void PrepareRenderWorkload();
 
@@ -34,12 +34,12 @@ public:
 
     RHITexture* GetShadowMapTexture() const
     {
-        return m_offscreenTextures.shadowMap;
+        return m_offscreenTextures.pShadowMap;
     }
 
     RHISampler* GetColorSampler() const
     {
-        return m_colorSampler;
+        return m_pColorSampler;
     }
 
 private:
@@ -53,19 +53,19 @@ private:
 
     void UpdateUniformData();
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
-    RenderScene* m_scene{nullptr};
+    RenderScene* m_pScene{nullptr};
 
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
 
     struct GraphicsPasses
     {
-        GraphicsPass* evsm;
-        GraphicsPass* blurShadowMap;
+        GraphicsPass* pEvsm;
+        GraphicsPass* pBlurShadowMap;
     } m_gfxPasses;
 
     struct
@@ -79,11 +79,11 @@ private:
 
     struct
     {
-        RHITexture* shadowMap{nullptr};
-        RHITexture* depth{nullptr};
+        RHITexture* pShadowMap{nullptr};
+        RHITexture* pDepth{nullptr};
     } m_offscreenTextures;
 
-    RHISampler* m_colorSampler;
+    RHISampler* m_pColorSampler;
 
     UniquePtr<sg::Camera> m_lightView;
 };

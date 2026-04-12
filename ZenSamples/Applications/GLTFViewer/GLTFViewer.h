@@ -50,7 +50,7 @@ private:
 
     UniquePtr<TextureManager> m_textureManager;
 
-    val::Image* m_simpleTexture;
+    val::Image* m_pSimpleTexture;
 
     UniquePtr<gltf::ModelLoader> m_gltfModelLoader;
 

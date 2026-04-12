@@ -13,22 +13,22 @@ public:
 
     ~PoolAllocator()
     {
-        for (T* alloc : m_allocators)
-            delete alloc;
+        for (T* pAlloc : m_allocators)
+            delete pAlloc;
         m_allocators.clear();
     }
 
     // allocate memory from current allocator
     void* Alloc(size_t size, size_t alignment = alignof(std::max_align_t))
     {
-        T* alloc  = m_allocators[m_currentIndex];
-        void* mem = alloc->Alloc(size, alignment);
+        T* pAlloc  = m_allocators[m_currentIndex];
+        void* pMem = pAlloc->Alloc(size, alignment);
 
-        if (mem != nullptr)
-            return mem;
+        if (pMem != nullptr)
+            return pMem;
 
         // current allocator is full -> create a bigger one
-        size_t newSize = alloc->Capacity() * 2;
+        size_t newSize = pAlloc->Capacity() * 2;
         if (newSize < size)
             newSize = size * 2;
 
@@ -40,8 +40,8 @@ public:
     // reset all internal allocators (typically once per frame)
     void Reset()
     {
-        for (T* alloc : m_allocators)
-            alloc->Reset();
+        for (T* pAlloc : m_allocators)
+            pAlloc->Reset();
         m_currentIndex = 0;
     }
 

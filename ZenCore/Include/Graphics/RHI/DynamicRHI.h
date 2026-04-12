@@ -25,7 +25,7 @@ public:
 
     virtual LegacyRHICommandListContext* CreateLegacyCmdListContext() = 0;
 
-    virtual void WaitForLegacyCommandList(LegacyRHICommandList* cmdList) = 0;
+    virtual void WaitForLegacyCommandList(LegacyRHICommandList* pCmdList) = 0;
 
     virtual LegacyRHICommandList* GetLegacyImmediateCommandList() = 0;
 
@@ -40,16 +40,16 @@ public:
                                         uint32_t height,
                                         bool enableVSync) = 0;
 
-    virtual void DestroyViewport(RHIViewport* viewport) = 0;
+    virtual void DestroyViewport(RHIViewport* pViewport) = 0;
 
-    virtual void BeginDrawingViewport(RHIViewport* viewport) = 0;
+    virtual void BeginDrawingViewport(RHIViewport* pViewport) = 0;
 
     // Legacy immediate command-list path. New code should use the RHICommandList overload below.
-    virtual void EndDrawingViewport(RHIViewport* viewport,
-                                    LegacyRHICommandListContext* cmdListContext,
+    virtual void EndDrawingViewport(RHIViewport* pViewport,
+                                    LegacyRHICommandListContext* pCmdListContext,
                                     bool present) = 0;
 
-    virtual void EndDrawingViewport(RHIViewport* viewportRHI,
+    virtual void EndDrawingViewport(RHIViewport* pViewportRHI,
                                     RHICommandList* pCmdList,
                                     bool present) = 0;
 
@@ -59,7 +59,7 @@ public:
 
     // virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
 
-    virtual void DestroyShader(RHIShader* shader) = 0;
+    virtual void DestroyShader(RHIShader* pShader) = 0;
 
     virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
 
@@ -77,7 +77,7 @@ public:
 
     // virtual RHIPipeline* CreateComputePipeline(RHIShader* shaderHandle) = 0;
 
-    virtual void DestroyPipeline(RHIPipeline* pipeline) = 0;
+    virtual void DestroyPipeline(RHIPipeline* pPipeline) = 0;
 
     // virtual RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) = 0;
 
@@ -93,11 +93,11 @@ public:
     //     return m_resourceFactory->CreateSampler(samplerInfo);
     // }
 
-    virtual void DestroySampler(RHISampler* sampler) = 0;
+    virtual void DestroySampler(RHISampler* pSampler) = 0;
 
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
 
-    virtual RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+    virtual RHITexture* CreateTextureProxy(const RHITexture* pBaseTexture,
                                            const RHITextureProxyCreateInfo& proxyInfo) = 0;
     // {
     //     return m_resourceFactory->CreateTexture(textureInfo);
@@ -108,7 +108,7 @@ public:
 
     // virtual void DestroyTexture(TextureHandle textureHandle) = 0;
 
-    virtual void DestroyTexture(RHITexture* texture) = 0;
+    virtual void DestroyTexture(RHITexture* pTexture) = 0;
 
     // virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
 
@@ -149,14 +149,14 @@ public:
 
     RHIResourceFactory* GetResourceFactory() const
     {
-        return m_resourceFactory;
+        return m_pResourceFactory;
     }
 
 protected:
-    RHIResourceFactory* m_resourceFactory{nullptr};
+    RHIResourceFactory* m_pResourceFactory{nullptr};
 
-    LegacyRHICommandListContext* m_legacyImmediateContext{nullptr};
-    LegacyRHICommandList* m_legacyImmediateCommandList{nullptr};
+    LegacyRHICommandListContext* m_pLegacyImmediateContext{nullptr};
+    LegacyRHICommandList* m_pLegacyImmediateCommandList{nullptr};
 
     IRHICommandContext* m_pTransferContext{nullptr};
 };

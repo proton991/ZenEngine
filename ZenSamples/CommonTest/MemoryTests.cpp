@@ -1,5 +1,7 @@
-#include "Common/Memory.h"
+#include "Memory/Memory.h"
 #include <gtest/gtest.h>
+
+using namespace zen;
 
 class DummyClass
 {
@@ -27,36 +29,36 @@ TEST(mem_alloc_test, allocator)
 {
     constexpr int numElements = 10;
     auto arraySize            = sizeof(int) * numElements;
-    int* arr                  = static_cast<int*>(DefaultAllocator::Alloc(arraySize));
+    int* pArr = static_cast<int*>(ZEN_MEM_ALLOC(arraySize));
 
     for (int i = 0; i < numElements; ++i)
     {
-        arr[i] = i + 1;
+        pArr[i] = i + 1;
     }
 
-    EXPECT_NE(arr, nullptr);
-    EXPECT_EQ(arr[0], 1);
+    EXPECT_NE(pArr, nullptr);
+    EXPECT_EQ(pArr[0], 1);
 
     auto newSize    = arraySize * 2;
-    int* resizedArr = static_cast<int*>(DefaultAllocator::Realloc(arr, newSize));
+    int* pResizedArr = static_cast<int*>(ZEN_MEM_REALLOC(pArr, newSize));
     for (int i = 0; i < numElements; ++i)
     {
-        EXPECT_EQ(resizedArr[i], i + 1);
+        EXPECT_EQ(pResizedArr[i], i + 1);
     }
-    EXPECT_NE(resizedArr, nullptr);
-    EXPECT_EQ(resizedArr[0], 1);
+    EXPECT_NE(pResizedArr, nullptr);
+    EXPECT_EQ(pResizedArr[0], 1);
 
-    DefaultAllocator::Free(resizedArr);
+    ZEN_MEM_FREE(pResizedArr);
 }
 
 TEST(mem_alloc_test, mem_new)
 {
     std::cout << "Dummy Class Size: " << sizeof(DummyClass) << std::endl;
-    EmptyClass* emptyObj = new EmptyClass();
-    delete emptyObj;
+    EmptyClass* pEmptyObj = new EmptyClass();
+    delete pEmptyObj;
 
-    auto* obj = MemNew<DummyClass>(10);
-    EXPECT_EQ(obj->GetData(), 10);
-    EXPECT_EQ((size_t)obj->GetDataPtr(), (size_t)obj);
-    delete obj;
+    auto* pObj = ZEN_NEW() DummyClass(10);
+    EXPECT_EQ(pObj->GetData(), 10);
+    EXPECT_EQ(reinterpret_cast<size_t>(pObj->GetDataPtr()), reinterpret_cast<size_t>(pObj));
+    ZEN_DELETE(pObj);
 }

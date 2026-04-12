@@ -109,7 +109,7 @@ struct PassResourceTracker
     std::string name;
     HeapVector<RHITexture*> textures;
     // TextureHandle textureHandle;
-    RHIBuffer* buffer;
+    RHIBuffer* pBuffer;
     PassResourceType resourceType{PassResourceType::eMax};
     RHIAccessMode accessMode{RHIAccessMode::eNone};
     BitField<RHIAccessFlagBits> accessFlags;
@@ -122,10 +122,10 @@ struct GraphicsPass
 {
     // FramebufferHandle framebuffer;
     // RenderPassHandle renderPass;
-    RHIPipeline* pipeline;
-    RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    RHIPipeline* pPipeline;
+    RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
-    ShaderProgram* shaderProgram;
+    ShaderProgram* pShaderProgram;
     // RHIRenderPassLayout renderPassLayout;
     RHIRenderingLayout* pRenderingLayout{nullptr};
     // setIndex as vector index, bindingIndex as inner map key
@@ -135,10 +135,10 @@ struct GraphicsPass
 
 struct ComputePass
 {
-    RHIPipeline* pipeline;
-    RHIDescriptorSet* descriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+    RHIPipeline* pPipeline;
+    RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
-    ShaderProgram* shaderProgram;
+    ShaderProgram* pShaderProgram;
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
     HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
@@ -154,13 +154,13 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    RHITexture* skybox;
-    RHITexture* irradiance;
-    RHITexture* prefiltered;
-    RHITexture* lutBRDF;
-    RHISampler* irradianceSampler;
-    RHISampler* prefilteredSampler;
-    RHISampler* lutBRDFSampler;
+    RHITexture* pSkybox;
+    RHITexture* pIrradiance;
+    RHITexture* pPrefiltered;
+    RHITexture* pLutBRDF;
+    RHISampler* pIrradianceSampler;
+    RHISampler* pPrefilteredSampler;
+    RHISampler* pLutBRDFSampler;
     std::string tag;
 };
 } // namespace zen::rc

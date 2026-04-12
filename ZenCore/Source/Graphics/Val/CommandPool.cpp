@@ -6,8 +6,8 @@ namespace zen::val
 {
 UniquePtr<CommandPool> CommandPool::Create(const Device& device, const CommandPool::CreateInfo& CI)
 {
-    auto* cmdPool = new CommandPool(device, CI);
-    return UniquePtr<CommandPool>(cmdPool);
+    auto* pCmdPool = new CommandPool(device, CI);
+    return UniquePtr<CommandPool>(pCmdPool);
 }
 
 CommandPool::CommandPool(const Device& device, const CommandPool::CreateInfo& CI) :

@@ -33,7 +33,7 @@ public:
             emplace_back(v);
     }
 
-    HeapVector(const T* srcData, size_type count)
+    HeapVector(const T* pSrcData, size_type count)
     {
         if (count == 0)
             return;
@@ -42,14 +42,14 @@ public:
 
         if constexpr (std::is_trivially_copy_constructible_v<T>)
         {
-            std::memcpy(m_data, srcData, sizeof(T) * count);
+            std::memcpy(m_pData, pSrcData, sizeof(T) * count);
             m_size = count;
         }
         else
         {
             for (size_type i = 0; i < count; ++i)
             {
-                new (&m_data[i]) T(srcData[i]);
+                new (&m_pData[i]) T(pSrcData[i]);
             }
             m_size = count;
         }
@@ -58,9 +58,9 @@ public:
     ~HeapVector()
     {
         destroy_range(0, m_size);
-        if (m_data)
+        if (m_pData)
         {
-            ZEN_MEM_FREE(m_data);
+            ZEN_MEM_FREE(m_pData);
         }
     }
 
@@ -77,8 +77,8 @@ public:
         if (this != &other)
         {
             clear();
-            if (m_data)
-                ZEN_MEM_FREE(m_data);
+            if (m_pData)
+                ZEN_MEM_FREE(m_pData);
             move_from(other);
         }
         return *this;
@@ -132,24 +132,24 @@ public:
         const size_type index = static_cast<size_type>(pos - begin());
 
         // Destroy the element at pos
-        m_data[index].~T();
+        m_pData[index].~T();
 
         // Move elements left
         if constexpr (std::is_trivially_move_assignable_v<T>)
         {
-            std::memmove(m_data + index, m_data + index + 1, sizeof(T) * (m_size - index - 1));
+            std::memmove(m_pData + index, m_pData + index + 1, sizeof(T) * (m_size - index - 1));
         }
         else
         {
             for (size_type i = index; i < m_size - 1; ++i)
             {
-                new (&m_data[i]) T(std::move(m_data[i + 1]));
-                m_data[i + 1].~T();
+                new (&m_pData[i]) T(std::move(m_pData[i + 1]));
+                m_pData[i + 1].~T();
             }
         }
 
         --m_size;
-        return m_data + index;
+        return m_pData + index;
     }
 
     iterator erase(const_iterator first, const_iterator last)
@@ -162,7 +162,7 @@ public:
         const size_type count      = lastIndex - firstIndex;
 
         if (count == 0)
-            return m_data + firstIndex;
+            return m_pData + firstIndex;
 
         // Destroy erased elements
         destroy_range(firstIndex, lastIndex);
@@ -170,19 +170,19 @@ public:
         // Move tail
         if constexpr (std::is_trivially_move_assignable_v<T>)
         {
-            std::memmove(m_data + firstIndex, m_data + lastIndex, sizeof(T) * (m_size - lastIndex));
+            std::memmove(m_pData + firstIndex, m_pData + lastIndex, sizeof(T) * (m_size - lastIndex));
         }
         else
         {
             for (size_type i = firstIndex; i < m_size - count; ++i)
             {
-                new (&m_data[i]) T(std::move(m_data[i + count]));
-                m_data[i + count].~T();
+                new (&m_pData[i]) T(std::move(m_pData[i + count]));
+                m_pData[i + count].~T();
             }
         }
 
         m_size -= count;
-        return m_data + firstIndex;
+        return m_pData + firstIndex;
     }
 
     void remove(size_type index)
@@ -190,19 +190,19 @@ public:
         ASSERT(index < m_size);
 
         // Destroy target element
-        m_data[index].~T();
+        m_pData[index].~T();
 
         // Move elements left
         if constexpr (std::is_trivially_move_assignable_v<T>)
         {
-            std::memmove(m_data + index, m_data + index + 1, sizeof(T) * (m_size - index - 1));
+            std::memmove(m_pData + index, m_pData + index + 1, sizeof(T) * (m_size - index - 1));
         }
         else
         {
             for (size_type i = index; i < m_size - 1; ++i)
             {
-                new (&m_data[i]) T(std::move(m_data[i + 1]));
-                m_data[i + 1].~T();
+                new (&m_pData[i]) T(std::move(m_pData[i + 1]));
+                m_pData[i + 1].~T();
             }
         }
 
@@ -215,54 +215,54 @@ public:
     T& operator[](size_type index)
     {
         ASSERT(index < m_size);
-        return m_data[index];
+        return m_pData[index];
     }
 
     const T& operator[](size_type index) const
     {
         ASSERT(index < m_size);
-        return m_data[index];
+        return m_pData[index];
     }
 
     T& back()
     {
         ASSERT(m_size > 0);
-        return m_data[m_size - 1];
+        return m_pData[m_size - 1];
     }
 
     const T& back() const
     {
         ASSERT(m_size > 0);
-        return m_data[m_size - 1];
+        return m_pData[m_size - 1];
     }
 
     T* data() noexcept
     {
-        return m_data;
+        return m_pData;
     }
     const T* data() const noexcept
     {
-        return m_data;
+        return m_pData;
     }
 
     // ----------- iteration -----------
 
     iterator begin() noexcept
     {
-        return m_data;
+        return m_pData;
     }
     iterator end() noexcept
     {
-        return m_data + m_size;
+        return m_pData + m_size;
     }
 
     const_iterator begin() const noexcept
     {
-        return m_data;
+        return m_pData;
     }
     const_iterator end() const noexcept
     {
-        return m_data + m_size;
+        return m_pData + m_size;
     }
 
     // ----------- modifiers -----------
@@ -280,20 +280,20 @@ public:
     template <typename... Args> T& emplace_back(Args&&... args)
     {
         ensure_capacity_for_one();
-        T* elem = new (&m_data[m_size]) T(std::forward<Args>(args)...);
+        T* pElem = new (&m_pData[m_size]) T(std::forward<Args>(args)...);
         ++m_size;
-        return *elem;
+        return *pElem;
     }
 
     void pop_back()
     {
         ASSERT(m_size > 0);
         --m_size;
-        m_data[m_size].~T();
+        m_pData[m_size].~T();
     }
 
 private:
-    T* m_data            = nullptr;
+    T* m_pData            = nullptr;
     size_type m_size     = 0;
     size_type m_capacity = 0;
 
@@ -313,22 +313,22 @@ private:
 
         if constexpr (std::is_trivially_move_constructible_v<T>)
         {
-            m_data = static_cast<T*>(ZEN_MEM_REALLOC_ALIGNED(m_data, newBytes, alignof(T)));
+            m_pData = static_cast<T*>(ZEN_MEM_REALLOC_ALIGNED(m_pData, newBytes, alignof(T)));
         }
         else
         {
-            T* newMem = static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(newBytes, alignof(T)));
+            T* pNewMem = static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(newBytes, alignof(T)));
 
             for (size_type i = 0; i < m_size; ++i)
             {
-                new (&newMem[i]) T(std::move(m_data[i]));
-                m_data[i].~T();
+                new (&pNewMem[i]) T(std::move(m_pData[i]));
+                m_pData[i].~T();
             }
 
-            if (m_data)
-                ZEN_MEM_FREE(m_data);
+            if (m_pData)
+                ZEN_MEM_FREE(m_pData);
 
-            m_data = newMem;
+            m_pData = pNewMem;
         }
 
         m_capacity = newCapacity;
@@ -343,11 +343,11 @@ private:
     //     {
     //         if constexpr (kAlign <= ZEN_DEFAULT_ALIGNMENT)
     //         {
-    //             m_data = static_cast<T*>(ZEN_MEM_REALLOC(m_data, newBytes));
+    //             m_pData = static_cast<T*>(ZEN_MEM_REALLOC(m_pData, newBytes));
     //         }
     //         else
     //         {
-    //             m_data = static_cast<T*>(ZEN_MEM_REALLOC_ALIGNED(m_data, newBytes, kAlign));
+    //             m_pData = static_cast<T*>(ZEN_MEM_REALLOC_ALIGNED(m_pData, newBytes, kAlign));
     //         }
     //     }
     //     else
@@ -365,14 +365,14 @@ private:
     //
     //         for (size_type i = 0; i < m_size; ++i)
     //         {
-    //             new (&newMem[i]) T(std::move(m_data[i]));
-    //             m_data[i].~T();
+    //             new (&newMem[i]) T(std::move(m_pData[i]));
+    //             m_pData[i].~T();
     //         }
     //
-    //         if (m_data)
-    //             ZEN_MEM_FREE(m_data);
+    //         if (m_pData)
+    //             ZEN_MEM_FREE(m_pData);
     //
-    //         m_data = newMem;
+    //         m_pData = newMem;
     //     }
     //
     //     m_capacity = newCapacity;
@@ -381,22 +381,22 @@ private:
     void destroy_range(size_type begin, size_type end)
     {
         for (size_type i = begin; i < end; ++i)
-            m_data[i].~T();
+            m_pData[i].~T();
     }
 
     void construct_range(size_type begin, size_type end)
     {
         for (size_type i = begin; i < end; ++i)
-            new (&m_data[i]) T();
+            new (&m_pData[i]) T();
     }
 
     void move_from(HeapVector& other)
     {
-        m_data     = other.m_data;
+        m_pData     = other.m_pData;
         m_size     = other.m_size;
         m_capacity = other.m_capacity;
 
-        other.m_data     = nullptr;
+        other.m_pData     = nullptr;
         other.m_size     = 0;
         other.m_capacity = 0;
     }

@@ -42,12 +42,12 @@ template <typename T> class VectorView
 public:
     T& operator[](size_t i)
     {
-        return m_ptr[i];
+        return m_pData[i];
     }
 
     const T& operator[](size_t i) const
     {
-        return m_ptr[i];
+        return m_pData[i];
     }
 
     bool empty() const
@@ -62,52 +62,52 @@ public:
 
     T* data()
     {
-        return m_ptr;
+        return m_pData;
     }
 
     const T* data() const
     {
-        return m_ptr;
+        return m_pData;
     }
 
     T* begin()
     {
-        return m_ptr;
+        return m_pData;
     }
 
     T* end()
     {
-        return m_ptr + m_size;
+        return m_pData + m_size;
     }
 
     const T* begin() const
     {
-        return m_ptr;
+        return m_pData;
     }
 
     const T* end() const
     {
-        return m_ptr + m_size;
+        return m_pData + m_size;
     }
 
     T& front()
     {
-        return m_ptr[0];
+        return m_pData[0];
     }
 
     const T& front() const
     {
-        return m_ptr[0];
+        return m_pData[0];
     }
 
     T& back()
     {
-        return m_ptr[m_size - 1];
+        return m_pData[m_size - 1];
     }
 
     const T& back() const
     {
-        return m_ptr[m_size - 1];
+        return m_pData[m_size - 1];
     }
 
     // Avoid sliced copies. Base class should only be read as a reference.
@@ -117,18 +117,20 @@ public:
 
     VectorView() = default;
 
-    VectorView(const T& element) : m_ptr(const_cast<T*>(&element)), m_size(1) {}
+    VectorView(const T& element) : m_pData(const_cast<T*>(&element)), m_size(1) {}
 
-    VectorView(const T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
+    VectorView(const T* pPtr, size_t size) : m_pData(pPtr), m_size(size) {}
 
-    VectorView(T* ptr, size_t size) : m_ptr(ptr), m_size(size) {}
+    VectorView(T* pPtr, size_t size) : m_pData(pPtr), m_size(size) {}
 
-    VectorView(const std::vector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
+    VectorView(const std::vector<T>& vec) : m_pData(const_cast<T*>(vec.data())), m_size(vec.size())
+    {}
 
-    VectorView(const HeapVector<T>& vec) : m_ptr(const_cast<T*>(vec.data())), m_size(vec.size()) {}
+    VectorView(const HeapVector<T>& vec) : m_pData(const_cast<T*>(vec.data())), m_size(vec.size())
+    {}
 
 protected:
-    T* m_ptr{nullptr};
+    T* m_pData{nullptr};
     size_t m_size{0};
 };
 
@@ -137,8 +139,8 @@ template <class T, size_t N = 8> class SmallVector : public VectorView<T>
 public:
     SmallVector()
     {
-        this->m_ptr = m_alignedBuffer.data();
-        m_capacity  = N;
+        this->m_pData = m_alignedBuffer.data();
+        m_capacity    = N;
     }
 
     explicit SmallVector(size_t size) : SmallVector()
@@ -156,13 +158,13 @@ public:
         *this = std::move(other);
     }
 
-    SmallVector(const T* insertBegin, const T* insertEnd) : SmallVector()
+    SmallVector(const T* pInsertBegin, const T* pInsertEnd) : SmallVector()
     {
-        auto count = size_t(insertEnd - insertBegin);
+        auto count = size_t(pInsertEnd - pInsertBegin);
         reserve(count);
-        for (size_t i = 0; i < count; i++, insertBegin++)
+        for (size_t i = 0; i < count; i++, pInsertBegin++)
         {
-            new (&this->m_ptr[i]) T(*insertBegin);
+            new (&this->m_pData[i]) T(*pInsertBegin);
         }
         this->m_size = count;
     }
@@ -175,8 +177,8 @@ public:
     ~SmallVector()
     {
         clear();
-        if (this->m_ptr != m_alignedBuffer.data())
-            free(this->m_ptr);
+        if (this->m_pData != m_alignedBuffer.data())
+            free(this->m_pData);
     }
 
     SmallVector& operator=(const SmallVector& other)
@@ -184,7 +186,7 @@ public:
         clear();
         reserve(other.m_size);
         for (size_t i = 0; i < other.m_size; i++)
-            new (&this->m_ptr[i]) T(other.m_ptr[i]);
+            new (&this->m_pData[i]) T(other.m_pData[i]);
         this->m_size = other.m_size;
         return *this;
     }
@@ -192,16 +194,16 @@ public:
     SmallVector& operator=(SmallVector&& other) noexcept
     {
         clear();
-        if (other.m_ptr != other.m_alignedBuffer.data())
+        if (other.m_pData != other.m_alignedBuffer.data())
         {
             // Pilfer allocated pointer.
-            if (this->m_ptr != m_alignedBuffer.data())
-                free(this->m_ptr);
+            if (this->m_pData != m_alignedBuffer.data())
+                free(this->m_pData);
 
-            this->m_ptr      = other.m_ptr;
+            this->m_pData    = other.m_pData;
             this->m_size     = other.m_size;
             m_capacity       = other.m_capacity;
-            other.m_ptr      = nullptr;
+            other.m_pData    = nullptr;
             other.m_size     = 0;
             other.m_capacity = 0;
         }
@@ -211,8 +213,8 @@ public:
             reserve(other.m_size);
             for (size_t i = 0; i < other.m_size; i++)
             {
-                new (&this->m_ptr[i]) T(std::move(other.m_ptr[i]));
-                other.m_ptr[i].~T();
+                new (&this->m_pData[i]) T(std::move(other.m_pData[i]));
+                other.m_pData[i].~T();
             }
             this->m_size = other.m_size;
             other.m_size = 0;
@@ -223,14 +225,14 @@ public:
     void push_back(const T& t)
     {
         reserve(this->m_size + 1);
-        new (&this->m_ptr[this->m_size]) T(t);
+        new (&this->m_pData[this->m_size]) T(t);
         ++this->m_size;
     }
 
     void push_back(T&& t)
     {
         reserve(this->m_size + 1);
-        new (&this->m_ptr[this->m_size]) T(std::move(t));
+        new (&this->m_pData[this->m_size]) T(std::move(t));
         ++this->m_size;
     }
 
@@ -245,7 +247,7 @@ public:
     template <class... Args> void emplace_back(Args&&... ts)
     {
         reserve(this->m_size + 1);
-        new (&this->m_ptr[this->m_size]) T(std::forward<Args>(ts)...);
+        new (&this->m_pData[this->m_size]) T(std::forward<Args>(ts)...);
         ++this->m_size;
     }
 
@@ -266,41 +268,41 @@ public:
             {
                 targetCapacity <<= 1u;
             }
-            T* newBuffer = targetCapacity > N ?
+            T* pNewBuffer = targetCapacity > N ?
                 static_cast<T*>(malloc(targetCapacity * sizeof(T))) :
                 m_alignedBuffer.data();
-            if (!newBuffer)
+            if (!pNewBuffer)
             {
                 std::terminate();
             }
-            if (newBuffer != this->m_ptr)
+            if (pNewBuffer != this->m_pData)
             {
                 for (size_t i = 0; i < this->m_size; i++)
                 {
-                    new (&newBuffer[i]) T(std::move(this->m_ptr[i]));
-                    this->m_ptr[i].~T();
+                    new (&pNewBuffer[i]) T(std::move(this->m_pData[i]));
+                    this->m_pData[i].~T();
                 }
             }
-            if (this->m_ptr != m_alignedBuffer.data())
+            if (this->m_pData != m_alignedBuffer.data())
             {
                 // reset array ptr
-                free(this->m_ptr);
+                free(this->m_pData);
             }
-            this->m_ptr = newBuffer;
-            m_capacity  = targetCapacity;
+            this->m_pData = pNewBuffer;
+            m_capacity    = targetCapacity;
         }
     }
 
-    void insert(T* iter, const T* insertBegin, const T* insertEnd)
+    void insert(T* pIter, const T* pInsertBegin, const T* pInsertEnd)
     {
-        auto count = size_t(insertEnd - insertBegin);
-        if (iter == this->end())
+        auto count = size_t(pInsertEnd - pInsertBegin);
+        if (pIter == this->end())
         {
             reserve(this->m_size + count);
-            for (size_t i = 0; i < count; i++, insertBegin++)
+            for (size_t i = 0; i < count; i++, pInsertBegin++)
             {
                 // insert
-                new (&this->m_ptr[this->m_size + i]) T(*insertBegin);
+                new (&this->m_pData[this->m_size + i]) T(*pInsertBegin);
             }
             this->m_size += count;
         }
@@ -321,103 +323,103 @@ public:
                 {
                     targetCapacity <<= 1u;
                 }
-                T* newBuffer = targetCapacity > N ?
+                T* pNewBuffer = targetCapacity > N ?
                     static_cast<T*>(malloc(targetCapacity * sizeof(T))) :
                     m_alignedBuffer.data();
-                if (!newBuffer)
+                if (!pNewBuffer)
                 {
                     std::terminate();
                 }
 
                 // move elements (before insert position) from original source buffer to new buffer.
-                auto* targetIter         = newBuffer;
-                auto* originalSourceIter = this->begin();
+                auto* pTargetIter         = pNewBuffer;
+                auto* pOriginalSourceIter = this->begin();
 
-                if (newBuffer != this->m_ptr)
+                if (pNewBuffer != this->m_pData)
                 {
-                    while (originalSourceIter != iter)
+                    while (pOriginalSourceIter != pIter)
                     {
-                        new (targetIter) T(std::move(*originalSourceIter));
-                        originalSourceIter->~T();
-                        ++originalSourceIter;
-                        ++targetIter;
+                        new (pTargetIter) T(std::move(*pOriginalSourceIter));
+                        pOriginalSourceIter->~T();
+                        ++pOriginalSourceIter;
+                        ++pTargetIter;
                     }
                 }
                 // copy construct new elements
-                for (auto* sourceIter = insertBegin; sourceIter != insertEnd;
-                     ++sourceIter, ++targetIter)
+                for (auto* pSourceIter = pInsertBegin; pSourceIter != pInsertEnd;
+                     ++pSourceIter, ++pTargetIter)
                 {
-                    new (targetIter) T(*sourceIter);
+                    new (pTargetIter) T(*pSourceIter);
                 }
                 // move the rest
-                if (newBuffer != this->m_ptr || insertBegin != insertEnd)
+                if (pNewBuffer != this->m_pData || pInsertBegin != pInsertEnd)
                 {
-                    while (originalSourceIter != this->end())
+                    while (pOriginalSourceIter != this->end())
                     {
-                        new (targetIter) T(std::move(*originalSourceIter));
-                        originalSourceIter->~T();
-                        ++originalSourceIter;
-                        ++targetIter;
+                        new (pTargetIter) T(std::move(*pOriginalSourceIter));
+                        pOriginalSourceIter->~T();
+                        ++pOriginalSourceIter;
+                        ++pTargetIter;
                     }
                 }
-                if (this->m_ptr != m_alignedBuffer.data())
+                if (this->m_pData != m_alignedBuffer.data())
                 {
                     // reset array ptr
-                    free(this->m_ptr);
+                    free(this->m_pData);
                 }
-                this->m_ptr = newBuffer;
-                m_capacity  = targetCapacity;
+                this->m_pData = pNewBuffer;
+                m_capacity    = targetCapacity;
             }
             else
             {
-                auto* targetIter = this->end() + count;
-                auto* sourceIter = this->end();
+                auto* pTargetIter = this->end() + count;
+                auto* pSourceIter = this->end();
                 // move to the insertEnd, make space for new elements
-                while (targetIter != this->end() && sourceIter != iter)
+                while (pTargetIter != this->end() && pSourceIter != pIter)
                 {
-                    --targetIter;
-                    --sourceIter;
-                    new (targetIter) T(std::move(*sourceIter));
+                    --pTargetIter;
+                    --pSourceIter;
+                    new (pTargetIter) T(std::move(*pSourceIter));
                 }
 
-                std::move_backward(iter, sourceIter, targetIter);
-                while (iter != this->end() && insertBegin != insertEnd)
+                std::move_backward(pIter, pSourceIter, pTargetIter);
+                while (pIter != this->end() && pInsertBegin != pInsertEnd)
                 {
-                    *iter++ = *insertBegin++;
+                    *pIter++ = *pInsertBegin++;
                 }
-                while (insertBegin != insertEnd)
+                while (pInsertBegin != pInsertEnd)
                 {
-                    new (iter) T(*insertBegin);
-                    ++iter;
-                    ++insertBegin;
+                    new (pIter) T(*pInsertBegin);
+                    ++pIter;
+                    ++pInsertBegin;
                 }
             }
             this->m_size += count;
         }
     }
 
-    void insert(T* itr, const T& value)
+    void insert(T* pItr, const T& value)
     {
-        insert(itr, &value, &value + 1);
+        insert(pItr, &value, &value + 1);
     }
 
-    T* erase(T* itr)
+    T* erase(T* pItr)
     {
-        std::move(itr + 1, this->end(), itr);
-        this->m_ptr[--this->m_size].~T();
-        return itr;
+        std::move(pItr + 1, this->end(), pItr);
+        this->m_pData[--this->m_size].~T();
+        return pItr;
     }
 
-    void erase(T* startErase, T* endErase)
+    void erase(T* pStartErase, T* pEndErase)
     {
-        if (endErase == this->end())
+        if (pEndErase == this->end())
         {
-            resize(size_t(startErase - this->begin()));
+            resize(size_t(pStartErase - this->begin()));
         }
         else
         {
-            auto newSize = this->m_size - (endErase - startErase);
-            std::move(endErase, this->end(), startErase);
+            auto newSize = this->m_size - (pEndErase - pStartErase);
+            std::move(pEndErase, this->end(), pStartErase);
             resize(newSize);
         }
     }
@@ -429,7 +431,7 @@ public:
         {
             for (size_t i = newSize; i < this->m_size; i++)
             {
-                this->m_ptr[i].~T();
+                this->m_pData[i].~T();
             }
         }
         else if (newSize > this->m_size)
@@ -437,7 +439,7 @@ public:
             reserve(newSize);
             for (size_t i = this->m_size; i < newSize; i++)
             {
-                new (&this->m_ptr[i]) T();
+                new (&this->m_pData[i]) T();
             }
         }
         this->m_size = newSize;
@@ -447,7 +449,7 @@ public:
     {
         for (size_t i = 0; i < this->m_size; i++)
         {
-            this->m_ptr[i].~T();
+            this->m_pData[i].~T();
         }
         this->m_size = 0;
     }
@@ -458,15 +460,15 @@ private:
 };
 
 // Pointer + size
-template <typename T> VectorView<T> MakeVecView(T* ptr, size_t size)
+template <typename T> VectorView<T> MakeVecView(T* pPtr, size_t size)
 {
-    return VectorView<T>(ptr, size);
+    return VectorView<T>(pPtr, size);
 }
 
 // Const pointer + size
-template <typename T> VectorView<const T> MakeVecView(const T* ptr, size_t size)
+template <typename T> VectorView<const T> MakeVecView(const T* pPtr, size_t size)
 {
-    return VectorView<const T>(ptr, size);
+    return VectorView<const T>(pPtr, size);
 }
 
 // C-array

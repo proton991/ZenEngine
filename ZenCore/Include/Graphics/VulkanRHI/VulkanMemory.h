@@ -22,19 +22,19 @@ public:
 
     void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device);
 
-    void AllocImage(const VkImageCreateInfo* imageCI,
+    void AllocImage(const VkImageCreateInfo* pImageCI,
                     bool cpuReadable,
-                    VkImage* image,
-                    VulkanMemoryAllocation* allocation,
+                    VkImage* pImage,
+                    VulkanMemoryAllocation* pAllocation,
                     uint32_t size);
 
     void FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc);
 
     void AllocBuffer(uint32_t size,
-                     const VkBufferCreateInfo* bufferCI,
+                     const VkBufferCreateInfo* pBufferCI,
                      RHIBufferAllocateType allocType,
-                     VkBuffer* buffer,
-                     VulkanMemoryAllocation* allocation);
+                     VkBuffer* pBuffer,
+                     VulkanMemoryAllocation* pAllocation);
 
     uint8_t* MapBuffer(const VulkanMemoryAllocation& memAlloc);
 

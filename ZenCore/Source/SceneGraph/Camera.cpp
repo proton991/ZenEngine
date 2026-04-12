@@ -37,10 +37,10 @@ UniquePtr<Camera> Camera::CreateOrthoOnAABB(const sg::AABB& aabb)
     auto direction = aabb.GetMax() - target;
     const auto eye = target + direction * radius;
 
-    auto* camera = new Camera(eye, target, 1.0f, fov, near, far, radius, CameraType::eFirstPerson,
+    auto* pCamera = new Camera(eye, target, 1.0f, fov, near, far, radius, CameraType::eFirstPerson,
                               CameraProjectionType::eOrthographic);
-    camera->SetOrthoRect(Vec4(-radius, radius, -radius, radius));
-    return UniquePtr<Camera>(camera);
+    pCamera->SetOrthoRect(Vec4(-radius, radius, -radius, radius));
+    return UniquePtr<Camera>(pCamera);
 }
 
 UniquePtr<Camera> Camera::CreateUnique(const Vec3& eye,

@@ -11,11 +11,11 @@ class RenderScene;
 class VoxelGIRenderer
 {
 public:
-    VoxelGIRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
+    VoxelGIRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     void Init();
 
-    void SetRenderScene(RenderScene* scene);
+    void SetRenderScene(RenderScene* pScene);
 
     void Destroy();
 
@@ -43,15 +43,15 @@ private:
 
     void UpdateUniformData();
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    RenderScene* m_scene{nullptr};
+    RenderScene* m_pScene{nullptr};
 
     // DynamicRHI* m_RHI{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
-    VoxelizerBase* m_voxelizer{nullptr};
+    VoxelizerBase* m_pVoxelizer{nullptr};
 
     bool m_rebuildRDG{true};
     UniquePtr<RenderGraph> m_rdg;
@@ -73,19 +73,19 @@ private:
 
     struct
     {
-        ComputePass* resetVoxelTexture;
-        ComputePass* injectRadiance;
-        ComputePass* injectPropagation;
-        ComputePass* genMipMapBase;
-        ComputePass* genMipMapVolume;
+        ComputePass* pResetVoxelTexture;
+        ComputePass* pInjectRadiance;
+        ComputePass* pInjectPropagation;
+        ComputePass* pGenMipMapBase;
+        ComputePass* pGenMipMapVolume;
     } m_computePasses;
 
     struct
     {
-        RHITexture* voxelRadiance;
-        RHITexture* voxelMipmaps[6];
+        RHITexture* pVoxelRadiance;
+        RHITexture* pVoxelMipmaps[6];
         // from ShadowMapRenderer
-        RHITexture* shadowMap;
+        RHITexture* pShadowMap;
     } m_textures;
 };
 } // namespace zen::rc

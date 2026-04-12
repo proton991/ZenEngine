@@ -40,12 +40,12 @@ public:
         m_currentOffset = 0;
     }
 
-    SubmitInfo Submit(const uint8_t* data, size_t byteSize)
+    SubmitInfo Submit(const uint8_t* pData, size_t byteSize)
     {
         ASSERT(m_currentOffset + byteSize <= GetSize());
-        if (data != nullptr)
+        if (pData != nullptr)
         {
-            CopyData(data, byteSize, m_currentOffset);
+            CopyData(pData, byteSize, m_currentOffset);
         }
         m_currentOffset += byteSize;
         return SubmitInfo{byteSize, m_currentOffset - byteSize};
@@ -63,9 +63,9 @@ public:
                       static_cast<uint32_t>(arrayView.size() * sizeof(T)));
     }
 
-    template <typename T> SubmitInfo Submit(const T* data)
+    template <typename T> SubmitInfo Submit(const T* pData)
     {
-        return Submit(reinterpret_cast<const uint8_t*>(data), uint32_t(sizeof(T)));
+        return Submit(reinterpret_cast<const uint8_t*>(pData), uint32_t(sizeof(T)));
     }
 
 private:

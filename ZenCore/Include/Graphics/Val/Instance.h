@@ -16,9 +16,9 @@ public:
     {
         bool enableValidation                      = true;
         uint32_t enabledLayerCount                 = 0;
-        const char* const* ppEnabledLayerNames     = nullptr;
+        const char* const* pEnabledLayerNames     = nullptr;
         uint32_t enabledExtensionCount             = 0;
-        const char* const* ppEnabledExtensionNames = nullptr;
+        const char* const* pEnabledExtensionNames = nullptr;
     };
 
     static SharedPtr<Instance> Create(const CreateInfo& createInfo);
@@ -28,9 +28,9 @@ public:
     ~Instance();
 
     bool IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
-                              const char* extensionName);
-    bool IsLayerSupported(const char* layerName, uint32_t& version);
-    bool IsExtensionEnabled(const char* name);
+                              const char* pExtensionName);
+    bool IsLayerSupported(const char* pLayerName, uint32_t& version);
+    bool IsExtensionEnabled(const char* pName);
 
 
 
@@ -42,7 +42,7 @@ public:
     VkPhysicalDevice SelectPhysicalDevice();
 
 private:
-    bool EnumerateInstanceExtensions(const char* layerName,
+    bool EnumerateInstanceExtensions(const char* pLayerName,
                                      std::vector<VkExtensionProperties>& extensions);
 
     enum DebugMode

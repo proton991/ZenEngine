@@ -33,13 +33,13 @@ GraphicsPipeline::GraphicsPipeline(const Device& device,
     specializationInfo.dataSize      = data.size();
     specializationInfo.pData         = data.data();
 
-    for (const ShaderModule* shaderModule : pipelineLayout.GetShaderModules())
+    for (const ShaderModule* pShaderModule : pipelineLayout.GetShaderModules())
     {
         VkPipelineShaderStageCreateInfo shaderStageCI{
             VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-        shaderStageCI.stage               = shaderModule->GetStage();
-        shaderStageCI.pName               = shaderModule->GetEntryPoint().c_str();
-        shaderStageCI.module              = shaderModule->GetHandle();
+        shaderStageCI.stage               = pShaderModule->GetStage();
+        shaderStageCI.pName               = pShaderModule->GetEntryPoint().c_str();
+        shaderStageCI.module              = pShaderModule->GetHandle();
         shaderStageCI.pSpecializationInfo = &specializationInfo;
         shaderStageCIs.push_back(shaderStageCI);
     }

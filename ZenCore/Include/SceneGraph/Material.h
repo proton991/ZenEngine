@@ -47,11 +47,11 @@ public:
 
     void SetData()
     {
-        VERIFY_EXPR(baseColorTexture != nullptr);
-        VERIFY_EXPR(metallicRoughnessTexture != nullptr);
-        VERIFY_EXPR(normalTexture != nullptr);
-        VERIFY_EXPR(occlusionTexture != nullptr);
-        VERIFY_EXPR(emissiveTexture != nullptr);
+        VERIFY_EXPR(m_pBaseColorTexture != nullptr);
+        VERIFY_EXPR(m_pMetallicRoughnessTexture != nullptr);
+        VERIFY_EXPR(m_pNormalTexture != nullptr);
+        VERIFY_EXPR(m_pOcclusionTexture != nullptr);
+        VERIFY_EXPR(m_pEmissiveTexture != nullptr);
 
         data.bcTexSet       = texCoordSets.baseColor;
         data.mrTexSet       = texCoordSets.metallicRoughness;
@@ -59,11 +59,11 @@ public:
         data.aoTexSet       = texCoordSets.occlusion;
         data.emissiveTexSet = texCoordSets.emissive;
 
-        data.bcTexIndex        = static_cast<int>(baseColorTexture->index);
-        data.mrTexIndex        = static_cast<int>(metallicRoughnessTexture->index);
-        data.normalTexIndex    = static_cast<int>(normalTexture->index);
-        data.occlusionTexIndex = static_cast<int>(occlusionTexture->index);
-        data.emissiveTexIndex  = static_cast<int>(emissiveTexture->index);
+        data.bcTexIndex        = static_cast<int>(m_pBaseColorTexture->index);
+        data.mrTexIndex        = static_cast<int>(m_pMetallicRoughnessTexture->index);
+        data.normalTexIndex    = static_cast<int>(m_pNormalTexture->index);
+        data.occlusionTexIndex = static_cast<int>(m_pOcclusionTexture->index);
+        data.emissiveTexIndex  = static_cast<int>(m_pEmissiveTexture->index);
 
         data.metallicFactor  = metallicFactor;
         data.roughnessFactor = roughnessFactor;
@@ -79,11 +79,11 @@ public:
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
     // textures
-    Texture* baseColorTexture{nullptr};
-    Texture* metallicRoughnessTexture{nullptr};
-    Texture* normalTexture{nullptr};
-    Texture* occlusionTexture{nullptr};
-    Texture* emissiveTexture{nullptr};
+    Texture* m_pBaseColorTexture{nullptr};
+    Texture* m_pMetallicRoughnessTexture{nullptr};
+    Texture* m_pNormalTexture{nullptr};
+    Texture* m_pOcclusionTexture{nullptr};
+    Texture* m_pEmissiveTexture{nullptr};
 
     struct TexCoordSets
     {
@@ -96,8 +96,8 @@ public:
     } texCoordSets;
     struct Extension
     {
-        Texture* specularGlossinessTexture;
-        Texture* diffuseTexture;
+        Texture* pSpecularGlossinessTexture;
+        Texture* pDiffuseTexture;
         Vec4 diffuseFactor{1.0f};
         Vec3 specularFactor{0.0f};
     } extension;
@@ -144,19 +144,19 @@ inline bool operator==(const Material& lhs, const Material& rhs)
         return false;
 
     // Compare textures (check if the texture pointers are the same)
-    if (*lhs.baseColorTexture != *rhs.baseColorTexture)
+    if (*lhs.m_pBaseColorTexture != *rhs.m_pBaseColorTexture)
         return false;
 
-    if (*lhs.metallicRoughnessTexture != *rhs.metallicRoughnessTexture)
+    if (*lhs.m_pMetallicRoughnessTexture != *rhs.m_pMetallicRoughnessTexture)
         return false;
 
-    if (*lhs.normalTexture != *rhs.normalTexture)
+    if (*lhs.m_pNormalTexture != *rhs.m_pNormalTexture)
         return false;
 
-    if (*lhs.occlusionTexture != *rhs.occlusionTexture)
+    if (*lhs.m_pOcclusionTexture != *rhs.m_pOcclusionTexture)
         return false;
 
-    if (*lhs.emissiveTexture != *rhs.emissiveTexture)
+    if (*lhs.m_pEmissiveTexture != *rhs.m_pEmissiveTexture)
         return false;
 
     // Compare texCoordSets
@@ -169,8 +169,8 @@ inline bool operator==(const Material& lhs, const Material& rhs)
         return false;
 
     // Compare extension fields
-    if (lhs.extension.specularGlossinessTexture != rhs.extension.specularGlossinessTexture ||
-        lhs.extension.diffuseTexture != rhs.extension.diffuseTexture ||
+    if (lhs.extension.pSpecularGlossinessTexture != rhs.extension.pSpecularGlossinessTexture ||
+        lhs.extension.pDiffuseTexture != rhs.extension.pDiffuseTexture ||
         lhs.extension.diffuseFactor != rhs.extension.diffuseFactor ||
         lhs.extension.specularFactor != rhs.extension.specularFactor)
         return false;

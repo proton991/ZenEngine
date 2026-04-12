@@ -666,29 +666,29 @@ struct RHIRenderingLayout
         return hasDepthStencilRT ? numColorRenderTargets + 1 : numColorRenderTargets;
     }
 
-    void GetRHIRenderTargetClearValueData(RHIRenderTargetClearValue* ppClearValues) const
+    void GetRHIRenderTargetClearValueData(RHIRenderTargetClearValue* pClearValues) const
     {
         uint32_t rtIdx = 0;
         for (; rtIdx < numColorRenderTargets; rtIdx++)
         {
-            ppClearValues[rtIdx] = colorRenderTargets[rtIdx].clearValue;
+            pClearValues[rtIdx] = colorRenderTargets[rtIdx].clearValue;
         }
         if (hasDepthStencilRT)
         {
-            ppClearValues[rtIdx] = depthStencilRenderTarget.clearValue;
+            pClearValues[rtIdx] = depthStencilRenderTarget.clearValue;
         }
     }
 
-    void GetRHITextureData(RHITexture** ppTextures) const
+    void GetRHITextureData(RHITexture** pTextures) const
     {
         uint32_t rtIdx = 0;
         for (; rtIdx < numColorRenderTargets; rtIdx++)
         {
-            ppTextures[rtIdx] = colorRenderTargets[rtIdx].texture;
+            pTextures[rtIdx] = colorRenderTargets[rtIdx].pTexture;
         }
         if (hasDepthStencilRT)
         {
-            ppTextures[rtIdx] = depthStencilRenderTarget.texture;
+            pTextures[rtIdx] = depthStencilRenderTarget.pTexture;
         }
     }
 
@@ -701,7 +701,7 @@ struct RHIRenderingLayout
     }
 
     void AddColorRenderTarget(DataFormat format,
-                              RHITexture* texture,
+                              RHITexture* pTexture,
                               RHIRenderTargetLoadOp loadOp,
                               RHIRenderTargetStoreOp storeOp,
                               RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE,
@@ -709,7 +709,7 @@ struct RHIRenderingLayout
     {
         RHIRenderTarget colorRT;
         colorRT.format     = format;
-        colorRT.texture    = texture;
+        colorRT.pTexture    = pTexture;
         colorRT.loadOp     = loadOp;
         colorRT.storeOp    = storeOp;
         colorRT.clearValue = clearValue;
@@ -717,15 +717,15 @@ struct RHIRenderingLayout
 
         colorRenderTargets[numColorRenderTargets++] = colorRT;
 
-        if (texture->GetNumMipmaps() > 1)
+        if (pTexture->GetNumMipmaps() > 1)
         {
             int a = 1;
         }
-        numLayers = std::max(numLayers, texture->GetNumMipmaps());
+        numLayers = std::max(numLayers, pTexture->GetNumMipmaps());
     }
 
     void AddDepthStencilRenderTarget(DataFormat format,
-                                     RHITexture* texture,
+                                     RHITexture* pTexture,
                                      RHIRenderTargetLoadOp loadOp,
                                      RHIRenderTargetStoreOp storeOp,
                                      RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
@@ -733,13 +733,13 @@ struct RHIRenderingLayout
         if (!hasDepthStencilRT)
         {
             depthStencilRenderTarget.format     = format;
-            depthStencilRenderTarget.texture    = texture;
+            depthStencilRenderTarget.pTexture    = pTexture;
             depthStencilRenderTarget.loadOp     = loadOp;
             depthStencilRenderTarget.storeOp    = storeOp;
             depthStencilRenderTarget.clearValue = clearValue;
             hasDepthStencilRT                   = true;
 
-            numLayers = std::max(numLayers, texture->GetNumMipmaps());
+            numLayers = std::max(numLayers, pTexture->GetNumMipmaps());
         }
     }
 
@@ -781,7 +781,7 @@ struct RHIRenderingLayout
 
 struct RHIGfxPipelineCreateInfo
 {
-    RHIShader* shader;
+    RHIShader* pShader;
     RHIGfxPipelineStates states;
     // RHIRenderPassLayout renderPassLayout;
     const RHIRenderingLayout* pRenderingLayout;
@@ -791,7 +791,7 @@ struct RHIGfxPipelineCreateInfo
 
 struct RHIComputePipelineCreateInfo
 {
-    RHIShader* shader;
+    RHIShader* pShader;
 };
 
 // enum class RHIPipelineType : uint32_t
@@ -811,7 +811,7 @@ protected:
     RHIPipeline(const RHIGfxPipelineCreateInfo& createInfo) :
         RHIResource(RHIResourceType::ePipeline),
         m_type(RHIPipelineType::eGraphics),
-        m_shader(createInfo.shader),
+        m_pShader(createInfo.pShader),
         m_gfxStates(createInfo.states),
         // m_renderPassLayout(createInfo.renderPassLayout),
         m_pRenderingLayout(createInfo.pRenderingLayout),
@@ -821,12 +821,12 @@ protected:
     RHIPipeline(const RHIComputePipelineCreateInfo& createInfo) :
         RHIResource(RHIResourceType::ePipeline),
         m_type(RHIPipelineType::eCompute),
-        m_shader(createInfo.shader)
+        m_pShader(createInfo.pShader)
     {}
 
     RHIPipelineType m_type{RHIPipelineType::eNone};
 
-    RHIShader* m_shader{nullptr};
+    RHIShader* m_pShader{nullptr};
 
     // for graphics pipeline
     RHIGfxPipelineStates m_gfxStates;

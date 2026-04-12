@@ -40,9 +40,9 @@ class DescriptorSetAllocator
 public:
     DescriptorSetAllocator(const Device& device, DescriptorPoolManager& poolManager);
 
-    VkDescriptorSet Allocate(const VkDescriptorSetLayout* layout);
+    VkDescriptorSet Allocate(const VkDescriptorSetLayout* pLayout);
 
-    bool Allocate(VkDescriptorSetLayout* layout, uint32_t count, VkDescriptorSet* outSet);
+    bool Allocate(VkDescriptorSetLayout* pLayout, uint32_t count, VkDescriptorSet* pOutSet);
 
 private:
     const Device& m_device;

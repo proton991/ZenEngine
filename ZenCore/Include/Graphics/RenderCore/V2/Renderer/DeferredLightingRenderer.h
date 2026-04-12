@@ -28,15 +28,15 @@ public:
         eBindTextures = 1 << 0
     };
 
-    DeferredLightingRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
+    DeferredLightingRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     void Init();
 
     void Destroy();
 
-    void SetRenderScene(RenderScene* renderScene)
+    void SetRenderScene(RenderScene* pRenderScene)
     {
-        m_scene = renderScene;
+        m_pScene = pRenderScene;
         UpdateGraphicsPassResources();
     }
     void PrepareRenderWorkload();
@@ -57,22 +57,22 @@ private:
 
     void BuildRenderGraph();
 
-    void AddMeshDrawNodes(RDGPassNode* pass, const Rect2<int>& area, const Rect2<float>& viewport);
+    void AddMeshDrawNodes(RDGPassNode* pPass, const Rect2<int>& area, const Rect2<float>& viewport);
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
     UniquePtr<RenderGraph> m_rdg;
     bool m_rebuildRDG{true};
 
     struct GraphicsPasses
     {
-        GraphicsPass* offscreen;
-        GraphicsPass* sceneLighting;
+        GraphicsPass* pOffscreen;
+        GraphicsPass* pSceneLighting;
     } m_gfxPasses;
 
-    RenderScene* m_scene{nullptr};
+    RenderScene* m_pScene{nullptr};
 
     // struct
     // {
@@ -86,15 +86,15 @@ private:
 
     struct
     {
-        RHITexture* position{nullptr};
-        RHITexture* normal{nullptr};
-        RHITexture* albedo{nullptr};
-        RHITexture* metallicRoughness{nullptr};
-        RHITexture* emissiveOcclusion{nullptr};
-        RHITexture* depth{nullptr};
+        RHITexture* pPosition{nullptr};
+        RHITexture* pNormal{nullptr};
+        RHITexture* pAlbedo{nullptr};
+        RHITexture* pMetallicRoughness{nullptr};
+        RHITexture* pEmissiveOcclusion{nullptr};
+        RHITexture* pDepth{nullptr};
     } m_offscreenTextures;
 
-    RHISampler* m_colorSampler;
-    RHISampler* m_depthSampler;
+    RHISampler* m_pColorSampler;
+    RHISampler* m_pDepthSampler;
 };
 } // namespace zen::rc

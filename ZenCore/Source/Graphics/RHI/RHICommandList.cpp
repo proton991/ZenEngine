@@ -36,7 +36,7 @@ void RHICommandListBase::Reset()
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
-    RHICommandList* pCmdList         = ZEN_NEW() RHICommandList();
+    RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
     RHICommandContextType contextType = pContext->GetContextType();
     if (contextType == RHICommandContextType::eGraphics ||
         contextType == RHICommandContextType::eTransfer)
@@ -59,22 +59,22 @@ void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t s
 }
 
 void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer,
-                                 RHIBuffer* pDstBuffer,
-                                 const RHIBufferCopyRegion& region)
+                                RHIBuffer* pDstBuffer,
+                                const RHIBufferCopyRegion& region)
 {
     ALLOC_CMD(RHICommandCopyBuffer)(pSrcBuffer, pDstBuffer, region);
 }
 
 void RHICommandList::ClearTexture(RHITexture* pTexture,
-                                   const Color& color,
-                                   const RHITextureSubResourceRange& range)
+                                  const Color& color,
+                                  const RHITextureSubResourceRange& range)
 {
     ALLOC_CMD(RHICommandClearTexture)(pTexture, color, range);
 }
 
 void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
-                                  RHITexture* pDstTexture,
-                                  VectorView<RHITextureCopyRegion> regions)
+                                 RHITexture* pDstTexture,
+                                 VectorView<RHITextureCopyRegion> regions)
 {
     RHICommandCopyTexture* pCmd = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
 
@@ -91,8 +91,8 @@ void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
 }
 
 void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
-                                          RHIBuffer* pDstBuffer,
-                                          VectorView<RHIBufferTextureCopyRegion> regions)
+                                         RHIBuffer* pDstBuffer,
+                                         VectorView<RHIBufferTextureCopyRegion> regions)
 {
     RHICommandCopyTextureToBuffer* pCmd =
         ALLOC_CMD(RHICommandCopyTextureToBuffer)(pSrcTex, pDstBuffer);
@@ -105,8 +105,8 @@ void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
 }
 
 void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                          RHITexture* pDstTexture,
-                                          VectorView<RHIBufferTextureCopyRegion> regions)
+                                         RHITexture* pDstTexture,
+                                         VectorView<RHIBufferTextureCopyRegion> regions)
 {
     RHICommandCopyBufferToTexture* pCmd =
         ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
@@ -123,14 +123,14 @@ void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
     //}
 }
 
-void RHICommandList::ResolveTexture(RHITexture* srcTexture,
-                                     RHITexture* dstTexture,
-                                     uint32_t srcLayer,
-                                     uint32_t srcMipmap,
-                                     uint32_t dstLayer,
-                                     uint32_t dstMipmap)
+void RHICommandList::ResolveTexture(RHITexture* pSrcTexture,
+                                    RHITexture* pDstTexture,
+                                    uint32_t srcLayer,
+                                    uint32_t srcMipmap,
+                                    uint32_t dstLayer,
+                                    uint32_t dstMipmap)
 {
-    ALLOC_CMD(RHICommandResolveTexture)(srcTexture, dstTexture, srcLayer, srcMipmap, dstLayer,
+    ALLOC_CMD(RHICommandResolveTexture)(pSrcTexture, pDstTexture, srcLayer, srcMipmap, dstLayer,
                                         dstMipmap);
 }
 
@@ -145,8 +145,8 @@ void RHICommandList::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uin
 }
 
 void RHICommandList::SetDepthBias(float depthBiasConstantFactor,
-                                   float depthBiasClamp,
-                                   float depthBiasSlopeFactor)
+                                  float depthBiasClamp,
+                                  float depthBiasSlopeFactor)
 {
     ALLOC_CMD(RHICommandSetDepthBias)(depthBiasConstantFactor, depthBiasClamp,
                                       depthBiasSlopeFactor);
@@ -173,22 +173,22 @@ void RHICommandList::EndRendering()
 }
 
 void RHICommandList::BindPipeline(RHIPipelineType pipelineType,
-                                   RHIPipeline* pPipeline,
-                                   uint32_t numDescriptorSets,
-                                   RHIDescriptorSet* const* pDescriptorSets)
+                                  RHIPipeline* pPipeline,
+                                  uint32_t numDescriptorSets,
+                                  RHIDescriptorSet* const* pDescriptorSets)
 {
     ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline, numDescriptorSets, pDescriptorSets);
 }
 
 void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
-                                        VectorView<uint64_t> offsets)
+                                       VectorView<uint64_t> offsets)
 {
     VERIFY_EXPR(vertexBuffers.size() == offsets.size());
 
     RHICommandBindVertexBuffers* pCmd = ALLOC_CMD(RHICommandBindVertexBuffers)();
 
-    RHIBuffer** ppVertexBuffers = static_cast<RHIBuffer**>(
-        ZEN_MEM_ALLOC(sizeof(RHIBuffer*) * vertexBuffers.size()));
+    RHIBuffer** ppVertexBuffers =
+        static_cast<RHIBuffer**>(ZEN_MEM_ALLOC(sizeof(RHIBuffer*) * vertexBuffers.size()));
     std::ranges::copy(vertexBuffers, ppVertexBuffers);
 
     uint64_t* pOffsets = static_cast<uint64_t*>(ZEN_MEM_ALLOC(sizeof(uint64_t) * offsets.size()));
@@ -204,9 +204,9 @@ void RHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
 }
 
 void RHICommandList::Draw(uint32_t vertexCount,
-                           uint32_t instanceCount,
-                           uint32_t firstVertex,
-                           uint32_t firstInstance)
+                          uint32_t instanceCount,
+                          uint32_t firstVertex,
+                          uint32_t firstInstance)
 {
     ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance);
 }
@@ -241,10 +241,10 @@ void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t
 }
 
 void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                                     BitField<RHIPipelineStageBits> dstStages,
-                                     const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                                     const HeapVector<RHIBufferTransition>& bufferTransitions,
-                                     const HeapVector<RHITextureTransition>& textureTransitions)
+                                    BitField<RHIPipelineStageBits> dstStages,
+                                    const HeapVector<RHIMemoryTransition>& memoryTransitions,
+                                    const HeapVector<RHIBufferTransition>& bufferTransitions,
+                                    const HeapVector<RHITextureTransition>& textureTransitions)
 {
     RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
 

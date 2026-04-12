@@ -144,33 +144,33 @@ void CommandBuffer::End()
     vkEndCommandBuffer(m_handle);
 }
 
-void CommandBuffer::CopyBuffer(Buffer* srcBuffer,
+void CommandBuffer::CopyBuffer(Buffer* pSrcBuffer,
                                size_t srcOffset,
-                               Buffer* dstBuffer,
+                               Buffer* pDstBuffer,
                                size_t dstOffset,
                                size_t byteSize)
 {
-    ASSERT(srcOffset + byteSize <= srcBuffer->GetSize());
-    ASSERT(dstOffset + byteSize <= dstBuffer->GetSize());
+    ASSERT(srcOffset + byteSize <= pSrcBuffer->GetSize());
+    ASSERT(dstOffset + byteSize <= pDstBuffer->GetSize());
     VkBufferCopy bufferCopy{};
     bufferCopy.srcOffset = srcOffset;
     bufferCopy.dstOffset = dstOffset;
     bufferCopy.size      = byteSize;
-    vkCmdCopyBuffer(m_handle, srcBuffer->GetHandle(), dstBuffer->GetHandle(), 1, &bufferCopy);
+    vkCmdCopyBuffer(m_handle, pSrcBuffer->GetHandle(), pDstBuffer->GetHandle(), 1, &bufferCopy);
 }
 
-void CommandBuffer::CopyBufferToImage(Buffer* srcBuffer,
+void CommandBuffer::CopyBufferToImage(Buffer* pSrcBuffer,
                                       size_t srcOffset,
-                                      Image* dstImage,
+                                      Image* pDstImage,
                                       uint32_t mipLevel,
                                       uint32_t layer)
 {
     VkImageMemoryBarrier toTransferDstBarrier =
-        GetImageBarrier(ImageUsage::Undefined, ImageUsage::TransferDst, dstImage);
+        GetImageBarrier(ImageUsage::Undefined, ImageUsage::TransferDst, pDstImage);
     PipelineBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, {},
                     {toTransferDstBarrier});
 
-    auto imageSubresourceLayers           = dstImage->GetSubresourceLayers();
+    auto imageSubresourceLayers           = pDstImage->GetSubresourceLayers();
     imageSubresourceLayers.mipLevel       = mipLevel;
     imageSubresourceLayers.baseArrayLayer = layer;
 
@@ -180,15 +180,15 @@ void CommandBuffer::CopyBufferToImage(Buffer* srcBuffer,
     bufferImageCopy.bufferRowLength   = 0;
     bufferImageCopy.imageSubresource  = imageSubresourceLayers;
     bufferImageCopy.imageOffset       = VkOffset3D{0, 0, 0};
-    bufferImageCopy.imageExtent       = dstImage->GetExtent3D();
+    bufferImageCopy.imageExtent       = pDstImage->GetExtent3D();
 
-    vkCmdCopyBufferToImage(m_handle, srcBuffer->GetHandle(), dstImage->GetHandle(),
+    vkCmdCopyBufferToImage(m_handle, pSrcBuffer->GetHandle(), pDstImage->GetHandle(),
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopy);
 }
 
-void CommandBuffer::TransferLayout(Image* image, ImageUsage srcUsage, ImageUsage dstUsage)
+void CommandBuffer::TransferLayout(Image* pImage, ImageUsage srcUsage, ImageUsage dstUsage)
 {
-    VkImageMemoryBarrier barrier = GetImageBarrier(srcUsage, dstUsage, image);
+    VkImageMemoryBarrier barrier = GetImageBarrier(srcUsage, dstUsage, pImage);
     PipelineBarrier(Image::UsageToPipelineStage(srcUsage), Image::UsageToPipelineStage(dstUsage),
                     {}, {barrier});
 }
@@ -235,7 +235,7 @@ void CommandBuffer::SetScissor(uint32_t width, uint32_t height)
 
 VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage srcUsage,
                                                     ImageUsage dstUsage,
-                                                    const val::Image* image)
+                                                    const val::Image* pImage)
 {
     VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     barrier.srcAccessMask       = Image::UsageToAccessFlags(srcUsage);
@@ -244,19 +244,19 @@ VkImageMemoryBarrier CommandBuffer::GetImageBarrier(ImageUsage srcUsage,
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.oldLayout           = Image::UsageToImageLayout(srcUsage);
     barrier.newLayout           = Image::UsageToImageLayout(dstUsage);
-    barrier.image               = image->GetHandle();
-    barrier.subresourceRange    = image->GetSubResourceRange();
+    barrier.image               = pImage->GetHandle();
+    barrier.subresourceRange    = pImage->GetSubResourceRange();
     return barrier;
 }
 
 void CommandBuffer::PushConstants(VkPipelineLayout pipelineLayout,
                                   VkShaderStageFlags shaderStage,
-                                  const uint8_t* data,
+                                  const uint8_t* pData,
                                   size_t size)
 {
     std::vector<uint8_t> pushConstants(size);
 
-    std::memcpy(pushConstants.data(), data, size);
+    std::memcpy(pushConstants.data(), pData, size);
 
     vkCmdPushConstants(m_handle, pipelineLayout, shaderStage, 0, pushConstants.size(),
                        pushConstants.data());
@@ -267,14 +267,14 @@ void CommandBuffer::ExecuteCommands(std::vector<val::CommandBuffer*>& secondaryC
     std::vector<VkCommandBuffer> secondCmdBufferHandles(secondaryCmdBuffers.size(), VK_NULL_HANDLE);
     std::transform(secondaryCmdBuffers.begin(), secondaryCmdBuffers.end(),
                    secondCmdBufferHandles.begin(),
-                   [](const CommandBuffer* cmdBuffer) { return cmdBuffer->GetHandle(); });
+                   [](const CommandBuffer* pCmdBuffer) { return pCmdBuffer->GetHandle(); });
     vkCmdExecuteCommands(GetHandle(), util::ToU32(secondaryCmdBuffers.size()),
                          secondCmdBufferHandles.data());
 }
 
-void CommandBuffer::ExecuteCommand(val::CommandBuffer* secondaryCmdBuffers)
+void CommandBuffer::ExecuteCommand(val::CommandBuffer* pSecondaryCmdBuffers)
 {
-    VkCommandBuffer secondCmdBufferHandle = secondaryCmdBuffers->GetHandle();
+    VkCommandBuffer secondCmdBufferHandle = pSecondaryCmdBuffers->GetHandle();
     vkCmdExecuteCommands(GetHandle(), 1, &secondCmdBufferHandle);
 }
 } // namespace zen::val

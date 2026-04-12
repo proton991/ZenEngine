@@ -204,13 +204,13 @@ public:
     RDGResourceTrackerPool();
     ~RDGResourceTrackerPool();
 
-    RDGResourceTracker* GetTracker(const RHIResource* resource);
+    RDGResourceTracker* GetTracker(const RHIResource* pResource);
 
-    void UpdateTrackerState(const RHITexture* texture,
+    void UpdateTrackerState(const RHITexture* pTexture,
                             RHIAccessMode accessMode,
                             RHITextureUsage usage);
 
-    void UpdateTrackerState(const RHIBuffer* buffer,
+    void UpdateTrackerState(const RHIBuffer* pBuffer,
                             RHIAccessMode accessMode,
                             RHIBufferUsage usage);
 
@@ -234,13 +234,13 @@ struct RDGAccess
 
 struct RDGResource
 {
-    explicit RDGResource(PoolAllocator<LinearAllocator>* alloc) :
-        readByNodeIds(alloc), writtenByNodeIds(alloc)
+    explicit RDGResource(PoolAllocator<LinearAllocator>* pAlloc) :
+        readByNodeIds(pAlloc), writtenByNodeIds(pAlloc)
     {}
 
     RDG_ID id{-1};
     std::string tag;
-    RHIResource* physicalRes{nullptr};
+    RHIResource* pPhysicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
 
     RDGVector<RDG_ID> readByNodeIds;
@@ -259,7 +259,7 @@ struct RDGPassNode;
 struct RDGPassChildNode
 {
     RDGPassCmdType type{RDGPassCmdType::eNone};
-    RDGPassNode* parent{nullptr};
+    RDGPassNode* pParent{nullptr};
 };
 
 struct RDGPassNode : RDGNodeBase
@@ -270,7 +270,7 @@ struct RDGPassNode : RDGNodeBase
 
 struct RDGComputePassNode : RDGPassNode
 {
-    const ComputePass* computePass{nullptr};
+    const ComputePass* pComputePass{nullptr};
 };
 
 struct RDGGraphicsPassNode : RDGPassNode
@@ -282,7 +282,7 @@ struct RDGGraphicsPassNode : RDGPassNode
     // RHIRenderPassClearValue clearValues[8];
     RHIRenderPassLayout renderPassLayout;
     bool dynamic;
-    const GraphicsPass* graphicsPass{nullptr};
+    const GraphicsPass* pGraphicsPass{nullptr};
 };
 
 /*****************************/
@@ -291,29 +291,29 @@ struct RDGGraphicsPassNode : RDGPassNode
 
 struct RDGBufferClearNode : RDGNodeBase
 {
-    RHIBuffer* buffer;
+    RHIBuffer* pBuffer;
     uint32_t offset{0};
     uint32_t size{0};
 };
 
 struct RDGBufferCopyNode : RDGNodeBase
 {
-    RHIBuffer* srcBuffer;
-    RHIBuffer* dstBuffer;
+    RHIBuffer* pSrcBuffer;
+    RHIBuffer* pDstBuffer;
     RHIBufferCopyRegion region;
 };
 
 struct RDGBufferUpdateNode : RDGNodeBase
 {
     std::vector<RHIBufferCopySource> sources;
-    RHIBuffer* dstBuffer;
+    RHIBuffer* pDstBuffer;
 };
 
 struct RDGTextureClearNode : RDGNodeBase
 {
     // TextureHandle texture;
     // RHITextureSubResourceRange range;
-    RHITexture* texture;
+    RHITexture* pTexture;
     Color color;
 };
 
@@ -410,8 +410,8 @@ struct RDGTextureResolveNode : RDGNodeBase
 {
     // TextureHandle srcTexture;
     // TextureHandle dstTexture;
-    RHITexture* srcTexture;
-    RHITexture* dstTexture;
+    RHITexture* pSrcTexture;
+    RHITexture* pDstTexture;
     uint32_t srcLayer{0};
     uint32_t srcMipmap{0};
     uint32_t dstLayer{0};
@@ -421,12 +421,12 @@ struct RDGTextureResolveNode : RDGNodeBase
 struct RDGTextureMipmapGenNode : RDGNodeBase
 {
     // TextureHandle texture;
-    RHITexture* texture;
+    RHITexture* pTexture;
 };
 
 struct RDGBindIndexBufferNode : RDGPassChildNode
 {
-    RHIBuffer* buffer;
+    RHIBuffer* pBuffer;
     DataFormat format;
     uint32_t offset;
 };
@@ -487,7 +487,7 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
 
 struct RDGBindPipelineNode : RDGPassChildNode
 {
-    RHIPipeline* pipeline;
+    RHIPipeline* pPipeline;
     RHIPipelineType pipelineType{RHIPipelineType::eNone};
 };
 
@@ -508,7 +508,7 @@ struct RDGDrawIndexedNode : RDGPassChildNode
 
 struct RDGDrawIndexedIndirectNode : RDGPassChildNode
 {
-    RHIBuffer* indirectBuffer;
+    RHIBuffer* pIndirectBuffer;
     uint32_t offset{0};
     uint32_t drawCount{0};
     uint32_t stride{0};
@@ -523,7 +523,7 @@ struct RDGDispatchNode : RDGPassChildNode
 
 struct RDGDispatchIndirectNode : RDGPassChildNode
 {
-    RHIBuffer* indirectBuffer;
+    RHIBuffer* pIndirectBuffer;
     uint32_t offset{0};
 };
 
@@ -595,19 +595,19 @@ public:
         Destroy();
     }
 
-    void AddPassBindPipelineNode(RDGPassNode* parent,
-                                 RHIPipeline* pipelineHandle,
+    void AddPassBindPipelineNode(RDGPassNode* pParent,
+                                 RHIPipeline* pPipelineHandle,
                                  RHIPipelineType pipelineType);
 
     RDGPassNode* AddComputePassNode(const ComputePass* pComputePass, std::string tag);
 
-    void AddComputePassDispatchNode(RDGPassNode* parent,
+    void AddComputePassDispatchNode(RDGPassNode* pParent,
                                     uint32_t groupCountX,
                                     uint32_t groupCountY,
                                     uint32_t groupCountZ);
 
-    void AddComputePassDispatchIndirectNode(RDGPassNode* parent,
-                                            RHIBuffer* indirectBuffer,
+    void AddComputePassDispatchIndirectNode(RDGPassNode* pParent,
+                                            RHIBuffer* pIndirectBuffer,
                                             uint32_t offset);
 
     // RDGPassNode* AddGraphicsPassNode(RenderPassHandle renderPassHandle,
@@ -617,81 +617,81 @@ public:
     //                                  bool hasColorTarget,
     //                                  bool hasDepthTarget = false);
 
-    RDGPassNode* AddGraphicsPassNode(const GraphicsPass* gfxPass, std::string tag);
+    RDGPassNode* AddGraphicsPassNode(const GraphicsPass* pGfxPass, std::string tag);
 
-    void AddGraphicsPassBindIndexBufferNode(RDGPassNode* parent,
-                                            RHIBuffer* bufferHandle,
+    void AddGraphicsPassBindIndexBufferNode(RDGPassNode* pParent,
+                                            RHIBuffer* pBufferHandle,
                                             DataFormat format,
                                             uint32_t offset = 0);
 
-    void AddGraphicsPassBindVertexBufferNode(RDGPassNode* parent,
+    void AddGraphicsPassBindVertexBufferNode(RDGPassNode* pParent,
                                              VectorView<RHIBuffer*> vertexBuffers,
                                              VectorView<uint64_t> offsets);
 
-    void AddGraphicsPassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
+    void AddGraphicsPassSetPushConstants(RDGPassNode* pParent, const void* pData, uint32_t dataSize);
 
-    void AddComputePassSetPushConstants(RDGPassNode* parent, const void* data, uint32_t dataSize);
+    void AddComputePassSetPushConstants(RDGPassNode* pParent, const void* pData, uint32_t dataSize);
 
-    void AddGraphicsPassDrawNode(RDGPassNode* parent, uint32_t vertexCount, uint32_t instanceCount);
+    void AddGraphicsPassDrawNode(RDGPassNode* pParent, uint32_t vertexCount, uint32_t instanceCount);
 
-    void AddGraphicsPassDrawIndexedNode(RDGPassNode* parent,
+    void AddGraphicsPassDrawIndexedNode(RDGPassNode* pParent,
                                         uint32_t indexCount,
                                         uint32_t instanceCount,
                                         uint32_t firstIndex,
                                         int32_t vertexOffset   = 0,
                                         uint32_t firstInstance = 0);
 
-    void AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* parent,
-                                                RHIBuffer* indirectBuffer,
+    void AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* pParent,
+                                                RHIBuffer* pIndirectBuffer,
                                                 uint32_t offset,
                                                 uint32_t drawCount,
                                                 uint32_t stride);
 
-    void AddGraphicsPassSetBlendConstantNode(RDGPassNode* parent, const Color& color);
+    void AddGraphicsPassSetBlendConstantNode(RDGPassNode* pParent, const Color& color);
 
-    void AddGraphicsPassSetLineWidthNode(RDGPassNode* parent, float width);
+    void AddGraphicsPassSetLineWidthNode(RDGPassNode* pParent, float width);
 
-    void AddGraphicsPassSetScissorNode(RDGPassNode* parent, const Rect2<int>& scissor);
+    void AddGraphicsPassSetScissorNode(RDGPassNode* pParent, const Rect2<int>& scissor);
 
-    void AddGraphicsPassSetViewportNode(RDGPassNode* parent, const Rect2<float>& viewport);
+    void AddGraphicsPassSetViewportNode(RDGPassNode* pParent, const Rect2<float>& viewport);
 
-    void AddGraphicsPassSetDepthBiasNode(RDGPassNode* parent,
+    void AddGraphicsPassSetDepthBiasNode(RDGPassNode* pParent,
                                          float depthBiasConstantFactor,
                                          float depthBiasClamp,
                                          float depthBiasSlopeFactor);
 
-    void AddBufferClearNode(RHIBuffer* bufferHandle, uint32_t offset, uint64_t size);
+    void AddBufferClearNode(RHIBuffer* pBufferHandle, uint32_t offset, uint64_t size);
 
-    void AddBufferCopyNode(RHIBuffer* srcBufferHandle,
-                           RHIBuffer* dstBufferHandle,
+    void AddBufferCopyNode(RHIBuffer* pSrcBufferHandle,
+                           RHIBuffer* pDstBufferHandle,
                            const RHIBufferCopyRegion& copyRegion);
 
-    void AddBufferUpdateNode(RHIBuffer* dstBufferHandle,
+    void AddBufferUpdateNode(RHIBuffer* pDstBufferHandle,
                              const VectorView<RHIBufferCopySource>& sources);
 
-    void AddTextureClearNode(RHITexture* texture,
+    void AddTextureClearNode(RHITexture* pTexture,
                              const Color& color,
                              const RHITextureSubResourceRange& range);
 
-    void AddTextureCopyNode(RHITexture* srcTexture,
-                            RHITexture* dstTexture,
+    void AddTextureCopyNode(RHITexture* pSrcTexture,
+                            RHITexture* pDstTexture,
                             const VectorView<RHITextureCopyRegion>& regions);
 
-    void AddTextureReadNode(RHITexture* srcTexture,
-                            RHIBuffer* dstBufferHandle,
+    void AddTextureReadNode(RHITexture* pSrcTexture,
+                            RHIBuffer* pDstBufferHandle,
                             const VectorView<RHIBufferTextureCopyRegion>& regions);
 
-    void AddTextureUpdateNode(RHITexture* dstTexture,
+    void AddTextureUpdateNode(RHITexture* pDstTexture,
                               const VectorView<RHIBufferTextureCopySource>& sources);
 
-    void AddTextureResolveNode(RHITexture* srcTexture,
-                               RHITexture* dstTexture,
+    void AddTextureResolveNode(RHITexture* pSrcTexture,
+                               RHITexture* pDstTexture,
                                uint32_t srcLayer,
                                uint32_t srcMipmap,
                                uint32_t dstLayer,
                                uint32_t dstMipMap);
 
-    void AddTextureMipmapGenNode(RHITexture* texture);
+    void AddTextureMipmapGenNode(RHITexture* pTexture);
 
 
     void Begin();
@@ -703,14 +703,14 @@ public:
     void Execute(RHICommandList* pCmdList);
 
 private:
-    void DeclareTextureAccessForPass(const RDGPassNode* passNode,
-                                     RHITexture* texture,
+    void DeclareTextureAccessForPass(const RDGPassNode* pPassNode,
+                                     RHITexture* pTexture,
                                      RHITextureUsage usage,
                                      const RHITextureSubResourceRange& range,
                                      RHIAccessMode accessMode);
 
-    void DeclareBufferAccessForPass(const RDGPassNode* passNode,
-                                    RHIBuffer* buffer,
+    void DeclareBufferAccessForPass(const RDGPassNode* pPassNode,
+                                    RHIBuffer* pBuffer,
                                     RHIBufferUsage usage,
                                     RHIAccessMode accessMode);
 
@@ -723,11 +723,11 @@ private:
         return key;
     }
 
-    void RunNode(RDGNodeBase* node);
+    void RunNode(RDGNodeBase* pNode);
 
     // void SortNodes();
 
-    bool AddNodeDepsForResource(RDGResource* resource,
+    bool AddNodeDepsForResource(RDGResource* pResource,
                                 HashMap<RDG_ID, std::vector<RDG_ID>>& nodeDependencies,
                                 const RDG_ID& srcNodeId,
                                 const RDG_ID& dstNodeId);
@@ -746,29 +746,29 @@ private:
         // m_nodeDataOffset.push_back(nodeDataOffset);
         // m_nodeData.resize(m_nodeData.size() + sizeof(T));
         // T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
-        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
 
-        new (newNode) T();
+        new (pNewNode) T();
         // *newNode   = T();
 
-        newNode->id = m_nodeCount;
+        pNewNode->id = m_nodeCount;
         m_nodeCount++;
-        m_baseNodeMap[newNode->id] = newNode;
+        m_baseNodeMap[pNewNode->id] = pNewNode;
         // m_allNodes.push_back(newNode);
-        return newNode;
+        return pNewNode;
     }
 
     template <class T, class... Args>
         requires std::derived_from<T, RDGNodeBase>
     T* AllocNode(Args&&... args)
     {
-        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
-        new (newNode) T(std::forward<Args>(args)...);
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        new (pNewNode) T(std::forward<Args>(args)...);
 
-        newNode->id                = m_nodeCount++;
-        m_baseNodeMap[newNode->id] = newNode;
+        pNewNode->id                = m_nodeCount++;
+        m_baseNodeMap[pNewNode->id] = pNewNode;
 
-        return newNode;
+        return pNewNode;
     }
 
     template <class T>
@@ -779,57 +779,57 @@ private:
         // m_nodeDataOffset.push_back(nodeDataOffset);
         // m_nodeData.resize(m_nodeData.size() + nodeSize);
         // T* newNode = reinterpret_cast<T*>(&m_nodeData[nodeDataOffset]);
-        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
-        new (newNode) T();
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
+        new (pNewNode) T();
         // *newNode   = T();
 
-        newNode->id = m_nodeCount;
+        pNewNode->id = m_nodeCount;
         m_nodeCount++;
-        m_baseNodeMap[newNode->id] = newNode;
+        m_baseNodeMap[pNewNode->id] = pNewNode;
         // m_allNodes.push_back(newNode);
-        return newNode;
+        return pNewNode;
     }
 
     template <class T, class... Args>
         requires std::derived_from<T, RDGPassChildNode>
-    T* AllocPassChildNode(RDGPassNode* passNode, Args&&... args)
+    T* AllocPassChildNode(RDGPassNode* pPassNode, Args&&... args)
     {
         // T* newNode      = new T();
         // T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
-        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T), alignof(T)));
-        new (newNode) T(std::forward<Args>(args)...);
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T), alignof(T)));
+        new (pNewNode) T(std::forward<Args>(args)...);
 
-        newNode->parent = passNode;
+        pNewNode->pParent = pPassNode;
         // passNode->childNodes.push_back(newNode);
-        m_passChildNodeMap[passNode->id].push_back(newNode);
+        m_passChildNodeMap[pPassNode->id].push_back(pNewNode);
         // m_allChildNodes.push_back(newNode);
-        return newNode;
+        return pNewNode;
     }
 
     template <class T>
         requires std::derived_from<T, RDGPassChildNode>
-    T* AllocPassChildNode(RDGPassNode* passNode)
+    T* AllocPassChildNode(RDGPassNode* pPassNode)
     {
         // T* newNode      = new T();
         // T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
-        T* newNode      = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
-        newNode->parent = passNode;
+        T* pNewNode      = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        pNewNode->pParent = pPassNode;
         // passNode->childNodes.push_back(newNode);
-        m_passChildNodeMap[passNode->id].push_back(newNode);
+        m_passChildNodeMap[pPassNode->id].push_back(pNewNode);
         // m_allChildNodes.push_back(newNode);
-        return newNode;
+        return pNewNode;
     }
 
     template <class T>
         requires std::derived_from<T, RDGPassChildNode>
-    T* AllocPassChildNode(RDGPassNode* passNode, size_t nodeSize)
+    T* AllocPassChildNode(RDGPassNode* pPassNode, size_t nodeSize)
     {
         // T* newNode = static_cast<T*>(ZEN_MEM_ALLOC(nodeSize));
-        T* newNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
         // new (newNode) T;
 
         // T* newNode      = new T();
-        newNode->parent = passNode;
+        pNewNode->pParent = pPassNode;
         // uint32_t nodeDataOffset = m_nodeData.size();
         // m_nodeDataOffset.push_back(nodeDataOffset);
         // m_nodeData.resize(m_nodeData.size() + nodeSize);
@@ -837,9 +837,9 @@ private:
 
         // new (newNode) T();
         // passNode->childNodes.push_back(newNode);
-        m_passChildNodeMap[passNode->id].push_back(newNode);
+        m_passChildNodeMap[pPassNode->id].push_back(pNewNode);
         // m_allChildNodes.push_back(newNode);
-        return newNode;
+        return pNewNode;
     }
 
     const RDGNodeBase* GetNodeBaseById(const RDG_ID& nodeId) const
@@ -862,42 +862,42 @@ private:
     //     return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     // }
 
-    RDGResource* GetOrAllocResource(RHIResource* resourceRHI,
+    RDGResource* GetOrAllocResource(RHIResource* pResourceRHI,
                                     RDGResourceType type,
                                     const RDG_ID& nodeId)
     {
-        RDGResource* resource;
-        if (!m_resourceMap.contains(resourceRHI))
+        RDGResource* pResource;
+        if (!m_resourceMap.contains(pResourceRHI))
         {
-            resource              = m_resourceAllocator.Alloc(&m_poolAlloc);
-            resource->id          = static_cast<int32_t>(m_resources.size());
-            resource->type        = type;
-            resource->physicalRes = resourceRHI;
+            pResource              = m_resourceAllocator.Alloc(&m_poolAlloc);
+            pResource->id          = static_cast<int32_t>(m_resources.size());
+            pResource->type        = type;
+            pResource->pPhysicalRes = pResourceRHI;
 
-            m_resources.push_back(resource);
-            m_resourceMap[resourceRHI] = resource;
+            m_resources.push_back(pResource);
+            m_resourceMap[pResourceRHI] = pResource;
             // track first used node
-            m_resourceFirstUseNodeMap[resource->id] = nodeId;
+            m_resourceFirstUseNodeMap[pResource->id] = nodeId;
         }
         else
         {
-            resource = m_resourceMap[resourceRHI];
+            pResource = m_resourceMap[pResourceRHI];
         }
-        return resource;
+        return pResource;
     }
 
     template <class T>
         requires std::derived_from<T, RDGNodeBase>
-    static RDGNodeBase* ToBaseNode(T* derived)
+    static RDGNodeBase* ToBaseNode(T* pDerived)
     {
-        return static_cast<RDGNodeBase*>(derived);
+        return static_cast<RDGNodeBase*>(pDerived);
     }
 
     template <class T>
         requires std::derived_from<T, RDGNodeBase>
-    static const RDGNodeBase* ToBaseNode(const T* derived)
+    static const RDGNodeBase* ToBaseNode(const T* pDerived)
     {
-        return static_cast<RDGNodeBase*>(derived);
+        return static_cast<RDGNodeBase*>(pDerived);
     }
 
     std::string m_rdgTag;

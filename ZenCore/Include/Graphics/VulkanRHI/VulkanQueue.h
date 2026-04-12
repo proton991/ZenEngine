@@ -14,7 +14,7 @@ class FVulkanCommandBufferPool;
 class VulkanQueue
 {
 public:
-    VulkanQueue(VulkanDevice* device, uint32_t familyIndex);
+    VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex);
 
     ~VulkanQueue();
 
@@ -39,18 +39,18 @@ public:
 
     VulkanCommandBuffer* GetLastSubmittedCmdBuffer() const
     {
-        return m_lastSubmittedCmdBuffer;
+        return m_pLastSubmittedCmdBuffer;
     }
 
-    void GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer, uint64_t* fenceSignaledCounter) const;
+    void GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer, uint64_t* pFenceSignaledCounter) const;
 
-    void Submit(VulkanCommandBuffer* cmdBuffer,
+    void Submit(VulkanCommandBuffer* pCmdBuffer,
                 uint32_t numSignalSemaphores,
-                VkSemaphore* signalSemaphores);
+                VkSemaphore* pSignalSemaphores);
 
-    void Submit(VulkanCommandBuffer* cmdBuffer, VkSemaphore signalSemaphore);
+    void Submit(VulkanCommandBuffer* pCmdBuffer, VkSemaphore signalSemaphore);
 
-    void Submit(VulkanCommandBuffer* cmdBuffer);
+    void Submit(VulkanCommandBuffer* pCmdBuffer);
 
     void SubmitWorkloads();
 
@@ -59,14 +59,14 @@ public:
     void WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
 
 private:
-    void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer);
+    void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer);
 
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     VkQueue m_handle{VK_NULL_HANDLE};
     uint32_t m_familyIndex;
     uint32_t m_queueIndex;
 
-    VulkanCommandBuffer* m_lastSubmittedCmdBuffer{nullptr};
+    VulkanCommandBuffer* m_pLastSubmittedCmdBuffer{nullptr};
 
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
 

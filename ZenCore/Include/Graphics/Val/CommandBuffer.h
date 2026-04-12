@@ -60,19 +60,19 @@ public:
 
     void End();
 
-    void CopyBuffer(Buffer* srcBuffer,
+    void CopyBuffer(Buffer* pSrcBuffer,
                     size_t srcOffset,
-                    Buffer* dstBuffer,
+                    Buffer* pDstBuffer,
                     size_t dstOffset,
                     size_t byteSize);
 
-    void CopyBufferToImage(Buffer* srcBuffer,
+    void CopyBufferToImage(Buffer* pSrcBuffer,
                            size_t srcOffset,
-                           Image* dstImage,
+                           Image* pDstImage,
                            uint32_t mipLevel = 0,
                            uint32_t layer    = 0);
 
-    void TransferLayout(Image* image, ImageUsage srcUsage, ImageUsage dstUsage);
+    void TransferLayout(Image* pImage, ImageUsage srcUsage, ImageUsage dstUsage);
 
     template <class... Buffers> void BindVertexBuffers(Buffers&... vertexBuffers)
     {
@@ -101,19 +101,19 @@ public:
 
     static VkImageMemoryBarrier GetImageBarrier(ImageUsage srcUsage,
                                                 ImageUsage dstUsage,
-                                                const val::Image* image);
+                                                const val::Image* pImage);
 
     template <class T> void PushConstants(VkPipelineLayout pipelineLayout,
                                           VkShaderStageFlags shaderStage,
-                                          const T* constants)
+                                          const T* pConstants)
     {
-        PushConstants(pipelineLayout, shaderStage, reinterpret_cast<const uint8_t*>(constants),
+        PushConstants(pipelineLayout, shaderStage, reinterpret_cast<const uint8_t*>(pConstants),
                       sizeof(T));
     }
 
     void ExecuteCommands(std::vector<val::CommandBuffer*>& secondaryCmdBuffers);
 
-    void ExecuteCommand(val::CommandBuffer* secondaryCmdBuffers);
+    void ExecuteCommand(val::CommandBuffer* pSecondaryCmdBuffers);
 
     const auto& GetInheritanceInfo() const
     {
@@ -123,7 +123,7 @@ public:
 private:
     void PushConstants(VkPipelineLayout pipelineLayout,
                        VkShaderStageFlags shaderStage,
-                       const uint8_t* data,
+                       const uint8_t* pData,
                        size_t size);
 
     CommandPool& m_cmdPool;

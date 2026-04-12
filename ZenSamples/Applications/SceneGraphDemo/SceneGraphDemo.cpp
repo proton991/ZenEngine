@@ -55,52 +55,52 @@ void SceneGraphDemo::Update(float deltaTime)
 
 void SceneGraphDemo::SetupRenderGraph()
 {
-    val::ShaderModule* vertexShader =
+    val::ShaderModule* pVertexShader =
         m_shaderManager->RequestShader("main.vert.spv", VK_SHADER_STAGE_VERTEX_BIT, {});
-    val::ShaderModule* fragShader =
+    val::ShaderModule* pFragShader =
         m_shaderManager->RequestShader("pbr.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT, {});
 
-    RDGPass* mainPass = m_renderGraph->AddPass("MainPass", RDG_QUEUE_GRAPHICS_BIT);
-    mainPass->UseShaders({vertexShader, fragShader});
+    RDGPass* pMainPass = m_renderGraph->AddPass("MainPass", RDG_QUEUE_GRAPHICS_BIT);
+    pMainPass->UseShaders({pVertexShader, pFragShader});
     RDGImage::Info outputImgInfo{};
     outputImgInfo.format = m_renderContext->GetSwapchainFormat();
     RDGImage::Info outputDepthInfo{};
     outputDepthInfo.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
-    mainPass->WriteToColorImage("Output", outputImgInfo);
-    mainPass->WriteToDepthStencilImage("OutputDS", outputDepthInfo);
-    mainPass->ReadFromExternalImages("textures", m_textureArray);
-    mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUBO.Get());
-    mainPass->ReadFromExternalBuffer("nodeUniform", m_nodesUBO.Get());
-    mainPass->ReadFromExternalBuffer("materialUniform", m_materialUBO.Get());
-    mainPass->ReadFromExternalBuffer("lightUniform", m_lightUBO.Get());
+    pMainPass->WriteToColorImage("Output", outputImgInfo);
+    pMainPass->WriteToDepthStencilImage("OutputDS", outputDepthInfo);
+    pMainPass->ReadFromExternalImages("textures", m_textureArray);
+    pMainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUBO.Get());
+    pMainPass->ReadFromExternalBuffer("nodeUniform", m_nodesUBO.Get());
+    pMainPass->ReadFromExternalBuffer("materialUniform", m_materialUBO.Get());
+    pMainPass->ReadFromExternalBuffer("lightUniform", m_lightUBO.Get());
 
-    mainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
-    mainPass->BindSRD("materialUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uMaterialData");
-    mainPass->BindSRD("nodeUniform", VK_SHADER_STAGE_VERTEX_BIT, "uNodeData");
-    mainPass->BindSRD("lightUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uLightsData");
-    mainPass->BindSRD("textures", VK_SHADER_STAGE_FRAGMENT_BIT, "uTextureArray");
-    mainPass->BindSampler("textures", m_sampler.Get());
+    pMainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
+    pMainPass->BindSRD("materialUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uMaterialData");
+    pMainPass->BindSRD("nodeUniform", VK_SHADER_STAGE_VERTEX_BIT, "uNodeData");
+    pMainPass->BindSRD("lightUniform", VK_SHADER_STAGE_FRAGMENT_BIT, "uLightsData");
+    pMainPass->BindSRD("textures", VK_SHADER_STAGE_FRAGMENT_BIT, "uTextureArray");
+    pMainPass->BindSampler("textures", m_sampler.Get());
 
     m_renderGraph->SetBackBufferTag("Output");
     m_renderGraph->SetBackBufferSize(m_window->GetExtent2D().width, m_window->GetExtent2D().height);
     m_renderGraph->Compile();
 
     // set execute after compile
-    m_renderGraph->SetOnExecute("MainPass", [&](val::CommandBuffer* commandBuffer) {
+    m_renderGraph->SetOnExecute("MainPass", [&](val::CommandBuffer* pCommandBuffer) {
         auto& physicalPass =
             m_renderGraph->GetPhysicalPass(m_renderGraph->GetRDGPass("MainPass")->GetIndex());
         if (RenderConfig::GetInstance().useSecondaryCmd)
         {
-            RecordDrawCmdsSecondary(commandBuffer, physicalPass);
+            RecordDrawCmdsSecondary(pCommandBuffer, physicalPass);
         }
         else
         {
-            RecordDrawCmdsPrimary(commandBuffer, m_scene->GetRenderableNodes(), physicalPass);
+            RecordDrawCmdsPrimary(pCommandBuffer, m_scene->GetRenderableNodes(), physicalPass);
         }
     });
 }
 
-void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
+void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* pPrimaryCmdBuffer,
                                              const RDGPhysicalPass& physicalPass)
 {
     auto subMeshes =
@@ -124,9 +124,9 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffe
         }
         if (RenderConfig::GetInstance().numThreads > 1)
         {
-            auto fut = m_threadPool->Push([this, &primaryCmdBuffer, meshStart, meshEnd, &subMeshes,
+            auto fut = m_threadPool->Push([this, &pPrimaryCmdBuffer, meshStart, meshEnd, &subMeshes,
                                            &physicalPass](uint32_t threadId) {
-                return RecordDrawCmdsSecondary(primaryCmdBuffer, meshStart, meshEnd, subMeshes,
+                return RecordDrawCmdsSecondary(pPrimaryCmdBuffer, meshStart, meshEnd, subMeshes,
                                                physicalPass, threadId);
             });
 
@@ -134,7 +134,7 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffe
         }
         else
         {
-            secondaryCmds.push_back(RecordDrawCmdsSecondary(primaryCmdBuffer, meshStart, meshEnd,
+            secondaryCmds.push_back(RecordDrawCmdsSecondary(pPrimaryCmdBuffer, meshStart, meshEnd,
                                                             subMeshes, physicalPass));
         }
 
@@ -148,11 +148,11 @@ void SceneGraphDemo::RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffe
         }
     }
 
-    primaryCmdBuffer->ExecuteCommands(secondaryCmds);
+    pPrimaryCmdBuffer->ExecuteCommands(secondaryCmds);
 }
 
 val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(
-    val::CommandBuffer* primaryCmdBuffer,
+    val::CommandBuffer* pPrimaryCmdBuffer,
     uint32_t meshStart,
     uint32_t meshEnd,
     // all sub meshes and their nodes
@@ -162,76 +162,76 @@ val::CommandBuffer* SceneGraphDemo::RecordDrawCmdsSecondary(
     // thread id for command buffer
     uint32_t threadId)
 {
-    auto* secondaryCmdBuffer = m_renderContext->GetActiveFrame().RequestCommandBuffer(
+    auto* pSecondaryCmdBuffer = m_renderContext->GetActiveFrame().RequestCommandBuffer(
         m_device->GetQueue(val::QUEUE_INDEX_GRAPHICS).GetFamilyIndex(),
         val::CommandPool::ResetMode::ResetPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY, threadId);
 
-    secondaryCmdBuffer->Begin(primaryCmdBuffer->GetInheritanceInfo(),
+    pSecondaryCmdBuffer->Begin(pPrimaryCmdBuffer->GetInheritanceInfo(),
                               VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT |
                                   VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT);
     auto extent = m_renderContext->GetSwapchainExtent2D();
-    secondaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
+    pSecondaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
                                     static_cast<float>(extent.height));
-    secondaryCmdBuffer->SetScissor(extent.width, extent.height);
+    pSecondaryCmdBuffer->SetScissor(extent.width, extent.height);
 
-    secondaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
-    secondaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+    pSecondaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
+    pSecondaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
 
-    if (physicalPass.graphicPipeline)
+    if (physicalPass.pGraphicPipeline)
     {
-        secondaryCmdBuffer->BindGraphicPipeline(physicalPass.graphicPipeline->GetHandle());
+        pSecondaryCmdBuffer->BindGraphicPipeline(physicalPass.pGraphicPipeline->GetHandle());
     }
     if (!physicalPass.descriptorSets.empty())
     {
-        secondaryCmdBuffer->BindDescriptorSets(physicalPass.pipelineLayout->GetHandle(),
+        pSecondaryCmdBuffer->BindDescriptorSets(physicalPass.pPipelineLayout->GetHandle(),
                                                physicalPass.descriptorSets);
     }
     PushConstantsData pushConstantData = m_pushConstantData;
     for (auto i = meshStart; i < meshEnd; i++)
     {
-        auto* node    = subMeshes[i].first;
-        auto* subMesh = subMeshes[i].second;
+        auto* pNode    = subMeshes[i].first;
+        auto* pSubMesh = subMeshes[i].second;
 
-        pushConstantData.nodeIndex     = m_nodesUniformIndex[node->GetHash()];
-        pushConstantData.materialIndex = subMesh->GetMaterial()->index;
-        secondaryCmdBuffer->PushConstants(physicalPass.pipelineLayout->GetHandle(),
+        pushConstantData.nodeIndex     = m_nodesUniformIndex[pNode->GetHash()];
+        pushConstantData.materialIndex = pSubMesh->GetMaterial()->index;
+        pSecondaryCmdBuffer->PushConstants(physicalPass.pPipelineLayout->GetHandle(),
                                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                                           &pushConstantData);
-        secondaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
+        pSecondaryCmdBuffer->DrawIndices(pSubMesh->GetIndexCount(), 1, pSubMesh->GetFirstIndex());
     }
-    secondaryCmdBuffer->End();
-    return secondaryCmdBuffer;
+    pSecondaryCmdBuffer->End();
+    return pSecondaryCmdBuffer;
 }
 
-void SceneGraphDemo::RecordDrawCmdsPrimary(val::CommandBuffer* primaryCmdBuffer,
+void SceneGraphDemo::RecordDrawCmdsPrimary(val::CommandBuffer* pPrimaryCmdBuffer,
                                            const std::vector<sg::Node*>& nodes,
                                            const RDGPhysicalPass& physicalPass)
 {
-    primaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
-    primaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+    pPrimaryCmdBuffer->BindVertexBuffers(*m_vertexBuffer);
+    pPrimaryCmdBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
     auto extent = m_renderContext->GetSwapchainExtent2D();
-    primaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
+    pPrimaryCmdBuffer->SetViewport(static_cast<float>(extent.width),
                                   static_cast<float>(extent.height));
-    primaryCmdBuffer->SetScissor(extent.width, extent.height);
-    if (physicalPass.graphicPipeline)
+    pPrimaryCmdBuffer->SetScissor(extent.width, extent.height);
+    if (physicalPass.pGraphicPipeline)
     {
-        primaryCmdBuffer->BindGraphicPipeline(physicalPass.graphicPipeline->GetHandle());
+        pPrimaryCmdBuffer->BindGraphicPipeline(physicalPass.pGraphicPipeline->GetHandle());
     }
     if (!physicalPass.descriptorSets.empty())
     {
-        primaryCmdBuffer->BindDescriptorSets(physicalPass.pipelineLayout->GetHandle(),
+        pPrimaryCmdBuffer->BindDescriptorSets(physicalPass.pPipelineLayout->GetHandle(),
                                              physicalPass.descriptorSets);
     }
-    for (auto* node : nodes)
+    for (auto* pNode : nodes)
     {
-        m_pushConstantData.nodeIndex = m_nodesUniformIndex[node->GetHash()];
-        for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
+        m_pushConstantData.nodeIndex = m_nodesUniformIndex[pNode->GetHash()];
+        for (auto* pSubMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            m_pushConstantData.materialIndex = subMesh->GetMaterial()->index;
-            primaryCmdBuffer->PushConstants(
-                physicalPass.pipelineLayout->GetHandle(),
+            m_pushConstantData.materialIndex = pSubMesh->GetMaterial()->index;
+            pPrimaryCmdBuffer->PushConstants(
+                physicalPass.pPipelineLayout->GetHandle(),
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &m_pushConstantData);
-            primaryCmdBuffer->DrawIndices(subMesh->GetIndexCount(), 1, subMesh->GetFirstIndex());
+            pPrimaryCmdBuffer->DrawIndices(pSubMesh->GetIndexCount(), 1, pSubMesh->GetFirstIndex());
         }
     }
 }
@@ -242,10 +242,10 @@ void SceneGraphDemo::Run()
     {
         m_window->Update();
         Update(m_timer->Tick());
-        auto* commandBuffer = m_renderContext->StartFrame(val::CommandPool::ResetMode::ResetPool);
+        auto* pCommandBuffer = m_renderContext->StartFrame(val::CommandPool::ResetMode::ResetPool);
         m_renderContext->UpdateRenderBuffer<CameraUniformData>(&m_cameraUniformData,
-                                                               m_cameraUBO.Get(), commandBuffer);
-        m_renderGraph->Execute(commandBuffer, m_renderContext.Get());
+                                                               m_cameraUBO.Get(), pCommandBuffer);
+        m_renderGraph->Execute(pCommandBuffer, m_renderContext.Get());
         m_renderContext->EndFrame();
     }
 }
@@ -279,25 +279,25 @@ void SceneGraphDemo::LoadScene()
         *m_device, GetArrayViewSize(MakeView(gltfLoader->GetVertices())));
     m_indexBuffer = IndexBuffer::CreateUnique(*m_device, MakeView(gltfLoader->GetIndices()));
 
-    auto* stagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
-    auto verticesSubmitInfo = stagingBuffer->Submit(MakeView(modelVertices));
-    auto indicesSubmitInfo  = stagingBuffer->Submit(MakeView(modelIndices));
-    auto* cmdBuffer         = m_renderContext->GetCommandBuffer();
-    cmdBuffer->Begin();
-    cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
+    auto* pStagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
+    auto verticesSubmitInfo = pStagingBuffer->Submit(MakeView(modelVertices));
+    auto indicesSubmitInfo  = pStagingBuffer->Submit(MakeView(modelIndices));
+    auto* pCmdBuffer         = m_renderContext->GetCommandBuffer();
+    pCmdBuffer->Begin();
+    pCmdBuffer->CopyBuffer(pStagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
                           verticesSubmitInfo.size);
-    cmdBuffer->CopyBuffer(stagingBuffer, indicesSubmitInfo.offset, m_indexBuffer.Get(), 0,
+    pCmdBuffer->CopyBuffer(pStagingBuffer, indicesSubmitInfo.offset, m_indexBuffer.Get(), 0,
                           indicesSubmitInfo.size);
-    m_renderContext->UpdateRenderBuffer(MakeView(m_nodesUniforms), m_nodesUBO.Get(), cmdBuffer);
+    m_renderContext->UpdateRenderBuffer(MakeView(m_nodesUniforms), m_nodesUBO.Get(), pCmdBuffer);
     // upload material uniforms
     m_renderContext->UpdateRenderBuffer<MaterialUniformData>(MakeView(m_materialUniforms),
-                                                             m_materialUBO.Get(), cmdBuffer);
+                                                             m_materialUBO.Get(), pCmdBuffer);
     // upload static light uniforms
     m_renderContext->UpdateRenderBuffer<LightUniformData>(MakeView(m_lightUniforms),
-                                                          m_lightUBO.Get(), cmdBuffer);
+                                                          m_lightUBO.Get(), pCmdBuffer);
 
-    cmdBuffer->End();
-    m_renderContext->SubmitImmediate(cmdBuffer);
+    pCmdBuffer->End();
+    m_renderContext->SubmitImmediate(pCmdBuffer);
     m_renderContext->ResetCommandPool();
 }
 
@@ -340,20 +340,20 @@ void SceneGraphDemo::AddStaticLights()
 void SceneGraphDemo::FillTextureArray()
 {
     m_textureManager->RegisterSceneTextures(m_scene.Get());
-    for (const auto* tex : m_scene->GetComponents<sg::Texture>())
+    for (const auto* pTex : m_scene->GetComponents<sg::Texture>())
     {
-        m_textureArray.push_back(m_textureManager->RequestTexture2D(tex->GetName()));
+        m_textureArray.push_back(m_textureManager->RequestTexture2D(pTex->GetName()));
     }
 }
 
 void SceneGraphDemo::FillLightUniforms()
 {
     auto sgLights = m_scene->GetComponents<sg::Light>();
-    for (const auto* sgLight : sgLights)
+    for (const auto* pSgLight : sgLights)
     {
-        const auto& props = sgLight->GetProperties();
+        const auto& props = pSgLight->GetProperties();
         m_lightUniforms.push_back(
-            {Vec4(props.position, sgLight->GetType()), props.color, props.direction});
+            {Vec4(props.position, pSgLight->GetType()), props.color, props.direction});
     }
     auto uboSize =
         m_renderDevice->PadUniformBufferSize(sizeof(LightUniformData)) * m_lightUniforms.size();
@@ -367,14 +367,14 @@ void SceneGraphDemo::FillNodeUniforms()
     auto& renderableNodes = m_scene->GetRenderableNodes();
 
     auto index = 0u;
-    for (auto* node : renderableNodes)
+    for (auto* pNode : renderableNodes)
     {
         NodeUniformData nodeUniformData{};
-        nodeUniformData.modelMatrix = node->GetComponent<sg::Transform>()->GetWorldMatrix();
+        nodeUniformData.modelMatrix = pNode->GetComponent<sg::Transform>()->GetWorldMatrix();
         // pre-calculate normal transform matrix
         nodeUniformData.normalMatrix = glm::transpose(glm::inverse(nodeUniformData.modelMatrix));
         m_nodesUniforms.emplace_back(nodeUniformData);
-        m_nodesUniformIndex[node->GetHash()] = index;
+        m_nodesUniformIndex[pNode->GetHash()] = index;
         index++;
     }
 
@@ -388,37 +388,37 @@ void SceneGraphDemo::FillMaterialUniforms()
 {
     auto sgMaterials = m_scene->GetComponents<sg::Material>();
     m_materialUniforms.reserve(sgMaterials.size());
-    for (const auto* mat : sgMaterials)
+    for (const auto* pMat : sgMaterials)
     {
         MaterialUniformData matUniformData{};
-        if (mat->baseColorTexture != nullptr)
+        if (pMat->m_pBaseColorTexture != nullptr)
         {
-            matUniformData.bcTexIndex = mat->baseColorTexture->index;
-            matUniformData.bcTexSet   = mat->texCoordSets.baseColor;
+            matUniformData.bcTexIndex = pMat->m_pBaseColorTexture->index;
+            matUniformData.bcTexSet   = pMat->texCoordSets.baseColor;
         }
-        if (mat->metallicRoughnessTexture != nullptr)
+        if (pMat->m_pMetallicRoughnessTexture != nullptr)
         {
-            matUniformData.mrTexIndex = mat->metallicRoughnessTexture->index;
-            matUniformData.mrTexSet   = mat->texCoordSets.metallicRoughness;
+            matUniformData.mrTexIndex = pMat->m_pMetallicRoughnessTexture->index;
+            matUniformData.mrTexSet   = pMat->texCoordSets.metallicRoughness;
         }
-        if (mat->normalTexture != nullptr)
+        if (pMat->m_pNormalTexture != nullptr)
         {
-            matUniformData.normalTexIndex = mat->normalTexture->index;
-            matUniformData.normalTexSet   = mat->texCoordSets.normal;
+            matUniformData.normalTexIndex = pMat->m_pNormalTexture->index;
+            matUniformData.normalTexSet   = pMat->texCoordSets.normal;
         }
-        if (mat->occlusionTexture != nullptr)
+        if (pMat->m_pOcclusionTexture != nullptr)
         {
-            matUniformData.aoTexIndex = mat->occlusionTexture->index;
-            matUniformData.aoTexSet   = mat->texCoordSets.occlusion;
+            matUniformData.aoTexIndex = pMat->m_pOcclusionTexture->index;
+            matUniformData.aoTexSet   = pMat->texCoordSets.occlusion;
         }
-        if (mat->emissiveTexture != nullptr)
+        if (pMat->m_pEmissiveTexture != nullptr)
         {
-            matUniformData.emissiveTexIndex = mat->emissiveTexture->index;
-            matUniformData.emissiveTexSet   = mat->texCoordSets.emissive;
+            matUniformData.emissiveTexIndex = pMat->m_pEmissiveTexture->index;
+            matUniformData.emissiveTexSet   = pMat->texCoordSets.emissive;
         }
-        matUniformData.metallicFactor  = mat->metallicFactor;
-        matUniformData.roughnessFactor = mat->roughnessFactor;
-        matUniformData.emissiveFactor  = mat->emissiveFactor;
+        matUniformData.metallicFactor  = pMat->metallicFactor;
+        matUniformData.roughnessFactor = pMat->roughnessFactor;
+        matUniformData.emissiveFactor  = pMat->emissiveFactor;
         m_materialUniforms.emplace_back(matUniformData);
     }
 

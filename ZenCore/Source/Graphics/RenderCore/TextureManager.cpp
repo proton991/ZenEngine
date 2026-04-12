@@ -34,7 +34,7 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
     imageCI.mipLevels =
         textureInfo.otherLeveData.empty() ? 1 : textureInfo.otherLeveData.size() + 1;
     m_cache.emplace(filename, val::Image::CreateUnique(m_valDevice, imageCI));
-    val::Image* image = m_cache.at(filename).Get();
+    val::Image* pImage = m_cache.at(filename).Get();
     if (generateMipmap)
     {
         // TODO: generate mipmap
@@ -44,36 +44,36 @@ val::Image* TextureManager::RequestTexture2D(const std::string& filename, bool r
         auto stagingBuffer = m_renderContext.GetCurrentStagingBuffer();
         auto submitInfo = stagingBuffer->Submit(textureInfo.data.data(), textureInfo.data.size());
         // copy to image
-        val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
-        commandBuffer->Begin();
-        commandBuffer->CopyBufferToImage(stagingBuffer, submitInfo.offset, image);
-        commandBuffer->TransferLayout(image, val::ImageUsage::TransferDst,
+        val::CommandBuffer* pCommandBuffer = m_renderContext.GetCommandBuffer();
+        pCommandBuffer->Begin();
+        pCommandBuffer->CopyBufferToImage(stagingBuffer, submitInfo.offset, pImage);
+        pCommandBuffer->TransferLayout(pImage, val::ImageUsage::TransferDst,
                                       val::ImageUsage::Sampled);
         stagingBuffer->Flush();
         stagingBuffer->ResetOffset();
 
-        commandBuffer->End();
-        m_renderContext.SubmitImmediate(commandBuffer);
+        pCommandBuffer->End();
+        m_renderContext.SubmitImmediate(pCommandBuffer);
     }
 
-    return image;
+    return pImage;
 }
 
-void TextureManager::RegisterSceneTextures(sg::Scene* scene, bool requireMipmap)
+void TextureManager::RegisterSceneTextures(sg::Scene* pScene, bool requireMipmap)
 {
-    std::vector<sg::Texture*> sgTextures = scene->GetComponents<sg::Texture>();
+    std::vector<sg::Texture*> sgTextures = pScene->GetComponents<sg::Texture>();
 
-    StagingBuffer* stagingBuffer      = m_renderContext.GetCurrentStagingBuffer();
-    val::CommandBuffer* commandBuffer = m_renderContext.GetCommandBuffer();
+    StagingBuffer* pStagingBuffer      = m_renderContext.GetCurrentStagingBuffer();
+    val::CommandBuffer* pCommandBuffer = m_renderContext.GetCommandBuffer();
 
     //    commandBuffer->Begin();
-    for (auto* sgTex : sgTextures)
+    for (auto* pSgTex : sgTextures)
     {
-        commandBuffer->Begin();
+        pCommandBuffer->Begin();
         // first create val::image
         val::ImageCreateInfo imageCI{};
-        imageCI.format   = util::ToVkType<VkFormat>(sgTex->format);
-        imageCI.extent3D = {sgTex->width, sgTex->height, 1};
+        imageCI.format   = util::ToVkType<VkFormat>(pSgTex->format);
+        imageCI.extent3D = {pSgTex->width, pSgTex->height, 1};
 
         bool generateMipmap = false;
         if (requireMipmap)
@@ -92,18 +92,18 @@ void TextureManager::RegisterSceneTextures(sg::Scene* scene, bool requireMipmap)
             // TODO: generate mipmap
         }
 
-        m_cache.emplace(sgTex->GetName(), val::Image::CreateUnique(m_valDevice, imageCI));
-        val::Image* image = m_cache.at(sgTex->GetName()).Get();
-        image->SetObjectDebugName(sgTex->GetName());
+        m_cache.emplace(pSgTex->GetName(), val::Image::CreateUnique(m_valDevice, imageCI));
+        val::Image* pImage = m_cache.at(pSgTex->GetName()).Get();
+        pImage->SetObjectDebugName(pSgTex->GetName());
         // copy buffer to image
-        auto submitInfo = stagingBuffer->Submit(sgTex->bytesData.data(), sgTex->bytesData.size());
-        commandBuffer->CopyBufferToImage(stagingBuffer, submitInfo.offset, image);
-        commandBuffer->TransferLayout(image, val::ImageUsage::TransferDst,
+        auto submitInfo = pStagingBuffer->Submit(pSgTex->bytesData.data(), pSgTex->bytesData.size());
+        pCommandBuffer->CopyBufferToImage(pStagingBuffer, submitInfo.offset, pImage);
+        pCommandBuffer->TransferLayout(pImage, val::ImageUsage::TransferDst,
                                       val::ImageUsage::Sampled);
-        stagingBuffer->Flush();
-        stagingBuffer->ResetOffset();
-        commandBuffer->End();
-        m_renderContext.SubmitImmediate(commandBuffer);
+        pStagingBuffer->Flush();
+        pStagingBuffer->ResetOffset();
+        pCommandBuffer->End();
+        m_renderContext.SubmitImmediate(pCommandBuffer);
     }
 }
 } // namespace zen

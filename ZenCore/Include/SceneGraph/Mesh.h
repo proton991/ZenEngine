@@ -35,15 +35,15 @@ public:
         return m_nodes;
     }
 
-    void AddNode(Node* node)
+    void AddNode(Node* pNode)
     {
-        m_nodes.push_back(node);
+        m_nodes.push_back(pNode);
     }
 
-    void AddSubMesh(SubMesh* subMesh)
+    void AddSubMesh(SubMesh* pSubMesh)
     {
-        m_subMeshes.push_back(subMesh);
-        m_numIndices += subMesh->GetIndexCount();
+        m_subMeshes.push_back(pSubMesh);
+        m_numIndices += pSubMesh->GetIndexCount();
     }
 
     void SetAABB(const Vec3& min, const Vec3& max)

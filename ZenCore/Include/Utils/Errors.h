@@ -24,12 +24,12 @@ template <> inline void ThrowIf<true>(std::string&& msg)
 }
 
 template <bool bThrowException, typename... ArgsType> void LogError(bool isCritical,
-                                                                    const char* function,
-                                                                    const char* fullFilePath,
+                                                                    const char* pFunction,
+                                                                    const char* pFullFilePath,
                                                                     int line,
                                                                     const ArgsType&... args)
 {
-    std::string fileName(fullFilePath);
+    std::string fileName(pFullFilePath);
 
     auto LastSlashPos = fileName.find_last_of("/\\");
     if (LastSlashPos != std::string::npos)
@@ -37,14 +37,14 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
     std::string message;
     if (isCritical)
     {
-        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", function, fileName, line,
+        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", pFunction, fileName, line,
                               args...);
         spdlog::critical(message);
     }
     else
     {
         message =
-            fmt::format("ZenEngine: error in {} ({}, {}): {}", function, fileName, line, args...);
+            fmt::format("ZenEngine: error in {} ({}, {}): {}", pFunction, fileName, line, args...);
         spdlog::error(message);
     }
     ThrowIf<bThrowException>(std::move(message));

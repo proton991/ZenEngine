@@ -84,7 +84,7 @@ public:
 
     static void Free(void* pMemory, const char* pFileName, uint32_t lineNumm);
 
-    static void* Realloc(void* ptr,
+    static void* Realloc(void* pMem,
                          size_t newSize,
                          size_t alignment,
                          const char* pFileName,
@@ -103,7 +103,7 @@ private:
 
     static void* DefaultCallocImpl(size_t size, size_t alignment);
 
-    static void* DefaultReallocImpl(void* ptr, size_t size, size_t alignment, size_t copySize = 0);
+    static void* DefaultReallocImpl(void* pMem, size_t size, size_t alignment, size_t copySize = 0);
 
     static void DefaultFreeImpl(void* pMem);
 
@@ -140,12 +140,12 @@ void ZEN_CDECL operator delete(void* pMem, const char* pFileName, uint32_t lineN
 
 void ZEN_CDECL operator delete[](void* pMem, const char* pFileName, uint32_t lineNum) noexcept;
 
-template <class T> inline void ZenDelete(T* obj, const char* pFileName, uint32_t lineNum)
+template <class T> inline void ZenDelete(T* pObj, const char* pFileName, uint32_t lineNum)
 {
-    if (obj != nullptr)
+    if (pObj != nullptr)
     {
-        obj->~T();
-        zen::DefaultAllocator::Free(obj, pFileName, lineNum);
+        pObj->~T();
+        zen::DefaultAllocator::Free(pObj, pFileName, lineNum);
     }
 }
 

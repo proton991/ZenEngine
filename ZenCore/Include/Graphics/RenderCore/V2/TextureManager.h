@@ -8,8 +8,8 @@ class SkyboxRenderer;
 class TextureManager
 {
 public:
-    TextureManager(RenderDevice* renderDevice, TextureStagingManager* stagingMgr) :
-        m_renderDevice(renderDevice), m_stagingMgr(stagingMgr)
+    TextureManager(RenderDevice* pRenderDevice, TextureStagingManager* pStagingMgr) :
+        m_pRenderDevice(pRenderDevice), m_pStagingMgr(pStagingMgr)
     {
         // m_RHI = m_renderDevice->GetRHI();
     }
@@ -26,20 +26,20 @@ public:
 
     RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* scene, std::vector<RHITexture*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* pScene, std::vector<RHITexture*>& outTextures);
 
-    void LoadTextureEnv(const std::string& file, EnvTexture* outTexture);
+    void LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture);
 
     // RHITexture* GetBaseTextureForProxy(const RHITexture* handle) const;
     //
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
-    void QueueShaderReadOnlyTransition(RHITexture* texture);
+    void QueueShaderReadOnlyTransition(RHITexture* pTexture);
 
-    void UpdateTexture(RHITexture* texture, uint32_t dataSize, const uint8_t* pData);
+    void UpdateTexture(RHITexture* pTexture, uint32_t dataSize, const uint8_t* pData);
 
-    void UpdateTextureCube(RHITexture* texture,
+    void UpdateTextureCube(RHITexture* pTexture,
                            const std::vector<RHIBufferTextureCopyRegion>& regions,
                            uint32_t dataSize,
                            const uint8_t* pData);
@@ -56,9 +56,9 @@ private:
 
     // DynamicRHI* m_RHI{nullptr};
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    TextureStagingManager* m_stagingMgr{nullptr};
+    TextureStagingManager* m_pStagingMgr{nullptr};
 
     // HashMap<std::string, RHITexture*> m_textureCache;
     HashMap<std::string, RHITexture*> m_textureCache;

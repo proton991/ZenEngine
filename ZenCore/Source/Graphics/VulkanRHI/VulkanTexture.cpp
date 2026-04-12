@@ -73,9 +73,9 @@ RHISampler* VulkanRHI::CreateSampler(const RHISamplerCreateInfo& createInfo)
     return GVulkanRHI->GetResourceFactory()->CreateSampler(createInfo);
 }
 
-void VulkanRHI::DestroySampler(RHISampler* sampler)
+void VulkanRHI::DestroySampler(RHISampler* pSampler)
 {
-    sampler->ReleaseReference();
+    pSampler->ReleaseReference();
 }
 
 // RHISampler* RHISampler::Create(const RHISamplerCreateInfo& createInfo)
@@ -142,19 +142,19 @@ RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
     return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
 }
 
-RHITexture* VulkanRHI::CreateTextureProxy(const RHITexture* baseTexture,
+RHITexture* VulkanRHI::CreateTextureProxy(const RHITexture* pBaseTexture,
                                           const RHITextureProxyCreateInfo& proxyInfo)
 {
     RHITexture* pProxyTexture = VulkanTexture::CreateProxyObject(
-        dynamic_cast<const VulkanTexture*>(baseTexture), proxyInfo);
+        dynamic_cast<const VulkanTexture*>(pBaseTexture), proxyInfo);
 
     return pProxyTexture;
 }
 
 
-void VulkanRHI::DestroyTexture(RHITexture* texture)
+void VulkanRHI::DestroyTexture(RHITexture* pTexture)
 {
-    texture->ReleaseReference();
+    pTexture->ReleaseReference();
 }
 
 // RHITexture* RHITexture::Create(const RHITextureCreateInfo& createInfo)

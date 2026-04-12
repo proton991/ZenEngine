@@ -54,54 +54,54 @@ public:
 
     IntrusivePtr() = default;
 
-    explicit IntrusivePtr(T* ptr)
+    explicit IntrusivePtr(T* pPtr)
     {
-        m_ptr = ptr;
+        this->m_pPtr = pPtr;
     }
 
     T& operator*()
     {
-        return *m_ptr;
+        return *m_pPtr;
     }
 
     const T& operator*() const
     {
-        return *m_ptr;
+        return *m_pPtr;
     }
 
     T* operator->()
     {
-        return m_ptr;
+        return m_pPtr;
     }
 
     const T* operator->() const
     {
-        return m_ptr;
+        return m_pPtr;
     }
 
     explicit operator bool() const
     {
-        return m_ptr != nullptr;
+        return m_pPtr != nullptr;
     }
 
     bool operator==(const IntrusivePtr& other) const
     {
-        return m_ptr == other.m_ptr;
+        return m_pPtr == other.m_pPtr;
     }
 
     bool operator!=(const IntrusivePtr& other) const
     {
-        return m_ptr != other.m_ptr;
+        return m_pPtr != other.m_pPtr;
     }
 
     T* Get()
     {
-        return m_ptr;
+        return m_pPtr;
     }
 
     const T* Get() const
     {
-        return m_ptr;
+        return m_pPtr;
     }
 
     void Reset()
@@ -111,9 +111,9 @@ public:
                                 typename T::EnabledReferenceCounterType>;
         // Static up-cast here to avoid potential issues with multiple intrusive inheritance.
         // Also makes sure that the pointer type actually inherits from this type.
-        if (m_ptr)
-            static_cast<ReferenceBase*>(m_ptr)->ReleaseReference();
-        m_ptr = nullptr;
+        if (m_pPtr)
+            static_cast<ReferenceBase*>(m_pPtr)->ReleaseReference();
+        m_pPtr = nullptr;
     }
 
     template <typename U> IntrusivePtr& operator=(const IntrusivePtr<U>& other)
@@ -126,12 +126,12 @@ public:
                                 typename T::EnabledReferenceCounterType>;
 
         Reset();
-        m_ptr = static_cast<T*>(other.m_ptr);
+        m_pPtr = static_cast<T*>(other.m_pPtr);
 
         // Static up-cast here to avoid potential issues with multiple intrusive inheritance.
         // Also makes sure that the pointer type actually inherits from this type.
-        if (m_ptr)
-            static_cast<ReferenceBase*>(m_ptr)->AddReference();
+        if (m_pPtr)
+            static_cast<ReferenceBase*>(m_pPtr)->AddReference();
         return *this;
     }
 
@@ -144,9 +144,9 @@ public:
         if (this != &other)
         {
             Reset();
-            m_ptr = other.m_ptr;
-            if (m_ptr)
-                static_cast<ReferenceBase*>(m_ptr)->AddReference();
+            m_pPtr = other.m_pPtr;
+            if (m_pPtr)
+                static_cast<ReferenceBase*>(m_pPtr)->AddReference();
         }
         return *this;
     }
@@ -169,8 +169,8 @@ public:
     template <typename U> IntrusivePtr& operator=(IntrusivePtr<U>&& other) noexcept
     {
         Reset();
-        m_ptr       = other.m_ptr;
-        other.m_ptr = nullptr;
+        m_pPtr       = other.m_pPtr;
+        other.m_pPtr = nullptr;
         return *this;
     }
 
@@ -179,8 +179,8 @@ public:
         if (this != &other)
         {
             Reset();
-            m_ptr       = other.m_ptr;
-            other.m_ptr = nullptr;
+            m_pPtr       = other.m_pPtr;
+            other.m_pPtr = nullptr;
         }
         return *this;
     }
@@ -197,20 +197,20 @@ public:
 
     T* Release() &
     {
-        T* ret = m_ptr;
-        m_ptr  = nullptr;
-        return ret;
+        T* pRet = m_pPtr;
+        m_pPtr  = nullptr;
+        return pRet;
     }
 
     T* Release() &&
     {
-        T* ret = m_ptr;
-        m_ptr  = nullptr;
-        return ret;
+        T* pRet = m_pPtr;
+        m_pPtr  = nullptr;
+        return pRet;
     }
 
 private:
-    T* m_ptr{nullptr};
+    T* m_pPtr{nullptr};
 };
 
 template <class T, class... Args> IntrusivePtr<T> MakeIntrusive(Args&&... args_)

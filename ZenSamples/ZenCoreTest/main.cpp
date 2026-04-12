@@ -7,31 +7,30 @@
 #include "Graphics/RenderCore/RenderDevice.h"
 #include "Graphics/Val/VulkanStrings.h"
 
-//using namespace zen::val;
-//using namespace zen::platform;
+using namespace zen;
 
-int main(int argc, char** argv)
+int main(int argc, char** pArgv)
 {
     platform::WindowConfig windowConfig;
-    auto* window = new platform::GlfwWindowImpl(windowConfig);
+    auto* pWindow = new platform::GlfwWindowImpl(windowConfig);
 
-    auto instanceExts = window->GetInstanceExtensions();
-    auto deviceExts   = window->GetDeviceExtensions();
+    auto instanceExts = pWindow->GetInstanceExtensions();
+    auto deviceExts   = pWindow->GetDeviceExtensions();
 
     val::Instance::CreateInfo instanceCI{};
     instanceCI.enabledExtensionCount   = util::ToU32(instanceExts.size());
-    instanceCI.ppEnabledExtensionNames = instanceExts.data();
+    instanceCI.pEnabledExtensionNames = instanceExts.data();
 
     auto valInstance = val::Instance::Create(instanceCI);
 
-    VkSurfaceKHR surface = window->CreateSurface(valInstance->GetHandle());
+    VkSurfaceKHR surface = pWindow->CreateSurface(valInstance->GetHandle());
 
     auto valPhysicalDevice = val::PhysicalDevice::CreateUnique(*valInstance);
 
     val::Device::CreateInfo deviceCI{};
     deviceCI.pPhysicalDevice         = valPhysicalDevice.Get();
     deviceCI.enabledExtensionCount   = util::ToU32(deviceExts.size());
-    deviceCI.ppEnabledExtensionNames = deviceExts.data();
+    deviceCI.pEnabledExtensionNames = deviceExts.data();
 
     auto valDevice = val::Device::Create(deviceCI);
 
@@ -58,7 +57,7 @@ int main(int argc, char** argv)
     RenderDevice renderDevice{*valDevice};
     val::ImageCreateInfo imageCI{};
     imageCI.extent3D = {windowConfig.width, windowConfig.height, 1};
-    imageCI.usage    = VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageCI.usage    = val::ImageUsage::Sampled;
     imageCI.format   = VK_FORMAT_B8G8R8A8_SRGB;
     imageCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 
@@ -67,15 +66,15 @@ int main(int argc, char** argv)
 
     val::BufferCreateInfo bufferCI{};
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    bufferCI.usage    = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferCI.usage    = val::BufferUsage::VertexBuffer;
     bufferCI.byteSize = 1024;
 
     auto dummyBuffer       = val::Buffer::Create(*valDevice, bufferCI);
     auto dummyBufferUnique = val::Buffer::CreateUnique(*valDevice, bufferCI);
 
-    while (!window->ShouldClose())
+    while (!pWindow->ShouldClose())
     {
-        window->Update();
+        pWindow->Update();
     }
     return 0;
 }

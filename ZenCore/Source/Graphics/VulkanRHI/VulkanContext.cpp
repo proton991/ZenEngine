@@ -16,11 +16,11 @@ VulkanRHI* GVulkanRHI                  = nullptr;
 namespace
 {
 static bool HasExtensionEnabled(const HeapVector<const char*>& extensions,
-                                const char* extensionName)
+                                const char* pExtensionName)
 {
     return std::find_if(extensions.begin(), extensions.end(),
-                        [extensionName](const char* enabledExtension) {
-                            return strcmp(enabledExtension, extensionName) == 0;
+                        [pExtensionName](const char* pEnabledExtension) {
+                            return strcmp(pEnabledExtension, pExtensionName) == 0;
                         }) != extensions.end();
 }
 } // namespace
@@ -102,31 +102,31 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
     {
         LOGI("Supported Layer: {}", layer.layerProperties.layerName);
     }
-    auto flagExtensionSupport = [&](const char* extensionName) {
+    auto flagExtensionSupport = [&](const char* pExtensionName) {
         for (auto& extension : instanceExtensions)
         {
-            if (strcmp(extension->GetName(), extensionName) == 0)
+            if (strcmp(extension->GetName(), pExtensionName) == 0)
             {
                 extension->SetSupport();
             }
         }
     };
 
-    auto addRequestLayer = [&](const char* layerName) -> bool {
+    auto addRequestLayer = [&](const char* pLayerName) -> bool {
         int index = -1;
         for (uint32_t i = 0; i < supportedLayers.size(); i++)
         {
-            if (strcmp(supportedLayers[i].layerProperties.layerName, layerName) == 0)
+            if (strcmp(supportedLayers[i].layerProperties.layerName, pLayerName) == 0)
             {
                 index = i;
             }
         }
         if (index == -1)
         {
-            LOGE("Requested {} layer not supported!", layerName);
+            LOGE("Requested {} layer not supported!", pLayerName);
             return false;
         }
-        m_instanceLayers.push_back(layerName);
+        m_instanceLayers.push_back(pLayerName);
         for (VkExtensionProperties& extension : supportedLayers[index].layerExtensions)
         {
             flagExtensionSupport(extension.extensionName);
@@ -135,8 +135,8 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
     };
 
     // Add Debug Layer
-    const char* debugLayerName = "VK_LAYER_KHRONOS_validation";
-    addRequestLayer(debugLayerName);
+    const char* pDebugLayerName = "VK_LAYER_KHRONOS_validation";
+    addRequestLayer(pDebugLayerName);
     for (auto& layer : m_instanceLayers)
     {
         LOGI("Enabled Instance Layer: {}", layer);
@@ -236,7 +236,7 @@ void VulkanRHI::SelectGPU()
             found = true;
         }
     }
-    m_device = ZEN_NEW() VulkanDevice(physicalDevices[index]);
+    m_pDevice = ZEN_NEW() VulkanDevice(physicalDevices[index]);
 }
 
 VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
@@ -257,17 +257,17 @@ VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
 
 VkPhysicalDevice VulkanRHI::GetPhysicalDevice() const
 {
-    return m_device->GetPhysicalDeviceHandle();
+    return m_pDevice->GetPhysicalDeviceHandle();
 }
 
 VkDevice VulkanRHI::GetVkDevice() const
 {
-    return m_device->GetVkHandle();
+    return m_pDevice->GetVkHandle();
 }
 
 IRHICommandContext* VulkanRHI::GetCommandContext(RHICommandContextType contextType)
 {
-    return ZEN_NEW() FVulkanCommandListContext(contextType, m_device);
+    return ZEN_NEW() FVulkanCommandListContext(contextType, m_pDevice);
 }
 
 IRHICommandContext* VulkanRHI::GetTransferCommandContext()
@@ -275,66 +275,66 @@ IRHICommandContext* VulkanRHI::GetTransferCommandContext()
     if (m_pTransferContext == nullptr)
     {
         m_pTransferContext =
-            ZEN_NEW() FVulkanCommandListContext(RHICommandContextType::eTransfer, m_device);
+            ZEN_NEW() FVulkanCommandListContext(RHICommandContextType::eTransfer, m_pDevice);
     }
     return m_pTransferContext;
 }
 
 LegacyRHICommandListContext* VulkanRHI::CreateLegacyCmdListContext()
 {
-    LegacyRHICommandListContext* context = ZEN_NEW() LegacyVulkanCommandListContext(this);
-    m_legacyCmdListContexts.push_back(context);
-    return context;
+    LegacyRHICommandListContext* pContext = ZEN_NEW() LegacyVulkanCommandListContext(this);
+    m_legacyCmdListContexts.push_back(pContext);
+    return pContext;
 }
 
-LegacyVulkanCommandListContext::LegacyVulkanCommandListContext(VulkanRHI* RHI) : m_vkRHI(RHI)
+LegacyVulkanCommandListContext::LegacyVulkanCommandListContext(VulkanRHI* pRHI) : m_pVkRHI(pRHI)
 {
-    m_cmdBufferMgr =
-        ZEN_NEW() VulkanCommandBufferManager(RHI->GetDevice(), RHI->GetDevice()->GetGfxQueue());
+    m_pCmdBufferMgr =
+        ZEN_NEW() VulkanCommandBufferManager(pRHI->GetDevice(), pRHI->GetDevice()->GetGfxQueue());
 }
 
 LegacyVulkanCommandListContext::~LegacyVulkanCommandListContext()
 {
-    ZEN_DELETE(m_cmdBufferMgr);
+    ZEN_DELETE(m_pCmdBufferMgr);
 }
 
 LegacyVulkanCommandListContext* VulkanRHI::GetLegacyImmediateCmdContext() const
 {
-    return static_cast<LegacyVulkanCommandListContext*>(m_legacyImmediateContext);
+    return static_cast<LegacyVulkanCommandListContext*>(m_pLegacyImmediateContext);
 }
 
 void VulkanRHI::Init()
 {
-    m_resourceFactory = ZEN_NEW() VulkanResourceFactory();
+    m_pResourceFactory = ZEN_NEW() VulkanResourceFactory();
 
     CreateInstance();
     SelectGPU();
-    m_device->Init();
+    m_pDevice->Init();
 
-    m_gpuInfo.supportGeometryShader = m_device->GetPhysicalDeviceFeatures().geometryShader;
+    m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
     m_gpuInfo.uniformBufferAlignment =
-        m_device->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+        m_pDevice->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
     m_gpuInfo.storageBufferAlignment =
-        m_device->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
+        m_pDevice->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
 
     // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
     //                        m_device->GetVkHandle());
 
-    GVkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(), m_device->GetVkHandle());
+    GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle());
 
-    m_descriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_device);
+    m_pDescriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_pDevice);
 
-    m_legacyImmediateContext     = ZEN_NEW() LegacyVulkanCommandListContext(this);
-    m_legacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(
-        static_cast<LegacyVulkanCommandListContext*>(m_legacyImmediateContext));
+    m_pLegacyImmediateContext     = ZEN_NEW() LegacyVulkanCommandListContext(this);
+    m_pLegacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(
+        static_cast<LegacyVulkanCommandListContext*>(m_pLegacyImmediateContext));
 }
 
 void VulkanRHI::Destroy()
 {
     WaitDeviceIdle();
     // delete m_vkMemAllocator;
-    ZEN_DELETE(m_legacyImmediateContext);
-    ZEN_DELETE(m_legacyImmediateCommandList);
+    ZEN_DELETE(m_pLegacyImmediateContext);
+    ZEN_DELETE(m_pLegacyImmediateCommandList);
 
     // if (m_pTransferContext != nullptr)
     // {
@@ -343,27 +343,27 @@ void VulkanRHI::Destroy()
 
     ZEN_DELETE(GVkMemAllocator);
 
-    ZEN_DELETE(m_descriptorPoolManager);
+    ZEN_DELETE(m_pDescriptorPoolManager);
 
-    for (auto* context : m_legacyCmdListContexts)
+    for (auto* pContext : m_legacyCmdListContexts)
     {
-        ZEN_DELETE(context);
+        ZEN_DELETE(pContext);
     }
 
     for (const auto& kv : m_renderPassCache)
     {
-        vkDestroyRenderPass(m_device->GetVkHandle(), kv.second, nullptr);
+        vkDestroyRenderPass(m_pDevice->GetVkHandle(), kv.second, nullptr);
     }
 
     for (const auto& kv : m_framebufferCache)
     {
-        vkDestroyFramebuffer(m_device->GetVkHandle(), kv.second, nullptr);
+        vkDestroyFramebuffer(m_pDevice->GetVkHandle(), kv.second, nullptr);
     }
 
-    m_device->Destroy();
-    ZEN_DELETE(m_device);
+    m_pDevice->Destroy();
+    ZEN_DELETE(m_pDevice);
 
-    ZEN_DELETE(m_resourceFactory);
+    ZEN_DELETE(m_pResourceFactory);
 
     // destroy debug utils messenger
     vkDestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);

@@ -72,7 +72,7 @@ public:
 
     void FlushMemory(size_t byteSize, size_t offset);
 
-    void CopyData(const uint8_t* data, size_t byteSize, size_t offset);
+    void CopyData(const uint8_t* pData, size_t byteSize, size_t offset);
 
     auto GetSize() const
     {
@@ -82,6 +82,6 @@ public:
 private:
     VmaAllocation m_allocation{nullptr};
     VkDeviceSize m_byteSize{0};
-    uint8_t* m_mappedMemory{nullptr};
+    uint8_t* m_pMappedMemory{nullptr};
 };
 } // namespace zen::val

@@ -35,10 +35,10 @@ protected:
 
     virtual void BuildRenderGraph() = 0;
 
-    rc::RenderDevice* m_renderDevice{nullptr};
+    rc::RenderDevice* m_pRenderDevice{nullptr};
     UniquePtr<rc::RenderGraph> m_rdg;
-    platform::GlfwWindowImpl* m_window{nullptr};
-    RHIViewport* m_viewport{nullptr};
+    platform::GlfwWindowImpl* m_pWindow{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
     BufferHandle m_cameraUBO;
     UniquePtr<sg::Camera> m_camera;

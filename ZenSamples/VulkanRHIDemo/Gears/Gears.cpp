@@ -157,7 +157,7 @@ void GearsApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
+    auto* pMainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
 
     m_rdg->AddGraphicsPassBindVertexBufferNode(mainPass, m_vertexBuffer, {0});
     m_rdg->AddGraphicsPassBindIndexBufferNode(mainPass, m_indexBuffer, DataFormat::eR32UInt);

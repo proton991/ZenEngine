@@ -44,29 +44,29 @@ void HelloTriangle::Update(float deltaTime)
 
 void HelloTriangle::SetupRenderGraph()
 {
-    val::ShaderModule* vertexShader =
+    val::ShaderModule* pVertexShader =
         m_shaderManager->RequestShader("triangle.vert.spv", VK_SHADER_STAGE_VERTEX_BIT, {});
-    val::ShaderModule* fragShader =
+    val::ShaderModule* pFragShader =
         m_shaderManager->RequestShader("triangle_fixed.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT, {});
 
-    RDGPass* mainPass = m_renderGraph->AddPass("MainPass", RDG_QUEUE_GRAPHICS_BIT);
-    mainPass->UseShaders({vertexShader, fragShader});
+    RDGPass* pMainPass = m_renderGraph->AddPass("MainPass", RDG_QUEUE_GRAPHICS_BIT);
+    pMainPass->UseShaders({pVertexShader, pFragShader});
     RDGImage::Info outputImgInfo{};
     outputImgInfo.format = m_renderContext->GetSwapchainFormat();
-    mainPass->WriteToColorImage("Output", outputImgInfo);
-    mainPass->ReadFromExternalImage("texture", m_simpleTexture);
-    mainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUniformBuffer.Get());
-    mainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
-    mainPass->BindSRD("texture", VK_SHADER_STAGE_FRAGMENT_BIT, "uTexture");
-    mainPass->BindSampler("texture", m_sampler.Get());
-    mainPass->SetOnExecute([&](val::CommandBuffer* commandBuffer) {
+    pMainPass->WriteToColorImage("Output", outputImgInfo);
+    pMainPass->ReadFromExternalImage("texture", m_pSimpleTexture);
+    pMainPass->ReadFromExternalBuffer("cameraUniform", m_cameraUniformBuffer.Get());
+    pMainPass->BindSRD("cameraUniform", VK_SHADER_STAGE_VERTEX_BIT, "uCameraData");
+    pMainPass->BindSRD("texture", VK_SHADER_STAGE_FRAGMENT_BIT, "uTexture");
+    pMainPass->BindSampler("texture", m_sampler.Get());
+    pMainPass->SetOnExecute([&](val::CommandBuffer* pCommandBuffer) {
         auto extent = m_renderContext->GetSwapchainExtent2D();
-        commandBuffer->SetViewport(static_cast<float>(extent.width),
+        pCommandBuffer->SetViewport(static_cast<float>(extent.width),
                                    static_cast<float>(extent.height));
-        commandBuffer->SetScissor(extent.width, extent.height);
-        commandBuffer->BindVertexBuffers(*m_vertexBuffer);
-        commandBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
-        commandBuffer->DrawIndices(m_indexBuffer->GetIndexCount(), 1);
+        pCommandBuffer->SetScissor(extent.width, extent.height);
+        pCommandBuffer->BindVertexBuffers(*m_vertexBuffer);
+        pCommandBuffer->BindIndexBuffer(*m_indexBuffer, VK_INDEX_TYPE_UINT32);
+        pCommandBuffer->DrawIndices(m_indexBuffer->GetIndexCount(), 1);
     });
     m_renderGraph->SetBackBufferTag("Output");
     m_renderGraph->SetBackBufferSize(m_window->GetExtent2D().width, m_window->GetExtent2D().height);
@@ -80,17 +80,17 @@ void HelloTriangle::Run()
     {
         m_window->Update();
         Update(m_timer->Tick());
-        auto* commandBuffer = m_renderContext->StartFrame(val::CommandPool::ResetMode::ResetPool);
+        auto* pCommandBuffer = m_renderContext->StartFrame(val::CommandPool::ResetMode::ResetPool);
         m_renderContext->UpdateUniformBuffer<CameraUniformData>(
             &m_cameraUniformData, m_cameraUniformBuffer.Get(), commandBuffer);
-        m_renderGraph->Execute(commandBuffer, m_renderContext.Get());
+        m_renderGraph->Execute(pCommandBuffer, m_renderContext.Get());
         m_renderContext->EndFrame();
     }
 }
 
 void HelloTriangle::LoadTexture()
 {
-    m_simpleTexture = m_textureManager->RequestTexture2D("wood.png");
+    m_pSimpleTexture = m_textureManager->RequestTexture2D("wood.png");
     m_sampler       = MakeUnique<val::Sampler>(*m_device);
 }
 
@@ -105,17 +105,17 @@ void HelloTriangle::LoadModel()
     m_vertexBuffer = VertexBuffer::CreateUnique(*m_device, GetArrayViewSize(MakeView(vertices)));
     m_indexBuffer  = IndexBuffer::CreateUnique(*m_device, MakeView(indices));
 
-    auto* stagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
-    auto verticesSubmitInfo = stagingBuffer->Submit(MakeView(vertices));
-    auto indicesSubmitInfo  = stagingBuffer->Submit(MakeView(indices));
-    auto* cmdBuffer         = m_renderContext->GetCommandBuffer();
-    cmdBuffer->Begin();
-    cmdBuffer->CopyBuffer(stagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
+    auto* pStagingBuffer     = m_renderContext->GetCurrentStagingBuffer();
+    auto verticesSubmitInfo = pStagingBuffer->Submit(MakeView(vertices));
+    auto indicesSubmitInfo  = pStagingBuffer->Submit(MakeView(indices));
+    auto* pCmdBuffer         = m_renderContext->GetCommandBuffer();
+    pCmdBuffer->Begin();
+    pCmdBuffer->CopyBuffer(pStagingBuffer, verticesSubmitInfo.offset, m_vertexBuffer.Get(), 0,
                           verticesSubmitInfo.size);
-    cmdBuffer->CopyBuffer(stagingBuffer, indicesSubmitInfo.offset, m_indexBuffer.Get(), 0,
+    pCmdBuffer->CopyBuffer(pStagingBuffer, indicesSubmitInfo.offset, m_indexBuffer.Get(), 0,
                           indicesSubmitInfo.size);
-    cmdBuffer->End();
-    m_renderContext->SubmitImmediate(cmdBuffer);
+    pCmdBuffer->End();
+    m_renderContext->SubmitImmediate(pCmdBuffer);
     m_renderContext->ResetCommandPool();
 }
 } // namespace zen

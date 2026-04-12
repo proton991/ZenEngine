@@ -6,14 +6,14 @@
 
 namespace zen
 {
-RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl* window) :
+RenderContext::RenderContext(const val::Device& device, platform::GlfwWindowImpl* pWindow) :
     m_valDevice(device),
     m_queue(m_valDevice.GetQueue(val::QueueType::QUEUE_INDEX_GRAPHICS)),
     m_synObjPool(device),
     m_threadCount(RenderConfig::GetInstance().numThreads)
 {
-    m_surface   = window->CreateSurface(device.GetInstanceHandle());
-    m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, window->GetExtent2D());
+    m_surface   = pWindow->CreateSurface(device.GetInstanceHandle());
+    m_swapchain = MakeUnique<val::Swapchain>(m_valDevice, m_surface, pWindow->GetExtent2D());
     Init();
 }
 
@@ -55,16 +55,16 @@ val::CommandBuffer* RenderContext::StartFrame(val::CommandPool::ResetMode resetM
     {
         LOG_ERROR_AND_THROW("Failed to start frame");
     }
-    m_activeCmdBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
-    m_activeCmdBuffer->Begin();
-    return m_activeCmdBuffer;
+    m_pActiveCmdBuffer = GetActiveFrame().RequestCommandBuffer(m_queue.GetFamilyIndex(), resetMode);
+    m_pActiveCmdBuffer->Begin();
+    return m_pActiveCmdBuffer;
 }
 
 void RenderContext::SubmitInternal()
 {
     m_renderFinished = GetActiveFrame().RequestSemaphore();
 
-    VkCommandBuffer handle = m_activeCmdBuffer->GetHandle();
+    VkCommandBuffer handle = m_pActiveCmdBuffer->GetHandle();
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &handle;
@@ -80,7 +80,7 @@ void RenderContext::SubmitInternal()
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores    = &m_renderFinished;
     // End command buffer before submit to a queue
-    m_activeCmdBuffer->End();
+    m_pActiveCmdBuffer->End();
     m_queue.Submit({submitInfo}, GetActiveFrame().RequestFence());
 }
 
@@ -100,7 +100,7 @@ void RenderContext::EndFrame()
     transferDstToPresentBarrier.image = GetActiveFrame().GetSwapchainImage()->GetHandle();
     transferDstToPresentBarrier.subresourceRange =
         GetActiveFrame().GetSwapchainImage()->GetSubResourceRange();
-    m_activeCmdBuffer->PipelineBarrier(
+    m_pActiveCmdBuffer->PipelineBarrier(
         val::Image::UsageToPipelineStage(val::ImageUsage::TransferDst),
         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, {}, {transferDstToPresentBarrier});
 
@@ -129,7 +129,7 @@ void RenderContext::EndFrame()
     }
     GetActiveFrame().Reset();
     m_frameActive     = false;
-    m_activeCmdBuffer = nullptr;
+    m_pActiveCmdBuffer = nullptr;
 }
 
 void RenderContext::StartFrameInternal()

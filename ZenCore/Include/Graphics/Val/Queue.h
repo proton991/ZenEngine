@@ -16,7 +16,7 @@ public:
 
     VkResult Submit(const std::vector<VkSubmitInfo>& submitInfos, VkFence fence) const;
 
-    VkResult Present(const VkPresentInfoKHR* info) const;
+    VkResult Present(const VkPresentInfoKHR* pInfo) const;
 
 private:
     uint32_t m_familyIndex;

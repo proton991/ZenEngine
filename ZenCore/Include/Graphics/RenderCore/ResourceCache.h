@@ -343,10 +343,10 @@ T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& res
     }
 
     // If we do not have it already, create and cache it
-    const char* resType = typeid(T).name();
+    const char* pResType = typeid(T).name();
     size_t resId        = resources.size();
 
-    LOGD("Building #{} cache object ({})", resId, resType);
+    LOGD("Building #{} cache object ({})", resId, pResType);
 
 // Only error handle in release
 #ifndef ZEN_DEBUG
@@ -359,7 +359,7 @@ T& RequestResourceNoLock(const val::Device& device, HashMap<std::size_t, T>& res
         if (!inserted)
         {
             throw std::runtime_error{std::string{"Insertion error for #"} + std::to_string(resId) +
-                                     "cache object (" + resType + ")"};
+                                     "cache object (" + pResType + ")"};
         }
 
 #ifndef ZEN_DEBUG

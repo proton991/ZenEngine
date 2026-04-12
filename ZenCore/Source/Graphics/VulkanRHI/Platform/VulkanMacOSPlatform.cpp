@@ -17,11 +17,11 @@ void VulkanMacOSPlatform::AddInstanceExtensions(
         MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 
-VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* data)
+VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* pData)
 {
-    MacOSWindowData* windowData = static_cast<MacOSWindowData*>(data);
+    MacOSWindowData* pWindowData = static_cast<MacOSWindowData*>(pData);
     VkSurfaceKHR surface{VK_NULL_HANDLE};
-    glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &surface);
+    glfwCreateWindowSurface(instance, pWindowData->pGlfwWindow, nullptr, &surface);
 
     return surface;
 }

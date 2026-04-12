@@ -28,8 +28,8 @@ static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
 class VulkanDescriptorIndexingExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanDescriptorIndexingExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+    VulkanDescriptorIndexingExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
     {
         InitVkStruct(m_descriptorIndexingFeatures,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES);
@@ -51,7 +51,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasDescriptorIndexing = 1;
+            m_pDevice->GetExtensionFlags().hasDescriptorIndexing = 1;
         }
     }
 
@@ -73,8 +73,8 @@ private:
 class VulkanDynamicRenderingExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanDynamicRenderingExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+    VulkanDynamicRenderingExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
     {
         InitVkStruct(m_dynamicRenderingFeaturesKHR,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
@@ -92,7 +92,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasDynamicRendering = 1;
+            m_pDevice->GetExtensionFlags().hasDynamicRendering = 1;
         }
     }
 
@@ -114,8 +114,8 @@ private:
 class VulkanTimelineSemaphoreExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanTimelineSemaphoreExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)
+    VulkanTimelineSemaphoreExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)
     {
         InitVkStruct(m_timelineSemaphoreFeatures,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES);
@@ -132,7 +132,7 @@ public:
         if (m_timelineSemaphoreFeatures.timelineSemaphore == VK_TRUE)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasTimelineSemaphore = 1;
+            m_pDevice->GetExtensionFlags().hasTimelineSemaphore = 1;
         }
     }
 
@@ -154,8 +154,8 @@ private:
 class VulkanBufferDeviceAddressExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanBufferDeviceAddressExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)
+    VulkanBufferDeviceAddressExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)
     {
         InitVkStruct(m_bufferDeviceAddressFeature,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES);
@@ -173,7 +173,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasBufferDeviceAddress = 1;
+            m_pDevice->GetExtensionFlags().hasBufferDeviceAddress = 1;
         }
     }
 
@@ -195,8 +195,8 @@ private:
 class VulkanAccelerationStructureExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanAccelerationStructureExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
+    VulkanAccelerationStructureExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
     {
         InitVkStruct(m_accelerationStructureFeatures,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR);
@@ -214,7 +214,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasAccelerationStructure = 1;
+            m_pDevice->GetExtensionFlags().hasAccelerationStructure = 1;
         }
     }
 
@@ -236,8 +236,8 @@ private:
 class VulkanRaytracingPipelineExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanRaytracingPipelineExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)
+    VulkanRaytracingPipelineExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)
     {
         InitVkStruct(m_rayTracingPipelineFeatures,
                      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
@@ -255,7 +255,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasRaytracingPipeline = 1;
+            m_pDevice->GetExtensionFlags().hasRaytracingPipeline = 1;
         }
     }
 
@@ -277,8 +277,8 @@ private:
 class VulkanRayQueryExtension : public VulkanDeviceExtension
 {
 public:
-    VulkanRayQueryExtension(VulkanDevice* device) :
-        VulkanDeviceExtension(device, VK_KHR_RAY_QUERY_EXTENSION_NAME)
+    VulkanRayQueryExtension(VulkanDevice* pDevice) :
+        VulkanDeviceExtension(pDevice, VK_KHR_RAY_QUERY_EXTENSION_NAME)
     {
         InitVkStruct(m_rayQueryFeature, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR);
     }
@@ -295,7 +295,7 @@ public:
         if (supported)
         {
             SetSupport();
-            m_device->GetExtensionFlags().hasRayQuery = 1;
+            m_pDevice->GetExtensionFlags().hasRayQuery = 1;
         }
     }
 
@@ -311,16 +311,16 @@ private:
     VkPhysicalDeviceRayQueryFeaturesKHR m_rayQueryFeature;
 };
 
-static int FindExtensionIndex(const char* extensionName,
+static int FindExtensionIndex(const char* pExtensionName,
                               const HeapVector<VkExtensionProperties>& supported)
 {
     auto it = std::find_if(supported.begin(), supported.end(),
-                           [&extensionName](const VkExtensionProperties& extProp) {
-                               return strcmp(extensionName, extProp.extensionName) == 0;
+                           [&pExtensionName](const VkExtensionProperties& extProp) {
+                               return strcmp(pExtensionName, extProp.extensionName) == 0;
                            });
     if (it == supported.end())
     {
-        LOGW("Instance extension {} not supported!", extensionName);
+        LOGW("Instance extension {} not supported!", pExtensionName);
         return -1;
     }
     return static_cast<int>(it - supported.begin());
@@ -341,16 +341,16 @@ static void FlagExtensionSupported(HeapVector<ExtensionType>& extensions,
 }
 
 HeapVector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceExtensions(
-    const char* layerName)
+    const char* pLayerName)
 {
     HeapVector<VkExtensionProperties> extensions;
 
     uint32_t count = 0;
-    VKCHECK(vkEnumerateInstanceExtensionProperties(layerName, &count, nullptr));
+    VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, nullptr));
     if (count > 0)
     {
         extensions.resize(count);
-        VKCHECK(vkEnumerateInstanceExtensionProperties(layerName, &count, extensions.data()));
+        VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, extensions.data()));
     }
     std::sort(extensions.begin(), extensions.end(),
               [](const VkExtensionProperties& a, const VkExtensionProperties& b) {
@@ -404,17 +404,17 @@ HeapVector<VkExtensionProperties> VulkanDeviceExtension::GetSupportedExtensions(
     return extensions;
 }
 
-VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDevice* device)
+VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDevice* pDevice)
 {
     VulkanDeviceExtensionArray enabledExtensions;
 
-#define SET_SIMPLE_EXTENSION_FLAG(FLAG_NAME) device->GetExtensionFlags().FLAG_NAME = 1;
+#define SET_SIMPLE_EXTENSION_FLAG(FLAG_NAME) pDevice->GetExtensionFlags().FLAG_NAME = 1;
 
 #define ADD_SIMPLE_DEVICE_EXTENSION(EXTENSION_NAME) \
-    enabledExtensions.emplace_back(MakeUnique<VulkanDeviceExtension>(device, EXTENSION_NAME));
+    enabledExtensions.emplace_back(MakeUnique<VulkanDeviceExtension>(pDevice, EXTENSION_NAME));
 
 #define ADD_ADVANCED_DEVICE_EXTENSION(EXTENSION_CLASS) \
-    enabledExtensions.emplace_back(MakeUnique<EXTENSION_CLASS>(device));
+    enabledExtensions.emplace_back(MakeUnique<EXTENSION_CLASS>(pDevice));
 
 #if defined(ZEN_MACOS)
     ADD_SIMPLE_DEVICE_EXTENSION("VK_KHR_portability_subset");
@@ -439,7 +439,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
     FlagExtensionSupported(
         enabledExtensions,
-        VulkanDeviceExtension::GetSupportedExtensions(device->GetPhysicalDeviceHandle()));
+        VulkanDeviceExtension::GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle()));
 #undef SET_EXTENSION_FLAG
 #undef ADD_SIMPLE_DEVICE_EXTENSION
 #undef ADD_ADVANCED_DEVICE_EXTENSION

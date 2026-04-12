@@ -178,7 +178,7 @@ void SpecializationConstantsApp::BuildRenderGraph()
     leftVP.maxX = (float)m_window->GetExtent2D().width / 3.0f;
     leftVP.maxY = (float)m_window->GetExtent2D().height;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(
+    auto* pMainPass = m_rdg->AddGraphicsPassNode(
         m_gfxPasses.phong.renderPass, m_gfxPasses.phong.framebuffer, area, clearValues, true);
     m_rdg->AddGraphicsPassSetScissorNode(mainPass, area);
     // phone

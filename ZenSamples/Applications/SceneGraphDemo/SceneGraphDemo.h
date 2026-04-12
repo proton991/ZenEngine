@@ -91,11 +91,11 @@ private:
 
     void FillLightUniforms();
 
-    void RecordDrawCmdsSecondary(val::CommandBuffer* primaryCmdBuffer,
+    void RecordDrawCmdsSecondary(val::CommandBuffer* pPrimaryCmdBuffer,
                                  const RDGPhysicalPass& physicalPass);
 
     val::CommandBuffer* RecordDrawCmdsSecondary(
-        val::CommandBuffer* primaryCmdBuffer,
+        val::CommandBuffer* pPrimaryCmdBuffer,
         uint32_t meshStart,
         uint32_t meshEnd,
         // all sub meshes and their nodes
@@ -105,7 +105,7 @@ private:
         // thread id for command buffer
         uint32_t threadId = 0);
 
-    void RecordDrawCmdsPrimary(val::CommandBuffer* primaryCmdBuffer,
+    void RecordDrawCmdsPrimary(val::CommandBuffer* pPrimaryCmdBuffer,
                                const std::vector<sg::Node*>& nodes,
                                const RDGPhysicalPass& physicalPass);
 
@@ -119,7 +119,7 @@ private:
 
     UniquePtr<TextureManager> m_textureManager;
 
-    val::Image* m_simpleTexture;
+    val::Image* m_pSimpleTexture;
 
     UniquePtr<val::Sampler> m_sampler;
 

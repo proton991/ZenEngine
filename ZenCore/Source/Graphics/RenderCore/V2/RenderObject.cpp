@@ -3,8 +3,8 @@
 
 namespace zen::rc
 {
-RenderObject::RenderObject(RenderDevice* renderDevice, const std::string& modelPath) :
-    m_renderDevice(renderDevice)
+RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath) :
+    m_pRenderDevice(pRenderDevice)
 {
     m_scene         = MakeUnique<sg::Scene>();
     auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
@@ -13,19 +13,19 @@ RenderObject::RenderObject(RenderDevice* renderDevice, const std::string& modelP
     auto& vertices = gltfLoader->GetVertices();
     auto& indices  = gltfLoader->GetIndices();
 
-    for (auto* node : m_scene->GetRenderableNodes())
+    for (auto* pNode : m_scene->GetRenderableNodes())
     {
-        m_nodesData.emplace_back(node->GetData());
+        m_nodesData.emplace_back(pNode->GetData());
     }
 
-    m_nodeSSBO = m_renderDevice->CreateStorageBuffer(
+    m_pNodeSSBO = m_pRenderDevice->CreateStorageBuffer(
         sizeof(sg::NodeData) * m_nodesData.size(),
         reinterpret_cast<const uint8_t*>(m_nodesData.data()), "node_data_ssbo");
 
-    m_vertexBuffer = m_renderDevice->CreateVertexBuffer(
+    m_pVertexBuffer = m_pRenderDevice->CreateVertexBuffer(
         vertices.size() * sizeof(asset::Vertex), reinterpret_cast<const uint8_t*>(vertices.data()));
 
-    m_indexBuffer = m_renderDevice->CreateIndexBuffer(
+    m_pIndexBuffer = m_pRenderDevice->CreateIndexBuffer(
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 }
 } // namespace zen::rc

@@ -32,22 +32,22 @@ static std::vector<uint8_t> LoadSpirvCode(const std::string& name)
     return buffer;
 }
 
-ShaderProgram::ShaderProgram(RenderDevice* renderDevice, std::string name) :
-    m_renderDevice(renderDevice), m_name(std::move(name))
+ShaderProgram::ShaderProgram(RenderDevice* pRenderDevice, std::string name) :
+    m_pRenderDevice(pRenderDevice), m_name(std::move(name))
 {}
 
 ShaderProgram::~ShaderProgram()
 {
-    GDynamicRHI->DestroyShader(m_shader);
+    GDynamicRHI->DestroyShader(m_pShader);
 }
 
 void ShaderProgram::UpdateUniformBuffer(const std::string& name,
-                                        const uint8_t* data,
+                                        const uint8_t* pData,
                                         uint32_t offset)
 {
     if (m_uniformBufferMap.contains(name))
     {
-        m_renderDevice->UpdateBuffer(m_uniformBufferMap[name], m_uniformBufferSizes[name], data,
+        m_pRenderDevice->UpdateBuffer(m_uniformBufferMap[name], m_uniformBufferSizes[name], pData,
                                      offset);
     }
 }
@@ -75,9 +75,9 @@ void ShaderProgram::Init()
     }
     shaderCreateInfo.name = m_name;
 
-    m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
+    m_pShader = GDynamicRHI->CreateShader(shaderCreateInfo);
 
-    m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
+    m_pShader->GetShaderResourceDescriptorTable(m_SRDTable);
     // m_SRDs   = std::move(shaderGroupInfo.SRDs);
 
     for (auto& setSRD : m_SRDTable)
@@ -87,7 +87,7 @@ void ShaderProgram::Init()
             if (srd.type == RHIShaderResourceType::eUniformBuffer)
             {
                 m_uniformBufferMap[srd.name] =
-                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
+                    m_pRenderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
                 m_uniformBufferSizes[srd.name] = srd.blockSize;
                 m_uniformBuffers.emplace_back(srd);
             }
@@ -152,9 +152,9 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     shaderCreateInfo.name                    = m_name;
     shaderCreateInfo.specializationConstants = specializationConstants;
 
-    m_shader = GDynamicRHI->CreateShader(shaderCreateInfo);
+    m_pShader = GDynamicRHI->CreateShader(shaderCreateInfo);
     // m_shader = GDynamicRHI->CreateShader(shaderGroupInfo);
-    m_shader->GetShaderResourceDescriptorTable(m_SRDTable);
+    m_pShader->GetShaderResourceDescriptorTable(m_SRDTable);
 
     for (auto& setSRD : m_SRDTable)
     {
@@ -163,7 +163,7 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
             if (srd.type == RHIShaderResourceType::eUniformBuffer)
             {
                 m_uniformBufferMap[srd.name] =
-                    m_renderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
+                    m_pRenderDevice->CreateUniformBuffer(srd.blockSize, nullptr, srd.name);
                 m_uniformBufferSizes[srd.name] = srd.blockSize;
                 m_uniformBuffers.emplace_back(srd);
             }
@@ -184,12 +184,12 @@ void ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
     }
 }
 
-ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* renderDevice,
+ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* pRenderDevice,
                                                          const std::string& name)
 {
-    ShaderProgram* shaderProgram = ZEN_NEW() ShaderProgram(renderDevice, name);
-    m_programCache[name]         = shaderProgram;
-    return shaderProgram;
+    ShaderProgram* pShaderProgram = ZEN_NEW() ShaderProgram(pRenderDevice, name);
+    m_programCache[name]         = pShaderProgram;
+    return pShaderProgram;
 }
 
 void ShaderProgramManager::Destroy()
@@ -200,78 +200,78 @@ void ShaderProgramManager::Destroy()
     }
 }
 
-void ShaderProgramManager::BuildShaderPrograms(RenderDevice* renderDevice)
+void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 {
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() GBufferSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() GBufferSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() DeferredLightingSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() DeferredLightingSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapIrradianceSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() EnvMapIrradianceSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapPrefilteredSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() EnvMapPrefilteredSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() SkyboxRenderSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() SkyboxRenderSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() EnvMapBRDFLutGenSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() EnvMapBRDFLutGenSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
-    if (renderDevice->GetGPUInfo().supportGeometryShader)
+    if (pRenderDevice->GetGPUInfo().supportGeometryShader)
     {
         {
-            ShaderProgram* shaderProgram             = ZEN_NEW() VoxelizationSP(renderDevice);
-            m_programCache[shaderProgram->GetName()] = shaderProgram;
+            ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelizationSP(pRenderDevice);
+            m_programCache[pShaderProgram->GetName()] = pShaderProgram;
         }
         {
-            ShaderProgram* shaderProgram             = ZEN_NEW() VoxelDrawSP(renderDevice);
-            m_programCache[shaderProgram->GetName()] = shaderProgram;
+            ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelDrawSP(pRenderDevice);
+            m_programCache[pShaderProgram->GetName()] = pShaderProgram;
         }
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() ResetComputeIndirectSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() ResetComputeIndirectSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() ResetDrawIndirectSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() ResetDrawIndirectSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() ResetVoxelTextureSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() ResetVoxelTextureSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelizationCompSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelizationCompSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram = ZEN_NEW() VoxelizationLargeTriangleCompSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationLargeTriangleCompSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelPreDrawSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelPreDrawSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelDrawSP2(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelDrawSP2(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() ShadowMapRenderSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() ShadowMapRenderSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
     {
-        ShaderProgram* shaderProgram             = ZEN_NEW() VoxelInjectRadianceSP(renderDevice);
-        m_programCache[shaderProgram->GetName()] = shaderProgram;
+        ShaderProgram* pShaderProgram             = ZEN_NEW() VoxelInjectRadianceSP(pRenderDevice);
+        m_programCache[pShaderProgram->GetName()] = pShaderProgram;
     }
 }
 } // namespace zen::rc

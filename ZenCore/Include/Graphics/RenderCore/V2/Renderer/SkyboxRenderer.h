@@ -13,7 +13,7 @@ class RenderDevice;
 class SkyboxRenderer
 {
 public:
-    SkyboxRenderer(RenderDevice* renderDevice, RHIViewport* viewport);
+    SkyboxRenderer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     void Init();
 
@@ -25,9 +25,9 @@ public:
 
     void OnResize();
 
-    void SetRenderScene(RenderScene* renderScene)
+    void SetRenderScene(RenderScene* pRenderScene)
     {
-        m_scene = renderScene;
+        m_pScene = pRenderScene;
         UpdateGraphicsPassResources();
     }
 
@@ -52,46 +52,46 @@ private:
 
     void UpdateGraphicsPassResources();
 
-    void GenerateEnvCubemaps(EnvTexture* texture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
+    void GenerateEnvCubemaps(EnvTexture* pTexture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
 
-    void GenerateLutBRDF(EnvTexture* texture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
+    void GenerateLutBRDF(EnvTexture* pTexture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
 
     struct SkyboxVertex
     {
         Vec3 position{0.0f, 0.0f, 0.0f};
     };
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
-    RenderScene* m_scene{nullptr};
+    RenderScene* m_pScene{nullptr};
 
     bool m_rebuildRDG{true};
 
     struct
     {
-        GraphicsPass* irradiance;
-        GraphicsPass* prefiltered;
-        GraphicsPass* lutBRDF;
-        GraphicsPass* skybox;
+        GraphicsPass* pIrradiance;
+        GraphicsPass* pPrefiltered;
+        GraphicsPass* pLutBRDF;
+        GraphicsPass* pSkybox;
     } m_gfxPasses;
 
     struct
     {
-        RHITexture* irradiance{nullptr};
-        RHITexture* prefiltered{nullptr};
+        RHITexture* pIrradiance{nullptr};
+        RHITexture* pPrefiltered{nullptr};
     } m_offscreenTextures;
 
     UniquePtr<RenderGraph> m_rdg;
 
-    RHIBuffer* m_vertexBuffer;
-    RHIBuffer* m_indexBuffer;
+    RHIBuffer* m_pVertexBuffer;
+    RHIBuffer* m_pIndexBuffer;
 
     struct
     {
-        RHISampler* cubemapSampler;
-        RHISampler* lutBRDFSampler;
+        RHISampler* pCubemapSampler;
+        RHISampler* pLutBRDFSampler;
     } m_samplers;
 
     struct PushConstantIrradiance

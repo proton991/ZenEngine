@@ -34,21 +34,21 @@ static bool StartsWith(std::string_view str, std::string_view prefix)
     return str.substr(0, prefix.size()) == prefix;
 }
 
-static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
+static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
                                 RHIShaderGroupInfo& shaderGroupInfo)
 {
     uint32_t inputVarCount{0};
-    SpvReflectResult result = spvReflectEnumerateInputVariables(module, &inputVarCount, nullptr);
+    SpvReflectResult result = spvReflectEnumerateInputVariables(pModule, &inputVarCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     HeapVector<SpvReflectInterfaceVariable*> inputVars;
     if (inputVarCount > 0)
     {
 
         inputVars.resize(inputVarCount);
-        result = spvReflectEnumerateInputVariables(module, &inputVarCount, inputVars.data());
-        for (auto* inputVar : inputVars)
+        result = spvReflectEnumerateInputVariables(pModule, &inputVarCount, inputVars.data());
+        for (auto* pInputVar : inputVars)
         {
-            if (StartsWith(inputVar->name, "gl_"))
+            if (StartsWith(pInputVar->name, "gl_"))
             {
                 inputVarCount--;
             }
@@ -59,8 +59,8 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
         VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
         std::sort(
             inputVars.begin(), inputVars.end(),
-            [](const SpvReflectInterfaceVariable* lhs, const SpvReflectInterfaceVariable* rhs) {
-                return lhs->location < rhs->location;
+            [](const SpvReflectInterfaceVariable* pLhs, const SpvReflectInterfaceVariable* pRhs) {
+                return pLhs->location < pRhs->location;
             });
         shaderGroupInfo.vertexInputAttributes.resize(inputVarCount);
         // packed vertex input data
@@ -90,11 +90,11 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* module,
 }
 
 static void ParseSpvPushConstants(RHIShaderStage stage,
-                                  const SpvReflectShaderModule* module,
+                                  const SpvReflectShaderModule* pModule,
                                   RHIShaderGroupInfo& shaderGroupInfo)
 {
     uint32_t pcCount{0};
-    SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(module, &pcCount, nullptr);
+    SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(pModule, &pcCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     HeapVector<SpvReflectBlockVariable*> pconstants;
 
@@ -109,7 +109,7 @@ static void ParseSpvPushConstants(RHIShaderStage stage,
     }
 
     pconstants.resize(pcCount);
-    result = spvReflectEnumeratePushConstantBlocks(module, &pcCount, pconstants.data());
+    result = spvReflectEnumeratePushConstantBlocks(pModule, &pcCount, pconstants.data());
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     shaderGroupInfo.pushConstants.size = pconstants[0]->size;
     shaderGroupInfo.pushConstants.stageFlags.SetFlag(RHIShaderStageToFlagBits(stage));
@@ -117,11 +117,11 @@ static void ParseSpvPushConstants(RHIShaderStage stage,
 }
 
 static void ParseSpvSpecializationConstant(RHIShaderStage stage,
-                                           const SpvReflectShaderModule* module,
+                                           const SpvReflectShaderModule* pModule,
                                            RHIShaderGroupInfo& shaderGroupInfo)
 {
     uint32_t scCount{0};
-    SpvReflectResult result = spvReflectEnumerateSpecializationConstants(module, &scCount, nullptr);
+    SpvReflectResult result = spvReflectEnumerateSpecializationConstants(pModule, &scCount, nullptr);
     if (result != SPV_REFLECT_RESULT_SUCCESS)
     {
         LOGE("Reflection of SPIR-V shader stage {} specialization constant failed",
@@ -131,33 +131,33 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
     {
         HeapVector<SpvReflectSpecializationConstant*> specConstants;
         specConstants.resize(scCount);
-        spvReflectEnumerateSpecializationConstants(module, &scCount, specConstants.data());
+        spvReflectEnumerateSpecializationConstants(pModule, &scCount, specConstants.data());
         int existed = -1;
         for (uint32_t j = 0; j < scCount; j++)
         {
             RHIShaderSpecializationConstant specConst;
-            SpvReflectSpecializationConstant* spvSpecConst = specConstants[j];
+            SpvReflectSpecializationConstant* pSpvSpecConst = specConstants[j];
 
-            specConst.constantId = spvSpecConst->constant_id;
+            specConst.constantId = pSpvSpecConst->constant_id;
             specConst.intValue   = 0;
-            switch (spvSpecConst->constant_type)
+            switch (pSpvSpecConst->constant_type)
             {
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_BOOL:
                 {
                     specConst.type      = RHIShaderSpecializationConstantType::eBool;
-                    specConst.boolValue = spvSpecConst->default_value.int_bool_value != 0;
+                    specConst.boolValue = pSpvSpecConst->default_value.int_bool_value != 0;
                 }
                 break;
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_INT:
                 {
                     specConst.type     = RHIShaderSpecializationConstantType::eInt;
-                    specConst.intValue = spvSpecConst->default_value.int_bool_value;
+                    specConst.intValue = pSpvSpecConst->default_value.int_bool_value;
                 }
                 break;
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_FLOAT:
                 {
                     specConst.type       = RHIShaderSpecializationConstantType::eFloat;
-                    specConst.floatValue = spvSpecConst->default_value.float_value;
+                    specConst.floatValue = pSpvSpecConst->default_value.float_value;
                     break;
                 }
             }

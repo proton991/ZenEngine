@@ -4,9 +4,9 @@
 
 namespace zen::platform
 {
-static void GlfwErrorCallback(int code, const char* msg)
+static void GlfwErrorCallback(int code, const char* pMsg)
 {
-    LOGE("GLFW error [{}]: {}", code, msg);
+    LOGE("GLFW error [{}]: {}", code, pMsg);
 }
 
 GlfwWindowImpl::GlfwWindowImpl(const WindowConfig& config)
@@ -24,8 +24,8 @@ GlfwWindowImpl::GlfwWindowImpl(const WindowConfig& config)
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GLFW_TRUE : GLFW_FALSE);
 
-    m_handle = glfwCreateWindow(config.width, config.height, config.title.c_str(), NULL, NULL);
-    glfwSetWindowUserPointer(m_handle, (void*)this);
+    m_pHandle = glfwCreateWindow(config.width, config.height, config.title.c_str(), NULL, NULL);
+    glfwSetWindowUserPointer(m_pHandle, (void*)this);
     CenterWindow();
     SetupWindowCallbacks();
 }
@@ -39,7 +39,7 @@ VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
 {
     ASSERT(instance != VK_NULL_HANDLE);
     VkSurfaceKHR surface;
-    CHECK_VK_ERROR_AND_THROW(glfwCreateWindowSurface(instance, m_handle, nullptr, &surface),
+    CHECK_VK_ERROR_AND_THROW(glfwCreateWindowSurface(instance, m_pHandle, nullptr, &surface),
                              "glfw create window surface");
     return surface;
 }
@@ -47,18 +47,18 @@ VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
 HeapVector<const char*> GlfwWindowImpl::GetInstanceExtensions()
 {
     uint32_t count;
-    const char** ext = glfwGetRequiredInstanceExtensions(&count);
+    const char** ppExts = glfwGetRequiredInstanceExtensions(&count);
     HeapVector<const char*> result(count);
     for (uint32_t i = 0; i < count; i++)
     {
-        result[i] = ext[i];
+        result[i] = ppExts[i];
     }
     return result;
 }
 
 void GlfwWindowImpl::Destroy()
 {
-    glfwDestroyWindow(m_handle);
+    glfwDestroyWindow(m_pHandle);
     glfwTerminate();
 }
 
@@ -71,28 +71,28 @@ bool GlfwWindowImpl::CenterWindow()
     int best_area    = 0;
     int final_x = 0, final_y = 0;
 
-    glfwGetWindowSize(m_handle, &sx, &sy);
-    glfwGetWindowPos(m_handle, &px, &py);
+    glfwGetWindowSize(m_pHandle, &sx, &sy);
+    glfwGetWindowPos(m_pHandle, &px, &py);
 
     // Iterate throug all monitors
-    GLFWmonitor** m = glfwGetMonitors(&monitorCount);
-    if (!m)
+    GLFWmonitor** ppMonitors = glfwGetMonitors(&monitorCount);
+    if (!ppMonitors)
         return false;
 
     for (int j = 0; j < monitorCount; ++j)
     {
 
-        glfwGetMonitorPos(m[j], &mx, &my);
-        const GLFWvidmode* mode = glfwGetVideoMode(m[j]);
-        if (!mode)
+        glfwGetMonitorPos(ppMonitors[j], &mx, &my);
+        const GLFWvidmode* pMode = glfwGetVideoMode(ppMonitors[j]);
+        if (!pMode)
             continue;
 
         // Get intersection of two rectangles - screen and window
         int minX = std::max(mx, px);
         int minY = std::max(my, py);
 
-        int maxX = std::min(mx + mode->width, px + sx);
-        int maxY = std::min(my + mode->height, py + sy);
+        int maxX = std::min(mx + pMode->width, px + sx);
+        int maxY = std::min(my + pMode->height, py + sy);
 
         // Calculate area of the intersection
         int area = std::max(maxX - minX, 0) * std::max(maxY - minY, 0);
@@ -101,8 +101,8 @@ bool GlfwWindowImpl::CenterWindow()
         if (area > best_area)
         {
             // Calculate proper position in this monitor
-            final_x = mx + (mode->width - sx) / 2;
-            final_y = my + (mode->height - sy) / 2;
+            final_x = mx + (pMode->width - sx) / 2;
+            final_y = my + (pMode->height - sy) / 2;
 
             best_area = area;
         }
@@ -110,18 +110,18 @@ bool GlfwWindowImpl::CenterWindow()
 
     // We found something
     if (best_area)
-        glfwSetWindowPos(m_handle, final_x, final_y);
+        glfwSetWindowPos(m_pHandle, final_x, final_y);
 
     // Something is wrong - current window has NOT any intersection with any monitors. Move it to the default one.
     else
     {
-        GLFWmonitor* primary = glfwGetPrimaryMonitor();
-        if (primary)
+        GLFWmonitor* pPrimary = glfwGetPrimaryMonitor();
+        if (pPrimary)
         {
-            const GLFWvidmode* desktop = glfwGetVideoMode(primary);
+            const GLFWvidmode* pDesktop = glfwGetVideoMode(pPrimary);
 
-            if (desktop)
-                glfwSetWindowPos(m_handle, (desktop->width - sx) / 2, (desktop->height - sy) / 2);
+            if (pDesktop)
+                glfwSetWindowPos(m_pHandle, (pDesktop->width - sx) / 2, (pDesktop->height - sy) / 2);
             else
                 return false;
         }
@@ -134,21 +134,21 @@ bool GlfwWindowImpl::CenterWindow()
 
 void GlfwWindowImpl::SetupWindowCallbacks()
 {
-    const auto resize_callback = [](GLFWwindow* w, int width, int height) {
-        GlfwWindowImpl* window      = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(w));
-        window->m_data.width        = width;
-        window->m_data.height       = height;
-        window->m_data.shouldResize = true;
+    const auto resize_callback = [](GLFWwindow* pW, int width, int height) {
+        GlfwWindowImpl* pWindow      = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(pW));
+        pWindow->m_data.width        = width;
+        pWindow->m_data.height       = height;
+        pWindow->m_data.shouldResize = true;
 
-        if (window->m_onResize)
+        if (pWindow->m_onResize)
         {
-            window->m_onResize(width, height);
+            pWindow->m_onResize(width, height);
         }
         LOGI("Window resized to {} x {}", width, height);
     };
-    glfwSetWindowSizeCallback(m_handle, resize_callback);
+    glfwSetWindowSizeCallback(m_pHandle, resize_callback);
 
-    const auto key_callback = [](GLFWwindow* w, auto key, auto scancode, auto action, auto mode) {
+    const auto key_callback = [](GLFWwindow* pW, auto key, auto scancode, auto action, auto mode) {
         if (key < 0 || key > GLFW_KEY_LAST)
         {
             return;
@@ -160,14 +160,14 @@ void GlfwWindowImpl::SetupWindowCallbacks()
             default: break;
         }
     };
-    glfwSetKeyCallback(m_handle, key_callback);
+    glfwSetKeyCallback(m_pHandle, key_callback);
 
-    const auto cursor_pos_callback = [](GLFWwindow* w, auto xPos, auto yPos) {
+    const auto cursor_pos_callback = [](GLFWwindow* pW, auto xPos, auto yPos) {
         KeyboardMouseInput::GetInstance().SetCursorPos(xPos, yPos);
     };
-    glfwSetCursorPosCallback(m_handle, cursor_pos_callback);
+    glfwSetCursorPosCallback(m_pHandle, cursor_pos_callback);
 
-    auto mouse_button_callback = [](GLFWwindow* window, int button, int action, int mods) {
+    auto mouse_button_callback = [](GLFWwindow* pWindow, int button, int action, int mods) {
         if (button < 0 || button > GLFW_MOUSE_BUTTON_LAST)
         {
             return;
@@ -189,17 +189,17 @@ void GlfwWindowImpl::SetupWindowCallbacks()
             default: break;
         }
     };
-    glfwSetMouseButtonCallback(m_handle, mouse_button_callback);
+    glfwSetMouseButtonCallback(m_pHandle, mouse_button_callback);
 }
 
 void GlfwWindowImpl::ShowCursor() const
 {
-    glfwSetInputMode(m_handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    glfwSetInputMode(m_pHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
 void GlfwWindowImpl::HideCursor() const
 {
-    glfwSetInputMode(m_handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(m_pHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
 void GlfwWindowImpl::Update()
@@ -222,10 +222,10 @@ void GlfwWindowImpl::Update()
         }
     }
     if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE) ||
-        glfwWindowShouldClose(m_handle))
+        glfwWindowShouldClose(m_pHandle))
     {
         m_data.shouldClose = true;
-        glfwSetWindowShouldClose(m_handle, GL_TRUE);
+        glfwSetWindowShouldClose(m_pHandle, GL_TRUE);
     }
 }
 

@@ -15,7 +15,7 @@ struct VulkanTexture;
 class VulkanFence
 {
 public:
-    explicit VulkanFence(VulkanFenceManager* owner, bool createSignaled = false);
+    explicit VulkanFence(VulkanFenceManager* pOwner, bool createSignaled = false);
 
     ~VulkanFence() = default;
 
@@ -31,7 +31,7 @@ public:
 
     VulkanFenceManager* GetOwner() const
     {
-        return m_owner;
+        return m_pOwner;
     }
 
 private:
@@ -41,7 +41,7 @@ private:
         eSignaled
     };
     VkFence m_fence{VK_NULL_HANDLE};
-    VulkanFenceManager* m_owner{nullptr};
+    VulkanFenceManager* m_pOwner{nullptr};
     State m_state{State::eInitial};
 
     friend class VulkanFenceManager;
@@ -50,31 +50,31 @@ private:
 class VulkanFenceManager
 {
 public:
-    explicit VulkanFenceManager(VulkanDevice* device) : m_device(device) {}
+    explicit VulkanFenceManager(VulkanDevice* pDevice) : m_pDevice(pDevice) {}
 
     void Destroy();
 
     VulkanDevice* GetDevice() const
     {
-        return m_device;
+        return m_pDevice;
     }
 
     VulkanFence* CreateFence(bool createSignaled = false);
 
     void ReleaseFence(VulkanFence*& fence);
 
-    bool IsFenceSignaled(VulkanFence* fence);
+    bool IsFenceSignaled(VulkanFence* pFence);
 
-    bool WaitForFence(VulkanFence* fence, uint64_t timeNS);
+    bool WaitForFence(VulkanFence* pFence, uint64_t timeNS);
 
-    void ResetFence(VulkanFence* fence);
+    void ResetFence(VulkanFence* pFence);
 
     void WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeNS);
 
 private:
-    void DestroyFence(VulkanFence* fence);
+    void DestroyFence(VulkanFence* pFence);
 
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     HeapVector<VulkanFence*> m_usedFences;
     std::queue<VulkanFence*> m_freeFences;
 };
@@ -82,7 +82,7 @@ private:
 class VulkanSemaphore
 {
 public:
-    explicit VulkanSemaphore(VulkanDevice* device,
+    explicit VulkanSemaphore(VulkanDevice* pDevice,
                              VkSemaphoreType semaphoreType = VK_SEMAPHORE_TYPE_BINARY,
                              uint64_t initialValue         = 0);
 
@@ -105,7 +105,7 @@ public:
     bool Wait(uint64_t value, uint64_t timeNS) const;
 
 private:
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     VkSemaphore m_semaphore{VK_NULL_HANDLE};
     VkSemaphoreType m_type{VK_SEMAPHORE_TYPE_BINARY};
 };
@@ -114,7 +114,7 @@ private:
 class VulkanSemaphoreManager
 {
 public:
-    explicit VulkanSemaphoreManager(VulkanDevice* device) : m_device(device) {}
+    explicit VulkanSemaphoreManager(VulkanDevice* pDevice) : m_pDevice(pDevice) {}
 
     void Destroy();
 
@@ -123,7 +123,7 @@ public:
     void ReleaseSemaphore(VulkanSemaphore*& sem);
 
 private:
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     HeapVector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
 #if defined(ZEN_DEBUG)

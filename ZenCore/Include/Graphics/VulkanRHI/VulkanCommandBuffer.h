@@ -27,8 +27,8 @@ struct VulkanCommandPool
 class VulkanCommandBufferPool
 {
 public:
-    VulkanCommandBufferPool(VulkanDevice* device, VulkanCommandBufferManager* mgr) :
-        m_device(device), m_owner(mgr)
+    VulkanCommandBufferPool(VulkanDevice* pDevice, VulkanCommandBufferManager* pMgr) :
+        m_pDevice(pDevice), m_pOwner(pMgr)
     {}
 
     ~VulkanCommandBufferPool();
@@ -37,7 +37,7 @@ public:
 
     VulkanDevice* GetDevice() const
     {
-        return m_device;
+        return m_pDevice;
     }
 
     VkCommandPool GetVkCmdPool() const
@@ -47,17 +47,17 @@ public:
 
     VulkanCommandBufferManager* GetManager() const
     {
-        return m_owner;
+        return m_pOwner;
     }
 
-    void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer);
+    void RefreshFenceStatus(VulkanCommandBuffer* pSkipCmdBuffer);
 
 private:
     VulkanCommandBuffer* CreateCmdBuffer(bool isUploadOnly);
-    void FreeUnusedCmdBuffers(VulkanQueue* queue);
+    void FreeUnusedCmdBuffers(VulkanQueue* pQueue);
 
-    VulkanDevice* m_device{nullptr};
-    VulkanCommandBufferManager* m_owner;
+    VulkanDevice* m_pDevice{nullptr};
+    VulkanCommandBufferManager* m_pOwner;
     VkCommandPool m_cmdPool{VK_NULL_HANDLE};
     HeapVector<VulkanCommandBuffer*> m_usedCmdBuffers;
     HeapVector<VulkanCommandBuffer*> m_freeCmdBuffers;
@@ -81,7 +81,7 @@ public:
 
     ~VulkanCommandBuffer();
 
-    void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* sem);
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pSem);
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, const HeapVector<VulkanSemaphore*>& sems);
 
@@ -118,11 +118,11 @@ public:
 
     VulkanCommandBufferPool* GetOwner() const
     {
-        return m_cmdBufferPool;
+        return m_pCmdBufferPool;
     }
 
 protected:
-    VulkanCommandBuffer(VulkanCommandBufferPool* pool, bool isUploadOnly);
+    VulkanCommandBuffer(VulkanCommandBufferPool* pPool, bool isUploadOnly);
 
 private:
     void AllocMemory();
@@ -138,7 +138,7 @@ private:
         m_waitSemaphores.clear();
     }
 
-    VulkanCommandBufferPool* m_cmdBufferPool{nullptr};
+    VulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
     bool m_isUploadOnly{false};
     VkCommandBuffer m_cmdBuffer{VK_NULL_HANDLE};
     State m_state{State::eNotAllocated};
@@ -148,7 +148,7 @@ private:
     // DO NOT own the semaphores, only hold reference
     HeapVector<VulkanSemaphore*> m_waitSemaphores;
     HeapVector<VulkanSemaphore*> m_submittedWaitSemaphores;
-    VulkanFence* m_fence;
+    VulkanFence* m_pFence;
     uint64_t m_fenceSignaledCounter{0};
 
     friend class VulkanCommandBufferPool;
@@ -159,25 +159,25 @@ private:
 class VulkanCommandBufferManager
 {
 public:
-    VulkanCommandBufferManager(VulkanDevice* device, VulkanQueue* queue);
+    VulkanCommandBufferManager(VulkanDevice* pDevice, VulkanQueue* pQueue);
     ~VulkanCommandBufferManager() = default;
 
     VulkanCommandBuffer* GetActiveCommandBuffer();
 
     VulkanCommandBuffer* GetActiveCommandBufferDirect() const
     {
-        return m_activeCmdBuffer;
+        return m_pActiveCmdBuffer;
     }
 
     VulkanCommandBuffer* GetUploadCommandBuffer();
 
     void SubmitActiveCmdBuffer(const HeapVector<VulkanSemaphore*>& signalSemaphores);
 
-    void SubmitActiveCmdBuffer(VulkanSemaphore* signalSemaphore);
+    void SubmitActiveCmdBuffer(VulkanSemaphore* pSignalSemaphore);
 
     void SubmitActiveCmdBuffer();
 
-    void SubmitActiveCmdBufferForPresent(VulkanSemaphore* signalSemaphore);
+    void SubmitActiveCmdBufferForPresent(VulkanSemaphore* pSignalSemaphore);
 
     void SubmitUploadCmdBuffer();
 
@@ -187,33 +187,33 @@ public:
 
     bool HasPendingActiveCmdBuffer()
     {
-        return m_activeCmdBuffer != nullptr;
+        return m_pActiveCmdBuffer != nullptr;
     }
 
     bool HasPendingUploadCmdBuffer()
     {
-        return m_uploadCmdBuffer != nullptr;
+        return m_pUploadCmdBuffer != nullptr;
     }
 
-    void WaitForCmdBuffer(VulkanCommandBuffer* cmdBuffer, float timeInSecondsToWait = 1.0f);
+    void WaitForCmdBuffer(VulkanCommandBuffer* pCmdBuffer, float timeInSecondsToWait = 1.0f);
 
     // Update the fences of all cmd buffers except SkipCmdBuffer
-    void RefreshFenceStatus(VulkanCommandBuffer* skipCmdBuffer = nullptr)
+    void RefreshFenceStatus(VulkanCommandBuffer* pSkipCmdBuffer = nullptr)
     {
-        m_pool.RefreshFenceStatus(skipCmdBuffer);
+        m_pool.RefreshFenceStatus(pSkipCmdBuffer);
     }
 
 private:
-    VulkanDevice* m_device{nullptr};
-    VulkanQueue* m_queue{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
+    VulkanQueue* m_pQueue{nullptr};
     VulkanCommandBufferPool m_pool;
     // use dedicated command buffer for upload workloads
-    VulkanCommandBuffer* m_activeCmdBuffer{nullptr};
-    VulkanCommandBuffer* m_uploadCmdBuffer{nullptr};
+    VulkanCommandBuffer* m_pActiveCmdBuffer{nullptr};
+    VulkanCommandBuffer* m_pUploadCmdBuffer{nullptr};
 
     // semaphores for cmd buffer, configured through RHIOptions
-    VulkanSemaphore* m_activeCmdBufferSemaphore{nullptr};
-    VulkanSemaphore* m_uploadCmdBufferSemaphore{nullptr};
+    VulkanSemaphore* m_pActiveCmdBufferSemaphore{nullptr};
+    VulkanSemaphore* m_pUploadCmdBufferSemaphore{nullptr};
     // upload cmd buffer semaphores waited by active cmd buffer
     HeapVector<VulkanSemaphore*> m_uploadCompleteSemaphores;
     // upload cmd buffer semaphores waited by upload cmd buffer

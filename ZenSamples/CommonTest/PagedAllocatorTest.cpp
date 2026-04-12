@@ -3,35 +3,35 @@
 
 TEST_F(PagedAllocatorTest, AllocateSingleObject)
 {
-    DummyClass* obj = allocator.Alloc(10);
-    ASSERT_NE(obj, nullptr);
-    EXPECT_EQ(obj->getData(), 10);
-    allocator.Free(obj);
+    DummyClass* pObj = allocator.Alloc(10);
+    ASSERT_NE(pObj, nullptr);
+    EXPECT_EQ(pObj->getData(), 10);
+    allocator.Free(pObj);
 }
 
 TEST_F(PagedAllocatorTest, AllocateMultipleObjects)
 {
-    DummyClass* obj1 = allocator.Alloc(10);
-    DummyClass* obj2 = allocator.Alloc(20);
-    ASSERT_NE(obj1, nullptr);
-    ASSERT_NE(obj2, nullptr);
-    EXPECT_EQ(obj1->getData(), 10);
-    EXPECT_EQ(obj2->getData(), 20);
-    allocator.Free(obj1);
-    allocator.Free(obj2);
+    DummyClass* pObj1 = allocator.Alloc(10);
+    DummyClass* pObj2 = allocator.Alloc(20);
+    ASSERT_NE(pObj1, nullptr);
+    ASSERT_NE(pObj2, nullptr);
+    EXPECT_EQ(pObj1->getData(), 10);
+    EXPECT_EQ(pObj2->getData(), 20);
+    allocator.Free(pObj1);
+    allocator.Free(pObj2);
 }
 
 TEST_F(PagedAllocatorTest, FreeAndReuseObject)
 {
-    DummyClass* obj1 = allocator.Alloc(10);
-    ASSERT_NE(obj1, nullptr);
-    EXPECT_EQ(obj1->getData(), 10);
-    allocator.Free(obj1);
+    DummyClass* pObj1 = allocator.Alloc(10);
+    ASSERT_NE(pObj1, nullptr);
+    EXPECT_EQ(pObj1->getData(), 10);
+    allocator.Free(pObj1);
 
-    DummyClass* obj2 = allocator.Alloc(20);
-    ASSERT_NE(obj2, nullptr);
-    EXPECT_EQ(obj2->getData(), 20);
-    allocator.Free(obj2);
+    DummyClass* pObj2 = allocator.Alloc(20);
+    ASSERT_NE(pObj2, nullptr);
+    EXPECT_EQ(pObj2->getData(), 20);
+    allocator.Free(pObj2);
 }
 
 TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
@@ -41,10 +41,10 @@ TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
 
     for (uint32_t i = 0; i < numObjects; ++i)
     {
-        DummyClass* obj = allocator.Alloc(i);
-        ASSERT_NE(obj, nullptr);
-        EXPECT_EQ(obj->getData(), i);
-        objects.push_back(obj);
+        DummyClass* pObj = allocator.Alloc(i);
+        ASSERT_NE(pObj, nullptr);
+        EXPECT_EQ(pObj->getData(), i);
+        objects.push_back(pObj);
     }
 
     for (DummyClass* obj : objects)
@@ -54,9 +54,9 @@ TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
 }
 
 // Main function for Google Test
-int main(int argc, char** argv)
+int main(int argc, char** pArgv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
+    ::testing::InitGoogleTest(&argc, pArgv);
     ::testing::GTEST_FLAG(filter) = "PagedAllocator*";
     return RUN_ALL_TESTS();
 }

@@ -620,7 +620,7 @@ struct RHIBufferCopyRegion
 
 struct RHIBufferCopySource
 {
-    RHIBuffer* buffer{nullptr};
+    RHIBuffer* pBuffer{nullptr};
     RHIBufferCopyRegion region;
 };
 
@@ -818,7 +818,7 @@ struct RHIBufferTextureCopyRegion
 
 struct RHIBufferTextureCopySource
 {
-    RHIBuffer* buffer{nullptr};
+    RHIBuffer* pBuffer{nullptr};
     RHIBufferTextureCopyRegion region;
 };
 
@@ -906,7 +906,7 @@ struct RHIRenderTarget
     SampleCount numSamples{SampleCount::e1};
     RHIRenderTargetLoadOp loadOp{RHIRenderTargetLoadOp::eNone};
     RHIRenderTargetStoreOp storeOp{RHIRenderTargetStoreOp::eStore};
-    RHITexture* texture{nullptr};
+    RHITexture* pTexture{nullptr};
     RHIRenderTargetClearValue clearValue;
 };
 
@@ -936,7 +936,7 @@ public:
     }
 
     void AddColorRenderTarget(DataFormat format,
-                              RHITexture* texture,
+                              RHITexture* pTexture,
                               const RHITextureSubResourceRange& subResourceRange,
                               RHIRenderTargetLoadOp loadOp,
                               RHIRenderTargetStoreOp storeOp,
@@ -944,7 +944,7 @@ public:
     {
         RHIRenderTarget colorRT;
         colorRT.format  = format;
-        colorRT.texture = texture;
+        colorRT.pTexture = pTexture;
         // colorRT.subresourceRange = subResourceRange;
 
         colorRT.numSamples = numSamples;
@@ -958,7 +958,7 @@ public:
     }
 
     void SetDepthStencilRenderTarget(DataFormat format,
-                                     RHITexture* texture,
+                                     RHITexture* pTexture,
                                      RHITextureSubResourceRange subResourceRange,
                                      RHIRenderTargetLoadOp loadOp,
                                      RHIRenderTargetStoreOp storeOp)
@@ -966,7 +966,7 @@ public:
         if (!m_hasDepthStencilRT)
         {
             m_depthStencilRT.format  = format;
-            m_depthStencilRT.texture = texture;
+            m_depthStencilRT.pTexture = pTexture;
             // m_depthStencilRT.subresourceRange = subResourceRange;
             m_depthStencilRT.loadOp  = loadOp;
             m_depthStencilRT.storeOp = storeOp;
@@ -1094,7 +1094,7 @@ private:
 struct RHIFramebufferInfo
 {
     uint32_t numRenderTarget{0};
-    RHITexture** renderTargets{nullptr};
+    RHITexture** pRenderTargets{nullptr};
     uint32_t width{0};
     uint32_t height{0};
     uint32_t depth{1};
@@ -1342,7 +1342,7 @@ struct RHITextureTransition
 {
     RHIAccessMode oldAccessMode;
     RHIAccessMode newAccessMode;
-    RHITexture* texture{nullptr};
+    RHITexture* pTexture{nullptr};
     RHITextureUsage oldUsage;
     RHITextureUsage newUsage;
     RHITextureSubResourceRange subResourceRange;
@@ -1352,7 +1352,7 @@ struct RHIBufferTransition
 {
     RHIAccessMode oldAccessMode;
     RHIAccessMode newAccessMode;
-    RHIBuffer* buffer{nullptr};
+    RHIBuffer* pBuffer{nullptr};
     RHIBufferUsage oldUsage;
     RHIBufferUsage newUsage;
     uint64_t offset{0};

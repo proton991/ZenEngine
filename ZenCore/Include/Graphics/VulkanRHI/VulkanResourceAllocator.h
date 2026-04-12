@@ -17,23 +17,23 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
 
     template <typename T> static T* Alloc(PagedAllocator<VersatileResourceTemplate>& allocator)
     {
-        T* obj = (T*)allocator.Alloc();
-        new (obj) T;
-        return obj;
+        T* pMem = (T*)allocator.Alloc();
+        new (pMem) T;
+        return pMem;
     }
 
     template <typename T> static T* AllocMem(PagedAllocator<VersatileResourceTemplate>& allocator)
     {
-        T* obj = (T*)allocator.Alloc();
+        T* pMem = (T*)allocator.Alloc();
         // new (obj) T(std::forward<Args>(args)...);
-        return obj;
+        return pMem;
     }
 
     template <typename T>
-    static void Free(PagedAllocator<VersatileResourceTemplate>& p_allocator, T* p_object)
+    static void Free(PagedAllocator<VersatileResourceTemplate>& p_allocator, T* pMem)
     {
         // p_object->~T();
-        p_allocator.Free((VersatileResourceTemplate*)p_object);
+        p_allocator.Free((VersatileResourceTemplate*)pMem);
     }
 };
 } // namespace zen

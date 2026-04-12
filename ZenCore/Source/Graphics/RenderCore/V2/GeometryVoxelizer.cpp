@@ -38,7 +38,7 @@ void GeometryVoxelizer::PrepareBuffers()
     std::vector<SimpleVertex> vertices;
     vertices.resize(m_voxelCount);
 
-    m_voxelVBO = m_renderDevice->CreateVertexBuffer(
+    m_pVoxelVBO = m_pRenderDevice->CreateVertexBuffer(
         m_voxelCount * sizeof(Vec4), reinterpret_cast<const uint8_t*>(vertices.data()));
 }
 
@@ -49,42 +49,42 @@ void GeometryVoxelizer::BuildRenderGraph()
     // voxelization pass
     if (m_needVoxelization)
     {
-        VoxelizationSP* shaderProgram =
-            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization->shaderProgram);
+        VoxelizationSP* pShaderProgram =
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.pVoxelization->pShaderProgram);
         const uint32_t cFbSize = m_voxelTexResolution;
         // std::vector<RHIRenderPassClearValue> clearValues(0);
         // clearValues[0].color = {0.0f, 0.0f, 0.0f, 0.0f};
         Rect2<int> area(0, static_cast<int>(cFbSize), 0, static_cast<int>(cFbSize));
         Rect2<float> viewport(static_cast<float>(cFbSize), static_cast<float>(cFbSize));
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelization, "geom_voxelization");
+        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.pVoxelization, "geom_voxelization");
 
-        // TextureHandle textures[]         = {m_voxelTextures.staticFlag, m_voxelTextures.albedo,
-        //                                          m_voxelTextures.normal, m_voxelTextures.emissive};
+        // TextureHandle textures[]         = {m_voxelTextures.pStaticFlag, m_voxelTextures.pAlbedo,
+        //                                          m_voxelTextures.pNormal, m_voxelTextures.pEmissive};
         // RHITextureSubResourceRange ranges[] = {
-        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.staticFlag),
-        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo),
-        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.normal),
-        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.emissive)};
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.pStaticFlag),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.pAlbedo),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.pNormal),
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.pEmissive)};
 
-        // m_rdg->DeclareTextureAccessForPass(pass, 4, textures, RHITextureUsage::eStorage, ranges,
+        // m_rdg->DeclareTextureAccessForPass(pPass, 4, textures, RHITextureUsage::eStorage, ranges,
         //                                    RHIAccessMode::eReadWrite);
-        m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_scene->GetVertexBuffer(), {0});
-        m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_scene->GetIndexBuffer(),
+        m_rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_pScene->GetVertexBuffer(), {0});
+        m_rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_pScene->GetIndexBuffer(),
                                                   DataFormat::eR32UInt);
-        m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
-        m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        shaderProgram->pushConstantsData.flagStaticVoxels = 1;
-        shaderProgram->pushConstantsData.volumeDimension  = m_voxelTexResolution;
-        for (auto* node : m_scene->GetRenderableNodes())
+        m_rdg->AddGraphicsPassSetViewportNode(pPass, viewport);
+        m_rdg->AddGraphicsPassSetScissorNode(pPass, area);
+        pShaderProgram->pushConstantsData.flagStaticVoxels = 1;
+        pShaderProgram->pushConstantsData.volumeDimension  = m_voxelTexResolution;
+        for (auto* node : m_pScene->GetRenderableNodes())
         {
-            shaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
+            pShaderProgram->pushConstantsData.nodeIndex = node->GetRenderableIndex();
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
-                shaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-                m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+                pShaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
+                m_rdg->AddGraphicsPassSetPushConstants(pPass, &pShaderProgram->pushConstantsData,
                                                        sizeof(VoxelizationSP::PushConstantsData));
-                m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
+                m_rdg->AddGraphicsPassDrawIndexedNode(pPass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
         }
@@ -97,32 +97,32 @@ void GeometryVoxelizer::BuildRenderGraph()
     }
     // voxel draw pass
     {
-        VoxelDrawSP* shaderProgram =
-            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw->shaderProgram);
+        VoxelDrawSP* pShaderProgram =
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.pVoxelDraw->pShaderProgram);
 
         // std::vector<RHIRenderPassClearValue> clearValues(2);
         // clearValues[0].color   = {0.0f, 0.0f, 0.0f, 0.0f};
         // clearValues[1].depth   = 1.0f;
         // clearValues[1].stencil = 0;
 
-        Rect2<int> area(0, static_cast<int>(m_viewport->GetWidth()), 0,
-                        static_cast<int>(m_viewport->GetHeight()));
-        Rect2<float> viewport(static_cast<float>(m_viewport->GetWidth()),
-                              static_cast<float>(m_viewport->GetHeight()));
+        Rect2<int> area(0, static_cast<int>(m_pViewport->GetWidth()), 0,
+                        static_cast<int>(m_pViewport->GetHeight()));
+        Rect2<float> viewport(static_cast<float>(m_pViewport->GetWidth()),
+                              static_cast<float>(m_pViewport->GetHeight()));
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.voxelDraw, "geom_voxel_draw");
+        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.pVoxelDraw, "geom_voxel_draw");
 
         // m_rdg->DeclareTextureAccessForPass(
-        //     pass, m_voxelTextures.albedo, RHITextureUsage::eStorage,
-        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.albedo), RHIAccessMode::eRead);
-        // m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_voxelVBO, {0});
-        m_rdg->AddGraphicsPassSetViewportNode(pass, viewport);
-        m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        //        shaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
-        shaderProgram->pushConstantsData.volumeDimension = m_voxelTexResolution;
-        m_rdg->AddGraphicsPassSetPushConstants(pass, &shaderProgram->pushConstantsData,
+        //     pPass, m_voxelTextures.pAlbedo, RHITextureUsage::eStorage,
+        //     m_renderDevice->GetTextureSubResourceRange(m_voxelTextures.pAlbedo), RHIAccessMode::eRead);
+        // m_rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_voxelVBO, {0});
+        m_rdg->AddGraphicsPassSetViewportNode(pPass, viewport);
+        m_rdg->AddGraphicsPassSetScissorNode(pPass, area);
+        //        pShaderProgram->pushConstantsData.colorChannels   = m_config.drawColorChannels;
+        pShaderProgram->pushConstantsData.volumeDimension = m_voxelTexResolution;
+        m_rdg->AddGraphicsPassSetPushConstants(pPass, &pShaderProgram->pushConstantsData,
                                                sizeof(VoxelDrawSP::PushConstantsData));
-        m_rdg->AddGraphicsPassDrawNode(pass, m_voxelCount, 1);
+        m_rdg->AddGraphicsPassDrawNode(pPass, m_voxelCount, 1);
     }
     m_rdg->End();
 }
@@ -140,19 +140,19 @@ void GeometryVoxelizer::BuildGraphicsPasses()
         pso.colorBlendState.AddAttachment();
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
-        rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.voxelization =
+        rc::GraphicsPassBuilder builder(m_pRenderDevice);
+        m_gfxPasses.pVoxelization =
             builder
                 .SetShaderProgramName("VoxelizationSP")
                 // .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
                 //.AddColorRenderTarget(DataFormat::eR8G8B8A8SRGB, RHITextureUsage::eColorAttachment,
                 //                      m_voxelTextures.offscreen1)
-                .SetFramebufferInfo(m_viewport, m_voxelTexResolution, m_voxelTexResolution)
+                .SetFramebufferInfo(m_pViewport, m_voxelTexResolution, m_voxelTexResolution)
                 .SetTag("Voxelization")
                 .Build();
     }
-    // voxel draw graphics pass
+    // voxel draw graphics pPass
     {
         RHIGfxPipelineStates pso{};
         pso.primitiveType                = RHIDrawPrimitiveType::ePointList;
@@ -167,16 +167,16 @@ void GeometryVoxelizer::BuildGraphicsPasses()
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
 
-        rc::GraphicsPassBuilder builder(m_renderDevice);
-        m_gfxPasses.voxelDraw =
+        rc::GraphicsPassBuilder builder(m_pRenderDevice);
+        m_gfxPasses.pVoxelDraw =
             builder
                 .SetShaderProgramName("VoxelDrawSP")
                 // .SetNumSamples(SampleCount::e1)
                 .SetPipelineState(pso)
-                .AddViewportColorRT(m_viewport, RHIRenderTargetLoadOp::eLoad)
-                .SetViewportDepthStencilRT(m_viewport, RHIRenderTargetLoadOp::eClear,
+                .AddViewportColorRT(m_pViewport, RHIRenderTargetLoadOp::eLoad)
+                .SetViewportDepthStencilRT(m_pViewport, RHIRenderTargetLoadOp::eClear,
                                            RHIRenderTargetStoreOp::eStore)
-                .SetFramebufferInfo(m_viewport)
+                .SetFramebufferInfo(m_pViewport)
                 .SetTag("VoxelDraw")
                 .Build();
     }
@@ -191,28 +191,28 @@ void GeometryVoxelizer::UpdatePassResources()
         HeapVector<RHIShaderResourceBinding> set2bindings;
         // set-0 bindings
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eStorageBuffer,
-                                  m_scene->GetNodesDataSSBO());
+                                  m_pScene->GetNodesDataSSBO());
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, RHIShaderResourceType::eUniformBuffer,
-            m_gfxPasses.voxelization->shaderProgram->GetUniformBufferHandle("uVoxelConfig"));
+            m_gfxPasses.pVoxelization->pShaderProgram->GetUniformBufferHandle("uVoxelConfig"));
         ADD_SHADER_BINDING_SINGLE(set0bindings, 2, RHIShaderResourceType::eStorageBuffer,
-                                  m_scene->GetMaterialsDataSSBO());
+                                  m_pScene->GetMaterialsDataSSBO());
 
         // set-1 bindings
         ADD_SHADER_BINDING_SINGLE(set1bindings, 0, RHIShaderResourceType::eImage,
-                                  m_voxelTextures.albedo);
+                                  m_voxelTextures.pAlbedo);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 1, RHIShaderResourceType::eImage,
-                                  m_voxelTextures.normal);
+                                  m_voxelTextures.pNormal);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 2, RHIShaderResourceType::eImage,
-                                  m_voxelTextures.emissive);
+                                  m_voxelTextures.pEmissive);
         ADD_SHADER_BINDING_SINGLE(set1bindings, 3, RHIShaderResourceType::eImage,
-                                  m_voxelTextures.staticFlag);
+                                  m_voxelTextures.pStaticFlag);
         // set-2 bindings: texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set2bindings, 0,
-                                         RHIShaderResourceType::eSamplerWithTexture, m_colorSampler,
-                                         m_scene->GetSceneTextures())
+                                         RHIShaderResourceType::eSamplerWithTexture, m_pColorSampler,
+                                         m_pScene->GetSceneTextures())
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelization);
+        rc::GraphicsPassResourceUpdater updater(m_pRenderDevice, m_gfxPasses.pVoxelization);
         updater.SetShaderResourceBinding(0, std::move(set0bindings))
             .SetShaderResourceBinding(1, std::move(set1bindings))
             .SetShaderResourceBinding(2, std::move(set2bindings))
@@ -222,19 +222,19 @@ void GeometryVoxelizer::UpdatePassResources()
     {
         HeapVector<RHIShaderResourceBinding> set0bindings;
         ADD_SHADER_BINDING_SINGLE(set0bindings, 0, RHIShaderResourceType::eImage,
-                                  m_voxelTextures.albedoProxy);
+                                  m_voxelTextures.pAlbedoProxy);
         ADD_SHADER_BINDING_SINGLE(
             set0bindings, 1, RHIShaderResourceType::eUniformBuffer,
-            m_gfxPasses.voxelDraw->shaderProgram->GetUniformBufferHandle("uVoxelInfo"));
+            m_gfxPasses.pVoxelDraw->pShaderProgram->GetUniformBufferHandle("uVoxelInfo"));
 
-        rc::GraphicsPassResourceUpdater updater(m_renderDevice, m_gfxPasses.voxelDraw);
+        rc::GraphicsPassResourceUpdater updater(m_pRenderDevice, m_gfxPasses.pVoxelDraw);
         updater.SetShaderResourceBinding(0, std::move(set0bindings)).Update();
     }
 }
 
 void GeometryVoxelizer::UpdateUniformData()
 {
-    const sg::AABB& sceneAABB = m_scene->GetAABB();
+    const sg::AABB& sceneAABB = m_pScene->GetAABB();
 
     auto center = sceneAABB.GetCenter();
     {
@@ -244,50 +244,50 @@ void GeometryVoxelizer::UpdateUniformData()
         projection[1][1] *= -1;
 
         // view matrices
-        VoxelizationSP* shaderProgram =
-            dynamic_cast<VoxelizationSP*>(m_gfxPasses.voxelization->shaderProgram);
-        shaderProgram->voxelConfigData.viewProjectionMatrices[0] =
+        VoxelizationSP* pShaderProgram =
+            dynamic_cast<VoxelizationSP*>(m_gfxPasses.pVoxelization->pShaderProgram);
+        pShaderProgram->voxelConfigData.viewProjectionMatrices[0] =
             glm::lookAt(center - Vec3(halfSize, 0.0f, 0.0f), center, Vec3(0.0f, 1.0f, 0.0f));
-        shaderProgram->voxelConfigData.viewProjectionMatrices[1] =
+        pShaderProgram->voxelConfigData.viewProjectionMatrices[1] =
             glm::lookAt(center - Vec3(0.0f, halfSize, 0.0f), center, Vec3(-1.0f, 0.0f, 0.0f));
-        shaderProgram->voxelConfigData.viewProjectionMatrices[2] =
+        pShaderProgram->voxelConfigData.viewProjectionMatrices[2] =
             glm::lookAt(center - Vec3(0.0f, 0.0f, halfSize), center, Vec3(0.0f, 1.0f, 0.0f));
 
-        shaderProgram->voxelConfigData.worldMinPointScale =
-            Vec4(m_scene->GetAABB().GetMin(), 1.0f / m_sceneExtent);
+        pShaderProgram->voxelConfigData.worldMinPointScale =
+            Vec4(m_pScene->GetAABB().GetMin(), 1.0f / m_sceneExtent);
 
         for (int i = 0; i < 3; ++i)
         {
-            shaderProgram->voxelConfigData.viewProjectionMatrices[i] =
-                projection * shaderProgram->voxelConfigData.viewProjectionMatrices[i];
-            shaderProgram->voxelConfigData.viewProjectionMatricesI[i] =
-                glm::inverse(shaderProgram->voxelConfigData.viewProjectionMatrices[i]);
+            pShaderProgram->voxelConfigData.viewProjectionMatrices[i] =
+                projection * pShaderProgram->voxelConfigData.viewProjectionMatrices[i];
+            pShaderProgram->voxelConfigData.viewProjectionMatricesI[i] =
+                glm::inverse(pShaderProgram->voxelConfigData.viewProjectionMatrices[i]);
         }
 
-        shaderProgram->UpdateUniformBuffer("uVoxelConfig", shaderProgram->GetVoxelConfigData(), 0);
+        pShaderProgram->UpdateUniformBuffer("uVoxelConfig", pShaderProgram->GetVoxelConfigData(), 0);
     }
 
     {
-        const auto* cameraUniformData =
-            reinterpret_cast<const sg::CameraUniformData*>(m_scene->GetCameraUniformData());
-        VoxelDrawSP* shaderProgram =
-            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.voxelDraw->shaderProgram);
+        const auto* pCameraUniformData =
+            reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
+        VoxelDrawSP* pShaderProgram =
+            dynamic_cast<VoxelDrawSP*>(m_gfxPasses.pVoxelDraw->pShaderProgram);
         uint32_t drawMipLevel = 0;
         auto vDimension  = static_cast<unsigned>(m_voxelTexResolution / pow(2.0f, drawMipLevel));
         auto vSize       = m_sceneExtent / vDimension;
         auto modelMatrix = glm::translate(Mat4(1.0f), sceneAABB.GetMin()) *
             glm::scale(Mat4(1.0f), glm::vec3(vSize));
-        shaderProgram->voxelInfo.modelViewProjection =
-            cameraUniformData->projViewMatrix * modelMatrix;
+        pShaderProgram->voxelInfo.modelViewProjection =
+            pCameraUniformData->projViewMatrix * modelMatrix;
 
-        auto& planes = m_scene->GetCamera()->GetFrustum().GetPlanes();
+        auto& planes = m_pScene->GetCamera()->GetFrustum().GetPlanes();
         for (auto i = 0; i < 6; i++)
         {
-            shaderProgram->voxelInfo.frustumPlanes[i] = planes[i];
+            pShaderProgram->voxelInfo.frustumPlanes[i] = planes[i];
         }
-        shaderProgram->voxelInfo.worldMinPointVoxelSize = Vec4(sceneAABB.GetMin(), m_voxelSize);
+        pShaderProgram->voxelInfo.worldMinPointVoxelSize = Vec4(sceneAABB.GetMin(), m_voxelSize);
 
-        shaderProgram->UpdateUniformBuffer("uVoxelInfo", shaderProgram->GetVoxelInfoData(), 0);
+        pShaderProgram->UpdateUniformBuffer("uVoxelInfo", pShaderProgram->GetVoxelInfoData(), 0);
     }
 }
 
@@ -301,11 +301,11 @@ void GeometryVoxelizer::PrepareRenderWorkload()
     }
     UpdateUniformData();
     // VoxelizationProgram* voxelizationSP =
-    //     dynamic_cast<VoxelizationProgram*>(m_gfxPasses.voxelization.shaderProgram);
+    //     dynamic_cast<VoxelizationProgram*>(m_gfxPasses.pVoxelization.pShaderProgram);
     // voxelizationSP->UpdateUniformBuffer("uVoxelConfig", voxelizationSP->GetVoxelConfigData(), 0);
     //
     // VoxelDrawShaderProgram* voxelDrawSP =
-    //     dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.voxelDraw.shaderProgram);
+    //     dynamic_cast<VoxelDrawShaderProgram*>(m_gfxPasses.pVoxelDraw.pShaderProgram);
     // voxelDrawSP->UpdateUniformBuffer("uVoxelInfo", voxelDrawSP->GetVoxelInfoData(), 0);
 }
 
@@ -313,7 +313,7 @@ void GeometryVoxelizer::PrepareRenderWorkload()
 void GeometryVoxelizer::OnResize()
 {
     m_rebuildRDG = true;
-    m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.voxelDraw, m_viewport);
+    m_pRenderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.pVoxelDraw, m_pViewport);
 }
 
 // void GeometryVoxelizer::VoxelizeStaticScene() {}

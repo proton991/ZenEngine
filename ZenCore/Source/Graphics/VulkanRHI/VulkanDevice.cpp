@@ -46,7 +46,7 @@ DataFormat VulkanRHI::GetSupportedDepthFormat()
     for (auto& format : formatList)
     {
         VkFormatProperties formatProps;
-        vkGetPhysicalDeviceFormatProperties(m_device->GetPhysicalDeviceHandle(), format,
+        vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), format,
                                             &formatProps);
         if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
         {
@@ -125,8 +125,8 @@ void VulkanDevice::Init()
 
     SetupDevice(extensionArray);
 
-    m_fenceManager    = ZEN_NEW() VulkanFenceManager(this);
-    m_semaphoreManger = ZEN_NEW() VulkanSemaphoreManager(this);
+    m_pFenceManager    = ZEN_NEW() VulkanFenceManager(this);
+    m_pSemaphoreManger = ZEN_NEW() VulkanSemaphoreManager(this);
 
     // m_legacyImmediateContext     = ZEN_NEW() LegacyVulkanCommandListContext(GVulkanRHI);
     // m_legacyImmediateCommandList = ZEN_NEW() LegacyVulkanCommandList(m_legacyImmediateContext);
@@ -205,16 +205,16 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     }
     HeapVector<float> queuePriorities;
     queuePriorities.resize(numPriorities);
-    float* currentPriority = queuePriorities.data();
+    float* pCurrentPriority = queuePriorities.data();
     for (auto i = 0; i < deviceQueueInfos.size(); i++)
     {
         VkDeviceQueueCreateInfo& queueInfo = deviceQueueInfos[i];
-        queueInfo.pQueuePriorities         = currentPriority;
+        queueInfo.pQueuePriorities         = pCurrentPriority;
         const VkQueueFamilyProperties& queueFamilyProp =
             m_queueFamilyProps[queueInfo.queueFamilyIndex];
         for (auto queueIndex = 0; queueIndex < queueFamilyProp.queueCount; queueIndex++)
         {
-            *currentPriority++ = 1.0f;
+            *pCurrentPriority++ = 1.0f;
         }
     }
 
@@ -234,41 +234,41 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     // load device func
     volkLoadDevice(m_device);
     // setup queues
-    m_gfxQueue = ZEN_NEW() VulkanQueue(this, graphicsQueueFamilyIndex);
+    m_pGfxQueue = ZEN_NEW() VulkanQueue(this, graphicsQueueFamilyIndex);
     if (computeQueueFamilyIndex == -1)
     {
         computeQueueFamilyIndex = graphicsQueueFamilyIndex;
     }
-    m_computeQueue = ZEN_NEW() VulkanQueue(this, computeQueueFamilyIndex);
+    m_pComputeQueue = ZEN_NEW() VulkanQueue(this, computeQueueFamilyIndex);
     if (transferQueueFamilyIndex == -1)
     {
         transferQueueFamilyIndex = computeQueueFamilyIndex;
     }
-    m_transferQueue = ZEN_NEW() VulkanQueue(this, transferQueueFamilyIndex);
+    m_pTransferQueue = ZEN_NEW() VulkanQueue(this, transferQueueFamilyIndex);
 }
 
-void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char* name)
+void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, const char* pName)
 {
     VkDebugUtilsObjectNameInfoEXT info;
     InitVkStruct(info, VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT);
     info.objectType   = type;
     info.objectHandle = handle;
-    info.pObjectName  = name;
+    info.pObjectName  = pName;
     vkSetDebugUtilsObjectNameEXT(m_device, &info);
 }
 
 void VulkanDevice::SubmitCommandsAndFlush()
 {
-    auto* mgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
-    if (mgr->HasPendingUploadCmdBuffer())
+    auto* pMgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
+    if (pMgr->HasPendingUploadCmdBuffer())
     {
-        mgr->SubmitUploadCmdBuffer();
+        pMgr->SubmitUploadCmdBuffer();
     }
-    if (mgr->HasPendingActiveCmdBuffer())
+    if (pMgr->HasPendingActiveCmdBuffer())
     {
-        mgr->SubmitActiveCmdBuffer();
+        pMgr->SubmitActiveCmdBuffer();
     }
-    mgr->SetupNewActiveCmdBuffer();
+    pMgr->SetupNewActiveCmdBuffer();
 }
 
 void VulkanDevice::WaitForIdle()
@@ -279,54 +279,54 @@ void VulkanDevice::WaitForIdle()
 
 void VulkanDevice::Destroy()
 {
-    ZEN_DELETE(m_gfxQueue);
-    ZEN_DELETE(m_computeQueue);
-    ZEN_DELETE(m_transferQueue);
+    ZEN_DELETE(m_pGfxQueue);
+    ZEN_DELETE(m_pComputeQueue);
+    ZEN_DELETE(m_pTransferQueue);
 
-    m_semaphoreManger->Destroy();
-    ZEN_DELETE(m_semaphoreManger);
+    m_pSemaphoreManger->Destroy();
+    ZEN_DELETE(m_pSemaphoreManger);
 
-    m_fenceManager->Destroy();
-    ZEN_DELETE(m_fenceManager);
+    m_pFenceManager->Destroy();
+    ZEN_DELETE(m_pFenceManager);
 
     vkDestroyDevice(m_device, nullptr);
 }
 
 void VulkanRHI::SubmitAllGPUCommands()
 {
-    for (auto* ctx : m_legacyCmdListContexts)
+    for (auto* pCtx : m_legacyCmdListContexts)
     {
-        auto* vkCtx = dynamic_cast<LegacyVulkanCommandListContext*>(ctx);
-        if (vkCtx->GetCmdBufferManager()->HasPendingActiveCmdBuffer())
+        auto* pVkCtx = dynamic_cast<LegacyVulkanCommandListContext*>(pCtx);
+        if (pVkCtx->GetCmdBufferManager()->HasPendingActiveCmdBuffer())
         {
-            vkCtx->GetCmdBufferManager()->SubmitActiveCmdBuffer();
-            vkCtx->GetCmdBufferManager()->SetupNewActiveCmdBuffer();
+            pVkCtx->GetCmdBufferManager()->SubmitActiveCmdBuffer();
+            pVkCtx->GetCmdBufferManager()->SetupNewActiveCmdBuffer();
         }
-        if (vkCtx->GetCmdBufferManager()->HasPendingUploadCmdBuffer())
+        if (pVkCtx->GetCmdBufferManager()->HasPendingUploadCmdBuffer())
         {
-            vkCtx->GetCmdBufferManager()->SubmitUploadCmdBuffer();
+            pVkCtx->GetCmdBufferManager()->SubmitUploadCmdBuffer();
         }
     }
-    auto* immediateMgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
-    if (immediateMgr->HasPendingUploadCmdBuffer())
+    auto* pImmediateMgr = GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager();
+    if (pImmediateMgr->HasPendingUploadCmdBuffer())
     {
-        immediateMgr->SubmitActiveCmdBuffer();
-        immediateMgr->SetupNewActiveCmdBuffer();
+        pImmediateMgr->SubmitActiveCmdBuffer();
+        pImmediateMgr->SetupNewActiveCmdBuffer();
     }
-    if (immediateMgr->HasPendingUploadCmdBuffer())
+    if (pImmediateMgr->HasPendingUploadCmdBuffer())
     {
-        immediateMgr->SubmitUploadCmdBuffer();
+        pImmediateMgr->SubmitUploadCmdBuffer();
     }
 }
 
 
 void VulkanRHI::WaitDeviceIdle()
 {
-    m_device->WaitForIdle();
+    m_pDevice->WaitForIdle();
 
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
-        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
         pQueue->ProcessPendingWorkloads(0);
     }
 }

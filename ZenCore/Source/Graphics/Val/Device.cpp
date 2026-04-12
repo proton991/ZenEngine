@@ -35,20 +35,20 @@ UniquePtr<Device> Device::CreateUnique(const Device::CreateInfo& CI)
     return MakeUnique<Device>(CI);
 }
 
-bool Device::IsExtensionEnabled(const char* extension) const
+bool Device::IsExtensionEnabled(const char* pExtension) const
 {
     return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(),
-                        [extension](const char* enabled_extension) {
-                            return strcmp(extension, enabled_extension) == 0;
+                        [pExtension](const char* pEnabledExtension) {
+                            return strcmp(pExtension, pEnabledExtension) == 0;
                         }) != m_enabledExtensions.end();
 }
 
 Device::Device(const Device::CreateInfo& CI)
 {
-    m_physicalDevice = CI.pPhysicalDevice;
+    m_pPhysicalDevice = CI.pPhysicalDevice;
 
     auto descriptorIndexingFeatures =
-        m_physicalDevice->RequestExtensionFeatures<VkPhysicalDeviceDescriptorIndexingFeatures>(
+        m_pPhysicalDevice->RequestExtensionFeatures<VkPhysicalDeviceDescriptorIndexingFeatures>(
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES);
     descriptorIndexingFeatures.runtimeDescriptorArray                             = true;
     descriptorIndexingFeatures.descriptorBindingPartiallyBound                    = true;
@@ -77,19 +77,19 @@ Device::Device(const Device::CreateInfo& CI)
     if (CI.enableRaytracing)
     {
         auto asFeature =
-            m_physicalDevice
+            m_pPhysicalDevice
                 ->RequestExtensionFeatures<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(
                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR);
         asFeature.accelerationStructure = true;
 
         auto rtPipelineFeature =
-            m_physicalDevice
+            m_pPhysicalDevice
                 ->RequestExtensionFeatures<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(
                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
         rtPipelineFeature.rayTracingPipeline = true;
 
         auto bufferDeviceAddrFeature =
-            m_physicalDevice->RequestExtensionFeatures<VkPhysicalDeviceBufferDeviceAddressFeatures>(
+            m_pPhysicalDevice->RequestExtensionFeatures<VkPhysicalDeviceBufferDeviceAddressFeatures>(
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR);
         bufferDeviceAddrFeature.bufferDeviceAddress = true;
 
@@ -116,7 +116,7 @@ Device::Device(const Device::CreateInfo& CI)
 
     for (auto i = 0u; i < CI.enabledExtensionCount; i++)
     {
-        auto extensionName = CI.ppEnabledExtensionNames[i];
+        auto extensionName = CI.pEnabledExtensionNames[i];
         if (CI.pPhysicalDevice->IsExtensionSupported(extensionName))
         {
             m_enabledExtensions.push_back(extensionName);

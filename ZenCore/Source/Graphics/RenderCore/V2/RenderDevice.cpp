@@ -28,13 +28,13 @@ static void CopyRegion(uint8_t const* pSrc,
     uint32_t dstOffset = 0;
     for (uint32_t y = srcH; y > 0; y--)
     {
-        uint8_t const* src = pSrc + srcOffset;
-        uint8_t* dst       = pDst + dstOffset;
+        uint8_t const* pSrc = pSrc + srcOffset;
+        uint8_t* pDst       = pDst + dstOffset;
         for (uint32_t x = srcW * unitSize; x > 0; x--)
         {
-            *dst = *src;
-            src++;
-            dst++;
+            *pDst = *pSrc;
+            pSrc++;
+            pDst++;
         }
         srcOffset += srcFullW * unitSize;
         dstOffset += dstStride;
@@ -54,20 +54,20 @@ static void CopyRegion(uint8_t const* pSrc,
 //     return *this;
 // }
 
-GraphicsPassBuilder::GraphicsPassBuilder(RenderDevice* renderDevice) : m_renderDevice(renderDevice)
+GraphicsPassBuilder::GraphicsPassBuilder(RenderDevice* pRenderDevice) : m_pRenderDevice(pRenderDevice)
 {
     // m_pGfxPass                   = static_cast<GraphicsPass*>(ZEN_MEM_ALLOC(sizeof(GraphicsPass)));
 
     m_pGfxPass                   = ZEN_NEW() GraphicsPass();
-    m_pGfxPass->pRenderingLayout = m_renderDevice->AcquireRenderingLayout();
+    m_pGfxPass->pRenderingLayout = m_pRenderDevice->AcquireRenderingLayout();
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* viewport,
+GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* pViewport,
                                                              RHIRenderTargetLoadOp loadOp,
                                                              RHIRenderTargetStoreOp storeOp)
 {
     m_pGfxPass->pRenderingLayout->AddColorRenderTarget(
-        viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(), loadOp, storeOp);
+        pViewport->GetSwapchainFormat(), pViewport->GetColorBackBuffer(), loadOp, storeOp);
     // m_rpLayout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
     //                                 viewport->GetColorBackBufferRange(), loadOp, storeOp);
     // m_rpLayout.SetColorTargetLoadStoreOp(clear ? RHIRenderTargetLoadOp::eClear :
@@ -77,12 +77,12 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddViewportColorRT(RHIViewport* viewpo
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(RHIViewport* viewport,
+GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(RHIViewport* pViewport,
                                                                     RHIRenderTargetLoadOp loadOp,
                                                                     RHIRenderTargetStoreOp storeOp)
 {
     m_pGfxPass->pRenderingLayout->AddDepthStencilRenderTarget(
-        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(), loadOp, storeOp);
+        pViewport->GetDepthStencilFormat(), pViewport->GetDepthStencilBackBuffer(), loadOp, storeOp);
     // m_rpLayout.SetDepthStencilRenderTarget(
     //     viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
     //     viewport->GetDepthStencilBackBufferRange(), loadOp, storeOp);
@@ -91,11 +91,11 @@ GraphicsPassBuilder& GraphicsPassBuilder::SetViewportDepthStencilRT(RHIViewport*
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(RHITexture* colorRT,
+GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(RHITexture* pColorRT,
                                                                RHIRenderTargetLoadOp loadOp,
                                                                RHIRenderTargetStoreOp storeOp)
 {
-    m_pGfxPass->pRenderingLayout->AddColorRenderTarget(colorRT->GetFormat(), colorRT, loadOp,
+    m_pGfxPass->pRenderingLayout->AddColorRenderTarget(pColorRT->GetFormat(), pColorRT, loadOp,
                                                        storeOp);
     // m_rpLayout.AddColorRenderTarget(colorRT->GetFormat(), colorRT, colorRT->GetSubResourceRange(),
     //                                 loadOp, storeOp);
@@ -106,12 +106,12 @@ GraphicsPassBuilder& GraphicsPassBuilder::AddColorRenderTarget(RHITexture* color
     return *this;
 }
 
-GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(RHITexture* depthStencilRT,
+GraphicsPassBuilder& GraphicsPassBuilder::SetDepthStencilTarget(RHITexture* pDepthStencilRT,
                                                                 RHIRenderTargetLoadOp loadOp,
                                                                 RHIRenderTargetStoreOp storeOp)
 {
-    m_pGfxPass->pRenderingLayout->AddDepthStencilRenderTarget(depthStencilRT->GetFormat(),
-                                                              depthStencilRT, loadOp, storeOp);
+    m_pGfxPass->pRenderingLayout->AddDepthStencilRenderTarget(pDepthStencilRT->GetFormat(),
+                                                              pDepthStencilRT, loadOp, storeOp);
 
     // m_rpLayout.SetDepthStencilRenderTarget(depthStencilRT->GetFormat(), depthStencilRT,
     //                                        depthStencilRT->GetSubResourceRange(), loadOp, storeOp);
@@ -136,21 +136,21 @@ GraphicsPass* GraphicsPassBuilder::Build()
 {
 
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
-    ShaderProgram* shaderProgram;
+    ShaderProgram* pShaderProgram;
     if (m_shaderMode == GfxPassShaderMode::ePreCompiled)
     {
-        shaderProgram =
+        pShaderProgram =
             ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
     }
     else
     {
-        shaderProgram =
-            ShaderProgramManager::GetInstance().CreateShaderProgram(m_renderDevice, m_tag + "SP");
+        pShaderProgram =
+            ShaderProgramManager::GetInstance().CreateShaderProgram(m_pRenderDevice, m_tag + "SP");
         for (const auto& kv : m_shaderStages)
         {
-            shaderProgram->AddShaderStage(kv.first, kv.second);
+            pShaderProgram->AddShaderStage(kv.first, kv.second);
         }
-        shaderProgram->Init(m_specializationConstants);
+        pShaderProgram->Init(m_specializationConstants);
     }
 
     // std::vector<RHITexture*> rtHandles;
@@ -164,22 +164,22 @@ GraphicsPass* GraphicsPassBuilder::Build()
     // m_framebufferInfo.renderTargets = m_rpLayout.GetRenderTargetHandles();
     // m_framebufferInfo.renderTargets = rtHandles.data();
 
-    RHIShader* shader = shaderProgram->GetShader();
+    RHIShader* pShader = pShaderProgram->GetShader();
 
 
 
-    m_pGfxPass->shaderProgram     = shaderProgram;
-    m_pGfxPass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+    m_pGfxPass->pShaderProgram     = pShaderProgram;
+    m_pGfxPass->numDescriptorSets = pShaderProgram->GetNumDescriptorSets();
 
     // m_pGfxPass->renderPassLayout  = m_rpLayout;
 
-    m_pGfxPass->pipeline = m_renderDevice->GetOrCreateGfxPipeline(
-        m_PSO, shader, m_pGfxPass->pRenderingLayout, m_specializationConstants);
+    m_pGfxPass->pPipeline = m_pRenderDevice->GetOrCreateGfxPipeline(
+        m_PSO, pShader, m_pGfxPass->pRenderingLayout, m_specializationConstants);
 
     // set up resource trackers
     // build PassTextureTracker and PassBufferTracker
     // PassTextureTracker's handle is not available until UpdatePassResource is called
-    for (auto& srd : shaderProgram->GetSampledTextureSRDs())
+    for (auto& srd : pShaderProgram->GetSampledTextureSRDs())
     {
         PassResourceTracker tracker;
         tracker.name = srd.name;
@@ -190,7 +190,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetStorageImageSRDs())
+    for (auto& srd : pShaderProgram->GetStorageImageSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -209,7 +209,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         }
         m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetUniformBufferSRDs())
+    for (auto& srd : pShaderProgram->GetUniformBufferSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -219,7 +219,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         m_pGfxPass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetStorageBufferSRDs())
+    for (auto& srd : pShaderProgram->GetStorageBufferSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -241,7 +241,7 @@ GraphicsPass* GraphicsPassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < m_pGfxPass->numDescriptorSets; ++setIndex)
     {
-        m_pGfxPass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
+        m_pGfxPass->pDescriptorSets[setIndex] = pShader->CreateDescriptorSet(setIndex);
     }
 
     // note: support both descriptor set update at build time and late-update using GraphicsPassResourceUpdater
@@ -249,12 +249,12 @@ GraphicsPass* GraphicsPassBuilder::Build()
     {
         const auto setIndex  = kv.first;
         const auto& bindings = kv.second;
-        m_pGfxPass->descriptorSets[setIndex]->Update(bindings);
+        m_pGfxPass->pDescriptorSets[setIndex]->Update(bindings);
     }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(m_pGfxPass->pipeline, m_tag + "_Pipeline");
+    m_pRenderDevice->GetRHIDebug()->SetPipelineDebugName(m_pGfxPass->pPipeline, m_tag + "_Pipeline");
 
-    m_renderDevice->m_gfxPasses.push_back(m_pGfxPass);
+    m_pRenderDevice->m_gfxPasses.push_back(m_pGfxPass);
     return m_pGfxPass;
 }
 
@@ -265,28 +265,28 @@ void GraphicsPassResourceUpdater::Update()
     {
         const auto setIndex        = kv.first;
         const auto& bindings       = kv.second;
-        RHIDescriptorSet* dsHandle = m_gfxPass->descriptorSets[setIndex];
-        dsHandle->Update(bindings);
+        RHIDescriptorSet* pDsHandle = m_pGfxPass->pDescriptorSets[setIndex];
+        pDsHandle->Update(bindings);
         // set pass tracker handle values here
         for (auto& srb : bindings)
         {
-            PassResourceTracker& tracker = m_gfxPass->resourceTrackers[setIndex][srb.binding];
+            PassResourceTracker& tracker = m_pGfxPass->resourceTrackers[setIndex][srb.binding];
             bool hasSampler              = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
                 srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
             {
-                RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
+                RHIResource* pResource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(resource));
+                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(pResource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.buffer = dynamic_cast<RHIBuffer*>(resource);
+                    tracker.pBuffer = dynamic_cast<RHIBuffer*>(pResource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
@@ -329,20 +329,20 @@ ComputePass* ComputePassBuilder::Build()
 
     // DynamicRHI* GDynamicRHI = m_renderDevice->GetRHI();
 
-    ShaderProgram* shaderProgram =
+    ShaderProgram* pShaderProgram =
         ShaderProgramManager::GetInstance().RequestShaderProgram(m_shaderProgramName);
-    RHIShader* shader = shaderProgram->GetShader();
+    RHIShader* pShader = pShaderProgram->GetShader();
 
     ComputePass* pComputePass = ZEN_NEW() ComputePass();
 
-    pComputePass->shaderProgram     = shaderProgram;
-    pComputePass->pipeline          = m_renderDevice->GetOrCreateComputePipeline(shader);
-    pComputePass->numDescriptorSets = shaderProgram->GetNumDescriptorSets();
+    pComputePass->pShaderProgram     = pShaderProgram;
+    pComputePass->pPipeline          = m_pRenderDevice->GetOrCreateComputePipeline(pShader);
+    pComputePass->numDescriptorSets = pShaderProgram->GetNumDescriptorSets();
 
     // set up resource trackers
     // build PassTextureTracker and PassBufferTracker
     // PassTextureTracker's handle is not available until UpdatePassResource is called
-    for (auto& srd : shaderProgram->GetSampledTextureSRDs())
+    for (auto& srd : pShaderProgram->GetSampledTextureSRDs())
     {
         PassResourceTracker tracker;
         tracker.name = srd.name;
@@ -353,7 +353,7 @@ ComputePass* ComputePassBuilder::Build()
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetStorageImageSRDs())
+    for (auto& srd : pShaderProgram->GetStorageImageSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -372,7 +372,7 @@ ComputePass* ComputePassBuilder::Build()
         }
         pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetUniformBufferSRDs())
+    for (auto& srd : pShaderProgram->GetUniformBufferSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -382,7 +382,7 @@ ComputePass* ComputePassBuilder::Build()
         tracker.accessFlags.SetFlag(RHIAccessFlagBits::eShaderRead);
         pComputePass->resourceTrackers[srd.set][srd.binding] = std::move(tracker);
     }
-    for (auto& srd : shaderProgram->GetStorageBufferSRDs())
+    for (auto& srd : pShaderProgram->GetStorageBufferSRDs())
     {
         PassResourceTracker tracker;
         tracker.name         = srd.name;
@@ -404,13 +404,13 @@ ComputePass* ComputePassBuilder::Build()
 
     for (uint32_t setIndex = 0; setIndex < pComputePass->numDescriptorSets; ++setIndex)
     {
-        pComputePass->descriptorSets[setIndex] = shader->CreateDescriptorSet(setIndex);
+        pComputePass->pDescriptorSets[setIndex] = pShader->CreateDescriptorSet(setIndex);
     }
 
-    m_renderDevice->GetRHIDebug()->SetPipelineDebugName(pComputePass->pipeline,
+    m_pRenderDevice->GetRHIDebug()->SetPipelineDebugName(pComputePass->pPipeline,
                                                         m_tag + "_Pipeline");
 
-    m_renderDevice->m_computePasses.push_back(pComputePass);
+    m_pRenderDevice->m_computePasses.push_back(pComputePass);
     return pComputePass;
 }
 
@@ -422,28 +422,28 @@ void ComputePassResourceUpdater::Update()
     {
         const auto setIndex        = kv.first;
         const auto& bindings       = kv.second;
-        RHIDescriptorSet* dsHandle = m_computePass->descriptorSets[setIndex];
-        dsHandle->Update(bindings);
+        RHIDescriptorSet* pDsHandle = m_pComputePass->pDescriptorSets[setIndex];
+        pDsHandle->Update(bindings);
 
         for (auto& srb : bindings)
         {
-            PassResourceTracker& tracker = m_computePass->resourceTrackers[setIndex][srb.binding];
+            PassResourceTracker& tracker = m_pComputePass->resourceTrackers[setIndex][srb.binding];
             bool hasSampler              = srb.type == RHIShaderResourceType::eSamplerWithTexture ||
                 srb.type == RHIShaderResourceType::eSamplerWithTextureBuffer;
             uint32_t index = 0;
             while (index < srb.resources.size())
             {
-                RHIResource* resource = srb.resources[hasSampler ? index + 1 : index];
+                RHIResource* pResource = srb.resources[hasSampler ? index + 1 : index];
                 if (tracker.resourceType == PassResourceType::eTexture)
                 {
-                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(resource));
+                    tracker.textures.emplace_back(dynamic_cast<RHITexture*>(pResource));
                     // tracker.textureHandle = TO_TEX_HANDLE(handle);
                     // tracker.textureSubResRange =
                     //     m_renderDevice->GetTextureSubResourceRange(tracker.textureHandle);
                 }
                 else if (tracker.resourceType == PassResourceType::eBuffer)
                 {
-                    tracker.buffer = dynamic_cast<RHIBuffer*>(resource);
+                    tracker.pBuffer = dynamic_cast<RHIBuffer*>(pResource);
                 }
                 index = hasSampler ? index + 2 : index + 1;
             }
@@ -479,9 +479,9 @@ RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
         if (entry.size == requiredSize)
         {
             m_freeBuffers.erase(m_freeBuffers.begin() + i);
-            entry.usedFrame = m_renderDevice->GetFramesCounter();
+            entry.usedFrame = m_pRenderDevice->GetFramesCounter();
             m_usedBuffers.push_back(entry);
-            return entry.buffer;
+            return entry.pBuffer;
         }
     }
 
@@ -492,23 +492,23 @@ RHIBuffer* TextureStagingManager::RequireBuffer(uint32_t requiredSize)
 
     Entry newEntry{};
     newEntry.size      = requiredSize;
-    newEntry.usedFrame = m_renderDevice->GetFramesCounter();
-    newEntry.buffer    = GDynamicRHI->CreateBuffer(createInfo);
+    newEntry.usedFrame = m_pRenderDevice->GetFramesCounter();
+    newEntry.pBuffer    = GDynamicRHI->CreateBuffer(createInfo);
 
     m_usedBuffers.push_back(newEntry);
 
-    m_allocatedBuffers.push_back(newEntry.buffer);
+    m_allocatedBuffers.push_back(newEntry.pBuffer);
 
     m_usedMemory += requiredSize;
 
-    return newEntry.buffer;
+    return newEntry.pBuffer;
 }
 
-void TextureStagingManager::ReleaseBuffer(const RHIBuffer* buffer)
+void TextureStagingManager::ReleaseBuffer(const RHIBuffer* pBuffer)
 {
     for (uint32_t i = 0; i < m_usedBuffers.size(); i++)
     {
-        if (m_usedBuffers[i].buffer == buffer)
+        if (m_usedBuffers[i].pBuffer == pBuffer)
         {
             Entry entry = m_usedBuffers[i];
             m_usedBuffers.erase(m_usedBuffers.begin() + i);
@@ -520,7 +520,7 @@ void TextureStagingManager::ReleaseBuffer(const RHIBuffer* buffer)
 
 void TextureStagingManager::ProcessPendingFrees()
 {
-    uint32_t currentFrame = m_renderDevice->GetFramesCounter();
+    uint32_t currentFrame = m_pRenderDevice->GetFramesCounter();
     for (uint32_t i = 0; i < m_pendingFreeBuffers.size(); i++)
     {
         Entry entry = m_pendingFreeBuffers[i];
@@ -536,19 +536,19 @@ void TextureStagingManager::ProcessPendingFrees()
 
 void TextureStagingManager::Destroy()
 {
-    for (RHIBuffer* buffer : m_allocatedBuffers)
+    for (RHIBuffer* pBuffer : m_allocatedBuffers)
     {
-        GDynamicRHI->DestroyBuffer(buffer);
+        GDynamicRHI->DestroyBuffer(pBuffer);
     }
     LOGI("Texture Staging Memory Used: {} bytes.", m_usedMemory);
 }
 
-BufferStagingManager::BufferStagingManager(RenderDevice* renderDevice,
+BufferStagingManager::BufferStagingManager(RenderDevice* pRenderDevice,
                                            uint32_t blockSize,
                                            uint64_t poolSize) :
     BUFFER_SIZE(blockSize),
     POOL_SIZE(poolSize),
-    m_renderDevice(renderDevice),
+    m_pRenderDevice(pRenderDevice),
     // GDynamicRHI(renderDevice->GetRHI()),
     m_currentBlockIndex(0)
 {
@@ -570,7 +570,7 @@ void BufferStagingManager::Destroy()
 {
     for (auto& buffer : m_bufferBlocks)
     {
-        GDynamicRHI->DestroyBuffer(buffer.buffer);
+        GDynamicRHI->DestroyBuffer(buffer.pBuffer);
     }
 }
 
@@ -582,7 +582,7 @@ void BufferStagingManager::InsertNewBlock()
     createInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
 
     StagingBuffer buffer{};
-    buffer.buffer       = GDynamicRHI->CreateBuffer(createInfo);
+    buffer.pBuffer       = GDynamicRHI->CreateBuffer(createInfo);
     buffer.usedFrame    = 0;
     buffer.occupiedSize = 0;
     m_bufferBlocks.insert(m_bufferBlocks.begin() + m_currentBlockIndex, buffer);
@@ -592,7 +592,7 @@ bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
                                       uint32_t requiredSize,
                                       uint32_t requiredAlign,
                                       bool canSegment,
-                                      StagingSubmitResult* result)
+                                      StagingSubmitResult* pResult)
 {
     uint32_t occupiedSize   = m_bufferBlocks[blockIndex].occupiedSize;
     uint32_t alignRemainder = occupiedSize % requiredAlign;
@@ -604,13 +604,13 @@ bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
     if (static_cast<int32_t>(requiredSize) < availableBytes)
     {
         // enough room, allocate
-        result->writeOffset = occupiedSize;
+        pResult->writeOffset = occupiedSize;
     }
     else if (canSegment && availableBytes >= static_cast<int32_t>(requiredAlign))
     {
         // All won't fit but at least we can fit a chunk.
-        result->writeOffset = occupiedSize;
-        result->writeSize   = availableBytes - (availableBytes % requiredAlign);
+        pResult->writeOffset = occupiedSize;
+        pResult->writeSize   = availableBytes - (availableBytes % requiredAlign);
     }
     else
     {
@@ -620,33 +620,33 @@ bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
 }
 
 void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
-                                       StagingSubmitResult* result,
+                                       StagingSubmitResult* pResult,
                                        uint32_t requiredAlign,
                                        bool canSegment)
 {
-    result->writeSize = requiredSize;
+    pResult->writeSize = requiredSize;
     while (true)
     {
-        result->writeOffset = 0;
+        pResult->writeOffset = 0;
         uint32_t usedFrame  = m_bufferBlocks[m_currentBlockIndex].usedFrame;
-        if (m_bufferBlocks[m_currentBlockIndex].usedFrame == m_renderDevice->GetFramesCounter())
+        if (m_bufferBlocks[m_currentBlockIndex].usedFrame == m_pRenderDevice->GetFramesCounter())
         {
-            if (!FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, canSegment, result))
+            if (!FitInBlock(m_currentBlockIndex, requiredSize, requiredAlign, canSegment, pResult))
             {
                 m_currentBlockIndex = (m_currentBlockIndex + 1) % m_bufferBlocks.size();
                 if (m_bufferBlocks[m_currentBlockIndex].usedFrame ==
-                    m_renderDevice->GetFramesCounter())
+                    m_pRenderDevice->GetFramesCounter())
                 {
                     if (CanInsertNewBlock())
                     {
                         InsertNewBlock();
                         m_bufferBlocks[m_currentBlockIndex].usedFrame =
-                            m_renderDevice->GetFramesCounter();
+                            m_pRenderDevice->GetFramesCounter();
                     }
                     else
                     {
                         // not enough space, wait for all frames
-                        result->flushAction = StagingFlushAction::eFull;
+                        pResult->flushAction = StagingFlushAction::eFull;
                     }
                 }
                 else
@@ -655,7 +655,7 @@ void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
                 }
             }
         }
-        else if (m_renderDevice->GetFramesCounter() -
+        else if (m_pRenderDevice->GetFramesCounter() -
                      m_bufferBlocks[m_currentBlockIndex].usedFrame >=
                  m_bufferBlocks.size())
         {
@@ -666,24 +666,24 @@ void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
         else if (CanInsertNewBlock())
         {
             InsertNewBlock();
-            m_bufferBlocks[m_currentBlockIndex].usedFrame = m_renderDevice->GetFramesCounter();
+            m_bufferBlocks[m_currentBlockIndex].usedFrame = m_pRenderDevice->GetFramesCounter();
         }
         else
         {
             // not enough space, wait for all frames
-            result->flushAction = StagingFlushAction::ePartial;
+            pResult->flushAction = StagingFlushAction::ePartial;
         }
         break;
     }
-    result->success     = true;
-    result->buffer      = m_bufferBlocks[m_currentBlockIndex].buffer;
+    pResult->success     = true;
+    pResult->pBuffer      = m_bufferBlocks[m_currentBlockIndex].pBuffer;
     m_stagingBufferUsed = true;
 }
 
-void BufferStagingManager::EndSubmit(const StagingSubmitResult* result)
+void BufferStagingManager::EndSubmit(const StagingSubmitResult* pResult)
 {
-    m_bufferBlocks[m_currentBlockIndex].occupiedSize = result->writeOffset + result->writeSize;
-    m_bufferBlocks[m_currentBlockIndex].usedFrame    = m_renderDevice->GetFramesCounter();
+    m_bufferBlocks[m_currentBlockIndex].occupiedSize = pResult->writeOffset + pResult->writeSize;
+    m_bufferBlocks[m_currentBlockIndex].usedFrame    = m_pRenderDevice->GetFramesCounter();
 }
 
 void BufferStagingManager::PerformAction(StagingFlushAction action)
@@ -692,7 +692,7 @@ void BufferStagingManager::PerformAction(StagingFlushAction action)
     {
         for (auto& bufferBlock : m_bufferBlocks)
         {
-            if (bufferBlock.usedFrame == m_renderDevice->GetFramesCounter())
+            if (bufferBlock.usedFrame == m_pRenderDevice->GetFramesCounter())
             {
                 continue;
             }
@@ -714,40 +714,40 @@ RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
     m_APIType(APIType), m_numFrames(numFrames)
 {
     DynamicRHI::Create(m_APIType);
-    m_RHIDebug = RHIDebug::Create();
+    m_pRHIDebug = RHIDebug::Create();
 }
 
 
-void RenderDevice::Init(RHIViewport* mainViewport)
+void RenderDevice::Init(RHIViewport* pMainViewport)
 {
-    m_bufferStagingMgr =
+    m_pBufferStagingMgr =
         ZEN_NEW() BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
-    m_bufferStagingMgr->Init(m_numFrames);
-    m_textureStagingMgr = ZEN_NEW() TextureStagingManager(this);
-    m_textureManager    = ZEN_NEW() TextureManager(this, m_textureStagingMgr);
+    m_pBufferStagingMgr->Init(m_numFrames);
+    m_pTextureStagingMgr = ZEN_NEW() TextureStagingManager(this);
+    m_pTextureManager    = ZEN_NEW() TextureManager(this, m_pTextureStagingMgr);
     m_pTransferCmdList  = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
 
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         RenderFrame frame{};
-        frame.drawCmdList = RHICommandList::Create(
+        frame.pDrawCmdList = RHICommandList::Create(
             GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
         m_frames.emplace_back(frame);
     }
     m_framesCounter = m_frames.size();
 
-    m_mainViewport = mainViewport;
+    m_pMainViewport = pMainViewport;
 
-    m_rendererServer = ZEN_NEW() RendererServer(this, m_mainViewport);
-    m_rendererServer->Init();
+    m_pRendererServer = ZEN_NEW() RendererServer(this, m_pMainViewport);
+    m_pRendererServer->Init();
 }
 
 void RenderDevice::Destroy()
 {
-    for (auto* viewport : m_viewports)
+    for (auto* pViewport : m_viewports)
     {
-        GDynamicRHI->DestroyViewport(viewport);
+        GDynamicRHI->DestroyViewport(pViewport);
         // delete viewport;
     }
     // for (auto& kv : m_renderPassCache)
@@ -767,7 +767,7 @@ void RenderDevice::Destroy()
     {
         for (uint32_t i = 0; i < pGfxPass->numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(pGfxPass->descriptorSets[i]);
+            GDynamicRHI->DestroyDescriptorSet(pGfxPass->pDescriptorSets[i]);
         }
         if (pGfxPass->pRenderingLayout != nullptr)
         {
@@ -780,7 +780,7 @@ void RenderDevice::Destroy()
     {
         for (uint32_t i = 0; i < pComputePass->numDescriptorSets; i++)
         {
-            GDynamicRHI->DestroyDescriptorSet(pComputePass->descriptorSets[i]);
+            GDynamicRHI->DestroyDescriptorSet(pComputePass->pDescriptorSets[i]);
         }
         ZEN_DELETE(pComputePass);
     }
@@ -797,17 +797,17 @@ void RenderDevice::Destroy()
         ZEN_DELETE(m_pTransferCmdList);
     }
 
-    m_bufferStagingMgr->Destroy();
-    ZEN_DELETE(m_bufferStagingMgr);
+    m_pBufferStagingMgr->Destroy();
+    ZEN_DELETE(m_pBufferStagingMgr);
 
-    m_textureManager->Destroy();
-    ZEN_DELETE(m_textureManager);
+    m_pTextureManager->Destroy();
+    ZEN_DELETE(m_pTextureManager);
 
-    m_textureStagingMgr->Destroy();
-    ZEN_DELETE(m_textureStagingMgr);
+    m_pTextureStagingMgr->Destroy();
+    ZEN_DELETE(m_pTextureStagingMgr);
 
-    m_rendererServer->Destroy();
-    ZEN_DELETE(m_rendererServer);
+    m_pRendererServer->Destroy();
+    ZEN_DELETE(m_pRendererServer);
 
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
@@ -816,44 +816,44 @@ void RenderDevice::Destroy()
 
     for (RenderFrame& frame : m_frames)
     {
-        ZEN_DELETE(frame.drawCmdList);
+        ZEN_DELETE(frame.pDrawCmdList);
     }
 
-    ZEN_DELETE(m_RHIDebug);
+    ZEN_DELETE(m_pRHIDebug);
 
     GDynamicRHI->Destroy();
     ZEN_DELETE(GDynamicRHI);
 }
 
-void RenderDevice::ExecuteFrame(RHIViewport* viewport, RenderGraph* rdg, bool present)
+void RenderDevice::ExecuteFrame(RHIViewport* pViewport, RenderGraph* pRdg, bool present)
 {
-    GDynamicRHI->BeginDrawingViewport(viewport);
-    rdg->Execute(m_frames[m_currentFrame].drawCmdList);
+    GDynamicRHI->BeginDrawingViewport(pViewport);
+    pRdg->Execute(m_frames[m_currentFrame].pDrawCmdList);
     EndFrame();
-    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].drawCmdList, present);
+    GDynamicRHI->EndDrawingViewport(pViewport, m_frames[m_currentFrame].pDrawCmdList, present);
     m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
-void RenderDevice::ExecuteFrame(RHIViewport* viewport,
+void RenderDevice::ExecuteFrame(RHIViewport* pViewport,
                                 const std::vector<RenderGraph*>& rdgs,
                                 bool present)
 {
-    GDynamicRHI->BeginDrawingViewport(viewport);
-    for (auto* rdg : rdgs)
+    GDynamicRHI->BeginDrawingViewport(pViewport);
+    for (auto* pRdg : rdgs)
     {
-        rdg->Execute(m_frames[m_currentFrame].drawCmdList);
+        pRdg->Execute(m_frames[m_currentFrame].pDrawCmdList);
     }
     EndFrame();
-    GDynamicRHI->EndDrawingViewport(viewport, m_frames[m_currentFrame].drawCmdList, present);
+    GDynamicRHI->EndDrawingViewport(pViewport, m_frames[m_currentFrame].pDrawCmdList, present);
     m_frames[m_currentFrame].cmdSubmitted = true;
 }
 
-void RenderDevice::ExecuteImmediate(RHIViewport* viewport, RenderGraph* rdg)
+void RenderDevice::ExecuteImmediate(RHIViewport* pViewport, RenderGraph* pRdg)
 {
-    static_cast<void>(viewport);
+    static_cast<void>(pViewport);
     RHICommandList* pCmdList =
         RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
-    rdg->Execute(pCmdList);
+    pRdg->Execute(pCmdList);
     RHICommandList* pCmdLists[] = {pCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
     ZEN_DELETE(pCmdList);
@@ -874,8 +874,8 @@ void RenderDevice::ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs)
 
 void RenderDevice::SubmitTransferCmdList()
 {
-    RHICommandList* cmdLists[] = {m_pTransferCmdList};
-    GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
+    RHICommandList* pCmdLists[] = {m_pTransferCmdList};
+    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
     m_pTransferCmdList->WaitUntilCompleted();
     m_pTransferCmdList->Reset();
 }
@@ -918,13 +918,13 @@ RHITexture* RenderDevice::CreateTextureColorRT(const TextureFormat& texFormat,
                                     RHITextureUsageFlagBits::eTransferDst);
     }
 
-    RHITexture* textureRD = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* pTextureRD = GDynamicRHI->CreateTexture(texInfo);
     // RHITexture* handle    = GDynamicRHI->CreateTexture(texInfo);
     // textureRD->Init(this, handle);
 
     // m_textureMap[handle] = textureRD;
 
-    return textureRD;
+    return pTextureRD;
 }
 
 RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFormat,
@@ -951,9 +951,9 @@ RHITexture* RenderDevice::CreateTextureDepthStencilRT(const TextureFormat& texFo
                                     RHITextureUsageFlagBits::eTransferDst);
     }
 
-    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* pTexture = GDynamicRHI->CreateTexture(texInfo);
 
-    return texture;
+    return pTexture;
 }
 
 RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
@@ -981,9 +981,9 @@ RHITexture* RenderDevice::CreateTextureStorage(const TextureFormat& texFormat,
                                     RHITextureUsageFlagBits::eTransferDst);
     }
 
-    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* pTexture = GDynamicRHI->CreateTexture(texInfo);
 
-    return texture;
+    return pTexture;
 }
 
 RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
@@ -1009,9 +1009,9 @@ RHITexture* RenderDevice::CreateTextureSampled(const TextureFormat& texFormat,
                                     RHITextureUsageFlagBits::eTransferDst);
     }
 
-    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* pTexture = GDynamicRHI->CreateTexture(texInfo);
 
-    return texture;
+    return pTexture;
 }
 
 RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
@@ -1037,12 +1037,12 @@ RHITexture* RenderDevice::CreateTextureDummy(const TextureFormat& texFormat,
                                     RHITextureUsageFlagBits::eTransferDst);
     }
 
-    RHITexture* texture = GDynamicRHI->CreateTexture(texInfo);
+    RHITexture* pTexture = GDynamicRHI->CreateTexture(texInfo);
 
-    return texture;
+    return pTexture;
 }
 
-RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
+RHITexture* RenderDevice::CreateTextureProxy(RHITexture* pBaseTexture,
                                              const TextureProxyFormat& proxyFormat,
                                              std::string texName)
 {
@@ -1053,9 +1053,9 @@ RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
     textureProxyInfo.format      = proxyFormat.format;
     textureProxyInfo.tag         = std::move(texName);
 
-    RHITexture* texture = GDynamicRHI->CreateTextureProxy(baseTexture, textureProxyInfo);
+    RHITexture* pTexture = GDynamicRHI->CreateTextureProxy(pBaseTexture, textureProxyInfo);
 
-    return texture;
+    return pTexture;
 }
 
 // RHITexture* RenderDevice::GetTextureRDFromHandle(const RHITexture* handle)
@@ -1063,7 +1063,7 @@ RHITexture* RenderDevice::CreateTextureProxy(RHITexture* baseTexture,
 //     return m_textureMap[handle];
 // }
 
-void RenderDevice::DestroyTexture(RHITexture* texture)
+void RenderDevice::DestroyTexture(RHITexture* pTexture)
 {
     // if (textureRD->IsProxy())
     // {
@@ -1071,34 +1071,34 @@ void RenderDevice::DestroyTexture(RHITexture* texture)
     // }
     // textureRD->DecreaseRefCount();
     // m_textureMap.erase(textureRD->GetHandle());
-    m_frames[m_currentFrame].texturesPendingFree.emplace_back(texture);
+    m_frames[m_currentFrame].texturesPendingFree.emplace_back(pTexture);
 }
 
 // RHITexture* RenderDevice::CreateTexture(const TextureInfo& textureInfo)
 // {
 //     ASSERT(!textureInfo.name.empty());
-//     return m_textureManager->CreateTexture(textureInfo);
+//     return m_pTextureManager->CreateTexture(textureInfo);
 // }
 
 // RHITexture* RenderDevice::CreateTextureProxy(const RHITexture* baseTexture,
 //                                                     const TextureProxyInfo& proxyInfo)
 // {
-//     return m_textureManager->CreateTextureProxy(baseTexture, proxyInfo);
+//     return m_pTextureManager->CreateTextureProxy(baseTexture, proxyInfo);
 // }
 
 // RHITexture* RenderDevice::GetBaseTextureForProxy(const RHITexture* handle) const
 // {
-//     return m_textureManager->GetBaseTextureForProxy(handle);
+//     return m_pTextureManager->GetBaseTextureForProxy(handle);
 // }
 //
 // bool RenderDevice::IsProxyTexture(const RHITexture* handle) const
 // {
-//     return m_textureManager->IsProxyTexture(handle);
+//     return m_pTextureManager->IsProxyTexture(handle);
 // }
 
-void RenderDevice::GenerateTextureMipmaps(RHITexture* textureHandle, RHICommandList* pCmdList)
+void RenderDevice::GenerateTextureMipmaps(RHITexture* pTextureHandle, RHICommandList* pCmdList)
 {
-    pCmdList->GenerateTextureMipmaps(textureHandle);
+    pCmdList->GenerateTextureMipmaps(pTextureHandle);
 }
 
 RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
@@ -1113,10 +1113,10 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
     createInfo.usageFlags   = usages;
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    RHIBuffer* vertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-    UpdateBufferInternal(vertexBuffer, 0, dataSize, pData);
-    m_buffers.push_back(vertexBuffer);
-    return vertexBuffer;
+    RHIBuffer* pVertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    UpdateBufferInternal(pVertexBuffer, 0, dataSize, pData);
+    m_buffers.push_back(pVertexBuffer);
+    return pVertexBuffer;
 }
 
 RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
@@ -1131,10 +1131,10 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
     createInfo.usageFlags   = usages;
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    RHIBuffer* indexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-    UpdateBufferInternal(indexBuffer, 0, dataSize, pData);
-    m_buffers.push_back(indexBuffer);
-    return indexBuffer;
+    RHIBuffer* pIndexBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    UpdateBufferInternal(pIndexBuffer, 0, dataSize, pData);
+    m_buffers.push_back(pIndexBuffer);
+    return pIndexBuffer;
 }
 
 RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
@@ -1154,13 +1154,13 @@ RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
     createInfo.tag          = std::move(bufferName);
 
 
-    RHIBuffer* uniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* pUniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
     if (pData != nullptr)
     {
-        UpdateBufferInternal(uniformBuffer, 0, paddedSize, pData);
+        UpdateBufferInternal(pUniformBuffer, 0, paddedSize, pData);
     }
-    m_buffers.push_back(uniformBuffer);
-    return uniformBuffer;
+    m_buffers.push_back(pUniformBuffer);
+    return pUniformBuffer;
 }
 
 RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
@@ -1179,14 +1179,14 @@ RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = std::move(bufferName);
 
-    RHIBuffer* storageBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* pStorageBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
-        UpdateBufferInternal(storageBuffer, 0, paddedSize, pData);
+        UpdateBufferInternal(pStorageBuffer, 0, paddedSize, pData);
     }
-    m_buffers.push_back(storageBuffer);
-    return storageBuffer;
+    m_buffers.push_back(pStorageBuffer);
+    return pStorageBuffer;
 }
 
 RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
@@ -1206,14 +1206,14 @@ RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = std::move(bufferName);
 
-    RHIBuffer* indirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
+    RHIBuffer* pIndirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
     if (pData != nullptr)
     {
-        UpdateBufferInternal(indirectBuffer, 0, paddedSize, pData);
+        UpdateBufferInternal(pIndirectBuffer, 0, paddedSize, pData);
     }
-    m_buffers.push_back(indirectBuffer);
-    return indirectBuffer;
+    m_buffers.push_back(pIndirectBuffer);
+    return pIndirectBuffer;
 }
 
 size_t RenderDevice::PadUniformBufferSize(size_t originalSize)
@@ -1230,17 +1230,17 @@ size_t RenderDevice::PadStorageBufferSize(size_t originalSize)
     return alignedSize;
 }
 
-void RenderDevice::UpdateBuffer(RHIBuffer* buffer,
+void RenderDevice::UpdateBuffer(RHIBuffer* pBuffer,
                                 uint32_t dataSize,
                                 const uint8_t* pData,
                                 uint32_t offset)
 {
-    UpdateBufferInternal(buffer, offset, dataSize, pData);
+    UpdateBufferInternal(pBuffer, offset, dataSize, pData);
 }
 
-void RenderDevice::DestroyBuffer(RHIBuffer* bufferHandle)
+void RenderDevice::DestroyBuffer(RHIBuffer* pBufferHandle)
 {
-    GDynamicRHI->DestroyBuffer(bufferHandle);
+    GDynamicRHI->DestroyBuffer(pBufferHandle);
 }
 
 // RenderPassHandle RenderDevice::GetOrCreateRenderPass(const RHIRenderPassLayout& layout)
@@ -1277,17 +1277,17 @@ void RenderDevice::DestroyBuffer(RHIBuffer* bufferHandle)
 
 RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     RHIGfxPipelineStates& PSO,
-    RHIShader* shader,
+    RHIShader* pShader,
     const RHIRenderingLayout* pRenderingLayout,
     const HashMap<uint32_t, int>& specializationConstants)
 {
     RHIGfxPipelineCreateInfo createInfo{};
-    createInfo.shader           = shader;
+    createInfo.pShader           = pShader;
     createInfo.states           = PSO;
     createInfo.pRenderingLayout = pRenderingLayout;
     createInfo.subpassIdx       = 0;
 
-    auto hash = CalcGfxPipelineHash(PSO, shader, specializationConstants);
+    auto hash = CalcGfxPipelineHash(PSO, pShader, specializationConstants);
     if (!m_pipelineCache.contains(hash))
     {
         // create new one
@@ -1296,12 +1296,12 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
     return m_pipelineCache[hash];
 }
 
-RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader)
+RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* pShader)
 {
     RHIComputePipelineCreateInfo createInfo{};
-    createInfo.shader = shader;
+    createInfo.pShader = pShader;
 
-    auto hash = CalcComputePipelineHash(shader);
+    auto hash = CalcComputePipelineHash(pShader);
     if (!m_pipelineCache.contains(hash))
     {
         m_pipelineCache[hash] = GDynamicRHI->CreatePipeline(createInfo);
@@ -1315,36 +1315,36 @@ RHIViewport* RenderDevice::CreateViewport(void* pWindow,
                                           bool enableVSync)
 {
     // auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
-    auto* viewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
-    m_viewports.push_back(viewport);
-    return viewport;
+    auto* pViewport = GDynamicRHI->CreateViewport(pWindow, width, height, enableVSync);
+    m_viewports.push_back(pViewport);
+    return pViewport;
 }
 
-void RenderDevice::DestroyViewport(RHIViewport* viewport)
+void RenderDevice::DestroyViewport(RHIViewport* pViewport)
 {
     auto it = m_viewports.begin();
     while (it != m_viewports.end())
     {
-        if (viewport == *it)
+        if (pViewport == *it)
         {
             m_viewports.erase(it);
             break;
         }
     }
-    GDynamicRHI->DestroyViewport(viewport);
+    GDynamicRHI->DestroyViewport(pViewport);
 }
 
-void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height)
+void RenderDevice::ResizeViewport(RHIViewport* pViewport, uint32_t width, uint32_t height)
 {
-    if (viewport != nullptr && (viewport->GetWidth() != width || viewport->GetHeight() != height))
+    if (pViewport != nullptr && (pViewport->GetWidth() != width || pViewport->GetHeight() != height))
     {
         GDynamicRHI->SubmitAllGPUCommands();
-        viewport->Resize(width, height);
+        pViewport->Resize(width, height);
         BeginFrame();
     }
 }
 
-void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewport* viewport)
+void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewport* pViewport)
 {
     RHIRenderingLayout* pRenderingLayout          = pGfxPass->pRenderingLayout;
     RHIRenderTargetLoadOp oldColorRTLoadOp        = pRenderingLayout->colorRenderTargets[0].loadOp;
@@ -1355,16 +1355,16 @@ void RenderDevice::UpdateGraphicsPassOnResize(GraphicsPass* pGfxPass, RHIViewpor
 
     pRenderingLayout->ClearRenderTargetInfo();
     // pGfxPass->renderPassLayout.ClearRenderTargetInfo();
-    pRenderingLayout->AddColorRenderTarget(viewport->GetSwapchainFormat(),
-                                           viewport->GetColorBackBuffer(), oldColorRTLoadOp,
+    pRenderingLayout->AddColorRenderTarget(pViewport->GetSwapchainFormat(),
+                                           pViewport->GetColorBackBuffer(), oldColorRTLoadOp,
                                            oldColorRTStoreOp);
 
 
     pRenderingLayout->AddDepthStencilRenderTarget(
-        viewport->GetDepthStencilFormat(), viewport->GetDepthStencilBackBuffer(),
+        pViewport->GetDepthStencilFormat(), pViewport->GetDepthStencilBackBuffer(),
         oldDepthStencilRTLoadOp, oldDepthStencilRTStoreOp);
 
-    pRenderingLayout->SetRenderArea(0, 0, viewport->GetWidth(), viewport->GetHeight());
+    pRenderingLayout->SetRenderArea(0, 0, pViewport->GetWidth(), pViewport->GetHeight());
 }
 
 RHISampler* RenderDevice::CreateSampler(const RHISamplerCreateInfo& samplerInfo)
@@ -1385,21 +1385,21 @@ RHISampler* RenderDevice::CreateSampler(const RHISamplerCreateInfo& samplerInfo)
 
 RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)
 {
-    return m_textureManager->LoadTexture2D(file, requireMipmap);
+    return m_pTextureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* scene, std::vector<RHITexture*>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, std::vector<RHITexture*>& outTextures)
 {
-    m_textureManager->LoadSceneTextures(scene, outTextures);
+    m_pTextureManager->LoadSceneTextures(pScene, outTextures);
 }
 
-void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* texture)
+void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* pTexture)
 {
     auto fullPath = ZEN_TEXTURE_PATH + file;
-    m_textureManager->LoadTextureEnv(fullPath, texture);
+    m_pTextureManager->LoadTextureEnv(fullPath, pTexture);
 }
 
-void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
+void RenderDevice::UpdateTextureOneTime(RHITexture* pTextureHandle,
                                         const Vec3i& textureSize,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1411,7 +1411,7 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
     const uint32_t requiredAlign = 4;
     const uint32_t pixelSize     = 4;
     StagingSubmitResult submitResult;
-    m_bufferStagingMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
+    m_pBufferStagingMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
     if (submitResult.flushAction == StagingFlushAction::ePartial)
     {
         WaitForPreviousFrames();
@@ -1420,36 +1420,36 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* textureHandle,
     {
         WaitForAllFrames();
     }
-    m_bufferStagingMgr->PerformAction(submitResult.flushAction);
+    m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
 
     // map staging buffer
-    uint8_t* dataPtr = submitResult.buffer->Map();
-    dataPtr += submitResult.writeOffset;
+    uint8_t* pDataPtr = submitResult.pBuffer->Map();
+    pDataPtr += submitResult.writeOffset;
 
     // copy
-    memcpy(dataPtr, pData, submitResult.writeSize);
+    memcpy(pDataPtr, pData, submitResult.writeSize);
 
     // unmap
-    submitResult.buffer->Unmap();
+    submitResult.pBuffer->Unmap();
     // copy to gpu memory
     RHIBufferTextureCopyRegion copyRegion{};
     copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
-    m_pTransferCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle, copyRegion);
+    m_pTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle, copyRegion);
     submittedTransfer = true;
 
-    m_bufferStagingMgr->EndSubmit(&submitResult);
+    m_pBufferStagingMgr->EndSubmit(&submitResult);
 
     if (submittedTransfer)
     {
         SubmitTransferCmdList();
-        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
-void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
+void RenderDevice::UpdateTextureBatch(RHITexture* pTextureHandle,
                                       const Vec3i& textureSize,
                                       const uint8_t* pData)
 {
@@ -1473,7 +1473,7 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 uint32_t imageStride  = regionWidth * pixelSize;
                 uint32_t toSubmit     = imageStride * regionHeight;
                 StagingSubmitResult submitResult;
-                m_bufferStagingMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
+                m_pBufferStagingMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
                 if (submitResult.flushAction == StagingFlushAction::ePartial)
                 {
                     WaitForPreviousFrames();
@@ -1482,26 +1482,26 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
                 {
                     WaitForAllFrames();
                 }
-                m_bufferStagingMgr->PerformAction(submitResult.flushAction);
+                m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
 
                 // map staging buffer
-                uint8_t* dataPtr = submitResult.buffer->Map();
+                uint8_t* pDataPtr = submitResult.pBuffer->Map();
                 // copy
-                CopyRegion(pData, dataPtr + submitResult.writeOffset, x, y, regionWidth,
+                CopyRegion(pData, pDataPtr + submitResult.writeOffset, x, y, regionWidth,
                            regionHeight, width, imageStride, pixelSize);
                 // unmap
-                submitResult.buffer->Unmap();
+                submitResult.pBuffer->Unmap();
                 // copy to gpu memory
                 RHIBufferTextureCopyRegion copyRegion{};
                 copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_pTransferCmdList->CopyBufferToTexture(submitResult.buffer, textureHandle,
+                m_pTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle,
                                                         copyRegion);
                 submittedTransfer = true;
 
-                m_bufferStagingMgr->EndSubmit(&submitResult);
+                m_pBufferStagingMgr->EndSubmit(&submitResult);
             }
         }
     }
@@ -1509,11 +1509,11 @@ void RenderDevice::UpdateTextureBatch(RHITexture* textureHandle,
     if (submittedTransfer)
     {
         SubmitTransferCmdList();
-        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
-void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
+void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
                                         uint32_t offset,
                                         uint32_t dataSize,
                                         const uint8_t* pData)
@@ -1524,7 +1524,7 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
     while (toSubmit > 0 && pData != nullptr)
     {
         StagingSubmitResult submitResult;
-        m_bufferStagingMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
+        m_pBufferStagingMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
                                         &submitResult, 32, true);
 
         if (submitResult.flushAction == StagingFlushAction::ePartial)
@@ -1535,22 +1535,22 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
         {
             WaitForAllFrames();
         }
-        m_bufferStagingMgr->PerformAction(submitResult.flushAction);
+        m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
 
         // map staging buffer
-        uint8_t* dataPtr = submitResult.buffer->Map();
+        uint8_t* pDataPtr = submitResult.pBuffer->Map();
         // copy
-        memcpy(dataPtr + submitResult.writeOffset, pData + writePosition, submitResult.writeSize);
+        memcpy(pDataPtr + submitResult.writeOffset, pData + writePosition, submitResult.writeSize);
         // unmap
-        submitResult.buffer->Unmap();
+        submitResult.pBuffer->Unmap();
         // copy to gpu memory
         RHIBufferCopyRegion copyRegion;
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
-        m_pTransferCmdList->CopyBuffer(submitResult.buffer, bufferHandle, copyRegion);
+        m_pTransferCmdList->CopyBuffer(submitResult.pBuffer, pBufferHandle, copyRegion);
         submittedTransfer = true;
-        m_bufferStagingMgr->EndSubmit(&submitResult);
+        m_pBufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
         writePosition += submitResult.writeSize;
     }
@@ -1558,14 +1558,14 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* bufferHandle,
     if (submittedTransfer)
     {
         SubmitTransferCmdList();
-        m_bufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
 void RenderDevice::ProcessViewportResize(uint32_t width, uint32_t height)
 {
-    ResizeViewport(m_mainViewport, width, height);
-    m_rendererServer->ViewportResizeCallback();
+    ResizeViewport(m_pMainViewport, width, height);
+    m_pRendererServer->ViewportResizeCallback();
 }
 
 void RenderDevice::WaitForPreviousFrames()
@@ -1574,7 +1574,7 @@ void RenderDevice::WaitForPreviousFrames()
     {
         if (m_frames[i].cmdSubmitted)
         {
-            m_frames[i].drawCmdList->WaitUntilCompleted();
+            m_frames[i].pDrawCmdList->WaitUntilCompleted();
             m_frames[i].cmdSubmitted = false;
         }
     }
@@ -1603,10 +1603,10 @@ void RenderDevice::NextFrame()
 void RenderDevice::BeginFrame()
 {
     m_framesCounter++;
-    if (m_bufferStagingMgr->m_stagingBufferUsed)
+    if (m_pBufferStagingMgr->m_stagingBufferUsed)
     {
-        m_bufferStagingMgr->UpdateBlockIndex();
-        m_bufferStagingMgr->m_stagingBufferUsed = false;
+        m_pBufferStagingMgr->UpdateBlockIndex();
+        m_pBufferStagingMgr->m_stagingBufferUsed = false;
     }
 }
 
@@ -1614,9 +1614,9 @@ void RenderDevice::EndFrame() {}
 
 void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {
-    for (RHITexture* texture : m_frames[frameIndex].texturesPendingFree)
+    for (RHITexture* pTexture : m_frames[frameIndex].texturesPendingFree)
     {
-        texture->ReleaseReference();
+        pTexture->ReleaseReference();
     }
     m_frames[frameIndex].texturesPendingFree.clear();
 }
@@ -1708,7 +1708,7 @@ size_t RenderDevice::CalcRenderPassLayoutHash(const RHIRenderPassLayout& layout)
 // }
 
 size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
-                                         RHIShader* shader,
+                                         RHIShader* pShader,
                                          // const RHIRenderPassLayout& renderPassLayout,
                                          const HashMap<uint32_t, int>& specializationConstants)
 {
@@ -1718,7 +1718,7 @@ size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader->GetHash32());
+    combineHash(pShader->GetHash32());
     // for (uint32_t i = 0; i < renderPassLayout.GetNumRenderTargets(); i++)
     // for (auto& colorRT : renderPassLayout.GetColorRenderTargets())
     // {
@@ -1737,7 +1737,7 @@ size_t RenderDevice::CalcGfxPipelineHash(const RHIGfxPipelineStates& pso,
     return seed;
 }
 
-size_t RenderDevice::CalcComputePipelineHash(RHIShader* shader)
+size_t RenderDevice::CalcComputePipelineHash(RHIShader* pShader)
 {
     std::size_t seed = 0;
     // Hashing utility
@@ -1745,7 +1745,7 @@ size_t RenderDevice::CalcComputePipelineHash(RHIShader* shader)
         seed ^= std::hash<std::decay_t<decltype(value)>>{}(value) + 0x9e3779b9 + (seed << 6) +
             (seed >> 2);
     };
-    combineHash(shader->GetHash32());
+    combineHash(pShader->GetHash32());
     return seed;
 }
 

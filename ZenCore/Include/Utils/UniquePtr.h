@@ -13,37 +13,37 @@ public:
 
     /// @brief Default constructor
     UniquePtr() noexcept : // never throws
-        m_ptr(nullptr)
+        m_pObj(nullptr)
     {}
     /// @brief Constructor with the provided pointer to manage
     explicit UniquePtr(T* p) noexcept : // never throws
-        m_ptr(p)
+        m_pObj(p)
     {}
     /**
      * @brief Copy constructor to convert from another pointer type
      */
     template <class U> UniquePtr(const UniquePtr<U>& other) noexcept : // never throws
-        m_ptr(static_cast<typename UniquePtr<T>::ElementType*>(other.Get()))
+        m_pObj(static_cast<typename UniquePtr<T>::ElementType*>(other.Get()))
     {
         const_cast<UniquePtr<U>&>(other).Release();
     }
 
     template <class U> UniquePtr(UniquePtr<U>&& other) noexcept : // never throws
-        m_ptr(std::move(static_cast<typename UniquePtr<T>::ElementType*>(other.Get())))
+        m_pObj(std::move(static_cast<typename UniquePtr<T>::ElementType*>(other.Get())))
     {
         other.Release();
     }
 
     /// @brief Copy constructor (used by the copy-and-swap idiom)
     UniquePtr(const UniquePtr& other) noexcept : // never throws
-        m_ptr(other.m_ptr)
+        m_pObj(other.m_pObj)
     {
-        const_cast<UniquePtr&>(other).m_ptr = nullptr; // const-cast to force ownership transfer!
+        const_cast<UniquePtr&>(other).m_pObj = nullptr; // const-cast to force ownership transfer!
     }
 
-    UniquePtr(UniquePtr&& other) noexcept : m_ptr(std::move(other.m_ptr))
+    UniquePtr(UniquePtr&& other) noexcept : m_pObj(std::move(other.m_pObj))
     {
-        other.m_ptr = nullptr;
+        other.m_pObj = nullptr;
     }
 
     /// @brief Assignment operator using the copy-and-swap idiom (copy constructor and swap method)
@@ -65,62 +65,62 @@ public:
     /// @brief this reset Release its ownership and re-acquire another one
     void Reset(T* p) noexcept // never throws
     {
-        UNIQUE_ASSERT((nullptr == p) || (m_ptr != p)); // auto-reset not allowed
+        UNIQUE_ASSERT((nullptr == p) || (m_pObj != p)); // auto-reset not allowed
         Destroy();
-        m_ptr = p;
+        m_pObj = p;
     }
 
     /// @brief Swap method for the copy-and-swap idiom (copy constructor and swap method)
     void Swap(UniquePtr& lhs) noexcept // never throws
     {
-        std::swap(m_ptr, lhs.m_ptr);
+        std::swap(m_pObj, lhs.m_pObj);
     }
 
-    /// @brief Release the ownership of the m_ptr pointer without destroying the object!
+    /// @brief Release the ownership of the m_pObj pointer without destroying the object!
     inline void Release() noexcept // never throws
     {
-        m_ptr = nullptr;
+        m_pObj = nullptr;
     }
 
     // reference counter operations :
     inline operator bool() const noexcept // never throws
     {
-        return (nullptr != m_ptr);
+        return (nullptr != m_pObj);
     }
 
     // underlying pointer operations :
     inline T& operator*() const noexcept // never throws
     {
-        UNIQUE_ASSERT(nullptr != m_ptr);
-        return *m_ptr;
+        UNIQUE_ASSERT(nullptr != m_pObj);
+        return *m_pObj;
     }
     inline T* operator->() const noexcept // never throws
     {
-        UNIQUE_ASSERT(nullptr != m_ptr);
-        return m_ptr;
+        UNIQUE_ASSERT(nullptr != m_pObj);
+        return m_pObj;
     }
     inline T* Get() const noexcept // never throws
     {
         // no assert, can return nullptr
-        return m_ptr;
+        return m_pObj;
     }
 
 private:
-    /// @brief Release the ownership of the m_ptr pointer and Destroy the object
+    /// @brief Release the ownership of the m_pObj pointer and Destroy the object
     inline void Destroy() noexcept // never throws
     {
-        delete m_ptr;
-        m_ptr = nullptr;
+        delete m_pObj;
+        m_pObj = nullptr;
     }
 
-    /// @brief hack: const-cast Release the ownership of the m_ptr pointer without destroying the object!
+    /// @brief hack: const-cast Release the ownership of the m_pObj pointer without destroying the object!
     inline void Release() const noexcept // never throws
     {
-        m_ptr = nullptr;
+        m_pObj = nullptr;
     }
 
 private:
-    T* m_ptr; //!< Native pointer
+    T* m_pObj; //!< Native pointer
 };
 
 

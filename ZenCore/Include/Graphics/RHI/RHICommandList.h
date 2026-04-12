@@ -747,8 +747,8 @@ public:
                       const Color& color,
                       const RHITextureSubResourceRange& range);
 
-    void CopyTexture(RHITexture* srcTextureHandle,
-                     RHITexture* dstTextureHandle,
+    void CopyTexture(RHITexture* pSrcTextureHandle,
+                     RHITexture* pDstTextureHandle,
                      VectorView<RHITextureCopyRegion> regions);
 
     void CopyTextureToBuffer(RHITexture* pSrcTex,
@@ -759,8 +759,8 @@ public:
                              RHITexture* pDstTexture,
                              VectorView<RHIBufferTextureCopyRegion> regions);
 
-    void ResolveTexture(RHITexture* srcTexture,
-                        RHITexture* dstTexture,
+    void ResolveTexture(RHITexture* pSrcTexture,
+                        RHITexture* pDstTexture,
                         uint32_t srcLayer,
                         uint32_t srcMipmap,
                         uint32_t dstLayer,

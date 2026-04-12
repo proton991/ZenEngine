@@ -116,17 +116,17 @@ Instance::Instance(const Instance::CreateInfo& CI)
     {
         enabledExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     }
-    if (CI.ppEnabledExtensionNames != nullptr)
+    if (CI.pEnabledExtensionNames != nullptr)
     {
         for (uint32_t ext = 0; ext < CI.enabledExtensionCount; ++ext)
         {
-            const auto* extName = CI.ppEnabledExtensionNames[ext];
-            if (extName == nullptr)
+            const auto* pExtName = CI.pEnabledExtensionNames[ext];
+            if (pExtName == nullptr)
                 continue;
-            if (IsExtensionSupported(m_supportedExtensions, extName))
-                enabledExtensions.push_back(extName);
+            if (IsExtensionSupported(m_supportedExtensions, pExtName))
+                enabledExtensions.push_back(pExtName);
             else
-                LOGW("Instance extension {} is not available", extName);
+                LOGW("Instance extension {} is not available", pExtName);
         }
     }
     auto apiVersion = VK_API_VERSION_1_0;
@@ -151,12 +151,12 @@ Instance::Instance(const Instance::CreateInfo& CI)
             m_debugMode = DebugMode::Report;
         }
 
-        for (const auto* layerName : ValidationLayerNames)
+        for (const auto* pLayerName : ValidationLayerNames)
         {
             uint32_t layerVer = ~0u;
-            if (!IsLayerSupported(layerName, layerVer))
+            if (!IsLayerSupported(pLayerName, layerVer))
             {
-                LOGW("Validation layer {} is not available.", layerName)
+                LOGW("Validation layer {} is not available.", pLayerName)
                 continue;
             }
 
@@ -165,21 +165,21 @@ Instance::Instance(const Instance::CreateInfo& CI)
             if (layerVer < VK_HEADER_VERSION_COMPLETE)
             {
                 LOGW("Layer {} with version {}.{}.{} is less than header version {}.{}.{}",
-                     layerName, VK_API_VERSION_MAJOR(layerVer), VK_API_VERSION_MINOR(layerVer),
+                     pLayerName, VK_API_VERSION_MAJOR(layerVer), VK_API_VERSION_MINOR(layerVer),
                      VK_API_VERSION_PATCH(layerVer),
                      VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
                      VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
                      VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE))
             }
 
-            enabledLayers.push_back(layerName);
+            enabledLayers.push_back(pLayerName);
 
             if (m_debugMode != DebugMode::Utils)
             {
                 // On Android, VK_EXT_debug_utils extension may not be supported by the loader,
                 // but supported by the layer.
                 std::vector<VkExtensionProperties> layerExtensions;
-                if (EnumerateInstanceExtensions(layerName, layerExtensions))
+                if (EnumerateInstanceExtensions(pLayerName, layerExtensions))
                 {
                     if (IsExtensionSupported(layerExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
                         m_debugMode = DebugMode::Utils;
@@ -190,7 +190,7 @@ Instance::Instance(const Instance::CreateInfo& CI)
                 }
                 else
                 {
-                    LOG_ERROR_AND_THROW("Failed to enumerate extensions for layer {}", layerName);
+                    LOG_ERROR_AND_THROW("Failed to enumerate extensions for layer {}", pLayerName);
                 }
             }
         }
@@ -203,18 +203,18 @@ Instance::Instance(const Instance::CreateInfo& CI)
                 "Neither {} nor {} extension is available. Debug tools (validation layer message logging, performance markers, etc.) will be disabled.",
                 VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
-    if (CI.ppEnabledLayerNames != nullptr)
+    if (CI.pEnabledLayerNames != nullptr)
     {
         for (size_t i = 0; i < CI.enabledLayerCount; ++i)
         {
-            const auto* LayerName = CI.ppEnabledLayerNames[i];
-            if (LayerName == nullptr)
+            const auto* pLayerName = CI.pEnabledLayerNames[i];
+            if (pLayerName == nullptr)
                 return;
             uint32_t layerVer = 0;
-            if (IsLayerSupported(LayerName, layerVer))
-                enabledLayers.push_back(LayerName);
+            if (IsLayerSupported(pLayerName, layerVer))
+                enabledLayers.push_back(pLayerName);
             else
-                LOGW("Instance layer {} is not available", LayerName);
+                LOGW("Instance layer {} is not available", pLayerName);
         }
     }
     constexpr VkDebugUtilsMessageSeverityFlagsEXT messageSeverity =
@@ -299,16 +299,16 @@ Instance::Instance(const Instance::CreateInfo& CI)
     }
 }
 
-bool Instance::EnumerateInstanceExtensions(const char* layerName,
+bool Instance::EnumerateInstanceExtensions(const char* pLayerName,
                                            std::vector<VkExtensionProperties>& extensions)
 {
     uint32_t ExtensionCount = 0;
 
-    if (vkEnumerateInstanceExtensionProperties(layerName, &ExtensionCount, nullptr) != VK_SUCCESS)
+    if (vkEnumerateInstanceExtensionProperties(pLayerName, &ExtensionCount, nullptr) != VK_SUCCESS)
         return false;
 
     extensions.resize(ExtensionCount);
-    if (vkEnumerateInstanceExtensionProperties(layerName, &ExtensionCount, extensions.data()) !=
+    if (vkEnumerateInstanceExtensionProperties(pLayerName, &ExtensionCount, extensions.data()) !=
         VK_SUCCESS)
     {
         extensions.clear();
@@ -317,11 +317,11 @@ bool Instance::EnumerateInstanceExtensions(const char* layerName,
     return true;
 }
 
-bool Instance::IsLayerSupported(const char* layerName, uint32_t& version)
+bool Instance::IsLayerSupported(const char* pLayerName, uint32_t& version)
 {
     auto it = std::find_if(m_supportedLayers.begin(), m_supportedLayers.end(),
                            [&](VkLayerProperties& layer) {
-                               if (strcmp(layer.layerName, layerName) == 0)
+                               if (strcmp(layer.layerName, pLayerName) == 0)
                                {
                                    version = layer.specVersion;
                                    return true;
@@ -334,19 +334,19 @@ bool Instance::IsLayerSupported(const char* layerName, uint32_t& version)
     return it != m_supportedLayers.end();
 }
 
-bool Instance::IsExtensionEnabled(const char* name)
+bool Instance::IsExtensionEnabled(const char* pName)
 {
     return std::find_if(m_enabledExtensions.begin(), m_enabledExtensions.end(),
-                        [name](const char* enabledExtension) {
-                            return strcmp(name, enabledExtension) == 0;
+                        [pName](const char* pEnabledExtension) {
+                            return strcmp(pName, pEnabledExtension) == 0;
                         }) != m_enabledExtensions.end();
 }
 
 bool Instance::IsExtensionSupported(std::vector<VkExtensionProperties>& extensions,
-                                    const char* extensionName)
+                                    const char* pExtensionName)
 {
     auto it = std::find_if(extensions.begin(), extensions.end(), [&](VkExtensionProperties& ext) {
-        return strcmp(ext.extensionName, extensionName) == 0;
+        return strcmp(ext.extensionName, pExtensionName) == 0;
     });
     return it != extensions.end();
 }

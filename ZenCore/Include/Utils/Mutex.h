@@ -64,7 +64,7 @@ private:
 class LockAuto
 {
 public:
-    explicit LockAuto(Mutex* mutex) : m_pMutex(mutex)
+    explicit LockAuto(Mutex* pMutex) : m_pMutex(pMutex)
     {
         m_pMutex->Lock();
     }

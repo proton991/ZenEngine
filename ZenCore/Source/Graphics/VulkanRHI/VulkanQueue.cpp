@@ -7,13 +7,13 @@
 
 namespace zen
 {
-VulkanQueue::VulkanQueue(VulkanDevice* device, uint32_t familyIndex) :
-    m_device(device), m_familyIndex(familyIndex), m_queueIndex(0)
+VulkanQueue::VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex) :
+    m_pDevice(pDevice), m_familyIndex(familyIndex), m_queueIndex(0)
 {
-    vkGetDeviceQueue(m_device->GetVkHandle(), m_familyIndex, m_queueIndex, &m_handle);
-    if (m_device->SupportsTimelineSemaphore())
+    vkGetDeviceQueue(m_pDevice->GetVkHandle(), m_familyIndex, m_queueIndex, &m_handle);
+    if (m_pDevice->SupportsTimelineSemaphore())
     {
-        m_pTimelineSemaphore = ZEN_NEW() VulkanSemaphore(m_device, VK_SEMAPHORE_TYPE_TIMELINE, 0);
+        m_pTimelineSemaphore = ZEN_NEW() VulkanSemaphore(m_pDevice, VK_SEMAPHORE_TYPE_TIMELINE, 0);
     }
 }
 
@@ -47,17 +47,17 @@ VulkanQueue::~VulkanQueue()
 
 FVulkanCommandBufferPool* VulkanQueue::AcquireCommandBufferPool(VulkanCommandBufferType type)
 {
-    FVulkanCommandBufferPool* result = nullptr;
+    FVulkanCommandBufferPool* pResult = nullptr;
     if (!m_cmdBufferPools.empty())
     {
-        result = m_cmdBufferPools.back();
+        pResult = m_cmdBufferPools.back();
         m_cmdBufferPools.pop_back();
     }
     else
     {
-        result = ZEN_NEW() FVulkanCommandBufferPool(this, type);
+        pResult = ZEN_NEW() FVulkanCommandBufferPool(this, type);
     }
-    return result;
+    return pResult;
 }
 
 void VulkanQueue::RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool)
@@ -66,63 +66,63 @@ void VulkanQueue::RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferP
     m_cmdBufferPools.emplace_back(pCmdBufferPool);
 }
 
-void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer,
+void VulkanQueue::Submit(VulkanCommandBuffer* pCmdBuffer,
                          uint32_t numSignalSemaphores,
-                         VkSemaphore* signalSemaphores)
+                         VkSemaphore* pSignalSemaphores)
 {
-    VulkanFence* fence = cmdBuffer->m_fence;
-    VERIFY_EXPR(!fence->IsSignaled());
+    VulkanFence* pFence = pCmdBuffer->m_pFence;
+    VERIFY_EXPR(!pFence->IsSignaled());
 
-    const VkCommandBuffer vkCommandBuffer[] = {cmdBuffer->GetVkHandle()};
+    const VkCommandBuffer vkCommandBuffer[] = {pCmdBuffer->GetVkHandle()};
     VkSubmitInfo submitInfo;
     InitVkStruct(submitInfo, VK_STRUCTURE_TYPE_SUBMIT_INFO);
     submitInfo.commandBufferCount   = 1;
     submitInfo.pCommandBuffers      = vkCommandBuffer;
     submitInfo.signalSemaphoreCount = numSignalSemaphores;
-    submitInfo.pSignalSemaphores    = signalSemaphores;
+    submitInfo.pSignalSemaphores    = pSignalSemaphores;
 
     HeapVector<VkSemaphore> waitSemaphores;
-    if (!cmdBuffer->m_waitSemaphores.empty())
+    if (!pCmdBuffer->m_waitSemaphores.empty())
     {
-        waitSemaphores.reserve(cmdBuffer->m_waitSemaphores.size());
-        for (VulkanSemaphore* sem : cmdBuffer->m_waitSemaphores)
+        waitSemaphores.reserve(pCmdBuffer->m_waitSemaphores.size());
+        for (VulkanSemaphore* pSem : pCmdBuffer->m_waitSemaphores)
         {
-            waitSemaphores.push_back(sem->GetVkHandle());
+            waitSemaphores.push_back(pSem->GetVkHandle());
         }
         submitInfo.waitSemaphoreCount = waitSemaphores.size();
         submitInfo.pWaitSemaphores    = waitSemaphores.data();
-        submitInfo.pWaitDstStageMask  = cmdBuffer->m_waitFlags.data();
+        submitInfo.pWaitDstStageMask  = pCmdBuffer->m_waitFlags.data();
     }
-    VKCHECK(vkQueueSubmit(m_handle, 1, &submitInfo, fence->GetVkHandle()));
+    VKCHECK(vkQueueSubmit(m_handle, 1, &submitInfo, pFence->GetVkHandle()));
 
-    cmdBuffer->m_state = VulkanCommandBuffer::State::eSubmitted;
-    cmdBuffer->MarkSemaphoresAsSubmitted();
+    pCmdBuffer->m_state = VulkanCommandBuffer::State::eSubmitted;
+    pCmdBuffer->MarkSemaphoresAsSubmitted();
 
-    UpdateLastSubmittedCmdBuffer(cmdBuffer);
+    UpdateLastSubmittedCmdBuffer(pCmdBuffer);
 
-    cmdBuffer->m_cmdBufferPool->RefreshFenceStatus(cmdBuffer);
+    pCmdBuffer->m_pCmdBufferPool->RefreshFenceStatus(pCmdBuffer);
 }
 
-void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer, VkSemaphore signalSemaphore)
+void VulkanQueue::Submit(VulkanCommandBuffer* pCmdBuffer, VkSemaphore signalSemaphore)
 {
-    Submit(cmdBuffer, 1, &signalSemaphore);
+    Submit(pCmdBuffer, 1, &signalSemaphore);
 }
 
-void VulkanQueue::Submit(VulkanCommandBuffer* cmdBuffer)
+void VulkanQueue::Submit(VulkanCommandBuffer* pCmdBuffer)
 {
-    Submit(cmdBuffer, 0, nullptr);
+    Submit(pCmdBuffer, 0, nullptr);
 }
 
 void VulkanQueue::GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer,
-                                    uint64_t* fenceSignaledCounter) const
+                                    uint64_t* pFenceSignaledCounter) const
 {
-    cmdBuffer             = m_lastSubmittedCmdBuffer;
-    *fenceSignaledCounter = m_lastSubmittedCmdBuffer->GetFenceSignaledCounter();
+    cmdBuffer             = m_pLastSubmittedCmdBuffer;
+    *pFenceSignaledCounter = m_pLastSubmittedCmdBuffer->GetFenceSignaledCounter();
 }
 
-void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* cmdBuffer)
+void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer)
 {
-    m_lastSubmittedCmdBuffer = cmdBuffer;
+    m_pLastSubmittedCmdBuffer = pCmdBuffer;
 }
 
 void VulkanQueue::SubmitWorkloads()
@@ -220,7 +220,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
 
         VulkanWorkload* pWorkload = m_workloadsPendingProcess.Peek();
         bool success              = false;
-        if (m_device->SupportsTimelineSemaphore())
+        if (m_pDevice->SupportsTimelineSemaphore())
         {
             uint64_t completedValue = m_pTimelineSemaphore->GetCounterValue();
             if (completedValue >= pWorkload->m_submissionSerial)

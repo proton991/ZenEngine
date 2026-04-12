@@ -9,21 +9,21 @@ namespace zen
 template <class RefCounterType> class SharedPtrCount
 {
 public:
-    SharedPtrCount() : m_counter(nullptr) {}
+    SharedPtrCount() : m_pCounter(nullptr) {}
 
-    SharedPtrCount(const SharedPtrCount& other) : m_counter(other.m_counter) {}
+    SharedPtrCount(const SharedPtrCount& other) : m_pCounter(other.m_pCounter) {}
 
     void Swap(SharedPtrCount& other) noexcept
     {
-        std::swap(m_counter, other.m_counter);
+        std::swap(m_pCounter, other.m_pCounter);
     }
 
     uint32_t GetValue() const noexcept
     {
         uint32_t count = 0;
-        if (m_counter != nullptr)
+        if (m_pCounter != nullptr)
         {
-            count = m_counter->GetValue();
+            count = m_pCounter->GetValue();
         }
         return count;
     }
@@ -32,20 +32,20 @@ public:
     {
         if (p != nullptr)
         {
-            if (m_counter == nullptr)
+            if (m_pCounter == nullptr)
             {
-                m_counter = new RefCounterType();
+                m_pCounter = new RefCounterType();
             }
             else
             {
-                m_counter->Add();
+                m_pCounter->Add();
             }
         }
     }
 
     template <class U> void Release(U* p) noexcept
     {
-        if (m_counter != nullptr)
+        if (m_pCounter != nullptr)
         {
             //            m_counter->Dec();
             //            if (m_counter->GetValue() == 0)
@@ -53,22 +53,22 @@ public:
             //                delete p;
             //                delete m_counter;
             //            }
-            if (m_counter->Release())
+            if (m_pCounter->Release())
             {
                 delete p;
-                delete m_counter;
+                delete m_pCounter;
             }
-            m_counter = nullptr;
+            m_pCounter = nullptr;
         }
     }
 
     void Reset()
     {
-        m_counter = nullptr;
+        m_pCounter = nullptr;
     }
 
 private:
-    RefCounterType* m_counter;
+    RefCounterType* m_pCounter;
 };
 
 template <class RefCounterType> class SharedPtrBase
@@ -86,7 +86,7 @@ template <class T, class RefCounterType = SingleThreadCounter> class SharedPtr :
 public:
     using ElementType = std::remove_extent_t<T>;
 
-    SharedPtr() noexcept : SharedPtrBase<RefCounterType>(), m_ptr(nullptr) {}
+    SharedPtr() noexcept : SharedPtrBase<RefCounterType>(), m_pObj(nullptr) {}
 
     explicit SharedPtr(T* p) : SharedPtrBase<RefCounterType>()
     {
@@ -112,14 +112,14 @@ public:
 
     SharedPtr(const SharedPtr& other) noexcept : SharedPtrBase<RefCounterType>(other)
     {
-        Acquire(other.m_ptr);
+        Acquire(other.m_pObj);
     }
 
     SharedPtr(SharedPtr&& other) noexcept
     {
-        m_ptr         = std::move(other.m_ptr);
+        m_pObj        = std::move(other.m_pObj);
         this->m_count = std::move(other.m_count);
-        other.m_ptr   = nullptr;
+        other.m_pObj  = nullptr;
         other.m_count.Reset();
     }
 
@@ -127,37 +127,37 @@ public:
     SharedPtr& operator=(const SharedPtr& other) noexcept
     {
         Reset();
-        m_ptr         = other.m_ptr;
+        m_pObj        = other.m_pObj;
         this->m_count = other.m_count;
-        if (m_ptr != nullptr)
+        if (m_pObj != nullptr)
         {
-            this->m_count.Acquire(other.m_ptr);
+            this->m_count.Acquire(other.m_pObj);
         }
         return *this;
     }
 
     SharedPtr& operator=(SharedPtr&& other) noexcept
     {
-        m_ptr         = std::move(other.m_ptr);
+        m_pObj        = std::move(other.m_pObj);
         this->m_count = std::move(other.m_count);
-        other.m_ptr   = nullptr;
+        other.m_pObj  = nullptr;
         other.m_count.Reset();
         return *this;
     }
 
     T* Get() const noexcept
     {
-        return m_ptr;
+        return m_pObj;
     }
 
     T* operator->() const noexcept
     {
-        return m_ptr;
+        return m_pObj;
     }
 
     T& operator*() const noexcept
     {
-        return *m_ptr;
+        return *m_pObj;
     }
 
     operator bool() const noexcept
@@ -193,7 +193,7 @@ public:
 
     void Swap(SharedPtr& lhs)
     {
-        std::swap(m_ptr, lhs.m_ptr);
+        std::swap(m_pObj, lhs.m_pObj);
         this->m_count.Swap(lhs.m_count);
     }
 
@@ -201,15 +201,15 @@ private:
     void Acquire(T* p)
     {
         this->m_count.Acquire(p);
-        m_ptr = p;
+        m_pObj = p;
     }
 
     void Release()
     {
-        this->m_count.Release(m_ptr);
-        m_ptr = nullptr;
+        this->m_count.Release(m_pObj);
+        m_pObj = nullptr;
     }
-    ElementType* m_ptr;
+    ElementType* m_pObj;
 };
 
 // comparison operators

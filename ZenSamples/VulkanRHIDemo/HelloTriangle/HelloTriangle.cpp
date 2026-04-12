@@ -95,7 +95,7 @@ void HelloTriangleApp::BuildRenderGraph()
     clearValues[1].depth   = 1.0f;
     clearValues[1].stencil = 1.0f;
 
-    auto* mainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
+    auto* pMainPass = m_rdg->AddGraphicsPassNode(m_gfxPass, area, clearValues, true);
     // m_rdg->DeclareTextureAccessForPass(mainPass, m_texture, RHITextureUsage::eSampled,
     //                                    m_renderDevice->GetTextureSubResourceRange(m_texture),
     //                                    RHIAccessMode::eRead);

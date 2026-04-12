@@ -22,25 +22,25 @@ class RenderDevice;
 
 struct VoxelTextures
 {
-    RHITexture* staticFlag{nullptr};
-    RHITexture* albedo{nullptr};
-    RHITexture* albedoProxy{nullptr};
-    RHITexture* normal{nullptr};
-    RHITexture* normalProxy{nullptr};
-    RHITexture* emissive{nullptr};
-    RHITexture* emissiveProxy{nullptr};
+    RHITexture* pStaticFlag{nullptr};
+    RHITexture* pAlbedo{nullptr};
+    RHITexture* pAlbedoProxy{nullptr};
+    RHITexture* pNormal{nullptr};
+    RHITexture* pNormalProxy{nullptr};
+    RHITexture* pEmissive{nullptr};
+    RHITexture* pEmissiveProxy{nullptr};
 };
 
 class VoxelizerBase
 {
 public:
-    VoxelizerBase(RenderDevice* renderDevice, RHIViewport* viewport);
+    VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     virtual ~VoxelizerBase() = default;
 
     virtual void Init() = 0;
 
-    virtual void SetRenderScene(RenderScene* scene);
+    virtual void SetRenderScene(RenderScene* pScene);
 
     virtual void Destroy();
 
@@ -60,7 +60,7 @@ public:
 
     RHISampler* GetVoxelSampler() const
     {
-        return m_voxelSampler;
+        return m_pVoxelSampler;
     }
     DataFormat GetVoxelTexFormat() const
     {
@@ -103,16 +103,16 @@ protected:
     //
     // void VoxelizeDynamicScene();
 
-    RenderDevice* m_renderDevice{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
-    RenderScene* m_scene{nullptr};
+    RenderScene* m_pScene{nullptr};
 
     VoxelTextures m_voxelTextures;
 
-    RHISampler* m_voxelSampler;
-    RHISampler* m_colorSampler;
+    RHISampler* m_pVoxelSampler;
+    RHISampler* m_pColorSampler;
 
     uint32_t m_voxelTexResolution;
     float m_voxelSize;

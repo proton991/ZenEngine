@@ -30,15 +30,15 @@ struct InstanceExtensionFlags
 class VulkanExtension
 {
 public:
-    VulkanExtension(const char* extensionName, EnableMode enableMode = EnableMode::eAuto) :
-        m_extensionName(extensionName),
+    VulkanExtension(const char* pExtensionName, EnableMode enableMode = EnableMode::eAuto) :
+        m_pExtensionName(pExtensionName),
         m_supported(false),
         m_enabled(enableMode == EnableMode::eAuto)
     {}
 
     const char* GetName() const
     {
-        return m_extensionName;
+        return m_pExtensionName;
     }
 
     void SetSupport()
@@ -57,7 +57,7 @@ public:
     }
 
 private:
-    const char* m_extensionName{nullptr};
+    const char* m_pExtensionName{nullptr};
     // supported by driver
     bool m_supported{false};
     // enabled in RHI initialization
@@ -69,13 +69,13 @@ using VulkanInstanceExtensionArray = HeapVector<UniquePtr<VulkanInstanceExtensio
 class VulkanInstanceExtension : public VulkanExtension
 {
 public:
-    explicit VulkanInstanceExtension(const char* extensionName,
+    explicit VulkanInstanceExtension(const char* pExtensionName,
                                      EnableMode enableMode = EnableMode::eAuto) :
-        VulkanExtension(extensionName, enableMode)
+        VulkanExtension(pExtensionName, enableMode)
     {}
 
     static HeapVector<VkExtensionProperties> GetSupportedInstanceExtensions(
-        const char* layerName = nullptr);
+        const char* pLayerName = nullptr);
 
     static VulkanInstanceExtensionArray GetEnabledInstanceExtensions(
         InstanceExtensionFlags& extensionFlags);
@@ -87,17 +87,17 @@ using VulkanDeviceExtensionArray = HeapVector<UniquePtr<VulkanDeviceExtension>>;
 class VulkanDeviceExtension : public VulkanExtension
 {
 public:
-    explicit VulkanDeviceExtension(VulkanDevice* device,
-                                   const char* extensionName,
+    explicit VulkanDeviceExtension(VulkanDevice* pDevice,
+                                   const char* pExtensionName,
                                    EnableMode enableMode = EnableMode::eAuto) :
-        VulkanExtension(extensionName, enableMode), m_device(device)
+        VulkanExtension(pExtensionName, enableMode), m_pDevice(pDevice)
     {}
 
     virtual ~VulkanDeviceExtension() = default;
 
     static HeapVector<VkExtensionProperties> GetSupportedExtensions(VkPhysicalDevice gpu);
 
-    static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* device);
+    static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* pDevice);
 
 #ifdef VK_KHR_get_physical_device_properties2
     virtual void BeforePhysicalDeviceProperties(
@@ -117,7 +117,7 @@ public:
 #endif
 
 protected:
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
 };
 
 } // namespace zen

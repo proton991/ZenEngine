@@ -26,13 +26,13 @@ enum class RenderOption : uint32_t
 class RendererServer
 {
 public:
-    RendererServer(RenderDevice* renderDevice, RHIViewport* viewport);
+    RendererServer(RenderDevice* pRenderDevice, RHIViewport* pViewport);
 
     void Init();
 
     void Destroy();
 
-    void SetRenderScene(RenderScene* scene);
+    void SetRenderScene(RenderScene* pScene);
 
     void DispatchRenderWorkloads();
 
@@ -40,22 +40,22 @@ public:
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
-        return m_deferredLightingRenderer;
+        return m_pDeferredLightingRenderer;
     }
 
     SkyboxRenderer* RequestSkyboxRenderer() const
     {
-        return m_skyboxRenderer;
+        return m_pSkyboxRenderer;
     }
 
     VoxelizerBase* RequestVoxelizer() const
     {
-        return m_voxelizer;
+        return m_pVoxelizer;
     }
 
     ShadowMapRenderer* RequestShadowMapRenderer() const
     {
-        return m_shadowMapRenderer;
+        return m_pShadowMapRenderer;
     }
 
     void SetRenderOption(RenderOption option)
@@ -64,16 +64,16 @@ public:
     }
 
 private:
-    RHIViewport* m_viewport{nullptr};
-    RenderDevice* m_renderDevice{nullptr};
-    RenderScene* m_scene{nullptr};
+    RHIViewport* m_pViewport{nullptr};
+    RenderDevice* m_pRenderDevice{nullptr};
+    RenderScene* m_pScene{nullptr};
 
-    DeferredLightingRenderer* m_deferredLightingRenderer{nullptr};
-    SkyboxRenderer* m_skyboxRenderer{nullptr};
-    VoxelizerBase* m_voxelizer{nullptr};
+    DeferredLightingRenderer* m_pDeferredLightingRenderer{nullptr};
+    SkyboxRenderer* m_pSkyboxRenderer{nullptr};
+    VoxelizerBase* m_pVoxelizer{nullptr};
     // VoxelRenderer* m_voxelRenderer{nullptr};
-    ShadowMapRenderer* m_shadowMapRenderer{nullptr};
-    VoxelGIRenderer* m_voxelGIRenderer{nullptr};
+    ShadowMapRenderer* m_pShadowMapRenderer{nullptr};
+    VoxelGIRenderer* m_pVoxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
 };

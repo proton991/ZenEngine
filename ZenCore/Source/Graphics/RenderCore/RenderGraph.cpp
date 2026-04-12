@@ -13,11 +13,11 @@ RDGPass::RDGPass(RenderGraph& graph, Index index, std::string tag, RDGQueueFlags
 
 void RDGPass::WriteToColorImage(const std::string& tag, const RDGImage::Info& info)
 {
-    auto* res = m_graph.GetImageResource(tag);
-    res->SetInfo(info);
-    res->AddImageUsage(val::ImageUsage::ColorAttachment);
-    res->WriteInPass(m_index);
-    m_outImageResources.push_back(res);
+    auto* pRes = m_graph.GetImageResource(tag);
+    pRes->SetInfo(info);
+    pRes->AddImageUsage(val::ImageUsage::ColorAttachment);
+    pRes->WriteInPass(m_index);
+    m_outImageResources.push_back(pRes);
 }
 
 void RDGPass::ReadFromInternalImage(const std::string& tag, val::ImageUsage usage)
@@ -34,34 +34,34 @@ void RDGPass::ReadFromInternalBuffer(const Tag& tag, val::BufferUsage usage)
 
 void RDGPass::WriteToStorageBuffer(const std::string& tag, const RDGBuffer::Info& info)
 {
-    auto* res = m_graph.GetBufferResource(tag);
-    res->AddBufferUsage(val::BufferUsage::StorageBuffer);
-    res->WriteInPass(m_index);
-    res->SetInfo(info);
-    m_outBufferResources.push_back(res);
+    auto* pRes = m_graph.GetBufferResource(tag);
+    pRes->AddBufferUsage(val::BufferUsage::StorageBuffer);
+    pRes->WriteInPass(m_index);
+    pRes->SetInfo(info);
+    m_outBufferResources.push_back(pRes);
 }
 
 void RDGPass::WriteToTransferDstBuffer(const Tag& tag, const RDGBuffer::Info& info)
 {
-    auto* res = m_graph.GetBufferResource(tag);
-    res->AddBufferUsage(val::BufferUsage::TransferDst);
-    res->WriteInPass(m_index);
-    res->SetInfo(info);
-    m_outBufferResources.push_back(res);
+    auto* pRes = m_graph.GetBufferResource(tag);
+    pRes->AddBufferUsage(val::BufferUsage::TransferDst);
+    pRes->WriteInPass(m_index);
+    pRes->SetInfo(info);
+    m_outBufferResources.push_back(pRes);
 }
 
 void RDGPass::WriteToDepthStencilImage(const std::string& tag, const RDGImage::Info& info)
 {
-    auto* res = m_graph.GetImageResource(tag);
-    res->AddImageUsage(val::ImageUsage::DepthStencilAttachment);
-    res->WriteInPass(m_index);
-    res->SetInfo(info);
-    m_outImageResources.push_back(res);
+    auto* pRes = m_graph.GetImageResource(tag);
+    pRes->AddImageUsage(val::ImageUsage::DepthStencilAttachment);
+    pRes->WriteInPass(m_index);
+    pRes->SetInfo(info);
+    m_outImageResources.push_back(pRes);
 }
 
-void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* image)
+void RDGPass::ReadFromExternalImage(const Tag& tag, val::Image* pImage)
 {
-    m_externImageResources[tag] = {image};
+    m_externImageResources[tag] = {pImage};
 }
 
 void RDGPass::ReadFromExternalImages(const Tag& tag, const std::vector<val::Image*>& images)
@@ -69,9 +69,9 @@ void RDGPass::ReadFromExternalImages(const Tag& tag, const std::vector<val::Imag
     m_externImageResources[tag] = images;
 }
 
-void RDGPass::ReadFromExternalBuffer(const Tag& tag, val::Buffer* buffer)
+void RDGPass::ReadFromExternalBuffer(const Tag& tag, val::Buffer* pBuffer)
 {
-    m_externBufferResources[tag] = buffer;
+    m_externBufferResources[tag] = pBuffer;
 }
 
 void RDGPass::BindSRD(const Tag& rdgResourceTag,
@@ -163,18 +163,18 @@ void RenderGraph::Compile()
     BuildPhysicalPasses();
 }
 
-void RenderGraph::Execute(val::CommandBuffer* commandBuffer, RenderContext* renderContext)
+void RenderGraph::Execute(val::CommandBuffer* pCommandBuffer, RenderContext* pRenderContext)
 {
     if (!m_initialized)
     {
-        BeforeExecuteSetup(commandBuffer);
+        BeforeExecuteSetup(pCommandBuffer);
         m_initialized = true;
     }
     for (auto& physicalPass : m_physicalPasses)
     {
-        RunPass(physicalPass, commandBuffer);
+        RunPass(physicalPass, pCommandBuffer);
     }
-    CopyToPresentImage(commandBuffer, *renderContext->GetActiveFrame().GetSwapchainImage());
+    CopyToPresentImage(pCommandBuffer, *pRenderContext->GetActiveFrame().GetSwapchainImage());
 }
 
 void RenderGraph::SortRenderPasses()
@@ -336,12 +336,12 @@ void RenderGraph::ResolveResourceState()
     }
 }
 
-void RenderGraph::BuildPhysicalImage(RDGImage* image)
+void RenderGraph::BuildPhysicalImage(RDGImage* pImage)
 {
-    const auto& info = image->GetInfo();
+    const auto& info = pImage->GetInfo();
 
     val::ImageCreateInfo imageCI{};
-    imageCI.usage       = m_resourceState.totalImageUsages[image->GetTag()];
+    imageCI.usage       = m_resourceState.totalImageUsages[pImage->GetTag()];
     imageCI.format      = info.format;
     imageCI.samples     = static_cast<VkSampleCountFlagBits>(info.samples);
     imageCI.arrayLayers = info.layers;
@@ -361,22 +361,22 @@ void RenderGraph::BuildPhysicalImage(RDGImage* image)
             break;
     }
     auto physicalIndex = m_physicalImages.size();
-    image->SetPhysicalIndex(physicalIndex);
+    pImage->SetPhysicalIndex(physicalIndex);
     m_physicalImages.emplace_back(m_renderDevice.CreateImageUnique(imageCI));
-    m_physicalImages.back()->SetObjectDebugName(image->GetTag());
+    m_physicalImages.back()->SetObjectDebugName(pImage->GetTag());
 }
 
-void RenderGraph::BuildPhysicalBuffer(RDGBuffer* buffer)
+void RenderGraph::BuildPhysicalBuffer(RDGBuffer* pBuffer)
 {
-    const auto& info = buffer->GetInfo();
+    const auto& info = pBuffer->GetInfo();
 
     val::BufferCreateInfo bufferCI{};
     bufferCI.byteSize = info.size;
-    bufferCI.usage    = m_resourceState.totalBufferUsages[buffer->GetTag()];
+    bufferCI.usage    = m_resourceState.totalBufferUsages[pBuffer->GetTag()];
     bufferCI.vmaFlags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT; // TODO: Choose right vma flags;
 
     auto physicalIndex = m_physicalBuffers.size();
-    buffer->SetPhysicalIndex(physicalIndex);
+    pBuffer->SetPhysicalIndex(physicalIndex);
     m_physicalBuffers.emplace_back(m_renderDevice.CreateBufferUnique(bufferCI));
 }
 
@@ -456,21 +456,21 @@ void RenderGraph::BuildPhysicalPasses()
         }
         // Create RenderPass
         val::SubpassInfo subpassInfo{colorReferences, {}, depthRefIndex};
-        physicalPass.renderPass =
+        physicalPass.pRenderPass =
             m_renderDevice.RequestRenderPass(attachmentDescriptions, subpassInfo);
         // Create framebuffer
-        physicalPass.framebuffer =
-            m_renderDevice.RequestFramebuffer(physicalPass.renderPass->GetHandle(), imageViews,
+        physicalPass.pFramebuffer =
+            m_renderDevice.RequestFramebuffer(physicalPass.pRenderPass->GetHandle(), imageViews,
                                               {framebufferWidth, framebufferHeight, 1});
         // Create pipeline
-        physicalPass.pipelineLayout = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
+        physicalPass.pPipelineLayout = m_renderDevice.RequestPipelineLayout(pass->GetUsedShaders());
 
-        physicalPass.pipelineState.SetRenderPass(physicalPass.renderPass->GetHandle());
+        physicalPass.pipelineState.SetRenderPass(physicalPass.pRenderPass->GetHandle());
 
-        physicalPass.graphicPipeline = m_renderDevice.RequestGraphicsPipeline(
-            *physicalPass.pipelineLayout, physicalPass.pipelineState);
+        physicalPass.pGraphicPipeline = m_renderDevice.RequestGraphicsPipeline(
+            *physicalPass.pPipelineLayout, physicalPass.pipelineState);
 
-        auto& dsLayouts = physicalPass.pipelineLayout->GetDescriptorSetLayouts();
+        auto& dsLayouts = physicalPass.pPipelineLayout->GetDescriptorSetLayouts();
         physicalPass.descriptorSets.resize(dsLayouts.size());
         for (const auto& dsLayout : dsLayouts)
         {
@@ -511,7 +511,7 @@ static bool HasBufferWriteDependency(val::BufferUsage usage)
     return false;
 }
 
-void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
+void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* pCommandBuffer,
                                       const HashMap<Tag, ImageTransition>& imageTransitions,
                                       const HashMap<Tag, BufferTransition>& bufferTransitions)
 {
@@ -566,7 +566,7 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
 
     if (!bufferMemBarriers.empty() || !imageMemBarriers.empty())
     {
-        commandBuffer->PipelineBarrier(srcPipelineStageFlags, dstPipelineStageFlags,
+        pCommandBuffer->PipelineBarrier(srcPipelineStageFlags, dstPipelineStageFlags,
                                        bufferMemBarriers, imageMemBarriers);
     }
 }
@@ -574,7 +574,7 @@ void RenderGraph::EmitPipelineBarrier(val::CommandBuffer* commandBuffer,
 /**
  * @brief handle image layout transitions from undefined to first usage layout
  */
-void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* commandBuffer)
+void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* pCommandBuffer)
 {
     HashMap<Tag, ImageTransition> imageTransitions;
     for (const auto& pass : m_passes)
@@ -590,10 +590,10 @@ void RenderGraph::BeforeExecuteSetup(val::CommandBuffer* commandBuffer)
             }
         }
     }
-    EmitPipelineBarrier(commandBuffer, imageTransitions, {});
+    EmitPipelineBarrier(pCommandBuffer, imageTransitions, {});
 }
 
-void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
+void RenderGraph::CopyToPresentImage(val::CommandBuffer* pCommandBuffer,
                                      const val::Image& presentImage)
 {
     const auto& firstRenderPassTag = m_resourceState.imageFirstUsePass.at(m_backBufferTag);
@@ -605,7 +605,7 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
 
     auto backBufferImageIndex = m_resources[m_resourceToIndex[m_backBufferTag]]->GetPhysicalIndex();
     auto& backBufferImage     = m_physicalImages.at(backBufferImageIndex);
-    commandBuffer->BlitImage(*backBufferImage, lastUsage, presentImage, val::ImageUsage::Undefined);
+    pCommandBuffer->BlitImage(*backBufferImage, lastUsage, presentImage, val::ImageUsage::Undefined);
     // After blit, the back buffer image's layout has been changed
     // In order to use it in the 'next' render pass, we need to transfer the layout back to its first usage TODO: is this right?
     if (firstUsage != val::ImageUsage::TransferSrc)
@@ -620,7 +620,7 @@ void RenderGraph::CopyToPresentImage(val::CommandBuffer* commandBuffer,
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.subresourceRange    = backBufferImage->GetSubResourceRange();
 
-        commandBuffer->PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+        pCommandBuffer->PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
                                        val::Image::UsageToPipelineStage(firstUsage), {}, {barrier});
     }
 }
@@ -664,12 +664,12 @@ void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
             bool isExternal = rdgPass->GetExternImageResources().count(tag) != 0;
             if (isExternal)
             {
-                for (const auto* image : rdgPass->GetExternImageResources().at(tag))
+                for (const auto* pImage : rdgPass->GetExternImageResources().at(tag))
                 {
                     VkDescriptorImageInfo info{};
                     info.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
                     info.sampler     = rdgPass->GetSamplerBinding().at(tag)->GetHandle();
-                    info.imageView   = image->GetView();
+                    info.imageView   = pImage->GetView();
                     dsImageInfos.push_back(info);
                 }
             }
@@ -703,9 +703,9 @@ void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
             info.offset = 0;
             if (isExternal)
             {
-                auto* buffer = rdgPass->GetExternBufferResources().at(tag);
-                info.buffer  = buffer->GetHandle();
-                info.range   = buffer->GetSize();
+                auto* pBuffer = rdgPass->GetExternBufferResources().at(tag);
+                info.buffer  = pBuffer->GetHandle();
+                info.range   = pBuffer->GetSize();
             }
             else
             {
@@ -733,44 +733,44 @@ void RenderGraph::UpdateDescriptorSets(RDGPhysicalPass& pass)
     pass.descriptorSetsUpdated = true;
 }
 
-void RenderGraph::RunPass(RDGPhysicalPass& pass, val::CommandBuffer* primaryCmdBuffer)
+void RenderGraph::RunPass(RDGPhysicalPass& pass, val::CommandBuffer* pPrimaryCmdBuffer)
 {
     UpdateDescriptorSets(pass);
     auto& rdgPass = m_passes[pass.index];
     // Before render
-    EmitPipelineBarrier(primaryCmdBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()],
+    EmitPipelineBarrier(pPrimaryCmdBuffer, m_resourceState.perPassImageState[rdgPass->GetTag()],
                         m_resourceState.perPassBufferState[rdgPass->GetTag()]);
     // On render
     VkClearValue colorClear{{0.2f, 0.2f, 0.2f, 1.0f}};
     VkClearValue dsClear{1.0f, 0};
     VkClearValue clearValues[2] = {colorClear, dsClear};
     // Begin Pass
-    if (pass.renderPass)
+    if (pass.pRenderPass)
     {
         VkRenderPassBeginInfo rpBeginInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-        rpBeginInfo.renderPass      = pass.renderPass->GetHandle();
-        rpBeginInfo.framebuffer     = pass.framebuffer->GetHandle();
-        rpBeginInfo.renderArea      = pass.framebuffer->GetRenderArea();
+        rpBeginInfo.renderPass      = pass.pRenderPass->GetHandle();
+        rpBeginInfo.framebuffer     = pass.pFramebuffer->GetHandle();
+        rpBeginInfo.renderArea      = pass.pFramebuffer->GetRenderArea();
         rpBeginInfo.pClearValues    = clearValues;
         rpBeginInfo.clearValueCount = 2;
 
         // hard code subpass content here
         if (RenderConfig::GetInstance().useSecondaryCmd)
         {
-            primaryCmdBuffer->BeginRenderPass(rpBeginInfo,
+            pPrimaryCmdBuffer->BeginRenderPass(rpBeginInfo,
                                               VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
         }
         else
         {
-            primaryCmdBuffer->BeginRenderPass(rpBeginInfo);
+            pPrimaryCmdBuffer->BeginRenderPass(rpBeginInfo);
         }
     }
     // Call function from outside
-    pass.onExecute(primaryCmdBuffer);
+    pass.onExecute(pPrimaryCmdBuffer);
     // End Pass
-    if (pass.renderPass)
+    if (pass.pRenderPass)
     {
-        primaryCmdBuffer->EndRenderPass();
+        pPrimaryCmdBuffer->EndRenderPass();
     }
 }
 } // namespace zen

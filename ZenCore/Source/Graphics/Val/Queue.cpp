@@ -18,8 +18,8 @@ VkResult Queue::Submit(const std::vector<VkSubmitInfo>& submitInfos, VkFence fen
     return vkQueueSubmit(m_handle, util::ToU32(submitInfos.size()), submitInfos.data(), fence);
 }
 
-VkResult Queue::Present(const VkPresentInfoKHR* info) const
+VkResult Queue::Present(const VkPresentInfoKHR* pInfo) const
 {
-    return vkQueuePresentKHR(m_handle, info);
+    return vkQueuePresentKHR(m_handle, pInfo);
 }
 } // namespace zen::val

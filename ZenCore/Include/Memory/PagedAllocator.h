@@ -68,29 +68,29 @@ public:
         {
             uint32_t pageIndex = m_numPagesAllocated;
             m_numPagesAllocated++;
-            m_pagePool =
-                static_cast<T**>(ZEN_MEM_REALLOC(m_pagePool, sizeof(T*) * m_numPagesAllocated));
-            m_freePages =
-                static_cast<T***>(ZEN_MEM_REALLOC(m_freePages, sizeof(T**) * m_numPagesAllocated));
+            m_pPagePool =
+                static_cast<T**>(ZEN_MEM_REALLOC(m_pPagePool, sizeof(T*) * m_numPagesAllocated));
+            m_pFreePages =
+                static_cast<T***>(ZEN_MEM_REALLOC(m_pFreePages, sizeof(T**) * m_numPagesAllocated));
 
-            m_pagePool[pageIndex]  = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T) * m_pageSize));
-            m_freePages[pageIndex] = static_cast<T**>(ZEN_MEM_ALLOC(sizeof(T*) * m_pageSize));
+            m_pPagePool[pageIndex]  = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T) * m_pageSize));
+            m_pFreePages[pageIndex] = static_cast<T**>(ZEN_MEM_ALLOC(sizeof(T*) * m_pageSize));
 
             for (uint32_t i = 0; i < m_pageSize; i++)
             {
-                m_freePages[pageIndex][i] = &m_pagePool[pageIndex][i];
+                m_pFreePages[pageIndex][i] = &m_pPagePool[pageIndex][i];
             }
             m_allocsAvailable += m_pageSize;
         }
         m_allocsAvailable--;
-        T* alloc = m_freePages[GetPageIndex()][GetSlotIndex()];
-        new (alloc) T(args...);
+        T* pAlloc = m_pFreePages[GetPageIndex()][GetSlotIndex()];
+        new (pAlloc) T(args...);
 
         if (m_threadSafe)
         {
             m_lock.Unlock();
         }
-        return alloc;
+        return pAlloc;
     }
 
     void Free(T* pMemory)
@@ -101,7 +101,7 @@ public:
         }
 
         pMemory->~T();
-        m_freePages[GetPageIndex()][GetSlotIndex()] = pMemory;
+        m_pFreePages[GetPageIndex()][GetSlotIndex()] = pMemory;
         m_allocsAvailable++;
 
         if (m_threadSafe)
@@ -117,13 +117,13 @@ private:
         {
             for (uint32_t i = 0; i < m_numPagesAllocated; i++)
             {
-                ZEN_MEM_FREE(m_pagePool[i]);
-                ZEN_MEM_FREE(m_freePages[i]);
+                ZEN_MEM_FREE(m_pPagePool[i]);
+                ZEN_MEM_FREE(m_pFreePages[i]);
             }
-            ZEN_MEM_FREE(m_pagePool);
-            ZEN_MEM_FREE(m_freePages);
-            m_pagePool          = nullptr;
-            m_freePages         = nullptr;
+            ZEN_MEM_FREE(m_pPagePool);
+            ZEN_MEM_FREE(m_pFreePages);
+            m_pPagePool          = nullptr;
+            m_pFreePages         = nullptr;
             m_numPagesAllocated = 0;
             m_allocsAvailable   = 0;
         }
@@ -149,13 +149,13 @@ private:
     //     0       T     T     T   ...   T
     //     1       T     T     T   ...   T
     //     2       T     T     T   ...   T
-    T** m_pagePool{nullptr};
+    T** m_pPagePool{nullptr};
     // free pages 2d pointer array
     // pageIndex slot0 slot1 slot2  ... slot_(m_pageSize-1)
     //     0       T*    T*    T*   ...   T*
     //     1       T*    T*    T*   ...   T*
     //     2       T*    T*    T*   ...   T*
-    T*** m_freePages{nullptr};
+    T*** m_pFreePages{nullptr};
 
     uint32_t m_numPagesAllocated{0};
     uint32_t m_allocsAvailable{0};

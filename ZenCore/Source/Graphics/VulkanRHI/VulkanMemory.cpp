@@ -58,10 +58,10 @@ void VulkanMemoryAllocator::Init(VkInstance instance, VkPhysicalDevice gpu, VkDe
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
 }
 
-void VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* imageCI,
+void VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
                                        bool cpuReadable,
-                                       VkImage* image,
-                                       VulkanMemoryAllocation* allocation,
+                                       VkImage* pImage,
+                                       VulkanMemoryAllocation* pAllocation,
                                        uint32_t size)
 {
 
@@ -72,13 +72,13 @@ void VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* imageCI,
     if (size <= SMALL_VK_ALLOCATION_SIZE)
     {
         uint32_t memTypeIndex = 0;
-        vmaFindMemoryTypeIndexForImageInfo(m_vmaAllocator, imageCI, &vmaAllocationCI,
+        vmaFindMemoryTypeIndexForImageInfo(m_vmaAllocator, pImageCI, &vmaAllocationCI,
                                            &memTypeIndex);
         vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
     }
 
-    VKCHECK(vmaCreateImage(m_vmaAllocator, imageCI, &vmaAllocationCI, image, &allocation->handle,
-                           &allocation->info));
+    VKCHECK(vmaCreateImage(m_vmaAllocator, pImageCI, &vmaAllocationCI, pImage, &pAllocation->handle,
+                           &pAllocation->info));
 }
 
 void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc)
@@ -87,21 +87,21 @@ void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocatio
 }
 
 void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
-                                        const VkBufferCreateInfo* bufferCI,
+                                        const VkBufferCreateInfo* pBufferCI,
                                         RHIBufferAllocateType allocType,
-                                        VkBuffer* buffer,
-                                        VulkanMemoryAllocation* allocation)
+                                        VkBuffer* pBuffer,
+                                        VulkanMemoryAllocation* pAllocation)
 {
     VmaAllocationCreateInfo vmaAllocationCI{};
     if (allocType == RHIBufferAllocateType::eCPU)
     {
         bool isSrc = false;
         bool isDst = false;
-        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+        if (pBufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
         {
             isSrc = true;
         }
-        if (bufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+        if (pBufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
         {
             isDst = true;
         }
@@ -125,20 +125,20 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
         if (size <= SMALL_VK_ALLOCATION_SIZE)
         {
             uint32_t memTypeIndex = 0;
-            vmaFindMemoryTypeIndexForBufferInfo(m_vmaAllocator, bufferCI, &vmaAllocationCI,
+            vmaFindMemoryTypeIndexForBufferInfo(m_vmaAllocator, pBufferCI, &vmaAllocationCI,
                                                 &memTypeIndex);
             vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
         }
     }
-    VKCHECK(vmaCreateBuffer(m_vmaAllocator, bufferCI, &vmaAllocationCI, buffer, &allocation->handle,
-                            &allocation->info));
+    VKCHECK(vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer, &pAllocation->handle,
+                            &pAllocation->info));
 }
 
 uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc)
 {
-    void* dataPtr = nullptr;
-    VKCHECK(vmaMapMemory(m_vmaAllocator, memAlloc.handle, &dataPtr));
-    return static_cast<uint8_t*>(dataPtr);
+    void* pDataPtr = nullptr;
+    VKCHECK(vmaMapMemory(m_vmaAllocator, memAlloc.handle, &pDataPtr));
+    return static_cast<uint8_t*>(pDataPtr);
 }
 
 void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)

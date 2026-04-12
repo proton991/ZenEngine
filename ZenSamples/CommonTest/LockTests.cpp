@@ -1,8 +1,8 @@
-#include "Common/SpinLock.h"
+#include "Utils/SpinLock.h"
 #include <gtest/gtest.h>
 #include <thread>
 
-
+using zen::SpinLock;
 
 SpinLock spinLock;
 

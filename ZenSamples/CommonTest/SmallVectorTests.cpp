@@ -2,6 +2,8 @@
 #include "Templates/SmallVector.h"
 #include "Utils/Errors.h"
 
+using zen::SmallVector;
+
 
 TEST(small_vector_tests, constructors)
 {

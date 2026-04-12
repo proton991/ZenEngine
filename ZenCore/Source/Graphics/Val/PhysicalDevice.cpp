@@ -6,8 +6,8 @@ namespace zen::val
 {
 UniquePtr<PhysicalDevice> PhysicalDevice::CreateUnique(Instance& instance)
 {
-    auto* physicalDevice = new PhysicalDevice(instance);
-    return UniquePtr<PhysicalDevice>(physicalDevice);
+    auto* pPhysicalDevice = new PhysicalDevice(instance);
+    return UniquePtr<PhysicalDevice>(pPhysicalDevice);
 }
 
 PhysicalDevice::PhysicalDevice(Instance& instance) :
@@ -125,11 +125,11 @@ DeviceQueueInfo PhysicalDevice::GetDeviceQueueInfo(VkSurfaceKHR surface)
     return info;
 }
 
-bool PhysicalDevice::IsExtensionSupported(const char* extensionName) const
+bool PhysicalDevice::IsExtensionSupported(const char* pExtensionName) const
 {
     auto it = std::find_if(m_supportedExtensions.begin(), m_supportedExtensions.end(),
                            [&](const VkExtensionProperties& extension) {
-                               return strcmp(extension.extensionName, extensionName) == 0;
+                               return strcmp(extension.extensionName, pExtensionName) == 0;
                            });
     return it != m_supportedExtensions.end();
 }

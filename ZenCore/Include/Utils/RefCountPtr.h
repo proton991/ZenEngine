@@ -69,73 +69,73 @@ private:
 template <class T> class RefCountPtr
 {
 public:
-    RefCountPtr() : m_rawPtr(nullptr) {}
+    RefCountPtr() : m_pRawPtr(nullptr) {}
 
-    explicit RefCountPtr(T* ptr, bool addRef = true)
+    explicit RefCountPtr(T* pPtr, bool addRef = true)
     {
-        m_rawPtr = ptr;
-        if (ptr && addRef)
+        m_pRawPtr = pPtr;
+        if (pPtr && addRef)
         {
-            m_rawPtr->AddRef();
+            m_pRawPtr->AddRef();
         }
     }
 
     RefCountPtr(const RefCountPtr& other)
     {
-        m_rawPtr = other.m_rawPtr;
-        if (m_rawPtr)
+        m_pRawPtr = other.m_pRawPtr;
+        if (m_pRawPtr)
         {
-            m_rawPtr->AddRef();
+            m_pRawPtr->AddRef();
         }
     }
 
     T* Get() const
     {
-        return m_rawPtr;
+        return m_pRawPtr;
     }
 
     template <class U> explicit RefCountPtr(const RefCountPtr<U>& other)
     {
-        m_rawPtr = static_cast<T*>(other.Get());
-        if (m_rawPtr)
+        m_pRawPtr = static_cast<T*>(other.Get());
+        if (m_pRawPtr)
         {
-            m_rawPtr->AddRef();
+            m_pRawPtr->AddRef();
         }
     }
 
     RefCountPtr(RefCountPtr&& other) noexcept
     {
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = nullptr;
+        m_pRawPtr       = other.m_pRawPtr;
+        other.m_pRawPtr = nullptr;
     }
 
     template <class U> explicit RefCountPtr(RefCountPtr<U>&& other)
     {
-        m_rawPtr       = static_cast<T*>(other.Get());
-        other.m_rawPtr = nullptr;
+        m_pRawPtr       = static_cast<T*>(other.Get());
+        other.pRawPtr = nullptr;
     }
 
     ~RefCountPtr()
     {
-        if (m_rawPtr)
+        if (m_pRawPtr)
         {
-            m_rawPtr->Release();
+            m_pRawPtr->Release();
         }
     }
 
-    RefCountPtr& operator=(T* ptr)
+    RefCountPtr& operator=(T* pPtr)
     {
-        if (m_rawPtr != ptr)
+        if (m_pRawPtr != pPtr)
         {
-            T* oldPtr = m_rawPtr;
-            m_rawPtr  = ptr;
-            if (m_rawPtr)
+            T* pOldPtr = m_pRawPtr;
+            m_pRawPtr  = pPtr;
+            if (m_pRawPtr)
             {
-                m_rawPtr->AddRef();
+                m_pRawPtr->AddRef();
             }
-            if (oldPtr)
+            if (pOldPtr)
             {
-                oldPtr->Release();
+                pOldPtr->Release();
             }
         }
 
@@ -144,7 +144,7 @@ public:
 
     RefCountPtr& operator=(const RefCountPtr& other) // NOLINT(bugprone-unhandled-self-assignment)
     {
-        if (m_rawPtr != other.m_rawPtr)
+        if (m_pRawPtr != other.m_pRawPtr)
         {
             RefCountPtr(other).Swap(*this);
         }
@@ -161,12 +161,12 @@ public:
     {
         if (this != &other)
         {
-            T* oldPtr      = m_rawPtr;
-            m_rawPtr       = other.m_rawPtr;
-            other.m_rawPtr = nullptr;
-            if (oldPtr)
+            T* pOldPtr      = m_pRawPtr;
+            m_pRawPtr       = other.m_pRawPtr;
+            other.m_pRawPtr = nullptr;
+            if (pOldPtr)
             {
-                oldPtr->Release();
+                pOldPtr->Release();
             }
         }
         return *this;
@@ -174,37 +174,37 @@ public:
 
     template <class U> RefCountPtr& operator=(RefCountPtr<U>&& other) noexcept
     {
-        T* oldPtr      = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = nullptr;
-        if (oldPtr)
+        T* pOldPtr      = m_pRawPtr;
+        m_pRawPtr       = other.pRawPtr;
+        other.pRawPtr = nullptr;
+        if (pOldPtr)
         {
-            oldPtr->Release();
+            pOldPtr->Release();
         }
         return *this;
     }
 
     T* operator->() const
     {
-        return m_rawPtr;
+        return m_pRawPtr;
     }
 
     operator T*() const
     {
-        return m_rawPtr;
+        return m_pRawPtr;
     }
 
     T** operator&() // NOLINT(google-runtime-operator)
     {
-        return &m_rawPtr;
+        return &m_pRawPtr;
     }
 
     uint32_t GetRefCount()
     {
         uint32_t count = 0;
-        if (m_rawPtr)
+        if (m_pRawPtr)
         {
-            count = m_rawPtr->GetRefCount();
+            count = m_pRawPtr->GetRefCount();
             assert(count > 0);
         }
         return count;
@@ -212,20 +212,20 @@ public:
 
     void Swap(RefCountPtr&& other) noexcept
     {
-        T* tmp         = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = tmp;
+        T* pTmp         = m_pRawPtr;
+        m_pRawPtr       = other.m_pRawPtr;
+        other.m_pRawPtr = pTmp;
     }
 
     void Swap(RefCountPtr& other) noexcept
     {
-        T* tmp         = m_rawPtr;
-        m_rawPtr       = other.m_rawPtr;
-        other.m_rawPtr = tmp;
+        T* pTmp         = m_pRawPtr;
+        m_pRawPtr       = other.m_pRawPtr;
+        other.m_pRawPtr = pTmp;
     }
 
 private:
-    T* m_rawPtr;
+    T* m_pRawPtr;
 };
 
 template <class T, class... Args> RefCountPtr<T> MakeRefCountPtr(Args&&... args_)

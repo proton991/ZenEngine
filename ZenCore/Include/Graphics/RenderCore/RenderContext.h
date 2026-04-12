@@ -10,7 +10,7 @@ namespace zen
 class RenderContext
 {
 public:
-    RenderContext(const val::Device& device, platform::GlfwWindowImpl* window);
+    RenderContext(const val::Device& device, platform::GlfwWindowImpl* pWindow);
 
     ~RenderContext();
 
@@ -51,19 +51,19 @@ public:
     void SubmitImmediate(val::CommandBuffer* pCmdBuffer);
 
     template <typename T>
-    void UpdateRenderBuffer(const T* data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
+    void UpdateRenderBuffer(const T* pData, val::Buffer* pBuffer, val::CommandBuffer* pCmdBuffer)
     {
-        StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-        auto submitInfo              = stagingBuffer->Submit(data);
-        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
+        StagingBuffer* pStagingBuffer = GetCurrentStagingBuffer();
+        auto submitInfo              = pStagingBuffer->Submit(pData);
+        pCmdBuffer->CopyBuffer(pStagingBuffer, submitInfo.offset, pBuffer, 0, submitInfo.size);
     }
 
     template <typename T>
-    void UpdateRenderBuffer(ArrayView<T> data, val::Buffer* buffer, val::CommandBuffer* pCmdBuffer)
+    void UpdateRenderBuffer(ArrayView<T> data, val::Buffer* pBuffer, val::CommandBuffer* pCmdBuffer)
     {
-        StagingBuffer* stagingBuffer = GetCurrentStagingBuffer();
-        auto submitInfo              = stagingBuffer->Submit(data);
-        pCmdBuffer->CopyBuffer(stagingBuffer, submitInfo.offset, buffer, 0, submitInfo.size);
+        StagingBuffer* pStagingBuffer = GetCurrentStagingBuffer();
+        auto submitInfo              = pStagingBuffer->Submit(data);
+        pCmdBuffer->CopyBuffer(pStagingBuffer, submitInfo.offset, pBuffer, 0, submitInfo.size);
     }
 
     void RecreateSwapchain(uint32_t newWidth, uint32_t newHeight);
@@ -93,7 +93,7 @@ private:
     // semaphore signaled when commands are submitted
     VkSemaphore m_renderFinished{VK_NULL_HANDLE};
     // current command buffer provided by RenderFrame
-    val::CommandBuffer* m_activeCmdBuffer{nullptr};
+    val::CommandBuffer* m_pActiveCmdBuffer{nullptr};
     // common command pool
     UniquePtr<val::CommandPool> m_commandPool;
     // common sync obj pool

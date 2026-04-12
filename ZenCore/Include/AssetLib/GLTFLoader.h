@@ -39,11 +39,11 @@ struct Material
     float roughnessFactor{1.0f};
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
-    TextureInfo* baseColorTexture{nullptr};
-    TextureInfo* metallicRoughnessTexture{nullptr};
-    TextureInfo* normalTexture{nullptr};
-    TextureInfo* occlusionTexture{nullptr};
-    TextureInfo* emissiveTexture{nullptr};
+    TextureInfo* pBaseColorTexture{nullptr};
+    TextureInfo* pMetallicRoughnessTexture{nullptr};
+    TextureInfo* pNormalTexture{nullptr};
+    TextureInfo* pOcclusionTexture{nullptr};
+    TextureInfo* pEmissiveTexture{nullptr};
     bool doubleSided{false};
     struct TexCoordSets
     {
@@ -56,8 +56,8 @@ struct Material
     } texCoordSets;
     struct Extension
     {
-        TextureInfo* specularGlossinessTexture;
-        TextureInfo* diffuseTexture;
+        TextureInfo* pSpecularGlossinessTexture;
+        TextureInfo* pDiffuseTexture;
         Vec4 diffuseFactor{1.0f};
         Vec3 specularFactor{0.0f};
     } extension;
@@ -73,8 +73,8 @@ struct Material
 
 struct Primitive
 {
-    Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, Material* mat) :
-        firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount), material(mat)
+    Primitive(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount, Material* pMat) :
+        firstIndex(firstIndex), indexCount(indexCount), vertexCount(vertexCount), pMaterial(pMat)
     {}
 
     void SetBoundingBox(const Vec3& min, const Vec3& max)
@@ -86,7 +86,7 @@ struct Primitive
     uint32_t indexCount{0};
     uint32_t vertexCount{0};
     BoundingBox bb;
-    Material* material{nullptr};
+    Material* pMaterial{nullptr};
     bool hasIndices{false};
 };
 
@@ -97,7 +97,7 @@ struct Node
 
     Mat4 GetMatrix() const;
 
-    Node* parent{nullptr};
+    Node* pParent{nullptr};
     uint32_t index{0};
     int32_t skinIndex{-1};
     std::string name;
@@ -134,7 +134,7 @@ class GLTFLoader
 public:
     GLTFLoader() = default;
 
-    void LoadFromFile(const std::string& path, sg::Scene* scene);
+    void LoadFromFile(const std::string& path, sg::Scene* pScene);
 
     const auto& GetVertices() const
     {
@@ -146,25 +146,25 @@ public:
     }
 
 private:
-    void LoadGltfSamplers(sg::Scene* scene);
+    void LoadGltfSamplers(sg::Scene* pScene);
 
-    void LoadGltfTextures(sg::Scene* scene);
+    void LoadGltfTextures(sg::Scene* pScene);
 
-    void LoadGltfMaterials(sg::Scene* scene);
+    void LoadGltfMaterials(sg::Scene* pScene);
 
-    void LoadGltfMeshes(sg::Scene* scene);
+    void LoadGltfMeshes(sg::Scene* pScene);
 
-    void LoadGltfRenderableNodes(sg::Scene* scene);
+    void LoadGltfRenderableNodes(sg::Scene* pScene);
 
     void LoadGltfRenderableNodes(
         // current node index
         uint32_t nodeIndex,
         // parent node
-        sg::Node* parent,
+        sg::Node* pParent,
         // store results
         std::vector<UniquePtr<sg::Node>>& sgNodes,
         // access materials
-        sg::Scene* scene);
+        sg::Scene* pScene);
 
     tinygltf::Model m_gltfModel;
     tinygltf::TinyGLTF m_gltfContext;

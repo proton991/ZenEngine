@@ -4,9 +4,9 @@
 
 int main()
 {
-    Application* app = new HelloTriangle();
+    Application* pApp = new HelloTriangle();
     platform::WindowConfig windowConfig;
     windowConfig.resizable = true;
-    app->Prepare(windowConfig);
-    app->Run();
+    pApp->Prepare(windowConfig);
+    pApp->Run();
 }

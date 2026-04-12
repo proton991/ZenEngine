@@ -8,13 +8,13 @@
 
 namespace zen
 {
-VulkanFence::VulkanFence(VulkanFenceManager* owner, bool createSignaled) :
-    m_owner(owner), m_state(createSignaled ? State::eSignaled : State::eInitial)
+VulkanFence::VulkanFence(VulkanFenceManager* pOwner, bool createSignaled) :
+    m_pOwner(pOwner), m_state(createSignaled ? State::eSignaled : State::eInitial)
 {
     VkFenceCreateInfo fenceCI;
     InitVkStruct(fenceCI, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
     fenceCI.flags = createSignaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0;
-    VKCHECK(vkCreateFence(m_owner->GetDevice()->GetVkHandle(), &fenceCI, nullptr, &m_fence));
+    VKCHECK(vkCreateFence(m_pOwner->GetDevice()->GetVkHandle(), &fenceCI, nullptr, &m_fence));
 }
 
 void VulkanFenceManager::Destroy()
@@ -22,10 +22,10 @@ void VulkanFenceManager::Destroy()
     VERIFY_EXPR(m_usedFences.empty());
     while (!m_freeFences.empty())
     {
-        VulkanFence* fence = m_freeFences.front();
+        VulkanFence* pFence = m_freeFences.front();
         m_freeFences.pop();
-        DestroyFence(fence);
-        ZEN_DELETE(fence);
+        DestroyFence(pFence);
+        ZEN_DELETE(pFence);
     }
 }
 
@@ -33,16 +33,16 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
 {
     if (!m_freeFences.empty())
     {
-        VulkanFence* fence = m_freeFences.front();
+        VulkanFence* pFence = m_freeFences.front();
         m_freeFences.pop();
-        fence->m_state =
+        pFence->m_state =
             createSignaled ? VulkanFence::State::eSignaled : VulkanFence::State::eInitial;
-        m_usedFences.push_back(fence);
-        return fence;
+        m_usedFences.push_back(pFence);
+        return pFence;
     }
-    VulkanFence* newFence = ZEN_NEW() VulkanFence(this, createSignaled);
-    m_usedFences.push_back(newFence);
-    return newFence;
+    VulkanFence* pNewFence = ZEN_NEW() VulkanFence(this, createSignaled);
+    m_usedFences.push_back(pNewFence);
+    return pNewFence;
 }
 
 void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
@@ -66,33 +66,33 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
     fence = nullptr;
 }
 
-bool VulkanFenceManager::IsFenceSignaled(VulkanFence* fence)
+bool VulkanFenceManager::IsFenceSignaled(VulkanFence* pFence)
 {
-    if (fence->IsSignaled())
+    if (pFence->IsSignaled())
     {
         return true;
     }
     // double check
-    VkResult result = vkGetFenceStatus(m_device->GetVkHandle(), fence->m_fence);
+    VkResult result = vkGetFenceStatus(m_pDevice->GetVkHandle(), pFence->m_fence);
     if (result == VK_SUCCESS)
     {
-        fence->m_state = VulkanFence::State::eSignaled;
+        pFence->m_state = VulkanFence::State::eSignaled;
         return true;
     }
     return false;
 }
 
-bool VulkanFenceManager::WaitForFence(VulkanFence* fence, uint64_t timeNS)
+bool VulkanFenceManager::WaitForFence(VulkanFence* pFence, uint64_t timeNS)
 {
-    if (IsFenceSignaled(fence))
+    if (IsFenceSignaled(pFence))
     {
-        fence->m_state = VulkanFence::State::eSignaled;
+        pFence->m_state = VulkanFence::State::eSignaled;
         return true;
     }
-    VkResult result = vkWaitForFences(m_device->GetVkHandle(), 1, &fence->m_fence, true, timeNS);
+    VkResult result = vkWaitForFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence, true, timeNS);
     if (result == VK_SUCCESS)
     {
-        fence->m_state = VulkanFence::State::eSignaled;
+        pFence->m_state = VulkanFence::State::eSignaled;
         return true;
     }
     if (result == VK_TIMEOUT)
@@ -104,12 +104,12 @@ bool VulkanFenceManager::WaitForFence(VulkanFence* fence, uint64_t timeNS)
     return false;
 }
 
-void VulkanFenceManager::ResetFence(VulkanFence* fence)
+void VulkanFenceManager::ResetFence(VulkanFence* pFence)
 {
-    if (fence->m_state != VulkanFence::State::eInitial)
+    if (pFence->m_state != VulkanFence::State::eInitial)
     {
-        VKCHECK(vkResetFences(m_device->GetVkHandle(), 1, &fence->m_fence));
-        fence->m_state = VulkanFence::State::eInitial;
+        VKCHECK(vkResetFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence));
+        pFence->m_state = VulkanFence::State::eInitial;
     }
 }
 
@@ -124,17 +124,17 @@ void VulkanFenceManager::WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeN
     fence = nullptr;
 }
 
-void VulkanFenceManager::DestroyFence(VulkanFence* fence)
+void VulkanFenceManager::DestroyFence(VulkanFence* pFence)
 {
-    vkDestroyFence(m_device->GetVkHandle(), fence->GetVkHandle(), nullptr);
-    fence->m_fence = VK_NULL_HANDLE;
-    fence->m_state = VulkanFence::State::eInitial;
+    vkDestroyFence(m_pDevice->GetVkHandle(), pFence->GetVkHandle(), nullptr);
+    pFence->m_fence = VK_NULL_HANDLE;
+    pFence->m_state = VulkanFence::State::eInitial;
 }
 
-VulkanSemaphore::VulkanSemaphore(VulkanDevice* device,
+VulkanSemaphore::VulkanSemaphore(VulkanDevice* pDevice,
                                  VkSemaphoreType semaphoreType,
                                  uint64_t initialValue) :
-    m_device(device), m_type(semaphoreType)
+    m_pDevice(pDevice), m_type(semaphoreType)
 {
     VkSemaphoreCreateInfo semaphoreCI;
     InitVkStruct(semaphoreCI, VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
@@ -146,12 +146,12 @@ VulkanSemaphore::VulkanSemaphore(VulkanDevice* device,
         semaphoreTypeCI.initialValue  = initialValue;
         semaphoreCI.pNext             = &semaphoreTypeCI;
     }
-    VKCHECK(vkCreateSemaphore(m_device->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
+    VKCHECK(vkCreateSemaphore(m_pDevice->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
 }
 
 void VulkanSemaphore::SetDebugName(const char* pName)
 {
-    m_device->SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<uint64_t>(m_semaphore),
+    m_pDevice->SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<uint64_t>(m_semaphore),
                             pName);
 }
 
@@ -160,7 +160,7 @@ uint64_t VulkanSemaphore::GetCounterValue() const
     VERIFY_EXPR(IsTimeline());
 
     uint64_t value = 0;
-    VKCHECK(vkGetSemaphoreCounterValue(m_device->GetVkHandle(), m_semaphore, &value));
+    VKCHECK(vkGetSemaphoreCounterValue(m_pDevice->GetVkHandle(), m_semaphore, &value));
     return value;
 }
 
@@ -174,7 +174,7 @@ bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
     waitInfo.pSemaphores    = &m_semaphore;
     waitInfo.pValues        = &value;
 
-    VkResult result = vkWaitSemaphores(m_device->GetVkHandle(), &waitInfo, timeNS);
+    VkResult result = vkWaitSemaphores(m_pDevice->GetVkHandle(), &waitInfo, timeNS);
     if (result == VK_SUCCESS)
     {
         return true;
@@ -189,7 +189,7 @@ bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
 
 VulkanSemaphore::~VulkanSemaphore()
 {
-    vkDestroySemaphore(m_device->GetVkHandle(), m_semaphore, nullptr);
+    vkDestroySemaphore(m_pDevice->GetVkHandle(), m_semaphore, nullptr);
     m_semaphore = VK_NULL_HANDLE;
 }
 
@@ -200,13 +200,13 @@ void VulkanSemaphoreManager::Destroy()
 #endif
     while (!m_freeSemaphores.empty())
     {
-        VulkanSemaphore* sem = m_freeSemaphores.front();
+        VulkanSemaphore* pSem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
-        ZEN_DELETE(sem);
+        ZEN_DELETE(pSem);
     }
-    for (VulkanSemaphore* sem : m_usedSemaphores)
+    for (VulkanSemaphore* pSem : m_usedSemaphores)
     {
-        ZEN_DELETE(sem);
+        ZEN_DELETE(pSem);
     }
 }
 
@@ -214,15 +214,15 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
 {
     if (!m_freeSemaphores.empty())
     {
-        VulkanSemaphore* sem = m_freeSemaphores.front();
+        VulkanSemaphore* pSem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
-        m_usedSemaphores.push_back(sem);
-        return sem;
+        m_usedSemaphores.push_back(pSem);
+        return pSem;
     }
-    VulkanSemaphore* newSem = ZEN_NEW() VulkanSemaphore(m_device);
-    m_usedSemaphores.push_back(newSem);
+    VulkanSemaphore* pNewSem = ZEN_NEW() VulkanSemaphore(m_pDevice);
+    m_usedSemaphores.push_back(pNewSem);
     m_allocatedSemaphoreCount++;
-    return newSem;
+    return pNewSem;
 }
 
 void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)

@@ -57,7 +57,7 @@ public:
         return m_gpu;
     }
 
-    void SetObjectName(VkObjectType type, uint64_t handle, const char* name);
+    void SetObjectName(VkObjectType type, uint64_t handle, const char* pName);
 
     const auto& GetDescriptorIndexingProperties() const
     {
@@ -66,44 +66,44 @@ public:
 
     VulkanFenceManager* GetFenceManager() const
     {
-        return m_fenceManager;
+        return m_pFenceManager;
     }
 
     VulkanSemaphoreManager* GetSemaphoreManager() const
     {
-        return m_semaphoreManger;
+        return m_pSemaphoreManger;
     }
 
     VulkanQueue* GetGfxQueue() const
     {
-        return m_gfxQueue;
+        return m_pGfxQueue;
     }
 
     VulkanQueue* GetComputeQueue() const
     {
-        return m_computeQueue;
+        return m_pComputeQueue;
     }
 
     VulkanQueue* GetTransferQueue() const
     {
-        return m_transferQueue;
+        return m_pTransferQueue;
     }
 
     VulkanQueue* GetQueue(RHICommandContextType type)
     {
         if (type == RHICommandContextType::eGraphics)
         {
-            return m_gfxQueue;
+            return m_pGfxQueue;
         }
         if (type == RHICommandContextType::eAsyncCompute)
         {
-            return m_computeQueue;
+            return m_pComputeQueue;
         }
         if (type == RHICommandContextType::eTransfer)
         {
-            return m_transferQueue;
+            return m_pTransferQueue;
         }
-        return m_gfxQueue;
+        return m_pGfxQueue;
     }
 
     const VkPhysicalDeviceFeatures& GetPhysicalDeviceFeatures()
@@ -154,11 +154,11 @@ private:
     HeapVector<const char*> m_extensions;
 
     // queue infos
-    VulkanQueue* m_gfxQueue{nullptr};
-    VulkanQueue* m_computeQueue{nullptr};
-    VulkanQueue* m_transferQueue{nullptr};
+    VulkanQueue* m_pGfxQueue{nullptr};
+    VulkanQueue* m_pComputeQueue{nullptr};
+    VulkanQueue* m_pTransferQueue{nullptr};
 
-    VulkanFenceManager* m_fenceManager;
-    VulkanSemaphoreManager* m_semaphoreManger;
+    VulkanFenceManager* m_pFenceManager;
+    VulkanSemaphoreManager* m_pSemaphoreManger;
 };
 } // namespace zen

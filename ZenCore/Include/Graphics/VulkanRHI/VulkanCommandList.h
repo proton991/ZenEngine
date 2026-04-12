@@ -451,7 +451,7 @@ public:
                        RHIBuffer* pDstBuffer,
                        const RHIBufferCopyRegion& region) override;
 
-    void RHIClearTexture(RHITexture* texture,
+    void RHIClearTexture(RHITexture* pTexture,
                          const Color& color,
                          const RHITextureSubResourceRange& range) override;
 

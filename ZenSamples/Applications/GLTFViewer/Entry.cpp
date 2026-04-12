@@ -5,9 +5,9 @@ using namespace zen::platform;
 
 int main()
 {
-    Application* app = new GLTFViewer();
+    Application* pApp = new GLTFViewer();
     WindowConfig windowConfig;
     windowConfig.resizable = true;
-    app->Prepare(windowConfig);
-    app->Run();
+    pApp->Prepare(windowConfig);
+    pApp->Run();
 }

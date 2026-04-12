@@ -333,62 +333,62 @@ VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& 
     return depthStencilValue;
 }
 
-void ToVkClearColor(const Color& color, VkClearColorValue* colorValue)
+void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue)
 {
-    *colorValue            = {};
-    colorValue->float32[0] = color.r;
-    colorValue->float32[1] = color.g;
-    colorValue->float32[2] = color.b;
-    colorValue->float32[3] = color.a;
+    *pColorValue            = {};
+    pColorValue->float32[0] = color.r;
+    pColorValue->float32[1] = color.g;
+    pColorValue->float32[2] = color.b;
+    pColorValue->float32[3] = color.a;
 }
 
 void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,
-                               VkImageSubresourceRange* vkRange)
+                               VkImageSubresourceRange* pVkRange)
 {
-    *vkRange                = {};
-    vkRange->aspectMask     = ToVkAspectFlags(range.aspect);
-    vkRange->layerCount     = range.layerCount;
-    vkRange->levelCount     = range.levelCount;
-    vkRange->baseArrayLayer = range.baseArrayLayer;
-    vkRange->baseMipLevel   = range.baseMipLevel;
+    *pVkRange                = {};
+    pVkRange->aspectMask     = ToVkAspectFlags(range.aspect);
+    pVkRange->layerCount     = range.layerCount;
+    pVkRange->levelCount     = range.levelCount;
+    pVkRange->baseArrayLayer = range.baseArrayLayer;
+    pVkRange->baseMipLevel   = range.baseMipLevel;
 }
 
 void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
-                                VkImageSubresourceLayers* vkLayers)
+                                VkImageSubresourceLayers* pVkLayers)
 {
-    *vkLayers                = {};
-    vkLayers->aspectMask     = ToVkAspectFlags(layers.aspect);
-    vkLayers->layerCount     = layers.layerCount;
-    vkLayers->mipLevel       = layers.mipmap;
-    vkLayers->baseArrayLayer = layers.baseArrayLayer;
+    *pVkLayers                = {};
+    pVkLayers->aspectMask     = ToVkAspectFlags(layers.aspect);
+    pVkLayers->layerCount     = layers.layerCount;
+    pVkLayers->mipLevel       = layers.mipmap;
+    pVkLayers->baseArrayLayer = layers.baseArrayLayer;
 }
 
-void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* copy)
+void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy)
 {
-    *copy = {};
-    ToVkImageSubresourceLayers(region.srcSubresources, &copy->srcSubresource);
-    ToVkImageSubresourceLayers(region.dstSubresources, &copy->dstSubresource);
-    copy->srcOffset.x   = region.srcOffset.x;
-    copy->srcOffset.y   = region.srcOffset.y;
-    copy->srcOffset.z   = region.srcOffset.z;
-    copy->dstOffset.x   = region.dstOffset.x;
-    copy->dstOffset.y   = region.dstOffset.y;
-    copy->dstOffset.z   = region.dstOffset.z;
-    copy->extent.width  = region.size.x;
-    copy->extent.height = region.size.y;
-    copy->extent.depth  = region.size.z;
+    *pCopy = {};
+    ToVkImageSubresourceLayers(region.srcSubresources, &pCopy->srcSubresource);
+    ToVkImageSubresourceLayers(region.dstSubresources, &pCopy->dstSubresource);
+    pCopy->srcOffset.x   = region.srcOffset.x;
+    pCopy->srcOffset.y   = region.srcOffset.y;
+    pCopy->srcOffset.z   = region.srcOffset.z;
+    pCopy->dstOffset.x   = region.dstOffset.x;
+    pCopy->dstOffset.y   = region.dstOffset.y;
+    pCopy->dstOffset.z   = region.dstOffset.z;
+    pCopy->extent.width  = region.size.x;
+    pCopy->extent.height = region.size.y;
+    pCopy->extent.depth  = region.size.z;
 }
 
-void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* copy)
+void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* pCopy)
 {
-    *copy = {};
-    ToVkImageSubresourceLayers(region.textureSubresources, &copy->imageSubresource);
-    copy->bufferOffset       = region.bufferOffset;
-    copy->imageOffset.x      = region.textureOffset.x;
-    copy->imageOffset.y      = region.textureOffset.y;
-    copy->imageOffset.z      = region.textureOffset.z;
-    copy->imageExtent.width  = region.textureSize.x;
-    copy->imageExtent.height = region.textureSize.y;
-    copy->imageExtent.depth  = region.textureSize.z;
+    *pCopy = {};
+    ToVkImageSubresourceLayers(region.textureSubresources, &pCopy->imageSubresource);
+    pCopy->bufferOffset       = region.bufferOffset;
+    pCopy->imageOffset.x      = region.textureOffset.x;
+    pCopy->imageOffset.y      = region.textureOffset.y;
+    pCopy->imageOffset.z      = region.textureOffset.z;
+    pCopy->imageExtent.width  = region.textureSize.x;
+    pCopy->imageExtent.height = region.textureSize.y;
+    pCopy->imageExtent.depth  = region.textureSize.z;
 }
 } // namespace zen

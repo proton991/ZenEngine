@@ -52,7 +52,7 @@ public:
         return m_features;
     }
 
-    bool IsExtensionSupported(const char* extensionName) const;
+    bool IsExtensionSupported(const char* pExtensionName) const;
 
     template <typename T> T& RequestExtensionFeatures(VkStructureType type)
     {
@@ -84,24 +84,24 @@ public:
         m_extensionFeatures.insert({type, std::make_shared<T>(extension)});
 
         // Pull out the dereference void pointer, we can assume its type based on the template
-        auto* extensionPtr = static_cast<T*>(m_extensionFeatures.find(type)->second.get());
+        auto* pExtensionPtr = static_cast<T*>(m_extensionFeatures.find(type)->second.get());
 
         // If an extension feature has already been requested, we shift the linked list down by one
         // Making this current extension the new base pointer
-        if (m_featureChainHead)
+        if (m_pFeatureChainHead)
         {
-            extensionPtr->pNext = m_featureChainHead;
+            pExtensionPtr->pNext = m_pFeatureChainHead;
         }
-        m_featureChainHead = extensionPtr;
+        m_pFeatureChainHead = pExtensionPtr;
 
-        return *extensionPtr;
+        return *pExtensionPtr;
     }
 
     VkInstance GetInstanceHandle() const;
 
     void* GetExtensionFeatureChain() const
     {
-        return m_featureChainHead;
+        return m_pFeatureChainHead;
     }
 
     VkPhysicalDeviceFeatures& GetMutableFeatures()
@@ -127,7 +127,7 @@ private:
 
     VkPhysicalDeviceFeatures m_requestedFeatures{};
     // The extension feature pointer
-    void* m_featureChainHead = nullptr;
+    void* m_pFeatureChainHead = nullptr;
     // Holds the extension feature structures, we use a map to retain an order of requested structures
     std::map<VkStructureType, std::shared_ptr<void>> m_extensionFeatures;
     friend class Device;

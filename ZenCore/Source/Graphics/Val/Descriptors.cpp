@@ -89,7 +89,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(const Device& device,
     m_device(device), m_poolManager(poolManager)
 {}
 
-VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* layout)
+VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* pLayout)
 {
     VkDescriptorSet set{VK_NULL_HANDLE};
     if (m_currentPool == VK_NULL_HANDLE)
@@ -98,7 +98,7 @@ VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* la
     }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
-    allocInfo.pSetLayouts        = layout;
+    allocInfo.pSetLayouts        = pLayout;
     allocInfo.descriptorPool     = m_currentPool;
     allocInfo.descriptorSetCount = 1;
 
@@ -109,9 +109,9 @@ VkDescriptorSet DescriptorSetAllocator::Allocate(const VkDescriptorSetLayout* la
     return set;
 }
 
-bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
+bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* pLayout,
                                       uint32_t count,
-                                      VkDescriptorSet* outSet)
+                                      VkDescriptorSet* pOutSet)
 {
     std::lock_guard<std::mutex> Lock{m_mutex};
     if (m_currentPool == VK_NULL_HANDLE)
@@ -120,11 +120,11 @@ bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
     }
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.pNext              = nullptr;
-    allocInfo.pSetLayouts        = layout;
+    allocInfo.pSetLayouts        = pLayout;
     allocInfo.descriptorPool     = m_currentPool;
     allocInfo.descriptorSetCount = count;
 
-    auto allocResult = vkAllocateDescriptorSets(m_device.GetHandle(), &allocInfo, outSet);
+    auto allocResult = vkAllocateDescriptorSets(m_device.GetHandle(), &allocInfo, pOutSet);
 
     switch (allocResult)
     {
@@ -145,7 +145,7 @@ bool DescriptorSetAllocator::Allocate(VkDescriptorSetLayout* layout,
     // in case Vulkan Handles are just uint64_t values, overwrite the value
     allocInfo.descriptorPool = m_currentPool;
 
-    allocResult = vkAllocateDescriptorSets(m_device.GetHandle(), &allocInfo, outSet);
+    allocResult = vkAllocateDescriptorSets(m_device.GetHandle(), &allocInfo, pOutSet);
     // if it still fails then we have big issues
     return allocResult == VK_SUCCESS;
 }

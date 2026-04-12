@@ -43,7 +43,7 @@ public:
 
     DataFormat GetSwapchainFormat() final
     {
-        return static_cast<DataFormat>(m_swapchain->GetFormat());
+        return static_cast<DataFormat>(m_pSwapchain->GetFormat());
     }
 
     DataFormat GetDepthStencilFormat() final
@@ -51,7 +51,7 @@ public:
         return m_depthFormat;
     }
 
-    bool Present(VulkanCommandBuffer* cmdBuffer);
+    bool Present(VulkanCommandBuffer* pCmdBuffer);
 
     bool Present(FVulkanCommandListContext* pContext);
 
@@ -95,10 +95,10 @@ protected:
     void Destroy() override;
 
 private:
-    VulkanViewport(void* windowPtr, uint32_t width, uint32_t height, bool enableVSync);
+    VulkanViewport(void* pWindowPtr, uint32_t width, uint32_t height, bool enableVSync);
 
-    void CreateSwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
-    void DestroySwapchain(VulkanSwapchainRecreateInfo* recreateInfo);
+    void CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
+    void DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
     bool TryAcquireNextImage();
     void RecreateSwapchain();
     void CopyToBackBufferForPresent(VkCommandBuffer cmdBufferVk,
@@ -107,22 +107,22 @@ private:
                                     uint32_t windowHeight);
 
     // VulkanRHI* m_RHI{nullptr};
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     // void* m_windowPtr{nullptr};
     // uint32_t m_width{0};
     // uint32_t m_height{0};
     // bool m_enableVSync{true};
     DataFormat m_depthFormat;
-    VulkanSwapchain* m_swapchain{nullptr};
+    VulkanSwapchain* m_pSwapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
-    VulkanSemaphore* m_imageAcquiredSemaphore{nullptr};
-    VulkanSemaphore* m_renderingCompleteSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
-    VulkanCommandBuffer* m_lastFrameCmdBuffer{nullptr};
+    VulkanSemaphore* m_pImageAcquiredSemaphore{nullptr};
+    VulkanSemaphore* m_pRenderingCompleteSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
+    VulkanCommandBuffer* m_pLastFrameCmdBuffer{nullptr};
     uint64_t m_lastFenceSignaledCounter{0};
     // SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
     VkImage m_backBufferImages[ZEN_NUM_FRAMES_IN_FLIGHT];
-    VulkanTexture* m_colorBackBuffer{nullptr};
-    VulkanTexture* m_depthStencilBackBuffer{nullptr};
+    VulkanTexture* m_pColorBackBuffer{nullptr};
+    VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
 
     struct
     {

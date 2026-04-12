@@ -10,6 +10,6 @@ namespace zen::sys
 class SceneEditor
 {
 public:
-    static void CenterAndNormalizeScene(sg::Scene* scene);
+    static void CenterAndNormalizeScene(sg::Scene* pScene);
 };
 } // namespace zen::sys

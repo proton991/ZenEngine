@@ -3,8 +3,8 @@
 
 namespace zen::rc
 {
-VoxelizerBase::VoxelizerBase(RenderDevice* renderDevice, RHIViewport* viewport) :
-    m_renderDevice(renderDevice), m_viewport(viewport)
+VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
+    m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
 {}
 
 void VoxelizerBase::PrepareTextures()
@@ -16,7 +16,7 @@ void VoxelizerBase::PrepareTextures()
         samplerInfo.magFilter = RHISamplerFilter::eLinear;
         samplerInfo.mipFilter = RHISamplerFilter::eLinear;
 
-        m_voxelSampler = m_renderDevice->CreateSampler(samplerInfo);
+        m_pVoxelSampler = m_pRenderDevice->CreateSampler(samplerInfo);
     }
 
     // offscreen depth texture sampler
@@ -31,7 +31,7 @@ void VoxelizerBase::PrepareTextures()
         samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
         samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
 
-        m_colorSampler = m_renderDevice->CreateSampler(samplerInfo);
+        m_pColorSampler = m_pRenderDevice->CreateSampler(samplerInfo);
     }
     TextureUsageHint usageHint{.copyUsage = false};
     {
@@ -48,8 +48,8 @@ void VoxelizerBase::PrepareTextures()
         texFormat.arrayLayers = 1;
         texFormat.mipmaps     = 1;
 
-        m_voxelTextures.staticFlag =
-            m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_static_flag");
+        m_voxelTextures.pStaticFlag =
+            m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_static_flag");
     }
     {
         // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
@@ -69,8 +69,8 @@ void VoxelizerBase::PrepareTextures()
         texFormat.mipmaps       = 1;
         texFormat.mutableFormat = true;
 
-        m_voxelTextures.albedo =
-            m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_albedo");
+        m_voxelTextures.pAlbedo =
+            m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_albedo");
     }
     {
         // TextureProxyInfo textureProxyInfo{};
@@ -88,8 +88,8 @@ void VoxelizerBase::PrepareTextures()
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.albedoProxy = m_renderDevice->CreateTextureProxy(
-            m_voxelTextures.albedo, proxyFormat, "voxel_albedo_proxy");
+        m_voxelTextures.pAlbedoProxy = m_pRenderDevice->CreateTextureProxy(
+            m_voxelTextures.pAlbedo, proxyFormat, "voxel_albedo_proxy");
     }
     {
         // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
@@ -109,8 +109,8 @@ void VoxelizerBase::PrepareTextures()
         texFormat.mipmaps       = 1;
         texFormat.mutableFormat = true;
 
-        m_voxelTextures.normal =
-            m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_normal");
+        m_voxelTextures.pNormal =
+            m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_normal");
     }
     {
         // TextureProxyInfo textureProxyInfo{};
@@ -127,8 +127,8 @@ void VoxelizerBase::PrepareTextures()
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.normalProxy = m_renderDevice->CreateTextureProxy(
-            m_voxelTextures.normal, proxyFormat, "voxel_normal_proxy");
+        m_voxelTextures.pNormalProxy = m_pRenderDevice->CreateTextureProxy(
+            m_voxelTextures.pNormal, proxyFormat, "voxel_normal_proxy");
     }
     {
         // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
@@ -147,8 +147,8 @@ void VoxelizerBase::PrepareTextures()
         texFormat.mipmaps       = 1;
         texFormat.mutableFormat = true;
 
-        m_voxelTextures.emissive =
-            m_renderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_emissive");
+        m_voxelTextures.pEmissive =
+            m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_emissive");
     }
     {
         TextureProxyFormat proxyFormat{};
@@ -157,8 +157,8 @@ void VoxelizerBase::PrepareTextures()
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.emissiveProxy = m_renderDevice->CreateTextureProxy(
-            m_voxelTextures.normal, proxyFormat, "voxel_emissive_proxy");
+        m_voxelTextures.pEmissiveProxy = m_pRenderDevice->CreateTextureProxy(
+            m_voxelTextures.pNormal, proxyFormat, "voxel_emissive_proxy");
 
         // TextureProxyInfo textureProxyInfo{};
         // textureProxyInfo.type        = RHITextureType::e3D;
@@ -171,10 +171,10 @@ void VoxelizerBase::PrepareTextures()
     }
 }
 
-void VoxelizerBase::SetRenderScene(RenderScene* scene)
+void VoxelizerBase::SetRenderScene(RenderScene* pScene)
 {
-    m_scene       = scene;
-    m_sceneExtent = m_scene->GetAABB().GetMaxExtent();
+    m_pScene       = pScene;
+    m_sceneExtent = m_pScene->GetAABB().GetMaxExtent();
     m_voxelSize   = m_sceneExtent / static_cast<float>(m_voxelTexResolution);
     m_voxelScale  = 1.0f / m_sceneExtent;
 
@@ -184,18 +184,18 @@ void VoxelizerBase::SetRenderScene(RenderScene* scene)
 
 Vec3 VoxelizerBase::GetSceneMinPoint() const
 {
-    return m_scene->GetAABB().GetMin();
+    return m_pScene->GetAABB().GetMin();
 }
 
 void VoxelizerBase::Destroy()
 {
-    m_renderDevice->DestroyTexture(m_voxelTextures.albedoProxy);
-    m_renderDevice->DestroyTexture(m_voxelTextures.normalProxy);
-    m_renderDevice->DestroyTexture(m_voxelTextures.emissiveProxy);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pAlbedoProxy);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pNormalProxy);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissiveProxy);
 
-    m_renderDevice->DestroyTexture(m_voxelTextures.staticFlag);
-    m_renderDevice->DestroyTexture(m_voxelTextures.albedo);
-    m_renderDevice->DestroyTexture(m_voxelTextures.normal);
-    m_renderDevice->DestroyTexture(m_voxelTextures.emissive);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pStaticFlag);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pAlbedo);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pNormal);
+    m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissive);
 }
 } // namespace zen::rc

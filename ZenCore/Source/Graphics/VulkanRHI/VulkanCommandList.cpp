@@ -427,9 +427,9 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
     {
         HeapVector<VkBuffer> vkBuffers;
-        for (VulkanBuffer* buffer : m_vertexBuffers)
+        for (VulkanBuffer* pBuffer : m_vertexBuffers)
         {
-            vkBuffers.emplace_back(TO_VK_BUFFER(buffer)->GetVkBuffer());
+            vkBuffers.emplace_back(pBuffer->GetVkBuffer());
         }
         vkCmdBindVertexBuffers(cmdBuffer, 0, m_vertexBuffers.size(), vkBuffers.data(),
                                m_vertexBufferOffsets.data());
@@ -489,10 +489,10 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
             const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
-            VulkanTexture* vulkanTexture   = TO_VK_TEXTURE(colorRT.texture);
+            VulkanTexture* pVulkanTexture   = TO_VK_TEXTURE(colorRT.pTexture);
             VkRenderingAttachmentInfoKHR colorAttachment{};
             InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-            colorAttachment.imageView        = vulkanTexture->GetVkImageView();
+            colorAttachment.imageView        = pVulkanTexture->GetVkImageView();
             colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
             colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
@@ -507,8 +507,8 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         if (pRenderingLayout->hasDepthStencilRT)
         {
             const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
-            VulkanTexture* vulkanTexture          = TO_VK_TEXTURE(depthStencilRT.texture);
-            depthStencilAttachment.imageView      = vulkanTexture->GetVkImageView();
+            VulkanTexture* pVulkanTexture          = TO_VK_TEXTURE(depthStencilRT.pTexture);
+            depthStencilAttachment.imageView      = pVulkanTexture->GetVkImageView();
             depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
             depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
@@ -602,16 +602,16 @@ void FVulkanCommandListContext::RHISetBlendConstants(const Color& blendConstants
 
 void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline,
                                                 uint32_t numDescriptorSets,
-                                                RHIDescriptorSet* const* ppDescriptorSets)
+                                                RHIDescriptorSet* const* pDescriptorSets)
 {
     VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
     if (pVkPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
     {
-        m_pComputeState->SetPipelineState(pPipeline, numDescriptorSets, ppDescriptorSets);
+        m_pComputeState->SetPipelineState(pPipeline, numDescriptorSets, pDescriptorSets);
     }
     else
     {
-        m_pGfxState->SetPipelineState(pPipeline, numDescriptorSets, ppDescriptorSets);
+        m_pGfxState->SetPipelineState(pPipeline, numDescriptorSets, pDescriptorSets);
     }
 }
 
@@ -721,18 +721,18 @@ void FVulkanCommandListContext::RHIAddTransitions(
 
     for (const auto& bufferTransition : bufferTransitions)
     {
-        VulkanBuffer* vulkanBuffer = TO_VK_BUFFER(bufferTransition.buffer);
+        VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
         VkAccessFlags srcAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
                                                                     bufferTransition.oldAccessMode);
         VkAccessFlags dstAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
                                                                     bufferTransition.newAccessMode);
-        barrier.AddBufferBarrier(vulkanBuffer->GetVkBuffer(), bufferTransition.offset,
+        barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
     }
 
     for (const auto& textureTransition : textureTransitions)
     {
-        VulkanTexture* vulkanTexture = TO_VK_TEXTURE(textureTransition.texture);
+        VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(textureTransition.pTexture);
 
         VkAccessFlags srcAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
@@ -740,7 +740,7 @@ void FVulkanCommandListContext::RHIAddTransitions(
             textureTransition.newUsage, textureTransition.newAccessMode));
         // VkImageLayout oldLayout =
         //     ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
-        VkImageLayout oldLayout = GVulkanRHI->GetImageCurrentLayout(vulkanTexture->GetVkImage());
+        VkImageLayout oldLayout = GVulkanRHI->GetImageCurrentLayout(pVulkanTexture->GetVkImage());
         VkImageLayout newLayout =
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
         // filter
@@ -756,9 +756,9 @@ void FVulkanCommandListContext::RHIAddTransitions(
         // subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
         // subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
 
-        barrier.AddImageBarrier(vulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange,
+        barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange,
                                 srcAccess, dstAccess);
-        GVulkanRHI->UpdateImageLayout(vulkanTexture->GetVkImage(), newLayout);
+        GVulkanRHI->UpdateImageLayout(pVulkanTexture->GetVkImage(), newLayout);
     }
     barrier.Execute(GetCommandBuffer()->GetVkHandle(), srcStages, dstStages);
 }
@@ -768,8 +768,8 @@ void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
     VulkanPipelineBarrier barrier;
     VkCommandBuffer cmdBuffer = GetCommandBuffer()->GetVkHandle();
 
-    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(pTexture);
-    VkImage vkImage              = vulkanTexture->GetVkImage();
+    VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
+    VkImage vkImage              = pVulkanTexture->GetVkImage();
     // Get texture attributes
     // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
     const uint32_t texWidth  = pTexture->GetBaseInfo().width;
@@ -782,7 +782,7 @@ void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
     //                   vulkanTexture->GetVkSubresourceRange());
 
     barrier.AddImageBarrier(vkImage, originLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            vulkanTexture->GetVkSubresourceRange());
+                            pVulkanTexture->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
 
     // Copy down mips from n-1 to n
@@ -836,21 +836,21 @@ void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
     // ChangeImageLayout(vkImage, GVulkanRHI->GetImageCurrentLayout(vkImage), originLayout,
     //                   vulkanTexture->GetVkSubresourceRange());
     barrier.AddImageBarrier(vkImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, originLayout,
-                            vulkanTexture->GetVkSubresourceRange());
+                            pVulkanTexture->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
 }
 
 void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture* pTexture,
                                                         RHITextureLayout newLayout)
 {
-    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(pTexture);
-    VkImage vkImage              = vulkanTexture->GetVkImage();
+    VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
+    VkImage vkImage              = pVulkanTexture->GetVkImage();
 
     VkImageLayout srcLayout = GVulkanRHI->GetImageCurrentLayout(vkImage);
     VkImageLayout dstLayout = ToVkImageLayout(newLayout);
 
     VulkanPipelineBarrier barrier;
-    barrier.AddImageBarrier(vkImage, srcLayout, dstLayout, vulkanTexture->GetVkSubresourceRange());
+    barrier.AddImageBarrier(vkImage, srcLayout, dstLayout, pVulkanTexture->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(GetCommandBuffer()->GetVkHandle());
     GVulkanRHI->UpdateImageLayout(vkImage, dstLayout);
 }
@@ -874,7 +874,7 @@ void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer,
                     TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), 1, &bufferCopy);
 }
 
-void FVulkanCommandListContext::RHIClearTexture(RHITexture* texture,
+void FVulkanCommandListContext::RHIClearTexture(RHITexture* pTexture,
                                                 const Color& color,
                                                 const RHITextureSubResourceRange& range)
 {
@@ -882,7 +882,7 @@ void FVulkanCommandListContext::RHIClearTexture(RHITexture* texture,
     ToVkImageSubresourceRange(range, &vkRange);
     VkClearColorValue colorValue;
     ToVkClearColor(color, &colorValue);
-    vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(texture)->GetVkImage(),
+    vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pTexture)->GetVkImage(),
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
 }
 
@@ -991,7 +991,7 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
     // Call VulkanQueue's SubmitWorkloads function
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
-        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
         pQueue->SubmitWorkloads();
     }
 
@@ -1003,7 +1003,7 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
     // Wait for completion
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
-        VulkanQueue* pQueue = m_device->GetQueue(static_cast<RHICommandContextType>(i));
+        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
         pQueue->ProcessPendingWorkloads(VK_WAIT_FENCE_TIME_NS);
     }
 

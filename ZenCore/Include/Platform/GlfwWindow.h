@@ -46,7 +46,7 @@ public:
 
     GLFWwindow* GetHandle() const
     {
-        return m_handle;
+        return m_pHandle;
     }
 
 private:
@@ -54,7 +54,7 @@ private:
     bool CenterWindow();
     void Destroy();
 
-    GLFWwindow* m_handle;
+    GLFWwindow* m_pHandle;
     struct WindowData
     {
         // size

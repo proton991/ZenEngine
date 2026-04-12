@@ -28,9 +28,9 @@ private:
     UniquePtr<sg::Scene> m_scene;
     UniquePtr<rc::RenderScene> m_renderScene;
 
-    platform::GlfwWindowImpl* m_window{nullptr};
+    platform::GlfwWindowImpl* m_pWindow{nullptr};
 
-    RHIViewport* m_viewport{nullptr};
+    RHIViewport* m_pViewport{nullptr};
 
     UniquePtr<platform::Timer> m_timer;
     // Defines a frame rate independent timer value clamped from -1.0...1.0

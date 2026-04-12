@@ -16,8 +16,8 @@ class RenderObject;
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
-    ComputeVoxelizer(RenderDevice* renderDevice, RHIViewport* viewport) :
-        VoxelizerBase(renderDevice, viewport)
+    ComputeVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
+        VoxelizerBase(pRenderDevice, pViewport)
     {}
 
     void Init() final;
@@ -28,7 +28,7 @@ public:
 
     void OnResize() final;
 
-    void SetRenderScene(RenderScene* scene) override;
+    void SetRenderScene(RenderScene* pScene) override;
 
 protected:
 #ifdef ZEN_MACOS
@@ -61,30 +61,30 @@ protected:
     struct
     {
         // voxelization pass
-        RHIBuffer* computeIndirectBuffer;
-        RHIBuffer* largeTriangleBuffer;
+        RHIBuffer* pComputeIndirectBuffer;
+        RHIBuffer* pLargeTriangleBuffer;
         // voxel pre-draw pass
-        RHIBuffer* instancePositionBuffer;
-        RHIBuffer* instanceColorBuffer;
-        RHIBuffer* drawIndirectBuffer;
+        RHIBuffer* pInstancePositionBuffer;
+        RHIBuffer* pInstanceColorBuffer;
+        RHIBuffer* pDrawIndirectBuffer;
     } m_buffers;
 
     struct
     {
-        ComputePass* resetVoxelTexture;
-        ComputePass* resetComputeIndirect;
-        ComputePass* resetDrawIndirect;
-        ComputePass* voxelization;
-        ComputePass* voxelizationLargeTriangle;
-        ComputePass* voxelPreDraw; // calculate position and color for voxel draw pass
+        ComputePass* pResetVoxelTexture;
+        ComputePass* pResetComputeIndirect;
+        ComputePass* pResetDrawIndirect;
+        ComputePass* pVoxelization;
+        ComputePass* pVoxelizationLargeTriangle;
+        ComputePass* pVoxelPreDraw; // calculate position and color for voxel draw pass
     } m_computePasses;
 
     struct
     {
-        GraphicsPass* voxelDraw;
+        GraphicsPass* pVoxelDraw;
     } m_gfxPasses;
 
-    RenderObject* m_cube;
+    RenderObject* m_pCube;
 
     Mat4 m_voxelTransform;
     sg::AABB m_voxelAABB;

@@ -39,7 +39,7 @@ Buffer::~Buffer()
 {
     if (m_handle != VK_NULL_HANDLE && m_allocation != nullptr)
     {
-        if (m_mappedMemory != nullptr)
+        if (m_pMappedMemory != nullptr)
         {
             UnmapMemory();
         }
@@ -134,24 +134,24 @@ VkPipelineStageFlags Buffer::UsageToPipelineStage(BufferUsage usage)
 
 bool Buffer::IsMemoryMapped() const
 {
-    return m_mappedMemory != nullptr;
+    return m_pMappedMemory != nullptr;
 }
 
 uint8_t* Buffer::MapMemory()
 {
-    if (m_mappedMemory == nullptr)
+    if (m_pMappedMemory == nullptr)
     {
-        void* mem = nullptr;
-        vmaMapMemory(m_device.GetAllocator(), m_allocation, &mem);
-        m_mappedMemory = static_cast<uint8_t*>(mem);
+        void* pMem = nullptr;
+        vmaMapMemory(m_device.GetAllocator(), m_allocation, &pMem);
+        m_pMappedMemory = static_cast<uint8_t*>(pMem);
     }
-    return m_mappedMemory;
+    return m_pMappedMemory;
 }
 
 void Buffer::UnmapMemory()
 {
     vmaUnmapMemory(m_device.GetAllocator(), m_allocation);
-    m_mappedMemory = nullptr;
+    m_pMappedMemory = nullptr;
 }
 
 void Buffer::FlushMemory(size_t byteSize, size_t offset)
@@ -159,20 +159,20 @@ void Buffer::FlushMemory(size_t byteSize, size_t offset)
     vmaFlushAllocation(m_device.GetAllocator(), m_allocation, offset, byteSize);
 }
 
-void Buffer::CopyData(const uint8_t* data, size_t byteSize, size_t offset)
+void Buffer::CopyData(const uint8_t* pData, size_t byteSize, size_t offset)
 {
     ASSERT(byteSize + offset <= m_byteSize);
-    if (m_mappedMemory == nullptr)
+    if (m_pMappedMemory == nullptr)
     {
         MapMemory();
-        std::memcpy(static_cast<void*>(m_mappedMemory + offset), static_cast<const void*>(data),
+        std::memcpy(static_cast<void*>(m_pMappedMemory + offset), static_cast<const void*>(pData),
                     byteSize);
         FlushMemory(byteSize, offset);
         UnmapMemory();
     }
     else
     {
-        std::memcpy(static_cast<void*>(m_mappedMemory + offset), static_cast<const void*>(data),
+        std::memcpy(static_cast<void*>(m_pMappedMemory + offset), static_cast<const void*>(pData),
                     byteSize);
     }
 }

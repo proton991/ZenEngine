@@ -8,32 +8,32 @@ namespace zen
 {
 VulkanDebug::VulkanDebug() {}
 
-void VulkanDebug::SetPipelineDebugName(RHIPipeline* pipelineHandle, const std::string& debugName)
+void VulkanDebug::SetPipelineDebugName(RHIPipeline* pPipelineHandle, const std::string& debugName)
 {
     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanPipeline* vulkanPipeline = TO_VK_PIPELINE(pipelineHandle);
+    VulkanPipeline* pVulkanPipeline = TO_VK_PIPELINE(pPipelineHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_PIPELINE;
-    info.objectHandle = reinterpret_cast<uint64_t>(vulkanPipeline->GetVkPipeline());
+    info.objectHandle = reinterpret_cast<uint64_t>(pVulkanPipeline->GetVkPipeline());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),
                    "Failed to set debug object name");
 }
 
-void VulkanDebug::SetTextureDebugName(RHITexture* texture, const std::string& debugName)
+void VulkanDebug::SetTextureDebugName(RHITexture* pTexture, const std::string& debugName)
 {
     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanTexture* vulkanTexture = TO_VK_TEXTURE(texture);
+    VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_IMAGE;
-    info.objectHandle = reinterpret_cast<uint64_t>(vulkanTexture->GetVkImage());
+    info.objectHandle = reinterpret_cast<uint64_t>(pVulkanTexture->GetVkImage());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),
@@ -57,17 +57,17 @@ void VulkanDebug::SetTextureDebugName(RHITexture* texture, const std::string& de
 //                    "Failed to set debug object name");
 // }
 
-void VulkanDebug::SetDescriptorSetDebugName(RHIDescriptorSet* descriptorSetHandle,
+void VulkanDebug::SetDescriptorSetDebugName(RHIDescriptorSet* pDescriptorSetHandle,
                                             const std::string& debugName)
 {
     // VulkanRHI* GVulkanRHI = dynamic_cast<VulkanRHI*>(m_RHI);
 
-    VulkanDescriptorSet* descriptorSet = TO_VK_DESCRIPTORSET(descriptorSetHandle);
+    VulkanDescriptorSet* pDescriptorSet = TO_VK_DESCRIPTORSET(pDescriptorSetHandle);
     VkDebugUtilsObjectNameInfoEXT info{};
     info.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
     info.pNext        = nullptr;
     info.objectType   = VK_OBJECT_TYPE_DESCRIPTOR_SET;
-    info.objectHandle = reinterpret_cast<uint64_t>(descriptorSet->GetVkDescriptorSet());
+    info.objectHandle = reinterpret_cast<uint64_t>(pDescriptorSet->GetVkDescriptorSet());
     info.pObjectName  = debugName.data();
 
     CHECK_VK_ERROR(vkSetDebugUtilsObjectNameEXT(GVulkanRHI->GetVkDevice(), &info),

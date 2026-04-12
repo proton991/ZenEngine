@@ -19,7 +19,7 @@ public:
 
     val::Image* RequestTexture2D(const std::string& filename, bool requireMipmap = false);
 
-    void RegisterSceneTextures(sg::Scene* scene, bool requireMipmap = false);
+    void RegisterSceneTextures(sg::Scene* pScene, bool requireMipmap = false);
 
 private:
     const val::Device& m_valDevice;

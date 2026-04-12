@@ -26,9 +26,9 @@ public:
         return typeid(SubMesh);
     }
 
-    void SetMaterial(uint32_t materialIndex, Material* material)
+    void SetMaterial(uint32_t materialIndex, Material* pMaterial)
     {
-        m_material      = material;
+        m_pMaterial      = pMaterial;
         m_materialIndex = materialIndex;
     }
 
@@ -60,7 +60,7 @@ public:
     }
     auto GetMaterial() const
     {
-        return m_material;
+        return m_pMaterial;
     }
 
     void SetAABB(const Vec3& min, const Vec3& max)
@@ -97,7 +97,7 @@ private:
     AABB m_aabb;
 
     uint32_t m_materialIndex{0};
-    Material* m_material{nullptr};
+    Material* m_pMaterial{nullptr};
 
     bool m_hasIndices{false};
 };

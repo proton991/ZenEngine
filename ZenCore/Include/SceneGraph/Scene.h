@@ -13,11 +13,11 @@ class Scene
 public:
     struct DefaultTextures
     {
-        Texture* baseColor;
-        Texture* metallicRoughness;
-        Texture* normal;
-        Texture* emissive;
-        Texture* occlusion;
+        Texture* pBaseColor;
+        Texture* pMetallicRoughness;
+        Texture* pNormal;
+        Texture* pEmissive;
+        Texture* pOcclusion;
     };
 
     Scene() = default;
@@ -35,9 +35,9 @@ public:
     std::vector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos,
                                                                const Mat4& transform);
 
-    void AddRenderableNode(Node* node)
+    void AddRenderableNode(Node* pNode)
     {
-        m_renderableNodes.push_back(node);
+        m_renderableNodes.push_back(pNode);
     }
 
     void AddComponent(UniquePtr<Component>&& component)
@@ -137,7 +137,7 @@ private:
 
     std::vector<Node*> m_renderableNodes;
 
-    Node* m_rootNode{nullptr};
+    Node* m_pRootNode{nullptr};
 
     HashMap<TypeId, std::vector<UniquePtr<Component>>> m_components;
 

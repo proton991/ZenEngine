@@ -57,7 +57,7 @@ public:
 
     LegacyRHICommandListContext* CreateLegacyCmdListContext() override;
 
-    void WaitForLegacyCommandList(LegacyRHICommandList* cmdList) override;
+    void WaitForLegacyCommandList(LegacyRHICommandList* pCmdList) override;
 
     LegacyRHICommandList* GetLegacyImmediateCommandList() override;
 
@@ -77,7 +77,7 @@ public:
 
     VulkanDevice* GetDevice() const
     {
-        return m_device;
+        return m_pDevice;
     }
 
     VkInstance GetInstance() const
@@ -96,16 +96,16 @@ public:
                                 uint32_t height,
                                 bool enableVSync) final;
 
-    void DestroyViewport(RHIViewport* viewport) final;
+    void DestroyViewport(RHIViewport* pViewport) final;
 
-    void BeginDrawingViewport(RHIViewport* viewportRHI) final;
+    void BeginDrawingViewport(RHIViewport* pViewportRHI) final;
 
     // Legacy immediate command-list path.
-    void EndDrawingViewport(RHIViewport* viewportRHI,
-                            LegacyRHICommandListContext* cmdListContext,
+    void EndDrawingViewport(RHIViewport* pViewportRHI,
+                            LegacyRHICommandListContext* pCmdListContext,
                             bool present) final;
 
-    void EndDrawingViewport(RHIViewport* viewportRHI,
+    void EndDrawingViewport(RHIViewport* pViewportRHI,
                             RHICommandList* pCmdList,
                             bool present) final;
 
@@ -115,7 +115,7 @@ public:
 
     RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
 
-    void DestroyShader(RHIShader* shader) final;
+    void DestroyShader(RHIShader* pShader) final;
 
     RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) final;
 
@@ -133,7 +133,7 @@ public:
 
     // PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
 
-    void DestroyPipeline(RHIPipeline* pipeline) final;
+    void DestroyPipeline(RHIPipeline* pPipeline) final;
 
     // RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) final;
 
@@ -147,7 +147,7 @@ public:
     // SamplerHandle CreateSampler(const RHISamplerInfo& samplerInfo) final;
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 
-    void DestroySampler(RHISampler* sampler) final;
+    void DestroySampler(RHISampler* pSampler) final;
 
     // TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
     //
@@ -158,10 +158,10 @@ public:
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
-    RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
+    RHITexture* CreateTextureProxy(const RHITexture* pBaseTexture,
                                    const RHITextureProxyCreateInfo& proxyInfo) final;
 
-    void DestroyTexture(RHITexture* texture) final;
+    void DestroyTexture(RHITexture* pTexture) final;
 
     // DataFormat GetTextureFormat(TextureHandle textureHandle) final;
     //
@@ -212,7 +212,7 @@ public:
 
     VulkanViewport* GetCurrentViewport() const
     {
-        return m_currentViewport;
+        return m_pCurrentViewport;
     }
 
     auto& GetResourceAllocator()
@@ -222,7 +222,7 @@ public:
 
     VulkanDescriptorPoolManager* GetDescriptorPoolManager() const
     {
-        return m_descriptorPoolManager;
+        return m_pDescriptorPoolManager;
     }
 
     InstanceExtensionFlags& GetInstanceExtensionFlags()
@@ -250,14 +250,14 @@ private:
 
     InstanceExtensionFlags m_instanceExtensionFlags{};
 
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
 
     RHIGPUInfo m_gpuInfo{};
 
-    VulkanViewport* m_currentViewport{nullptr};
+    VulkanViewport* m_pCurrentViewport{nullptr};
 
     HeapVector<LegacyRHICommandListContext*> m_legacyCmdListContexts;
-    VulkanDescriptorPoolManager* m_descriptorPoolManager{nullptr};
+    VulkanDescriptorPoolManager* m_pDescriptorPoolManager{nullptr};
 
     // allocator for memory
     // VulkanMemoryAllocator* m_vkMemAllocator{nullptr};

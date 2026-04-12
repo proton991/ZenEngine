@@ -14,7 +14,7 @@ void foo(const string& threadId)
 }
 #define POOL_SIZE 5
 
-int main(int argc, char** argv)
+int main(int argc, char** pArgv)
 {
     std::atomic<int> value = 0;
     ThreadPool<void, int> threadPool;
@@ -34,6 +34,6 @@ int main(int argc, char** argv)
         fut.get();
     }
 
-    LOGI("value is now equal to {}", value)
-    LOGI("futures' size: {}", futures.size())
+    LOGI("value is now equal to {}", value.load());
+    LOGI("futures' size: {}", futures.size());
 }

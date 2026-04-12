@@ -21,8 +21,8 @@ void Transform::UpdateWorldMatrix()
     {
         if (parent->HasComponent<Transform>())
         {
-            auto* transform = parent->GetComponent<Transform>();
-            m_worldMatrix   = transform->GetWorldMatrix() * m_worldMatrix;
+            auto* pTransform = parent->GetComponent<Transform>();
+            m_worldMatrix   = pTransform->GetWorldMatrix() * m_worldMatrix;
         }
         // Get parent node
         parent = parent->GetParent();

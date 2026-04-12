@@ -20,7 +20,7 @@ public:
 
         val::Instance::CreateInfo instanceCI{};
         instanceCI.enabledExtensionCount   = util::ToU32(instanceExts.size());
-        instanceCI.ppEnabledExtensionNames = instanceExts.data();
+        instanceCI.pEnabledExtensionNames = instanceExts.data();
 
         m_instance = val::Instance::CreateUnique(instanceCI);
 
@@ -28,7 +28,7 @@ public:
         val::Device::CreateInfo deviceCI{};
         deviceCI.pPhysicalDevice         = m_physicalDevice.Get();
         deviceCI.enabledExtensionCount   = util::ToU32(deviceExts.size());
-        deviceCI.ppEnabledExtensionNames = deviceExts.data();
+        deviceCI.pEnabledExtensionNames = deviceExts.data();
 
         m_device = val::Device::CreateUnique(deviceCI);
     }

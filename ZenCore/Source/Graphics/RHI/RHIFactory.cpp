@@ -11,22 +11,22 @@ namespace zen
 {
 DynamicRHI* DynamicRHI::Create(RHIAPIType type)
 {
-    DynamicRHI* RHI = nullptr;
+    DynamicRHI* pRHI = nullptr;
 
     if (type == RHIAPIType::eVulkan)
     {
-        RHI = ZEN_NEW() VulkanRHI();
+        pRHI = ZEN_NEW() VulkanRHI();
     }
     else
     {
         LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
     }
 
-    RHI->Init();
+    pRHI->Init();
 
-    GDynamicRHI = RHI;
+    GDynamicRHI = pRHI;
 
-    return RHI;
+    return pRHI;
 }
 
 RHIDebug* RHIDebug::Create()
@@ -42,13 +42,13 @@ RHIDebug* RHIDebug::Create()
 }
 
 LegacyRHICommandList* LegacyRHICommandList::Create(RHIAPIType type,
-                                                   LegacyRHICommandListContext* context)
+                                                   LegacyRHICommandListContext* pContext)
 {
-    VERIFY_EXPR(context != nullptr);
-    if (context != nullptr && type == RHIAPIType::eVulkan)
+    VERIFY_EXPR(pContext != nullptr);
+    if (pContext != nullptr && type == RHIAPIType::eVulkan)
     {
         return ZEN_NEW() LegacyVulkanCommandList(
-            dynamic_cast<LegacyVulkanCommandListContext*>(context));
+            dynamic_cast<LegacyVulkanCommandListContext*>(pContext));
     }
     LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
 

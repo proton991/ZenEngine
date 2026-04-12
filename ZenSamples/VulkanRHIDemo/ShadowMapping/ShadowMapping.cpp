@@ -236,22 +236,22 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxY = cShadowMapSize;
 
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
+        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.offscreen, area, clearValues, true);
         // m_rdg->DeclareTextureAccessForPass(
         //     pass, m_offscreenDepthTexture, RHITextureUsage::eDepthStencilAttachment,
         //     RHITextureSubResourceRange::DepthStencil(), RHIAccessMode::eReadWrite);
 
-        m_rdg->AddGraphicsPassSetScissorNode(pass, area);
-        m_rdg->AddGraphicsPassBindVertexBufferNode(pass, m_vertexBuffer, {0});
-        m_rdg->AddGraphicsPassBindIndexBufferNode(pass, m_indexBuffer, DataFormat::eR32UInt);
-        m_rdg->AddGraphicsPassSetViewportNode(pass, vp);
-        m_rdg->AddGraphicsPassSetDepthBiasNode(pass, m_shadowMapConfig.depthBiasConstant, 0.0f,
+        m_rdg->AddGraphicsPassSetScissorNode(pPass, area);
+        m_rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_vertexBuffer, {0});
+        m_rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_indexBuffer, DataFormat::eR32UInt);
+        m_rdg->AddGraphicsPassSetViewportNode(pPass, vp);
+        m_rdg->AddGraphicsPassSetDepthBiasNode(pPass, m_shadowMapConfig.depthBiasConstant, 0.0f,
                                                m_shadowMapConfig.depthBiasSlope);
         for (auto* node : m_scene->GetRenderableNodes())
         {
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
-                m_rdg->AddGraphicsPassDrawIndexedNode(pass, subMesh->GetIndexCount(), 1,
+                m_rdg->AddGraphicsPassDrawIndexedNode(pPass, subMesh->GetIndexCount(), 1,
                                                       subMesh->GetFirstIndex(), 0, 0);
             }
         }
@@ -275,7 +275,7 @@ void ShadowMappingApp::BuildRenderGraph()
         vp.maxX = (float)m_window->GetExtent2D().width;
         vp.maxY = (float)m_window->GetExtent2D().height;
 
-        auto* pass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneShadow, area, clearValues, true);
+        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.sceneShadow, area, clearValues, true);
         // m_rdg->DeclareTextureAccessForPass(pass, m_offscreenDepthTexture, RHITextureUsage::eSampled,
         //                                    RHITextureSubResourceRange::DepthStencil(),
         //                                    RHIAccessMode::eRead);

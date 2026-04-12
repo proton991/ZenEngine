@@ -20,11 +20,11 @@ struct VulkanSwapchainRecreateInfo
 class VulkanSwapchain
 {
 public:
-    VulkanSwapchain(void* windowPtr,
+    VulkanSwapchain(void* pWindowPtr,
                     uint32_t width,
                     uint32_t height,
                     bool enableVSync,
-                    VulkanSwapchainRecreateInfo* recreateInfo);
+                    VulkanSwapchainRecreateInfo* pRecreateInfo);
 
     VkSwapchainKHR GetVkHandle() const
     {
@@ -46,15 +46,15 @@ public:
         return m_swapchainImages;
     }
 
-    int32_t AcquireNextImage(VulkanSemaphore** outSemaphore);
+    int32_t AcquireNextImage(VulkanSemaphore** pOutSemaphore);
 
-    bool Present(VulkanSemaphore* renderingCompleteSemaphore);
+    bool Present(VulkanSemaphore* pRenderingCompleteSemaphore);
 
-    void Destroy(VulkanSwapchainRecreateInfo* recreateInfo);
+    void Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo);
 
 private:
     // VulkanRHI* m_RHI{nullptr};
-    VulkanDevice* m_device{nullptr};
+    VulkanDevice* m_pDevice{nullptr};
     VkSwapchainKHR m_swaphchain{VK_NULL_HANDLE};
     VkSurfaceKHR m_surface{VK_NULL_HANDLE};
     uint32_t m_internalWidth{0};
@@ -69,7 +69,7 @@ private:
     int32_t m_semaphoreIndex{0};
     // SmallVector<VulkanSemaphore*> m_imageAcquiredSemphores;
     // std::vector<VulkanSemaphore*> m_imageAcquiredSemaphores;
-    VulkanSemaphore* m_imageAcquiredSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
+    VulkanSemaphore* m_pImageAcquiredSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
 
     friend class VulkanViewport;
 };
