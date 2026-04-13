@@ -47,22 +47,25 @@ VulkanQueue::~VulkanQueue()
 
 FVulkanCommandBufferPool* VulkanQueue::AcquireCommandBufferPool(VulkanCommandBufferType type)
 {
-    FVulkanCommandBufferPool* pResult = nullptr;
-    if (!m_cmdBufferPools.empty())
+    auto it = m_cmdBufferPools.end();
+    while (it != m_cmdBufferPools.begin())
     {
-        pResult = m_cmdBufferPools.back();
-        m_cmdBufferPools.pop_back();
+        --it;
+        FVulkanCommandBufferPool* pCmdBufferPool = *it;
+        if (pCmdBufferPool->GetCommandBufferType() == type)
+        {
+            m_cmdBufferPools.erase(it);
+            return pCmdBufferPool;
+        }
     }
-    else
-    {
-        pResult = ZEN_NEW() FVulkanCommandBufferPool(this, type);
-    }
-    return pResult;
+
+    return ZEN_NEW() FVulkanCommandBufferPool(this, type);
 }
 
 void VulkanQueue::RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool)
 {
     VERIFY_EXPR(pCmdBufferPool->GetQueue() == this);
+    pCmdBufferPool->FreeUnusedCommandBuffers();
     m_cmdBufferPools.emplace_back(pCmdBufferPool);
 }
 
@@ -210,6 +213,25 @@ void VulkanQueue::SubmitWorkloads()
 void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
 {
     VulkanFenceManager* pFenceManager = GVulkanRHI->GetDevice()->GetFenceManager();
+    HeapVector<FVulkanCommandBufferPool*> cmdBufferPoolsToTrim;
+
+    auto AddCmdBufferPoolToTrim = [&cmdBufferPoolsToTrim](FVulkanCommandBufferPool* pCmdBufferPool)
+    {
+        if (pCmdBufferPool == nullptr)
+        {
+            return;
+        }
+
+        for (FVulkanCommandBufferPool* pExistingPool : cmdBufferPoolsToTrim)
+        {
+            if (pExistingPool == pCmdBufferPool)
+            {
+                return;
+            }
+        }
+
+        cmdBufferPoolsToTrim.push_back(pCmdBufferPool);
+    };
 
     while (true)
     {
@@ -255,12 +277,19 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
         if (pWorkload->m_pCmdBuffer != nullptr)
         {
             pWorkload->m_pCmdBuffer->SetCompleted();
+            AddCmdBufferPoolToTrim(pWorkload->m_pCmdBuffer->GetCommandBufferPool());
         }
         if (m_lastCompletedSubmissionSerial < pWorkload->m_submissionSerial)
         {
             m_lastCompletedSubmissionSerial = pWorkload->m_submissionSerial;
         }
         ZEN_DELETE(pWorkload);
+    }
+
+    // Trim once per pool after retiring all currently completed workloads.
+    for (FVulkanCommandBufferPool* pCmdBufferPool : cmdBufferPoolsToTrim)
+    {
+        pCmdBufferPool->FreeUnusedCommandBuffers();
     }
 }
 

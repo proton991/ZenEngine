@@ -84,6 +84,11 @@ public:
         return m_vkHandle;
     }
 
+    FVulkanCommandBufferPool* GetCommandBufferPool() const
+    {
+        return m_pCmdBufferPool;
+    }
+
     VulkanCommandBufferType GetCommandBufferType() const;
 
 protected:
@@ -119,7 +124,6 @@ public:
 
     ~FVulkanCommandBufferPool();
 
-    // todo: call this in EndFrame()
     void FreeUnusedCommandBuffers();
 
     Mutex* GetMutex()
