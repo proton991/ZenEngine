@@ -470,12 +470,17 @@ public:
         return m_framesCounter;
     }
 
-    RHICommandList* GetTransferCmdList() const
+    RHICommandList* GetImmediateTransferCmdList() const
     {
-        return m_pTransferCmdList;
+        return m_pImmediateTransferCmdList;
     }
 
-    void SubmitTransferCmdList();
+    RHICommandList* GetImmediateGraphicsCmdList() const
+    {
+        return m_pImmediateGraphicsCmdList;
+    }
+
+    void SubmitImmediateTransferCmdList();
 
     // RHICommandList* GetCurrentCmdList() const
     // {
@@ -564,7 +569,8 @@ private:
     // DynamicRHI* GDynamicRHI{nullptr};
     RHIDebug* m_pRHIDebug{nullptr};
 
-    RHICommandList* m_pTransferCmdList{nullptr};
+    RHICommandList* m_pImmediateGraphicsCmdList{nullptr};
+    RHICommandList* m_pImmediateTransferCmdList{nullptr};
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
 

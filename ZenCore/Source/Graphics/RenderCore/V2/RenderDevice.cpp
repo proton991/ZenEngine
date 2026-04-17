@@ -725,7 +725,10 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
     m_pBufferStagingMgr->Init(m_numFrames);
     m_pTextureStagingMgr = ZEN_NEW() TextureStagingManager(this);
     m_pTextureManager    = ZEN_NEW() TextureManager(this, m_pTextureStagingMgr);
-    m_pTransferCmdList  = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
+    m_pImmediateGraphicsCmdList = RHICommandList::Create(
+        GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    m_pImmediateTransferCmdList =
+        RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
 
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
@@ -792,9 +795,18 @@ void RenderDevice::Destroy()
 
     m_deletionQueue.Flush();
 
-    if (m_pTransferCmdList != nullptr)
+    if (m_pImmediateGraphicsCmdList != nullptr)
     {
-        ZEN_DELETE(m_pTransferCmdList);
+        m_pImmediateGraphicsCmdList->WaitUntilCompleted();
+        ZEN_DELETE(m_pImmediateGraphicsCmdList);
+        m_pImmediateGraphicsCmdList = nullptr;
+    }
+
+    if (m_pImmediateTransferCmdList != nullptr)
+    {
+        m_pImmediateTransferCmdList->WaitUntilCompleted();
+        ZEN_DELETE(m_pImmediateTransferCmdList);
+        m_pImmediateTransferCmdList = nullptr;
     }
 
     m_pBufferStagingMgr->Destroy();
@@ -851,33 +863,31 @@ void RenderDevice::ExecuteFrame(RHIViewport* pViewport,
 void RenderDevice::ExecuteImmediate(RHIViewport* pViewport, RenderGraph* pRdg)
 {
     static_cast<void>(pViewport);
-    RHICommandList* pCmdList =
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    RHICommandList* pCmdList = m_pImmediateGraphicsCmdList;
     pRdg->Execute(pCmdList);
     RHICommandList* pCmdLists[] = {pCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-    ZEN_DELETE(pCmdList);
+    pCmdList->Reset();
 }
 
 void RenderDevice::ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs)
 {
-    RHICommandList* pCmdList =
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    RHICommandList* pCmdList = m_pImmediateGraphicsCmdList;
     for (auto& rdg : rdgs)
     {
         rdg->Execute(pCmdList);
     }
     RHICommandList* pCmdLists[] = {pCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-    ZEN_DELETE(pCmdList);
+    pCmdList->Reset();
 }
 
-void RenderDevice::SubmitTransferCmdList()
+void RenderDevice::SubmitImmediateTransferCmdList()
 {
-    RHICommandList* pCmdLists[] = {m_pTransferCmdList};
+    RHICommandList* pCmdLists[] = {m_pImmediateTransferCmdList};
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-    m_pTransferCmdList->WaitUntilCompleted();
-    m_pTransferCmdList->Reset();
+    m_pImmediateTransferCmdList->WaitUntilCompleted();
+    m_pImmediateTransferCmdList->Reset();
 }
 
 RHIRenderingLayout* RenderDevice::AcquireRenderingLayout()
@@ -1437,14 +1447,15 @@ void RenderDevice::UpdateTextureOneTime(RHITexture* pTextureHandle,
     copyRegion.bufferOffset  = submitResult.writeOffset;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = textureSize;
-    m_pTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle, copyRegion);
+    m_pImmediateTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle,
+                                                     copyRegion);
     submittedTransfer = true;
 
     m_pBufferStagingMgr->EndSubmit(&submitResult);
 
     if (submittedTransfer)
     {
-        SubmitTransferCmdList();
+        SubmitImmediateTransferCmdList();
         m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
@@ -1497,8 +1508,8 @@ void RenderDevice::UpdateTextureBatch(RHITexture* pTextureHandle,
                 copyRegion.bufferOffset  = submitResult.writeOffset;
                 copyRegion.textureOffset = {x, y, z};
                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_pTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle,
-                                                        copyRegion);
+                m_pImmediateTransferCmdList->CopyBufferToTexture(
+                    submitResult.pBuffer, pTextureHandle, copyRegion);
                 submittedTransfer = true;
 
                 m_pBufferStagingMgr->EndSubmit(&submitResult);
@@ -1508,7 +1519,7 @@ void RenderDevice::UpdateTextureBatch(RHITexture* pTextureHandle,
 
     if (submittedTransfer)
     {
-        SubmitTransferCmdList();
+        SubmitImmediateTransferCmdList();
         m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
@@ -1548,7 +1559,7 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
-        m_pTransferCmdList->CopyBuffer(submitResult.pBuffer, pBufferHandle, copyRegion);
+        m_pImmediateTransferCmdList->CopyBuffer(submitResult.pBuffer, pBufferHandle, copyRegion);
         submittedTransfer = true;
         m_pBufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
@@ -1557,7 +1568,7 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
 
     if (submittedTransfer)
     {
-        SubmitTransferCmdList();
+        SubmitImmediateTransferCmdList();
         m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }

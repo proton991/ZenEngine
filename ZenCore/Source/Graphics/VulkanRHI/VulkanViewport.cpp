@@ -80,7 +80,7 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* pViewportRHI,
     }
     else
     {
-        pContext->FlushCommands();
+        pContext->FlushAndSubmitCommands();
     }
 }
 
@@ -241,7 +241,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_pDepthStencilBackBuffer->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
-    context.FlushCommands();
+    context.FlushAndSubmitCommands();
     // m_device->WaitForIdle();
 
     m_acquiredImageIndex = -1;
@@ -438,6 +438,7 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     {
         uint32_t windowWidth  = std::min(m_width, m_pSwapchain->m_internalWidth);
         uint32_t windowHeight = std::min(m_height, m_pSwapchain->m_internalHeight);
+        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
         CopyToBackBufferForPresent(pContext->GetCommandBuffer()->GetVkHandle(),
                                    m_backBufferImages[m_acquiredImageIndex], windowWidth,
                                    windowHeight);
@@ -452,7 +453,6 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     //     m_device->GetImmediateCmdContext()->GetCmdBufferManager();
     if (!acquireImageFailed)
     {
-        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
         VulkanSemaphore* pSignalSemaphore = (m_acquiredImageIndex >= 0) ?
             m_pRenderingCompleteSemaphores[m_acquiredImageIndex] :
             nullptr;
@@ -462,14 +462,15 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     {
         // failed to acquire image from swapchain, do not present
         // m_device->GetGfxQueue()->Submit(cmdBuffer);
+        pContext->FlushAndSubmitCommands();
         RecreateSwapchain();
-        pContext->FlushCommands();
         // m_device->WaitForIdle();
         return true;
     }
     // Submit the rendering workload first so the present wait semaphore and image layout
     // transition are both actually scheduled before vkQueuePresentKHR waits on them.
-    pContext->FlushCommands();
+    pContext->FlushAndSubmitCommands();
+    m_pSwapchain->MarkAcquireSemaphoreSubmitted(pContext->GetLastSubmittedSerial());
 
     bool presentResult = m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
     // if (RHIOptions::GetInstance().WaitForFrameCompletion())
@@ -484,6 +485,7 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     //     cmdBufferMgr->SetupNewActiveCmdBuffer();
     // }
     m_acquiredImageIndex = -1;
+    m_pImageAcquiredSemaphore = nullptr;
     m_presentCount++;
 
     return presentResult;

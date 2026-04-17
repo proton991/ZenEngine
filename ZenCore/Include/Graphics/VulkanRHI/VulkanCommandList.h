@@ -281,15 +281,13 @@ public:
 
     void Finalize(HeapVector<VulkanWorkload*>& outWorkloads)
     {
-        EndWorkload();
-        if (m_pCurrentWorkload != nullptr)
-        {
-            outWorkloads.emplace_back(m_pCurrentWorkload);
-            m_pCurrentWorkload = nullptr;
-        }
+        FlushCommands();
+        DrainFinalizedWorkloads(outWorkloads);
     }
 
     void FlushCommands();
+
+    void FlushAndSubmitCommands();
 
     void WaitForLastSubmittedWork(uint64_t timeToWaitNS);
 
@@ -298,7 +296,16 @@ public:
         m_lastSubmittedSerial = submissionSerial;
     }
 
+    uint64_t GetLastSubmittedSerial() const
+    {
+        return m_lastSubmittedSerial;
+    }
+
 private:
+    bool HasWorkloadData(const VulkanWorkload* pWorkload) const;
+
+    void DrainFinalizedWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
+
     void SetupNewCommandBuffer();
 
     void StartWorkload();
@@ -310,6 +317,7 @@ private:
     FVulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
 
     VulkanWorkload* m_pCurrentWorkload{nullptr};
+    HeapVector<VulkanWorkload*> m_finalizedWorkloads;
     uint64_t m_lastSubmittedSerial{0};
 };
 
@@ -477,6 +485,8 @@ public:
                            uint32_t srcMipmap,
                            uint32_t dstLayer,
                            uint32_t dstMipmap) override;
+
+    void RHIFlushCommands() override;
 
     void RHIWaitUntilCompleted() override;
 

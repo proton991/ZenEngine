@@ -79,6 +79,11 @@ public:
         return m_q.empty();
     }
 
+    size_t Size()
+    {
+        return m_q.size();
+    }
+
 private:
     std::queue<T> m_q;
 };

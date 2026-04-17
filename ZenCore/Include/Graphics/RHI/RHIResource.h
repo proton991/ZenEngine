@@ -124,10 +124,7 @@ class RHIShaderGroupSPIRV : public RefCounted
 public:
     RHIShaderGroupSPIRV() = default;
 
-    ~RHIShaderGroupSPIRV()
-    {
-        int a = 1;
-    }
+    ~RHIShaderGroupSPIRV() {}
 
     void SetStageFlags(int64_t flags)
     {
@@ -709,7 +706,7 @@ struct RHIRenderingLayout
     {
         RHIRenderTarget colorRT;
         colorRT.format     = format;
-        colorRT.pTexture    = pTexture;
+        colorRT.pTexture   = pTexture;
         colorRT.loadOp     = loadOp;
         colorRT.storeOp    = storeOp;
         colorRT.clearValue = clearValue;
@@ -717,10 +714,6 @@ struct RHIRenderingLayout
 
         colorRenderTargets[numColorRenderTargets++] = colorRT;
 
-        if (pTexture->GetNumMipmaps() > 1)
-        {
-            int a = 1;
-        }
         numLayers = std::max(numLayers, pTexture->GetNumMipmaps());
     }
 
@@ -733,7 +726,7 @@ struct RHIRenderingLayout
         if (!hasDepthStencilRT)
         {
             depthStencilRenderTarget.format     = format;
-            depthStencilRenderTarget.pTexture    = pTexture;
+            depthStencilRenderTarget.pTexture   = pTexture;
             depthStencilRenderTarget.loadOp     = loadOp;
             depthStencilRenderTarget.storeOp    = storeOp;
             depthStencilRenderTarget.clearValue = clearValue;

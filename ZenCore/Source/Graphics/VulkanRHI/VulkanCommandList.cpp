@@ -231,24 +231,73 @@ VulkanWorkload::~VulkanWorkload()
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
 {
+    if (m_pCurrentWorkload != nullptr)
+    {
+        ZEN_DELETE(m_pCurrentWorkload);
+        m_pCurrentWorkload = nullptr;
+    }
+
+    for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
+    {
+        ZEN_DELETE(pWorkload);
+    }
+    m_finalizedWorkloads.clear();
+
     m_pQueue->RecycleCommandBufferPool(m_pCmdBufferPool);
+}
+
+bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) const
+{
+    return pWorkload != nullptr &&
+        (pWorkload->m_pCmdBuffer != nullptr || !pWorkload->m_waitSemaphoreInfos.empty() ||
+         !pWorkload->m_signalSemaphoreInfos.empty());
+}
+
+void VulkanCommandContextBase::DrainFinalizedWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
+{
+    for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
+    {
+        outWorkloads.emplace_back(pWorkload);
+    }
+    m_finalizedWorkloads.clear();
 }
 
 void VulkanCommandContextBase::FlushCommands()
 {
-    if (m_pCurrentWorkload != nullptr)
+    if (!HasWorkloadData(m_pCurrentWorkload))
     {
-        EndWorkload();
-
-        VulkanWorkload* pSubmittedWorkload = m_pCurrentWorkload;
-        VulkanQueue* pQueue = m_pCurrentWorkload->m_pQueue;
-        pQueue->m_workloadsPendingSubmit.Push(m_pCurrentWorkload);
-        pQueue->SubmitWorkloads();
-        m_lastSubmittedSerial = pSubmittedWorkload->m_submissionSerial;
-        pQueue->ProcessPendingWorkloads(0);
-        // ZEN_DELETE(m_pCurrentWorkload);
-        m_pCurrentWorkload = nullptr;
+        if (m_pCurrentWorkload != nullptr)
+        {
+            ZEN_DELETE(m_pCurrentWorkload);
+            m_pCurrentWorkload = nullptr;
+        }
+        return;
     }
+
+    EndWorkload();
+    m_finalizedWorkloads.push_back(m_pCurrentWorkload);
+    m_pCurrentWorkload = nullptr;
+}
+
+void VulkanCommandContextBase::FlushAndSubmitCommands()
+{
+    FlushCommands();
+    
+    if (m_finalizedWorkloads.empty())
+    {
+        return;
+    }
+
+    for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
+    {
+        VERIFY_EXPR(pWorkload->m_pQueue == m_pQueue);
+        m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+    }
+
+    m_pQueue->SubmitWorkloads();
+    m_lastSubmittedSerial = m_finalizedWorkloads.back()->m_submissionSerial;
+    m_pQueue->ProcessPendingWorkloads(0);
+    m_finalizedWorkloads.clear();
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
@@ -489,7 +538,7 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
             const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
-            VulkanTexture* pVulkanTexture   = TO_VK_TEXTURE(colorRT.pTexture);
+            VulkanTexture* pVulkanTexture  = TO_VK_TEXTURE(colorRT.pTexture);
             VkRenderingAttachmentInfoKHR colorAttachment{};
             InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
             colorAttachment.imageView        = pVulkanTexture->GetVkImageView();
@@ -507,7 +556,7 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         if (pRenderingLayout->hasDepthStencilRT)
         {
             const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
-            VulkanTexture* pVulkanTexture          = TO_VK_TEXTURE(depthStencilRT.pTexture);
+            VulkanTexture* pVulkanTexture         = TO_VK_TEXTURE(depthStencilRT.pTexture);
             depthStencilAttachment.imageView      = pVulkanTexture->GetVkImageView();
             depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
@@ -722,10 +771,10 @@ void FVulkanCommandListContext::RHIAddTransitions(
     for (const auto& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
-        VkAccessFlags srcAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
-                                                                    bufferTransition.oldAccessMode);
-        VkAccessFlags dstAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
-                                                                    bufferTransition.newAccessMode);
+        VkAccessFlags srcAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
+                                                                     bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
+                                                                     bufferTransition.newAccessMode);
         barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
     }
@@ -756,8 +805,8 @@ void FVulkanCommandListContext::RHIAddTransitions(
         // subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
         // subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
 
-        barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange,
-                                srcAccess, dstAccess);
+        barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout,
+                                subresourceRange, srcAccess, dstAccess);
         GVulkanRHI->UpdateImageLayout(pVulkanTexture->GetVkImage(), newLayout);
     }
     barrier.Execute(GetCommandBuffer()->GetVkHandle(), srcStages, dstStages);
@@ -769,7 +818,7 @@ void FVulkanCommandListContext::RHIGenTextureMipmaps(RHITexture* pTexture)
     VkCommandBuffer cmdBuffer = GetCommandBuffer()->GetVkHandle();
 
     VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
-    VkImage vkImage              = pVulkanTexture->GetVkImage();
+    VkImage vkImage               = pVulkanTexture->GetVkImage();
     // Get texture attributes
     // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
     const uint32_t texWidth  = pTexture->GetBaseInfo().width;
@@ -844,7 +893,7 @@ void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture* pTexture,
                                                         RHITextureLayout newLayout)
 {
     VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
-    VkImage vkImage              = pVulkanTexture->GetVkImage();
+    VkImage vkImage               = pVulkanTexture->GetVkImage();
 
     VkImageLayout srcLayout = GVulkanRHI->GetImageCurrentLayout(vkImage);
     VkImageLayout dstLayout = ToVkImageLayout(newLayout);
@@ -964,11 +1013,21 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
     WaitForLastSubmittedWork(UINT64_MAX);
 }
 
-// todo: optimize queue submit and sync
+void FVulkanCommandListContext::RHIFlushCommands()
+{
+    FlushCommands();
+}
+
 void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
 {
     HeapVector<VulkanWorkload*> workloads;
-    HeapVector<FVulkanCommandListContext*> contexts;
+    struct ContextWorkloadRange
+    {
+        FVulkanCommandListContext* pContext{nullptr};
+        uint32_t firstWorkloadIndex{0};
+        uint32_t workloadCount{0};
+    };
+    HeapVector<ContextWorkloadRange> contextWorkloadRanges;
 
     for (auto* pCmdList : cmdLists)
     {
@@ -977,9 +1036,14 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
             static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
         const uint32_t previousWorkloadCount = workloads.size();
         pContext->Finalize(workloads);
-        if (workloads.size() > previousWorkloadCount)
+        const uint32_t workloadCount = workloads.size() - previousWorkloadCount;
+        if (workloadCount > 0)
         {
-            contexts.push_back(pContext);
+            contextWorkloadRanges.push_back(ContextWorkloadRange{
+                pContext,
+                previousWorkloadCount,
+                workloadCount,
+            });
         }
     }
 
@@ -995,16 +1059,12 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
         pQueue->SubmitWorkloads();
     }
 
-    for (uint32_t i = 0; i < workloads.size(); ++i)
+    for (const ContextWorkloadRange& contextWorkloadRange : contextWorkloadRanges)
     {
-        contexts[i]->SetLastSubmittedSerial(workloads[i]->m_submissionSerial);
-    }
-
-    // Wait for completion
-    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
-    {
-        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
-        pQueue->ProcessPendingWorkloads(VK_WAIT_FENCE_TIME_NS);
+        const uint32_t lastWorkloadIndex =
+            contextWorkloadRange.firstWorkloadIndex + contextWorkloadRange.workloadCount - 1;
+        contextWorkloadRange.pContext->SetLastSubmittedSerial(
+            workloads[lastWorkloadIndex]->m_submissionSerial);
     }
 
     // for (VulkanWorkload* pWorkload : workloads)

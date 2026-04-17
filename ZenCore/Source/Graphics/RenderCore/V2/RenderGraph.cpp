@@ -58,7 +58,7 @@ void RenderGraph::AddPassBindPipelineNode(RDGPassNode* pParent,
                                           RHIPipelineType pipelineType)
 {
     auto* pNode         = AllocPassChildNode<RDGBindPipelineNode>(pParent);
-    pNode->pPipeline     = std::move(pPipelineHandle);
+    pNode->pPipeline    = std::move(pPipelineHandle);
     pNode->pipelineType = pipelineType;
     pNode->type         = RDGPassCmdType::eBindPipeline;
 }
@@ -67,9 +67,9 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass* pComputePass, st
 {
     VERIFY_EXPR_MSG(!tag.empty(), "compute pass node tag should not be empty");
 
-    auto* pNode        = AllocNode<RDGComputePassNode>();
-    pNode->type        = RDGNodeType::eComputePass;
-    pNode->tag         = std::move(tag);
+    auto* pNode         = AllocNode<RDGComputePassNode>();
+    pNode->type         = RDGNodeType::eComputePass;
+    pNode->tag          = std::move(tag);
     pNode->pComputePass = pComputePass;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eComputeShader);
     for (uint32_t i = 0; i < pComputePass->numDescriptorSets; i++)
@@ -83,7 +83,8 @@ RDGPassNode* RenderGraph::AddComputePassNode(const ComputePass* pComputePass, st
                 for (auto* pTexture : tracker.textures)
                 {
                     DeclareTextureAccessForPass(pNode, pTexture, tracker.textureUsage,
-                                                pTexture->GetSubResourceRange(), tracker.accessMode);
+                                                pTexture->GetSubResourceRange(),
+                                                tracker.accessMode);
                 }
                 // DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
                 //                             tracker.textureSubResRange, tracker.accessMode,
@@ -116,10 +117,10 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* pParent,
                                                      RHIBuffer* pIndirectBuffer,
                                                      uint32_t offset)
 {
-    auto* pNode           = AllocPassChildNode<RDGDispatchIndirectNode>(pParent);
-    pNode->type           = RDGPassCmdType::eDispatchIndirect;
+    auto* pNode            = AllocPassChildNode<RDGDispatchIndirectNode>(pParent);
+    pNode->type            = RDGPassCmdType::eDispatchIndirect;
     pNode->pIndirectBuffer = std::move(pIndirectBuffer);
-    pNode->offset         = offset;
+    pNode->offset          = offset;
 
     DeclareBufferAccessForPass(pParent, pIndirectBuffer, RHIBufferUsage::eIndirectBuffer,
                                RHIAccessMode::eRead);
@@ -159,7 +160,7 @@ void RenderGraph::AddComputePassDispatchIndirectNode(RDGPassNode* pParent,
 RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass, std::string tag)
 {
     VERIFY_EXPR_MSG(!tag.empty(), "graphics pass node tag should not be empty");
-    auto* pNode         = AllocNode<RDGGraphicsPassNode>();
+    auto* pNode          = AllocNode<RDGGraphicsPassNode>();
     pNode->pGraphicsPass = pGfxPass;
     // node->renderPass       = std::move(pGfxPass->renderPass);
     // node->framebuffer      = std::move(pGfxPass->framebuffer);
@@ -211,7 +212,8 @@ RDGPassNode* RenderGraph::AddGraphicsPassNode(const GraphicsPass* pGfxPass, std:
                 for (auto* pTexture : tracker.textures)
                 {
                     DeclareTextureAccessForPass(pNode, pTexture, tracker.textureUsage,
-                                                pTexture->GetSubResourceRange(), tracker.accessMode);
+                                                pTexture->GetSubResourceRange(),
+                                                tracker.accessMode);
                 }
                 // DeclareTextureAccessForPass(node, tracker.textureHandle, tracker.textureUsage,
                 //                             tracker.textureSubResRange, tracker.accessMode,
@@ -233,11 +235,11 @@ void RenderGraph::AddGraphicsPassBindIndexBufferNode(RDGPassNode* pParent,
                                                      DataFormat format,
                                                      uint32_t offset)
 {
-    auto* pNode   = AllocPassChildNode<RDGBindIndexBufferNode>(pParent);
+    auto* pNode    = AllocPassChildNode<RDGBindIndexBufferNode>(pParent);
     pNode->pBuffer = std::move(pBuffer);
-    pNode->format = format;
-    pNode->offset = offset;
-    pNode->type   = RDGPassCmdType::eBindIndexBuffer;
+    pNode->format  = format;
+    pNode->offset  = offset;
+    pNode->type    = RDGPassCmdType::eBindIndexBuffer;
     pNode->pParent->selfStages.SetFlag(RHIPipelineStageBits::eVertexShader);
 }
 
@@ -289,7 +291,8 @@ void RenderGraph::AddGraphicsPassSetPushConstants(RDGPassNode* pParent,
         static_cast<uint8_t*>(m_poolAlloc.Alloc(sizeof(uint8_t) * dataSize, alignof(uint8_t)));
     std::memcpy(pCopiedData, pData, dataSize);
 
-    auto* pNode = AllocPassChildNode<RDGSetPushConstantsNode>(pParent, MakeVecView(pCopiedData, dataSize));
+    auto* pNode =
+        AllocPassChildNode<RDGSetPushConstantsNode>(pParent, MakeVecView(pCopiedData, dataSize));
 
     //const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
     //auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
@@ -307,7 +310,8 @@ void RenderGraph::AddComputePassSetPushConstants(RDGPassNode* pParent,
         static_cast<uint8_t*>(m_poolAlloc.Alloc(sizeof(uint8_t) * dataSize, alignof(uint8_t)));
     std::memcpy(pCopiedData, pData, dataSize);
 
-    auto* pNode = AllocPassChildNode<RDGSetPushConstantsNode>(pParent, MakeVecView(pCopiedData, dataSize));
+    auto* pNode =
+        AllocPassChildNode<RDGSetPushConstantsNode>(pParent, MakeVecView(pCopiedData, dataSize));
 
     //const size_t nodeSize = sizeof(RDGSetPushConstantsNode) + dataSize;
     //auto* node            = AllocPassChildNode<RDGSetPushConstantsNode>(parent, nodeSize);
@@ -349,12 +353,12 @@ void RenderGraph::AddGraphicsPassDrawIndexedIndirectNode(RDGPassNode* pParent,
                                                          uint32_t drawCount,
                                                          uint32_t stride)
 {
-    auto* pNode           = AllocPassChildNode<RDGDrawIndexedIndirectNode>(pParent);
-    pNode->type           = RDGPassCmdType::eDrawIndexedIndirect;
+    auto* pNode            = AllocPassChildNode<RDGDrawIndexedIndirectNode>(pParent);
+    pNode->type            = RDGPassCmdType::eDrawIndexedIndirect;
     pNode->pIndirectBuffer = pIndirectBuffer;
-    pNode->offset         = offset;
-    pNode->drawCount      = drawCount;
-    pNode->stride         = stride;
+    pNode->offset          = offset;
+    pNode->drawCount       = drawCount;
+    pNode->stride          = stride;
     pNode->pParent->selfStages.SetFlags(RHIPipelineStageBits::eDrawIndirect);
 
     DeclareBufferAccessForPass(pParent, pIndirectBuffer, RHIBufferUsage::eIndirectBuffer,
@@ -403,11 +407,11 @@ void RenderGraph::AddGraphicsPassSetDepthBiasNode(RDGPassNode* pParent,
 
 void RenderGraph::AddBufferClearNode(RHIBuffer* pBuffer, uint32_t offset, uint64_t size)
 {
-    auto* pNode   = AllocNode<RDGBufferClearNode>();
+    auto* pNode    = AllocNode<RDGBufferClearNode>();
     pNode->pBuffer = std::move(pBuffer);
-    pNode->offset = offset;
-    pNode->size   = size;
-    pNode->type   = RDGNodeType::eClearBuffer;
+    pNode->offset  = offset;
+    pNode->size    = size;
+    pNode->type    = RDGNodeType::eClearBuffer;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
     RDGAccess access{};
@@ -429,11 +433,11 @@ void RenderGraph::AddBufferCopyNode(RHIBuffer* pSrcBufferHandle,
                                     RHIBuffer* pDstBufferHandle,
                                     const RHIBufferCopyRegion& copyRegion)
 {
-    auto* pNode      = AllocNode<RDGBufferCopyNode>();
+    auto* pNode       = AllocNode<RDGBufferCopyNode>();
     pNode->pSrcBuffer = std::move(pSrcBufferHandle);
     pNode->pDstBuffer = std::move(pDstBufferHandle);
-    pNode->region    = copyRegion;
-    pNode->type      = RDGNodeType::eCopyBuffer;
+    pNode->region     = copyRegion;
+    pNode->type       = RDGNodeType::eCopyBuffer;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // read access to src buffer
     {
@@ -476,7 +480,7 @@ void RenderGraph::AddBufferUpdateNode(RHIBuffer* pDstBufferHandle,
         pNode->sources.push_back(source);
     }
     pNode->pDstBuffer = std::move(pDstBufferHandle);
-    pNode->type      = RDGNodeType::eCopyBuffer;
+    pNode->type       = RDGNodeType::eCopyBuffer;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // only support update through staging buffer
     // staging buffer is neither owned nor managed by RDG
@@ -486,7 +490,8 @@ void RenderGraph::AddBufferUpdateNode(RHIBuffer* pDstBufferHandle,
     writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
     writeAccess.nodeId      = pNode->id;
 
-    RDGResource* pResource = GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer, pNode->id);
+    RDGResource* pResource =
+        GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer, pNode->id);
     // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     pResource->writtenByNodeIds.push_back(pNode->id);
     writeAccess.resourceId = pResource->id;
@@ -502,7 +507,7 @@ void RenderGraph::AddTextureClearNode(RHITexture* pTexture,
     pNode->color = color;
     // node->range   = range;
     pNode->pTexture = pTexture;
-    pNode->type    = RDGNodeType::eClearTexture;
+    pNode->type     = RDGNodeType::eClearTexture;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 
     RDGAccess access{};
@@ -529,7 +534,7 @@ void RenderGraph::AddTextureCopyNode(RHITexture* pSrcTexture,
     std::ranges::copy(regions, pCopyRegions);
 
     auto* pNode = AllocNode<RDGTextureCopyNode>(pSrcTexture, pDstTexture,
-                                               MakeVecView(pCopyRegions, numCopyRegions));
+                                                MakeVecView(pCopyRegions, numCopyRegions));
 
     //const size_t nodeSize =
     //    sizeof(RDGTextureCopyNode) + sizeof(RHITextureCopyRegion) * numCopyRegions;
@@ -559,8 +564,9 @@ void RenderGraph::AddTextureCopyNode(RHITexture* pSrcTexture,
     readAccess.textureUsage            = RHITextureUsage::eTransferSrc;
     readAccess.nodeId                  = pNode->id;
 
-    RDGResource* pSrcResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
-    pSrcResource->tag         = pSrcTexture->GetResourceTag();
+    RDGResource* pSrcResource =
+        GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
+    pSrcResource->tag = pSrcTexture->GetResourceTag();
     // if (srcResource->tag.empty())
     // {
     //     srcResource->tag = "src_texture";
@@ -578,8 +584,9 @@ void RenderGraph::AddTextureCopyNode(RHITexture* pSrcTexture,
     writeAccess.textureUsage            = RHITextureUsage::eTransferDst;
     writeAccess.nodeId                  = pNode->id;
 
-    RDGResource* pDstResource = GetOrAllocResource(pDstTexture, RDGResourceType::eTexture, pNode->id);
-    pDstResource->tag         = pDstTexture->GetResourceTag();
+    RDGResource* pDstResource =
+        GetOrAllocResource(pDstTexture, RDGResourceType::eTexture, pNode->id);
+    pDstResource->tag = pDstTexture->GetResourceTag();
     // if (dstResource->tag.empty())
     // {
     //     dstResource->tag = "dst_texture";
@@ -602,7 +609,7 @@ void RenderGraph::AddTextureReadNode(RHITexture* pSrcTexture,
     std::ranges::copy(regions, pCopyRegions);
 
     auto* pNode = AllocNode<RDGTextureReadNode>(pSrcTexture, pDstBuffer,
-                                               MakeVecView(pCopyRegions, numCopyRegions));
+                                                MakeVecView(pCopyRegions, numCopyRegions));
     pNode->tag  = "texture_read";
     pNode->type = RDGNodeType::eReadTexture;
 
@@ -629,7 +636,8 @@ void RenderGraph::AddTextureReadNode(RHITexture* pSrcTexture,
         readAccess.textureUsage = RHITextureUsage::eTransferSrc;
         readAccess.nodeId       = pNode->id;
 
-        RDGResource* pResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
+        RDGResource* pResource =
+            GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
         // resource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
         pResource->readByNodeIds.push_back(pNode->id);
         readAccess.resourceId = pResource->id;
@@ -643,7 +651,8 @@ void RenderGraph::AddTextureReadNode(RHITexture* pSrcTexture,
         writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = pNode->id;
 
-        RDGResource* pResource = GetOrAllocResource(pDstBuffer, RDGResourceType::eBuffer, pNode->id);
+        RDGResource* pResource =
+            GetOrAllocResource(pDstBuffer, RDGResourceType::eBuffer, pNode->id);
         // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         pResource->writtenByNodeIds.push_back(pNode->id);
         writeAccess.resourceId = pResource->id;
@@ -702,13 +711,13 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
                                         uint32_t dstLayer,
                                         uint32_t dstMipMap)
 {
-    auto* pNode       = AllocNode<RDGTextureResolveNode>();
+    auto* pNode        = AllocNode<RDGTextureResolveNode>();
     pNode->pSrcTexture = pSrcTexture;
     pNode->pDstTexture = pDstTexture;
-    pNode->srcLayer   = srcLayer;
-    pNode->srcMipmap  = srcMipmap;
-    pNode->dstLayer   = dstLayer;
-    pNode->dstMipmap  = dstMipMap;
+    pNode->srcLayer    = srcLayer;
+    pNode->srcMipmap   = srcMipmap;
+    pNode->dstLayer    = dstLayer;
+    pNode->dstMipmap   = dstMipMap;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // read access to src texture
     {
@@ -717,7 +726,8 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
         readAccess.textureUsage = RHITextureUsage::eTransferSrc;
         readAccess.nodeId       = pNode->id;
 
-        RDGResource* pResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
+        RDGResource* pResource =
+            GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture, pNode->id);
         // resource->accessNodeMap[RHIAccessMode::eRead].push_back(node->id);
         pResource->readByNodeIds.push_back(pNode->id);
         readAccess.resourceId = pResource->id;
@@ -731,7 +741,8 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
         writeAccess.textureUsage = RHITextureUsage::eTransferDst;
         writeAccess.nodeId       = pNode->id;
 
-        RDGResource* pResource = GetOrAllocResource(pDstTexture, RDGResourceType::eTexture, pNode->id);
+        RDGResource* pResource =
+            GetOrAllocResource(pDstTexture, RDGResourceType::eTexture, pNode->id);
         // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
         pResource->writtenByNodeIds.push_back(pNode->id);
         writeAccess.resourceId = pResource->id;
@@ -742,8 +753,8 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
 
 void RenderGraph::AddTextureMipmapGenNode(RHITexture* pTexture)
 {
-    auto* pNode    = AllocNode<RDGTextureMipmapGenNode>();
-    pNode->type    = RDGNodeType::eGenTextureMipmap;
+    auto* pNode     = AllocNode<RDGTextureMipmapGenNode>();
+    pNode->type     = RDGNodeType::eGenTextureMipmap;
     pNode->pTexture = pTexture;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
 }
@@ -788,7 +799,7 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* pPassNode,
     if (usage == RHITextureUsage::eDepthStencilAttachment)
     {
         pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eEarlyFragmentTests,
-                                      RHIPipelineStageBits::eLateFragmentTests);
+                                       RHIPipelineStageBits::eLateFragmentTests);
     }
     if (usage == RHITextureUsage::eStorage)
     {
@@ -914,7 +925,7 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* pResource,
     if (pResource->type == RDGResourceType::eBuffer)
     {
         RHIBufferTransition bufferTransition;
-        bufferTransition.pBuffer        = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
+        bufferTransition.pBuffer       = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
         bufferTransition.oldAccessMode = oldAccessMode;
         bufferTransition.newAccessMode = newAccessMode;
         bufferTransition.oldUsage      = static_cast<RHIBufferUsage>(oldUsage);
@@ -924,7 +935,7 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* pResource,
     else if (pResource->type == RDGResourceType::eTexture)
     {
         RHITextureTransition textureTransition;
-        textureTransition.pTexture          = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
+        textureTransition.pTexture         = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
         textureTransition.oldAccessMode    = oldAccessMode;
         textureTransition.newAccessMode    = newAccessMode;
         textureTransition.oldUsage         = static_cast<RHITextureUsage>(oldUsage);
@@ -1278,8 +1289,7 @@ void RenderGraph::Execute(RHICommandList* pCmdList)
 
 void RenderGraph::RunNode(RDGNodeBase* pBase)
 {
-    const bool useFRHI = m_pCmdList != nullptr;
-    RDGNodeType type   = pBase->type;
+    RDGNodeType type = pBase->type;
     switch (type)
     {
         case RDGNodeType::eClearBuffer:
@@ -1313,7 +1323,8 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
         case RDGNodeType::eCopyTexture:
         {
             RDGTextureCopyNode* pNode = reinterpret_cast<RDGTextureCopyNode*>(pBase);
-            m_pCmdList->CopyTexture(pNode->pSrcTexture, pNode->pDstTexture, pNode->textureCopyRegions);
+            m_pCmdList->CopyTexture(pNode->pSrcTexture, pNode->pDstTexture,
+                                    pNode->textureCopyRegions);
         }
         break;
         case RDGNodeType::eReadTexture:
@@ -1351,7 +1362,7 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
 
         case RDGNodeType::eComputePass:
         {
-            RDGComputePassNode* pNode    = reinterpret_cast<RDGComputePassNode*>(pBase);
+            RDGComputePassNode* pNode   = reinterpret_cast<RDGComputePassNode*>(pBase);
             RHIPipeline* pBoundPipeline = nullptr;
             // for (RDGPassChildNode* child : node->childNodes)
             for (RDGPassChildNode* pChild : m_passChildNodeMap[pNode->id])
@@ -1360,7 +1371,7 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
                 {
                     case RDGPassCmdType::eBindPipeline:
                     {
-                        auto* pCmdNode  = reinterpret_cast<RDGBindPipelineNode*>(pChild);
+                        auto* pCmdNode = reinterpret_cast<RDGBindPipelineNode*>(pChild);
                         pBoundPipeline = pCmdNode->pPipeline;
                         m_pCmdList->BindPipeline(pCmdNode->pipelineType, pCmdNode->pPipeline,
                                                  pNode->pComputePass->numDescriptorSets,
@@ -1395,7 +1406,7 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
 
         case RDGNodeType::eGraphicsPass:
         {
-            RDGGraphicsPassNode* pNode    = reinterpret_cast<RDGGraphicsPassNode*>(pBase);
+            RDGGraphicsPassNode* pNode   = reinterpret_cast<RDGGraphicsPassNode*>(pBase);
             RHIPipeline* pBoundPipeline  = nullptr;
             RHIBuffer* pBoundIndexBuffer = nullptr;
             DataFormat boundIndexFormat  = DataFormat::eUndefined;
@@ -1443,7 +1454,7 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
                     break;
                     case RDGPassCmdType::eBindPipeline:
                     {
-                        auto* pCmdNode  = reinterpret_cast<RDGBindPipelineNode*>(pChild);
+                        auto* pCmdNode = reinterpret_cast<RDGBindPipelineNode*>(pChild);
                         pBoundPipeline = pCmdNode->pPipeline;
                         m_pCmdList->BindPipeline(pCmdNode->pipelineType, pCmdNode->pPipeline,
                                                  pNode->pGraphicsPass->numDescriptorSets,
@@ -1643,7 +1654,7 @@ void RenderGraph::EmitInitializationBarriers(uint32_t level)
             if (firstNodeId == nodeId)
             {
                 dstStages.SetFlag(GetNodeBaseById(nodeId)->selfStages);
-                RDGResource* pResource    = m_resources[resourceId];
+                RDGResource* pResource   = m_resources[resourceId];
                 const auto& nodeAccesses = m_nodeAccessMap[nodeId];
                 for (const auto& access : nodeAccesses)
                 {

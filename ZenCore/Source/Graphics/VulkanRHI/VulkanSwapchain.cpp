@@ -123,13 +123,13 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     VkPhysicalDevice gpu = GVulkanRHI->GetPhysicalDevice();
     if (pRecreateInfo != nullptr)
     {
-        m_surface             = pRecreateInfo->surface;
+        m_surface              = pRecreateInfo->surface;
         pRecreateInfo->surface = VK_NULL_HANDLE;
     }
     else
     {
-        WindowData windowData{static_cast<platform::GlfwWindowImpl*>(pWindowPtr)->GetHandle(), width,
-                              height};
+        WindowData windowData{static_cast<platform::GlfwWindowImpl*>(pWindowPtr)->GetHandle(),
+                              width, height};
         m_surface = VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
     }
 
@@ -197,12 +197,21 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     m_internalHeight = std::min(height, swapchainCI.imageExtent.height);
 }
 
-int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** pOutSemaphore)
+int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
 {
     VERIFY_EXPR(m_imageIndex == -1);
     const int32_t prevSemaphoreIndex = m_semaphoreIndex;
     m_semaphoreIndex                 = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
-    uint32_t imageIndex              = 0;
+    const uint64_t pendingSubmissionSerial =
+        m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex];
+    if (pendingSubmissionSerial != 0)
+    {
+        // Binary acquire semaphores cannot be reused while their queue wait is still pending.
+        // The old global submit wait masked this; now the swapchain explicitly retires the slot.
+        m_pDevice->GetGfxQueue()->WaitForSubmission(pendingSubmissionSerial, UINT64_MAX);
+        m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = 0;
+    }
+    uint32_t imageIndex = 0;
     VkResult result;
     {
         result = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, UINT64_MAX,
@@ -227,9 +236,15 @@ int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** pOutSemaphore)
         m_semaphoreIndex = prevSemaphoreIndex;
         return -1;
     }
-    *pOutSemaphore = m_pImageAcquiredSemaphores[m_semaphoreIndex];
-    m_imageIndex  = static_cast<int32_t>(imageIndex);
+    *ppOutSemaphore = m_pImageAcquiredSemaphores[m_semaphoreIndex];
+    m_imageIndex    = static_cast<int32_t>(imageIndex);
     return m_imageIndex;
+}
+
+void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
+{
+    VERIFY_EXPR(m_semaphoreIndex >= 0 && m_semaphoreIndex < static_cast<int32_t>(m_numImages));
+    m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = submissionSerial;
 }
 
 bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
@@ -271,7 +286,8 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     {
         // m_imageAcquiredSemaphores[i]->Release();
         m_pDevice->GetSemaphoreManager()->ReleaseSemaphore(m_pImageAcquiredSemaphores[i]);
-        m_pImageAcquiredSemaphores[i] = nullptr;
+        m_pImageAcquiredSemaphores[i]                = nullptr;
+        m_imageAcquiredSemaphoreSubmissionSerials[i] = 0;
     }
     // m_imageAcquiredSemaphores.clear();
     if (pRecreateInfo == nullptr)

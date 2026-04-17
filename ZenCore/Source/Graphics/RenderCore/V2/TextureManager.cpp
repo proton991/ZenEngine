@@ -42,7 +42,7 @@ void TextureManager::EnsureTransferBatch()
 {
     if (!m_transferBatch.recording)
     {
-        m_transferBatch.pCmdList  = m_pRenderDevice->GetTransferCmdList();
+        m_transferBatch.pCmdList  = m_pRenderDevice->GetImmediateTransferCmdList();
         m_transferBatch.recording = true;
     }
 }
@@ -54,13 +54,12 @@ void TextureManager::FlushTransferBatch()
         return;
     }
 
-    m_pRenderDevice->SubmitTransferCmdList();
+    m_pRenderDevice->SubmitImmediateTransferCmdList();
 
     if (!m_pendingShaderReadOnlyTransitions.empty())
     {
         // Sampled-image transitions must be recorded on a graphics-capable queue.
-        RHICommandList* pGfxCmdList =
-            RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+        RHICommandList* pGfxCmdList = m_pRenderDevice->GetImmediateGraphicsCmdList();
 
         for (RHITexture* pTexture : m_pendingShaderReadOnlyTransitions)
         {
@@ -69,8 +68,7 @@ void TextureManager::FlushTransferBatch()
 
         RHICommandList* pCmdLists[] = {pGfxCmdList};
         GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-        pGfxCmdList->WaitUntilCompleted();
-        ZEN_DELETE(pGfxCmdList);
+        pGfxCmdList->Reset();
 
         m_pendingShaderReadOnlyTransitions.clear();
     }

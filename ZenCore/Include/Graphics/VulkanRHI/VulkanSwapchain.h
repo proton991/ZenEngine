@@ -50,6 +50,8 @@ public:
 
     bool Present(VulkanSemaphore* pRenderingCompleteSemaphore);
 
+    void MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial);
+
     void Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo);
 
 private:
@@ -70,6 +72,7 @@ private:
     // SmallVector<VulkanSemaphore*> m_imageAcquiredSemphores;
     // std::vector<VulkanSemaphore*> m_imageAcquiredSemaphores;
     VulkanSemaphore* m_pImageAcquiredSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
+    uint64_t m_imageAcquiredSemaphoreSubmissionSerials[ZEN_NUM_FRAMES_IN_FLIGHT]{};
 
     friend class VulkanViewport;
 };

@@ -59,7 +59,56 @@ public:
     void WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
 
 private:
+    struct WorkloadSubmitGroup
+    {
+        uint32_t firstWorkloadIndex{0};
+        uint32_t workloadCount{0};
+        uint32_t commandBufferCount{0};
+    };
+
+    struct WorkloadMergeResult
+    {
+        HeapVector<WorkloadSubmitGroup> submitGroups;
+        size_t totalWaitSemaphoreCount{0};
+        size_t totalSignalSemaphoreCount{0};
+        size_t totalCommandBufferCount{0};
+    };
+
+    struct TimelineSubmitBatch
+    {
+        HeapVector<VkSubmitInfo> submitInfos;
+        HeapVector<VkTimelineSemaphoreSubmitInfo> timelineSubmitInfos;
+        HeapVector<VkCommandBuffer> commandBuffers;
+        HeapVector<VkSemaphore> waitSemaphores;
+        HeapVector<VkSemaphore> signalSemaphores;
+        HeapVector<VkPipelineStageFlags> waitStageMasks;
+        HeapVector<uint64_t> waitSemaphoreValues;
+        HeapVector<uint64_t> signalSemaphoreValues;
+    };
+
+    static bool CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
+                                  const VulkanWorkload* pCurrentWorkload);
+
     void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer);
+
+    void SubmitWorkloadsWithFences();
+
+    void SubmitWorkloadsWithTimelineSemaphore();
+
+    void DrainPendingSubmitWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
+
+    void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
+                        WorkloadMergeResult& outMergeResult);
+
+    void BuildTimelineSubmitBatch(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
+                                  const WorkloadMergeResult& mergeResult,
+                                  TimelineSubmitBatch& outSubmitBatch);
+
+    void AppendTimelineSubmitGroup(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
+                                   const WorkloadSubmitGroup& submitGroup,
+                                   TimelineSubmitBatch& outSubmitBatch);
+
+    void QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit);
 
     VulkanDevice* m_pDevice{nullptr};
     VkQueue m_handle{VK_NULL_HANDLE};
