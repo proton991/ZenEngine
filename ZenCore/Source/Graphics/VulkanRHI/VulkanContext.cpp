@@ -1,6 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanCommands.h"
@@ -22,6 +23,265 @@ static bool HasExtensionEnabled(const HeapVector<const char*>& extensions,
                         [pExtensionName](const char* pEnabledExtension) {
                             return strcmp(pEnabledExtension, pExtensionName) == 0;
                         }) != extensions.end();
+}
+
+static const char* GetPhysicalDeviceTypeName(VkPhysicalDeviceType deviceType)
+{
+    switch (deviceType)
+    {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER: return "Other";
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "Integrated";
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "Discrete";
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "Virtual";
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "CPU";
+        default: return "Unknown";
+    }
+}
+
+static int64_t GetPhysicalDeviceTypeScore(VkPhysicalDeviceType deviceType)
+{
+    switch (deviceType)
+    {
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return 40000;
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 30000;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return 20000;
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER: return 15000;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: return 1000;
+        default: return 0;
+    }
+}
+
+struct VulkanQueueFamilySummary
+{
+    bool hasGraphics{false};
+    bool hasDedicatedCompute{false};
+    bool hasDedicatedTransfer{false};
+    bool hasAsyncTransfer{false};
+};
+
+struct VulkanPhysicalDeviceCandidateInfo
+{
+    bool isValid{false};
+    int64_t score{0};
+    uint64_t deviceLocalMemoryBytes{0};
+    VkPhysicalDeviceProperties properties{};
+    VulkanQueueFamilySummary queueSummary{};
+    bool hasDescriptorIndexing{false};
+    bool hasDynamicRendering{false};
+    bool hasTimelineSemaphore{false};
+    bool hasBufferDeviceAddress{false};
+    bool hasAccelerationStructure{false};
+    bool hasRayTracingPipeline{false};
+    bool hasRayQuery{false};
+    bool hasGeometryShader{false};
+    bool hasSamplerAnisotropy{false};
+};
+
+static VulkanQueueFamilySummary GetQueueFamilySummary(VkPhysicalDevice physicalDevice)
+{
+    VulkanQueueFamilySummary summary{};
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    if (queueFamilyCount == 0)
+    {
+        return summary;
+    }
+
+    HeapVector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
+                                             queueFamilyProperties.data());
+
+    for (const VkQueueFamilyProperties& queueFamilyProperty : queueFamilyProperties)
+    {
+        if (queueFamilyProperty.queueCount == 0)
+        {
+            continue;
+        }
+
+        const bool hasGraphics =
+            (queueFamilyProperty.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT;
+        const bool hasCompute =
+            (queueFamilyProperty.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT;
+        const bool hasTransfer =
+            (queueFamilyProperty.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT;
+
+        if (hasGraphics)
+        {
+            summary.hasGraphics = true;
+        }
+        if (hasCompute && !hasGraphics)
+        {
+            summary.hasDedicatedCompute = true;
+        }
+        if (hasTransfer && !hasGraphics)
+        {
+            summary.hasAsyncTransfer = true;
+        }
+        if (hasTransfer && !hasGraphics && !hasCompute)
+        {
+            summary.hasDedicatedTransfer = true;
+        }
+    }
+
+    return summary;
+}
+
+static uint64_t GetDeviceLocalMemoryBytes(VkPhysicalDevice physicalDevice)
+{
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+
+    uint64_t deviceLocalMemoryBytes = 0;
+    for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; ++i)
+    {
+        const VkMemoryHeap& memoryHeap = memoryProperties.memoryHeaps[i];
+        if ((memoryHeap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+        {
+            deviceLocalMemoryBytes += memoryHeap.size;
+        }
+    }
+
+    return deviceLocalMemoryBytes;
+}
+
+// static VulkanRequiredDeviceExtensionSupport QueryRequiredDeviceExtensionSupport(
+//     VkPhysicalDevice physicalDevice)
+// {
+//     VulkanRequiredDeviceExtensionSupport extensionSupport{};
+//     const HeapVector<VkExtensionProperties> supportedExtensions =
+//         VulkanDeviceExtension::GetSupportedExtensions(physicalDevice);
+//     extensionSupport.hasSwapchain =
+//         HasSupportedExtension(supportedExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+//     return extensionSupport;
+// }
+
+static VulkanPhysicalDeviceCandidateInfo EvaluatePhysicalDeviceCandidate(
+    VkPhysicalDevice physicalDevice)
+{
+    static constexpr uint64_t cMiB = 1024ull * 1024ull;
+
+    VulkanPhysicalDeviceCandidateInfo candidateInfo{};
+    vkGetPhysicalDeviceProperties(physicalDevice, &candidateInfo.properties);
+    candidateInfo.queueSummary = GetQueueFamilySummary(physicalDevice);
+
+    if (!candidateInfo.queueSummary.hasGraphics)
+    {
+        return candidateInfo;
+    }
+
+    VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+    InitVkStruct(physicalDeviceFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{};
+    InitVkStruct(descriptorIndexingFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES);
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{};
+    InitVkStruct(dynamicRenderingFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR);
+    VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures{};
+    InitVkStruct(timelineSemaphoreFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES);
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+    InitVkStruct(bufferDeviceAddressFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES);
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
+    InitVkStruct(accelerationStructureFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR);
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
+    InitVkStruct(rayTracingPipelineFeatures,
+                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR);
+    VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{};
+    InitVkStruct(rayQueryFeatures, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR);
+
+    physicalDeviceFeatures2.pNext       = &descriptorIndexingFeatures;
+    descriptorIndexingFeatures.pNext    = &dynamicRenderingFeatures;
+    dynamicRenderingFeatures.pNext      = &timelineSemaphoreFeatures;
+    timelineSemaphoreFeatures.pNext     = &bufferDeviceAddressFeatures;
+    bufferDeviceAddressFeatures.pNext   = &accelerationStructureFeatures;
+    accelerationStructureFeatures.pNext = &rayTracingPipelineFeatures;
+    rayTracingPipelineFeatures.pNext    = &rayQueryFeatures;
+    rayQueryFeatures.pNext              = nullptr;
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &physicalDeviceFeatures2);
+
+    candidateInfo.hasGeometryShader = physicalDeviceFeatures2.features.geometryShader == VK_TRUE;
+    candidateInfo.hasSamplerAnisotropy =
+        physicalDeviceFeatures2.features.samplerAnisotropy == VK_TRUE;
+    candidateInfo.hasDescriptorIndexing =
+        descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE &&
+        descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE &&
+        descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE &&
+        descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE;
+    candidateInfo.hasDynamicRendering  = dynamicRenderingFeatures.dynamicRendering == VK_TRUE;
+    candidateInfo.hasTimelineSemaphore = timelineSemaphoreFeatures.timelineSemaphore == VK_TRUE;
+    candidateInfo.hasBufferDeviceAddress =
+        bufferDeviceAddressFeatures.bufferDeviceAddress == VK_TRUE;
+    candidateInfo.hasAccelerationStructure =
+        accelerationStructureFeatures.accelerationStructure == VK_TRUE;
+    candidateInfo.hasRayTracingPipeline = rayTracingPipelineFeatures.rayTracingPipeline == VK_TRUE;
+    candidateInfo.hasRayQuery           = rayQueryFeatures.rayQuery == VK_TRUE;
+
+    candidateInfo.deviceLocalMemoryBytes = GetDeviceLocalMemoryBytes(physicalDevice);
+    candidateInfo.isValid                = true;
+
+    candidateInfo.score += GetPhysicalDeviceTypeScore(candidateInfo.properties.deviceType);
+    candidateInfo.score +=
+        static_cast<int64_t>(candidateInfo.deviceLocalMemoryBytes / (1024ull * cMiB)) * 250;
+    candidateInfo.score +=
+        static_cast<int64_t>(candidateInfo.properties.limits.maxImageDimension2D / 1024);
+    candidateInfo.score +=
+        static_cast<int64_t>(candidateInfo.properties.limits.maxPushConstantsSize / 32);
+
+    if (candidateInfo.queueSummary.hasDedicatedCompute)
+    {
+        candidateInfo.score += 5000;
+    }
+    if (candidateInfo.queueSummary.hasDedicatedTransfer)
+    {
+        candidateInfo.score += 3000;
+    }
+    if (candidateInfo.queueSummary.hasAsyncTransfer)
+    {
+        candidateInfo.score += 1000;
+    }
+    if (candidateInfo.hasDescriptorIndexing)
+    {
+        candidateInfo.score += 4000;
+    }
+    if (candidateInfo.hasDynamicRendering)
+    {
+        candidateInfo.score += 2500;
+    }
+    if (candidateInfo.hasTimelineSemaphore)
+    {
+        candidateInfo.score += 2500;
+    }
+    if (candidateInfo.hasBufferDeviceAddress)
+    {
+        candidateInfo.score += 2000;
+    }
+    if (candidateInfo.hasAccelerationStructure)
+    {
+        candidateInfo.score += 1500;
+    }
+    if (candidateInfo.hasRayTracingPipeline)
+    {
+        candidateInfo.score += 1500;
+    }
+    if (candidateInfo.hasRayQuery)
+    {
+        candidateInfo.score += 1000;
+    }
+    if (candidateInfo.hasGeometryShader)
+    {
+        candidateInfo.score += 500;
+    }
+    if (candidateInfo.hasSamplerAnisotropy)
+    {
+        candidateInfo.score += 250;
+    }
+
+    return candidateInfo;
 }
 } // namespace
 
@@ -222,21 +482,63 @@ void VulkanRHI::SelectGPU()
     HeapVector<VkPhysicalDevice> physicalDevices;
     physicalDevices.resize(gpuCount);
     VKCHECK(vkEnumeratePhysicalDevices(m_instance, &gpuCount, physicalDevices.data()));
-    // select first discrete device
-    uint32_t index = 0;
-    bool found     = false;
+
+    uint32_t selectedIndex   = 0;
+    bool foundValidCandidate = false;
+    VulkanPhysicalDeviceCandidateInfo selectedCandidateInfo{};
+
     for (uint32_t i = 0; i < physicalDevices.size(); i++)
     {
-        VkPhysicalDeviceProperties deviceProperties{};
-        vkGetPhysicalDeviceProperties(physicalDevices[i], &deviceProperties);
-        LOGI("Found Vulkan Compatible GPU: {}", deviceProperties.deviceName);
-        if (!found && deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        const VulkanPhysicalDeviceCandidateInfo candidateInfo =
+            EvaluatePhysicalDeviceCandidate(physicalDevices[i]);
+
+        LOGI("Found Vulkan Compatible GPU: {} ({})", candidateInfo.properties.deviceName,
+             GetPhysicalDeviceTypeName(candidateInfo.properties.deviceType));
+
+        if (!candidateInfo.isValid)
         {
-            index = i;
-            found = true;
+            LOGW("Rejecting GPU '{}': graphicsQueue={}", candidateInfo.properties.deviceName,
+                 candidateInfo.queueSummary.hasGraphics);
+            continue;
+        }
+
+        LOGI(
+            "GPU Candidate '{}': score={}, localMemory={} MiB, dedicatedCompute={}, dedicatedTransfer={}, asyncTransfer={}, descriptorIndexing={}, dynamicRendering={}, timelineSemaphore={}, bufferDeviceAddress={}, rayTracingPipeline={}, rayQuery={}, geometryShader={}",
+            candidateInfo.properties.deviceName, candidateInfo.score,
+            candidateInfo.deviceLocalMemoryBytes / (1024ull * 1024ull),
+            candidateInfo.queueSummary.hasDedicatedCompute,
+            candidateInfo.queueSummary.hasDedicatedTransfer,
+            candidateInfo.queueSummary.hasAsyncTransfer, candidateInfo.hasDescriptorIndexing,
+            candidateInfo.hasDynamicRendering, candidateInfo.hasTimelineSemaphore,
+            candidateInfo.hasBufferDeviceAddress, candidateInfo.hasRayTracingPipeline,
+            candidateInfo.hasRayQuery, candidateInfo.hasGeometryShader);
+
+        const bool isBetterCandidate = !foundValidCandidate ||
+            candidateInfo.score > selectedCandidateInfo.score ||
+            (candidateInfo.score == selectedCandidateInfo.score &&
+             candidateInfo.deviceLocalMemoryBytes > selectedCandidateInfo.deviceLocalMemoryBytes);
+
+        if (isBetterCandidate)
+        {
+            selectedIndex         = i;
+            selectedCandidateInfo = candidateInfo;
+            foundValidCandidate   = true;
         }
     }
-    m_pDevice = ZEN_NEW() VulkanDevice(physicalDevices[index]);
+
+    if (!foundValidCandidate)
+    {
+        LOG_FATAL_ERROR(
+            "Failed to find a Vulkan physical device with graphics queue and swapchain support.");
+    }
+
+    LOGI("Selected Vulkan GPU: {} ({}, score={}, localMemory={} MiB)",
+         selectedCandidateInfo.properties.deviceName,
+         GetPhysicalDeviceTypeName(selectedCandidateInfo.properties.deviceType),
+         selectedCandidateInfo.score,
+         selectedCandidateInfo.deviceLocalMemoryBytes / (1024ull * 1024ull));
+
+    m_pDevice = ZEN_NEW() VulkanDevice(physicalDevices[selectedIndex]);
 }
 
 VulkanRHI::VulkanRHI() : m_resourceAllocator(ZEN_DEFAULT_PAGESIZE, false)
@@ -320,7 +622,8 @@ void VulkanRHI::Init()
     // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
     //                        m_device->GetVkHandle());
 
-    GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(), m_pDevice->GetVkHandle());
+    GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(),
+                          m_pDevice->GetVkHandle());
 
     m_pDescriptorPoolManager = ZEN_NEW() VulkanDescriptorPoolManager(m_pDevice);
 
