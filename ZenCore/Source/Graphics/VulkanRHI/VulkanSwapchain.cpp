@@ -16,9 +16,36 @@ static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR
     SmallVector<VkSurfaceFormatKHR> surfaceFormats;
     surfaceFormats.resize(numSurfaceFormats);
     vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &numSurfaceFormats, surfaceFormats.data());
-    // LOGI("Available surface formats:")
-    // for (auto& surfaceFormat : surfaceFormats) { LOGI("  \t{}", VkToString(surfaceFormat)); }
-    // return first combination (best)
+
+    // The current fullscreen shading path already applies gamma in shader, so prefer UNORM
+    // presentation formats to avoid driver-dependent double-conversion when SRGB is also exposed.
+    static constexpr VkSurfaceFormatKHR preferredSurfaceFormats[] = {
+        {VK_FORMAT_B8G8R8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
+        {VK_FORMAT_R8G8B8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
+        {VK_FORMAT_B8G8R8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
+        {VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
+    };
+
+    for (const VkSurfaceFormatKHR& preferredSurfaceFormat : preferredSurfaceFormats)
+    {
+        for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
+        {
+            if (surfaceFormat.format == preferredSurfaceFormat.format &&
+                surfaceFormat.colorSpace == preferredSurfaceFormat.colorSpace)
+            {
+                return surfaceFormat;
+            }
+        }
+    }
+
+    for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
+    {
+        if (surfaceFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR)
+        {
+            return surfaceFormat;
+        }
+    }
+
     return surfaceFormats[0];
 }
 
