@@ -80,7 +80,7 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* pViewportRHI,
     }
     else
     {
-        pContext->FlushAndSubmitCommands();
+        pContext->SubmitRecordedWorkloads();
     }
 }
 
@@ -241,7 +241,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_pDepthStencilBackBuffer->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
-    context.FlushAndSubmitCommands();
+    context.SubmitRecordedWorkloads();
     // m_device->WaitForIdle();
 
     m_acquiredImageIndex = -1;
@@ -462,14 +462,14 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     {
         // failed to acquire image from swapchain, do not present
         // m_device->GetGfxQueue()->Submit(cmdBuffer);
-        pContext->FlushAndSubmitCommands();
+        pContext->SubmitRecordedWorkloads();
         RecreateSwapchain();
         // m_device->WaitForIdle();
         return true;
     }
     // Submit the rendering workload first so the present wait semaphore and image layout
     // transition are both actually scheduled before vkQueuePresentKHR waits on them.
-    pContext->FlushAndSubmitCommands();
+    pContext->SubmitRecordedWorkloads();
     m_pSwapchain->MarkAcquireSemaphoreSubmitted(pContext->GetLastSubmittedSerial());
 
     bool presentResult = m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);

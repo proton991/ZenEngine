@@ -253,8 +253,9 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
          !pWorkload->m_signalSemaphoreInfos.empty());
 }
 
-void VulkanCommandContextBase::DrainFinalizedWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
+void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
 {
+    FinalizePendingWorkload();
     for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
     {
         outWorkloads.emplace_back(pWorkload);
@@ -262,7 +263,7 @@ void VulkanCommandContextBase::DrainFinalizedWorkloads(HeapVector<VulkanWorkload
     m_finalizedWorkloads.clear();
 }
 
-void VulkanCommandContextBase::FlushCommands()
+void VulkanCommandContextBase::FinalizePendingWorkload()
 {
     if (!HasWorkloadData(m_pCurrentWorkload))
     {
@@ -279,10 +280,9 @@ void VulkanCommandContextBase::FlushCommands()
     m_pCurrentWorkload = nullptr;
 }
 
-void VulkanCommandContextBase::FlushAndSubmitCommands()
+void VulkanCommandContextBase::SubmitRecordedWorkloads()
 {
-    FlushCommands();
-    
+    FinalizePendingWorkload();
     if (m_finalizedWorkloads.empty())
     {
         return;
@@ -1013,11 +1013,6 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
     WaitForLastSubmittedWork(UINT64_MAX);
 }
 
-void FVulkanCommandListContext::RHIFlushCommands()
-{
-    FlushCommands();
-}
-
 void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
 {
     HeapVector<VulkanWorkload*> workloads;
@@ -1035,7 +1030,7 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
         FVulkanCommandListContext* pContext =
             static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
         const uint32_t previousWorkloadCount = workloads.size();
-        pContext->Finalize(workloads);
+        pContext->CollectWorkloads(workloads);
         const uint32_t workloadCount = workloads.size() - previousWorkloadCount;
         if (workloadCount > 0)
         {

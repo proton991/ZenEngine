@@ -172,11 +172,6 @@ void RHICommandList::EndRendering()
     ALLOC_CMD(RHICommandEndRendering)();
 }
 
-void RHICommandList::FlushCommands()
-{
-    ALLOC_CMD(RHICommandFlushCommands)();
-}
-
 void RHICommandList::BindPipeline(RHIPipelineType pipelineType,
                                   RHIPipeline* pPipeline,
                                   uint32_t numDescriptorSets,

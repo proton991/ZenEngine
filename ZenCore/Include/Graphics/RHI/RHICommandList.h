@@ -127,8 +127,6 @@ public:
                                    uint32_t dstLayer,
                                    uint32_t dstMipmap) = 0;
 
-    virtual void RHIFlushCommands() = 0;
-
     virtual void RHIWaitUntilCompleted() = 0;
 };
 
@@ -371,14 +369,6 @@ struct RHICommandEndRendering final : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIEndRendering();
-    }
-};
-
-struct RHICommandFlushCommands final : public RHICommand
-{
-    void Execute(RHICommandListBase& cmdList) override
-    {
-        cmdList.GetContext()->RHIFlushCommands();
     }
 };
 
@@ -796,8 +786,6 @@ public:
     void BeginRendering(const RHIRenderingLayout* pRenderingLayout);
 
     void EndRendering();
-
-    void FlushCommands();
 
     void BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers, VectorView<uint64_t> offsets);
 

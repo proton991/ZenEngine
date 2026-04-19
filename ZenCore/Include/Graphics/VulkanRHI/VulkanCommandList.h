@@ -279,15 +279,11 @@ public:
         }
     }
 
-    void Finalize(HeapVector<VulkanWorkload*>& outWorkloads)
-    {
-        FlushCommands();
-        DrainFinalizedWorkloads(outWorkloads);
-    }
+    // Finalize the current workload, then move all staged workloads to the caller.
+    void CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
 
-    void FlushCommands();
-
-    void FlushAndSubmitCommands();
+    // Finalize the current workload and submit all staged workloads immediately.
+    void SubmitRecordedWorkloads();
 
     void WaitForLastSubmittedWork(uint64_t timeToWaitNS);
 
@@ -304,7 +300,7 @@ public:
 private:
     bool HasWorkloadData(const VulkanWorkload* pWorkload) const;
 
-    void DrainFinalizedWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
+    void FinalizePendingWorkload();
 
     void SetupNewCommandBuffer();
 
@@ -485,8 +481,6 @@ public:
                            uint32_t srcMipmap,
                            uint32_t dstLayer,
                            uint32_t dstMipmap) override;
-
-    void RHIFlushCommands() override;
 
     void RHIWaitUntilCompleted() override;
 

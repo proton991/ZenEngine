@@ -851,7 +851,7 @@ void RenderDevice::ExecuteFrame(RHIViewport* pViewport,
                                 bool present)
 {
     GDynamicRHI->BeginDrawingViewport(pViewport);
-    for (auto* pRdg : rdgs)
+    for (RenderGraph* pRdg : rdgs)
     {
         pRdg->Execute(m_frames[m_currentFrame].pDrawCmdList);
     }
