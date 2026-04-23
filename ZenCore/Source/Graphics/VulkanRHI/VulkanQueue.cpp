@@ -23,14 +23,19 @@ VulkanQueue::~VulkanQueue()
     {
         VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
         m_workloadsPendingSubmit.Pop();
-        ZEN_DELETE(pWorkload);
+        DestroyWorkload(pWorkload);
     }
 
     while (!m_workloadsPendingProcess.Empty())
     {
         VulkanWorkload* pWorkload = m_workloadsPendingProcess.Peek();
         m_workloadsPendingProcess.Pop();
-        ZEN_DELETE(pWorkload);
+        DestroyWorkload(pWorkload);
+    }
+
+    for (VulkanWorkload* pWorkload : m_workloadPool)
+    {
+        DestroyWorkload(pWorkload);
     }
 
     for (FVulkanCommandBufferPool* pCmdBufferPool : m_cmdBufferPools)
@@ -128,15 +133,54 @@ void VulkanQueue::UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer)
     m_pLastSubmittedCmdBuffer = pCmdBuffer;
 }
 
-void VulkanQueue::DrainPendingSubmitWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
+VulkanWorkload* VulkanQueue::AcquireWorkload()
 {
-    outWorkloads.reserve(m_workloadsPendingSubmit.Size());
-    while (!m_workloadsPendingSubmit.Empty())
+    if (!m_workloadPool.empty())
     {
-        VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
-        m_workloadsPendingSubmit.Pop();
-        outWorkloads.push_back(pWorkload);
+        VulkanWorkload* pWorkload = m_workloadPool.back();
+        m_workloadPool.pop_back();
+        return pWorkload;
     }
+
+    return ZEN_NEW() VulkanWorkload(this);
+}
+
+void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
+{
+    if (pWorkload == nullptr)
+    {
+        return;
+    }
+
+    VERIFY_EXPR(pWorkload->m_pQueue == this);
+
+    if (pWorkload->m_pFence != nullptr)
+    {
+        pWorkload->m_pFence->GetOwner()->ReleaseFence(pWorkload->m_pFence);
+        pWorkload->m_pFence = nullptr;
+    }
+
+    pWorkload->m_pCmdBuffer = nullptr;
+    pWorkload->m_submissionSerial = 0;
+    pWorkload->m_waitSemaphoreInfos.clear();
+    pWorkload->m_signalSemaphoreInfos.clear();
+    m_workloadPool.push_back(pWorkload);
+}
+
+void VulkanQueue::DestroyWorkload(VulkanWorkload* pWorkload)
+{
+    if (pWorkload == nullptr)
+    {
+        return;
+    }
+
+    if (pWorkload->m_pFence != nullptr)
+    {
+        pWorkload->m_pFence->GetOwner()->ReleaseFence(pWorkload->m_pFence);
+        pWorkload->m_pFence = nullptr;
+    }
+
+    ZEN_DELETE(pWorkload);
 }
 
 bool VulkanQueue::CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
@@ -149,15 +193,23 @@ bool VulkanQueue::CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
         pCurrentWorkload->m_waitSemaphoreInfos.empty();
 }
 
-void VulkanQueue::SubmitWorkloadsWithFences()
+uint64_t VulkanQueue::SubmitWorkloadsWithFences()
 {
+    if (m_workloadsPendingSubmit.Empty())
+    {
+        return 0;
+    }
+
+    uint64_t lastSubmissionSerial = 0;
     VulkanFenceManager* pFenceManager = GVulkanRHI->GetDevice()->GetFenceManager();
     while (!m_workloadsPendingSubmit.Empty())
     {
         VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
         m_workloadsPendingSubmit.Pop();
+
         pWorkload->m_submissionSerial = ++m_nextSubmissionSerial;
         pWorkload->m_pFence           = pFenceManager->CreateFence();
+        lastSubmissionSerial          = pWorkload->m_submissionSerial;
 
         VkSubmitInfo submitInfo;
         InitVkStruct(submitInfo, VK_STRUCTURE_TYPE_SUBMIT_INFO);
@@ -201,6 +253,8 @@ void VulkanQueue::SubmitWorkloadsWithFences()
 
         m_workloadsPendingProcess.Push(pWorkload);
     }
+
+    return lastSubmissionSerial;
 }
 
 void VulkanQueue::MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
@@ -358,13 +412,20 @@ void VulkanQueue::QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& wor
     }
 }
 
-void VulkanQueue::SubmitWorkloadsWithTimelineSemaphore()
+uint64_t VulkanQueue::SubmitWorkloadsWithTimelineSemaphore()
 {
     HeapVector<VulkanWorkload*> workloadsToSubmit;
-    DrainPendingSubmitWorkloads(workloadsToSubmit);
+    workloadsToSubmit.reserve(m_workloadsPendingSubmit.Size());
+    while (!m_workloadsPendingSubmit.Empty())
+    {
+        VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
+        m_workloadsPendingSubmit.Pop();
+        workloadsToSubmit.push_back(pWorkload);
+    }
+
     if (workloadsToSubmit.empty())
     {
-        return;
+        return 0;
     }
 
     WorkloadMergeResult mergeResult;
@@ -376,27 +437,28 @@ void VulkanQueue::SubmitWorkloadsWithTimelineSemaphore()
     VKCHECK(vkQueueSubmit(m_handle, static_cast<uint32_t>(submitBatch.submitInfos.size()),
                           submitBatch.submitInfos.data(), VK_NULL_HANDLE));
     QueueSubmittedWorkloads(workloadsToSubmit);
+
+    return workloadsToSubmit.back()->m_submissionSerial;
 }
 
-void VulkanQueue::SubmitWorkloads()
+uint64_t VulkanQueue::SubmitPendingWorkloads()
 {
     // Retire previously completed submissions before appending new ones. This keeps the pending
     // queue bounded to in-flight GPU work instead of growing for the whole app lifetime.
     ProcessPendingWorkloads(0);
     if (m_workloadsPendingSubmit.Empty())
     {
-        return;
+        return 0;
     }
 
     // Fences can only be attached once per vkQueueSubmit call, so the non-timeline path still
     // needs one queue submit per workload to preserve per-workload completion tracking.
     if (!m_pDevice->SupportsTimelineSemaphore())
     {
-        SubmitWorkloadsWithFences();
-        return;
+        return SubmitWorkloadsWithFences();
     }
 
-    SubmitWorkloadsWithTimelineSemaphore();
+    return SubmitWorkloadsWithTimelineSemaphore();
 }
 
 void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
@@ -472,7 +534,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
         {
             m_lastCompletedSubmissionSerial = pWorkload->m_submissionSerial;
         }
-        ZEN_DELETE(pWorkload);
+        ReleaseWorkload(pWorkload);
     }
 
     // Trim once per pool after retiring all currently completed workloads.

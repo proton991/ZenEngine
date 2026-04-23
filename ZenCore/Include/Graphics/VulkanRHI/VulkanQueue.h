@@ -52,7 +52,7 @@ public:
 
     void Submit(VulkanCommandBuffer* pCmdBuffer);
 
-    void SubmitWorkloads();
+    uint64_t SubmitPendingWorkloads();
 
     void ProcessPendingWorkloads(uint64_t timeToWaitNS);
 
@@ -91,11 +91,9 @@ private:
 
     void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer);
 
-    void SubmitWorkloadsWithFences();
+    uint64_t SubmitWorkloadsWithFences();
 
-    void SubmitWorkloadsWithTimelineSemaphore();
-
-    void DrainPendingSubmitWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
+    uint64_t SubmitWorkloadsWithTimelineSemaphore();
 
     void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
                         WorkloadMergeResult& outMergeResult);
@@ -110,6 +108,12 @@ private:
 
     void QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit);
 
+    VulkanWorkload* AcquireWorkload();
+
+    void ReleaseWorkload(VulkanWorkload* pWorkload);
+
+    void DestroyWorkload(VulkanWorkload* pWorkload);
+
     VulkanDevice* m_pDevice{nullptr};
     VkQueue m_handle{VK_NULL_HANDLE};
     uint32_t m_familyIndex;
@@ -118,6 +122,7 @@ private:
     VulkanCommandBuffer* m_pLastSubmittedCmdBuffer{nullptr};
 
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
+    HeapVector<VulkanWorkload*> m_workloadPool;
 
     Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait

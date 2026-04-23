@@ -226,7 +226,7 @@ public:
     {
         if (m_pCurrentWorkload == nullptr)
         {
-            m_pCurrentWorkload = ZEN_NEW() VulkanWorkload(m_pQueue);
+            m_pCurrentWorkload = m_pQueue->AcquireWorkload();
         }
 
         return m_pCurrentWorkload;
@@ -279,13 +279,18 @@ public:
         }
     }
 
-    // Finalize the current workload, then move all staged workloads to the caller.
+    // Finalize the current workload, then append all staged workloads to the output array.
     void CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
 
     // Finalize the current workload and submit all staged workloads immediately.
     void SubmitRecordedWorkloads();
 
     void WaitForLastSubmittedWork(uint64_t timeToWaitNS);
+
+    VulkanQueue* GetQueue() const
+    {
+        return m_pQueue;
+    }
 
     void SetLastSubmittedSerial(uint64_t submissionSerial)
     {

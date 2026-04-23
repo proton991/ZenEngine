@@ -222,24 +222,19 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
 
 VulkanWorkload::~VulkanWorkload()
 {
-    // release semaphores and fence
-    if (m_pFence)
-    {
-        m_pFence->GetOwner()->ReleaseFence(m_pFence);
-    }
 }
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
 {
     if (m_pCurrentWorkload != nullptr)
     {
-        ZEN_DELETE(m_pCurrentWorkload);
+        m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
         m_pCurrentWorkload = nullptr;
     }
 
     for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
     {
-        ZEN_DELETE(pWorkload);
+        m_pQueue->ReleaseWorkload(pWorkload);
     }
     m_finalizedWorkloads.clear();
 
@@ -256,10 +251,18 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
 void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
 {
     FinalizePendingWorkload();
+    if (m_finalizedWorkloads.empty())
+    {
+        return;
+    }
+
+    outWorkloads.reserve(outWorkloads.size() + m_finalizedWorkloads.size());
     for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
     {
-        outWorkloads.emplace_back(pWorkload);
+        VERIFY_EXPR(pWorkload->m_pQueue == m_pQueue);
+        outWorkloads.push_back(pWorkload);
     }
+
     m_finalizedWorkloads.clear();
 }
 
@@ -269,7 +272,7 @@ void VulkanCommandContextBase::FinalizePendingWorkload()
     {
         if (m_pCurrentWorkload != nullptr)
         {
-            ZEN_DELETE(m_pCurrentWorkload);
+            m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
             m_pCurrentWorkload = nullptr;
         }
         return;
@@ -282,22 +285,20 @@ void VulkanCommandContextBase::FinalizePendingWorkload()
 
 void VulkanCommandContextBase::SubmitRecordedWorkloads()
 {
-    FinalizePendingWorkload();
-    if (m_finalizedWorkloads.empty())
+    HeapVector<VulkanWorkload*> workloadsToSubmit;
+    CollectWorkloads(workloadsToSubmit);
+    if (workloadsToSubmit.empty())
     {
         return;
     }
 
-    for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
+    for (VulkanWorkload* pWorkload : workloadsToSubmit)
     {
-        VERIFY_EXPR(pWorkload->m_pQueue == m_pQueue);
         m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
     }
 
-    m_pQueue->SubmitWorkloads();
-    m_lastSubmittedSerial = m_finalizedWorkloads.back()->m_submissionSerial;
+    m_lastSubmittedSerial = m_pQueue->SubmitPendingWorkloads();
     m_pQueue->ProcessPendingWorkloads(0);
-    m_finalizedWorkloads.clear();
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
@@ -341,7 +342,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 
 void VulkanCommandContextBase::StartWorkload()
 {
-    m_pCurrentWorkload = ZEN_NEW() VulkanWorkload(m_pQueue);
+    m_pCurrentWorkload = m_pQueue->AcquireWorkload();
 }
 
 void VulkanCommandContextBase::EndWorkload()
@@ -1015,7 +1016,7 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
 
 void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
 {
-    HeapVector<VulkanWorkload*> workloads;
+    HeapVector<VulkanWorkload*> workloadsToSubmit;
     struct ContextWorkloadRange
     {
         FVulkanCommandListContext* pContext{nullptr};
@@ -1024,34 +1025,34 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
     };
     HeapVector<ContextWorkloadRange> contextWorkloadRanges;
 
-    for (auto* pCmdList : cmdLists)
+    for (RHICommandList* pCmdList : cmdLists)
     {
         pCmdList->Execute();
         FVulkanCommandListContext* pContext =
             static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
-        const uint32_t previousWorkloadCount = workloads.size();
-        pContext->CollectWorkloads(workloads);
-        const uint32_t workloadCount = workloads.size() - previousWorkloadCount;
+        const uint32_t firstWorkloadIndex = static_cast<uint32_t>(workloadsToSubmit.size());
+        pContext->CollectWorkloads(workloadsToSubmit);
+        const uint32_t workloadCount =
+            static_cast<uint32_t>(workloadsToSubmit.size()) - firstWorkloadIndex;
         if (workloadCount > 0)
         {
             contextWorkloadRanges.push_back(ContextWorkloadRange{
                 pContext,
-                previousWorkloadCount,
+                firstWorkloadIndex,
                 workloadCount,
             });
         }
     }
 
-    for (VulkanWorkload* pWorkload : workloads)
+    for (VulkanWorkload* pWorkload : workloadsToSubmit)
     {
         pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
     }
 
-    // Call VulkanQueue's SubmitWorkloads function
-    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
     {
         VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
-        pQueue->SubmitWorkloads();
+        pQueue->SubmitPendingWorkloads();
     }
 
     for (const ContextWorkloadRange& contextWorkloadRange : contextWorkloadRanges)
@@ -1059,17 +1060,7 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
         const uint32_t lastWorkloadIndex =
             contextWorkloadRange.firstWorkloadIndex + contextWorkloadRange.workloadCount - 1;
         contextWorkloadRange.pContext->SetLastSubmittedSerial(
-            workloads[lastWorkloadIndex]->m_submissionSerial);
+            workloadsToSubmit[lastWorkloadIndex]->m_submissionSerial);
     }
-
-    // for (VulkanWorkload* pWorkload : workloads)
-    // {
-    //     ZEN_DELETE(pWorkload);
-    // }
-
-    // for (RHICommandList* pCommandList : cmdLists)
-    // {
-    //     ZEN_DELETE(pCommandList);
-    // }
 }
 } // namespace zen
