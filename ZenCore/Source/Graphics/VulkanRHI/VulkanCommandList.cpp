@@ -220,8 +220,42 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
     return pCmdBuffer;
 }
 
-VulkanWorkload::~VulkanWorkload()
+VulkanWorkload::~VulkanWorkload() {}
+
+FVulkanCommandBuffer* VulkanWorkload::GetLastCommandBuffer() const
 {
+    return m_commandBuffers.empty() ? nullptr : m_commandBuffers.back();
+}
+
+void VulkanWorkload::AddCommandBuffer(FVulkanCommandBuffer* pCmdBuffer)
+{
+    VERIFY_EXPR(pCmdBuffer != nullptr);
+    m_commandBuffers.push_back(pCmdBuffer);
+}
+
+void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
+{
+    VERIFY_EXPR(pOtherWorkload != nullptr);
+    VERIFY_EXPR(pOtherWorkload->m_pQueue == m_pQueue);
+    VERIFY_EXPR(m_signalSemaphoreInfos.empty());
+    VERIFY_EXPR(pOtherWorkload->m_waitSemaphoreInfos.empty());
+
+    m_commandBuffers.reserve(m_commandBuffers.size() + pOtherWorkload->m_commandBuffers.size());
+    for (FVulkanCommandBuffer* pCmdBuffer : pOtherWorkload->m_commandBuffers)
+    {
+        m_commandBuffers.push_back(pCmdBuffer);
+    }
+    pOtherWorkload->m_commandBuffers.clear();
+
+    m_signalSemaphoreInfos.reserve(m_signalSemaphoreInfos.size() +
+                                   pOtherWorkload->m_signalSemaphoreInfos.size());
+    for (const SignalSemaphoreInfo& signalInfo : pOtherWorkload->m_signalSemaphoreInfos)
+    {
+        m_signalSemaphoreInfos.push_back(signalInfo);
+    }
+    pOtherWorkload->m_signalSemaphoreInfos.clear();
+
+    pOtherWorkload->m_pMergedInto = this;
 }
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
@@ -244,7 +278,7 @@ VulkanCommandContextBase::~VulkanCommandContextBase()
 bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) const
 {
     return pWorkload != nullptr &&
-        (pWorkload->m_pCmdBuffer != nullptr || !pWorkload->m_waitSemaphoreInfos.empty() ||
+        (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
          !pWorkload->m_signalSemaphoreInfos.empty());
 }
 
@@ -336,7 +370,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
         pCmdBuffer = m_pCmdBufferPool->CreateCmdBuffer();
     }
 
-    m_pCurrentWorkload->m_pCmdBuffer = pCmdBuffer;
+    m_pCurrentWorkload->AddCommandBuffer(pCmdBuffer);
     pCmdBuffer->Begin();
 }
 
@@ -349,9 +383,14 @@ void VulkanCommandContextBase::EndWorkload()
 {
     if (m_pCurrentWorkload != nullptr)
     {
-        FVulkanCommandBuffer* pCommandBuffer = m_pCurrentWorkload->m_pCmdBuffer;
+        FVulkanCommandBuffer* pCommandBuffer = m_pCurrentWorkload->GetLastCommandBuffer();
         if (pCommandBuffer != nullptr)
         {
+            if (pCommandBuffer->HasEnded())
+            {
+                return;
+            }
+
             if (pCommandBuffer->IsInsideRenderPass() &&
                 pCommandBuffer->GetCommandBufferType() == VulkanCommandBufferType::ePrimary)
             {

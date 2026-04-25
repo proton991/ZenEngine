@@ -59,16 +59,9 @@ public:
     void WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
 
 private:
-    struct WorkloadSubmitGroup
-    {
-        uint32_t firstWorkloadIndex{0};
-        uint32_t workloadCount{0};
-        uint32_t commandBufferCount{0};
-    };
-
     struct WorkloadMergeResult
     {
-        HeapVector<WorkloadSubmitGroup> submitGroups;
+        HeapVector<VulkanWorkload*> workloadsToSubmit;
         size_t totalWaitSemaphoreCount{0};
         size_t totalSignalSemaphoreCount{0};
         size_t totalCommandBufferCount{0};
@@ -98,13 +91,11 @@ private:
     void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
                         WorkloadMergeResult& outMergeResult);
 
-    void BuildTimelineSubmitBatch(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
-                                  const WorkloadMergeResult& mergeResult,
+    void BuildTimelineSubmitBatch(const WorkloadMergeResult& mergeResult,
                                   TimelineSubmitBatch& outSubmitBatch);
 
-    void AppendTimelineSubmitGroup(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
-                                   const WorkloadSubmitGroup& submitGroup,
-                                   TimelineSubmitBatch& outSubmitBatch);
+    void AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
+                                      TimelineSubmitBatch& outSubmitBatch);
 
     void QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit);
 

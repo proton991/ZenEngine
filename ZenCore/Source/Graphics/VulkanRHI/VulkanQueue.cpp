@@ -160,8 +160,9 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
         pWorkload->m_pFence = nullptr;
     }
 
-    pWorkload->m_pCmdBuffer = nullptr;
+    pWorkload->m_commandBuffers.clear();
     pWorkload->m_submissionSerial = 0;
+    pWorkload->m_pMergedInto      = nullptr;
     pWorkload->m_waitSemaphoreInfos.clear();
     pWorkload->m_signalSemaphoreInfos.clear();
     m_workloadPool.push_back(pWorkload);
@@ -200,7 +201,7 @@ uint64_t VulkanQueue::SubmitWorkloadsWithFences()
         return 0;
     }
 
-    uint64_t lastSubmissionSerial = 0;
+    uint64_t lastSubmissionSerial     = 0;
     VulkanFenceManager* pFenceManager = GVulkanRHI->GetDevice()->GetFenceManager();
     while (!m_workloadsPendingSubmit.Empty())
     {
@@ -230,12 +231,15 @@ uint64_t VulkanQueue::SubmitWorkloadsWithFences()
             signalSemaphores.push_back(signalInfo.pSemaphore->GetVkHandle());
         }
 
-        VkCommandBuffer cmdBuffer = pWorkload->m_pCmdBuffer != nullptr ?
-            pWorkload->m_pCmdBuffer->GetVkHandle() :
-            VK_NULL_HANDLE;
+        HeapVector<VkCommandBuffer> cmdBuffers;
+        cmdBuffers.reserve(pWorkload->m_commandBuffers.size());
+        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
+        {
+            cmdBuffers.push_back(pCmdBuffer->GetVkHandle());
+        }
 
-        submitInfo.commandBufferCount   = pWorkload->m_pCmdBuffer != nullptr ? 1u : 0u;
-        submitInfo.pCommandBuffers      = pWorkload->m_pCmdBuffer != nullptr ? &cmdBuffer : nullptr;
+        submitInfo.commandBufferCount   = static_cast<uint32_t>(cmdBuffers.size());
+        submitInfo.pCommandBuffers      = cmdBuffers.empty() ? nullptr : cmdBuffers.data();
         submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
         submitInfo.pSignalSemaphores = signalSemaphores.empty() ? nullptr : signalSemaphores.data();
         submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
@@ -246,9 +250,9 @@ uint64_t VulkanQueue::SubmitWorkloadsWithFences()
             pWorkload->m_pFence != nullptr ? pWorkload->m_pFence->GetVkHandle() : VK_NULL_HANDLE;
 
         VKCHECK(vkQueueSubmit(m_handle, 1, &submitInfo, submitFence));
-        if (pWorkload->m_pCmdBuffer != nullptr)
+        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
         {
-            pWorkload->m_pCmdBuffer->SetSubmitted();
+            pCmdBuffer->SetSubmitted();
         }
 
         m_workloadsPendingProcess.Push(pWorkload);
@@ -260,56 +264,45 @@ uint64_t VulkanQueue::SubmitWorkloadsWithFences()
 void VulkanQueue::MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
                                  WorkloadMergeResult& outMergeResult)
 {
-    outMergeResult.submitGroups.reserve(workloadsToSubmit.size());
+    outMergeResult.workloadsToSubmit.reserve(workloadsToSubmit.size());
 
-    size_t workloadGroupStartIndex = 0;
-    while (workloadGroupStartIndex < workloadsToSubmit.size())
+    for (VulkanWorkload* pWorkload : workloadsToSubmit)
     {
-        size_t workloadGroupEndIndex = workloadGroupStartIndex;
-        uint32_t commandBufferCount =
-            workloadsToSubmit[workloadGroupStartIndex]->m_pCmdBuffer != nullptr ? 1u : 0u;
-
-        while (workloadGroupEndIndex + 1 < workloadsToSubmit.size() &&
-               CanMergeWorkloads(workloadsToSubmit[workloadGroupEndIndex],
-                                 workloadsToSubmit[workloadGroupEndIndex + 1]))
+        if (!outMergeResult.workloadsToSubmit.empty() &&
+            CanMergeWorkloads(outMergeResult.workloadsToSubmit.back(), pWorkload))
         {
-            ++workloadGroupEndIndex;
-            if (workloadsToSubmit[workloadGroupEndIndex]->m_pCmdBuffer != nullptr)
-            {
-                ++commandBufferCount;
-            }
+            outMergeResult.workloadsToSubmit.back()->Merge(pWorkload);
+            continue;
         }
 
-        const uint64_t submissionSerial = ++m_nextSubmissionSerial;
-        for (size_t workloadIndex = workloadGroupStartIndex; workloadIndex <= workloadGroupEndIndex;
-             ++workloadIndex)
-        {
-            workloadsToSubmit[workloadIndex]->m_submissionSerial = submissionSerial;
-        }
+        outMergeResult.workloadsToSubmit.push_back(pWorkload);
+    }
 
-        const VulkanWorkload* pFirstWorkload = workloadsToSubmit[workloadGroupStartIndex];
-        const VulkanWorkload* pLastWorkload  = workloadsToSubmit[workloadGroupEndIndex];
-        outMergeResult.totalWaitSemaphoreCount += pFirstWorkload->m_waitSemaphoreInfos.size();
+    for (VulkanWorkload* pMergedWorkload : outMergeResult.workloadsToSubmit)
+    {
+        const uint64_t submissionSerial     = ++m_nextSubmissionSerial;
+        pMergedWorkload->m_submissionSerial = submissionSerial;
+
+        outMergeResult.totalWaitSemaphoreCount += pMergedWorkload->m_waitSemaphoreInfos.size();
         outMergeResult.totalSignalSemaphoreCount +=
-            pLastWorkload->m_signalSemaphoreInfos.size() + 1;
-        outMergeResult.totalCommandBufferCount += commandBufferCount;
+            pMergedWorkload->m_signalSemaphoreInfos.size() + 1;
+        outMergeResult.totalCommandBufferCount += pMergedWorkload->m_commandBuffers.size();
+    }
 
-        outMergeResult.submitGroups.emplace_back(WorkloadSubmitGroup{
-            static_cast<uint32_t>(workloadGroupStartIndex),
-            static_cast<uint32_t>(workloadGroupEndIndex - workloadGroupStartIndex + 1),
-            commandBufferCount,
-        });
-
-        workloadGroupStartIndex = workloadGroupEndIndex + 1;
+    for (VulkanWorkload* pWorkload : workloadsToSubmit)
+    {
+        if (pWorkload->m_pMergedInto != nullptr)
+        {
+            pWorkload->m_submissionSerial = pWorkload->m_pMergedInto->m_submissionSerial;
+        }
     }
 }
 
-void VulkanQueue::BuildTimelineSubmitBatch(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
-                                           const WorkloadMergeResult& mergeResult,
+void VulkanQueue::BuildTimelineSubmitBatch(const WorkloadMergeResult& mergeResult,
                                            TimelineSubmitBatch& outSubmitBatch)
 {
-    outSubmitBatch.submitInfos.reserve(mergeResult.submitGroups.size());
-    outSubmitBatch.timelineSubmitInfos.reserve(mergeResult.submitGroups.size());
+    outSubmitBatch.submitInfos.reserve(mergeResult.workloadsToSubmit.size());
+    outSubmitBatch.timelineSubmitInfos.reserve(mergeResult.workloadsToSubmit.size());
     outSubmitBatch.commandBuffers.reserve(mergeResult.totalCommandBufferCount);
     outSubmitBatch.waitSemaphores.reserve(mergeResult.totalWaitSemaphoreCount);
     outSubmitBatch.signalSemaphores.reserve(mergeResult.totalSignalSemaphoreCount);
@@ -317,50 +310,41 @@ void VulkanQueue::BuildTimelineSubmitBatch(const HeapVector<VulkanWorkload*>& wo
     outSubmitBatch.waitSemaphoreValues.reserve(mergeResult.totalWaitSemaphoreCount);
     outSubmitBatch.signalSemaphoreValues.reserve(mergeResult.totalSignalSemaphoreCount);
 
-    for (const WorkloadSubmitGroup& submitGroup : mergeResult.submitGroups)
+    for (VulkanWorkload* pWorkload : mergeResult.workloadsToSubmit)
     {
-        AppendTimelineSubmitGroup(workloadsToSubmit, submitGroup, outSubmitBatch);
+        AppendTimelineSubmitWorkload(pWorkload, outSubmitBatch);
     }
 }
 
-void VulkanQueue::AppendTimelineSubmitGroup(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
-                                            const WorkloadSubmitGroup& submitGroup,
-                                            TimelineSubmitBatch& outSubmitBatch)
+void VulkanQueue::AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
+                                               TimelineSubmitBatch& outSubmitBatch)
 {
-    VulkanWorkload* pFirstWorkload = workloadsToSubmit[submitGroup.firstWorkloadIndex];
-    VulkanWorkload* pLastWorkload =
-        workloadsToSubmit[submitGroup.firstWorkloadIndex + submitGroup.workloadCount - 1];
     const size_t firstWaitSemaphoreIndex   = outSubmitBatch.waitSemaphores.size();
     const size_t firstWaitValueIndex       = outSubmitBatch.waitSemaphoreValues.size();
     const size_t firstSignalSemaphoreIndex = outSubmitBatch.signalSemaphores.size();
     const size_t firstSignalValueIndex     = outSubmitBatch.signalSemaphoreValues.size();
     const size_t firstCommandBufferIndex   = outSubmitBatch.commandBuffers.size();
 
-    for (const auto& waitInfo : pFirstWorkload->m_waitSemaphoreInfos)
+    for (const auto& waitInfo : pWorkload->m_waitSemaphoreInfos)
     {
         outSubmitBatch.waitSemaphores.push_back(waitInfo.pSemaphore->GetVkHandle());
         outSubmitBatch.waitStageMasks.push_back(waitInfo.waitFlags);
         outSubmitBatch.waitSemaphoreValues.push_back(waitInfo.value);
     }
 
-    for (uint32_t workloadOffset = 0; workloadOffset < submitGroup.workloadCount; ++workloadOffset)
+    for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
     {
-        VulkanWorkload* pWorkload =
-            workloadsToSubmit[submitGroup.firstWorkloadIndex + workloadOffset];
-        if (pWorkload->m_pCmdBuffer != nullptr)
-        {
-            outSubmitBatch.commandBuffers.push_back(pWorkload->m_pCmdBuffer->GetVkHandle());
-        }
+        outSubmitBatch.commandBuffers.push_back(pCmdBuffer->GetVkHandle());
     }
 
-    for (const auto& signalInfo : pLastWorkload->m_signalSemaphoreInfos)
+    for (const auto& signalInfo : pWorkload->m_signalSemaphoreInfos)
     {
         outSubmitBatch.signalSemaphores.push_back(signalInfo.pSemaphore->GetVkHandle());
         outSubmitBatch.signalSemaphoreValues.push_back(signalInfo.value);
     }
 
     outSubmitBatch.signalSemaphores.push_back(m_pTimelineSemaphore->GetVkHandle());
-    outSubmitBatch.signalSemaphoreValues.push_back(pLastWorkload->m_submissionSerial);
+    outSubmitBatch.signalSemaphoreValues.push_back(pWorkload->m_submissionSerial);
 
     VkTimelineSemaphoreSubmitInfo timelineSubmitInfo;
     InitVkStruct(timelineSubmitInfo, VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO);
@@ -404,9 +388,9 @@ void VulkanQueue::QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& wor
 {
     for (VulkanWorkload* pWorkload : workloadsToSubmit)
     {
-        if (pWorkload->m_pCmdBuffer != nullptr)
+        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
         {
-            pWorkload->m_pCmdBuffer->SetSubmitted();
+            pCmdBuffer->SetSubmitted();
         }
         m_workloadsPendingProcess.Push(pWorkload);
     }
@@ -432,7 +416,7 @@ uint64_t VulkanQueue::SubmitWorkloadsWithTimelineSemaphore()
     MergeWorkloads(workloadsToSubmit, mergeResult);
 
     TimelineSubmitBatch submitBatch;
-    BuildTimelineSubmitBatch(workloadsToSubmit, mergeResult, submitBatch);
+    BuildTimelineSubmitBatch(mergeResult, submitBatch);
 
     VKCHECK(vkQueueSubmit(m_handle, static_cast<uint32_t>(submitBatch.submitInfos.size()),
                           submitBatch.submitInfos.data(), VK_NULL_HANDLE));
@@ -525,10 +509,10 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS)
         }
 
         m_workloadsPendingProcess.Pop();
-        if (pWorkload->m_pCmdBuffer != nullptr)
+        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
         {
-            pWorkload->m_pCmdBuffer->SetCompleted();
-            AddCmdBufferPoolToTrim(pWorkload->m_pCmdBuffer->GetCommandBufferPool());
+            pCmdBuffer->SetCompleted();
+            AddCmdBufferPoolToTrim(pCmdBuffer->GetCommandBufferPool());
         }
         if (m_lastCompletedSubmissionSerial < pWorkload->m_submissionSerial)
         {

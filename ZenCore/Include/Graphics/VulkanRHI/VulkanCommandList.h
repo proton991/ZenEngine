@@ -188,9 +188,21 @@ public:
     };
 
 private:
+    FVulkanCommandBuffer* GetLastCommandBuffer() const;
+
+    bool HasCommandBuffers() const
+    {
+        return !m_commandBuffers.empty();
+    }
+
+    void AddCommandBuffer(FVulkanCommandBuffer* pCmdBuffer);
+
+    void Merge(VulkanWorkload* pOtherWorkload);
+
     VulkanQueue* m_pQueue{nullptr};
-    FVulkanCommandBuffer* m_pCmdBuffer{nullptr};
+    HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
     uint64_t m_submissionSerial{0};
+    VulkanWorkload* m_pMergedInto{nullptr};
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
     HeapVector<SignalSemaphoreInfo> m_signalSemaphoreInfos;
@@ -214,12 +226,12 @@ public:
     FVulkanCommandBuffer* GetCommandBuffer()
     {
         VulkanWorkload* pWorkload = GetWorkload();
-        if (pWorkload->m_pCmdBuffer == nullptr)
+        if (!pWorkload->HasCommandBuffers())
         {
             SetupNewCommandBuffer();
         }
 
-        return pWorkload->m_pCmdBuffer;
+        return pWorkload->GetLastCommandBuffer();
     }
 
     VulkanWorkload* GetWorkload()
