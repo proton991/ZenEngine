@@ -12,7 +12,9 @@ namespace zen::rc
 {
 RendererServer::RendererServer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
     m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
-{}
+{
+    m_frameRDGs.reserve(4);
+}
 
 void RendererServer::Init()
 {
@@ -67,29 +69,29 @@ void RendererServer::DispatchRenderWorkloads()
 
     // m_pDeferredLightingRenderer->PrepareRenderWorkload();
 
-    std::vector<RenderGraph*> RDGs;
+    m_frameRDGs.clear();
     if (m_renderOption == RenderOption::eVoxelize)
     {
         // m_voxelRenderer->PrepareRenderWorkload();
         m_pVoxelizer->PrepareRenderWorkload();
         m_pShadowMapRenderer->PrepareRenderWorkload();
         m_pVoxelGIRenderer->PrepareRenderWorkload();
-        RDGs.push_back(m_pSkyboxRenderer->GetRenderGraph());
-        RDGs.push_back(m_pShadowMapRenderer->GetRenderGraph()); // shadowMap
-        // RDGs.push_back(m_voxelRenderer->GetRenderGraph());     // voxel
-        RDGs.push_back(m_pVoxelizer->GetRenderGraph());       // voxelization
-        RDGs.push_back(m_pVoxelGIRenderer->GetRenderGraph()); // voxel GI
+        m_frameRDGs.push_back(m_pSkyboxRenderer->GetRenderGraph());
+        m_frameRDGs.push_back(m_pShadowMapRenderer->GetRenderGraph()); // shadowMap
+        // m_frameRDGs.push_back(m_voxelRenderer->GetRenderGraph());      // voxel
+        m_frameRDGs.push_back(m_pVoxelizer->GetRenderGraph());       // voxelization
+        m_frameRDGs.push_back(m_pVoxelGIRenderer->GetRenderGraph()); // voxel GI
     }
     else
     {
         m_pSkyboxRenderer->PrepareRenderWorkload();
         m_pDeferredLightingRenderer->PrepareRenderWorkload();
 
-        RDGs.push_back(m_pSkyboxRenderer->GetRenderGraph());           // skybox
-        RDGs.push_back(m_pDeferredLightingRenderer->GetRenderGraph()); // deferred pbr
+        m_frameRDGs.push_back(m_pSkyboxRenderer->GetRenderGraph());           // skybox
+        m_frameRDGs.push_back(m_pDeferredLightingRenderer->GetRenderGraph()); // deferred pbr
     }
 
-    m_pRenderDevice->ExecuteFrame(m_pViewport, RDGs);
+    m_pRenderDevice->ExecuteFrame(m_pViewport, MakeVecView(m_frameRDGs));
 }
 
 void RendererServer::SetRenderScene(RenderScene* pScene)

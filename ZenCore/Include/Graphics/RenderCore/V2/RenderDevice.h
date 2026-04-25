@@ -350,7 +350,7 @@ public:
     void ExecuteFrame(RHIViewport* pViewport, RenderGraph* pRdg, bool present = true);
 
     void ExecuteFrame(RHIViewport* pViewport,
-                      const std::vector<RenderGraph*>& rdgs,
+                      VectorView<RenderGraph*> rdgs,
                       bool present = true);
 
     void ExecuteImmediate(RHIViewport* pViewport, RenderGraph* pRdg);

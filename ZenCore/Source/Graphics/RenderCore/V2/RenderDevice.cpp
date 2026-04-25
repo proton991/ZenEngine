@@ -847,7 +847,7 @@ void RenderDevice::ExecuteFrame(RHIViewport* pViewport, RenderGraph* pRdg, bool 
 }
 
 void RenderDevice::ExecuteFrame(RHIViewport* pViewport,
-                                const std::vector<RenderGraph*>& rdgs,
+                                VectorView<RenderGraph*> rdgs,
                                 bool present)
 {
     GDynamicRHI->BeginDrawingViewport(pViewport);

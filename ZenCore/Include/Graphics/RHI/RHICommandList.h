@@ -1,10 +1,14 @@
 #pragma once
 // #include "RHICommon.h"
 #include "RHIResource.h"
+#include "Memory/PoolAllocator.h"
+#include "Memory/LinearAllocator.h"
 #include "Memory/Memory.h"
 #include "Templates/HeapVector.h"
+#include <type_traits>
+#include <utility>
 
-#define ALLOC_CMD(...) new (AllocateCmd(sizeof(__VA_ARGS__), alignof(__VA_ARGS__))) __VA_ARGS__
+#define ALLOC_CMD(...) AllocateCmdTyped<__VA_ARGS__>
 
 namespace zen
 {
@@ -14,6 +18,7 @@ class RHIPipeline;
 struct RHICommandBase
 {
     RHICommandBase* pNextCmd{nullptr};
+    void (*pDestroy)(RHICommandBase*){nullptr};
 
     virtual ~RHICommandBase() {}
 };
@@ -153,11 +158,30 @@ public:
 
     void* AllocateCmd(uint32_t size, uint32_t alignment)
     {
-        RHICommandBase* pCmd = static_cast<RHICommandBase*>(ZEN_MEM_ALLOC_ALIGNED(size, alignment));
+        RHICommandBase* pCmd = static_cast<RHICommandBase*>(m_cmdAllocator.Alloc(size, alignment));
         *m_ppCmdPtr          = pCmd;
         m_ppCmdPtr           = &pCmd->pNextCmd;
         ++m_numCommands;
         return pCmd;
+    }
+
+    template <typename T, typename... Args> T* AllocateCmdTyped(Args&&... args)
+    {
+        static_assert(std::is_base_of_v<RHICommandBase, T>, "T must derive from RHICommandBase");
+        T* pCmd        = new (AllocateCmd(sizeof(T), alignof(T))) T(std::forward<Args>(args)...);
+        pCmd->pDestroy = [](RHICommandBase* pBase) {
+            static_cast<T*>(pBase)->~T();
+        };
+        return pCmd;
+    }
+
+    template <typename T> T* AllocateCmdData(size_t count)
+    {
+        if (count == 0)
+        {
+            return nullptr;
+        }
+        return static_cast<T*>(m_cmdAllocator.Alloc(sizeof(T) * count, alignof(T)));
     }
 
     IRHICommandContext* GetContext() const
@@ -178,7 +202,7 @@ public:
     void Reset();
 
 protected:
-    RHICommandListBase()
+    RHICommandListBase() : m_cmdAllocator(64 * 1024)
     {
         m_ppCmdPtr = &m_pCmdHead;
     }
@@ -190,6 +214,7 @@ protected:
     IRHICommandContext* m_pComputeContext{nullptr};
 
     uint32_t m_numCommands{0};
+    PoolAllocator<LinearAllocator> m_cmdAllocator;
 };
 
 struct RHICommand : public RHICommandBase
@@ -264,11 +289,6 @@ struct RHICommandCopyTexture : public RHICommand
         pSrcTexture(pSrcTexture), pDstTexture(pDstTexture)
     {}
 
-    ~RHICommandCopyTexture() override
-    {
-        ZEN_MEM_FREE(copyRegions.data());
-    }
-
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHICopyTexture(pSrcTexture, pDstTexture, copyRegions);
@@ -288,11 +308,6 @@ struct RHICommandCopyBufferToTexture : public RHICommand
         pSrcBuffer(pSrcBuffer), pDstTexture(pDstTexture)
     {}
 
-    ~RHICommandCopyBufferToTexture() override
-    {
-        ZEN_MEM_FREE(copyRegions.data());
-    }
-
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHICopyBufferToTexture(pSrcBuffer, pDstTexture, copyRegions);
@@ -308,11 +323,6 @@ struct RHICommandCopyTextureToBuffer : public RHICommand
     RHICommandCopyTextureToBuffer(RHITexture* pSrcTexture, RHIBuffer* pDstBuffer) :
         pSrcTexture(pSrcTexture), pDstBuffer(pDstBuffer)
     {}
-
-    ~RHICommandCopyTextureToBuffer() override
-    {
-        ZEN_MEM_FREE(copyRegions.data());
-    }
 
     void Execute(RHICommandListBase& cmdList) override
     {
@@ -498,12 +508,6 @@ struct RHICommandBindVertexBuffers final : public RHICommand
 
     RHICommandBindVertexBuffers() = default;
 
-    ~RHICommandBindVertexBuffers() override
-    {
-        ZEN_MEM_FREE(vertexBuffers.data());
-        ZEN_MEM_FREE(offsets.data());
-    }
-
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIBindVertexBuffers(vertexBuffers, offsets);
@@ -652,11 +656,6 @@ struct RHICommandSetPushConstants final : public RHICommand
 
     explicit RHICommandSetPushConstants(RHIPipeline* pPipeline) : pPipeline(pPipeline) {}
 
-    ~RHICommandSetPushConstants() override
-    {
-        ZEN_MEM_FREE(data.data());
-    }
-
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHISetPushConstants(pPipeline, data);
@@ -671,13 +670,6 @@ struct RHICommandAddTransitions final : public RHICommand
     VectorView<RHIMemoryTransition> memoryTransitions;
     VectorView<RHIBufferTransition> bufferTransitions;
     VectorView<RHITextureTransition> textureTransitions;
-
-    ~RHICommandAddTransitions() override
-    {
-        ZEN_MEM_FREE(memoryTransitions.data());
-        ZEN_MEM_FREE(bufferTransitions.data());
-        ZEN_MEM_FREE(textureTransitions.data());
-    }
 
     //PRIVATE_ARRAY_DEF(RHIMemoryTransition, MemoryTransitions, &this[1])
     //PRIVATE_ARRAY_DEF(RHIBufferTransition,

@@ -1,5 +1,5 @@
 #pragma once
-#include <cstdint>
+#include "Templates/HeapVector.h"
 
 namespace zen
 {
@@ -15,6 +15,7 @@ class VoxelizerBase;
 class ShadowMapRenderer;
 class VoxelGIRenderer;
 class RenderScene;
+class RenderGraph;
 
 enum class RenderOption : uint32_t
 {
@@ -76,5 +77,6 @@ private:
     VoxelGIRenderer* m_pVoxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
+    HeapVector<RenderGraph*> m_frameRDGs;
 };
 } // namespace zen::rc
