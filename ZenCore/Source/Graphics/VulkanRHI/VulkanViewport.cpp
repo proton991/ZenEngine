@@ -68,14 +68,14 @@ void VulkanRHI::EndDrawingViewport(RHIViewport* pViewportRHI,
                                    RHICommandList* pCmdList,
                                    bool present)
 {
-    VulkanViewport* pViewport = dynamic_cast<VulkanViewport*>(pViewportRHI);
-    VERIFY_EXPR(pViewport == m_pCurrentViewport);
     pCmdList->Execute();
     pCmdList->Reset();
 
     auto* pContext = dynamic_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
     if (present)
     {
+        VulkanViewport* pViewport = dynamic_cast<VulkanViewport*>(pViewportRHI);
+        VERIFY_EXPR(pViewport == m_pCurrentViewport);
         m_pCurrentViewport->Present(pContext);
     }
     else
@@ -99,7 +99,10 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
     return pViewport;
 }
 
-VulkanViewport::VulkanViewport(void* pWindowPtr, uint32_t width, uint32_t height, bool enableVSync) :
+VulkanViewport::VulkanViewport(void* pWindowPtr,
+                               uint32_t width,
+                               uint32_t height,
+                               bool enableVSync) :
     RHIViewport(pWindowPtr, width, height, enableVSync), m_pDevice(GVulkanRHI->GetDevice())
 // m_windowPtr(windowPtr),
 // m_width(width),
@@ -173,7 +176,7 @@ void VulkanViewport::IssueFrameEvent()
     if (RHIOptions::GetInstance().WaitForFrameCompletion())
     {
         m_pDevice->GetGfxQueue()->GetLastSubmitInfo(m_pLastFrameCmdBuffer,
-                                                   &m_lastFenceSignaledCounter);
+                                                    &m_lastFenceSignaledCounter);
     }
 }
 
@@ -184,10 +187,10 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
 
     m_pSwapchain =
         ZEN_NEW() VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, pRecreateInfo);
-    const VkImage* pImages    = m_pSwapchain->GetSwapchainImages();
+    const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
     const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
     // m_renderingCompleteSemaphores.resize(numImages);
-    // m_backBufferImages.resize(numImages);
+    // m_swapchainImages.resize(numImages);
 
     FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
     FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
@@ -198,7 +201,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     VkClearColorValue clearColor{0.1f, 0.1f, 0.1f, 1.0f};
     for (uint32_t i = 0; i < numImages; i++)
     {
-        m_backBufferImages[i] = pImages[i];
+        m_swapchainImages[i] = pImages[i];
         {
             VulkanPipelineBarrier barrier;
             barrier.AddImageBarrier(pImages[i], VK_IMAGE_LAYOUT_UNDEFINED,
@@ -220,8 +223,8 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     colorTexInfo.format = GetSwapchainFormat();
     colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
     colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
-    colorTexInfo.type = RHITextureType::e2D;
-    colorTexInfo.tag  = "color_back_buffer";
+    colorTexInfo.type  = RHITextureType::e2D;
+    colorTexInfo.tag   = "color_back_buffer";
     m_pColorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
 
     RHITextureCreateInfo depthStencilTexInfo{};
@@ -229,8 +232,8 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     depthStencilTexInfo.height = m_height;
     depthStencilTexInfo.format = GetDepthStencilFormat();
     depthStencilTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
-    depthStencilTexInfo.type = RHITextureType::e2D;
-    depthStencilTexInfo.tag  = "depth_stencil_back_buffer";
+    depthStencilTexInfo.type  = RHITextureType::e2D;
+    depthStencilTexInfo.tag   = "depth_stencil_back_buffer";
     m_pDepthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
     // add image barriers, transfer back buffer layout
     VulkanPipelineBarrier barrier;
@@ -254,7 +257,7 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
     {
         for (uint32_t i = 0; i < m_pSwapchain->GetNumSwapchainImages(); i++)
         {
-            m_backBufferImages[i] = VK_NULL_HANDLE;
+            m_swapchainImages[i] = VK_NULL_HANDLE;
         }
         m_pSwapchain->Destroy(pRecreateInfo);
         ZEN_DELETE(m_pSwapchain);
@@ -382,7 +385,7 @@ bool VulkanViewport::Present(VulkanCommandBuffer* pCmdBuffer)
         uint32_t windowWidth  = std::min(m_width, m_pSwapchain->m_internalWidth);
         uint32_t windowHeight = std::min(m_height, m_pSwapchain->m_internalHeight);
         CopyToBackBufferForPresent(pCmdBuffer->GetVkHandle(),
-                                   m_backBufferImages[m_acquiredImageIndex], windowWidth,
+                                   m_swapchainImages[m_acquiredImageIndex], windowWidth,
                                    windowHeight);
     }
     else
@@ -410,7 +413,8 @@ bool VulkanViewport::Present(VulkanCommandBuffer* pCmdBuffer)
         m_pDevice->WaitForIdle();
         return true;
     }
-    bool presentResult = m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
+    bool presentResult =
+        m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
     if (RHIOptions::GetInstance().WaitForFrameCompletion())
     {
         WaitForFrameCompletion();
@@ -440,7 +444,7 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
         uint32_t windowHeight = std::min(m_height, m_pSwapchain->m_internalHeight);
         pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
         CopyToBackBufferForPresent(pContext->GetCommandBuffer()->GetVkHandle(),
-                                   m_backBufferImages[m_acquiredImageIndex], windowWidth,
+                                   m_swapchainImages[m_acquiredImageIndex], windowWidth,
                                    windowHeight);
     }
     else
@@ -472,7 +476,8 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     pContext->SubmitRecordedWorkloads();
     m_pSwapchain->MarkAcquireSemaphoreSubmitted(pContext->GetLastSubmittedSerial());
 
-    bool presentResult = m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
+    bool presentResult =
+        m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
     // if (RHIOptions::GetInstance().WaitForFrameCompletion())
     // {
     //     WaitForFrameCompletion();
@@ -484,7 +489,7 @@ bool VulkanViewport::Present(FVulkanCommandListContext* pContext)
     // {
     //     cmdBufferMgr->SetupNewActiveCmdBuffer();
     // }
-    m_acquiredImageIndex = -1;
+    m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
     m_presentCount++;
 

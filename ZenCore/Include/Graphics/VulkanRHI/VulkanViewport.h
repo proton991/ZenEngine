@@ -119,8 +119,7 @@ private:
     VulkanSemaphore* m_pRenderingCompleteSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
     VulkanCommandBuffer* m_pLastFrameCmdBuffer{nullptr};
     uint64_t m_lastFenceSignaledCounter{0};
-    // SmallVector<VkImage, NUM_FRAMES> m_backBufferImages;
-    VkImage m_backBufferImages[ZEN_NUM_FRAMES_IN_FLIGHT];
+    VkImage m_swapchainImages[ZEN_NUM_FRAMES_IN_FLIGHT];
     VulkanTexture* m_pColorBackBuffer{nullptr};
     VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
 

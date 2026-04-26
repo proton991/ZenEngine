@@ -91,7 +91,7 @@ void RendererServer::DispatchRenderWorkloads()
         m_frameRDGs.push_back(m_pDeferredLightingRenderer->GetRenderGraph()); // deferred pbr
     }
 
-    m_pRenderDevice->ExecuteFrame(m_pViewport, MakeVecView(m_frameRDGs));
+    m_pRenderDevice->ExecuteRenderGraphs(m_pViewport, MakeVecView(m_frameRDGs));
 }
 
 void RendererServer::SetRenderScene(RenderScene* pScene)

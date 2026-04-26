@@ -1,5 +1,6 @@
 #pragma once
 #include "Templates/HashMap.h"
+#include "Templates/HeapVector.h"
 #include "Templates/Queue.h"
 #include "Graphics/RHI/RHIDebug.h"
 #include "RenderCoreDefs.h"
@@ -99,7 +100,7 @@ public:
     {
         m_framebufferInfo.width  = width;
         m_framebufferInfo.height = height;
-        m_pViewport               = pViewport;
+        m_pViewport              = pViewport;
         m_pGfxPass->pRenderingLayout->SetRenderArea(0, 0, width, height);
         return *this;
     }
@@ -108,7 +109,7 @@ public:
     {
         m_framebufferInfo.width  = pViewport->GetWidth();
         m_framebufferInfo.height = pViewport->GetHeight();
-        m_pViewport               = pViewport;
+        m_pViewport              = pViewport;
         m_pGfxPass->pRenderingLayout->SetRenderArea(0, 0, pViewport->GetWidth(),
                                                     pViewport->GetHeight());
         return *this;
@@ -327,8 +328,6 @@ private:
 
 struct RenderFrame
 {
-    RHICommandList* pDrawCmdList{nullptr};
-    bool cmdSubmitted{false};
     std::vector<RHITexture*> texturesPendingFree;
 };
 
@@ -347,15 +346,9 @@ public:
 
     void Destroy();
 
-    void ExecuteFrame(RHIViewport* pViewport, RenderGraph* pRdg, bool present = true);
+    void ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<RenderGraph*> rdgs);
 
-    void ExecuteFrame(RHIViewport* pViewport,
-                      VectorView<RenderGraph*> rdgs,
-                      bool present = true);
-
-    void ExecuteImmediate(RHIViewport* pViewport, RenderGraph* pRdg);
-
-    void ExecuteImmediate(VectorView<UniquePtr<RenderGraph>> rdgs);
+    void ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs);
 
     // todo: implement pool based recycle mechanism
     RHIRenderingLayout* AcquireRenderingLayout();
@@ -519,6 +512,8 @@ private:
     void BeginFrame();
 
     void EndFrame();
+    
+    void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
 
     void ProcessPendingFreeResources(uint32_t frameIndex);
 
@@ -571,6 +566,7 @@ private:
 
     RHICommandList* m_pImmediateGraphicsCmdList{nullptr};
     RHICommandList* m_pImmediateTransferCmdList{nullptr};
+    HeapVector<RHICommandList*> m_graphicsCmdListPool;
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
 

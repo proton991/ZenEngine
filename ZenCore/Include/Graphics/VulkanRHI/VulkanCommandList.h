@@ -7,6 +7,10 @@
 #include "Templates/HeapVector.h"
 #include "Utils/Mutex.h"
 
+#ifndef ZEN_VK_RHI_DEBUG
+#define ZEN_VK_RHI_DEBUG 0
+#endif
+
 namespace zen
 {
 class VulkanDescriptorSet;
@@ -159,6 +163,13 @@ private:
 
     HeapVector<FVulkanCommandBuffer*> m_cmdBuffersInUse;
     HeapVector<FVulkanCommandBuffer*> m_cmdBuffersFree;
+
+#if ZEN_VK_RHI_DEBUG
+    uint64_t m_numCmdBufferRequests{0};
+    uint64_t m_numReadyCmdBufferReuses{0};
+    uint64_t m_numFreeCmdBufferReuses{0};
+    uint64_t m_numCmdBufferAllocations{0};
+#endif
 };
 
 // Hodls submission info for VulkanQueue

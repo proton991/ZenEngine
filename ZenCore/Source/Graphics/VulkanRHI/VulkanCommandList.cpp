@@ -13,6 +13,18 @@
 
 namespace zen
 {
+#if ZEN_VK_RHI_DEBUG
+static const char* VulkanCommandBufferTypeToString(VulkanCommandBufferType type)
+{
+    switch (type)
+    {
+    case VulkanCommandBufferType::ePrimary: return "Primary";
+    case VulkanCommandBufferType::eSecondary: return "Secondary";
+    default: return "Unknown";
+    }
+}
+#endif
+
 static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
                                           VulkanPipeline* pPipeline,
                                           const HeapVector<VulkanDescriptorSet*>& descriptorSets)
@@ -158,6 +170,14 @@ FVulkanCommandBufferPool::FVulkanCommandBufferPool(VulkanQueue* pQueue,
 
 FVulkanCommandBufferPool::~FVulkanCommandBufferPool()
 {
+#if ZEN_VK_RHI_DEBUG
+    LOGI("[VulkanCmdBufferPool] destroy type={} requests={} readyReuses={} freeReuses={} "
+         "allocations={} inUse={} free={}",
+         VulkanCommandBufferTypeToString(m_type), m_numCmdBufferRequests,
+         m_numReadyCmdBufferReuses, m_numFreeCmdBufferReuses, m_numCmdBufferAllocations,
+         m_cmdBuffersInUse.size(), m_cmdBuffersFree.size());
+#endif
+
     for (uint32_t i = 0; i < m_cmdBuffersInUse.size(); i++)
     {
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersInUse[i];
@@ -350,6 +370,9 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 {
     LockAuto lock(&m_pCmdBufferPool->m_mutex);
 
+#if ZEN_VK_RHI_DEBUG
+    ++m_pCmdBufferPool->m_numCmdBufferRequests;
+#endif
     FVulkanCommandBuffer* pCmdBuffer = nullptr;
 
     for (uint32_t i = 0; i < m_pCmdBufferPool->m_cmdBuffersInUse.size(); i++)
@@ -367,8 +390,27 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
     }
     if (!pCmdBuffer)
     {
+#if ZEN_VK_RHI_DEBUG
+        const bool reuseFreeCmdBuffer = !m_pCmdBufferPool->m_cmdBuffersFree.empty();
+#endif
         pCmdBuffer = m_pCmdBufferPool->CreateCmdBuffer();
+#if ZEN_VK_RHI_DEBUG
+        if (reuseFreeCmdBuffer)
+        {
+            ++m_pCmdBufferPool->m_numFreeCmdBufferReuses;
+        }
+        else
+        {
+            ++m_pCmdBufferPool->m_numCmdBufferAllocations;
+        }
+#endif
     }
+#if ZEN_VK_RHI_DEBUG
+    else
+    {
+        ++m_pCmdBufferPool->m_numReadyCmdBufferReuses;
+    }
+#endif
 
     m_pCurrentWorkload->AddCommandBuffer(pCmdBuffer);
     pCmdBuffer->Begin();
