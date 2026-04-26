@@ -265,9 +265,9 @@ void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t
 
 void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                                     BitField<RHIPipelineStageBits> dstStages,
-                                    const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                                    const HeapVector<RHIBufferTransition>& bufferTransitions,
-                                    const HeapVector<RHITextureTransition>& textureTransitions)
+                                    VectorView<RHIMemoryTransition> memoryTransitions,
+                                    VectorView<RHIBufferTransition> bufferTransitions,
+                                    VectorView<RHITextureTransition> textureTransitions)
 {
     RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
 

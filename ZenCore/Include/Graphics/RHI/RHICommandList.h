@@ -801,9 +801,9 @@ public:
 
     void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
                         BitField<RHIPipelineStageBits> dstStages,
-                        const HeapVector<RHIMemoryTransition>& memoryTransitions,
-                        const HeapVector<RHIBufferTransition>& bufferTransitions,
-                        const HeapVector<RHITextureTransition>& textureTransitions);
+                        VectorView<RHIMemoryTransition> memoryTransitions,
+                        VectorView<RHIBufferTransition> bufferTransitions,
+                        VectorView<RHITextureTransition> textureTransitions);
 
     void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
 

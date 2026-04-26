@@ -27,7 +27,7 @@ static const char* VulkanCommandBufferTypeToString(VulkanCommandBufferType type)
 
 static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
                                           VulkanPipeline* pPipeline,
-                                          const HeapVector<VulkanDescriptorSet*>& descriptorSets)
+                                          const HeapVector<VkDescriptorSet>& descriptorSets)
 {
     if (pPipeline != nullptr)
     {
@@ -37,16 +37,11 @@ static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
 
     if (!descriptorSets.empty())
     {
-        HeapVector<VkDescriptorSet> vkDescriptorSets;
-        vkDescriptorSets.reserve(descriptorSets.size());
-        for (const auto& pDescriptorSet : descriptorSets)
-        {
-            vkDescriptorSets.emplace_back(
-                TO_CVK_DESCRIPTORSET(pDescriptorSet)->GetVkDescriptorSet());
-        }
+        ASSERT(pPipeline != nullptr);
         vkCmdBindDescriptorSets(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
-                                pPipeline->GetVkPipelineLayout(), 0, vkDescriptorSets.size(),
-                                vkDescriptorSets.data(), 0, nullptr);
+                                pPipeline->GetVkPipelineLayout(), 0,
+                                static_cast<uint32_t>(descriptorSets.size()),
+                                descriptorSets.data(), 0, nullptr);
     }
 }
 
@@ -504,7 +499,7 @@ void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers,
 
     for (uint32_t i = 0; i < numVertexBuffers; i++)
     {
-        m_vertexBuffers[i]       = TO_VK_BUFFER(ppVertexBuffers[i]);
+        m_vertexBuffers[i]       = TO_VK_BUFFER(ppVertexBuffers[i])->GetVkBuffer();
         m_vertexBufferOffsets[i] = pOffsets[i];
     }
 }
@@ -516,7 +511,7 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline,
     m_descriptorSets.resize(numDescriptorSets);
     for (uint32_t i = 0; i < numDescriptorSets; i++)
     {
-        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i]);
+        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i])->GetVkDescriptorSet();
     }
 }
 
@@ -528,7 +523,7 @@ void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline,
     m_descriptorSets.resize(numDescriptorSets);
     for (uint32_t i = 0; i < numDescriptorSets; i++)
     {
-        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i]);
+        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i])->GetVkDescriptorSet();
     }
 }
 
@@ -557,12 +552,8 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets);
     if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
     {
-        HeapVector<VkBuffer> vkBuffers;
-        for (VulkanBuffer* pBuffer : m_vertexBuffers)
-        {
-            vkBuffers.emplace_back(pBuffer->GetVkBuffer());
-        }
-        vkCmdBindVertexBuffers(cmdBuffer, 0, m_vertexBuffers.size(), vkBuffers.data(),
+        vkCmdBindVertexBuffers(cmdBuffer, 0, static_cast<uint32_t>(m_vertexBuffers.size()),
+                               m_vertexBuffers.data(),
                                m_vertexBufferOffsets.data());
     }
 }

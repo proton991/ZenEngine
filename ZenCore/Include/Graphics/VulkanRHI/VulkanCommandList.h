@@ -376,9 +376,9 @@ private:
     HeapVector<VkRect2D> m_scissors;
 
     VulkanPipeline* m_pCurrentPipeline{nullptr};
-    HeapVector<VulkanDescriptorSet*> m_descriptorSets{nullptr};
+    HeapVector<VkDescriptorSet> m_descriptorSets;
 
-    HeapVector<VulkanBuffer*> m_vertexBuffers;
+    HeapVector<VkBuffer> m_vertexBuffers;
     HeapVector<uint64_t> m_vertexBufferOffsets;
 
     struct RasterizationStates
@@ -406,7 +406,7 @@ public:
 
 private:
     VulkanPipeline* m_pCurrentPipeline{nullptr};
-    HeapVector<VulkanDescriptorSet*> m_descriptorSets{nullptr};
+    HeapVector<VkDescriptorSet> m_descriptorSets;
 };
 
 class FVulkanCommandListContext : public IRHICommandContext, public VulkanCommandContextBase

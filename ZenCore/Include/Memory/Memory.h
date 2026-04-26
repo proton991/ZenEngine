@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -93,11 +94,42 @@ public:
     static void ReportMemUsage();
 
 private:
-    static void TrackMemAlloc(size_t s);
+    static void TrackMemAlloc(size_t s, const char* pFileName, uint32_t lineNum);
 
-    static void TrackMemReAlloc(size_t oldSize, size_t newSize);
+    static void TrackMemReAlloc(size_t oldSize,
+                                size_t newSize,
+                                const char* pFileName,
+                                uint32_t lineNum);
 
-    static void TrackMemFree(size_t s);
+    static void TrackMemFree(size_t s, const char* pFileName, uint32_t lineNum);
+
+    struct AllocationSiteStats
+    {
+        const char* pFileName{nullptr};
+        uint32_t lineNumber{0};
+        size_t totalAllocated{0};
+        size_t totalFreed{0};
+        size_t currentUsage{0};
+        size_t peakUsage{0};
+        size_t allocationCount{0};
+        size_t freeCount{0};
+        size_t reallocCount{0};
+    };
+
+    static constexpr uint32_t cMaxTrackedAllocationSites = 4096;
+
+    void TrackAllocationSiteAlloc(size_t size,
+                                  const char* pFileName,
+                                  uint32_t lineNum,
+                                  bool isRealloc);
+
+    void TrackAllocationSiteFree(size_t size, const char* pFileName, uint32_t lineNum);
+
+    AllocationSiteStats* FindOrAddAllocationSite(const char* pFileName, uint32_t lineNum);
+
+    void LockAllocationSiteStats();
+
+    void UnlockAllocationSiteStats();
 
     static void* DefaultAllocImpl(size_t size, size_t alignment);
 
@@ -118,6 +150,9 @@ private:
     std::atomic<size_t> m_totalFreed{0};
     std::atomic<size_t> m_currentUsage{0};
     std::atomic<size_t> m_peakUsage{0};
+    std::atomic_flag m_allocationSiteStatsLock = ATOMIC_FLAG_INIT;
+    AllocationSiteStats m_allocationSiteStats[cMaxTrackedAllocationSites]{};
+    bool m_allocationSiteStatsOverflow{false};
 };
 
 // template <typename T, typename... Args> T* MemNew(Args&&... args)

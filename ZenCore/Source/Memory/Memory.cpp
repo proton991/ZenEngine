@@ -2,6 +2,7 @@
 #include "Utils/Errors.h"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace zen
 {
@@ -21,7 +22,98 @@ DefaultAllocator* DefaultAllocator::GetInstance()
     return &instance;
 }
 
-void DefaultAllocator::TrackMemAlloc(size_t s)
+void DefaultAllocator::LockAllocationSiteStats()
+{
+    while (m_allocationSiteStatsLock.test_and_set(std::memory_order_acquire))
+    {
+    }
+}
+
+void DefaultAllocator::UnlockAllocationSiteStats()
+{
+    m_allocationSiteStatsLock.clear(std::memory_order_release);
+}
+
+DefaultAllocator::AllocationSiteStats* DefaultAllocator::FindOrAddAllocationSite(
+    const char* pFileName,
+    uint32_t lineNum)
+{
+    uintptr_t hash = reinterpret_cast<uintptr_t>(pFileName);
+    hash ^= static_cast<uintptr_t>(lineNum) * 2654435761u;
+    uint32_t index = static_cast<uint32_t>(hash % cMaxTrackedAllocationSites);
+
+    for (uint32_t probe = 0; probe < cMaxTrackedAllocationSites; ++probe)
+    {
+        AllocationSiteStats& stats = m_allocationSiteStats[index];
+        if (stats.pFileName == pFileName && stats.lineNumber == lineNum)
+        {
+            return &stats;
+        }
+
+        if (stats.pFileName == nullptr)
+        {
+            stats.pFileName  = pFileName;
+            stats.lineNumber = lineNum;
+            return &stats;
+        }
+
+        index = (index + 1) % cMaxTrackedAllocationSites;
+    }
+
+    m_allocationSiteStatsOverflow = true;
+    return nullptr;
+}
+
+void DefaultAllocator::TrackAllocationSiteAlloc(size_t size,
+                                                const char* pFileName,
+                                                uint32_t lineNum,
+                                                bool isRealloc)
+{
+    if (pFileName == nullptr || size == 0)
+    {
+        return;
+    }
+
+    LockAllocationSiteStats();
+    AllocationSiteStats* pStats = FindOrAddAllocationSite(pFileName, lineNum);
+    if (pStats != nullptr)
+    {
+        pStats->totalAllocated += size;
+        pStats->currentUsage += size;
+        pStats->peakUsage = std::max(pStats->peakUsage, pStats->currentUsage);
+        if (isRealloc)
+        {
+            ++pStats->reallocCount;
+        }
+        else
+        {
+            ++pStats->allocationCount;
+        }
+    }
+    UnlockAllocationSiteStats();
+}
+
+void DefaultAllocator::TrackAllocationSiteFree(size_t size,
+                                               const char* pFileName,
+                                               uint32_t lineNum)
+{
+    if (pFileName == nullptr || size == 0)
+    {
+        return;
+    }
+
+    LockAllocationSiteStats();
+    AllocationSiteStats* pStats = FindOrAddAllocationSite(pFileName, lineNum);
+    if (pStats != nullptr)
+    {
+        pStats->totalFreed += size;
+        pStats->currentUsage -= std::min(pStats->currentUsage, size);
+        ++pStats->freeCount;
+    }
+    UnlockAllocationSiteStats();
+}
+
+void DefaultAllocator::TrackMemAlloc(size_t s, const char* pFileName, uint32_t lineNum)
 {
     DefaultAllocator* pAllocator = GetInstance();
     pAllocator->m_totalAllocated += s;
@@ -32,21 +124,30 @@ void DefaultAllocator::TrackMemAlloc(size_t s)
            !pAllocator->m_peakUsage.compare_exchange_weak(peak, pAllocator->m_currentUsage))
     {
     }
+
+    pAllocator->TrackAllocationSiteAlloc(s, pFileName, lineNum, false);
 }
 
-void DefaultAllocator::TrackMemReAlloc(size_t oldSize, size_t newSize)
+void DefaultAllocator::TrackMemReAlloc(size_t oldSize,
+                                       size_t newSize,
+                                       const char* pFileName,
+                                       uint32_t lineNum)
 {
     DefaultAllocator* pAllocator = GetInstance();
 
     if (newSize > oldSize)
     {
-        pAllocator->m_totalAllocated += (newSize - oldSize);
-        pAllocator->m_currentUsage += (newSize - oldSize);
+        const size_t sizeDelta = newSize - oldSize;
+        pAllocator->m_totalAllocated += sizeDelta;
+        pAllocator->m_currentUsage += sizeDelta;
+        pAllocator->TrackAllocationSiteAlloc(sizeDelta, pFileName, lineNum, true);
     }
     else
     {
-        pAllocator->m_totalFreed += (oldSize - newSize);
-        pAllocator->m_currentUsage -= (oldSize - newSize);
+        const size_t sizeDelta = oldSize - newSize;
+        pAllocator->m_totalFreed += sizeDelta;
+        pAllocator->m_currentUsage -= sizeDelta;
+        pAllocator->TrackAllocationSiteFree(sizeDelta, pFileName, lineNum);
     }
 
     size_t peak = pAllocator->m_peakUsage.load();
@@ -56,11 +157,12 @@ void DefaultAllocator::TrackMemReAlloc(size_t oldSize, size_t newSize)
     }
 }
 
-void DefaultAllocator::TrackMemFree(size_t s)
+void DefaultAllocator::TrackMemFree(size_t s, const char* pFileName, uint32_t lineNum)
 {
     DefaultAllocator* pAllocator = GetInstance();
     pAllocator->m_totalFreed += s;
     pAllocator->m_currentUsage -= s;
+    pAllocator->TrackAllocationSiteFree(s, pFileName, lineNum);
 }
 
 void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNum)
@@ -76,7 +178,7 @@ void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName,
     pHeader->pFileName  = pFileName;
     pHeader->lineNumber = lineNum;
 
-    TrackMemAlloc(s);
+    TrackMemAlloc(s, pFileName, lineNum);
 
     return pHeader + 1;
 #else
@@ -100,7 +202,7 @@ void DefaultAllocator::Free(void* pMemory, const char* pFileName, uint32_t lineN
 #if defined(ZEN_DEBUG)
     auto* pHeader = static_cast<AllocationHeader*>(pMemory) - 1;
 
-    TrackMemFree(pHeader->size_);
+    TrackMemFree(pHeader->size_, pHeader->pFileName, pHeader->lineNumber);
 
     DefaultFreeImpl(pHeader);
 #else
@@ -119,7 +221,9 @@ void* DefaultAllocator::Realloc(void* pMem,
         return Alloc(newSize, alignment, pFileName, lineNumm);
 
     auto* pOldHeader = reinterpret_cast<AllocationHeader*>(pMem) - 1;
-    size_t oldSize  = pOldHeader->size_;
+    size_t oldSize   = pOldHeader->size_;
+    const char* pOldFileName = pOldHeader->pFileName;
+    const uint32_t oldLineNum = pOldHeader->lineNumber;
 
     const size_t totalSize = sizeof(AllocationHeader) + newSize;
     void* pRaw              = DefaultReallocImpl(pOldHeader, totalSize, alignment,
@@ -129,7 +233,7 @@ void* DefaultAllocator::Realloc(void* pMem,
     auto* pNewHeader  = reinterpret_cast<AllocationHeader*>(pRaw);
     pNewHeader->size_ = newSize;
 
-    TrackMemReAlloc(oldSize, newSize);
+    TrackMemReAlloc(oldSize, newSize, pOldFileName, oldLineNum);
 
     return pNewHeader + 1;
 #else
@@ -189,6 +293,68 @@ void DefaultAllocator::ReportMemUsage()
     PrintMemoryLine("Current Usage", currentUsage);
     PrintMemoryLine("Peak Usage", peakUsage);
     printf("\nNote: Total Allocated / Total Freed are lifetime counters, not current live memory.\n");
+
+    constexpr uint32_t cNumTopAllocationSites = 16;
+    AllocationSiteStats topSites[cNumTopAllocationSites]{};
+    uint32_t numTopSites = 0;
+
+    pAlloc->LockAllocationSiteStats();
+    for (const AllocationSiteStats& stats : pAlloc->m_allocationSiteStats)
+    {
+        if (stats.pFileName == nullptr || stats.totalAllocated == 0)
+        {
+            continue;
+        }
+
+        if (numTopSites < cNumTopAllocationSites)
+        {
+            topSites[numTopSites] = stats;
+            uint32_t siteIndex    = numTopSites++;
+            while (siteIndex > 0 &&
+                   topSites[siteIndex].totalAllocated > topSites[siteIndex - 1].totalAllocated)
+            {
+                std::swap(topSites[siteIndex], topSites[siteIndex - 1]);
+                --siteIndex;
+            }
+        }
+        else if (stats.totalAllocated > topSites[cNumTopAllocationSites - 1].totalAllocated)
+        {
+            topSites[cNumTopAllocationSites - 1] = stats;
+            uint32_t siteIndex = cNumTopAllocationSites - 1;
+            while (siteIndex > 0 &&
+                   topSites[siteIndex].totalAllocated > topSites[siteIndex - 1].totalAllocated)
+            {
+                std::swap(topSites[siteIndex], topSites[siteIndex - 1]);
+                --siteIndex;
+            }
+        }
+    }
+    const bool allocationSiteStatsOverflow = pAlloc->m_allocationSiteStatsOverflow;
+    pAlloc->UnlockAllocationSiteStats();
+
+    if (numTopSites > 0)
+    {
+        printf("\nTop Allocation Sites by Total Allocated:\n");
+        for (uint32_t i = 0; i < numTopSites; ++i)
+        {
+            const AllocationSiteStats& stats = topSites[i];
+            printf("#%02u  total=", i + 1);
+            PrintMemorySize(stats.totalAllocated);
+            printf(" allocs=%zu reallocs=%zu freed=", stats.allocationCount, stats.reallocCount);
+            PrintMemorySize(stats.totalFreed);
+            printf(" peakLive=");
+            PrintMemorySize(stats.peakUsage);
+            printf(" current=");
+            PrintMemorySize(stats.currentUsage);
+            printf("\n      at %s:%u\n", stats.pFileName, stats.lineNumber);
+        }
+
+        if (allocationSiteStatsOverflow)
+        {
+            printf("[WARN] Allocation site table overflowed; increase "
+                   "DefaultAllocator::cMaxTrackedAllocationSites for complete stats.\n");
+        }
+    }
 
     if (currentUsage != 0)
     {
