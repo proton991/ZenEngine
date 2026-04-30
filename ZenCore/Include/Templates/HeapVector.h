@@ -1,4 +1,9 @@
 #pragma once
+#include <cstring>
+#include <initializer_list>
+#include <type_traits>
+#include <utility>
+
 #include "Utils/Errors.h"
 #include "Memory/Memory.h"
 
@@ -275,6 +280,34 @@ public:
     void push_back(T&& value)
     {
         emplace_back(std::move(value));
+    }
+
+    void push_back(const HeapVector<T>& values)
+    {
+        if (values.empty())
+        {
+            return;
+        }
+
+        const size_type oldSize = m_size;
+        const size_type count   = values.size();
+
+        reserve(oldSize + count);
+
+        const T* pSrcData = (&values == this) ? m_pData : values.data();
+        if constexpr (std::is_trivially_copy_constructible_v<T>)
+        {
+            std::memcpy(m_pData + oldSize, pSrcData, sizeof(T) * count);
+        }
+        else
+        {
+            for (size_type i = 0; i < count; ++i)
+            {
+                new (&m_pData[oldSize + i]) T(pSrcData[i]);
+            }
+        }
+
+        m_size = oldSize + count;
     }
 
     template <typename... Args> T& emplace_back(Args&&... args)

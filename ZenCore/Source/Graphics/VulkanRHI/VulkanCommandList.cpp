@@ -255,19 +255,10 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
     VERIFY_EXPR(m_signalSemaphoreInfos.empty());
     VERIFY_EXPR(pOtherWorkload->m_waitSemaphoreInfos.empty());
 
-    m_commandBuffers.reserve(m_commandBuffers.size() + pOtherWorkload->m_commandBuffers.size());
-    for (FVulkanCommandBuffer* pCmdBuffer : pOtherWorkload->m_commandBuffers)
-    {
-        m_commandBuffers.push_back(pCmdBuffer);
-    }
+    m_commandBuffers.push_back(pOtherWorkload->m_commandBuffers);
     pOtherWorkload->m_commandBuffers.clear();
 
-    m_signalSemaphoreInfos.reserve(m_signalSemaphoreInfos.size() +
-                                   pOtherWorkload->m_signalSemaphoreInfos.size());
-    for (const SignalSemaphoreInfo& signalInfo : pOtherWorkload->m_signalSemaphoreInfos)
-    {
-        m_signalSemaphoreInfos.push_back(signalInfo);
-    }
+    m_signalSemaphoreInfos.push_back(pOtherWorkload->m_signalSemaphoreInfos);
     pOtherWorkload->m_signalSemaphoreInfos.clear();
 
     pOtherWorkload->m_pMergedInto = this;
@@ -305,12 +296,7 @@ void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& out
         return;
     }
 
-    outWorkloads.reserve(outWorkloads.size() + m_finalizedWorkloads.size());
-    for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
-    {
-        VERIFY_EXPR(pWorkload->m_pQueue == m_pQueue);
-        outWorkloads.push_back(pWorkload);
-    }
+    outWorkloads.push_back(m_finalizedWorkloads);
 
     m_finalizedWorkloads.clear();
 }
@@ -328,6 +314,7 @@ void VulkanCommandContextBase::FinalizePendingWorkload()
     }
 
     EndWorkload();
+    VERIFY_EXPR(m_pCurrentWorkload->m_pQueue == m_pQueue);
     m_finalizedWorkloads.push_back(m_pCurrentWorkload);
     m_pCurrentWorkload = nullptr;
 }
