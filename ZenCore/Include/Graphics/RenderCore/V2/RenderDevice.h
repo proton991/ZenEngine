@@ -309,6 +309,7 @@ private:
 
     uint32_t BUFFER_SIZE;
     uint64_t POOL_SIZE;
+    uint32_t m_numFrames{0};
     RenderDevice* m_pRenderDevice{nullptr};
     // DynamicRHI* GDynamicRHI{nullptr};
 
@@ -328,6 +329,14 @@ private:
 
 struct RenderFrame
 {
+    struct PendingBufferUpdate
+    {
+        RHIBuffer* pStagingBuffer{nullptr};
+        RHIBuffer* pDstBuffer{nullptr};
+        RHIBufferCopyRegion copyRegion{};
+    };
+
+    std::vector<PendingBufferUpdate> pendingBufferUpdates;
     std::vector<RHITexture*> texturesPendingFree;
 };
 
@@ -516,6 +525,10 @@ private:
     void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
 
     void ProcessPendingFreeResources(uint32_t frameIndex);
+
+    void FlushPendingBufferUpdates();
+
+    void ResolveBufferStagingFlushAction(StagingFlushAction action);
 
     void UpdateBufferInternal(RHIBuffer* pBufferHandle,
                               uint32_t offset,

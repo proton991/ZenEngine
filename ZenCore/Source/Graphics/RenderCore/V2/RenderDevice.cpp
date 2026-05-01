@@ -563,6 +563,7 @@ BufferStagingManager::BufferStagingManager(RenderDevice* pRenderDevice,
 
 void BufferStagingManager::Init(uint32_t numFrames)
 {
+    m_numFrames = numFrames;
     for (uint32_t i = 0; i < numFrames; i++)
     {
         InsertNewBlock();
@@ -604,7 +605,7 @@ bool BufferStagingManager::FitInBlock(uint32_t blockIndex,
         occupiedSize += requiredAlign - alignRemainder;
     }
     int32_t availableBytes = static_cast<int32_t>(BUFFER_SIZE) - static_cast<int32_t>(occupiedSize);
-    if (static_cast<int32_t>(requiredSize) < availableBytes)
+    if (static_cast<int32_t>(requiredSize) <= availableBytes)
     {
         // enough room, allocate
         pResult->writeOffset = occupiedSize;
@@ -627,7 +628,9 @@ void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
                                        uint32_t requiredAlign,
                                        bool canSegment)
 {
-    pResult->writeSize = requiredSize;
+    pResult->success     = false;
+    pResult->flushAction = StagingFlushAction::eNone;
+    pResult->writeSize   = requiredSize;
     while (true)
     {
         pResult->writeOffset = 0;
@@ -660,7 +663,7 @@ void BufferStagingManager::BeginSubmit(uint32_t requiredSize,
         }
         else if (m_pRenderDevice->GetFramesCounter() -
                      m_bufferBlocks[m_currentBlockIndex].usedFrame >=
-                 m_bufferBlocks.size())
+                 m_numFrames)
         {
             // reuse old one
             m_bufferBlocks[m_currentBlockIndex].usedFrame    = 0;
@@ -736,6 +739,7 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
     for (uint32_t i = 0; i < m_numFrames; i++)
     {
         m_frames.emplace_back();
+        m_frames.back().pendingBufferUpdates.reserve(64);
     }
     m_framesCounter = m_frames.size();
 
@@ -747,6 +751,8 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
 
 void RenderDevice::Destroy()
 {
+    FlushPendingBufferUpdates();
+
     for (auto* pViewport : m_viewports)
     {
         GDynamicRHI->DestroyViewport(pViewport);
@@ -840,6 +846,8 @@ void RenderDevice::Destroy()
 
 void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<RenderGraph*> rdgs)
 {
+    FlushPendingBufferUpdates();
+
     GDynamicRHI->BeginDrawingViewport(pViewport);
 
     const size_t numRenderCmdLists = rdgs.size();
@@ -871,6 +879,8 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
         return;
     }
 
+    FlushPendingBufferUpdates();
+
     HeapVector<RHICommandList*> cmdLists;
     AcquireGraphicsCmdLists(rdgs.size(), cmdLists);
     for (size_t i = 0; i < rdgs.size(); ++i)
@@ -892,6 +902,44 @@ void RenderDevice::SubmitImmediateTransferCmdList()
     GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
     m_pImmediateTransferCmdList->WaitUntilCompleted();
     m_pImmediateTransferCmdList->Reset();
+}
+
+void RenderDevice::FlushPendingBufferUpdates()
+{
+    auto& pendingBufferUpdates = m_frames[m_currentFrame].pendingBufferUpdates;
+    if (pendingBufferUpdates.empty())
+    {
+        return;
+    }
+
+    for (const RenderFrame::PendingBufferUpdate& update : pendingBufferUpdates)
+    {
+        m_pImmediateTransferCmdList->CopyBuffer(update.pStagingBuffer, update.pDstBuffer,
+                                                update.copyRegion);
+    }
+
+    pendingBufferUpdates.clear();
+    SubmitImmediateTransferCmdList();
+}
+
+void RenderDevice::ResolveBufferStagingFlushAction(StagingFlushAction action)
+{
+    if (action == StagingFlushAction::eNone)
+    {
+        return;
+    }
+
+    if (action == StagingFlushAction::eFull)
+    {
+        FlushPendingBufferUpdates();
+        WaitForAllFrames();
+    }
+    else
+    {
+        WaitForPreviousFrames();
+    }
+
+    m_pBufferStagingMgr->PerformAction(action);
 }
 
 RHIRenderingLayout* RenderDevice::AcquireRenderingLayout()
@@ -1536,22 +1584,18 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
 {
     uint32_t toSubmit      = dataSize;
     uint32_t writePosition = 0;
-    bool submittedTransfer = false;
     while (toSubmit > 0 && pData != nullptr)
     {
         StagingSubmitResult submitResult;
-        m_pBufferStagingMgr->BeginSubmit(std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES),
-                                         &submitResult, 32, true);
+        const uint32_t submitSize = std::min(toSubmit, (uint32_t)STAGING_BLOCK_SIZE_BYTES);
+        m_pBufferStagingMgr->BeginSubmit(submitSize, &submitResult, 32, true);
 
-        if (submitResult.flushAction == StagingFlushAction::ePartial)
+        if (submitResult.flushAction != StagingFlushAction::eNone)
         {
-            WaitForPreviousFrames();
+            ResolveBufferStagingFlushAction(submitResult.flushAction);
+            m_pBufferStagingMgr->BeginSubmit(submitSize, &submitResult, 32, true);
+            VERIFY_EXPR(submitResult.flushAction == StagingFlushAction::eNone);
         }
-        else if (submitResult.flushAction == StagingFlushAction::eFull)
-        {
-            WaitForAllFrames();
-        }
-        m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
 
         // map staging buffer
         uint8_t* pDataPtr = submitResult.pBuffer->Map();
@@ -1564,17 +1608,14 @@ void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
         copyRegion.srcOffset = submitResult.writeOffset;
         copyRegion.dstOffset = writePosition + offset;
         copyRegion.size      = submitResult.writeSize;
-        m_pImmediateTransferCmdList->CopyBuffer(submitResult.pBuffer, pBufferHandle, copyRegion);
-        submittedTransfer = true;
+        m_frames[m_currentFrame].pendingBufferUpdates.push_back(RenderFrame::PendingBufferUpdate{
+            submitResult.pBuffer,
+            pBufferHandle,
+            copyRegion,
+        });
         m_pBufferStagingMgr->EndSubmit(&submitResult);
         toSubmit -= submitResult.writeSize;
         writePosition += submitResult.writeSize;
-    }
-
-    if (submittedTransfer)
-    {
-        SubmitImmediateTransferCmdList();
-        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
     }
 }
 
@@ -1607,6 +1648,7 @@ void RenderDevice::NextFrame()
     //     texture->DecreaseRefCount();
     // }
     // GetCurrentFrame()->texturesPendingFree.clear();
+    FlushPendingBufferUpdates();
     ProcessPendingFreeResources(m_currentFrame);
     m_currentFrame = (m_currentFrame + 1) % m_frames.size();
     BeginFrame();
