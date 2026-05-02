@@ -16,9 +16,7 @@ public:
 
     void Destroy();
 
-    void EnsureTransferBatch();
-
-    void FlushTransferBatch();
+    void FlushPendingTextureUpdates();
     // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
     // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
@@ -35,12 +33,13 @@ public:
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
-    void QueueShaderReadOnlyTransition(RHITexture* pTexture);
-
-    void UpdateTexture(RHITexture* pTexture, uint32_t dataSize, const uint8_t* pData);
+    void UpdateTexture(RHITexture* pTexture,
+                       uint32_t dataSize,
+                       const uint8_t* pData,
+                       bool generateMipmaps = false);
 
     void UpdateTextureCube(RHITexture* pTexture,
-                           const std::vector<RHIBufferTextureCopyRegion>& regions,
+                           const HeapVector<RHIBufferTextureCopyRegion>& regions,
                            uint32_t dataSize,
                            const uint8_t* pData);
 
@@ -65,13 +64,16 @@ private:
 
     HashMap<RHITexture*, RHITexture*> m_textureProxyMap; // proxy tex -> base tex
 
-    struct TextureTransferBatch
+    struct PendingTextureUpdate
     {
-        RHICommandList* pCmdList{nullptr};
-        uint32_t textureCount{0};
-        bool recording{false};
-    } m_transferBatch;
+        RHIBuffer* pStagingBuffer{nullptr};
+        RHITexture* pTexture{nullptr};
+        RHIBufferTextureCopyRegion copyRegion{};
+        HeapVector<RHIBufferTextureCopyRegion> copyRegions;
+        bool useMultipleRegions{false};
+        bool generateMipmaps{false};
+    };
 
-    HeapVector<RHITexture*> m_pendingShaderReadOnlyTransitions;
+    HeapVector<PendingTextureUpdate> m_pendingTextureUpdates;
 };
 } // namespace zen::rc

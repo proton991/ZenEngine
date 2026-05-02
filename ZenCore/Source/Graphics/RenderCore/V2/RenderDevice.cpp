@@ -752,6 +752,7 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
 void RenderDevice::Destroy()
 {
     FlushPendingBufferUpdates();
+    m_pTextureManager->FlushPendingTextureUpdates();
 
     for (auto* pViewport : m_viewports)
     {
@@ -846,14 +847,15 @@ void RenderDevice::Destroy()
 
 void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<RenderGraph*> rdgs)
 {
-    FlushPendingBufferUpdates();
-
     GDynamicRHI->BeginDrawingViewport(pViewport);
 
     const size_t numRenderCmdLists = rdgs.size();
     HeapVector<RHICommandList*> cmdLists;
     // use a dedicated cmd list to present
     AcquireGraphicsCmdLists(numRenderCmdLists + 1, cmdLists);
+    FlushPendingBufferUpdates();
+    m_pTextureManager->FlushPendingTextureUpdates();
+
     for (size_t i = 0; i < numRenderCmdLists; ++i)
     {
         rdgs[i]->Execute(cmdLists[i]);
@@ -876,13 +878,16 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
 {
     if (rdgs.empty())
     {
+        FlushPendingBufferUpdates();
+        m_pTextureManager->FlushPendingTextureUpdates();
         return;
     }
 
-    FlushPendingBufferUpdates();
-
     HeapVector<RHICommandList*> cmdLists;
     AcquireGraphicsCmdLists(rdgs.size(), cmdLists);
+    FlushPendingBufferUpdates();
+    m_pTextureManager->FlushPendingTextureUpdates();
+
     for (size_t i = 0; i < rdgs.size(); ++i)
     {
         rdgs[i]->Execute(cmdLists[i]);
@@ -1649,6 +1654,7 @@ void RenderDevice::NextFrame()
     // }
     // GetCurrentFrame()->texturesPendingFree.clear();
     FlushPendingBufferUpdates();
+    m_pTextureManager->FlushPendingTextureUpdates();
     ProcessPendingFreeResources(m_currentFrame);
     m_currentFrame = (m_currentFrame + 1) % m_frames.size();
     BeginFrame();

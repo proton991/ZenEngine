@@ -8,74 +8,68 @@
 
 #include <gli/gli.hpp>
 
+#include <unordered_set>
+
 namespace zen::rc
 {
-void TextureManager::QueueShaderReadOnlyTransition(RHITexture* pTexture)
-{
-    for (RHITexture* pPendingTexture : m_pendingShaderReadOnlyTransitions)
-    {
-        if (pPendingTexture == pTexture)
-        {
-            return;
-        }
-    }
-
-    m_pendingShaderReadOnlyTransitions.emplace_back(pTexture);
-}
-
 void TextureManager::Destroy()
 {
-    if (m_transferBatch.pCmdList != nullptr)
-    {
-        m_transferBatch.pCmdList  = nullptr;
-        m_transferBatch.recording = false;
-    }
-
-    m_pendingShaderReadOnlyTransitions.clear();
+    m_pendingTextureUpdates.clear();
 
     for (auto& kv : m_textureCache)
     {
         kv.second->ReleaseReference();
     }
 }
-void TextureManager::EnsureTransferBatch()
-{
-    if (!m_transferBatch.recording)
-    {
-        m_transferBatch.pCmdList  = m_pRenderDevice->GetImmediateTransferCmdList();
-        m_transferBatch.recording = true;
-    }
-}
 
-void TextureManager::FlushTransferBatch()
+void TextureManager::FlushPendingTextureUpdates()
 {
-    if (!m_transferBatch.recording)
+    if (m_pendingTextureUpdates.empty())
     {
         return;
     }
 
-    m_pRenderDevice->SubmitImmediateTransferCmdList();
-
-    if (!m_pendingShaderReadOnlyTransitions.empty())
+    RHICommandList* pTransferCmdList = m_pRenderDevice->GetImmediateTransferCmdList();
+    for (PendingTextureUpdate& update : m_pendingTextureUpdates)
     {
-        // Sampled-image transitions must be recorded on a graphics-capable queue.
-        RHICommandList* pGfxCmdList = m_pRenderDevice->GetImmediateGraphicsCmdList();
-
-        for (RHITexture* pTexture : m_pendingShaderReadOnlyTransitions)
+        pTransferCmdList->AddTextureTransition(update.pTexture, RHITextureLayout::eTransferDst);
+        if (update.useMultipleRegions)
         {
-            pGfxCmdList->AddTextureTransition(pTexture, RHITextureLayout::eShaderReadOnly);
+            pTransferCmdList->CopyBufferToTexture(update.pStagingBuffer, update.pTexture,
+                                                  MakeVecView(update.copyRegions));
+        }
+        else
+        {
+            pTransferCmdList->CopyBufferToTexture(update.pStagingBuffer, update.pTexture,
+                                                  MakeVecView(&update.copyRegion, 1));
         }
 
-        RHICommandList* pCmdLists[] = {pGfxCmdList};
-        GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-        pGfxCmdList->Reset();
+        if (update.generateMipmaps)
+        {
+            pTransferCmdList->GenerateTextureMipmaps(update.pTexture);
+        }
 
-        m_pendingShaderReadOnlyTransitions.clear();
+        m_pStagingMgr->ReleaseBuffer(update.pStagingBuffer);
     }
 
-    m_transferBatch.pCmdList  = nullptr;
-    m_transferBatch.recording = false;
+    m_pRenderDevice->SubmitImmediateTransferCmdList();
 
+    RHICommandList* pGfxCmdList = m_pRenderDevice->GetImmediateGraphicsCmdList();
+    std::unordered_set<RHITexture*> transitionedTextures;
+    transitionedTextures.reserve(m_pendingTextureUpdates.size());
+    for (const PendingTextureUpdate& update : m_pendingTextureUpdates)
+    {
+        if (transitionedTextures.insert(update.pTexture).second)
+        {
+            pGfxCmdList->AddTextureTransition(update.pTexture, RHITextureLayout::eShaderReadOnly);
+        }
+    }
+
+    RHICommandList* pCmdLists[] = {pGfxCmdList};
+    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
+    pGfxCmdList->Reset();
+
+    m_pendingTextureUpdates.clear();
     m_pStagingMgr->ProcessPendingFrees();
 }
 
@@ -117,19 +111,7 @@ RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireM
     RHITexture* pTexture =
         m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, file);
 
-    // TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-
-    if (requireMipmap)
-    {
-        UpdateTexture(pTexture, rawTextureInfo.data.size(), rawTextureInfo.data.data());
-        m_transferBatch.pCmdList->GenerateTextureMipmaps(pTexture);
-    }
-    else
-    {
-        UpdateTexture(pTexture, rawTextureInfo.data.size(), rawTextureInfo.data.data());
-    }
-
-    FlushTransferBatch();
+    UpdateTexture(pTexture, rawTextureInfo.data.size(), rawTextureInfo.data.data(), requireMipmap);
 
     m_textureCache[file] = pTexture;
     return pTexture;
@@ -176,13 +158,11 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene,
         texFormat.mipmaps     = 1;
 
         RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true},
-                                                                   pSgTexture->GetName());
+                                                                     pSgTexture->GetName());
         UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data());
         m_textureCache[pSgTexture->GetName()] = pTexture;
         outTextures.push_back(pTexture);
     }
-
-    FlushTransferBatch();
 }
 
 void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture)
@@ -222,7 +202,7 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
         m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, "env_skybox");
 
     // TextureHandle texture = m_RHI->CreateTexture(textureInfo);
-    std::vector<RHIBufferTextureCopyRegion> regions;
+    HeapVector<RHIBufferTextureCopyRegion> regions;
     regions.reserve(6 * mipLevels);
     uint32_t offset = 0;
     for (uint32_t face = 0; face < 6; face++)
@@ -247,14 +227,12 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
     UpdateTextureCube(pTexture, regions, texCube.size(),
                       static_cast<const uint8_t*>(texCube.data()));
 
-    FlushTransferBatch();
-
     m_textureCache[file] = pTexture;
 
     pOutTexture->pSkybox = pTexture;
 
     m_pRenderDevice->GetRHIDebug()->SetTextureDebugName(pOutTexture->pSkybox,
-                                                       pTexture->GetBaseInfo().tag);
+                                                        pTexture->GetBaseInfo().tag);
 
     SkyboxRenderer* pSkyboxRenderer = m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer();
     // note: only generate once
@@ -265,13 +243,11 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
     m_textureCache[pOutTexture->pLutBRDF->GetResourceTag()]     = pOutTexture->pLutBRDF;
 }
 
-void TextureManager::UpdateTexture(RHITexture* pTexture, uint32_t dataSize, const uint8_t* pData)
+void TextureManager::UpdateTexture(RHITexture* pTexture,
+                                   uint32_t dataSize,
+                                   const uint8_t* pData,
+                                   bool generateMipmaps)
 {
-    EnsureTransferBatch();
-
-    RHICommandList* pCmdList = m_transferBatch.pCmdList;
-    pCmdList->AddTextureTransition(pTexture, RHITextureLayout::eTransferDst);
-
     RHIBuffer* pStagingBuffer = m_pStagingMgr->RequireBuffer(dataSize);
     // map staging buffer
     uint8_t* pDataPtr = pStagingBuffer->Map();
@@ -285,21 +261,22 @@ void TextureManager::UpdateTexture(RHITexture* pTexture, uint32_t dataSize, cons
     copyRegion.bufferOffset  = 0;
     copyRegion.textureOffset = {0, 0, 0};
     copyRegion.textureSize   = {pTexture->GetWidth(), pTexture->GetHeight(), pTexture->GetDepth()};
-    pCmdList->CopyBufferToTexture(pStagingBuffer, pTexture, copyRegion);
-    m_pStagingMgr->ReleaseBuffer(pStagingBuffer);
 
-    QueueShaderReadOnlyTransition(pTexture);
+    m_pendingTextureUpdates.push_back(PendingTextureUpdate{
+        pStagingBuffer,
+        pTexture,
+        copyRegion,
+        {},
+        false,
+        generateMipmaps,
+    });
 }
 
 void TextureManager::UpdateTextureCube(RHITexture* pTexture,
-                                       const std::vector<RHIBufferTextureCopyRegion>& regions,
+                                       const HeapVector<RHIBufferTextureCopyRegion>& regions,
                                        uint32_t dataSize,
                                        const uint8_t* pData)
 {
-    EnsureTransferBatch();
-    RHICommandList* pCmdList = m_transferBatch.pCmdList;
-    pCmdList->AddTextureTransition(pTexture, RHITextureLayout::eTransferDst);
-
     RHIBuffer* pStagingBuffer = m_pStagingMgr->RequireBuffer(dataSize);
     // map staging buffer
     uint8_t* pDataPtr = pStagingBuffer->Map();
@@ -307,11 +284,17 @@ void TextureManager::UpdateTextureCube(RHITexture* pTexture,
     memcpy(pDataPtr, pData, dataSize);
     // unmap
     pStagingBuffer->Unmap();
-    // copy to gpu memory
-    pCmdList->CopyBufferToTexture(pStagingBuffer, pTexture, regions);
-    m_pStagingMgr->ReleaseBuffer(pStagingBuffer);
 
-    QueueShaderReadOnlyTransition(pTexture);
+    PendingTextureUpdate update{};
+    update.pStagingBuffer = pStagingBuffer;
+    update.pTexture       = pTexture;
+    update.copyRegions.reserve(regions.size());
+    for (const RHIBufferTextureCopyRegion& region : regions)
+    {
+        update.copyRegions.push_back(region);
+    }
+    update.useMultipleRegions = true;
+    m_pendingTextureUpdates.push_back(std::move(update));
 }
 
 // TextureHandle TextureManager::GetBaseTextureForProxy(const TextureHandle& handle) const
