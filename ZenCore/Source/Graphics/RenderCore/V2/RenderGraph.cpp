@@ -686,17 +686,19 @@ void RenderGraph::AddTextureUpdateNode(RHITexture* pDstTexture,
     // }
     //node->numCopySources = numCopySources;
     //node->dstTexture     = dstTexture;
-    pNode->type = RDGNodeType::eCopyBuffer;
+    pNode->type = RDGNodeType::eUpdateTexture;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
     // only support update through staging buffer
     // staging buffer is neither owned nor managed by RDG
     // write access to dst texture
     RDGAccess writeAccess{};
-    writeAccess.accessMode   = RHIAccessMode::eReadWrite;
-    writeAccess.textureUsage = RHITextureUsage::eTransferDst;
-    writeAccess.nodeId       = pNode->id;
+    writeAccess.textureSubResourceRange = pDstTexture->GetSubResourceRange();
+    writeAccess.accessMode              = RHIAccessMode::eReadWrite;
+    writeAccess.textureUsage            = RHITextureUsage::eTransferDst;
+    writeAccess.nodeId                  = pNode->id;
 
     RDGResource* pResource = GetOrAllocResource(pDstTexture, RDGResourceType::eTexture, pNode->id);
+    pResource->tag         = pDstTexture->GetResourceTag();
     // resource->accessNodeMap[RHIAccessMode::eReadWrite].push_back(node->id);
     pResource->writtenByNodeIds.push_back(pNode->id);
     writeAccess.resourceId = pResource->id;
@@ -757,6 +759,19 @@ void RenderGraph::AddTextureMipmapGenNode(RHITexture* pTexture)
     pNode->type     = RDGNodeType::eGenTextureMipmap;
     pNode->pTexture = pTexture;
     pNode->selfStages.SetFlag(RHIPipelineStageBits::eTransfer);
+
+    RDGAccess writeAccess{};
+    writeAccess.textureSubResourceRange = pTexture->GetSubResourceRange();
+    writeAccess.accessMode              = RHIAccessMode::eReadWrite;
+    writeAccess.textureUsage            = RHITextureUsage::eTransferDst;
+    writeAccess.nodeId                  = pNode->id;
+
+    RDGResource* pResource = GetOrAllocResource(pTexture, RDGResourceType::eTexture, pNode->id);
+    pResource->tag         = pTexture->GetResourceTag();
+    pResource->writtenByNodeIds.push_back(pNode->id);
+    writeAccess.resourceId = pResource->id;
+
+    m_nodeAccessMap[pNode->id].emplace_back(std::move(writeAccess));
 }
 
 void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* pPassNode,

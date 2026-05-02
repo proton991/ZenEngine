@@ -1,4 +1,4 @@
-#include "Graphics/RHI/RHICommandList.h"
+#include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "Graphics/RenderCore/V2/TextureManager.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
@@ -7,8 +7,6 @@
 #include "Graphics/RenderCore/V2/RenderResource.h"
 
 #include <gli/gli.hpp>
-
-#include <unordered_set>
 
 namespace zen::rc
 {
@@ -29,45 +27,42 @@ void TextureManager::FlushPendingTextureUpdates()
         return;
     }
 
-    RHICommandList* pTransferCmdList = m_pRenderDevice->GetImmediateTransferCmdList();
+    RenderGraph uploadGraph("texture_upload");
+    uploadGraph.Begin();
+
+    HeapVector<RHIBufferTextureCopySource> copySources;
     for (PendingTextureUpdate& update : m_pendingTextureUpdates)
     {
-        pTransferCmdList->AddTextureTransition(update.pTexture, RHITextureLayout::eTransferDst);
         if (update.useMultipleRegions)
         {
-            pTransferCmdList->CopyBufferToTexture(update.pStagingBuffer, update.pTexture,
-                                                  MakeVecView(update.copyRegions));
+            copySources.clear();
+            copySources.reserve(update.copyRegions.size());
+            for (const RHIBufferTextureCopyRegion& region : update.copyRegions)
+            {
+                copySources.push_back({update.pStagingBuffer, region});
+            }
+            uploadGraph.AddTextureUpdateNode(update.pTexture, MakeVecView(copySources));
         }
         else
         {
-            pTransferCmdList->CopyBufferToTexture(update.pStagingBuffer, update.pTexture,
-                                                  MakeVecView(&update.copyRegion, 1));
+            RHIBufferTextureCopySource copySource{update.pStagingBuffer, update.copyRegion};
+            uploadGraph.AddTextureUpdateNode(update.pTexture, MakeVecView(&copySource, 1));
         }
 
         if (update.generateMipmaps)
         {
-            pTransferCmdList->GenerateTextureMipmaps(update.pTexture);
+            uploadGraph.AddTextureMipmapGenNode(update.pTexture);
         }
-
-        m_pStagingMgr->ReleaseBuffer(update.pStagingBuffer);
     }
 
-    m_pRenderDevice->SubmitImmediateTransferCmdList();
+    uploadGraph.End();
+    uploadGraph.Execute(m_pRenderDevice->GetImmediateTransferCmdList());
 
-    RHICommandList* pGfxCmdList = m_pRenderDevice->GetImmediateGraphicsCmdList();
-    std::unordered_set<RHITexture*> transitionedTextures;
-    transitionedTextures.reserve(m_pendingTextureUpdates.size());
     for (const PendingTextureUpdate& update : m_pendingTextureUpdates)
     {
-        if (transitionedTextures.insert(update.pTexture).second)
-        {
-            pGfxCmdList->AddTextureTransition(update.pTexture, RHITextureLayout::eShaderReadOnly);
-        }
+        m_pStagingMgr->ReleaseBuffer(update.pStagingBuffer);
     }
-
-    RHICommandList* pCmdLists[] = {pGfxCmdList};
-    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
-    pGfxCmdList->Reset();
+    m_pRenderDevice->SubmitImmediateTransferCmdList();
 
     m_pendingTextureUpdates.clear();
     m_pStagingMgr->ProcessPendingFrees();
