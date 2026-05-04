@@ -1107,39 +1107,56 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
     WaitForLastSubmittedWork(UINT64_MAX);
 }
 
-void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
+void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+                                     HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
-    HeapVector<VulkanWorkload*> workloadsToSubmit;
-    struct ContextWorkloadRange
+    if (cmdLists.empty())
     {
-        FVulkanCommandListContext* pContext{nullptr};
-        uint32_t firstWorkloadIndex{0};
-        uint32_t workloadCount{0};
-    };
-    HeapVector<ContextWorkloadRange> contextWorkloadRanges;
+        return;
+    }
+
+    VulkanPlatformCommandList* pPlatformCmdList = ZEN_NEW() VulkanPlatformCommandList();
 
     for (RHICommandList* pCmdList : cmdLists)
     {
         pCmdList->Execute();
         FVulkanCommandListContext* pContext =
             static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
-        const uint32_t firstWorkloadIndex = static_cast<uint32_t>(workloadsToSubmit.size());
-        pContext->CollectWorkloads(workloadsToSubmit);
+        const uint32_t firstWorkloadIndex =
+            static_cast<uint32_t>(pPlatformCmdList->m_workloads.size());
+        pContext->CollectWorkloads(pPlatformCmdList->m_workloads);
         const uint32_t workloadCount =
-            static_cast<uint32_t>(workloadsToSubmit.size()) - firstWorkloadIndex;
+            static_cast<uint32_t>(pPlatformCmdList->m_workloads.size()) - firstWorkloadIndex;
         if (workloadCount > 0)
         {
-            contextWorkloadRanges.push_back(ContextWorkloadRange{
-                pContext,
-                firstWorkloadIndex,
-                workloadCount,
-            });
+            pPlatformCmdList->m_contextWorkloadRanges.push_back(
+                VulkanPlatformCommandList::ContextWorkloadRange{
+                    pContext,
+                    firstWorkloadIndex,
+                    workloadCount,
+                });
         }
     }
 
-    for (VulkanWorkload* pWorkload : workloadsToSubmit)
+    if (pPlatformCmdList->m_workloads.empty())
     {
-        pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+        ZEN_DELETE(pPlatformCmdList);
+        return;
+    }
+
+    outCommandLists.push_back(pPlatformCmdList);
+}
+
+void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists)
+{
+    for (RHIPlatformCommandList* pCommandList : commandLists)
+    {
+        VulkanPlatformCommandList* pPlatformCmdList =
+            static_cast<VulkanPlatformCommandList*>(pCommandList);
+        for (VulkanWorkload* pWorkload : pPlatformCmdList->m_workloads)
+        {
+            pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+        }
     }
 
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
@@ -1148,12 +1165,21 @@ void VulkanRHI::SubmitCommandList(VectorView<RHICommandList*> cmdLists)
         pQueue->SubmitPendingWorkloads();
     }
 
-    for (const ContextWorkloadRange& contextWorkloadRange : contextWorkloadRanges)
+    for (RHIPlatformCommandList* pCommandList : commandLists)
     {
-        const uint32_t lastWorkloadIndex =
-            contextWorkloadRange.firstWorkloadIndex + contextWorkloadRange.workloadCount - 1;
-        contextWorkloadRange.pContext->SetLastSubmittedSerial(
-            workloadsToSubmit[lastWorkloadIndex]->m_submissionSerial);
+        VulkanPlatformCommandList* pPlatformCmdList =
+            static_cast<VulkanPlatformCommandList*>(pCommandList);
+
+        for (const VulkanPlatformCommandList::ContextWorkloadRange& contextWorkloadRange :
+             pPlatformCmdList->m_contextWorkloadRanges)
+        {
+            const uint32_t lastWorkloadIndex =
+                contextWorkloadRange.firstWorkloadIndex + contextWorkloadRange.workloadCount - 1;
+            contextWorkloadRange.pContext->SetLastSubmittedSerial(
+                pPlatformCmdList->m_workloads[lastWorkloadIndex]->m_submissionSerial);
+        }
+
+        ZEN_DELETE(pPlatformCmdList);
     }
 }
 } // namespace zen

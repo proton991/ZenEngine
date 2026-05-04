@@ -864,7 +864,7 @@ void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<Render
 
     if (numRenderCmdLists > 0)
     {
-        GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists.data(), numRenderCmdLists));
+        SubmitCommandLists(MakeVecView(cmdLists.data(), numRenderCmdLists));
         for (size_t i = 0; i < numRenderCmdLists; ++i)
         {
             cmdLists[i]->Reset();
@@ -893,7 +893,7 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
         rdgs[i]->Execute(cmdLists[i]);
     }
 
-    GDynamicRHI->SubmitCommandList(MakeVecView(cmdLists));
+    SubmitCommandLists(MakeVecView(cmdLists));
 
     for (RHICommandList* pCmdList : cmdLists)
     {
@@ -904,7 +904,7 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
 void RenderDevice::SubmitImmediateTransferCmdList()
 {
     RHICommandList* pCmdLists[] = {m_pImmediateTransferCmdList};
-    GDynamicRHI->SubmitCommandList(MakeVecView(pCmdLists));
+    SubmitCommandLists(MakeVecView(pCmdLists));
     m_pImmediateTransferCmdList->WaitUntilCompleted();
     m_pImmediateTransferCmdList->Reset();
 }
@@ -1687,6 +1687,13 @@ void RenderDevice::AcquireGraphicsCmdLists(size_t numCmdLists,
     {
         outCmdLists.push_back(m_graphicsCmdListPool[i]);
     }
+}
+
+void RenderDevice::SubmitCommandLists(VectorView<RHICommandList*> cmdLists)
+{
+    HeapVector<RHIPlatformCommandList*> platformCommandLists;
+    GDynamicRHI->FinalizeCommandLists(cmdLists, platformCommandLists);
+    GDynamicRHI->SubmitPlatformCommandLists(MakeVecView(platformCommandLists));
 }
 
 void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)

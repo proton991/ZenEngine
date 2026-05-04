@@ -139,7 +139,10 @@ public:
     //     DescriptorSetHandle descriptorSetHandle,
     //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
-    virtual void SubmitCommandList(VectorView<RHICommandList*> cmdLists) = 0;
+    virtual void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+                                      HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
+
+    virtual void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) = 0;
 
     virtual void SubmitAllGPUCommands() = 0;
 

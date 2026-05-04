@@ -15,6 +15,12 @@ namespace zen
 class RHIDescriptorSet;
 class RHIPipeline;
 
+class RHIPlatformCommandList
+{
+public:
+    virtual ~RHIPlatformCommandList() = default;
+};
+
 struct RHICommandBase
 {
     RHICommandBase* pNextCmd{nullptr};

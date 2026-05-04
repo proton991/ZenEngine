@@ -191,7 +191,10 @@ public:
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
 
-    void SubmitCommandList(VectorView<RHICommandList*> cmdLists) final;
+    void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+                              HeapVector<RHIPlatformCommandList*>& outCommandLists) final;
+
+    void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) final;
 
     void SubmitAllGPUCommands() final;
 

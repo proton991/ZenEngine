@@ -524,6 +524,8 @@ private:
     
     void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
 
+    void SubmitCommandLists(VectorView<RHICommandList*> cmdLists);
+
     void ProcessPendingFreeResources(uint32_t frameIndex);
 
     void FlushPendingBufferUpdates();
