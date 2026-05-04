@@ -288,6 +288,22 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
          !pWorkload->m_signalSemaphoreInfos.empty());
 }
 
+VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
+{
+    if (m_pCurrentWorkload != nullptr && phase < m_currentWorkloadPhase)
+    {
+        FinalizePendingWorkload();
+    }
+
+    if (m_pCurrentWorkload == nullptr)
+    {
+        StartWorkload();
+    }
+
+    m_currentWorkloadPhase = phase;
+    return m_pCurrentWorkload;
+}
+
 void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
 {
     FinalizePendingWorkload();
@@ -310,13 +326,15 @@ void VulkanCommandContextBase::FinalizePendingWorkload()
             m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
             m_pCurrentWorkload = nullptr;
         }
+        m_currentWorkloadPhase = WorkloadPhase::eWait;
         return;
     }
 
     EndWorkload();
     VERIFY_EXPR(m_pCurrentWorkload->m_pQueue == m_pQueue);
     m_finalizedWorkloads.push_back(m_pCurrentWorkload);
-    m_pCurrentWorkload = nullptr;
+    m_pCurrentWorkload     = nullptr;
+    m_currentWorkloadPhase = WorkloadPhase::eWait;
 }
 
 void VulkanCommandContextBase::SubmitRecordedWorkloads()
@@ -400,7 +418,9 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 
 void VulkanCommandContextBase::StartWorkload()
 {
-    m_pCurrentWorkload = m_pQueue->AcquireWorkload();
+    VERIFY_EXPR(m_pCurrentWorkload == nullptr);
+    m_pCurrentWorkload     = m_pQueue->AcquireWorkload();
+    m_currentWorkloadPhase = WorkloadPhase::eWait;
 }
 
 void VulkanCommandContextBase::EndWorkload()
@@ -820,12 +840,19 @@ void FVulkanCommandListContext::RHIAddTransitions(
     VectorView<RHIBufferTransition> bufferTransitions,
     VectorView<RHITextureTransition> textureTransitions)
 {
+    if (memoryTransitions.empty() && bufferTransitions.empty() && textureTransitions.empty())
+    {
+        return;
+    }
+
     VulkanPipelineBarrier barrier;
+    bool hasBarrier = false;
 
     for (const auto& memoryTransition : memoryTransitions)
     {
         barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess),
                                  ToVkAccessFlags(memoryTransition.dstAccess));
+        hasBarrier = true;
     }
 
     for (const auto& bufferTransition : bufferTransitions)
@@ -837,6 +864,7 @@ void FVulkanCommandListContext::RHIAddTransitions(
                                                                      bufferTransition.newAccessMode);
         barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
+        hasBarrier = true;
     }
 
     for (const auto& textureTransition : textureTransitions)
@@ -868,7 +896,13 @@ void FVulkanCommandListContext::RHIAddTransitions(
         barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout,
                                 subresourceRange, srcAccess, dstAccess);
         GVulkanRHI->UpdateImageLayout(pVulkanTexture->GetVkImage(), newLayout);
+        hasBarrier = true;
     }
+    if (!hasBarrier)
+    {
+        return;
+    }
+
     barrier.Execute(GetCommandBuffer()->GetVkHandle(), srcStages, dstStages);
 }
 

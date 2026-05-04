@@ -236,23 +236,13 @@ public:
 
     FVulkanCommandBuffer* GetCommandBuffer()
     {
-        VulkanWorkload* pWorkload = GetWorkload();
+        VulkanWorkload* pWorkload = GetWorkload(WorkloadPhase::eExecute);
         if (!pWorkload->HasCommandBuffers())
         {
             SetupNewCommandBuffer();
         }
 
         return pWorkload->GetLastCommandBuffer();
-    }
-
-    VulkanWorkload* GetWorkload()
-    {
-        if (m_pCurrentWorkload == nullptr)
-        {
-            m_pCurrentWorkload = m_pQueue->AcquireWorkload();
-        }
-
-        return m_pCurrentWorkload;
     }
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pWaitSemaphore)
@@ -264,7 +254,7 @@ public:
                           VulkanSemaphore* pWaitSemaphore,
                           uint64_t value)
     {
-        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
         pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
             VulkanWorkload::WaitSemaphoreInfo{waitFlags, pWaitSemaphore, value});
     }
@@ -272,7 +262,7 @@ public:
     void AddWaitSemaphores(VkPipelineStageFlags waitFlags,
                            VectorView<VulkanSemaphore*> waitSemaphores)
     {
-        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
         for (uint32_t i = 0; i < waitSemaphores.size(); i++)
         {
             pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
@@ -287,14 +277,14 @@ public:
 
     void AddSignalSemaphore(VulkanSemaphore* pSignalSemaphore, uint64_t value)
     {
-        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eSignal);
         pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
             VulkanWorkload::SignalSemaphoreInfo{pSignalSemaphore, value});
     }
 
     void AddSignalSemaphores(VectorView<VulkanSemaphore*> signalSemaphores)
     {
-        VulkanWorkload* pCurrentWorkload = GetWorkload();
+        VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eSignal);
         for (uint32_t i = 0; i < signalSemaphores.size(); i++)
         {
             pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
@@ -326,6 +316,15 @@ public:
     }
 
 private:
+    enum class WorkloadPhase : uint8_t
+    {
+        eWait,
+        eExecute,
+        eSignal,
+    };
+
+    VulkanWorkload* GetWorkload(WorkloadPhase phase);
+
     bool HasWorkloadData(const VulkanWorkload* pWorkload) const;
 
     void FinalizePendingWorkload();
@@ -342,6 +341,7 @@ private:
 
     VulkanWorkload* m_pCurrentWorkload{nullptr};
     HeapVector<VulkanWorkload*> m_finalizedWorkloads;
+    WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
     uint64_t m_lastSubmittedSerial{0};
 };
 
