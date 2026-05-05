@@ -1137,6 +1137,21 @@ void FVulkanCommandListContext::RHIWaitUntilCompleted()
     WaitForLastSubmittedWork(UINT64_MAX);
 }
 
+VulkanPlatformCommandList* VulkanRHI::AcquirePlatformCommandList()
+{
+    return m_platformCommandListPool.Acquire();
+}
+
+void VulkanRHI::ReleasePlatformCommandList(VulkanPlatformCommandList* pCommandList)
+{
+    m_platformCommandListPool.Release(pCommandList);
+}
+
+void VulkanRHI::DestroyPlatformCommandListPool()
+{
+    m_platformCommandListPool.Destroy();
+}
+
 void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                                      HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
@@ -1147,7 +1162,7 @@ void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
 
     for (RHICommandList* pCmdList : cmdLists)
     {
-        VulkanPlatformCommandList* pPlatformCmdList = ZEN_NEW() VulkanPlatformCommandList();
+        VulkanPlatformCommandList* pPlatformCmdList = AcquirePlatformCommandList();
 
         pCmdList->Execute();
 
@@ -1157,7 +1172,7 @@ void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
 
         if (pPlatformCmdList->m_workloads.empty())
         {
-            ZEN_DELETE(pPlatformCmdList);
+            ReleasePlatformCommandList(pPlatformCmdList);
             continue;
         }
 
@@ -1203,7 +1218,7 @@ void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> c
                 pPlatformCmdList->m_workloads[lastWorkloadIndex]->m_submissionSerial);
         }
 
-        ZEN_DELETE(pPlatformCmdList);
+        ReleasePlatformCommandList(pPlatformCmdList);
     }
 }
 } // namespace zen

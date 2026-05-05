@@ -12,6 +12,13 @@ class VulkanPlatformCommandList final : public RHIPlatformCommandList
 {
     friend class VulkanRHI;
 
+public:
+    void Reset()
+    {
+        m_workloads.clear();
+        m_contextWorkloadRanges.clear();
+    }
+
 private:
     struct ContextWorkloadRange
     {

@@ -1,7 +1,9 @@
 #pragma once
 #include "Templates/HashMap.h"
 #include "Templates/HeapVector.h"
+#include "Templates/ObjectPool.h"
 #include "Templates/Queue.h"
+#include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RHI/RHIDebug.h"
 #include "RenderCoreDefs.h"
 #include "Utils/UniquePtr.h"
@@ -23,6 +25,15 @@ class RenderGraph;
 class RendererServer;
 class TextureManager;
 class SkyboxRenderer;
+
+struct GraphicsCommandListPoolPolicy
+{
+    static RHICommandList* Create();
+
+    static void Reset(RHICommandList* pCmdList);
+
+    static void Destroy(RHICommandList* pCmdList);
+};
 
 class GraphicsPassBuilder
 {
@@ -521,7 +532,7 @@ private:
     void BeginFrame();
 
     void EndFrame();
-    
+
     void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
 
     void SubmitCommandLists(VectorView<RHICommandList*> cmdLists);
@@ -581,7 +592,7 @@ private:
 
     RHICommandList* m_pImmediateGraphicsCmdList{nullptr};
     RHICommandList* m_pImmediateTransferCmdList{nullptr};
-    HeapVector<RHICommandList*> m_graphicsCmdListPool;
+    ObjectPool<RHICommandList, GraphicsCommandListPoolPolicy> m_graphicsCmdListPool;
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
 

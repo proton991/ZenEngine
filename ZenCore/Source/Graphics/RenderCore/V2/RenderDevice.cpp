@@ -832,12 +832,9 @@ void RenderDevice::Destroy()
         ProcessPendingFreeResources(i);
     }
 
-    for (RHICommandList* pCmdList : m_graphicsCmdListPool)
-    {
-        pCmdList->WaitUntilCompleted();
-        ZEN_DELETE(pCmdList);
-    }
-    m_graphicsCmdListPool.clear();
+    m_graphicsCmdListPool.ForEachObject(
+        [](RHICommandList* pCmdList) { pCmdList->WaitUntilCompleted(); });
+    m_graphicsCmdListPool.Destroy();
 
     ZEN_DELETE(m_pRHIDebug);
 
@@ -867,11 +864,12 @@ void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<Render
         SubmitCommandLists(MakeVecView(cmdLists.data(), numRenderCmdLists));
         for (size_t i = 0; i < numRenderCmdLists; ++i)
         {
-            cmdLists[i]->Reset();
+            m_graphicsCmdListPool.Release(cmdLists[i]);
         }
     }
 
     GDynamicRHI->EndDrawingViewport(pViewport, cmdLists[numRenderCmdLists], true);
+    m_graphicsCmdListPool.Release(cmdLists[numRenderCmdLists]);
 }
 
 void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
@@ -897,7 +895,7 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
 
     for (RHICommandList* pCmdList : cmdLists)
     {
-        pCmdList->Reset();
+        m_graphicsCmdListPool.Release(pCmdList);
     }
 }
 
@@ -1632,10 +1630,8 @@ void RenderDevice::ProcessViewportResize(uint32_t width, uint32_t height)
 
 void RenderDevice::WaitForPreviousFrames()
 {
-    for (RHICommandList* pCmdList : m_graphicsCmdListPool)
-    {
-        pCmdList->WaitUntilCompleted();
-    }
+    m_graphicsCmdListPool.ForEachObject(
+        [](RHICommandList* pCmdList) { pCmdList->WaitUntilCompleted(); });
 }
 
 void RenderDevice::WaitForAllFrames()
@@ -1670,22 +1666,30 @@ void RenderDevice::BeginFrame()
     }
 }
 
+RHICommandList* GraphicsCommandListPoolPolicy::Create()
+{
+    return RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+}
+
+void GraphicsCommandListPoolPolicy::Reset(RHICommandList* pCmdList)
+{
+    pCmdList->Reset();
+}
+
+void GraphicsCommandListPoolPolicy::Destroy(RHICommandList* pCmdList)
+{
+    ZEN_DELETE(pCmdList);
+}
+
 void RenderDevice::EndFrame() {}
 
 void RenderDevice::AcquireGraphicsCmdLists(size_t numCmdLists,
                                            HeapVector<RHICommandList*>& outCmdLists)
 {
-    while (m_graphicsCmdListPool.size() < numCmdLists)
-    {
-        RHICommandList* pCmdList = RHICommandList::Create(
-            GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
-        m_graphicsCmdListPool.push_back(pCmdList);
-    }
-
     outCmdLists.reserve(outCmdLists.size() + numCmdLists);
     for (size_t i = 0; i < numCmdLists; ++i)
     {
-        outCmdLists.push_back(m_graphicsCmdListPool[i]);
+        outCmdLists.push_back(m_graphicsCmdListPool.Acquire());
     }
 }
 

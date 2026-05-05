@@ -14,6 +14,7 @@ set(ZEN_CORE_HEADERS
     Include/Templates/SmallVector.h
     Include/Templates/ArenaVector.h
     Include/Templates/HeapVector.h
+    Include/Templates/ObjectPool.h
 
     Include/Utils/ConditionVariable.h
     Include/Utils/Counter.h

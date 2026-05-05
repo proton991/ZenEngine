@@ -3,8 +3,10 @@
 #include "VulkanExtension.h"
 #include "Memory/PagedAllocator.h"
 #include "Templates/HashMap.h"
+#include "Templates/ObjectPool.h"
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHICommands.h"
+#include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #if defined(ZEN_MACOS)
 #    include "Platform/VulkanMacOSPlatform.h"
 #elif defined(ZEN_WIN32)
@@ -245,6 +247,12 @@ private:
 
     void SelectGPU();
 
+    VulkanPlatformCommandList* AcquirePlatformCommandList();
+
+    void ReleasePlatformCommandList(VulkanPlatformCommandList* pCommandList);
+
+    void DestroyPlatformCommandListPool();
+
     VkInstance m_instance{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT m_messenger{VK_NULL_HANDLE};
 
@@ -276,6 +284,8 @@ private:
     HashMap<uint32_t, VkRenderPass> m_renderPassCache;
 
     HashMap<uint32_t, VkFramebuffer> m_framebufferCache;
+
+    ObjectPool<VulkanPlatformCommandList> m_platformCommandListPool;
 };
 
 class VulkanResourceFactory : public RHIResourceFactory
