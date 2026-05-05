@@ -111,6 +111,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanCommandBuffer.h
     Include/Graphics/VulkanRHI/VulkanCommands.h
     Include/Graphics/VulkanRHI/VulkanCommandList.h
+    Include/Graphics/VulkanRHI/VulkanPlatformCommandList.h
     Include/Graphics/VulkanRHI/VulkanTypes.h
     Include/Graphics/VulkanRHI/VulkanPipeline.h
     Include/Graphics/VulkanRHI/VulkanRenderPass.h

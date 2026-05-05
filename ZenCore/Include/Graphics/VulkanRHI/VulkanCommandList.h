@@ -2,13 +2,12 @@
 #include "VulkanCommandList.h"
 #include "VulkanQueue.h"
 #include "VulkanRHI.h"
-#include "Graphics/RHI/RHICommandList.h"
-#include "Graphics/VulkanRHI/VulkanHeaders.h"
+#include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #include "Templates/HeapVector.h"
 #include "Utils/Mutex.h"
 
 #ifndef ZEN_VK_RHI_DEBUG
-#define ZEN_VK_RHI_DEBUG 0
+#    define ZEN_VK_RHI_DEBUG 0
 #endif
 
 namespace zen
@@ -315,6 +314,11 @@ public:
         return m_lastSubmittedSerial;
     }
 
+protected:
+    void FinalizePendingRenderPassWorkload();
+
+    void MarkRenderPassWorkloadEndPending();
+
 private:
     enum class WorkloadPhase : uint8_t
     {
@@ -342,6 +346,7 @@ private:
     VulkanWorkload* m_pCurrentWorkload{nullptr};
     HeapVector<VulkanWorkload*> m_finalizedWorkloads;
     WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
+    bool m_hasPendingRenderPassWorkloadEnd{false};
     uint64_t m_lastSubmittedSerial{0};
 };
 
@@ -522,19 +527,4 @@ private:
     VulkanComputeState* m_pComputeState{nullptr};
 };
 
-class VulkanPlatformCommandList final : public RHIPlatformCommandList
-{
-    friend class VulkanRHI;
-
-private:
-    struct ContextWorkloadRange
-    {
-        FVulkanCommandListContext* pContext{nullptr};
-        uint32_t firstWorkloadIndex{0};
-        uint32_t workloadCount{0};
-    };
-
-    HeapVector<VulkanWorkload*> m_workloads;
-    HeapVector<ContextWorkloadRange> m_contextWorkloadRanges;
-};
 } // namespace zen
