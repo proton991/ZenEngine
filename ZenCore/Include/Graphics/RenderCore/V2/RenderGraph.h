@@ -1,6 +1,7 @@
 #pragma once
 #include "Utils/Errors.h"
 #include "Templates/ArenaVector.h"
+#include "Templates/HeapVector.h"
 #include "Memory/PagedAllocator.h"
 #include "Memory/PoolAllocator.h"
 #include "Graphics/RHI/RHICommon.h"
@@ -218,7 +219,6 @@ private:
     // HashMap<Handle, RDGResourceTracker*> m_trackerMap;
     HashMap<const RHIResource*, RDGResourceTracker*> m_trackerMap;
     // HashMap<const TextureHandle, RDGResourceTracker*> m_trackerMap2;
-    // std::vector<RDGResourceTracker*> m_trackers;
 };
 
 struct RDGAccess
@@ -234,17 +234,22 @@ struct RDGAccess
 
 struct RDGResource
 {
-    explicit RDGResource(PoolAllocator<LinearAllocator>* pAlloc) :
-        readByNodeIds(pAlloc), writtenByNodeIds(pAlloc)
-    {}
+    explicit RDGResource(PoolAllocator<LinearAllocator>* pAlloc) : accesses(pAlloc) {}
 
     RDG_ID id{-1};
     std::string tag;
     RHIResource* pPhysicalRes{nullptr};
     RDGResourceType type{RDGResourceType::eNone};
 
-    RDGVector<RDG_ID> readByNodeIds;
-    RDGVector<RDG_ID> writtenByNodeIds;
+    RDGVector<RDGAccess> accesses;
+};
+
+enum class RDGExecutionState : uint8_t
+{
+    eIdle,
+    eBuilding,
+    eCompiled,
+    eExecuting,
 };
 
 struct RDGNodeBase
@@ -263,10 +268,7 @@ struct RDGPassChildNode
 };
 
 struct RDGPassNode : RDGNodeBase
-{
-    // std::vector<RDGPassChildNode*> childNodes;
-    // std::vector<RDGResource*> resources;
-};
+{};
 
 struct RDGComputePassNode : RDGPassNode
 {
@@ -305,7 +307,7 @@ struct RDGBufferCopyNode : RDGNodeBase
 
 struct RDGBufferUpdateNode : RDGNodeBase
 {
-    std::vector<RHIBufferCopySource> sources;
+    HeapVector<RHIBufferCopySource> sources;
     RHIBuffer* pDstBuffer;
 };
 
@@ -348,7 +350,6 @@ struct RDGTextureCopyNode : RDGNodeBase
     // {
     //     return reinterpret_cast<const RHITextureCopyRegion*>(&this[1]);
     // }
-    // std::vector<RHITextureCopyRegion> copyRegions;
 };
 
 struct RDGTextureReadNode : RDGNodeBase
@@ -367,7 +368,6 @@ struct RDGTextureReadNode : RDGNodeBase
         bufferTextureCopyRegions(copyRegions),
         numCopyRegions(copyRegions.size())
     {}
-    // std::vector<RHIBufferTextureCopyRegion> bufferTextureCopyRegions;
     //PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, BufferTextureCopyRegions, &this[1])
 
     // RHIBufferTextureCopyRegion* BufferTextureCopyRegions()
@@ -383,7 +383,6 @@ struct RDGTextureReadNode : RDGNodeBase
 
 struct RDGTextureUpdateNode : RDGNodeBase
 {
-    // std::vector<RHIBufferTextureCopySource> sources;
     // TextureHandle dstTexture;
     RHITexture* pDstTexture;
     VectorView<RHIBufferTextureCopySource> copySources;
@@ -424,18 +423,31 @@ struct RDGTextureMipmapGenNode : RDGNodeBase
     RHITexture* pTexture;
 };
 
+struct RDGCompiledNode
+{
+    RDG_ID nodeId{-1};
+    BitField<RHIPipelineStageBits> prologueSrcStages;
+    BitField<RHIPipelineStageBits> prologueDstStages;
+    HeapVector<RDGAccess> initialResourceAccesses;
+    HeapVector<RHIBufferTransition> prologueBufferTransitions;
+    HeapVector<RHITextureTransition> prologueTextureTransitions;
+};
+
+struct RDGCompileStats
+{
+    uint32_t nodeCount{0};
+    uint32_t passCount{0};
+    uint32_t resourceCount{0};
+    uint32_t barrierCount{0};
+    uint32_t commandListCount{0};
+};
+
 struct RDGBindIndexBufferNode : RDGPassChildNode
 {
     RHIBuffer* pBuffer;
     DataFormat format;
     uint32_t offset;
 };
-
-// struct RDGBindVertexBufferNode : RDGPassChildNode
-// {
-//     std::vector<RHIBuffer*> vertexBuffers;
-//     std::vector<uint64_t> offsets;
-// };
 
 struct RDGBindVertexBufferNode : RDGPassChildNode
 {
@@ -449,8 +461,6 @@ struct RDGBindVertexBufferNode : RDGPassChildNode
 
     // RHIBuffer** vertexBuffers{nullptr};
     // uint64_t* offsets{nullptr};
-    // std::vector<RHIBuffer*> vertexBuffers;
-    // std::vector<uint64_t> offsets;
     //PRIVATE_ARRAY_DEF(RHIBuffer*, VertexBuffers, &this[1])
     //PRIVATE_ARRAY_DEF(uint64_t, VertexBufferOffsets, &VertexBuffers()[numBuffers])
 
@@ -546,9 +556,6 @@ struct RDGSetPushConstantsNode : RDGPassChildNode
     // {
     //     return reinterpret_cast<const uint8_t*>(&this[1]);
     // }
-
-
-    // std::vector<uint8_t> data;
 };
 
 struct RDGSetBlendConstantsNode : RDGPassChildNode
@@ -628,11 +635,15 @@ public:
                                              VectorView<RHIBuffer*> vertexBuffers,
                                              VectorView<uint64_t> offsets);
 
-    void AddGraphicsPassSetPushConstants(RDGPassNode* pParent, const void* pData, uint32_t dataSize);
+    void AddGraphicsPassSetPushConstants(RDGPassNode* pParent,
+                                         const void* pData,
+                                         uint32_t dataSize);
 
     void AddComputePassSetPushConstants(RDGPassNode* pParent, const void* pData, uint32_t dataSize);
 
-    void AddGraphicsPassDrawNode(RDGPassNode* pParent, uint32_t vertexCount, uint32_t instanceCount);
+    void AddGraphicsPassDrawNode(RDGPassNode* pParent,
+                                 uint32_t vertexCount,
+                                 uint32_t instanceCount);
 
     void AddGraphicsPassDrawIndexedNode(RDGPassNode* pParent,
                                         uint32_t indexCount,
@@ -716,6 +727,12 @@ private:
 
     void Destroy();
 
+    void ResetBuildState();
+
+    void DestroyNode(RDGNodeBase* pNode);
+
+    void DestroyPassChildNode(RDGPassChildNode* pNode);
+
     static uint64_t CreateNodePairKey(const RDG_ID& nodeId1, const RDG_ID& nodeId2)
     {
         uint64_t key = static_cast<uint64_t>(static_cast<uint32_t>(nodeId1)) << 32;
@@ -725,18 +742,27 @@ private:
 
     void RunNode(RDGNodeBase* pNode);
 
-    // void SortNodes();
-
     bool AddNodeDepsForResource(RDGResource* pResource,
-                                HashMap<RDG_ID, std::vector<RDG_ID>>& nodeDependencies,
-                                const RDG_ID& srcNodeId,
-                                const RDG_ID& dstNodeId);
+                                HashMap<RDG_ID, HeapVector<RDG_ID>>& nodeDependencies,
+                                HashMap<uint64_t, bool>& dependencyEdges,
+                                const RDGAccess& srcAccess,
+                                const RDGAccess& dstAccess);
 
     void SortNodesV2();
 
-    void EmitTransitionBarriers(uint32_t level);
+    void Compile();
 
-    void EmitInitializationBarriers(uint32_t level);
+    void BuildCompiledNodeList();
+
+    void AttachFirstUseBarriers();
+
+    void AttachIntraGraphBarriers();
+
+    void AddResourceAccess(RDGResource* pResource, const RDGAccess& access);
+
+    void EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode);
+
+    void ValidateCompiledGraph() const;
 
     template <class T>
         requires std::derived_from<T, RDGNodeBase>
@@ -812,7 +838,8 @@ private:
     {
         // T* newNode      = new T();
         // T* newNode      = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T)));
-        T* pNewNode      = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(sizeof(T)));
+        new (pNewNode) T();
         pNewNode->pParent = pPassNode;
         // passNode->childNodes.push_back(newNode);
         m_passChildNodeMap[pPassNode->id].push_back(pNewNode);
@@ -826,7 +853,7 @@ private:
     {
         // T* newNode = static_cast<T*>(ZEN_MEM_ALLOC(nodeSize));
         T* pNewNode = static_cast<T*>(m_poolAlloc.Alloc(nodeSize));
-        // new (newNode) T;
+        new (pNewNode) T();
 
         // T* newNode      = new T();
         pNewNode->pParent = pPassNode;
@@ -862,22 +889,18 @@ private:
     //     return reinterpret_cast<RDGNodeBase*>(&m_nodeData[dataOffset]);
     // }
 
-    RDGResource* GetOrAllocResource(RHIResource* pResourceRHI,
-                                    RDGResourceType type,
-                                    const RDG_ID& nodeId)
+    RDGResource* GetOrAllocResource(RHIResource* pResourceRHI, RDGResourceType type)
     {
         RDGResource* pResource;
         if (!m_resourceMap.contains(pResourceRHI))
         {
-            pResource              = m_resourceAllocator.Alloc(&m_poolAlloc);
-            pResource->id          = static_cast<int32_t>(m_resources.size());
-            pResource->type        = type;
+            pResource               = m_resourceAllocator.Alloc(&m_poolAlloc);
+            pResource->id           = static_cast<int32_t>(m_resources.size());
+            pResource->type         = type;
             pResource->pPhysicalRes = pResourceRHI;
 
             m_resources.push_back(pResource);
             m_resourceMap[pResourceRHI] = pResource;
-            // track first used node
-            m_resourceFirstUseNodeMap[pResource->id] = nodeId;
         }
         else
         {
@@ -905,33 +928,24 @@ private:
     // RHICommandList* m_cmdList{nullptr};
 
     RHICommandList* m_pCmdList{nullptr};
-
-    // stores dependency between graph nodes
-    HashMap<RDG_ID, std::vector<RDG_ID>> m_adjacencyList;
     // nodes
-    // std::vector<uint8_t> m_nodeData;
-    // std::vector<uint32_t> m_nodeDataOffset; // m_nodeDataOffset.size() = m_nodeCount
-    // std::vector<RDGNodeBase*> m_allNodes;
     uint32_t m_nodeCount{0};
-    std::vector<std::vector<RDG_ID>> m_sortedNodes;
-    // std::vector<RDGPassChildNode*> m_allChildNodes;
+    HeapVector<HeapVector<RDG_ID>> m_sortedNodes;
+    HeapVector<RDGCompiledNode> m_compiledNodes;
 
     HashMap<RDG_ID, RDGNodeBase*> m_baseNodeMap;
-    HashMap<RDG_ID, std::vector<RDGPassChildNode*>> m_passChildNodeMap;
+    HashMap<RDG_ID, HeapVector<RDGPassChildNode*>> m_passChildNodeMap;
 
     // tracked resources
-    std::vector<RDGResource*> m_resources;
+    HeapVector<RDGResource*> m_resources;
     PagedAllocator<RDGResource> m_resourceAllocator;
 
     PoolAllocator<LinearAllocator> m_poolAlloc;
 
     HashMap<RHIResource*, RDGResource*> m_resourceMap;
-    // resource id -> node id
-    HashMap<RDG_ID, RDG_ID> m_resourceFirstUseNodeMap;
-    HashMap<RDG_ID, std::vector<RDGAccess>> m_nodeAccessMap;
-    // transitions
-    HashMap<uint64_t, std::vector<RHIBufferTransition>> m_bufferTransitions;
-    HashMap<uint64_t, std::vector<RHITextureTransition>> m_textureTransitions;
+    HashMap<RDG_ID, HeapVector<RDGAccess>> m_nodeAccessMap;
+    RDGExecutionState m_executionState{RDGExecutionState::eIdle};
+    RDGCompileStats m_compileStats;
     // track resource state across multiple RDG instances
     static RDGResourceTrackerPool s_trackerPool;
 };
