@@ -191,36 +191,6 @@ enum class RDGResourceUsage
     eNone
 };
 
-struct RDGResourceTracker
-{
-    RHIAccessMode accessMode{RHIAccessMode::eNone};
-    RHIBufferUsage bufferUsage{RHIBufferUsage::eNone};
-    RHITextureUsage textureUsage{RHITextureUsage::eNone};
-    RHITextureSubResourceRange textureSubResourceRange;
-};
-
-class RDGResourceTrackerPool
-{
-public:
-    RDGResourceTrackerPool();
-    ~RDGResourceTrackerPool();
-
-    RDGResourceTracker* GetTracker(const RHIResource* pResource);
-
-    void UpdateTrackerState(const RHITexture* pTexture,
-                            RHIAccessMode accessMode,
-                            RHITextureUsage usage);
-
-    void UpdateTrackerState(const RHIBuffer* pBuffer,
-                            RHIAccessMode accessMode,
-                            RHIBufferUsage usage);
-
-private:
-    // HashMap<Handle, RDGResourceTracker*> m_trackerMap;
-    HashMap<const RHIResource*, RDGResourceTracker*> m_trackerMap;
-    // HashMap<const TextureHandle, RDGResourceTracker*> m_trackerMap2;
-};
-
 struct RDGAccess
 {
     RHIAccessMode accessMode{};
@@ -438,7 +408,7 @@ struct RDGCompileStats
     uint32_t nodeCount{0};
     uint32_t passCount{0};
     uint32_t resourceCount{0};
-    uint32_t barrierCount{0};
+    uint32_t intraGraphBarrierCount{0};
     uint32_t commandListCount{0};
 };
 
@@ -946,7 +916,7 @@ private:
     HashMap<RDG_ID, HeapVector<RDGAccess>> m_nodeAccessMap;
     RDGExecutionState m_executionState{RDGExecutionState::eIdle};
     RDGCompileStats m_compileStats;
-    // track resource state across multiple RDG instances
-    static RDGResourceTrackerPool s_trackerPool;
+    bool m_executeSummaryLogPending{false};
+    uint32_t m_recordedInitBarrierCount{0};
 };
 } // namespace zen::rc

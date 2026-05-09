@@ -75,10 +75,10 @@ void LegacyVulkanCommandList::AddPipelineBarrier(
     for (const auto& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
-        VkAccessFlags srcAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
-                                                                    bufferTransition.oldAccessMode);
-        VkAccessFlags dstAccess    = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
-                                                                    bufferTransition.newAccessMode);
+        VkAccessFlags srcAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
+                                                                     bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
+                                                                     bufferTransition.newAccessMode);
         barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
     }
@@ -91,16 +91,10 @@ void LegacyVulkanCommandList::AddPipelineBarrier(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
         VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
-        // VkImageLayout oldLayout =
-        //     ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
-        VkImageLayout oldLayout = m_pVkRHI->GetImageCurrentLayout(pVulkanTexture->GetVkImage());
+        VkImageLayout oldLayout =
+            ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout newLayout =
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
-        // filter
-        if (oldLayout == newLayout)
-        {
-            continue;
-        }
         VkImageSubresourceRange subresourceRange{};
         ToVkImageSubresourceRange(textureTransition.subResourceRange, &subresourceRange);
         // subresourceRange.aspectMask = ToVkAspectFlags(textureTransition.subResourceRange.aspect);
@@ -109,8 +103,8 @@ void LegacyVulkanCommandList::AddPipelineBarrier(
         // subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
         // subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
 
-        barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange,
-                                srcAccess, dstAccess);
+        barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout,
+                                subresourceRange, srcAccess, dstAccess);
         m_pVkRHI->UpdateImageLayout(pVulkanTexture->GetVkImage(), newLayout);
     }
     barrier.Execute(m_pCmdBufferManager->GetActiveCommandBufferDirect()->GetVkHandle(), srcStages,
@@ -163,10 +157,9 @@ void LegacyVulkanCommandList::CopyTexture(RHITexture* pSrcTexture,
                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
 }
 
-void LegacyVulkanCommandList::CopyTextureToBuffer(
-    RHITexture* pTexture,
-    RHIBuffer* pBuffer,
-    VectorView<RHIBufferTextureCopyRegion> regions)
+void LegacyVulkanCommandList::CopyTextureToBuffer(RHITexture* pTexture,
+                                                  RHIBuffer* pBuffer,
+                                                  VectorView<RHIBufferTextureCopyRegion> regions)
 {
     HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -179,10 +172,9 @@ void LegacyVulkanCommandList::CopyTextureToBuffer(
                            TO_VK_BUFFER(pBuffer)->GetVkBuffer(), copies.size(), copies.data());
 }
 
-void LegacyVulkanCommandList::CopyBufferToTexture(
-    RHIBuffer* pBuffer,
-    RHITexture* pTexture,
-    VectorView<RHIBufferTextureCopyRegion> regions)
+void LegacyVulkanCommandList::CopyBufferToTexture(RHIBuffer* pBuffer,
+                                                  RHITexture* pTexture,
+                                                  VectorView<RHIBufferTextureCopyRegion> regions)
 {
     HeapVector<VkBufferImageCopy> copies(regions.size());
     for (uint32_t i = 0; i < regions.size(); i++)
@@ -216,7 +208,8 @@ void LegacyVulkanCommandList::ResolveTexture(RHITexture* pSrcTexture,
     region.extent.height = std::max(1u, pSrcTexture->GetBaseInfo().height >> srcMipmap);
     region.extent.depth  = std::max(1u, pSrcTexture->GetBaseInfo().depth >> srcMipmap);
     vkCmdResolveImage(m_pCmdBuffer->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
-                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                      TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
@@ -284,10 +277,9 @@ void LegacyVulkanCommandList::BindGfxPipeline(RHIPipeline* pPipelineHandle,
                       pVulkanPipeline->GetVkPipeline());
 }
 
-void LegacyVulkanCommandList::BindComputePipeline(
-    RHIPipeline* pPipelineHandle,
-    uint32_t numDescriptorSets,
-    const RHIDescriptorSet* const* pDescriptorSets)
+void LegacyVulkanCommandList::BindComputePipeline(RHIPipeline* pPipelineHandle,
+                                                  uint32_t numDescriptorSets,
+                                                  const RHIDescriptorSet* const* pDescriptorSets)
 {
     VulkanPipeline* pVulkanPipeline = TO_VK_PIPELINE(pPipelineHandle);
     if (numDescriptorSets > 0)
@@ -433,7 +425,7 @@ void LegacyVulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderin
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
             const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
-            VulkanTexture* pVulkanTexture   = TO_VK_TEXTURE(colorRT.pTexture);
+            VulkanTexture* pVulkanTexture  = TO_VK_TEXTURE(colorRT.pTexture);
             VkRenderingAttachmentInfoKHR colorAttachment{};
             InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
             colorAttachment.imageView        = pVulkanTexture->GetVkImageView();
@@ -451,7 +443,7 @@ void LegacyVulkanCommandList::BeginRendering(const RHIRenderingLayout* pRenderin
         if (pRenderingLayout->hasDepthStencilRT)
         {
             const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
-            VulkanTexture* pVulkanTexture          = TO_VK_TEXTURE(depthStencilRT.pTexture);
+            VulkanTexture* pVulkanTexture         = TO_VK_TEXTURE(depthStencilRT.pTexture);
             depthStencilAttachment.imageView      = pVulkanTexture->GetVkImageView();
             depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
@@ -617,7 +609,7 @@ void LegacyVulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
     VkCommandBuffer cmdBuffer = m_pCmdBuffer->GetVkHandle();
 
     VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(pTexture);
-    VkImage vkImage              = pVulkanTexture->GetVkImage();
+    VkImage vkImage               = pVulkanTexture->GetVkImage();
     // Get texture attributes
     // const uint32_t mipLevels = vulkanTexture->getv.mipLevels;
     const uint32_t texWidth  = pTexture->GetBaseInfo().width;
@@ -687,8 +679,7 @@ void LegacyVulkanCommandList::GenerateTextureMipmaps(RHITexture* pTexture)
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
 }
 
-void LegacyVulkanCommandList::AddTextureTransition(RHITexture* pTexture,
-                                                   RHITextureLayout newLayout)
+void LegacyVulkanCommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
 {
     VulkanTexture* pVkTexture = TO_VK_TEXTURE(pTexture);
 
@@ -722,4 +713,5 @@ void LegacyVulkanCommandList::ChangeImageLayout(VkImage image,
     barrier.ExecuteImageBarriersOnly(m_pCmdBuffer->GetVkHandle());
     m_pVkRHI->UpdateImageLayout(image, dstLayout);
 }
+
 } // namespace zen

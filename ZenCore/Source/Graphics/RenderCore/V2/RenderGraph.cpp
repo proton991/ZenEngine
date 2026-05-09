@@ -8,8 +8,6 @@
 #endif
 namespace zen::rc
 {
-RDGResourceTrackerPool RenderGraph::s_trackerPool;
-
 namespace
 {
 bool RangesOverlap(uint32_t baseA, uint32_t countA, uint32_t baseB, uint32_t countB)
@@ -36,22 +34,23 @@ bool TextureSubResourceRangesOverlap(const RHITextureSubResourceRange& a,
         RangesOverlap(a.baseArrayLayer, a.layerCount, b.baseArrayLayer, b.layerCount);
 }
 
-bool ReadAccessRequiresOrdering(const RDGResource* pResource,
-                                const RDGAccess& previousRead,
-                                const RDGAccess& currentRead)
+bool ReadAccessRequiresLayoutTransition(const RDGResource* pResource,
+                                        const RDGAccess& previousRead,
+                                        const RDGAccess& currentRead)
 {
     if (pResource->type != RDGResourceType::eTexture)
     {
         return false;
     }
 
-    if (previousRead.textureUsage == currentRead.textureUsage)
+    if (!TextureSubResourceRangesOverlap(previousRead.textureSubResourceRange,
+                                         currentRead.textureSubResourceRange))
     {
         return false;
     }
 
-    return TextureSubResourceRangesOverlap(previousRead.textureSubResourceRange,
-                                           currentRead.textureSubResourceRange);
+    return RHITextureUsageToLayout(previousRead.textureUsage) !=
+        RHITextureUsageToLayout(currentRead.textureUsage);
 }
 
 bool AccessNeedsBarrier(const RDGResource* pResource,
@@ -61,55 +60,57 @@ bool AccessNeedsBarrier(const RDGResource* pResource,
     if (previousAccess.accessMode == RHIAccessMode::eRead &&
         currentAccess.accessMode == RHIAccessMode::eRead)
     {
-        return ReadAccessRequiresOrdering(pResource, previousAccess, currentAccess);
+        return ReadAccessRequiresLayoutTransition(pResource, previousAccess, currentAccess);
     }
 
     return true;
 }
+
+bool NeedsExternalTextureFirstUseBarrier(const RHITexture* pTexture, const RDGAccess& access)
+{
+    const RHITextureUsage currentUsage = pTexture->GetCurrentUsage();
+    const RHIAccessMode currentAccess  = pTexture->GetCurrentAccessMode();
+
+    if (currentUsage == RHITextureUsage::eNone || currentAccess == RHIAccessMode::eNone)
+    {
+        return true;
+    }
+
+    if (RHITextureUsageToLayout(currentUsage) != RHITextureUsageToLayout(access.textureUsage))
+    {
+        return true;
+    }
+
+    return !(currentAccess == RHIAccessMode::eRead && access.accessMode == RHIAccessMode::eRead);
+}
+
+bool NeedsExternalBufferFirstUseBarrier(const RHIBuffer* pBuffer, const RDGAccess& access)
+{
+    const RHIBufferUsage currentUsage = pBuffer->GetCurrentUsage();
+    const RHIAccessMode currentAccess = pBuffer->GetCurrentAccessMode();
+
+    if (currentUsage == RHIBufferUsage::eNone || currentAccess == RHIAccessMode::eNone)
+    {
+        return true;
+    }
+
+    return !(currentAccess == RHIAccessMode::eRead && access.accessMode == RHIAccessMode::eRead);
+}
+
+void UpdateResourceState(const RHIBufferTransition& transition,
+                         BitField<RHIPipelineStageBits> pipelineStages)
+{
+    transition.pBuffer->UpdateCurrentState(transition.newAccessMode, transition.newUsage,
+                                           pipelineStages);
+}
+
+void UpdateResourceState(const RHITextureTransition& transition,
+                         BitField<RHIPipelineStageBits> pipelineStages)
+{
+    transition.pTexture->UpdateCurrentState(transition.newAccessMode, transition.newUsage,
+                                            pipelineStages);
+}
 } // namespace
-
-RDGResourceTrackerPool::RDGResourceTrackerPool() = default;
-
-RDGResourceTrackerPool::~RDGResourceTrackerPool()
-{
-    for (auto& kv : m_trackerMap)
-    {
-        delete kv.second;
-    }
-}
-
-RDGResourceTracker* RDGResourceTrackerPool::GetTracker(const RHIResource* pResource)
-{
-    if (!m_trackerMap.contains(pResource))
-    {
-        m_trackerMap[pResource] = new RDGResourceTracker();
-    }
-    return m_trackerMap[pResource];
-}
-
-void RDGResourceTrackerPool::UpdateTrackerState(const RHITexture* pTexture,
-                                                RHIAccessMode accessMode,
-                                                RHITextureUsage usage)
-{
-    if (m_trackerMap.contains(pTexture))
-    {
-        RDGResourceTracker* pTracker = m_trackerMap[pTexture];
-        pTracker->accessMode         = accessMode;
-        pTracker->textureUsage       = usage;
-    }
-}
-
-void RDGResourceTrackerPool::UpdateTrackerState(const RHIBuffer* pBuffer,
-                                                RHIAccessMode accessMode,
-                                                RHIBufferUsage usage)
-{
-    if (m_trackerMap.contains(pBuffer))
-    {
-        RDGResourceTracker* pTracker = m_trackerMap[pBuffer];
-        pTracker->accessMode         = accessMode;
-        pTracker->bufferUsage        = usage;
-    }
-}
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* pParent,
                                           RHIPipeline* pPipelineHandle,
@@ -500,9 +501,8 @@ void RenderGraph::AddBufferCopyNode(RHIBuffer* pSrcBufferHandle,
         readAccess.bufferUsage = RHIBufferUsage::eTransferSrc;
         readAccess.nodeId      = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pSrcBufferHandle, RDGResourceType::eBuffer);
-        readAccess.resourceId = pResource->id;
+        RDGResource* pResource = GetOrAllocResource(pSrcBufferHandle, RDGResourceType::eBuffer);
+        readAccess.resourceId  = pResource->id;
 
         AddResourceAccess(pResource, readAccess);
     }
@@ -513,8 +513,7 @@ void RenderGraph::AddBufferCopyNode(RHIBuffer* pSrcBufferHandle,
         writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer);
+        RDGResource* pResource = GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer);
         writeAccess.resourceId = pResource->id;
 
         AddResourceAccess(pResource, writeAccess);
@@ -540,8 +539,7 @@ void RenderGraph::AddBufferUpdateNode(RHIBuffer* pDstBufferHandle,
     writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
     writeAccess.nodeId      = pNode->id;
 
-    RDGResource* pResource =
-        GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer);
+    RDGResource* pResource = GetOrAllocResource(pDstBufferHandle, RDGResourceType::eBuffer);
     writeAccess.resourceId = pResource->id;
 
     AddResourceAccess(pResource, writeAccess);
@@ -610,9 +608,8 @@ void RenderGraph::AddTextureCopyNode(RHITexture* pSrcTexture,
     readAccess.textureUsage            = RHITextureUsage::eTransferSrc;
     readAccess.nodeId                  = pNode->id;
 
-    RDGResource* pSrcResource =
-        GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
-    pSrcResource->tag = pSrcTexture->GetResourceTag();
+    RDGResource* pSrcResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
+    pSrcResource->tag         = pSrcTexture->GetResourceTag();
     // if (srcResource->tag.empty())
     // {
     //     srcResource->tag = "src_texture";
@@ -628,9 +625,8 @@ void RenderGraph::AddTextureCopyNode(RHITexture* pSrcTexture,
     writeAccess.textureUsage            = RHITextureUsage::eTransferDst;
     writeAccess.nodeId                  = pNode->id;
 
-    RDGResource* pDstResource =
-        GetOrAllocResource(pDstTexture, RDGResourceType::eTexture);
-    pDstResource->tag = pDstTexture->GetResourceTag();
+    RDGResource* pDstResource = GetOrAllocResource(pDstTexture, RDGResourceType::eTexture);
+    pDstResource->tag         = pDstTexture->GetResourceTag();
     // if (dstResource->tag.empty())
     // {
     //     dstResource->tag = "dst_texture";
@@ -679,9 +675,8 @@ void RenderGraph::AddTextureReadNode(RHITexture* pSrcTexture,
         readAccess.textureSubResourceRange = pSrcTexture->GetSubResourceRange();
         readAccess.nodeId                  = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
-        readAccess.resourceId = pResource->id;
+        RDGResource* pResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
+        readAccess.resourceId  = pResource->id;
 
         AddResourceAccess(pResource, readAccess);
     }
@@ -692,8 +687,7 @@ void RenderGraph::AddTextureReadNode(RHITexture* pSrcTexture,
         writeAccess.bufferUsage = RHIBufferUsage::eTransferDst;
         writeAccess.nodeId      = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pDstBuffer, RDGResourceType::eBuffer);
+        RDGResource* pResource = GetOrAllocResource(pDstBuffer, RDGResourceType::eBuffer);
         writeAccess.resourceId = pResource->id;
 
         AddResourceAccess(pResource, writeAccess);
@@ -767,9 +761,8 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
         readAccess.textureSubResourceRange = pSrcTexture->GetSubResourceRange();
         readAccess.nodeId                  = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
-        readAccess.resourceId = pResource->id;
+        RDGResource* pResource = GetOrAllocResource(pSrcTexture, RDGResourceType::eTexture);
+        readAccess.resourceId  = pResource->id;
 
         AddResourceAccess(pResource, readAccess);
     }
@@ -781,8 +774,7 @@ void RenderGraph::AddTextureResolveNode(RHITexture* pSrcTexture,
         writeAccess.textureSubResourceRange = pDstTexture->GetSubResourceRange();
         writeAccess.nodeId                  = pNode->id;
 
-        RDGResource* pResource =
-            GetOrAllocResource(pDstTexture, RDGResourceType::eTexture);
+        RDGResource* pResource = GetOrAllocResource(pDstTexture, RDGResourceType::eTexture);
         writeAccess.resourceId = pResource->id;
 
         AddResourceAccess(pResource, writeAccess);
@@ -834,7 +826,14 @@ void RenderGraph::DeclareTextureAccessForPass(const RDGPassNode* pPassNode,
 
     if (usage == RHITextureUsage::eSampled)
     {
-        pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
+        if (pPassNode->type == RDGNodeType::eComputePass)
+        {
+            pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eComputeShader);
+        }
+        else
+        {
+            pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
+        }
     }
     if (usage == RHITextureUsage::eDepthStencilAttachment)
     {
@@ -884,7 +883,7 @@ void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* pPassNode,
     }
     if (pPassNode->type == RDGNodeType::eComputePass)
     {
-        pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eAllCommands);
+        pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eComputeShader);
     }
 }
 
@@ -907,14 +906,6 @@ bool RenderGraph::AddNodeDepsForResource(RDGResource* pResource,
         return false;
     }
 
-#if defined(ZEN_DEBUG)
-    const auto& srcNodeTag = GetNodeBaseById(srcNodeId)->tag;
-    const auto& dstNodeTag = GetNodeBaseById(dstNodeId)->tag;
-    if (!srcNodeTag.empty() && !dstNodeTag.empty())
-    {
-        LOGI("RDG Node dependency: {} -> {}, resource: {}", srcNodeTag, dstNodeTag, pResource->tag);
-    }
-#endif
     // Add the dependency src -> dst
     const uint64_t dependencyEdgeKey = CreateNodePairKey(srcNodeId, dstNodeId);
     const bool addInDegree           = !dependencyEdges.contains(dependencyEdgeKey);
@@ -939,7 +930,7 @@ void RenderGraph::SortNodesV2()
     {
         bool hasLastWriter = false;
         RDGAccess lastWriter{};
-        bool hasReadFrontier = false;
+        bool hasReadFrontier     = false;
         size_t readFrontierBegin = 0;
         RDGAccess lastRead{};
 
@@ -948,8 +939,8 @@ void RenderGraph::SortNodesV2()
             const RDGAccess& access = pResource->accesses[accessIndex];
             if (access.accessMode == RHIAccessMode::eRead)
             {
-                const bool orderAfterReadFrontier =
-                    hasReadFrontier && ReadAccessRequiresOrdering(pResource, lastRead, access);
+                const bool orderAfterReadFrontier = hasReadFrontier &&
+                    ReadAccessRequiresLayoutTransition(pResource, lastRead, access);
                 if (orderAfterReadFrontier)
                 {
                     for (size_t readerIndex = readFrontierBegin; readerIndex < accessIndex;
@@ -1015,9 +1006,9 @@ void RenderGraph::SortNodesV2()
                     }
                 }
 
-                lastWriter       = access;
-                hasLastWriter    = true;
-                hasReadFrontier  = false;
+                lastWriter      = access;
+                hasLastWriter   = true;
+                hasReadFrontier = false;
             }
         }
     }
@@ -1207,15 +1198,16 @@ void RenderGraph::ResetBuildState()
     m_nodeAccessMap.clear();
     m_resourceMap.clear();
     m_poolAlloc.Reset();
-    m_pCmdList       = nullptr;
-    m_nodeCount      = 0;
-    m_compileStats   = {};
-    m_executionState = RDGExecutionState::eIdle;
+    m_pCmdList                 = nullptr;
+    m_nodeCount                = 0;
+    m_compileStats             = {};
+    m_executeSummaryLogPending = false;
+    m_recordedInitBarrierCount = 0;
+    m_executionState           = RDGExecutionState::eIdle;
 }
 
 void RenderGraph::Begin()
 {
-    LOGI("==========Render Graph Begin==========");
     VERIFY_EXPR_MSG(m_executionState != RDGExecutionState::eBuilding,
                     "RenderGraph::Begin called while already building");
     ResetBuildState();
@@ -1227,7 +1219,6 @@ void RenderGraph::End()
     VERIFY_EXPR_MSG(m_executionState == RDGExecutionState::eBuilding,
                     "RenderGraph::End called before Begin");
     Compile();
-    LOGI("==========Render Graph End==========");
 }
 
 void RenderGraph::Compile()
@@ -1240,7 +1231,8 @@ void RenderGraph::Compile()
     AttachFirstUseBarriers();
     AttachIntraGraphBarriers();
     ValidateCompiledGraph();
-    m_executionState = RDGExecutionState::eCompiled;
+    m_executeSummaryLogPending = true;
+    m_executionState           = RDGExecutionState::eCompiled;
 }
 
 void RenderGraph::BuildCompiledNodeList()
@@ -1252,12 +1244,6 @@ void RenderGraph::BuildCompiledNodeList()
         for (auto& nodeId : currLevel)
         {
             RDGNodeBase* pNode = GetNodeBaseById(nodeId);
-#if defined(ZEN_DEBUG)
-            if (!pNode->tag.empty())
-            {
-                LOGI("RDG NodeTag after sort: {}, level: {}", pNode->tag, i);
-            }
-#endif
 
             RDGCompiledNode& compiledNode = m_compiledNodes.emplace_back();
             compiledNode.nodeId           = nodeId;
@@ -1295,7 +1281,8 @@ void RenderGraph::AttachFirstUseBarriers()
                 continue;
             }
 
-            const size_t resourceIndex = static_cast<size_t>(static_cast<int32_t>(access.resourceId));
+            const size_t resourceIndex =
+                static_cast<size_t>(static_cast<int32_t>(access.resourceId));
             if (resourceInitialized[resourceIndex] != 0)
             {
                 continue;
@@ -1303,9 +1290,6 @@ void RenderGraph::AttachFirstUseBarriers()
 
             resourceInitialized[resourceIndex] = 1;
             compiledNode.initialResourceAccesses.push_back(access);
-            compiledNode.prologueSrcStages.SetFlag(RHIPipelineStageBits::eAllCommands);
-            compiledNode.prologueDstStages.SetFlag(GetNodeBaseById(compiledNode.nodeId)->selfStages);
-            m_compileStats.barrierCount++;
         }
     }
 }
@@ -1334,8 +1318,9 @@ void RenderGraph::AttachIntraGraphBarriers()
                 continue;
             }
 
-            const size_t resourceIndex = static_cast<size_t>(static_cast<int32_t>(access.resourceId));
-            RDGResource* pResource     = m_resources[resourceIndex];
+            const size_t resourceIndex =
+                static_cast<size_t>(static_cast<int32_t>(access.resourceId));
+            RDGResource* pResource = m_resources[resourceIndex];
             if (resourceInitialized[resourceIndex] == 0)
             {
                 resourceInitialized[resourceIndex] = 1;
@@ -1350,13 +1335,12 @@ void RenderGraph::AttachIntraGraphBarriers()
             }
 
             RDGAccess& previousAccess = resourceStates[resourceIndex];
-            const bool needsBarrier = AccessNeedsBarrier(pResource, previousAccess, access);
+            const bool needsBarrier   = AccessNeedsBarrier(pResource, previousAccess, access);
             if (needsBarrier)
             {
                 if (resourceHasReadGroup[resourceIndex] != 0)
                 {
-                    compiledNode.prologueSrcStages.SetFlag(
-                        resourceReadGroupStages[resourceIndex]);
+                    compiledNode.prologueSrcStages.SetFlag(resourceReadGroupStages[resourceIndex]);
                 }
                 else
                 {
@@ -1378,11 +1362,11 @@ void RenderGraph::AttachIntraGraphBarriers()
                 else if (pResource->type == RDGResourceType::eTexture)
                 {
                     RHITextureTransition transition;
-                    transition.pTexture         = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
-                    transition.oldAccessMode    = previousAccess.accessMode;
-                    transition.newAccessMode    = access.accessMode;
-                    transition.oldUsage         = previousAccess.textureUsage;
-                    transition.newUsage         = access.textureUsage;
+                    transition.pTexture      = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
+                    transition.oldAccessMode = previousAccess.accessMode;
+                    transition.newAccessMode = access.accessMode;
+                    transition.oldUsage      = previousAccess.textureUsage;
+                    transition.newUsage      = access.textureUsage;
                     transition.subResourceRange = access.textureSubResourceRange;
                     compiledNode.prologueTextureTransitions.push_back(transition);
                 }
@@ -1390,7 +1374,7 @@ void RenderGraph::AttachIntraGraphBarriers()
                 {
                     LOGE("Invalid RDGResource type!");
                 }
-                m_compileStats.barrierCount++;
+                m_compileStats.intraGraphBarrierCount++;
             }
 
             previousAccess = access;
@@ -1446,26 +1430,34 @@ void RenderGraph::ValidateCompiledGraph() const
             }
         }
     }
-
-#if defined(ZEN_DEBUG)
-    LOGI("RenderGraph '{}' compiled: nodes={}, passes={}, resources={}, barriers={}, cmdLists={}",
-         m_rdgTag, m_compileStats.nodeCount, m_compileStats.passCount, m_compileStats.resourceCount,
-         m_compileStats.barrierCount, m_compileStats.commandListCount);
-#endif
 }
 
 void RenderGraph::Execute(RHICommandList* pCmdList)
 {
     VERIFY_EXPR_MSG(m_executionState == RDGExecutionState::eCompiled,
                     "RenderGraph::Execute called before graph is compiled");
-    m_pCmdList       = pCmdList;
-    m_executionState = RDGExecutionState::eExecuting;
+    m_pCmdList                 = pCmdList;
+    m_executionState           = RDGExecutionState::eExecuting;
+    m_recordedInitBarrierCount = 0;
 
     for (RDGCompiledNode& compiledNode : m_compiledNodes)
     {
         EmitCompiledNodeBarriers(compiledNode);
         RunNode(GetNodeBaseById(compiledNode.nodeId));
     }
+
+#if defined(ZEN_DEBUG)
+    if (m_executeSummaryLogPending)
+    {
+        const uint32_t totalBarriers =
+            m_recordedInitBarrierCount + m_compileStats.intraGraphBarrierCount;
+        LOGI("RDG {} exec: n={} p={} r={} init={} intra={} total={} cmd={}", m_rdgTag,
+             m_compileStats.nodeCount, m_compileStats.passCount, m_compileStats.resourceCount,
+             m_recordedInitBarrierCount, m_compileStats.intraGraphBarrierCount, totalBarriers,
+             m_compileStats.commandListCount);
+        m_executeSummaryLogPending = false;
+    }
+#endif
 
     m_pCmdList       = nullptr;
     m_executionState = RDGExecutionState::eCompiled;
@@ -1758,38 +1750,16 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
 
 void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
 {
-    if (compiledNode.initialResourceAccesses.empty())
-    {
-        if (compiledNode.prologueTextureTransitions.empty() &&
-            compiledNode.prologueBufferTransitions.empty())
-        {
-            return;
-        }
-
-        for (const RHIBufferTransition& transition : compiledNode.prologueBufferTransitions)
-        {
-            s_trackerPool.UpdateTrackerState(transition.pBuffer, transition.newAccessMode,
-                                             transition.newUsage);
-        }
-
-        for (const RHITextureTransition& transition : compiledNode.prologueTextureTransitions)
-        {
-            s_trackerPool.UpdateTrackerState(transition.pTexture, transition.newAccessMode,
-                                             transition.newUsage);
-        }
-
-        m_pCmdList->AddTransitions(compiledNode.prologueSrcStages, compiledNode.prologueDstStages,
-                                   {}, MakeVecView(compiledNode.prologueBufferTransitions),
-                                   MakeVecView(compiledNode.prologueTextureTransitions));
-        return;
-    }
-
     HeapVector<RHITextureTransition> textureTransitions;
     HeapVector<RHIBufferTransition> bufferTransitions;
     textureTransitions.reserve(compiledNode.initialResourceAccesses.size() +
                                compiledNode.prologueTextureTransitions.size());
     bufferTransitions.reserve(compiledNode.initialResourceAccesses.size() +
                               compiledNode.prologueBufferTransitions.size());
+
+    BitField<RHIPipelineStageBits> srcStages  = compiledNode.prologueSrcStages;
+    BitField<RHIPipelineStageBits> dstStages  = compiledNode.prologueDstStages;
+    BitField<RHIPipelineStageBits> nodeStages = GetNodeBaseById(compiledNode.nodeId)->selfStages;
 
     for (const RDGAccess& access : compiledNode.initialResourceAccesses)
     {
@@ -1803,27 +1773,45 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
         RDGResource* pResource = m_resources[access.resourceId];
         if (pResource->type == RDGResourceType::eTexture)
         {
-            RDGResourceTracker* pTracker = s_trackerPool.GetTracker(pResource->pPhysicalRes);
+            RHITexture* pTexture = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
+            if (!NeedsExternalTextureFirstUseBarrier(pTexture, access))
+            {
+                pTexture->UpdateCurrentState(access.accessMode, access.textureUsage, nodeStages);
+                continue;
+            }
+
             RHITextureTransition textureTransition;
-            textureTransition.pTexture         = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
-            textureTransition.oldUsage         = pTracker->textureUsage;
+            textureTransition.pTexture         = pTexture;
+            textureTransition.oldUsage         = pTexture->GetCurrentUsage();
             textureTransition.newUsage         = access.textureUsage;
-            textureTransition.oldAccessMode    = pTracker->accessMode;
+            textureTransition.oldAccessMode    = pTexture->GetCurrentAccessMode();
             textureTransition.newAccessMode    = access.accessMode;
             textureTransition.subResourceRange = access.textureSubResourceRange;
             textureTransitions.push_back(textureTransition);
+            srcStages.SetFlag(pTexture->GetCurrentPipelineStages());
+            dstStages.SetFlag(nodeStages);
+            m_recordedInitBarrierCount++;
         }
         else if (pResource->type == RDGResourceType::eBuffer)
         {
-            RDGResourceTracker* pTracker = s_trackerPool.GetTracker(pResource->pPhysicalRes);
+            RHIBuffer* pBuffer = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
+            if (!NeedsExternalBufferFirstUseBarrier(pBuffer, access))
+            {
+                pBuffer->UpdateCurrentState(access.accessMode, access.bufferUsage, nodeStages);
+                continue;
+            }
+
             RHIBufferTransition bufferTransition;
-            bufferTransition.pBuffer       = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
-            bufferTransition.oldUsage      = pTracker->bufferUsage;
+            bufferTransition.pBuffer       = pBuffer;
+            bufferTransition.oldUsage      = pBuffer->GetCurrentUsage();
             bufferTransition.newUsage      = access.bufferUsage;
-            bufferTransition.oldAccessMode = pTracker->accessMode;
+            bufferTransition.oldAccessMode = pBuffer->GetCurrentAccessMode();
             bufferTransition.newAccessMode = access.accessMode;
             bufferTransition.offset        = 0;
             bufferTransitions.push_back(bufferTransition);
+            srcStages.SetFlag(pBuffer->GetCurrentPipelineStages());
+            dstStages.SetFlag(nodeStages);
+            m_recordedInitBarrierCount++;
         }
     }
 
@@ -1844,17 +1832,14 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
 
     for (const RHIBufferTransition& transition : bufferTransitions)
     {
-        s_trackerPool.UpdateTrackerState(transition.pBuffer, transition.newAccessMode,
-                                         transition.newUsage);
+        UpdateResourceState(transition, dstStages);
     }
 
     for (const RHITextureTransition& transition : textureTransitions)
     {
-        s_trackerPool.UpdateTrackerState(transition.pTexture, transition.newAccessMode,
-                                         transition.newUsage);
+        UpdateResourceState(transition, dstStages);
     }
 
-    m_pCmdList->AddTransitions(compiledNode.prologueSrcStages, compiledNode.prologueDstStages, {},
-                               bufferTransitions, textureTransitions);
+    m_pCmdList->AddTransitions(srcStages, dstStages, {}, bufferTransitions, textureTransitions);
 }
 } // namespace zen::rc

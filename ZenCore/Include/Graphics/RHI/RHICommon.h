@@ -943,7 +943,7 @@ public:
                               SampleCount numSamples = SampleCount::e1)
     {
         RHIRenderTarget colorRT;
-        colorRT.format  = format;
+        colorRT.format   = format;
         colorRT.pTexture = pTexture;
         // colorRT.subresourceRange = subResourceRange;
 
@@ -965,7 +965,7 @@ public:
     {
         if (!m_hasDepthStencilRT)
         {
-            m_depthStencilRT.format  = format;
+            m_depthStencilRT.format   = format;
             m_depthStencilRT.pTexture = pTexture;
             // m_depthStencilRT.subresourceRange = subResourceRange;
             m_depthStencilRT.loadOp  = loadOp;
@@ -1254,7 +1254,9 @@ inline BitField<RHIPipelineStageBits> RHITextureUsageToPipelineStage(RHITextureU
         case RHITextureUsage::eSampled:
         case RHITextureUsage::eInputAttachment:
         case RHITextureUsage::eStorage:
+            result.SetFlag(RHIPipelineStageBits::eVertexShader);
             result.SetFlag(RHIPipelineStageBits::eFragmentShader);
+            result.SetFlag(RHIPipelineStageBits::eComputeShader);
             break;
 
         case RHITextureUsage::eColorAttachment:
@@ -1283,13 +1285,18 @@ inline BitField<RHIPipelineStageBits> RHIBufferUsageToPipelineStage(RHIBufferUsa
         case RHIBufferUsage::eImageBuffer:
         case RHIBufferUsage::eUniformBuffer:
         case RHIBufferUsage::eStorageBuffer:
-        case RHIBufferUsage::eIndirectBuffer:
-            result.SetFlags(RHIPipelineStageBits::eAllGraphics, RHIPipelineStageBits::eAllCommands);
+            result.SetFlags(RHIPipelineStageBits::eVertexShader,
+                            RHIPipelineStageBits::eFragmentShader,
+                            RHIPipelineStageBits::eComputeShader);
             break;
 
-        case RHIBufferUsage::eIndexBuffer:
+        case RHIBufferUsage::eIndirectBuffer:
+            result.SetFlag(RHIPipelineStageBits::eDrawIndirect);
+            break;
+
         case RHIBufferUsage::eVertexBuffer:
-            result.SetFlag(RHIPipelineStageBits::eVertexShader);
+        case RHIBufferUsage::eIndexBuffer:
+            result.SetFlag(RHIPipelineStageBits::eVertexInput);
             break;
 
         default: break;

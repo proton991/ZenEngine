@@ -896,16 +896,10 @@ void FVulkanCommandListContext::RHIAddTransitions(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
         VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
-        // VkImageLayout oldLayout =
-        //     ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
-        VkImageLayout oldLayout = GVulkanRHI->GetImageCurrentLayout(pVulkanTexture->GetVkImage());
+        VkImageLayout oldLayout =
+            ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout newLayout =
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
-        // filter
-        if (oldLayout == newLayout)
-        {
-            continue;
-        }
         VkImageSubresourceRange subresourceRange{};
         ToVkImageSubresourceRange(textureTransition.subResourceRange, &subresourceRange);
         // subresourceRange.aspectMask = ToVkAspectFlags(textureTransition.subResourceRange.aspect);
