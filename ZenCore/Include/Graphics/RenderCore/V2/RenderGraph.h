@@ -214,6 +214,65 @@ struct RDGResource
     RDGVector<RDGAccess> accesses;
 };
 
+struct RDGTextureResourceState
+{
+    RHIAccessMode accessMode{RHIAccessMode::eNone};
+    RHITextureUsage usage{RHITextureUsage::eNone};
+    BitField<RHIPipelineStageBits> pipelineStages{RHIPipelineStageBits::eTopOfPipe};
+};
+
+struct RDGBufferResourceState
+{
+    RHIAccessMode accessMode{RHIAccessMode::eNone};
+    RHIBufferUsage usage{RHIBufferUsage::eNone};
+    BitField<RHIPipelineStageBits> pipelineStages{RHIPipelineStageBits::eTopOfPipe};
+};
+
+class ResourceStateTracker
+{
+public:
+    RDGTextureResourceState GetTextureState(const RHITexture* pTexture) const;
+    RDGBufferResourceState GetBufferState(const RHIBuffer* pBuffer) const;
+
+    void UpdateTextureState(const RHITexture* pTexture,
+                            RHIAccessMode accessMode,
+                            RHITextureUsage usage,
+                            BitField<RHIPipelineStageBits> pipelineStages);
+
+    void UpdateBufferState(const RHIBuffer* pBuffer,
+                           RHIAccessMode accessMode,
+                           RHIBufferUsage usage,
+                           BitField<RHIPipelineStageBits> pipelineStages);
+
+    void RemoveTextureState(const RHITexture* pTexture);
+    void RemoveBufferState(const RHIBuffer* pBuffer);
+
+private:
+    HashMap<const RHITexture*, RDGTextureResourceState> m_textureStates;
+    HashMap<const RHIBuffer*, RDGBufferResourceState> m_bufferStates;
+};
+
+class RenderGraph;
+
+class RDGExecutor
+{
+public:
+    void Execute(RenderGraph& graph, RHICommandList* pCmdList);
+
+    ResourceStateTracker& GetResourceStateTracker()
+    {
+        return m_resourceStateTracker;
+    }
+
+    const ResourceStateTracker& GetResourceStateTracker() const
+    {
+        return m_resourceStateTracker;
+    }
+
+private:
+    ResourceStateTracker m_resourceStateTracker;
+};
+
 enum class RDGExecutionState : uint8_t
 {
     eIdle,
@@ -681,9 +740,11 @@ public:
 
     // void Execute(RHICommandList* cmdList);
 
-    void Execute(RHICommandList* pCmdList);
-
 private:
+    friend class RDGExecutor;
+
+    void Execute(RHICommandList* pCmdList, ResourceStateTracker& resourceStateTracker);
+
     void DeclareTextureAccessForPass(const RDGPassNode* pPassNode,
                                      RHITexture* pTexture,
                                      RHITextureUsage usage,
@@ -730,7 +791,8 @@ private:
 
     void AddResourceAccess(RDGResource* pResource, const RDGAccess& access);
 
-    void EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode);
+    void EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode,
+                                  ResourceStateTracker& resourceStateTracker);
 
     void ValidateCompiledGraph() const;
 

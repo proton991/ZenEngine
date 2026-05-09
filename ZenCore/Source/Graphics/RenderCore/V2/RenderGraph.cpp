@@ -66,51 +66,123 @@ bool AccessNeedsBarrier(const RDGResource* pResource,
     return true;
 }
 
-bool NeedsExternalTextureFirstUseBarrier(const RHITexture* pTexture, const RDGAccess& access)
+bool NeedsExternalTextureFirstUseBarrier(const RDGTextureResourceState& currentState,
+                                         const RDGAccess& access)
 {
-    const RHITextureUsage currentUsage = pTexture->GetCurrentUsage();
-    const RHIAccessMode currentAccess  = pTexture->GetCurrentAccessMode();
-
-    if (currentUsage == RHITextureUsage::eNone || currentAccess == RHIAccessMode::eNone)
+    if (currentState.usage == RHITextureUsage::eNone ||
+        currentState.accessMode == RHIAccessMode::eNone)
     {
         return true;
     }
 
-    if (RHITextureUsageToLayout(currentUsage) != RHITextureUsageToLayout(access.textureUsage))
+    if (RHITextureUsageToLayout(currentState.usage) != RHITextureUsageToLayout(access.textureUsage))
     {
         return true;
     }
 
-    return !(currentAccess == RHIAccessMode::eRead && access.accessMode == RHIAccessMode::eRead);
+    return !(currentState.accessMode == RHIAccessMode::eRead &&
+             access.accessMode == RHIAccessMode::eRead);
 }
 
-bool NeedsExternalBufferFirstUseBarrier(const RHIBuffer* pBuffer, const RDGAccess& access)
+bool NeedsExternalBufferFirstUseBarrier(const RDGBufferResourceState& currentState,
+                                        const RDGAccess& access)
 {
-    const RHIBufferUsage currentUsage = pBuffer->GetCurrentUsage();
-    const RHIAccessMode currentAccess = pBuffer->GetCurrentAccessMode();
-
-    if (currentUsage == RHIBufferUsage::eNone || currentAccess == RHIAccessMode::eNone)
+    if (currentState.usage == RHIBufferUsage::eNone ||
+        currentState.accessMode == RHIAccessMode::eNone)
     {
         return true;
     }
 
-    return !(currentAccess == RHIAccessMode::eRead && access.accessMode == RHIAccessMode::eRead);
+    return !(currentState.accessMode == RHIAccessMode::eRead &&
+             access.accessMode == RHIAccessMode::eRead);
 }
 
-void UpdateResourceState(const RHIBufferTransition& transition,
-                         BitField<RHIPipelineStageBits> pipelineStages)
-{
-    transition.pBuffer->UpdateCurrentState(transition.newAccessMode, transition.newUsage,
-                                           pipelineStages);
-}
-
-void UpdateResourceState(const RHITextureTransition& transition,
-                         BitField<RHIPipelineStageBits> pipelineStages)
-{
-    transition.pTexture->UpdateCurrentState(transition.newAccessMode, transition.newUsage,
-                                            pipelineStages);
-}
+// void UpdateResourceState(ResourceStateTracker& resourceStateTracker,
+//                          const RHIBufferTransition& transition,
+//                          BitField<RHIPipelineStageBits> pipelineStages)
+// {
+//     resourceStateTracker.UpdateBufferState(transition.pBuffer, transition.newAccessMode,
+//                                            transition.newUsage, pipelineStages);
+// }
+//
+// void UpdateResourceState(ResourceStateTracker& resourceStateTracker,
+//                          const RHITextureTransition& transition,
+//                          BitField<RHIPipelineStageBits> pipelineStages)
+// {
+//     resourceStateTracker.UpdateTextureState(transition.pTexture, transition.newAccessMode,
+//                                             transition.newUsage, pipelineStages);
+// }
 } // namespace
+
+RDGTextureResourceState ResourceStateTracker::GetTextureState(const RHITexture* pTexture) const
+{
+    const RHITexture* pStateKey = pTexture != nullptr ? pTexture->GetPhysicalTexture() : nullptr;
+    if (pStateKey == nullptr)
+    {
+        return {};
+    }
+
+    const auto iter = m_textureStates.find(pStateKey);
+    return iter != m_textureStates.end() ? iter->second : RDGTextureResourceState{};
+}
+
+RDGBufferResourceState ResourceStateTracker::GetBufferState(const RHIBuffer* pBuffer) const
+{
+    if (pBuffer == nullptr)
+    {
+        return {};
+    }
+
+    const auto iter = m_bufferStates.find(pBuffer);
+    return iter != m_bufferStates.end() ? iter->second : RDGBufferResourceState{};
+}
+
+void ResourceStateTracker::UpdateTextureState(const RHITexture* pTexture,
+                                              RHIAccessMode accessMode,
+                                              RHITextureUsage usage,
+                                              BitField<RHIPipelineStageBits> pipelineStages)
+{
+    const RHITexture* pStateKey = pTexture != nullptr ? pTexture->GetPhysicalTexture() : nullptr;
+    VERIFY_EXPR(pStateKey != nullptr);
+
+    m_textureStates[pStateKey].accessMode     = accessMode;
+    m_textureStates[pStateKey].usage          = usage;
+    m_textureStates[pStateKey].pipelineStages = pipelineStages;
+}
+
+void ResourceStateTracker::UpdateBufferState(const RHIBuffer* pBuffer,
+                                             RHIAccessMode accessMode,
+                                             RHIBufferUsage usage,
+                                             BitField<RHIPipelineStageBits> pipelineStages)
+{
+    VERIFY_EXPR(pBuffer != nullptr);
+
+    m_bufferStates[pBuffer].accessMode     = accessMode;
+    m_bufferStates[pBuffer].usage          = usage;
+    m_bufferStates[pBuffer].pipelineStages = pipelineStages;
+}
+
+void ResourceStateTracker::RemoveTextureState(const RHITexture* pTexture)
+{
+    const RHITexture* pStateKey = pTexture != nullptr ? pTexture->GetPhysicalTexture() : nullptr;
+    if (pStateKey != nullptr)
+    {
+        m_textureStates.erase(pStateKey);
+    }
+}
+
+void ResourceStateTracker::RemoveBufferState(const RHIBuffer* pBuffer)
+{
+    if (pBuffer != nullptr)
+    {
+        m_bufferStates.erase(pBuffer);
+    }
+}
+
+void RDGExecutor::Execute(RenderGraph& graph, RHICommandList* pCmdList)
+{
+    graph.Execute(pCmdList, m_resourceStateTracker);
+}
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* pParent,
                                           RHIPipeline* pPipelineHandle,
@@ -1432,7 +1504,7 @@ void RenderGraph::ValidateCompiledGraph() const
     }
 }
 
-void RenderGraph::Execute(RHICommandList* pCmdList)
+void RenderGraph::Execute(RHICommandList* pCmdList, ResourceStateTracker& resourceStateTracker)
 {
     VERIFY_EXPR_MSG(m_executionState == RDGExecutionState::eCompiled,
                     "RenderGraph::Execute called before graph is compiled");
@@ -1442,7 +1514,7 @@ void RenderGraph::Execute(RHICommandList* pCmdList)
 
     for (RDGCompiledNode& compiledNode : m_compiledNodes)
     {
-        EmitCompiledNodeBarriers(compiledNode);
+        EmitCompiledNodeBarriers(compiledNode, resourceStateTracker);
         RunNode(GetNodeBaseById(compiledNode.nodeId));
     }
 
@@ -1748,7 +1820,8 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
     }
 }
 
-void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
+void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode,
+                                           ResourceStateTracker& resourceStateTracker)
 {
     HeapVector<RHITextureTransition> textureTransitions;
     HeapVector<RHIBufferTransition> bufferTransitions;
@@ -1774,42 +1847,48 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
         if (pResource->type == RDGResourceType::eTexture)
         {
             RHITexture* pTexture = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
-            if (!NeedsExternalTextureFirstUseBarrier(pTexture, access))
+            const RDGTextureResourceState currentState =
+                resourceStateTracker.GetTextureState(pTexture);
+            if (!NeedsExternalTextureFirstUseBarrier(currentState, access))
             {
-                pTexture->UpdateCurrentState(access.accessMode, access.textureUsage, nodeStages);
+                resourceStateTracker.UpdateTextureState(pTexture, access.accessMode,
+                                                        access.textureUsage, nodeStages);
                 continue;
             }
 
             RHITextureTransition textureTransition;
             textureTransition.pTexture         = pTexture;
-            textureTransition.oldUsage         = pTexture->GetCurrentUsage();
+            textureTransition.oldUsage         = currentState.usage;
             textureTransition.newUsage         = access.textureUsage;
-            textureTransition.oldAccessMode    = pTexture->GetCurrentAccessMode();
+            textureTransition.oldAccessMode    = currentState.accessMode;
             textureTransition.newAccessMode    = access.accessMode;
             textureTransition.subResourceRange = access.textureSubResourceRange;
             textureTransitions.push_back(textureTransition);
-            srcStages.SetFlag(pTexture->GetCurrentPipelineStages());
+            srcStages.SetFlag(currentState.pipelineStages);
             dstStages.SetFlag(nodeStages);
             m_recordedInitBarrierCount++;
         }
         else if (pResource->type == RDGResourceType::eBuffer)
         {
             RHIBuffer* pBuffer = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
-            if (!NeedsExternalBufferFirstUseBarrier(pBuffer, access))
+            const RDGBufferResourceState currentState =
+                resourceStateTracker.GetBufferState(pBuffer);
+            if (!NeedsExternalBufferFirstUseBarrier(currentState, access))
             {
-                pBuffer->UpdateCurrentState(access.accessMode, access.bufferUsage, nodeStages);
+                resourceStateTracker.UpdateBufferState(pBuffer, access.accessMode,
+                                                       access.bufferUsage, nodeStages);
                 continue;
             }
 
             RHIBufferTransition bufferTransition;
             bufferTransition.pBuffer       = pBuffer;
-            bufferTransition.oldUsage      = pBuffer->GetCurrentUsage();
+            bufferTransition.oldUsage      = currentState.usage;
             bufferTransition.newUsage      = access.bufferUsage;
-            bufferTransition.oldAccessMode = pBuffer->GetCurrentAccessMode();
+            bufferTransition.oldAccessMode = currentState.accessMode;
             bufferTransition.newAccessMode = access.accessMode;
             bufferTransition.offset        = 0;
             bufferTransitions.push_back(bufferTransition);
-            srcStages.SetFlag(pBuffer->GetCurrentPipelineStages());
+            srcStages.SetFlag(currentState.pipelineStages);
             dstStages.SetFlag(nodeStages);
             m_recordedInitBarrierCount++;
         }
@@ -1832,12 +1911,14 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode)
 
     for (const RHIBufferTransition& transition : bufferTransitions)
     {
-        UpdateResourceState(transition, dstStages);
+        resourceStateTracker.UpdateBufferState(transition.pBuffer, transition.newAccessMode,
+                                               transition.newUsage, dstStages);
     }
 
     for (const RHITextureTransition& transition : textureTransitions)
     {
-        UpdateResourceState(transition, dstStages);
+        resourceStateTracker.UpdateTextureState(transition.pTexture, transition.newAccessMode,
+                                                transition.newUsage, dstStages);
     }
 
     m_pCmdList->AddTransitions(srcStages, dstStages, {}, bufferTransitions, textureTransitions);

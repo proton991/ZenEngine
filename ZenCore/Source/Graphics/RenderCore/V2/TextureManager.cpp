@@ -56,7 +56,8 @@ void TextureManager::FlushPendingTextureUpdates()
     }
 
     uploadGraph.End();
-    uploadGraph.Execute(m_pRenderDevice->GetImmediateTransferCmdList());
+    m_pRenderDevice->ExecuteRenderGraph(uploadGraph,
+                                        m_pRenderDevice->GetImmediateTransferCmdList());
 
     for (const PendingTextureUpdate& update : m_pendingTextureUpdates)
     {

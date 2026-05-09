@@ -855,7 +855,7 @@ void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<Render
 
     for (size_t i = 0; i < numRenderCmdLists; ++i)
     {
-        rdgs[i]->Execute(cmdLists[i]);
+        m_rdgExecutor.Execute(*rdgs[i], cmdLists[i]);
     }
     EndFrame();
 
@@ -888,7 +888,7 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
 
     for (size_t i = 0; i < rdgs.size(); ++i)
     {
-        rdgs[i]->Execute(cmdLists[i]);
+        m_rdgExecutor.Execute(*rdgs[i], cmdLists[i]);
     }
 
     SubmitCommandLists(MakeVecView(cmdLists));
@@ -897,6 +897,11 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
     {
         m_graphicsCmdListPool.Release(pCmdList);
     }
+}
+
+void RenderDevice::ExecuteRenderGraph(RenderGraph& rdg, RHICommandList* pCmdList)
+{
+    m_rdgExecutor.Execute(rdg, pCmdList);
 }
 
 void RenderDevice::SubmitImmediateTransferCmdList()
@@ -1136,6 +1141,7 @@ void RenderDevice::DestroyTexture(RHITexture* pTexture)
     // }
     // textureRD->DecreaseRefCount();
     // m_textureMap.erase(textureRD->GetHandle());
+    m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pTexture);
     m_frames[m_currentFrame].texturesPendingFree.emplace_back(pTexture);
 }
 
@@ -1305,6 +1311,7 @@ void RenderDevice::UpdateBuffer(RHIBuffer* pBuffer,
 
 void RenderDevice::DestroyBuffer(RHIBuffer* pBufferHandle)
 {
+    m_rdgExecutor.GetResourceStateTracker().RemoveBufferState(pBufferHandle);
     GDynamicRHI->DestroyBuffer(pBufferHandle);
 }
 
@@ -1387,6 +1394,13 @@ RHIViewport* RenderDevice::CreateViewport(void* pWindow,
 
 void RenderDevice::DestroyViewport(RHIViewport* pViewport)
 {
+    if (pViewport != nullptr)
+    {
+        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pViewport->GetColorBackBuffer());
+        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(
+            pViewport->GetDepthStencilBackBuffer());
+    }
+
     auto it = m_viewports.begin();
     while (it != m_viewports.end())
     {
@@ -1405,6 +1419,9 @@ void RenderDevice::ResizeViewport(RHIViewport* pViewport, uint32_t width, uint32
         (pViewport->GetWidth() != width || pViewport->GetHeight() != height))
     {
         GDynamicRHI->SubmitAllGPUCommands();
+        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pViewport->GetColorBackBuffer());
+        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(
+            pViewport->GetDepthStencilBackBuffer());
         pViewport->Resize(width, height);
         BeginFrame();
     }
@@ -1704,6 +1721,7 @@ void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {
     for (RHITexture* pTexture : m_frames[frameIndex].texturesPendingFree)
     {
+        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pTexture);
         pTexture->ReleaseReference();
     }
     m_frames[frameIndex].texturesPendingFree.clear();

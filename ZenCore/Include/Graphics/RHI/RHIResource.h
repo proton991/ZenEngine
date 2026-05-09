@@ -368,35 +368,6 @@ public:
         return m_requiredSize;
     }
 
-    RHIAccessMode GetCurrentAccessMode() const
-    {
-        return m_currentAccessMode;
-    }
-
-    RHIBufferUsage GetCurrentUsage() const
-    {
-        return m_currentUsage;
-    }
-
-    BitField<RHIPipelineStageBits> GetCurrentPipelineStages() const
-    {
-        return m_currentPipelineStages;
-    }
-
-    void UpdateCurrentState(RHIAccessMode accessMode, RHIBufferUsage usage)
-    {
-        UpdateCurrentState(accessMode, usage, RHIBufferUsageToPipelineStage(usage));
-    }
-
-    void UpdateCurrentState(RHIAccessMode accessMode,
-                            RHIBufferUsage usage,
-                            BitField<RHIPipelineStageBits> pipelineStages)
-    {
-        m_currentAccessMode     = accessMode;
-        m_currentUsage          = usage;
-        m_currentPipelineStages = pipelineStages;
-    }
-
 protected:
     explicit RHIBuffer(const RHIBufferCreateInfo& createInfo) :
         RHIResource(RHIResourceType::eBuffer),
@@ -410,9 +381,6 @@ protected:
     uint32_t m_requiredSize{0};
     BitField<RHIBufferUsageFlagBits> m_usageFlags;
     RHIBufferAllocateType m_allocateType{RHIBufferAllocateType::eNone};
-    RHIAccessMode m_currentAccessMode{RHIAccessMode::eNone};
-    RHIBufferUsage m_currentUsage{RHIBufferUsage::eNone};
-    BitField<RHIPipelineStageBits> m_currentPipelineStages{RHIPipelineStageBits::eTopOfPipe};
     // BufferHandle m_handle;
 };
 
@@ -484,34 +452,15 @@ public:
         return m_baseInfo.mipmaps;
     }
 
-    RHIAccessMode GetCurrentAccessMode() const
+    RHITexture* GetPhysicalTexture()
     {
-        return GetStateOwner()->m_currentAccessMode;
+        return m_isProxy && m_pBaseTexture != nullptr ? const_cast<RHITexture*>(m_pBaseTexture) :
+                                                        this;
     }
 
-    RHITextureUsage GetCurrentUsage() const
+    const RHITexture* GetPhysicalTexture() const
     {
-        return GetStateOwner()->m_currentUsage;
-    }
-
-    BitField<RHIPipelineStageBits> GetCurrentPipelineStages() const
-    {
-        return GetStateOwner()->m_currentPipelineStages;
-    }
-
-    void UpdateCurrentState(RHIAccessMode accessMode, RHITextureUsage usage)
-    {
-        UpdateCurrentState(accessMode, usage, RHITextureUsageToPipelineStage(usage));
-    }
-
-    void UpdateCurrentState(RHIAccessMode accessMode,
-                            RHITextureUsage usage,
-                            BitField<RHIPipelineStageBits> pipelineStages)
-    {
-        RHITexture* pStateOwner              = GetStateOwner();
-        pStateOwner->m_currentAccessMode     = accessMode;
-        pStateOwner->m_currentUsage          = usage;
-        pStateOwner->m_currentPipelineStages = pipelineStages;
+        return m_isProxy && m_pBaseTexture != nullptr ? m_pBaseTexture : this;
     }
 
     bool IsRenderTarget() const
@@ -583,17 +532,6 @@ protected:
         m_subResourceRange.levelCount = m_baseInfo.mipmaps;
     }
 
-    RHITexture* GetStateOwner()
-    {
-        return m_isProxy && m_pBaseTexture != nullptr ? const_cast<RHITexture*>(m_pBaseTexture) :
-                                                        this;
-    }
-
-    const RHITexture* GetStateOwner() const
-    {
-        return m_isProxy && m_pBaseTexture != nullptr ? m_pBaseTexture : this;
-    }
-
     const RHITexture* m_pBaseTexture{nullptr};
 
     RHITextureCreateInfo m_baseInfo{};
@@ -603,9 +541,6 @@ protected:
     bool m_isProxy{};
 
     RHITextureSubResourceRange m_subResourceRange{};
-    RHIAccessMode m_currentAccessMode{RHIAccessMode::eNone};
-    RHITextureUsage m_currentUsage{RHITextureUsage::eNone};
-    BitField<RHIPipelineStageBits> m_currentPipelineStages{RHIPipelineStageBits::eTopOfPipe};
 };
 
 struct RHISamplerCreateInfo

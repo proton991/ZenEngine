@@ -5,6 +5,7 @@
 #include "Templates/Queue.h"
 #include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RHI/RHIDebug.h"
+#include "Graphics/RenderCore/V2/RenderGraph.h"
 #include "RenderCoreDefs.h"
 #include "Utils/UniquePtr.h"
 
@@ -370,6 +371,8 @@ public:
 
     void ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs);
 
+    void ExecuteRenderGraph(RenderGraph& rdg, RHICommandList* pCmdList);
+
     // todo: implement pool based recycle mechanism
     RHIRenderingLayout* AcquireRenderingLayout();
 
@@ -595,6 +598,7 @@ private:
     ObjectPool<RHICommandList, GraphicsCommandListPoolPolicy> m_graphicsCmdListPool;
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
+    RDGExecutor m_rdgExecutor;
 
     RendererServer* m_pRendererServer{nullptr};
     TextureManager* m_pTextureManager{nullptr};
