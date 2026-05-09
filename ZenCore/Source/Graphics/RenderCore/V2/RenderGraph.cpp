@@ -945,12 +945,13 @@ void RenderGraph::DeclareBufferAccessForPass(const RDGPassNode* pPassNode,
 
     RDGNodeBase* pBaseNode = GetNodeBaseById(pPassNode->id);
 
+    if (usage == RHIBufferUsage::eIndirectBuffer)
+    {
+        pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eDrawIndirect);
+    }
+
     if (pPassNode->type == RDGNodeType::eGraphicsPass)
     {
-        if (usage == RHIBufferUsage::eIndirectBuffer)
-        {
-            pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eDrawIndirect);
-        }
         pBaseNode->selfStages.SetFlags(RHIPipelineStageBits::eFragmentShader);
     }
     if (pPassNode->type == RDGNodeType::eComputePass)
