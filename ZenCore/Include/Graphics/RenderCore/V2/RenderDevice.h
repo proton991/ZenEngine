@@ -371,7 +371,21 @@ public:
 
     void ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs);
 
-    void ExecuteRenderGraph(RenderGraph& rdg, RHICommandList* pCmdList);
+    void ExecuteRenderGraph(RenderGraph& rdg);
+
+    void NotifyExternalTextureState(RHITexture* pTexture,
+                                    RHIAccessMode accessMode,
+                                    RHITextureUsage usage,
+                                    BitField<RHIPipelineStageBits> pipelineStages);
+
+    void NotifyExternalBufferState(RHIBuffer* pBuffer,
+                                   RHIAccessMode accessMode,
+                                   RHIBufferUsage usage,
+                                   BitField<RHIPipelineStageBits> pipelineStages);
+
+    void InvalidateExternalTextureState(RHITexture* pTexture);
+
+    void InvalidateExternalBufferState(RHIBuffer* pBuffer);
 
     // todo: implement pool based recycle mechanism
     RHIRenderingLayout* AcquireRenderingLayout();
@@ -414,8 +428,6 @@ public:
     // RHITexture* GetBaseTextureForProxy(const RHITexture* handle) const;
 
     // bool IsProxyTexture(const RHITexture* handle) const;
-
-    void GenerateTextureMipmaps(RHITexture* pTextureHandle, RHICommandList* pCmdList);
 
     RHIBuffer* CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData);
 
@@ -486,18 +498,6 @@ public:
         return m_framesCounter;
     }
 
-    RHICommandList* GetImmediateTransferCmdList() const
-    {
-        return m_pImmediateTransferCmdList;
-    }
-
-    RHICommandList* GetImmediateGraphicsCmdList() const
-    {
-        return m_pImmediateGraphicsCmdList;
-    }
-
-    void SubmitImmediateTransferCmdList();
-
     // RHICommandList* GetCurrentCmdList() const
     // {
     //     return m_frames[m_currentFrame].pGfxCmdList;
@@ -535,6 +535,8 @@ private:
     void BeginFrame();
 
     void EndFrame();
+    
+    void SubmitImmediateTransferCmdList();
 
     void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
 
@@ -551,14 +553,14 @@ private:
                               uint32_t dataSize,
                               const uint8_t* pData);
 
-    void UpdateTextureOneTime(RHITexture* pTextureHandle,
-                              const Vec3i& textureSize,
-                              uint32_t dataSize,
-                              const uint8_t* pData);
+    // void UpdateTextureOneTime(RHITexture* pTextureHandle,
+    //                           const Vec3i& textureSize,
+    //                           uint32_t dataSize,
+    //                           const uint8_t* pData);
 
-    void UpdateTextureBatch(RHITexture* pTextureHandle,
-                            const Vec3i& textureSize,
-                            const uint8_t* pData);
+    // void UpdateTextureBatch(RHITexture* pTextureHandle,
+    //                         const Vec3i& textureSize,
+    //                         const uint8_t* pData);
 
     void DestroyViewport(RHIViewport* pViewport);
 
@@ -593,9 +595,8 @@ private:
     // DynamicRHI* GDynamicRHI{nullptr};
     RHIDebug* m_pRHIDebug{nullptr};
 
-    RHICommandList* m_pImmediateGraphicsCmdList{nullptr};
-    RHICommandList* m_pImmediateTransferCmdList{nullptr};
     ObjectPool<RHICommandList, GraphicsCommandListPoolPolicy> m_graphicsCmdListPool;
+    RHICommandList* m_pImmediateTransferCmdList{nullptr};
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
     RDGExecutor m_rdgExecutor;

@@ -34,6 +34,11 @@ bool TextureSubResourceRangesOverlap(const RHITextureSubResourceRange& a,
         RangesOverlap(a.baseArrayLayer, a.layerCount, b.baseArrayLayer, b.layerCount);
 }
 
+uint32_t GetMipExtent(uint32_t extent, uint32_t mipLevel)
+{
+    return std::max(1u, extent >> mipLevel);
+}
+
 bool ReadAccessRequiresLayoutTransition(const RDGResource* pResource,
                                         const RDGAccess& previousRead,
                                         const RDGAccess& currentRead)
@@ -95,6 +100,21 @@ bool NeedsExternalBufferFirstUseBarrier(const RDGBufferResourceState& currentSta
 
     return !(currentState.accessMode == RHIAccessMode::eRead &&
              access.accessMode == RHIAccessMode::eRead);
+}
+
+bool PipelineStagesAreTransferQueueCompatible(BitField<RHIPipelineStageBits> pipelineStages)
+{
+    constexpr int64_t transferQueueStages = static_cast<int64_t>(RHIPipelineStageBits::eTopOfPipe) |
+        static_cast<int64_t>(RHIPipelineStageBits::eTransfer) |
+        static_cast<int64_t>(RHIPipelineStageBits::eBottomOfPipe);
+
+    return (static_cast<int64_t>(pipelineStages) & ~transferQueueStages) == 0;
+}
+
+bool ShouldLogRDGExecuteSummary(const std::string& rdgTag)
+{
+    return rdgTag != "buffer_upload" && rdgTag != "texture_upload" &&
+        rdgTag != "texture_upload_one_time" && rdgTag != "texture_upload_batch";
 }
 
 // void UpdateResourceState(ResourceStateTracker& resourceStateTracker,
@@ -182,6 +202,11 @@ void ResourceStateTracker::RemoveBufferState(const RHIBuffer* pBuffer)
 void RDGExecutor::Execute(RenderGraph& graph, RHICommandList* pCmdList)
 {
     graph.Execute(pCmdList, m_resourceStateTracker);
+}
+
+bool RDGExecutor::ShouldExecuteOnTransferQueue(const RenderGraph& graph) const
+{
+    return graph.CanExecuteOnTransferQueue(m_resourceStateTracker);
 }
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* pParent,
@@ -1304,8 +1329,66 @@ void RenderGraph::Compile()
     AttachFirstUseBarriers();
     AttachIntraGraphBarriers();
     ValidateCompiledGraph();
-    m_executeSummaryLogPending = true;
+    m_executeSummaryLogPending = ShouldLogRDGExecuteSummary(m_rdgTag);
     m_executionState           = RDGExecutionState::eCompiled;
+}
+
+bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& resourceStateTracker) const
+{
+    for (const RDGCompiledNode& compiledNode : m_compiledNodes)
+    {
+        const RDGNodeBase* pNode = GetNodeBaseById(compiledNode.nodeId);
+        if (pNode->type == RDGNodeType::eGraphicsPass || pNode->type == RDGNodeType::eComputePass)
+        {
+            return false;
+        }
+
+        if (!PipelineStagesAreTransferQueueCompatible(compiledNode.prologueSrcStages) ||
+            !PipelineStagesAreTransferQueueCompatible(compiledNode.prologueDstStages))
+        {
+            return false;
+        }
+
+        for (const RDGAccess& access : compiledNode.initialResourceAccesses)
+        {
+            if (access.resourceId < 0 ||
+                static_cast<size_t>(static_cast<int32_t>(access.resourceId)) >= m_resources.size())
+            {
+                return false;
+            }
+
+            const RDGResource* pResource = m_resources[access.resourceId];
+            if (pResource->type == RDGResourceType::eTexture)
+            {
+                const RHITexture* pTexture =
+                    dynamic_cast<const RHITexture*>(pResource->pPhysicalRes);
+                const RDGTextureResourceState currentState =
+                    resourceStateTracker.GetTextureState(pTexture);
+                if (NeedsExternalTextureFirstUseBarrier(currentState, access) &&
+                    !PipelineStagesAreTransferQueueCompatible(currentState.pipelineStages))
+                {
+                    return false;
+                }
+            }
+            else if (pResource->type == RDGResourceType::eBuffer)
+            {
+                const RHIBuffer* pBuffer = dynamic_cast<const RHIBuffer*>(pResource->pPhysicalRes);
+                const RDGBufferResourceState currentState =
+                    resourceStateTracker.GetBufferState(pBuffer);
+                if (NeedsExternalBufferFirstUseBarrier(currentState, access) &&
+                    !PipelineStagesAreTransferQueueCompatible(currentState.pipelineStages))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 void RenderGraph::BuildCompiledNodeList()
@@ -1536,6 +1619,86 @@ void RenderGraph::Execute(RHICommandList* pCmdList, ResourceStateTracker& resour
     m_executionState = RDGExecutionState::eCompiled;
 }
 
+void RenderGraph::EmitTextureMipmapGeneration(RHITexture* pTexture)
+{
+    const RHITextureCreateInfo& info = pTexture->GetBaseInfo();
+    if (info.mipmaps <= 1)
+    {
+        return;
+    }
+
+    const RHITextureSubResourceRange textureRange = pTexture->GetSubResourceRange();
+
+    auto makeMipRange = [&](uint32_t mipLevel) {
+        RHITextureSubResourceRange range = textureRange;
+        range.baseMipLevel               = mipLevel;
+        range.levelCount                 = 1;
+        return range;
+    };
+
+    auto makeMipLayers = [&](uint32_t mipLevel) {
+        RHITextureSubresourceLayers layers{};
+        layers.aspect         = textureRange.aspect;
+        layers.mipmap         = mipLevel;
+        layers.baseArrayLayer = textureRange.baseArrayLayer;
+        layers.layerCount     = textureRange.layerCount;
+        return layers;
+    };
+
+    auto emitTransition = [&](uint32_t mipLevel, RHIAccessMode oldAccess, RHIAccessMode newAccess,
+                              RHITextureUsage oldUsage, RHITextureUsage newUsage) {
+        RHITextureTransition transition{};
+        transition.oldAccessMode    = oldAccess;
+        transition.newAccessMode    = newAccess;
+        transition.pTexture         = pTexture;
+        transition.oldUsage         = oldUsage;
+        transition.newUsage         = newUsage;
+        transition.subResourceRange = makeMipRange(mipLevel);
+
+        BitField<RHIPipelineStageBits> transferStage;
+        transferStage.SetFlag(RHIPipelineStageBits::eTransfer);
+        m_pCmdList->AddTransitions(transferStage, transferStage, {}, {},
+                                   MakeVecView(&transition, 1));
+    };
+
+    emitTransition(0, RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
+                   RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
+
+    for (uint32_t mipLevel = 1; mipLevel < info.mipmaps; ++mipLevel)
+    {
+        RHITextureBlitRegion region{};
+        region.srcOffset0      = {0, 0, 0};
+        region.srcOffset1      = {static_cast<int32_t>(GetMipExtent(info.width, mipLevel - 1)),
+                                  static_cast<int32_t>(GetMipExtent(info.height, mipLevel - 1)),
+                                  static_cast<int32_t>(GetMipExtent(info.depth, mipLevel - 1))};
+        region.dstOffset0      = {0, 0, 0};
+        region.dstOffset1      = {static_cast<int32_t>(GetMipExtent(info.width, mipLevel)),
+                                  static_cast<int32_t>(GetMipExtent(info.height, mipLevel)),
+                                  static_cast<int32_t>(GetMipExtent(info.depth, mipLevel))};
+        region.srcSubresources = makeMipLayers(mipLevel - 1);
+        region.dstSubresources = makeMipLayers(mipLevel);
+
+        m_pCmdList->BlitTexture(pTexture, pTexture, MakeVecView(&region, 1),
+                                RHISamplerFilter::eLinear);
+
+        emitTransition(mipLevel, RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
+                       RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
+    }
+
+    RHITextureTransition finalTransition{};
+    finalTransition.oldAccessMode    = RHIAccessMode::eRead;
+    finalTransition.newAccessMode    = RHIAccessMode::eReadWrite;
+    finalTransition.pTexture         = pTexture;
+    finalTransition.oldUsage         = RHITextureUsage::eTransferSrc;
+    finalTransition.newUsage         = RHITextureUsage::eTransferDst;
+    finalTransition.subResourceRange = textureRange;
+
+    BitField<RHIPipelineStageBits> transferStage;
+    transferStage.SetFlag(RHIPipelineStageBits::eTransfer);
+    m_pCmdList->AddTransitions(transferStage, transferStage, {}, {},
+                               MakeVecView(&finalTransition, 1));
+}
+
 void RenderGraph::RunNode(RDGNodeBase* pBase)
 {
     RDGNodeType type = pBase->type;
@@ -1605,7 +1768,7 @@ void RenderGraph::RunNode(RDGNodeBase* pBase)
         case RDGNodeType::eGenTextureMipmap:
         {
             RDGTextureMipmapGenNode* pNode = reinterpret_cast<RDGTextureMipmapGenNode*>(pBase);
-            m_pCmdList->GenerateTextureMipmaps(pNode->pTexture);
+            EmitTextureMipmapGeneration(pNode->pTexture);
         }
         break;
 

@@ -99,6 +99,23 @@ void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
     //}
 }
 
+void RHICommandList::BlitTexture(RHITexture* pSrcTexture,
+                                 RHITexture* pDstTexture,
+                                 VectorView<RHITextureBlitRegion> regions,
+                                 RHISamplerFilter filter)
+{
+    RHICommandBlitTexture* pCmd =
+        ALLOC_CMD(RHICommandBlitTexture)(pSrcTexture, pDstTexture, filter);
+
+    RHITextureBlitRegion* pRegions = AllocateCmdData<RHITextureBlitRegion>(regions.size());
+    if (pRegions != nullptr)
+    {
+        std::ranges::copy(regions, pRegions);
+    }
+
+    pCmd->blitRegions = MakeVecView(pRegions, regions.size());
+}
+
 void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
                                          RHIBuffer* pDstBuffer,
                                          VectorView<RHIBufferTextureCopyRegion> regions)
@@ -315,10 +332,5 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
 void RHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
 {
     ALLOC_CMD(RHICommandAddTextureTransition)(pTexture, newLayout);
-}
-
-void RHICommandList::GenerateTextureMipmaps(RHITexture* pTexture)
-{
-    ALLOC_CMD(RHICommandGenTextureMipmaps)(pTexture);
 }
 } // namespace zen

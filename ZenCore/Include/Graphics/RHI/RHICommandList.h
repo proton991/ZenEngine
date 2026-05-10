@@ -103,8 +103,6 @@ public:
                                    VectorView<RHIBufferTransition> bufferTransitions,
                                    VectorView<RHITextureTransition> textureTransitions) = 0;
 
-    virtual void RHIGenTextureMipmaps(RHITexture* pTexture) = 0;
-
     virtual void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) = 0;
 
     virtual void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) = 0;
@@ -120,6 +118,11 @@ public:
     virtual void RHICopyTexture(RHITexture* pSrcTexture,
                                 RHITexture* pDstTexture,
                                 VectorView<RHITextureCopyRegion> regions) = 0;
+
+    virtual void RHIBlitTexture(RHITexture* pSrcTexture,
+                                RHITexture* pDstTexture,
+                                VectorView<RHITextureBlitRegion> regions,
+                                RHISamplerFilter filter) = 0;
 
 
     virtual void RHICopyTextureToBuffer(RHITexture* pSrcTex,
@@ -298,6 +301,27 @@ struct RHICommandCopyTexture : public RHICommand
     void Execute(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHICopyTexture(pSrcTexture, pDstTexture, copyRegions);
+    }
+};
+
+struct RHICommandBlitTexture : public RHICommand
+{
+    RHITexture* pSrcTexture;
+    RHITexture* pDstTexture;
+    VectorView<RHITextureBlitRegion> blitRegions;
+    RHISamplerFilter filter;
+
+    RHICommandBlitTexture(RHITexture* pSrcTexture,
+                          RHITexture* pDstTexture,
+                          RHISamplerFilter filter) :
+        pSrcTexture(pSrcTexture),
+        pDstTexture(pDstTexture),
+        filter(filter)
+    {}
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHIBlitTexture(pSrcTexture, pDstTexture, blitRegions, filter);
     }
 };
 
@@ -713,18 +737,6 @@ struct RHICommandAddTextureTransition : public RHICommand
     }
 };
 
-struct RHICommandGenTextureMipmaps : public RHICommand
-{
-    RHITexture* pTexture;
-
-    RHICommandGenTextureMipmaps(RHITexture* pTexture) : pTexture(pTexture) {}
-
-    void Execute(RHICommandListBase& cmdList) override
-    {
-        cmdList.GetContext()->RHIGenTextureMipmaps(pTexture);
-    }
-};
-
 // Recorded command-list API used by the active RenderCore/V2 path.
 class RHICommandList : public RHICommandListBase
 {
@@ -748,6 +760,11 @@ public:
     void CopyTexture(RHITexture* pSrcTextureHandle,
                      RHITexture* pDstTextureHandle,
                      VectorView<RHITextureCopyRegion> regions);
+
+    void BlitTexture(RHITexture* pSrcTextureHandle,
+                     RHITexture* pDstTextureHandle,
+                     VectorView<RHITextureBlitRegion> regions,
+                     RHISamplerFilter filter);
 
     void CopyTextureToBuffer(RHITexture* pSrcTex,
                              RHIBuffer* pDstBuffer,
@@ -812,8 +829,6 @@ public:
                         VectorView<RHITextureTransition> textureTransitions);
 
     void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
-
-    void GenerateTextureMipmaps(RHITexture* pTexture);
     // todo: add BeginRendering/EndRendering && BeginRenderPass
 };
 } // namespace zen

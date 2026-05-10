@@ -92,5 +92,7 @@ void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
 
 void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy);
 
+void ToVkImageBlit(const RHITextureBlitRegion& region, VkImageBlit* pBlit);
+
 void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* pCopy);
 } // namespace zen

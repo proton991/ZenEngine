@@ -57,6 +57,11 @@ public:
                              RHITexture* pDstTextureHandle,
                              VectorView<RHITextureCopyRegion> regions) = 0;
 
+    virtual void BlitTexture(RHITexture* pSrcTextureHandle,
+                             RHITexture* pDstTextureHandle,
+                             VectorView<RHITextureBlitRegion> regions,
+                             RHISamplerFilter filter) = 0;
+
     virtual void CopyTextureToBuffer(RHITexture* pTextureHandle,
                                      RHIBuffer* pBuffer,
                                      VectorView<RHIBufferTextureCopyRegion> regions) = 0;
@@ -140,8 +145,6 @@ public:
     virtual void SetLineWidth(float width) = 0;
 
     virtual void SetBlendConstants(const Color& color) = 0;
-
-    virtual void GenerateTextureMipmaps(RHITexture* pTextureHandle) = 0;
 
     virtual void AddTextureTransition(RHITexture* pTextureHandle, RHITextureLayout newLayout) = 0;
 };

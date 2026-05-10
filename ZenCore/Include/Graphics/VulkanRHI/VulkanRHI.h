@@ -277,8 +277,8 @@ private:
 
     // HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
 
-    // used when ChangeTextureLayout or AddPipelineBarrier is called,
-    // primarily applied outside the RenderGraph.
+    // Debug-only mirror of layouts requested through explicit barriers. RDG/RenderDevice resource
+    // state is the authority for deciding whether a transition is needed.
     HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
 
     HashMap<uint32_t, VkRenderPass> m_renderPassCache;

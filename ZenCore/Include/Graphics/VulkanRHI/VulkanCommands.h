@@ -67,6 +67,11 @@ public:
                      RHITexture* pDstTexture,
                      VectorView<RHITextureCopyRegion> regions) final;
 
+    void BlitTexture(RHITexture* pSrcTexture,
+                     RHITexture* pDstTexture,
+                     VectorView<RHITextureBlitRegion> regions,
+                     RHISamplerFilter filter) final;
+
     void CopyTextureToBuffer(RHITexture* pTexture,
                              RHIBuffer* pBuffer,
                              VectorView<RHIBufferTextureCopyRegion> regions) final;
@@ -156,8 +161,6 @@ public:
     }
 
     void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) final;
-
-    void GenerateTextureMipmaps(RHITexture* pTexture) final;
 
     void ChangeImageLayout(VkImage image,
                            VkImageLayout srcLayout,

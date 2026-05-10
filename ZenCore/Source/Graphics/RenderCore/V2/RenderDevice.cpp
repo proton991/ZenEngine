@@ -28,13 +28,13 @@ static void CopyRegion(uint8_t const* pSrc,
     uint32_t dstOffset = 0;
     for (uint32_t y = srcH; y > 0; y--)
     {
-        uint8_t const* pSrc = pSrc + srcOffset;
-        uint8_t* pDst       = pDst + dstOffset;
+        uint8_t const* pSrcRow = pSrc + srcOffset;
+        uint8_t* pDstRow       = pDst + dstOffset;
         for (uint32_t x = srcW * unitSize; x > 0; x--)
         {
-            *pDst = *pSrc;
-            pSrc++;
-            pDst++;
+            *pDstRow = *pSrcRow;
+            pSrcRow++;
+            pDstRow++;
         }
         srcOffset += srcFullW * unitSize;
         dstOffset += dstStride;
@@ -729,10 +729,8 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
     m_pBufferStagingMgr =
         ZEN_NEW() BufferStagingManager(this, STAGING_BLOCK_SIZE_BYTES, STAGING_POOL_SIZE_BYTES);
     m_pBufferStagingMgr->Init(m_numFrames);
-    m_pTextureStagingMgr = ZEN_NEW() TextureStagingManager(this);
-    m_pTextureManager    = ZEN_NEW() TextureManager(this, m_pTextureStagingMgr);
-    m_pImmediateGraphicsCmdList =
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics));
+    m_pTextureStagingMgr        = ZEN_NEW() TextureStagingManager(this);
+    m_pTextureManager           = ZEN_NEW() TextureManager(this, m_pTextureStagingMgr);
     m_pImmediateTransferCmdList = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
 
     m_frames.reserve(m_numFrames);
@@ -753,6 +751,7 @@ void RenderDevice::Destroy()
 {
     FlushPendingBufferUpdates();
     m_pTextureManager->FlushPendingTextureUpdates();
+    WaitForPreviousFrames();
 
     for (auto* pViewport : m_viewports)
     {
@@ -801,20 +800,6 @@ void RenderDevice::Destroy()
 
     m_deletionQueue.Flush();
 
-    if (m_pImmediateGraphicsCmdList != nullptr)
-    {
-        m_pImmediateGraphicsCmdList->WaitUntilCompleted();
-        ZEN_DELETE(m_pImmediateGraphicsCmdList);
-        m_pImmediateGraphicsCmdList = nullptr;
-    }
-
-    if (m_pImmediateTransferCmdList != nullptr)
-    {
-        m_pImmediateTransferCmdList->WaitUntilCompleted();
-        ZEN_DELETE(m_pImmediateTransferCmdList);
-        m_pImmediateTransferCmdList = nullptr;
-    }
-
     m_pBufferStagingMgr->Destroy();
     ZEN_DELETE(m_pBufferStagingMgr);
 
@@ -835,6 +820,12 @@ void RenderDevice::Destroy()
     m_graphicsCmdListPool.ForEachObject(
         [](RHICommandList* pCmdList) { pCmdList->WaitUntilCompleted(); });
     m_graphicsCmdListPool.Destroy();
+    if (m_pImmediateTransferCmdList != nullptr)
+    {
+        m_pImmediateTransferCmdList->WaitUntilCompleted();
+        ZEN_DELETE(m_pImmediateTransferCmdList);
+        m_pImmediateTransferCmdList = nullptr;
+    }
 
     ZEN_DELETE(m_pRHIDebug);
 
@@ -868,7 +859,18 @@ void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<Render
         }
     }
 
+    InvalidateExternalTextureState(pViewport->GetColorBackBuffer());
+    InvalidateExternalTextureState(pViewport->GetDepthStencilBackBuffer());
     GDynamicRHI->EndDrawingViewport(pViewport, cmdLists[numRenderCmdLists], true);
+    NotifyExternalTextureState(
+        pViewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
+        RHITextureUsage::eColorAttachment,
+        BitField<RHIPipelineStageBits>(RHIPipelineStageBits::eColorAttachmentOutput));
+    BitField<RHIPipelineStageBits> depthStages;
+    depthStages.SetFlags(RHIPipelineStageBits::eEarlyFragmentTests,
+                         RHIPipelineStageBits::eLateFragmentTests);
+    NotifyExternalTextureState(pViewport->GetDepthStencilBackBuffer(), RHIAccessMode::eReadWrite,
+                               RHITextureUsage::eDepthStencilAttachment, depthStages);
     m_graphicsCmdListPool.Release(cmdLists[numRenderCmdLists]);
 }
 
@@ -899,17 +901,75 @@ void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
     }
 }
 
-void RenderDevice::ExecuteRenderGraph(RenderGraph& rdg, RHICommandList* pCmdList)
+void RenderDevice::ExecuteRenderGraph(RenderGraph& rdg)
 {
+    const bool useTransferCmdList = m_rdgExecutor.ShouldExecuteOnTransferQueue(rdg);
+    RHICommandList* pCmdList =
+        useTransferCmdList ? m_pImmediateTransferCmdList : m_graphicsCmdListPool.Acquire();
+
     m_rdgExecutor.Execute(rdg, pCmdList);
+
+    if (useTransferCmdList)
+    {
+        SubmitImmediateTransferCmdList();
+    }
+    else
+    {
+        RHICommandList* pCmdLists[] = {pCmdList};
+        SubmitCommandLists(MakeVecView(pCmdLists));
+        m_graphicsCmdListPool.Release(pCmdList);
+    }
 }
 
 void RenderDevice::SubmitImmediateTransferCmdList()
 {
+    VERIFY_EXPR(m_pImmediateTransferCmdList != nullptr);
+
     RHICommandList* pCmdLists[] = {m_pImmediateTransferCmdList};
     SubmitCommandLists(MakeVecView(pCmdLists));
+
+    // Dedicated transfer queue work currently has no cross-queue semaphore dependency
+    // into following graphics submissions, so wait here before the list is reset/reused.
     m_pImmediateTransferCmdList->WaitUntilCompleted();
     m_pImmediateTransferCmdList->Reset();
+}
+
+void RenderDevice::NotifyExternalTextureState(RHITexture* pTexture,
+                                              RHIAccessMode accessMode,
+                                              RHITextureUsage usage,
+                                              BitField<RHIPipelineStageBits> pipelineStages)
+{
+    if (pTexture == nullptr)
+    {
+        return;
+    }
+
+    m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(pTexture, accessMode, usage,
+                                                               pipelineStages);
+}
+
+void RenderDevice::NotifyExternalBufferState(RHIBuffer* pBuffer,
+                                             RHIAccessMode accessMode,
+                                             RHIBufferUsage usage,
+                                             BitField<RHIPipelineStageBits> pipelineStages)
+{
+    if (pBuffer == nullptr)
+    {
+        return;
+    }
+
+    m_rdgExecutor.GetResourceStateTracker().UpdateBufferState(pBuffer, accessMode, usage,
+                                                              pipelineStages);
+}
+
+void RenderDevice::InvalidateExternalTextureState(RHITexture* pTexture)
+{
+    m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pTexture);
+}
+
+void RenderDevice::InvalidateExternalBufferState(RHIBuffer* pBuffer)
+{
+    m_rdgExecutor.GetResourceStateTracker().RemoveBufferState(pBuffer);
 }
 
 void RenderDevice::FlushPendingBufferUpdates()
@@ -926,8 +986,17 @@ void RenderDevice::FlushPendingBufferUpdates()
                                                 update.copyRegion);
     }
 
-    pendingBufferUpdates.clear();
     SubmitImmediateTransferCmdList();
+
+    BitField<RHIPipelineStageBits> transferStage;
+    transferStage.SetFlag(RHIPipelineStageBits::eTransfer);
+    for (const RenderFrame::PendingBufferUpdate& update : pendingBufferUpdates)
+    {
+        NotifyExternalBufferState(update.pDstBuffer, RHIAccessMode::eReadWrite,
+                                  RHIBufferUsage::eTransferDst, transferStage);
+    }
+
+    pendingBufferUpdates.clear();
 }
 
 void RenderDevice::ResolveBufferStagingFlushAction(StagingFlushAction action)
@@ -1141,7 +1210,7 @@ void RenderDevice::DestroyTexture(RHITexture* pTexture)
     // }
     // textureRD->DecreaseRefCount();
     // m_textureMap.erase(textureRD->GetHandle());
-    m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pTexture);
+    InvalidateExternalTextureState(pTexture);
     m_frames[m_currentFrame].texturesPendingFree.emplace_back(pTexture);
 }
 
@@ -1166,11 +1235,6 @@ void RenderDevice::DestroyTexture(RHITexture* pTexture)
 // {
 //     return m_pTextureManager->IsProxyTexture(handle);
 // }
-
-void RenderDevice::GenerateTextureMipmaps(RHITexture* pTextureHandle, RHICommandList* pCmdList)
-{
-    pCmdList->GenerateTextureMipmaps(pTextureHandle);
-}
 
 RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pData)
 {
@@ -1311,7 +1375,7 @@ void RenderDevice::UpdateBuffer(RHIBuffer* pBuffer,
 
 void RenderDevice::DestroyBuffer(RHIBuffer* pBufferHandle)
 {
-    m_rdgExecutor.GetResourceStateTracker().RemoveBufferState(pBufferHandle);
+    InvalidateExternalBufferState(pBufferHandle);
     GDynamicRHI->DestroyBuffer(pBufferHandle);
 }
 
@@ -1396,9 +1460,8 @@ void RenderDevice::DestroyViewport(RHIViewport* pViewport)
 {
     if (pViewport != nullptr)
     {
-        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pViewport->GetColorBackBuffer());
-        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(
-            pViewport->GetDepthStencilBackBuffer());
+        InvalidateExternalTextureState(pViewport->GetColorBackBuffer());
+        InvalidateExternalTextureState(pViewport->GetDepthStencilBackBuffer());
     }
 
     auto it = m_viewports.begin();
@@ -1419,9 +1482,8 @@ void RenderDevice::ResizeViewport(RHIViewport* pViewport, uint32_t width, uint32
         (pViewport->GetWidth() != width || pViewport->GetHeight() != height))
     {
         GDynamicRHI->SubmitAllGPUCommands();
-        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pViewport->GetColorBackBuffer());
-        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(
-            pViewport->GetDepthStencilBackBuffer());
+        InvalidateExternalTextureState(pViewport->GetColorBackBuffer());
+        InvalidateExternalTextureState(pViewport->GetDepthStencilBackBuffer());
         pViewport->Resize(width, height);
         BeginFrame();
     }
@@ -1482,120 +1544,120 @@ void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* pTexture)
     m_pTextureManager->LoadTextureEnv(fullPath, pTexture);
 }
 
-void RenderDevice::UpdateTextureOneTime(RHITexture* pTextureHandle,
-                                        const Vec3i& textureSize,
-                                        uint32_t dataSize,
-                                        const uint8_t* pData)
-{
-    bool submittedTransfer = false;
+// void RenderDevice::UpdateTextureOneTime(RHITexture* pTextureHandle,
+//                                         const Vec3i& textureSize,
+//                                         uint32_t dataSize,
+//                                         const uint8_t* pData)
+// {
+//     // NOT support mipmap
+//     const uint32_t requiredAlign = 4;
+//     const uint32_t pixelSize     = 4;
+//     StagingSubmitResult submitResult;
+//     m_pBufferStagingMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
+//     if (submitResult.flushAction == StagingFlushAction::ePartial)
+//     {
+//         WaitForPreviousFrames();
+//     }
+//     else if (submitResult.flushAction == StagingFlushAction::eFull)
+//     {
+//         WaitForAllFrames();
+//     }
+//     m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
+//
+//     // map staging buffer
+//     uint8_t* pDataPtr = submitResult.pBuffer->Map();
+//     pDataPtr += submitResult.writeOffset;
+//
+//     // copy
+//     memcpy(pDataPtr, pData, submitResult.writeSize);
+//
+//     // unmap
+//     submitResult.pBuffer->Unmap();
+//     // copy to gpu memory
+//     RHIBufferTextureCopyRegion copyRegion{};
+//     copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+//     copyRegion.bufferOffset  = submitResult.writeOffset;
+//     copyRegion.textureOffset = {0, 0, 0};
+//     copyRegion.textureSize   = textureSize;
+//
+//     m_pBufferStagingMgr->EndSubmit(&submitResult);
+//
+//     RHIBufferTextureCopySource copySource{submitResult.pBuffer, copyRegion};
+//     RenderGraph uploadGraph("texture_upload_one_time");
+//     uploadGraph.Begin();
+//     uploadGraph.AddTextureUpdateNode(pTextureHandle, MakeVecView(&copySource, 1));
+//     uploadGraph.End();
+//     ExecuteRenderGraph(uploadGraph);
+//
+//     m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+// }
 
-    // NOT support mipmap
-    // TODO: remove hard code.
-    const uint32_t requiredAlign = 4;
-    const uint32_t pixelSize     = 4;
-    StagingSubmitResult submitResult;
-    m_pBufferStagingMgr->BeginSubmit(dataSize, &submitResult, requiredAlign);
-    if (submitResult.flushAction == StagingFlushAction::ePartial)
-    {
-        WaitForPreviousFrames();
-    }
-    else if (submitResult.flushAction == StagingFlushAction::eFull)
-    {
-        WaitForAllFrames();
-    }
-    m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
-
-    // map staging buffer
-    uint8_t* pDataPtr = submitResult.pBuffer->Map();
-    pDataPtr += submitResult.writeOffset;
-
-    // copy
-    memcpy(pDataPtr, pData, submitResult.writeSize);
-
-    // unmap
-    submitResult.pBuffer->Unmap();
-    // copy to gpu memory
-    RHIBufferTextureCopyRegion copyRegion{};
-    copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-    copyRegion.bufferOffset  = submitResult.writeOffset;
-    copyRegion.textureOffset = {0, 0, 0};
-    copyRegion.textureSize   = textureSize;
-    m_pImmediateTransferCmdList->CopyBufferToTexture(submitResult.pBuffer, pTextureHandle,
-                                                     copyRegion);
-    submittedTransfer = true;
-
-    m_pBufferStagingMgr->EndSubmit(&submitResult);
-
-    if (submittedTransfer)
-    {
-        SubmitImmediateTransferCmdList();
-        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
-    }
-}
-
-void RenderDevice::UpdateTextureBatch(RHITexture* pTextureHandle,
-                                      const Vec3i& textureSize,
-                                      const uint8_t* pData)
-{
-    // not support mipmap
-    bool submittedTransfer = false;
-    uint32_t requiredAlign = 4;
-    uint32_t regionSize    = TEXTURE_UPLOAD_REGION_SIZE;
-
-    const uint32_t width     = textureSize.x;
-    const uint32_t height    = textureSize.y;
-    const uint32_t depth     = textureSize.z;
-    const uint32_t pixelSize = 4;
-    for (uint32_t z = 0; z < depth; z++)
-    {
-        for (uint32_t y = 0; y < height; y += regionSize)
-        {
-            for (uint32_t x = 0; x < width; x += regionSize)
-            {
-                uint32_t regionWidth  = std::min(regionSize, width - x);
-                uint32_t regionHeight = std::min(regionSize, height - y);
-                uint32_t imageStride  = regionWidth * pixelSize;
-                uint32_t toSubmit     = imageStride * regionHeight;
-                StagingSubmitResult submitResult;
-                m_pBufferStagingMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
-                if (submitResult.flushAction == StagingFlushAction::ePartial)
-                {
-                    WaitForPreviousFrames();
-                }
-                else if (submitResult.flushAction == StagingFlushAction::eFull)
-                {
-                    WaitForAllFrames();
-                }
-                m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
-
-                // map staging buffer
-                uint8_t* pDataPtr = submitResult.pBuffer->Map();
-                // copy
-                CopyRegion(pData, pDataPtr + submitResult.writeOffset, x, y, regionWidth,
-                           regionHeight, width, imageStride, pixelSize);
-                // unmap
-                submitResult.pBuffer->Unmap();
-                // copy to gpu memory
-                RHIBufferTextureCopyRegion copyRegion{};
-                copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-                copyRegion.bufferOffset  = submitResult.writeOffset;
-                copyRegion.textureOffset = {x, y, z};
-                copyRegion.textureSize   = {regionWidth, regionHeight, 1};
-                m_pImmediateTransferCmdList->CopyBufferToTexture(submitResult.pBuffer,
-                                                                 pTextureHandle, copyRegion);
-                submittedTransfer = true;
-
-                m_pBufferStagingMgr->EndSubmit(&submitResult);
-            }
-        }
-    }
-
-    if (submittedTransfer)
-    {
-        SubmitImmediateTransferCmdList();
-        m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
-    }
-}
+// void RenderDevice::UpdateTextureBatch(RHITexture* pTextureHandle,
+//                                       const Vec3i& textureSize,
+//                                       const uint8_t* pData)
+// {
+//     // not support mipmap
+//     bool submittedTransfer = false;
+//     uint32_t requiredAlign = 4;
+//     uint32_t regionSize    = TEXTURE_UPLOAD_REGION_SIZE;
+//     RenderGraph uploadGraph("texture_upload_batch");
+//     uploadGraph.Begin();
+//
+//     const uint32_t width     = textureSize.x;
+//     const uint32_t height    = textureSize.y;
+//     const uint32_t depth     = textureSize.z;
+//     const uint32_t pixelSize = 4;
+//     for (uint32_t z = 0; z < depth; z++)
+//     {
+//         for (uint32_t y = 0; y < height; y += regionSize)
+//         {
+//             for (uint32_t x = 0; x < width; x += regionSize)
+//             {
+//                 uint32_t regionWidth  = std::min(regionSize, width - x);
+//                 uint32_t regionHeight = std::min(regionSize, height - y);
+//                 uint32_t imageStride  = regionWidth * pixelSize;
+//                 uint32_t toSubmit     = imageStride * regionHeight;
+//                 StagingSubmitResult submitResult;
+//                 m_pBufferStagingMgr->BeginSubmit(toSubmit, &submitResult, requiredAlign);
+//                 if (submitResult.flushAction == StagingFlushAction::ePartial)
+//                 {
+//                     WaitForPreviousFrames();
+//                 }
+//                 else if (submitResult.flushAction == StagingFlushAction::eFull)
+//                 {
+//                     WaitForAllFrames();
+//                 }
+//                 m_pBufferStagingMgr->PerformAction(submitResult.flushAction);
+//
+//                 // map staging buffer
+//                 uint8_t* pDataPtr = submitResult.pBuffer->Map();
+//                 // copy
+//                 CopyRegion(pData, pDataPtr + submitResult.writeOffset, x, y, regionWidth,
+//                            regionHeight, width, imageStride, pixelSize);
+//                 // unmap
+//                 submitResult.pBuffer->Unmap();
+//                 // copy to gpu memory
+//                 RHIBufferTextureCopyRegion copyRegion{};
+//                 copyRegion.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+//                 copyRegion.bufferOffset  = submitResult.writeOffset;
+//                 copyRegion.textureOffset = {x, y, z};
+//                 copyRegion.textureSize   = {regionWidth, regionHeight, 1};
+//                 RHIBufferTextureCopySource copySource{submitResult.pBuffer, copyRegion};
+//                 uploadGraph.AddTextureUpdateNode(pTextureHandle, MakeVecView(&copySource, 1));
+//                 submittedTransfer = true;
+//
+//                 m_pBufferStagingMgr->EndSubmit(&submitResult);
+//             }
+//         }
+//     }
+//
+//     uploadGraph.End();
+//     if (submittedTransfer)
+//     {
+//         ExecuteRenderGraph(uploadGraph);
+//         m_pBufferStagingMgr->PerformAction(StagingFlushAction::eFull);
+//     }
+// }
 
 void RenderDevice::UpdateBufferInternal(RHIBuffer* pBufferHandle,
                                         uint32_t offset,
@@ -1649,6 +1711,10 @@ void RenderDevice::WaitForPreviousFrames()
 {
     m_graphicsCmdListPool.ForEachObject(
         [](RHICommandList* pCmdList) { pCmdList->WaitUntilCompleted(); });
+    if (m_pImmediateTransferCmdList != nullptr)
+    {
+        m_pImmediateTransferCmdList->WaitUntilCompleted();
+    }
 }
 
 void RenderDevice::WaitForAllFrames()
@@ -1721,7 +1787,7 @@ void RenderDevice::ProcessPendingFreeResources(uint32_t frameIndex)
 {
     for (RHITexture* pTexture : m_frames[frameIndex].texturesPendingFree)
     {
-        m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(pTexture);
+        InvalidateExternalTextureState(pTexture);
         pTexture->ReleaseReference();
     }
     m_frames[frameIndex].texturesPendingFree.clear();

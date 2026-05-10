@@ -379,6 +379,25 @@ void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy)
     pCopy->extent.depth  = region.size.z;
 }
 
+void ToVkImageBlit(const RHITextureBlitRegion& region, VkImageBlit* pBlit)
+{
+    *pBlit = {};
+    ToVkImageSubresourceLayers(region.srcSubresources, &pBlit->srcSubresource);
+    ToVkImageSubresourceLayers(region.dstSubresources, &pBlit->dstSubresource);
+    pBlit->srcOffsets[0].x = region.srcOffset0.x;
+    pBlit->srcOffsets[0].y = region.srcOffset0.y;
+    pBlit->srcOffsets[0].z = region.srcOffset0.z;
+    pBlit->srcOffsets[1].x = region.srcOffset1.x;
+    pBlit->srcOffsets[1].y = region.srcOffset1.y;
+    pBlit->srcOffsets[1].z = region.srcOffset1.z;
+    pBlit->dstOffsets[0].x = region.dstOffset0.x;
+    pBlit->dstOffsets[0].y = region.dstOffset0.y;
+    pBlit->dstOffsets[0].z = region.dstOffset0.z;
+    pBlit->dstOffsets[1].x = region.dstOffset1.x;
+    pBlit->dstOffsets[1].y = region.dstOffset1.y;
+    pBlit->dstOffsets[1].z = region.dstOffset1.z;
+}
+
 void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* pCopy)
 {
     *pCopy = {};

@@ -482,8 +482,6 @@ public:
                            VectorView<RHIBufferTransition> bufferTransitions,
                            VectorView<RHITextureTransition> textureTransitions) override;
 
-    void RHIGenTextureMipmaps(RHITexture* pTexture) override;
-
     void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) override;
 
     void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) override;
@@ -499,6 +497,11 @@ public:
     void RHICopyTexture(RHITexture* pSrcTexture,
                         RHITexture* pDstTexture,
                         VectorView<RHITextureCopyRegion> regions) override;
+
+    void RHIBlitTexture(RHITexture* pSrcTexture,
+                        RHITexture* pDstTexture,
+                        VectorView<RHITextureBlitRegion> regions,
+                        RHISamplerFilter filter) override;
 
     void RHICopyTextureToBuffer(RHITexture* pSrcTex,
                                 RHIBuffer* pDstBuffer,

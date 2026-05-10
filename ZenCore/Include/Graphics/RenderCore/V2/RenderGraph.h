@@ -259,6 +259,8 @@ class RDGExecutor
 public:
     void Execute(RenderGraph& graph, RHICommandList* pCmdList);
 
+    bool ShouldExecuteOnTransferQueue(const RenderGraph& graph) const;
+
     ResourceStateTracker& GetResourceStateTracker()
     {
         return m_resourceStateTracker;
@@ -733,17 +735,16 @@ public:
 
     void AddTextureMipmapGenNode(RHITexture* pTexture);
 
-
     void Begin();
 
     void End();
-
-    // void Execute(RHICommandList* cmdList);
 
 private:
     friend class RDGExecutor;
 
     void Execute(RHICommandList* pCmdList, ResourceStateTracker& resourceStateTracker);
+
+    bool CanExecuteOnTransferQueue(const ResourceStateTracker& resourceStateTracker) const;
 
     void DeclareTextureAccessForPass(const RDGPassNode* pPassNode,
                                      RHITexture* pTexture,
@@ -772,6 +773,8 @@ private:
     }
 
     void RunNode(RDGNodeBase* pNode);
+
+    void EmitTextureMipmapGeneration(RHITexture* pTexture);
 
     bool AddNodeDepsForResource(RDGResource* pResource,
                                 HashMap<RDG_ID, HeapVector<RDG_ID>>& nodeDependencies,

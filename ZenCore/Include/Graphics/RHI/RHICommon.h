@@ -808,6 +808,16 @@ struct RHITextureCopyRegion
     RHITextureSubresourceLayers dstSubresources;
 };
 
+struct RHITextureBlitRegion
+{
+    Vec3i srcOffset0;
+    Vec3i srcOffset1;
+    Vec3i dstOffset0;
+    Vec3i dstOffset1;
+    RHITextureSubresourceLayers srcSubresources;
+    RHITextureSubresourceLayers dstSubresources;
+};
+
 struct RHIBufferTextureCopyRegion
 {
     uint64_t bufferOffset{0};
