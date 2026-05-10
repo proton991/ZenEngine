@@ -797,6 +797,9 @@ private:
     void EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode,
                                   ResourceStateTracker& resourceStateTracker);
 
+    void UpdateResourceStatesForNodeAccesses(const RDGCompiledNode& compiledNode,
+                                             ResourceStateTracker& resourceStateTracker);
+
     void ValidateCompiledGraph() const;
 
     template <class T>
