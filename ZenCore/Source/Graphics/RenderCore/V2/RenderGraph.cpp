@@ -1601,6 +1601,7 @@ void RenderGraph::Execute(RHICommandList* pCmdList, ResourceStateTracker& resour
     {
         EmitCompiledNodeBarriers(compiledNode, resourceStateTracker);
         RunNode(GetNodeBaseById(compiledNode.nodeId));
+        UpdateResourceStatesForNodeAccesses(compiledNode, resourceStateTracker);
     }
 
 #if defined(ZEN_DEBUG)
@@ -2069,8 +2070,6 @@ void RenderGraph::EmitCompiledNodeBarriers(RDGCompiledNode& compiledNode,
     {
         m_pCmdList->AddTransitions(srcStages, dstStages, {}, bufferTransitions, textureTransitions);
     }
-
-    UpdateResourceStatesForNodeAccesses(compiledNode, resourceStateTracker);
 }
 
 void RenderGraph::UpdateResourceStatesForNodeAccesses(const RDGCompiledNode& compiledNode,
