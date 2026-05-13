@@ -34,7 +34,7 @@ void ShadowMapRenderer::Destroy()
 
 void ShadowMapRenderer::SetRenderScene(RenderScene* pRenderScene)
 {
-    m_pScene     = pRenderScene;
+    m_pScene    = pRenderScene;
     m_lightView = sg::Camera::CreateOrthoOnAABB(m_pScene->GetAABB());
     UpdateUniformData();
     UpdateGraphicsPassResources();
@@ -42,11 +42,7 @@ void ShadowMapRenderer::SetRenderScene(RenderScene* pRenderScene)
 
 void ShadowMapRenderer::PrepareRenderWorkload()
 {
-    if (m_rebuildRDG)
-    {
-        BuildRenderGraph();
-        m_rebuildRDG = false;
-    }
+    BuildRenderGraph();
 }
 
 void ShadowMapRenderer::PrepareTextures()
@@ -122,7 +118,7 @@ void ShadowMapRenderer::PrepareTextures()
         samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
         samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
         samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
-        m_pColorSampler          = m_pRenderDevice->CreateSampler(samplerInfo);
+        m_pColorSampler         = m_pRenderDevice->CreateSampler(samplerInfo);
     }
 }
 
@@ -156,8 +152,8 @@ void ShadowMapRenderer::BuildGraphicsPasses()
 
 void ShadowMapRenderer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>("shadowmap_rdg");
-    m_rdg->Begin();
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    VERIFY_EXPR(pRDG != nullptr);
     // offscreen pPass
     {
         ShadowMapRenderSP* pShaderProgram =
@@ -172,19 +168,19 @@ void ShadowMapRenderer::BuildRenderGraph()
         Rect2<float> viewport(static_cast<float>(m_config.shadowMapWidth),
                               static_cast<float>(m_config.shadowMapHeight));
 
-        auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.pEvsm, "shadowmap_offscreen");
-        // m_rdg->DeclareTextureAccessForPass(
+        auto* pPass = pRDG->AddGraphicsPassNode(m_gfxPasses.pEvsm, "shadowmap_offscreen");
+        // pRDG->DeclareTextureAccessForPass(
         //     pPass, m_offscreenTextures.shadowMap, RHITextureUsage::eColorAttachment,
         //     m_renderDevice->GetTextureSubResourceRange(m_offscreenTextures.shadowMap),
         //     RHIAccessMode::eReadWrite);
-        // m_rdg->DeclareTextureAccessForPass(
+        // pRDG->DeclareTextureAccessForPass(
         //     pPass, m_offscreenTextures.depth, RHITextureUsage::eDepthStencilAttachment,
         //     RHITextureSubResourceRange::DepthStencil(), RHIAccessMode::eReadWrite);
-        m_rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_pScene->GetVertexBuffer(), {0});
-        m_rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_pScene->GetIndexBuffer(),
-                                                  DataFormat::eR32UInt);
-        m_rdg->AddGraphicsPassSetViewportNode(pPass, viewport);
-        m_rdg->AddGraphicsPassSetScissorNode(pPass, area);
+        pRDG->AddGraphicsPassBindVertexBufferNode(pPass, m_pScene->GetVertexBuffer(), {0});
+        pRDG->AddGraphicsPassBindIndexBufferNode(pPass, m_pScene->GetIndexBuffer(),
+                                                 DataFormat::eR32UInt);
+        pRDG->AddGraphicsPassSetViewportNode(pPass, viewport);
+        pRDG->AddGraphicsPassSetScissorNode(pPass, area);
         pShaderProgram->pushConstantsData.alphaCutoff = 0.01f;
         pShaderProgram->pushConstantsData.exponents   = m_config.exponents;
         for (auto* node : m_pScene->GetRenderableNodes())
@@ -193,16 +189,14 @@ void ShadowMapRenderer::BuildRenderGraph()
             for (auto* subMesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
             {
                 pShaderProgram->pushConstantsData.materialIndex = subMesh->GetMaterial()->index;
-                m_rdg->AddGraphicsPassSetPushConstants(
-                    pPass, &pShaderProgram->pushConstantsData,
-                    sizeof(ShadowMapRenderSP::PushConstantsData));
-                m_rdg->AddGraphicsPassDrawIndexedNode(pPass, subMesh->GetIndexCount(), 1,
-                                                      subMesh->GetFirstIndex(), 0, 0);
+                pRDG->AddGraphicsPassSetPushConstants(pPass, &pShaderProgram->pushConstantsData,
+                                                      sizeof(ShadowMapRenderSP::PushConstantsData));
+                pRDG->AddGraphicsPassDrawIndexedNode(pPass, subMesh->GetIndexCount(), 1,
+                                                     subMesh->GetFirstIndex(), 0, 0);
             }
         }
     }
-    m_rdg->AddTextureMipmapGenNode(m_offscreenTextures.pShadowMap);
-    m_rdg->End();
+    pRDG->AddTextureMipmapGenNode(m_offscreenTextures.pShadowMap);
 }
 
 void ShadowMapRenderer::UpdateGraphicsPassResources()
@@ -223,8 +217,8 @@ void ShadowMapRenderer::UpdateGraphicsPassResources()
         // set-1 bindings
         // texture array
         ADD_SHADER_BINDING_TEXTURE_ARRAY(set1bindings, 0,
-                                         RHIShaderResourceType::eSamplerWithTexture, m_pColorSampler,
-                                         m_pScene->GetSceneTextures())
+                                         RHIShaderResourceType::eSamplerWithTexture,
+                                         m_pColorSampler, m_pScene->GetSceneTextures())
 
         rc::GraphicsPassResourceUpdater updater(m_pRenderDevice, m_gfxPasses.pEvsm);
         updater.SetShaderResourceBinding(0, std::move(set0bindings))

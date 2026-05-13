@@ -154,13 +154,13 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    RHITexture* pSkybox;
-    RHITexture* pIrradiance;
-    RHITexture* pPrefiltered;
-    RHITexture* pLutBRDF;
-    RHISampler* pIrradianceSampler;
-    RHISampler* pPrefilteredSampler;
-    RHISampler* pLutBRDFSampler;
+    RHITexture* pSkybox{nullptr};
+    RHITexture* pIrradiance{nullptr};
+    RHITexture* pPrefiltered{nullptr};
+    RHITexture* pLutBRDF{nullptr};
+    RHISampler* pIrradianceSampler{nullptr};
+    RHISampler* pPrefilteredSampler{nullptr};
+    RHISampler* pLutBRDFSampler{nullptr};
     std::string tag;
 };
 } // namespace zen::rc

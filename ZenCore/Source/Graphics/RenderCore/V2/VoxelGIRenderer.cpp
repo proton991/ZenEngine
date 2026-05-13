@@ -51,17 +51,12 @@ void VoxelGIRenderer::Destroy()
 
 void VoxelGIRenderer::PrepareRenderWorkload()
 {
-    if (m_rebuildRDG)
-    {
-        BuildRenderGraph();
-        m_rebuildRDG = false;
-    }
     UpdateUniformData();
+    BuildRenderGraph();
 }
 
 void VoxelGIRenderer::OnResize()
 {
-    m_rebuildRDG = true;
     // m_renderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.voxelDraw, m_viewport);
 }
 
@@ -83,8 +78,8 @@ void VoxelGIRenderer::PrepareTextures()
         texFormat.arrayLayers = 1;
         texFormat.mipmaps     = 1;
 
-        m_textures.pVoxelRadiance =
-            m_pRenderDevice->CreateTextureStorage(texFormat, {.copyUsage = false}, "voxel_radiance");
+        m_textures.pVoxelRadiance = m_pRenderDevice->CreateTextureStorage(
+            texFormat, {.copyUsage = false}, "voxel_radiance");
     }
     const auto halfDim = voxelTexResolution / 2;
     for (uint32_t i = 0; i < 6; i++)
@@ -115,22 +110,21 @@ void VoxelGIRenderer::PrepareBuffers() {}
 
 void VoxelGIRenderer::BuildRenderGraph()
 {
-    m_rdg = MakeUnique<RenderGraph>("voxel_gi_rdg");
-    m_rdg->Begin();
-
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    VERIFY_EXPR(pRDG != nullptr);
 
     uint32_t workgroupCount;
     // reset voxel texture
     {
         auto* pPass =
-            m_rdg->AddComputePassNode(m_computePasses.pResetVoxelTexture, "reset_voxel_radiance");
+            pRDG->AddComputePassNode(m_computePasses.pResetVoxelTexture, "reset_voxel_radiance");
         // pass->tag = "reset_voxel_texture";
-        // m_rdg->DeclareTextureAccessForPass(
+        // pRDG->DeclareTextureAccessForPass(
         //     pass, m_textures.pVoxelRadiance, RHITextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.pVoxelRadiance),
         //     RHIAccessMode::eReadWrite);
         workgroupCount = 1;
-        m_rdg->AddComputePassDispatchNode(pPass, workgroupCount, workgroupCount, workgroupCount);
+        pRDG->AddComputePassDispatchNode(pPass, workgroupCount, workgroupCount, workgroupCount);
     }
 
     // inject radiance
@@ -147,27 +141,25 @@ void VoxelGIRenderer::BuildRenderGraph()
         pShaderProgram->pushConstantsData.traceShadowHit        = m_config.traceShadowHit;
 
         auto* pPass =
-            m_rdg->AddComputePassNode(m_computePasses.pInjectRadiance, "inject_voxel_radiance");
-        // m_rdg->DeclareTextureAccessForPass(pass, 2, textures, RHITextureUsage::eStorage, ranges,
+            pRDG->AddComputePassNode(m_computePasses.pInjectRadiance, "inject_voxel_radiance");
+        // pRDG->DeclareTextureAccessForPass(pass, 2, textures, RHITextureUsage::eStorage, ranges,
         //                                    RHIAccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(
+        // pRDG->DeclareTextureAccessForPass(
         //     pass, voxelTextures.albedo, RHITextureUsage::eSampled,
         //     m_renderDevice->GetTextureSubResourceRange(voxelTextures.albedo), RHIAccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(
+        // pRDG->DeclareTextureAccessForPass(
         //     pass, m_textures.pShadowMap, RHITextureUsage::eSampled,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.pShadowMap), RHIAccessMode::eRead);
-        // m_rdg->DeclareTextureAccessForPass(
+        // pRDG->DeclareTextureAccessForPass(
         //     pass, m_textures.pVoxelRadiance, RHITextureUsage::eStorage,
         //     m_renderDevice->GetTextureSubResourceRange(m_textures.pVoxelRadiance),
         //     RHIAccessMode::eReadWrite);
 
-        m_rdg->AddComputePassSetPushConstants(pPass, &pShaderProgram->pushConstantsData,
-                                              sizeof(VoxelInjectRadianceSP::PushConstantsData));
+        pRDG->AddComputePassSetPushConstants(pPass, &pShaderProgram->pushConstantsData,
+                                             sizeof(VoxelInjectRadianceSP::PushConstantsData));
         workgroupCount = m_pVoxelizer->GetVoxelTexResolution() / 8;
-        m_rdg->AddComputePassDispatchNode(pPass, workgroupCount, workgroupCount, workgroupCount);
+        pRDG->AddComputePassDispatchNode(pPass, workgroupCount, workgroupCount, workgroupCount);
     }
-
-    m_rdg->End();
 }
 
 
@@ -179,15 +171,15 @@ void VoxelGIRenderer::BuildComputePasses()
         // reset voxel texture
         ComputePassBuilder builder(m_pRenderDevice);
         m_computePasses.pResetVoxelTexture = builder.SetShaderProgramName("ResetVoxelTextureSP")
-                                                .SetTag("ResetVoxelTextureComp")
-                                                .Build();
+                                                 .SetTag("ResetVoxelTextureComp")
+                                                 .Build();
     }
     {
         // inject radiance
         ComputePassBuilder builder(m_pRenderDevice);
         m_computePasses.pInjectRadiance = builder.SetShaderProgramName("VoxelInjectRadianceSP")
-                                             .SetTag("VoxelInjectRadianceComp")
-                                             .Build();
+                                              .SetTag("VoxelInjectRadianceComp")
+                                              .Build();
     }
 }
 

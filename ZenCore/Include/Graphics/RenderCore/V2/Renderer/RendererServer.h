@@ -1,5 +1,5 @@
 #pragma once
-#include "Templates/HeapVector.h"
+#include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 
 namespace zen
 {
@@ -77,6 +77,5 @@ private:
     VoxelGIRenderer* m_pVoxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
-    HeapVector<RenderGraph*> m_frameRDGs;
 };
 } // namespace zen::rc

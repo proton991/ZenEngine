@@ -117,6 +117,32 @@ bool ShouldLogRDGExecuteSummary(const std::string& rdgTag)
         rdgTag != "texture_upload_one_time" && rdgTag != "texture_upload_batch";
 }
 
+RHIResource* GetFrameResourceKey(const RDGResource* pResource)
+{
+    if (pResource == nullptr)
+    {
+        return nullptr;
+    }
+
+    if (pResource->type == RDGResourceType::eTexture)
+    {
+        RHITexture* pTexture = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
+        return pTexture != nullptr ? const_cast<RHITexture*>(pTexture->GetPhysicalTexture())
+                                   : nullptr;
+    }
+
+    return pResource->pPhysicalRes;
+}
+
+struct RDGResourceAccessState
+{
+    RDGResource* pResource{nullptr};
+    RDGAccess access;
+    BitField<RHIPipelineStageBits> accessStages;
+    BitField<RHIPipelineStageBits> readGroupStages;
+    bool hasReadGroup{false};
+};
+
 // void UpdateResourceState(ResourceStateTracker& resourceStateTracker,
 //                          const RHIBufferTransition& transition,
 //                          BitField<RHIPipelineStageBits> pipelineStages)
@@ -199,14 +225,164 @@ void ResourceStateTracker::RemoveBufferState(const RHIBuffer* pBuffer)
     }
 }
 
-void RDGExecutor::Execute(RenderGraph& graph, RHICommandList* pCmdList)
+void RDGExecutor::Execute(RenderGraph* pGraph, RHICommandList* pCmdList)
 {
-    graph.Execute(pCmdList, m_resourceStateTracker);
+    VERIFY_EXPR(pGraph != nullptr);
+    CompileGraph(pGraph);
+    pGraph->Execute(pCmdList, m_resourceStateTracker);
 }
 
-bool RDGExecutor::ShouldExecuteOnTransferQueue(const RenderGraph& graph) const
+void RDGExecutor::CompileGraph(RenderGraph* pGraph)
 {
-    return graph.CanExecuteOnTransferQueue(m_resourceStateTracker);
+    VERIFY_EXPR(pGraph != nullptr);
+    VERIFY_EXPR_MSG(pGraph->m_executionState == RDGExecutionState::eRecorded ||
+                        pGraph->m_executionState == RDGExecutionState::eCompiled,
+                    "RDGExecutor::CompileGraph requires a recorded or compiled graph");
+    if (pGraph->m_executionState == RDGExecutionState::eRecorded)
+    {
+        pGraph->m_compiledNodes.clear();
+        pGraph->m_sortedNodes.clear();
+        pGraph->m_compileStats = {};
+
+        pGraph->SortNodesV2();
+        pGraph->BuildCompiledNodeList();
+        pGraph->ValidateCompiledGraph();
+        pGraph->m_executionState = RDGExecutionState::eCompiled;
+    }
+
+    pGraph->m_compileStats.dependencyBarrierCount = 0;
+    for (RDGCompiledNode& compiledNode : pGraph->m_compiledNodes)
+    {
+        compiledNode.prologueSrcStages.Clear();
+        compiledNode.prologueDstStages.Clear();
+        compiledNode.initialResourceAccesses.clear();
+        compiledNode.prologueBufferTransitions.clear();
+        compiledNode.prologueTextureTransitions.clear();
+    }
+
+    AttachGraphBarriers(pGraph);
+}
+
+void RDGExecutor::AttachGraphBarriers(RenderGraph* pGraph)
+{
+    VERIFY_EXPR(pGraph != nullptr);
+    HashMap<RHIResource*, RDGResourceAccessState> resourceStates;
+
+    for (RDGCompiledNode& compiledNode : pGraph->m_compiledNodes)
+    {
+        RDGNodeBase* pNode = pGraph->GetNodeBaseById(compiledNode.nodeId);
+
+        auto iter = pGraph->m_nodeAccessMap.find(compiledNode.nodeId);
+        if (iter == pGraph->m_nodeAccessMap.end())
+        {
+            continue;
+        }
+
+        for (const RDGAccess& access : iter->second)
+        {
+            if (access.resourceId < 0 ||
+                static_cast<size_t>(static_cast<int32_t>(access.resourceId)) >=
+                    pGraph->m_resources.size())
+            {
+                LOGE("RDG frame transition has invalid resource id");
+                continue;
+            }
+
+            RDGResource* pResource =
+                pGraph->m_resources[static_cast<size_t>(static_cast<int32_t>(access.resourceId))];
+            RHIResource* pFrameResource = GetFrameResourceKey(pResource);
+            if (pFrameResource == nullptr)
+            {
+                LOGE("RDG frame transition has null physical resource");
+                continue;
+            }
+
+            auto stateIter = resourceStates.find(pFrameResource);
+            if (stateIter == resourceStates.end())
+            {
+                compiledNode.initialResourceAccesses.push_back(access);
+
+                RDGResourceAccessState state;
+                state.pResource    = pResource;
+                state.access       = access;
+                state.accessStages = pNode->selfStages;
+                if (access.accessMode == RHIAccessMode::eRead)
+                {
+                    state.hasReadGroup = true;
+                    state.readGroupStages.SetFlag(pNode->selfStages);
+                }
+                resourceStates[pFrameResource] = state;
+                continue;
+            }
+
+            RDGResourceAccessState& previousState = stateIter->second;
+            const bool needsBarrier = AccessNeedsBarrier(pResource, previousState.access, access);
+            if (needsBarrier)
+            {
+                if (previousState.hasReadGroup)
+                {
+                    compiledNode.prologueSrcStages.SetFlag(previousState.readGroupStages);
+                }
+                else
+                {
+                    compiledNode.prologueSrcStages.SetFlag(previousState.accessStages);
+                }
+                compiledNode.prologueDstStages.SetFlag(pNode->selfStages);
+
+                if (pResource->type == RDGResourceType::eBuffer)
+                {
+                    RHIBufferTransition transition;
+                    transition.pBuffer       = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
+                    transition.oldAccessMode = previousState.access.accessMode;
+                    transition.newAccessMode = access.accessMode;
+                    transition.oldUsage      = previousState.access.bufferUsage;
+                    transition.newUsage      = access.bufferUsage;
+                    compiledNode.prologueBufferTransitions.push_back(transition);
+                }
+                else if (pResource->type == RDGResourceType::eTexture)
+                {
+                    RHITextureTransition transition;
+                    transition.pTexture      = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
+                    transition.oldAccessMode = previousState.access.accessMode;
+                    transition.newAccessMode = access.accessMode;
+                    transition.oldUsage      = previousState.access.textureUsage;
+                    transition.newUsage      = access.textureUsage;
+                    transition.subResourceRange = access.textureSubResourceRange;
+                    compiledNode.prologueTextureTransitions.push_back(transition);
+                }
+                else
+                {
+                    LOGE("Invalid RDGResource type!");
+                }
+                pGraph->m_compileStats.dependencyBarrierCount++;
+            }
+
+            previousState.pResource    = pResource;
+            previousState.access       = access;
+            previousState.accessStages = pNode->selfStages;
+            if (access.accessMode == RHIAccessMode::eRead)
+            {
+                if (needsBarrier)
+                {
+                    previousState.readGroupStages.Clear();
+                }
+                previousState.hasReadGroup = true;
+                previousState.readGroupStages.SetFlag(pNode->selfStages);
+            }
+            else
+            {
+                previousState.hasReadGroup = false;
+                previousState.readGroupStages.Clear();
+            }
+        }
+    }
+}
+
+bool RDGExecutor::ShouldExecuteOnTransferQueue(RenderGraph* pGraph)
+{
+    VERIFY_EXPR(pGraph != nullptr);
+    CompileGraph(pGraph);
+    return pGraph->CanExecuteOnTransferQueue(m_resourceStateTracker);
 }
 
 void RenderGraph::AddPassBindPipelineNode(RDGPassNode* pParent,
@@ -1316,21 +1492,12 @@ void RenderGraph::End()
 {
     VERIFY_EXPR_MSG(m_executionState == RDGExecutionState::eBuilding,
                     "RenderGraph::End called before Begin");
-    Compile();
-}
-
-void RenderGraph::Compile()
-{
     m_compiledNodes.clear();
-    m_compileStats = {};
-
-    SortNodesV2();
-    BuildCompiledNodeList();
-    AttachFirstUseBarriers();
-    AttachIntraGraphBarriers();
-    ValidateCompiledGraph();
-    m_executeSummaryLogPending = ShouldLogRDGExecuteSummary(m_rdgTag);
-    m_executionState           = RDGExecutionState::eCompiled;
+    m_sortedNodes.clear();
+    m_compileStats             = {};
+    m_recordedInitBarrierCount = 0;
+    m_executeSummaryLogPending = ShouldLogRDGExecuteSummary(m_rdgTag) && !m_executeSummaryLogged;
+    m_executionState           = RDGExecutionState::eRecorded;
 }
 
 bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& resourceStateTracker) const
@@ -1417,143 +1584,6 @@ void RenderGraph::BuildCompiledNodeList()
     m_compileStats.commandListCount = m_compileStats.nodeCount > 0 ? 1 : 0;
 }
 
-void RenderGraph::AttachFirstUseBarriers()
-{
-    HeapVector<uint8_t> resourceInitialized(m_resources.size());
-    for (RDGCompiledNode& compiledNode : m_compiledNodes)
-    {
-        auto iter = m_nodeAccessMap.find(compiledNode.nodeId);
-        if (iter == m_nodeAccessMap.end())
-        {
-            continue;
-        }
-
-        for (const RDGAccess& access : iter->second)
-        {
-            if (access.resourceId < 0 ||
-                static_cast<size_t>(static_cast<int32_t>(access.resourceId)) >= m_resources.size())
-            {
-                LOGE("RDG initial transition has invalid resource id");
-                continue;
-            }
-
-            const size_t resourceIndex =
-                static_cast<size_t>(static_cast<int32_t>(access.resourceId));
-            if (resourceInitialized[resourceIndex] != 0)
-            {
-                continue;
-            }
-
-            resourceInitialized[resourceIndex] = 1;
-            compiledNode.initialResourceAccesses.push_back(access);
-        }
-    }
-}
-
-void RenderGraph::AttachIntraGraphBarriers()
-{
-    HeapVector<uint8_t> resourceInitialized(m_resources.size());
-    HeapVector<uint8_t> resourceHasReadGroup(m_resources.size());
-    HeapVector<RDGAccess> resourceStates(m_resources.size());
-    HeapVector<BitField<RHIPipelineStageBits>> resourceReadGroupStages(m_resources.size());
-
-    for (RDGCompiledNode& compiledNode : m_compiledNodes)
-    {
-        auto iter = m_nodeAccessMap.find(compiledNode.nodeId);
-        if (iter == m_nodeAccessMap.end())
-        {
-            continue;
-        }
-
-        for (const RDGAccess& access : iter->second)
-        {
-            if (access.resourceId < 0 ||
-                static_cast<size_t>(static_cast<int32_t>(access.resourceId)) >= m_resources.size())
-            {
-                LOGE("RDG dependency transition has invalid resource id");
-                continue;
-            }
-
-            const size_t resourceIndex =
-                static_cast<size_t>(static_cast<int32_t>(access.resourceId));
-            RDGResource* pResource = m_resources[resourceIndex];
-            if (resourceInitialized[resourceIndex] == 0)
-            {
-                resourceInitialized[resourceIndex] = 1;
-                resourceStates[resourceIndex]      = access;
-                if (access.accessMode == RHIAccessMode::eRead)
-                {
-                    resourceHasReadGroup[resourceIndex] = 1;
-                    resourceReadGroupStages[resourceIndex].SetFlag(
-                        GetNodeBaseById(access.nodeId)->selfStages);
-                }
-                continue;
-            }
-
-            RDGAccess& previousAccess = resourceStates[resourceIndex];
-            const bool needsBarrier   = AccessNeedsBarrier(pResource, previousAccess, access);
-            if (needsBarrier)
-            {
-                if (resourceHasReadGroup[resourceIndex] != 0)
-                {
-                    compiledNode.prologueSrcStages.SetFlag(resourceReadGroupStages[resourceIndex]);
-                }
-                else
-                {
-                    compiledNode.prologueSrcStages.SetFlag(
-                        GetNodeBaseById(previousAccess.nodeId)->selfStages);
-                }
-                compiledNode.prologueDstStages.SetFlag(GetNodeBaseById(access.nodeId)->selfStages);
-
-                if (pResource->type == RDGResourceType::eBuffer)
-                {
-                    RHIBufferTransition transition;
-                    transition.pBuffer       = dynamic_cast<RHIBuffer*>(pResource->pPhysicalRes);
-                    transition.oldAccessMode = previousAccess.accessMode;
-                    transition.newAccessMode = access.accessMode;
-                    transition.oldUsage      = previousAccess.bufferUsage;
-                    transition.newUsage      = access.bufferUsage;
-                    compiledNode.prologueBufferTransitions.push_back(transition);
-                }
-                else if (pResource->type == RDGResourceType::eTexture)
-                {
-                    RHITextureTransition transition;
-                    transition.pTexture      = dynamic_cast<RHITexture*>(pResource->pPhysicalRes);
-                    transition.oldAccessMode = previousAccess.accessMode;
-                    transition.newAccessMode = access.accessMode;
-                    transition.oldUsage      = previousAccess.textureUsage;
-                    transition.newUsage      = access.textureUsage;
-                    transition.subResourceRange = access.textureSubResourceRange;
-                    compiledNode.prologueTextureTransitions.push_back(transition);
-                }
-                else
-                {
-                    LOGE("Invalid RDGResource type!");
-                }
-                m_compileStats.intraGraphBarrierCount++;
-            }
-
-            previousAccess = access;
-            if (access.accessMode == RHIAccessMode::eRead)
-            {
-                if (needsBarrier)
-                {
-                    resourceReadGroupStages[resourceIndex].Clear();
-                }
-
-                resourceHasReadGroup[resourceIndex] = 1;
-                resourceReadGroupStages[resourceIndex].SetFlag(
-                    GetNodeBaseById(access.nodeId)->selfStages);
-            }
-            else
-            {
-                resourceHasReadGroup[resourceIndex] = 0;
-                resourceReadGroupStages[resourceIndex].Clear();
-            }
-        }
-    }
-}
-
 void RenderGraph::ValidateCompiledGraph() const
 {
     if (m_compiledNodes.size() != m_nodeCount)
@@ -1608,12 +1638,13 @@ void RenderGraph::Execute(RHICommandList* pCmdList, ResourceStateTracker& resour
     if (m_executeSummaryLogPending)
     {
         const uint32_t totalBarriers =
-            m_recordedInitBarrierCount + m_compileStats.intraGraphBarrierCount;
-        LOGI("RDG {} exec: n={} p={} r={} init={} intra={} total={} cmd={}", m_rdgTag,
+            m_recordedInitBarrierCount + m_compileStats.dependencyBarrierCount;
+        LOGI("RDG {} exec: n={} p={} r={} init={} dep={} total={} cmd={}", m_rdgTag,
              m_compileStats.nodeCount, m_compileStats.passCount, m_compileStats.resourceCount,
-             m_recordedInitBarrierCount, m_compileStats.intraGraphBarrierCount, totalBarriers,
+             m_recordedInitBarrierCount, m_compileStats.dependencyBarrierCount, totalBarriers,
              m_compileStats.commandListCount);
         m_executeSummaryLogPending = false;
+        m_executeSummaryLogged     = true;
     }
 #endif
 

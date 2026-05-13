@@ -35,8 +35,6 @@ void SkyboxRenderer::Init()
         m_pRenderDevice->CreateIndexBuffer(cSkyboxIndices.size() * sizeof(uint32_t),
                                            reinterpret_cast<const uint8_t*>(cSkyboxIndices.data()));
 
-    m_rdg = MakeUnique<RenderGraph>("skybox_draw_rdg");
-
     PrepareTextures();
 
     BuildGraphicsPasses();
@@ -102,8 +100,8 @@ void SkyboxRenderer::PrepareTextures()
 
 void SkyboxRenderer::BuildRenderGraph()
 {
-    // build rdg
-    m_rdg->Begin();
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    VERIFY_EXPR(pRDG != nullptr);
     // std::vector<RHIRenderPassClearValue> clearValues(2);
     // clearValues[0].color   = {0.0f, 0.0f, 0.2f, 0.0f};
     // clearValues[1].depth   = 1.0f;
@@ -120,14 +118,13 @@ void SkyboxRenderer::BuildRenderGraph()
     vp.maxX = static_cast<float>(m_pViewport->GetWidth());
     vp.maxY = static_cast<float>(m_pViewport->GetHeight());
 
-    auto* pPass = m_rdg->AddGraphicsPassNode(m_gfxPasses.pSkybox, "skybox_draw");
-    m_rdg->AddGraphicsPassSetScissorNode(pPass, area);
-    m_rdg->AddGraphicsPassSetViewportNode(pPass, vp);
-    m_rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_pVertexBuffer, {0});
-    m_rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_pIndexBuffer, DataFormat::eR32UInt);
+    auto* pPass = pRDG->AddGraphicsPassNode(m_gfxPasses.pSkybox, "skybox_draw");
+    pRDG->AddGraphicsPassSetScissorNode(pPass, area);
+    pRDG->AddGraphicsPassSetViewportNode(pPass, vp);
+    pRDG->AddGraphicsPassBindVertexBufferNode(pPass, m_pVertexBuffer, {0});
+    pRDG->AddGraphicsPassBindIndexBufferNode(pPass, m_pIndexBuffer, DataFormat::eR32UInt);
     // draw skybox model
-    m_rdg->AddGraphicsPassDrawIndexedNode(pPass, cSkyboxIndices.size(), 1, 0, 0, 0);
-    m_rdg->End();
+    pRDG->AddGraphicsPassDrawIndexedNode(pPass, cSkyboxIndices.size(), 1, 0, 0, 0);
 }
 
 void SkyboxRenderer::BuildGraphicsPasses()
@@ -199,44 +196,34 @@ void SkyboxRenderer::BuildGraphicsPasses()
 
 void SkyboxRenderer::PreprocessEnvTexture(EnvTexture* pTexture)
 {
-    HeapVector<UniquePtr<RenderGraph>> outRenderGraphs;
-
-    GenerateEnvCubemaps(pTexture, outRenderGraphs);
-    GenerateLutBRDF(pTexture, outRenderGraphs);
-
-    m_pRenderDevice->ExecuteRenderGraphs(outRenderGraphs);
+    VERIFY_EXPR(pTexture != nullptr);
+    PrepareEnvCubemaps(pTexture);
+    PrepareLutBRDF(pTexture);
+    m_pPendingPreprocessEnvTexture = pTexture;
 }
 
-void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* pTexture,
-                                         HeapVector<UniquePtr<RenderGraph>>& outRDGs)
+void SkyboxRenderer::PrepareEnvCubemaps(EnvTexture* pTexture)
 {
     for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
     {
-        RHITexture* pCubemapTexture;
-        RHITexture* pOffscreenTexture;
-        uint32_t dim;
-        DataFormat format;
-        GraphicsPass* pGfxPass;
-        std::string targetName  = "";
-        std::string textureName = "";
+        uint32_t dim      = 0;
+        DataFormat format = DataFormat::eUndefined;
+        GraphicsPass* pGfxPass{nullptr};
+        std::string textureName;
 
         if (target == IRRADIANCE)
         {
-            pGfxPass          = m_gfxPasses.pIrradiance;
-            pOffscreenTexture = m_offscreenTextures.pIrradiance;
-            format            = cIrradianceFormat;
-            dim               = IRRADIANCE_DIM;
-            targetName        = "irradiance_cubemap_gen";
-            textureName       = "env_irradiance";
+            pGfxPass    = m_gfxPasses.pIrradiance;
+            format      = cIrradianceFormat;
+            dim         = IRRADIANCE_DIM;
+            textureName = "env_irradiance";
         }
         else
         {
-            pGfxPass          = m_gfxPasses.pPrefiltered;
-            pOffscreenTexture = m_offscreenTextures.pPrefiltered;
-            format            = cPrefilteredFormat;
-            dim               = PREFILTERED_DIM;
-            targetName        = "prefiltered_cubemap_gen";
-            textureName       = "env_prefiltered";
+            pGfxPass    = m_gfxPasses.pPrefiltered;
+            format      = cPrefilteredFormat;
+            dim         = PREFILTERED_DIM;
+            textureName = "env_prefiltered";
         }
 
         const uint32_t numMips = RHITexture::CalculateTextureMipLevels(dim);
@@ -252,7 +239,8 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* pTexture,
         samplerInfo.maxAnisotropy = 1.0f;
         samplerInfo.borderColor   = RHISamplerBorderColor::eFloatOpaqueBlack;
 
-        m_samplers.pCubemapSampler = m_pRenderDevice->CreateSampler(samplerInfo);
+        RHISampler* pCubemapSampler = m_pRenderDevice->CreateSampler(samplerInfo);
+        m_samplers.pCubemapSampler  = pCubemapSampler;
 
         TextureFormat texFormat{};
         texFormat.dimension   = TextureDimension::eCube;
@@ -263,126 +251,129 @@ void SkyboxRenderer::GenerateEnvCubemaps(EnvTexture* pTexture,
         texFormat.arrayLayers = 6;
         texFormat.mipmaps     = numMips;
 
-        pCubemapTexture =
+        RHITexture* pCubemapTexture =
             m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, textureName);
 
-        // offscreen
         {
             HeapVector<RHIShaderResourceBinding> textureBindings;
             ADD_SHADER_BINDING_SINGLE(textureBindings, 0,
-                                      RHIShaderResourceType::eSamplerWithTexture,
-                                      m_samplers.pCubemapSampler, pTexture->pSkybox);
+                                      RHIShaderResourceType::eSamplerWithTexture, pCubemapSampler,
+                                      pTexture->pSkybox);
 
             GraphicsPassResourceUpdater updater(m_pRenderDevice, pGfxPass);
             updater.SetShaderResourceBinding(0, std::move(textureBindings)).Update();
+        }
 
-            UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("env_cubmap_gen_rdg");
-            rdg->Begin();
-            // std::vector<RHIRenderPassClearValue> clearValues(1);
-            // clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
+        if (target == IRRADIANCE)
+        {
+            pTexture->pIrradiance        = pCubemapTexture;
+            pTexture->pIrradianceSampler = pCubemapSampler;
+            m_pRenderDevice->GetRHIDebug()->SetTextureDebugName(pTexture->pIrradiance,
+                                                                "EnvIrradiance");
+        }
+        else
+        {
+            pTexture->pPrefiltered        = pCubemapTexture;
+            pTexture->pPrefilteredSampler = pCubemapSampler;
+            m_pRenderDevice->GetRHIDebug()->SetTextureDebugName(pTexture->pPrefiltered,
+                                                                "EnvPrefiltered");
+        }
+    }
+}
 
-            Rect2i area;
-            area.minX = 0;
-            area.minY = 0;
-            area.maxX = static_cast<int>(dim);
-            area.maxY = static_cast<int>(dim);
+void SkyboxRenderer::AppendEnvCubemapNodes(EnvTexture* pTexture)
+{
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    VERIFY_EXPR(pRDG != nullptr);
 
-            // 1st pPass: render to offscreen texture (6 faces)
-            // auto* pPass = rdg->AddGraphicsPassNode(*gfxPass, area, clearValues, targetName);
-            // // rdg->DeclareTextureAccessForPass(pPass, offscreenTexture, RHITextureUsage::eColorAttachment,
-            // //                                  m_RHI->GetTextureSubResourceRange(offscreenTexture),
-            // //                                  RHIAccessMode::eReadWrite);
-            // rdg->AddGraphicsPassSetScissorNode(pPass, area);
-            // rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_vertexBuffer, {0});
-            // rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_indexBuffer, DataFormat::eR32UInt);
+    for (uint32_t target = 0; target < PREFILTERED_MAP + 1; target++)
+    {
+        RHITexture* pCubemapTexture{nullptr};
+        RHITexture* pOffscreenTexture{nullptr};
+        uint32_t dim = 0;
+        GraphicsPass* pGfxPass{nullptr};
+        std::string targetName;
 
-            for (uint32_t m = 0; m < numMips; m++)
+        if (target == IRRADIANCE)
+        {
+            pGfxPass          = m_gfxPasses.pIrradiance;
+            pOffscreenTexture = m_offscreenTextures.pIrradiance;
+            pCubemapTexture   = pTexture->pIrradiance;
+            dim               = IRRADIANCE_DIM;
+            targetName        = "irradiance_cubemap_gen";
+        }
+        else
+        {
+            pGfxPass          = m_gfxPasses.pPrefiltered;
+            pOffscreenTexture = m_offscreenTextures.pPrefiltered;
+            pCubemapTexture   = pTexture->pPrefiltered;
+            dim               = PREFILTERED_DIM;
+            targetName        = "prefiltered_cubemap_gen";
+        }
+
+        const uint32_t numMips = RHITexture::CalculateTextureMipLevels(dim);
+
+        Rect2i area;
+        area.minX = 0;
+        area.minY = 0;
+        area.maxX = static_cast<int>(dim);
+        area.maxY = static_cast<int>(dim);
+
+        for (uint32_t m = 0; m < numMips; m++)
+        {
+            for (uint32_t f = 0; f < 6; f++)
             {
-                for (uint32_t f = 0; f < 6; f++)
+                Rect2<float> vp;
+                vp.minX = 0.0f;
+                vp.minY = 0.0f;
+                vp.maxX = static_cast<float>(dim * std::pow(0.5f, m));
+                vp.maxY = static_cast<float>(dim * std::pow(0.5f, m));
+
+                std::string passTag =
+                    targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
+                auto* pPass = pRDG->AddGraphicsPassNode(pGfxPass, passTag);
+                pRDG->AddGraphicsPassSetScissorNode(pPass, area);
+                pRDG->AddGraphicsPassSetViewportNode(pPass, vp);
+                pRDG->AddGraphicsPassBindVertexBufferNode(pPass, m_pVertexBuffer, {0});
+                pRDG->AddGraphicsPassBindIndexBufferNode(pPass, m_pIndexBuffer,
+                                                         DataFormat::eR32UInt);
+                if (target == IRRADIANCE)
                 {
-                    Rect2<float> vp;
-                    vp.minX = 0.0f;
-                    vp.minY = 0.0f;
-                    vp.maxX = static_cast<float>(dim * std::pow(0.5f, m));
-                    vp.maxY = static_cast<float>(dim * std::pow(0.5f, m));
-
-                    std::string passTag =
-                        targetName + "_mip_" + std::to_string(m) + "_face_" + std::to_string(f);
-                    auto* pPass = rdg->AddGraphicsPassNode(pGfxPass, passTag);
-                    // rdg->DeclareTextureAccessForPass(
-                    //     pPass, offscreenTexture, RHITextureUsage::eColorAttachment,
-                    //     m_RHI->GetTextureSubResourceRange(offscreenTexture),
-                    //     RHIAccessMode::eReadWrite);
-                    rdg->AddGraphicsPassSetScissorNode(pPass, area);
-                    rdg->AddGraphicsPassSetViewportNode(pPass, vp);
-                    rdg->AddGraphicsPassBindVertexBufferNode(pPass, m_pVertexBuffer, {0});
-                    rdg->AddGraphicsPassBindIndexBufferNode(pPass, m_pIndexBuffer,
-                                                            DataFormat::eR32UInt);
-                    if (target == IRRADIANCE)
-                    {
-                        m_pcIrradiance.mvp =
-                            glm::perspective(static_cast<float>((M_PI / 2.0)), 1.0f, 0.1f, 512.0f) *
-                            cMatrices[f];
-                        rdg->AddGraphicsPassSetPushConstants(pPass, &m_pcIrradiance,
-                                                             sizeof(PushConstantIrradiance));
-                    }
-                    else
-                    {
-                        m_pcPrefilterEnv.mvp =
-                            glm::perspective(static_cast<float>((M_PI / 2.0)), 1.0f, 0.1f, 512.0f) *
-                            cMatrices[f];
-                        m_pcPrefilterEnv.roughness =
-                            static_cast<float>(m) / static_cast<float>(numMips - 1);
-                        rdg->AddGraphicsPassSetPushConstants(pPass, &m_pcPrefilterEnv,
-                                                             sizeof(PushConstantPrefilterEnv));
-                    }
-
-                    // draw skybox model
-                    rdg->AddGraphicsPassDrawIndexedNode(pPass, cSkyboxIndices.size(), 1, 0, 0, 0);
-
-                    // 2nd pPass: copy to env texture cubemap
-                    RHITextureCopyRegion copyRegion{};
-                    copyRegion.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-                    copyRegion.srcOffset = {0, 0, 0};
-                    copyRegion.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-                    copyRegion.dstSubresources.baseArrayLayer = f;
-                    copyRegion.dstSubresources.mipmap         = m;
-                    copyRegion.dstOffset                      = {0, 0, 0};
-                    copyRegion.size                           = {vp.Width(), vp.Height(), 1};
-
-                    rdg->AddTextureCopyNode(pOffscreenTexture, pCubemapTexture, copyRegion);
+                    m_pcIrradiance.mvp =
+                        glm::perspective(static_cast<float>((M_PI / 2.0)), 1.0f, 0.1f, 512.0f) *
+                        cMatrices[f];
+                    pRDG->AddGraphicsPassSetPushConstants(pPass, &m_pcIrradiance,
+                                                          sizeof(PushConstantIrradiance));
                 }
-            }
+                else
+                {
+                    m_pcPrefilterEnv.mvp =
+                        glm::perspective(static_cast<float>((M_PI / 2.0)), 1.0f, 0.1f, 512.0f) *
+                        cMatrices[f];
+                    m_pcPrefilterEnv.roughness =
+                        static_cast<float>(m) / static_cast<float>(numMips - 1);
+                    pRDG->AddGraphicsPassSetPushConstants(pPass, &m_pcPrefilterEnv,
+                                                          sizeof(PushConstantPrefilterEnv));
+                }
 
-            rdg->End();
+                pRDG->AddGraphicsPassDrawIndexedNode(pPass, cSkyboxIndices.size(), 1, 0, 0, 0);
 
-            outRDGs.emplace_back(rdg);
+                RHITextureCopyRegion copyRegion{};
+                copyRegion.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                copyRegion.srcOffset = {0, 0, 0};
+                copyRegion.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+                copyRegion.dstSubresources.baseArrayLayer = f;
+                copyRegion.dstSubresources.mipmap         = m;
+                copyRegion.dstOffset                      = {0, 0, 0};
+                copyRegion.size                           = {vp.Width(), vp.Height(), 1};
 
-            // m_renderDevice->ExecuteRenderGraphs(m_viewport, rdg.Get());
-
-            // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(
-            //     cubemapTexture, RHITextureLayout::eShaderReadOnly);
-
-            if (target == IRRADIANCE)
-            {
-                pTexture->pIrradiance        = pCubemapTexture;
-                pTexture->pIrradianceSampler = m_samplers.pCubemapSampler;
-                m_pRenderDevice->GetRHIDebug()->SetTextureDebugName(pTexture->pIrradiance,
-                                                                    "EnvIrradiance");
-            }
-            else
-            {
-                pTexture->pPrefiltered        = pCubemapTexture;
-                pTexture->pPrefilteredSampler = m_samplers.pCubemapSampler;
-                m_pRenderDevice->GetRHIDebug()->SetTextureDebugName(pTexture->pPrefiltered,
-                                                                    "EnvPrefiltered");
+                pRDG->AddTextureCopyNode(pOffscreenTexture, pCubemapTexture, copyRegion);
             }
         }
     }
 }
 
-void SkyboxRenderer::GenerateLutBRDF(EnvTexture* pTexture,
-                                     HeapVector<UniquePtr<RenderGraph>>& outRDGs)
+void SkyboxRenderer::PrepareLutBRDF(EnvTexture* pTexture)
 {
     const uint32_t dim = 512;
 
@@ -432,13 +423,15 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* pTexture,
                                .SetFramebufferInfo(m_pViewport, dim, dim)
                                .SetTag("GenlutBRDF")
                                .Build();
+}
 
-    // build rdg
-    UniquePtr<RenderGraph> rdg = MakeUnique<RenderGraph>("lut_brdf_ge_rdg");
-    rdg->Begin();
-    // std::vector<RHIRenderPassClearValue> clearValues(1);
-    // clearValues[0].color = {0.0f, 0.0f, 0.2f, 0.0f};
+void SkyboxRenderer::AppendLutBRDFNode(EnvTexture* pTexture)
+{
+    VERIFY_EXPR(pTexture != nullptr);
+    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
+    VERIFY_EXPR(pRDG != nullptr);
 
+    const uint32_t dim = 512;
     Rect2i area;
     area.minX = 0;
     area.minY = 0;
@@ -450,32 +443,24 @@ void SkyboxRenderer::GenerateLutBRDF(EnvTexture* pTexture,
     vp.minY     = 0.0f;
     vp.maxX     = static_cast<float>(dim);
     vp.maxY     = static_cast<float>(dim);
-    auto* pPass = rdg->AddGraphicsPassNode(m_gfxPasses.pLutBRDF, "lut_brdf_gen");
-    // rdg->DeclareTextureAccessForPass(pPass, texture->lutBRDF, RHITextureUsage::eColorAttachment,
-    //                                  m_RHI->GetTextureSubResourceRange(texture->lutBRDF),
-    //                                  RHIAccessMode::eReadWrite);
-    rdg->AddGraphicsPassSetScissorNode(pPass, area);
-    rdg->AddGraphicsPassSetViewportNode(pPass, vp);
-    rdg->AddGraphicsPassDrawNode(pPass, 3, 1);
-    rdg->End();
-
-    outRDGs.emplace_back(rdg);
-
-    // m_renderDevice->ExecuteRenderGraphs(m_viewport, rdg.Get());
-
-    // m_renderDevice->GetCurrentUploadCmdList()->ChangeTextureLayout(texture->lutBRDF,
-    //                                                                RHITextureLayout::eShaderReadOnly);
+    auto* pPass = pRDG->AddGraphicsPassNode(m_gfxPasses.pLutBRDF, "lut_brdf_gen");
+    pRDG->AddGraphicsPassSetScissorNode(pPass, area);
+    pRDG->AddGraphicsPassSetViewportNode(pPass, vp);
+    pRDG->AddGraphicsPassDrawNode(pPass, 3, 1);
 }
 
 void SkyboxRenderer::PrepareRenderWorkload()
 {
-    if (m_rebuildRDG)
+    if (m_pPendingPreprocessEnvTexture != nullptr)
     {
-        BuildRenderGraph();
-        m_rebuildRDG = false;
+        AppendEnvCubemapNodes(m_pPendingPreprocessEnvTexture);
+        AppendLutBRDFNode(m_pPendingPreprocessEnvTexture);
+        m_pPendingPreprocessEnvTexture = nullptr;
     }
+
     m_gfxPasses.pSkybox->pShaderProgram->UpdateUniformBuffer("uCameraData",
                                                              m_pScene->GetCameraUniformData(), 0);
+    BuildRenderGraph();
 }
 
 
@@ -499,7 +484,6 @@ void SkyboxRenderer::UpdateGraphicsPassResources()
 
 void SkyboxRenderer::OnResize()
 {
-    m_rebuildRDG = true;
     // update graphics pPass
     m_pRenderDevice->UpdateGraphicsPassOnResize(m_gfxPasses.pSkybox, m_pViewport);
 }

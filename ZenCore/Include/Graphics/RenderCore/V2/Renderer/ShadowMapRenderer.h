@@ -27,11 +27,6 @@ public:
 
     void PrepareRenderWorkload();
 
-    RenderGraph* GetRenderGraph() const
-    {
-        return m_rdg.Get();
-    };
-
     RHITexture* GetShadowMapTexture() const
     {
         return m_offscreenTextures.pShadowMap;
@@ -58,9 +53,6 @@ private:
     RHIViewport* m_pViewport{nullptr};
 
     RenderScene* m_pScene{nullptr};
-
-    UniquePtr<RenderGraph> m_rdg;
-    bool m_rebuildRDG{true};
 
     struct GraphicsPasses
     {

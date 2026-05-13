@@ -732,6 +732,7 @@ void RenderDevice::Init(RHIViewport* pMainViewport)
     m_pTextureStagingMgr        = ZEN_NEW() TextureStagingManager(this);
     m_pTextureManager           = ZEN_NEW() TextureManager(this, m_pTextureStagingMgr);
     m_pImmediateTransferCmdList = RHICommandList::Create(GDynamicRHI->GetTransferCommandContext());
+    m_frameRDG                  = MakeUnique<RenderGraph>("frame_rdg");
 
     m_frames.reserve(m_numFrames);
     for (uint32_t i = 0; i < m_numFrames; i++)
@@ -833,35 +834,32 @@ void RenderDevice::Destroy()
     ZEN_DELETE(GDynamicRHI);
 }
 
-void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<RenderGraph*> rdgs)
+void RenderDevice::ExecuteRenderGraph(RHIViewport* pViewport)
 {
+    RenderGraph* pFrameRDG = m_frameRDG.Get();
+    VERIFY_EXPR(pFrameRDG != nullptr);
+
     GDynamicRHI->BeginDrawingViewport(pViewport);
 
-    const size_t numRenderCmdLists = rdgs.size();
     HeapVector<RHICommandList*> cmdLists;
-    // use a dedicated cmd list to present
-    AcquireGraphicsCmdLists(numRenderCmdLists + 1, cmdLists);
+    // Record the frame RDG into one graphics command list and keep a dedicated list for present.
+    AcquireGraphicsCmdLists(2, cmdLists);
+    RHICommandList* pRenderCmdList  = cmdLists[0];
+    RHICommandList* pPresentCmdList = cmdLists[1];
+
     FlushPendingBufferUpdates();
     m_pTextureManager->FlushPendingTextureUpdates();
 
-    for (size_t i = 0; i < numRenderCmdLists; ++i)
-    {
-        m_rdgExecutor.Execute(*rdgs[i], cmdLists[i]);
-    }
+    m_rdgExecutor.Execute(pFrameRDG, pRenderCmdList);
     EndFrame();
 
-    if (numRenderCmdLists > 0)
-    {
-        SubmitCommandLists(MakeVecView(cmdLists.data(), numRenderCmdLists));
-        for (size_t i = 0; i < numRenderCmdLists; ++i)
-        {
-            m_graphicsCmdListPool.Release(cmdLists[i]);
-        }
-    }
+    RHICommandList* pRenderCmdLists[] = {pRenderCmdList};
+    SubmitCommandLists(MakeVecView(pRenderCmdLists));
+    m_graphicsCmdListPool.Release(pRenderCmdList);
 
     InvalidateExternalTextureState(pViewport->GetColorBackBuffer());
     InvalidateExternalTextureState(pViewport->GetDepthStencilBackBuffer());
-    GDynamicRHI->EndDrawingViewport(pViewport, cmdLists[numRenderCmdLists], true);
+    GDynamicRHI->EndDrawingViewport(pViewport, pPresentCmdList, true);
     NotifyExternalTextureState(
         pViewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
         RHITextureUsage::eColorAttachment,
@@ -871,43 +869,16 @@ void RenderDevice::ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<Render
                          RHIPipelineStageBits::eLateFragmentTests);
     NotifyExternalTextureState(pViewport->GetDepthStencilBackBuffer(), RHIAccessMode::eReadWrite,
                                RHITextureUsage::eDepthStencilAttachment, depthStages);
-    m_graphicsCmdListPool.Release(cmdLists[numRenderCmdLists]);
-}
-
-void RenderDevice::ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs)
-{
-    if (rdgs.empty())
-    {
-        FlushPendingBufferUpdates();
-        m_pTextureManager->FlushPendingTextureUpdates();
-        return;
-    }
-
-    HeapVector<RHICommandList*> cmdLists;
-    AcquireGraphicsCmdLists(rdgs.size(), cmdLists);
-    FlushPendingBufferUpdates();
-    m_pTextureManager->FlushPendingTextureUpdates();
-
-    for (size_t i = 0; i < rdgs.size(); ++i)
-    {
-        m_rdgExecutor.Execute(*rdgs[i], cmdLists[i]);
-    }
-
-    SubmitCommandLists(MakeVecView(cmdLists));
-
-    for (RHICommandList* pCmdList : cmdLists)
-    {
-        m_graphicsCmdListPool.Release(pCmdList);
-    }
+    m_graphicsCmdListPool.Release(pPresentCmdList);
 }
 
 void RenderDevice::ExecuteRenderGraph(RenderGraph& rdg)
 {
-    const bool useTransferCmdList = m_rdgExecutor.ShouldExecuteOnTransferQueue(rdg);
+    const bool useTransferCmdList = m_rdgExecutor.ShouldExecuteOnTransferQueue(&rdg);
     RHICommandList* pCmdList =
         useTransferCmdList ? m_pImmediateTransferCmdList : m_graphicsCmdListPool.Acquire();
 
-    m_rdgExecutor.Execute(rdg, pCmdList);
+    m_rdgExecutor.Execute(&rdg, pCmdList);
 
     if (useTransferCmdList)
     {

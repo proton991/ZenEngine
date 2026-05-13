@@ -48,11 +48,6 @@ public:
 
     virtual void OnResize() = 0;
 
-    RenderGraph* GetRenderGraph() const
-    {
-        return m_rdg.Get();
-    };
-
     const VoxelTextures& GetVoxelTextures() const
     {
         return m_voxelTextures;
@@ -122,8 +117,6 @@ protected:
 
     float m_sceneExtent;
 
-    bool m_rebuildRDG{true};
-    UniquePtr<RenderGraph> m_rdg;
     bool m_needVoxelization{true};
 };
 } // namespace zen::rc

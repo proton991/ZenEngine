@@ -257,9 +257,9 @@ class RenderGraph;
 class RDGExecutor
 {
 public:
-    void Execute(RenderGraph& graph, RHICommandList* pCmdList);
+    void Execute(RenderGraph* pGraph, RHICommandList* pCmdList);
 
-    bool ShouldExecuteOnTransferQueue(const RenderGraph& graph) const;
+    bool ShouldExecuteOnTransferQueue(RenderGraph* pGraph);
 
     ResourceStateTracker& GetResourceStateTracker()
     {
@@ -272,6 +272,10 @@ public:
     }
 
 private:
+    void CompileGraph(RenderGraph* pGraph);
+
+    void AttachGraphBarriers(RenderGraph* pGraph);
+
     ResourceStateTracker m_resourceStateTracker;
 };
 
@@ -279,6 +283,7 @@ enum class RDGExecutionState : uint8_t
 {
     eIdle,
     eBuilding,
+    eRecorded,
     eCompiled,
     eExecuting,
 };
@@ -469,7 +474,7 @@ struct RDGCompileStats
     uint32_t nodeCount{0};
     uint32_t passCount{0};
     uint32_t resourceCount{0};
-    uint32_t intraGraphBarrierCount{0};
+    uint32_t dependencyBarrierCount{0};
     uint32_t commandListCount{0};
 };
 
@@ -784,13 +789,7 @@ private:
 
     void SortNodesV2();
 
-    void Compile();
-
     void BuildCompiledNodeList();
-
-    void AttachFirstUseBarriers();
-
-    void AttachIntraGraphBarriers();
 
     void AddResourceAccess(RDGResource* pResource, const RDGAccess& access);
 
@@ -985,6 +984,7 @@ private:
     RDGExecutionState m_executionState{RDGExecutionState::eIdle};
     RDGCompileStats m_compileStats;
     bool m_executeSummaryLogPending{false};
+    bool m_executeSummaryLogged{false};
     uint32_t m_recordedInitBarrierCount{0};
 };
 } // namespace zen::rc

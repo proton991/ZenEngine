@@ -367,11 +367,14 @@ public:
 
     void Destroy();
 
-    void ExecuteRenderGraphs(RHIViewport* pViewport, VectorView<RenderGraph*> rdgs);
-
-    void ExecuteRenderGraphs(VectorView<UniquePtr<RenderGraph>> rdgs);
+    void ExecuteRenderGraph(RHIViewport* pViewport);
 
     void ExecuteRenderGraph(RenderGraph& rdg);
+
+    RenderGraph* GetCurrentFrameRDG() const
+    {
+        return m_frameRDG.Get();
+    }
 
     void NotifyExternalTextureState(RHITexture* pTexture,
                                     RHIAccessMode accessMode,
@@ -600,6 +603,7 @@ private:
     BufferStagingManager* m_pBufferStagingMgr{nullptr};
     TextureStagingManager* m_pTextureStagingMgr{nullptr};
     RDGExecutor m_rdgExecutor;
+    UniquePtr<RenderGraph> m_frameRDG;
 
     RendererServer* m_pRendererServer{nullptr};
     TextureManager* m_pTextureManager{nullptr};

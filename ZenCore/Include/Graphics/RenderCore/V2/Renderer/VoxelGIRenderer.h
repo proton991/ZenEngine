@@ -23,11 +23,6 @@ public:
 
     void OnResize();
 
-    RenderGraph* GetRenderGraph() const
-    {
-        return m_rdg.Get();
-    };
-
 private:
     void PrepareTextures();
 
@@ -52,9 +47,6 @@ private:
     RHIViewport* m_pViewport{nullptr};
 
     VoxelizerBase* m_pVoxelizer{nullptr};
-
-    bool m_rebuildRDG{true};
-    UniquePtr<RenderGraph> m_rdg;
 
     struct
     {

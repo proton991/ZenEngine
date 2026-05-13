@@ -43,11 +43,6 @@ public:
 
     void OnResize();
 
-    RenderGraph* GetRenderGraph()
-    {
-        return m_rdg.Get();
-    };
-
 private:
     void PrepareTextures();
 
@@ -62,9 +57,6 @@ private:
     RenderDevice* m_pRenderDevice{nullptr};
 
     RHIViewport* m_pViewport{nullptr};
-
-    UniquePtr<RenderGraph> m_rdg;
-    bool m_rebuildRDG{true};
 
     struct GraphicsPasses
     {

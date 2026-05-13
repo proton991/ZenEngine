@@ -1,6 +1,5 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderGraph.h"
-#include "Utils/UniquePtr.h"
 
 #define M_PI 3.14159265358979323846 // pi
 
@@ -31,11 +30,6 @@ public:
         UpdateGraphicsPassResources();
     }
 
-    RenderGraph* GetRenderGraph()
-    {
-        return m_rdg.Get();
-    };
-
 private:
     enum CubmapTarget
     {
@@ -52,9 +46,13 @@ private:
 
     void UpdateGraphicsPassResources();
 
-    void GenerateEnvCubemaps(EnvTexture* pTexture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
+    void PrepareEnvCubemaps(EnvTexture* pTexture);
 
-    void GenerateLutBRDF(EnvTexture* pTexture, HeapVector<UniquePtr<RenderGraph>>& outRDGs);
+    void AppendEnvCubemapNodes(EnvTexture* pTexture);
+
+    void PrepareLutBRDF(EnvTexture* pTexture);
+
+    void AppendLutBRDFNode(EnvTexture* pTexture);
 
     struct SkyboxVertex
     {
@@ -67,7 +65,7 @@ private:
 
     RenderScene* m_pScene{nullptr};
 
-    bool m_rebuildRDG{true};
+    EnvTexture* m_pPendingPreprocessEnvTexture{nullptr};
 
     struct
     {
@@ -82,8 +80,6 @@ private:
         RHITexture* pIrradiance{nullptr};
         RHITexture* pPrefiltered{nullptr};
     } m_offscreenTextures;
-
-    UniquePtr<RenderGraph> m_rdg;
 
     RHIBuffer* m_pVertexBuffer;
     RHIBuffer* m_pIndexBuffer;
