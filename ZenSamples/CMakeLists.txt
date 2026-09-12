@@ -53,6 +53,9 @@ add_dependencies(RenderCoreTest SpvShaders)
 add_executable(LRUCacheTest LRUCacheTest/LRUCacheTests.cpp)
 target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Include)
 target_link_libraries(LRUCacheTest PRIVATE gtest_main)
+add_executable(InputControllerTest CommonTest/InputControllerTests.cpp)
+target_link_libraries(InputControllerTest PRIVATE ZenCore gtest_main)
+
 add_executable(CommonTest
     CommonTest/SmallVectorTests.cpp
     CommonTest/MemoryTests.cpp

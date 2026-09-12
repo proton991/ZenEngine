@@ -90,7 +90,7 @@ private:
         {
             LOGW("Config file not found at {}, creating default config.", configPath);
             std::ofstream outFile(configPath);
-            outFile << "model_base_path=../../glTF-Sample-Models/2.0" << std::endl;
+            outFile << "model_base_path=../../glTF-Sample-Assets/Models" << std::endl;
             outFile << "default_model=Suzanne" << std::endl;
             outFile.close();
             LOGI("Default config created at {}.", configPath);

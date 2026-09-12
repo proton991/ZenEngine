@@ -74,9 +74,9 @@ private:
     UniquePtr<platform::Timer> m_timer;
 
     const std::vector<std::string> MODEL_PATHS = {
-        "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf",
-        "../../glTF-Sample-Models/2.0/ToyCar/glTF/ToyCar.gltf",
-        "../../glTF-Sample-Models/2.0/FlightHelmet/glTF/FlightHelmet.gltf",
+        "../../glTF-Sample-Assets/Models/Box/glTF/Box.gltf",
+        "../../glTF-Sample-Assets/Models/ToyCar/glTF/ToyCar.gltf",
+        "../../glTF-Sample-Assets/Models/FlightHelmet/glTF/FlightHelmet.gltf",
     };
 };
 } // namespace zen

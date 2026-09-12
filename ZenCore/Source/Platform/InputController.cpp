@@ -9,8 +9,10 @@ void KeyboardMouseInput::PressKey(std::int32_t key)
     ASSERT(key < GLFW_KEY_LAST);
 
     std::scoped_lock lock(m_inputMutex);
-    m_keyPressed[key] = true;
-    m_keyboardUpdated = true;
+    // Keep press events independently of held state: glfwPollEvents can deliver both
+    // press and release before the application checks its shortcuts.
+    m_pendingKeyPresses[key] = m_pendingKeyPresses[key] || !m_keyPressed[key];
+    m_keyPressed[key]        = true;
 }
 
 void KeyboardMouseInput::ReleaseKey(std::int32_t key)
@@ -20,7 +22,6 @@ void KeyboardMouseInput::ReleaseKey(std::int32_t key)
 
     std::scoped_lock lock(m_inputMutex);
     m_keyPressed[key] = false;
-    m_keyboardUpdated = true;
 }
 
 bool KeyboardMouseInput::IsKeyPressed(std::int32_t key) const
@@ -37,13 +38,9 @@ bool KeyboardMouseInput::WasKeyPressedOnce(std::int32_t key)
     ASSERT(key < GLFW_KEY_LAST);
 
     std::scoped_lock lock(m_inputMutex);
-    if (!m_keyPressed[key] || !m_keyboardUpdated)
-    {
-        return false;
-    }
-
-    m_keyPressed[key] = false;
-    return true;
+    const bool pressed       = m_pendingKeyPresses[key];
+    m_pendingKeyPresses[key] = false;
+    return pressed;
 }
 
 void KeyboardMouseInput::PressMouseButton(std::int32_t button)

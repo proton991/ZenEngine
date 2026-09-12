@@ -154,10 +154,10 @@ private:
     UniquePtr<sg::Scene> m_scene;
 
     const std::vector<std::string> GLTF_PATHS = {
-        "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf",
-        "../../glTF-Sample-Models/2.0/ToyCar/glTF/ToyCar.gltf",
-        "../../glTF-Sample-Models/2.0/FlightHelmet/glTF/FlightHelmet.gltf",
-        "../../glTF-Sample-Models/2.0/Sponza/glTF/Sponza.gltf",
+        "../../glTF-Sample-Assets/Models/Box/glTF/Box.gltf",
+        "../../glTF-Sample-Assets/Models/ToyCar/glTF/ToyCar.gltf",
+        "../../glTF-Sample-Assets/Models/FlightHelmet/glTF/FlightHelmet.gltf",
+        "../../glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf",
     };
 };
 } // namespace zen

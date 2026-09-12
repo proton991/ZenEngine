@@ -36,7 +36,7 @@ public:
     /// @return ``true`` if the key is pressed
     [[nodiscard]] bool IsKeyPressed(std::int32_t key) const;
 
-    /// @brief Checks if a key was pressed once.
+    /// @brief Consumes a key press, even if the key was released before this check.
     /// @param key The key index
     /// @note key must be smaller than ``GLFW_KEY_LAST`` and greater or equal to 0
     /// @return ``true`` if the key was pressed
@@ -106,9 +106,9 @@ private:
     std::array<std::int64_t, 2> m_previousCursorPos{0, 0}; // [x, y]
     std::array<std::int64_t, 2> m_currentCursorPos{0, 0};  // [x, y]
     std::array<bool, GLFW_KEY_LAST> m_keyPressed{false};
+    std::array<bool, GLFW_KEY_LAST> m_pendingKeyPresses{false};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST> m_mouseButtonPressed{false};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST> m_mouseButtonReleased{true};
-    bool m_keyboardUpdated{false};
     bool m_mouseButtonsUpdated{false};
     bool m_firstMouse{true};
     mutable std::shared_mutex m_inputMutex;

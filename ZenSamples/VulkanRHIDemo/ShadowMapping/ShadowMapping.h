@@ -84,7 +84,7 @@ private:
 
     float m_lightFOV = 45.0f;
 
-    const std::string m_modelPath = "../../glTF-Sample-Models/2.0/Box/glTF/Box.gltf";
+    const std::string m_modelPath = "../../glTF-Sample-Assets/Models/Box/glTF/Box.gltf";
     const uint32_t cShadowMapSize{2048};
 
     const DataFormat cOffscreenDepthFormat{DataFormat::eD32SFloatS8UInt};

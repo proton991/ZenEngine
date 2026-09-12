@@ -39,6 +39,11 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
     m_pWindow->SetOnResize([&](uint32_t width, uint32_t height) {
+        // Minimized windows can report 0 x 0; keep the last valid camera projection.
+        if (width == 0 || height == 0)
+        {
+            return;
+        }
         m_camera->UpdateAspect(m_pWindow->GetAspect());
         m_renderDevice->ProcessViewportResize(width, height);
     });
@@ -116,16 +121,30 @@ void SceneRendererDemo::Run()
 
         m_pWindow->Update();
 
+        if (m_pWindow->ShouldClose())
+        {
+            break;
+        }
+
+        const VkExtent2D extent = m_pWindow->GetExtent2D();
+        if (extent.width == 0 || extent.height == 0)
+        {
+            // Wait for restore/close without submitting to an unavailable surface.
+            glfwWaitEvents();
+            m_timer->Tick();
+            continue;
+        }
+
         m_camera->Update(frameTime);
 
         m_renderDevice->GetRendererServer()->DispatchRenderWorkloads();
 
-        if (platform::KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_1))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_1))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_2))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_2))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
         }

@@ -122,30 +122,12 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
     VkCommandBuffer cmdBuffer        = pCmdBuffer->GetVkHandle();
 
-    const VkImageSubresourceRange range =
-        VulkanTexture::GetVkSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
-    VkClearColorValue clearColor{0.1f, 0.1f, 0.1f, 1.0f};
-
+    // Swapchain images belong to the presentation engine until acquired. Their first
+    // transition is recorded by PrepareForPresent after acquisition, with a semaphore
+    // wait before CopyBackBufferToSwapchainImage overwrites the entire image.
     for (uint32_t i = 0; i < numImages; i++)
     {
         m_swapchainImages[i] = pImages[i];
-
-        {
-            VulkanPipelineBarrier barrier;
-            barrier.AddImageBarrier(pImages[i], VK_IMAGE_LAYOUT_UNDEFINED,
-                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range);
-            barrier.ExecuteImageBarriersOnly(cmdBuffer);
-        }
-
-        vkCmdClearColorImage(cmdBuffer, pImages[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             &clearColor, 1, &range);
-
-        {
-            VulkanPipelineBarrier barrier;
-            barrier.AddImageBarrier(pImages[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
-            barrier.ExecuteImageBarriersOnly(cmdBuffer);
-        }
     }
 
     RHITextureCreateInfo colorTexInfo{};

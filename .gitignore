@@ -4,6 +4,7 @@ lib/
 build/
 .idea/
 out/
+.clangd
 
 Data/SpvShaders
 Data/engine.cfg
