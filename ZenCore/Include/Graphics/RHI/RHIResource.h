@@ -355,6 +355,8 @@ public:
 
     virtual void Unmap() = 0;
 
+    // Creates an immutable view of the logical buffer. Repeating its format is a
+    // no-op; changing a successfully created view's format is rejected.
     virtual void SetTexelFormat(DataFormat format) = 0;
 
     BitField<RHIBufferUsageFlagBits> GetUsageFlags() const

@@ -10,6 +10,8 @@ Raw RHI resource arguments are borrowed. Callers must keep buffers, textures, sa
 
 Descriptor-pool retention is independent of resource retention. Vulkan workloads retain ordinary descriptor pools from recording through completion, but this does not retain the buffers, textures, or samplers described by their sets.
 
+`RHIBuffer::SetTexelFormat(format)` creates one buffer-owned texel view over the buffer's declared byte size, excluding allocation padding. The buffer must have the appropriate texel-buffer usage, and its size and format must meet the device's texel-view requirements. Repeating the same format after successful creation is a no-op; changing it throws and preserves the existing view, including recorded descriptors that reference it. Native creation failure throws without publishing a view or fixing its format, so the caller may retry. The buffer destroys its view when released under the ordinary resource lifetime contract.
+
 ## Vulkan queue sharing
 
 RHI-created buffers and textures permit use on both graphics and async-compute queue families. Resources with transfer-source or transfer-destination usage also permit the transfer family. Creation uses concurrent sharing across distinct families, or exclusive sharing when every permitted queue belongs to the same family. Texture views inherit the base image's sharing. This policy does not apply to native swapchain images or externally created Vulkan resources.

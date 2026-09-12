@@ -68,7 +68,6 @@ void VulkanBuffer::Init()
             GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer,
                                          &m_memAlloc);
         });
-    m_allocatedSize = m_memAlloc.info.size;
 }
 
 void VulkanBuffer::Destroy()
@@ -96,14 +95,33 @@ void VulkanBuffer::Unmap()
 
 void VulkanBuffer::SetTexelFormat(DataFormat format)
 {
-    VkBufferViewCreateInfo bufferViewCI;
-    InitVkStruct(bufferViewCI, VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO);
-    bufferViewCI.buffer = m_vkBuffer;
-    bufferViewCI.format = ToVkFormat(format);
-    bufferViewCI.range  = m_allocatedSize;
-    bufferViewCI.offset = 0;
+    if (m_bufferView == VK_NULL_HANDLE)
+    {
+        VkBufferViewCreateInfo bufferViewCI;
+        InitVkStruct(bufferViewCI, VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO);
+        bufferViewCI.buffer = m_vkBuffer;
+        bufferViewCI.format = ToVkFormat(format);
+        bufferViewCI.range  = m_requiredSize;
+        bufferViewCI.offset = 0;
 
-    VKCHECK(vkCreateBufferView(GVulkanRHI->GetVkDevice(), &bufferViewCI, nullptr, &m_bufferView));
+        VkBufferView bufferView{VK_NULL_HANDLE};
+        const VkResult result =
+            vkCreateBufferView(GVulkanRHI->GetVkDevice(), &bufferViewCI, nullptr, &bufferView);
+        if (result != VK_SUCCESS)
+        {
+            LOG_ERROR_AND_THROW(
+                fmt::format("vkCreateBufferView failed: {}", GetResultString(result)));
+        }
+
+        // Descriptors can retain this handle from recording through GPU completion.
+        // Publish one immutable view only after creation succeeds.
+        m_bufferView  = bufferView;
+        m_texelFormat = format;
+    }
+    else if (format != m_texelFormat)
+    {
+        LOG_ERROR_AND_THROW("Cannot change an existing buffer's texel format");
+    }
 }
 
 void VulkanUniformBufferAllocator::Init(uint32_t numSlots,

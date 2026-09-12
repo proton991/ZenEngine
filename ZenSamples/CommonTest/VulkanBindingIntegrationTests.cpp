@@ -53,6 +53,52 @@ struct BindingObserver
     }
 };
 
+struct TexelViewObserver
+{
+    static inline PFN_vkCreateBufferView create;
+    static inline PFN_vkDestroyBufferView destroy;
+    static inline uint32_t creates;
+    static inline uint32_t destroys;
+    static inline VkDeviceSize range;
+    static inline VkBuffer buffer;
+    static inline bool failCreation;
+
+    static void Reset()
+    {
+        create       = vkCreateBufferView;
+        destroy      = vkDestroyBufferView;
+        creates      = 0;
+        destroys     = 0;
+        range        = 0;
+        buffer       = VK_NULL_HANDLE;
+        failCreation = false;
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL Create(VkDevice device,
+                                                 const VkBufferViewCreateInfo* info,
+                                                 const VkAllocationCallbacks* allocator,
+                                                 VkBufferView* view)
+    {
+        ++creates;
+        range           = info->range;
+        buffer          = info->buffer;
+        VkResult result = VK_ERROR_OUT_OF_HOST_MEMORY;
+        if (!failCreation)
+        {
+            result = create(device, info, allocator, view);
+        }
+        return result;
+    }
+
+    static VKAPI_ATTR void VKAPI_CALL Destroy(VkDevice device,
+                                              VkBufferView view,
+                                              const VkAllocationCallbacks* allocator)
+    {
+        ++destroys;
+        destroy(device, view, allocator);
+    }
+};
+
 class VulkanBindingIntegrationTest : public testing::Test
 {
 protected:
@@ -151,6 +197,19 @@ protected:
                                           RHIBufferUsageFlagBits::eStorageBuffer);
         info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
         auto* buffer = static_cast<VulkanBuffer*>(session->rhi.CreateBuffer(info));
+        buffers.push_back(buffer);
+        return buffer;
+    }
+
+    VulkanBuffer* TexelBuffer(uint32_t size,
+                              BitField<RHIBufferUsageFlagBits> usage,
+                              RHIBufferAllocateType allocation = RHIBufferAllocateType::eCPURead)
+    {
+        RHIBufferCreateInfo info{};
+        info.size            = size;
+        info.allocateType    = allocation;
+        info.usageFlags      = usage;
+        VulkanBuffer* buffer = static_cast<VulkanBuffer*>(session->rhi.CreateBuffer(info));
         buffers.push_back(buffer);
         return buffer;
     }
@@ -278,6 +337,134 @@ protected:
         context->RHISetShaderParameters(parameters);
     }
 };
+
+TEST_F(VulkanBindingIntegrationTest, TexelViewsUseLogicalBufferRange)
+{
+    TexelViewObserver::Reset();
+    test::ScopedVulkanCall<PFN_vkCreateBufferView> create(vkCreateBufferView,
+                                                          TexelViewObserver::Create);
+    test::ScopedVulkanCall<PFN_vkDestroyBufferView> destroy(vkDestroyBufferView,
+                                                            TexelViewObserver::Destroy);
+    for (uint32_t size : {4u, 12u, 256u})
+    {
+        for (uint32_t usageIndex = 0; usageIndex < 3; ++usageIndex)
+        {
+            SCOPED_TRACE(testing::Message() << "size=" << size << " usage=" << usageIndex);
+            BitField<RHIBufferUsageFlagBits> usage;
+            if (usageIndex != 1)
+            {
+                usage.SetFlag(RHIBufferUsageFlagBits::eTextureBuffer);
+            }
+            if (usageIndex != 0)
+            {
+                usage.SetFlag(RHIBufferUsageFlagBits::eImageBuffer);
+            }
+            VulkanBuffer* buffer = TexelBuffer(size, usage, RHIBufferAllocateType::eGPU);
+            buffer->SetTexelFormat(DataFormat::eR32UInt);
+            EXPECT_NE(buffer->GetVkBufferView(), VK_NULL_HANDLE);
+            EXPECT_EQ(TexelViewObserver::buffer, buffer->GetVkBuffer());
+            EXPECT_EQ(TexelViewObserver::range, size);
+        }
+    }
+    EXPECT_EQ(TexelViewObserver::creates, 9u);
+    Shutdown();
+    EXPECT_EQ(TexelViewObserver::destroys, 9u);
+}
+
+TEST_F(VulkanBindingIntegrationTest, TexelViewsReuseIdenticalFormatsAndRejectReplacement)
+{
+    TexelViewObserver::Reset();
+    test::ScopedVulkanCall<PFN_vkCreateBufferView> create(vkCreateBufferView,
+                                                          TexelViewObserver::Create);
+    test::ScopedVulkanCall<PFN_vkDestroyBufferView> destroy(vkDestroyBufferView,
+                                                            TexelViewObserver::Destroy);
+    for (RHIBufferUsageFlagBits usage :
+         {RHIBufferUsageFlagBits::eTextureBuffer, RHIBufferUsageFlagBits::eImageBuffer})
+    {
+        VulkanBuffer* buffer = TexelBuffer(256, BitField<RHIBufferUsageFlagBits>(usage));
+        buffer->SetTexelFormat(DataFormat::eR32UInt);
+        const VkBufferView original = buffer->GetVkBufferView();
+        for (uint32_t repeat = 0; repeat < 8; ++repeat)
+        {
+            EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt));
+            EXPECT_EQ(buffer->GetVkBufferView(), original);
+        }
+        EXPECT_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat), std::runtime_error);
+        EXPECT_EQ(buffer->GetVkBufferView(), original);
+        EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt));
+    }
+    EXPECT_EQ(TexelViewObserver::creates, 2u);
+    EXPECT_EQ(TexelViewObserver::destroys, 0u);
+    Shutdown();
+    EXPECT_EQ(TexelViewObserver::destroys, 2u);
+}
+
+TEST_F(VulkanBindingIntegrationTest, TexelViewCreationFailureCanRetryWithAnotherFormat)
+{
+    TexelViewObserver::Reset();
+    test::ScopedVulkanCall<PFN_vkCreateBufferView> create(vkCreateBufferView,
+                                                          TexelViewObserver::Create);
+    test::ScopedVulkanCall<PFN_vkDestroyBufferView> destroy(vkDestroyBufferView,
+                                                            TexelViewObserver::Destroy);
+    VulkanBuffer* buffer =
+        TexelBuffer(4, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTextureBuffer));
+    TexelViewObserver::failCreation = true;
+    EXPECT_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt), std::runtime_error);
+    EXPECT_EQ(buffer->GetVkBufferView(), VK_NULL_HANDLE);
+    TexelViewObserver::failCreation = false;
+    EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat));
+    EXPECT_NE(buffer->GetVkBufferView(), VK_NULL_HANDLE);
+    EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat));
+    EXPECT_EQ(TexelViewObserver::creates, 2u);
+    Shutdown();
+    EXPECT_EQ(TexelViewObserver::destroys, 1u);
+}
+
+TEST_F(VulkanBindingIntegrationTest, TexelViewsPreserveRecordedDescriptorsAndReadBackExactExtents)
+{
+    TexelViewObserver::Reset();
+    test::ScopedVulkanCall<PFN_vkCreateBufferView> create(vkCreateBufferView,
+                                                          TexelViewObserver::Create);
+    test::ScopedVulkanCall<PFN_vkDestroyBufferView> destroy(vkDestroyBufferView,
+                                                            TexelViewObserver::Destroy);
+    RHIPipeline* pipeline = Compute("binding_texel.comp.spv");
+    VulkanBuffer* input =
+        TexelBuffer(12, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTextureBuffer));
+    VulkanBuffer* output =
+        TexelBuffer(8, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eImageBuffer));
+    uint32_t* inputValues = reinterpret_cast<uint32_t*>(input->Map());
+    inputValues[0]        = 7;
+    inputValues[1]        = 11;
+    inputValues[2]        = 19;
+    input->Unmap();
+    input->SetTexelFormat(DataFormat::eR32UInt);
+    output->SetTexelFormat(DataFormat::eR32UInt);
+    const VkBufferView inputView  = input->GetVkBufferView();
+    const VkBufferView outputView = output->GetVkBufferView();
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 0), input, nullptr, 0);
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 1), output, nullptr, 0);
+    context->RHISetShaderParameters(parameters);
+    context->RHIDispatch(1, 1, 1);
+
+    // The recorded dispatch already references these views. Neither repeated
+    // requests nor rejected format changes may invalidate its descriptors.
+    input->SetTexelFormat(DataFormat::eR32UInt);
+    output->SetTexelFormat(DataFormat::eR32UInt);
+    EXPECT_THROW(input->SetTexelFormat(DataFormat::eR32SFloat), std::runtime_error);
+    EXPECT_THROW(output->SetTexelFormat(DataFormat::eR32SInt), std::runtime_error);
+    EXPECT_EQ(input->GetVkBufferView(), inputView);
+    EXPECT_EQ(output->GetVkBufferView(), outputView);
+    EXPECT_EQ(TexelViewObserver::creates, 2u);
+    EXPECT_EQ(TexelViewObserver::destroys, 0u);
+    SubmitAndWait();
+    const uint32_t* outputValues = reinterpret_cast<const uint32_t*>(output->Map());
+    EXPECT_EQ(outputValues[0], 119u);
+    EXPECT_EQ(outputValues[1], 23u); // Three input texels and two output texels.
+    output->Unmap();
+    Shutdown();
+    EXPECT_EQ(TexelViewObserver::destroys, 2u);
+}
 
 TEST_F(VulkanBindingIntegrationTest, UniformArraysEmitAllZeroOffsetsByDefault)
 {

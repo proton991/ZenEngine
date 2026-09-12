@@ -40,8 +40,8 @@ private:
     explicit VulkanBuffer(const RHIBufferCreateInfo& createInfo) : RHIBuffer(createInfo) {}
 
     VkBuffer m_vkBuffer{VK_NULL_HANDLE};
-    uint32_t m_allocatedSize{0};
     VkBufferView m_bufferView{VK_NULL_HANDLE};
+    DataFormat m_texelFormat{DataFormat::eUndefined};
     VulkanMemoryAllocation m_memAlloc{};
 };
 
