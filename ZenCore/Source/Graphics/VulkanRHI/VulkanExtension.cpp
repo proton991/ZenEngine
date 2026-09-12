@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 
 #if defined(ZEN_WIN32)
 #    include "Graphics/VulkanRHI/Platform/VulkanWindowsPlatform.h"
@@ -19,6 +20,38 @@ static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
     Added.pNext    = (void*)Existing.pNext;
     Existing.pNext = (void*)&Added;
 }
+
+class VulkanSwapchainMaintenanceExtension : public VulkanDeviceExtension
+{
+public:
+    VulkanSwapchainMaintenanceExtension(VulkanDevice* device, NameID name) :
+        VulkanDeviceExtension(device, name)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_features);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        SetSupport(m_features.swapchainMaintenance1 == VK_TRUE);
+        m_pDevice->GetExtensionFlags().hasSwapchainMaintenance1 = IsEnabledAndSupported();
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(info, m_features);
+        }
+    }
+
+private:
+    // The EXT and KHR feature/fence structures are aliases.
+    VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT m_features{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT};
+};
 
 // Advanced extensions
 /**
@@ -396,15 +429,40 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     SET_INSTANCE_EXTENSION_FLAG(hasGetPhysicalDeviceProperties);
     ADD_INSTANCE_EXTENSION(VK_KHR_SURFACE_EXTENSION_NAME);
     ADD_INSTANCE_EXTENSION(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    ADD_INSTANCE_EXTENSION(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    ADD_INSTANCE_EXTENSION("VK_KHR_surface_maintenance1");
+    ADD_INSTANCE_EXTENSION(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
 
     VulkanPlatform::AddInstanceExtensions(enabledExtensions);
 
     FlagExtensionSupported(enabledExtensions,
                            VulkanInstanceExtension::GetSupportedInstanceExtensions());
 
+    const auto hasExtension = [&](NameID name) {
+        for (const auto& extension : enabledExtensions)
+        {
+            if (extension->GetName() == name)
+            {
+                return extension->IsEnabledAndSupported();
+            }
+        }
+        return false;
+    };
+    const bool hasSurfaceCapabilities2 =
+        hasExtension(NameID(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
     for (const auto& extension : enabledExtensions)
     {
         const NameID name = extension->GetName();
+        if (name == NameID("VK_KHR_surface_maintenance1"))
+        {
+            extension->SetSupport(extension->IsEnabledAndSupported() && hasSurfaceCapabilities2);
+            extensionFlags.hasSurfaceMaintenanceKHR = extension->IsEnabledAndSupported();
+        }
+        if (name == NameID(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
+        {
+            extension->SetSupport(extension->IsEnabledAndSupported() && hasSurfaceCapabilities2);
+            extensionFlags.hasSurfaceMaintenanceEXT = extension->IsEnabledAndSupported();
+        }
         if (name == NameID(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
         {
             extensionFlags.hasDebugUtils = extension->IsEnabledAndSupported();
@@ -475,9 +533,22 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
 
-    FlagExtensionSupported(
-        enabledExtensions,
-        VulkanDeviceExtension::GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle()));
+    const auto supported      = GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
+    const auto& instanceFlags = GVulkanRHI->GetInstanceExtensionFlags();
+    if (instanceFlags.hasSurfaceMaintenanceKHR &&
+        FindExtensionIndex(NameID("VK_KHR_swapchain_maintenance1"), supported) >= 0)
+    {
+        enabledExtensions.emplace_back(MakeUnique<VulkanSwapchainMaintenanceExtension>(
+            pDevice, NameID("VK_KHR_swapchain_maintenance1")));
+    }
+    else if (instanceFlags.hasSurfaceMaintenanceEXT &&
+             FindExtensionIndex(NameID(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME), supported) >=
+                 0)
+    {
+        enabledExtensions.emplace_back(MakeUnique<VulkanSwapchainMaintenanceExtension>(
+            pDevice, NameID(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)));
+    }
+    FlagExtensionSupported(enabledExtensions, supported);
 
     // These features are core in our minimum API version (1.2), even when the
     // driver does not advertise their former extension names.

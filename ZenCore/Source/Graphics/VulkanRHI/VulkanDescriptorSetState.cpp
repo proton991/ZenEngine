@@ -232,7 +232,8 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     }
 }
 
-void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+                                                   const RHIBindlessUse* recordedUse)
 {
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
     {
@@ -254,7 +255,7 @@ void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParamet
     {
         if (parameter.bufferOffset != 0 ||
             !GVulkanRHI->GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
-                parameter.pResource, parameter.arrayIndex))
+                parameter.pResource, parameter.arrayIndex, nullptr, recordedUse))
         {
             LOG_ERROR_AND_THROW(
                 "Invalid bindless registration: slots cannot be replaced or exceed heap capacity");
@@ -279,6 +280,7 @@ void VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 
     if (pShader != nullptr && pShader->HasGlobalBindlessSet())
     {
+        pContext->RetainCurrentBindlessUse();
         GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
     }
 

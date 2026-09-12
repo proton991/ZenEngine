@@ -27,6 +27,8 @@ struct InstanceExtensionFlags
 {
     uint32_t hasGetPhysicalDeviceProperties : 1;
     uint32_t hasDebugUtils : 1;
+    uint32_t hasSurfaceMaintenanceKHR : 1;
+    uint32_t hasSurfaceMaintenanceEXT : 1;
 };
 
 class VulkanExtension

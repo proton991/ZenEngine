@@ -3,6 +3,7 @@
 #include "Templates/HeapVector.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/VulkanRHI/VulkanViewport.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
@@ -30,6 +31,17 @@ struct WSIDriver
     static inline PFN_vkAcquireNextImageKHR acquire;
     static inline PFN_vkQueuePresentKHR present;
     static inline PFN_vkQueueSubmit submit;
+    static inline PFN_vkCreateSemaphore createSemaphore;
+    static inline PFN_vkDestroySemaphore destroySemaphore;
+    static inline PFN_vkCreateFence createFence;
+    static inline PFN_vkDestroyFence destroyFence;
+    static inline PFN_vkWaitForFences waitForFences;
+    static inline HeapVector<VkSemaphore> liveSemaphores;
+    static inline HeapVector<VkFence> liveFences;
+    static inline uint32_t semaphoreDestructions{}, fenceCreationFailures{}, presentFenceCalls{};
+    static inline uint32_t semaphoreFailureCountdown{};
+    static inline VkFence heldPresentFence{};
+    static inline bool holdPresentation{}, rejectPresentWait{};
     static inline bool native{}, incomplete{}, canPresent{true};
     static inline VkResult acquireResult{VK_SUCCESS}, presentResult{VK_SUCCESS},
         createResult{VK_SUCCESS};
@@ -68,6 +80,12 @@ struct WSIDriver
         nativeCounts.clear();
         exposedCounts.clear();
         presentationSemaphores.clear();
+        liveSemaphores.clear();
+        liveFences.clear();
+        semaphoreDestructions = fenceCreationFailures = presentFenceCalls = 0;
+        semaphoreFailureCountdown                                         = 0;
+        heldPresentFence                                                  = VK_NULL_HANDLE;
+        holdPresentation = rejectPresentWait = false;
     }
     static VKAPI_ATTR VkResult VKAPI_CALL Capabilities(VkPhysicalDevice gpu,
                                                        VkSurfaceKHR surface,
@@ -212,6 +230,11 @@ struct WSIDriver
         if (!native)
         {
             *output = acquireIndex;
+            // Synthetic WSI still completes real acquire fences; no completion
+            // query is mocked into claiming an unsignaled fence has completed.
+            EXPECT_EQ(
+                submit(GVulkanRHI->GetDevice()->GetGfxQueue()->GetVkHandle(), 0, nullptr, fence),
+                VK_SUCCESS);
             return acquireResult;
         }
         const VkResult result = acquire(device, swapchain, timeout, semaphore, fence, output);
@@ -225,6 +248,12 @@ struct WSIDriver
     static VKAPI_ATTR VkResult VKAPI_CALL Present(VkQueue queue, const VkPresentInfoKHR* info)
     {
         ++presentedCalls;
+        const auto* fenceInfo = static_cast<const VkSwapchainPresentFenceInfoEXT*>(info->pNext);
+        if (fenceInfo)
+        {
+            EXPECT_EQ(fenceInfo->sType, VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT);
+            ++presentFenceCalls;
+        }
         if (info->waitSemaphoreCount)
         {
             lastPresent = info->pWaitSemaphores[0];
@@ -232,6 +261,20 @@ struct WSIDriver
         }
         if (!native)
         {
+            if (fenceInfo &&
+                (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR ||
+                 presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+                 presentResult == VK_ERROR_SURFACE_LOST_KHR))
+            {
+                if (holdPresentation)
+                {
+                    heldPresentFence = fenceInfo->pFences[0];
+                }
+                else
+                {
+                    EXPECT_EQ(submit(queue, 0, nullptr, fenceInfo->pFences[0]), VK_SUCCESS);
+                }
+            }
             return presentResult;
         }
         VkPresentInfoKHR mapped = *info;
@@ -252,6 +295,86 @@ struct WSIDriver
             return VK_ERROR_OUT_OF_HOST_MEMORY;
         }
         return submit(queue, size, info, fence);
+    }
+    static VKAPI_ATTR VkResult VKAPI_CALL CreateSemaphore(VkDevice device,
+                                                          const VkSemaphoreCreateInfo* info,
+                                                          const VkAllocationCallbacks* allocator,
+                                                          VkSemaphore* output)
+    {
+        if (semaphoreFailureCountdown && --semaphoreFailureCountdown == 0)
+        {
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+        const VkResult result = createSemaphore(device, info, allocator, output);
+        if (result == VK_SUCCESS)
+        {
+            liveSemaphores.push_back(*output);
+        }
+        return result;
+    }
+    static VKAPI_ATTR void VKAPI_CALL DestroySemaphore(VkDevice device,
+                                                       VkSemaphore semaphore,
+                                                       const VkAllocationCallbacks* allocator)
+    {
+        destroySemaphore(device, semaphore, allocator);
+        presentationSemaphores.erase(semaphore);
+        const auto it = std::find(liveSemaphores.begin(), liveSemaphores.end(), semaphore);
+        if (it != liveSemaphores.end())
+        {
+            liveSemaphores.erase(it);
+            ++semaphoreDestructions;
+        }
+    }
+    static VKAPI_ATTR VkResult VKAPI_CALL CreateFence(VkDevice device,
+                                                      const VkFenceCreateInfo* info,
+                                                      const VkAllocationCallbacks* allocator,
+                                                      VkFence* output)
+    {
+        if (fenceCreationFailures && --fenceCreationFailures == 0)
+        {
+            return VK_ERROR_OUT_OF_HOST_MEMORY;
+        }
+        const VkResult result = createFence(device, info, allocator, output);
+        if (result == VK_SUCCESS)
+        {
+            liveFences.push_back(*output);
+        }
+        return result;
+    }
+    static VKAPI_ATTR void VKAPI_CALL DestroyFence(VkDevice device,
+                                                   VkFence fence,
+                                                   const VkAllocationCallbacks* allocator)
+    {
+        destroyFence(device, fence, allocator);
+        const auto it = std::find(liveFences.begin(), liveFences.end(), fence);
+        if (it != liveFences.end())
+        {
+            liveFences.erase(it);
+        }
+    }
+    static VKAPI_ATTR VkResult VKAPI_CALL WaitForFences(VkDevice device,
+                                                        uint32_t count,
+                                                        const VkFence* fences,
+                                                        VkBool32 all,
+                                                        uint64_t timeout)
+    {
+        if (heldPresentFence &&
+            std::find(fences, fences + count, heldPresentFence) != fences + count)
+        {
+            EXPECT_EQ(semaphoreDestructions, 0u);
+            EXPECT_EQ(destroyedCalls, 0u);
+            if (rejectPresentWait)
+            {
+                rejectPresentWait = false;
+                return VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            EXPECT_EQ(vkGetFenceStatus(device, heldPresentFence), VK_NOT_READY);
+            EXPECT_EQ(submit(GVulkanRHI->GetDevice()->GetGfxQueue()->GetVkHandle(), 0, nullptr,
+                             heldPresentFence),
+                      VK_SUCCESS);
+            heldPresentFence = VK_NULL_HANDLE;
+        }
+        return waitForFences(device, count, fences, all, timeout);
     }
     static VKAPI_ATTR VkBool32 VKAPI_CALL
     Validation(VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -303,6 +426,11 @@ protected:
         Hook(vkAcquireNextImageKHR, WSIDriver::Acquire, WSIDriver::acquire);
         Hook(vkQueuePresentKHR, WSIDriver::Present, WSIDriver::present);
         Hook(vkQueueSubmit, WSIDriver::Submit, WSIDriver::submit);
+        Hook(vkCreateSemaphore, WSIDriver::CreateSemaphore, WSIDriver::createSemaphore);
+        Hook(vkDestroySemaphore, WSIDriver::DestroySemaphore, WSIDriver::destroySemaphore);
+        Hook(vkCreateFence, WSIDriver::CreateFence, WSIDriver::createFence);
+        Hook(vkDestroyFence, WSIDriver::DestroyFence, WSIDriver::destroyFence);
+        Hook(vkWaitForFences, WSIDriver::WaitForFences, WSIDriver::waitForFences);
         VkDebugUtilsMessengerCreateInfoEXT info{
             VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
         info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
@@ -337,6 +465,8 @@ protected:
         window.reset();
         session.reset();
         WSIDriver::presentModes = {};
+        WSIDriver::liveSemaphores = {};
+        WSIDriver::liveFences     = {};
     }
     void Create(bool vsync = false)
     {
@@ -636,7 +766,7 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeMinimizeAfterRejectedSubmissionPres
     CreateNativeViewport();
     WSIDriver::rejectSubmissions = 1;
     ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eRejected);
-    const VkSemaphore abandoned = WSIDriver::lastAcquire;
+    const uint32_t destroyedBeforeResize = WSIDriver::semaphoreDestructions;
     viewport->Resize(0, 0);
     viewport->PrepareForPresent(commands);
     EXPECT_FALSE(viewport->Present());
@@ -644,7 +774,8 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeMinimizeAfterRejectedSubmissionPres
     viewport->Resize(64, 64);
     ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
     EXPECT_TRUE(viewport->Present());
-    EXPECT_NE(WSIDriver::lastAcquire, abandoned);
+    // Vulkan may reuse a destroyed native handle for the replacement semaphore.
+    EXPECT_GT(WSIDriver::semaphoreDestructions, destroyedBeforeResize);
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, NativeDeviceLossBlocksFurtherPresentationAndRecreation)
@@ -658,4 +789,242 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeDeviceLossBlocksFurtherPresentation
     EXPECT_EQ(WSIDriver::createdCalls, 1u);
     EXPECT_EQ(WSIDriver::presentedCalls, 0u);
 }
+
+TEST_F(VulkanSwapchainIntegrationTest, FailedAcquireFenceCreationReleasesPartialSwapchain)
+{
+    for (uint32_t failureAt : {1u, 2u, 5u})
+    {
+        WSIDriver::fenceCreationFailures = failureAt;
+        EXPECT_THROW(Create(), std::runtime_error);
+        EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+        EXPECT_TRUE(WSIDriver::liveFences.empty());
+    }
+    EXPECT_EQ(WSIDriver::destroyedCalls, 3u);
+    EXPECT_NO_THROW(Create());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, PendingPresentationFencePreventsEarlyDestruction)
+{
+    ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+    WSIDriver::holdPresentation = true;
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    ASSERT_NE(WSIDriver::heldPresentFence, VK_NULL_HANDLE);
+    swapchain->Destroy(nullptr);
+    EXPECT_EQ(WSIDriver::heldPresentFence, VK_NULL_HANDLE);
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, FailedPresentationFenceWaitRetainsResourcesForRetry)
+{
+    ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+    WSIDriver::holdPresentation = WSIDriver::rejectPresentWait = true;
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    const size_t semaphores = WSIDriver::liveSemaphores.size();
+    const size_t fences     = WSIDriver::liveFences.size();
+    EXPECT_THROW(swapchain->Destroy(nullptr), std::runtime_error);
+    EXPECT_EQ(WSIDriver::liveSemaphores.size(), semaphores);
+    EXPECT_EQ(WSIDriver::liveFences.size(), fences);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+    EXPECT_NO_THROW(swapchain->Destroy(nullptr));
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, RejectedPresentationDoesNotWaitOnUnsubmittedFence)
+{
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    WSIDriver::presentResult = VK_ERROR_OUT_OF_HOST_MEMORY;
+    EXPECT_THROW(swapchain->Present(nullptr), std::runtime_error);
+    EXPECT_NO_THROW(swapchain->Destroy(nullptr));
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, FallbackDefersConsecutiveRetirementsUntilReacquisitionProof)
+{
+    session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1 = 0;
+    Create();
+    constexpr uint32_t generations = 12;
+    for (uint32_t generation = 0; generation < generations; ++generation)
+    {
+        VulkanSemaphore* semaphore{};
+        ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+        ASSERT_TRUE(swapchain->Present(nullptr));
+        VulkanSwapchainRecreateInfo recreate;
+        swapchain->Destroy(&recreate);
+        EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+        EXPECT_EQ(WSIDriver::liveSemaphores.size(), generation + 1u);
+        swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+        EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+    }
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    session->rhi.WaitDeviceIdle();
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    // Merely returning from acquire does not prove its asynchronous signal completed.
+    EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    session->rhi.WaitDeviceIdle();
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    EXPECT_EQ(WSIDriver::destroyedCalls, generations);
+    EXPECT_EQ(WSIDriver::liveSemaphores.size(), 2u * swapchain->GetNumSwapchainImages());
+    EXPECT_EQ(WSIDriver::presentFenceCalls, 0u);
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, FallbackCreationFailureCleansRetiredPredecessors)
+{
+    session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1 = 0;
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    VulkanSwapchainRecreateInfo recreate;
+    swapchain->Destroy(&recreate);
+    WSIDriver::createResult = VK_ERROR_OUT_OF_HOST_MEMORY;
+    EXPECT_THROW(VulkanSwapchain(window.get(), 64, 64, false, &recreate), std::runtime_error);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 1u);
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+    EXPECT_EQ(recreate.swapchain, VK_NULL_HANDLE);
+    EXPECT_EQ(recreate.surface, VK_NULL_HANDLE);
+    EXPECT_TRUE(recreate.retiredSwapchains.empty());
+}
+
+
+TEST_F(VulkanSwapchainIntegrationTest, FailedSemaphoreCreationReleasesPartialSwapchain)
+{
+    for (uint32_t failureAt : {1u, 2u, 5u})
+    {
+        WSIDriver::semaphoreFailureCountdown = failureAt;
+        EXPECT_THROW(Create(), std::runtime_error);
+        EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+        EXPECT_TRUE(WSIDriver::liveFences.empty());
+    }
+    EXPECT_EQ(WSIDriver::destroyedCalls, 3u);
+    EXPECT_NO_THROW(Create());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, FallbackZeroExtentPreservesOldSwapchainLinkForRestoration)
+{
+    session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1 = 0;
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    const VkSwapchainKHR oldSwapchain = swapchain->GetVkHandle();
+    VulkanSwapchainRecreateInfo recreate;
+    swapchain->Destroy(&recreate);
+    WSIDriver::caps.currentExtent = {0, 0};
+    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    EXPECT_EQ(swapchain->GetNumSwapchainImages(), 0u);
+    EXPECT_EQ(swapchain->GetVkHandle(), oldSwapchain);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+    swapchain->Destroy(&recreate);
+    WSIDriver::caps.currentExtent = {64, 64};
+    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    EXPECT_EQ(WSIDriver::lastCreate.oldSwapchain, oldSwapchain);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
+    swapchain->Destroy(nullptr);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 2u);
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, FallbackZeroExtentTeardownDestroysSharedOldHandleOnce)
+{
+    session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1 = 0;
+    Create();
+    VulkanSemaphore* semaphore{};
+    ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+    ASSERT_TRUE(swapchain->Present(nullptr));
+    VulkanSwapchainRecreateInfo recreate;
+    swapchain->Destroy(&recreate);
+    WSIDriver::caps.currentExtent = {0, 0};
+    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    swapchain->Destroy(nullptr);
+    EXPECT_EQ(WSIDriver::destroyedCalls, 1u);
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+}
+
+class VulkanSwapchainRetirementIntegrationTest :
+    public VulkanSwapchainIntegrationTest,
+    public testing::WithParamInterface<bool>
+{
+protected:
+    void SetUp() override
+    {
+        VulkanSwapchainIntegrationTest::SetUp();
+        if (GetParam())
+        {
+            ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+        }
+        else
+        {
+            // Exercise the unextended algorithm even on a maintenance-capable device.
+            session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1 = 0;
+        }
+        WSIDriver::count = 0;
+    }
+};
+
+TEST_P(VulkanSwapchainRetirementIntegrationTest,
+       NativeAbandonedAcquisitionsReleaseSemaphoresAndFences)
+{
+    WSIDriver::native = true;
+    for (uint32_t iteration = 0; iteration < 32; ++iteration)
+    {
+        Create();
+        VulkanSemaphore* semaphore{};
+        ASSERT_GE(swapchain->AcquireNextImage(&semaphore), 0);
+        // No graphics wait consumes this semaphore's acquisition signal.
+        swapchain->Destroy(nullptr);
+        EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+        EXPECT_TRUE(WSIDriver::liveFences.empty());
+    }
+}
+
+TEST_P(VulkanSwapchainRetirementIntegrationTest, NativeResizeChurnReturnsToStableLiveCounts)
+{
+    CreateNativeViewport();
+    const uint32_t images           = WSIDriver::exposedCounts.begin()->second;
+    const size_t expectedSemaphores = 2u * images;
+    const size_t expectedFences     = (GetParam() ? 2u : 1u) * images;
+    for (uint32_t iteration = 0; iteration < 100; ++iteration)
+    {
+        viewport->Resize(64 + (iteration % 2) * 16, 64);
+        for (uint32_t frame = 0; frame < 8; ++frame)
+        {
+            ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+            ASSERT_TRUE(viewport->Present());
+        }
+        session->rhi.WaitDeviceIdle();
+        ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+        ASSERT_TRUE(viewport->Present());
+        EXPECT_EQ(WSIDriver::liveSemaphores.size(), expectedSemaphores) << iteration;
+        EXPECT_EQ(WSIDriver::liveFences.size(), expectedFences) << iteration;
+        EXPECT_EQ(WSIDriver::createdCalls - WSIDriver::destroyedCalls, 1u) << iteration;
+    }
+    session->rhi.WaitDeviceIdle();
+    session->rhi.DestroyViewport(viewport);
+    viewport = nullptr;
+    EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
+    EXPECT_TRUE(WSIDriver::liveFences.empty());
+    EXPECT_EQ(WSIDriver::createdCalls, WSIDriver::destroyedCalls);
+    EXPECT_EQ(WSIDriver::presentFenceCalls != 0, GetParam());
+}
+
+INSTANTIATE_TEST_SUITE_P(PresentationCompletion,
+                         VulkanSwapchainRetirementIntegrationTest,
+                         testing::Bool());
 } // namespace

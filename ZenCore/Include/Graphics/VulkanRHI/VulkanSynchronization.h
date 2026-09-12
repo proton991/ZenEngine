@@ -121,6 +121,10 @@ public:
 
     void ReleaseSemaphore(VulkanSemaphore*& sem);
 
+    // The caller must prove all semaphore operations have completed. Unlike recycling,
+    // destruction also supports an acquired binary semaphore that was never waited on.
+    void DestroySemaphore(VulkanSemaphore*& sem);
+
 private:
     VulkanDevice* m_pDevice{nullptr};
     HeapVector<VulkanSemaphore*> m_usedSemaphores;

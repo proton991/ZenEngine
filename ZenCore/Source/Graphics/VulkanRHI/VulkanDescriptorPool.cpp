@@ -940,6 +940,9 @@ bool SupportsBindlessDescriptorHeaps(VulkanDevice* pDevice)
 
 void VulkanBindlessDescriptorPoolManager::Init()
 {
+    static std::atomic<uint64_t> nextOwner{1};
+    m_ownerId                    = nextOwner.fetch_add(1, std::memory_order_relaxed);
+    m_epoch                      = 1;
     m_pDevice                    = GVulkanRHI->GetDevice();
     const bool bindlessSupported = SupportsBindlessDescriptorHeaps(m_pDevice);
 
@@ -961,6 +964,8 @@ void VulkanBindlessDescriptorPoolManager::Init()
 
 void VulkanBindlessDescriptorPoolManager::Destroy()
 {
+    m_uses.clear();
+    m_retiredSlots.clear();
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
         m_pendingWrites[heapIdx].clear();
@@ -1000,56 +1005,181 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     m_pDevice  = nullptr;
 }
 
-bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* pResource,
-                                                                   uint32_t slotIdx)
+bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(
+    RHIResource* pResource,
+    uint32_t slotIdx,
+    RHIBindlessHandle* pOutHandle,
+    const RHIBindlessUse* recordedUse)
 {
     LockAuto lock(&m_mutex);
-
+    if (pOutHandle != nullptr)
+    {
+        *pOutHandle = {};
+    }
+    CollectRetiredResourcesLocked();
     if (pResource == nullptr || m_vkSet == VK_NULL_HANDLE)
     {
         return false;
     }
 
     const RHIBindlessHeapType heapType = GetBindlessHeapType(pResource);
-
     if (heapType == RHIBindlessHeapType::eMax || !IsValidBindlessResource(pResource, heapType))
     {
         return false;
     }
 
-    const uint32_t heapIdx    = ToUnderlying(heapType);
-    const size_t heapCapacity = GetBindlessHeapCapacity(heapType);
-
+    const uint32_t heapIdx  = ToUnderlying(heapType);
+    const uint32_t capacity = GetBindlessHeapCapacity(heapType);
     if (slotIdx == kInvalidBindlessSlotIndex)
     {
-        slotIdx = m_heapAllocCount[heapIdx];
+        for (uint32_t i = 0; i < capacity; ++i)
+        {
+            const uint32_t candidate = (m_heapAllocCount[heapIdx] + i) % capacity;
+            if (m_slotStates[heapIdx][candidate].pResource == nullptr)
+            {
+                slotIdx = candidate;
+                break;
+            }
+        }
     }
-    if (slotIdx >= heapCapacity)
+    if (slotIdx >= capacity)
     {
         return false;
     }
 
-    BindlessSlotState& slotState = m_slotStates[heapIdx][slotIdx];
-    if (slotState.pResource != nullptr)
+    BindlessSlotState& slot = m_slotStates[heapIdx][slotIdx];
+    if (slot.pResource != nullptr)
     {
-        // Update-after-bind does not preserve the old contents for earlier draws.
-        // Published slots remain immutable, including while work is still recording.
-        return slotState.resourceId == pResource->GetStableId() &&
-            slotState.resourceGeneration == pResource->GetGenerationId();
+        const auto* use = dynamic_cast<const VulkanBindlessUse*>(recordedUse);
+        const bool earlierRecording =
+            use != nullptr && use->owner == m_ownerId && use->epoch <= slot.retiredEpoch;
+        if ((slot.retiredEpoch != 0 && !earlierRecording) ||
+            slot.resourceId != pResource->GetStableId() ||
+            slot.resourceGeneration != pResource->GetGenerationId())
+        {
+            return false;
+        }
     }
-
-    m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
-    pResource->AddReference();
-    slotState.pResource = pResource;
-    if (pResource->GetResourceType() == RHIResourceType::eTextureView)
+    else
     {
-        slotState.pTextureOwner = static_cast<RHITextureView*>(pResource)->GetTexture();
-        slotState.pTextureOwner->AddReference();
+        static std::atomic<uint64_t> nextGeneration{1};
+        m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
+        pResource->AddReference();
+        slot.pResource = pResource;
+        if (pResource->GetResourceType() == RHIResourceType::eTextureView)
+        {
+            slot.pTextureOwner = static_cast<RHITextureView*>(pResource)->GetTexture();
+            slot.pTextureOwner->AddReference();
+        }
+        slot.resourceId           = pResource->GetStableId();
+        slot.resourceGeneration   = pResource->GetGenerationId();
+        slot.generation           = nextGeneration.fetch_add(1, std::memory_order_relaxed);
+        m_heapAllocCount[heapIdx] = (slotIdx + 1) % capacity;
     }
-    slotState.resourceId         = pResource->GetStableId();
-    slotState.resourceGeneration = pResource->GetGenerationId();
-    m_heapAllocCount[heapIdx]    = std::max(m_heapAllocCount[heapIdx], slotIdx + 1);
+    if (pOutHandle != nullptr)
+    {
+        *pOutHandle = {heapType, slotIdx, slot.generation};
+    }
     return true;
+}
+
+VulkanBindlessDescriptorPoolManager::BindlessSlotState* VulkanBindlessDescriptorPoolManager::
+    FindRegistration(RHIBindlessHandle handle)
+{
+    if (!handle.IsValid() || m_vkSet == VK_NULL_HANDLE ||
+        handle.slotIndex >= GetBindlessHeapCapacity(handle.heapType))
+    {
+        return nullptr;
+    }
+    auto& slot = m_slotStates[ToUnderlying(handle.heapType)][handle.slotIndex];
+    return slot.pResource != nullptr && slot.generation == handle.generation ? &slot : nullptr;
+}
+
+bool VulkanBindlessDescriptorPoolManager::IsRegistered(RHIBindlessHandle handle)
+{
+    LockAuto lock(&m_mutex);
+    const auto* slot = FindRegistration(handle);
+    return slot != nullptr && slot->retiredEpoch == 0 &&
+        slot->resourceGeneration == slot->pResource->GetGenerationId();
+}
+
+bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindlessHandle handle)
+{
+    LockAuto lock(&m_mutex);
+    auto* slot = FindRegistration(handle);
+    if (slot == nullptr || slot->retiredEpoch != 0 || m_epoch == UINT64_MAX)
+    {
+        return false;
+    }
+    // Reserve before changing publication state. A failed allocation leaves it active.
+    m_retiredSlots.push_back(handle);
+    slot->retiredEpoch = m_epoch++;
+    CollectRetiredResourcesLocked();
+    return true;
+}
+
+RefCountPtr<RHIBindlessUse> VulkanBindlessDescriptorPoolManager::CaptureUse()
+{
+    LockAuto lock(&m_mutex);
+    if (m_vkSet == VK_NULL_HANDLE)
+    {
+        return {};
+    }
+    // Remove completed epochs even when no resources are currently being retired.
+    CollectRetiredResourcesLocked();
+    if (m_uses.empty() || m_uses.back()->epoch != m_epoch)
+    {
+        m_uses.push_back(MakeRefCountPtr<VulkanBindlessUse>(m_ownerId, m_epoch));
+    }
+    return RefCountPtr<RHIBindlessUse>(m_uses.back());
+}
+
+void VulkanBindlessDescriptorPoolManager::CollectRetiredResources()
+{
+    LockAuto lock(&m_mutex);
+    CollectRetiredResourcesLocked();
+}
+
+void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
+{
+    for (auto it = m_uses.begin(); it != m_uses.end();)
+    {
+        if ((*it)->GetRefCount() == 1 && (*it)->epoch != m_epoch)
+        {
+            it = m_uses.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    const uint64_t earliestUse = m_uses.empty() ? UINT64_MAX : m_uses[0]->epoch;
+    for (auto it = m_retiredSlots.begin(); it != m_retiredSlots.end();)
+    {
+        auto* slot = FindRegistration(*it);
+        if (slot != nullptr && slot->retiredEpoch < earliestUse)
+        {
+            // Unflushed writes must not outlive their retained resources or later
+            // overwrite a recycled slot. Live old recordings keep their writes intact.
+            auto& writes = m_pendingWrites[ToUnderlying(it->heapType)];
+            writes.erase(
+                std::remove_if(writes.begin(), writes.end(),
+                               [it](const auto& write) { return write.slotIdx == it->slotIndex; }),
+                writes.end());
+            slot->pResource->ReleaseReference();
+            if (slot->pTextureOwner != nullptr)
+            {
+                slot->pTextureOwner->ReleaseReference();
+            }
+            m_heapAllocCount[ToUnderlying(it->heapType)] = it->slotIndex;
+            *slot                                        = {};
+            it                                           = m_retiredSlots.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void VulkanBindlessDescriptorPoolManager::Flush()

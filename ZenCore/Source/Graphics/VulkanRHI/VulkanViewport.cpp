@@ -120,15 +120,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
     const VkExtent2D extent = m_pSwapchain->GetExtent();
     m_width                 = extent.width;
     m_height                = extent.height;
-    m_renderingCompleteSemaphores.resize(numImages);
     m_swapchainImages.resize(numImages);
-    for (uint32_t i = 0; i < numImages; ++i)
-    {
-        auto* semaphore                  = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
-        m_renderingCompleteSemaphores[i] = semaphore;
-        semaphore->SetDebugName(NameID(fmt::format("RenderComplete-{}", i)));
-    }
-
     FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
     FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
     VkCommandBuffer cmdBuffer        = pCmdBuffer->GetVkHandle();
@@ -182,14 +174,11 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
 
     if (m_pSwapchain != nullptr)
     {
-        m_pSwapchain->Destroy(pRecreateInfo);
+        m_pSwapchain->Destroy(GVulkanRHI->AreSubmissionsBlocked() ? nullptr : pRecreateInfo);
         ZEN_DELETE(m_pSwapchain);
         m_pSwapchain = nullptr;
     }
 
-    // A graphics idle wait does not prove the presentation engine consumed every
-    // binary semaphore. Retain old WSI semaphores in their manager until device teardown.
-    m_renderingCompleteSemaphores.clear();
     m_swapchainImages.clear();
     m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
@@ -211,7 +200,8 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
 void VulkanViewport::RecreateSwapchain(bool recreateSurface)
 {
     VulkanSwapchainRecreateInfo recreateInfo{VK_NULL_HANDLE, VK_NULL_HANDLE};
-    DestroySwapchain(recreateSurface ? nullptr : &recreateInfo);
+    DestroySwapchain(recreateSurface || GVulkanRHI->AreSubmissionsBlocked() ? nullptr :
+                                                                              &recreateInfo);
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
         // Destruction is still legal after device loss, but recreation is not.
@@ -357,7 +347,8 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
                                        m_swapchainImages[m_acquiredImageIndex], extent.width,
                                        extent.height);
 
-        m_pContext->AddSignalSemaphore(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
+        m_pContext->AddSignalSemaphore(
+            m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex));
     }
     else
     {
@@ -392,7 +383,8 @@ bool VulkanViewport::Present()
         return false;
     }
     m_pSwapchain->MarkAcquireSemaphoreSubmitted(m_pContext->GetLastSubmittedSerial());
-    const bool result = m_pSwapchain->Present(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
+    const bool result =
+        m_pSwapchain->Present(m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex));
     m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
     m_pContext                = nullptr;

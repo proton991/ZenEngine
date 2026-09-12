@@ -21,6 +21,7 @@ struct CapabilityDriver
     static inline PFN_vkEnumerateDeviceExtensionProperties extensions;
     static inline PFN_vkCreateDevice create;
     static inline bool oldAPI{}, noQueue{}, lowLimits{}, optionalDisabled{};
+    static inline bool maintenanceDisabled{};
     static inline uint32_t missingFeature{};
     static inline HeapVector<std::string> hiddenExtensions, enabledExtensions;
     static inline HeapVector<VkStructureType> enabledStructures;
@@ -29,6 +30,7 @@ struct CapabilityDriver
     static void Reset()
     {
         oldAPI = noQueue = lowLimits = optionalDisabled = false;
+        maintenanceDisabled                             = false;
         missingFeature = createCalls = 0;
         hiddenExtensions.clear();
         enabledExtensions.clear();
@@ -42,6 +44,13 @@ struct CapabilityDriver
         {
             switch (node->sType)
             {
+                case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT:
+                    if (maintenanceDisabled)
+                    {
+                        reinterpret_cast<VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT*>(node)
+                            ->swapchainMaintenance1 = VK_FALSE;
+                    }
+                    break;
                 case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES:
                     if (missingFeature == 1)
                     {
@@ -359,5 +368,130 @@ TEST_F(VulkanCapabilityIntegrationTest, OptionalFeaturesDisableTheirDependentsAn
     }
     device.WaitForIdle();
     device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, MissingMaintenanceFeatureUsesUnextendedSwapchain)
+{
+    CapabilityDriver::maintenanceDisabled = true;
+    VulkanDevice device(session->rhi.GetPhysicalDevice());
+    device.Init();
+    EXPECT_FALSE(device.GetExtensionFlags().hasSwapchainMaintenance1);
+    EXPECT_EQ(std::count(CapabilityDriver::enabledStructures.begin(),
+                         CapabilityDriver::enabledStructures.end(),
+                         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT),
+              0);
+    for (const auto& name : CapabilityDriver::enabledExtensions)
+    {
+        EXPECT_NE(name, "VK_KHR_swapchain_maintenance1");
+        EXPECT_NE(name, VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+    }
+    device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, MissingSurfaceMaintenanceDependencyDisablesDeviceExtension)
+{
+    auto& flags                    = session->rhi.GetInstanceExtensionFlags();
+    const auto saved               = flags;
+    flags.hasSurfaceMaintenanceKHR = flags.hasSurfaceMaintenanceEXT = 0;
+    VulkanDevice device(session->rhi.GetPhysicalDevice());
+    device.Init();
+    EXPECT_FALSE(device.GetExtensionFlags().hasSwapchainMaintenance1);
+    EXPECT_EQ(std::count(CapabilityDriver::enabledStructures.begin(),
+                         CapabilityDriver::enabledStructures.end(),
+                         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT),
+              0);
+    flags = saved;
+    device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, MaintenanceSelectsEXTWhenKHRNameIsAbsent)
+{
+    const auto& flags = session->rhi.GetInstanceExtensionFlags();
+    ASSERT_TRUE(flags.hasSurfaceMaintenanceEXT);
+    CapabilityDriver::hiddenExtensions = {"VK_KHR_swapchain_maintenance1"};
+    VulkanDevice device(session->rhi.GetPhysicalDevice());
+    device.Init();
+    EXPECT_TRUE(device.GetExtensionFlags().hasSwapchainMaintenance1);
+    EXPECT_EQ(std::count(CapabilityDriver::enabledExtensions.begin(),
+                         CapabilityDriver::enabledExtensions.end(),
+                         VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME),
+              1);
+    EXPECT_EQ(std::count(CapabilityDriver::enabledExtensions.begin(),
+                         CapabilityDriver::enabledExtensions.end(),
+                         "VK_KHR_swapchain_maintenance1"),
+              0);
+    device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, AbsentMaintenanceNamesKeepDeviceUsable)
+{
+    CapabilityDriver::hiddenExtensions = {"VK_KHR_swapchain_maintenance1",
+                                          VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME};
+    VulkanDevice device(session->rhi.GetPhysicalDevice());
+    EXPECT_NO_THROW(device.Init());
+    EXPECT_FALSE(device.GetExtensionFlags().hasSwapchainMaintenance1);
+    EXPECT_EQ(std::count(CapabilityDriver::enabledStructures.begin(),
+                         CapabilityDriver::enabledStructures.end(),
+                         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT),
+              0);
+    device.Destroy();
+}
+
+struct InstanceMaintenanceDriver
+{
+    static inline PFN_vkEnumerateInstanceExtensionProperties original;
+    static VKAPI_ATTR VkResult VKAPI_CALL Extensions(const char* layer,
+                                                     uint32_t* count,
+                                                     VkExtensionProperties* output)
+    {
+        uint32_t size   = 0;
+        VkResult result = original(layer, &size, nullptr);
+        if (result != VK_SUCCESS)
+        {
+            return result;
+        }
+        HeapVector<VkExtensionProperties> available(size);
+        result = original(layer, &size, available.data());
+        if (result != VK_SUCCESS)
+        {
+            return result;
+        }
+        available.resize(size);
+        available.erase(
+            std::remove_if(available.begin(), available.end(),
+                           [](const auto& extension) {
+                               return strcmp(extension.extensionName,
+                                             VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) == 0;
+                           }),
+            available.end());
+        if (output)
+        {
+            const size_t written = std::min(size_t(*count), available.size());
+            std::copy_n(available.begin(), written, output);
+            *count = static_cast<uint32_t>(written);
+            return written < available.size() ? VK_INCOMPLETE : VK_SUCCESS;
+        }
+        *count = static_cast<uint32_t>(available.size());
+        return VK_SUCCESS;
+    }
+};
+
+TEST_F(VulkanCapabilityIntegrationTest, SurfaceMaintenanceRequiresSurfaceCapabilities2)
+{
+    InstanceMaintenanceDriver::original = vkEnumerateInstanceExtensionProperties;
+    test::ScopedVulkanCall hook(vkEnumerateInstanceExtensionProperties,
+                                InstanceMaintenanceDriver::Extensions);
+    InstanceExtensionFlags flags{};
+    const auto extensions = VulkanInstanceExtension::GetEnabledInstanceExtensions(flags);
+    EXPECT_FALSE(flags.hasSurfaceMaintenanceKHR);
+    EXPECT_FALSE(flags.hasSurfaceMaintenanceEXT);
+    for (const auto& extension : extensions)
+    {
+        if (extension->GetName() == NameID("VK_KHR_surface_maintenance1") ||
+            extension->GetName() == NameID(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
+        {
+            EXPECT_FALSE(extension->IsEnabledAndSupported());
+        }
+    }
 }
 } // namespace

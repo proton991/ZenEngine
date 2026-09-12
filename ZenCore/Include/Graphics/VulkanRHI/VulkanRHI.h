@@ -244,6 +244,13 @@ public:
         return m_pBindlessDescriptorPoolManager;
     }
 
+    RHIBindlessHandle RegisterBindlessResource(
+        RHIResource* pResource,
+        uint32_t slotIndex = kInvalidBindlessSlotIndex) override;
+    bool UnregisterBindlessResource(RHIBindlessHandle handle) override;
+    bool IsBindlessResourceRegistered(RHIBindlessHandle handle) override;
+    void CollectRetiredBindlessResources() override;
+
     VulkanUniformBufferAllocator* GetUniformBufferAllocator() const
     {
         return m_pUniformBufferAllocator;

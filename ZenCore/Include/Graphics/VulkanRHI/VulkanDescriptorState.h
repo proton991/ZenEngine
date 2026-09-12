@@ -13,7 +13,8 @@ class VulkanDescriptorSetState
 public:
     void SetPipeline(VulkanPipeline* pPipeline);
 
-    void SetShaderParameters(const RHIBatchedShaderParameters& parameters);
+    void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+                             const RHIBindlessUse* recordedUse = nullptr);
 
     void FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
                                       HeapVector<VkDescriptorSet>& outDescriptorSets,

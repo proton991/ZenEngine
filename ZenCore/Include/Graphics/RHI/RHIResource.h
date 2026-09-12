@@ -10,6 +10,11 @@ namespace zen
 {
 class RHICommandList;
 
+// Opaque ownership of a bindless heap usage interval. Recorded commands and
+// native workloads retain it independently, including replayable command lists.
+class RHIBindlessUse : public RefCounted
+{};
+
 enum class RHIResourceType : uint32_t
 {
     eNone          = 0,

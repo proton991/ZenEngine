@@ -183,7 +183,16 @@ VulkanSemaphore::VulkanSemaphore(VulkanDevice* pDevice,
         semaphoreCI.pNext             = &semaphoreTypeCI;
     }
 
-    VKCHECK(vkCreateSemaphore(m_pDevice->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
+    const VkResult result =
+        vkCreateSemaphore(m_pDevice->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore);
+    if (result != VK_SUCCESS)
+    {
+        if (result == VK_ERROR_DEVICE_LOST && GVulkanRHI && GVulkanRHI->GetDevice() == m_pDevice)
+        {
+            GVulkanRHI->BlockSubmissions();
+        }
+        LOG_ERROR_AND_THROW("vkCreateSemaphore failed: {}", int32_t(result));
+    }
 }
 
 void VulkanSemaphore::SetDebugName(NameID name)
@@ -293,11 +302,32 @@ VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
     {
         VulkanSemaphore* pNewSem = ZEN_NEW() VulkanSemaphore(m_pDevice);
         m_usedSemaphores.push_back(pNewSem);
+#if defined(ZEN_DEBUG)
         m_allocatedSemaphoreCount++;
+#endif
         result = pNewSem;
     }
 
     return result;
+}
+
+void VulkanSemaphoreManager::DestroySemaphore(VulkanSemaphore*& sem)
+{
+    if (sem == nullptr)
+    {
+        return;
+    }
+    auto* it = std::find(m_usedSemaphores.begin(), m_usedSemaphores.end(), sem);
+    if (it == m_usedSemaphores.end())
+    {
+        LOG_ERROR_AND_THROW("Cannot destroy a semaphore not owned by this manager");
+    }
+    m_usedSemaphores.erase(it);
+    ZEN_DELETE(sem);
+    sem = nullptr;
+#if defined(ZEN_DEBUG)
+    --m_allocatedSemaphoreCount;
+#endif
 }
 
 void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)

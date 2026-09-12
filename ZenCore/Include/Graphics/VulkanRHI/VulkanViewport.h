@@ -120,7 +120,6 @@ private:
     VulkanSwapchain* m_pSwapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_pImageAcquiredSemaphore{nullptr};
-    HeapVector<VulkanSemaphore*> m_renderingCompleteSemaphores;
     HeapVector<VkImage> m_swapchainImages;
     VulkanTexture* m_pColorBackBuffer{nullptr};
     VulkanTexture* m_pDepthStencilBackBuffer{nullptr};

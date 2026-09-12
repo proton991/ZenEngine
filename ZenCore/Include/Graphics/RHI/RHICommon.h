@@ -270,6 +270,21 @@ inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHe
 inline constexpr uint32_t kGlobalBindlessHeapIndex  = 0;
 inline constexpr uint32_t kInvalidBindlessSlotIndex = std::numeric_limits<uint32_t>::max();
 
+// Keep this CPU handle when publishing slotIndex to shaders. The generation is
+// checked by registration/retirement APIs; shader-side integer indices are borrowed.
+struct RHIBindlessHandle
+{
+    RHIBindlessHeapType heapType{RHIBindlessHeapType::eMax};
+    uint32_t slotIndex{kInvalidBindlessSlotIndex};
+    uint64_t generation{0};
+
+    bool IsValid() const
+    {
+        return heapType < RHIBindlessHeapType::eMax && slotIndex != kInvalidBindlessSlotIndex &&
+            generation != 0;
+    }
+};
+
 using RHIShaderResourceDescriptorTable =
     SmallVector<SmallVector<RHIShaderResourceDescriptor>, MAX_NUM_DESCRIPTOR_SETS>;
 // .vert .frag .compute together

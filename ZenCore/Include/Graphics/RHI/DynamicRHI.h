@@ -59,6 +59,28 @@ public:
 
     virtual void DestroySampler(RHISampler* pSampler) = 0;
 
+    virtual RHIBindlessHandle RegisterBindlessResource(
+        RHIResource* pResource,
+        uint32_t slotIndex = kInvalidBindlessSlotIndex)
+    {
+        return {};
+    }
+
+    // Stop publishing this index to new work before unregistering. Already
+    // recorded/submitted users retain the resource and prevent slot reuse.
+    virtual bool UnregisterBindlessResource(RHIBindlessHandle handle)
+    {
+        return false;
+    }
+
+    virtual bool IsBindlessResourceRegistered(RHIBindlessHandle handle)
+    {
+        return false;
+    }
+
+    // Poll completion and release eligible retired registrations without waiting.
+    virtual void CollectRetiredBindlessResources() {}
+
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
 
     virtual RHITextureView* CreateTextureView(RHITexture* pBaseTexture,

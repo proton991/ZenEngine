@@ -709,8 +709,45 @@ void VulkanRHI::Init()
     }
 }
 
+RHIBindlessHandle VulkanRHI::RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex)
+{
+    RHIBindlessHandle handle;
+    if (m_pBindlessDescriptorPoolManager != nullptr)
+    {
+        m_pBindlessDescriptorPoolManager->RegisterBindlessResource(pResource, slotIndex, &handle);
+    }
+    return handle;
+}
+
+bool VulkanRHI::UnregisterBindlessResource(RHIBindlessHandle handle)
+{
+    return m_pBindlessDescriptorPoolManager != nullptr &&
+        m_pBindlessDescriptorPoolManager->UnregisterBindlessResource(handle);
+}
+
+bool VulkanRHI::IsBindlessResourceRegistered(RHIBindlessHandle handle)
+{
+    return m_pBindlessDescriptorPoolManager != nullptr &&
+        m_pBindlessDescriptorPoolManager->IsRegistered(handle);
+}
+
+void VulkanRHI::CollectRetiredBindlessResources()
+{
+    if (m_pDevice != nullptr && !AreSubmissionsBlocked())
+    {
+        GetLastCompletedSerial(RHICommandContextType::eGraphics);
+        GetLastCompletedSerial(RHICommandContextType::eAsyncCompute);
+        GetLastCompletedSerial(RHICommandContextType::eTransfer);
+    }
+    if (m_pBindlessDescriptorPoolManager != nullptr)
+    {
+        m_pBindlessDescriptorPoolManager->CollectRetiredResources();
+    }
+}
+
 void VulkanRHI::BeginFrame()
 {
+    CollectRetiredBindlessResources();
     VERIFY_EXPR(m_pDescriptorPoolManager2 != nullptr);
     VERIFY_EXPR(m_pUniformBufferAllocator != nullptr);
     m_pDescriptorPoolManager2->BeginFrame(

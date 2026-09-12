@@ -137,6 +137,7 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 
     pWorkload->m_commandBuffers.clear();
     pWorkload->m_descriptorContainers.clear();
+    pWorkload->m_bindlessUses.clear();
     pWorkload->m_submissionSerial = 0;
     pWorkload->m_pMergedInto      = nullptr;
     pWorkload->m_waitSemaphoreInfos.clear();

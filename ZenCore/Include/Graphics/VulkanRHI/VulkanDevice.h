@@ -25,6 +25,7 @@ struct DeviceExtensionFlags
     uint32_t hasDeferredHostOperation : 1;
     uint32_t hasSPIRV_14 : 1;
     uint32_t hasDynamicRendering : 1;
+    uint32_t hasSwapchainMaintenance1 : 1;
 };
 
 class VulkanDevice

@@ -318,6 +318,14 @@ inline constexpr uint32_t GetBindlessHeapCapacity(RHIBindlessHeapType heapType)
     return heapIdx < ToUnderlying(RHIBindlessHeapType::eMax) ? kBindlessHeapCapacity[heapIdx] : 0;
 }
 
+class VulkanBindlessUse final : public RHIBindlessUse
+{
+public:
+    VulkanBindlessUse(uint64_t owner, uint64_t epoch) : owner(owner), epoch(epoch) {}
+    const uint64_t owner;
+    const uint64_t epoch;
+};
+
 class VulkanBindlessDescriptorPoolManager
 {
 public:
@@ -327,10 +335,16 @@ public:
 
     void Destroy();
 
-    // Slots are immutable until manager teardown. Re-registering the same resource
-    // and generation is allowed. Occupied slots, invalid resources, and exhaustion
-    // return false. Successful registration retains the resource and any view owner.
-    bool RegisterBindlessResource(RHIResource* pResource, uint32_t slotIdx);
+    // Published slots remain immutable until explicitly retired and all earlier
+    // uses finish. recordedUse permits idempotent playback of an old registration.
+    bool RegisterBindlessResource(RHIResource* pResource,
+                                  uint32_t slotIdx,
+                                  RHIBindlessHandle* pOutHandle     = nullptr,
+                                  const RHIBindlessUse* recordedUse = nullptr);
+    bool UnregisterBindlessResource(RHIBindlessHandle handle);
+    bool IsRegistered(RHIBindlessHandle handle);
+    void CollectRetiredResources();
+    RefCountPtr<RHIBindlessUse> CaptureUse();
 
     // Write all registered bindless resources in batch, call WriteDescriptorSetBatch
     void Flush();
@@ -352,7 +366,12 @@ private:
         uint32_t resourceGeneration{0};
         RHIResource* pResource{nullptr};
         RHITexture* pTextureOwner{nullptr};
+        uint64_t generation{0};
+        uint64_t retiredEpoch{0};
     };
+
+    void CollectRetiredResourcesLocked();
+    BindlessSlotState* FindRegistration(RHIBindlessHandle handle);
 
     void CreateGlobalBindlessDescriptorSet();
 
@@ -365,6 +384,11 @@ private:
     VkDescriptorSetLayout m_vkLayout{VK_NULL_HANDLE};
 
     uint32_t m_heapAllocCount[ToUnderlying(RHIBindlessHeapType::eMax)]{};
+
+    uint64_t m_ownerId{0};
+    uint64_t m_epoch{1};
+    HeapVector<RefCountPtr<VulkanBindlessUse>> m_uses;
+    HeapVector<RHIBindlessHandle> m_retiredSlots;
 
     HeapVector<BindlessDSWrite> m_pendingWrites[ToUnderlying(RHIBindlessHeapType::eMax)];
     HeapVector<BindlessSlotState> m_slotStates[ToUnderlying(RHIBindlessHeapType::eMax)];

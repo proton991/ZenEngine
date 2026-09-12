@@ -428,7 +428,8 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
 {
     return pWorkload != nullptr &&
         (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
-         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_descriptorContainers.empty());
+         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_descriptorContainers.empty() ||
+         !pWorkload->m_bindlessUses.empty());
 }
 
 VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
@@ -515,6 +516,19 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
     }
 
     return submissionResult;
+}
+
+void VulkanCommandContextBase::RetainBindlessUse(RHIBindlessUse* pUse)
+{
+    if (pUse != nullptr)
+    {
+        auto& uses = GetWorkload(WorkloadPhase::eExecute)->m_bindlessUses;
+        if (std::none_of(uses.begin(), uses.end(),
+                         [pUse](const auto& use) { return use.Get() == pUse; }))
+        {
+            uses.emplace_back(pUse);
+        }
+    }
 }
 
 void VulkanCommandContextBase::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
@@ -704,12 +718,13 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+                                         const RHIBindlessUse* recordedUse)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
     VERIFY_EXPR(m_pDescriptorSetState != nullptr);
 
-    m_pDescriptorSetState->SetShaderParameters(parameters);
+    m_pDescriptorSetState->SetShaderParameters(parameters, recordedUse);
 }
 
 void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
@@ -763,11 +778,12 @@ void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+                                             const RHIBindlessUse* recordedUse)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
     VERIFY_EXPR(m_pDescriptorSetState != nullptr);
-    m_pDescriptorSetState->SetShaderParameters(parameters);
+    m_pDescriptorSetState->SetShaderParameters(parameters, recordedUse);
 }
 
 void VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
@@ -1051,6 +1067,24 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
     }
 }
 
+RefCountPtr<RHIBindlessUse> FVulkanCommandListContext::RHICaptureBindlessUse()
+{
+    return GVulkanRHI->GetBindlessDescriptorPoolManager()->CaptureUse();
+}
+
+void FVulkanCommandListContext::RetainCurrentBindlessUse()
+{
+    if (m_pRecordedBindlessUse != nullptr)
+    {
+        RetainBindlessUse(m_pRecordedBindlessUse);
+    }
+    else
+    {
+        auto use = RHICaptureBindlessUse();
+        RetainBindlessUse(use.Get());
+    }
+}
+
 void FVulkanCommandListContext::RHISetShaderParameters(const RHIBatchedShaderParameters& parameters)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
@@ -1058,11 +1092,11 @@ void FVulkanCommandListContext::RHISetShaderParameters(const RHIBatchedShaderPar
     if (m_pCurrentPipeline != nullptr &&
         m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
     {
-        m_pComputeState->SetShaderParameters(parameters);
+        m_pComputeState->SetShaderParameters(parameters, m_pRecordedBindlessUse);
     }
     else if (m_pCurrentPipeline != nullptr)
     {
-        m_pGfxState->SetShaderParameters(parameters);
+        m_pGfxState->SetShaderParameters(parameters, m_pRecordedBindlessUse);
     }
 }
 

@@ -66,6 +66,14 @@ public:
 
     virtual void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) = 0;
 
+    virtual RefCountPtr<RHIBindlessUse> RHICaptureBindlessUse()
+    {
+        return {};
+    }
+
+    // Scoped by command execution; the command owns the borrowed usage token.
+    virtual void RHISetRecordedBindlessUse(RHIBindlessUse* pUse) {}
+
     virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
                                       VectorView<uint64_t> offsets) = 0;
 
@@ -264,6 +272,29 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
+struct RHICommandWithBindlessUse : public RHICommand
+{
+    RefCountPtr<RHIBindlessUse> bindlessUse;
+
+    void Execute(RHICommandListBase& cmdList) final
+    {
+        auto* context = cmdList.GetContext();
+        context->RHISetRecordedBindlessUse(bindlessUse.Get());
+        try
+        {
+            ExecuteCommand(cmdList);
+        }
+        catch (...)
+        {
+            context->RHISetRecordedBindlessUse(nullptr);
+            throw;
+        }
+        context->RHISetRecordedBindlessUse(nullptr);
+    }
+
+    virtual void ExecuteCommand(RHICommandListBase& cmdList) = 0;
+};
+
 struct RHICommandClearBuffer : public RHICommand
 {
     RHIBuffer* pBuffer;
@@ -458,7 +489,7 @@ struct RHICommandBindPipeline final : public RHICommand
     }
 };
 
-struct RHICommandSetShaderParameters final : public RHICommand
+struct RHICommandSetShaderParameters final : public RHICommandWithBindlessUse
 {
     RHIBatchedShaderParameters parameters;
 
@@ -468,7 +499,7 @@ struct RHICommandSetShaderParameters final : public RHICommand
         parameters.CopyFrom(inParameters);
     }
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHISetShaderParameters(parameters);
     }
@@ -583,7 +614,7 @@ struct RHICommandBindVertexBuffers final : public RHICommand
     }
 };
 
-struct RHICommandDraw final : public RHICommand
+struct RHICommandDraw final : public RHICommandWithBindlessUse
 {
     uint32_t vertexCount;
     uint32_t instanceCount;
@@ -600,13 +631,13 @@ struct RHICommandDraw final : public RHICommand
         firstInstance(firstInstance)
     {}
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDraw(vertexCount, instanceCount, firstVertex, firstInstance);
     }
 };
 
-struct RHICommandDrawIndexed final : public RHICommand
+struct RHICommandDrawIndexed final : public RHICommandWithBindlessUse
 {
     struct Param
     {
@@ -641,7 +672,7 @@ struct RHICommandDrawIndexed final : public RHICommand
         firstInstance(param.firstInstance)
     {}
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDrawIndexed(pIndexBuffer, indexFormat, indexBufferOffset,
                                              indexCount, instanceCount, firstIndex, vertexOffset,
@@ -649,7 +680,7 @@ struct RHICommandDrawIndexed final : public RHICommand
     }
 };
 
-struct RHICommandDrawIndexedIndirect final : public RHICommand
+struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessUse
 {
     struct Param
     {
@@ -680,14 +711,14 @@ struct RHICommandDrawIndexedIndirect final : public RHICommand
         stride(param.stride)
     {}
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDrawIndexedIndirect(pIndirectBuffer, pIndexBuffer, indexFormat,
                                                      indexBufferOffset, offset, drawCount, stride);
     }
 };
 
-struct RHICommandDispatch final : public RHICommand
+struct RHICommandDispatch final : public RHICommandWithBindlessUse
 {
     uint32_t groupCountX;
     uint32_t groupCountY;
@@ -697,13 +728,13 @@ struct RHICommandDispatch final : public RHICommand
         groupCountX(groupCountX), groupCountY(groupCountY), groupCountZ(groupCountZ)
     {}
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDispatch(groupCountX, groupCountY, groupCountZ);
     }
 };
 
-struct RHICommandDispatchIndirect final : public RHICommand
+struct RHICommandDispatchIndirect final : public RHICommandWithBindlessUse
 {
     RHIBuffer* pIndirectBuffer;
     uint32_t offset;
@@ -712,7 +743,7 @@ struct RHICommandDispatchIndirect final : public RHICommand
         pIndirectBuffer(pIndirectBuffer), offset(offset)
     {}
 
-    void Execute(RHICommandListBase& cmdList) override
+    void ExecuteCommand(RHICommandListBase& cmdList) override
     {
         cmdList.GetContext()->RHIDispatchIndirect(pIndirectBuffer, offset);
     }
