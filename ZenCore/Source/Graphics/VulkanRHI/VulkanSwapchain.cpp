@@ -1,3 +1,4 @@
+#include "Graphics/RHI/RHIFrameState.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
@@ -6,6 +7,7 @@
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
+#include <algorithm>
 
 namespace zen
 {
@@ -26,6 +28,8 @@ static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR
         {VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
     };
 
+    const VkSurfaceFormatKHR* pSelected = nullptr;
+
     for (const VkSurfaceFormatKHR& preferredSurfaceFormat : preferredSurfaceFormats)
     {
         for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
@@ -33,20 +37,30 @@ static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR
             if (surfaceFormat.format == preferredSurfaceFormat.format &&
                 surfaceFormat.colorSpace == preferredSurfaceFormat.colorSpace)
             {
-                return surfaceFormat;
+                pSelected = &surfaceFormat;
+                break;
+            }
+        }
+
+        if (pSelected != nullptr)
+        {
+            break;
+        }
+    }
+
+    if (pSelected == nullptr)
+    {
+        for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
+        {
+            if (surfaceFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR)
+            {
+                pSelected = &surfaceFormat;
+                break;
             }
         }
     }
 
-    for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
-    {
-        if (surfaceFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR)
-        {
-            return surfaceFormat;
-        }
-    }
-
-    return surfaceFormats[0];
+    return pSelected != nullptr ? *pSelected : surfaceFormats[0];
 }
 
 static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
@@ -62,26 +76,19 @@ static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
     VkImageUsageFlags composedUsage{0};
     std::string usageStr;
 
-    auto valid_format_feature = [&](VkImageUsageFlagBits usageFlag) {
-        if (usageFlag == VK_IMAGE_USAGE_STORAGE_BIT)
-        {
-            return (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) !=
-                0;
-        }
-        else
-        {
-            return true;
-        }
-    };
-    for (auto usageFlag : defaultImageUsageFlags)
+    for (VkImageUsageFlagBits usageFlag : defaultImageUsageFlags)
     {
-        if ((usageFlag & supportedUsage) && valid_format_feature(usageFlag))
+        if ((usageFlag & supportedUsage) &&
+            (usageFlag != VK_IMAGE_USAGE_STORAGE_BIT ||
+             (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) != 0))
         {
             composedUsage |= usageFlag;
             usageStr += VkToString<VkImageUsageFlagBits>(usageFlag) + " ";
         }
     }
+
     LOGI("Swapchain Image usage flags: {}", usageStr);
+
     return composedUsage;
 }
 
@@ -94,48 +101,58 @@ static VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR sur
     presentModes.resize(numPresentModes);
     vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &numPresentModes, presentModes.data());
 
-    // LOGI("Available present modes:")
-    // for (auto& presentMode : presentModes) { LOGI("  \t{}", VkToString(presentMode)); }
+    VkPresentModeKHR selected = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
-    if (!vsync)
-        return VK_PRESENT_MODE_IMMEDIATE_KHR;
-    static constexpr VkPresentModeKHR presentModePriorityList[] = {
-        VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
-    for (const auto& presentMode : presentModePriorityList)
+    if (vsync)
     {
+        static constexpr VkPresentModeKHR presentModePriorityList[] = {
+            VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
 
-        if (std::find(presentModes.begin(), presentModes.end(), presentMode) != presentModes.end())
+        for (const VkPresentModeKHR& presentMode : presentModePriorityList)
         {
-            return presentMode;
+            if (std::find(presentModes.begin(), presentModes.end(), presentMode) !=
+                presentModes.end())
+            {
+                selected = presentMode;
+                break;
+            }
         }
     }
-    return VK_PRESENT_MODE_IMMEDIATE_KHR;
+
+    return selected;
 }
 
 static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
                                                         VkCompositeAlphaFlagsKHR supported)
 {
+    VkCompositeAlphaFlagBitsKHR selected = request;
 
-    if ((request & supported) != 0)
+    if ((request & supported) == 0)
     {
-        return request;
-    }
+        selected = VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR;
 
-    static constexpr VkCompositeAlphaFlagBitsKHR compositeAlphaFlags[] = {
-        VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-        VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
+        static constexpr VkCompositeAlphaFlagBitsKHR compositeAlphaFlags[] = {
+            VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+            VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
 
-    for (VkCompositeAlphaFlagBitsKHR compositeAlpha : compositeAlphaFlags)
-    {
-        if ((compositeAlpha & supported) != 0)
+        for (VkCompositeAlphaFlagBitsKHR compositeAlpha : compositeAlphaFlags)
         {
-            LOGW("(Swapchain) Composite alpha '{}' not supported. Selecting '{}.",
-                 VkToString(request), VkToString(compositeAlpha));
-            return compositeAlpha;
+            if ((compositeAlpha & supported) != 0)
+            {
+                LOGW("(Swapchain) Composite alpha '{}' not supported. Selecting '{}.",
+                     VkToString(request), VkToString(compositeAlpha));
+                selected = compositeAlpha;
+                break;
+            }
+        }
+
+        if (selected == VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR)
+        {
+            LOG_FATAL_ERROR("No compatible composite alpha found.");
         }
     }
-    LOG_FATAL_ERROR("No compatible composite alpha found.");
-    return VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR;
+
+    return selected;
 }
 
 VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
@@ -145,9 +162,9 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
                                  VulkanSwapchainRecreateInfo* pRecreateInfo) :
     m_pDevice(GVulkanRHI->GetDevice())
 {
-
     VkDevice device      = m_pDevice->GetVkHandle();
     VkPhysicalDevice gpu = GVulkanRHI->GetPhysicalDevice();
+
     if (pRecreateInfo != nullptr)
     {
         m_surface              = pRecreateInfo->surface;
@@ -166,9 +183,11 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
                                           surfaceCapabilities.maxImageExtent.width);
     uint32_t swapchainHeight = std::clamp(height, surfaceCapabilities.minImageExtent.height,
                                           surfaceCapabilities.maxImageExtent.height);
+
+    const uint32_t requiredImageCount = GRHIFrameState.GetNumFramesInFlight();
     uint32_t minImageCount =
         std::max(surfaceCapabilities.minImageCount,
-                 std::min(surfaceCapabilities.maxImageCount, ZEN_NUM_FRAMES_IN_FLIGHT));
+                 std::min(surfaceCapabilities.maxImageCount, requiredImageCount));
 
     VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(gpu, m_surface);
 
@@ -190,9 +209,9 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     swapchainCI.imageColorSpace  = m_colorSpace;
     swapchainCI.imageUsage       = imageUsage;
     swapchainCI.presentMode      = m_presentMode;
-    swapchainCI.compositeAlpha   = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                                                        surfaceCapabilities.supportedCompositeAlpha);
-    swapchainCI.oldSwapchain     = pRecreateInfo == nullptr ? nullptr : pRecreateInfo->swapchain;
+    swapchainCI.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+                                                      surfaceCapabilities.supportedCompositeAlpha);
+    swapchainCI.oldSwapchain   = pRecreateInfo == nullptr ? nullptr : pRecreateInfo->swapchain;
 
     VKCHECK(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &m_swaphchain));
 
@@ -205,18 +224,20 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     LOGI("Swapchain surface format: {}", VkToString(surfaceFormat));
     LOGI("Swapchain present mode: {}", VkToString(m_presentMode));
     // get images
-    // uint32_t numImages = 0;
-    vkGetSwapchainImagesKHR(device, m_swaphchain, &m_numImages, nullptr);
+    uint32_t availableImagesCount = 0;
+    vkGetSwapchainImagesKHR(device, m_swaphchain, &availableImagesCount, nullptr);
+
+    m_numImages = std::min(availableImagesCount, ZEN_MAX_NUM_SWAPCHAIN_IMAGES);
     // m_swapchainImages.resize(numImages);
     vkGetSwapchainImagesKHR(device, m_swaphchain, &m_numImages, m_swapchainImages);
+
     // create semaphores
     // m_imageAcquiredSemaphores.reserve(numImages);
     for (uint32_t i = 0; i < m_numImages; i++)
     {
-        auto* pSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
-        // auto* semaphore = new VulkanSemaphore(m_device);
-        const std::string debugName = "ImageAcquired-" + std::to_string(i);
-        pSemaphore->SetDebugName(debugName.c_str());
+        VulkanSemaphore* pSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+        const NameID debugName(fmt::format("ImageAcquired-{}", i));
+        pSemaphore->SetDebugName(debugName);
         m_pImageAcquiredSemaphores[i] = pSemaphore;
     }
 
@@ -231,41 +252,54 @@ int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
     m_semaphoreIndex                 = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
     const uint64_t pendingSubmissionSerial =
         m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex];
+    bool ready = true;
+
     if (pendingSubmissionSerial != 0)
     {
         // Binary acquire semaphores cannot be reused while their queue wait is still pending.
-        // The old global submit wait masked this; now the swapchain explicitly retires the slot.
-        m_pDevice->GetGfxQueue()->WaitForSubmission(pendingSubmissionSerial, UINT64_MAX);
-        m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = 0;
+        ready = m_pDevice->GetGfxQueue()->WaitForSubmission(pendingSubmissionSerial, UINT64_MAX);
+
+        if (ready)
+        {
+            m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = 0;
+        }
+        else
+        {
+            LOGE("Vulkan swapchain: acquire semaphore submission {} did not complete",
+                 pendingSubmissionSerial);
+        }
     }
-    uint32_t imageIndex = 0;
-    VkResult result;
+
+    int32_t acquiredImage = -1;
+
+    if (ready)
     {
-        result = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, UINT64_MAX,
-                                       m_pImageAcquiredSemaphores[m_semaphoreIndex]->GetVkHandle(),
-                                       VK_NULL_HANDLE, &imageIndex);
-        const uint32_t maxImageIndex = m_numImages - 1;
-        while (imageIndex > maxImageIndex && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR))
+        uint32_t imageIndex = 0;
+        VkResult result;
+
+        do
         {
             result =
                 vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, UINT64_MAX,
                                       m_pImageAcquiredSemaphores[m_semaphoreIndex]->GetVkHandle(),
                                       VK_NULL_HANDLE, &imageIndex);
+        } while (imageIndex >= m_numImages &&
+                 (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR));
+
+        if (result != VK_ERROR_OUT_OF_DATE_KHR && result != VK_ERROR_SURFACE_LOST_KHR)
+        {
+            *ppOutSemaphore = m_pImageAcquiredSemaphores[m_semaphoreIndex];
+            m_imageIndex    = static_cast<int32_t>(imageIndex);
+            acquiredImage   = m_imageIndex;
         }
     }
-    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+
+    if (acquiredImage < 0)
     {
         m_semaphoreIndex = prevSemaphoreIndex;
-        return -1;
     }
-    if (result == VK_ERROR_SURFACE_LOST_KHR)
-    {
-        m_semaphoreIndex = prevSemaphoreIndex;
-        return -1;
-    }
-    *ppOutSemaphore = m_pImageAcquiredSemaphores[m_semaphoreIndex];
-    m_imageIndex    = static_cast<int32_t>(imageIndex);
-    return m_imageIndex;
+
+    return acquiredImage;
 }
 
 void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
@@ -276,25 +310,31 @@ void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
 
 bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
 {
+    bool returnValue{};
+
     VkPresentInfoKHR presentInfo;
     InitVkStruct(presentInfo, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains    = &m_swaphchain;
     presentInfo.pImageIndices  = reinterpret_cast<uint32_t*>(&m_imageIndex);
     VkSemaphore semaphore{VK_NULL_HANDLE};
+
     if (pRenderingCompleteSemaphore != nullptr)
     {
         presentInfo.waitSemaphoreCount = 1;
         semaphore                      = pRenderingCompleteSemaphore->GetVkHandle();
         presentInfo.pWaitSemaphores    = &semaphore;
     }
+
     VkResult result = vkQueuePresentKHR(m_pDevice->GetGfxQueue()->GetVkHandle(), &presentInfo);
     m_imageIndex    = -1;
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+
+    if (!(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR))
     {
-        return false;
+        returnValue = true;
     }
-    return true;
+
+    return returnValue;
 }
 
 void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
@@ -308,7 +348,9 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     {
         vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), m_swaphchain, nullptr);
     }
+
     m_swaphchain = VK_NULL_HANDLE;
+
     for (uint32_t i = 0; i < m_numImages; i++)
     {
         // m_imageAcquiredSemaphores[i]->Release();
@@ -316,11 +358,13 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
         m_pImageAcquiredSemaphores[i]                = nullptr;
         m_imageAcquiredSemaphoreSubmissionSerials[i] = 0;
     }
+
     // m_imageAcquiredSemaphores.clear();
     if (pRecreateInfo == nullptr)
     {
         VulkanPlatform::DestroySurface(GVulkanRHI->GetInstance(), m_surface);
     }
+
     m_surface = VK_NULL_HANDLE;
 }
 } // namespace zen

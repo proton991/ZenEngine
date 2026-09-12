@@ -1,10 +1,11 @@
 #pragma once
-#include "VulkanHeaders.h"
-#include "VulkanTypes.h"
+
+#include "Graphics/RHI/RHICommon.h"
 #include "Templates/SmallVector.h"
 #include "Templates/HashMap.h"
 #include "Utils/Helpers.h"
 #include "Graphics/RHI/RHIResource.h"
+#include "VulkanTypes.h"
 
 namespace zen
 {
@@ -25,13 +26,15 @@ namespace std
 {
 template <> struct hash<zen::VulkanDescriptorPoolKey>
 {
-    size_t operator()(const zen::VulkanDescriptorPoolKey& key) const
+    size_t operator()(const zen::VulkanDescriptorPoolKey& key) const noexcept
     {
         size_t seed = 0;
+
         for (uint32_t count : key.descriptorCount)
         {
             zen::util::HashCombine(seed, count);
         }
+
         return seed;
     }
 };
@@ -40,31 +43,10 @@ template <> struct hash<zen::VulkanDescriptorPoolKey>
 namespace zen
 {
 class VulkanDevice;
-// struct VulkanShader
-// {
-//     VulkanShader() = default;
-//
-//     struct VertexInputInfo
-//     {
-//         SmallVector<VkVertexInputBindingDescription> vkBindings;
-//         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
-//         VkPipelineVertexInputStateCreateInfo stateCI;
-//     } vertexInputInfo;
-//     HeapVector<VkSpecializationMapEntry> entries{};
-//     VkSpecializationInfo specializationInfo{};
-//     VkShaderStageFlags pushConstantsStageFlags;
-//     SmallVector<VkPipelineShaderStageCreateInfo> stageCreateInfos;
-//     SmallVector<VkDescriptorSetLayout> descriptorSetLayouts;
-//     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
-//     VulkanDescriptorPoolKey descriptorPoolKey{};
-// };
-
 class VulkanShader : public RHIShader
 {
 public:
     static VulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
-
-    RHIDescriptorSet* CreateDescriptorSet(uint32_t setIndex) override;
 
     uint32_t GetNumShaderStages() const
     {
@@ -101,16 +83,37 @@ public:
         return &m_vertexInputInfo.stateCI;
     }
 
-    const VulkanDescriptorPoolKey& GetDescriptorPoolKey() const
+    const VulkanDescriptorPoolKey& GetDescriptorPoolKey(uint32_t setIdx) const
     {
-        return m_descriptorPoolKey;
+        VERIFY_EXPR(setIdx < m_descriptorSetInfos.size());
+
+        return m_descriptorSetInfos[setIdx].poolKey;
+    }
+
+    uint32_t GetDescriptorSetLayoutId(uint32_t setIdx) const
+    {
+        return m_descriptorSetInfos[setIdx].layoutId;
+    }
+
+    VkDescriptorSetLayout GetDescriptorSetLayoutHandle(uint32_t setIdx) const
+    {
+        return m_descriptorSetLayouts[setIdx];
+    }
+
+    uint32_t GetDescriptorSetVariableCount(uint32_t setIdx) const
+    {
+        return m_descriptorSetInfos[setIdx].variableCount;
+    }
+
+    bool HasGlobalBindlessSet() const
+    {
+        return m_hasGlobalBindlessSet;
     }
 
 protected:
     void Init() override;
 
     void Destroy() override;
-
 
 private:
     VulkanShader(const RHIShaderCreateInfo& createInfo) : RHIShader(createInfo) {}
@@ -125,72 +128,22 @@ private:
     VkSpecializationInfo m_specializationInfo{};
     VkShaderStageFlags m_pushConstantsStageFlags;
     SmallVector<VkPipelineShaderStageCreateInfo> m_stageCreateInfos;
-    SmallVector<VkDescriptorSetLayout> m_descriptorSetLayouts;
-    VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
-    VulkanDescriptorPoolKey m_descriptorPoolKey{};
-};
 
-using VulkanDescriptorPools = HashMap<VulkanDescriptorPoolKey, HashMap<VkDescriptorPool, uint32_t>>;
-using VulkanDescriptorPoolsIt = VulkanDescriptorPools::iterator;
-
-class VulkanDescriptorPoolManager
-{
-public:
-    explicit VulkanDescriptorPoolManager(VulkanDevice* pDevice) : m_pDevice(pDevice) {}
-
-    VkDescriptorPool GetOrCreateDescriptorPool(const VulkanDescriptorPoolKey& poolKey,
-                                               VulkanDescriptorPoolsIt* pIter);
-
-    void UnRefDescriptorPool(VulkanDescriptorPoolsIt poolsIter, VkDescriptorPool pool);
-
-private:
-    VulkanDevice* m_pDevice{nullptr};
-    VulkanDescriptorPools m_pools;
-};
-
-// struct VulkanDescriptorSet
-// {
-//     VkDescriptorSet descriptorSet{VK_NULL_HANDLE};
-//     VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
-//     VulkanDescriptorPoolsIt iter;
-// };
-
-class VulkanDescriptorSet : public RHIDescriptorSet
-{
-public:
-    void Update(const HeapVector<RHIShaderResourceBinding>& resourceBindings) override;
-
-    VkDescriptorSet GetVkDescriptorSet() const
+    struct DescriptorSetInfo
     {
-        return m_vkDescriptorSet;
-    }
+        VulkanDescriptorPoolKey poolKey{};
+        uint32_t layoutId{0};
+        uint32_t variableCount{0};
+        bool ownsLayout{false};
+    };
 
-protected:
-    void Init() override;
+    SmallVector<DescriptorSetInfo, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetInfos;
 
-    void Destroy() override;
+    SmallVector<VkDescriptorSetLayout, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetLayouts;
 
-private:
-    VulkanDescriptorSet(const RHIShader* pShader, uint32_t setIndex);
-
-    VkDescriptorSet m_vkDescriptorSet{VK_NULL_HANDLE};
-    VkDescriptorPool m_vkDescriptorPool{VK_NULL_HANDLE};
-    VulkanDescriptorPoolsIt m_poolIter;
-
-    friend class VulkanShader;
+    VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
+    bool m_hasGlobalBindlessSet{false};
 };
-
-// struct VulkanPipeline
-// {
-//     VkPipeline pipeline{VK_NULL_HANDLE};
-//     VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
-//     // uint32_t descriptorSetCount{0};
-//     VkShaderStageFlags pushConstantsStageFlags;
-//     //    HeapVector<VulkanDescriptorSet*> descriptorSets;
-//     // Reason: When building GraphicsPass/ComputePass and pipeline cache is hit, the latter ones will overwrite the descriptorSet
-//     // VulkanPipeline and VulkanDescriptorSet should be kept separately
-//     // VulkanDescriptorSet* descriptorSets[8];
-// };
 
 class VulkanPipeline : public RHIPipeline
 {
@@ -225,6 +178,8 @@ protected:
     void Destroy() override;
 
 private:
+    friend struct VulkanDescriptorStateTestAccess;
+
     VulkanPipeline(const RHIGfxPipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
 
     VulkanPipeline(const RHIComputePipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}

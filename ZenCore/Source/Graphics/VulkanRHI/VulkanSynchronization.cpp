@@ -1,10 +1,7 @@
+#include <algorithm>
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
-#include "Graphics/VulkanRHI/VulkanTexture.h"
-#include "Graphics/VulkanRHI/VulkanTypes.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
 
 namespace zen
 {
@@ -20,6 +17,7 @@ VulkanFence::VulkanFence(VulkanFenceManager* pOwner, bool createSignaled) :
 void VulkanFenceManager::Destroy()
 {
     VERIFY_EXPR(m_usedFences.empty());
+
     while (!m_freeFences.empty())
     {
         VulkanFence* pFence = m_freeFences.front();
@@ -31,6 +29,8 @@ void VulkanFenceManager::Destroy()
 
 VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
 {
+    VulkanFence* result{};
+
     if (!m_freeFences.empty())
     {
         VulkanFence* pFence = m_freeFences.front();
@@ -38,20 +38,27 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
         pFence->m_state =
             createSignaled ? VulkanFence::State::eSignaled : VulkanFence::State::eInitial;
         m_usedFences.push_back(pFence);
-        return pFence;
+        result = pFence;
     }
-    VulkanFence* pNewFence = ZEN_NEW() VulkanFence(this, createSignaled);
-    m_usedFences.push_back(pNewFence);
-    return pNewFence;
+    else
+    {
+        VulkanFence* pNewFence = ZEN_NEW() VulkanFence(this, createSignaled);
+        m_usedFences.push_back(pNewFence);
+        result = pNewFence;
+    }
+
+    return result;
 }
 
 void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
 {
     ResetFence(fence);
     int size = m_usedFences.size();
+
     if (!m_usedFences.empty())
     {
-        auto it = m_usedFences.begin();
+        HeapVector<VulkanFence*>::iterator it = m_usedFences.begin();
+
         while (it != m_usedFences.end())
         {
             if (*it == fence)
@@ -59,49 +66,76 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
                 m_usedFences.erase(it);
                 break;
             }
+
             ++it;
         }
     }
+
     m_freeFences.push(fence);
     fence = nullptr;
 }
 
 bool VulkanFenceManager::IsFenceSignaled(VulkanFence* pFence)
 {
+    bool returnValue{};
+
     if (pFence->IsSignaled())
     {
-        return true;
+        returnValue = true;
     }
-    // double check
-    VkResult result = vkGetFenceStatus(m_pDevice->GetVkHandle(), pFence->m_fence);
-    if (result == VK_SUCCESS)
+    else
     {
-        pFence->m_state = VulkanFence::State::eSignaled;
-        return true;
+        // double check
+        VkResult result = vkGetFenceStatus(m_pDevice->GetVkHandle(), pFence->m_fence);
+
+        if (result == VK_SUCCESS)
+        {
+            pFence->m_state = VulkanFence::State::eSignaled;
+            returnValue     = true;
+        }
+        else
+        {
+            returnValue = false;
+        }
     }
-    return false;
+
+    return returnValue;
 }
 
 bool VulkanFenceManager::WaitForFence(VulkanFence* pFence, uint64_t timeNS)
 {
+    bool returnValue{};
+
     if (IsFenceSignaled(pFence))
     {
         pFence->m_state = VulkanFence::State::eSignaled;
-        return true;
+        returnValue     = true;
     }
-    VkResult result = vkWaitForFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence, true, timeNS);
-    if (result == VK_SUCCESS)
+    else
     {
-        pFence->m_state = VulkanFence::State::eSignaled;
-        return true;
-    }
-    if (result == VK_TIMEOUT)
-    {
-        LOGI("vkWaitForFences timeout");
-        return false;
+        VkResult result =
+            vkWaitForFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence, true, timeNS);
+
+        if (result == VK_SUCCESS)
+        {
+            pFence->m_state = VulkanFence::State::eSignaled;
+            returnValue     = true;
+        }
+        else if (result == VK_TIMEOUT)
+        {
+            LOGI("vkWaitForFences timeout");
+
+            returnValue = false;
+        }
+        else
+        {
+            LOGE("vkWaitForFences failed: {}", int32_t(result));
+
+            returnValue = false;
+        }
     }
 
-    return false;
+    return returnValue;
 }
 
 void VulkanFenceManager::ResetFence(VulkanFence* pFence)
@@ -119,6 +153,7 @@ void VulkanFenceManager::WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeN
     {
         WaitForFence(fence, timeNS);
     }
+
     ResetFence(fence);
     ReleaseFence(fence);
     fence = nullptr;
@@ -139,6 +174,7 @@ VulkanSemaphore::VulkanSemaphore(VulkanDevice* pDevice,
     VkSemaphoreCreateInfo semaphoreCI;
     InitVkStruct(semaphoreCI, VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
     VkSemaphoreTypeCreateInfo semaphoreTypeCI;
+
     if (semaphoreType != VK_SEMAPHORE_TYPE_BINARY)
     {
         InitVkStruct(semaphoreTypeCI, VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO);
@@ -146,26 +182,44 @@ VulkanSemaphore::VulkanSemaphore(VulkanDevice* pDevice,
         semaphoreTypeCI.initialValue  = initialValue;
         semaphoreCI.pNext             = &semaphoreTypeCI;
     }
+
     VKCHECK(vkCreateSemaphore(m_pDevice->GetVkHandle(), &semaphoreCI, nullptr, &m_semaphore));
 }
 
-void VulkanSemaphore::SetDebugName(const char* pName)
+void VulkanSemaphore::SetDebugName(NameID name)
 {
     m_pDevice->SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, reinterpret_cast<uint64_t>(m_semaphore),
-                            pName);
+                             name);
 }
 
 uint64_t VulkanSemaphore::GetCounterValue() const
 {
+    uint64_t returnValue{};
+
     VERIFY_EXPR(IsTimeline());
 
     uint64_t value = 0;
-    VKCHECK(vkGetSemaphoreCounterValue(m_pDevice->GetVkHandle(), m_semaphore, &value));
-    return value;
+    const VkResult result =
+        vkGetSemaphoreCounterValue(m_pDevice->GetVkHandle(), m_semaphore, &value);
+
+    if (result != VK_SUCCESS)
+    {
+        LOGE("Vulkan timeline counter query failed: {}", int32_t(result));
+
+        returnValue = 0;
+    }
+    else
+    {
+        returnValue = value;
+    }
+
+    return returnValue;
 }
 
 bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
 {
+    bool returnValue{};
+
     VERIFY_EXPR(IsTimeline());
 
     VkSemaphoreWaitInfo waitInfo;
@@ -175,16 +229,23 @@ bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
     waitInfo.pValues        = &value;
 
     VkResult result = vkWaitSemaphores(m_pDevice->GetVkHandle(), &waitInfo, timeNS);
+
     if (result == VK_SUCCESS)
     {
-        return true;
+        returnValue = true;
     }
-    if (result == VK_TIMEOUT)
+    else if (result == VK_TIMEOUT)
     {
-        return false;
+        returnValue = false;
+    }
+    else
+    {
+        LOGE("vkWaitSemaphores failed: {}", int32_t(result));
+
+        returnValue = false;
     }
 
-    return false;
+    return returnValue;
 }
 
 VulkanSemaphore::~VulkanSemaphore()
@@ -198,47 +259,64 @@ void VulkanSemaphoreManager::Destroy()
 #if defined(ZEN_DEBUG)
     VERIFY_EXPR(m_allocatedSemaphoreCount == m_usedSemaphores.size() + m_freeSemaphores.size());
 #endif
+
     while (!m_freeSemaphores.empty())
     {
         VulkanSemaphore* pSem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
         ZEN_DELETE(pSem);
     }
+
     for (VulkanSemaphore* pSem : m_usedSemaphores)
     {
         ZEN_DELETE(pSem);
     }
+
+    m_usedSemaphores.clear();
+#if defined(ZEN_DEBUG)
+    m_allocatedSemaphoreCount = 0;
+#endif
 }
 
 VulkanSemaphore* VulkanSemaphoreManager::GetOrCreateSemaphore()
 {
+    VulkanSemaphore* result{};
+
     if (!m_freeSemaphores.empty())
     {
         VulkanSemaphore* pSem = m_freeSemaphores.front();
         m_freeSemaphores.pop();
         m_usedSemaphores.push_back(pSem);
-        return pSem;
+        result = pSem;
     }
-    VulkanSemaphore* pNewSem = ZEN_NEW() VulkanSemaphore(m_pDevice);
-    m_usedSemaphores.push_back(pNewSem);
-    m_allocatedSemaphoreCount++;
-    return pNewSem;
+    else
+    {
+        VulkanSemaphore* pNewSem = ZEN_NEW() VulkanSemaphore(m_pDevice);
+        m_usedSemaphores.push_back(pNewSem);
+        m_allocatedSemaphoreCount++;
+        result = pNewSem;
+    }
+
+    return result;
 }
 
 void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
 {
-    auto it = m_usedSemaphores.begin();
-    while (it != m_usedSemaphores.end())
+    if (sem != nullptr)
     {
-        if (*it == sem)
+        VulkanSemaphore** it = std::find(m_usedSemaphores.begin(), m_usedSemaphores.end(), sem);
+
+        if (it != m_usedSemaphores.end())
         {
             m_usedSemaphores.erase(it);
-            break;
+            m_freeSemaphores.push(sem);
+            sem = nullptr;
         }
-        ++it;
+        else
+        {
+            VERIFY_EXPR_MSG(false, "Cannot release a semaphore that is not in use");
+        }
     }
-    m_freeSemaphores.push(sem);
-    // sem = nullptr;
 }
 
 void VulkanPipelineBarrier::AddImageBarrier(VkImage image,
@@ -313,11 +391,13 @@ void VulkanPipelineBarrier::ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer)
 {
     VkPipelineStageFlags srcStageFlags = 0;
     VkPipelineStageFlags dstStageFlags = 0;
-    for (const auto& imageBarrier : m_imageBarriers)
+
+    for (VkImageMemoryBarrier const& imageBarrier : m_imageBarriers)
     {
         srcStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.oldLayout);
         dstStageFlags |= VkLayoutToPipelineStageFlags(imageBarrier.newLayout);
     }
+
     if (!m_imageBarriers.empty())
     {
         vkCmdPipelineBarrier(cmdBuffer, srcStageFlags, dstStageFlags, 0, 0, nullptr, 0, nullptr,
@@ -343,22 +423,10 @@ void VulkanPipelineBarrier::Execute(VkCommandBuffer cmdBuffer,
     }
 }
 
-// void VulkanPipelineBarrier::Execute(VulkanCommandBuffer* cmdBuffer,
-//                                     BitField<RHIPipelineStageBits> srcStages,
-//                                     BitField<RHIPipelineStageBits> dstStages)
-// {
-//     if (!m_memoryBarriers.empty() || !m_bufferBarriers.empty() || !m_imageBarriers.empty())
-//     {
-//         vkCmdPipelineBarrier(cmdBuffer->GetVkHandle(), srcStages, dstStages, 0,
-//                              m_memoryBarriers.size(), m_memoryBarriers.data(),
-//                              m_bufferBarriers.size(), m_bufferBarriers.data(),
-//                              m_imageBarriers.size(), m_imageBarriers.data());
-//     }
-// }
-
 VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImageLayout layout)
 {
     VkPipelineStageFlags flags = 0;
+
     switch (layout)
     {
         case VK_IMAGE_LAYOUT_UNDEFINED:;
@@ -376,6 +444,7 @@ VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImage
             flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
             break;
+
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
             flags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             break;
@@ -388,16 +457,19 @@ VkPipelineStageFlags VulkanPipelineBarrier::VkLayoutToPipelineStageFlags(VkImage
             flags = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             break;
+
         case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR: flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT; break;
 
         default: LOGE("Invalid Vulkan Image Layout") break;
     }
+
     return flags;
 }
 
 VkAccessFlags VulkanPipelineBarrier::VkLayoutToAccessFlags(VkImageLayout layout)
 {
     VkAccessFlags flags = 0;
+
     switch (layout)
     {
         case VK_IMAGE_LAYOUT_UNDEFINED:;
@@ -435,6 +507,7 @@ VkAccessFlags VulkanPipelineBarrier::VkLayoutToAccessFlags(VkImageLayout layout)
 
         default: LOGE("Invalid Vulkan Image Layout") break;
     }
+
     return flags;
 }
 } // namespace zen

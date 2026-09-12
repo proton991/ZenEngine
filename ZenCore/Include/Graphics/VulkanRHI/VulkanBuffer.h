@@ -3,18 +3,8 @@
 #include "VulkanHeaders.h"
 #include "VulkanMemory.h"
 
-
 namespace zen
 {
-// struct VulkanBuffer
-// {
-//     VkBuffer buffer{VK_NULL_HANDLE};
-//     uint32_t allocatedSize{0};
-//     uint32_t requiredSize{0};
-//     VkBufferView bufferView{VK_NULL_HANDLE};
-//     VulkanMemoryAllocation memAlloc{};
-// };
-
 class VulkanBuffer : public RHIBuffer
 {
 public:
@@ -53,5 +43,52 @@ private:
     uint32_t m_allocatedSize{0};
     VkBufferView m_bufferView{VK_NULL_HANDLE};
     VulkanMemoryAllocation m_memAlloc{};
+};
+
+// uniform buffer allocator
+struct VulkanUniformBufferBlock
+{
+    RHIBuffer* pBuffer{nullptr};
+    uint32_t offset{0};
+    uint32_t size{0};
+    uint8_t* pMapped{nullptr};
+
+    bool IsValid() const
+    {
+        return pBuffer != nullptr && pMapped != nullptr;
+    }
+};
+
+class VulkanUniformBufferAllocator
+{
+public:
+    VulkanUniformBufferAllocator() = default;
+
+    void Init(uint32_t numSlots, uint32_t blockSize, uint32_t maxBlocksPerSlot);
+
+    void Destroy();
+
+    void BeginFrame(uint32_t frameNum);
+
+    VulkanUniformBufferBlock Alloc(uint32_t size);
+
+private:
+    struct Slot
+    {
+        HeapVector<VulkanUniformBufferBlock> blocks;
+        uint32_t currentBlockIdx{0};
+    };
+
+    VulkanUniformBufferBlock CreateBlock() const;
+
+    HeapVector<Slot> m_slots;
+
+    uint32_t m_blockSize{0};
+
+    uint32_t m_currentSlotIdx{0};
+
+    uint32_t m_maxBlocksPerSlot{0};
+
+    uint32_t m_alignment{256};
 };
 } // namespace zen

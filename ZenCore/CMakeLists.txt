@@ -12,13 +12,19 @@ set(ZEN_CORE_HEADERS
     Include/Templates/HashMap.h
     Include/Templates/Queue.h
     Include/Templates/SmallVector.h
+    Include/Templates/VectorView.h
     Include/Templates/ArenaVector.h
     Include/Templates/HeapVector.h
+    Include/Templates/NameID.h
+    Include/Templates/FlatHashMap.h
     Include/Templates/ObjectPool.h
+    Include/Templates/FrameTimeline.h
+    Include/Templates/LRUCache.h
 
     Include/Utils/ConditionVariable.h
     Include/Utils/Counter.h
     Include/Utils/Errors.h
+    Include/Utils/MetricsLogger.h
     Include/Utils/Helpers.h
     Include/Utils/Intrusive.h
     Include/Utils/Mutex.h
@@ -40,7 +46,14 @@ set(ZEN_CORE_HEADERS
 
     Include/Graphics/Types/Frustum.h
 
+    Include/Graphics/RenderCore/V2/RenderGraph/RDGDefs.h
+    Include/Graphics/RenderCore/V2/RenderGraph/RDGMetrics.h
+    Include/Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h
+    Include/Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h
+    Include/Graphics/RenderCore/V2/RenderGraph/RenderGraph.h
+
     Include/Graphics/RenderCore/V2/Renderer/RendererServer.h
+    Include/Graphics/RenderCore/V2/Renderer/RendererUtils.h
     Include/Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelRenderer.h
@@ -50,7 +63,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h
 
-    Include/Graphics/RenderCore/V2/RenderGraph.h
     Include/Graphics/RenderCore/V2/RenderScene.h
     Include/Graphics/RenderCore/V2/RenderObject.h
     Include/Graphics/RenderCore/V2/RenderResource.h
@@ -59,6 +71,8 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
     Include/Graphics/RenderCore/V2/TextureManager.h
     Include/Graphics/RenderCore/V2/ShaderProgram.h
+    Include/Graphics/RenderCore/V2/RenderFrameState.h
+    Include/Graphics/RenderCore/V2/StagingUploadQueue.h
 
     Include/Graphics/RenderCore/RenderConfig.h
     Include/Graphics/RenderCore/RenderGraphDefinitions.h
@@ -77,7 +91,6 @@ set(ZEN_CORE_HEADERS
     Include/SceneGraph/Light.h
     Include/SceneGraph/Material.h
     Include/SceneGraph/Mesh.h
-    Include/SceneGraph/Node.h
     Include/SceneGraph/Sampler.h
     Include/SceneGraph/Scene.h
     Include/SceneGraph/SubMesh.h
@@ -89,10 +102,11 @@ set(ZEN_CORE_HEADERS
 
     Include/Graphics/RHI/DynamicRHI.h
     Include/Graphics/RHI/RHICommandList.h
-    Include/Graphics/RHI/RHICommands.h
     Include/Graphics/RHI/RHICommon.h
     Include/Graphics/RHI/RHIDebug.h
     Include/Graphics/RHI/RHIResource.h
+    Include/Graphics/RHI/RHIShaderParameters.h
+    Include/Graphics/RHI/RHIFrameState.h
     Include/Graphics/RHI/RHIDefs.h
     Include/Graphics/RHI/RHIOptions.h
     Include/Graphics/RHI/RHIShaderUtil.h
@@ -109,8 +123,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanQueue.h
     Include/Graphics/VulkanRHI/VulkanSwapchain.h
     Include/Graphics/VulkanRHI/VulkanViewport.h
-    Include/Graphics/VulkanRHI/VulkanCommandBuffer.h
-    Include/Graphics/VulkanRHI/VulkanCommands.h
     Include/Graphics/VulkanRHI/VulkanCommandList.h
     Include/Graphics/VulkanRHI/VulkanPlatformCommandList.h
     Include/Graphics/VulkanRHI/VulkanTypes.h
@@ -121,6 +133,8 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanMemory.h
     Include/Graphics/VulkanRHI/VulkanSynchronization.h
     Include/Graphics/VulkanRHI/VulkanResourceAllocator.h
+    Include/Graphics/VulkanRHI/VulkanDescriptorPool.h
+    Include/Graphics/VulkanRHI/VulkanDescriptorState.h
 
     Include/Graphics/Val/Buffer.h
     Include/Graphics/Val/CommandBuffer.h
@@ -162,10 +176,14 @@ set(ZEN_CORE_SOURCES
 
     Source/Graphics/RenderCore/V2/RendererServer.cpp
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
+    Source/Graphics/RenderCore/V2/RDGMetrics.cpp
+    Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
+    Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderResource.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp
     Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
@@ -201,8 +219,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanQueue.cpp
     Source/Graphics/VulkanRHI/VulkanSwapchain.cpp
     Source/Graphics/VulkanRHI/VulkanViewport.cpp
-    Source/Graphics/VulkanRHI/VulkanCommandBuffer.cpp
-    Source/Graphics/VulkanRHI/VulkanCommands.cpp
     Source/Graphics/VulkanRHI/VulkanCommandList.cpp
     Source/Graphics/VulkanRHI/VulkanTypes.cpp
     Source/Graphics/VulkanRHI/VulkanPipeline.cpp
@@ -211,6 +227,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanBuffer.cpp
     Source/Graphics/VulkanRHI/VulkanMemory.cpp
     Source/Graphics/VulkanRHI/VulkanSynchronization.cpp
+    Source/Graphics/VulkanRHI/VulkanDescriptorPool.cpp
+    Source/Graphics/VulkanRHI/VulkanDescriptorSetState.cpp
 
     Source/Graphics/Val/Buffer.cpp
     Source/Graphics/Val/CommandBuffer.cpp
@@ -288,7 +306,10 @@ foreach (GLSL ${ZEN_SHADER_FILES})
     add_custom_command(
         OUTPUT ${SPIRV}
         COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V ${GLSL} -o ${SPIRV}
-        DEPENDS ${GLSL})
+                --depfile ${SPIRV}.d
+        DEPENDS ${GLSL}
+        DEPFILE ${SPIRV}.d
+        VERBATIM)
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach (GLSL)
 

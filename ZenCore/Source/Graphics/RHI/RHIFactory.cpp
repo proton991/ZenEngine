@@ -2,10 +2,10 @@
 #include "Graphics/RHI/RHIDebug.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Utils/Errors.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 
 zen::DynamicRHI* GDynamicRHI = nullptr;
+zen::RHIFrameState GRHIFrameState;
 
 namespace zen
 {
@@ -31,27 +31,21 @@ DynamicRHI* DynamicRHI::Create(RHIAPIType type)
 
 RHIDebug* RHIDebug::Create()
 {
+    RHIDebug* result{};
+
     // VERIFY_EXPR(RHI != nullptr);
     if (GDynamicRHI != nullptr && GDynamicRHI->GetAPIType() == RHIAPIType::eVulkan)
     {
-        return ZEN_NEW() VulkanDebug();
+        result = ZEN_NEW() VulkanDebug();
     }
-    LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
-
-    return nullptr;
-}
-
-LegacyRHICommandList* LegacyRHICommandList::Create(RHIAPIType type,
-                                                   LegacyRHICommandListContext* pContext)
-{
-    VERIFY_EXPR(pContext != nullptr);
-    if (pContext != nullptr && type == RHIAPIType::eVulkan)
+    else
     {
-        return ZEN_NEW() LegacyVulkanCommandList(
-            dynamic_cast<LegacyVulkanCommandListContext*>(pContext));
-    }
-    LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
+        LOGE("Dynamic RHI creation failed! Unsupported Graphics API type!");
 
-    return nullptr;
+        result = nullptr;
+    }
+
+    return result;
 }
+
 } // namespace zen

@@ -2,12 +2,10 @@
 #include "RHICommandList.h"
 #include "RHICommon.h"
 #include "RHIResource.h"
+#include "RHIFrameState.h"
 
 namespace zen
 {
-class LegacyRHICommandList;
-class LegacyRHICommandListContext;
-
 class DynamicRHI
 {
 public:
@@ -19,19 +17,20 @@ public:
 
     virtual void Destroy() = 0;
 
+    virtual void BeginFrame() = 0;
+
+    virtual void EndFrame()
+    {
+        GRHIFrameState.Advance();
+    }
+
     virtual IRHICommandContext* GetCommandContext(RHICommandContextType contextType) = 0;
 
     virtual IRHICommandContext* GetTransferCommandContext() = 0;
 
-    virtual LegacyRHICommandListContext* CreateLegacyCmdListContext() = 0;
-
-    virtual void WaitForLegacyCommandList(LegacyRHICommandList* pCmdList) = 0;
-
-    virtual LegacyRHICommandList* GetLegacyImmediateCommandList() = 0;
-
     virtual RHIAPIType GetAPIType() = 0;
 
-    virtual const char* GetName() = 0;
+    virtual NameID GetName() = 0;
 
     virtual DataFormat GetSupportedDepthFormat() = 0;
 
@@ -42,22 +41,7 @@ public:
 
     virtual void DestroyViewport(RHIViewport* pViewport) = 0;
 
-    virtual void BeginDrawingViewport(RHIViewport* pViewport) = 0;
-
-    // Legacy immediate command-list path. New code should use the RHICommandList overload below.
-    virtual void EndDrawingViewport(RHIViewport* pViewport,
-                                    LegacyRHICommandListContext* pCmdListContext,
-                                    bool present) = 0;
-
-    virtual void EndDrawingViewport(RHIViewport* pViewportRHI,
-                                    RHICommandList* pCmdList,
-                                    bool present) = 0;
-
-    // virtual ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) = 0;
-
     virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
-
-    // virtual void DestroyShader(ShaderHandle shaderHandle) = 0;
 
     virtual void DestroyShader(RHIShader* pShader) = 0;
 
@@ -65,30 +49,10 @@ public:
 
     virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
 
-    // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                        const RHIGfxPipelineStates& states,
-    //                                        RenderPassHandle renderPassHandle,
-    //                                        uint32_t subpass) = 0;
-
-    // virtual RHIPipeline* CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                        const RHIGfxPipelineStates& states,
-    //                                        const RHIRenderPassLayout& renderPassLayout,
-    //                                        uint32_t subpass) = 0;
-
-    // virtual RHIPipeline* CreateComputePipeline(RHIShader* shaderHandle) = 0;
-
     virtual void DestroyPipeline(RHIPipeline* pPipeline) = 0;
 
-    // virtual RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) = 0;
-
-    // virtual void DestroyRenderPass(RenderPassHandle renderPassHandle) = 0;
-
-    // virtual FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-    //                                             const RHIFramebufferInfo& fbInfo) = 0;
-
-    // virtual void DestroyFramebuffer(FramebufferHandle framebufferHandle) = 0;
-
     virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+
     // {
     //     return m_resourceFactory->CreateSampler(samplerInfo);
     // }
@@ -97,31 +61,15 @@ public:
 
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
 
-    virtual RHITexture* CreateTextureProxy(const RHITexture* pBaseTexture,
-                                           const RHITextureProxyCreateInfo& proxyInfo) = 0;
-    // {
-    //     return m_resourceFactory->CreateTexture(textureInfo);
-    // }
-    //
-    // virtual TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
-    //                                          const TextureProxyInfo& textureProxyInfo) = 0;
-
-    // virtual void DestroyTexture(TextureHandle textureHandle) = 0;
+    virtual RHITextureView* CreateTextureView(RHITexture* pBaseTexture,
+                                              const RHITextureViewCreateInfo& createInfo) = 0;
 
     virtual void DestroyTexture(RHITexture* pTexture) = 0;
-
-    // virtual DataFormat GetTextureFormat(TextureHandle textureHandle) = 0;
-
-    // virtual RHITextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) = 0;
-
-    // virtual BufferHandle CreateBuffer(uint32_t size,
-    //                                   BitField<RHIBufferUsageFlagBits> usageFlags,
-    //                                   RHIBufferAllocateType allocateType) = 0;
-    //
 
     virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
 
     virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
+
     //
     // virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
     //
@@ -133,7 +81,7 @@ public:
 
     // virtual DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) = 0;
 
-    virtual void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) = 0;
+    // virtual void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) = 0;
 
     // virtual void UpdateDescriptorSet(
     //     DescriptorSetHandle descriptorSetHandle,
@@ -144,11 +92,28 @@ public:
 
     virtual void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) = 0;
 
-    virtual void SubmitAllGPUCommands() = 0;
+    // Consumes all queued platform lists, including rejected work. Never retries them implicitly.
+    virtual RHISubmissionResult FlushAllGPUCommands() = 0;
+
+    virtual bool IsTransferQueueSharedWithGraphics() const = 0;
+
+    virtual uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const = 0;
+
+    virtual uint64_t GetLastCompletedSerial(RHICommandContextType contextType) = 0;
+
+    // Wait only for an already-submitted queue serial. Zero is already complete; zero timeout
+    // polls. False means timeout/failure and must never be treated as permission to reuse work.
+    virtual bool WaitForSubmission(RHICommandContextType contextType,
+                                   uint64_t submissionSerial,
+                                   uint64_t timeoutNS = UINT64_MAX) = 0;
 
     virtual void WaitDeviceIdle() = 0;
 
     virtual const RHIGPUInfo& QueryGPUInfo() const = 0;
+
+    virtual RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const = 0;
+
+    virtual RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const = 0;
 
     RHIResourceFactory* GetResourceFactory() const
     {
@@ -157,9 +122,6 @@ public:
 
 protected:
     RHIResourceFactory* m_pResourceFactory{nullptr};
-
-    LegacyRHICommandListContext* m_pLegacyImmediateContext{nullptr};
-    LegacyRHICommandList* m_pLegacyImmediateCommandList{nullptr};
 
     IRHICommandContext* m_pTransferContext{nullptr};
 };

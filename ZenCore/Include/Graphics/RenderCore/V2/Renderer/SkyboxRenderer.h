@@ -1,13 +1,10 @@
 #pragma once
-#include "Graphics/RenderCore/V2/RenderGraph.h"
-
-#define M_PI 3.14159265358979323846 // pi
+#include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 
 namespace zen::rc
 {
 class RenderScene;
 class RenderDevice;
-
 
 class SkyboxRenderer
 {
@@ -16,18 +13,18 @@ public:
 
     void Init();
 
+    void BuildRenderGraph();
+
+    // Restore one-time work when the frame is rejected before submission.
+    void OnRenderGraphExecuted(bool succeeded);
+
     void Destroy();
 
     void PreprocessEnvTexture(EnvTexture* pTexture);
 
-    void PrepareRenderWorkload();
-
-    void OnResize();
-
     void SetRenderScene(RenderScene* pRenderScene)
     {
         m_pScene = pRenderScene;
-        UpdateGraphicsPassResources();
     }
 
 private:
@@ -40,19 +37,9 @@ private:
 
     void PrepareTextures();
 
-    void BuildRenderGraph();
-
-    void BuildGraphicsPasses();
-
-    void UpdateGraphicsPassResources();
-
     void PrepareEnvCubemaps(EnvTexture* pTexture);
 
-    void AppendEnvCubemapNodes(EnvTexture* pTexture);
-
     void PrepareLutBRDF(EnvTexture* pTexture);
-
-    void AppendLutBRDFNode(EnvTexture* pTexture);
 
     struct SkyboxVertex
     {
@@ -66,14 +53,7 @@ private:
     RenderScene* m_pScene{nullptr};
 
     EnvTexture* m_pPendingPreprocessEnvTexture{nullptr};
-
-    struct
-    {
-        GraphicsPass* pIrradiance;
-        GraphicsPass* pPrefiltered;
-        GraphicsPass* pLutBRDF;
-        GraphicsPass* pSkybox;
-    } m_gfxPasses;
+    EnvTexture* m_pRecordedPreprocessEnvTexture{nullptr};
 
     struct
     {
@@ -84,25 +64,19 @@ private:
     RHIBuffer* m_pVertexBuffer;
     RHIBuffer* m_pIndexBuffer;
 
-    struct
-    {
-        RHISampler* pCubemapSampler;
-        RHISampler* pLutBRDFSampler;
-    } m_samplers;
-
     struct PushConstantIrradiance
     {
         glm::mat4 mvp;
-        float deltaPhi   = 2.0f * static_cast<float>(M_PI) / 180.0f;
-        float deltaTheta = 0.5f * static_cast<float>(M_PI) / 64.0f;
-    } m_pcIrradiance;
+        float deltaPhi   = 2.0f * glm::pi<float>() / 180.0f;
+        float deltaTheta = 0.5f * glm::pi<float>() / 64.0f;
+    };
 
     struct PushConstantPrefilterEnv
     {
         glm::mat4 mvp;
         float roughness;
         uint32_t numSamples = 32u;
-    } m_pcPrefilterEnv;
+    };
 
     const DataFormat cIrradianceFormat  = DataFormat::eR32G32B32A32SFloat;
     const DataFormat cPrefilteredFormat = DataFormat::eR16G16B16A16SFloat;

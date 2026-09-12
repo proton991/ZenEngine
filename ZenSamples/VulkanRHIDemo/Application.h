@@ -1,12 +1,9 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Platform/Timer.h"
 #include "SceneGraph/Camera.h"
-
-
-
 
 namespace zen::rc
 {
@@ -44,6 +41,7 @@ protected:
     UniquePtr<sg::Camera> m_camera;
 
     UniquePtr<platform::Timer> m_timer;
+
     // Defines a frame rate independent timer value clamped from -1.0...1.0
     // For use in animations, rotations, etc.
     float m_animationTimer{0.0f};

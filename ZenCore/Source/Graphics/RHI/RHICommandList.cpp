@@ -6,6 +6,7 @@ namespace zen
 void RHICommandListBase::Execute()
 {
     RHICommandBase* pCmd = m_pCmdHead;
+
     while (pCmd)
     {
         RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
@@ -19,6 +20,7 @@ void RHICommandListBase::Execute()
 void RHICommandListBase::Reset()
 {
     RHICommandBase* pCmd = m_pCmdHead;
+
     while (pCmd)
     {
         RHICommandBase* pNext = pCmd->pNextCmd;
@@ -41,10 +43,36 @@ void RHICommandListBase::Reset()
     m_cmdAllocator.Reset();
 }
 
+void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
+{
+    RHICommandBase* command = *checkpoint.tail;
+
+    while (command != nullptr)
+    {
+        RHICommandBase* next = command->pNextCmd;
+
+        if (command->pDestroy != nullptr)
+        {
+            command->pDestroy(command);
+        }
+        else
+        {
+            command->~RHICommandBase();
+        }
+
+        command = next;
+    }
+
+    *checkpoint.tail = nullptr;
+    m_ppCmdPtr       = checkpoint.tail;
+    m_numCommands    = checkpoint.count;
+}
+
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
     RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
     RHICommandContextType contextType = pContext->GetContextType();
+
     if (contextType == RHICommandContextType::eGraphics ||
         contextType == RHICommandContextType::eTransfer)
     {
@@ -81,11 +109,12 @@ void RHICommandList::ClearTexture(RHITexture* pTexture,
 
 void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
                                  RHITexture* pDstTexture,
-                                 VectorView<RHITextureCopyRegion> regions)
+                                 VectorView<const RHITextureCopyRegion> regions)
 {
     RHICommandCopyTexture* pCmd = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
 
     RHITextureCopyRegion* pRegions = AllocateCmdData<RHITextureCopyRegion>(regions.size());
+
     if (pRegions != nullptr)
     {
         std::ranges::copy(regions, pRegions);
@@ -108,6 +137,7 @@ void RHICommandList::BlitTexture(RHITexture* pSrcTexture,
         ALLOC_CMD(RHICommandBlitTexture)(pSrcTexture, pDstTexture, filter);
 
     RHITextureBlitRegion* pRegions = AllocateCmdData<RHITextureBlitRegion>(regions.size());
+
     if (pRegions != nullptr)
     {
         std::ranges::copy(regions, pRegions);
@@ -125,6 +155,7 @@ void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
 
     RHIBufferTextureCopyRegion* pRegions =
         AllocateCmdData<RHIBufferTextureCopyRegion>(regions.size());
+
     if (pRegions != nullptr)
     {
         std::ranges::copy(regions, pRegions);
@@ -135,13 +166,14 @@ void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
 
 void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                          RHITexture* pDstTexture,
-                                         VectorView<RHIBufferTextureCopyRegion> regions)
+                                         VectorView<const RHIBufferTextureCopyRegion> regions)
 {
     RHICommandCopyBufferToTexture* pCmd =
         ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
 
     RHIBufferTextureCopyRegion* pRegions =
         AllocateCmdData<RHIBufferTextureCopyRegion>(regions.size());
+
     if (pRegions != nullptr)
     {
         std::ranges::copy(regions, pRegions);
@@ -204,12 +236,14 @@ void RHICommandList::EndRendering()
     ALLOC_CMD(RHICommandEndRendering)();
 }
 
-void RHICommandList::BindPipeline(RHIPipelineType pipelineType,
-                                  RHIPipeline* pPipeline,
-                                  uint32_t numDescriptorSets,
-                                  RHIDescriptorSet* const* pDescriptorSets)
+void RHICommandList::BindPipeline(RHIPipelineType pipelineType, RHIPipeline* pPipeline)
 {
-    ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline, numDescriptorSets, pDescriptorSets);
+    ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline);
+}
+
+void RHICommandList::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+{
+    ALLOC_CMD(RHICommandSetShaderParameters)(parameters);
 }
 
 void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
@@ -220,12 +254,14 @@ void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
     RHICommandBindVertexBuffers* pCmd = ALLOC_CMD(RHICommandBindVertexBuffers)();
 
     RHIBuffer** ppVertexBuffers = AllocateCmdData<RHIBuffer*>(vertexBuffers.size());
+
     if (ppVertexBuffers != nullptr)
     {
         std::ranges::copy(vertexBuffers, ppVertexBuffers);
     }
 
     uint64_t* pOffsets = AllocateCmdData<uint64_t>(offsets.size());
+
     if (pOffsets != nullptr)
     {
         std::ranges::copy(offsets, pOffsets);
@@ -268,20 +304,26 @@ void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offse
     ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset);
 }
 
-void RHICommandList::SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data)
+void RHICommandList::SetPushConstants(RHIPipeline* pPipeline,
+                                      const uint8_t* pData,
+                                      uint32_t sizeBytes,
+                                      uint32_t offset)
 {
     RHICommandSetPushConstants* pCmd = ALLOC_CMD(RHICommandSetPushConstants)(pPipeline);
 
-    uint8_t* pData = AllocateCmdData<uint8_t>(data.size());
+    uint8_t* pAllocatedData = AllocateCmdData<uint8_t>(sizeBytes);
+
     if (pData != nullptr)
     {
-        std::ranges::copy(data, pData);
+        std::memcpy(pAllocatedData, pData, sizeBytes);
     }
-    pCmd->data = MakeVecView(pData, data.size());
+
+    pCmd->data   = MakeVecView(static_cast<const uint8_t*>(pAllocatedData), sizeBytes);
+    pCmd->offset = offset;
 }
 
-void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                                    BitField<RHIPipelineStageBits> dstStages,
+void RHICommandList::AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                                    BitField<RHIPipelineStageFlagBits> dstStages,
                                     VectorView<RHIMemoryTransition> memoryTransitions,
                                     VectorView<RHIBufferTransition> bufferTransitions,
                                     VectorView<RHITextureTransition> textureTransitions)
@@ -290,6 +332,7 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
 
     RHIMemoryTransition* pMemoryTransitions =
         AllocateCmdData<RHIMemoryTransition>(memoryTransitions.size());
+
     if (pMemoryTransitions != nullptr)
     {
         std::ranges::copy(memoryTransitions, pMemoryTransitions);
@@ -297,6 +340,7 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
 
     RHIBufferTransition* pBufferTransitions =
         AllocateCmdData<RHIBufferTransition>(bufferTransitions.size());
+
     if (pBufferTransitions != nullptr)
     {
         std::ranges::copy(bufferTransitions, pBufferTransitions);
@@ -304,6 +348,7 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageBits> srcStages,
 
     RHITextureTransition* pTextureTransitions =
         AllocateCmdData<RHITextureTransition>(textureTransitions.size());
+
     if (pTextureTransitions != nullptr)
     {
         std::ranges::copy(textureTransitions, pTextureTransitions);

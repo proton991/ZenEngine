@@ -1,34 +1,48 @@
 #include "Graphics/RHI/RHIOptions.h"
+#include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "Graphics/VulkanRHI/VulkanDescriptorPool.h"
+#include "Graphics/VulkanRHI/VulkanDescriptorState.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Platform/Timer.h"
+#include "Templates/HeapVector.h"
+#include "Utils/Errors.h"
+#include <cstdint>
 
 namespace zen
 {
 #if ZEN_VK_RHI_DEBUG
 static const char* VulkanCommandBufferTypeToString(VulkanCommandBufferType type)
 {
+    const char* pName = "Unknown";
+
     switch (type)
     {
-        case VulkanCommandBufferType::ePrimary: return "Primary";
-        case VulkanCommandBufferType::eSecondary: return "Secondary";
-        default: return "Unknown";
+        case VulkanCommandBufferType::ePrimary: pName = "Primary"; break;
+        case VulkanCommandBufferType::eSecondary: pName = "Secondary"; break;
+        default: break;
     }
+
+    return pName;
 }
 #endif
 
 static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
                                           VulkanPipeline* pPipeline,
-                                          const HeapVector<VkDescriptorSet>& descriptorSets)
+                                          const HeapVector<VkDescriptorSet>& descriptorSets,
+                                          uint32_t fisrtSet,
+                                          const HeapVector<uint32_t>& dynamicOffsets)
 {
+    VERIFY_EXPR(pPipeline != nullptr);
+
     if (pPipeline != nullptr)
     {
         vkCmdBindPipeline(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
@@ -37,10 +51,11 @@ static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
 
     if (!descriptorSets.empty())
     {
-        ASSERT(pPipeline != nullptr);
-        vkCmdBindDescriptorSets(
-            cmdBuffer, pPipeline->GetVkPipelineBindPoint(), pPipeline->GetVkPipelineLayout(), 0,
-            static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+        vkCmdBindDescriptorSets(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
+                                pPipeline->GetVkPipelineLayout(), fisrtSet,
+                                static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(),
+                                static_cast<uint32_t>(dynamicOffsets.size()),
+                                dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
     }
 }
 
@@ -105,10 +120,18 @@ void FVulkanCommandBuffer::SetSubmitted()
 void FVulkanCommandBuffer::SetCompleted()
 {
     LockAuto lock(m_pCmdBufferPool->GetMutex());
+
     if (m_state == State::eSubmitted)
     {
         m_state = State::eNeedReset;
     }
+}
+
+void FVulkanCommandBuffer::Discard()
+{
+    LockAuto lock(m_pCmdBufferPool->GetMutex());
+    VERIFY_EXPR(m_state == State::eHasEnded);
+    m_state = State::eNeedReset;
 }
 
 VulkanCommandBufferType FVulkanCommandBuffer::GetCommandBufferType() const
@@ -197,11 +220,13 @@ void FVulkanCommandBufferPool::FreeUnusedCommandBuffers()
 
     const double currentTime = platform::Timer::Now<>();
 
-    auto it = m_cmdBuffersInUse.end();
+    HeapVector<FVulkanCommandBuffer*>::iterator it = m_cmdBuffersInUse.end();
+
     while (it != m_cmdBuffersInUse.begin())
     {
         --it;
         FVulkanCommandBuffer* pCmdBuffer = *it;
+
         if ((pCmdBuffer->m_state == FVulkanCommandBuffer::State::eReadyForBegin ||
              pCmdBuffer->m_state == FVulkanCommandBuffer::State::eNeedReset) &&
             (currentTime - pCmdBuffer->m_submitTime) > 10.0f)
@@ -215,23 +240,29 @@ void FVulkanCommandBufferPool::FreeUnusedCommandBuffers()
 
 FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
 {
+    FVulkanCommandBuffer* result{};
+
     if (!m_cmdBuffersFree.empty())
     {
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersFree[0];
         m_cmdBuffersFree.remove(0);
         pCmdBuffer->AllocMemory();
         m_cmdBuffersInUse.emplace_back(pCmdBuffer);
-        return pCmdBuffer;
+        result = pCmdBuffer;
+    }
+    else
+    {
+        FVulkanCommandBuffer* pCmdBuffer =
+            static_cast<FVulkanCommandBuffer*>(ZEN_MEM_ALLOC(sizeof(FVulkanCommandBuffer)));
+
+        new (pCmdBuffer) FVulkanCommandBuffer(this);
+
+        m_cmdBuffersInUse.emplace_back(pCmdBuffer);
+
+        result = pCmdBuffer;
     }
 
-    FVulkanCommandBuffer* pCmdBuffer =
-        static_cast<FVulkanCommandBuffer*>(ZEN_MEM_ALLOC(sizeof(FVulkanCommandBuffer)));
-
-    new (pCmdBuffer) FVulkanCommandBuffer(this);
-
-    m_cmdBuffersInUse.emplace_back(pCmdBuffer);
-
-    return pCmdBuffer;
+    return result;
 }
 
 VulkanWorkload::~VulkanWorkload() {}
@@ -261,10 +292,17 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
     pOtherWorkload->m_signalSemaphoreInfos.clear();
 
     pOtherWorkload->m_pMergedInto = this;
+    m_mergedWorkloads.push_back(pOtherWorkload);
 }
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
 {
+    if (m_pCurrentPoolSetContainer != nullptr)
+    {
+        GVulkanRHI->GetDescriptorPoolManager2()->ReleaseContainer(m_pCurrentPoolSetContainer);
+        m_pCurrentPoolSetContainer = nullptr;
+    }
+
     if (m_pCurrentWorkload != nullptr)
     {
         m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
@@ -275,6 +313,7 @@ VulkanCommandContextBase::~VulkanCommandContextBase()
     {
         m_pQueue->ReleaseWorkload(pWorkload);
     }
+
     m_finalizedWorkloads.clear();
 
     m_pQueue->RecycleCommandBufferPool(m_pCmdBufferPool);
@@ -300,84 +339,114 @@ VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
     }
 
     m_currentWorkloadPhase = phase;
+
     return m_pCurrentWorkload;
 }
 
 void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
 {
     FinalizePendingWorkload();
-    if (m_finalizedWorkloads.empty())
+
+    if (m_pCurrentPoolSetContainer != nullptr)
     {
-        return;
+        GVulkanRHI->GetDescriptorPoolManager2()->RetireContainer(m_pCurrentPoolSetContainer,
+                                                                 m_pQueue);
+        m_pCurrentPoolSetContainer = nullptr;
     }
 
-    outWorkloads.push_back(m_finalizedWorkloads);
-
-    m_finalizedWorkloads.clear();
+    if (!m_finalizedWorkloads.empty())
+    {
+        outWorkloads.push_back(m_finalizedWorkloads);
+        m_finalizedWorkloads.clear();
+    }
 }
 
 void VulkanCommandContextBase::FinalizePendingWorkload()
 {
-    if (!HasWorkloadData(m_pCurrentWorkload))
+    if (m_pCurrentWorkload == nullptr)
     {
-        if (m_pCurrentWorkload != nullptr)
-        {
-            m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
-            m_pCurrentWorkload = nullptr;
-        }
-        m_hasPendingRenderPassWorkloadEnd = false;
-        m_currentWorkloadPhase            = WorkloadPhase::eWait;
         return;
     }
 
-    EndWorkload();
     VERIFY_EXPR(m_pCurrentWorkload->m_pQueue == m_pQueue);
-    m_finalizedWorkloads.push_back(m_pCurrentWorkload);
-    m_pCurrentWorkload                = nullptr;
-    m_hasPendingRenderPassWorkloadEnd = false;
-    m_currentWorkloadPhase            = WorkloadPhase::eWait;
-}
 
-void VulkanCommandContextBase::FinalizePendingRenderPassWorkload()
-{
-    if (m_hasPendingRenderPassWorkloadEnd)
+    if (HasWorkloadData(m_pCurrentWorkload))
     {
-        FinalizePendingWorkload();
+        EndWorkload();
+        m_finalizedWorkloads.push_back(m_pCurrentWorkload);
     }
+    else
+    {
+        m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
+    }
+
+    m_pCurrentWorkload     = nullptr;
+    m_currentWorkloadPhase = WorkloadPhase::eWait;
 }
 
-void VulkanCommandContextBase::MarkRenderPassWorkloadEndPending()
+RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
 {
-    m_hasPendingRenderPassWorkloadEnd = true;
-}
-
-void VulkanCommandContextBase::SubmitRecordedWorkloads()
-{
+    RHISubmissionResult submissionResult = RHISubmissionResult::eSuccess;
     HeapVector<VulkanWorkload*> workloadsToSubmit;
     CollectWorkloads(workloadsToSubmit);
-    if (workloadsToSubmit.empty())
-    {
-        return;
-    }
 
     for (VulkanWorkload* pWorkload : workloadsToSubmit)
     {
-        m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+        m_pQueue->EnqueueWorkload(pWorkload);
     }
 
-    m_lastSubmittedSerial = m_pQueue->SubmitPendingWorkloads();
-    m_pQueue->ProcessPendingWorkloads(0);
+    if (!workloadsToSubmit.empty())
+    {
+        uint64_t submissionSerial        = 0;
+        const RHISubmissionResult result = GVulkanRHI->AreSubmissionsBlocked() ?
+            RHISubmissionResult::eFatal :
+            m_pQueue->SubmitPendingWorkloads(submissionSerial);
+        SetLastSubmittedSerial(submissionSerial);
+
+        if (result != RHISubmissionResult::eSuccess)
+        {
+            m_pQueue->DiscardPendingWorkloads(result == RHISubmissionResult::eFatal);
+            // This direct path initializes viewport layouts; callers cannot replay its state.
+            GVulkanRHI->BlockSubmissions();
+            submissionResult = RHISubmissionResult::eFatal;
+        }
+        else
+        {
+            GVulkanRHI->GetDescriptorPoolManager2()->AssignReteireSerial(m_pQueue,
+                                                                         submissionSerial);
+            m_pQueue->ProcessPendingWorkloads(0);
+        }
+    }
+
+    return submissionResult;
+}
+
+VulkanDescriptorPoolSetContainer* VulkanCommandContextBase::AcquireDescriptorPoolSetContainer()
+{
+    if (m_pCurrentPoolSetContainer == nullptr)
+    {
+        m_pCurrentPoolSetContainer =
+            GVulkanRHI->GetDescriptorPoolManager2()->AcquireDescriptorPoolSetContainer();
+    }
+
+    return m_pCurrentPoolSetContainer;
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
 {
-    if (m_lastSubmittedSerial == 0)
-    {
-        return;
-    }
+    VERIFY_EXPR(!(m_lastSubmittedSerial == 0 && m_hasPendingFlushWorkload));
 
-    m_pQueue->WaitForSubmission(m_lastSubmittedSerial, timeToWaitNS);
-    m_lastSubmittedSerial = 0;
+    if (m_lastSubmittedSerial != 0)
+    {
+        if (m_pQueue->WaitForSubmission(m_lastSubmittedSerial, timeToWaitNS))
+        {
+            m_lastSubmittedSerial = 0;
+        }
+        else
+        {
+            LOGE("Vulkan command context: submission {} did not complete", m_lastSubmittedSerial);
+        }
+    }
 }
 
 void VulkanCommandContextBase::SetupNewCommandBuffer()
@@ -392,6 +461,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
     for (uint32_t i = 0; i < m_pCmdBufferPool->m_cmdBuffersInUse.size(); i++)
     {
         FVulkanCommandBuffer* pCurrent = m_pCmdBufferPool->m_cmdBuffersInUse[i];
+
         if (pCurrent->m_state == FVulkanCommandBuffer::State::eReadyForBegin ||
             pCurrent->m_state == FVulkanCommandBuffer::State::eNeedReset)
         {
@@ -402,6 +472,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
             VERIFY_EXPR(pCurrent->IsSubmitted() || pCurrent->HasEnded());
         }
     }
+
     if (!pCmdBuffer)
     {
 #if ZEN_VK_RHI_DEBUG
@@ -419,6 +490,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
         }
 #endif
     }
+
 #if ZEN_VK_RHI_DEBUG
     else
     {
@@ -442,6 +514,7 @@ void VulkanCommandContextBase::EndWorkload()
     if (m_pCurrentWorkload != nullptr)
     {
         FVulkanCommandBuffer* pCommandBuffer = m_pCurrentWorkload->GetLastCommandBuffer();
+
         if (pCommandBuffer != nullptr)
         {
             if (pCommandBuffer->HasEnded())
@@ -524,28 +597,31 @@ void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers,
         m_vertexBufferOffsets[i] = pOffsets[i];
     }
 }
-void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline,
-                                      uint32_t numDescriptorSets,
-                                      RHIDescriptorSet* const* ppDescriptorSets)
+
+VulkanGfxState::VulkanGfxState()
 {
-    m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
-    m_descriptorSets.resize(numDescriptorSets);
-    for (uint32_t i = 0; i < numDescriptorSets; i++)
-    {
-        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i])->GetVkDescriptorSet();
-    }
+    m_pDescriptorSetState = ZEN_NEW() VulkanDescriptorSetState();
 }
 
-void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline,
-                                          uint32_t numDescriptorSets,
-                                          RHIDescriptorSet* const* ppDescriptorSets)
+VulkanGfxState::~VulkanGfxState()
+{
+    ZEN_DELETE(m_pDescriptorSetState);
+    m_pDescriptorSetState = nullptr;
+}
+
+void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
-    m_descriptorSets.resize(numDescriptorSets);
-    for (uint32_t i = 0; i < numDescriptorSets; i++)
-    {
-        m_descriptorSets[i] = TO_VK_DESCRIPTORSET(ppDescriptorSets[i])->GetVkDescriptorSet();
-    }
+    m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
+    m_descriptorSets.clear();
+}
+
+void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+{
+    VERIFY_EXPR(m_pCurrentPipeline != nullptr);
+    VERIFY_EXPR(m_pDescriptorSetState != nullptr);
+
+    m_pDescriptorSetState->SetShaderParameters(parameters);
 }
 
 void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
@@ -557,10 +633,12 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     {
         vkCmdSetViewport(cmdBuffer, 0, m_viewports.size(), m_viewports.data());
     }
+
     if (!m_scissors.empty())
     {
         vkCmdSetScissor(cmdBuffer, 0, m_scissors.size(), m_scissors.data());
     }
+
     if (m_rasterizationState.depthBiasEnable)
     {
         vkCmdSetDepthBias(cmdBuffer, m_rasterizationState.depthBiasConstantFactor,
@@ -570,7 +648,14 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 
     vkCmdSetLineWidth(cmdBuffer, m_rasterizationState.lineWidth);
     vkCmdSetBlendConstants(cmdBuffer, m_blendConstants);
-    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets);
+
+    uint32_t firstSet = 0;
+    HeapVector<uint32_t> dynamicOffsets;
+    m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet,
+                                                        dynamicOffsets);
+    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets, firstSet,
+                                  dynamicOffsets);
+
     if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
     {
         vkCmdBindVertexBuffers(cmdBuffer, 0, static_cast<uint32_t>(m_vertexBuffers.size()),
@@ -578,10 +663,40 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
     }
 }
 
+VulkanComputeState::VulkanComputeState()
+{
+    m_pDescriptorSetState = ZEN_NEW() VulkanDescriptorSetState();
+}
+
+VulkanComputeState::~VulkanComputeState()
+{
+    ZEN_DELETE(m_pDescriptorSetState);
+    m_pDescriptorSetState = nullptr;
+}
+
+void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
+{
+    m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
+    m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
+    m_descriptorSets.clear();
+}
+
+void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
+{
+    VERIFY_EXPR(m_pCurrentPipeline != nullptr);
+    VERIFY_EXPR(m_pDescriptorSetState != nullptr);
+    m_pDescriptorSetState->SetShaderParameters(parameters);
+}
+
 void VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 {
     VkCommandBuffer cmdBuffer = pContext->GetCommandBuffer()->GetVkHandle();
-    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets);
+    uint32_t firstSet         = 0;
+    HeapVector<uint32_t> dynamicOffsets;
+    m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet,
+                                                        dynamicOffsets);
+    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets, firstSet,
+                                  dynamicOffsets);
 }
 
 FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
@@ -610,8 +725,6 @@ RHICommandContextType FVulkanCommandListContext::GetContextType()
 
 void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout)
 {
-    FinalizePendingRenderPassWorkload();
-
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
         VkRenderingInfoKHR renderingInfo{};
@@ -643,11 +756,13 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
             colorAttachment.clearValue.color = ToVkClearColor(colorRT.clearValue);
             colorAttachments.emplace_back(colorAttachment);
         }
+
         renderingInfo.colorAttachmentCount = pRenderingLayout->numColorRenderTargets;
         renderingInfo.pColorAttachments    = colorAttachments.data();
 
         VkRenderingAttachmentInfoKHR depthStencilAttachment;
         InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+
         if (pRenderingLayout->hasDepthStencilRT)
         {
             const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
@@ -661,11 +776,12 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
 
             renderingInfo.pDepthAttachment = &depthStencilAttachment;
         }
+
         GetCommandBuffer()->BeginRendering(&renderingInfo);
     }
     else
     {
-        uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
+        uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTargets();
         HeapVector<VkClearValue> clearValues;
         clearValues.resize(numAttachments);
         HeapVector<RHIRenderTargetClearValue> clearValuesRHI;
@@ -676,6 +792,7 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         {
             clearValues[i].color = ToVkClearColor(clearValuesRHI[i]);
         }
+
         if (pRenderingLayout->hasDepthStencilRT)
         {
             clearValues[numAttachments - 1].depthStencil =
@@ -708,8 +825,6 @@ void FVulkanCommandListContext::RHIEndRendering()
     {
         GetCommandBuffer()->EndRenderPass();
     }
-
-    MarkRenderPassWorkloadEndPending();
 }
 
 void FVulkanCommandListContext::RHISetScissor(uint32_t minX,
@@ -746,18 +861,33 @@ void FVulkanCommandListContext::RHISetBlendConstants(const Color& blendConstants
                                    blendConstants.a);
 }
 
-void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline,
-                                                uint32_t numDescriptorSets,
-                                                RHIDescriptorSet* const* pDescriptorSets)
+void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
 {
     VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
+    m_pCurrentPipeline          = pVkPipeline;
+
     if (pVkPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
     {
-        m_pComputeState->SetPipelineState(pPipeline, numDescriptorSets, pDescriptorSets);
+        m_pComputeState->SetPipelineState(pPipeline);
     }
     else
     {
-        m_pGfxState->SetPipelineState(pPipeline, numDescriptorSets, pDescriptorSets);
+        m_pGfxState->SetPipelineState(pPipeline);
+    }
+}
+
+void FVulkanCommandListContext::RHISetShaderParameters(const RHIBatchedShaderParameters& parameters)
+{
+    VERIFY_EXPR(m_pCurrentPipeline != nullptr);
+
+    if (m_pCurrentPipeline != nullptr &&
+        m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
+    {
+        m_pComputeState->SetShaderParameters(parameters);
+    }
+    else if (m_pCurrentPipeline != nullptr)
+    {
+        m_pGfxState->SetShaderParameters(parameters);
     }
 }
 
@@ -781,7 +911,6 @@ void FVulkanCommandListContext::RHIDraw(uint32_t vertexCount,
     vkCmdDraw(GetCommandBuffer()->GetVkHandle(), vertexCount, instanceCount, firstVertex,
               firstInstance);
 }
-
 
 void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                                DataFormat indexFormat,
@@ -830,14 +959,12 @@ void FVulkanCommandListContext::RHIDispatch(uint32_t groupCountX,
                                             uint32_t groupCountY,
                                             uint32_t groupCountZ)
 {
-    FinalizePendingRenderPassWorkload();
     m_pComputeState->PreDispatch(this);
     vkCmdDispatch(GetCommandBuffer()->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
 void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
 {
-    FinalizePendingRenderPassWorkload();
     m_pComputeState->PreDispatch(this);
     VulkanBuffer* pVkBuffer = TO_VK_BUFFER(pIndirectBuffer);
 
@@ -845,50 +972,49 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
 }
 
 void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline,
-                                                    VectorView<uint8_t> data)
+                                                    VectorView<const uint8_t> data)
 {
-    FinalizePendingRenderPassWorkload();
     VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
     vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pVkPipeline->GetVkPipelineLayout(),
                        pVkPipeline->GetPushConstantsStageFlags(), 0, data.size(), data.data());
 }
 
 void FVulkanCommandListContext::RHIAddTransitions(
-    BitField<RHIPipelineStageBits> srcStages,
-    BitField<RHIPipelineStageBits> dstStages,
+    BitField<RHIPipelineStageFlagBits> srcStages,
+    BitField<RHIPipelineStageFlagBits> dstStages,
     VectorView<RHIMemoryTransition> memoryTransitions,
     VectorView<RHIBufferTransition> bufferTransitions,
     VectorView<RHITextureTransition> textureTransitions)
 {
     if (memoryTransitions.empty() && bufferTransitions.empty() && textureTransitions.empty())
     {
-        FinalizePendingRenderPassWorkload();
         return;
     }
 
     VulkanPipelineBarrier barrier;
     bool hasBarrier = false;
 
-    for (const auto& memoryTransition : memoryTransitions)
+    for (RHIMemoryTransition const& memoryTransition : memoryTransitions)
     {
         barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess),
                                  ToVkAccessFlags(memoryTransition.dstAccess));
         hasBarrier = true;
     }
 
-    for (const auto& bufferTransition : bufferTransitions)
+    for (RHIBufferTransition const& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
-        VkAccessFlags srcAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
-                                                                     bufferTransition.oldAccessMode);
-        VkAccessFlags dstAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
-                                                                     bufferTransition.newAccessMode);
+        VkAccessFlags srcAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
+                                                                 bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
+                                                                 bufferTransition.newAccessMode);
+        srcAccess |= ToVkAccessFlags(bufferTransition.additionalSrcAccess);
         barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);
         hasBarrier = true;
     }
 
-    for (const auto& textureTransition : textureTransitions)
+    for (RHITextureTransition const& textureTransition : textureTransitions)
     {
         VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(textureTransition.pTexture);
 
@@ -896,6 +1022,7 @@ void FVulkanCommandListContext::RHIAddTransitions(
             textureTransition.oldUsage, textureTransition.oldAccessMode));
         VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
+        srcAccess |= ToVkAccessFlags(textureTransition.additionalSrcAccess);
         VkImageLayout oldLayout =
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout newLayout =
@@ -918,19 +1045,16 @@ void FVulkanCommandListContext::RHIAddTransitions(
     {
         barrier.Execute(GetCommandBuffer()->GetVkHandle(), srcStages, dstStages);
     }
-    FinalizePendingRenderPassWorkload();
 }
 
 void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture*, RHITextureLayout)
 {
     LOGE("RHIAddTextureTransition is deprecated; use RDG/RHIAddTransitions with explicit old and "
          "new usages");
-    FinalizePendingRenderPassWorkload();
 }
 
 void FVulkanCommandListContext::RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
 {
-    FinalizePendingRenderPassWorkload();
     vkCmdFillBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pBuffer)->GetVkBuffer(), offset,
                     size, 0);
 }
@@ -939,7 +1063,6 @@ void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer,
                                               RHIBuffer* pDstBuffer,
                                               const RHIBufferCopyRegion& region)
 {
-    FinalizePendingRenderPassWorkload();
     VkBufferCopy bufferCopy;
     bufferCopy.srcOffset = region.srcOffset;
     bufferCopy.dstOffset = region.dstOffset;
@@ -953,7 +1076,6 @@ void FVulkanCommandListContext::RHIClearTexture(RHITexture* pTexture,
                                                 const Color& color,
                                                 const RHITextureSubResourceRange& range)
 {
-    FinalizePendingRenderPassWorkload();
     VkImageSubresourceRange vkRange;
     ToVkImageSubresourceRange(range, &vkRange);
     VkClearColorValue colorValue;
@@ -966,8 +1088,8 @@ void FVulkanCommandListContext::RHICopyTexture(RHITexture* pSrcTexture,
                                                RHITexture* pDstTexture,
                                                VectorView<RHITextureCopyRegion> regions)
 {
-    FinalizePendingRenderPassWorkload();
     HeapVector<VkImageCopy> copies(regions.size());
+
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkImageCopy(regions[i], &copies[i]);
@@ -983,8 +1105,8 @@ void FVulkanCommandListContext::RHIBlitTexture(RHITexture* pSrcTexture,
                                                VectorView<RHITextureBlitRegion> regions,
                                                RHISamplerFilter filter)
 {
-    FinalizePendingRenderPassWorkload();
     HeapVector<VkImageBlit> blits(regions.size());
+
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkImageBlit(regions[i], &blits[i]);
@@ -1001,8 +1123,8 @@ void FVulkanCommandListContext::RHICopyTextureToBuffer(
     RHIBuffer* pDstBuffer,
     VectorView<RHIBufferTextureCopyRegion> regions)
 {
-    FinalizePendingRenderPassWorkload();
     HeapVector<VkBufferImageCopy> copies(regions.size());
+
     for (uint32_t i = 0; i < regions.size(); i++)
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
@@ -1018,8 +1140,8 @@ void FVulkanCommandListContext::RHICopyBufferToTexture(
     RHITexture* pDstTexture,
     VectorView<RHIBufferTextureCopyRegion> regions)
 {
-    FinalizePendingRenderPassWorkload();
     HeapVector<VkBufferImageCopy> copies(regions.size());
+
     for (uint32_t i = 0; i < copies.size(); i++)
     {
         ToVkBufferImageCopy(regions[i], &copies[i]);
@@ -1038,7 +1160,6 @@ void FVulkanCommandListContext::RHIResolveTexture(RHITexture* pSrcTexture,
                                                   uint32_t dstLayer,
                                                   uint32_t dstMipmap)
 {
-    FinalizePendingRenderPassWorkload();
     VkImageResolve region{};
     region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     region.srcSubresource.mipLevel       = srcMipmap;
@@ -1080,7 +1201,7 @@ void VulkanRHI::DestroyPlatformCommandListPool()
 void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                                      HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
-    if (cmdLists.empty())
+    if (cmdLists.empty() || m_submissionBlocked)
     {
         return;
     }
@@ -1117,33 +1238,99 @@ void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> c
     {
         VulkanPlatformCommandList* pPlatformCmdList =
             static_cast<VulkanPlatformCommandList*>(pCommandList);
+
         for (VulkanWorkload* pWorkload : pPlatformCmdList->m_workloads)
         {
-            pWorkload->m_pQueue->m_workloadsPendingSubmit.Push(pWorkload);
+            pWorkload->m_pQueue->EnqueueWorkload(pWorkload);
         }
-    }
-
-    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
-    {
-        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
-        pQueue->SubmitPendingWorkloads();
-    }
-
-    for (RHIPlatformCommandList* pCommandList : commandLists)
-    {
-        VulkanPlatformCommandList* pPlatformCmdList =
-            static_cast<VulkanPlatformCommandList*>(pCommandList);
 
         for (const VulkanPlatformCommandList::ContextWorkloadRange& contextWorkloadRange :
              pPlatformCmdList->m_contextWorkloadRanges)
         {
-            const uint32_t lastWorkloadIndex =
-                contextWorkloadRange.firstWorkloadIndex + contextWorkloadRange.workloadCount - 1;
-            contextWorkloadRange.pContext->SetLastSubmittedSerial(
-                pPlatformCmdList->m_workloads[lastWorkloadIndex]->m_submissionSerial);
+            contextWorkloadRange.pContext->MarkWorkloadPendingFlush();
         }
 
-        ReleasePlatformCommandList(pPlatformCmdList);
+        m_pendingPlatformCmdLists.push_back(pPlatformCmdList);
     }
 }
+
+RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
+{
+    HeapVector<VulkanQueue*> queues;
+
+    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
+    {
+        VulkanQueue* queue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
+
+        if (std::find(queues.begin(), queues.end(), queue) == queues.end())
+        {
+            queues.push_back(queue);
+        }
+    }
+
+    RHISubmissionResult result =
+        m_submissionBlocked ? RHISubmissionResult::eFatal : RHISubmissionResult::eSuccess;
+    bool submitted = false;
+
+    for (VulkanQueue* queue : queues)
+    {
+        if (result != RHISubmissionResult::eSuccess)
+        {
+            break;
+        }
+
+        uint64_t serial = 0;
+        result          = queue->SubmitPendingWorkloads(serial);
+        submitted |= serial != 0;
+
+        if (result == RHISubmissionResult::eRejected && submitted)
+        {
+            result = RHISubmissionResult::eFatal;
+        }
+    }
+
+    if (result == RHISubmissionResult::eFatal)
+    {
+        BlockSubmissions();
+    }
+
+    // Workload objects stay alive until every context has read the actual accepted serials.
+    // Shared physical queues must not be polled again before these references are consumed.
+    for (VulkanPlatformCommandList* platform : m_pendingPlatformCmdLists)
+    {
+        for (VulkanPlatformCommandList::ContextWorkloadRange const& range :
+             platform->m_contextWorkloadRanges)
+        {
+            uint64_t serial = 0;
+
+            for (uint32_t i = 0; i < range.workloadCount; ++i)
+            {
+                serial = std::max(
+                    serial,
+                    platform->m_workloads[range.firstWorkloadIndex + i]->m_submissionSerial);
+            }
+
+            range.pContext->SetLastSubmittedSerial(serial);
+        }
+
+        ReleasePlatformCommandList(platform);
+    }
+
+    m_pendingPlatformCmdLists.clear();
+
+    for (VulkanQueue* queue : queues)
+    {
+        queue->DiscardPendingWorkloads(result == RHISubmissionResult::eFatal);
+
+        // Rejected containers can retire against earlier accepted work. An uncertain device
+        // keeps all awaiting containers until teardown, never resetting descriptors still in use.
+        if (result != RHISubmissionResult::eFatal)
+        {
+            m_pDescriptorPoolManager2->AssignReteireSerial(queue, queue->GetLastSubmittedSerial());
+        }
+    }
+
+    return result;
+}
+
 } // namespace zen

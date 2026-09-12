@@ -8,7 +8,7 @@
         binding.type    = type_;                                           \
         {                                                                  \
             std::initializer_list<RHIResource*> resources = {__VA_ARGS__}; \
-            for (RHIResource * resource : resources)                       \
+            for (RHIResource* resource : resources)                        \
             {                                                              \
                 binding.resources.push_back(resource);                     \
             }                                                              \
@@ -21,7 +21,7 @@
         RHIShaderResourceBinding binding{};                                             \
         binding.binding = index_;                                                       \
         binding.type    = type_;                                                        \
-        for (RHITexture * texture : (textures_))                                        \
+        for (RHITexture* texture : (textures_))                                         \
         {                                                                               \
             binding.resources.push_back(sampler_);                                      \
             binding.resources.push_back(texture);                                       \
@@ -60,12 +60,13 @@ struct TextureFormat
     bool mutableFormat{false};
 };
 
-struct TextureProxyFormat
+struct TextureViewFormat
 {
     DataFormat format{DataFormat::eUndefined};
     TextureDimension dimension{TextureDimension::e1D};
     uint32_t arrayLayers{1};
     uint32_t mipmaps{1};
+    uint32_t baseMipLevel{0};
 };
 
 struct TextureSlice
@@ -106,8 +107,9 @@ enum class PassResourceType
 
 struct PassResourceTracker
 {
-    std::string name;
+    NameID name;
     HeapVector<RHITexture*> textures;
+
     // TextureHandle textureHandle;
     RHIBuffer* pBuffer;
     PassResourceType resourceType{PassResourceType::eMax};
@@ -123,22 +125,36 @@ struct GraphicsPass
     // FramebufferHandle framebuffer;
     // RenderPassHandle renderPass;
     RHIPipeline* pPipeline;
-    RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+
+    // todo: move ownership of descriptorsets to elsewhere
+    // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
+
     // RHIRenderPassLayout renderPassLayout;
     RHIRenderingLayout* pRenderingLayout{nullptr};
+
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
     HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
+
+    void Reset()
+    {
+        pPipeline         = nullptr;
+        numDescriptorSets = 0;
+        pShaderProgram    = nullptr;
+        pRenderingLayout  = nullptr;
+    }
 };
 
 struct ComputePass
 {
     RHIPipeline* pPipeline;
-    RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
+
+    // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
     uint32_t numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
+
     // setIndex as vector index, bindingIndex as inner map key
     // resource trackers are used by rc::RenderGraph for resolving pass node dependencies
     HashMap<uint32_t, PassResourceTracker> resourceTrackers[MAX_NUM_DESCRIPTOR_SETS];
@@ -161,6 +177,6 @@ struct EnvTexture
     RHISampler* pIrradianceSampler{nullptr};
     RHISampler* pPrefilteredSampler{nullptr};
     RHISampler* pLutBRDFSampler{nullptr};
-    std::string tag;
+    NameID tag;
 };
 } // namespace zen::rc

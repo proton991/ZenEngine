@@ -1,5 +1,5 @@
 #pragma once
-#include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Graphics/RenderCore/V2/RenderResource.h"
 #include "SceneGraph/Camera.h"
 
@@ -13,7 +13,6 @@ namespace zen::rc
 class RenderScene;
 class RenderDevice;
 
-
 class ShadowMapRenderer
 {
 public:
@@ -21,11 +20,11 @@ public:
 
     void Init();
 
+    void BuildRenderGraph();
+
     void Destroy();
 
     void SetRenderScene(RenderScene* pRenderScene);
-
-    void PrepareRenderWorkload();
 
     RHITexture* GetShadowMapTexture() const
     {
@@ -40,25 +39,11 @@ public:
 private:
     void PrepareTextures();
 
-    void BuildGraphicsPasses();
-
-    void BuildRenderGraph();
-
-    void UpdateGraphicsPassResources();
-
-    void UpdateUniformData();
-
     RenderDevice* m_pRenderDevice{nullptr};
 
     RHIViewport* m_pViewport{nullptr};
 
     RenderScene* m_pScene{nullptr};
-
-    struct GraphicsPasses
-    {
-        GraphicsPass* pEvsm;
-        GraphicsPass* pBlurShadowMap;
-    } m_gfxPasses;
 
     struct
     {
@@ -72,11 +57,10 @@ private:
     struct
     {
         RHITexture* pShadowMap{nullptr};
+        RHITexture* pShadowMapRenderTarget{nullptr};
         RHITexture* pDepth{nullptr};
     } m_offscreenTextures;
 
     RHISampler* m_pColorSampler;
-
-    UniquePtr<sg::Camera> m_lightView;
 };
 } // namespace zen::rc

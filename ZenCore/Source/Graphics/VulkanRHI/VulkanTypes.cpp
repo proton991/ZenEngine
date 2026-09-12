@@ -6,16 +6,19 @@ namespace zen
 VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shaderResourceType)
 {
     VkDescriptorType type = VK_DESCRIPTOR_TYPE_MAX_ENUM;
+
     switch (shaderResourceType)
     {
         case RHIShaderResourceType::eSampler:
             //
             type = VK_DESCRIPTOR_TYPE_SAMPLER;
             break;
+
         case RHIShaderResourceType::eTexture:
             //
             type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             break;
+
         case RHIShaderResourceType::eSamplerWithTexture:
             type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             break;
@@ -23,6 +26,7 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shad
             //
             type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             break;
+
         case RHIShaderResourceType::eTextureBuffer:
         case RHIShaderResourceType::eSamplerWithTextureBuffer:
             type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
@@ -31,49 +35,63 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shad
             type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
             break;
         case RHIShaderResourceType::eUniformBuffer:
-            //
-            type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            // use dynamic uniform buffer by default
+            type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             break;
+
         case RHIShaderResourceType::eStorageBuffer:
             //
             type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             break;
+
         case RHIShaderResourceType::eInputAttachment:
             //
             type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
             break;
+
         default: LOGE("Invalid ShaderResource Type"); break;
     }
+
     return type;
 }
 
 VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage)
 {
+    VkShaderStageFlagBits result{};
+
     switch (stage)
     {
-        case RHIShaderStage::eVertex: return VK_SHADER_STAGE_VERTEX_BIT;
-        case RHIShaderStage::eTesselationControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case RHIShaderStage::eVertex: result = VK_SHADER_STAGE_VERTEX_BIT; break;
+        case RHIShaderStage::eTesselationControl:
+            result = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            break;
         case RHIShaderStage::eTesselationEvaluation:
-            return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case RHIShaderStage::eGeometry: return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case RHIShaderStage::eFragment: return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case RHIShaderStage::eCompute: return VK_SHADER_STAGE_COMPUTE_BIT;
-        default: return VK_SHADER_STAGE_ALL;
+            result = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            break;
+        case RHIShaderStage::eGeometry: result = VK_SHADER_STAGE_GEOMETRY_BIT; break;
+        case RHIShaderStage::eFragment: result = VK_SHADER_STAGE_FRAGMENT_BIT; break;
+        case RHIShaderStage::eCompute: result = VK_SHADER_STAGE_COMPUTE_BIT; break;
+        default: result = VK_SHADER_STAGE_ALL; break;
     }
+
+    return result;
 }
 
 VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
     BitField<RHIShaderStageFlagBits> stageFlags)
 {
     VkShaderStageFlags flags{};
+
     for (uint32_t k = 0; k < ToUnderlying(RHIShaderStage::eMax); k++)
     {
         RHIShaderStage stage = static_cast<RHIShaderStage>(k);
+
         if (stageFlags.HasFlag(RHIShaderStageToFlagBits(stage)))
         {
             flags |= ShaderStageToVkShaderStageFlagBits(stage);
         }
     }
+
     return flags;
 }
 
@@ -94,18 +112,22 @@ VkFrontFace ToVkFrontFace(RHIPolygonFrontFace frontFace)
 
 VkSampleCountFlagBits ToVkSampleCountFlagBits(SampleCount count)
 {
+    VkSampleCountFlagBits result{};
+
     switch (count)
     {
-        case SampleCount::e1: return VK_SAMPLE_COUNT_1_BIT;
-        case SampleCount::e2: return VK_SAMPLE_COUNT_2_BIT;
-        case SampleCount::e4: return VK_SAMPLE_COUNT_4_BIT;
-        case SampleCount::e8: return VK_SAMPLE_COUNT_8_BIT;
-        case SampleCount::e16: return VK_SAMPLE_COUNT_16_BIT;
-        case SampleCount::e32: return VK_SAMPLE_COUNT_32_BIT;
-        case SampleCount::e64: return VK_SAMPLE_COUNT_64_BIT;
+        case SampleCount::e1: result = VK_SAMPLE_COUNT_1_BIT; break;
+        case SampleCount::e2: result = VK_SAMPLE_COUNT_2_BIT; break;
+        case SampleCount::e4: result = VK_SAMPLE_COUNT_4_BIT; break;
+        case SampleCount::e8: result = VK_SAMPLE_COUNT_8_BIT; break;
+        case SampleCount::e16: result = VK_SAMPLE_COUNT_16_BIT; break;
+        case SampleCount::e32: result = VK_SAMPLE_COUNT_32_BIT; break;
+        case SampleCount::e64: result = VK_SAMPLE_COUNT_64_BIT; break;
         default:
-        case SampleCount::eMax: return VK_SAMPLE_COUNT_FLAG_BITS_MAX_ENUM;
+        case SampleCount::eMax: result = VK_SAMPLE_COUNT_FLAG_BITS_MAX_ENUM; break;
     }
+
+    return result;
 }
 
 VkCompareOp ToVkCompareOp(RHIDepthCompareOperator op)
@@ -145,93 +167,147 @@ VkImageType ToVkImageType(RHITextureType type)
 
 VkImageViewType ToVkImageViewType(RHITextureType type)
 {
+    VkImageViewType result{};
+
     switch (type)
     {
-        case RHITextureType::e1D: return VK_IMAGE_VIEW_TYPE_1D;
-        case RHITextureType::e2D: return VK_IMAGE_VIEW_TYPE_2D;
-        case RHITextureType::e3D: return VK_IMAGE_VIEW_TYPE_3D;
-        case RHITextureType::eCube: return VK_IMAGE_VIEW_TYPE_CUBE;
-        case RHITextureType::eMax: return VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+        case RHITextureType::e1D: result = VK_IMAGE_VIEW_TYPE_1D; break;
+        case RHITextureType::e2D: result = VK_IMAGE_VIEW_TYPE_2D; break;
+        case RHITextureType::e3D: result = VK_IMAGE_VIEW_TYPE_3D; break;
+        case RHITextureType::eCube: result = VK_IMAGE_VIEW_TYPE_CUBE; break;
+        case RHITextureType::eMax: result = VK_IMAGE_VIEW_TYPE_MAX_ENUM; break;
     }
+
+    return result;
+}
+
+VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType type,
+                                                DataFormat format,
+                                                VkImage image,
+                                                const RHITextureSubResourceRange& range)
+{
+    VkImageViewCreateInfo info{};
+    info.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    info.image    = image;
+    info.viewType = ToVkImageViewType(type);
+
+    if (type == RHITextureType::e1D && range.layerCount > 1)
+    {
+        info.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+    }
+
+    if (type == RHITextureType::e2D && range.layerCount > 1)
+    {
+        info.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    }
+
+    if (type == RHITextureType::eCube && range.layerCount > 6)
+    {
+        info.viewType = VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+    }
+
+    info.format = ToVkFormat(format);
+    ToVkImageSubresourceRange(range, &info.subresourceRange);
+
+    return info;
 }
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flagBits)
 {
     VkImageUsageFlags flags{};
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eTransferSrc))
     {
         flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eTransferDst))
     {
         flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eSampled))
     {
         flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eStorage))
     {
         flags |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eColorAttachment))
     {
         flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
     {
         flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eTransientAttachment))
     {
         flags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
     }
+
     if (flagBits.HasFlag(RHITextureUsageFlagBits::eInputAttachment))
     {
         flags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     }
+
     return flags;
 }
 
 VkBufferUsageFlags ToVkBufferUsageFlags(BitField<RHIBufferUsageFlagBits> flags)
 {
     VkBufferUsageFlags vkFlags{};
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eTransferDstBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eTextureBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eImageBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eUniformBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eStorageBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eIndexBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eVertexBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     }
+
     if (flags.HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer))
     {
         vkFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
     }
+
     return vkFlags;
 }
 
@@ -252,18 +328,27 @@ VkAttachmentStoreOp ToVkAttachmentStoreOp(RHIRenderTargetStoreOp storeOp)
 
 VkImageLayout ToVkImageLayout(RHITextureLayout layout)
 {
+    VkImageLayout result{};
+
     switch (layout)
     {
-        case RHITextureLayout::eUndefined: return VK_IMAGE_LAYOUT_UNDEFINED;
-        case RHITextureLayout::eGeneral: return VK_IMAGE_LAYOUT_GENERAL;
-        case RHITextureLayout::eColorTarget: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case RHITextureLayout::eUndefined: result = VK_IMAGE_LAYOUT_UNDEFINED; break;
+        case RHITextureLayout::eGeneral: result = VK_IMAGE_LAYOUT_GENERAL; break;
+        case RHITextureLayout::eColorTarget:
+            result = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            break;
         case RHITextureLayout::eDepthStencilTarget:
-            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        case RHITextureLayout::eShaderReadOnly: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        case RHITextureLayout::eTransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        case RHITextureLayout::eTransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        default: return VK_IMAGE_LAYOUT_UNDEFINED;
+            result = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            break;
+        case RHITextureLayout::eShaderReadOnly:
+            result = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            break;
+        case RHITextureLayout::eTransferSrc: result = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; break;
+        case RHITextureLayout::eTransferDst: result = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; break;
+        default: result = VK_IMAGE_LAYOUT_UNDEFINED; break;
     }
+
+    return result;
 }
 
 VkAccessFlags ToVkAccessFlags(BitField<RHIAccessFlagBits> access)
@@ -286,7 +371,6 @@ VkSamplerAddressMode ToVkSamplerAddressMode(RHISamplerRepeatMode mode)
     return static_cast<VkSamplerAddressMode>(mode);
 }
 
-
 VkBorderColor ToVkBorderColor(RHISamplerBorderColor color)
 {
     return static_cast<VkBorderColor>(color);
@@ -294,7 +378,6 @@ VkBorderColor ToVkBorderColor(RHISamplerBorderColor color)
 
 VkClearColorValue ToVkClearColor(const RHIRenderPassClearValue& clearValue)
 {
-
     VkClearColorValue colorValue{};
     colorValue.float32[0] = clearValue.color.r;
     colorValue.float32[1] = clearValue.color.g;

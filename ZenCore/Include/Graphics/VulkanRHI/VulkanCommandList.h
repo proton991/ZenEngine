@@ -1,9 +1,9 @@
 #pragma once
-#include "VulkanCommandList.h"
 #include "VulkanQueue.h"
 #include "VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #include "Templates/HeapVector.h"
+#include "Templates/VectorView.h"
 #include "Utils/Mutex.h"
 
 #ifndef ZEN_VK_RHI_DEBUG
@@ -12,7 +12,14 @@
 
 namespace zen
 {
-class VulkanDescriptorSet;
+enum class VulkanCommandBufferType
+{
+    ePrimary   = 0,
+    eSecondary = 1
+};
+
+class VulkanDescriptorPoolSetContainer;
+class VulkanDescriptorSetState;
 class VulkanBuffer;
 class VulkanPipeline;
 class FVulkanCommandBufferPool;
@@ -49,6 +56,8 @@ public:
     void EndRenderPass();
 
     void SetSubmitted();
+
+    void Discard();
 
     void SetCompleted();
 
@@ -99,6 +108,7 @@ protected:
     friend class VulkanCommandContextBase;
 
     FVulkanCommandBuffer(FVulkanCommandBufferPool* pPool);
+
     ~FVulkanCommandBuffer();
 
 private:
@@ -116,7 +126,6 @@ private:
 
     VkRenderingFlags m_lastRenderingFlags{0};
 };
-
 
 class FVulkanCommandBufferPool
 {
@@ -213,14 +222,14 @@ private:
     HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
     uint64_t m_submissionSerial{0};
     VulkanWorkload* m_pMergedInto{nullptr};
+    HeapVector<VulkanWorkload*> m_mergedWorkloads;
+
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
     HeapVector<SignalSemaphoreInfo> m_signalSemaphoreInfos;
 
     VulkanFence* m_pFence{nullptr}; // Used at vkQueueSubmit
 };
-
-
 
 // manages VulkanWorkload
 // holds VulkanCommandBufferPool
@@ -236,6 +245,7 @@ public:
     FVulkanCommandBuffer* GetCommandBuffer()
     {
         VulkanWorkload* pWorkload = GetWorkload(WorkloadPhase::eExecute);
+
         if (!pWorkload->HasCommandBuffers())
         {
             SetupNewCommandBuffer();
@@ -262,6 +272,7 @@ public:
                            VectorView<VulkanSemaphore*> waitSemaphores)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
+
         for (uint32_t i = 0; i < waitSemaphores.size(); i++)
         {
             pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
@@ -284,6 +295,7 @@ public:
     void AddSignalSemaphores(VectorView<VulkanSemaphore*> signalSemaphores)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eSignal);
+
         for (uint32_t i = 0; i < signalSemaphores.size(); i++)
         {
             pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
@@ -291,11 +303,13 @@ public:
         }
     }
 
+    VulkanDescriptorPoolSetContainer* AcquireDescriptorPoolSetContainer();
+
     // Finalize the current workload, then append all staged workloads to the output array.
     void CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
 
     // Finalize the current workload and submit all staged workloads immediately.
-    void SubmitRecordedWorkloads();
+    RHISubmissionResult SubmitRecordedWorkloads();
 
     void WaitForLastSubmittedWork(uint64_t timeToWaitNS);
 
@@ -306,18 +320,19 @@ public:
 
     void SetLastSubmittedSerial(uint64_t submissionSerial)
     {
-        m_lastSubmittedSerial = submissionSerial;
+        m_lastSubmittedSerial     = std::max(m_lastSubmittedSerial, submissionSerial);
+        m_hasPendingFlushWorkload = false;
+    }
+
+    void MarkWorkloadPendingFlush()
+    {
+        m_hasPendingFlushWorkload = true;
     }
 
     uint64_t GetLastSubmittedSerial() const
     {
         return m_lastSubmittedSerial;
     }
-
-protected:
-    void FinalizePendingRenderPassWorkload();
-
-    void MarkRenderPassWorkloadEndPending();
 
 private:
     enum class WorkloadPhase : uint8_t
@@ -346,14 +361,18 @@ private:
     VulkanWorkload* m_pCurrentWorkload{nullptr};
     HeapVector<VulkanWorkload*> m_finalizedWorkloads;
     WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
-    bool m_hasPendingRenderPassWorkloadEnd{false};
+    bool m_hasPendingFlushWorkload{false};
     uint64_t m_lastSubmittedSerial{0};
+    VulkanDescriptorPoolSetContainer* m_pCurrentPoolSetContainer{nullptr};
 };
-
 
 class VulkanGfxState
 {
 public:
+    VulkanGfxState();
+
+    ~VulkanGfxState();
+
     void SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
 
     void SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY);
@@ -370,9 +389,9 @@ public:
                           RHIBuffer* const* ppVertexBuffers,
                           const uint64_t* pOffsets);
 
-    void SetPipelineState(RHIPipeline* pPipeline,
-                          uint32_t numDescriptorSets,
-                          RHIDescriptorSet* const* ppDescriptorSets);
+    void SetPipelineState(RHIPipeline* pPipeline);
+
+    void SetShaderParameters(const RHIBatchedShaderParameters& parameters);
 
     void PreDraw(FVulkanCommandListContext* pContext);
 
@@ -382,6 +401,7 @@ private:
 
     VulkanPipeline* m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
+    VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
 
     HeapVector<VkBuffer> m_vertexBuffers;
     HeapVector<uint64_t> m_vertexBufferOffsets;
@@ -403,15 +423,21 @@ private:
 class VulkanComputeState
 {
 public:
-    void SetPipelineState(RHIPipeline* pPipeline,
-                          uint32_t numDescriptorSets,
-                          RHIDescriptorSet* const* ppDescriptorSets);
+    VulkanComputeState();
+
+    ~VulkanComputeState();
+
+    void SetPipelineState(RHIPipeline* pPipeline);
+
+    void SetShaderParameters(const RHIBatchedShaderParameters& parameters);
 
     void PreDispatch(FVulkanCommandListContext* pContext);
 
 private:
     VulkanPipeline* m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
+    VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
+    bool m_useAutomaticDescriptorSets{false};
 };
 
 class FVulkanCommandListContext : public IRHICommandContext, public VulkanCommandContextBase
@@ -439,9 +465,9 @@ public:
 
     void RHISetBlendConstants(const Color& blendConstants) override;
 
-    void RHIBindPipeline(RHIPipeline* pPipeline,
-                         uint32_t numDescriptorSets,
-                         RHIDescriptorSet* const* pDescriptorSets) override;
+    void RHIBindPipeline(RHIPipeline* pPipeline) override;
+
+    void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) override;
 
     void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
                               VectorView<uint64_t> offsets) override;
@@ -474,10 +500,10 @@ public:
 
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override;
 
-    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data) override;
+    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) override;
 
-    void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                           BitField<RHIPipelineStageBits> dstStages,
+    void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                           BitField<RHIPipelineStageFlagBits> dstStages,
                            VectorView<RHIMemoryTransition> memoryTransitions,
                            VectorView<RHIBufferTransition> bufferTransitions,
                            VectorView<RHITextureTransition> textureTransitions) override;
@@ -525,6 +551,8 @@ private:
     RHICommandContextType m_contextType;
 
     VulkanDevice* m_pDevice{nullptr};
+
+    VulkanPipeline* m_pCurrentPipeline{nullptr};
 
     VulkanGfxState* m_pGfxState{nullptr};
     VulkanComputeState* m_pComputeState{nullptr};

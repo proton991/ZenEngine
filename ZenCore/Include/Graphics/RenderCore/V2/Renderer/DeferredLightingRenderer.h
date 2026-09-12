@@ -1,6 +1,6 @@
 #pragma once
 #include "Utils/UniquePtr.h"
-#include "Graphics/RenderCore/V2/RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 
 namespace zen::sys
 {
@@ -19,7 +19,6 @@ class RenderScene;
 class RenderDevice;
 class SkyboxRenderer;
 
-
 class DeferredLightingRenderer
 {
 public:
@@ -32,59 +31,23 @@ public:
 
     void Init();
 
+    void BuildRenderGraph();
+
     void Destroy();
 
     void SetRenderScene(RenderScene* pRenderScene)
     {
         m_pScene = pRenderScene;
-        UpdateGraphicsPassResources();
     }
-    void PrepareRenderWorkload();
-
-    void OnResize();
 
 private:
-    void PrepareTextures();
-
-    void BuildGraphicsPasses();
-
-    void UpdateGraphicsPassResources();
-
-    void BuildRenderGraph();
-
-    void AddMeshDrawNodes(RDGPassNode* pPass, const Rect2<int>& area, const Rect2<float>& viewport);
+    void PrepareSamplers();
 
     RenderDevice* m_pRenderDevice{nullptr};
 
     RHIViewport* m_pViewport{nullptr};
 
-    struct GraphicsPasses
-    {
-        GraphicsPass* pOffscreen;
-        GraphicsPass* pSceneLighting;
-    } m_gfxPasses;
-
     RenderScene* m_pScene{nullptr};
-
-    // struct
-    // {
-    //     TextureHandle position;
-    //     TextureHandle normal;
-    //     TextureHandle albedo;
-    //     TextureHandle metallicRoughness;
-    //     TextureHandle emissiveOcclusion;
-    //     TextureHandle depth;
-    // } m_offscreenTextures;
-
-    struct
-    {
-        RHITexture* pPosition{nullptr};
-        RHITexture* pNormal{nullptr};
-        RHITexture* pAlbedo{nullptr};
-        RHITexture* pMetallicRoughness{nullptr};
-        RHITexture* pEmissiveOcclusion{nullptr};
-        RHITexture* pDepth{nullptr};
-    } m_offscreenTextures;
 
     RHISampler* m_pColorSampler;
     RHISampler* m_pDepthSampler;

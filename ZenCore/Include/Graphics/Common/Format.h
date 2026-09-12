@@ -81,22 +81,24 @@ struct TextureFormat
 
 inline uint32_t GetTextureFormatPixelSize(DataFormat format)
 {
+    uint32_t result{};
+
     switch (format)
     {
         case DataFormat::eR16UInt:
         case DataFormat::eR16SInt:
-        case DataFormat::eR16SFloat: return 2;
+        case DataFormat::eR16SFloat: result = 2; break;
 
         case DataFormat::eR16G16UInt:
         case DataFormat::eR16G16SInt:
         case DataFormat::eR16G16SFloat:
         case DataFormat::eR32UInt:
         case DataFormat::eR32SInt:
-        case DataFormat::eR32SFloat: return 4;
+        case DataFormat::eR32SFloat: result = 4; break;
 
         case DataFormat::eR16G16B16UInt:
         case DataFormat::eR16G16B16SInt:
-        case DataFormat::eR16G16B16SFloat: return 6;
+        case DataFormat::eR16G16B16SFloat: result = 6; break;
 
         case DataFormat::eR16G16B16A16UInt:
         case DataFormat::eR16G16B16A16SInt:
@@ -106,57 +108,66 @@ inline uint32_t GetTextureFormatPixelSize(DataFormat format)
         case DataFormat::eR32G32SFloat:
         case DataFormat::eR64UInt:
         case DataFormat::eR64SInt:
-        case DataFormat::eR64SFloat: return 8;
+        case DataFormat::eR64SFloat: result = 8; break;
 
         case DataFormat::eR32G32B32UInt:
         case DataFormat::eR32G32B32SInt:
-        case DataFormat::eR32G32B32SFloat: return 12;
+        case DataFormat::eR32G32B32SFloat: result = 12; break;
 
         case DataFormat::eR32G32B32A32UInt:
         case DataFormat::eR32G32B32A32SInt:
         case DataFormat::eR32G32B32A32SFloat:
         case DataFormat::eR64G64UInt:
         case DataFormat::eR64G64SInt:
-        case DataFormat::eR64G64SFloat: return 16;
+        case DataFormat::eR64G64SFloat: result = 16; break;
 
         case DataFormat::eR64G64B64UInt:
         case DataFormat::eR64G64B64SInt:
-        case DataFormat::eR64G64B64SFloat: return 24;
+        case DataFormat::eR64G64B64SFloat: result = 24; break;
 
         case DataFormat::eR64G64B64A64UInt:
         case DataFormat::eR64G64B64A64SInt:
-        case DataFormat::eR64G64B64A64SFloat: return 32;
+        case DataFormat::eR64G64B64A64SFloat: result = 32; break;
 
-        default: return 0x7fffffff;
+        default: result = 0x7fffffff; break;
     }
+
+    return result;
 }
 
 inline bool FormatIsDepthStencil(DataFormat format)
 {
     bool result = false;
-    if (format == DataFormat::eD24UNORMS8UInt || format == DataFormat::eD32SFloatS8UInt)
+
+    if (format == DataFormat::eD16UNORMS8UInt || format == DataFormat::eD24UNORMS8UInt ||
+        format == DataFormat::eD32SFloatS8UInt)
     {
         result = true;
     }
+
     return result;
 }
 
 inline bool FormatIsStencilOnly(DataFormat format)
 {
     bool result = false;
+
     if (format == DataFormat::eS8UInt)
     {
         result = true;
     }
+
     return result;
 }
 
 inline bool FormatIsDepthOnly(DataFormat format)
 {
     bool result = false;
+
     if (format == DataFormat::eD32SFloat || format == DataFormat::eD16UNORM)
     {
         result = true;
     }
+
     return result;
 }

@@ -8,8 +8,8 @@ class SkyboxRenderer;
 class TextureManager
 {
 public:
-    TextureManager(RenderDevice* pRenderDevice, TextureStagingManager* pStagingMgr) :
-        m_pRenderDevice(pRenderDevice), m_pStagingMgr(pStagingMgr)
+    TextureManager(RenderDevice* pRenderDevice, StagingUploadQueue* pUploadQueue) :
+        m_pRenderDevice(pRenderDevice), m_pUploadQueue(pUploadQueue)
     {
         // m_RHI = m_renderDevice->GetRHI();
     }
@@ -17,11 +17,14 @@ public:
     void Destroy();
 
     void FlushPendingTextureUpdates();
+
     // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
     // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
     //                                       const TextureProxyInfo& proxyInfo);
 
+    // Returned textures are borrowed until Destroy. File loads reuse identical path/mip policy;
+    // scene and environment loads create independent instances owned by this manager.
     RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
     void LoadSceneTextures(const sg::Scene* pScene, std::vector<RHITexture*>& outTextures);
@@ -57,23 +60,13 @@ private:
 
     RenderDevice* m_pRenderDevice{nullptr};
 
-    TextureStagingManager* m_pStagingMgr{nullptr};
+    StagingUploadQueue* m_pUploadQueue{nullptr};
 
-    // HashMap<std::string, RHITexture*> m_textureCache;
-    HashMap<std::string, RHITexture*> m_textureCache;
+    void OwnTexture(RHITexture* texture);
+
+    HashMap<NameID, std::array<RHITexture*, 2>> m_textureCache;
+    HashMap<uint64_t, RHITexture*> m_ownedTextures;
 
     HashMap<RHITexture*, RHITexture*> m_textureProxyMap; // proxy tex -> base tex
-
-    struct PendingTextureUpdate
-    {
-        RHIBuffer* pStagingBuffer{nullptr};
-        RHITexture* pTexture{nullptr};
-        RHIBufferTextureCopyRegion copyRegion{};
-        HeapVector<RHIBufferTextureCopyRegion> copyRegions;
-        bool useMultipleRegions{false};
-        bool generateMipmaps{false};
-    };
-
-    HeapVector<PendingTextureUpdate> m_pendingTextureUpdates;
 };
 } // namespace zen::rc

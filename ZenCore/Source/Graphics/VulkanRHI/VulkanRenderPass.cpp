@@ -9,7 +9,7 @@ namespace zen
 VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     const RHIRenderPassLayout& renderPassLayout)
 {
-    const auto& colorRTs = renderPassLayout.GetColorRenderTargets();
+    const HeapVector<RHIRenderTarget>& colorRTs = renderPassLayout.GetColorRenderTargets();
 
     // attachment descriptions
     for (uint32_t i = 0; i < renderPassLayout.GetNumColorRenderTargets(); i++)
@@ -24,8 +24,8 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description.initialLayout  = colorRT.loadOp == RHIRenderTargetLoadOp::eClear ?
-             VK_IMAGE_LAYOUT_UNDEFINED :
-             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            VK_IMAGE_LAYOUT_UNDEFINED :
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference& reference = m_colorAttachmentReference[m_numColorAttachmentRefs];
@@ -47,8 +47,8 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description.initialLayout  = depthStencilRT.loadOp == RHIRenderTargetLoadOp::eClear ?
-             VK_IMAGE_LAYOUT_UNDEFINED :
-             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            VK_IMAGE_LAYOUT_UNDEFINED :
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         m_depthStencilReference.attachment = m_numAttachments;
@@ -62,11 +62,11 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     subpassDescription.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.colorAttachmentCount  = m_numColorAttachmentRefs;
     subpassDescription.pColorAttachments     = m_colorAttachmentReference;
+
     if (renderPassLayout.HasDepthStencilRenderTarget())
     {
         subpassDescription.pDepthStencilAttachment = &m_depthStencilReference;
     }
-
 
     VkRenderPassCreateInfo renderPassCI;
     InitVkStruct(renderPassCI, VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO);
@@ -96,8 +96,8 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description.initialLayout  = colorRT.loadOp == RHIRenderTargetLoadOp::eClear ?
-             VK_IMAGE_LAYOUT_UNDEFINED :
-             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            VK_IMAGE_LAYOUT_UNDEFINED :
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference& reference = m_colorAttachmentReference[m_numColorAttachmentRefs];
@@ -120,8 +120,8 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description.initialLayout  = depthStencilRT.loadOp == RHIRenderTargetLoadOp::eClear ?
-             VK_IMAGE_LAYOUT_UNDEFINED :
-             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            VK_IMAGE_LAYOUT_UNDEFINED :
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         m_depthStencilReference.attachment = m_numAttachments;
@@ -135,11 +135,11 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
     subpassDescription.pipelineBindPoint     = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpassDescription.colorAttachmentCount  = m_numColorAttachmentRefs;
     subpassDescription.pColorAttachments     = m_colorAttachmentReference;
+
     if (pLayout->hasDepthStencilRT)
     {
         subpassDescription.pDepthStencilAttachment = &m_depthStencilReference;
     }
-
 
     VkRenderPassCreateInfo renderPassCI;
     InitVkStruct(renderPassCI, VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO);
@@ -156,6 +156,7 @@ VkRenderPassCreateInfo VulkanRenderPassBuilder::BuildRenderPassCreateInfo(
 VkRenderPass VulkanRHI::GetOrCreateRenderPass(const RHIRenderingLayout* pRenderingLayout)
 {
     const uint32_t layoutHash = pRenderingLayout->GetHash32();
+
     if (!m_renderPassCache.contains(layoutHash))
     {
         VkRenderPass renderPass{VK_NULL_HANDLE};
@@ -164,17 +165,17 @@ VkRenderPass VulkanRHI::GetOrCreateRenderPass(const RHIRenderingLayout* pRenderi
         VKCHECK(vkCreateRenderPass(GetVkDevice(), &renderPassCI, nullptr, &renderPass));
         m_renderPassCache[layoutHash] = renderPass;
     }
+
     return m_renderPassCache[layoutHash];
 }
-
 
 VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRenderingLayout,
                                                 VkRenderPass renderPass)
 {
     VkFramebuffer framebuffer{VK_NULL_HANDLE};
     VulkanViewport* pViewport = GVulkanRHI->GetCurrentViewport();
-    const uint32_t fbWidth   = pRenderingLayout->renderArea.Width();
-    const uint32_t fbHeight  = pRenderingLayout->renderArea.Height();
+    const uint32_t fbWidth    = pRenderingLayout->renderArea.Width();
+    const uint32_t fbHeight   = pRenderingLayout->renderArea.Height();
 
     if ((pViewport != nullptr) &&
         (fbWidth == pViewport->GetWidth() && fbHeight == pViewport->GetHeight()))
@@ -184,9 +185,10 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
     else
     {
         const uint32_t layoutHash = pRenderingLayout->GetHash32();
+
         if (!m_framebufferCache.contains(layoutHash))
         {
-            const uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTarges();
+            const uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTargets();
             HeapVector<VkImageView> imageViews;
             imageViews.resize(numAttachments);
             HeapVector<RHITexture*> pTextures;
@@ -220,7 +222,6 @@ VkFramebuffer VulkanRHI::GetOrCreateFramebuffer(const RHIRenderingLayout* pRende
     return framebuffer;
 }
 
-
 // RenderPassHandle VulkanRHI::CreateRenderPass(const RHIRenderPassLayout& renderPassLayout)
 // {
 //     VulkanRenderPassBuilder builder;
@@ -248,11 +249,13 @@ VulkanFramebuffer::VulkanFramebuffer(VulkanRHI* pVkRHI,
 {
     HeapVector<VkImageView> imageViews;
     imageViews.resize(fbInfo.numRenderTarget);
+
     for (uint32_t i = 0; i < fbInfo.numRenderTarget; i++)
     {
         VulkanTexture* pTexture = TO_VK_TEXTURE(fbInfo.pRenderTargets[i]);
-        imageViews[i]          = pTexture->GetVkImageView();
+        imageViews[i]           = pTexture->GetVkImageView();
     }
+
     VkFramebufferCreateInfo framebufferCI;
     InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
     framebufferCI.renderPass      = renderPass;

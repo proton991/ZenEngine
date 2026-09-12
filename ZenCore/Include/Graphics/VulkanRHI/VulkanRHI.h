@@ -1,11 +1,12 @@
 #pragma once
-#include <vector>
+#include "Graphics/RHI/RHICommandList.h"
+#include "Templates/HeapVector.h"
 #include "VulkanExtension.h"
 #include "Memory/PagedAllocator.h"
 #include "Templates/HashMap.h"
 #include "Templates/ObjectPool.h"
+#include "Templates/VectorView.h"
 #include "Graphics/RHI/DynamicRHI.h"
-#include "Graphics/RHI/RHICommands.h"
 #include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #if defined(ZEN_MACOS)
 #    include "Platform/VulkanMacOSPlatform.h"
@@ -21,25 +22,25 @@ namespace zen
 {
 class VulkanDevice;
 class VulkanViewport;
-class VulkanCommandBufferManager;
-class VulkanDescriptorPoolManager;
+class VulkanDescriptorPoolManager2;
+class VulkanBindlessDescriptorPoolManager;
+class VulkanUniformBufferAllocator;
 class VulkanShader;
 class VulkanTexture;
+class VulkanTextureView;
 class VulkanBuffer;
 class VulkanSampler;
-class VulkanDescriptorSet;
 class VulkanPipeline;
 class VulkanCommandBuffer;
 class VulkanMemoryAllocator;
-class LegacyVulkanCommandListContext;
 
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate;
 
 using VersatileResource = VersatileResourceTemplate<VulkanShader,
                                                     VulkanTexture,
+                                                    VulkanTextureView,
                                                     VulkanSampler,
                                                     VulkanBuffer,
-                                                    VulkanDescriptorSet,
                                                     VulkanPipeline,
                                                     VulkanViewport>;
 
@@ -57,25 +58,23 @@ public:
 
     IRHICommandContext* GetTransferCommandContext() override;
 
-    LegacyRHICommandListContext* CreateLegacyCmdListContext() override;
-
-    void WaitForLegacyCommandList(LegacyRHICommandList* pCmdList) override;
-
-    LegacyRHICommandList* GetLegacyImmediateCommandList() override;
-
     void Init() override;
 
     void Destroy() override;
+
+    void BeginFrame() override;
 
     RHIAPIType GetAPIType() override
     {
         return RHIAPIType::eVulkan;
     }
 
-    const char* GetName() override
+    NameID GetName() override
     {
-        return "VulkanRHI";
-    };
+        static const NameID name("VulkanRHI");
+
+        return name;
+    }
 
     VulkanDevice* GetDevice() const
     {
@@ -99,21 +98,6 @@ public:
                                 bool enableVSync) final;
 
     void DestroyViewport(RHIViewport* pViewport) final;
-
-    void BeginDrawingViewport(RHIViewport* pViewportRHI) final;
-
-    // Legacy immediate command-list path.
-    void EndDrawingViewport(RHIViewport* pViewportRHI,
-                            LegacyRHICommandListContext* pCmdListContext,
-                            bool present) final;
-
-    void EndDrawingViewport(RHIViewport* pViewportRHI,
-                            RHICommandList* pCmdList,
-                            bool present) final;
-
-    // ShaderHandle CreateShader(const RHIShaderGroupInfo& shaderGroupInfo) final;
-
-    // void DestroyShader(ShaderHandle shaderHandle) final;
 
     RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) final;
 
@@ -160,8 +144,8 @@ public:
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
-    RHITexture* CreateTextureProxy(const RHITexture* pBaseTexture,
-                                   const RHITextureProxyCreateInfo& proxyInfo) final;
+    RHITextureView* CreateTextureView(RHITexture* pBaseTexture,
+                                      const RHITextureViewCreateInfo& createInfo) final;
 
     void DestroyTexture(RHITexture* pTexture) final;
 
@@ -183,12 +167,13 @@ public:
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
 
     void DestroyBuffer(RHIBuffer* pBuffer) final;
+
     //
     // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
 
     // DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) final;
 
-    void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
+    // void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
 
     // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
     //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
@@ -198,11 +183,35 @@ public:
 
     void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) final;
 
-    void SubmitAllGPUCommands() final;
+    RHISubmissionResult FlushAllGPUCommands() final;
+
+    void BlockSubmissions()
+    {
+        m_submissionBlocked = true;
+    }
+
+    bool AreSubmissionsBlocked() const
+    {
+        return m_submissionBlocked;
+    }
+
+    bool IsTransferQueueSharedWithGraphics() const final;
+
+    uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const final;
+
+    uint64_t GetLastCompletedSerial(RHICommandContextType contextType) final;
+
+    bool WaitForSubmission(RHICommandContextType contextType,
+                           uint64_t submissionSerial,
+                           uint64_t timeoutNS = UINT64_MAX) final;
 
     void WaitDeviceIdle() final;
 
     const RHIGPUInfo& QueryGPUInfo() const final;
+
+    RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const final;
+
+    RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const final;
 
     void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
 
@@ -220,14 +229,24 @@ public:
         return m_pCurrentViewport;
     }
 
-    auto& GetResourceAllocator()
+    PagedAllocator<VersatileResource>& GetResourceAllocator()
     {
         return m_resourceAllocator;
     }
 
-    VulkanDescriptorPoolManager* GetDescriptorPoolManager() const
+    VulkanDescriptorPoolManager2* GetDescriptorPoolManager2() const
     {
-        return m_pDescriptorPoolManager;
+        return m_pDescriptorPoolManager2;
+    }
+
+    VulkanBindlessDescriptorPoolManager* GetBindlessDescriptorPoolManager() const
+    {
+        return m_pBindlessDescriptorPoolManager;
+    }
+
+    VulkanUniformBufferAllocator* GetUniformBufferAllocator() const
+    {
+        return m_pUniformBufferAllocator;
     }
 
     InstanceExtensionFlags& GetInstanceExtensionFlags()
@@ -235,14 +254,14 @@ public:
         return m_instanceExtensionFlags;
     }
 
-    LegacyVulkanCommandListContext* GetLegacyImmediateCmdContext() const;
-
 protected:
     void CreateInstance();
 
 private:
     void SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtensions);
+
     void SetupInstanceExtensions(VulkanInstanceExtensionArray& instanceExtensions);
+
     void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& dbgMessengerCI);
 
     void SelectGPU();
@@ -256,8 +275,8 @@ private:
     VkInstance m_instance{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT m_messenger{VK_NULL_HANDLE};
 
-    HeapVector<const char*> m_instanceLayers;
-    HeapVector<const char*> m_instanceExtensions;
+    HeapVector<NameID> m_instanceLayers;
+    HeapVector<NameID> m_instanceExtensions;
 
     InstanceExtensionFlags m_instanceExtensionFlags{};
 
@@ -267,8 +286,9 @@ private:
 
     VulkanViewport* m_pCurrentViewport{nullptr};
 
-    HeapVector<LegacyRHICommandListContext*> m_legacyCmdListContexts;
-    VulkanDescriptorPoolManager* m_pDescriptorPoolManager{nullptr};
+    VulkanDescriptorPoolManager2* m_pDescriptorPoolManager2{nullptr};
+    VulkanBindlessDescriptorPoolManager* m_pBindlessDescriptorPoolManager{nullptr};
+    VulkanUniformBufferAllocator* m_pUniformBufferAllocator{nullptr};
 
     // allocator for memory
     // VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
@@ -286,6 +306,9 @@ private:
     HashMap<uint32_t, VkFramebuffer> m_framebufferCache;
 
     ObjectPool<VulkanPlatformCommandList> m_platformCommandListPool;
+
+    HeapVector<VulkanPlatformCommandList*> m_pendingPlatformCmdLists;
+    bool m_submissionBlocked{false};
 };
 
 class VulkanResourceFactory : public RHIResourceFactory

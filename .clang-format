@@ -110,6 +110,7 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortLambdasOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+InsertBraces: true
 
 # The function definition return type breaking style to use.
 # This option is deprecated and is retained for backwards compatibility.

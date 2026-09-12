@@ -1,8 +1,7 @@
 #pragma once
-#include <utility>
-
 #include "Graphics/RHI/RHIResource.h"
 #include "Templates/HashMap.h"
+#include "Templates/NameID.h"
 
 namespace zen::rc
 {
@@ -34,11 +33,11 @@ struct Light
 class ShaderProgram
 {
 public:
-    ShaderProgram(RenderDevice* pRenderDevice, std::string name);
+    ShaderProgram(RenderDevice* pRenderDevice, NameID name);
 
     virtual ~ShaderProgram();
 
-    const std::string& GetName() const
+    NameID GetName() const
     {
         return m_name;
     }
@@ -48,69 +47,74 @@ public:
         return m_pShader;
     }
 
-    const RHIShaderResourceDescriptorTable& GetSRDTable() const
+    const RHIShaderResourceDescriptorTable* GetSRDTable() const
     {
-        return m_SRDTable;
+        return m_pShader->GetSRDTable();
     }
 
     uint32_t GetNumDescriptorSets() const
     {
-        return m_SRDTable.size();
+        return m_pShader->GetSRDTable()->size();
     }
 
-    RHIBuffer* GetUniformBufferHandle(const std::string& name)
+    RHIBuffer* GetUniformBufferHandle(NameID name)
     {
         VERIFY_EXPR(m_uniformBufferMap.contains(name) != false);
 
         return m_uniformBufferMap[name];
     }
 
-    void UpdateUniformBuffer(const std::string& name, const uint8_t* pData, uint32_t offset);
+    void UpdateUniformBuffer(NameID name, const uint8_t* pData, uint32_t offset);
 
-    const auto& GetUniformBufferSRDs() const
-    {
-        return m_uniformBuffers;
-    }
-
-    const auto& GetStorageBufferSRDs() const
+    const HeapVector<RHIShaderResourceDescriptor>& GetStorageBufferSRDs() const
     {
         return m_storageBuffers;
     }
 
-    const auto& GetSampledTextureSRDs() const
+    const HeapVector<RHIShaderResourceDescriptor>& GetSampledTextureSRDs() const
     {
         return m_sampledTextures;
     }
 
-    const auto& GetStorageImageSRDs() const
+    const HeapVector<RHIShaderResourceDescriptor>& GetStorageImageSRDs() const
     {
         return m_storageImages;
     }
 
-protected:
-    void Init();
+    const RHIShaderResourceDescriptor* GetShaderResourceDescriptor(NameID name) const
+    {
+        return m_namedSRDLut.contains(name) != true ? nullptr : m_namedSRDLut.at(name);
+    }
 
-    void Init(const HashMap<uint32_t, int>& m_specializationConstants);
+    // Reinitialization replaces the RHI shader only after creation succeeds.
+    bool Init();
+
+    bool Init(const HashMap<uint32_t, int>& specializationConstants);
+
+protected:
+    void ResolveShaderResources();
 
     void AddShaderStage(RHIShaderStage stage, const std::string& path)
     {
-        m_stages[stage] = path;
+        m_stageSources[ToUnderlying(stage)] = path;
+        m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
     }
 
 private:
     RenderDevice* m_pRenderDevice{nullptr};
-    std::string m_name;
-    HashMap<RHIShaderStage, std::string> m_stages; // stage -> path
-    RHIShaderResourceDescriptorTable m_SRDTable;
-    RHIShader* m_pShader;
+    NameID m_name;
+    std::string m_stageSources[ToUnderlying(RHIShaderStage::eMax)];
+    BitField<RHIShaderStageFlagBits> m_stageFlags;
 
-    HashMap<std::string, RHIBuffer*> m_uniformBufferMap; // created from SRDs
-    HashMap<std::string, uint32_t> m_uniformBufferSizes;      // created from SRDs
+    RHIShader* m_pShader{nullptr};
 
-    std::vector<RHIShaderResourceDescriptor> m_uniformBuffers;
-    std::vector<RHIShaderResourceDescriptor> m_storageBuffers;
-    std::vector<RHIShaderResourceDescriptor> m_sampledTextures;
-    std::vector<RHIShaderResourceDescriptor> m_storageImages;
+    HashMap<NameID, RHIBuffer*> m_uniformBufferMap; // created from SRDs
+
+    HeapVector<RHIShaderResourceDescriptor> m_storageBuffers;
+    HeapVector<RHIShaderResourceDescriptor> m_sampledTextures;
+    HeapVector<RHIShaderResourceDescriptor> m_storageImages;
+
+    HashMap<NameID, const RHIShaderResourceDescriptor*> m_namedSRDLut;
 
     friend class GraphicsPassBuilder;
 };
@@ -290,8 +294,7 @@ public:
     explicit VoxelizationLargeTriangleCompSP(RenderDevice* pRenderDevice) :
         ShaderProgram(pRenderDevice, "VoxelizationLargeTriangleCompSP")
     {
-        AddShaderStage(RHIShaderStage::eCompute,
-                       "VoxelGI/voxelization_large_triangles.comp.spv");
+        AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxelization_large_triangles.comp.spv");
         Init();
     }
 
@@ -357,7 +360,6 @@ public:
         Init();
     }
 
-
     const uint8_t* GetSceneInfoData() const
     {
         return reinterpret_cast<const uint8_t*>(&sceneInfo);
@@ -373,7 +375,8 @@ public:
 class VoxelDrawSP2 : public ShaderProgram
 {
 public:
-    explicit VoxelDrawSP2(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "VoxelDrawSP2")
+    explicit VoxelDrawSP2(RenderDevice* pRenderDevice) :
+        ShaderProgram(pRenderDevice, "VoxelDrawSP2")
     {
         AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxel_vis.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/voxel_vis.frag.spv");
@@ -384,6 +387,7 @@ public:
     {
         return reinterpret_cast<const uint8_t*>(&transformData);
     }
+
     struct TransformData
     {
         Mat4 modelMatrix;
@@ -466,7 +470,6 @@ public:
         Init();
     }
 
-
     const uint8_t* GetLightInfoData() const
     {
         return reinterpret_cast<const uint8_t*>(&lightInfo);
@@ -495,13 +498,13 @@ public:
         return instance;
     }
 
-    ShaderProgram* CreateShaderProgram(RenderDevice* pRenderDevice, const std::string& name);
+    ShaderProgram* CreateShaderProgram(RenderDevice* pRenderDevice, NameID name);
 
     void Destroy();
 
     void BuildShaderPrograms(RenderDevice* pRenderDevice);
 
-    ShaderProgram* RequestShaderProgram(const std::string& name)
+    ShaderProgram* RequestShaderProgram(NameID name)
     {
         return m_programCache.contains(name) ? m_programCache[name] : nullptr;
     }
@@ -512,6 +515,8 @@ private:
         m_programCache = {};
     }
 
-    HashMap<std::string, ShaderProgram*> m_programCache;
+    void StoreProgram(ShaderProgram* program);
+
+    HashMap<NameID, ShaderProgram*> m_programCache;
 };
 } // namespace zen::rc

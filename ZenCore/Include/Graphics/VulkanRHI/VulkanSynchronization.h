@@ -93,7 +93,7 @@ public:
         return m_semaphore;
     }
 
-    void SetDebugName(const char* pName);
+    void SetDebugName(NameID name);
 
     bool IsTimeline() const
     {
@@ -109,7 +109,6 @@ private:
     VkSemaphore m_semaphore{VK_NULL_HANDLE};
     VkSemaphoreType m_type{VK_SEMAPHORE_TYPE_BINARY};
 };
-
 
 class VulkanSemaphoreManager
 {
@@ -162,12 +161,9 @@ public:
                  VkPipelineStageFlags srcStageFlags,
                  VkPipelineStageFlags dstStageFlags);
 
-    // void Execute(VulkanCommandBuffer* cmdBuffer,
-    //              BitField<RHIPipelineStageBits> srcStages,
-    //              BitField<RHIPipelineStageBits> dstStages);
-
 private:
     static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);
+
     static VkAccessFlags VkLayoutToAccessFlags(VkImageLayout layout);
 
     VkPipelineStageFlags m_srcStageFlags{0};

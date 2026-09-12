@@ -6,7 +6,8 @@
 #include "Math/Math.h"
 #include "Templates/BitMask.h"
 #include "Templates/HeapVector.h"
-#include <string>
+#include "Templates/NameID.h"
+#include <array>
 
 #define MAX_NUM_COLOR_ATTACHMENTS 8
 #define MAX_NUM_SUBPASSES         8
@@ -36,6 +37,33 @@ struct RHIGPUInfo
     bool supportGeometryShader{false};
     size_t uniformBufferAlignment{0};
     size_t storageBufferAlignment{0};
+};
+
+enum class RHISubmissionResult : uint8_t
+{
+    eSuccess,
+    eRejected, // Nothing in this flush was submitted; resource/synchronization state is unchanged.
+    eFatal,    // Partial submission or uncertain device state. Recreate the device before reuse.
+};
+
+// Capabilities of the optimal-tiling images created by the RHI.
+struct RHITextureCopyCapabilities
+{
+    bool transferSrc{false};
+    bool transferDst{false};
+    bool blitSrc{false};
+    bool blitDst{false};
+    bool linearFilter{false};
+};
+
+struct RHIQueueCopyCapabilities
+{
+    bool graphics{false};
+    bool compute{false};
+    bool transfer{false};
+
+    // Texels, for the uncompressed formats exposed by the RHI. Zero means whole mips only.
+    std::array<uint32_t, 3> minImageTransferGranularity{};
 };
 
 template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
@@ -74,8 +102,6 @@ enum class RHIShaderStageFlagBits : uint32_t
     eMax                   = 1 << 6
 };
 
-
-
 // enum class RHIShaderStage : uint32_t
 // {
 //     eVertex                = 0,
@@ -109,27 +135,34 @@ static std::string RHIShaderStageToString(RHIShaderStage stage)
 static std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> stageFlags)
 {
     std::string str;
+
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eVertex))
     {
         str += "Vertex ";
     }
+
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eFragment))
     {
         str += "Fragment ";
     }
+
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eTesselationControl))
     {
         str += "TesselationControl ";
     }
+
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eTesselationEvaluation))
     {
         str += "TesselationEvaluation ";
     }
+
     if (stageFlags.HasFlag(RHIShaderStageFlagBits::eCompute))
     {
         str += "Compute ";
     }
+
     str.pop_back();
+
     return str;
 }
 
@@ -187,10 +220,13 @@ enum class RHIShaderResourceType : uint32_t
 
 struct RHIShaderResourceDescriptor
 {
-    std::string name;
+    NameID name;
     RHIShaderResourceType type{RHIShaderResourceType::eMax};
     BitField<RHIShaderStageFlagBits> stageFlags;
-    bool writable{false}; // for storage image/buffer
+    bool readable{true};  // Conservative read capability; storage qualifiers may narrow it.
+    bool writable{false}; // Storage image/buffer capability, unioned across shader stages.
+    bool bindless{false};
+
     // Size of arrays (in total elements), or ubos (in bytes * total elements).
     uint32_t arraySize{1};
     uint32_t blockSize{0};
@@ -205,6 +241,34 @@ struct RHIShaderResourceBinding
     HeapVector<RHIResource*> resources;
 };
 
+enum class RHIBindlessHeapType : uint8_t
+{
+    eTexture2D   = 0,
+    eTextureCube = 1,
+    eSampler     = 2,
+    eMax         = 3
+};
+
+inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHeapType heapType)
+{
+    RHIShaderResourceType resourceType = RHIShaderResourceType::eMax;
+
+    switch (heapType)
+    {
+        case RHIBindlessHeapType::eTexture2D:
+        case RHIBindlessHeapType::eTextureCube:
+            resourceType = RHIShaderResourceType::eTexture;
+            break;
+        case RHIBindlessHeapType::eSampler: resourceType = RHIShaderResourceType::eSampler; break;
+        case RHIBindlessHeapType::eMax: break;
+    }
+
+    return resourceType;
+}
+
+inline constexpr uint32_t kGlobalBindlessHeapIndex  = 0;
+inline constexpr uint32_t kInvalidBindlessSlotIndex = std::numeric_limits<uint32_t>::max();
+
 using RHIShaderResourceDescriptorTable =
     SmallVector<SmallVector<RHIShaderResourceDescriptor>, MAX_NUM_DESCRIPTOR_SETS>;
 // .vert .frag .compute together
@@ -212,7 +276,7 @@ struct RHIShaderGroupInfo
 {
     struct VertexInputAttribute
     {
-        std::string name;
+        NameID name;
         uint32_t location{0};
         uint32_t binding{0};
         uint32_t offset{0};
@@ -221,23 +285,27 @@ struct RHIShaderGroupInfo
 
     struct ShaderPushConstants
     {
-        std::string name;
+        NameID name;
         uint32_t size{0};
         BitField<RHIShaderStageFlagBits> stageFlags;
     };
 
     // HashMap<RHIShaderStage, HeapVector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
+
     // vertex input attribute
     HeapVector<VertexInputAttribute> vertexInputAttributes;
+
     // vertex binding stride
     uint32_t vertexBindingStride{0};
+
     // per set shader resources
     // HeapVector<HeapVector<RHIShaderResourceDescriptor>> SRDs;
     RHIShaderResourceDescriptorTable SRDTable;
+
     // specialization constants
     HeapVector<RHIShaderSpecializationConstant> specializationConstants;
-    std::string name;
+    NameID name;
 };
 
 /*****************************/
@@ -362,7 +430,6 @@ struct RHIStencilOpState
     uint32_t reference{0};
 };
 
-
 struct RHIGfxPipelineDepthStencilState
 {
     bool enableDepthTest{false};
@@ -383,6 +450,7 @@ struct RHIGfxPipelineDepthStencilState
         state.enableDepthTest  = enableDepthTest;
         state.enableDepthWrite = enableDepthWrite;
         state.depthCompareOp   = depthCompareOp;
+
         return state;
     }
 };
@@ -444,6 +512,7 @@ struct RHIGfxPipelineColorBlendState
         RHIBlendFactor srcAlphaBlendFactor{RHIBlendFactor::eZero};
         RHIBlendFactor dstAlphaBlendFactor{RHIBlendFactor::eZero};
         RHIBlendOp alphaBlendOp{RHIBlendOp::eAdd};
+
         // bool writeR{true};
         // bool writeG{true};
         // bool writeB{true};
@@ -463,6 +532,7 @@ struct RHIGfxPipelineColorBlendState
         attachment.colorWriteMask.SetFlags(RHIColorComponent::eRed, RHIColorComponent::eGreen,
                                            RHIColorComponent::eBlue, RHIColorComponent::eAlpha);
         attachments[attachmentIdx++] = attachment;
+
         return *this;
     }
 
@@ -493,6 +563,7 @@ struct RHIGfxPipelineColorBlendState
         attachmentsMask.Set(attachmentIdx);
 
         attachments[attachmentIdx++] = std::move(attachment);
+
         return *this;
     }
 
@@ -626,10 +697,11 @@ struct RHIBufferCopySource
 
 enum class RHIBufferAllocateType : uint32_t
 {
-    eNone = 0,
-    eCPU  = 1,
-    eGPU  = 2,
-    eMax  = 3
+    eNone     = 0,
+    eCPUWrite = 1,
+    eCPURead  = 2,
+    eGPU      = 3,
+    eMax      = 4
 };
 
 /*****************************/
@@ -718,7 +790,7 @@ enum class RHITextureType : uint32_t
     e2D   = 1,
     e3D   = 2,
     eCube = 3,
-    eMax  = 4
+    eMax  = 4,
 };
 
 struct RHITextureSubResourceRange
@@ -728,6 +800,18 @@ struct RHITextureSubResourceRange
     uint32_t levelCount{1};
     uint32_t baseArrayLayer{0};
     uint32_t layerCount{1};
+
+    RHITextureSubResourceRange GetMipRange(uint32_t baseMiplevel) const
+    {
+        RHITextureSubResourceRange range{};
+        range.aspect.SetFlag(aspect);
+        range.layerCount     = layerCount;
+        range.levelCount     = 1;
+        range.baseMipLevel   = baseMiplevel;
+        range.baseArrayLayer = baseArrayLayer;
+
+        return range;
+    }
 
     static RHITextureSubResourceRange Color(uint32_t baseMiplevel   = 0,
                                             uint32_t baseArrayLayer = 0,
@@ -797,6 +881,18 @@ struct RHITextureSubresourceLayers
     uint32_t mipmap{0};
     uint32_t baseArrayLayer{0};
     uint32_t layerCount{1};
+
+    static RHITextureSubresourceLayers MakeMipLayers(const RHITextureSubResourceRange& range,
+                                                     uint32_t mipLevel)
+    {
+        RHITextureSubresourceLayers layers{};
+        layers.aspect         = range.aspect;
+        layers.mipmap         = mipLevel;
+        layers.baseArrayLayer = range.baseArrayLayer;
+        layers.layerCount     = range.layerCount;
+
+        return layers;
+    }
 };
 
 struct RHITextureCopyRegion
@@ -834,18 +930,24 @@ struct RHIBufferTextureCopySource
 
 inline RHITextureLayout RHITextureUsageToLayout(RHITextureUsage usage)
 {
+    RHITextureLayout result{};
+
     switch (usage)
     {
-        case RHITextureUsage::eNone: return RHITextureLayout::eUndefined;
-        case RHITextureUsage::eTransferSrc: return RHITextureLayout::eTransferSrc;
-        case RHITextureUsage::eTransferDst: return RHITextureLayout::eTransferDst;
+        case RHITextureUsage::eNone: result = RHITextureLayout::eUndefined; break;
+        case RHITextureUsage::eTransferSrc: result = RHITextureLayout::eTransferSrc; break;
+        case RHITextureUsage::eTransferDst: result = RHITextureLayout::eTransferDst; break;
         case RHITextureUsage::eSampled:
-        case RHITextureUsage::eInputAttachment: return RHITextureLayout::eShaderReadOnly;
-        case RHITextureUsage::eStorage: return RHITextureLayout::eGeneral;
-        case RHITextureUsage::eColorAttachment: return RHITextureLayout::eColorTarget;
-        case RHITextureUsage::eDepthStencilAttachment: return RHITextureLayout::eDepthStencilTarget;
-        default: return RHITextureLayout::eUndefined;
+        case RHITextureUsage::eInputAttachment: result = RHITextureLayout::eShaderReadOnly; break;
+        case RHITextureUsage::eStorage: result = RHITextureLayout::eGeneral; break;
+        case RHITextureUsage::eColorAttachment: result = RHITextureLayout::eColorTarget; break;
+        case RHITextureUsage::eDepthStencilAttachment:
+            result = RHITextureLayout::eDepthStencilTarget;
+            break;
+        default: result = RHITextureLayout::eUndefined; break;
     }
+
+    return result;
 }
 
 /*****************************/
@@ -987,97 +1089,30 @@ public:
         }
     }
 
-    // void SetColorTargetLoadStoreOp(RHIRenderTargetLoadOp loadOp, RHIRenderTargetStoreOp storeOp)
-    // {
-    //     m_colorRToadOp   = loadOp;
-    //     m_colorRTStoreOp = storeOp;
-    // }
-    //
-    // void SetDepthStencilTargetLoadStoreOp(RHIRenderTargetLoadOp loadOp, RHIRenderTargetStoreOp storeOp)
-    // {
-    //     m_depthStencilRTLoadOp  = loadOp;
-    //     m_depthStencilRTStoreOp = storeOp;
-    // }
-    //
-    // void SetNumSamples(SampleCount sampleCount)
-    // {
-    //     m_numSamples = sampleCount;
-    // }
-
-    const auto GetNumColorRenderTargets() const
+    uint32_t GetNumColorRenderTargets() const
     {
         return m_numColorRT;
     }
 
-    // const auto GetNumSamples() const
-    // {
-    //     return m_numSamples;
-    // }
-
-    const auto HasDepthStencilRenderTarget() const
+    bool HasDepthStencilRenderTarget() const
     {
         return m_hasDepthStencilRT;
     }
 
-    const auto HasColorRenderTarget() const
+    bool HasColorRenderTarget() const
     {
         return m_numColorRT > 0;
     }
 
-    // const auto GetColorRenderTargetLoadOp() const
-    // {
-    //     return m_colorRToadOp;
-    // }
-    //
-    // const auto GetDepthStencilRenderTargetLoadOp() const
-    // {
-    //     return m_depthStencilRTLoadOp;
-    // }
-    //
-    // const auto GetColorRenderTargetStoreOp() const
-    // {
-    //     return m_colorRTStoreOp;
-    // }
-    //
-    // const auto GetDepthStencilRenderTargetStoreOp() const
-    // {
-    //     return m_depthStencilRTStoreOp;
-    // }
-
-    const auto& GetColorRenderTargets() const
+    const HeapVector<RHIRenderTarget>& GetColorRenderTargets() const
     {
         return m_colorRTs;
     }
 
-    const auto& GetDepthStencilRenderTarget() const
+    const RHIRenderTarget& GetDepthStencilRenderTarget() const
     {
         return m_depthStencilRT;
     }
-
-    // const TextureHandle& GetDepthStencilRenderTargetHandle() const
-    // {
-    //     return m_rtHandles.back();
-    // }
-    //
-    // const TextureHandle* GetRenderTargetHandles() const
-    // {
-    //     return m_rtHandles.data();
-    // }
-    //
-    // TextureHandle* GetRenderTargetHandles()
-    // {
-    //     return m_rtHandles.data();
-    // }
-    //
-    // const auto& GetRTSubResourceRanges()
-    // {
-    //     return m_rtSubResRanges;
-    // }
-
-    // auto GetNumRenderTargets() const
-    // {
-    //     return m_hasDepthStencilRT ? m_numColorRT + 1 : m_numColorRT;
-    // }
 
     void ClearRenderTargetInfo()
     {
@@ -1091,6 +1126,7 @@ private:
     uint32_t m_numColorRT{0};
     HeapVector<RHIRenderTarget> m_colorRTs;
     RHIRenderTarget m_depthStencilRT;
+
     // SampleCount m_numSamples{SampleCount::e1};
     // RHIRenderTargetLoadOp m_colorRToadOp{RHIRenderTargetLoadOp::eNone};
     // RHIRenderTargetStoreOp m_colorRTStoreOp{RHIRenderTargetStoreOp::eNone};
@@ -1121,42 +1157,6 @@ enum class RHIPipelineType : uint32_t
 /**********************************************/
 /********** Context for RHICommandList ********/
 /*********************************************/
-// struct VertexBufferBinding
-// {
-//     BufferHandle buffer{nullptr};
-//     uint64_t offset{0};
-//     uint32_t slot;
-//
-//     bool operator==(const VertexBufferBinding& b) const
-//     {
-//         return buffer == b.buffer && slot == b.slot && offset == b.offset;
-//     }
-//
-//     bool operator!=(const VertexBufferBinding& b) const
-//     {
-//         return !(*this == b);
-//     }
-// };
-//
-// struct IndexBufferBinding
-// {
-//     BufferHandle buffer{nullptr};
-//     uint64_t offset{0};
-//     DataFormat format{DataFormat::eUndefined};
-//
-//
-//     bool operator==(const IndexBufferBinding& b) const
-//     {
-//         return buffer == b.buffer && format == b.format && offset == b.offset;
-//     }
-//
-//     bool operator!=(const IndexBufferBinding& b) const
-//     {
-//         return !(*this == b);
-//     }
-// };
-
-
 /*****************************/
 /********* Barriers **********/
 /*****************************/
@@ -1190,7 +1190,7 @@ enum class RHIAccessFlagBits : uint32_t
     eMax                         = 0x7FFFFFFF
 };
 
-enum class RHIPipelineStageBits : uint32_t
+enum class RHIPipelineStageFlagBits : uint32_t
 {
     eNone                         = 0,
     eTopOfPipe                    = 1 << 0,
@@ -1217,6 +1217,7 @@ inline BitField<RHIAccessFlagBits> RHITextureUsageToAccessFlagBits(RHITextureUsa
                                                                    RHIAccessMode mode)
 {
     BitField<RHIAccessFlagBits> result;
+
     switch (usage)
     {
         case RHITextureUsage::eNone: break;
@@ -1228,89 +1229,120 @@ inline BitField<RHIAccessFlagBits> RHITextureUsageToAccessFlagBits(RHITextureUsa
         case RHITextureUsage::eStorage:
         {
             result.SetFlag(RHIAccessFlagBits::eShaderRead);
+
             if (mode == RHIAccessMode::eReadWrite)
             {
                 result.SetFlag(RHIAccessFlagBits::eShaderWrite);
             }
         }
         break;
+
         case RHITextureUsage::eColorAttachment:
-            result.SetFlag(mode == RHIAccessMode::eRead ? RHIAccessFlagBits::eColorAttachmentRead :
-                                                          RHIAccessFlagBits::eColorAttachmentWrite);
+            if (mode == RHIAccessMode::eRead || mode == RHIAccessMode::eReadWrite)
+            {
+                result.SetFlag(RHIAccessFlagBits::eColorAttachmentRead);
+            }
+
+            if (mode == RHIAccessMode::eReadWrite)
+            {
+                result.SetFlag(RHIAccessFlagBits::eColorAttachmentWrite);
+            }
             break;
+
         case RHITextureUsage::eDepthStencilAttachment:
-            result.SetFlag(mode == RHIAccessMode::eRead ?
-                               RHIAccessFlagBits::eDepthStencilAttachmentRead :
-                               RHIAccessFlagBits::eDepthStencilAttachmentWrite);
+            if (mode == RHIAccessMode::eRead || mode == RHIAccessMode::eReadWrite)
+            {
+                result.SetFlag(RHIAccessFlagBits::eDepthStencilAttachmentRead);
+            }
+
+            if (mode == RHIAccessMode::eReadWrite)
+            {
+                result.SetFlag(RHIAccessFlagBits::eDepthStencilAttachmentWrite);
+            }
             break;
+
         case RHITextureUsage::eInputAttachment:
             result.SetFlag(RHIAccessFlagBits::eInputAttachmentRead);
             break;
         default: break;
     }
+
     return result;
 }
 
-inline BitField<RHIPipelineStageBits> RHITextureUsageToPipelineStage(RHITextureUsage usage)
+inline BitField<RHIPipelineStageFlagBits> RHITextureUsageToPipelineStageFlags(RHITextureUsage usage)
 {
-    BitField<RHIPipelineStageBits> result;
+    BitField<RHIPipelineStageFlagBits> result;
+
     switch (usage)
     {
-        case RHITextureUsage::eNone: result.SetFlag(RHIPipelineStageBits::eTopOfPipe); break;
+        case RHITextureUsage::eNone: result.SetFlag(RHIPipelineStageFlagBits::eTopOfPipe); break;
 
         case RHITextureUsage::eTransferSrc:
-        case RHITextureUsage::eTransferDst: result.SetFlag(RHIPipelineStageBits::eTransfer); break;
+        case RHITextureUsage::eTransferDst:
+            result.SetFlag(RHIPipelineStageFlagBits::eTransfer);
+            break;
 
         case RHITextureUsage::eSampled:
         case RHITextureUsage::eInputAttachment:
         case RHITextureUsage::eStorage:
-            result.SetFlag(RHIPipelineStageBits::eVertexShader);
-            result.SetFlag(RHIPipelineStageBits::eFragmentShader);
-            result.SetFlag(RHIPipelineStageBits::eComputeShader);
+            result.SetFlag(RHIPipelineStageFlagBits::eVertexShader);
+            result.SetFlag(RHIPipelineStageFlagBits::eFragmentShader);
+            result.SetFlag(RHIPipelineStageFlagBits::eComputeShader);
             break;
 
         case RHITextureUsage::eColorAttachment:
-            result.SetFlag(RHIPipelineStageBits::eColorAttachmentOutput);
+            result.SetFlag(RHIPipelineStageFlagBits::eColorAttachmentOutput);
             break;
 
         case RHITextureUsage::eDepthStencilAttachment:
-            result.SetFlag(RHIPipelineStageBits::eEarlyFragmentTests);
-            result.SetFlag(RHIPipelineStageBits::eLateFragmentTests);
+            result.SetFlag(RHIPipelineStageFlagBits::eEarlyFragmentTests);
+            result.SetFlag(RHIPipelineStageFlagBits::eLateFragmentTests);
         default: break;
     }
+
     return result;
 }
 
-inline BitField<RHIPipelineStageBits> RHIBufferUsageToPipelineStage(RHIBufferUsage usage)
+inline BitField<RHIPipelineStageFlagBits> RHIBufferUsageToPipelineStageFlags(
+    BitField<RHIBufferUsageFlagBits> usage)
 {
-    BitField<RHIPipelineStageBits> result;
-    switch (usage)
+    BitField<RHIPipelineStageFlagBits> result;
+
+    if (usage.IsEmpty())
     {
-        case RHIBufferUsage::eNone: result.SetFlag(RHIPipelineStageBits::eTopOfPipe); break;
-
-        case RHIBufferUsage::eTransferSrc:
-        case RHIBufferUsage::eTransferDst: result.SetFlag(RHIPipelineStageBits::eTransfer); break;
-
-        case RHIBufferUsage::eTextureBuffer:
-        case RHIBufferUsage::eImageBuffer:
-        case RHIBufferUsage::eUniformBuffer:
-        case RHIBufferUsage::eStorageBuffer:
-            result.SetFlags(RHIPipelineStageBits::eVertexShader,
-                            RHIPipelineStageBits::eFragmentShader,
-                            RHIPipelineStageBits::eComputeShader);
-            break;
-
-        case RHIBufferUsage::eIndirectBuffer:
-            result.SetFlag(RHIPipelineStageBits::eDrawIndirect);
-            break;
-
-        case RHIBufferUsage::eVertexBuffer:
-        case RHIBufferUsage::eIndexBuffer:
-            result.SetFlag(RHIPipelineStageBits::eVertexInput);
-            break;
-
-        default: break;
+        result.SetFlag(RHIPipelineStageFlagBits::eTopOfPipe);
     }
+    else
+    {
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer) ||
+            usage.HasFlag(RHIBufferUsageFlagBits::eTransferDstBuffer))
+        {
+            result.SetFlag(RHIPipelineStageFlagBits::eTransfer);
+        }
+
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eTextureBuffer) ||
+            usage.HasFlag(RHIBufferUsageFlagBits::eImageBuffer) ||
+            usage.HasFlag(RHIBufferUsageFlagBits::eUniformBuffer) ||
+            usage.HasFlag(RHIBufferUsageFlagBits::eStorageBuffer))
+        {
+            result.SetFlags(RHIPipelineStageFlagBits::eVertexShader,
+                            RHIPipelineStageFlagBits::eFragmentShader,
+                            RHIPipelineStageFlagBits::eComputeShader);
+        }
+
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eIndirectBuffer))
+        {
+            result.SetFlag(RHIPipelineStageFlagBits::eDrawIndirect);
+        }
+
+        if (usage.HasFlag(RHIBufferUsageFlagBits::eVertexBuffer) ||
+            usage.HasFlag(RHIBufferUsageFlagBits::eIndexBuffer))
+        {
+            result.SetFlag(RHIPipelineStageFlagBits::eVertexInput);
+        }
+    }
+
     return result;
 }
 
@@ -1318,18 +1350,20 @@ inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage
                                                                   RHIAccessMode mode)
 {
     BitField<RHIAccessFlagBits> result;
+
     switch (usage)
     {
         case RHIBufferUsage::eTransferSrc: result.SetFlag(RHIAccessFlagBits::eTransferRead); break;
         case RHIBufferUsage::eTransferDst: result.SetFlag(RHIAccessFlagBits::eTransferWrite); break;
 
-        case RHIBufferUsage::eUniformBuffer:
+        case RHIBufferUsage::eUniformBuffer: result.SetFlag(RHIAccessFlagBits::eUniformRead); break;
         case RHIBufferUsage::eTextureBuffer: result.SetFlag(RHIAccessFlagBits::eShaderRead); break;
 
         case RHIBufferUsage::eStorageBuffer:
         case RHIBufferUsage::eImageBuffer:
         {
             result.SetFlag(RHIAccessFlagBits::eShaderRead);
+
             if (mode == RHIAccessMode::eReadWrite)
             {
                 result.SetFlag(RHIAccessFlagBits::eShaderWrite);
@@ -1346,6 +1380,7 @@ inline BitField<RHIAccessFlagBits> RHIBufferUsageToAccessFlagBits(RHIBufferUsage
             break;
         default: break;
     }
+
     return result;
 }
 
@@ -1363,6 +1398,9 @@ struct RHITextureTransition
     RHITextureUsage oldUsage;
     RHITextureUsage newUsage;
     RHITextureSubResourceRange subResourceRange;
+
+    // Earlier writes may need visibility even when oldUsage describes a later reader/layout.
+    BitField<RHIAccessFlagBits> additionalSrcAccess;
 };
 
 struct RHIBufferTransition
@@ -1374,5 +1412,6 @@ struct RHIBufferTransition
     RHIBufferUsage newUsage;
     uint64_t offset{0};
     uint64_t size{ZEN_BUFFER_WHOLE_SIZE};
+    BitField<RHIAccessFlagBits> additionalSrcAccess;
 };
 } // namespace zen

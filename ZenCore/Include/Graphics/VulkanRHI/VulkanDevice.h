@@ -9,8 +9,6 @@ namespace zen
 class VulkanRHI;
 class VulkanDeviceExtension;
 class VulkanQueue;
-class LegacyVulkanCommandListContext;
-class LegacyVulkanCommandList;
 class VulkanFenceManager;
 class VulkanSemaphoreManager;
 
@@ -57,12 +55,14 @@ public:
         return m_gpu;
     }
 
-    void SetObjectName(VkObjectType type, uint64_t handle, const char* pName);
+    void SetObjectName(VkObjectType type, uint64_t handle, NameID name);
 
-    const auto& GetDescriptorIndexingProperties() const
+    const VkPhysicalDeviceDescriptorIndexingProperties& GetDescriptorIndexingProperties() const
     {
         return m_descriptorIndexingProperties;
     }
+
+    uint32_t GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType descriptorType) const;
 
     VulkanFenceManager* GetFenceManager() const
     {
@@ -89,21 +89,33 @@ public:
         return m_pTransferQueue;
     }
 
-    VulkanQueue* GetQueue(RHICommandContextType type)
+    VulkanQueue* GetQueue(RHICommandContextType type) const
     {
+        VulkanQueue* result{};
+
         if (type == RHICommandContextType::eGraphics)
         {
-            return m_pGfxQueue;
+            result = m_pGfxQueue;
         }
-        if (type == RHICommandContextType::eAsyncCompute)
+        else if (type == RHICommandContextType::eAsyncCompute)
         {
-            return m_pComputeQueue;
+            result = m_pComputeQueue;
         }
-        if (type == RHICommandContextType::eTransfer)
+        else if (type == RHICommandContextType::eTransfer)
         {
-            return m_pTransferQueue;
+            result = m_pTransferQueue;
         }
-        return m_pGfxQueue;
+        else
+        {
+            result = m_pGfxQueue;
+        }
+
+        return result;
+    }
+
+    const VkQueueFamilyProperties& GetQueueFamilyProperties(uint32_t familyIndex) const
+    {
+        return m_queueFamilyProps[familyIndex];
     }
 
     const VkPhysicalDeviceFeatures& GetPhysicalDeviceFeatures()
@@ -116,34 +128,27 @@ public:
         return m_extensionFlags.hasTimelineSemaphore != 0;
     }
 
-    // LegacyVulkanCommandListContext* GetLegacyImmediateCmdContext() const
-    // {
-    //     return m_legacyImmediateContext;
-    // }
-    //
-    // LegacyVulkanCommandList* GetLegacyImmediateCommandList() const
-    // {
-    //     return m_legacyImmediateCommandList;
-    // }
-
-    void SubmitCommandsAndFlush();
-
     void WaitForIdle();
 
 private:
+    friend struct VulkanQueueTestAccess;
+
     void SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
-    // VulkanRHI* m_RHI;
-
     VkPhysicalDevice m_gpu{VK_NULL_HANDLE};
+
     // gpu hardware properties
     VkPhysicalDeviceProperties m_gpuProps{};
+
     // logical device
     VkDevice m_device{VK_NULL_HANDLE};
+
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};
+
     // gpu properties
     VkPhysicalDeviceProperties m_physicalDeviceProperties{};
+
     // descriptor indexing properties
     VkPhysicalDeviceDescriptorIndexingProperties m_descriptorIndexingProperties{};
 
@@ -151,7 +156,7 @@ private:
 
     HeapVector<VkQueueFamilyProperties> m_queueFamilyProps;
 
-    HeapVector<const char*> m_extensions;
+    HeapVector<NameID> m_extensions;
 
     // queue infos
     VulkanQueue* m_pGfxQueue{nullptr};

@@ -1,5 +1,5 @@
 #pragma once
-#include "VulkanCommandBuffer.h"
+#include "Graphics/RHI/RHICommon.h"
 #include "VulkanHeaders.h"
 #include "Templates/HeapVector.h"
 #include "Templates/Queue.h"
@@ -8,7 +8,8 @@ namespace zen
 {
 class VulkanWorkload;
 class VulkanDevice;
-class VulkanCommandBuffer;
+class VulkanSemaphore;
+enum class VulkanCommandBufferType;
 class FVulkanCommandBufferPool;
 
 class VulkanQueue
@@ -37,26 +38,29 @@ public:
         return m_handle;
     }
 
-    VulkanCommandBuffer* GetLastSubmittedCmdBuffer() const
+    void EnqueueWorkload(VulkanWorkload* pWorkload)
     {
-        return m_pLastSubmittedCmdBuffer;
+        m_workloadsPendingSubmit.Push(pWorkload);
     }
 
-    void GetLastSubmitInfo(VulkanCommandBuffer*& cmdBuffer, uint64_t* pFenceSignaledCounter) const;
+    // serial is the last successfully submitted serial from this call, or zero.
+    RHISubmissionResult SubmitPendingWorkloads(uint64_t& serial);
 
-    void Submit(VulkanCommandBuffer* pCmdBuffer,
-                uint32_t numSignalSemaphores,
-                VkSemaphore* pSignalSemaphores);
+    void DiscardPendingWorkloads(bool uncertain = false);
 
-    void Submit(VulkanCommandBuffer* pCmdBuffer, VkSemaphore signalSemaphore);
+    void ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSubmissionSerial = UINT64_MAX);
 
-    void Submit(VulkanCommandBuffer* pCmdBuffer);
+    bool WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
 
-    uint64_t SubmitPendingWorkloads();
+    uint64_t GetLastSubmittedSerial() const
+    {
+        return m_lastSubmittedSerial;
+    }
 
-    void ProcessPendingWorkloads(uint64_t timeToWaitNS);
-
-    void WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
+    uint64_t GetLastCompletedSerial() const
+    {
+        return m_lastCompletedSerial;
+    }
 
 private:
     struct WorkloadMergeResult
@@ -82,11 +86,9 @@ private:
     static bool CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
                                   const VulkanWorkload* pCurrentWorkload);
 
-    void UpdateLastSubmittedCmdBuffer(VulkanCommandBuffer* pCmdBuffer);
+    RHISubmissionResult SubmitWorkloadsWithFences(uint64_t& serial);
 
-    uint64_t SubmitWorkloadsWithFences();
-
-    uint64_t SubmitWorkloadsWithTimelineSemaphore();
+    RHISubmissionResult SubmitWorkloadsWithTimelineSemaphore(uint64_t& serial);
 
     void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
                         WorkloadMergeResult& outMergeResult);
@@ -110,15 +112,15 @@ private:
     uint32_t m_familyIndex;
     uint32_t m_queueIndex;
 
-    VulkanCommandBuffer* m_pLastSubmittedCmdBuffer{nullptr};
-
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
     HeapVector<VulkanWorkload*> m_workloadPool;
+    HeapVector<VulkanWorkload*>
+        m_abandonedWorkloads; // Uncertain submission; keep until device teardown.
 
     Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
-    uint64_t m_nextSubmissionSerial{0};
-    uint64_t m_lastCompletedSubmissionSerial{0};
+    uint64_t m_lastSubmittedSerial{0};
+    uint64_t m_lastCompletedSerial{0};
     VulkanSemaphore* m_pTimelineSemaphore{nullptr};
 
     friend class VulkanRHI;

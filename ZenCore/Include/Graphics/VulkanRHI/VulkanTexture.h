@@ -5,31 +5,6 @@
 
 namespace zen
 {
-// struct VulkanTexture
-// {
-//     static VkImageSubresourceRange GetSubresourceRange(
-//         VkImageAspectFlags aspect,
-//         uint32_t baseMipLevel   = 0,
-//         uint32_t levelCount     = VK_REMAINING_MIP_LEVELS,
-//         uint32_t baseArrayLayer = 0,
-//         uint32_t layerCount     = VK_REMAINING_ARRAY_LAYERS)
-//     {
-//         VkImageSubresourceRange range{};
-//         range.aspectMask     = aspect;
-//         range.baseMipLevel   = baseMipLevel;
-//         range.levelCount     = levelCount;
-//         range.baseArrayLayer = baseArrayLayer;
-//         range.layerCount     = layerCount;
-//         return range;
-//     }
-//
-//     VkImage image{VK_NULL_HANDLE};
-//     VkImageView imageView{VK_NULL_HANDLE};
-//     VkImageCreateInfo imageCI{};
-//     VulkanMemoryAllocation memAlloc{};
-//     bool isProxy{false};
-// };
-
 class VulkanSampler : public RHISampler
 {
 public:
@@ -56,8 +31,7 @@ class VulkanTexture : public RHITexture
 public:
     static VulkanTexture* CreateObject(const RHITextureCreateInfo& createInfo);
 
-    static VulkanTexture* CreateProxyObject(const VulkanTexture* pBaseTexture,
-                                            const RHITextureProxyCreateInfo& proxyInfo);
+    RHITextureView* CreateView(const RHITextureViewCreateInfo& createInfo) override;
 
     VkImageSubresourceRange GetVkSubresourceRange(uint32_t baseMipLevel,
                                                   uint32_t levelCount,
@@ -70,6 +44,7 @@ public:
         range.levelCount     = levelCount;
         range.baseArrayLayer = baseArrayLayer;
         range.layerCount     = layerCount;
+
         return range;
     }
 
@@ -81,6 +56,7 @@ public:
         range.levelCount     = m_vkImageCI.mipLevels;
         range.baseArrayLayer = 0;
         range.layerCount     = m_vkImageCI.arrayLayers;
+
         return range;
     }
 
@@ -97,6 +73,7 @@ public:
         range.levelCount     = levelCount;
         range.baseArrayLayer = baseArrayLayer;
         range.layerCount     = layerCount;
+
         return range;
     }
 
@@ -105,10 +82,7 @@ public:
         return m_vkImage;
     }
 
-    VkImageView GetVkImageView() const
-    {
-        return m_vkImageView;
-    }
+    VkImageView GetVkImageView() const;
 
     const VulkanMemoryAllocation& GetMemoryAllocation() const
     {
@@ -133,19 +107,34 @@ protected:
 private:
     explicit VulkanTexture(const RHITextureCreateInfo& createInfo) : RHITexture(createInfo) {}
 
-    VulkanTexture(const VulkanTexture* pBaseTexture, const RHITextureProxyCreateInfo& proxyInfo);
-
-    void InitProxy();
-
-    void CreateImageViewHelper();
-
     VkImage m_vkImage{VK_NULL_HANDLE};
-    VkImageView m_vkImageView{VK_NULL_HANDLE};
     VkImageCreateInfo m_vkImageCI{};
     VulkanMemoryAllocation m_memAlloc{};
 
     VkImageAspectFlags m_vkAspectFlags{};
+};
 
-    // VulkanTexture* m_pBaseTexture{nullptr};
+class VulkanTextureView : public RHITextureView
+{
+public:
+    static VulkanTextureView* CreateObject(VulkanTexture* pTexture,
+                                           const RHITextureViewCreateInfo& createInfo);
+
+    VkImageView GetVkImageView() const
+    {
+        return m_vkImageView;
+    }
+
+protected:
+    void Init() override;
+
+    void Destroy() override;
+
+private:
+    VulkanTextureView(VulkanTexture* pTexture, const RHITextureViewCreateInfo& createInfo) :
+        RHITextureView(pTexture, createInfo)
+    {}
+
+    VkImageView m_vkImageView{VK_NULL_HANDLE};
 };
 } // namespace zen

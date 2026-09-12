@@ -7,9 +7,36 @@ VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport
     m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
 {}
 
+bool VoxelizerBase::BeginVoxelization(RenderGraph& graph)
+{
+    bool result{};
+
+    if (m_needVoxelization)
+    {
+        // Zero also clears the packed UINT geometry accumulators. Color() has alpha 1, which
+        // would incorrectly mark empty albedo voxels occupied, so clear all four channels explicitly.
+        RDGTransferPassCmdRecorder reset = graph.AddTransferPass("ResetVoxelVolumes");
+        reset.ClearTexture(m_voxelTextures.pAlbedo, Color(0.0f));
+
+        if (m_voxelTextures.pNormal != nullptr)
+        {
+            reset.ClearTexture(m_voxelTextures.pNormal, Color(0.0f));
+        }
+
+        if (m_voxelTextures.pEmissive != nullptr)
+        {
+            reset.ClearTexture(m_voxelTextures.pEmissive, Color(0.0f));
+        }
+
+        m_needVoxelization = false;
+        result             = true;
+    }
+
+    return result;
+}
+
 void VoxelizerBase::PrepareTextures()
 {
-
     {
         RHISamplerCreateInfo samplerInfo{};
         samplerInfo.magFilter = RHISamplerFilter::eLinear;
@@ -19,7 +46,6 @@ void VoxelizerBase::PrepareTextures()
         m_pVoxelSampler = m_pRenderDevice->CreateSampler(samplerInfo);
     }
 
-    // offscreen depth texture sampler
     {
         RHISamplerCreateInfo samplerInfo{};
         samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
@@ -33,32 +59,10 @@ void VoxelizerBase::PrepareTextures()
 
         m_pColorSampler = m_pRenderDevice->CreateSampler(samplerInfo);
     }
-    TextureUsageHint usageHint{.copyUsage = false};
-    {
-        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, DataFormat::eR8UNORM,
-        //                   m_voxelTexResolution, m_voxelTexResolution, m_voxelTexResolution, 1, 1,
-        //                   SampleCount::e1, "voxel_static_flag", RHITextureUsageFlagBits::eStorage,
-        //                   RHITextureUsageFlagBits::eSampled);
-        TextureFormat texFormat{};
-        texFormat.dimension   = TextureDimension::e3D;
-        texFormat.format      = DataFormat::eR8UNORM;
-        texFormat.width       = m_voxelTexResolution;
-        texFormat.height      = m_voxelTexResolution;
-        texFormat.depth       = m_voxelTexResolution;
-        texFormat.arrayLayers = 1;
-        texFormat.mipmaps     = 1;
 
-        m_voxelTextures.pStaticFlag =
-            m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_static_flag");
-    }
-    {
-        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-        //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_albedo", RHITextureUsageFlagBits::eStorage,
-        //                   RHITextureUsageFlagBits::eSampled);
-        // texInfo.mutableFormat  = true;
-        // m_voxelTextures.albedo = m_renderDevice->CreateTexture(texInfo);
+    TextureUsageHint usageHint{.copyUsage = true};
 
+    {
         TextureFormat texFormat{};
         texFormat.dimension     = TextureDimension::e3D;
         texFormat.format        = m_voxelTexFormat;
@@ -72,33 +76,24 @@ void VoxelizerBase::PrepareTextures()
         m_voxelTextures.pAlbedo =
             m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_albedo");
     }
-    {
-        // TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = RHITextureType::e3D;
-        // textureProxyInfo.arrayLayers = 1;
-        // textureProxyInfo.mipmaps     = 1;
-        // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        // textureProxyInfo.name        = "voxel_albedo_proxy";
-        // m_voxelTextures.albedoProxy =
-        //     m_renderDevice->CreateTextureProxy(m_voxelTextures.albedo, textureProxyInfo);
 
-        TextureProxyFormat proxyFormat{};
+    {
+        TextureViewFormat proxyFormat{};
         proxyFormat.format      = DataFormat::eR8G8B8A8UNORM;
         proxyFormat.dimension   = TextureDimension::e3D;
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.pAlbedoProxy = m_pRenderDevice->CreateTextureProxy(
+        m_voxelTextures.pAlbedoView = m_pRenderDevice->CreateTextureView(
             m_voxelTextures.pAlbedo, proxyFormat, "voxel_albedo_proxy");
     }
-    {
-        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-        //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_normal", RHITextureUsageFlagBits::eStorage,
-        //                   RHITextureUsageFlagBits::eSampled);
-        // texInfo.mutableFormat  = true;
-        // m_voxelTextures.normal = m_renderDevice->CreateTexture(texInfo);
 
+    if (!ProducesRadianceInputs())
+    {
+        return;
+    }
+
+    {
         TextureFormat texFormat{};
         texFormat.dimension     = TextureDimension::e3D;
         texFormat.format        = m_voxelTexFormat;
@@ -112,31 +107,19 @@ void VoxelizerBase::PrepareTextures()
         m_voxelTextures.pNormal =
             m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_normal");
     }
+
     {
-        // TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = RHITextureType::e3D;
-        // textureProxyInfo.arrayLayers = 1;
-        // textureProxyInfo.mipmaps     = 1;
-        // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        // textureProxyInfo.name        = "voxel_normal_proxy";
-        // m_voxelTextures.normalProxy =
-        //     m_renderDevice->CreateTextureProxy(m_voxelTextures.normal, textureProxyInfo);
-        TextureProxyFormat proxyFormat{};
+        TextureViewFormat proxyFormat{};
         proxyFormat.format      = DataFormat::eR8G8B8A8UNORM;
         proxyFormat.dimension   = TextureDimension::e3D;
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.pNormalProxy = m_pRenderDevice->CreateTextureProxy(
+        m_voxelTextures.pNormalView = m_pRenderDevice->CreateTextureView(
             m_voxelTextures.pNormal, proxyFormat, "voxel_normal_proxy");
     }
+
     {
-        // INIT_TEXTURE_INFO(texInfo, RHITextureType::e3D, m_voxelTexFormat, m_voxelTexResolution,
-        //                   m_voxelTexResolution, m_voxelTexResolution, 1, 1, SampleCount::e1,
-        //                   "voxel_emissive", RHITextureUsageFlagBits::eStorage,
-        //                   RHITextureUsageFlagBits::eSampled);
-        // texInfo.mutableFormat    = true;
-        // m_voxelTextures.emissive = m_renderDevice->CreateTexture(texInfo);
         TextureFormat texFormat{};
         texFormat.dimension     = TextureDimension::e3D;
         texFormat.format        = m_voxelTexFormat;
@@ -150,36 +133,33 @@ void VoxelizerBase::PrepareTextures()
         m_voxelTextures.pEmissive =
             m_pRenderDevice->CreateTextureStorage(texFormat, usageHint, "voxel_emissive");
     }
+
     {
-        TextureProxyFormat proxyFormat{};
+        TextureViewFormat proxyFormat{};
         proxyFormat.format      = DataFormat::eR8G8B8A8UNORM;
         proxyFormat.dimension   = TextureDimension::e3D;
         proxyFormat.arrayLayers = 1;
         proxyFormat.mipmaps     = 1;
 
-        m_voxelTextures.pEmissiveProxy = m_pRenderDevice->CreateTextureProxy(
-            m_voxelTextures.pNormal, proxyFormat, "voxel_emissive_proxy");
-
-        // TextureProxyInfo textureProxyInfo{};
-        // textureProxyInfo.type        = RHITextureType::e3D;
-        // textureProxyInfo.arrayLayers = 1;
-        // textureProxyInfo.mipmaps     = 1;
-        // textureProxyInfo.format      = DataFormat::eR8G8B8A8UNORM;
-        // textureProxyInfo.name        = "voxel_emissive_proxy";
-        // m_voxelTextures.emissiveProxy =
-        //     m_renderDevice->CreateTextureProxy(m_voxelTextures.emissive, textureProxyInfo);
+        m_voxelTextures.pEmissiveView = m_pRenderDevice->CreateTextureView(
+            m_voxelTextures.pEmissive, proxyFormat, "voxel_emissive_proxy");
     }
 }
 
 void VoxelizerBase::SetRenderScene(RenderScene* pScene)
 {
-    m_pScene       = pScene;
-    m_sceneExtent = m_pScene->GetAABB().GetMaxExtent();
-    m_voxelSize   = m_sceneExtent / static_cast<float>(m_voxelTexResolution);
-    m_voxelScale  = 1.0f / m_sceneExtent;
+    RequestVoxelization();
+    m_pScene = pScene;
+}
 
-    UpdateUniformData();
-    UpdatePassResources();
+float VoxelizerBase::GetVoxelSize() const
+{
+    return m_pScene->GetAABB().GetMaxExtent() / m_voxelTexResolution;
+}
+
+float VoxelizerBase::GetVoxelScale() const
+{
+    return 1.0f / m_pScene->GetAABB().GetMaxExtent();
 }
 
 Vec3 VoxelizerBase::GetSceneMinPoint() const
@@ -189,11 +169,6 @@ Vec3 VoxelizerBase::GetSceneMinPoint() const
 
 void VoxelizerBase::Destroy()
 {
-    m_pRenderDevice->DestroyTexture(m_voxelTextures.pAlbedoProxy);
-    m_pRenderDevice->DestroyTexture(m_voxelTextures.pNormalProxy);
-    m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissiveProxy);
-
-    m_pRenderDevice->DestroyTexture(m_voxelTextures.pStaticFlag);
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pAlbedo);
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pNormal);
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissive);

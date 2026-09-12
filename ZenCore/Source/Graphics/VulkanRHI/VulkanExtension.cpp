@@ -13,7 +13,6 @@
 
 namespace zen
 {
-
 template <typename ExistingChainType, typename NewStructType>
 static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
 {
@@ -38,7 +37,6 @@ public:
     void BeforePhysicalDeviceFeatures(
         VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr) final
     {
-
         AddToPNext(physicalDeviceFeatures2Khr, m_descriptorIndexingFeatures);
     }
 
@@ -47,7 +45,10 @@ public:
         bool supported = (m_descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE) &&
+            (m_descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind ==
+             VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -89,6 +90,7 @@ public:
     void AfterPhysicalDeviceFeatures() final
     {
         bool supported = (m_dynamicRenderingFeaturesKHR.dynamicRendering == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -170,6 +172,7 @@ public:
     virtual void AfterPhysicalDeviceFeatures() final
     {
         bool supported = (m_bufferDeviceAddressFeature.bufferDeviceAddress == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -211,6 +214,7 @@ public:
     virtual void AfterPhysicalDeviceFeatures() final
     {
         bool supported = (m_accelerationStructureFeatures.accelerationStructure == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -252,6 +256,7 @@ public:
     virtual void AfterPhysicalDeviceFeatures() final
     {
         bool supported = (m_rayTracingPipelineFeatures.rayTracingPipeline == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -292,6 +297,7 @@ public:
     virtual void AfterPhysicalDeviceFeatures() final
     {
         bool supported = (m_rayQueryFeature.rayQuery == VK_TRUE);
+
         if (supported)
         {
             SetSupport();
@@ -311,19 +317,26 @@ private:
     VkPhysicalDeviceRayQueryFeaturesKHR m_rayQueryFeature;
 };
 
-static int FindExtensionIndex(const char* pExtensionName,
+static int FindExtensionIndex(NameID extensionName,
                               const HeapVector<VkExtensionProperties>& supported)
 {
-    auto it = std::find_if(supported.begin(), supported.end(),
-                           [&pExtensionName](const VkExtensionProperties& extProp) {
-                               return strcmp(pExtensionName, extProp.extensionName) == 0;
-                           });
-    if (it == supported.end())
+    int index = -1;
+
+    for (size_t i = 0; i < supported.size(); ++i)
     {
-        LOGW("Instance extension {} not supported!", pExtensionName);
-        return -1;
+        if (strcmp(extensionName.CStr(), supported[i].extensionName) == 0)
+        {
+            index = static_cast<int>(i);
+            break;
+        }
     }
-    return static_cast<int>(it - supported.begin());
+
+    if (index == -1)
+    {
+        LOGW("Instance extension {} not supported!", extensionName.CStr());
+    }
+
+    return index;
 }
 
 template <class ExtensionType>
@@ -333,6 +346,7 @@ static void FlagExtensionSupported(HeapVector<ExtensionType>& extensions,
     for (ExtensionType& extension : extensions)
     {
         int index = FindExtensionIndex(extension->GetName(), supported);
+
         if (index != -1)
         {
             extension->SetSupport();
@@ -340,22 +354,28 @@ static void FlagExtensionSupported(HeapVector<ExtensionType>& extensions,
     }
 }
 
+static bool ExtensionNameLess(const VkExtensionProperties& a, const VkExtensionProperties& b)
+{
+    return strcmp(a.extensionName, b.extensionName) < 0;
+}
+
 HeapVector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceExtensions(
-    const char* pLayerName)
+    NameID layerName)
 {
     HeapVector<VkExtensionProperties> extensions;
+    const char* pLayerName = layerName.IsNone() ? nullptr : layerName.CStr();
 
     uint32_t count = 0;
     VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, nullptr));
+
     if (count > 0)
     {
         extensions.resize(count);
         VKCHECK(vkEnumerateInstanceExtensionProperties(pLayerName, &count, extensions.data()));
     }
-    std::sort(extensions.begin(), extensions.end(),
-              [](const VkExtensionProperties& a, const VkExtensionProperties& b) {
-                  return strcmp(a.extensionName, b.extensionName) < 0;
-              });
+
+    std::sort(extensions.begin(), extensions.end(), ExtensionNameLess);
+
     return extensions;
 }
 
@@ -382,6 +402,7 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
 #undef SET_INSTANCE_EXTENSION_FLAG
 #undef ADD_INSTANCE_EXTENSION
 
+
     return enabledExtensions;
 }
 
@@ -392,15 +413,15 @@ HeapVector<VkExtensionProperties> VulkanDeviceExtension::GetSupportedExtensions(
 
     uint32_t count = 0;
     VKCHECK(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, nullptr));
+
     if (count > 0)
     {
         extensions.resize(count);
         VKCHECK(vkEnumerateDeviceExtensionProperties(gpu, nullptr, &count, extensions.data()));
     }
-    std::sort(extensions.begin(), extensions.end(),
-              [](const VkExtensionProperties& a, const VkExtensionProperties& b) {
-                  return strcmp(a.extensionName, b.extensionName) < 0;
-              });
+
+    std::sort(extensions.begin(), extensions.end(), ExtensionNameLess);
+
     return extensions;
 }
 
@@ -444,9 +465,8 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 #undef ADD_SIMPLE_DEVICE_EXTENSION
 #undef ADD_ADVANCED_DEVICE_EXTENSION
 
+
     return enabledExtensions;
 }
-
-
 
 } // namespace zen

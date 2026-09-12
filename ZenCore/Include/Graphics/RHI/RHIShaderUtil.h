@@ -18,7 +18,6 @@ public:
     static void PrintShaderGroupInfo(const RHIShaderGroupInfo& shaderGroupInfo);
 };
 
-
 inline RHIShaderGroupSPIRVPtr RHIShaderUtil::CompileShaderSourceToSPIRV(
     RHIShaderGroupSourcePtr shaderGroupSource)
 {
@@ -27,11 +26,7 @@ inline RHIShaderGroupSPIRVPtr RHIShaderUtil::CompileShaderSourceToSPIRV(
 
 static bool StartsWith(std::string_view str, std::string_view prefix)
 {
-    if (str.size() < prefix.size())
-    {
-        return false;
-    }
-    return str.substr(0, prefix.size()) == prefix;
+    return str.size() >= prefix.size() && str.substr(0, prefix.size()) == prefix;
 }
 
 static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
@@ -41,12 +36,13 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
     SpvReflectResult result = spvReflectEnumerateInputVariables(pModule, &inputVarCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     HeapVector<SpvReflectInterfaceVariable*> inputVars;
+
     if (inputVarCount > 0)
     {
-
         inputVars.resize(inputVarCount);
         result = spvReflectEnumerateInputVariables(pModule, &inputVarCount, inputVars.data());
-        for (auto* pInputVar : inputVars)
+
+        for (SpvReflectInterfaceVariable* pInputVar : inputVars)
         {
             if (StartsWith(pInputVar->name, "gl_"))
             {
@@ -54,6 +50,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
             }
         }
     }
+
     if (inputVarCount > 0)
     {
         VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
@@ -71,11 +68,13 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
         //     uint8_t u, v;
         // };
         uint32_t vertexAttributeOffset = 0;
+
         for (uint32_t i = 0; i < inputVarCount; i++)
         {
-            auto& vertexAttribute = shaderGroupInfo.vertexInputAttributes[i];
-            const auto& inputVar  = inputVars[i];
-            const auto inputVarSize =
+            RHIShaderGroupInfo::VertexInputAttribute& vertexAttribute =
+                shaderGroupInfo.vertexInputAttributes[i];
+            SpvReflectInterfaceVariable* const& inputVar = inputVars[i];
+            const uint32_t inputVarSize =
                 (inputVar->numeric.scalar.width / 8) * inputVar->numeric.vector.component_count;
             vertexAttribute.name     = inputVar->name;
             vertexAttribute.location = inputVar->location;
@@ -85,6 +84,7 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
 
             vertexAttributeOffset += inputVarSize;
         }
+
         shaderGroupInfo.vertexBindingStride = vertexAttributeOffset;
     }
 }
@@ -121,18 +121,22 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                                            RHIShaderGroupInfo& shaderGroupInfo)
 {
     uint32_t scCount{0};
-    SpvReflectResult result = spvReflectEnumerateSpecializationConstants(pModule, &scCount, nullptr);
+    SpvReflectResult result =
+        spvReflectEnumerateSpecializationConstants(pModule, &scCount, nullptr);
+
     if (result != SPV_REFLECT_RESULT_SUCCESS)
     {
         LOGE("Reflection of SPIR-V shader stage {} specialization constant failed",
              RHIShaderStageToString(stage));
     }
+
     if (scCount > 0)
     {
         HeapVector<SpvReflectSpecializationConstant*> specConstants;
         specConstants.resize(scCount);
         spvReflectEnumerateSpecializationConstants(pModule, &scCount, specConstants.data());
         int existed = -1;
+
         for (uint32_t j = 0; j < scCount; j++)
         {
             RHIShaderSpecializationConstant specConst;
@@ -140,6 +144,7 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
 
             specConst.constantId = pSpvSpecConst->constant_id;
             specConst.intValue   = 0;
+
             switch (pSpvSpecConst->constant_type)
             {
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_BOOL:
@@ -148,12 +153,14 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                     specConst.boolValue = pSpvSpecConst->default_value.int_bool_value != 0;
                 }
                 break;
+
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_INT:
                 {
                     specConst.type     = RHIShaderSpecializationConstantType::eInt;
                     specConst.intValue = pSpvSpecConst->default_value.int_bool_value;
                 }
                 break;
+
                 case SPV_REFLECT_SPECIALIZATION_CONSTANT_FLOAT:
                 {
                     specConst.type       = RHIShaderSpecializationConstantType::eFloat;
@@ -161,7 +168,9 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                     break;
                 }
             }
+
             specConst.stages.SetFlag(RHIShaderStageToFlagBits(stage));
+
             for (int k = 0; k < shaderGroupInfo.specializationConstants.size(); k++)
             {
                 if (shaderGroupInfo.specializationConstants[k].constantId == specConst.constantId)
@@ -172,16 +181,19 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                             "More than one specialization constant used for id={} with different type",
                             specConst.constantId);
                     }
+
                     if (shaderGroupInfo.specializationConstants[k].intValue != specConst.intValue)
                     {
                         LOGE(
                             "More than one specialization constant used for id={} with different value",
                             specConst.constantId);
                     }
+
                     existed = k;
                     break;
                 }
             }
+
             if (existed > 0)
             {
                 shaderGroupInfo.specializationConstants[existed].stages.SetFlag(
@@ -195,20 +207,56 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
     }
 }
 
-static bool IsDescriptorBindingWritable(const SpvReflectDescriptorBinding& reflBinding)
+// Member flags describe that member, including a containing struct/array. The bundled
+// reflector synthesizes NonWritable on a block when ANY member is readonly, so that
+// root block flag cannot classify the whole binding. Union member capabilities instead.
+static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member,
+                                    uint32_t forbiddenDecoration,
+                                    uint32_t depth)
 {
-    bool writable = true;
-    if ((reflBinding.decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0 ||
-        (reflBinding.block.decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0)
+    const uint32_t typeFlags =
+        member.type_description ? member.type_description->decoration_flags : 0;
+    bool allowed = false;
+
+    if (((member.decoration_flags | typeFlags) & forbiddenDecoration) == 0)
     {
-        writable = false;
+        // Unknown/recursive metadata must not hide an access.
+        allowed = member.member_count == 0 || member.members == nullptr || depth >= 32;
+
+        for (uint32_t i = 0; !allowed && i < member.member_count; ++i)
+        {
+            allowed = BlockMemberAllowsAccess(member.members[i], forbiddenDecoration, depth + 1);
+        }
     }
-    if ((reflBinding.type_description != nullptr) &&
-        (reflBinding.type_description->decoration_flags & SPV_REFLECT_DECORATION_NON_WRITABLE) != 0)
+
+    return allowed;
+}
+
+static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& binding,
+                                          uint32_t forbiddenDecoration)
+{
+    const uint32_t typeFlags =
+        binding.type_description ? binding.type_description->decoration_flags : 0;
+    bool allowed = false;
+
+    if (((binding.decoration_flags | typeFlags) & forbiddenDecoration) == 0)
     {
-        writable = false;
+        if (binding.block.member_count == 0)
+        {
+            allowed = (binding.block.decoration_flags & forbiddenDecoration) == 0;
+        }
+        else
+        {
+            allowed = binding.block.members == nullptr;
+
+            for (uint32_t i = 0; !allowed && i < binding.block.member_count; ++i)
+            {
+                allowed = BlockMemberAllowsAccess(binding.block.members[i], forbiddenDecoration, 0);
+            }
+        }
     }
-    return writable;
+
+    return allowed;
 }
 
 static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding,
@@ -217,6 +265,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     bool needArrayDims = false;
     bool needBlockSize = false;
     bool writable      = false;
+    bool readable      = true;
 
     if (reflBinding.type_description != nullptr &&
         reflBinding.type_description->type_name != nullptr)
@@ -227,6 +276,7 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     {
         srd.name = reflBinding.name;
     }
+
     srd.set       = reflBinding.set;
     srd.binding   = reflBinding.binding;
     srd.arraySize = 1;
@@ -239,67 +289,89 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
             needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
         {
             srd.type      = RHIShaderResourceType::eSamplerWithTexture;
             needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
         {
             srd.type      = RHIShaderResourceType::eTexture;
             needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE:
         {
             srd.type      = RHIShaderResourceType::eImage;
             needArrayDims = true;
-            writable      = IsDescriptorBindingWritable(reflBinding);
+            writable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
         {
             srd.type      = RHIShaderResourceType::eTextureBuffer;
             needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
         {
             srd.type      = RHIShaderResourceType::eImageBuffer;
             needArrayDims = true;
-            writable      = IsDescriptorBindingWritable(reflBinding);
+            writable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
         {
             srd.type      = RHIShaderResourceType::eUniformBuffer;
             needBlockSize = true;
+            needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER:
         {
             srd.type      = RHIShaderResourceType::eStorageBuffer;
             needBlockSize = true;
-            writable      = IsDescriptorBindingWritable(reflBinding);
+            needArrayDims = true;
+            writable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable =
+                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
         {
             LOGE("Dynamic srd buffer not supported.");
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
         {
             LOGE("Dynamic storage buffer not supported.");
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
         {
             srd.type      = RHIShaderResourceType::eInputAttachment;
             needArrayDims = true;
         }
         break;
+
         case SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
         {
             LOGE("Acceleration structure not supported.");
@@ -307,15 +379,33 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         break;
     }
 
+    // Contradictory or incomplete restrictions must not suppress both capabilities.
+    if (!readable && !writable)
+    {
+        readable = writable = true;
+    }
+
+    srd.readable = readable;
     srd.writable = writable;
+
     if (needArrayDims)
     {
         for (uint32_t i = 0; i < reflBinding.array.dims_count; i++)
         {
-            srd.arraySize *= reflBinding.array.dims[i];
+            const uint32_t arrayDimension = reflBinding.array.dims[i];
+
+            if (arrayDimension == SPV_REFLECT_ARRAY_DIM_RUNTIME)
+            {
+                srd.bindless = true;
+            }
+            else
+            {
+                srd.arraySize *= arrayDimension;
+            }
         }
     }
-    else if (needBlockSize)
+
+    if (needBlockSize)
     {
         srd.blockSize = reflBinding.block.size;
     }
@@ -325,41 +415,56 @@ static void MergeOrAddSRDs(RHIShaderStage stage,
                            RHIShaderResourceDescriptor& srd,
                            RHIShaderGroupInfo& shaderGroupInfo)
 {
-    const auto stageFlag = RHIShaderStageToFlagBits(stage);
-    const auto setIndex  = srd.set;
-    bool existed         = false;
+    const RHIShaderStageFlagBits stageFlag = RHIShaderStageToFlagBits(stage);
+    const uint32_t setIndex                = srd.set;
+    bool existed                           = false;
 
     RHIShaderResourceDescriptorTable& allSRDs = shaderGroupInfo.SRDTable;
+
     if (setIndex < allSRDs.size())
     {
         for (uint32_t k = 0; k < allSRDs[setIndex].size(); k++)
         {
-            const auto& existSRD = allSRDs[setIndex][k];
+            RHIShaderResourceDescriptor const& existSRD = allSRDs[setIndex][k];
+
             if (existSRD.binding == srd.binding)
             {
                 if (existSRD.type != srd.type)
                 {
                     LOGE(
                         "On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different srd type",
-                        RHIShaderStageToString(stage), srd.name, setIndex, srd.binding);
+                        RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
                 }
+
                 if (existSRD.arraySize != srd.arraySize)
                 {
                     LOGE(
                         "On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different srd arraySize",
-                        RHIShaderStageToString(stage), srd.name, setIndex, srd.binding);
+                        RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
                 }
+
                 if (existSRD.blockSize != srd.blockSize)
                 {
                     LOGE(
                         "On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different srd blockSize",
-                        RHIShaderStageToString(stage), srd.name, setIndex, srd.binding);
+                        RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
                 }
+
+                if (existSRD.bindless != srd.bindless)
+                {
+                    LOGE(
+                        "On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different bindless state",
+                        RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
+                }
+
                 existed = true;
             }
+
             if (existed)
             {
                 allSRDs[setIndex][k].stageFlags.SetFlag(stageFlag);
+                allSRDs[setIndex][k].readable |= srd.readable;
+                allSRDs[setIndex][k].writable |= srd.writable;
                 break;
             }
         }
@@ -382,6 +487,7 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
     for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
     {
         RHIShaderStage stage = static_cast<RHIShaderStage>(i);
+
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
             // shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
@@ -389,10 +495,12 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
             const HeapVector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
             SpvReflectResult result =
                 spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
+
             if (result != SPV_REFLECT_RESULT_SUCCESS)
             {
                 LOGE("Reflection of SPIR-V shader stage {} failed", RHIShaderStageToString(stage));
             }
+
             uint32_t setCount{0};
             result = spvReflectEnumerateDescriptorSets(&module, &setCount, nullptr);
             VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
@@ -405,9 +513,17 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
             for (uint32_t setIndex = 0; setIndex < setCount; setIndex++)
             {
                 const SpvReflectDescriptorSet& reflSet = *(sets[setIndex]);
+
                 // std::vector<RHIShaderResourceDescriptor>& setResources =
                 //     shaderGroupInfo.SRDs[setIndex];
                 // setResources.resize(reflSet.binding_count);
+                if (shaderGroupInfo.SRDTable.size() <= reflSet.set)
+                {
+                    shaderGroupInfo.SRDTable.resize(reflSet.set + 1);
+                }
+
+                shaderGroupInfo.SRDTable[reflSet.set].reserve(reflSet.binding_count);
+
                 for (uint32_t binding = 0; binding < reflSet.binding_count; binding++)
                 {
                     const SpvReflectDescriptorBinding& reflBinding = *(reflSet.bindings[binding]);
@@ -419,11 +535,13 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
 
             // Specialization Constants
             ParseSpvSpecializationConstant(stage, &module, shaderGroupInfo);
+
             // Parse vertex input
             if (stage == RHIShaderStage::eVertex)
             {
                 ParseSpvVertexInput(&module, shaderGroupInfo);
             }
+
             // Parse push constants
             ParseSpvPushConstants(stage, &module, shaderGroupInfo);
         }
@@ -434,27 +552,27 @@ inline void RHIShaderUtil::PrintShaderGroupInfo(const RHIShaderGroupInfo& sgInfo
 {
     LOGI("======= Begin Printing RHIShaderGroupInfo =======")
     std::string stagesStr;
-    // for (const auto& kv : sgInfo.sprivCode)
-    // {
-    //     stagesStr += RHIShaderStageToString(kv.first) + " ";
-    // }
     LOGI("Shader Stages: {}", stagesStr);
-    LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name, sgInfo.pushConstants.size);
+    LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name.CStr(),
+         sgInfo.pushConstants.size);
     LOGI("SRD Set Count={}", sgInfo.SRDTable.size());
-    for (const auto& setSRD : sgInfo.SRDTable)
+
+    for (SmallVector<RHIShaderResourceDescriptor> const& setSRD : sgInfo.SRDTable)
     {
-        for (const auto& srd : setSRD)
+        for (RHIShaderResourceDescriptor const& srd : setSRD)
         {
             LOGI("SRD stage={} name={} set={} binding={} arraySize={}",
-                 RHIShaderStageFlagToString(srd.stageFlags), srd.name, srd.set, srd.binding,
+                 RHIShaderStageFlagToString(srd.stageFlags), srd.name.CStr(), srd.set, srd.binding,
                  srd.arraySize);
         }
     }
-    for (const auto& va : sgInfo.vertexInputAttributes)
+
+    for (RHIShaderGroupInfo::VertexInputAttribute const& va : sgInfo.vertexInputAttributes)
     {
-        LOGI("Vertex Input Attr name={} binding={} location={} offset={}", va.name, va.binding,
-             va.location, va.offset);
+        LOGI("Vertex Input Attr name={} binding={} location={} offset={}", va.name.CStr(),
+             va.binding, va.location, va.offset);
     }
+
     LOGI("Vertex Binding Stride={}", sgInfo.vertexBindingStride);
     LOGI("======= End Printing RHIShaderGroupInfo =======")
 }

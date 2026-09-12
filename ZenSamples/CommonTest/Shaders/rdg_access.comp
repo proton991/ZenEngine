@@ -1,0 +1,44 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0) readonly buffer ReadBlock
+{
+    uint value;
+}
+source;
+layout(set = 0, binding = 1) writeonly buffer WriteBlock
+{
+    uint value;
+}
+destination;
+layout(set = 0, binding = 2) buffer MixedBlock
+{
+    readonly uint inputValue;
+    writeonly uint outputValue;
+}
+mixed;
+layout(set = 0, binding = 3) buffer UnqualifiedBlock
+{
+    uint value;
+}
+readWrite;
+layout(set = 0, binding = 4, rgba8) uniform readonly image2D readImage;
+layout(set = 0, binding = 5, rgba8) uniform writeonly image2D writeImage;
+layout(set = 0, binding = 6, rgba8) uniform image2D readWriteImage;
+layout(set = 0, binding = 7) readonly buffer BufferArray
+{
+    uint value;
+}
+inputs[2];
+layout(set = 0, binding = 8) uniform UniformArray
+{
+    uint value;
+}
+uniforms[2];
+void main()
+{
+    destination.value = source.value + inputs[0].value + inputs[1].value + uniforms[1].value;
+    mixed.outputValue = mixed.inputValue;
+    readWrite.value += 1;
+    imageStore(writeImage, ivec2(0), imageLoad(readImage, ivec2(0)));
+    imageStore(readWriteImage, ivec2(0), imageLoad(readWriteImage, ivec2(0)));
+}

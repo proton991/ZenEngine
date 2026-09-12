@@ -1,6 +1,6 @@
 #pragma once
+#include "Graphics/RHI/RHICommandList.h"
 #include "Templates/HashMap.h"
-// #include "Templates/SmallVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/RHI/RHIResource.h"
@@ -37,10 +37,6 @@ public:
         return m_height;
     }
 
-    void WaitForFrameCompletion() final;
-
-    void IssueFrameEvent() final;
-
     DataFormat GetSwapchainFormat() final
     {
         return static_cast<DataFormat>(m_pSwapchain->GetFormat());
@@ -51,9 +47,9 @@ public:
         return m_depthFormat;
     }
 
-    bool Present(VulkanCommandBuffer* pCmdBuffer);
+    void PrepareForPresent(RHICommandList* pCmdList) final;
 
-    bool Present(FVulkanCommandListContext* pContext);
+    bool Present() final;
 
     RHITexture* GetColorBackBuffer() final;
 
@@ -65,6 +61,7 @@ public:
         range.levelCount     = 1;
         range.baseMipLevel   = 0;
         range.baseArrayLayer = 0;
+
         return range;
     }
 
@@ -79,6 +76,7 @@ public:
         range.levelCount     = 1;
         range.baseMipLevel   = 0;
         range.baseArrayLayer = 0;
+
         return range;
     }
 
@@ -98,16 +96,20 @@ private:
     VulkanViewport(void* pWindowPtr, uint32_t width, uint32_t height, bool enableVSync);
 
     void CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
-    void DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
-    bool TryAcquireNextImage();
-    void RecreateSwapchain();
-    void CopyToBackBufferForPresent(VkCommandBuffer cmdBufferVk,
-                                    VkImage dstImage,
-                                    uint32_t windowWidth,
-                                    uint32_t windowHeight);
 
-    // VulkanRHI* m_RHI{nullptr};
+    void DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
+
+    bool TryAcquireNextImage();
+
+    void RecreateSwapchain();
+
+    void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
+                                        VkImage dstImage,
+                                        uint32_t windowWidth,
+                                        uint32_t windowHeight);
+
     VulkanDevice* m_pDevice{nullptr};
+
     // void* m_windowPtr{nullptr};
     // uint32_t m_width{0};
     // uint32_t m_height{0};
@@ -116,10 +118,8 @@ private:
     VulkanSwapchain* m_pSwapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_pImageAcquiredSemaphore{nullptr};
-    VulkanSemaphore* m_pRenderingCompleteSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
-    VulkanCommandBuffer* m_pLastFrameCmdBuffer{nullptr};
-    uint64_t m_lastFenceSignaledCounter{0};
-    VkImage m_swapchainImages[ZEN_NUM_FRAMES_IN_FLIGHT];
+    VulkanSemaphore* m_pRenderingCompleteSemaphores[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
+    VkImage m_swapchainImages[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
     VulkanTexture* m_pColorBackBuffer{nullptr};
     VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
 
@@ -131,5 +131,8 @@ private:
 
     // HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
+
+    FVulkanCommandListContext* m_pContext{nullptr};
+    bool m_presentAcquiredFailed{false};
 };
 } // namespace zen

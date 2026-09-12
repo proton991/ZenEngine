@@ -38,30 +38,38 @@ DefaultAllocator::AllocationSiteStats* DefaultAllocator::FindOrAddAllocationSite
     const char* pFileName,
     uint32_t lineNum)
 {
-    uintptr_t hash = reinterpret_cast<uintptr_t>(pFileName);
+    AllocationSiteStats* pResult = nullptr;
+    uintptr_t hash               = reinterpret_cast<uintptr_t>(pFileName);
     hash ^= static_cast<uintptr_t>(lineNum) * 2654435761u;
     uint32_t index = static_cast<uint32_t>(hash % cMaxTrackedAllocationSites);
 
     for (uint32_t probe = 0; probe < cMaxTrackedAllocationSites; ++probe)
     {
         AllocationSiteStats& stats = m_allocationSiteStats[index];
+
         if (stats.pFileName == pFileName && stats.lineNumber == lineNum)
         {
-            return &stats;
+            pResult = &stats;
+            break;
         }
 
         if (stats.pFileName == nullptr)
         {
             stats.pFileName  = pFileName;
             stats.lineNumber = lineNum;
-            return &stats;
+            pResult          = &stats;
+            break;
         }
 
         index = (index + 1) % cMaxTrackedAllocationSites;
     }
 
-    m_allocationSiteStatsOverflow = true;
-    return nullptr;
+    if (pResult == nullptr)
+    {
+        m_allocationSiteStatsOverflow = true;
+    }
+
+    return pResult;
 }
 
 void DefaultAllocator::TrackAllocationSiteAlloc(size_t size,
@@ -76,11 +84,13 @@ void DefaultAllocator::TrackAllocationSiteAlloc(size_t size,
 
     LockAllocationSiteStats();
     AllocationSiteStats* pStats = FindOrAddAllocationSite(pFileName, lineNum);
+
     if (pStats != nullptr)
     {
         pStats->totalAllocated += size;
         pStats->currentUsage += size;
         pStats->peakUsage = std::max(pStats->peakUsage, pStats->currentUsage);
+
         if (isRealloc)
         {
             ++pStats->reallocCount;
@@ -90,12 +100,11 @@ void DefaultAllocator::TrackAllocationSiteAlloc(size_t size,
             ++pStats->allocationCount;
         }
     }
+
     UnlockAllocationSiteStats();
 }
 
-void DefaultAllocator::TrackAllocationSiteFree(size_t size,
-                                               const char* pFileName,
-                                               uint32_t lineNum)
+void DefaultAllocator::TrackAllocationSiteFree(size_t size, const char* pFileName, uint32_t lineNum)
 {
     if (pFileName == nullptr || size == 0)
     {
@@ -104,12 +113,14 @@ void DefaultAllocator::TrackAllocationSiteFree(size_t size,
 
     LockAllocationSiteStats();
     AllocationSiteStats* pStats = FindOrAddAllocationSite(pFileName, lineNum);
+
     if (pStats != nullptr)
     {
         pStats->totalFreed += size;
         pStats->currentUsage -= std::min(pStats->currentUsage, size);
         ++pStats->freeCount;
     }
+
     UnlockAllocationSiteStats();
 }
 
@@ -120,6 +131,7 @@ void DefaultAllocator::TrackMemAlloc(size_t s, const char* pFileName, uint32_t l
     pAllocator->m_currentUsage += s;
 
     size_t peak = pAllocator->m_peakUsage.load();
+
     while (pAllocator->m_currentUsage > peak &&
            !pAllocator->m_peakUsage.compare_exchange_weak(peak, pAllocator->m_currentUsage))
     {
@@ -151,6 +163,7 @@ void DefaultAllocator::TrackMemReAlloc(size_t oldSize,
     }
 
     size_t peak = pAllocator->m_peakUsage.load();
+
     while (pAllocator->m_currentUsage > peak &&
            !pAllocator->m_peakUsage.compare_exchange_weak(peak, pAllocator->m_currentUsage))
     {
@@ -167,6 +180,7 @@ void DefaultAllocator::TrackMemFree(size_t s, const char* pFileName, uint32_t li
 
 void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNum)
 {
+    void* pMemory = nullptr;
 #if defined(ZEN_DEBUG)
     const size_t totalSize = sizeof(AllocationHeader) + s;
     AllocationHeader* pHeader =
@@ -180,27 +194,31 @@ void* DefaultAllocator::Alloc(size_t s, size_t alignment, const char* pFileName,
 
     TrackMemAlloc(s, pFileName, lineNum);
 
-    return pHeader + 1;
+    pMemory = pHeader + 1;
 #else
-    void* pMemory = DefaultAllocImpl(s, alignment);
-    return pMemory;
+    pMemory = DefaultAllocImpl(s, alignment);
 #endif
+
+    return pMemory;
 }
 
 void* DefaultAllocator::Calloc(size_t s, size_t alignment, const char* pFileName, uint32_t lineNumm)
 {
     void* pMem = Alloc(s, alignment, pFileName, lineNumm);
     std::memset(pMem, 0, s);
+
     return pMem;
 }
 
 void DefaultAllocator::Free(void* pMemory, const char* pFileName, uint32_t lineNumm)
 {
     if (!pMemory)
+    {
         return;
+    }
 
 #if defined(ZEN_DEBUG)
-    auto* pHeader = static_cast<AllocationHeader*>(pMemory) - 1;
+    DefaultAllocator::AllocationHeader* pHeader = static_cast<AllocationHeader*>(pMemory) - 1;
 
     TrackMemFree(pHeader->size_, pHeader->pFileName, pHeader->lineNumber);
 
@@ -216,29 +234,37 @@ void* DefaultAllocator::Realloc(void* pMem,
                                 const char* pFileName,
                                 uint32_t lineNumm)
 {
+    void* pResult = nullptr;
 #if defined(ZEN_DEBUG)
     if (!pMem)
-        return Alloc(newSize, alignment, pFileName, lineNumm);
+    {
+        pResult = Alloc(newSize, alignment, pFileName, lineNumm);
+    }
+    else
+    {
+        DefaultAllocator::AllocationHeader* pOldHeader =
+            reinterpret_cast<AllocationHeader*>(pMem) - 1;
+        size_t oldSize            = pOldHeader->size_;
+        const char* pOldFileName  = pOldHeader->pFileName;
+        const uint32_t oldLineNum = pOldHeader->lineNumber;
 
-    auto* pOldHeader = reinterpret_cast<AllocationHeader*>(pMem) - 1;
-    size_t oldSize   = pOldHeader->size_;
-    const char* pOldFileName = pOldHeader->pFileName;
-    const uint32_t oldLineNum = pOldHeader->lineNumber;
+        const size_t totalSize = sizeof(AllocationHeader) + newSize;
+        void* pRaw = DefaultReallocImpl(pOldHeader, totalSize, alignment,
+                                        sizeof(AllocationHeader) + std::min(oldSize, newSize));
+        assert(pRaw);
 
-    const size_t totalSize = sizeof(AllocationHeader) + newSize;
-    void* pRaw              = DefaultReallocImpl(pOldHeader, totalSize, alignment,
-                                   sizeof(AllocationHeader) + std::min(oldSize, newSize));
-    assert(pRaw);
+        DefaultAllocator::AllocationHeader* pNewHeader = reinterpret_cast<AllocationHeader*>(pRaw);
+        pNewHeader->size_                              = newSize;
 
-    auto* pNewHeader  = reinterpret_cast<AllocationHeader*>(pRaw);
-    pNewHeader->size_ = newSize;
+        TrackMemReAlloc(oldSize, newSize, pOldFileName, oldLineNum);
 
-    TrackMemReAlloc(oldSize, newSize, pOldFileName, oldLineNum);
-
-    return pNewHeader + 1;
+        pResult = pNewHeader + 1;
+    }
 #else
-    return DefaultReallocImpl(pMem, newSize, alignment);
+    pResult = DefaultReallocImpl(pMem, newSize, alignment);
 #endif
+
+    return pResult;
 }
 
 static double BytesToMB(size_t bytes)
@@ -277,6 +303,22 @@ static void PrintMemoryLine(const char* pLabel, size_t bytes)
     printf("\n");
 }
 
+size_t DefaultAllocator::GetTrackedAllocationEvents()
+{
+    DefaultAllocator* allocator = GetInstance();
+    allocator->LockAllocationSiteStats();
+    size_t count = 0;
+
+    for (const DefaultAllocator::AllocationSiteStats& site : allocator->m_allocationSiteStats)
+    {
+        count += site.allocationCount + site.reallocCount;
+    }
+
+    allocator->UnlockAllocationSiteStats();
+
+    return count;
+}
+
 void DefaultAllocator::ReportMemUsage()
 {
     DefaultAllocator* pAlloc = GetInstance();
@@ -292,13 +334,15 @@ void DefaultAllocator::ReportMemUsage()
     PrintMemoryLine("Total Freed", totalFreed);
     PrintMemoryLine("Current Usage", currentUsage);
     PrintMemoryLine("Peak Usage", peakUsage);
-    printf("\nNote: Total Allocated / Total Freed are lifetime counters, not current live memory.\n");
+    printf(
+        "\nNote: Total Allocated / Total Freed are lifetime counters, not current live memory.\n");
 
     constexpr uint32_t cNumTopAllocationSites = 16;
     AllocationSiteStats topSites[cNumTopAllocationSites]{};
     uint32_t numTopSites = 0;
 
     pAlloc->LockAllocationSiteStats();
+
     for (const AllocationSiteStats& stats : pAlloc->m_allocationSiteStats)
     {
         if (stats.pFileName == nullptr || stats.totalAllocated == 0)
@@ -310,6 +354,7 @@ void DefaultAllocator::ReportMemUsage()
         {
             topSites[numTopSites] = stats;
             uint32_t siteIndex    = numTopSites++;
+
             while (siteIndex > 0 &&
                    topSites[siteIndex].totalAllocated > topSites[siteIndex - 1].totalAllocated)
             {
@@ -320,7 +365,8 @@ void DefaultAllocator::ReportMemUsage()
         else if (stats.totalAllocated > topSites[cNumTopAllocationSites - 1].totalAllocated)
         {
             topSites[cNumTopAllocationSites - 1] = stats;
-            uint32_t siteIndex = cNumTopAllocationSites - 1;
+            uint32_t siteIndex                   = cNumTopAllocationSites - 1;
+
             while (siteIndex > 0 &&
                    topSites[siteIndex].totalAllocated > topSites[siteIndex - 1].totalAllocated)
             {
@@ -329,12 +375,14 @@ void DefaultAllocator::ReportMemUsage()
             }
         }
     }
+
     const bool allocationSiteStatsOverflow = pAlloc->m_allocationSiteStatsOverflow;
     pAlloc->UnlockAllocationSiteStats();
 
     if (numTopSites > 0)
     {
         printf("\nTop Allocation Sites by Total Allocated:\n");
+
         for (uint32_t i = 0; i < numTopSites; ++i)
         {
             const AllocationSiteStats& stats = topSites[i];
@@ -405,6 +453,7 @@ void* DefaultAllocator::DefaultAllocImpl(size_t size, size_t alignment)
 #else
 #    error "Unsuported Platform"
 #endif
+
     // GetAllocations()[pMem] = size;
     return pMem;
 }
@@ -412,10 +461,12 @@ void* DefaultAllocator::DefaultAllocImpl(size_t size, size_t alignment)
 void* DefaultAllocator::DefaultCallocImpl(size_t size, size_t alignment)
 {
     void* pMem = DefaultAllocImpl(size, alignment);
+
     if (pMem)
     {
         std::memset(pMem, 0, size);
     }
+
     // GetAllocations()[pMem] = size;
     return pMem;
 }
@@ -425,27 +476,32 @@ void* DefaultAllocator::DefaultReallocImpl(void* pMem,
                                            size_t alignment,
                                            size_t copySize)
 {
+    void* pNewMem = nullptr;
+
     // nullptr do alloc
     if (pMem == nullptr)
     {
-        return DefaultAllocImpl(size, alignment);
+        pNewMem = DefaultAllocImpl(size, alignment);
     }
 
-    void* pNewMem;
-#if _POSIX_VERSION >= 200112L || defined(ZEN_MACOS)
-    // posix_memalign does not support realloc, so we need to manually handle it
-    pNewMem = DefaultAllocImpl(size, alignment);
-    if (pNewMem)
+    else
     {
-        const size_t bytesToCopy = copySize > 0 ? copySize : size;
-        std::memcpy(pNewMem, pMem, bytesToCopy);
-        DefaultFreeImpl(pMem);
-    }
+#if _POSIX_VERSION >= 200112L || defined(ZEN_MACOS)
+        // posix_memalign does not support realloc, so we need to manually handle it
+        pNewMem = DefaultAllocImpl(size, alignment);
+        if (pNewMem)
+        {
+            const size_t bytesToCopy = copySize > 0 ? copySize : size;
+            std::memcpy(pNewMem, pMem, bytesToCopy);
+            DefaultFreeImpl(pMem);
+        }
 #elif defined(_MSC_VER)
-    pNewMem = _aligned_realloc(pMem, size, Pow2Pad(alignment));
+        pNewMem = _aligned_realloc(pMem, size, Pow2Pad(alignment));
 #else
 #    error "Unsupported Platform"
 #endif
+    }
+
     return pNewMem;
 }
 
@@ -530,6 +586,7 @@ void operator delete(void* pMem, const char* pFileName, uint32_t lineNum) noexce
         zen::DefaultAllocator::Free(pMem, pFileName, lineNum);
     }
 }
+
 void operator delete[](void* pMem, const char* pFileName, uint32_t lineNum) noexcept
 {
     if (pMem)

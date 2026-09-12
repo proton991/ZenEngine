@@ -1,7 +1,6 @@
 #include "Graphics/VulkanRHI/VulkanMemory.h"
+#include "Graphics/RHI/RHICommon.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
-
-
 
 namespace zen
 {
@@ -17,10 +16,11 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
         LOGI("VMA Total device memory leaked: {} bytes.", stats.total.statistics.allocationBytes);
 
         // destroy pools
-        for (auto& kv : m_smallPools)
+        for (std::pair<const uint32_t, VmaPool_T*>& kv : m_smallPools)
         {
             vmaDestroyPool(m_vmaAllocator, kv.second);
         }
+
         vmaDestroyAllocator(m_vmaAllocator);
     }
 }
@@ -64,10 +64,10 @@ void VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
                                        VulkanMemoryAllocation* pAllocation,
                                        uint32_t size)
 {
-
     VmaAllocationCreateInfo vmaAllocationCI{};
     vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     vmaAllocationCI.flags = cpuReadable ? VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT : 0;
+
     // use separete pools for samll size memory allocation
     if (size <= SMALL_VK_ALLOCATION_SIZE)
     {
@@ -93,28 +93,13 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
                                         VulkanMemoryAllocation* pAllocation)
 {
     VmaAllocationCreateInfo vmaAllocationCI{};
-    if (allocType == RHIBufferAllocateType::eCPU)
+
+    if (allocType == RHIBufferAllocateType::eCPURead ||
+        allocType == RHIBufferAllocateType::eCPUWrite)
     {
-        bool isSrc = false;
-        bool isDst = false;
-        if (pBufferCI->usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
-        {
-            isSrc = true;
-        }
-        if (pBufferCI->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT)
-        {
-            isDst = true;
-        }
-        if (isSrc && !isDst)
-        {
-            // staging buffer: CPU maps, writes sequentially, then GPU copies to VRAM.
-            vmaAllocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        }
-        if (!isSrc && isDst)
-        {
-            // readback buffer: GPU copies from VRAM, then CPU maps and reads.
-            vmaAllocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        }
+        vmaAllocationCI.flags = allocType == RHIBufferAllocateType::eCPUWrite ?
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT :
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
         vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
         vmaAllocationCI.requiredFlags =
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -122,6 +107,7 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
     else if (allocType == RHIBufferAllocateType::eGPU)
     {
         vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
         if (size <= SMALL_VK_ALLOCATION_SIZE)
         {
             uint32_t memTypeIndex = 0;
@@ -130,14 +116,16 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
             vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
         }
     }
-    VKCHECK(vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer, &pAllocation->handle,
-                            &pAllocation->info));
+
+    VKCHECK(vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer,
+                            &pAllocation->handle, &pAllocation->info));
 }
 
 uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc)
 {
     void* pDataPtr = nullptr;
     VKCHECK(vmaMapMemory(m_vmaAllocator, memAlloc.handle, &pDataPtr));
+
     return static_cast<uint8_t*>(pDataPtr);
 }
 
@@ -146,7 +134,6 @@ void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)
     vmaUnmapMemory(m_vmaAllocator, memAlloc.handle);
 }
 
-
 void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
 {
     vmaDestroyBuffer(m_vmaAllocator, buffer, memAlloc.handle);
@@ -154,24 +141,32 @@ void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAlloca
 
 VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex)
 {
+    VmaPool result{};
+
     if (m_smallPools.contains(memTypeIndex))
     {
-        return m_smallPools[memTypeIndex];
+        result = m_smallPools[memTypeIndex];
     }
-    // create a new one
-    VmaPoolCreateInfo poolCI{};
-    poolCI.memoryTypeIndex        = memTypeIndex;
-    poolCI.flags                  = 0;
-    poolCI.blockSize              = 0;
-    poolCI.minBlockCount          = 0;
-    poolCI.maxBlockCount          = SIZE_MAX;
-    poolCI.priority               = 0.5f;
-    poolCI.minAllocationAlignment = 0;
-    poolCI.pMemoryAllocateNext    = nullptr;
-    VmaPool pool{VK_NULL_HANDLE};
-    VKCHECK(vmaCreatePool(m_vmaAllocator, &poolCI, &pool));
-    m_smallPools[memTypeIndex] = pool;
+    else
+    {
+        // create a new one
+        VmaPoolCreateInfo poolCI{};
+        poolCI.memoryTypeIndex        = memTypeIndex;
+        poolCI.flags                  = 0;
+        poolCI.blockSize              = 0;
+        poolCI.minBlockCount          = 0;
+        poolCI.maxBlockCount          = SIZE_MAX;
+        poolCI.priority               = 0.5f;
+        poolCI.minAllocationAlignment = 0;
+        poolCI.pMemoryAllocateNext    = nullptr;
+        VmaPool pool{VK_NULL_HANDLE};
+        VKCHECK(vmaCreatePool(m_vmaAllocator, &poolCI, &pool));
 
-    return pool;
+        m_smallPools[memTypeIndex] = pool;
+
+        result = pool;
+    }
+
+    return result;
 }
 } // namespace zen

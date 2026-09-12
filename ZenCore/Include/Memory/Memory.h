@@ -35,7 +35,6 @@ inline constexpr bool IsPowerOfTwo(uint64_t value)
     return value != 0 && ((value & (value - 1)) == 0);
 }
 
-
 /// Rounds the specified uint 'value' up to the nearest value meeting the specified 'alignment'.  Only power of 2
 /// alignments are supported by this function.
 ///
@@ -53,6 +52,7 @@ inline constexpr T Pow2Align(T value,            ///< Value to align.
 template <typename T> inline T Pow2Pad(T value) ///< Value to pad.
 {
     T ret = 1;
+
     if (IsPowerOfTwo(value))
     {
         ret = value;
@@ -67,7 +67,6 @@ template <typename T> inline T Pow2Pad(T value) ///< Value to pad.
 
     return ret;
 }
-
 
 template <typename T> T HandleFromVoidPtr(void* pData)
 {
@@ -92,6 +91,10 @@ public:
                          uint32_t lineNumm);
 
     static void ReportMemUsage();
+
+    // Debug allocator events (allocations plus growing reallocations). Excludes untracked STL
+    // allocations and returns zero when tracking is disabled. Read outside timed hot paths.
+    static size_t GetTrackedAllocationEvents();
 
 private:
     static void TrackMemAlloc(size_t s, const char* pFileName, uint32_t lineNum);
@@ -165,7 +168,6 @@ private:
 //     return new (pMemory) T(std::forward<Args>(args)...);
 // }
 } // namespace zen
-
 
 void* ZEN_CDECL operator new(size_t s, const char* pFileName, uint32_t lineNum) noexcept;
 

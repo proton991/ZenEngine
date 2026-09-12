@@ -1,6 +1,5 @@
 #pragma once
-// #include "../RenderDevice.h"
-#include "../RenderGraph.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Utils/UniquePtr.h"
 
 namespace zen::rc
@@ -8,27 +7,14 @@ namespace zen::rc
 class RenderScene;
 class RenderDevice;
 
-// 3D textures (written by voxelizer)
-// struct VoxelTextures
-// {
-//     TextureHandle staticFlag;
-//     TextureHandle albedo;
-//     TextureHandle albedoProxy;
-//     TextureHandle normal;
-//     TextureHandle normalProxy;
-//     TextureHandle emissive;
-//     TextureHandle emissiveProxy;
-// };
-
 struct VoxelTextures
 {
-    RHITexture* pStaticFlag{nullptr};
     RHITexture* pAlbedo{nullptr};
-    RHITexture* pAlbedoProxy{nullptr};
+    RHITextureView* pAlbedoView{nullptr};
     RHITexture* pNormal{nullptr};
-    RHITexture* pNormalProxy{nullptr};
+    RHITextureView* pNormalView{nullptr};
     RHITexture* pEmissive{nullptr};
-    RHITexture* pEmissiveProxy{nullptr};
+    RHITextureView* pEmissiveView{nullptr};
 };
 
 class VoxelizerBase
@@ -40,13 +26,23 @@ public:
 
     virtual void Init() = 0;
 
+    virtual void BuildRenderGraph() = 0;
+
     virtual void SetRenderScene(RenderScene* pScene);
 
     virtual void Destroy();
 
-    virtual void PrepareRenderWorkload() = 0;
+    void RequestVoxelization()
+    {
+        m_needVoxelization = true;
+    }
 
-    virtual void OnResize() = 0;
+    // Only producers opting into radiance inputs allocate/reset normal and emissive volumes.
+    // The current visualization paths produce albedo only.
+    virtual bool ProducesRadianceInputs() const
+    {
+        return false;
+    }
 
     const VoxelTextures& GetVoxelTextures() const
     {
@@ -57,6 +53,7 @@ public:
     {
         return m_pVoxelSampler;
     }
+
     DataFormat GetVoxelTexFormat() const
     {
         return m_voxelTexFormat;
@@ -67,36 +64,19 @@ public:
         return m_voxelTexResolution;
     }
 
-    float GetVoxelSize() const
-    {
-        return m_voxelSize;
-    }
+    float GetVoxelSize() const;
 
-    float GetVoxelScale() const
-    {
-        return m_voxelScale;
-    }
+    float GetVoxelScale() const;
 
     Vec3 GetSceneMinPoint() const;
 
 protected:
+    // Start every initial/repeated voxelization from empty accumulation volumes.
+    bool BeginVoxelization(RenderGraph& graph);
+
     virtual void PrepareTextures();
 
     virtual void PrepareBuffers() {}
-
-    virtual void BuildRenderGraph() = 0;
-
-    virtual void BuildGraphicsPasses() {}
-
-    virtual void BuildComputePasses() {}
-
-    virtual void UpdatePassResources() = 0;
-
-    virtual void UpdateUniformData() {};
-    //
-    // void VoxelizeStaticScene();
-    //
-    // void VoxelizeDynamicScene();
 
     RenderDevice* m_pRenderDevice{nullptr};
 
@@ -110,12 +90,8 @@ protected:
     RHISampler* m_pColorSampler;
 
     uint32_t m_voxelTexResolution;
-    float m_voxelSize;
-    float m_voxelScale;
     uint32_t m_voxelCount;
     DataFormat m_voxelTexFormat;
-
-    float m_sceneExtent;
 
     bool m_needVoxelization{true};
 };

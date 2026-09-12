@@ -1,11 +1,8 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h"
 #include "Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h"
-#include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 
@@ -31,13 +28,9 @@ void RendererServer::Init()
     {
         m_pVoxelizer = ZEN_NEW() ComputeVoxelizer(m_pRenderDevice, m_pViewport);
     }
+
     m_pVoxelizer->Init();
-
-    m_pShadowMapRenderer = ZEN_NEW() ShadowMapRenderer(m_pRenderDevice, m_pViewport);
-    m_pShadowMapRenderer->Init();
-
-    m_pVoxelGIRenderer = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pViewport);
-    m_pVoxelGIRenderer->Init();
+    // Voxel mode displays albedo. Add shadow/radiance producers only with a consumer.
 }
 
 void RendererServer::Destroy()
@@ -45,14 +38,8 @@ void RendererServer::Destroy()
     m_pDeferredLightingRenderer->Destroy();
     ZEN_DELETE(m_pDeferredLightingRenderer);
 
-    m_pShadowMapRenderer->Destroy();
-    ZEN_DELETE(m_pShadowMapRenderer);
-
     m_pSkyboxRenderer->Destroy();
     ZEN_DELETE(m_pSkyboxRenderer);
-
-    m_pVoxelGIRenderer->Destroy();
-    ZEN_DELETE(m_pVoxelGIRenderer);
 
     m_pVoxelizer->Destroy();
     ZEN_DELETE(m_pVoxelizer);
@@ -68,19 +55,22 @@ void RendererServer::DispatchRenderWorkloads()
 
     if (m_renderOption == RenderOption::eVoxelize)
     {
-        m_pSkyboxRenderer->PrepareRenderWorkload();
-        m_pShadowMapRenderer->PrepareRenderWorkload();
-        m_pVoxelizer->PrepareRenderWorkload();
-        m_pVoxelGIRenderer->PrepareRenderWorkload();
+        m_pSkyboxRenderer->BuildRenderGraph();
+        m_pVoxelizer->BuildRenderGraph();
     }
     else
     {
-        m_pSkyboxRenderer->PrepareRenderWorkload();
-        m_pDeferredLightingRenderer->PrepareRenderWorkload();
+        m_pSkyboxRenderer->BuildRenderGraph();
+        m_pDeferredLightingRenderer->BuildRenderGraph();
     }
 
-    pFrameRDG->End();
-    m_pRenderDevice->ExecuteRenderGraph(m_pViewport);
+    const bool succeeded = pFrameRDG->End() && m_pRenderDevice->ExecuteRenderGraph(m_pViewport);
+    m_pSkyboxRenderer->OnRenderGraphExecuted(succeeded);
+
+    if (!succeeded && m_renderOption == RenderOption::eVoxelize)
+    {
+        m_pVoxelizer->RequestVoxelization();
+    }
 }
 
 void RendererServer::SetRenderScene(RenderScene* pScene)
@@ -89,14 +79,6 @@ void RendererServer::SetRenderScene(RenderScene* pScene)
     m_pSkyboxRenderer->SetRenderScene(pScene);
     m_pDeferredLightingRenderer->SetRenderScene(pScene);
     m_pVoxelizer->SetRenderScene(pScene);
-    m_pShadowMapRenderer->SetRenderScene(pScene);
-    m_pVoxelGIRenderer->SetRenderScene(pScene);
 }
 
-void RendererServer::ViewportResizeCallback()
-{
-    m_pDeferredLightingRenderer->OnResize();
-    m_pSkyboxRenderer->OnResize();
-    m_pVoxelizer->OnResize();
-}
 } // namespace zen::rc

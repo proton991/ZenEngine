@@ -2,6 +2,7 @@
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Utils/UniquePtr.h"
 #include "Templates/HeapVector.h"
+#include "Templates/NameID.h"
 
 namespace zen
 {
@@ -30,15 +31,15 @@ struct InstanceExtensionFlags
 class VulkanExtension
 {
 public:
-    VulkanExtension(const char* pExtensionName, EnableMode enableMode = EnableMode::eAuto) :
-        m_pExtensionName(pExtensionName),
+    VulkanExtension(NameID extensionName, EnableMode enableMode = EnableMode::eAuto) :
+        m_extensionName(extensionName),
         m_supported(false),
         m_enabled(enableMode == EnableMode::eAuto)
     {}
 
-    const char* GetName() const
+    NameID GetName() const
     {
-        return m_pExtensionName;
+        return m_extensionName;
     }
 
     void SetSupport()
@@ -57,7 +58,7 @@ public:
     }
 
 private:
-    const char* m_pExtensionName{nullptr};
+    NameID m_extensionName;
     // supported by driver
     bool m_supported{false};
     // enabled in RHI initialization
@@ -69,13 +70,12 @@ using VulkanInstanceExtensionArray = HeapVector<UniquePtr<VulkanInstanceExtensio
 class VulkanInstanceExtension : public VulkanExtension
 {
 public:
-    explicit VulkanInstanceExtension(const char* pExtensionName,
+    explicit VulkanInstanceExtension(NameID extensionName,
                                      EnableMode enableMode = EnableMode::eAuto) :
-        VulkanExtension(pExtensionName, enableMode)
+        VulkanExtension(extensionName, enableMode)
     {}
 
-    static HeapVector<VkExtensionProperties> GetSupportedInstanceExtensions(
-        const char* pLayerName = nullptr);
+    static HeapVector<VkExtensionProperties> GetSupportedInstanceExtensions(NameID layerName = {});
 
     static VulkanInstanceExtensionArray GetEnabledInstanceExtensions(
         InstanceExtensionFlags& extensionFlags);
@@ -88,9 +88,9 @@ class VulkanDeviceExtension : public VulkanExtension
 {
 public:
     explicit VulkanDeviceExtension(VulkanDevice* pDevice,
-                                   const char* pExtensionName,
+                                   NameID extensionName,
                                    EnableMode enableMode = EnableMode::eAuto) :
-        VulkanExtension(pExtensionName, enableMode), m_pDevice(pDevice)
+        VulkanExtension(extensionName, enableMode), m_pDevice(pDevice)
     {}
 
     virtual ~VulkanDeviceExtension() = default;

@@ -1,7 +1,7 @@
 #pragma once
 #include "VoxelizerBase.h"
 #include "../RenderDevice.h"
-#include "../RenderGraph.h"
+#include "../RenderGraph/RenderGraph.h"
 #include "SceneGraph/AABB.h"
 
 #ifdef ZEN_MACOS
@@ -22,13 +22,9 @@ public:
 
     void Init() final;
 
+    void BuildRenderGraph() final;
+
     void Destroy() final;
-
-    void PrepareRenderWorkload() final;
-
-    void OnResize() final;
-
-    void SetRenderScene(RenderScene* pScene) override;
 
 protected:
 #ifdef ZEN_MACOS
@@ -41,16 +37,6 @@ protected:
 
     void PrepareBuffers() final;
 
-    void BuildRenderGraph() final;
-
-    void BuildGraphicsPasses() final;
-
-    void BuildComputePasses() final;
-
-    void UpdatePassResources() final;
-
-    void UpdateUniformData() final;
-
     struct LargeTriangle
     {
         uint32_t triangleIndex{0};
@@ -60,33 +46,13 @@ protected:
 
     struct
     {
-        // voxelization pass
         RHIBuffer* pComputeIndirectBuffer;
         RHIBuffer* pLargeTriangleBuffer;
-        // voxel pre-draw pass
         RHIBuffer* pInstancePositionBuffer;
         RHIBuffer* pInstanceColorBuffer;
         RHIBuffer* pDrawIndirectBuffer;
     } m_buffers;
 
-    struct
-    {
-        ComputePass* pResetVoxelTexture;
-        ComputePass* pResetComputeIndirect;
-        ComputePass* pResetDrawIndirect;
-        ComputePass* pVoxelization;
-        ComputePass* pVoxelizationLargeTriangle;
-        ComputePass* pVoxelPreDraw; // calculate position and color for voxel draw pass
-    } m_computePasses;
-
-    struct
-    {
-        GraphicsPass* pVoxelDraw;
-    } m_gfxPasses;
-
     RenderObject* m_pCube;
-
-    Mat4 m_voxelTransform;
-    sg::AABB m_voxelAABB;
 };
 } // namespace zen::rc

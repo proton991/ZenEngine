@@ -1,9 +1,8 @@
 #pragma once
-#include <cstring>
 #include <initializer_list>
 #include <type_traits>
 #include <utility>
-
+#include "VectorView.h"
 #include "Utils/Errors.h"
 #include "Memory/Memory.h"
 
@@ -34,14 +33,21 @@ public:
     HeapVector(std::initializer_list<T> init)
     {
         reserve(init.size());
+
         for (const T& v : init)
+        {
             emplace_back(v);
+        }
     }
+
+    HeapVector(VectorView<T> view) : HeapVector(view.data(), view.size()) {}
 
     HeapVector(const T* pSrcData, size_type count)
     {
         if (count == 0)
+        {
             return;
+        }
 
         reserve(count);
 
@@ -56,6 +62,7 @@ public:
             {
                 new (&m_pData[i]) T(pSrcData[i]);
             }
+
             m_size = count;
         }
     }
@@ -63,14 +70,37 @@ public:
     ~HeapVector()
     {
         destroy_range(0, m_size);
+
         if (m_pData)
         {
             ZEN_MEM_FREE(m_pData);
         }
     }
 
-    HeapVector(const HeapVector&)            = delete;
-    HeapVector& operator=(const HeapVector&) = delete;
+    HeapVector(const HeapVector& other)
+    {
+        copy_from(other);
+    }
+
+    HeapVector& operator=(const HeapVector& other)
+    {
+        if (this != &other)
+        {
+            clear();
+
+            if (m_pData)
+            {
+                ZEN_MEM_FREE(m_pData);
+                m_pData = nullptr;
+            }
+
+            m_capacity = 0;
+
+            copy_from(other);
+        }
+
+        return *this;
+    }
 
     HeapVector(HeapVector&& other) noexcept
     {
@@ -82,10 +112,15 @@ public:
         if (this != &other)
         {
             clear();
+
             if (m_pData)
+            {
                 ZEN_MEM_FREE(m_pData);
+            }
+
             move_from(other);
         }
+
         return *this;
     }
 
@@ -95,10 +130,12 @@ public:
     {
         return m_size;
     }
+
     size_type capacity() const noexcept
     {
         return m_capacity;
     }
+
     bool empty() const noexcept
     {
         return m_size == 0;
@@ -107,7 +144,9 @@ public:
     void reserve(size_type newCapacity)
     {
         if (newCapacity > m_capacity)
+        {
             grow(newCapacity);
+        }
     }
 
     void resize(size_type newSize)
@@ -121,6 +160,7 @@ public:
             reserve(newSize);
             construct_range(m_size, newSize);
         }
+
         m_size = newSize;
     }
 
@@ -154,11 +194,14 @@ public:
         }
 
         --m_size;
+
         return m_pData + index;
     }
 
     iterator erase(const_iterator first, const_iterator last)
     {
+        iterator result{};
+
         ASSERT(first >= begin() && first <= end());
         ASSERT(last >= first && last <= end());
 
@@ -167,27 +210,34 @@ public:
         const size_type count      = lastIndex - firstIndex;
 
         if (count == 0)
-            return m_pData + firstIndex;
-
-        // Destroy erased elements
-        destroy_range(firstIndex, lastIndex);
-
-        // Move tail
-        if constexpr (std::is_trivially_move_assignable_v<T>)
         {
-            std::memmove(m_pData + firstIndex, m_pData + lastIndex, sizeof(T) * (m_size - lastIndex));
+            result = m_pData + firstIndex;
         }
         else
         {
-            for (size_type i = firstIndex; i < m_size - count; ++i)
+            // Destroy erased elements
+            destroy_range(firstIndex, lastIndex);
+
+            // Move tail
+            if constexpr (std::is_trivially_move_assignable_v<T>)
             {
-                new (&m_pData[i]) T(std::move(m_pData[i + count]));
-                m_pData[i + count].~T();
+                std::memmove(m_pData + firstIndex, m_pData + lastIndex,
+                             sizeof(T) * (m_size - lastIndex));
             }
+            else
+            {
+                for (size_type i = firstIndex; i < m_size - count; ++i)
+                {
+                    new (&m_pData[i]) T(std::move(m_pData[i + count]));
+                    m_pData[i + count].~T();
+                }
+            }
+
+            m_size -= count;
+            result = m_pData + firstIndex;
         }
 
-        m_size -= count;
-        return m_pData + firstIndex;
+        return result;
     }
 
     void remove(size_type index)
@@ -213,7 +263,6 @@ public:
 
         --m_size;
     }
-
 
     // ----------- element access -----------
 
@@ -245,6 +294,7 @@ public:
     {
         return m_pData;
     }
+
     const T* data() const noexcept
     {
         return m_pData;
@@ -256,6 +306,7 @@ public:
     {
         return m_pData;
     }
+
     iterator end() noexcept
     {
         return m_pData + m_size;
@@ -265,6 +316,7 @@ public:
     {
         return m_pData;
     }
+
     const_iterator end() const noexcept
     {
         return m_pData + m_size;
@@ -292,9 +344,43 @@ public:
         const size_type oldSize = m_size;
         const size_type count   = values.size();
 
+        HeapVector<T> temp(values); // Make a copy first
+
         reserve(oldSize + count);
 
-        const T* pSrcData = (&values == this) ? m_pData : values.data();
+        const T* pSrcData = temp.data();
+
+        if constexpr (std::is_trivially_copy_constructible_v<T>)
+        {
+            std::memcpy(m_pData + oldSize, pSrcData, sizeof(T) * count);
+        }
+        else
+        {
+            for (size_type i = 0; i < count; ++i)
+            {
+                new (&m_pData[oldSize + i]) T(pSrcData[i]);
+            }
+        }
+
+        m_size = oldSize + count;
+    }
+
+    void push_back(VectorView<T> values)
+    {
+        if (values.empty())
+        {
+            return;
+        }
+
+        HeapVector<T> temp(values); // Make a copy first
+
+        const size_type oldSize = m_size;
+        const size_type count   = values.size();
+
+        reserve(oldSize + count);
+
+        const T* pSrcData = temp.data();
+
         if constexpr (std::is_trivially_copy_constructible_v<T>)
         {
             std::memcpy(m_pData + oldSize, pSrcData, sizeof(T) * count);
@@ -315,7 +401,51 @@ public:
         ensure_capacity_for_one();
         T* pElem = new (&m_pData[m_size]) T(std::forward<Args>(args)...);
         ++m_size;
+
         return *pElem;
+    }
+
+    template <typename InputIt> iterator insert(const_iterator pos, InputIt first, InputIt last)
+    {
+        ASSERT(pos >= begin() && pos <= end());
+
+        const size_type index = static_cast<size_type>(pos - begin());
+        const size_type count = static_cast<size_type>(last - first);
+
+        if (count != 0)
+        {
+            const size_type oldSize = m_size;
+            reserve(oldSize + count);
+
+            const size_type tail = oldSize - index;
+
+            // Shift the tail [index, oldSize) right by 'count' to open a gap
+            if constexpr (std::is_trivially_move_constructible_v<T>)
+            {
+                std::memmove(m_pData + index + count, m_pData + index, tail * sizeof(T));
+            }
+            else
+            {
+                for (size_type i = 0; i < tail; ++i)
+                {
+                    const size_type src = oldSize - 1 - i;
+                    new (&m_pData[src + count]) T(std::move(m_pData[src]));
+                    m_pData[src].~T();
+                }
+            }
+
+            // constructed the inserted elements into the gap
+            size_type w = index;
+
+            for (InputIt it = first; it != last; ++it, ++w)
+            {
+                new (&m_pData[w]) T(*it);
+            }
+
+            m_size = oldSize + count;
+        }
+
+        return m_pData + index;
     }
 
     void pop_back()
@@ -325,8 +455,14 @@ public:
         m_pData[m_size].~T();
     }
 
+    void pop_front()
+    {
+        ASSERT(m_size > 0);
+        erase(begin());
+    }
+
 private:
-    T* m_pData            = nullptr;
+    T* m_pData           = nullptr;
     size_type m_size     = 0;
     size_type m_capacity = 0;
 
@@ -359,7 +495,9 @@ private:
             }
 
             if (m_pData)
+            {
                 ZEN_MEM_FREE(m_pData);
+            }
 
             m_pData = pNewMem;
         }
@@ -414,24 +552,52 @@ private:
     void destroy_range(size_type begin, size_type end)
     {
         for (size_type i = begin; i < end; ++i)
+        {
             m_pData[i].~T();
+        }
     }
 
     void construct_range(size_type begin, size_type end)
     {
         for (size_type i = begin; i < end; ++i)
+        {
             new (&m_pData[i]) T();
+        }
     }
 
     void move_from(HeapVector& other)
     {
-        m_pData     = other.m_pData;
+        m_pData    = other.m_pData;
         m_size     = other.m_size;
         m_capacity = other.m_capacity;
 
-        other.m_pData     = nullptr;
+        other.m_pData    = nullptr;
         other.m_size     = 0;
         other.m_capacity = 0;
+    }
+
+    void copy_from(const HeapVector& other)
+    {
+        if (!other.empty())
+        {
+            const size_t bytes = other.capacity() * sizeof(T);
+            m_pData            = static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(bytes, alignof(T)));
+            m_capacity         = other.m_capacity;
+
+            if constexpr (std::is_trivially_copy_constructible_v<T>)
+            {
+                std::memcpy(m_pData, other.m_pData, other.m_size * sizeof(T));
+            }
+            else
+            {
+                for (uint32_t i = 0; i < other.m_size; i++)
+                {
+                    new (&m_pData[i]) T(other.m_pData[i]);
+                }
+            }
+
+            m_size = other.m_size;
+        }
     }
 };
 

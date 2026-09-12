@@ -2,6 +2,7 @@
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
@@ -56,18 +57,18 @@ SceneRendererDemo::~SceneRendererDemo()
 
 void SceneRendererDemo::Prepare()
 {
-    m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
+    m_scene                                          = MakeUnique<sg::Scene>();
+    UniquePtr<zen::asset::FastGLTFLoader> gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath(),
                              m_scene.Get());
-    auto timeUsed = static_cast<float>(m_timer->Tick());
+    float timeUsed = static_cast<float>(m_timer->Tick());
     LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), timeUsed);
 
     rc::SceneData sceneData{};
-    sceneData.pCamera      = m_camera.Get();
-    sceneData.pScene       = m_scene.Get();
-    sceneData.pVertices    = gltfLoader->GetVertices().data();
-    sceneData.pIndices     = gltfLoader->GetIndices().data();
+    sceneData.pCamera     = m_camera.Get();
+    sceneData.pScene      = m_scene.Get();
+    sceneData.pVertices   = gltfLoader->GetVertices().data();
+    sceneData.pIndices    = gltfLoader->GetIndices().data();
     sceneData.numVertices = gltfLoader->GetVertices().size();
     sceneData.numIndices  = gltfLoader->GetIndices().size();
     // light info
@@ -103,11 +104,11 @@ void SceneRendererDemo::Destroy()
 
 void SceneRendererDemo::Run()
 {
-
     while (!m_pWindow->ShouldClose())
     {
-        auto frameTime = static_cast<float>(m_timer->Tick());
+        float frameTime = static_cast<float>(m_timer->Tick());
         m_animationTimer += frameTime * m_animationSpeed;
+
         if (m_animationTimer > 1.0f)
         {
             m_animationTimer -= 1.0f;
@@ -127,6 +128,12 @@ void SceneRendererDemo::Run()
         if (platform::KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_2))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
+        }
+
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R))
+        {
+            m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
+            m_renderDevice->GetRDGMetrics().RequestCapture();
         }
 
         m_renderDevice->NextFrame();

@@ -1,5 +1,58 @@
 add_executable(ZenCoreTest ZenCoreTest/main.cpp)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
+add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
+add_executable(VulkanRHITest
+    CommonTest/ShaderReflectionTests.cpp
+    CommonTest/VulkanSynchronizationTests.cpp
+    CommonTest/VulkanResourceCreationTests.cpp
+)
+target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
+# Compile reflection fixtures as test inputs, without adding them to engine shader assets.
+set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
+set(RDG_REFLECTION_TEST_BINARIES)
+foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag)
+    set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
+    set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
+    add_custom_command(OUTPUT "${OUTPUT}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RDG_REFLECTION_TEST_PATH}"
+        COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V "${SOURCE}" -o "${OUTPUT}"
+        DEPENDS "${SOURCE}" VERBATIM)
+    list(APPEND RDG_REFLECTION_TEST_BINARIES "${OUTPUT}")
+endforeach()
+add_custom_target(RDGReflectionTestShaders DEPENDS ${RDG_REFLECTION_TEST_BINARIES})
+add_dependencies(VulkanRHITest RDGReflectionTestShaders)
+target_compile_definitions(VulkanRHITest PRIVATE RDG_REFLECTION_TEST_PATH="${RDG_REFLECTION_TEST_PATH}")
+
+add_executable(RenderCoreTest
+    RenderCoreTest/RenderCoreTests.cpp
+    RenderCoreTest/RDGMetricsTests.cpp
+    ../ZenCore/Source/Memory/Memory.cpp
+    ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RenderGraph.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RDGMetrics.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
+)
+target_include_directories(RenderCoreTest PRIVATE
+    ${PROJECT_SOURCE_DIR}/ZenCore/Include
+    ${PROJECT_SOURCE_DIR}/External/gli
+)
+target_compile_definitions(RenderCoreTest PRIVATE
+    $<TARGET_PROPERTY:ZenCore,INTERFACE_COMPILE_DEFINITIONS>
+)
+target_link_libraries(RenderCoreTest PRIVATE gtest_main spdlog::spdlog glm spriv-reflect)
+add_dependencies(RenderCoreTest SpvShaders)
+add_executable(LRUCacheTest LRUCacheTest/LRUCacheTests.cpp)
+target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Include)
+target_link_libraries(LRUCacheTest PRIVATE gtest_main)
 add_executable(CommonTest
     CommonTest/SmallVectorTests.cpp
     CommonTest/MemoryTests.cpp
@@ -70,6 +123,7 @@ target_link_libraries(scene_renderer_demo ZenCore)
 
 target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
+target_link_libraries(FlatHashMapTest ZenCore gtest_main)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
 target_link_libraries(CommonTest ZenCore gtest_main)
 

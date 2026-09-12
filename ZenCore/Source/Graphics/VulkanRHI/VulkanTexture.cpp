@@ -1,6 +1,5 @@
+#include "Graphics/VulkanRHI/VulkanResourceSharing.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
-#include "Graphics/VulkanRHI/VulkanCommandBuffer.h"
-#include "Graphics/VulkanRHI/VulkanCommands.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanMemory.h"
@@ -14,22 +13,23 @@ namespace zen
 static uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
 {
     // TODO: Support compressed texture format
-    uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
+    const uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
 
     uint32_t w = info.width;
     uint32_t h = info.height;
     uint32_t d = info.depth;
 
     uint32_t size = 0;
+
     for (uint32_t i = 0; i < info.mipmaps; i++)
     {
-        uint32_t numPixels = w * h * d;
-        size += numPixels * pixelSize;
+        size += w * h * d * pixelSize;
         w >>= 1;
         h >>= 1;
         d >>= 1;
     }
-    return size;
+
+    return size * info.arrayLayers;
 }
 
 // SamplerHandle VulkanRHI::CreateSampler(const RHISamplerInfo& samplerInfo)
@@ -105,8 +105,8 @@ void VulkanSampler::Init()
     samplerCI.magFilter        = ToVkFilter(m_baseInfo.magFilter);
     samplerCI.minFilter        = ToVkFilter(m_baseInfo.minFilter);
     samplerCI.mipmapMode       = m_baseInfo.mipFilter == RHISamplerFilter::eLinear ?
-              VK_SAMPLER_MIPMAP_MODE_LINEAR :
-              VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        VK_SAMPLER_MIPMAP_MODE_LINEAR :
+        VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerCI.addressModeU     = ToVkSamplerAddressMode(m_baseInfo.repeatU);
     samplerCI.addressModeV     = ToVkSamplerAddressMode(m_baseInfo.repeatV);
     samplerCI.addressModeW     = ToVkSamplerAddressMode(m_baseInfo.repeatW);
@@ -142,57 +142,16 @@ RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
     return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
 }
 
-RHITexture* VulkanRHI::CreateTextureProxy(const RHITexture* pBaseTexture,
-                                          const RHITextureProxyCreateInfo& proxyInfo)
+RHITextureView* VulkanRHI::CreateTextureView(RHITexture* pBaseTexture,
+                                             const RHITextureViewCreateInfo& createInfo)
 {
-    RHITexture* pProxyTexture = VulkanTexture::CreateProxyObject(
-        dynamic_cast<const VulkanTexture*>(pBaseTexture), proxyInfo);
-
-    return pProxyTexture;
+    VERIFY_EXPR(pBaseTexture != nullptr);
+    return pBaseTexture->CreateView(createInfo);
 }
-
 
 void VulkanRHI::DestroyTexture(RHITexture* pTexture)
 {
     pTexture->ReleaseReference();
-}
-
-// RHITexture* RHITexture::Create(const RHITextureCreateInfo& createInfo)
-// {
-//     // RHITexture* pTexture = VulkanTexture::CreateObject(createInfo);
-//     //
-//     // return pTexture;
-//     return GVulkanRHI->GetResourceFactory()->CreateTexture(createInfo);
-// }
-
-void VulkanTexture::CreateImageViewHelper()
-{
-    VkImageViewCreateInfo imageViewCI;
-    InitVkStruct(imageViewCI, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
-    imageViewCI.components.r                = VK_COMPONENT_SWIZZLE_R;
-    imageViewCI.components.g                = VK_COMPONENT_SWIZZLE_G;
-    imageViewCI.components.b                = VK_COMPONENT_SWIZZLE_B;
-    imageViewCI.components.a                = VK_COMPONENT_SWIZZLE_A;
-    imageViewCI.viewType                    = ToVkImageViewType(m_baseInfo.type);
-    imageViewCI.format                      = m_vkImageCI.format;
-    imageViewCI.image                       = m_vkImage;
-    imageViewCI.subresourceRange.layerCount = m_vkImageCI.arrayLayers;
-    imageViewCI.subresourceRange.levelCount = IsRenderTarget() ? 1 : m_vkImageCI.mipLevels;
-    if (m_baseInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
-    {
-        imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    }
-    else
-    {
-        imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-
-    if (vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView) !=
-        VK_SUCCESS)
-    {
-        GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
-        LOGE("vkCreateImageView failed with error");
-    }
 }
 
 VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInfo)
@@ -207,90 +166,86 @@ VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInf
     return pTexture;
 }
 
-VulkanTexture* VulkanTexture::CreateProxyObject(const VulkanTexture* pBaseTexture,
-                                                const RHITextureProxyCreateInfo& proxyInfo)
+RHITextureView* VulkanTexture::CreateView(const RHITextureViewCreateInfo& createInfo)
 {
-    VulkanTexture* pProxyTexture =
-        VersatileResource::AllocMem<VulkanTexture>(GVulkanRHI->GetResourceAllocator());
+    VERIFY_EXPR_MSG(
+        createInfo.format == m_baseInfo.format || m_baseInfo.mutableFormat,
+        "RHITextureView with a different format requires a mutable-format base RHITexture");
 
-    new (pProxyTexture) VulkanTexture(pBaseTexture, proxyInfo);
+    VulkanTextureView* pView = VulkanTextureView::CreateObject(this, createInfo);
 
-    pProxyTexture->Init();
+    RegisterOwnedView(pView);
 
-    return pProxyTexture;
+    return pView;
 }
 
-VulkanTexture::VulkanTexture(const VulkanTexture* pBaseTexture,
-                             const RHITextureProxyCreateInfo& proxyInfo) :
-    RHITexture(dynamic_cast<const RHITexture*>(pBaseTexture), proxyInfo)
-{}
+VkImageView VulkanTexture::GetVkImageView() const
+{
+    VERIFY_EXPR(m_pDefaultView != nullptr);
+    const VulkanTextureView* pDefaultView = TO_VK_TEXTURE_VIEW(m_pDefaultView);
+    const VkImageView imageView =
+        pDefaultView != nullptr ? pDefaultView->GetVkImageView() : VK_NULL_HANDLE;
+
+    return imageView;
+}
 
 void VulkanTexture::Init()
 {
-    if (m_isProxy)
+    VkImageCreateInfo imageCI;
+    InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
+    imageCI.extent.width  = m_baseInfo.width;
+    imageCI.extent.height = m_baseInfo.height;
+    imageCI.extent.depth  = m_baseInfo.depth;
+    imageCI.samples       = ToVkSampleCountFlagBits(m_baseInfo.samples);
+    imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    imageCI.arrayLayers   = m_baseInfo.arrayLayers;
+    imageCI.mipLevels     = m_baseInfo.mipmaps;
+    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (m_baseInfo.type == RHITextureType::eCube)
     {
-        InitProxy();
+        imageCI.imageType = VK_IMAGE_TYPE_2D;
+        imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     }
     else
     {
-        VkImageCreateInfo imageCI;
-        InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
-        imageCI.extent.width  = m_baseInfo.width;
-        imageCI.extent.height = m_baseInfo.height;
-        imageCI.extent.depth  = m_baseInfo.depth;
-        imageCI.samples       = ToVkSampleCountFlagBits(m_baseInfo.samples);
-        imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-        imageCI.arrayLayers   = m_baseInfo.arrayLayers;
-        imageCI.mipLevels     = m_baseInfo.mipmaps;
-        imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-        if (m_baseInfo.type == RHITextureType::eCube)
-        {
-            imageCI.imageType = VK_IMAGE_TYPE_2D;
-            imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-        }
-        else
-        {
-            imageCI.imageType = ToVkImageType(m_baseInfo.type);
-        }
-        imageCI.usage  = ToVkImageUsageFlags(m_baseInfo.usageFlags);
-        imageCI.format = ToVkFormat(m_baseInfo.format);
-        if (m_baseInfo.mutableFormat != false)
-        {
-            imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-        }
-
-        const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
-        const uint32_t transferQueueFamily = GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
-        if ((imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0 &&
-            graphicsQueueFamily != transferQueueFamily)
-        {
-            const uint32_t queueFamilyIndices[] = {graphicsQueueFamily, transferQueueFamily};
-            imageCI.sharingMode           = VK_SHARING_MODE_CONCURRENT;
-            imageCI.queueFamilyIndexCount = 2;
-            imageCI.pQueueFamilyIndices   = queueFamilyIndices;
-        }
-
-        const auto textureSize = CalculateTextureSize(m_baseInfo);
-
-        GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage, &m_memAlloc,
-                                    textureSize);
-        m_vkImageCI                    = imageCI;
-        m_vkImageCI.queueFamilyIndexCount = 0;
-        m_vkImageCI.pQueueFamilyIndices   = nullptr;
-
-        // create image view
-        CreateImageViewHelper();
-
-        if (!m_baseInfo.tag.empty())
-        {
-            GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_IMAGE,
-                                                   reinterpret_cast<uint64_t>(m_vkImage),
-                                                   m_baseInfo.tag.c_str());
-        }
-        // set layout as undefined when first created
-        GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
+        imageCI.imageType = ToVkImageType(m_baseInfo.type);
     }
+
+    imageCI.usage  = ToVkImageUsageFlags(m_baseInfo.usageFlags);
+    imageCI.format = ToVkFormat(m_baseInfo.format);
+
+    if (m_baseInfo.mutableFormat != false)
+    {
+        imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+    }
+
+    const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
+    const uint32_t transferQueueFamily =
+        GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
+
+    const uint32_t textureSize = CalculateTextureSize(m_baseInfo);
+
+    AllocateWithQueueSharing(
+        imageCI, graphicsQueueFamily, transferQueueFamily,
+        (imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0,
+        [this, &imageCI, textureSize] {
+            GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage, &m_memAlloc,
+                                        textureSize);
+        });
+    m_vkImageCI                       = imageCI;
+    m_vkImageCI.queueFamilyIndexCount = 0;
+    m_vkImageCI.pQueueFamilyIndices   = nullptr;
+
+    if (!m_baseInfo.tag.IsNone())
+    {
+        GVulkanRHI->GetDevice()->SetObjectName(
+            VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_vkImage), m_baseInfo.tag);
+    }
+
+    // set layout as undefined when first created
+    GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
 
     // set aspect flags
     m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -298,227 +253,78 @@ void VulkanTexture::Init()
     if (m_vkImageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
     {
         m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    };
+    }
+
+    RHITextureViewCreateInfo viewCI{};
+    viewCI.format       = m_baseInfo.format;
+    viewCI.type         = m_baseInfo.type;
+    viewCI.arrayLayers  = m_baseInfo.arrayLayers;
+    viewCI.mipLevels    = m_baseInfo.mipmaps;
+    viewCI.baseMipLevel = 0;
+    viewCI.tag          = m_baseInfo.tag;
+
+    m_pDefaultView = CreateView(viewCI);
 }
 
 void VulkanTexture::Destroy()
 {
-    vkDestroyImageView(GVulkanRHI->GetVkDevice(), m_vkImageView, nullptr);
+    DestroyOwnedViews();
     GVulkanRHI->RemoveImageLayout(m_vkImage);
-    if (m_isProxy != true)
-    {
-        GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
-    }
+    GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
-// TextureHandle VulkanRHI::CreateTexture(const TextureInfo& info)
-// {
-//     VulkanTexture* texture = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);
-//     VkImageCreateInfo imageCI;
-//     InitVkStruct(imageCI, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
-//     imageCI.extent.width  = info.width;
-//     imageCI.extent.height = info.height;
-//     imageCI.extent.depth  = info.depth;
-//     imageCI.samples       = ToVkSampleCountFlagBits(info.samples);
-//     imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-//     imageCI.arrayLayers   = info.arrayLayers;
-//     imageCI.mipLevels     = info.mipmaps;
-//     imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-//     imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
-//     if (info.type == RHITextureType::eCube)
-//     {
-//         imageCI.imageType = VK_IMAGE_TYPE_2D;
-//         imageCI.flags     = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-//     }
-//     else
-//     {
-//         imageCI.imageType = ToVkImageType(info.type);
-//     }
-//     imageCI.usage  = ToVkImageUsageFlags(info.usageFlags);
-//     imageCI.format = ToVkFormat(info.format);
-//     if (info.mutableFormat != false)
-//     {
-//         imageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
-//     }
-//
-//     const auto textureSize = CalculateTextureSize(info);
-//
-//     m_vkMemAllocator->AllocImage(&imageCI, info.cpuReadable, &texture->image, &texture->memAlloc,
-//                                  textureSize);
-//
-//     // create image view
-//     VkImageViewCreateInfo imageViewCI;
-//     InitVkStruct(imageViewCI, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
-//     imageViewCI.components.r                = VK_COMPONENT_SWIZZLE_R;
-//     imageViewCI.components.g                = VK_COMPONENT_SWIZZLE_G;
-//     imageViewCI.components.b                = VK_COMPONENT_SWIZZLE_B;
-//     imageViewCI.components.a                = VK_COMPONENT_SWIZZLE_A;
-//     imageViewCI.viewType                    = ToVkImageViewType(info.type);
-//     imageViewCI.format                      = imageCI.format;
-//     imageViewCI.image                       = texture->image;
-//     imageViewCI.subresourceRange.layerCount = imageCI.arrayLayers;
-//     imageViewCI.subresourceRange.levelCount = imageCI.mipLevels;
-//     if (info.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment))
-//     {
-//         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-//     }
-//     else
-//     {
-//         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//     }
-//
-//     if (vkCreateImageView(GetVkDevice(), &imageViewCI, nullptr, &texture->imageView) != VK_SUCCESS)
-//     {
-//         m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
-//         LOGE("vkCreateImageView failed with error");
-//     }
-//
-//     texture->imageCI = imageCI;
-//
-//     if (!info.name.empty())
-//     {
-//         m_device->SetObjectName(VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(texture->image),
-//                                 info.name.c_str());
-//     }
-//     // set layout as undefined when first created
-//     m_imageLayoutCache[texture->image] = VK_IMAGE_LAYOUT_UNDEFINED;
-//     return TextureHandle(texture);
-// }
-
-// RHITexture* RHITexture::CreateProxy(const RHITextureProxyCreateInfo& proxyInfo)
-// {
-//     RHITexture* pProxyTexture =
-//         VulkanTexture::CreateProxyObject(dynamic_cast<const VulkanTexture*>(this), proxyInfo);
-//
-//     return pProxyTexture;
-// }
-
-void VulkanTexture::InitProxy()
+VulkanTextureView* VulkanTextureView::CreateObject(VulkanTexture* pTexture,
+                                                   const RHITextureViewCreateInfo& createInfo)
 {
-    const VulkanTexture* pBaseTexture = dynamic_cast<const VulkanTexture*>(m_pBaseTexture);
+    VulkanTextureView* pView =
+        VersatileResource::AllocMem<VulkanTextureView>(GVulkanRHI->GetResourceAllocator());
 
-    m_vkImage  = pBaseTexture->GetVkImage();
-    m_baseInfo = pBaseTexture->GetBaseInfo();
-    m_memAlloc = pBaseTexture->GetMemoryAllocation();
+    new (pView) VulkanTextureView(pTexture, createInfo);
 
-    m_vkImageCI = pBaseTexture->GetVkImageCreateInfo();
-    // overwrite
-    m_vkImageCI.format      = ToVkFormat(m_proxyInfo.format);
-    m_vkImageCI.imageType   = ToVkImageType(m_proxyInfo.type);
-    m_vkImageCI.arrayLayers = m_proxyInfo.arrayLayers;
-    m_vkImageCI.mipLevels   = m_proxyInfo.mipmaps;
+    pView->Init();
 
-    CreateImageViewHelper();
+    return pView;
+}
 
-    if (!m_proxyInfo.tag.empty())
+void VulkanTextureView::Init()
+{
+    VulkanTexture* pVkTexture = TO_VK_TEXTURE(m_pTexture);
+
+    RHITextureSubResourceRange range = m_subResourceRange;
+
+    // Combined depth/stencil formats use the existing depth-sampling default.
+    if (FormatIsDepthStencil(m_viewInfo.format))
     {
-        GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_IMAGE_VIEW,
-                                               reinterpret_cast<uint64_t>(m_vkImageView),
-                                               m_proxyInfo.tag.c_str());
+        range.aspect = int64_t(RHITextureAspectFlagBits::eDepth);
+    }
+
+    const VkImageViewCreateInfo imageViewCI = MakeVkImageViewCreateInfo(
+        m_viewInfo.type, m_viewInfo.format, pVkTexture->GetVkImage(), range);
+
+    if (vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView) !=
+        VK_SUCCESS)
+    {
+        LOGE("vkCreateImageView failed with error");
+    }
+
+    if (!m_viewInfo.tag.IsNone())
+    {
+        GVulkanRHI->GetDevice()->SetObjectName(
+            VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<uint64_t>(m_vkImageView), m_viewInfo.tag);
     }
 }
 
-// TextureHandle VulkanRHI::CreateTextureProxy(const TextureHandle& baseTexture,
-//                                             const TextureProxyInfo& textureProxyInfo)
-// {
-//     VulkanTexture* baseTextureVk  = TO_VK_TEXTURE(baseTexture);
-//     VulkanTexture* proxyTextureVk = VersatileResource::Alloc<VulkanTexture>(m_resourceAllocator);
-//     // copy from base
-//     proxyTextureVk->image    = baseTextureVk->image;
-//     proxyTextureVk->memAlloc = baseTextureVk->memAlloc;
-//     proxyTextureVk->isProxy  = true;
-//
-//     VkImageCreateInfo imageCI = baseTextureVk->imageCI;
-//
-//     // overwrite
-//     imageCI.format      = ToVkFormat(textureProxyInfo.format);
-//     imageCI.imageType   = ToVkImageType(textureProxyInfo.type);
-//     imageCI.arrayLayers = textureProxyInfo.arrayLayers;
-//     imageCI.mipLevels   = textureProxyInfo.mipmaps;
-//
-//     // create image view
-//     VkImageViewCreateInfo imageViewCI;
-//     InitVkStruct(imageViewCI, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
-//     imageViewCI.components.r                = VK_COMPONENT_SWIZZLE_R;
-//     imageViewCI.components.g                = VK_COMPONENT_SWIZZLE_G;
-//     imageViewCI.components.b                = VK_COMPONENT_SWIZZLE_B;
-//     imageViewCI.components.a                = VK_COMPONENT_SWIZZLE_A;
-//     imageViewCI.viewType                    = ToVkImageViewType(textureProxyInfo.type);
-//     imageViewCI.format                      = imageCI.format;
-//     imageViewCI.image                       = proxyTextureVk->image;
-//     imageViewCI.subresourceRange.layerCount = imageCI.arrayLayers;
-//     imageViewCI.subresourceRange.levelCount = imageCI.mipLevels;
-//     if (imageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-//     {
-//         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-//     }
-//     else
-//     {
-//         imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//     }
-//
-//     if (vkCreateImageView(GetVkDevice(), &imageViewCI, nullptr, &proxyTextureVk->imageView) !=
-//         VK_SUCCESS)
-//     {
-//         LOGE("vkCreateImageView for TextureProxy failed with error");
-//     }
-//
-//     proxyTextureVk->imageCI = imageCI;
-//     if (!textureProxyInfo.name.empty())
-//     {
-//         m_device->SetObjectName(VK_OBJECT_TYPE_IMAGE_VIEW,
-//                                 reinterpret_cast<uint64_t>(proxyTextureVk->imageView),
-//                                 textureProxyInfo.name.c_str());
-//     }
-//     return TextureHandle(proxyTextureVk);
-// }
+void VulkanTextureView::Destroy()
+{
+    if (m_vkImageView != nullptr)
+    {
+        vkDestroyImageView(GVulkanRHI->GetVkDevice(), m_vkImageView, nullptr);
+        m_vkImageView = nullptr;
+    }
 
-// DataFormat VulkanRHI::GetTextureFormat(TextureHandle textureHandle)
-// {
-//     VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
-//     return static_cast<DataFormat>(texture->imageCI.format);
-// }
-//
-// RHITextureSubResourceRange VulkanRHI::GetTextureSubResourceRange(TextureHandle textureHandle)
-// {
-//     RHITextureSubResourceRange range;
-//     DataFormat dataFormat = GetTextureFormat(textureHandle);
-//
-//     if (FormatIsDepthOnly(dataFormat))
-//     {
-//         range = RHITextureSubResourceRange::Depth();
-//     }
-//     else if (FormatIsStencilOnly(dataFormat))
-//     {
-//         range = RHITextureSubResourceRange::Stencil();
-//     }
-//     else if (FormatIsDepthStencil(dataFormat))
-//     {
-//         range = RHITextureSubResourceRange::DepthStencil();
-//     }
-//     else
-//     {
-//         range = RHITextureSubResourceRange::Color();
-//     }
-//
-//     VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
-//     range.layerCount       = texture->imageCI.arrayLayers;
-//     range.levelCount       = texture->imageCI.mipLevels;
-//     return range;
-// }
-//
-// void VulkanRHI::DestroyTexture(TextureHandle textureHandle)
-// {
-//     VulkanTexture* texture = TO_VK_TEXTURE(textureHandle);
-//     vkDestroyImageView(m_device->GetVkHandle(), texture->imageView, nullptr);
-//     m_imageLayoutCache.erase(texture->image);
-//     if (texture->isProxy != true)
-//     {
-//         m_vkMemAllocator->FreeImage(texture->image, texture->memAlloc);
-//     }
-//     VersatileResource::Free(m_resourceAllocator, texture);
-// }
+    VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
+}
 
 void VulkanRHI::UpdateImageLayout(VkImage image, VkImageLayout newLayout)
 {
@@ -536,14 +342,15 @@ void VulkanRHI::RemoveImageLayout(VkImage image)
     }
 }
 
-
 VkImageLayout VulkanRHI::GetImageCurrentLayout(VkImage image)
 {
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
     if (m_imageLayoutCache.contains(image))
     {
         layout = m_imageLayoutCache[image];
     }
+
     return layout;
 }
 

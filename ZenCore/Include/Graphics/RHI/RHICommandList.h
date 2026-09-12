@@ -1,10 +1,11 @@
 #pragma once
-// #include "RHICommon.h"
 #include "RHIResource.h"
+#include "RHIShaderParameters.h"
 #include "Memory/PoolAllocator.h"
 #include "Memory/LinearAllocator.h"
 #include "Memory/Memory.h"
 #include "Templates/HeapVector.h"
+#include "Templates/VectorView.h"
 #include <type_traits>
 #include <utility>
 
@@ -12,7 +13,6 @@
 
 namespace zen
 {
-class RHIDescriptorSet;
 class RHIPipeline;
 
 class RHIPlatformCommandList
@@ -60,9 +60,9 @@ public:
 
     virtual void RHISetBlendConstants(const Color& blendConstants) = 0;
 
-    virtual void RHIBindPipeline(RHIPipeline* pPipeline,
-                                 uint32_t numDescriptorSets,
-                                 RHIDescriptorSet* const* pDescriptorSets) = 0;
+    virtual void RHIBindPipeline(RHIPipeline* pPipeline) = 0;
+
+    virtual void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) = 0;
 
     virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
                                       VectorView<uint64_t> offsets) = 0;
@@ -95,10 +95,10 @@ public:
 
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
 
-    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data) = 0;
+    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) = 0;
 
-    virtual void RHIAddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                                   BitField<RHIPipelineStageBits> dstStages,
+    virtual void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                                   BitField<RHIPipelineStageFlagBits> dstStages,
                                    VectorView<RHIMemoryTransition> memoryTransitions,
                                    VectorView<RHIBufferTransition> bufferTransitions,
                                    VectorView<RHITextureTransition> textureTransitions) = 0;
@@ -124,11 +124,9 @@ public:
                                 VectorView<RHITextureBlitRegion> regions,
                                 RHISamplerFilter filter) = 0;
 
-
     virtual void RHICopyTextureToBuffer(RHITexture* pSrcTex,
                                         RHIBuffer* pDstBuffer,
                                         VectorView<RHIBufferTextureCopyRegion> regions) = 0;
-
 
     virtual void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                         RHITexture* pDstTexture,
@@ -171,26 +169,36 @@ public:
         *m_ppCmdPtr          = pCmd;
         m_ppCmdPtr           = &pCmd->pNextCmd;
         ++m_numCommands;
+
         return pCmd;
     }
 
     template <typename T, typename... Args> T* AllocateCmdTyped(Args&&... args)
     {
         static_assert(std::is_base_of_v<RHICommandBase, T>, "T must derive from RHICommandBase");
-        T* pCmd        = new (AllocateCmd(sizeof(T), alignof(T))) T(std::forward<Args>(args)...);
+        // Construct command metadata before linking it into the recorded command list.
+        void* memory   = m_cmdAllocator.Alloc(sizeof(T), alignof(T));
+        T* pCmd        = new (memory) T(std::forward<Args>(args)...);
         pCmd->pDestroy = [](RHICommandBase* pBase) {
             static_cast<T*>(pBase)->~T();
         };
+        *m_ppCmdPtr = pCmd;
+        m_ppCmdPtr  = &pCmd->pNextCmd;
+        ++m_numCommands;
+
         return pCmd;
     }
 
     template <typename T> T* AllocateCmdData(size_t count)
     {
-        if (count == 0)
+        T* result{};
+
+        if (!(count == 0))
         {
-            return nullptr;
+            result = static_cast<T*>(m_cmdAllocator.Alloc(sizeof(T) * count, alignof(T)));
         }
-        return static_cast<T*>(m_cmdAllocator.Alloc(sizeof(T) * count, alignof(T)));
+
+        return result;
     }
 
     IRHICommandContext* GetContext() const
@@ -209,6 +217,25 @@ public:
     void Execute();
 
     void Reset();
+
+    struct CommandCheckpoint
+    {
+        RHICommandBase** tail;
+        uint32_t count;
+    };
+
+    CommandCheckpoint GetCommandCheckpoint() const
+    {
+        return {m_ppCmdPtr, m_numCommands};
+    }
+
+    uint32_t GetCommandCount() const
+    {
+        return m_numCommands;
+    }
+
+    // Discard only commands appended after this checkpoint. Arena bytes are reclaimed by Reset.
+    void RollbackCommands(CommandCheckpoint checkpoint);
 
 protected:
     RHICommandListBase() : m_cmdAllocator(64 * 1024)
@@ -290,6 +317,7 @@ struct RHICommandCopyTexture : public RHICommand
     RHITexture* pSrcTexture;
     RHITexture* pDstTexture;
     VectorView<RHITextureCopyRegion> copyRegions;
+
     //uint32_t numCopyRegions;
 
     //PRIVATE_ARRAY_DEF(RHITextureCopyRegion, CopyRegions, &this[1])
@@ -314,9 +342,7 @@ struct RHICommandBlitTexture : public RHICommand
     RHICommandBlitTexture(RHITexture* pSrcTexture,
                           RHITexture* pDstTexture,
                           RHISamplerFilter filter) :
-        pSrcTexture(pSrcTexture),
-        pDstTexture(pDstTexture),
-        filter(filter)
+        pSrcTexture(pSrcTexture), pDstTexture(pDstTexture), filter(filter)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
@@ -330,6 +356,7 @@ struct RHICommandCopyBufferToTexture : public RHICommand
     RHIBuffer* pSrcBuffer;
     RHITexture* pDstTexture;
     VectorView<RHIBufferTextureCopyRegion> copyRegions;
+
     //uint32_t numCopyRegions;
 
     //PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, CopyRegions, &this[1])
@@ -416,22 +443,30 @@ struct RHICommandBindPipeline final : public RHICommand
 {
     RHIPipelineType pipelineType;
     RHIPipeline* pPipeline;
-    uint32_t numDescriptorSets;
-    RHIDescriptorSet* const* pDescriptorSets;
 
-    explicit RHICommandBindPipeline(RHIPipelineType pipelineType,
-                                    RHIPipeline* pPipeline,
-                                    uint32_t numDescriptorSets,
-                                    RHIDescriptorSet* const* pDescriptorSets) :
-        pipelineType(pipelineType),
-        pPipeline(pPipeline),
-        numDescriptorSets(numDescriptorSets),
-        pDescriptorSets(pDescriptorSets)
+    explicit RHICommandBindPipeline(RHIPipelineType pipelineType, RHIPipeline* pPipeline) :
+        pipelineType(pipelineType), pPipeline(pPipeline)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBindPipeline(pPipeline, numDescriptorSets, pDescriptorSets);
+        cmdList.GetContext()->RHIBindPipeline(pPipeline);
+    }
+};
+
+struct RHICommandSetShaderParameters final : public RHICommand
+{
+    RHIBatchedShaderParameters parameters;
+
+    explicit RHICommandSetShaderParameters(const RHIBatchedShaderParameters& inParameters)
+    {
+        // Recorded commands own their parameter bytes until the command list is reset.
+        parameters.CopyFrom(inParameters);
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        cmdList.GetContext()->RHISetShaderParameters(parameters);
     }
 };
 
@@ -682,7 +717,8 @@ struct RHICommandDispatchIndirect final : public RHICommand
 struct RHICommandSetPushConstants final : public RHICommand
 {
     RHIPipeline* pPipeline;
-    VectorView<uint8_t> data;
+    VectorView<const uint8_t> data;
+    uint32_t offset; // todo: pass offset
 
     explicit RHICommandSetPushConstants(RHIPipeline* pPipeline) : pPipeline(pPipeline) {}
 
@@ -694,8 +730,8 @@ struct RHICommandSetPushConstants final : public RHICommand
 
 struct RHICommandAddTransitions final : public RHICommand
 {
-    BitField<RHIPipelineStageBits> srcStages;
-    BitField<RHIPipelineStageBits> dstStages;
+    BitField<RHIPipelineStageFlagBits> srcStages;
+    BitField<RHIPipelineStageFlagBits> dstStages;
 
     VectorView<RHIMemoryTransition> memoryTransitions;
     VectorView<RHIBufferTransition> bufferTransitions;
@@ -709,8 +745,8 @@ struct RHICommandAddTransitions final : public RHICommand
     //                  TextureTransitions,
     //                  &BufferTransitions()[numBufferTransitions])
 
-    RHICommandAddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                             BitField<RHIPipelineStageBits> dstStages) :
+    RHICommandAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                             BitField<RHIPipelineStageFlagBits> dstStages) :
         srcStages(srcStages), dstStages(dstStages)
     {}
 
@@ -759,7 +795,7 @@ public:
 
     void CopyTexture(RHITexture* pSrcTextureHandle,
                      RHITexture* pDstTextureHandle,
-                     VectorView<RHITextureCopyRegion> regions);
+                     VectorView<const RHITextureCopyRegion> regions);
 
     void BlitTexture(RHITexture* pSrcTextureHandle,
                      RHITexture* pDstTextureHandle,
@@ -772,7 +808,7 @@ public:
 
     void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                              RHITexture* pDstTexture,
-                             VectorView<RHIBufferTextureCopyRegion> regions);
+                             VectorView<const RHIBufferTextureCopyRegion> regions);
 
     void ResolveTexture(RHITexture* pSrcTexture,
                         RHITexture* pDstTexture,
@@ -793,10 +829,9 @@ public:
 
     void SetBlendConstants(const Color& color);
 
-    void BindPipeline(RHIPipelineType pipelineType,
-                      RHIPipeline* pPipeline,
-                      uint32_t numDescriptorSets,
-                      RHIDescriptorSet* const* pDescriptorSets);
+    void BindPipeline(RHIPipelineType pipelineType, RHIPipeline* pPipeline);
+
+    void SetShaderParameters(const RHIBatchedShaderParameters& parameters);
 
     void BeginRendering(const RHIRenderingLayout* pRenderingLayout);
 
@@ -820,15 +855,17 @@ public:
 
     void DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset);
 
-    void SetPushConstants(RHIPipeline* pPipeline, VectorView<uint8_t> data);
+    void SetPushConstants(RHIPipeline* pPipeline,
+                          const uint8_t* pData,
+                          uint32_t sizeBytes,
+                          uint32_t offset);
 
-    void AddTransitions(BitField<RHIPipelineStageBits> srcStages,
-                        BitField<RHIPipelineStageBits> dstStages,
+    void AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                        BitField<RHIPipelineStageFlagBits> dstStages,
                         VectorView<RHIMemoryTransition> memoryTransitions,
                         VectorView<RHIBufferTransition> bufferTransitions,
                         VectorView<RHITextureTransition> textureTransitions);
 
     void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
-    // todo: add BeginRendering/EndRendering && BeginRenderPass
 };
 } // namespace zen

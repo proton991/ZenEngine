@@ -2,7 +2,7 @@
 #include <vector>
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 
-#define ZEN_NUM_FRAMES_IN_FLIGHT 3u
+#define ZEN_MAX_NUM_SWAPCHAIN_IMAGES 8u
 
 namespace zen
 {
@@ -36,7 +36,7 @@ public:
         return m_format;
     }
 
-    auto& GetNumSwapchainImages() const
+    const uint32_t& GetNumSwapchainImages() const
     {
         return m_numImages;
     }
@@ -55,7 +55,6 @@ public:
     void Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo);
 
 private:
-    // VulkanRHI* m_RHI{nullptr};
     VulkanDevice* m_pDevice{nullptr};
     VkSwapchainKHR m_swaphchain{VK_NULL_HANDLE};
     VkSurfaceKHR m_surface{VK_NULL_HANDLE};
@@ -65,14 +64,16 @@ private:
     VkColorSpaceKHR m_colorSpace{VK_COLORSPACE_SRGB_NONLINEAR_KHR};
     VkPresentModeKHR m_presentMode{VK_PRESENT_MODE_IMMEDIATE_KHR};
     uint32_t m_numImages{0};
+
     // SmallVector<VkImage> m_swapchainImages;
-    VkImage m_swapchainImages[ZEN_NUM_FRAMES_IN_FLIGHT];
+    VkImage m_swapchainImages[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
     int32_t m_imageIndex{-1};
     int32_t m_semaphoreIndex{0};
+
     // SmallVector<VulkanSemaphore*> m_imageAcquiredSemphores;
     // std::vector<VulkanSemaphore*> m_imageAcquiredSemaphores;
-    VulkanSemaphore* m_pImageAcquiredSemaphores[ZEN_NUM_FRAMES_IN_FLIGHT];
-    uint64_t m_imageAcquiredSemaphoreSubmissionSerials[ZEN_NUM_FRAMES_IN_FLIGHT]{};
+    VulkanSemaphore* m_pImageAcquiredSemaphores[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
+    uint64_t m_imageAcquiredSemaphoreSubmissionSerials[ZEN_MAX_NUM_SWAPCHAIN_IMAGES]{};
 
     friend class VulkanViewport;
 };

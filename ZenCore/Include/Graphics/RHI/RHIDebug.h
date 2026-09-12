@@ -1,5 +1,6 @@
 #pragma once
 #include "DynamicRHI.h"
+#include "Templates/NameID.h"
 
 namespace zen
 {
@@ -10,16 +11,9 @@ public:
 
     virtual ~RHIDebug() = default;
 
-    virtual void SetPipelineDebugName(RHIPipeline* pPipelineHandle,
-                                      const std::string& debugName) = 0;
+    virtual void SetPipelineDebugName(RHIPipeline* pPipelineHandle, NameID debugName) = 0;
 
-    virtual void SetTextureDebugName(RHITexture* pTexture, const std::string& debugName) = 0;
-
-    // virtual void SetRenderPassDebugName(RenderPassHandle renderPassHandle,
-    //                                     const std::string& debugName) = 0;
-
-    virtual void SetDescriptorSetDebugName(RHIDescriptorSet* pDescriptorSetHandle,
-                                           const std::string& debugName) = 0;
+    virtual void SetTextureDebugName(RHITexture* pTexture, NameID debugName) = 0;
 
 protected:
     // explicit RHIDebug(DynamicRHI* RHI) : m_RHI(RHI) {}

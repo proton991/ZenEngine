@@ -12,8 +12,6 @@ class RenderDevice;
 class SkyboxRenderer;
 class DeferredLightingRenderer;
 class VoxelizerBase;
-class ShadowMapRenderer;
-class VoxelGIRenderer;
 class RenderScene;
 class RenderGraph;
 
@@ -37,8 +35,6 @@ public:
 
     void DispatchRenderWorkloads();
 
-    void ViewportResizeCallback();
-
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
         return m_pDeferredLightingRenderer;
@@ -54,11 +50,6 @@ public:
         return m_pVoxelizer;
     }
 
-    ShadowMapRenderer* RequestShadowMapRenderer() const
-    {
-        return m_pShadowMapRenderer;
-    }
-
     void SetRenderOption(RenderOption option)
     {
         m_renderOption = option;
@@ -72,9 +63,6 @@ private:
     DeferredLightingRenderer* m_pDeferredLightingRenderer{nullptr};
     SkyboxRenderer* m_pSkyboxRenderer{nullptr};
     VoxelizerBase* m_pVoxelizer{nullptr};
-    // VoxelRenderer* m_voxelRenderer{nullptr};
-    ShadowMapRenderer* m_pShadowMapRenderer{nullptr};
-    VoxelGIRenderer* m_pVoxelGIRenderer{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
 };
