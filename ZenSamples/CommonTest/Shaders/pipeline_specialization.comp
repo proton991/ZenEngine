@@ -1,0 +1,12 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(constant_id = 0) const bool enabled = true;
+layout(constant_id = 1) const int integerValue = -7;
+layout(constant_id = 2) const float floatValue = 1.25;
+layout(set = 0, binding = 0, std430) buffer Result { uint values[3]; } result;
+void main()
+{
+    result.values[0] = enabled ? 1u : 0u;
+    result.values[1] = uint(integerValue);
+    result.values[2] = floatBitsToUint(floatValue);
+}

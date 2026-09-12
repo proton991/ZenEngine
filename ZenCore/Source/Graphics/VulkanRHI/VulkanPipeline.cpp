@@ -155,36 +155,36 @@ void VulkanShader::Init()
     if (!specConstants.empty())
     {
         m_spcMapEntries.resize(specConstants.size());
+        m_specializationData.resize(specConstants.size());
 
         for (uint32_t i = 0; i < specConstants.size(); i++)
         {
             VkSpecializationMapEntry& entry = m_spcMapEntries[i];
-            // fill in data
+            // Vulkan scalar specialization values occupy four bytes, including VkBool32.
             entry.constantID = specConstants[i].constantId;
+            entry.offset     = i * sizeof(uint32_t);
+            entry.size       = sizeof(uint32_t);
 
             switch (specConstants[i].type)
             {
                 case RHIShaderSpecializationConstantType::eBool:
                 {
-                    entry.size   = sizeof(bool);
-                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].boolValue) -
-                        reinterpret_cast<const char*>(specConstants.data());
+                    m_specializationData[i] = specConstants[i].boolValue ? VK_TRUE : VK_FALSE;
                 }
                 break;
 
                 case RHIShaderSpecializationConstantType::eInt:
                 {
-                    entry.size   = sizeof(int);
-                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].intValue) -
-                        reinterpret_cast<const char*>(specConstants.data());
+                    static_assert(sizeof(specConstants[i].intValue) == sizeof(uint32_t));
+                    memcpy(&m_specializationData[i], &specConstants[i].intValue, sizeof(uint32_t));
                 }
                 break;
 
                 case RHIShaderSpecializationConstantType::eFloat:
                 {
-                    entry.size   = sizeof(float);
-                    entry.offset = reinterpret_cast<const char*>(&specConstants[i].floatValue) -
-                        reinterpret_cast<const char*>(specConstants.data());
+                    static_assert(sizeof(specConstants[i].floatValue) == sizeof(uint32_t));
+                    memcpy(&m_specializationData[i], &specConstants[i].floatValue,
+                           sizeof(uint32_t));
                 }
                 break;
 
@@ -195,8 +195,9 @@ void VulkanShader::Init()
 
     m_specializationInfo.mapEntryCount = static_cast<uint32_t>(m_spcMapEntries.size());
     m_specializationInfo.pMapEntries   = m_spcMapEntries.empty() ? nullptr : m_spcMapEntries.data();
-    m_specializationInfo.dataSize = specConstants.size() * sizeof(RHIShaderSpecializationConstant);
-    m_specializationInfo.pData    = specConstants.empty() ? nullptr : specConstants.data();
+    m_specializationInfo.dataSize      = m_specializationData.size() * sizeof(uint32_t);
+    m_specializationInfo.pData =
+        m_specializationData.empty() ? nullptr : m_specializationData.data();
 
     m_stageCreateInfos.reserve(m_shaderGroupSPIRV->GetStageCount());
 
@@ -273,7 +274,6 @@ void VulkanShader::Init()
         bool needUABFlag          = false;
         VulkanDescriptorPoolKey setPoolKey{};
         HeapVector<VkDescriptorBindingFlags> bindingFlags;
-        size_t dsLayoutHash = 0;
 
         // collect bindings for set i
         dsBindings[i].reserve(m_SRDTable[i].size());
@@ -306,12 +306,6 @@ void VulkanShader::Init()
             dsBindings[i].push_back(binding);
 
             setPoolKey.descriptorCount[ToUnderlying(srd.type)] += binding.descriptorCount;
-
-            util::HashCombine(dsLayoutHash, binding.binding);
-            util::HashCombine(dsLayoutHash, binding.descriptorType);
-            util::HashCombine(dsLayoutHash, binding.descriptorCount);
-            util::HashCombine(dsLayoutHash, binding.stageFlags);
-            util::HashCombine(dsLayoutHash, bindingFlags.back());
         }
 
         // create descriptor set layout for set i
@@ -334,14 +328,13 @@ void VulkanShader::Init()
         VKCHECK(
             vkCreateDescriptorSetLayout(GVulkanRHI->GetVkDevice(), &layoutCI, nullptr, &dsLayout));
 
-        util::HashCombine(dsLayoutHash, layoutCI.flags);
-
         m_descriptorSetLayouts[i]             = dsLayout;
         m_descriptorSetInfos[i].poolKey       = setPoolKey;
         m_descriptorSetInfos[i].ownsLayout    = true;
         m_descriptorSetInfos[i].variableCount = setVariableCount;
         m_descriptorSetInfos[i].layoutId =
-            GVulkanRHI->GetDescriptorPoolManager2()->GetOrCreateLayoutId(dsLayoutHash);
+            GVulkanRHI->GetDescriptorPoolManager2()->GetOrCreateLayoutId(layoutCI,
+                                                                         MakeVecView(bindingFlags));
     }
 
     // vertex input state
@@ -442,6 +435,37 @@ void VulkanShader::Destroy()
 
 VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& createInfo)
 {
+    const RHIRenderingLayout* layout = createInfo.pRenderingLayout;
+    if (layout == nullptr || layout->numColorRenderTargets > MAX_NUM_COLOR_ATTACHMENTS)
+    {
+        LOG_ERROR_AND_THROW("Graphics pipeline requires a valid rendering layout");
+    }
+    if (RHIOptions::GetInstance().UseDynamicRendering())
+    {
+        // Pipeline layouts may describe formats without owning concrete textures/views.
+        const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
+        for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
+        {
+            const auto& target = layout->colorRenderTargets[i];
+            if (target.numSamples != samples || FormatIsDepthOnly(target.format) ||
+                FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format))
+            {
+                LOG_ERROR_AND_THROW(
+                    "Pipeline color attachment format or sample count is incompatible");
+            }
+        }
+        if (layout->hasDepthStencilRT)
+        {
+            const auto& target = layout->depthStencilRenderTarget;
+            if (target.numSamples != samples ||
+                !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
+                  FormatIsDepthStencil(target.format)))
+            {
+                LOG_ERROR_AND_THROW(
+                    "Pipeline depth/stencil attachment format or sample count is incompatible");
+            }
+        }
+    }
     VulkanPipeline* pGfxPipeline =
         VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
 
@@ -498,6 +522,18 @@ void VulkanPipeline::InitGraphics()
     InitVkStruct(VPStateCI, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO);
     VPStateCI.scissorCount  = 1;
     VPStateCI.viewportCount = 1;
+    const auto& renderArea  = m_pRenderingLayout->renderArea;
+    const VkViewport viewport{static_cast<float>(renderArea.minX),
+                              static_cast<float>(renderArea.minY),
+                              static_cast<float>(renderArea.Width()),
+                              static_cast<float>(renderArea.Height()),
+                              0.0f,
+                              1.0f};
+    const VkRect2D scissor{
+        {static_cast<int32_t>(renderArea.minX), static_cast<int32_t>(renderArea.minY)},
+        {static_cast<uint32_t>(renderArea.Width()), static_cast<uint32_t>(renderArea.Height())}};
+    VPStateCI.pViewports = &viewport;
+    VPStateCI.pScissors  = &scissor;
 
     // Rasterization State
     const RHIGfxPipelineRasterizationState& rasterizationState = m_gfxStates.rasterizationState;
@@ -558,14 +594,16 @@ void VulkanPipeline::InitGraphics()
     // Color Blend State
     const RHIGfxPipelineColorBlendState& colorBlendState = m_gfxStates.colorBlendState;
     HeapVector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
-    vkCBAttStates.resize(colorBlendState.attachmentsMask.Count());
+    // Attachment indices are render-target locations; unmasked targets disable color writes.
+    vkCBAttStates.resize(m_pRenderingLayout->numColorRenderTargets);
 
     for (uint32_t i : colorBlendState.attachmentsMask)
     {
+        VERIFY_EXPR(i < vkCBAttStates.size());
         vkCBAttStates[i].blendEnable = colorBlendState.attachments[i].enableBlend;
 
         vkCBAttStates[i].srcColorBlendFactor =
-            ToVkBlendFactor(colorBlendState.attachments[i].srcAlphaBlendFactor);
+            ToVkBlendFactor(colorBlendState.attachments[i].srcColorBlendFactor);
         vkCBAttStates[i].dstColorBlendFactor =
             ToVkBlendFactor(colorBlendState.attachments[i].dstColorBlendFactor);
         vkCBAttStates[i].colorBlendOp = ToVkBlendOp(colorBlendState.attachments[i].colorBlendOp);
@@ -614,11 +652,12 @@ void VulkanPipeline::InitGraphics()
     InitVkStruct(dynamicStateCI, VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO);
 
     uint32_t numDynamicStates = m_gfxStates.dynamicStates.enabledStates.Count();
-    HeapVector<VkDynamicState> vkDynamicStates(numDynamicStates);
+    HeapVector<VkDynamicState> vkDynamicStates;
+    vkDynamicStates.reserve(numDynamicStates);
 
     for (uint32_t i : m_gfxStates.dynamicStates.enabledStates)
     {
-        vkDynamicStates[i] = ToVkDynamicState(static_cast<RHIDynamicState>(i));
+        vkDynamicStates.push_back(ToVkDynamicState(static_cast<RHIDynamicState>(i)));
     }
 
     dynamicStateCI.dynamicStateCount = numDynamicStates;
@@ -666,16 +705,24 @@ void VulkanPipeline::InitGraphics()
 
         if (m_pRenderingLayout->hasDepthStencilRT)
         {
-            VkFormat depthFormat = ToVkFormat(m_pRenderingLayout->depthStencilRenderTarget.format);
-            renderingCI.depthAttachmentFormat   = depthFormat;
-            renderingCI.stencilAttachmentFormat = depthFormat;
+            const DataFormat format = m_pRenderingLayout->depthStencilRenderTarget.format;
+            const auto aspects      = m_pRenderingLayout->depthStencilRenderTarget.GetAspects();
+            if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
+            {
+                renderingCI.depthAttachmentFormat = ToVkFormat(format);
+            }
+            if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
+            {
+                renderingCI.stencilAttachmentFormat = ToVkFormat(format);
+            }
         }
 
         pipelineCI.pNext = &renderingCI;
     }
 
-    VKCHECK(vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
-                                      &m_vkPipeline));
+    VKCHECK(vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(),
+                                      GVulkanRHI->GetDevice()->GetPipelineCache(), 1, &pipelineCI,
+                                      nullptr, &m_vkPipeline));
 
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
@@ -689,8 +736,9 @@ void VulkanPipeline::InitCompute()
     pipelineCI.stage  = pShader->GetStageCreateInfoData()[0];
     pipelineCI.layout = pShader->GetVkPipelineLayout();
 
-    VKCHECK(vkCreateComputePipelines(GVulkanRHI->GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
-                                     &m_vkPipeline));
+    VKCHECK(vkCreateComputePipelines(GVulkanRHI->GetVkDevice(),
+                                     GVulkanRHI->GetDevice()->GetPipelineCache(), 1, &pipelineCI,
+                                     nullptr, &m_vkPipeline));
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics/RHI/RHICommandList.h"
+#include "Templates/HeapVector.h"
 #include "Templates/HashMap.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
@@ -39,7 +40,8 @@ public:
 
     DataFormat GetSwapchainFormat() final
     {
-        return static_cast<DataFormat>(m_pSwapchain->GetFormat());
+        return m_pSwapchain != nullptr ? static_cast<DataFormat>(m_pSwapchain->GetFormat()) :
+                                         DataFormat::eUndefined;
     }
 
     DataFormat GetDepthStencilFormat() final
@@ -101,7 +103,7 @@ private:
 
     bool TryAcquireNextImage();
 
-    void RecreateSwapchain();
+    void RecreateSwapchain(bool recreateSurface = false);
 
     void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                                         VkImage dstImage,
@@ -118,8 +120,8 @@ private:
     VulkanSwapchain* m_pSwapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
     VulkanSemaphore* m_pImageAcquiredSemaphore{nullptr};
-    VulkanSemaphore* m_pRenderingCompleteSemaphores[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
-    VkImage m_swapchainImages[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
+    HeapVector<VulkanSemaphore*> m_renderingCompleteSemaphores;
+    HeapVector<VkImage> m_swapchainImages;
     VulkanTexture* m_pColorBackBuffer{nullptr};
     VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
 
@@ -134,5 +136,6 @@ private:
 
     FVulkanCommandListContext* m_pContext{nullptr};
     bool m_presentAcquiredFailed{false};
+    bool m_suspended{false};
 };
 } // namespace zen

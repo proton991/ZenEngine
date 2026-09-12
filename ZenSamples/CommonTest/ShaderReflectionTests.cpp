@@ -223,6 +223,32 @@ void ExpectAccess(const RHIShaderGroupInfo& info, NameID name, bool readable, bo
 }
 } // namespace
 
+TEST(ShaderReflectionTests, SharedSpecializationIdsMergeStagesAndKeepNewConstants)
+{
+    auto spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+    spirv->SetStageSPIRV(RHIShaderStage::eVertex, LoadReflectionFixture("pipeline.vert.spv"));
+    spirv->SetStageSPIRV(RHIShaderStage::eFragment, LoadReflectionFixture("pipeline.frag.spv"));
+    RHIShaderGroupInfo info{};
+    RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
+
+    ASSERT_EQ(info.specializationConstants.size(), 3u);
+    std::ranges::sort(info.specializationConstants, {},
+                      &RHIShaderSpecializationConstant::constantId);
+    for (uint32_t id = 0; id < 3; ++id)
+    {
+        const auto& constant = info.specializationConstants[id];
+        EXPECT_EQ(constant.constantId, id);
+        EXPECT_TRUE(constant.stages.HasFlag(RHIShaderStageFlagBits::eFragment));
+        EXPECT_EQ(constant.stages.HasFlag(RHIShaderStageFlagBits::eVertex), id < 2);
+    }
+    EXPECT_EQ(info.specializationConstants[0].type, RHIShaderSpecializationConstantType::eBool);
+    EXPECT_TRUE(info.specializationConstants[0].boolValue);
+    EXPECT_EQ(info.specializationConstants[1].type, RHIShaderSpecializationConstantType::eInt);
+    EXPECT_EQ(info.specializationConstants[1].intValue, static_cast<uint32_t>(-7));
+    EXPECT_EQ(info.specializationConstants[2].type, RHIShaderSpecializationConstantType::eFloat);
+    EXPECT_FLOAT_EQ(info.specializationConstants[2].floatValue, 1.25f);
+}
+
 TEST(ShaderReflectionTests, StorageQualifiersAndMemberAccessAreReflectedFromSPIRV)
 {
     HeapVector<uint8_t> bytes = LoadReflectionFixture("rdg_access.comp.spv");

@@ -3,6 +3,7 @@
 #include "Graphics/RHI/RHICommandList.h"
 #include "Utils/UniquePtr.h"
 #include "Templates/HeapVector.h"
+#include <string>
 
 namespace zen
 {
@@ -31,6 +32,9 @@ class VulkanDevice
 public:
     explicit VulkanDevice(VkPhysicalDevice gpu);
 
+    // Empty means the device satisfies the backend's minimum capability profile.
+    static std::string GetUnsupportedReason(VkPhysicalDevice gpu);
+
     void Init();
 
     void Destroy();
@@ -38,6 +42,11 @@ public:
     VkDevice GetVkHandle() const
     {
         return m_device;
+    }
+
+    VkPipelineCache GetPipelineCache() const
+    {
+        return m_pipelineCache;
     }
 
     VkPhysicalDeviceProperties GetPhysicalDeviceProperties() const
@@ -131,7 +140,6 @@ public:
     void WaitForIdle();
 
 private:
-    friend struct VulkanQueueTestAccess;
 
     void SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
@@ -142,6 +150,7 @@ private:
 
     // logical device
     VkDevice m_device{VK_NULL_HANDLE};
+    VkPipelineCache m_pipelineCache{VK_NULL_HANDLE};
 
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};
@@ -163,7 +172,7 @@ private:
     VulkanQueue* m_pComputeQueue{nullptr};
     VulkanQueue* m_pTransferQueue{nullptr};
 
-    VulkanFenceManager* m_pFenceManager;
-    VulkanSemaphoreManager* m_pSemaphoreManger;
+    VulkanFenceManager* m_pFenceManager{nullptr};
+    VulkanSemaphoreManager* m_pSemaphoreManger{nullptr};
 };
 } // namespace zen

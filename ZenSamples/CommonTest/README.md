@@ -1,0 +1,36 @@
+# Vulkan tests
+
+`VulkanRHITest` runs the CPU-only reflection, conversion, resource-create-info and descriptor-layout identity tests. It does not initialize Vulkan or require a GPU.
+
+`VulkanRHIIntegrationTest` requires a Vulkan device and the Khronos validation layer. It initializes the RHI through its public API. Descriptor tests observe actual Vulkan allocations, writes and bindings; queue/lifetime tests intercept Vulkan calls to control completion and submission failures deterministically. Tests access no private engine state and require no test-friend declarations.
+
+From a configured MSVC developer shell at the repository root:
+
+```powershell
+cmake --build build/x64-windows-msvc-debug --target VulkanRHITest VulkanRHIIntegrationTest RenderCoreTest CommonTest
+.\bin\VulkanRHITest.exe
+$env:VK_LAYER_VALIDATE_SYNC = '1'
+.\bin\VulkanRHIIntegrationTest.exe
+.\bin\RenderCoreTest.exe
+.\bin\CommonTest.exe
+```
+
+The descriptor integration suite includes 2,049 real compute dispatches across cache eviction, checked GPU output, delayed completion polling, unchanged bindings in a new workload, stale resolved handles, sparse arrays, binding ordering, resource generations, UBO ranges and packed/external UBO switching. Pool ownership and submission failure cases exercise both timeline-semaphore and fence modes.
+
+Pipeline integration tests check bool/int/float specialization payloads and compute results, all 16 dynamic-state combinations (including static viewport/scissor fallback), independent RGB/alpha blend factors with pixel readback, sparse color-attachment locations, and format-derived image aspects. Depth/stencil cases create actual pipelines and read back rendering clears for D16, D32, S8, D24S8 and D32S8; individual unsupported formats are explicitly skipped. Reflection tests also check specialization IDs shared across vertex and fragment stages. These tests use public RHI APIs and observe Vulkan calls while forwarding them to the driver.
+
+Binding integration tests check bindless-only rendering, global-plus-local descriptor sets, retained bindless views and image owners, immutable slot rejection and exhaustion, UBO array offsets and cache reuse, partial push-constant updates, 5,000 live native buffers, and repeated destruction of textures with heap-allocated view lists. Their real GPU output and Vulkan calls are checked. `CommonTest` currently selects the `PagedAllocator*` tests in its main function; page-growth regressions verify that live addresses and values survive growth and free-slot reuse with both locking modes.
+
+The [RHI lifetime and binding contracts](../../ZenCore/Include/Graphics/RHI/README.md) distinguish caller-owned raw RHI resources, texture-owned views, retained descriptor pools, and retained bindless registrations.
+
+Swapchain integration tests also require a window system and create hidden GLFW windows. Synthetic WSI calls exercise incomplete image enumeration, more than eight images, surface limits, unsupported usage/presentation, and acquisition/presentation errors. Native tests clear and present real images through resize, suspension, surface replacement, and rejected submissions. To test a larger image list independently of the driver's chosen image count, the native test driver exposes additional slots and maps them back to real images at acquisition/presentation. Capability tests mask individual driver features/extensions/limits and verify rejection or successful creation with optional features disabled; VMA also allocates on a device without enabled buffer device address.
+
+Disable graphics overlays for native WSI validation: injected presentation work can introduce its own validation errors or crashes. `$env:VK_LOADER_LAYERS_DISABLE = '~implicit~'` excludes implicit Vulkan layers for the current process, but external injection such as RivaTuner may require a separate per-application exclusion. Do not filter out validation errors to hide an active overlay. Phase 4's local verification report records the isolation used on this machine.
+
+
+Attachment integration tests read back every mip/layer after partial rendering, a fullscreen draw into a nonzero mip/layer, and depth/stencil clears. They cover array textures, cube faces, cached mip-0 attachment views, individual aspects of combined depth/stencil images, different attachment extents, and matching multisample color/depth pipelines. Invalid view ranges, aspects, roles, usage, extent/layer/sample mismatches, and image-view creation failures are rejected or cleaned up through public APIs. Vulkan boundary observers forward valid calls to the real driver. New test storage uses `HeapVector`; no existing cases or production access restrictions are removed. RenderCore also checks that pipeline caching distinguishes depth/stencil aspect selections and reuses equivalent views.
+
+
+Recording integration tests count and forward native calls, then read back GPU results for changed descriptors/dynamic UBO offsets, static/dynamic pipeline switches, graphics/compute binding independence, changed vertex buffers/offsets and explicit native-state invalidation. Eight repeated recording/submission cycles exercise command-buffer handle reuse. Capability tests inject native pipeline-cache creation failure and verify that device initialization can continue without it; graphics/compute creation tests check the shared device cache.
+
+`VulkanRecordingIntegrationTest.MeasureRepeatedDrawRecording` measures eight batches of 1,000 identical draws, excludes the first batch from timing statistics, reports median/min/max CPU recording time, and asserts deterministic native call counts. It excludes setup, submission and GPU waits from the timed region and verifies rendered output. `MeasureNativePipelineCacheBenefit` warms 32 small pipeline variants, then alternates seven measured cached/uncached rounds and reports their medians and cache-data size. Run them with `--gtest_filter=VulkanRecordingIntegrationTest.Measure*`. Timing values are diagnostic, with no hardware-dependent speed threshold in tests. For timing without validation, launch a separate process with `VK_LOADER_LAYERS_DISABLE=~implicit~,VK_LAYER_KHRONOS_validation`; correctness runs must keep validation enabled. These are CPU microbenchmarks, not frame-time or FPS claims.

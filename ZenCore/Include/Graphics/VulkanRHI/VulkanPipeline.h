@@ -125,6 +125,7 @@ private:
         VkPipelineVertexInputStateCreateInfo stateCI;
     } m_vertexInputInfo;
     HeapVector<VkSpecializationMapEntry> m_spcMapEntries{};
+    HeapVector<uint32_t> m_specializationData{};
     VkSpecializationInfo m_specializationInfo{};
     VkShaderStageFlags m_pushConstantsStageFlags;
     SmallVector<VkPipelineShaderStageCreateInfo> m_stageCreateInfos;
@@ -162,6 +163,11 @@ public:
         return m_vkPipeline;
     }
 
+    bool UsesDynamicState(RHIDynamicState state) const
+    {
+        return m_gfxStates.dynamicStates.enabledStates.Test(ToUnderlying(state));
+    }
+
     VkPipelineLayout GetVkPipelineLayout() const
     {
         return TO_VK_SHADER(m_pShader)->GetVkPipelineLayout();
@@ -178,7 +184,6 @@ protected:
     void Destroy() override;
 
 private:
-    friend struct VulkanDescriptorStateTestAccess;
 
     VulkanPipeline(const RHIGfxPipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
 

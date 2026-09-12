@@ -530,7 +530,9 @@ public:
         indirectDispatches.push_back(pIndirectBuffer);
     }
 
-    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) override
+    void RHISetPushConstants(RHIPipeline* pPipeline,
+                             VectorView<const uint8_t> data,
+                             uint32_t offset = 0) override
     {
         pushConstants.emplace_back(data.begin(), data.end());
     }
@@ -732,9 +734,11 @@ public:
         return log.RHIDispatchIndirect(pIndirectBuffer, offset);
     }
 
-    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) override
+    void RHISetPushConstants(RHIPipeline* pPipeline,
+                             VectorView<const uint8_t> data,
+                             uint32_t offset = 0) override
     {
-        return log.RHISetPushConstants(pPipeline, data);
+        return log.RHISetPushConstants(pPipeline, data, offset);
     }
 
     void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
@@ -11007,6 +11011,51 @@ TEST_F(RenderCoreTest, PipelineCacheReusesDynamicAttachmentsAndKeepsLegacyKeysSe
 
     device->DestroyTexture(firstTexture);
     device->DestroyTexture(secondTexture);
+}
+
+TEST_F(RenderCoreTest,
+       PipelineCacheDistinguishesExplicitDepthStencilAspectsAndReusesEquivalentViews)
+{
+    RHIShader* shader = CreateTestShaderProgram(device, "pipeline_attachment_aspects")->GetShader();
+    RHITextureCreateInfo textureInfo{};
+    textureInfo.format = DataFormat::eD32SFloatS8UInt;
+    textureInfo.type   = RHITextureType::e2D;
+    textureInfo.width = textureInfo.height = 8;
+    textureInfo.mipmaps                    = 2;
+    textureInfo.arrayLayers                = 2;
+    textureInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
+    RHITexture* texture = rhi->CreateTexture(textureInfo);
+    RHIGfxPipelineStates states{};
+    RHIRenderingLayout combined{};
+    combined.AddDepthStencilRenderTarget(texture->GetFormat(), texture,
+                                         RHIRenderTargetLoadOp::eClear,
+                                         RHIRenderTargetStoreOp::eStore);
+    RHIPipeline* both = device->GetOrCreateGfxPipeline(states, shader, &combined, {});
+    RHITextureViewCreateInfo viewInfo{};
+    viewInfo.format = textureInfo.format;
+    viewInfo.type   = textureInfo.type;
+    viewInfo.aspect.SetFlag(RHITextureAspectFlagBits::eDepth);
+    RHIRenderingLayout depth{};
+    depth.AddDepthStencilRenderTarget(texture->CreateView(viewInfo), RHIRenderTargetLoadOp::eClear,
+                                      RHIRenderTargetStoreOp::eStore);
+    RHIPipeline* depthOnly = device->GetOrCreateGfxPipeline(states, shader, &depth, {});
+    EXPECT_NE(depthOnly, both);
+    viewInfo.baseArrayLayer = viewInfo.baseMipLevel = 1;
+    RHIRenderingLayout otherMip{};
+    otherMip.AddDepthStencilRenderTarget(texture->CreateView(viewInfo),
+                                         RHIRenderTargetLoadOp::eLoad,
+                                         RHIRenderTargetStoreOp::eStore);
+    EXPECT_EQ(depthOnly, device->GetOrCreateGfxPipeline(states, shader, &otherMip, {}));
+    viewInfo.aspect.Clear();
+    viewInfo.aspect.SetFlag(RHITextureAspectFlagBits::eStencil);
+    RHIRenderingLayout stencil{};
+    stencil.AddDepthStencilRenderTarget(texture->CreateView(viewInfo),
+                                        RHIRenderTargetLoadOp::eClear,
+                                        RHIRenderTargetStoreOp::eStore);
+    RHIPipeline* stencilOnly = device->GetOrCreateGfxPipeline(states, shader, &stencil, {});
+    EXPECT_NE(stencilOnly, both);
+    EXPECT_NE(stencilOnly, depthOnly);
+    device->DestroyTexture(texture);
 }
 
 TEST_F(RenderCoreTest, PipelineCachePreservesLargeSpecializationsAndCanonicalOrder)

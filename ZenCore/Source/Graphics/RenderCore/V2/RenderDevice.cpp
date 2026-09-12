@@ -1147,6 +1147,10 @@ void RenderDevice::PipelineKey::AddAttachment(const RHIRenderTarget& target, boo
 {
     Add(target.format);
     Add(target.numSamples);
+    if (dynamicRendering)
+    {
+        Add(int64_t(target.GetAspects()));
+    }
 
     // Dynamic pipeline creation consumes attachment formats, not per-pass load/store ops.
     // Retain the conservative render-pass distinction for the legacy backend path.

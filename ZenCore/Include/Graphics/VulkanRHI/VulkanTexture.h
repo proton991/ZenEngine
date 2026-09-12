@@ -84,6 +84,9 @@ public:
 
     VkImageView GetVkImageView() const;
 
+    // Borrowed, texture-owned view of mip 0 and all array layers for rendering.
+    RHITextureView* GetAttachmentView();
+
     const VulkanMemoryAllocation& GetMemoryAllocation() const
     {
         return m_memAlloc;
@@ -112,6 +115,7 @@ private:
     VulkanMemoryAllocation m_memAlloc{};
 
     VkImageAspectFlags m_vkAspectFlags{};
+    RHITextureView* m_pAttachmentView{nullptr};
 };
 
 class VulkanTextureView : public RHITextureView

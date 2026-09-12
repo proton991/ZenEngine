@@ -227,7 +227,7 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     {
         ClearAllSetStates();
         m_packedValueBuffers.clear();
-        m_containerEpoch = 0;
+        m_cacheEpoch     = 0;
         m_pPipeline      = pPipeline;
     }
 }
@@ -252,8 +252,13 @@ void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParamet
 
     for (const RHIShaderResourceParameter& parameter : parameters.GetBindlessParams())
     {
-        GVulkanRHI->GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
-            parameter.pResource, parameter.arrayIndex);
+        if (parameter.bufferOffset != 0 ||
+            !GVulkanRHI->GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
+                parameter.pResource, parameter.arrayIndex))
+        {
+            LOG_ERROR_AND_THROW(
+                "Invalid bindless registration: slots cannot be replaced or exceed heap capacity");
+        }
     }
 }
 
@@ -288,7 +293,7 @@ void VulkanDescriptorSetState::Reset()
     m_packedValueBuffers.clear();
     m_updateSrbScratch.clear();
     m_dynamicOffsetScratch.clear();
-    m_containerEpoch = 0;
+    m_cacheEpoch     = 0;
     m_pPipeline      = nullptr;
 }
 
@@ -298,6 +303,7 @@ VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
 {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     outNeedsWrite                 = false;
+    m_setStates[setIdx].pContainer = nullptr;
 
     if (m_pPipeline != nullptr)
     {
@@ -319,7 +325,7 @@ VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
 
             if (pCache != nullptr && BuildContentKey(setIdx, contentKey))
             {
-                descriptorSet = pCache->Find(contentKey);
+                descriptorSet = pCache->Find(contentKey, m_setStates[setIdx].pContainer);
 
                 if (descriptorSet != VK_NULL_HANDLE)
                 {
@@ -327,10 +333,10 @@ VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
                 }
                 else
                 {
-                    descriptorSet =
-                        pCache->Insert(contentKey, pShader->GetDescriptorPoolKey(setIdx),
-                                       pShader->GetDescriptorSetLayoutHandle(setIdx),
-                                       updateAfterBind, variableCount);
+                    descriptorSet = pCache->Insert(
+                        contentKey, pShader->GetDescriptorPoolKey(setIdx),
+                        pShader->GetDescriptorSetLayoutHandle(setIdx), updateAfterBind,
+                        variableCount, m_setStates[setIdx].pContainer);
 
                     outNeedsWrite = true;
                 }
@@ -407,31 +413,32 @@ bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx,
     {
         VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
 
-        outKey.layoutId = pShader->GetDescriptorSetLayoutId(setIdx);
-
         if (pShader != nullptr && setIdx < pShader->GetNumDescriptorSetLayouts())
         {
-            complete            = true;
-            size_t resourceHash = 0;
-
+            complete        = true;
+            outKey.layoutId = pShader->GetDescriptorSetLayoutId(setIdx);
+            HeapVector<const BindingState*> bindingOrder;
+            for (const BindingState& binding : m_setStates[setIdx].bindings)
             {
-                for (const BindingState& bindingState : m_setStates[setIdx].bindings)
+                bindingOrder.push_back(&binding);
+            }
+            std::sort(bindingOrder.begin(), bindingOrder.end(),
+                      [](const auto* a, const auto* b) { return a->srb.binding < b->srb.binding; });
+
+            outKey.bindings.push_back(bindingOrder.size());
+            for (const BindingState* binding : bindingOrder)
+            {
+                outKey.bindings.push_back(binding->srb.binding);
+                outKey.bindings.push_back(ToUnderlying(binding->srb.type));
+                outKey.bindings.push_back(binding->valueRange);
+                outKey.bindings.push_back(binding->srb.resources.size());
+                // Dynamic offsets are bind-time state, not descriptor contents.
+                for (const RHIResource* resource : binding->srb.resources)
                 {
-                    util::HashCombine(resourceHash, bindingState.srb.binding);
-                    util::HashCombine(resourceHash, bindingState.srb.type);
-                    util::HashCombine(resourceHash, bindingState.valueRange);
-
-                    for (RHIResource* pResource : bindingState.srb.resources)
-                    {
-                        if (pResource != nullptr)
-                        {
-                            util::HashCombine(resourceHash, pResource->GetStableId());
-                            util::HashCombine(resourceHash, pResource->GetGenerationId());
-                        }
-                    }
+                    outKey.bindings.push_back(resource != nullptr ? resource->GetStableId() : 0);
+                    outKey.bindings.push_back(resource != nullptr ? resource->GetGenerationId() :
+                                                                    0);
                 }
-
-                outKey.resourceBindingsHash = resourceHash;
             }
         }
     }
@@ -444,6 +451,7 @@ void VulkanDescriptorSetState::ClearAllSetStates()
     for (SetState& setState : m_setStates)
     {
         setState.vkSet = VK_NULL_HANDLE;
+        setState.pContainer = nullptr;
         setState.bindings.clear();
         setState.dirty = false;
     }
@@ -456,6 +464,7 @@ void VulkanDescriptorSetState::InvalidateResolvedCaches()
     for (SetState& setState : m_setStates)
     {
         setState.vkSet = VK_NULL_HANDLE;
+        setState.pContainer = nullptr;
     }
 }
 
@@ -497,14 +506,22 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
 
     if (m_pPipeline != nullptr && param.set < MAX_NUM_DESCRIPTOR_SETS)
     {
+        if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
+        {
+            LOG_ERROR_AND_THROW("Only uniform-buffer parameters accept a buffer offset");
+        }
         SetState& setState         = m_setStates[param.set];
         BindingState& bindingState = FindOrAddBinding(setState, param.binding, param.resourceType);
 
         if (param.resourceType == RHIShaderResourceType::eUniformBuffer)
         {
-            // A physical UBO starts at offset zero, even when this pipeline previously used
-            // packed values at the same binding. Pending packed bytes must not override it.
-            bindingState.dynamicOffset = 0;
+            // Each external UBO element has its own offset, defaulting to zero.
+            // Pending packed bytes must not override these explicit bindings.
+            if (bindingState.dynamicOffsets.size() <= param.arrayIndex)
+            {
+                bindingState.dynamicOffsets.resize(param.arrayIndex + 1);
+            }
+            bindingState.dynamicOffsets[param.arrayIndex] = param.bufferOffset;
             const RHIShaderResourceDescriptor* srd =
                 m_pPipeline->GetShader()->GetSRDByLocation(param.set, param.binding);
             bindingState.valueRange = srd != nullptr ? srd->blockSize : 0;
@@ -606,8 +623,17 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
 
                     const uint64_t range = bindingState.valueRange > 0 ? bindingState.valueRange :
                                                                          buffer->GetRequiredSize();
+                    const uint32_t offset =
+                        i < bindingState.dynamicOffsets.size() ? bindingState.dynamicOffsets[i] : 0;
                     valid &= buffer->GetVkBuffer() != VK_NULL_HANDLE && range > 0 &&
-                        uint64_t(bindingState.dynamicOffset) + range <= buffer->GetRequiredSize();
+                        uint64_t(offset) + range <= buffer->GetRequiredSize();
+                    if (offset != 0)
+                    {
+                        const auto alignment = GVulkanRHI->GetDevice()
+                                                   ->GetPhysicalDeviceProperties()
+                                                   .limits.minUniformBufferOffsetAlignment;
+                        valid &= offset % alignment == 0;
+                    }
                     break;
                 }
 
@@ -684,28 +710,13 @@ void VulkanDescriptorSetState::BuildSetUpdates(uint32_t setIndex,
     }
 }
 
-VulkanDescriptorPoolSetContainer* VulkanDescriptorSetState::SyncContainerEpoch(
-    FVulkanCommandListContext* pContext)
+void VulkanDescriptorSetState::SyncCacheEpoch(const VulkanDescriptorSetCache& cache)
 {
-    VulkanDescriptorPoolSetContainer* pContainer = nullptr;
-
-    if (pContext != nullptr)
+    if (m_cacheEpoch != cache.GetEpoch())
     {
-        pContainer = pContext->AcquireDescriptorPoolSetContainer();
-
-        if (pContainer != nullptr)
-        {
-            const uint64_t acquireEpoch = pContainer->GetAcquireEpoch();
-
-            if (m_containerEpoch != acquireEpoch)
-            {
-                InvalidateResolvedCaches();
-                m_containerEpoch = acquireEpoch;
-            }
-        }
+        InvalidateResolvedCaches();
+        m_cacheEpoch = cache.GetEpoch();
     }
-
-    return pContainer;
 }
 
 void VulkanDescriptorSetState::BuildDescriptorSetList(
@@ -718,6 +729,10 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
 
     if (pShader != nullptr)
     {
+        const VulkanDescriptorSetCache* cache =
+            GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+        VERIFY_EXPR(cache != nullptr);
+        SyncCacheEpoch(*cache);
         const uint32_t numSets = pShader->GetNumDescriptorSetLayouts();
 
         uint32_t firstUsed = MAX_NUM_DESCRIPTOR_SETS;
@@ -728,7 +743,9 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
         {
             const SetState& setState = m_setStates[setIdx];
 
-            if (setState.vkSet == VK_NULL_HANDLE && setState.bindings.empty())
+            const bool globalBindless =
+                setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet();
+            if (!globalBindless && setState.vkSet == VK_NULL_HANDLE && setState.bindings.empty())
             {
                 continue;
             }
@@ -749,6 +766,9 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
 
             for (uint32_t i = firstUsed; i <= lastUsed; i++)
             {
+                // Resolving an earlier set can rotate the cache. Check again before
+                // dereferencing a resolved handle/container from a previous draw.
+                SyncCacheEpoch(*cache);
                 SetState& setState     = m_setStates[i];
                 const bool needResolve = setState.dirty || setState.vkSet == VK_NULL_HANDLE;
 
@@ -761,6 +781,12 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
 
                 if (allSetsResolved)
                 {
+                    if (setState.pContainer != nullptr)
+                    {
+                        // Retain on every bind, including unchanged bindings in a new
+                        // workload. Queue retirement releases this ownership.
+                        pContext->RetainDescriptorPool(setState.pContainer);
+                    }
                     outDescriptorSets[i - firstUsed] = setState.vkSet;
                     AppendDynamicOffsetsForSet(i, outDynamicOffsets);
                 }
@@ -793,20 +819,27 @@ void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx,
                 continue;
             }
 
-            // @note: currently only support dynamic UBO
-            //        UBOs are dynamic by default in current implementation
-            uint32_t offset = 0;
-
+            const BindingState* binding = nullptr;
             for (const BindingState& bindingState : m_setStates[setIdx].bindings)
             {
                 if (bindingState.srb.binding == srd.binding)
                 {
-                    offset = bindingState.dynamicOffset;
+                    binding = &bindingState;
                     break;
                 }
             }
 
-            m_dynamicOffsetScratch.push_back({srd.binding, offset});
+            // Vulkan consumes an offset for every descriptor, including unused array slots.
+            const uint32_t count =
+                srd.bindless ? pShader->GetDescriptorSetVariableCount(setIdx) : srd.arraySize;
+            for (uint32_t element = 0; element < count; ++element)
+            {
+                const uint32_t offset =
+                    binding != nullptr && element < binding->dynamicOffsets.size() ?
+                    binding->dynamicOffsets[element] :
+                    0;
+                m_dynamicOffsetScratch.push_back({srd.binding, offset});
+            }
         }
 
         std::stable_sort(m_dynamicOffsetScratch.begin(), m_dynamicOffsetScratch.end(),
@@ -872,7 +905,8 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
                         bindingState.valueRange != bufferState.blockSize;
                     bindingState.srb.resources.clear();
                     bindingState.srb.resources.push_back(block.pBuffer);
-                    bindingState.dynamicOffset = block.offset;
+                    bindingState.dynamicOffsets.resize(1);
+                    bindingState.dynamicOffsets[0] = block.offset;
                     bindingState.valueRange    = bufferState.blockSize;
                     setState.dirty |= bufferChanged;
                     bufferState.dirty = false;
@@ -901,6 +935,12 @@ VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::
         const RHIShaderResourceDescriptor* pSRD =
             m_pPipeline->GetShader()->GetSRDByLocation(setIdx, bindingIdx);
         VERIFY_EXPR(pSRD != nullptr);
+
+        if (pSRD == nullptr || pSRD->type != RHIShaderResourceType::eUniformBuffer ||
+            pSRD->arraySize != 1 || pSRD->bindless)
+        {
+            LOG_ERROR_AND_THROW("Packed uniform values require a single uniform-buffer descriptor");
+        }
 
         PackedValueBufferState& bufferState = m_packedValueBuffers.emplace_back();
         bufferState.setIdx                  = setIdx;

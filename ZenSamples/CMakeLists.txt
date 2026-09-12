@@ -7,10 +7,28 @@ add_executable(VulkanRHITest
     CommonTest/VulkanResourceCreationTests.cpp
 )
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
+# Explicit integration target: requires a Vulkan device and validation layer.
+add_executable(VulkanRHIIntegrationTest
+    CommonTest/VulkanDescriptorIntegrationTests.cpp
+    CommonTest/VulkanDescriptorLifetimeTests.cpp
+    CommonTest/VulkanQueueIntegrationTests.cpp
+    CommonTest/VulkanPipelineIntegrationTests.cpp
+    CommonTest/VulkanBindingIntegrationTests.cpp
+    CommonTest/VulkanSwapchainIntegrationTests.cpp
+    CommonTest/VulkanCapabilityIntegrationTests.cpp
+    CommonTest/VulkanAttachmentIntegrationTests.cpp
+    CommonTest/VulkanRecordingIntegrationTests.cpp
+)
+target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore gtest_main)
 # Compile reflection fixtures as test inputs, without adding them to engine shader assets.
 set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
 set(RDG_REFLECTION_TEST_BINARIES)
-foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag)
+foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag
+        descriptor_storage.comp descriptor_array.comp descriptor_bindings.comp
+        descriptor_uniform.comp descriptor_uniform_large.comp
+        pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
+        binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
+        recording_uniform.frag recording_vertex.vert)
     set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
     add_custom_command(OUTPUT "${OUTPUT}"
@@ -21,7 +39,9 @@ foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag)
 endforeach()
 add_custom_target(RDGReflectionTestShaders DEPENDS ${RDG_REFLECTION_TEST_BINARIES})
 add_dependencies(VulkanRHITest RDGReflectionTestShaders)
+add_dependencies(VulkanRHIIntegrationTest RDGReflectionTestShaders)
 target_compile_definitions(VulkanRHITest PRIVATE RDG_REFLECTION_TEST_PATH="${RDG_REFLECTION_TEST_PATH}")
+target_compile_definitions(VulkanRHIIntegrationTest PRIVATE RDG_REFLECTION_TEST_PATH="${RDG_REFLECTION_TEST_PATH}")
 
 add_executable(RenderCoreTest
     RenderCoreTest/RenderCoreTests.cpp

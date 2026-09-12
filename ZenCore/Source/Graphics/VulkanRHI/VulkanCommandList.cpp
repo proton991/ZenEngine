@@ -15,6 +15,7 @@
 #include "Platform/Timer.h"
 #include "Templates/HeapVector.h"
 #include "Utils/Errors.h"
+#include <algorithm>
 #include <cstdint>
 
 namespace zen
@@ -35,32 +36,132 @@ static const char* VulkanCommandBufferTypeToString(VulkanCommandBufferType type)
 }
 #endif
 
-static void BindPipelineAndDescriptorSets(VkCommandBuffer cmdBuffer,
-                                          VulkanPipeline* pPipeline,
-                                          const HeapVector<VkDescriptorSet>& descriptorSets,
-                                          uint32_t fisrtSet,
-                                          const HeapVector<uint32_t>& dynamicOffsets)
+template <typename T> static bool SameValues(const HeapVector<T>& left, const HeapVector<T>& right)
 {
-    VERIFY_EXPR(pPipeline != nullptr);
+    return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
+}
 
-    if (pPipeline != nullptr)
+void FVulkanCommandBuffer::InvalidateCachedState()
+{
+    for (auto& state : m_boundStates)
     {
-        vkCmdBindPipeline(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
-                          pPipeline->GetVkPipeline());
+        state.pipeline         = VK_NULL_HANDLE;
+        state.descriptorLayout = VK_NULL_HANDLE;
+        state.firstSet         = 0;
+        state.descriptorSets.clear();
+        state.dynamicOffsets.clear();
     }
+    m_validDynamicStates.Reset();
+    m_boundVertexBuffers.clear();
+    m_boundVertexOffsets.clear();
+}
 
-    if (!descriptorSets.empty())
+void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
+                                                         const HeapVector<VkDescriptorSet>& sets,
+                                                         uint32_t firstSet,
+                                                         const HeapVector<uint32_t>& offsets)
+{
+    if (pipeline == nullptr)
     {
-        vkCmdBindDescriptorSets(cmdBuffer, pPipeline->GetVkPipelineBindPoint(),
-                                pPipeline->GetVkPipelineLayout(), fisrtSet,
-                                static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(),
-                                static_cast<uint32_t>(dynamicOffsets.size()),
-                                dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
+        LOG_ERROR_AND_THROW("Draw or dispatch requires a pipeline");
+    }
+    const VkPipelineBindPoint bindPoint = pipeline->GetVkPipelineBindPoint();
+    auto& state = m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
+    if (state.pipeline != pipeline->GetVkPipeline())
+    {
+        vkCmdBindPipeline(m_vkHandle, bindPoint, pipeline->GetVkPipeline());
+        state.pipeline = pipeline->GetVkPipeline();
+        if (bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
+        {
+            // A static pipeline can invalidate dynamic values. Conservatively re-emit
+            // the next pipeline's dynamic state after every actual graphics pipeline bind.
+            m_validDynamicStates.Reset();
+        }
+    }
+    const VkPipelineLayout layout = pipeline->GetVkPipelineLayout();
+    if (!sets.empty() &&
+        (state.descriptorLayout != layout || state.firstSet != firstSet ||
+         !SameValues(state.descriptorSets, sets) || !SameValues(state.dynamicOffsets, offsets)))
+    {
+        vkCmdBindDescriptorSets(m_vkHandle, bindPoint, layout, firstSet,
+                                static_cast<uint32_t>(sets.size()), sets.data(),
+                                static_cast<uint32_t>(offsets.size()),
+                                offsets.empty() ? nullptr : offsets.data());
+        state.descriptorLayout = layout;
+        state.firstSet         = firstSet;
+        state.descriptorSets   = sets;
+        state.dynamicOffsets   = offsets;
+    }
+}
+
+void FVulkanCommandBuffer::SetViewport(const VkViewport& viewport)
+{
+    const uint32_t bit = ToUnderlying(RHIDynamicState::eViewPort);
+    if (!m_validDynamicStates.Test(bit) || m_viewport.x != viewport.x ||
+        m_viewport.y != viewport.y || m_viewport.width != viewport.width ||
+        m_viewport.height != viewport.height || m_viewport.minDepth != viewport.minDepth ||
+        m_viewport.maxDepth != viewport.maxDepth)
+    {
+        vkCmdSetViewport(m_vkHandle, 0, 1, &viewport);
+        m_viewport = viewport;
+        m_validDynamicStates.Set(bit);
+    }
+}
+
+void FVulkanCommandBuffer::SetScissor(const VkRect2D& scissor)
+{
+    const uint32_t bit = ToUnderlying(RHIDynamicState::eScissor);
+    if (!m_validDynamicStates.Test(bit) || m_scissor.offset.x != scissor.offset.x ||
+        m_scissor.offset.y != scissor.offset.y || m_scissor.extent.width != scissor.extent.width ||
+        m_scissor.extent.height != scissor.extent.height)
+    {
+        vkCmdSetScissor(m_vkHandle, 0, 1, &scissor);
+        m_scissor = scissor;
+        m_validDynamicStates.Set(bit);
+    }
+}
+
+void FVulkanCommandBuffer::SetDepthBias(float constantFactor, float clamp, float slopeFactor)
+{
+    const uint32_t bit = ToUnderlying(RHIDynamicState::eDepthBias);
+    if (!m_validDynamicStates.Test(bit) || m_depthBias[0] != constantFactor ||
+        m_depthBias[1] != clamp || m_depthBias[2] != slopeFactor)
+    {
+        vkCmdSetDepthBias(m_vkHandle, constantFactor, clamp, slopeFactor);
+        m_depthBias[0] = constantFactor;
+        m_depthBias[1] = clamp;
+        m_depthBias[2] = slopeFactor;
+        m_validDynamicStates.Set(bit);
+    }
+}
+
+void FVulkanCommandBuffer::SetLineWidth(float width)
+{
+    const uint32_t bit = ToUnderlying(RHIDynamicState::eLineWidth);
+    if (!m_validDynamicStates.Test(bit) || m_lineWidth != width)
+    {
+        vkCmdSetLineWidth(m_vkHandle, width);
+        m_lineWidth = width;
+        m_validDynamicStates.Set(bit);
+    }
+}
+
+void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers,
+                                             const HeapVector<uint64_t>& offsets)
+{
+    if (!buffers.empty() &&
+        (!SameValues(m_boundVertexBuffers, buffers) || !SameValues(m_boundVertexOffsets, offsets)))
+    {
+        vkCmdBindVertexBuffers(m_vkHandle, 0, static_cast<uint32_t>(buffers.size()), buffers.data(),
+                               offsets.data());
+        m_boundVertexBuffers = buffers;
+        m_boundVertexOffsets = offsets;
     }
 }
 
 void FVulkanCommandBuffer::Begin()
 {
+    InvalidateCachedState();
     if (m_state == State::eNeedReset)
     {
         vkResetCommandBuffer(m_vkHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
@@ -267,6 +368,16 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
 
 VulkanWorkload::~VulkanWorkload() {}
 
+void VulkanWorkload::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
+{
+    if (pContainer != nullptr &&
+        std::none_of(m_descriptorContainers.begin(), m_descriptorContainers.end(),
+                     [pContainer](const auto& owner) { return owner.Get() == pContainer; }))
+    {
+        m_descriptorContainers.emplace_back(pContainer);
+    }
+}
+
 FVulkanCommandBuffer* VulkanWorkload::GetLastCommandBuffer() const
 {
     return m_commandBuffers.empty() ? nullptr : m_commandBuffers.back();
@@ -297,12 +408,6 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
 {
-    if (m_pCurrentPoolSetContainer != nullptr)
-    {
-        GVulkanRHI->GetDescriptorPoolManager2()->ReleaseContainer(m_pCurrentPoolSetContainer);
-        m_pCurrentPoolSetContainer = nullptr;
-    }
-
     if (m_pCurrentWorkload != nullptr)
     {
         m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
@@ -323,7 +428,7 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
 {
     return pWorkload != nullptr &&
         (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
-         !pWorkload->m_signalSemaphoreInfos.empty());
+         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_descriptorContainers.empty());
 }
 
 VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
@@ -346,13 +451,6 @@ VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
 void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads)
 {
     FinalizePendingWorkload();
-
-    if (m_pCurrentPoolSetContainer != nullptr)
-    {
-        GVulkanRHI->GetDescriptorPoolManager2()->RetireContainer(m_pCurrentPoolSetContainer,
-                                                                 m_pQueue);
-        m_pCurrentPoolSetContainer = nullptr;
-    }
 
     if (!m_finalizedWorkloads.empty())
     {
@@ -412,8 +510,6 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
         }
         else
         {
-            GVulkanRHI->GetDescriptorPoolManager2()->AssignReteireSerial(m_pQueue,
-                                                                         submissionSerial);
             m_pQueue->ProcessPendingWorkloads(0);
         }
     }
@@ -421,15 +517,9 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
     return submissionResult;
 }
 
-VulkanDescriptorPoolSetContainer* VulkanCommandContextBase::AcquireDescriptorPoolSetContainer()
+void VulkanCommandContextBase::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
 {
-    if (m_pCurrentPoolSetContainer == nullptr)
-    {
-        m_pCurrentPoolSetContainer =
-            GVulkanRHI->GetDescriptorPoolManager2()->AcquireDescriptorPoolSetContainer();
-    }
-
-    return m_pCurrentPoolSetContainer;
+    GetWorkload(WorkloadPhase::eExecute)->RetainDescriptorPool(pContainer);
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
@@ -578,7 +668,6 @@ void VulkanGfxState::SetDepthBias(float depthBiasConstantFactor,
                                   float depthBiasClamp,
                                   float depthBiasSlopeFactor)
 {
-    m_rasterizationState.depthBiasEnable         = true;
     m_rasterizationState.depthBiasConstantFactor = depthBiasConstantFactor;
     m_rasterizationState.depthBiasClamp          = depthBiasClamp;
     m_rasterizationState.depthBiasSlopeFactor    = depthBiasSlopeFactor;
@@ -613,7 +702,6 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
-    m_descriptorSets.clear();
 }
 
 void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
@@ -626,41 +714,36 @@ void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& param
 
 void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 {
-    VkCommandBuffer cmdBuffer = pContext->GetCommandBuffer()->GetVkHandle();
-
-    // multi-viewports is not supported
-    if (!m_viewports.empty())
-    {
-        vkCmdSetViewport(cmdBuffer, 0, m_viewports.size(), m_viewports.data());
-    }
-
-    if (!m_scissors.empty())
-    {
-        vkCmdSetScissor(cmdBuffer, 0, m_scissors.size(), m_scissors.data());
-    }
-
-    if (m_rasterizationState.depthBiasEnable)
-    {
-        vkCmdSetDepthBias(cmdBuffer, m_rasterizationState.depthBiasConstantFactor,
-                          m_rasterizationState.depthBiasClamp,
-                          m_rasterizationState.depthBiasSlopeFactor);
-    }
-
-    vkCmdSetLineWidth(cmdBuffer, m_rasterizationState.lineWidth);
-    vkCmdSetBlendConstants(cmdBuffer, m_blendConstants);
-
-    uint32_t firstSet = 0;
-    HeapVector<uint32_t> dynamicOffsets;
+    FVulkanCommandBuffer* commandBuffer = pContext->GetCommandBuffer();
+    uint32_t firstSet                   = 0;
+    // Always resolve/retain descriptor pools: cache eviction and a new workload can
+    // require work even when the native binding commands themselves are unchanged.
     m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet,
-                                                        dynamicOffsets);
-    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets, firstSet,
-                                  dynamicOffsets);
-
-    if (!m_vertexBufferOffsets.empty() && !m_vertexBuffers.empty())
+                                                        m_dynamicOffsets);
+    commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets, firstSet,
+                                                 m_dynamicOffsets);
+    // Dynamic commands must follow the last static pipeline that invalidated them.
+    // Emit only states declared dynamic by the active pipeline.
+    if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eViewPort) && !m_viewports.empty())
     {
-        vkCmdBindVertexBuffers(cmdBuffer, 0, static_cast<uint32_t>(m_vertexBuffers.size()),
-                               m_vertexBuffers.data(), m_vertexBufferOffsets.data());
+        commandBuffer->SetViewport(m_viewports[0]);
     }
+    if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eScissor) && !m_scissors.empty())
+    {
+        commandBuffer->SetScissor(m_scissors[0]);
+    }
+    if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eDepthBias))
+    {
+        commandBuffer->SetDepthBias(m_rasterizationState.depthBiasConstantFactor,
+                                    m_rasterizationState.depthBiasClamp,
+                                    m_rasterizationState.depthBiasSlopeFactor);
+    }
+    if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eLineWidth))
+    {
+        commandBuffer->SetLineWidth(m_rasterizationState.lineWidth);
+    }
+    // Blend constants are static pipeline state in the current RHI dynamic-state enum.
+    commandBuffer->BindVertexBuffers(m_vertexBuffers, m_vertexBufferOffsets);
 }
 
 VulkanComputeState::VulkanComputeState()
@@ -678,7 +761,6 @@ void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
-    m_descriptorSets.clear();
 }
 
 void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
@@ -690,13 +772,12 @@ void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& p
 
 void VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 {
-    VkCommandBuffer cmdBuffer = pContext->GetCommandBuffer()->GetVkHandle();
-    uint32_t firstSet         = 0;
-    HeapVector<uint32_t> dynamicOffsets;
+    FVulkanCommandBuffer* commandBuffer = pContext->GetCommandBuffer();
+    uint32_t firstSet                   = 0;
     m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet,
-                                                        dynamicOffsets);
-    BindPipelineAndDescriptorSets(cmdBuffer, m_pCurrentPipeline, m_descriptorSets, firstSet,
-                                  dynamicOffsets);
+                                                        m_dynamicOffsets);
+    commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets, firstSet,
+                                                 m_dynamicOffsets);
 }
 
 FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
@@ -723,16 +804,83 @@ RHICommandContextType FVulkanCommandListContext::GetContextType()
     return m_contextType;
 }
 
+static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget& target,
+                                                  const RHIRenderingLayout& layout,
+                                                  bool depthStencil,
+                                                  SampleCount& samples,
+                                                  bool& hasSamples)
+{
+    if (target.pTexture == nullptr)
+    {
+        LOG_ERROR_AND_THROW("Rendering attachment has no texture");
+    }
+    RHITextureView* view = target.pTextureView != nullptr ?
+        target.pTextureView :
+        TO_VK_TEXTURE(target.pTexture)->GetAttachmentView();
+    if (view->GetTexture() != target.pTexture || view->GetFormat() != target.format)
+    {
+        LOG_ERROR_AND_THROW("Rendering attachment texture or format does not match its view");
+    }
+    const bool hasDepthStencilFormat = FormatIsDepthOnly(target.format) ||
+        FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format);
+    const auto usage = depthStencil ? RHITextureUsageFlagBits::eDepthStencilAttachment :
+                                      RHITextureUsageFlagBits::eColorAttachment;
+    if (depthStencil != hasDepthStencilFormat ||
+        !target.pTexture->GetBaseInfo().usageFlags.HasFlag(usage))
+    {
+        LOG_ERROR_AND_THROW(
+            "Rendering attachment format or image usage is incompatible with its role");
+    }
+    const auto& range = view->GetSubResourceRange();
+    if (view->GetTextureType() == RHITextureType::e3D || range.levelCount != 1 ||
+        layout.numLayers > range.layerCount)
+    {
+        LOG_ERROR_AND_THROW(
+            "Rendering requires a single-mip view with enough array layers; 3D views are unsupported");
+    }
+    const uint32_t width  = std::max(1u, target.pTexture->GetWidth() >> range.baseMipLevel);
+    const uint32_t height = std::max(1u, target.pTexture->GetHeight() >> range.baseMipLevel);
+    if (uint32_t(layout.renderArea.maxX) > width || uint32_t(layout.renderArea.maxY) > height)
+    {
+        LOG_ERROR_AND_THROW("Render area exceeds the selected attachment mip extent");
+    }
+    const SampleCount actualSamples = target.pTexture->GetBaseInfo().samples;
+    if (target.numSamples != actualSamples || (hasSamples && samples != actualSamples))
+    {
+        LOG_ERROR_AND_THROW("Rendering attachment sample counts do not match");
+    }
+    samples    = actualSamples;
+    hasSamples = true;
+    return view;
+}
+
 void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout)
 {
+    if (pRenderingLayout == nullptr ||
+        pRenderingLayout->numColorRenderTargets > MAX_NUM_COLOR_ATTACHMENTS)
+    {
+        LOG_ERROR_AND_THROW("Invalid rendering layout or color attachment count");
+    }
     if (RHIOptions::GetInstance().UseDynamicRendering())
     {
         VkRenderingInfoKHR renderingInfo{};
 
         const Rect2<int>& area = pRenderingLayout->renderArea;
+        const auto& limits     = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+        if (area.minX < 0 || area.minY < 0 || area.maxX <= area.minX || area.maxY <= area.minY ||
+            uint32_t(area.maxX) > limits.maxFramebufferWidth ||
+            uint32_t(area.maxY) > limits.maxFramebufferHeight || pRenderingLayout->numLayers == 0 ||
+            pRenderingLayout->numLayers > limits.maxFramebufferLayers ||
+            pRenderingLayout->numColorRenderTargets > limits.maxColorAttachments)
+        {
+            LOG_ERROR_AND_THROW(
+                "Rendering area, layer count or attachment count exceeds device limits");
+        }
+        SampleCount samples{};
+        bool hasSamples = false;
 
         InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
-        renderingInfo.layerCount               = 1;
+        renderingInfo.layerCount               = pRenderingLayout->numLayers;
         renderingInfo.viewMask                 = 0;
         renderingInfo.flags                    = 0;
         renderingInfo.renderArea.offset.x      = area.minX;
@@ -746,10 +894,11 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
         {
             const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
-            VulkanTexture* pVulkanTexture  = TO_VK_TEXTURE(colorRT.pTexture);
+            RHITextureView* view =
+                ResolveRenderingAttachment(colorRT, *pRenderingLayout, false, samples, hasSamples);
             VkRenderingAttachmentInfoKHR colorAttachment{};
             InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-            colorAttachment.imageView        = pVulkanTexture->GetVkImageView();
+            colorAttachment.imageView        = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
             colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
             colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
@@ -766,21 +915,47 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         if (pRenderingLayout->hasDepthStencilRT)
         {
             const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
-            VulkanTexture* pVulkanTexture         = TO_VK_TEXTURE(depthStencilRT.pTexture);
-            depthStencilAttachment.imageView      = pVulkanTexture->GetVkImageView();
+            RHITextureView* view = ResolveRenderingAttachment(depthStencilRT, *pRenderingLayout,
+                                                              true, samples, hasSamples);
+            depthStencilAttachment.imageView   = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
             depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
             depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
             depthStencilAttachment.clearValue.depthStencil =
                 ToVkClearDepthStencil(depthStencilRT.clearValue);
 
-            renderingInfo.pDepthAttachment = &depthStencilAttachment;
+            // Vulkan ignores the view's aspectMask for rendering. Select the intended
+            // depth/stencil operations through these attachment pointers instead.
+            const auto aspects = depthStencilRT.GetAspects();
+            if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
+            {
+                renderingInfo.pDepthAttachment = &depthStencilAttachment;
+            }
+            if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
+            {
+                renderingInfo.pStencilAttachment = &depthStencilAttachment;
+            }
         }
 
         GetCommandBuffer()->BeginRendering(&renderingInfo);
     }
     else
     {
+        // Explicit attachment selection is implemented only by dynamic rendering.
+        if (pRenderingLayout->numLayers != 1 ||
+            (pRenderingLayout->hasDepthStencilRT &&
+             pRenderingLayout->depthStencilRenderTarget.pTextureView != nullptr))
+        {
+            LOG_ERROR_AND_THROW(
+                "Explicit attachment views and layered rendering require dynamic rendering");
+        }
+        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; ++i)
+        {
+            if (pRenderingLayout->colorRenderTargets[i].pTextureView != nullptr)
+            {
+                LOG_ERROR_AND_THROW("Explicit attachment views require dynamic rendering");
+            }
+        }
         uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTargets();
         HeapVector<VkClearValue> clearValues;
         clearValues.resize(numAttachments);
@@ -972,11 +1147,12 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
 }
 
 void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline,
-                                                    VectorView<const uint8_t> data)
+                                                    VectorView<const uint8_t> data,
+                                                    uint32_t offset)
 {
     VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
     vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pVkPipeline->GetVkPipelineLayout(),
-                       pVkPipeline->GetPushConstantsStageFlags(), 0, data.size(), data.data());
+                       pVkPipeline->GetPushConstantsStageFlags(), offset, data.size(), data.data());
 }
 
 void FVulkanCommandListContext::RHIAddTransitions(
@@ -1321,13 +1497,6 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
     for (VulkanQueue* queue : queues)
     {
         queue->DiscardPendingWorkloads(result == RHISubmissionResult::eFatal);
-
-        // Rejected containers can retire against earlier accepted work. An uncertain device
-        // keeps all awaiting containers until teardown, never resetting descriptors still in use.
-        if (result != RHISubmissionResult::eFatal)
-        {
-            m_pDescriptorPoolManager2->AssignReteireSerial(queue, queue->GetLastSubmittedSerial());
-        }
     }
 
     return result;

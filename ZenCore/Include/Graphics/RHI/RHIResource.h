@@ -24,6 +24,8 @@ enum class RHIResourceType : uint32_t
     eMax           = 9
 };
 
+// Raw RHI callers own resource lifetime: retain resources until every recorded use
+// is discarded or completes on the GPU. ReleaseReference/Destroy* do not wait.
 class RHIResource
 {
 public:
@@ -401,6 +403,9 @@ struct RHITextureViewCreateInfo
     uint32_t arrayLayers{1};
     uint32_t mipLevels{1};
     uint32_t baseMipLevel{0};
+    uint32_t baseArrayLayer{0};
+    // Empty selects the format's aspects; combined formats retain depth sampling by default.
+    BitField<RHITextureAspectFlagBits> aspect;
     NameID tag;
 };
 
@@ -409,6 +414,9 @@ class RHITextureView;
 class RHITexture : public RHIResource
 {
 public:
+    // Both accessors return borrowed views owned by this texture. Do not release
+    // the texture-owned reference. An extra view reference does not retain its
+    // base texture; callers retaining a view must also keep the texture alive.
     virtual RHITextureView* CreateView(const RHITextureViewCreateInfo& createInfo) = 0;
 
     RHITextureView* GetDefaultView() const
@@ -506,6 +514,11 @@ protected:
 class RHITextureView : public RHIResource
 {
 public:
+    DataFormat GetFormat() const
+    {
+        return m_viewInfo.format;
+    }
+
     RHITexture* GetTexture() const
     {
         return m_pTexture;
@@ -539,28 +552,24 @@ protected:
 private:
     void InitSubresourceRange()
     {
-        if (FormatIsDepthOnly(m_viewInfo.format))
-        {
-            m_subResourceRange = RHITextureSubResourceRange::Depth();
-        }
-        else if (FormatIsStencilOnly(m_viewInfo.format))
-        {
-            m_subResourceRange = RHITextureSubResourceRange::Stencil();
-        }
-        else if (FormatIsDepthStencil(m_viewInfo.format))
-        {
-            m_subResourceRange = RHITextureSubResourceRange::DepthStencil();
-        }
-        else
-        {
-            m_subResourceRange = RHITextureSubResourceRange::Color();
-        }
-
+        m_subResourceRange.aspect         = m_viewInfo.aspect.IsEmpty() ?
+            GetTextureFormatAspects(m_viewInfo.format) :
+            m_viewInfo.aspect;
         m_subResourceRange.layerCount   = m_viewInfo.arrayLayers;
         m_subResourceRange.levelCount   = m_viewInfo.mipLevels;
         m_subResourceRange.baseMipLevel = m_viewInfo.baseMipLevel;
+        m_subResourceRange.baseArrayLayer = m_viewInfo.baseArrayLayer;
     }
 };
+
+inline BitField<RHITextureAspectFlagBits> RHIRenderTarget::GetAspects() const
+{
+    if (pTextureView != nullptr)
+    {
+        return pTextureView->GetSubResourceRange().aspect;
+    }
+    return GetTextureFormatAspects(format);
+}
 
 inline void RHITexture::DestroyOwnedViews()
 {
@@ -734,10 +743,7 @@ struct RHIRenderingLayout
 
     void Reset()
     {
-        numLayers                = 1;
-        numColorRenderTargets    = 1;
-        hasDepthStencilRT        = false;
-        depthStencilRenderTarget = {};
+        ClearRenderTargetInfo();
     }
 
     uint32_t GetTotalNumRenderTargets() const
@@ -777,19 +783,27 @@ struct RHIRenderingLayout
 
     void SetRenderArea(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
     {
+        if (int64_t(offsetX) + width > INT32_MAX || int64_t(offsetY) + height > INT32_MAX)
+        {
+            LOG_ERROR_AND_THROW("Render area exceeds the RHI coordinate range");
+        }
         renderArea.minX = offsetX;
-        renderArea.maxX = offsetX + static_cast<int32_t>(width);
+        renderArea.maxX = static_cast<int32_t>(int64_t(offsetX) + width);
         renderArea.minY = offsetY;
-        renderArea.maxY = offsetY + static_cast<int32_t>(height);
+        renderArea.maxY = static_cast<int32_t>(int64_t(offsetY) + height);
     }
 
     void AddColorRenderTarget(DataFormat format,
                               RHITexture* pTexture,
                               RHIRenderTargetLoadOp loadOp,
                               RHIRenderTargetStoreOp storeOp,
-                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE,
-                              SampleCount numSamples               = SampleCount::e1)
+                              RHIRenderTargetClearValue clearValue,
+                              SampleCount numSamples)
     {
+        if (numColorRenderTargets >= MAX_NUM_COLOR_ATTACHMENTS)
+        {
+            LOG_ERROR_AND_THROW("Too many color attachments");
+        }
         RHIRenderTarget colorRT;
         colorRT.format     = format;
         colorRT.pTexture   = pTexture;
@@ -798,9 +812,37 @@ struct RHIRenderingLayout
         colorRT.clearValue = clearValue;
         colorRT.numSamples = numSamples;
 
+        IncludeAttachmentLayers(pTexture != nullptr ? pTexture->GetArrayLayers() : 1);
         colorRenderTargets[numColorRenderTargets++] = colorRT;
+    }
 
-        numLayers = std::max(numLayers, pTexture->GetNumMipmaps());
+    void AddColorRenderTarget(DataFormat format,
+                              RHITexture* pTexture,
+                              RHIRenderTargetLoadOp loadOp,
+                              RHIRenderTargetStoreOp storeOp,
+                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE)
+    {
+        AddColorRenderTarget(format, pTexture, loadOp, storeOp, clearValue,
+                             pTexture != nullptr ? pTexture->GetBaseInfo().samples :
+                                                   SampleCount::e1);
+    }
+
+    void AddColorRenderTarget(RHITextureView* pView,
+                              RHIRenderTargetLoadOp loadOp,
+                              RHIRenderTargetStoreOp storeOp,
+                              RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE)
+    {
+        if (pView == nullptr)
+        {
+            LOG_ERROR_AND_THROW("Color attachment view is null");
+        }
+        const uint32_t previousLayers = numLayers;
+        const bool firstAttachment    = GetTotalNumRenderTargets() == 0;
+        AddColorRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
+        colorRenderTargets[numColorRenderTargets - 1].pTextureView = pView;
+        numLayers                                                  = firstAttachment ?
+            pView->GetSubResourceRange().layerCount :
+            std::min(previousLayers, pView->GetSubResourceRange().layerCount);
     }
 
     void AddDepthStencilRenderTarget(DataFormat format,
@@ -813,12 +855,35 @@ struct RHIRenderingLayout
         {
             depthStencilRenderTarget.format     = format;
             depthStencilRenderTarget.pTexture   = pTexture;
+            depthStencilRenderTarget.numSamples =
+                pTexture != nullptr ? pTexture->GetBaseInfo().samples : SampleCount::e1;
             depthStencilRenderTarget.loadOp     = loadOp;
             depthStencilRenderTarget.storeOp    = storeOp;
             depthStencilRenderTarget.clearValue = clearValue;
+            IncludeAttachmentLayers(pTexture != nullptr ? pTexture->GetArrayLayers() : 1);
             hasDepthStencilRT                   = true;
+        }
+    }
 
-            numLayers = std::max(numLayers, pTexture->GetNumMipmaps());
+    void AddDepthStencilRenderTarget(RHITextureView* pView,
+                                     RHIRenderTargetLoadOp loadOp,
+                                     RHIRenderTargetStoreOp storeOp,
+                                     RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
+    {
+        if (pView == nullptr)
+        {
+            LOG_ERROR_AND_THROW("Depth/stencil attachment view is null");
+        }
+        if (!hasDepthStencilRT)
+        {
+            const uint32_t previousLayers = numLayers;
+            const bool firstAttachment    = GetTotalNumRenderTargets() == 0;
+            AddDepthStencilRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp,
+                                        clearValue);
+            depthStencilRenderTarget.pTextureView = pView;
+            numLayers                             = firstAttachment ?
+                pView->GetSubResourceRange().layerCount :
+                std::min(previousLayers, pView->GetSubResourceRange().layerCount);
         }
     }
 
@@ -828,6 +893,7 @@ struct RHIRenderingLayout
         depthStencilRenderTarget = {};
         hasDepthStencilRT        = false;
         numColorRenderTargets    = 0;
+        numLayers                = 1;
     }
 
     uint32_t GetHash32() const
@@ -858,6 +924,12 @@ struct RHIRenderingLayout
         }
 
         return seed;
+    }
+
+private:
+    void IncludeAttachmentLayers(uint32_t layers)
+    {
+        numLayers = GetTotalNumRenderTargets() == 0 ? layers : std::min(numLayers, layers);
     }
 };
 

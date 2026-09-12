@@ -29,6 +29,8 @@ struct RHIShaderResourceParameter
     uint32_t set{0};
     uint32_t binding{0};
     uint32_t arrayIndex{0};
+    // Byte offset for this uniform-buffer array element. Other resource types use zero.
+    uint32_t bufferOffset{0};
 
     // Combined resources use the texture/buffer as pResource and its sampler as pAuxResource.
     RHIResource* pResource{nullptr};
@@ -42,10 +44,12 @@ struct RHIShaderResourceParameter
                                uint32_t inArrayIndex,
                                RHIResource* pInResource,
                                RHIResource* pInAuxResource,
-                               RHIShaderResourceType inResourceType) :
+                               RHIShaderResourceType inResourceType,
+                               uint32_t inBufferOffset = 0) :
         set(inSet),
         binding(inBinding),
         arrayIndex(inArrayIndex),
+        bufferOffset(inBufferOffset),
         pResource(pInResource),
         pAuxResource(pInAuxResource),
         resourceType(inResourceType)
@@ -84,17 +88,18 @@ public:
     void AddResourceParam(const RHIShaderResourceDescriptor& srd,
                           RHIResource* pResource,
                           RHIResource* pAuxResource,
-                          uint32_t arrayIndex)
+                          uint32_t arrayIndex,
+                          uint32_t bufferOffset = 0)
     {
         if (srd.bindless)
         {
             m_bindlessParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource,
-                                              pAuxResource, srd.type);
+                                              pAuxResource, srd.type, bufferOffset);
         }
         else
         {
             m_resourceParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource,
-                                              pAuxResource, srd.type);
+                                              pAuxResource, srd.type, bufferOffset);
         }
     }
 

@@ -2,6 +2,7 @@
 #include "VulkanQueue.h"
 #include "VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
+#include "VulkanDescriptorPool.h"
 #include "Templates/HeapVector.h"
 #include "Templates/VectorView.h"
 #include "Utils/Mutex.h"
@@ -54,6 +55,21 @@ public:
     void BeginRenderPass(const VkRenderPassBeginInfo* pBeginInfo);
 
     void EndRenderPass();
+
+    // Call after external native commands change pipeline, descriptor, vertex or dynamic state.
+    // Begin also invalidates all cached state, including when a native handle is recycled.
+    void InvalidateCachedState();
+
+    void BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
+                                       const HeapVector<VkDescriptorSet>& sets,
+                                       uint32_t firstSet,
+                                       const HeapVector<uint32_t>& offsets);
+    void SetViewport(const VkViewport& viewport);
+    void SetScissor(const VkRect2D& scissor);
+    void SetDepthBias(float constantFactor, float clamp, float slopeFactor);
+    void SetLineWidth(float width);
+    void BindVertexBuffers(const HeapVector<VkBuffer>& buffers,
+                           const HeapVector<uint64_t>& offsets);
 
     void SetSubmitted();
 
@@ -125,6 +141,24 @@ private:
     double m_submitTime{0.0f};
 
     VkRenderingFlags m_lastRenderingFlags{0};
+
+    struct BoundPipelineState
+    {
+        VkPipeline pipeline{VK_NULL_HANDLE};
+        VkPipelineLayout descriptorLayout{VK_NULL_HANDLE};
+        uint32_t firstSet{0};
+        HeapVector<VkDescriptorSet> descriptorSets;
+        HeapVector<uint32_t> dynamicOffsets;
+    };
+    // Graphics and compute bind points have independent state.
+    BoundPipelineState m_boundStates[2];
+    EnumBitMask<RHIDynamicState> m_validDynamicStates;
+    VkViewport m_viewport{};
+    VkRect2D m_scissor{};
+    float m_depthBias[3]{};
+    float m_lineWidth{1.0f};
+    HeapVector<VkBuffer> m_boundVertexBuffers;
+    HeapVector<uint64_t> m_boundVertexOffsets;
 };
 
 class FVulkanCommandBufferPool
@@ -218,11 +252,14 @@ private:
 
     void Merge(VulkanWorkload* pOtherWorkload);
 
+    void RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
+
     VulkanQueue* m_pQueue{nullptr};
     HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
     uint64_t m_submissionSerial{0};
     VulkanWorkload* m_pMergedInto{nullptr};
     HeapVector<VulkanWorkload*> m_mergedWorkloads;
+    HeapVector<RefCountPtr<VulkanDescriptorPoolSetContainer>> m_descriptorContainers;
 
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
@@ -303,7 +340,7 @@ public:
         }
     }
 
-    VulkanDescriptorPoolSetContainer* AcquireDescriptorPoolSetContainer();
+    void RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
 
     // Finalize the current workload, then append all staged workloads to the output array.
     void CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);
@@ -363,7 +400,6 @@ private:
     WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
     bool m_hasPendingFlushWorkload{false};
     uint64_t m_lastSubmittedSerial{0};
-    VulkanDescriptorPoolSetContainer* m_pCurrentPoolSetContainer{nullptr};
 };
 
 class VulkanGfxState
@@ -401,6 +437,7 @@ private:
 
     VulkanPipeline* m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
+    HeapVector<uint32_t> m_dynamicOffsets;
     VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
 
     HeapVector<VkBuffer> m_vertexBuffers;
@@ -408,7 +445,6 @@ private:
 
     struct RasterizationStates
     {
-        bool depthBiasEnable{false};
         float depthBiasConstantFactor{0.0f};
         float depthBiasClamp{0.0f};
         float depthBiasSlopeFactor{0.0f};
@@ -436,6 +472,7 @@ public:
 private:
     VulkanPipeline* m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
+    HeapVector<uint32_t> m_dynamicOffsets;
     VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
     bool m_useAutomaticDescriptorSets{false};
 };
@@ -500,7 +537,9 @@ public:
 
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override;
 
-    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) override;
+    void RHISetPushConstants(RHIPipeline* pPipeline,
+                             VectorView<const uint8_t> data,
+                             uint32_t offset = 0) override;
 
     void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                            BitField<RHIPipelineStageFlagBits> dstStages,

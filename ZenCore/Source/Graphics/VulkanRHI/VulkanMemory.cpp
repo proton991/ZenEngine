@@ -25,7 +25,10 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
     }
 }
 
-void VulkanMemoryAllocator::Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device)
+void VulkanMemoryAllocator::Init(VkInstance instance,
+                                 VkPhysicalDevice gpu,
+                                 VkDevice device,
+                                 bool bufferDeviceAddress)
 {
     // pass dynamic function pointers to vma
     VmaVulkanFunctions vmaVkFunc{};
@@ -53,7 +56,11 @@ void VulkanMemoryAllocator::Init(VkInstance instance, VkPhysicalDevice gpu, VkDe
     allocatorCI.instance       = instance;
     allocatorCI.device         = device;
     allocatorCI.physicalDevice = gpu;
-    allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    allocatorCI.vulkanApiVersion = VK_API_VERSION_1_2;
+    if (bufferDeviceAddress)
+    {
+        allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    }
     allocatorCI.pVulkanFunctions = &vmaVkFunc;
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
 }

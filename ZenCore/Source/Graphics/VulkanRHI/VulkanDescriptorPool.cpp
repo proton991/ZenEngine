@@ -203,6 +203,16 @@ VulkanDescriptorPoolSetContainer::~VulkanDescriptorPoolSetContainer()
     DestroyChains(m_UABChainMap);
 }
 
+uint32_t VulkanDescriptorPoolSetContainer::Release()
+{
+    const uint32_t remaining = m_refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
+    if (remaining == 0)
+    {
+        ZEN_DELETE(this);
+    }
+    return remaining;
+}
+
 VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescriptorPoolKey& poolKey,
                                                            bool updateAfterBind,
                                                            VkDescriptorSetLayout layout,
@@ -246,6 +256,7 @@ void VulkanDescriptorPoolSetContainer::ResetChains(PoolChainMap& chainMap)
 
 void VulkanDescriptorPoolSetContainer::Reset()
 {
+    VERIFY_EXPR(GetRefCount() == 1);
     ResetChains(m_nonUABChainMap);
     ResetChains(m_UABChainMap);
 }
@@ -355,7 +366,7 @@ void VulkanDescriptorSetCache::Destroy()
             }
             else
             {
-                ZEN_DELETE(slot.pContainer);
+                slot.pContainer->Release();
             }
         }
 
@@ -374,8 +385,10 @@ void VulkanDescriptorSetCache::Destroy()
     m_pDevice            = nullptr;
 }
 
-VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key)
+VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key,
+                                               VulkanDescriptorPoolSetContainer*& outContainer)
 {
+    outContainer                  = nullptr;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
     const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
                       VulkanDescriptorSetCache::ContentKeyHasher>::iterator entryIndexIt =
@@ -404,6 +417,7 @@ VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key)
                     if (entry.key == key && slot.generation == entry.slotGeneration)
                     {
                         descriptorSet      = entry.descriptorSet;
+                        outContainer       = slot.pContainer;
                         slot.lastUsedFrame = m_currentFrame;
                     }
                 }
@@ -426,8 +440,10 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
                                                  const VulkanDescriptorPoolKey& poolKey,
                                                  VkDescriptorSetLayout layout,
                                                  bool updateAfterBind,
-                                                 uint32_t variableCount)
+                                                 uint32_t variableCount,
+                                                 VulkanDescriptorPoolSetContainer*& outContainer)
 {
+    outContainer = nullptr;
     VERIFY_EXPR(layout != VK_NULL_HANDLE);
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
@@ -446,6 +462,7 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
 
             if (descriptorSet != VK_NULL_HANDLE)
             {
+                outContainer              = slot.pContainer;
                 const uint32_t entryIdx   = static_cast<uint32_t>(m_entries.size());
                 uint32_t previousEntryIdx = kInvalidEntryIndex;
                 const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
@@ -521,7 +538,7 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
         }
         else
         {
-            ZEN_DELETE(oldestSlot.pContainer);
+            oldestSlot.pContainer->Release();
         }
 
         oldestSlot = {};
@@ -618,6 +635,7 @@ void VulkanDescriptorPoolManager2::BeginFrame(uint32_t frameNumber)
         m_pContentCache->BeginFrame(frameNumber);
     }
 
+    ReclaimRetiredContainers();
     TickPoolSetContainers();
 }
 
@@ -636,6 +654,7 @@ void VulkanDescriptorPoolManager2::Destroy()
 
 VulkanDescriptorPoolSetContainer* VulkanDescriptorPoolManager2::AcquireDescriptorPoolSetContainer()
 {
+    ReclaimRetiredContainers();
     VulkanDescriptorPoolSetContainer* pContainer = nullptr;
 
     if (!m_freeContainers.empty())
@@ -647,8 +666,6 @@ VulkanDescriptorPoolSetContainer* VulkanDescriptorPoolManager2::AcquireDescripto
     {
         pContainer = ZEN_NEW() VulkanDescriptorPoolSetContainer(m_pDevice);
     }
-
-    pContainer->SetAcquireEpoch(m_nextAcquireEpoch++);
 
     m_usedContainers.push_back(pContainer);
 
@@ -677,49 +694,17 @@ void VulkanDescriptorPoolManager2::ReleaseContainer(VulkanDescriptorPoolSetConta
 
         if (containerWasUsed)
         {
-            pContainer->Reset();
-            m_freeContainers.push_back({pContainer, 0});
+            // Eviction only removes lookup ownership. Workloads retain the pool from
+            // recording through completion, including merged and uncertain submissions.
+            m_retiredContainers.push_back(pContainer);
+            ReclaimRetiredContainers();
         }
     }
-}
-
-void VulkanDescriptorPoolManager2::RetireContainer(VulkanDescriptorPoolSetContainer* pContainer,
-                                                   VulkanQueue* pQueue)
-{
-    if (pContainer != nullptr)
-    {
-        m_awaitingSubmissionContainers.emplace_back(pContainer, pQueue, 0, 0);
-    }
-}
-
-void VulkanDescriptorPoolManager2::AssignReteireSerial(VulkanQueue* pQueue, uint64_t serial)
-{
-    size_t writeIndex = 0;
-
-    for (uint32_t i = 0; i < m_awaitingSubmissionContainers.size(); i++)
-    {
-        PendingContainerEntry& entry = m_awaitingSubmissionContainers[i];
-
-        if (entry.pQueue != pQueue)
-        {
-            m_awaitingSubmissionContainers[writeIndex++] = entry;
-            continue;
-        }
-
-        entry.serial = serial;
-        m_awaitingCompletionContainers.push_back(entry);
-    }
-
-    m_awaitingSubmissionContainers.resize(writeIndex);
-
-    ReclaimCompletedContainers();
 }
 
 void VulkanDescriptorPoolManager2::TickPoolSetContainers()
 {
-    // Containers are reset on release and retained for reuse. They are destroyed
-    // together by Destroy(), which avoids reclaiming pools that may still be
-    // referenced by in-flight command buffers.
+    // Only containers without recording/submission references reach this free list.
     for (FreeContainerEntry& entry : m_freeContainers)
     {
         ++entry.idleTicks;
@@ -729,7 +714,7 @@ void VulkanDescriptorPoolManager2::TickPoolSetContainers()
 
     if (!m_freeContainers.empty() && m_freeContainers[0].idleTicks > kContanierIdleGCThreshold)
     {
-        ZEN_DELETE(m_freeContainers[0].pContainer);
+        m_freeContainers[0].pContainer->Release();
 
         m_freeContainers.pop_front();
 
@@ -737,9 +722,42 @@ void VulkanDescriptorPoolManager2::TickPoolSetContainers()
     }
 }
 
-uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(size_t layoutHash)
+uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(
+    const VkDescriptorSetLayoutCreateInfo& createInfo,
+    VectorView<const VkDescriptorBindingFlags> bindingFlags)
 {
-    const FlatHashMap<size_t, uint32_t>::iterator layoutIdIt = m_layoutIdMap.find(layoutHash);
+    VERIFY_EXPR(bindingFlags.size() == createInfo.bindingCount);
+    HeapVector<uint32_t> bindingOrder(createInfo.bindingCount);
+    for (uint32_t i = 0; i < createInfo.bindingCount; ++i)
+    {
+        bindingOrder[i] = i;
+    }
+    std::sort(bindingOrder.begin(), bindingOrder.end(), [&createInfo](uint32_t a, uint32_t b) {
+        return createInfo.pBindings[a].binding < createInfo.pBindings[b].binding;
+    });
+
+    LayoutKey key;
+    key.data.push_back(createInfo.flags);
+    key.data.push_back(createInfo.bindingCount);
+    for (uint32_t i : bindingOrder)
+    {
+        const VkDescriptorSetLayoutBinding& binding = createInfo.pBindings[i];
+        key.data.push_back(binding.binding);
+        key.data.push_back(binding.descriptorType);
+        key.data.push_back(binding.descriptorCount);
+        key.data.push_back(binding.stageFlags);
+        key.data.push_back(bindingFlags[i]);
+        key.data.push_back(binding.pImmutableSamplers != nullptr);
+        if (binding.pImmutableSamplers != nullptr)
+        {
+            for (uint32_t j = 0; j < binding.descriptorCount; ++j)
+            {
+                key.data.push_back(reinterpret_cast<uint64_t>(binding.pImmutableSamplers[j]));
+            }
+        }
+    }
+
+    const auto layoutIdIt                                    = m_layoutIdMap.find(key);
     uint32_t layoutId                                        = 0;
 
     if (layoutIdIt != m_layoutIdMap.end())
@@ -753,7 +771,7 @@ uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(size_t layoutHash)
         if (m_nextLayoutId != 0)
         {
             layoutId = m_nextLayoutId++;
-            m_layoutIdMap.emplace(layoutHash, layoutId);
+            m_layoutIdMap.emplace(std::move(key), layoutId);
         }
     }
 
@@ -764,44 +782,44 @@ void VulkanDescriptorPoolManager2::DestroyContainers()
 {
     for (VulkanDescriptorPoolSetContainer* pContainer : m_usedContainers)
     {
-        ZEN_DELETE(pContainer);
+        pContainer->Release();
     }
 
     m_usedContainers.clear();
 
     for (FreeContainerEntry& entry : m_freeContainers)
     {
-        ZEN_DELETE(entry.pContainer);
+        entry.pContainer->Release();
     }
 
     m_freeContainers.clear();
+
+    // A fatal submission may keep a workload alive until queue teardown. Its
+    // references own these containers independently of this manager.
+    for (VulkanDescriptorPoolSetContainer* pContainer : m_retiredContainers)
+    {
+        pContainer->Release();
+    }
+    m_retiredContainers.clear();
 }
 
-void VulkanDescriptorPoolManager2::ReclaimCompletedContainers()
+void VulkanDescriptorPoolManager2::ReclaimRetiredContainers()
 {
     size_t writeIndex = 0;
 
-    for (uint32_t i = 0; i < m_awaitingCompletionContainers.size(); i++)
+    for (VulkanDescriptorPoolSetContainer* pContainer : m_retiredContainers)
     {
-        const PendingContainerEntry& entry = m_awaitingCompletionContainers[i];
-        const bool completed               = entry.serial == 0 || entry.pQueue == nullptr ||
-            entry.pQueue->GetLastCompletedSerial() >= entry.serial;
-
-        if (!completed)
+        if (pContainer->GetRefCount() != 1)
         {
-            m_awaitingCompletionContainers[writeIndex++] = entry;
+            m_retiredContainers[writeIndex++] = pContainer;
             continue;
         }
 
-        ReleaseContainer(entry.pContainer);
+        pContainer->Reset();
+        m_freeContainers.push_back({pContainer, 0});
     }
 
-    m_awaitingCompletionContainers.resize(writeIndex);
-
-    for (PendingContainerEntry& entry : m_awaitingSubmissionContainers)
-    {
-        entry.numFramesAwaitingSubmission++;
-    }
+    m_retiredContainers.resize(writeIndex);
 }
 
 VkDescriptorType GetBindlessDescriptorType(RHIBindlessHeapType heapType)
@@ -846,10 +864,15 @@ RHIBindlessHeapType GetBindlessHeapType(const RHIResource* pResource)
     {
         case RHIResourceType::eSampler: heapType = RHIBindlessHeapType::eSampler; break;
 
+        case RHIResourceType::eTexture:
         case RHIResourceType::eTextureView:
         {
-            RHITextureType texType =
-                static_cast<const RHITextureView*>(pResource)->GetTextureType();
+            const VulkanTextureView* view = GetBindlessTextureView(pResource);
+            if (view == nullptr)
+            {
+                break;
+            }
+            const RHITextureType texType = view->GetTextureType();
 
             if (texType == RHITextureType::e2D)
             {
@@ -882,7 +905,9 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
              heapType == RHIBindlessHeapType::eTextureCube)
     {
         const VulkanTextureView* pTextureView = GetBindlessTextureView(pResource);
-        valid = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE;
+        valid = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE &&
+            pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(
+                RHITextureUsageFlagBits::eSampled);
     }
 
     return valid;
@@ -939,6 +964,17 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
         m_pendingWrites[heapIdx].clear();
+        for (BindlessSlotState& slot : m_slotStates[heapIdx])
+        {
+            if (slot.pResource != nullptr)
+            {
+                slot.pResource->ReleaseReference();
+            }
+            if (slot.pTextureOwner != nullptr)
+            {
+                slot.pTextureOwner->ReleaseReference();
+            }
+        }
         m_slotStates[heapIdx].clear();
         m_heapAllocCount[heapIdx] = 0;
     }
@@ -969,63 +1005,51 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
 {
     LockAuto lock(&m_mutex);
 
-    VERIFY_EXPR(pResource != nullptr);
-
-    bool registered = false;
+    if (pResource == nullptr || m_vkSet == VK_NULL_HANDLE)
+    {
+        return false;
+    }
 
     const RHIBindlessHeapType heapType = GetBindlessHeapType(pResource);
 
-    VERIFY_EXPR(heapType != RHIBindlessHeapType::eMax);
+    if (heapType == RHIBindlessHeapType::eMax || !IsValidBindlessResource(pResource, heapType))
+    {
+        return false;
+    }
 
     const uint32_t heapIdx    = ToUnderlying(heapType);
     const size_t heapCapacity = GetBindlessHeapCapacity(heapType);
 
-    const bool useExplicitSlotIdx = slotIdx != kInvalidBindlessSlotIndex;
-
-    if (m_heapAllocCount[heapIdx] < heapCapacity || useExplicitSlotIdx)
+    if (slotIdx == kInvalidBindlessSlotIndex)
     {
-        // reassign slotIdx if it is not set by caller
-        slotIdx = useExplicitSlotIdx ? slotIdx : m_heapAllocCount[heapIdx];
-
-        VERIFY_EXPR(slotIdx < heapCapacity);
-
-        BindlessSlotState& slotState      = m_slotStates[heapIdx][slotIdx];
-        const uint64_t resourceId         = pResource->GetStableId();
-        const uint32_t resourceGeneration = pResource->GetGenerationId();
-        const bool descriptorNeedsWrite   = slotState.resourceId != resourceId ||
-            slotState.resourceGeneration != resourceGeneration;
-
-        if (descriptorNeedsWrite)
-        {
-            BindlessDSWrite* pPendingWrite = nullptr;
-
-            for (BindlessDSWrite& pendingWrite : m_pendingWrites[heapIdx])
-            {
-                if (pendingWrite.slotIdx == slotIdx)
-                {
-                    pPendingWrite = &pendingWrite;
-                    break;
-                }
-            }
-
-            if (pPendingWrite != nullptr)
-            {
-                pPendingWrite->pResource = pResource;
-            }
-            else
-            {
-                m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
-            }
-
-            slotState.resourceId         = resourceId;
-            slotState.resourceGeneration = resourceGeneration;
-            m_heapAllocCount[heapIdx]    = std::max(m_heapAllocCount[heapIdx], slotIdx + 1);
-        }
-
-        registered = true;
+        slotIdx = m_heapAllocCount[heapIdx];
+    }
+    if (slotIdx >= heapCapacity)
+    {
+        return false;
     }
 
-    return registered;
+    BindlessSlotState& slotState = m_slotStates[heapIdx][slotIdx];
+    if (slotState.pResource != nullptr)
+    {
+        // Update-after-bind does not preserve the old contents for earlier draws.
+        // Published slots remain immutable, including while work is still recording.
+        return slotState.resourceId == pResource->GetStableId() &&
+            slotState.resourceGeneration == pResource->GetGenerationId();
+    }
+
+    m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
+    pResource->AddReference();
+    slotState.pResource = pResource;
+    if (pResource->GetResourceType() == RHIResourceType::eTextureView)
+    {
+        slotState.pTextureOwner = static_cast<RHITextureView*>(pResource)->GetTexture();
+        slotState.pTextureOwner->AddReference();
+    }
+    slotState.resourceId         = pResource->GetStableId();
+    slotState.resourceGeneration = pResource->GetGenerationId();
+    m_heapAllocCount[heapIdx]    = std::max(m_heapAllocCount[heapIdx], slotIdx + 1);
+    return true;
 }
 
 void VulkanBindlessDescriptorPoolManager::Flush()

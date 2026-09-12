@@ -25,6 +25,7 @@ namespace zen
 class RHIResource;
 class RHIBuffer;
 class RHITexture;
+class RHITextureView;
 
 enum class RHIAPIType
 {
@@ -1012,13 +1013,34 @@ inline RHIRenderTargetClearValue DEFAULT_COLOR_CLEAR_VALUE =
 
 inline RHIRenderTargetClearValue DEFAULT_DS_CLEAR_VALUE = RHIRenderTargetClearValue(1.0f, 0);
 
+inline BitField<RHITextureAspectFlagBits> GetTextureFormatAspects(DataFormat format)
+{
+    if (FormatIsDepthStencil(format))
+    {
+        return RHITextureSubResourceRange::DepthStencil().aspect;
+    }
+    if (FormatIsDepthOnly(format))
+    {
+        return RHITextureSubResourceRange::Depth().aspect;
+    }
+    if (FormatIsStencilOnly(format))
+    {
+        return RHITextureSubResourceRange::Stencil().aspect;
+    }
+    return RHITextureSubResourceRange::Color().aspect;
+}
+
 struct RHIRenderTarget
 {
+    BitField<RHITextureAspectFlagBits> GetAspects() const;
+
     DataFormat format{DataFormat::eUndefined};
     SampleCount numSamples{SampleCount::e1};
     RHIRenderTargetLoadOp loadOp{RHIRenderTargetLoadOp::eNone};
     RHIRenderTargetStoreOp storeOp{RHIRenderTargetStoreOp::eStore};
     RHITexture* pTexture{nullptr};
+    // Optional explicit attachment view; pTexture remains the owning image.
+    RHITextureView* pTextureView{nullptr};
     RHIRenderTargetClearValue clearValue;
 };
 

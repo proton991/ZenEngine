@@ -8,6 +8,7 @@
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanCopyCapabilities.h"
+#include "Graphics/VulkanRHI/VulkanDescriptorPool.h"
 
 #include <algorithm>
 
@@ -16,6 +17,80 @@ namespace zen
 VulkanDevice::VulkanDevice(VkPhysicalDevice gpu) : m_device(VK_NULL_HANDLE), m_gpu(gpu)
 {
     vkGetPhysicalDeviceProperties(m_gpu, &m_gpuProps);
+}
+
+std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
+{
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(gpu, &properties);
+    if (properties.apiVersion < VK_API_VERSION_1_2)
+    {
+        return "Vulkan 1.2 is required";
+    }
+    const auto extensions = VulkanDeviceExtension::GetSupportedExtensions(gpu);
+    for (const char* required :
+         {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME})
+    {
+        if (std::none_of(extensions.begin(), extensions.end(), [required](const auto& extension) {
+                return strcmp(required, extension.extensionName) == 0;
+            }))
+        {
+            return std::string("Required extension is missing: ") + required;
+        }
+    }
+
+    uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
+    HeapVector<VkQueueFamilyProperties> queues(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, queues.data());
+    if (std::none_of(queues.begin(), queues.end(), [](const auto& queue) {
+            return queue.queueCount != 0 &&
+                (queue.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+                (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
+        }))
+    {
+        return "A graphics queue with compute support is required";
+    }
+
+    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
+    VkPhysicalDeviceDescriptorIndexingFeatures indexing{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+    features.pNext = &dynamic;
+    dynamic.pNext  = &indexing;
+    vkGetPhysicalDeviceFeatures2(gpu, &features);
+    if (!dynamic.dynamicRendering)
+    {
+        return "The dynamicRendering feature is required";
+    }
+    if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound ||
+        !indexing.descriptorBindingUpdateUnusedWhilePending ||
+        !indexing.descriptorBindingSampledImageUpdateAfterBind ||
+        !indexing.descriptorBindingVariableDescriptorCount ||
+        !indexing.shaderSampledImageArrayNonUniformIndexing)
+    {
+        return "Descriptor indexing with partially bound, variable, update-after-bind sampled images and nonuniform indexing is required";
+    }
+
+    VkPhysicalDeviceDescriptorIndexingProperties limits{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+    VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    properties2.pNext = &limits;
+    vkGetPhysicalDeviceProperties2(gpu, &properties2);
+    const uint32_t images = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
+        GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+    const uint32_t samplers = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
+    if (limits.maxDescriptorSetUpdateAfterBindSampledImages < images ||
+        limits.maxPerStageDescriptorUpdateAfterBindSampledImages < images ||
+        limits.maxDescriptorSetUpdateAfterBindSamplers < samplers ||
+        limits.maxPerStageDescriptorUpdateAfterBindSamplers < samplers ||
+        limits.maxPerStageUpdateAfterBindResources < images + samplers ||
+        limits.maxUpdateAfterBindDescriptorsInAllPools < images + samplers)
+    {
+        return "Descriptor indexing limits cannot accommodate the global bindless heaps";
+    }
+    return {};
 }
 
 uint32_t VulkanDevice::GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType descriptorType) const
@@ -136,6 +211,12 @@ RHIQueueCopyCapabilities VulkanRHI::GetQueueCopyCapabilities(RHICommandContextTy
  */
 void VulkanDevice::Init()
 {
+    const std::string unsupportedReason = GetUnsupportedReason(m_gpu);
+    if (!unsupportedReason.empty())
+    {
+        LOG_ERROR_AND_THROW("Cannot initialize Vulkan device '{}': {}", m_gpuProps.deviceName,
+                            unsupportedReason);
+    }
     // query base features
     vkGetPhysicalDeviceFeatures(m_gpu, &m_physicalDeviceFeatures);
     // query gpu properties
@@ -197,6 +278,23 @@ void VulkanDevice::Init()
         }
     }
 
+    // Optional ray-tracing features require the complete enabled dependency chain.
+    m_extensionFlags.hasAccelerationStructure &=
+        m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;
+    m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;
+    m_extensionFlags.hasRayQuery &= m_extensionFlags.hasAccelerationStructure;
+    for (auto& extension : extensionArray)
+    {
+        const NameID name = extension->GetName();
+        if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+             !m_extensionFlags.hasAccelerationStructure) ||
+            (name == NameID(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) &&
+             !m_extensionFlags.hasRaytracingPipeline) ||
+            (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery))
+        {
+            extension->SetSupport(false);
+        }
+    }
     SetupDevice(extensionArray);
 
     m_pFenceManager    = ZEN_NEW() VulkanFenceManager(this);
@@ -212,13 +310,14 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     {
         if (extension->IsEnabledAndSupported())
         {
-            m_extensions.emplace_back(extension->GetName());
+            if (extension->RequiresExtensionName())
+            {
+                m_extensions.emplace_back(extension->GetName());
+            }
             extension->BeforeCreateDevice(deviceInfo);
         }
     }
 
-    // for glsl shader debug printf ext
-    m_extensions.emplace_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
     // set up queue info
     HeapVector<VkDeviceQueueCreateInfo> deviceQueueInfos;
 
@@ -232,9 +331,14 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
          queueFamilyIndex++)
     {
         VkQueueFamilyProperties const& queueFamilyProp = m_queueFamilyProps[queueFamilyIndex];
-        bool isValidQueue                              = false;
+        if (queueFamilyProp.queueCount == 0)
+        {
+            continue;
+        }
+        bool isValidQueue = false;
 
-        if (((queueFamilyProp.queueFlags & VK_QUEUE_GRAPHICS_BIT) == VK_QUEUE_GRAPHICS_BIT) &&
+        if (((queueFamilyProp.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+             (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) &&
             (graphicsQueueFamilyIndex == -1))
         {
             graphicsQueueFamilyIndex = queueFamilyIndex;
@@ -311,7 +415,11 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     deviceInfo.pQueueCreateInfos       = deviceQueueInfos.data();
     deviceInfo.pEnabledFeatures        = &m_physicalDeviceFeatures; // enable all features
 
-    VKCHECK(vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device));
+    const VkResult result = vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device);
+    if (result != VK_SUCCESS)
+    {
+        LOG_ERROR_AND_THROW("vkCreateDevice failed: {}", int32_t(result));
+    }
     LOGI("Vulkan Device Created");
 
     // display extension info
@@ -322,6 +430,17 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
 
     // load device func
     volkLoadDevice(m_device);
+    // Keep native compilation data for pipeline recreation during this device's lifetime.
+    // Flags stay zero so the driver synchronizes concurrent pipeline creation internally.
+    VkPipelineCacheCreateInfo pipelineCacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
+    const VkResult cacheResult =
+        vkCreatePipelineCache(m_device, &pipelineCacheInfo, nullptr, &m_pipelineCache);
+    if (cacheResult != VK_SUCCESS)
+    {
+        m_pipelineCache = VK_NULL_HANDLE;
+        LOGW("Vulkan pipeline cache unavailable ({}); creating pipelines without a cache",
+             int32_t(cacheResult));
+    }
     // setup queues
     m_pGfxQueue = ZEN_NEW() VulkanQueue(this, graphicsQueueFamilyIndex);
 
@@ -347,24 +466,39 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, NameID name
     info.objectType   = type;
     info.objectHandle = handle;
     info.pObjectName  = name.IsNone() ? nullptr : name.CStr();
-    vkSetDebugUtilsObjectNameEXT(m_device, &info);
+    if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
+        vkSetDebugUtilsObjectNameEXT != nullptr)
+    {
+        vkSetDebugUtilsObjectNameEXT(m_device, &info);
+    }
 }
 
 void VulkanDevice::WaitForIdle()
 {
+    if (m_device == VK_NULL_HANDLE)
+    {
+        return;
+    }
     const VkResult result = vkDeviceWaitIdle(m_device);
 
     if (result != VK_SUCCESS)
     {
         // Device loss also ends the lifetime wait, but does not establish valid contents/serials.
         LOGE("Vulkan device idle wait failed: {}", int32_t(result));
+        if (GVulkanRHI->GetDevice() == this)
+        {
+            GVulkanRHI->BlockSubmissions();
+        }
         return;
     }
 
     // GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager()->RefreshFenceStatus();
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
-        GetQueue(static_cast<RHICommandContextType>(i))->ProcessPendingWorkloads(0);
+        if (auto* queue = GetQueue(static_cast<RHICommandContextType>(i)))
+        {
+            queue->ProcessPendingWorkloads(0);
+        }
     }
 }
 
@@ -374,13 +508,27 @@ void VulkanDevice::Destroy()
     ZEN_DELETE(m_pComputeQueue);
     ZEN_DELETE(m_pTransferQueue);
 
-    m_pSemaphoreManger->Destroy();
-    ZEN_DELETE(m_pSemaphoreManger);
+    if (m_pSemaphoreManger != nullptr)
+    {
+        m_pSemaphoreManger->Destroy();
+        ZEN_DELETE(m_pSemaphoreManger);
+    }
 
-    m_pFenceManager->Destroy();
-    ZEN_DELETE(m_pFenceManager);
+    if (m_pFenceManager != nullptr)
+    {
+        m_pFenceManager->Destroy();
+        ZEN_DELETE(m_pFenceManager);
+    }
 
-    vkDestroyDevice(m_device, nullptr);
+    if (m_device != VK_NULL_HANDLE)
+    {
+        if (m_pipelineCache != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
+            m_pipelineCache = VK_NULL_HANDLE;
+        }
+        vkDestroyDevice(m_device, nullptr);
+    }
 }
 
 bool VulkanRHI::IsTransferQueueSharedWithGraphics() const
@@ -417,12 +565,10 @@ bool VulkanRHI::WaitForSubmission(RHICommandContextType contextType,
 
 void VulkanRHI::WaitDeviceIdle()
 {
-    m_pDevice->WaitForIdle();
-
-    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+    if (m_pDevice == nullptr || m_pDevice->GetVkHandle() == VK_NULL_HANDLE)
     {
-        VulkanQueue* pQueue = m_pDevice->GetQueue(static_cast<RHICommandContextType>(i));
-        pQueue->ProcessPendingWorkloads(0);
+        return;
     }
+    m_pDevice->WaitForIdle();
 }
 } // namespace zen

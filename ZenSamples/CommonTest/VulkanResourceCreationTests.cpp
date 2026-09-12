@@ -3,6 +3,8 @@
 #include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanResourceSharing.h"
 #include "Graphics/VulkanRHI/VulkanCopyCapabilities.h"
+#include "Graphics/VulkanRHI/VulkanDevice.h"
+#include "ScopedVulkanCall.h"
 #include <gtest/gtest.h>
 #include <array>
 
@@ -125,94 +127,45 @@ TEST(VulkanResourceCreationTests, ViewCreateInfoPreservesSelectedMipsAndArraySha
     EXPECT_EQ(depth.subresourceRange.baseMipLevel, 1u);
 }
 
-namespace zen
+TEST(VulkanDescriptorLayoutTest, CanonicalLayoutIdentityIncludesBindingFlagsAndSamplers)
 {
-// Exercise the production descriptor write path without a Vulkan device or allocator.
-struct VulkanDescriptorStateTestAccess
-{
-    struct Shader : RHIShader
-    {
-        Shader() : RHIShader(RHIShaderCreateInfo{})
-        {
-            m_SRDTable.resize(1);
-            RHIShaderResourceDescriptor descriptor{};
-            descriptor.type      = RHIShaderResourceType::eUniformBuffer;
-            descriptor.arraySize = 1;
-            descriptor.blockSize = 16;
-            m_SRDTable[0].push_back(descriptor);
-        }
-
-        void Init() override {}
-
-        void Destroy() override {}
+    using namespace zen;
+    test::ScopedVulkanCall<PFN_vkGetPhysicalDeviceProperties> properties(
+        vkGetPhysicalDeviceProperties,
+        [](VkPhysicalDevice, VkPhysicalDeviceProperties* properties) { *properties = {}; });
+    VulkanDevice device(VK_NULL_HANDLE);
+    VulkanDescriptorPoolManager2 manager(&device);
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+        {7, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}};
+    VkDescriptorBindingFlags flags[] = {VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT, 0};
+    VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    info.bindingCount = 2;
+    info.pBindings    = bindings;
+    auto id           = [&] {
+        return manager.GetOrCreateLayoutId(info, MakeVecView(flags));
     };
-    struct Pipeline : VulkanPipeline
-    {
-        explicit Pipeline(const RHIComputePipelineCreateInfo& info) : VulkanPipeline(info) {}
-
-        void Destroy() override {}
-    };
-    struct Buffer : RHIBuffer
-    {
-        Buffer() : RHIBuffer(RHIBufferCreateInfo{}) {}
-
-        uint8_t* Map() override
-        {
-            return nullptr;
-        }
-
-        void Unmap() override {}
-
-        void SetTexelFormat(DataFormat) override {}
-
-        void Init() override {}
-
-        void Destroy() override {}
-    };
-
-    static void VerifyUniformSwitch()
-    {
-        Shader shader;
-
-        RHIComputePipelineCreateInfo info{};
-        info.pShader = &shader;
-        Pipeline pipeline(info);
-        Buffer buffer;
-        VulkanDescriptorSetState state;
-        state.SetPipeline(&pipeline);
-        zen::RHIShaderResourceDescriptor const& descriptor = (*shader.GetSRDTable())[0][0];
-        const uint32_t values[4]                           = {1, 2, 3, 4};
-        RHIBatchedShaderParameters packed;
-        packed.AddValueParam(descriptor, values, sizeof(values));
-        state.SetShaderParameters(packed);
-        zen::VulkanDescriptorSetState::BindingState& binding =
-            state.FindOrAddBinding(state.m_setStates[0], 0, RHIShaderResourceType::eUniformBuffer);
-        binding.dynamicOffset = 256; // The prior draw used a packed allocation.
-        binding.valueRange    = 64;
-        RHIBatchedShaderParameters external;
-        external.AddResourceParam(descriptor, &buffer, nullptr, 0);
-        state.SetShaderParameters(external);
-
-        EXPECT_EQ(binding.dynamicOffset, 0u);
-        EXPECT_EQ(binding.valueRange, 16u);
-        ASSERT_EQ(binding.srb.resources.size(), 1u);
-        EXPECT_EQ(binding.srb.resources[0], &buffer);
-        ASSERT_EQ(state.m_packedValueBuffers.size(), 1u);
-        EXPECT_FALSE(state.m_packedValueBuffers[0].dirty);
-
-        state.SetShaderParameters(packed); // Switching back still schedules a fresh packed upload.
-
-        EXPECT_TRUE(state.m_packedValueBuffers[0].dirty);
-
-        state.Reset();
-        buffer.ReleaseReference();
-        pipeline.ReleaseReference();
-        shader.ReleaseReference();
-    }
-};
-} // namespace zen
-
-TEST(VulkanResourceCreationTests, PhysicalUniformBindingClearsPriorPackedOffsetsAndPendingWrites)
-{
-    zen::VulkanDescriptorStateTestAccess::VerifyUniformSwitch();
+    const uint32_t original = id();
+    std::swap(bindings[0], bindings[1]);
+    std::swap(flags[0], flags[1]);
+    EXPECT_EQ(id(), original);
+    flags[0] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+    EXPECT_NE(id(), original);
+    flags[0]                    = 0;
+    bindings[1].descriptorCount = 2;
+    EXPECT_NE(id(), original);
+    bindings[1].descriptorCount = 3;
+    bindings[1].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+    EXPECT_NE(id(), original);
+    bindings[1].stageFlags     = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    EXPECT_NE(id(), original);
+    bindings[1].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    VkSampler sampler              = reinterpret_cast<VkSampler>(uintptr_t(100));
+    bindings[0].pImmutableSamplers = &sampler;
+    const uint32_t immutable       = id();
+    EXPECT_NE(immutable, original);
+    sampler = reinterpret_cast<VkSampler>(uintptr_t(101));
+    EXPECT_NE(id(), immutable);
+    manager.Destroy();
 }

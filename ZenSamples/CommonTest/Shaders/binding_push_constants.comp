@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0, std430) buffer Result { uint values[2]; } result;
+layout(push_constant) uniform Constants { uint first; uint second; } constants;
+void main()
+{
+    result.values[0] = constants.first;
+    result.values[1] = constants.second;
+}

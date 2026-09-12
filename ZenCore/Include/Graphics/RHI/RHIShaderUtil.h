@@ -135,10 +135,10 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
         HeapVector<SpvReflectSpecializationConstant*> specConstants;
         specConstants.resize(scCount);
         spvReflectEnumerateSpecializationConstants(pModule, &scCount, specConstants.data());
-        int existed = -1;
 
         for (uint32_t j = 0; j < scCount; j++)
         {
+            int existed = -1;
             RHIShaderSpecializationConstant specConst;
             SpvReflectSpecializationConstant* pSpvSpecConst = specConstants[j];
 
@@ -194,7 +194,7 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                 }
             }
 
-            if (existed > 0)
+            if (existed >= 0)
             {
                 shaderGroupInfo.specializationConstants[existed].stages.SetFlag(
                     RHIShaderStageToFlagBits(stage));

@@ -1,5 +1,6 @@
 // PagedAllocatorTest.cpp
 #include "PagedAllocatorTest.h"
+#include <algorithm>
 
 TEST_F(PagedAllocatorTest, AllocateSingleObject)
 {
@@ -50,6 +51,66 @@ TEST_F(PagedAllocatorTest, AllocateMoreThanPageSize)
     for (DummyClass* obj : objects)
     {
         allocator.Free(obj);
+    }
+}
+
+TEST_F(PagedAllocatorTest, PageGrowthKeepsEveryLiveAddressAndValue)
+{
+    zen::PagedAllocator<DummyClass> pages(4, false);
+    pages.Init();
+    std::vector<DummyClass*> live;
+    for (int i = 0; i < 17; ++i)
+    {
+        auto* object = pages.Alloc(i);
+        EXPECT_EQ(std::count(live.begin(), live.end(), object), 0);
+        live.push_back(object);
+        for (int j = 0; j <= i; ++j)
+        {
+            EXPECT_EQ(live[j]->getData(), j);
+        }
+    }
+    // Mix free-stack segments, reuse holes, then grow again with survivors still live.
+    for (size_t i = 0; i < live.size(); i += 2)
+    {
+        pages.Free(live[i]);
+        live[i] = nullptr;
+    }
+    std::vector<DummyClass*> replacements;
+    for (int i = 0; i < 20; ++i)
+    {
+        auto* object = pages.Alloc(100 + i);
+        EXPECT_EQ(std::count(live.begin(), live.end(), object), 0);
+        EXPECT_EQ(std::count(replacements.begin(), replacements.end(), object), 0);
+        replacements.push_back(object);
+    }
+    for (size_t i = 1; i < live.size(); i += 2)
+    {
+        EXPECT_EQ(live[i]->getData(), i);
+        pages.Free(live[i]);
+    }
+    for (size_t i = 0; i < replacements.size(); ++i)
+    {
+        EXPECT_EQ(replacements[i]->getData(), 100 + i);
+        pages.Free(replacements[i]);
+    }
+}
+
+TEST_F(PagedAllocatorTest, ThreadSafePageGrowthPreservesLiveObjects)
+{
+    zen::PagedAllocator<DummyClass> pages(4, true);
+    pages.Init();
+    std::vector<DummyClass*> live;
+    for (int i = 0; i < 33; ++i)
+    {
+        auto* object = pages.Alloc(i);
+        EXPECT_EQ(std::count(live.begin(), live.end(), object), 0);
+        live.push_back(object);
+    }
+    std::reverse(live.begin(), live.end());
+    for (size_t i = 0; i < live.size(); ++i)
+    {
+        EXPECT_EQ(live[i]->getData(), 32 - i);
+        pages.Free(live[i]);
     }
 }
 

@@ -42,16 +42,18 @@ public:
 
     virtual void AfterPhysicalDeviceFeatures() final
     {
-        bool supported = (m_descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE) &&
+        bool supported =
+            (m_descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing == VK_TRUE) &&
+            (m_descriptorIndexingFeatures.runtimeDescriptorArray == VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingPartiallyBound == VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingUpdateUnusedWhilePending == VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingSampledImageUpdateAfterBind ==
              VK_TRUE) &&
             (m_descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasDescriptorIndexing = 1;
         }
     }
@@ -91,9 +93,9 @@ public:
     {
         bool supported = (m_dynamicRenderingFeaturesKHR.dynamicRendering == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasDynamicRendering = 1;
         }
     }
@@ -131,6 +133,7 @@ public:
 
     void AfterPhysicalDeviceFeatures() final
     {
+        SetSupport(m_timelineSemaphoreFeatures.timelineSemaphore == VK_TRUE);
         if (m_timelineSemaphoreFeatures.timelineSemaphore == VK_TRUE)
         {
             SetSupport();
@@ -173,9 +176,9 @@ public:
     {
         bool supported = (m_bufferDeviceAddressFeature.bufferDeviceAddress == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasBufferDeviceAddress = 1;
         }
     }
@@ -215,9 +218,9 @@ public:
     {
         bool supported = (m_accelerationStructureFeatures.accelerationStructure == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasAccelerationStructure = 1;
         }
     }
@@ -257,9 +260,9 @@ public:
     {
         bool supported = (m_rayTracingPipelineFeatures.rayTracingPipeline == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasRaytracingPipeline = 1;
         }
     }
@@ -298,9 +301,9 @@ public:
     {
         bool supported = (m_rayQueryFeature.rayQuery == VK_TRUE);
 
+        SetSupport(supported);
         if (supported)
         {
-            SetSupport();
             m_pDevice->GetExtensionFlags().hasRayQuery = 1;
         }
     }
@@ -399,6 +402,21 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     FlagExtensionSupported(enabledExtensions,
                            VulkanInstanceExtension::GetSupportedInstanceExtensions());
 
+    for (const auto& extension : enabledExtensions)
+    {
+        const NameID name = extension->GetName();
+        if (name == NameID(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+        {
+            extensionFlags.hasDebugUtils = extension->IsEnabledAndSupported();
+        }
+        if ((name == NameID(VK_KHR_SURFACE_EXTENSION_NAME) ||
+             name == NameID("VK_KHR_win32_surface") || name == NameID("VK_EXT_metal_surface")) &&
+            !extension->IsEnabledAndSupported())
+        {
+            LOG_ERROR_AND_THROW("Required instance extension is missing: {}", name.CStr());
+        }
+    }
+
 #undef SET_INSTANCE_EXTENSION_FLAG
 #undef ADD_INSTANCE_EXTENSION
 
@@ -445,8 +463,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
 
-    SET_SIMPLE_EXTENSION_FLAG(hasDeferredHostOperation)
-    SET_SIMPLE_EXTENSION_FLAG(hasSPIRV_14)
+    ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDescriptorIndexingExtension)
 
@@ -461,6 +478,27 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     FlagExtensionSupported(
         enabledExtensions,
         VulkanDeviceExtension::GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle()));
+
+    // These features are core in our minimum API version (1.2), even when the
+    // driver does not advertise their former extension names.
+    for (auto& extension : enabledExtensions)
+    {
+        const NameID name = extension->GetName();
+        if (name == NameID(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) ||
+            name == NameID(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) ||
+            name == NameID(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) ||
+            name == NameID(VK_KHR_SPIRV_1_4_EXTENSION_NAME))
+        {
+            extension->SetCoreSupport();
+        }
+        if (name == NameID(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME))
+        {
+            pDevice->GetExtensionFlags().hasDeferredHostOperation =
+                extension->IsEnabledAndSupported();
+        }
+    }
+    pDevice->GetExtensionFlags().hasSPIRV_14 = 1;
+
 #undef SET_EXTENSION_FLAG
 #undef ADD_SIMPLE_DEVICE_EXTENSION
 #undef ADD_ADVANCED_DEVICE_EXTENSION

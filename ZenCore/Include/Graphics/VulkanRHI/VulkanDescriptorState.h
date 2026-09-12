@@ -23,17 +23,17 @@ public:
     void Reset();
 
 private:
-    friend struct VulkanDescriptorStateTestAccess;
     struct BindingState
     {
         RHIShaderResourceBinding srb;
-        uint32_t dynamicOffset{0};
+        HeapVector<uint32_t> dynamicOffsets;
         uint32_t valueRange{0};
     };
 
     struct SetState
     {
         VkDescriptorSet vkSet{VK_NULL_HANDLE};
+        VulkanDescriptorPoolSetContainer* pContainer{nullptr};
         HeapVector<BindingState> bindings;
         bool dirty{false};
     };
@@ -62,7 +62,7 @@ private:
 
     void BuildSetUpdates(uint32_t setIndex, HeapVector<RHIShaderResourceBinding>& outUpdates);
 
-    VulkanDescriptorPoolSetContainer* SyncContainerEpoch(FVulkanCommandListContext* pContext);
+    void SyncCacheEpoch(const VulkanDescriptorSetCache& cache);
 
     void BuildDescriptorSetList(FVulkanCommandListContext* pContext,
                                 HeapVector<VkDescriptorSet>& outDescriptorSets,
@@ -95,7 +95,7 @@ private:
 
     HeapVector<PackedValueBufferState> m_packedValueBuffers;
 
-    uint64_t m_containerEpoch{0};
+    uint64_t m_cacheEpoch{0};
 
     HeapVector<RHIShaderResourceBinding> m_updateSrbScratch;
 

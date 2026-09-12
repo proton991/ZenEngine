@@ -11,116 +11,89 @@
 
 namespace zen
 {
-static VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+namespace
 {
-    uint32_t numSurfaceFormats = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &numSurfaceFormats, nullptr);
-    SmallVector<VkSurfaceFormatKHR> surfaceFormats;
-    surfaceFormats.resize(numSurfaceFormats);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &numSurfaceFormats, surfaceFormats.data());
-
-    // The current fullscreen shading path already applies gamma in shader, so prefer UNORM
-    // presentation formats to avoid driver-dependent double-conversion when SRGB is also exposed.
-    static constexpr VkSurfaceFormatKHR preferredSurfaceFormats[] = {
-        {VK_FORMAT_B8G8R8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
-        {VK_FORMAT_R8G8B8A8_UNORM, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
-        {VK_FORMAT_B8G8R8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
-        {VK_FORMAT_R8G8B8A8_SRGB, VK_COLORSPACE_SRGB_NONLINEAR_KHR},
-    };
-
-    const VkSurfaceFormatKHR* pSelected = nullptr;
-
-    for (const VkSurfaceFormatKHR& preferredSurfaceFormat : preferredSurfaceFormats)
+void CheckWSIResult(VkResult result, const char* operation)
+{
+    if (result != VK_SUCCESS)
     {
-        for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
+        if (result == VK_ERROR_DEVICE_LOST)
         {
-            if (surfaceFormat.format == preferredSurfaceFormat.format &&
-                surfaceFormat.colorSpace == preferredSurfaceFormat.colorSpace)
-            {
-                pSelected = &surfaceFormat;
-                break;
-            }
+            GVulkanRHI->BlockSubmissions();
         }
-
-        if (pSelected != nullptr)
-        {
-            break;
-        }
+        LOG_ERROR_AND_THROW("{} failed: {}", operation, int32_t(result));
     }
-
-    if (pSelected == nullptr)
-    {
-        for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats)
-        {
-            if (surfaceFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR)
-            {
-                pSelected = &surfaceFormat;
-                break;
-            }
-        }
-    }
-
-    return pSelected != nullptr ? *pSelected : surfaceFormats[0];
 }
 
-static VkImageUsageFlags ChooseImageUsage(VkPhysicalDevice gpu,
-                                          VkImageUsageFlags supportedUsage,
-                                          VkFormat surfaceFormat)
+template <typename T, typename Query> HeapVector<T> EnumerateWSI(Query query, const char* operation)
 {
-    static constexpr VkImageUsageFlagBits defaultImageUsageFlags[] = {
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_IMAGE_USAGE_SAMPLED_BIT,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT};
-    VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(gpu, surfaceFormat, &formatProperties);
-
-    VkImageUsageFlags composedUsage{0};
-    std::string usageStr;
-
-    for (VkImageUsageFlagBits usageFlag : defaultImageUsageFlags)
+    HeapVector<T> values;
+    VkResult result;
+    do
     {
-        if ((usageFlag & supportedUsage) &&
-            (usageFlag != VK_IMAGE_USAGE_STORAGE_BIT ||
-             (VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT & formatProperties.optimalTilingFeatures) != 0))
+        uint32_t count = 0;
+        CheckWSIResult(query(&count, nullptr), operation);
+        if (count == 0)
         {
-            composedUsage |= usageFlag;
-            usageStr += VkToString<VkImageUsageFlagBits>(usageFlag) + " ";
+            LOG_ERROR_AND_THROW("{} returned no entries", operation);
         }
-    }
-
-    LOGI("Swapchain Image usage flags: {}", usageStr);
-
-    return composedUsage;
+        values.resize(count);
+        result = query(&count, values.data());
+        if (result != VK_SUCCESS && result != VK_INCOMPLETE)
+        {
+            CheckWSIResult(result, operation);
+        }
+        values.resize(count);
+    } while (result == VK_INCOMPLETE);
+    CheckWSIResult(result, operation);
+    return values;
 }
 
-static VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, bool vsync)
+VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
 {
-    uint32_t numPresentModes = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &numPresentModes, nullptr);
-
-    SmallVector<VkPresentModeKHR> presentModes;
-    presentModes.resize(numPresentModes);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &numPresentModes, presentModes.data());
-
-    VkPresentModeKHR selected = VK_PRESENT_MODE_IMMEDIATE_KHR;
-
-    if (vsync)
+    const auto formats = EnumerateWSI<VkSurfaceFormatKHR>(
+        [=](uint32_t* count, VkSurfaceFormatKHR* values) {
+            return vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, count, values);
+        },
+        "vkGetPhysicalDeviceSurfaceFormatsKHR");
+    // The renderer applies gamma itself, so prefer UNORM to avoid applying it twice.
+    for (VkFormat preferred : {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
+                               VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB})
     {
-        static constexpr VkPresentModeKHR presentModePriorityList[] = {
-            VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
-
-        for (const VkPresentModeKHR& presentMode : presentModePriorityList)
+        for (const auto& format : formats)
         {
-            if (std::find(presentModes.begin(), presentModes.end(), presentMode) !=
-                presentModes.end())
+            if (format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+                (format.format == preferred || format.format == VK_FORMAT_UNDEFINED))
             {
-                selected = presentMode;
-                break;
+                return {preferred, format.colorSpace};
             }
         }
     }
-
-    return selected;
+    LOG_ERROR_AND_THROW("Surface has no supported RGBA8 presentation format");
+    return {};
 }
+
+VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, bool vsync)
+{
+    const auto modes = EnumerateWSI<VkPresentModeKHR>(
+        [=](uint32_t* count, VkPresentModeKHR* values) {
+            return vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, count, values);
+        },
+        "vkGetPhysicalDeviceSurfacePresentModesKHR");
+    const VkPresentModeKHR priority[] = {vsync ? VK_PRESENT_MODE_MAILBOX_KHR :
+                                                 VK_PRESENT_MODE_IMMEDIATE_KHR,
+                                         VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR};
+    for (VkPresentModeKHR mode : priority)
+    {
+        if (std::find(modes.begin(), modes.end(), mode) != modes.end())
+        {
+            return mode;
+        }
+    }
+    LOG_ERROR_AND_THROW("Surface has no supported presentation mode");
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+} // namespace
 
 static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBitsKHR request,
                                                         VkCompositeAlphaFlagsKHR supported)
@@ -148,7 +121,7 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
 
         if (selected == VK_COMPOSITE_ALPHA_FLAG_BITS_MAX_ENUM_KHR)
         {
-            LOG_FATAL_ERROR("No compatible composite alpha found.");
+            LOG_ERROR_AND_THROW("No compatible composite alpha found.");
         }
     }
 
@@ -165,176 +138,215 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     VkDevice device      = m_pDevice->GetVkHandle();
     VkPhysicalDevice gpu = GVulkanRHI->GetPhysicalDevice();
 
+    VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE;
     if (pRecreateInfo != nullptr)
     {
-        m_surface              = pRecreateInfo->surface;
-        pRecreateInfo->surface = VK_NULL_HANDLE;
+        m_surface      = pRecreateInfo->surface;
+        oldSwapchain   = pRecreateInfo->swapchain;
+        *pRecreateInfo = {};
     }
-    else
+    try
     {
-        WindowData windowData{static_cast<platform::GlfwWindowImpl*>(pWindowPtr)->GetHandle(),
-                              width, height};
-        m_surface = VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
+        if (m_surface == VK_NULL_HANDLE)
+        {
+            WindowData windowData{static_cast<platform::GlfwWindowImpl*>(pWindowPtr)->GetHandle(),
+                                  width, height};
+            m_surface = VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
+        }
+        if (m_surface == VK_NULL_HANDLE)
+        {
+            LOG_ERROR_AND_THROW("Failed to create a Vulkan presentation surface");
+        }
+        VkBool32 canPresent = VK_FALSE;
+        CheckWSIResult(vkGetPhysicalDeviceSurfaceSupportKHR(
+                           gpu, m_pDevice->GetGfxQueue()->GetFamilyIndex(), m_surface, &canPresent),
+                       "vkGetPhysicalDeviceSurfaceSupportKHR");
+        if (!canPresent)
+        {
+            LOG_ERROR_AND_THROW("The selected graphics queue cannot present to this surface");
+        }
+        VkSurfaceCapabilitiesKHR capabilities{};
+        CheckWSIResult(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &capabilities),
+                       "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+        VkExtent2D extent = capabilities.currentExtent;
+        if (extent.width == UINT32_MAX)
+        {
+            extent.width  = std::clamp(width, capabilities.minImageExtent.width,
+                                       capabilities.maxImageExtent.width);
+            extent.height = std::clamp(height, capabilities.minImageExtent.height,
+                                       capabilities.maxImageExtent.height);
+        }
+        m_internalWidth  = extent.width;
+        m_internalHeight = extent.height;
+        // A minimized surface has no presentable extent. Keep its surface for restoration.
+        if (extent.width == 0 || extent.height == 0)
+        {
+            if (oldSwapchain != VK_NULL_HANDLE)
+            {
+                vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+            }
+            return;
+        }
+        uint32_t imageCount =
+            std::max(capabilities.minImageCount, GRHIFrameState.GetNumFramesInFlight());
+        if (capabilities.maxImageCount != 0)
+        {
+            imageCount = std::min(imageCount, capabilities.maxImageCount);
+        }
+        if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+        {
+            LOG_ERROR_AND_THROW(
+                "Surface does not support the transfer-destination presentation path");
+        }
+        const auto format = ChooseSurfaceFormat(gpu, m_surface);
+        m_format          = format.format;
+        m_colorSpace      = format.colorSpace;
+        m_presentMode     = ChoosePresentMode(gpu, m_surface, enableVSync);
+        VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+        info.surface          = m_surface;
+        info.minImageCount    = imageCount;
+        info.imageExtent      = extent;
+        info.imageArrayLayers = 1;
+        info.preTransform =
+            (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
+            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR :
+            capabilities.currentTransform;
+        info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.imageFormat      = m_format;
+        info.imageColorSpace  = m_colorSpace;
+        info.imageUsage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+            (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+        info.presentMode    = m_presentMode;
+        info.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+                                                   capabilities.supportedCompositeAlpha);
+        info.clipped        = VK_TRUE;
+        info.oldSwapchain   = oldSwapchain;
+        CheckWSIResult(vkCreateSwapchainKHR(device, &info, nullptr, &m_swaphchain),
+                       "vkCreateSwapchainKHR");
+        if (oldSwapchain != VK_NULL_HANDLE)
+        {
+            vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+            oldSwapchain = VK_NULL_HANDLE;
+        }
+        m_swapchainImages = EnumerateWSI<VkImage>(
+            [=, this](uint32_t* count, VkImage* images) {
+                return vkGetSwapchainImagesKHR(device, m_swaphchain, count, images);
+            },
+            "vkGetSwapchainImagesKHR");
+        m_numImages = static_cast<uint32_t>(m_swapchainImages.size());
+        m_imageAcquiredSemaphores.resize(m_numImages);
+        m_imageAcquiredSemaphoreSubmissionSerials.resize(m_numImages);
+        for (uint32_t i = 0; i < m_numImages; ++i)
+        {
+            auto* semaphore              = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+            m_imageAcquiredSemaphores[i] = semaphore;
+            semaphore->SetDebugName(NameID(fmt::format("ImageAcquired-{}", i)));
+        }
+        LOGI("Swapchain: {} images, {}x{}, format {}, present mode {}", m_numImages, extent.width,
+             extent.height, VkToString(format), VkToString(m_presentMode));
     }
-
-    VkSurfaceCapabilitiesKHR surfaceCapabilities{};
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, m_surface, &surfaceCapabilities);
-    uint32_t swapchainWidth  = std::clamp(width, surfaceCapabilities.minImageExtent.width,
-                                          surfaceCapabilities.maxImageExtent.width);
-    uint32_t swapchainHeight = std::clamp(height, surfaceCapabilities.minImageExtent.height,
-                                          surfaceCapabilities.maxImageExtent.height);
-
-    const uint32_t requiredImageCount = GRHIFrameState.GetNumFramesInFlight();
-    uint32_t minImageCount =
-        std::max(surfaceCapabilities.minImageCount,
-                 std::min(surfaceCapabilities.maxImageCount, requiredImageCount));
-
-    VkSurfaceFormatKHR surfaceFormat = ChooseSurfaceFormat(gpu, m_surface);
-
-    m_format      = surfaceFormat.format;
-    m_colorSpace  = surfaceFormat.colorSpace;
-    m_presentMode = ChoosePresentMode(gpu, m_surface, enableVSync);
-
-    VkImageUsageFlags imageUsage =
-        ChooseImageUsage(gpu, surfaceCapabilities.supportedUsageFlags, m_format);
-
-    VkSwapchainCreateInfoKHR swapchainCI{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-    swapchainCI.surface          = m_surface;
-    swapchainCI.minImageCount    = minImageCount;
-    swapchainCI.imageExtent      = {swapchainWidth, swapchainHeight};
-    swapchainCI.imageArrayLayers = 1;
-    swapchainCI.preTransform     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-    swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchainCI.imageFormat      = m_format;
-    swapchainCI.imageColorSpace  = m_colorSpace;
-    swapchainCI.imageUsage       = imageUsage;
-    swapchainCI.presentMode      = m_presentMode;
-    swapchainCI.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                                                      surfaceCapabilities.supportedCompositeAlpha);
-    swapchainCI.oldSwapchain   = pRecreateInfo == nullptr ? nullptr : pRecreateInfo->swapchain;
-
-    VKCHECK(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &m_swaphchain));
-
-    if (pRecreateInfo != nullptr)
+    catch (...)
     {
-        vkDestroySwapchainKHR(device, pRecreateInfo->swapchain, nullptr);
-        pRecreateInfo->swapchain = VK_NULL_HANDLE;
+        if (oldSwapchain != VK_NULL_HANDLE)
+        {
+            vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
+        }
+        Destroy(nullptr);
+        throw;
     }
-
-    LOGI("Swapchain surface format: {}", VkToString(surfaceFormat));
-    LOGI("Swapchain present mode: {}", VkToString(m_presentMode));
-    // get images
-    uint32_t availableImagesCount = 0;
-    vkGetSwapchainImagesKHR(device, m_swaphchain, &availableImagesCount, nullptr);
-
-    m_numImages = std::min(availableImagesCount, ZEN_MAX_NUM_SWAPCHAIN_IMAGES);
-    // m_swapchainImages.resize(numImages);
-    vkGetSwapchainImagesKHR(device, m_swaphchain, &m_numImages, m_swapchainImages);
-
-    // create semaphores
-    // m_imageAcquiredSemaphores.reserve(numImages);
-    for (uint32_t i = 0; i < m_numImages; i++)
-    {
-        VulkanSemaphore* pSemaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
-        const NameID debugName(fmt::format("ImageAcquired-{}", i));
-        pSemaphore->SetDebugName(debugName);
-        m_pImageAcquiredSemaphores[i] = pSemaphore;
-    }
-
-    m_internalWidth  = std::min(width, swapchainCI.imageExtent.width);
-    m_internalHeight = std::min(height, swapchainCI.imageExtent.height);
 }
 
 int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
 {
-    VERIFY_EXPR(m_imageIndex == -1);
-    const int32_t prevSemaphoreIndex = m_semaphoreIndex;
-    m_semaphoreIndex                 = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
-    const uint64_t pendingSubmissionSerial =
-        m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex];
-    bool ready = true;
-
-    if (pendingSubmissionSerial != 0)
+    *ppOutSemaphore = nullptr;
+    if (m_imageIndex >= 0)
     {
-        // Binary acquire semaphores cannot be reused while their queue wait is still pending.
-        ready = m_pDevice->GetGfxQueue()->WaitForSubmission(pendingSubmissionSerial, UINT64_MAX);
-
-        if (ready)
-        {
-            m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = 0;
-        }
-        else
-        {
-            LOGE("Vulkan swapchain: acquire semaphore submission {} did not complete",
-                 pendingSubmissionSerial);
-        }
+        LOG_ERROR_AND_THROW("Swapchain already has an acquired image");
     }
-
-    int32_t acquiredImage = -1;
-
-    if (ready)
+    if (GVulkanRHI->AreSubmissionsBlocked())
     {
-        uint32_t imageIndex = 0;
-        VkResult result;
-
-        do
-        {
-            result =
-                vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, UINT64_MAX,
-                                      m_pImageAcquiredSemaphores[m_semaphoreIndex]->GetVkHandle(),
-                                      VK_NULL_HANDLE, &imageIndex);
-        } while (imageIndex >= m_numImages &&
-                 (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR));
-
-        if (result != VK_ERROR_OUT_OF_DATE_KHR && result != VK_ERROR_SURFACE_LOST_KHR)
-        {
-            *ppOutSemaphore = m_pImageAcquiredSemaphores[m_semaphoreIndex];
-            m_imageIndex    = static_cast<int32_t>(imageIndex);
-            acquiredImage   = m_imageIndex;
-        }
+        LOG_ERROR_AND_THROW("Cannot acquire while Vulkan submissions are blocked");
     }
-
-    if (acquiredImage < 0)
+    if (m_numImages == 0)
     {
-        m_semaphoreIndex = prevSemaphoreIndex;
+        m_lastResult = VK_NOT_READY;
+        return -1;
     }
-
-    return acquiredImage;
+    const int32_t nextSemaphore = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
+    uint64_t& serial            = m_imageAcquiredSemaphoreSubmissionSerials[nextSemaphore];
+    if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForSubmission(serial, UINT64_MAX))
+    {
+        GVulkanRHI->BlockSubmissions();
+        LOG_ERROR_AND_THROW("Acquire semaphore submission {} did not complete", serial);
+    }
+    serial         = 0;
+    uint32_t index = UINT32_MAX;
+    // Finite timeout supports surfaces for which forward progress is not guaranteed.
+    m_lastResult = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, 1000000000ull,
+                                         m_imageAcquiredSemaphores[nextSemaphore]->GetVkHandle(),
+                                         VK_NULL_HANDLE, &index);
+    if (m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR)
+    {
+        if (index >= m_numImages)
+        {
+            GVulkanRHI->BlockSubmissions();
+            LOG_ERROR_AND_THROW("Acquired image {} exceeds swapchain image count {}", index,
+                                m_numImages);
+        }
+        m_acquiredSuboptimal = m_lastResult == VK_SUBOPTIMAL_KHR;
+        m_semaphoreIndex     = nextSemaphore;
+        m_imageIndex         = static_cast<int32_t>(index);
+        *ppOutSemaphore      = m_imageAcquiredSemaphores[nextSemaphore];
+        return m_imageIndex;
+    }
+    if (m_lastResult != VK_ERROR_OUT_OF_DATE_KHR && m_lastResult != VK_ERROR_SURFACE_LOST_KHR &&
+        m_lastResult != VK_TIMEOUT && m_lastResult != VK_NOT_READY)
+    {
+        CheckWSIResult(m_lastResult, "vkAcquireNextImageKHR");
+    }
+    return -1;
 }
 
 void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
 {
-    VERIFY_EXPR(m_semaphoreIndex >= 0 && m_semaphoreIndex < static_cast<int32_t>(m_numImages));
+    if (m_imageIndex < 0 || submissionSerial == 0)
+    {
+        LOG_ERROR_AND_THROW("Cannot mark an acquire semaphore without an accepted submission");
+    }
     m_imageAcquiredSemaphoreSubmissionSerials[m_semaphoreIndex] = submissionSerial;
 }
 
 bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
 {
-    bool returnValue{};
-
-    VkPresentInfoKHR presentInfo;
-    InitVkStruct(presentInfo, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains    = &m_swaphchain;
-    presentInfo.pImageIndices  = reinterpret_cast<uint32_t*>(&m_imageIndex);
-    VkSemaphore semaphore{VK_NULL_HANDLE};
-
+    if (m_imageIndex < 0 || GVulkanRHI->AreSubmissionsBlocked())
+    {
+        LOG_ERROR_AND_THROW("Cannot present without an acquired image and a usable device");
+    }
+    const uint32_t index = static_cast<uint32_t>(m_imageIndex);
+    VkPresentInfoKHR info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    info.swapchainCount   = 1;
+    info.pSwapchains      = &m_swaphchain;
+    info.pImageIndices    = &index;
+    VkSemaphore semaphore = VK_NULL_HANDLE;
     if (pRenderingCompleteSemaphore != nullptr)
     {
-        presentInfo.waitSemaphoreCount = 1;
-        semaphore                      = pRenderingCompleteSemaphore->GetVkHandle();
-        presentInfo.pWaitSemaphores    = &semaphore;
+        semaphore               = pRenderingCompleteSemaphore->GetVkHandle();
+        info.waitSemaphoreCount = 1;
+        info.pWaitSemaphores    = &semaphore;
     }
-
-    VkResult result = vkQueuePresentKHR(m_pDevice->GetGfxQueue()->GetVkHandle(), &presentInfo);
-    m_imageIndex    = -1;
-
-    if (!(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR))
+    m_lastResult = vkQueuePresentKHR(m_pDevice->GetGfxQueue()->GetVkHandle(), &info);
+    m_imageIndex = -1;
+    if (m_lastResult == VK_SUCCESS && m_acquiredSuboptimal)
     {
-        returnValue = true;
+        m_lastResult = VK_SUBOPTIMAL_KHR;
     }
-
-    return returnValue;
+    m_acquiredSuboptimal = false;
+    if (m_lastResult != VK_SUCCESS && !NeedsRecreation())
+    {
+        GVulkanRHI->BlockSubmissions();
+        CheckWSIResult(m_lastResult, "vkQueuePresentKHR");
+    }
+    return m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR;
 }
 
 void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
@@ -346,25 +358,21 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     }
     else
     {
-        vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), m_swaphchain, nullptr);
-    }
-
-    m_swaphchain = VK_NULL_HANDLE;
-
-    for (uint32_t i = 0; i < m_numImages; i++)
-    {
-        // m_imageAcquiredSemaphores[i]->Release();
-        m_pDevice->GetSemaphoreManager()->ReleaseSemaphore(m_pImageAcquiredSemaphores[i]);
-        m_pImageAcquiredSemaphores[i]                = nullptr;
-        m_imageAcquiredSemaphoreSubmissionSerials[i] = 0;
-    }
-
-    // m_imageAcquiredSemaphores.clear();
-    if (pRecreateInfo == nullptr)
-    {
+        if (m_swaphchain != VK_NULL_HANDLE)
+        {
+            vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), m_swaphchain, nullptr);
+        }
         VulkanPlatform::DestroySurface(GVulkanRHI->GetInstance(), m_surface);
     }
-
+    // Abandoned acquisition can leave a signaled semaphore. Keep manager ownership
+    // until device teardown instead of recycling uncertain binary state.
+    m_imageAcquiredSemaphores.clear();
+    m_imageAcquiredSemaphoreSubmissionSerials.clear();
+    m_swapchainImages.clear();
+    m_numImages      = 0;
+    m_imageIndex     = -1;
+    m_semaphoreIndex = -1;
+    m_swaphchain     = VK_NULL_HANDLE;
     m_surface = VK_NULL_HANDLE;
 }
 } // namespace zen

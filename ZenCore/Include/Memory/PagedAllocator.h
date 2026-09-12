@@ -78,7 +78,9 @@ public:
 
             for (uint32_t i = 0; i < m_pageSize; i++)
             {
-                m_pFreePages[pageIndex][i] = &m_pPagePool[pageIndex][i];
+                // The free-pointer stack is empty. Its first segment must point at
+                // the new data page, regardless of that page's allocation index.
+                m_pFreePages[0][i] = &m_pPagePool[pageIndex][i];
             }
             m_allocsAvailable += m_pageSize;
         }

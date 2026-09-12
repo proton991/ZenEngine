@@ -26,6 +26,7 @@ enum class EnableMode : uint32_t
 struct InstanceExtensionFlags
 {
     uint32_t hasGetPhysicalDeviceProperties : 1;
+    uint32_t hasDebugUtils : 1;
 };
 
 class VulkanExtension
@@ -42,9 +43,20 @@ public:
         return m_extensionName;
     }
 
-    void SetSupport()
+    void SetSupport(bool supported = true)
+    {
+        m_supported = supported;
+    }
+
+    void SetCoreSupport()
     {
         m_supported = true;
+        m_core      = true;
+    }
+
+    bool RequiresExtensionName() const
+    {
+        return !m_core;
     }
 
     void SetEnable()
@@ -63,6 +75,7 @@ private:
     bool m_supported{false};
     // enabled in RHI initialization
     bool m_enabled{false};
+    bool m_core{false};
 };
 class VulkanInstanceExtension;
 using VulkanInstanceExtensionArray = HeapVector<UniquePtr<VulkanInstanceExtension>>;

@@ -1,8 +1,7 @@
 #pragma once
-#include <vector>
+#include "Templates/HeapVector.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 
-#define ZEN_MAX_NUM_SWAPCHAIN_IMAGES 8u
 
 namespace zen
 {
@@ -13,8 +12,8 @@ struct VulkanTexture;
 
 struct VulkanSwapchainRecreateInfo
 {
-    VkSwapchainKHR swapchain;
-    VkSurfaceKHR surface;
+    VkSwapchainKHR swapchain{VK_NULL_HANDLE};
+    VkSurfaceKHR surface{VK_NULL_HANDLE};
 };
 
 class VulkanSwapchain
@@ -43,7 +42,21 @@ public:
 
     const VkImage* GetSwapchainImages() const
     {
-        return m_swapchainImages;
+        return m_swapchainImages.data();
+    }
+
+    VkExtent2D GetExtent() const
+    {
+        return {m_internalWidth, m_internalHeight};
+    }
+    VkResult GetLastResult() const
+    {
+        return m_lastResult;
+    }
+    bool NeedsRecreation() const
+    {
+        return m_lastResult == VK_SUBOPTIMAL_KHR || m_lastResult == VK_ERROR_OUT_OF_DATE_KHR ||
+            m_lastResult == VK_ERROR_SURFACE_LOST_KHR;
     }
 
     int32_t AcquireNextImage(VulkanSemaphore** pOutSemaphore);
@@ -65,16 +78,12 @@ private:
     VkPresentModeKHR m_presentMode{VK_PRESENT_MODE_IMMEDIATE_KHR};
     uint32_t m_numImages{0};
 
-    // SmallVector<VkImage> m_swapchainImages;
-    VkImage m_swapchainImages[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
+    HeapVector<VkImage> m_swapchainImages;
     int32_t m_imageIndex{-1};
-    int32_t m_semaphoreIndex{0};
-
-    // SmallVector<VulkanSemaphore*> m_imageAcquiredSemphores;
-    // std::vector<VulkanSemaphore*> m_imageAcquiredSemaphores;
-    VulkanSemaphore* m_pImageAcquiredSemaphores[ZEN_MAX_NUM_SWAPCHAIN_IMAGES];
-    uint64_t m_imageAcquiredSemaphoreSubmissionSerials[ZEN_MAX_NUM_SWAPCHAIN_IMAGES]{};
-
-    friend class VulkanViewport;
+    int32_t m_semaphoreIndex{-1};
+    HeapVector<VulkanSemaphore*> m_imageAcquiredSemaphores;
+    HeapVector<uint64_t> m_imageAcquiredSemaphoreSubmissionSerials;
+    VkResult m_lastResult{VK_SUCCESS};
+    bool m_acquiredSuboptimal{false};
 };
 } // namespace zen

@@ -66,6 +66,7 @@ struct VulkanQueueFamilySummary
 struct VulkanPhysicalDeviceCandidateInfo
 {
     bool isValid{false};
+    std::string unsupportedReason;
     int64_t score{0};
     uint64_t deviceLocalMemoryBytes{0};
     VkPhysicalDeviceProperties properties{};
@@ -183,7 +184,8 @@ static VulkanPhysicalDeviceCandidateInfo EvaluatePhysicalDeviceCandidate(
     vkGetPhysicalDeviceProperties(physicalDevice, &candidateInfo.properties);
     candidateInfo.queueSummary = GetQueueFamilySummary(physicalDevice);
 
-    if (!candidateInfo.queueSummary.hasGraphics)
+    candidateInfo.unsupportedReason = VulkanDevice::GetUnsupportedReason(physicalDevice);
+    if (!candidateInfo.unsupportedReason.empty())
     {
         result = candidateInfo;
     }
@@ -493,7 +495,7 @@ void VulkanRHI::CreateInstance()
     VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
     validationFeatures.enabledValidationFeatureCount = 1;
     validationFeatures.pEnabledValidationFeatures    = validationFeatureEnables.data();
-    validationFeatures.pNext                         = &debugMessengerCI;
+    validationFeatures.pNext = m_instanceExtensionFlags.hasDebugUtils ? &debugMessengerCI : nullptr;
 
     HeapVector<const char*> layerNames;
     layerNames.reserve(m_instanceLayers.size());
@@ -524,12 +526,29 @@ void VulkanRHI::CreateInstance()
     instanceInfo.ppEnabledLayerNames     = layerNames.empty() ? nullptr : layerNames.data();
     instanceInfo.enabledExtensionCount   = static_cast<uint32_t>(extensionNames.size());
     instanceInfo.ppEnabledExtensionNames = extensionNames.empty() ? nullptr : extensionNames.data();
-    instanceInfo.pNext                   = &validationFeatures;
+    const bool validationEnabled =
+        HasExtensionEnabled(m_instanceLayers, NameID("VK_LAYER_KHRONOS_validation"));
+    instanceInfo.pNext = validationEnabled ?
+        static_cast<const void*>(&validationFeatures) :
+        (m_instanceExtensionFlags.hasDebugUtils ? &debugMessengerCI : nullptr);
 
-    VKCHECK(vkCreateInstance(&instanceInfo, nullptr, &m_instance));
+    const VkResult result = vkCreateInstance(&instanceInfo, nullptr, &m_instance);
+    if (result != VK_SUCCESS)
+    {
+        LOG_ERROR_AND_THROW("vkCreateInstance failed: {}", int32_t(result));
+    }
     volkLoadInstance(m_instance);
     // setup debug messenger callback
-    VKCHECK(vkCreateDebugUtilsMessengerEXT(m_instance, &debugMessengerCI, nullptr, &m_messenger));
+    if (m_instanceExtensionFlags.hasDebugUtils)
+    {
+        const VkResult messengerResult =
+            vkCreateDebugUtilsMessengerEXT(m_instance, &debugMessengerCI, nullptr, &m_messenger);
+        if (messengerResult != VK_SUCCESS)
+        {
+            LOG_ERROR_AND_THROW("vkCreateDebugUtilsMessengerEXT failed: {}",
+                                int32_t(messengerResult));
+        }
+    }
 
     VERIFY_EXPR(m_instance != VK_NULL_HANDLE);
     LOGI("Vulkan Instance Created");
@@ -540,17 +559,18 @@ void VulkanRHI::SelectGPU()
     uint32_t gpuCount = 0;
     VkResult result   = vkEnumeratePhysicalDevices(m_instance, &gpuCount, nullptr);
 
-    if (result == VK_ERROR_INITIALIZATION_FAILED)
+    if (result != VK_SUCCESS || gpuCount == 0)
     {
-        LOGE("No Vulkan compatible device found!");
-        assert(false);
+        LOG_ERROR_AND_THROW("No Vulkan physical devices are available (result {})",
+                            int32_t(result));
     }
-
-    VKCHECK(result);
-    VERIFY_EXPR(gpuCount >= 1);
     HeapVector<VkPhysicalDevice> physicalDevices;
     physicalDevices.resize(gpuCount);
-    VKCHECK(vkEnumeratePhysicalDevices(m_instance, &gpuCount, physicalDevices.data()));
+    result = vkEnumeratePhysicalDevices(m_instance, &gpuCount, physicalDevices.data());
+    if (result != VK_SUCCESS)
+    {
+        LOG_ERROR_AND_THROW("vkEnumeratePhysicalDevices failed: {}", int32_t(result));
+    }
 
     uint32_t selectedIndex   = 0;
     bool foundValidCandidate = false;
@@ -566,8 +586,8 @@ void VulkanRHI::SelectGPU()
 
         if (!candidateInfo.isValid)
         {
-            LOGW("Rejecting GPU '{}': graphicsQueue={}", candidateInfo.properties.deviceName,
-                 candidateInfo.queueSummary.hasGraphics);
+            LOGW("Rejecting GPU '{}': {}", candidateInfo.properties.deviceName,
+                 candidateInfo.unsupportedReason);
             continue;
         }
 
@@ -597,8 +617,8 @@ void VulkanRHI::SelectGPU()
 
     if (!foundValidCandidate)
     {
-        LOG_FATAL_ERROR(
-            "Failed to find a Vulkan physical device with graphics queue and swapchain support.");
+        LOG_ERROR_AND_THROW(
+            "No Vulkan device satisfies the required Vulkan 1.2, dynamic rendering and descriptor indexing profile; see rejection reasons above.");
     }
 
     LOGI("Selected Vulkan GPU: {} ({}, score={}, localMemory={} MiB)",
@@ -655,29 +675,38 @@ IRHICommandContext* VulkanRHI::GetTransferCommandContext()
 
 void VulkanRHI::Init()
 {
-    m_pResourceFactory = ZEN_NEW() VulkanResourceFactory();
+    try
+    {
+        m_pResourceFactory = ZEN_NEW() VulkanResourceFactory();
 
-    CreateInstance();
-    SelectGPU();
-    m_pDevice->Init();
+        CreateInstance();
+        SelectGPU();
+        m_pDevice->Init();
 
-    m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
-    m_gpuInfo.uniformBufferAlignment =
-        m_pDevice->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
-    m_gpuInfo.storageBufferAlignment =
-        m_pDevice->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
+        m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
+        m_gpuInfo.uniformBufferAlignment =
+            m_pDevice->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+        m_gpuInfo.storageBufferAlignment =
+            m_pDevice->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
 
-    // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
-    //                        m_device->GetVkHandle());
+        // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
+        //                        m_device->GetVkHandle());
 
-    GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(),
-                          m_pDevice->GetVkHandle());
+        GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(),
+                              m_pDevice->GetVkHandle(),
+                              m_pDevice->GetExtensionFlags().hasBufferDeviceAddress != 0);
 
-    m_pDescriptorPoolManager2        = ZEN_NEW() VulkanDescriptorPoolManager2(m_pDevice);
-    m_pBindlessDescriptorPoolManager = ZEN_NEW() VulkanBindlessDescriptorPoolManager();
-    m_pBindlessDescriptorPoolManager->Init();
-    m_pUniformBufferAllocator = ZEN_NEW() VulkanUniformBufferAllocator();
-    m_pUniformBufferAllocator->Init(RHIFrameState::kMaxFramesInFlight, 4 * 1024 * 1024, 8);
+        m_pDescriptorPoolManager2        = ZEN_NEW() VulkanDescriptorPoolManager2(m_pDevice);
+        m_pBindlessDescriptorPoolManager = ZEN_NEW() VulkanBindlessDescriptorPoolManager();
+        m_pBindlessDescriptorPoolManager->Init();
+        m_pUniformBufferAllocator = ZEN_NEW() VulkanUniformBufferAllocator();
+        m_pUniformBufferAllocator->Init(RHIFrameState::kMaxFramesInFlight, 4 * 1024 * 1024, 8);
+    }
+    catch (...)
+    {
+        Destroy();
+        throw;
+    }
 }
 
 void VulkanRHI::BeginFrame()
@@ -727,6 +756,7 @@ void VulkanRHI::Destroy()
     }
 
     ZEN_DELETE(GVkMemAllocator);
+    GVkMemAllocator = nullptr;
 
     for (const std::pair<const uint32_t, VkRenderPass>& kv : m_renderPassCache)
     {
@@ -738,14 +768,27 @@ void VulkanRHI::Destroy()
         vkDestroyFramebuffer(m_pDevice->GetVkHandle(), kv.second, nullptr);
     }
 
-    m_pDevice->Destroy();
-    ZEN_DELETE(m_pDevice);
+    if (m_pDevice != nullptr)
+    {
+        m_pDevice->Destroy();
+        ZEN_DELETE(m_pDevice);
+        m_pDevice = nullptr;
+    }
 
     ZEN_DELETE(m_pResourceFactory);
+    m_pResourceFactory = nullptr;
 
     // destroy debug utils messenger
-    vkDestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);
+    if (m_messenger != VK_NULL_HANDLE)
+    {
+        vkDestroyDebugUtilsMessengerEXT(m_instance, m_messenger, nullptr);
+        m_messenger = VK_NULL_HANDLE;
+    }
     // destroy instance
-    vkDestroyInstance(m_instance, nullptr);
+    if (m_instance != VK_NULL_HANDLE)
+    {
+        vkDestroyInstance(m_instance, nullptr);
+        m_instance = VK_NULL_HANDLE;
+    }
 }
 } // namespace zen

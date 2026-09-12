@@ -20,7 +20,7 @@ public:
 
     ~VulkanMemoryAllocator();
 
-    void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device);
+    void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, bool bufferDeviceAddress);
 
     void AllocImage(const VkImageCreateInfo* pImageCI,
                     bool cpuReadable,

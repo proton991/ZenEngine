@@ -40,6 +40,8 @@ enum class RHICommandContextType : uint32_t
 class IRHICommandContext
 {
 public:
+    // Resource arguments are borrowed through GPU completion (including the base
+    // texture of a view). Recorded rendering layouts must survive command execution.
     virtual RHICommandContextType GetContextType() = 0;
 
     virtual ~IRHICommandContext() {}
@@ -95,7 +97,9 @@ public:
 
     virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
 
-    virtual void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data) = 0;
+    virtual void RHISetPushConstants(RHIPipeline* pPipeline,
+                                     VectorView<const uint8_t> data,
+                                     uint32_t offset = 0) = 0;
 
     virtual void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                                    BitField<RHIPipelineStageFlagBits> dstStages,
@@ -718,13 +722,13 @@ struct RHICommandSetPushConstants final : public RHICommand
 {
     RHIPipeline* pPipeline;
     VectorView<const uint8_t> data;
-    uint32_t offset; // todo: pass offset
+    uint32_t offset{0};
 
     explicit RHICommandSetPushConstants(RHIPipeline* pPipeline) : pPipeline(pPipeline) {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHISetPushConstants(pPipeline, data);
+        cmdList.GetContext()->RHISetPushConstants(pPipeline, data, offset);
     }
 };
 

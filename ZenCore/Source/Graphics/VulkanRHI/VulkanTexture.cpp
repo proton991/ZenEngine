@@ -127,6 +127,7 @@ void VulkanSampler::Init()
 void VulkanSampler::Destroy()
 {
     vkDestroySampler(GVulkanRHI->GetVkDevice(), m_vkSampler, nullptr);
+    this->~VulkanSampler();
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
@@ -145,7 +146,10 @@ RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
 RHITextureView* VulkanRHI::CreateTextureView(RHITexture* pBaseTexture,
                                              const RHITextureViewCreateInfo& createInfo)
 {
-    VERIFY_EXPR(pBaseTexture != nullptr);
+    if (pBaseTexture == nullptr)
+    {
+        LOG_ERROR_AND_THROW("Cannot create a view of a null texture");
+    }
     return pBaseTexture->CreateView(createInfo);
 }
 
@@ -161,22 +165,78 @@ VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInf
 
     new (pTexture) VulkanTexture(createInfo);
 
-    pTexture->Init();
+    try
+    {
+        pTexture->Init();
+    }
+    catch (...)
+    {
+        pTexture->Destroy();
+        throw;
+    }
 
     return pTexture;
 }
 
 RHITextureView* VulkanTexture::CreateView(const RHITextureViewCreateInfo& createInfo)
 {
-    VERIFY_EXPR_MSG(
-        createInfo.format == m_baseInfo.format || m_baseInfo.mutableFormat,
-        "RHITextureView with a different format requires a mutable-format base RHITexture");
+    if (createInfo.format == DataFormat::eUndefined ||
+        (createInfo.format != m_baseInfo.format && !m_baseInfo.mutableFormat))
+    {
+        LOG_ERROR_AND_THROW("Texture view format requires a compatible mutable-format image");
+    }
+    if (createInfo.mipLevels == 0 || createInfo.baseMipLevel >= m_baseInfo.mipmaps ||
+        createInfo.mipLevels > m_baseInfo.mipmaps - createInfo.baseMipLevel ||
+        createInfo.arrayLayers == 0 || createInfo.baseArrayLayer >= m_baseInfo.arrayLayers ||
+        createInfo.arrayLayers > m_baseInfo.arrayLayers - createInfo.baseArrayLayer)
+    {
+        LOG_ERROR_AND_THROW("Texture view mip or array-layer range is outside its image");
+    }
+    const bool cubeImage = m_baseInfo.type == RHITextureType::eCube;
+    if (createInfo.type != m_baseInfo.type &&
+        !(cubeImage && createInfo.type == RHITextureType::e2D))
+    {
+        LOG_ERROR_AND_THROW("Texture view type is incompatible with its image");
+    }
+    if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers % 6 != 0)
+    {
+        LOG_ERROR_AND_THROW("Cube views require a multiple of six array layers");
+    }
+    if ((int64_t(createInfo.aspect) & ~int64_t(GetTextureFormatAspects(createInfo.format))) != 0)
+    {
+        LOG_ERROR_AND_THROW("Texture view aspects are incompatible with its format");
+    }
 
     VulkanTextureView* pView = VulkanTextureView::CreateObject(this, createInfo);
 
     RegisterOwnedView(pView);
 
     return pView;
+}
+
+RHITextureView* VulkanTexture::GetAttachmentView()
+{
+    if (m_baseInfo.type == RHITextureType::e3D)
+    {
+        LOG_ERROR_AND_THROW("Rendering to 3D texture slices is not supported");
+    }
+    if (m_pAttachmentView == nullptr)
+    {
+        if (m_baseInfo.mipmaps == 1 && m_baseInfo.type != RHITextureType::eCube)
+        {
+            m_pAttachmentView = m_pDefaultView;
+        }
+        else
+        {
+            RHITextureViewCreateInfo info{};
+            info.format = m_baseInfo.format;
+            info.type =
+                m_baseInfo.type == RHITextureType::eCube ? RHITextureType::e2D : m_baseInfo.type;
+            info.arrayLayers  = m_baseInfo.arrayLayers;
+            m_pAttachmentView = CreateView(info);
+        }
+    }
+    return m_pAttachmentView;
 }
 
 VkImageView VulkanTexture::GetVkImageView() const
@@ -250,9 +310,17 @@ void VulkanTexture::Init()
     // set aspect flags
     m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 
-    if (m_vkImageCI.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    if (FormatIsDepthStencil(m_baseInfo.format))
     {
         m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+    else if (FormatIsDepthOnly(m_baseInfo.format))
+    {
+        m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
+    else if (FormatIsStencilOnly(m_baseInfo.format))
+    {
+        m_vkAspectFlags = VK_IMAGE_ASPECT_STENCIL_BIT;
     }
 
     RHITextureViewCreateInfo viewCI{};
@@ -269,8 +337,12 @@ void VulkanTexture::Init()
 void VulkanTexture::Destroy()
 {
     DestroyOwnedViews();
-    GVulkanRHI->RemoveImageLayout(m_vkImage);
-    GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
+    if (m_vkImage != VK_NULL_HANDLE)
+    {
+        GVulkanRHI->RemoveImageLayout(m_vkImage);
+        GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
+    }
+    this->~VulkanTexture();
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
@@ -282,7 +354,15 @@ VulkanTextureView* VulkanTextureView::CreateObject(VulkanTexture* pTexture,
 
     new (pView) VulkanTextureView(pTexture, createInfo);
 
-    pView->Init();
+    try
+    {
+        pView->Init();
+    }
+    catch (...)
+    {
+        pView->Destroy();
+        throw;
+    }
 
     return pView;
 }
@@ -294,7 +374,7 @@ void VulkanTextureView::Init()
     RHITextureSubResourceRange range = m_subResourceRange;
 
     // Combined depth/stencil formats use the existing depth-sampling default.
-    if (FormatIsDepthStencil(m_viewInfo.format))
+    if (FormatIsDepthStencil(m_viewInfo.format) && m_viewInfo.aspect.IsEmpty())
     {
         range.aspect = int64_t(RHITextureAspectFlagBits::eDepth);
     }
@@ -305,7 +385,7 @@ void VulkanTextureView::Init()
     if (vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView) !=
         VK_SUCCESS)
     {
-        LOGE("vkCreateImageView failed with error");
+        LOG_ERROR_AND_THROW("vkCreateImageView failed");
     }
 
     if (!m_viewInfo.tag.IsNone())
@@ -323,6 +403,7 @@ void VulkanTextureView::Destroy()
         m_vkImageView = nullptr;
     }
 
+    this->~VulkanTextureView();
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 

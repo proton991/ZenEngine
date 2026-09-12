@@ -1,3 +1,4 @@
+#include "Utils/Errors.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #if defined(ZEN_MACOS)
 #    include "Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h"
@@ -21,7 +22,12 @@ VkSurfaceKHR VulkanMacOSPlatform::CreateSurface(VkInstance instance, void* pData
 {
     MacOSWindowData* pWindowData = static_cast<MacOSWindowData*>(pData);
     VkSurfaceKHR surface{VK_NULL_HANDLE};
-    glfwCreateWindowSurface(instance, pWindowData->pGlfwWindow, nullptr, &surface);
+    const VkResult result =
+        glfwCreateWindowSurface(instance, pWindowData->pGlfwWindow, nullptr, &surface);
+    if (result != VK_SUCCESS)
+    {
+        LOG_ERROR_AND_THROW("glfwCreateWindowSurface failed: {}", int32_t(result));
+    }
 
     return surface;
 }

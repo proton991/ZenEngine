@@ -55,7 +55,15 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
 
     new (pViewport) VulkanViewport(pWindow, width, height, enableVSync);
 
-    pViewport->Init();
+    try
+    {
+        pViewport->Init();
+    }
+    catch (...)
+    {
+        pViewport->ReleaseReference();
+        throw;
+    }
 
     return pViewport;
 }
@@ -76,25 +84,11 @@ void VulkanViewport::Init()
     m_depthFormat = GVulkanRHI->GetSupportedDepthFormat();
     LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
     CreateSwapchain(nullptr);
-
-    for (uint32_t i = 0; i < m_pSwapchain->GetNumSwapchainImages(); i++)
-    {
-        VulkanSemaphore* pSemaphore =
-            GVulkanRHI->GetDevice()->GetSemaphoreManager()->GetOrCreateSemaphore();
-        const NameID debugName(fmt::format("RenderComplete-{}", i));
-        pSemaphore->SetDebugName(debugName);
-        m_pRenderingCompleteSemaphores[i] = pSemaphore;
-    }
 }
 
 void VulkanViewport::Destroy()
 {
     DestroySwapchain(nullptr);
-
-    for (VulkanSemaphore*& semaphore : m_pRenderingCompleteSemaphores)
-    {
-        m_pDevice->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
-    }
 
     if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
     {
@@ -108,15 +102,32 @@ void VulkanViewport::Destroy()
 
 void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
 {
-    m_pColorBackBuffer        = nullptr;
-    m_pDepthStencilBackBuffer = nullptr;
+    m_suspended = m_width == 0 || m_height == 0;
+    if (m_suspended)
+    {
+        return;
+    }
 
     m_pSwapchain =
         ZEN_NEW() VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, pRecreateInfo);
     const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
     const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
-    // m_renderingCompleteSemaphores.resize(numImages);
-    // m_swapchainImages.resize(numImages);
+    if (numImages == 0)
+    {
+        m_suspended = true;
+        return;
+    }
+    const VkExtent2D extent = m_pSwapchain->GetExtent();
+    m_width                 = extent.width;
+    m_height                = extent.height;
+    m_renderingCompleteSemaphores.resize(numImages);
+    m_swapchainImages.resize(numImages);
+    for (uint32_t i = 0; i < numImages; ++i)
+    {
+        auto* semaphore                  = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+        m_renderingCompleteSemaphores[i] = semaphore;
+        semaphore->SetDebugName(NameID(fmt::format("RenderComplete-{}", i)));
+    }
 
     FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
     FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
@@ -157,8 +168,10 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                             m_pDepthStencilBackBuffer->GetVkSubresourceRange());
     barrier.ExecuteImageBarriersOnly(cmdBuffer);
-    context.SubmitRecordedWorkloads();
-    // m_device->WaitForIdle();
+    if (context.SubmitRecordedWorkloads() != RHISubmissionResult::eSuccess)
+    {
+        LOG_ERROR_AND_THROW("Failed to initialize viewport backbuffer layouts");
+    }
 
     m_acquiredImageIndex = -1;
 }
@@ -169,15 +182,18 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
 
     if (m_pSwapchain != nullptr)
     {
-        for (uint32_t i = 0; i < m_pSwapchain->GetNumSwapchainImages(); i++)
-        {
-            m_swapchainImages[i] = VK_NULL_HANDLE;
-        }
-
         m_pSwapchain->Destroy(pRecreateInfo);
         ZEN_DELETE(m_pSwapchain);
         m_pSwapchain = nullptr;
     }
+
+    // A graphics idle wait does not prove the presentation engine consumed every
+    // binary semaphore. Retain old WSI semaphores in their manager until device teardown.
+    m_renderingCompleteSemaphores.clear();
+    m_swapchainImages.clear();
+    m_acquiredImageIndex      = -1;
+    m_pImageAcquiredSemaphore = nullptr;
+    m_pContext                = nullptr;
 
     if (m_pColorBackBuffer)
     {
@@ -192,10 +208,23 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
     }
 }
 
-void VulkanViewport::RecreateSwapchain()
+void VulkanViewport::RecreateSwapchain(bool recreateSurface)
 {
     VulkanSwapchainRecreateInfo recreateInfo{VK_NULL_HANDLE, VK_NULL_HANDLE};
-    DestroySwapchain(&recreateInfo);
+    DestroySwapchain(recreateSurface ? nullptr : &recreateInfo);
+    if (GVulkanRHI->AreSubmissionsBlocked())
+    {
+        // Destruction is still legal after device loss, but recreation is not.
+        if (recreateInfo.swapchain != VK_NULL_HANDLE)
+        {
+            vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), recreateInfo.swapchain, nullptr);
+        }
+        if (recreateInfo.surface != VK_NULL_HANDLE)
+        {
+            vkDestroySurfaceKHR(GVulkanRHI->GetInstance(), recreateInfo.surface, nullptr);
+        }
+        LOG_ERROR_AND_THROW("Cannot recreate a swapchain after a failed device idle wait");
+    }
     CreateSwapchain(&recreateInfo);
     VERIFY_EXPR(recreateInfo.surface == VK_NULL_HANDLE);
     VERIFY_EXPR(recreateInfo.swapchain == VK_NULL_HANDLE);
@@ -203,9 +232,13 @@ void VulkanViewport::RecreateSwapchain()
 
 bool VulkanViewport::TryAcquireNextImage()
 {
+    if (m_suspended)
+    {
+        return false;
+    }
     // A rejected presentation-copy submission did not consume the acquire semaphore.
     // Retry the already acquired image instead of leaking another swapchain acquisition.
-    if (m_acquiredImageIndex < 0 && m_pSwapchain != nullptr)
+    if (!m_suspended && m_acquiredImageIndex < 0 && m_pSwapchain != nullptr)
     {
         const int32_t imageIndex = m_pSwapchain->AcquireNextImage(&m_pImageAcquiredSemaphore);
 
@@ -305,22 +338,26 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
 
 void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 {
+    if (GVulkanRHI->AreSubmissionsBlocked())
+    {
+        LOG_ERROR_AND_THROW("Cannot prepare presentation while Vulkan submissions are blocked");
+    }
     if (TryAcquireNextImage())
     {
         m_presentAcquiredFailed = false;
 
         m_pContext = static_cast<FVulkanCommandListContext*>(pCommandList->GetContext());
+        m_pContext->SetLastSubmittedSerial(0);
 
-        uint32_t windowWidth  = std::min(m_width, m_pSwapchain->m_internalWidth);
-        uint32_t windowHeight = std::min(m_height, m_pSwapchain->m_internalHeight);
+        const VkExtent2D extent = m_pSwapchain->GetExtent();
 
         m_pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
 
         CopyBackBufferToSwapchainImage(m_pContext->GetCommandBuffer()->GetVkHandle(),
-                                       m_swapchainImages[m_acquiredImageIndex], windowWidth,
-                                       windowHeight);
+                                       m_swapchainImages[m_acquiredImageIndex], extent.width,
+                                       extent.height);
 
-        m_pContext->AddSignalSemaphore(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
+        m_pContext->AddSignalSemaphore(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
     }
     else
     {
@@ -330,33 +367,55 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 
 bool VulkanViewport::Present()
 {
-    bool presentResult;
-
+    if (GVulkanRHI->AreSubmissionsBlocked())
+    {
+        LOG_ERROR_AND_THROW("Cannot present while Vulkan submissions are blocked");
+    }
+    if (m_suspended || m_pSwapchain == nullptr)
+    {
+        return false;
+    }
     if (m_presentAcquiredFailed)
     {
         m_presentAcquiredFailed = false;
-        RecreateSwapchain();
-        presentResult = false;
+        if (m_pSwapchain->NeedsRecreation())
+        {
+            RecreateSwapchain(m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
+        }
+        return false;
     }
-    else
+    // Zero means the copy was rejected or has not been submitted. Keep the acquired
+    // image and its unconsumed semaphore for a later accepted copy submission.
+    if (m_acquiredImageIndex < 0 || m_pContext == nullptr ||
+        m_pContext->GetLastSubmittedSerial() == 0)
     {
-        m_pSwapchain->MarkAcquireSemaphoreSubmitted(m_pContext->GetLastSubmittedSerial());
-
-        presentResult = m_pSwapchain->Present(m_pRenderingCompleteSemaphores[m_acquiredImageIndex]);
+        return false;
     }
-
+    m_pSwapchain->MarkAcquireSemaphoreSubmitted(m_pContext->GetLastSubmittedSerial());
+    const bool result = m_pSwapchain->Present(m_renderingCompleteSemaphores[m_acquiredImageIndex]);
     m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
-    m_presentCount++;
-
-    return presentResult;
+    m_pContext                = nullptr;
+    ++m_presentCount;
+    if (m_pSwapchain->NeedsRecreation())
+    {
+        RecreateSwapchain(m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
+    }
+    return result;
 }
 
 void VulkanViewport::Resize(uint32_t width, uint32_t height)
 {
-    const uint32_t oldWidth  = m_width;
-    const uint32_t oldHeight = m_height;
-
+    if (GVulkanRHI->AreSubmissionsBlocked())
+    {
+        LOG_ERROR_AND_THROW("Cannot resize while Vulkan submissions are blocked");
+    }
+    if (width == 0 || height == 0)
+    {
+        // Preserve the last usable backbuffers while the window is minimized.
+        m_suspended = true;
+        return;
+    }
     m_width  = width;
     m_height = height;
     RecreateSwapchain();
