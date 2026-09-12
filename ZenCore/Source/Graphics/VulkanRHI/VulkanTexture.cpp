@@ -282,13 +282,15 @@ void VulkanTexture::Init()
     }
 
     const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
+    const uint32_t computeQueueFamily =
+        GVulkanRHI->GetDevice()->GetComputeQueue()->GetFamilyIndex();
     const uint32_t transferQueueFamily =
         GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
 
     const uint32_t textureSize = CalculateTextureSize(m_baseInfo);
 
     AllocateWithQueueSharing(
-        imageCI, graphicsQueueFamily, transferQueueFamily,
+        imageCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
         (imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0,
         [this, &imageCI, textureSize] {
             GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage, &m_memAlloc,

@@ -10,6 +10,7 @@ namespace zen
 class VulkanDevice;
 class VulkanFenceManager;
 class VulkanCommandBuffer;
+class VulkanQueue;
 struct VulkanTexture;
 
 class VulkanFence
@@ -104,10 +105,30 @@ public:
 
     bool Wait(uint64_t value, uint64_t timeNS) const;
 
+    // CPU-side queue acceptance, not GPU completion or the semaphore's native state.
+    // Read and publication are serialized with queue submission.
+    uint64_t GetSignalGeneration() const
+    {
+        return m_signalGeneration;
+    }
+
+    uint64_t GetSignalSubmissionSerial(const VulkanQueue* pQueue, uint64_t previousGeneration) const
+    {
+        return m_pSignalQueue == pQueue && m_signalGeneration != previousGeneration ?
+            m_signalSubmissionSerial :
+            0;
+    }
+
 private:
+    friend class VulkanQueue;
+    friend class VulkanSemaphoreManager;
+
     VulkanDevice* m_pDevice{nullptr};
     VkSemaphore m_semaphore{VK_NULL_HANDLE};
     VkSemaphoreType m_type{VK_SEMAPHORE_TYPE_BINARY};
+    const VulkanQueue* m_pSignalQueue{nullptr};
+    uint64_t m_signalSubmissionSerial{0};
+    uint64_t m_signalGeneration{0};
 };
 
 class VulkanSemaphoreManager

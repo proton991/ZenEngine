@@ -149,7 +149,9 @@ void SceneRendererDemo::Run()
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R))
+        // Consume R in either mode so a PBR key press cannot carry over to voxel mode.
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R) &&
+            m_renderDevice->GetRendererServer()->GetRenderOption() == rc::RenderOption::eVoxelize)
         {
             m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
             m_renderDevice->GetRDGMetrics().RequestCapture();

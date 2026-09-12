@@ -133,7 +133,7 @@ private:
     // HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 
-    FVulkanCommandListContext* m_pContext{nullptr};
+    uint64_t m_presentSignalGeneration{0};
     bool m_presentAcquiredFailed{false};
     bool m_suspended{false};
 };

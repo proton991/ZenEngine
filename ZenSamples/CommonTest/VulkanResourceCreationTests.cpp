@@ -6,29 +6,46 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "ScopedVulkanCall.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
 
 namespace
 {
 template <typename Info> void CheckAllocationStorage()
 {
-    for (uint32_t transferFamily : {2u, 7u})
+    struct SharingCase
     {
-        for (bool transferUsage : {false, true})
-        {
-            Info info{};
-            bool called = false;
-            std::array<uint32_t, 2> consumed{};
-            zen::AllocateWithQueueSharing(info, 2, transferFamily, transferUsage, [&] {
+        uint32_t computeFamily;
+        uint32_t transferFamily;
+        bool transferUsage;
+        uint32_t familyCount;
+        std::array<uint32_t, 3> families;
+    };
+    const SharingCase cases[] = {
+        {2, 2, false, 1, {2}},    {2, 2, true, 1, {2}},      {2, 7, false, 1, {2}},
+        {2, 7, true, 2, {2, 7}},  {2, 11, false, 1, {2}},    {2, 11, true, 2, {2, 11}},
+        {7, 2, false, 2, {2, 7}}, {7, 2, true, 2, {2, 7}},   {7, 7, false, 2, {2, 7}},
+        {7, 7, true, 2, {2, 7}},  {7, 11, false, 2, {2, 7}}, {7, 11, true, 3, {2, 7, 11}}};
+    for (const SharingCase& testCase : cases)
+    {
+        SCOPED_TRACE(testing::Message() << "compute=" << testCase.computeFamily
+                                        << " transfer=" << testCase.transferFamily
+                                        << " transferUsage=" << testCase.transferUsage);
+        Info info{};
+        bool called = false;
+        std::array<uint32_t, 3> consumed{};
+        zen::AllocateWithQueueSharing(
+            info, 2, testCase.computeFamily, testCase.transferFamily, testCase.transferUsage, [&] {
                 called = true;
 
-                if (transferUsage && transferFamily == 7)
+                if (testCase.familyCount > 1)
                 {
                     EXPECT_EQ(info.sharingMode, VK_SHARING_MODE_CONCURRENT);
-                    ASSERT_EQ(info.queueFamilyIndexCount, 2u);
+                    ASSERT_EQ(info.queueFamilyIndexCount, testCase.familyCount);
                     ASSERT_NE(info.pQueueFamilyIndices, nullptr);
                     // Read at the allocation boundary, after sharing-mode setup has completed.
-                    consumed = {info.pQueueFamilyIndices[0], info.pQueueFamilyIndices[1]};
+                    std::copy_n(info.pQueueFamilyIndices, info.queueFamilyIndexCount,
+                                consumed.begin());
                 }
                 else
                 {
@@ -38,16 +55,15 @@ template <typename Info> void CheckAllocationStorage()
                 }
             });
 
-            EXPECT_TRUE(called);
+        EXPECT_TRUE(called);
 
-            if (transferUsage && transferFamily == 7)
-            {
-                EXPECT_EQ(consumed, (std::array<uint32_t, 2>{2, 7}));
-            }
-
-            EXPECT_EQ(info.queueFamilyIndexCount, 0u);
-            EXPECT_EQ(info.pQueueFamilyIndices, nullptr);
+        if (testCase.familyCount > 1)
+        {
+            EXPECT_EQ(consumed, testCase.families);
         }
+
+        EXPECT_EQ(info.queueFamilyIndexCount, 0u);
+        EXPECT_EQ(info.pQueueFamilyIndices, nullptr);
     }
 }
 } // namespace

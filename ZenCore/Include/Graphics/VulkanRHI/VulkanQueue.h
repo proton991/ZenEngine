@@ -99,7 +99,7 @@ private:
     void AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
                                       TimelineSubmitBatch& outSubmitBatch);
 
-    void QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit);
+    void QueueSubmittedWorkload(VulkanWorkload* pWorkload, uint64_t submissionSerial);
 
     VulkanWorkload* AcquireWorkload();
 

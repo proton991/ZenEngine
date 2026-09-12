@@ -338,6 +338,10 @@ void VulkanSemaphoreManager::ReleaseSemaphore(VulkanSemaphore*& sem)
 
         if (it != m_usedSemaphores.end())
         {
+            // The next owner must not inherit acceptance of an earlier signal.
+            // Keep the generation monotonic across reuse of the same object.
+            sem->m_pSignalQueue           = nullptr;
+            sem->m_signalSubmissionSerial = 0;
             m_usedSemaphores.erase(it);
             m_freeSemaphores.push(sem);
             sem = nullptr;

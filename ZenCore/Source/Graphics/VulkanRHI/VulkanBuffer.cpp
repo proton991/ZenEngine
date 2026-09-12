@@ -55,11 +55,13 @@ void VulkanBuffer::Init()
     bufferCI.usage       = ToVkBufferUsageFlags(m_usageFlags);
 
     const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
+    const uint32_t computeQueueFamily =
+        GVulkanRHI->GetDevice()->GetComputeQueue()->GetFamilyIndex();
     const uint32_t transferQueueFamily =
         GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
 
     AllocateWithQueueSharing(
-        bufferCI, graphicsQueueFamily, transferQueueFamily,
+        bufferCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
         (bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) !=
             0,
         [this, &bufferCI] {

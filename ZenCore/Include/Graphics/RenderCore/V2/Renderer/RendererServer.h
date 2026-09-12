@@ -55,6 +55,11 @@ public:
         m_renderOption = option;
     }
 
+    RenderOption GetRenderOption() const
+    {
+        return m_renderOption;
+    }
+
 private:
     RHIViewport* m_pViewport{nullptr};
     RenderDevice* m_pRenderDevice{nullptr};

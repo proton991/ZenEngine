@@ -672,6 +672,251 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeRejectedSubmissionRetriesSameAcquis
     EXPECT_EQ(WSIDriver::lastAcquire, acquired);
 }
 
+class VulkanPresentationSubmissionTest : public VulkanSwapchainIntegrationTest,
+                                         public testing::WithParamInterface<bool>
+{
+protected:
+    void SetUp() override
+    {
+        VulkanSwapchainIntegrationTest::SetUp();
+        if (GetParam())
+        {
+            ASSERT_TRUE(session->rhi.GetDevice()->SupportsTimelineSemaphore());
+        }
+        else
+        {
+            session->rhi.GetDevice()->GetExtensionFlags().hasTimelineSemaphore = 0;
+        }
+        WSIDriver::count = 0;
+        CreateNativeViewport();
+    }
+
+    void FinalizeRecording(HeapVector<RHIPlatformCommandList*>& platform)
+    {
+        RHICommandList* lists[] = {commands};
+        session->rhi.FinalizeCommandLists({lists, 1}, platform);
+    }
+
+    RHISubmissionResult SubmitRecording()
+    {
+        HeapVector<RHIPlatformCommandList*> platform;
+        FinalizeRecording(platform);
+        session->rhi.SubmitPlatformCommandLists(platform);
+        return session->rhi.FlushAllGPUCommands();
+    }
+
+    bool ExpectPresentationSkipped()
+    {
+        // A regression must fail the test without queueing an unsignaled binary wait.
+        static uint32_t attemptedPresent;
+        attemptedPresent = 0;
+        test::ScopedVulkanCall<PFN_vkQueuePresentKHR> preventWait(
+            vkQueuePresentKHR, +[](VkQueue, const VkPresentInfoKHR*) -> VkResult {
+                ++attemptedPresent;
+                return VK_ERROR_OUT_OF_HOST_MEMORY;
+            });
+        bool presented = false;
+        EXPECT_NO_THROW(presented = viewport->Present());
+        EXPECT_FALSE(presented);
+        EXPECT_EQ(attemptedPresent, 0u);
+        return !presented && attemptedPresent == 0;
+    }
+};
+
+TEST_P(VulkanPresentationSubmissionTest, RejectedCopyAfterSuccessfulFramesRetainsAcquisition)
+{
+    ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+    ASSERT_TRUE(viewport->Present());
+    for (uint32_t frame = 0; frame < 3; ++frame)
+    {
+        session->rhi.WaitDeviceIdle();
+        const uint64_t previousSerial = context->GetLastSubmittedSerial();
+        ASSERT_GT(previousSerial, 0u);
+        const uint32_t presentedCalls = WSIDriver::presentedCalls;
+        WSIDriver::rejectSubmissions  = 1;
+        ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eRejected);
+        EXPECT_EQ(context->GetLastSubmittedSerial(), previousSerial);
+        const VkSemaphore acquired   = WSIDriver::lastAcquire;
+        const uint32_t acquiredCalls = WSIDriver::acquiredCalls;
+        ASSERT_TRUE(ExpectPresentationSkipped());
+
+        // A later accepted submission on the same context still does not signal the copy.
+        context->GetCommandBuffer();
+        ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+        EXPECT_GT(context->GetLastSubmittedSerial(), previousSerial);
+        ASSERT_TRUE(ExpectPresentationSkipped());
+        EXPECT_EQ(WSIDriver::presentedCalls, presentedCalls);
+
+        ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+        ASSERT_TRUE(viewport->Present());
+        EXPECT_EQ(WSIDriver::acquiredCalls, acquiredCalls);
+        EXPECT_EQ(WSIDriver::lastAcquire, acquired);
+        EXPECT_EQ(WSIDriver::presentedCalls, presentedCalls + 1);
+    }
+}
+
+TEST_P(VulkanPresentationSubmissionTest, PreparedCopyIgnoresEarlierSubmissionOnReusedContext)
+{
+    ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+    ASSERT_TRUE(viewport->Present());
+    session->rhi.WaitDeviceIdle();
+    const uint64_t previousSerial = context->GetLastSubmittedSerial();
+
+    context->GetCommandBuffer();
+    HeapVector<RHIPlatformCommandList*> earlier;
+    FinalizeRecording(earlier);
+    viewport->PrepareForPresent(commands);
+    // Preparing a new copy must not erase the context's earlier lifetime wait serial.
+    EXPECT_EQ(context->GetLastSubmittedSerial(), previousSerial);
+    HeapVector<RHIPlatformCommandList*> copy;
+    FinalizeRecording(copy);
+
+    session->rhi.SubmitPlatformCommandLists(earlier);
+    ASSERT_EQ(session->rhi.FlushAllGPUCommands(), RHISubmissionResult::eSuccess);
+    EXPECT_GT(context->GetLastSubmittedSerial(), previousSerial);
+    ASSERT_TRUE(ExpectPresentationSkipped());
+    session->rhi.SubmitPlatformCommandLists(copy);
+    ASSERT_EQ(session->rhi.FlushAllGPUCommands(), RHISubmissionResult::eSuccess);
+    ASSERT_TRUE(viewport->Present());
+}
+
+TEST_P(VulkanPresentationSubmissionTest, AcceptedCopySurvivesLaterRejectionAndContextDestruction)
+{
+    ASSERT_EQ(RenderAndSubmit(), RHISubmissionResult::eSuccess);
+    ASSERT_GT(context->GetLastSubmittedSerial(), 0u);
+    session->rhi.WaitDeviceIdle();
+    context->RHIWaitUntilCompleted();
+    EXPECT_EQ(context->GetLastSubmittedSerial(), 0u);
+    // Completion recycles the copy's workload before the viewport reads its acceptance.
+    context->GetCommandBuffer();
+    WSIDriver::rejectSubmissions = 1;
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eRejected);
+    EXPECT_EQ(context->GetLastSubmittedSerial(), 0u);
+    ZEN_DELETE(commands);
+    commands = nullptr;
+    context  = nullptr;
+    ASSERT_TRUE(viewport->Present());
+    EXPECT_EQ(WSIDriver::presentedCalls, 1u);
+}
+
+TEST_P(VulkanPresentationSubmissionTest, SignalAcceptanceFollowsMergedWorkAndSurvivesPoolReuse)
+{
+    VulkanQueue* pQueue              = context->GetQueue();
+    VulkanSemaphoreManager* pManager = session->rhi.GetDevice()->GetSemaphoreManager();
+    VulkanSemaphore* first           = pManager->GetOrCreateSemaphore();
+    VulkanSemaphore* second          = pManager->GetOrCreateSemaphore();
+    const uint64_t firstGeneration   = first->GetSignalGeneration();
+    const uint64_t secondGeneration  = second->GetSignalGeneration();
+    const uint64_t beforeSubmission  = pQueue->GetLastSubmittedSerial();
+    HeapVector<RHIPlatformCommandList*> platform;
+    // The first workload has no signals; merging transfers the second's two signals to it.
+    context->GetCommandBuffer();
+    FinalizeRecording(platform);
+    context->GetCommandBuffer();
+    context->AddSignalSemaphore(first);
+    context->AddSignalSemaphore(second);
+    FinalizeRecording(platform);
+    EXPECT_EQ(first->GetSignalSubmissionSerial(pQueue, firstGeneration), 0u);
+    EXPECT_EQ(second->GetSignalSubmissionSerial(pQueue, secondGeneration), 0u);
+    session->rhi.SubmitPlatformCommandLists(platform);
+    ASSERT_EQ(session->rhi.FlushAllGPUCommands(), RHISubmissionResult::eSuccess);
+    const uint64_t firstSerial  = first->GetSignalSubmissionSerial(pQueue, firstGeneration);
+    const uint64_t secondSerial = second->GetSignalSubmissionSerial(pQueue, secondGeneration);
+    EXPECT_GT(firstSerial, beforeSubmission);
+    EXPECT_EQ(secondSerial, firstSerial);
+    EXPECT_EQ(secondSerial, context->GetLastSubmittedSerial());
+    EXPECT_EQ(pQueue->GetLastSubmittedSerial() - beforeSubmission, GetParam() ? 1u : 2u);
+    EXPECT_EQ(first->GetSignalGeneration(), firstGeneration + 1);
+    EXPECT_EQ(second->GetSignalGeneration(), secondGeneration + 1);
+    context->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, first);
+    context->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, second);
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+    session->rhi.WaitDeviceIdle();
+
+    VulkanSemaphore* rejected         = pManager->GetOrCreateSemaphore();
+    const uint64_t rejectedGeneration = rejected->GetSignalGeneration();
+    context->GetCommandBuffer();
+    context->AddSignalSemaphore(rejected);
+    WSIDriver::rejectSubmissions = 1;
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eRejected);
+    EXPECT_EQ(rejected->GetSignalSubmissionSerial(pQueue, rejectedGeneration), 0u);
+    EXPECT_EQ(rejected->GetSignalGeneration(), rejectedGeneration);
+    VulkanSemaphore* replacement = pManager->GetOrCreateSemaphore();
+    for (uint32_t reuse = 0; reuse < 4; ++reuse)
+    {
+        const uint64_t generation = replacement->GetSignalGeneration();
+        context->GetCommandBuffer();
+        context->AddSignalSemaphore(replacement);
+        EXPECT_EQ(replacement->GetSignalSubmissionSerial(pQueue, generation), 0u);
+        ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+        const uint64_t serial = replacement->GetSignalSubmissionSerial(pQueue, generation);
+        EXPECT_GT(serial, secondSerial);
+        EXPECT_EQ(replacement->GetSignalGeneration(), generation + 1);
+        context->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, replacement);
+        ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+        session->rhi.WaitDeviceIdle();
+        EXPECT_EQ(replacement->GetSignalSubmissionSerial(pQueue, generation), serial);
+        EXPECT_EQ(first->GetSignalSubmissionSerial(pQueue, firstGeneration), firstSerial);
+        EXPECT_EQ(second->GetSignalSubmissionSerial(pQueue, secondGeneration), secondSerial);
+        EXPECT_EQ(rejected->GetSignalSubmissionSerial(pQueue, rejectedGeneration), 0u);
+        EXPECT_EQ(rejected->GetSignalGeneration(), rejectedGeneration);
+    }
+}
+
+TEST_P(VulkanPresentationSubmissionTest, RecycledSemaphoreDoesNotInheritSignalAcceptance)
+{
+    VulkanQueue* pQueue              = context->GetQueue();
+    VulkanSemaphoreManager* pManager = session->rhi.GetDevice()->GetSemaphoreManager();
+    VulkanSemaphore* semaphore       = pManager->GetOrCreateSemaphore();
+    const uint64_t initialGeneration = semaphore->GetSignalGeneration();
+    context->AddSignalSemaphore(semaphore);
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+    const uint64_t firstSerial = semaphore->GetSignalSubmissionSerial(pQueue, initialGeneration);
+    const uint64_t acceptedGeneration = semaphore->GetSignalGeneration();
+    ASSERT_GT(firstSerial, 0u);
+    context->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, semaphore);
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+    session->rhi.WaitDeviceIdle();
+    VulkanSemaphore* original = semaphore;
+    pManager->ReleaseSemaphore(semaphore);
+    EXPECT_EQ(semaphore, nullptr);
+    semaphore = pManager->GetOrCreateSemaphore();
+    ASSERT_EQ(semaphore, original);
+    EXPECT_EQ(semaphore->GetSignalGeneration(), acceptedGeneration);
+    EXPECT_EQ(semaphore->GetSignalSubmissionSerial(pQueue, initialGeneration), 0u);
+    context->AddSignalSemaphore(semaphore);
+    EXPECT_EQ(semaphore->GetSignalSubmissionSerial(pQueue, acceptedGeneration), 0u);
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+    EXPECT_EQ(semaphore->GetSignalGeneration(), acceptedGeneration + 1);
+    EXPECT_GT(semaphore->GetSignalSubmissionSerial(pQueue, acceptedGeneration), firstSerial);
+    context->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, semaphore);
+    ASSERT_EQ(SubmitRecording(), RHISubmissionResult::eSuccess);
+    session->rhi.WaitDeviceIdle();
+    pManager->ReleaseSemaphore(semaphore);
+}
+
+TEST_P(VulkanPresentationSubmissionTest, SignalAcceptanceRequiresTheSubmittingQueue)
+{
+    VulkanDevice* pDevice      = session->rhi.GetDevice();
+    VulkanSemaphore* semaphore = pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+    const uint64_t generation  = semaphore->GetSignalGeneration();
+    FVulkanCommandListContext compute(RHICommandContextType::eAsyncCompute, pDevice);
+    compute.AddSignalSemaphore(semaphore);
+    ASSERT_EQ(compute.SubmitRecordedWorkloads(), RHISubmissionResult::eSuccess);
+    EXPECT_GT(semaphore->GetSignalSubmissionSerial(compute.GetQueue(), generation), 0u);
+    EXPECT_EQ(semaphore->GetSignalSubmissionSerial(nullptr, generation), 0u);
+    if (pDevice->GetGfxQueue() != compute.GetQueue())
+    {
+        EXPECT_EQ(semaphore->GetSignalSubmissionSerial(pDevice->GetGfxQueue(), generation), 0u);
+    }
+    compute.AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, semaphore);
+    ASSERT_EQ(compute.SubmitRecordedWorkloads(), RHISubmissionResult::eSuccess);
+    session->rhi.WaitDeviceIdle();
+    pDevice->GetSemaphoreManager()->ReleaseSemaphore(semaphore);
+}
+
+INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanPresentationSubmissionTest, testing::Bool());
+
 TEST_F(VulkanSwapchainIntegrationTest,
        NativeAcquireTimeoutKeepsSwapchainAndMinimizeSuspendsAcquisition)
 {

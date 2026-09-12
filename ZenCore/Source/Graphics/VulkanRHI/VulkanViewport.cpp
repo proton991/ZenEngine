@@ -182,7 +182,7 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
     m_swapchainImages.clear();
     m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
-    m_pContext                = nullptr;
+    m_presentSignalGeneration = 0;
 
     if (m_pColorBackBuffer)
     {
@@ -335,20 +335,22 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
     if (TryAcquireNextImage())
     {
         m_presentAcquiredFailed = false;
+        VulkanSemaphore* pRenderingCompleteSemaphore =
+            m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex);
+        m_presentSignalGeneration = pRenderingCompleteSemaphore->GetSignalGeneration();
 
-        m_pContext = static_cast<FVulkanCommandListContext*>(pCommandList->GetContext());
-        m_pContext->SetLastSubmittedSerial(0);
+        FVulkanCommandListContext* pContext =
+            static_cast<FVulkanCommandListContext*>(pCommandList->GetContext());
 
         const VkExtent2D extent = m_pSwapchain->GetExtent();
 
-        m_pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
+        pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
 
-        CopyBackBufferToSwapchainImage(m_pContext->GetCommandBuffer()->GetVkHandle(),
+        CopyBackBufferToSwapchainImage(pContext->GetCommandBuffer()->GetVkHandle(),
                                        m_swapchainImages[m_acquiredImageIndex], extent.width,
                                        extent.height);
 
-        m_pContext->AddSignalSemaphore(
-            m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex));
+        pContext->AddSignalSemaphore(pRenderingCompleteSemaphore);
     }
     else
     {
@@ -375,19 +377,25 @@ bool VulkanViewport::Present()
         }
         return false;
     }
-    // Zero means the copy was rejected or has not been submitted. Keep the acquired
-    // image and its unconsumed semaphore for a later accepted copy submission.
-    if (m_acquiredImageIndex < 0 || m_pContext == nullptr ||
-        m_pContext->GetLastSubmittedSerial() == 0)
+    if (m_acquiredImageIndex < 0)
     {
         return false;
     }
-    m_pSwapchain->MarkAcquireSemaphoreSubmitted(m_pContext->GetLastSubmittedSerial());
-    const bool result =
-        m_pSwapchain->Present(m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex));
+    // This image's semaphore must have a new accepted graphics-queue signal.
+    // Earlier signals and unrelated context submissions cannot authorize this copy.
+    VulkanSemaphore* pRenderingCompleteSemaphore =
+        m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex);
+    const uint64_t submissionSerial = pRenderingCompleteSemaphore->GetSignalSubmissionSerial(
+        m_pDevice->GetGfxQueue(), m_presentSignalGeneration);
+    if (submissionSerial == 0)
+    {
+        return false;
+    }
+    m_pSwapchain->MarkAcquireSemaphoreSubmitted(submissionSerial);
+    const bool result         = m_pSwapchain->Present(pRenderingCompleteSemaphore);
     m_acquiredImageIndex      = -1;
     m_pImageAcquiredSemaphore = nullptr;
-    m_pContext                = nullptr;
+    m_presentSignalGeneration = 0;
     ++m_presentCount;
     if (m_pSwapchain->NeedsRecreation())
     {

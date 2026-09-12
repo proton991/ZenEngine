@@ -280,15 +280,8 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithFences(uint64_t& lastSubmiss
         }
 
         m_workloadsPendingSubmit.Pop();
-        pWorkload->m_submissionSerial = ++m_lastSubmittedSerial;
-        lastSubmissionSerial          = pWorkload->m_submissionSerial;
-
-        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
-        {
-            pCmdBuffer->SetSubmitted();
-        }
-
-        m_workloadsPendingProcess.Push(pWorkload);
+        QueueSubmittedWorkload(pWorkload, ++m_lastSubmittedSerial);
+        lastSubmissionSerial = pWorkload->m_submissionSerial;
     }
 
     return submissionResult;
@@ -419,17 +412,22 @@ void VulkanQueue::AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
     outSubmitBatch.submitInfos.emplace_back(submitInfo);
 }
 
-void VulkanQueue::QueueSubmittedWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit)
+void VulkanQueue::QueueSubmittedWorkload(VulkanWorkload* pWorkload, uint64_t submissionSerial)
 {
-    for (VulkanWorkload* pWorkload : workloadsToSubmit)
+    pWorkload->m_submissionSerial = submissionSerial;
+    // Only called after vkQueueSubmit succeeds. Merging already transfers all
+    // signal entries to the root, so no separate receipt or child traversal is needed.
+    for (const VulkanWorkload::SignalSemaphoreInfo& signal : pWorkload->m_signalSemaphoreInfos)
     {
-        for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
-        {
-            pCmdBuffer->SetSubmitted();
-        }
-
-        m_workloadsPendingProcess.Push(pWorkload);
+        signal.pSemaphore->m_pSignalQueue           = this;
+        signal.pSemaphore->m_signalSubmissionSerial = submissionSerial;
+        ++signal.pSemaphore->m_signalGeneration;
     }
+    for (FVulkanCommandBuffer* pCmdBuffer : pWorkload->m_commandBuffers)
+    {
+        pCmdBuffer->SetSubmitted();
+    }
+    m_workloadsPendingProcess.Push(pWorkload);
 }
 
 RHISubmissionResult VulkanQueue::SubmitWorkloadsWithTimelineSemaphore(
@@ -483,7 +481,10 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithTimelineSemaphore(
             lastSubmissionSerial  = workloadsToSubmit.back()->m_submissionSerial;
             m_lastSubmittedSerial = lastSubmissionSerial;
             // Roots own merged children; enqueue each owned tree once for completion/reclamation.
-            QueueSubmittedWorkloads(mergeResult.workloadsToSubmit);
+            for (VulkanWorkload* pWorkload : mergeResult.workloadsToSubmit)
+            {
+                QueueSubmittedWorkload(pWorkload, pWorkload->m_submissionSerial);
+            }
 
             returnValue = RHISubmissionResult::eSuccess;
         }

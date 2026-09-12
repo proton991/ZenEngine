@@ -10,6 +10,12 @@ Raw RHI resource arguments are borrowed. Callers must keep buffers, textures, sa
 
 Descriptor-pool retention is independent of resource retention. Vulkan workloads retain ordinary descriptor pools from recording through completion, but this does not retain the buffers, textures, or samplers described by their sets.
 
+## Vulkan queue sharing
+
+RHI-created buffers and textures permit use on both graphics and async-compute queue families. Resources with transfer-source or transfer-destination usage also permit the transfer family. Creation uses concurrent sharing across distinct families, or exclusive sharing when every permitted queue belongs to the same family. Texture views inherit the base image's sharing. This policy does not apply to native swapchain images or externally created Vulkan resources.
+
+Sharing removes the need for queue-family ownership transfers; it does not order accesses. Dependent work on different queues still requires synchronization, and image layouts and access/stage masks must match the operations and queue capabilities. Vulkan contexts provide `AddSignalSemaphore` and `AddWaitSemaphore` for GPU dependencies; submit the producer successfully before submitting a binary-semaphore consumer, and retain the semaphore and resources through completion. The portable RHI currently has submission-completion waits but no GPU cross-queue dependency API or automatic async-compute scheduling. Concurrent sharing can have a device-dependent performance cost; there is currently no per-resource queue selection in the RHI.
+
 ## Global bindless heap
 
 The Vulkan global bindless set occupies set 0. Its texture-2D, cube-texture, and sampler bindings follow `RHIBindlessHeapType`. Shaders using it bind set 0 even when they have no ordinary resource parameters. Ordinary descriptor sets may follow it, including unused set-number gaps.
@@ -43,6 +49,8 @@ Timeline semaphores and buffer device address are optional. Timeline-disabled de
 Presentation currently requires the selected graphics queue to support the actual window surface, a supported RGBA8/sRGB-nonlinear surface format, and transfer-destination image usage. Unsupported surfaces fail explicitly; separate presentation queues and a rendering-based alternative to the presentation copy are not implemented. VSync off prefers immediate, then mailbox, then FIFO; VSync on prefers mailbox, then FIFO. The swapchain follows the surface's fixed extent or clamps a variable extent, and viewport backbuffers use that actual size. Callers must refresh viewport-derived sizes and borrowed backbuffer pointers after resize/recreation.
 
 Only successful or suboptimal acquisition publishes an image and semaphore. Timeout/not-ready skips presentation without recreation; out-of-date recreates the swapchain, and surface loss also replaces the surface. Suboptimal acquisition/presentation requests recreation after presentation. A rejected copy submission preserves the acquired image for a rebuilt submission; `Present` will not wait on a signal that was never submitted. Device loss blocks further submissions/presentation and is not recovered by resizing.
+
+Presentation acceptance is stored on the image's render-complete semaphore. After native submission succeeds, the queue records its identity and submission serial on each signal semaphore and advances that semaphore's signal generation. Preparation snapshots the previous generation; presentation requires a new accepted graphics-queue signal. Workload merging already transfers signal entries to the submitted root. Context history, unrelated submissions, rejected work, and recycled workload objects cannot authorize the copy. Completion waits and context destruction preserve the acceptance state; returning a semaphore to its reusable pool clears its queue and serial while retaining its generation counter. The context's serial remains available for its existing lifetime waits.
 
 Zero-sized resize suspends acquisition and preserves the last usable backbuffers until restoration. An initially zero-sized surface has no backbuffers until a usable resize; callers must skip rendering while unavailable. Recreation requires that callers have submitted or discarded recorded commands referencing the previous backbuffers. The viewport waits for device work before replacing them.
 
