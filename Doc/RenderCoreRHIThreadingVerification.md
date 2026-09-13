@@ -277,6 +277,7 @@ Validation date: 2026-09-13, MSVC Debug, with the native validation setup above.
 
 All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.
 
+
 ## Window surface ownership on macOS
 
 The Windows message-wait fix does not address macOS view ownership. Threaded viewport
@@ -318,3 +319,58 @@ The exception-policy follow-up rebuilt the demo/integration targets and passed a
 threaded 64-frame smoke run with no Vulkan validation errors or tracked leaks; see
 `/tmp/zen-macos-surface-no-throw-build.log` and `/tmp/zen-macos-surface-no-throw-smoke.log`.
 Windows runtime validation of this surface change remains for a Windows machine.
+
+## Command list arena reuse
+
+The threaded frame path previously allocated a fresh 64 KiB command arena while detaching
+the recorded list and another for presentation. Completed batches destroyed both lists.
+This added about 128 KiB of cumulative allocation traffic per viewport frame even though
+live memory stayed bounded.
+
+The executor now recycles command lists only after CPU execution and all recorded GPU
+serials complete. Each cache retains at most `RHIFrameState::kMaxFramesInFlight` lists.
+Detached lists reset their command objects and resource references, then release their
+shared producer context on RHI before returning empty storage to RenderCore through a
+mutex-protected cache. Presentation lists retain their dedicated graphics contexts in a
+separate cache owned by RHI. Both caches are cleared before backend destruction. Failed
+batches keep the existing shutdown-only retirement rule.
+
+`PoolAllocator::Alloc()` also reuses retained overflow blocks after `Reset()`. Previously it
+allocated another block whenever the first block filled, leaving existing later blocks
+unused. This correction lets command lists and RDG arenas preserve their grown capacity.
+
+Regressions verify payload contents and command destruction across repeated detach/reset
+cycles without new tracked allocation events, aligned overflow-block reuse, delayed GPU
+completion, the cache limit, and context destruction on RHI before backend teardown.
+
+Windows MSVC Debug measurements, 2026-09-13, using `scene_renderer_demo --smoke-test` with
+synchronization validation. Values below use MiB (the allocator report labels them MB).
+
+| Threaded run | Total allocated before | Total allocated after | Peak live before | Peak live after | Arena allocation calls before / after |
+| --- | --- | --- | --- | --- | --- |
+| 64 frames | 31.42 MiB | 23.55 MiB | 20.88 MiB | 20.93 MiB | 133 / 11 |
+| 1,024 frames | 162.62 MiB | 32.28 MiB | 20.88 MiB | 20.93 MiB | 2,053 / 11 |
+| 8,192 frames | Not measured | 97.48 MiB | Not measured | 20.93 MiB | Not measured / 11 |
+
+At 1,024 frames cumulative tracked allocation fell by about 80%. Arena allocation stayed
+at 11 calls and 768 KiB across all three optimized runs. Other temporary container allocations
+still contribute to the lifetime total. The cache retains arena capacity, accounting for the
+small increase in peak live memory. These are allocation measurements, not an FPS benchmark.
+The 1,024-frame inline control reported 31.70 MiB total and 20.78 MiB peak after the change
+(31.69 MiB total and 20.78 MiB peak before).
+
+Validation:
+
+- Four Debug targets built successfully: `build/rhi-arena-reuse/build.log`.
+- RenderCore: 233 passed, 7 existing disabled tests; Vulkan unit tests: 28 passed.
+  Logs and XML: `build/rhi-arena-reuse/rendercore.*`, `vulkan-unit.*`.
+- Current native integration suite: 230 passed with no validation errors, including the
+  eight window-surface cases added since the preceding Windows validation.
+  Evidence: `build/rhi-phase4/rhi-arena-integration.log`,
+  `build/rhi-arena-reuse/vulkan-integration.xml`.
+- Threaded 64/1,024/8,192-frame and inline 1,024-frame smoke runs all exited 0, with no
+  validation errors or tracked leaks. After-run logs: `build/rhi-arena-reuse/smoke-*.log`.
+  Before-run evidence: `build/rhi-progress-fix/smoke-1.log` and
+  `build/rhi-memory-review/smoke-1024-{1,0}.log`.
+
+All smoke reports ended at 0 bytes current tracked usage. `git diff --check` passed.

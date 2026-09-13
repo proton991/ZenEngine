@@ -94,6 +94,11 @@ void RHICommandListExecutor::ExecuteDestroy()
 {
     ExecuteWaitIdle();
     CollectCompletedBatches(true);
+    {
+        std::lock_guard<std::mutex> lock(m_recordingCommandListMutex);
+        m_recordingCommandLists.clear();
+    }
+    m_presentCommandLists.clear();
     m_backend->Destroy();
 }
 
@@ -131,11 +136,67 @@ void RHICommandListExecutor::CollectCompletedBatches(bool force)
         }
         if (force || completed)
         {
+            if (!force)
+            {
+                RecycleCommandLists(**it);
+            }
             it = m_retired.erase(it);
         }
         else
         {
             ++it;
+        }
+    }
+}
+
+RHICommandListPtr RHICommandListExecutor::AcquireRecordingCommandList()
+{
+    RHICommandListPtr result;
+    {
+        std::lock_guard<std::mutex> lock(m_recordingCommandListMutex);
+        if (!m_recordingCommandLists.empty())
+        {
+            result = std::move(m_recordingCommandLists.back());
+            m_recordingCommandLists.pop_back();
+        }
+    }
+    return result;
+}
+
+RHICommandListPtr RHICommandListExecutor::AcquirePresentCommandList()
+{
+    GetRHIThread().CheckOwnership();
+    RHICommandListPtr result;
+    if (!m_presentCommandLists.empty())
+    {
+        result = std::move(m_presentCommandLists.back());
+        m_presentCommandLists.pop_back();
+    }
+    else
+    {
+        result.reset(
+            RHICommandList::Create(m_backend->GetCommandContext(RHICommandContextType::eGraphics)));
+    }
+    return result;
+}
+
+void RHICommandListExecutor::RecycleCommandLists(RHICommandBatch& batch)
+{
+    GetRHIThread().CheckOwnership();
+    batch.commands->ResetForReuse();
+    {
+        std::lock_guard<std::mutex> lock(m_recordingCommandListMutex);
+        if (m_recordingCommandLists.size() < kMaxRecycledCommandLists)
+        {
+            m_recordingCommandLists.push_back(std::move(batch.commands));
+        }
+    }
+    if (batch.presentCommands != nullptr)
+    {
+        batch.presentCommands->Reset();
+        if (m_presentCommandLists.size() < kMaxRecycledCommandLists)
+        {
+            m_presentCommandLists.push_back(std::move(batch.presentCommands));
         }
     }
 }
@@ -188,7 +249,7 @@ RHISubmissionTicket RHICommandListExecutor::SubmitFrame(RHICommandList& commands
             batch->resources.Retain(viewport->GetColorBackBuffer());
             batch->resources.Retain(viewport->GetDepthStencilBackBuffer());
         }
-        batch->commands = commands.DetachCommands();
+        batch->commands = commands.DetachCommands(AcquireRecordingCommandList());
         batch->queuedAt = std::chrono::steady_clock::now();
         ticket =
             RHISubmissionTicket(batch->completion.get_future().share(), batch->completionEvent);
@@ -221,8 +282,7 @@ void RHICommandListExecutor::ExecuteFrame(const std::shared_ptr<RHICommandBatch>
             result.submission        = ExecuteBatch(MakeVecView(&commands, 1));
             if (result.submission == RHISubmissionResult::eSuccess && batch->viewport != nullptr)
             {
-                batch->presentCommands.reset(RHICommandList::Create(
-                    m_backend->GetCommandContext(RHICommandContextType::eGraphics)));
+                batch->presentCommands = AcquirePresentCommandList();
                 batch->viewport->PrepareForPresent(batch->presentCommands.get());
                 RHICommandList* present = batch->presentCommands.get();
                 result.submission       = ExecuteBatch(MakeVecView(&present, 1));

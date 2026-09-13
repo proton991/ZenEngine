@@ -392,6 +392,8 @@ public:
 
     RHICommandContextType type;
     std::function<void()> wait;
+    uint32_t proxyDestructions{0};
+    std::thread::id lastProxyDestroyThread;
     struct BarrierBatch
     {
         BitField<RHIPipelineStageFlagBits> source;
@@ -625,6 +627,12 @@ class TestContextProxy : public IRHICommandContext
 public:
     explicit TestContextProxy(TestContext& log) : log(log) {}
 
+    ~TestContextProxy() override
+    {
+        ++log.proxyDestructions;
+        log.lastProxyDestroyThread = std::this_thread::get_id();
+    }
+
     TestContext& log;
 
     RHICommandContextType GetContextType() override
@@ -844,6 +852,7 @@ public:
     uint32_t pipelineCount{0};
     uint32_t frameBegins{0};
     uint32_t deviceIdleWaits{0};
+    uint32_t contextCreations{0};
     bool failSubmissionWait{false};
     bool failProgressQuery{false};
     bool submissionsBlocked{false};
@@ -872,6 +881,7 @@ public:
 
     IRHICommandContext* GetCommandContext(RHICommandContextType) override
     {
+        ++contextCreations;
         return ZEN_NEW() TestContextProxy(graphics);
     }
 

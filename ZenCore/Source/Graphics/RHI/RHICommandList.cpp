@@ -77,9 +77,14 @@ void RHICommandListDeleter::operator()(RHICommandList* commands) const
     ZEN_DELETE(commands);
 }
 
-RHICommandListPtr RHICommandList::DetachCommands()
+RHICommandListPtr RHICommandList::DetachCommands(RHICommandListPtr reusable)
 {
-    RHICommandListPtr result(ZEN_NEW() RHICommandList());
+    RHICommandListPtr result = std::move(reusable);
+    if (result == nullptr)
+    {
+        result.reset(ZEN_NEW() RHICommandList());
+    }
+    VERIFY_EXPR(result->GetCommandCount() == 0);
     result->m_contextOwner     = m_contextOwner;
     result->m_pGraphicsContext = m_pGraphicsContext;
     result->m_pComputeContext  = m_pComputeContext;
@@ -92,6 +97,15 @@ RHICommandListPtr RHICommandList::DetachCommands()
     m_ppCmdPtr            = &m_pCmdHead;
     m_numCommands         = 0;
     return result;
+}
+
+void RHICommandList::ResetForReuse()
+{
+    GetRHIThread().CheckOwnership();
+    Reset();
+    m_contextOwner.reset();
+    m_pGraphicsContext = nullptr;
+    m_pComputeContext  = nullptr;
 }
 
 void RHICommandListBase::Execute()

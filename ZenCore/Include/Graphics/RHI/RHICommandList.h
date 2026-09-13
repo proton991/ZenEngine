@@ -885,7 +885,11 @@ public:
 
     // Moves only CPU recording storage. The reusable producer and detached batch
     // share a context whose native state is accessed exclusively by the executor.
-    RHICommandListPtr DetachCommands();
+    // Optional empty storage supplies the producer's replacement arena without allocating.
+    RHICommandListPtr DetachCommands(RHICommandListPtr reusable = {});
+
+    // Called on RHI after retirement. Keep CPU storage, but release the producer's context.
+    void ResetForReuse();
 
     void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
 

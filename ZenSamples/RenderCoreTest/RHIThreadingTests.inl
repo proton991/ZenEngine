@@ -5,6 +5,41 @@
 
 namespace
 {
+struct ArenaDataCommand : RHICommand
+{
+    ArenaDataCommand(const uint8_t* bytes, uint32_t size, uint8_t value, uint32_t& destructions) :
+        bytes(bytes), size(size), value(value), destructions(destructions)
+    {}
+
+    ~ArenaDataCommand() override
+    {
+        ++destructions;
+    }
+
+    void Execute(RHICommandListBase&) override
+    {
+        for (uint32_t i = 0; i < size; ++i)
+        {
+            ASSERT_EQ(bytes[i], value);
+        }
+    }
+
+    const uint8_t* bytes;
+    uint32_t size;
+    uint8_t value;
+    uint32_t& destructions;
+};
+
+void RecordArenaData(RHICommandList& commands, uint8_t value, uint32_t& destructions)
+{
+    for (uint32_t size : {1024u, 70u * 1024u, 256u * 1024u})
+    {
+        uint8_t* bytes = commands.AllocateCmdData<uint8_t>(size);
+        std::memset(bytes, value, size);
+        commands.AllocateCmdTyped<ArenaDataCommand>(bytes, size, value, destructions);
+    }
+}
+
 class RHISubmissionGate
 {
 public:
@@ -107,6 +142,106 @@ protected:
     RHISubmissionGate gate;
 };
 } // namespace
+
+TEST(RHICommandListTest, PoolAllocatorReusesOverflowBlocksAfterReset)
+{
+    PoolAllocator<LinearAllocator> allocator(256);
+    std::array<void*, 3> blocks{};
+    const std::array<size_t, 3> sizes{192, 384, 1536};
+    for (size_t i = 0; i < sizes.size(); ++i)
+    {
+        blocks[i] = allocator.Alloc(sizes[i], 64);
+        ASSERT_NE(blocks[i], nullptr);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(blocks[i]) % 64, 0u);
+    }
+    const size_t blockCount  = allocator.NumAllocators();
+    const size_t allocations = DefaultAllocator::GetTrackedAllocationEvents();
+    for (uint32_t frame = 0; frame < 32; ++frame)
+    {
+        allocator.Reset();
+        for (size_t i = 0; i < sizes.size(); ++i)
+        {
+            EXPECT_EQ(allocator.Alloc(sizes[i], 64), blocks[i]);
+        }
+        EXPECT_EQ(allocator.NumAllocators(), blockCount);
+    }
+    EXPECT_EQ(DefaultAllocator::GetTrackedAllocationEvents(), allocations);
+}
+
+TEST(RHICommandListTest, DetachedStorageReusesAllArenaBlocksWithoutAllocating)
+{
+    uint32_t destructions = 0;
+    RHICommandList commands;
+    RHICommandListPtr reusable;
+    for (uint8_t frame = 0; frame < 2; ++frame)
+    {
+        RecordArenaData(commands, frame, destructions);
+        reusable = commands.DetachCommands(std::move(reusable));
+        reusable->Execute();
+        reusable->Reset();
+    }
+    const size_t allocations = DefaultAllocator::GetTrackedAllocationEvents();
+    for (uint8_t frame = 2; frame < 18; ++frame)
+    {
+        RecordArenaData(commands, frame, destructions);
+        reusable = commands.DetachCommands(std::move(reusable));
+        EXPECT_EQ(commands.GetCommandCount(), 0u);
+        EXPECT_EQ(reusable->GetCommandCount(), 3u);
+        reusable->Execute();
+        reusable->Reset();
+        EXPECT_EQ(destructions, uint32_t(frame + 1) * 3);
+    }
+    EXPECT_EQ(DefaultAllocator::GetTrackedAllocationEvents(), allocations);
+}
+
+TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
+{
+    TestViewport viewport;
+    RHICommandListPtr commands(
+        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    for (uint32_t frame = 0; frame < 16; ++frame)
+    {
+        commands->Draw(3, 1, 0, 0);
+        const RHIBatchResult result = executor->SubmitFrame(*commands, &viewport).Wait();
+        EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
+        EXPECT_TRUE(
+            executor->WaitForSubmission(RHICommandContextType::eGraphics, result.serials[0]));
+    }
+    EXPECT_EQ(viewport.presents, 16u);
+    EXPECT_EQ(rhi->contextCreations, 2u);
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 0u);
+    commands.reset();
+    const std::thread::id worker = GetRHIThread().Invoke([] { return std::this_thread::get_id(); });
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 1u);
+    EXPECT_EQ(rhi->graphics.lastProxyDestroyThread, worker);
+    executor->Destroy();
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 2u);
+    EXPECT_EQ(rhi->graphics.lastProxyDestroyThread, worker);
+}
+
+TEST_F(RHIExecutorTest, DelayedGpuCompletionRetainsListsAndBoundsTheRetiredCache)
+{
+    TestViewport viewport;
+    RHICommandListPtr commands(
+        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    constexpr uint32_t frameCount = RHIFrameState::kMaxFramesInFlight + 3;
+    RHIBatchResult result;
+    for (uint32_t frame = 0; frame < frameCount; ++frame)
+    {
+        commands->Draw(3, 1, 0, 0);
+        result = executor->SubmitFrame(*commands, &viewport).Wait();
+        EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
+    }
+    commands.reset();
+    executor->FlushRHIThread();
+    EXPECT_EQ(rhi->contextCreations, frameCount + 1);
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 0u);
+    EXPECT_TRUE(executor->WaitForSubmission(RHICommandContextType::eGraphics, result.serials[0]));
+    EXPECT_EQ(rhi->contextCreations - rhi->graphics.proxyDestructions,
+              RHIFrameState::kMaxFramesInFlight);
+    executor->Destroy();
+    EXPECT_EQ(rhi->graphics.proxyDestructions, rhi->contextCreations);
+}
 
 TEST(RHIThreadTest, FifoNestedInvokeExceptionsAndDrain)
 {

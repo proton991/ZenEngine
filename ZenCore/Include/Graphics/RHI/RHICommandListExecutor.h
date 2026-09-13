@@ -144,6 +144,9 @@ private:
     void RefreshGPUProgress();
     void ExecutePollGPUProgress();
     void CollectCompletedBatches(bool force = false);
+    RHICommandListPtr AcquireRecordingCommandList();
+    RHICommandListPtr AcquirePresentCommandList();
+    void RecycleCommandLists(RHICommandBatch& batch);
 
     DynamicRHI* m_backend;
     RHIExecutionMode m_mode;
@@ -161,6 +164,12 @@ private:
     std::array<std::atomic<uint64_t>, 3> m_submitted{};
     std::array<std::atomic<uint64_t>, 3> m_completed{};
     HeapVector<std::shared_ptr<RHICommandBatch>> m_retired;
+    // Limit idle storage after a burst. In-flight batches always retain their own lists.
+    static constexpr size_t kMaxRecycledCommandLists = RHIFrameState::kMaxFramesInFlight;
+    std::mutex m_recordingCommandListMutex;
+    HeapVector<RHICommandListPtr> m_recordingCommandLists;
+    // Presentation lists and their contexts stay on RHI until executor destruction.
+    HeapVector<RHICommandListPtr> m_presentCommandLists;
     std::mutex m_destroyedResourceMutex;
     HeapVector<uint64_t> m_destroyedResourceIds;
     std::atomic<uint64_t> m_submittedBatches{0};

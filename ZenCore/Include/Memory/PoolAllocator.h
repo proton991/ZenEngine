@@ -31,20 +31,30 @@ public:
     // allocate memory from current allocator
     void* Alloc(size_t size, size_t alignment = alignof(std::max_align_t))
     {
-        T* pAlloc  = m_allocators[m_currentIndex];
-        void* pMem = pAlloc->Alloc(size, alignment);
-
-        if (pMem != nullptr)
-            return pMem;
-
-        // current allocator is full -> create a bigger one
-        size_t newSize = pAlloc->Capacity() * 2;
-        if (newSize < size)
-            newSize = size * 2;
-
-        AddNewAllocator(newSize);
-
-        return m_allocators[m_currentIndex]->Alloc(size, alignment);
+        void* pMem = nullptr;
+        while (pMem == nullptr)
+        {
+            T* pAlloc = m_allocators[m_currentIndex];
+            pMem      = pAlloc->Alloc(size, alignment);
+            if (pMem == nullptr)
+            {
+                if (m_currentIndex + 1 < m_allocators.size())
+                {
+                    // Reset preserves every block. Try those blocks before growing again.
+                    ++m_currentIndex;
+                }
+                else
+                {
+                    size_t newSize = pAlloc->Capacity() * 2;
+                    if (newSize < size)
+                    {
+                        newSize = size * 2;
+                    }
+                    AddNewAllocator(newSize);
+                }
+            }
+        }
+        return pMem;
     }
 
     // reset all internal allocators (typically once per frame)
