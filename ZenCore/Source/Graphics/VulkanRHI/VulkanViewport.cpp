@@ -12,9 +12,33 @@
 #include "Graphics/VulkanRHI/VulkanRenderPass.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
+#include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
 
 namespace zen
 {
+namespace
+{
+struct ScopedViewportSurface
+{
+    VkInstance instance;
+    VulkanSwapchainRecreateInfo info;
+
+    ~ScopedViewportSurface()
+    {
+        // The swapchain clears the handle when it consumes ownership. Also covers
+        // deferred zero-extent initialization and failures before that handoff.
+        VulkanPlatform::DestroySurface(instance, info.surface);
+    }
+};
+
+VkSurfaceKHR CreateViewportSurface(void* window, uint32_t width, uint32_t height)
+{
+    platform::GlfwWindowImpl* glfwWindow = static_cast<platform::GlfwWindowImpl*>(window);
+    glfwWindow->CheckThreadOwnership();
+    WindowData windowData{glfwWindow->GetHandle(), width, height};
+    return VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
+}
+} // namespace
 // RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
 // {
 //     RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
@@ -35,9 +59,10 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow,
                                        uint32_t height,
                                        bool enableVSync)
 {
-    RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
-
-    return pViewport;
+    ScopedViewportSurface surface{GetInstance()};
+    surface.info.surface = CreateViewportSurface(pWindow, width, height);
+    return GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height, enableVSync,
+                                 &surface.info);
 }
 
 void VulkanRHI::DestroyViewport(RHIViewport* pViewport)
@@ -48,8 +73,10 @@ void VulkanRHI::DestroyViewport(RHIViewport* pViewport)
 VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
                                              uint32_t width,
                                              uint32_t height,
-                                             bool enableVSync)
+                                             bool enableVSync,
+                                             VulkanSwapchainRecreateInfo* surfaceInfo)
 {
+    ASSERT(GetRHIThread().IsCurrentThread());
     VulkanViewport* pViewport =
         VersatileResource::AllocMem<VulkanViewport>(GVulkanRHI->GetResourceAllocator());
 
@@ -58,6 +85,7 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
     try
     {
         pViewport->Init();
+        pViewport->CreateSwapchain(surfaceInfo);
     }
     catch (...)
     {
@@ -83,7 +111,6 @@ void VulkanViewport::Init()
 {
     m_depthFormat = GVulkanRHI->GetSupportedDepthFormat();
     LOGI("Viewport backbuffer depth format: {}", VkToString(static_cast<VkFormat>(m_depthFormat)));
-    CreateSwapchain(nullptr);
 }
 
 void VulkanViewport::Destroy()
@@ -108,8 +135,7 @@ void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
         return;
     }
 
-    m_pSwapchain =
-        ZEN_NEW() VulkanSwapchain(m_pWindow, m_width, m_height, m_enableVSync, pRecreateInfo);
+    m_pSwapchain = ZEN_NEW() VulkanSwapchain(m_width, m_height, m_enableVSync, pRecreateInfo);
     const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
     const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
     if (numImages == 0)
@@ -197,27 +223,58 @@ void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo
     }
 }
 
-void VulkanViewport::RecreateSwapchain(bool recreateSurface)
+bool VulkanViewport::BeginResize(uint32_t width,
+                                 uint32_t height,
+                                 VulkanSwapchainRecreateInfo* recreateInfo)
 {
-    VulkanSwapchainRecreateInfo recreateInfo{VK_NULL_HANDLE, VK_NULL_HANDLE};
-    DestroySwapchain(recreateSurface || GVulkanRHI->AreSubmissionsBlocked() ? nullptr :
-                                                                              &recreateInfo);
+    ASSERT(GetRHIThread().IsCurrentThread());
+    bool rebuild = false;
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
-        // Destruction is still legal after device loss, but recreation is not.
-        if (recreateInfo.swapchain != VK_NULL_HANDLE)
-        {
-            vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), recreateInfo.swapchain, nullptr);
-        }
-        if (recreateInfo.surface != VK_NULL_HANDLE)
-        {
-            vkDestroySurfaceKHR(GVulkanRHI->GetInstance(), recreateInfo.surface, nullptr);
-        }
-        LOG_ERROR_AND_THROW("Cannot recreate a swapchain after a failed device idle wait");
+        LOGE("Cannot resize while Vulkan submissions are blocked");
     }
-    CreateSwapchain(&recreateInfo);
-    VERIFY_EXPR(recreateInfo.surface == VK_NULL_HANDLE);
-    VERIFY_EXPR(recreateInfo.swapchain == VK_NULL_HANDLE);
+    else if (width == 0 || height == 0)
+    {
+        // Preserve the last usable backbuffers while the window is minimized.
+        m_suspended = true;
+    }
+    else
+    {
+        m_width  = width;
+        m_height = height;
+        const bool recreateSurface =
+            m_pSwapchain != nullptr && m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR;
+        DestroySwapchain(recreateSurface ? nullptr : recreateInfo);
+        if (GVulkanRHI->AreSubmissionsBlocked())
+        {
+            // Destruction is still legal after device loss, but recreation is not.
+            if (recreateInfo->swapchain != VK_NULL_HANDLE)
+            {
+                vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), recreateInfo->swapchain, nullptr);
+            }
+            VulkanPlatform::DestroySurface(GVulkanRHI->GetInstance(), recreateInfo->surface);
+            *recreateInfo = {};
+            LOGE("Cannot recreate a swapchain after a failed device idle wait");
+        }
+        else
+        {
+            rebuild = true;
+        }
+    }
+    return rebuild;
+}
+
+void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo)
+{
+    ASSERT(GetRHIThread().IsCurrentThread());
+    CreateSwapchain(recreateInfo);
+    VERIFY_EXPR(recreateInfo->surface == VK_NULL_HANDLE);
+    VERIFY_EXPR(recreateInfo->swapchain == VK_NULL_HANDLE);
+    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
+    {
+        vkDestroyFramebuffer(m_pDevice->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
+        m_framebuffer.vkHandle = VK_NULL_HANDLE;
+    }
 }
 
 bool VulkanViewport::TryAcquireNextImage()
@@ -392,7 +449,7 @@ bool VulkanViewport::Present()
         }
         if (m_pSwapchain->NeedsRecreation() && !GetRHIThread().IsThreaded())
         {
-            RecreateSwapchain(m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
+            Resize(m_width, m_height);
         }
     }
     return result;
@@ -405,28 +462,15 @@ bool VulkanViewport::NeedsRecreation() const
 
 void VulkanViewport::Resize(uint32_t width, uint32_t height)
 {
-    GetRHIThread().CheckOwnership();
-    if (GVulkanRHI->AreSubmissionsBlocked())
+    static_cast<platform::GlfwWindowImpl*>(m_pWindow)->CheckThreadOwnership();
+    VulkanSwapchainRecreateInfo recreateInfo;
+    if (GetRHIThread().Invoke(&VulkanViewport::BeginResize, this, width, height, &recreateInfo))
     {
-        LOG_ERROR_AND_THROW("Cannot resize while Vulkan submissions are blocked");
-    }
-    if (width == 0 || height == 0)
-    {
-        // Preserve the last usable backbuffers while the window is minimized.
-        m_suspended = true;
-    }
-    else
-    {
-        m_width  = width;
-        m_height = height;
-        RecreateSwapchain(m_pSwapchain != nullptr &&
-                          m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
-
-        if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
+        if (recreateInfo.surface == VK_NULL_HANDLE)
         {
-            vkDestroyFramebuffer(m_pDevice->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
-            m_framebuffer.vkHandle = VK_NULL_HANDLE;
+            recreateInfo.surface = CreateViewportSurface(m_pWindow, width, height);
         }
+        GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo);
     }
 }
 

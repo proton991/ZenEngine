@@ -302,6 +302,8 @@ public:
 
     virtual RHITextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
+    // Called on the window-owning thread after outstanding frames are drained.
+    // Surface replacement stays here; native GPU teardown/rebuild runs on RHI.
     virtual void Resize(uint32_t width, uint32_t height) = 0;
 
     // Threaded presentation reports recreation to RenderCore instead of replacing

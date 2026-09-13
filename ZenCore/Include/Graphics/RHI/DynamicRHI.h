@@ -38,6 +38,8 @@ public:
 
     virtual DataFormat GetSupportedDepthFormat() = 0;
 
+    // Called on the window-owning thread. Backends prepare the native surface here
+    // and dispatch swapchain/backbuffer initialization to RHI.
     virtual RHIViewport* CreateViewport(void* pWindow,
                                         uint32_t width,
                                         uint32_t height,

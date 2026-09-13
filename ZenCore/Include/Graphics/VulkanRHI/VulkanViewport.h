@@ -24,7 +24,8 @@ public:
     static VulkanViewport* CreateObject(void* pWindow,
                                         uint32_t width,
                                         uint32_t height,
-                                        bool enableVSync);
+                                        bool enableVSync,
+                                        VulkanSwapchainRecreateInfo* surfaceInfo);
 
     ~VulkanViewport() {}
 
@@ -105,7 +106,9 @@ private:
 
     bool TryAcquireNextImage();
 
-    void RecreateSwapchain(bool recreateSurface = false);
+    bool BeginResize(uint32_t width, uint32_t height, VulkanSwapchainRecreateInfo* recreateInfo);
+
+    void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo);
 
     void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                                         VkImage dstImage,

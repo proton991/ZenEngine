@@ -276,3 +276,45 @@ Validation date: 2026-09-13, MSVC Debug, with the native validation setup above.
 | Threaded and inline scene smoke | 64 frames each, exit 0, no validation errors | `build/rhi-progress-fix/smoke-1.log`, `smoke-0.log` |
 
 All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.
+
+## Window surface ownership on macOS
+
+The Windows message-wait fix does not address macOS view ownership. Threaded viewport
+creation still called `glfwCreateWindowSurface` from RHI. The bundled Cocoa implementation
+attaches a `CAMetalLayer` with `NSView::setLayer:` and `setWantsLayer:` there. On Apple M3 Pro /
+MoltenVK, the scene submitted frames without Vulkan validation errors while the window
+remained white; inline execution displayed the scene.
+
+Viewport creation and resize now use the same window-thread orchestration on every platform:
+
+- `CreateViewport` prepares the platform surface on the window-owning thread, then invokes
+  native viewport allocation, swapchain creation and backbuffer initialization on RHI.
+- `VulkanSwapchain` consumes a prepared surface and no longer calls window APIs.
+- Resize tears down native resources on RHI and preserves the surface for ordinary resize.
+  Surface loss returns to the window thread to create its replacement before RHI rebuilds.
+- `GlfwWindowImpl` asserts surface-operation thread ownership. The worker never needs to
+  synchronously dispatch back to a blocked main thread. RHI threading remains enabled.
+- Surface handoff uses automatic cleanup instead of an added catch/rethrow block. A blocked
+  resize logs and returns without replacing resources or throwing a new exception.
+
+Validation on macOS, 2026-09-13:
+
+- All four Debug targets build. RenderCore: 225 passed (four Windows-only cases are excluded);
+  Vulkan unit tests: 28 passed.
+- Eight new native cases cover inline/threaded creation, native swapchain thread identity,
+  ordinary resize, injected surface loss, zero-extent startup/minimize/restore, and blocked
+  resize preserving its viewport without throwing.
+- The targeted surface/swapchain suite passes 36 cases and skips four presentation-fence
+  cases because this MoltenVK device lacks swapchain maintenance. Those existing tests now
+  report missing device support as a skip instead of asserting the extension is present.
+- The threaded demo's scene was visually verified through an identical temporary app-bundle
+  copy. Threaded and inline 64-frame smoke runs cover renderer switching, resize,
+  minimize/restore and shutdown with synchronization validation requested.
+
+Evidence: `/tmp/zen-macos-surface-final-build.log`, `/tmp/zen-macos-surface-rendercore.log`,
+`/tmp/zen-macos-surface-vulkan-unit.log`, `/tmp/zen-macos-surface-no-throw-tests.log`,
+`/tmp/zen-macos-surface-visual.log`, and `/tmp/zen-macos-surface-smoke-{threaded,inline}.log`.
+The exception-policy follow-up rebuilt the demo/integration targets and passed another
+threaded 64-frame smoke run with no Vulkan validation errors or tracked leaks; see
+`/tmp/zen-macos-surface-no-throw-build.log` and `/tmp/zen-macos-surface-no-throw-smoke.log`.
+Windows runtime validation of this surface change remains for a Windows machine.

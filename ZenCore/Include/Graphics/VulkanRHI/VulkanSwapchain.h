@@ -26,8 +26,9 @@ struct VulkanSwapchainRecreateInfo
 class VulkanSwapchain
 {
 public:
-    VulkanSwapchain(void* pWindowPtr,
-                    uint32_t width,
+    // Consumes an already-created surface (and any predecessor) from recreateInfo.
+    // Window/view APIs must not be called while creating GPU swapchain resources.
+    VulkanSwapchain(uint32_t width,
                     uint32_t height,
                     bool enableVSync,
                     VulkanSwapchainRecreateInfo* pRecreateInfo);

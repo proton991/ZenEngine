@@ -470,7 +470,9 @@ protected:
     }
     void Create(bool vsync = false)
     {
-        swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, vsync, nullptr);
+        VulkanSwapchainRecreateInfo surfaceInfo;
+        surfaceInfo.surface = window->CreateSurface(session->rhi.GetInstance());
+        swapchain           = std::make_unique<VulkanSwapchain>(64, 64, vsync, &surfaceInfo);
     }
     void CreateNativeViewport()
     {
@@ -1030,7 +1032,8 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeDeviceLossBlocksFurtherPresentation
     EXPECT_THROW(viewport->PrepareForPresent(commands), std::runtime_error);
     EXPECT_TRUE(session->rhi.AreSubmissionsBlocked());
     EXPECT_THROW(viewport->Present(), std::runtime_error);
-    EXPECT_THROW(viewport->Resize(128, 128), std::runtime_error);
+    EXPECT_NO_THROW(viewport->Resize(128, 128));
+    EXPECT_NO_THROW(viewport->Resize(0, 0));
     EXPECT_EQ(WSIDriver::createdCalls, 1u);
     EXPECT_EQ(WSIDriver::presentedCalls, 0u);
 }
@@ -1050,7 +1053,10 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedAcquireFenceCreationReleasesPartial
 
 TEST_F(VulkanSwapchainIntegrationTest, PendingPresentationFencePreventsEarlyDestruction)
 {
-    ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+    if (!session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1)
+    {
+        GTEST_SKIP() << "Swapchain maintenance presentation fences are not supported";
+    }
     WSIDriver::holdPresentation = true;
     Create();
     VulkanSemaphore* semaphore{};
@@ -1065,7 +1071,10 @@ TEST_F(VulkanSwapchainIntegrationTest, PendingPresentationFencePreventsEarlyDest
 
 TEST_F(VulkanSwapchainIntegrationTest, FailedPresentationFenceWaitRetainsResourcesForRetry)
 {
-    ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+    if (!session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1)
+    {
+        GTEST_SKIP() << "Swapchain maintenance presentation fences are not supported";
+    }
     WSIDriver::holdPresentation = WSIDriver::rejectPresentWait = true;
     Create();
     VulkanSemaphore* semaphore{};
@@ -1108,7 +1117,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FallbackDefersConsecutiveRetirementsUntil
         swapchain->Destroy(&recreate);
         EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
         EXPECT_EQ(WSIDriver::liveSemaphores.size(), generation + 1u);
-        swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+        swapchain = std::make_unique<VulkanSwapchain>(64, 64, false, &recreate);
         EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
     }
     VulkanSemaphore* semaphore{};
@@ -1136,7 +1145,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FallbackCreationFailureCleansRetiredPrede
     VulkanSwapchainRecreateInfo recreate;
     swapchain->Destroy(&recreate);
     WSIDriver::createResult = VK_ERROR_OUT_OF_HOST_MEMORY;
-    EXPECT_THROW(VulkanSwapchain(window.get(), 64, 64, false, &recreate), std::runtime_error);
+    EXPECT_THROW(VulkanSwapchain(64, 64, false, &recreate), std::runtime_error);
     EXPECT_EQ(WSIDriver::destroyedCalls, 1u);
     EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
     EXPECT_TRUE(WSIDriver::liveFences.empty());
@@ -1170,13 +1179,13 @@ TEST_F(VulkanSwapchainIntegrationTest, FallbackZeroExtentPreservesOldSwapchainLi
     VulkanSwapchainRecreateInfo recreate;
     swapchain->Destroy(&recreate);
     WSIDriver::caps.currentExtent = {0, 0};
-    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    swapchain                     = std::make_unique<VulkanSwapchain>(64, 64, false, &recreate);
     EXPECT_EQ(swapchain->GetNumSwapchainImages(), 0u);
     EXPECT_EQ(swapchain->GetVkHandle(), oldSwapchain);
     EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
     swapchain->Destroy(&recreate);
     WSIDriver::caps.currentExtent = {64, 64};
-    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    swapchain                     = std::make_unique<VulkanSwapchain>(64, 64, false, &recreate);
     EXPECT_EQ(WSIDriver::lastCreate.oldSwapchain, oldSwapchain);
     EXPECT_EQ(WSIDriver::destroyedCalls, 0u);
     swapchain->Destroy(nullptr);
@@ -1195,7 +1204,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FallbackZeroExtentTeardownDestroysSharedO
     VulkanSwapchainRecreateInfo recreate;
     swapchain->Destroy(&recreate);
     WSIDriver::caps.currentExtent = {0, 0};
-    swapchain = std::make_unique<VulkanSwapchain>(window.get(), 64, 64, false, &recreate);
+    swapchain                     = std::make_unique<VulkanSwapchain>(64, 64, false, &recreate);
     swapchain->Destroy(nullptr);
     EXPECT_EQ(WSIDriver::destroyedCalls, 1u);
     EXPECT_TRUE(WSIDriver::liveSemaphores.empty());
@@ -1212,7 +1221,10 @@ protected:
         VulkanSwapchainIntegrationTest::SetUp();
         if (GetParam())
         {
-            ASSERT_TRUE(session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1);
+            if (!session->rhi.GetDevice()->GetExtensionFlags().hasSwapchainMaintenance1)
+            {
+                GTEST_SKIP() << "Swapchain maintenance presentation fences are not supported";
+            }
         }
         else
         {

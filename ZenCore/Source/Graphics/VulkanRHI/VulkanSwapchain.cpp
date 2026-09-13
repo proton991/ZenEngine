@@ -128,8 +128,7 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
     return selected;
 }
 
-VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
-                                 uint32_t width,
+VulkanSwapchain::VulkanSwapchain(uint32_t width,
                                  uint32_t height,
                                  bool enableVSync,
                                  VulkanSwapchainRecreateInfo* pRecreateInfo) :
@@ -162,16 +161,7 @@ VulkanSwapchain::VulkanSwapchain(void* pWindowPtr,
     };
     try
     {
-        if (m_surface == VK_NULL_HANDLE)
-        {
-            WindowData windowData{static_cast<platform::GlfwWindowImpl*>(pWindowPtr)->GetHandle(),
-                                  width, height};
-            m_surface = VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
-        }
-        if (m_surface == VK_NULL_HANDLE)
-        {
-            LOG_ERROR_AND_THROW("Failed to create a Vulkan presentation surface");
-        }
+        ASSERT(m_surface != VK_NULL_HANDLE);
         VkBool32 canPresent = VK_FALSE;
         CheckWSIResult(vkGetPhysicalDeviceSurfaceSupportKHR(
                            gpu, m_pDevice->GetGfxQueue()->GetFamilyIndex(), m_surface, &canPresent),

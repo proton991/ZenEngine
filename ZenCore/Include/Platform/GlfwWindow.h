@@ -2,6 +2,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <functional>
+#include <thread>
 #include "NativeWindow.h"
 #include "Templates/HeapVector.h"
 
@@ -15,6 +16,8 @@ public:
     ~GlfwWindowImpl();
 
     VkSurfaceKHR CreateSurface(VkInstance instance) const override;
+
+    void CheckThreadOwnership() const;
 
     HeapVector<const char*> GetInstanceExtensions() override;
 
@@ -56,6 +59,7 @@ private:
     void Destroy();
 
     GLFWwindow* m_pHandle;
+    const std::thread::id m_ownerThread{std::this_thread::get_id()};
     struct WindowData
     {
         // size

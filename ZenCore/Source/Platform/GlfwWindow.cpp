@@ -37,11 +37,17 @@ GlfwWindowImpl::~GlfwWindowImpl()
 
 VkSurfaceKHR GlfwWindowImpl::CreateSurface(VkInstance instance) const
 {
+    CheckThreadOwnership();
     ASSERT(instance != VK_NULL_HANDLE);
     VkSurfaceKHR surface;
     CHECK_VK_ERROR_AND_THROW(glfwCreateWindowSurface(instance, m_pHandle, nullptr, &surface),
                              "glfw create window surface");
     return surface;
+}
+
+void GlfwWindowImpl::CheckThreadOwnership() const
+{
+    ASSERT(std::this_thread::get_id() == m_ownerThread);
 }
 
 HeapVector<const char*> GlfwWindowImpl::GetInstanceExtensions()

@@ -1055,7 +1055,7 @@ void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_
             InvalidateRDGPassCompilerForResize();
             InvalidateExternalTextureState(viewport->GetColorBackBuffer());
             InvalidateExternalTextureState(viewport->GetDepthStencilBackBuffer());
-            GetRHIThread().Invoke(&RHIViewport::Resize, viewport, width, height);
+            viewport->Resize(width, height);
             m_pRecreateViewport = nullptr;
         }
     }

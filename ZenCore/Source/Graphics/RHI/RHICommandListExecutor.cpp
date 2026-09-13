@@ -499,8 +499,8 @@ RHIViewport* RHICommandListExecutor::CreateViewport(void* window,
                                                     uint32_t height,
                                                     bool vsync)
 {
-    return GetRHIThread().Invoke(&DynamicRHI::CreateViewport, m_backend, window, width, height,
-                                 vsync);
+    ASSERT(std::this_thread::get_id() == m_renderThread);
+    return m_backend->CreateViewport(window, width, height, vsync);
 }
 
 RHIShader* RHICommandListExecutor::CreateShader(const RHIShaderCreateInfo& info)
