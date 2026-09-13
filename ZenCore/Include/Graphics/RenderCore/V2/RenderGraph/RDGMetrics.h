@@ -255,6 +255,7 @@ private:
     friend class RDGExecutor;
     friend class RenderGraph;
     friend class ResourceStateTracker;
+    friend struct RDGSubmissionTestAccess;
 
     void ForgetResource(uint64_t resource)
     {

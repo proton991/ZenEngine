@@ -60,16 +60,19 @@ public:
 
     const char* CStr(uint32_t nameId)
     {
+        LockAuto lock(&m_mutex);
         return GetRecordChars(GetRecordRawData(nameId));
     }
 
     uint32_t Length(uint32_t nameId)
     {
+        LockAuto lock(&m_mutex);
         return GetRecordLength(GetRecordRawData(nameId));
     }
 
     uint32_t Hash(uint32_t nameId)
     {
+        LockAuto lock(&m_mutex);
         return GetRecordHash(GetRecordRawData(nameId));
     }
 

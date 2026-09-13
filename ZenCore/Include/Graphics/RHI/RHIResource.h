@@ -5,6 +5,7 @@
 #include "Utils/Helpers.h"
 #include "Utils/Errors.h"
 #include "Templates/HashMap.h"
+#include "RHIThread.h"
 
 namespace zen
 {
@@ -31,10 +32,7 @@ class RHIResource
 public:
     RHIResource() = default;
 
-    virtual ~RHIResource()
-    {
-        VERIFY_EXPR(m_counter.GetValue() == 0);
-    }
+    virtual ~RHIResource();
 
     explicit RHIResource(RHIResourceType resourceType) : m_resourceType(resourceType)
     {
@@ -59,7 +57,8 @@ public:
 
         if (newValue == 0)
         {
-            Destroy();
+            std::atomic_thread_fence(std::memory_order_acquire);
+            GetRHIThread().Invoke([this] { Destroy(); });
         }
 
         return newValue;
@@ -78,16 +77,6 @@ public:
     uint64_t GetStableId() const
     {
         return m_stableId;
-    }
-
-    uint32_t GetGenerationId() const
-    {
-        return m_generationId;
-    }
-
-    void BumpGeneration()
-    {
-        ++m_generationId;
     }
 
     RHIResourceType GetResourceType() const
@@ -136,7 +125,6 @@ private:
     mutable AtomicCounter m_counter;
     RHIResourceType m_resourceType{RHIResourceType::eMax};
     uint64_t m_stableId{GenerateStableId()};
-    uint32_t m_generationId{0}; /// For aliasing
 };
 
 class RHIShaderGroupSource : public RefCounted
@@ -315,6 +303,13 @@ public:
     virtual RHITextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
     virtual void Resize(uint32_t width, uint32_t height) = 0;
+
+    // Threaded presentation reports recreation to RenderCore instead of replacing
+    // backbuffers while the next graph is being recorded.
+    virtual bool NeedsRecreation() const
+    {
+        return false;
+    }
 
 protected:
     RHIViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) :

@@ -21,7 +21,7 @@ $env:VK_LAYER_VALIDATE_SYNC = '1'
 .\bin\CommonTest.exe
 ```
 
-The descriptor integration suite includes 2,049 real compute dispatches across cache eviction, checked GPU output, delayed completion polling, unchanged bindings in a new workload, stale resolved handles, sparse arrays, binding ordering, resource generations, UBO ranges and packed/external UBO switching. Pool ownership and submission failure cases exercise both timeline-semaphore and fence modes.
+The descriptor integration suite includes 2,049 real compute dispatches across cache eviction, checked GPU output, delayed completion polling, unchanged bindings in a new workload, stale resolved handles, sparse arrays, binding ordering, resource identity, UBO ranges and packed/external UBO switching. Pool ownership and submission failure cases exercise both timeline-semaphore and fence modes.
 
 Uniform allocator regressions (`VulkanUniformTrimIntegrationTest.*` and `*VulkanUniformQueueTrimTest.*`) check the 120-reuse trimming cooldown, renewed demand, one spare block, idle retention, independent slots, regrowth, and protection against overwriting unsubmitted recordings. GPU readback verifies generation-based refresh after both block recycling and destruction. Native timeline waits gate GPU work while both timeline and fence completion tracking are tested, including independent graphics/compute serials, duplicate block counts across merged recordings, context destruction, rejected submission retry/discard, and uncertain submissions surviving unrelated completion. The existing packed-uniform growth test also checks values and block reuse beyond the former eight-block limit.
 

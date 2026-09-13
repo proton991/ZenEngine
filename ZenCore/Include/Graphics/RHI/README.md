@@ -6,6 +6,8 @@ Raw RHI resource arguments are borrowed. Callers must keep buffers, textures, sa
 
 `RHICommandList::Create(context)` transfers ownership of the context to the command list. Destroying that list destroys its context. Rendering-layout pointers passed to recorded `BeginRendering` commands must remain valid and unchanged until command execution. Parameter bytes and copied region arrays are owned by recorded commands; resource pointers remain borrowed.
 
+`RHIResource::GetStableId()` identifies a resource object throughout its lifetime. Reusing the same pooled allocation preserves its ID; replacing the object produces a new ID. Descriptor and pipeline cache keys use this identity. Resource replacement must create a new RHI object and retain the old one through its final GPU use.
+
 `RHITexture::CreateView`, `RHITexture::GetDefaultView`, and `CreateTextureView` return borrowed views owned by the base texture. Do not release the texture-owned reference. If a caller takes an additional view reference, it must also keep the base texture alive. Keeping only the view alive does not retain the image. The base texture releases its owned views before destroying the image.
 
 Descriptor-pool retention is independent of resource retention. The shared Vulkan lifetime tracker protects ordinary descriptor pools from recording through completion, but this does not retain the buffers, textures, or samplers described by their sets.
@@ -30,7 +32,7 @@ The remaining counters describe different events:
 | --- | --- |
 | Queue submission serial | Accepted work on one queue; completion comes from its timeline semaphore or fence. Serials from different queues are not comparable. |
 | Lifetime ID / bindless epoch | A unique tracker entry. Ordered bindless IDs divide earlier recordings from resources retired later; they do not imply GPU completion. |
-| Resource, uniform allocation, and descriptor-slot generation | Identity/content validity after reuse. Descriptor-cache revision invalidates cached lookup results. |
+| Uniform allocation and descriptor-slot generation | Identity/content validity after reuse. Descriptor-cache revision invalidates cached lookup results. |
 | Frame, reuse count, and idle ticks | Eviction age; these do not establish safe GPU reuse. |
 | Semaphore signal generation | Distinguishes an accepted signal from an earlier use of the same semaphore object. |
 | Swapchain present serial | Identifies a presentation operation whose completion is established by present fences or image reacquisition. Queue submission completion alone does not prove presentation completion. |
@@ -39,7 +41,7 @@ The remaining counters describe different events:
 
 The Vulkan global bindless set occupies set 0. Its texture-2D, cube-texture, and sampler bindings follow `RHIBindlessHeapType`. Shaders using it bind set 0 even when they have no ordinary resource parameters. Ordinary descriptor sets may follow it, including unused set-number gaps.
 
-`DynamicRHI::RegisterBindlessResource(resource, optionalSlot)` returns an `RHIBindlessHandle` containing the heap, slot index, and a registration generation. An invalid handle means the resource/slot is invalid, occupied by a different registration, or the heap is full. Automatic allocation searches free slots and reuses reclaimed holes. Re-registering the same resource and resource generation in an active explicit slot returns the same handle without another reference or descriptor write. Registration through shader parameters remains supported; use explicit registration when a caller needs to retain a retirement handle.
+`DynamicRHI::RegisterBindlessResource(resource, optionalSlot)` returns an `RHIBindlessHandle` containing the heap, slot index, and a registration generation. An invalid handle means the resource/slot is invalid, occupied by a different registration, or the heap is full. Automatic allocation searches free slots and reuses reclaimed holes. Re-registering the same resource in an active explicit slot returns the same handle without another reference or descriptor write. Registration through shader parameters remains supported; use explicit registration when a caller needs to retain a retirement handle.
 
 Successful registration retains the texture/view/sampler. A view registration also retains its base texture. Texture registrations require sampled-image usage and resolve to their default native image view. Published slots cannot be overwritten. `IsBindlessResourceRegistered(handle)` validates an active registration; stale generations cannot retire or identify its replacement, even if the resource pointer or slot index is reused.
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHIThread.h"
 
 namespace zen::rc
 {
@@ -21,6 +22,8 @@ struct RenderConfig
     uint32_t offScreenFbSize = 2048;
 
     uint32_t numFrames = 3;
+
+    RHIExecutionMode rhiExecutionMode{RHIExecutionMode::eThreaded};
 
     uint32_t numThreads = 8;
 

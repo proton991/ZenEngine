@@ -621,7 +621,10 @@ void ResourceStateTracker::UpdateTextureState(const RHITexture* texture,
                                               RHITextureUsage usage,
                                               BitField<RHIPipelineStageFlagBits> stages)
 {
-    RemoveTextureState(texture);
+    if (texture != nullptr)
+    {
+        RemoveResourceState(texture->GetStableId(), true);
+    }
     RDGTextureResourceState state{mode, usage, stages};
     state.writer = NewWriter(RHITextureUsageToAccessFlagBits(usage, mode), stages);
     SetTextureState(texture, state);
@@ -642,7 +645,10 @@ void ResourceStateTracker::UpdateBufferState(const RHIBuffer* buffer,
                                              BitField<RHIBufferUsageFlagBits> usage,
                                              BitField<RHIPipelineStageFlagBits> stages)
 {
-    RemoveBufferState(buffer);
+    if (buffer != nullptr)
+    {
+        RemoveResourceState(buffer->GetStableId(), true);
+    }
     RDGBufferResourceState state{mode, usage, stages};
     int64_t accesses = 0;
 
@@ -669,36 +675,6 @@ void ResourceStateTracker::SetBufferState(const RHIBuffer* buffer,
     }
 }
 
-void ResourceStateTracker::RemoveTextureState(const RHITexture* texture)
-{
-    if (texture != nullptr)
-    {
-        ++m_revision;
-        m_textureStates.erase(texture->GetStableId());
-        m_contents.erase(texture->GetStableId());
-
-        if (m_metrics != nullptr)
-        {
-            m_metrics->ForgetResource(texture->GetStableId());
-        }
-    }
-}
-
-void ResourceStateTracker::RemoveBufferState(const RHIBuffer* buffer)
-{
-    if (buffer != nullptr)
-    {
-        ++m_revision;
-        m_bufferStates.erase(buffer->GetStableId());
-        m_contents.erase(buffer->GetStableId());
-
-        if (m_metrics != nullptr)
-        {
-            m_metrics->ForgetResource(buffer->GetStableId());
-        }
-    }
-}
-
 RDGResourceContent ResourceStateTracker::GetContents(const RHIResource* resource) const
 {
     RDGResourceContent result{};
@@ -715,6 +691,21 @@ RDGResourceContent ResourceStateTracker::GetContents(const RHIResource* resource
     }
 
     return result;
+}
+
+void ResourceStateTracker::RemoveResourceState(uint64_t resourceId, bool invalidatePlans)
+{
+    size_t removed = m_textureStates.erase(resourceId);
+    removed += m_bufferStates.erase(resourceId);
+    removed += m_contents.erase(resourceId);
+    if (removed != 0 || invalidatePlans)
+    {
+        ++m_revision;
+    }
+    if (m_metrics != nullptr)
+    {
+        m_metrics->ForgetResource(resourceId);
+    }
 }
 
 void ResourceStateTracker::SetContents(const RHIResource* resource,
@@ -839,8 +830,24 @@ bool RDGExecutor::Execute(RenderGraph* graph, RHICommandList* cmdList)
 
 bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
                                   RHICommandList* cmdList,
-                                  const std::function<RHISubmissionResult()>& submit)
+                                  const std::function<RHISubmissionResult()>& submit,
+                                  bool deferPublication)
 {
+    struct ExecutionScope
+    {
+        bool& executing;
+        const bool previous;
+
+        explicit ExecutionScope(bool& value) : executing(value), previous(value)
+        {
+            executing = true;
+        }
+
+        ~ExecutionScope()
+        {
+            executing = previous;
+        }
+    } scope(m_executing);
     bool result{};
 
     if (CheckExecutionPlan(plan))
@@ -950,7 +957,7 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
                 graph->CommitContents(nextTracker);
                 m_resourceStateTracker = std::move(nextTracker);
 
-                if (submit)
+                if (submit && !deferPublication)
                 {
                     graph->m_resourceManager.PublishExtractions(m_pRenderDevice);
                 }
@@ -978,13 +985,14 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
                             continue;
                         }
 
-                        if (resource->type == RDGResourceType::eTexture)
+                        const RHIResource* rhiResource =
+                            resource->type == RDGResourceType::eTexture ?
+                            static_cast<const RHIResource*>(resource->pTexture) :
+                            static_cast<const RHIResource*>(resource->pBuffer);
+                        if (rhiResource != nullptr)
                         {
-                            m_resourceStateTracker.RemoveTextureState(resource->pTexture);
-                        }
-                        else
-                        {
-                            m_resourceStateTracker.RemoveBufferState(resource->pBuffer);
+                            m_resourceStateTracker.RemoveResourceState(rhiResource->GetStableId(),
+                                                                       true);
                         }
                     }
                 }

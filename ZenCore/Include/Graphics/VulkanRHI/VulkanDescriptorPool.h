@@ -351,7 +351,6 @@ private:
     struct BindlessSlotState
     {
         uint64_t resourceId{0};
-        uint32_t resourceGeneration{0};
         RHIResource* pResource{nullptr};
         RHITexture* pTextureOwner{nullptr};
         uint64_t generation{0};

@@ -244,7 +244,6 @@ public:
         }
 
         m_shaderGroupSPIRV->SetStageSPIRV(RHIShaderStage::eCompute, std::move(bytes));
-        BumpGeneration();
     }
 
     void EnableGeometryStage()
@@ -846,6 +845,7 @@ public:
     uint32_t frameBegins{0};
     uint32_t deviceIdleWaits{0};
     bool failSubmissionWait{false};
+    bool failProgressQuery{false};
     std::vector<std::pair<RHICommandContextType, uint64_t>> submissionWaits;
     uint32_t textureCreations{0};
     uint32_t finalizedLists{0};
@@ -1103,6 +1103,10 @@ public:
 
     uint64_t GetLastCompletedSerial(RHICommandContextType type) override
     {
+        if (failProgressQuery)
+        {
+            throw std::runtime_error("test GPU progress query failure");
+        }
         return completed[Index(type)];
     }
 
@@ -1256,6 +1260,29 @@ struct RDGSubmissionTestAccess
     {
         return device.m_rdgExecutor.GetResourceStateTracker();
     }
+
+    static bool HasHistory(const ResourceStateTracker& tracker, uint64_t id)
+    {
+        return tracker.m_textureStates.contains(id) || tracker.m_bufferStates.contains(id) ||
+            tracker.m_contents.contains(id);
+    }
+
+    static bool HasHistory(const RenderDevice& device, uint64_t id)
+    {
+        bool found = HasHistory(device.m_rdgExecutor.GetResourceStateTracker(), id) ||
+            HasHistory(device.m_confirmedResourceState, id) ||
+            device.m_rdgExecutor.GetMetrics().m_validator.HasState(id);
+        for (const RenderDevice::PendingFrame& pending : device.m_pendingFrames)
+        {
+            found |= HasHistory(pending.scheduledState, id);
+        }
+        return found;
+    }
+
+    static size_t PendingFrameCount(const RenderDevice& device)
+    {
+        return device.m_pendingFrames.size();
+    }
 };
 } // namespace zen::rc
 
@@ -1269,7 +1296,9 @@ protected:
         InitializeDevice(nullptr);
     }
 
-    void InitializeDevice(RHIViewport* viewport, uint32_t frameCount = 2)
+    void InitializeDevice(RHIViewport* viewport,
+                          uint32_t frameCount   = 2,
+                          RHIExecutionMode mode = RHIExecutionMode::eInline)
     {
         destroyed.clear();
         reflectedShaderInfos.clear();
@@ -1277,7 +1306,7 @@ protected:
         sceneInputs = {};
         rhi         = ZEN_NEW() TestRHI();
         GDynamicRHI = rhi;
-        device      = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount);
+        device      = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode);
         device->Init(viewport);
     }
 
@@ -7175,7 +7204,7 @@ TEST_F(RenderCoreTest, MetricsDiscardHistoryForExternalUpdatesAndInvalidation)
         EXPECT_EQ(sample.issues[size_t(RDGMetricIssue::eAccessCoverage)], 0u);
     }
 
-    tracker.RemoveBufferState(shared);
+    tracker.RemoveResourceState(shared->GetStableId(), true);
     executor.Execute(&graph, &commands);
     commands.Reset();
 
@@ -11093,7 +11122,7 @@ TEST_F(RenderCoreTest, PipelineCachePreservesLargeSpecializationsAndCanonicalOrd
     EXPECT_NE(first, device->GetOrCreateGfxPipeline(states, shader, &layout, reverse));
 }
 
-TEST_F(RenderCoreTest, PipelineCacheTracksIdentityGenerationFailuresEvictionAndResize)
+TEST_F(RenderCoreTest, PipelineCacheTracksIdentityFailuresEvictionAndResize)
 {
     ShaderProgram* program = CreateTestShaderProgram(device, "pipeline_lifecycle");
     RHIShader* shader      = program->GetShader();
@@ -11105,14 +11134,11 @@ TEST_F(RenderCoreTest, PipelineCacheTracksIdentityGenerationFailuresEvictionAndR
     ASSERT_NE(first, nullptr);
     EXPECT_EQ(first, device->GetOrCreateComputePipeline(shader));
 
-    shader->BumpGeneration();
-    RHIPipeline* nextGeneration = device->GetOrCreateComputePipeline(shader);
-    EXPECT_NE(first, nextGeneration);
     ASSERT_TRUE(program->Init());
 
     shader                   = program->GetShader();
     RHIPipeline* replacement = device->GetOrCreateComputePipeline(shader);
-    EXPECT_NE(nextGeneration, replacement);
+    EXPECT_NE(first, replacement);
 
     rhi->failPipelineCreationAt = rhi->pipelineCount + 1;
 
@@ -11128,10 +11154,10 @@ TEST_F(RenderCoreTest, PipelineCacheTracksIdentityGenerationFailuresEvictionAndR
     ASSERT_NE(device->GetOrCreateGfxPipeline(states, shader, &layout, {{1, 7}}), nullptr);
 
     PipelineCacheMetrics measured = device->GetPipelineCacheMetrics().Since(initial);
-    EXPECT_EQ(measured.requests, 8u);
+    EXPECT_EQ(measured.requests, 7u);
     EXPECT_EQ(measured.hits, 1u);
-    EXPECT_EQ(measured.misses, 7u);
-    EXPECT_EQ(measured.creations, 5u);
+    EXPECT_EQ(measured.misses, 6u);
+    EXPECT_EQ(measured.creations, 4u);
     EXPECT_EQ(measured.failures, 2u);
     EXPECT_EQ(measured.timedRequests, 0u);
     EXPECT_EQ(measured.keyCPUUs + measured.lookupCPUUs + measured.creationCPUUs, 0);
@@ -11256,7 +11282,6 @@ TEST_F(RenderCoreTest, DISABLED_PipelineCacheBenchmark)
     device->GetRDGMetrics().Configure(options);
     device->GetRDGMetrics().SetSink({});
     ShaderProgram* program = CreateTestShaderProgram(device, "pipeline_benchmark");
-    TestShader* shader     = static_cast<TestShader*>(program->GetShader());
     RHIRenderingLayout layout;
     RHITexture* target = Texture();
     layout.AddColorRenderTarget(target->GetFormat(), target, RHIRenderTargetLoadOp::eClear,
@@ -11269,13 +11294,15 @@ TEST_F(RenderCoreTest, DISABLED_PipelineCacheBenchmark)
     {
         for (bool compute : {false, true})
         {
+            ASSERT_TRUE(program->Init());
+            TestShader* shader = static_cast<TestShader*>(program->GetShader());
             shader->SetBenchmarkSPIRV(shaderBytes);
 
             RHIPipeline* expected =
                 RequestBenchmarkPipeline(device, compute, shader, states, layout);
             ASSERT_NE(expected, nullptr);
 
-            std::array<std::vector<double>, 5> samples;
+            HeapVector<HeapVector<double>> samples(5);
             constexpr uint32_t requests = 256;
 
             for (uint32_t run = 0; run < 9; ++run)
@@ -11309,7 +11336,7 @@ TEST_F(RenderCoreTest, DISABLED_PipelineCacheBenchmark)
                 }
             }
 
-            for (std::vector<double>& sample : samples)
+            for (HeapVector<double>& sample : samples)
             {
                 std::sort(sample.begin(), sample.end());
             }
@@ -11440,3 +11467,5 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
         device->DestroyTexture(texture);
     }
 }
+
+#include "RHIThreadingTests.inl"

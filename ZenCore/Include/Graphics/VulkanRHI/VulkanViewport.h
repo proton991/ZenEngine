@@ -53,6 +53,8 @@ public:
 
     bool Present() final;
 
+    bool NeedsRecreation() const final;
+
     RHITexture* GetColorBackBuffer() final;
 
     RHITextureSubResourceRange GetColorBackBufferRange() final

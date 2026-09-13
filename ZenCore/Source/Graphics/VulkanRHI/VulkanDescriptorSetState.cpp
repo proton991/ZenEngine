@@ -425,7 +425,9 @@ bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx,
                 bindingOrder.push_back(&binding);
             }
             std::sort(bindingOrder.begin(), bindingOrder.end(),
-                      [](const auto* a, const auto* b) { return a->srb.binding < b->srb.binding; });
+                      [](const BindingState* a, const BindingState* b) {
+                          return a->srb.binding < b->srb.binding;
+                      });
 
             outKey.bindings.push_back(bindingOrder.size());
             for (const BindingState* binding : bindingOrder)
@@ -438,8 +440,6 @@ bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx,
                 for (const RHIResource* resource : binding->srb.resources)
                 {
                     outKey.bindings.push_back(resource != nullptr ? resource->GetStableId() : 0);
-                    outKey.bindings.push_back(resource != nullptr ? resource->GetGenerationId() :
-                                                                    0);
                 }
             }
         }

@@ -199,7 +199,8 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
 
                 if (RHIDebug* debug = m_pRenderDevice->GetRHIDebug())
                 {
-                    debug->SetTextureDebugName(pOutTexture->pSkybox, pTexture->GetBaseInfo().tag);
+                    GetRHIThread().Invoke(&RHIDebug::SetTextureDebugName, debug,
+                                          pOutTexture->pSkybox, pTexture->GetBaseInfo().tag);
                 }
 
                 SkyboxRenderer* pSkyboxRenderer =

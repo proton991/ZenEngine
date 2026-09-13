@@ -51,9 +51,10 @@ size_t AlignBufferSize(size_t size, size_t alignment)
 }
 } // namespace
 
-RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
+RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames, RHIExecutionMode executionMode) :
     m_APIType(APIType),
     m_numFrames(std::clamp(numFrames, 1u, RenderFrameState::kMaxFramesInFlight)),
+    m_executionMode(executionMode),
     m_frames(m_numFrames),
     m_rdgExecutor(this),
     m_rdgPassCompiler(this, nullptr),
@@ -63,7 +64,6 @@ RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
     })
 {
     GRenderFrameState.Init(m_numFrames);
-    GRHIFrameState.Init(m_numFrames);
 
     if (GDynamicRHI == nullptr)
     {
@@ -71,6 +71,9 @@ RenderDevice::RenderDevice(RHIAPIType APIType, uint32_t numFrames) :
     }
 
     VERIFY_EXPR_MSG(GDynamicRHI != nullptr, "Failed to create the RHI");
+    m_pRHIExecutor = ZEN_NEW() RHICommandListExecutor(GDynamicRHI, executionMode);
+    GDynamicRHI    = m_pRHIExecutor;
+    GetRHIThread().Invoke(&RHIFrameState::Init, &GRHIFrameState, m_numFrames);
     m_pRHIDebug = RHIDebug::Create();
 }
 
@@ -93,114 +96,118 @@ void RenderDevice::Init(RHIViewport* viewport)
 
 void RenderDevice::Destroy()
 {
-    if (GDynamicRHI == nullptr)
+    if (GDynamicRHI != nullptr)
     {
-        return;
+        if (m_pUploadQueue != nullptr)
+        {
+            m_pUploadQueue->Flush();
+        }
+
+        WaitForPreviousFrames();
+        m_frameRDG.Reset();
+        m_rdgPassCompiler.SetRenderGraph(nullptr);
+
+        if (m_pRendererServer != nullptr)
+        {
+            m_pRendererServer->Destroy();
+            ZEN_DELETE(m_pRendererServer);
+            m_pRendererServer = nullptr;
+        }
+
+        if (m_pTextureManager != nullptr)
+        {
+            m_pTextureManager->Destroy();
+            ZEN_DELETE(m_pTextureManager);
+            m_pTextureManager = nullptr;
+        }
+
+        if (m_pUploadQueue != nullptr)
+        {
+            m_pUploadQueue->Destroy();
+            ZEN_DELETE(m_pUploadQueue);
+            m_pUploadQueue = nullptr;
+        }
+
+        m_stagingBufferManager.Destroy();
+
+        for (PipelineCache::value_type& pipelineEntry : m_pipelineCache)
+        {
+            GDynamicRHI->DestroyPipeline(pipelineEntry.second);
+        }
+
+        m_pipelineCache.clear();
+
+        for (HashMap<size_t, RHISampler*>::value_type& samplerEntry : m_samplerCache)
+        {
+            GDynamicRHI->DestroySampler(samplerEntry.second);
+        }
+
+        m_samplerCache.clear();
+
+        for (RHIBuffer* buffer : m_buffers)
+        {
+            GDynamicRHI->DestroyBuffer(buffer);
+        }
+
+        m_buffers.clear();
+        m_deletionQueue.Flush();
+
+        for (uint32_t i = 0; i < m_numFrames; ++i)
+        {
+            ProcessPendingFreeResources(static_cast<RenderFrameSlot>(i), true);
+        }
+
+        while (!m_viewports.empty())
+        {
+            DestroyViewport(m_viewports.back());
+        }
+
+        m_pMainViewport = nullptr;
+
+        for (RHIRenderingLayout* layout : m_renderingLayoutPool)
+        {
+            ZEN_DELETE(layout);
+        }
+
+        m_renderingLayoutPool.clear();
+
+        for (GraphicsPass* pass : m_gfxPassPool)
+        {
+            ZEN_DELETE(pass);
+        }
+
+        m_gfxPassPool.clear();
+        m_graphicsCmdListPool.Destroy();
+
+        if (m_pImmediateTransferCmdList != nullptr)
+        {
+            m_pImmediateTransferCmdList->Reset();
+            ZEN_DELETE(m_pImmediateTransferCmdList);
+            m_pImmediateTransferCmdList = nullptr;
+        }
+
+        ZEN_DELETE(m_pRHIDebug);
+        m_pRHIDebug = nullptr;
+        GDynamicRHI->Destroy();
+        CollectDestroyedResourceHistory();
+        ZEN_DELETE(GDynamicRHI);
+        GDynamicRHI       = nullptr;
+        m_pRHIExecutor    = nullptr;
+        m_frameActive     = false;
+        m_frameWaitFailed = false;
     }
-
-    if (m_pUploadQueue != nullptr)
-    {
-        m_pUploadQueue->Flush();
-    }
-
-    WaitForPreviousFrames();
-    m_frameRDG.Reset();
-    m_rdgPassCompiler.SetRenderGraph(nullptr);
-
-    if (m_pRendererServer != nullptr)
-    {
-        m_pRendererServer->Destroy();
-        ZEN_DELETE(m_pRendererServer);
-        m_pRendererServer = nullptr;
-    }
-
-    if (m_pTextureManager != nullptr)
-    {
-        m_pTextureManager->Destroy();
-        ZEN_DELETE(m_pTextureManager);
-        m_pTextureManager = nullptr;
-    }
-
-    if (m_pUploadQueue != nullptr)
-    {
-        m_pUploadQueue->Destroy();
-        ZEN_DELETE(m_pUploadQueue);
-        m_pUploadQueue = nullptr;
-    }
-
-    m_stagingBufferManager.Destroy();
-
-    for (PipelineCache::value_type& pipelineEntry : m_pipelineCache)
-    {
-        GDynamicRHI->DestroyPipeline(pipelineEntry.second);
-    }
-
-    m_pipelineCache.clear();
-
-    for (HashMap<size_t, RHISampler*>::value_type& samplerEntry : m_samplerCache)
-    {
-        GDynamicRHI->DestroySampler(samplerEntry.second);
-    }
-
-    m_samplerCache.clear();
-
-    for (RHIBuffer* buffer : m_buffers)
-    {
-        GDynamicRHI->DestroyBuffer(buffer);
-    }
-
-    m_buffers.clear();
-    m_deletionQueue.Flush();
-
-    for (uint32_t i = 0; i < m_numFrames; ++i)
-    {
-        ProcessPendingFreeResources(static_cast<RenderFrameSlot>(i), true);
-    }
-
-    while (!m_viewports.empty())
-    {
-        DestroyViewport(m_viewports.back());
-    }
-
-    m_pMainViewport = nullptr;
-
-    for (RHIRenderingLayout* layout : m_renderingLayoutPool)
-    {
-        ZEN_DELETE(layout);
-    }
-
-    m_renderingLayoutPool.clear();
-
-    for (GraphicsPass* pass : m_gfxPassPool)
-    {
-        ZEN_DELETE(pass);
-    }
-
-    m_gfxPassPool.clear();
-    m_graphicsCmdListPool.Destroy();
-
-    if (m_pImmediateTransferCmdList != nullptr)
-    {
-        m_pImmediateTransferCmdList->Reset();
-        ZEN_DELETE(m_pImmediateTransferCmdList);
-        m_pImmediateTransferCmdList = nullptr;
-    }
-
-    ZEN_DELETE(m_pRHIDebug);
-    m_pRHIDebug = nullptr;
-    GDynamicRHI->Destroy();
-    ZEN_DELETE(GDynamicRHI);
-    GDynamicRHI       = nullptr;
-    m_frameActive     = false;
-    m_frameWaitFailed = false;
 }
 
 bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
 {
     bool result{};
 
-    if (!(viewport == nullptr || m_frameRDG.Get() == nullptr ||
-          m_pImmediateTransferCmdList == nullptr || m_frameWaitFailed))
+    if (m_executionMode == RHIExecutionMode::eThreaded)
+    {
+        result = QueueRenderGraph(viewport);
+    }
+    else if (!(viewport == nullptr || m_frameRDG.Get() == nullptr ||
+               m_pImmediateTransferCmdList == nullptr || m_frameWaitFailed))
     {
         RenderGraph& graph = *m_frameRDG;
 
@@ -244,7 +251,7 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
                 else
                 {
                     // Presentation records backend copy work into the dedicated graphics context.
-                    viewport->PrepareForPresent(lists[1]);
+                    GetRHIThread().Invoke(&RHIViewport::PrepareForPresent, viewport, lists[1]);
                     const RHISubmissionResult presentation =
                         SubmitCommandLists(MakeVecView(lists.data() + 1, 1));
 
@@ -255,8 +262,12 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
                         // The render graph was already accepted. Keep its committed state and retirement gates.
                         if (presentation == RHISubmissionResult::eFatal)
                         {
-                            m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(
-                                viewport->GetColorBackBuffer());
+                            RHITexture* backBuffer = viewport->GetColorBackBuffer();
+                            if (backBuffer != nullptr)
+                            {
+                                m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(
+                                    backBuffer->GetStableId(), true);
+                            }
                         }
 
                         result = graph.Fail(RDGErrorCode::eSubmission,
@@ -264,7 +275,8 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
                     }
                     else
                     {
-                        const bool presented = viewport->Present();
+                        const bool presented =
+                            GetRHIThread().Invoke(&RHIViewport::Present, viewport);
                         m_graphicsCmdListPool.Release(lists[1]);
                         m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
                             viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
@@ -282,9 +294,166 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
     return result;
 }
 
+bool RenderDevice::QueueRenderGraph(RHIViewport* viewport)
+{
+    bool result = false;
+    PollFrameSubmissions(false);
+    if (viewport != nullptr && m_frameRDG.Get() != nullptr && m_frameActive && !m_frameWaitFailed &&
+        !AreSubmissionsBlocked() && m_pRecreateViewport == nullptr)
+    {
+        RenderGraph& graph = *m_frameRDG;
+        RDGExecutor::ExecutionPlan plan;
+        if (m_rdgExecutor.PrepareExecution(&graph, plan) &&
+            (m_pUploadQueue == nullptr || m_pUploadQueue->Flush()) &&
+            m_rdgExecutor.RefreshExecution(plan))
+        {
+            RHICommandList* commands = m_graphicsCmdListPool.Acquire();
+            PendingFrame pending;
+            pending.frame    = &m_frames[ToIndex(GRenderFrameState.GetFrameSlot())];
+            pending.viewport = viewport;
+            result           = m_rdgExecutor.ExecutePrepared(
+                plan, commands,
+                std::bind_front(&RenderDevice::QueueRecordedFrame, this, std::ref(graph),
+                                std::ref(*commands), viewport, std::ref(pending)),
+                true);
+            m_graphicsCmdListPool.Release(commands);
+            if (result)
+            {
+                // Scheduled state belongs to RenderCore. Confirmation comes back through
+                // the ticket; the worker never touches this graph or its pass callbacks.
+                m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
+                    viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
+                    RHITextureUsage::eColorAttachment,
+                    BitField<RHIPipelineStageFlagBits>(
+                        RHIPipelineStageFlagBits::eColorAttachmentOutput));
+                pending.scheduledState    = m_rdgExecutor.GetResourceStateTracker();
+                pending.frame->submission = pending.ticket;
+                m_pendingFrames.push_back(std::move(pending));
+                // The queued frame batch owns native EndFrame, including on the slow path.
+                m_frameActive = false;
+            }
+        }
+    }
+    CollectDestroyedResourceHistory();
+    return result;
+}
+
+RHISubmissionResult RenderDevice::QueueRecordedFrame(RenderGraph& graph,
+                                                     RHICommandList& commands,
+                                                     RHIViewport* viewport,
+                                                     PendingFrame& pending)
+{
+    // Allow preparation of the next frame while one frame is on the RHI thread.
+    // Apply backpressure only at the next handoff, not after every dispatch.
+    PollFrameSubmissions(true);
+    RHISubmissionResult result = RHISubmissionResult::eRejected;
+    if (AreSubmissionsBlocked())
+    {
+        result = RHISubmissionResult::eFatal;
+    }
+    else if (m_pRecreateViewport == nullptr)
+    {
+        graph.m_resourceManager.StageExtractions(pending.extractions);
+        pending.ticket = m_pRHIExecutor->SubmitFrame(commands, viewport);
+        result =
+            pending.ticket.IsValid() ? RHISubmissionResult::eSuccess : RHISubmissionResult::eFatal;
+    }
+    return result;
+}
+
+void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& result)
+{
+    RenderFrame& frame   = *pending.frame;
+    frame.graphicsSerial = std::max(frame.graphicsSerial, result.serials[0]);
+    frame.transferSerial = std::max(frame.transferSerial, result.serials[2]);
+    frame.submission     = {};
+    if (result.submission == RHISubmissionResult::eSuccess)
+    {
+        m_confirmedResourceState = pending.scheduledState;
+        for (const RDGDeferredExtraction& extraction : pending.extractions)
+        {
+            if (extraction.state->resource == nullptr)
+            {
+                extraction.resource->AddReference();
+                extraction.state->resource = extraction.resource.get();
+                extraction.state->device   = this;
+            }
+        }
+        if (result.needsRecreation)
+        {
+            m_pRecreateViewport = pending.viewport;
+        }
+    }
+    else
+    {
+        m_submissionBlocked                     = true;
+        m_rdgExecutor.GetResourceStateTracker() = ResourceStateTracker();
+        m_confirmedResourceState                = ResourceStateTracker();
+        LOGE("RHI submission failed: {}; recreate the device before continuing", result.error);
+    }
+}
+
+bool RenderDevice::PollFrameSubmissions(bool wait)
+{
+    while (!m_pendingFrames.empty() && (wait || m_pendingFrames[0].ticket.IsReady()))
+    {
+        PendingFrame& pending       = m_pendingFrames[0];
+        const RHIBatchResult result = pending.ticket.Wait();
+        CompleteFrame(pending, result);
+        m_pendingFrames.pop_front();
+    }
+    CollectDestroyedResourceHistory();
+    return !AreSubmissionsBlocked();
+}
+
+void RenderDevice::CollectDestroyedResourceHistory()
+{
+    // A submission callback can poll while ExecutePrepared still owns a private
+    // tracker/metrics copy. Defer draining until that copy commits or rolls back.
+    if (m_pRHIExecutor != nullptr && !m_rdgExecutor.m_executing)
+    {
+        m_pRHIExecutor->DrainDestroyedResourceIds(m_destroyedResourceIds);
+        for (uint64_t resourceId : m_destroyedResourceIds)
+        {
+            m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(resourceId);
+            m_confirmedResourceState.RemoveResourceState(resourceId);
+            for (PendingFrame& pending : m_pendingFrames)
+            {
+                pending.scheduledState.RemoveResourceState(resourceId);
+            }
+        }
+        m_destroyedResourceIds.clear();
+    }
+}
+
+void RenderDevice::FlushRHIThread()
+{
+    if (m_pRHIExecutor != nullptr)
+    {
+        m_pRHIExecutor->FlushRHIThread();
+        PollFrameSubmissions(true);
+    }
+}
+
+RHIThreadMetrics RenderDevice::GetRHIThreadMetrics() const
+{
+    return m_pRHIExecutor != nullptr ? m_pRHIExecutor->GetThreadMetrics() : RHIThreadMetrics{};
+}
+
+void RenderDevice::ProcessDeferredViewportResize()
+{
+    if (m_pRecreateViewport != nullptr && !AreSubmissionsBlocked())
+    {
+        RHIViewport* viewport = m_pRecreateViewport;
+        m_pRecreateViewport   = nullptr;
+        ResizeViewport(viewport, viewport->GetWidth(), viewport->GetHeight());
+    }
+}
+
 bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
 {
     bool result{};
+    PollFrameSubmissions(true);
 
     if (m_submissionBlocked)
     {
@@ -354,6 +523,7 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
         }
     }
 
+    CollectDestroyedResourceHistory();
     return result;
 }
 
@@ -412,12 +582,20 @@ void RenderDevice::InvalidateRDGPassCompilerForResize()
 
 void RenderDevice::InvalidateExternalTextureState(RHITexture* texture)
 {
-    m_rdgExecutor.GetResourceStateTracker().RemoveTextureState(texture);
+    if (texture != nullptr)
+    {
+        m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(texture->GetStableId(), true);
+        m_confirmedResourceState.RemoveResourceState(texture->GetStableId(), true);
+    }
 }
 
 void RenderDevice::InvalidateExternalBufferState(RHIBuffer* buffer)
 {
-    m_rdgExecutor.GetResourceStateTracker().RemoveBufferState(buffer);
+    if (buffer != nullptr)
+    {
+        m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(buffer->GetStableId(), true);
+        m_confirmedResourceState.RemoveResourceState(buffer->GetStableId(), true);
+    }
 }
 
 bool RenderDevice::ResolveStagingFlushAction(StagingFlushAction action,
@@ -604,7 +782,7 @@ void RenderDevice::InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, co
 
     if (prefix < size)
     {
-        std::vector<uint8_t> tail(size - prefix, 0);
+        HeapVector<uint8_t> tail(size - prefix);
         std::memcpy(tail.data(), data + prefix, dataSize - prefix);
         UpdateBufferInternal(buffer, prefix, static_cast<uint32_t>(tail.size()), tail.data());
     }
@@ -637,7 +815,7 @@ void RenderDevice::DestroyBuffer(RHIBuffer* buffer)
         m_pUploadQueue->Flush();
     }
 
-    std::vector<RHIBuffer*>::iterator it = std::find(m_buffers.begin(), m_buffers.end(), buffer);
+    HeapVector<RHIBuffer*>::iterator it = std::find(m_buffers.begin(), m_buffers.end(), buffer);
 
     if (it != m_buffers.end())
     {
@@ -838,42 +1016,49 @@ RHIViewport* RenderDevice::CreateViewport(void* window, uint32_t width, uint32_t
 
 void RenderDevice::DestroyViewport(RHIViewport* viewport)
 {
-    if (viewport == nullptr)
+    if (viewport != nullptr)
     {
-        return;
+        WaitForPreviousFrames();
+        InvalidateExternalTextureState(viewport->GetColorBackBuffer());
+        InvalidateExternalTextureState(viewport->GetDepthStencilBackBuffer());
+        HeapVector<RHIViewport*>::iterator it =
+            std::find(m_viewports.begin(), m_viewports.end(), viewport);
+        if (it != m_viewports.end())
+        {
+            m_viewports.erase(it);
+        }
+        if (m_pRecreateViewport == viewport)
+        {
+            m_pRecreateViewport = nullptr;
+        }
+        if (m_pMainViewport == viewport)
+        {
+            m_pMainViewport = nullptr;
+        }
+        GDynamicRHI->DestroyViewport(viewport);
     }
-
-    InvalidateExternalTextureState(viewport->GetColorBackBuffer());
-    InvalidateExternalTextureState(viewport->GetDepthStencilBackBuffer());
-    std::vector<RHIViewport*>::iterator it =
-        std::find(m_viewports.begin(), m_viewports.end(), viewport);
-
-    if (it != m_viewports.end())
-    {
-        m_viewports.erase(it);
-    }
-
-    GDynamicRHI->DestroyViewport(viewport);
 }
 
 void RenderDevice::ResizeViewport(RHIViewport* viewport, uint32_t width, uint32_t height)
 {
-    if (viewport == nullptr || width == 0 || height == 0 ||
-        (viewport->GetWidth() == width && viewport->GetHeight() == height))
+    if (viewport != nullptr && width != 0 && height != 0 &&
+        (viewport->GetWidth() != width || viewport->GetHeight() != height ||
+         GetRHIThread().Invoke(&RHIViewport::NeedsRecreation, viewport)))
     {
-        return;
+        if (m_pUploadQueue != nullptr)
+        {
+            m_pUploadQueue->Flush();
+        }
+        WaitForPreviousFrames();
+        if (!AreSubmissionsBlocked())
+        {
+            InvalidateRDGPassCompilerForResize();
+            InvalidateExternalTextureState(viewport->GetColorBackBuffer());
+            InvalidateExternalTextureState(viewport->GetDepthStencilBackBuffer());
+            GetRHIThread().Invoke(&RHIViewport::Resize, viewport, width, height);
+            m_pRecreateViewport = nullptr;
+        }
     }
-
-    if (m_pUploadQueue != nullptr)
-    {
-        m_pUploadQueue->Flush();
-    }
-
-    WaitForPreviousFrames();
-    InvalidateRDGPassCompilerForResize();
-    InvalidateExternalTextureState(viewport->GetColorBackBuffer());
-    InvalidateExternalTextureState(viewport->GetDepthStencilBackBuffer());
-    viewport->Resize(width, height);
 }
 
 void RenderDevice::ProcessViewportResize(uint32_t width, uint32_t height)
@@ -888,10 +1073,12 @@ void RenderDevice::ProcessViewportResize(uint32_t width, uint32_t height)
 
 void RenderDevice::WaitForPreviousFrames()
 {
+    PollFrameSubmissions(true);
     const RHISubmissionResult result = GDynamicRHI->FlushAllGPUCommands();
     StampOutgoingFrameSerials();
     m_submissionBlocked |= result == RHISubmissionResult::eFatal;
     GDynamicRHI->WaitDeviceIdle();
+    CollectDestroyedResourceHistory();
 }
 
 void RenderDevice::StampOutgoingFrameSerials()
@@ -907,17 +1094,24 @@ void RenderDevice::StampOutgoingFrameSerials()
 
 void RenderDevice::CollectCompletedResources()
 {
+    if (m_pRHIExecutor != nullptr)
+    {
+        m_pRHIExecutor->PollGPUProgress();
+    }
+    PollFrameSubmissions(false);
     for (uint32_t slot = 0; slot < m_numFrames; ++slot)
     {
         ProcessPendingFreeResources(static_cast<RenderFrameSlot>(slot));
     }
+    CollectDestroyedResourceHistory();
 }
 
 void RenderDevice::ProcessPendingFreeResources(RenderFrameSlot slot, bool ignoreCompletionGate)
 {
     // A failed native call can leave work in use without an accepted serial. Retain owners
     // until Destroy has waited for the device, rather than trusting incomplete serial history.
-    if (!(m_submissionBlocked && !ignoreCompletionGate))
+    if (ignoreCompletionGate ||
+        (!AreSubmissionsBlocked() && !m_frames[ToIndex(slot)].submission.IsValid()))
     {
         RenderFrame& frame = m_frames[ToIndex(slot)];
 
@@ -982,6 +1176,8 @@ void RenderDevice::ProcessPendingFreeResources(RenderFrameSlot slot, bool ignore
 
 void RenderDevice::NextFrame()
 {
+    PollFrameSubmissions(false);
+    ProcessDeferredViewportResize();
     if (m_frameWaitFailed)
     {
         BeginFrame(); // Retry the same slot; its resources are still in flight.
@@ -1000,42 +1196,42 @@ void RenderDevice::NextFrame()
 
 void RenderDevice::BeginFrame()
 {
-    if (m_frameActive || m_submissionBlocked)
+    PollFrameSubmissions(false);
+    if (!m_frameActive && !AreSubmissionsBlocked())
     {
-        return;
-    }
-
-    bool ready                 = true;
-    const RenderFrameSlot slot = GRenderFrameState.GetFrameSlot();
-    const RenderFrame& frame   = m_frames[ToIndex(slot)];
-
-    for (const std::pair<RHICommandContextType, uint64_t>& completion :
-         {std::pair{RHICommandContextType::eGraphics, frame.graphicsSerial},
-          std::pair{RHICommandContextType::eTransfer, frame.transferSerial}})
-    {
-        if (GDynamicRHI->GetLastCompletedSerial(completion.first) < completion.second &&
-            !GDynamicRHI->WaitForSubmission(completion.first, completion.second))
+        const RenderFrameSlot slot = GRenderFrameState.GetFrameSlot();
+        const RenderFrame& frame   = m_frames[ToIndex(slot)];
+        if (frame.submission.IsValid())
         {
-            LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(slot),
-                 uint32_t(completion.first), completion.second);
-            m_frameWaitFailed = true;
-            ready             = false;
-            break;
+            PollFrameSubmissions(true);
         }
-    }
-
-    if (ready)
-    {
-        if (m_pUploadQueue != nullptr)
+        bool ready = !AreSubmissionsBlocked();
+        for (const std::pair<RHICommandContextType, uint64_t>& completion :
+             {std::pair{RHICommandContextType::eGraphics, frame.graphicsSerial},
+              std::pair{RHICommandContextType::eTransfer, frame.transferSerial}})
         {
-            m_pUploadQueue->ReclaimResources();
+            if (ready &&
+                GDynamicRHI->GetLastCompletedSerial(completion.first) < completion.second &&
+                !GDynamicRHI->WaitForSubmission(completion.first, completion.second))
+            {
+                LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(slot),
+                     uint32_t(completion.first), completion.second);
+                m_frameWaitFailed = true;
+                ready             = false;
+            }
         }
-
-        ProcessPendingFreeResources(slot);
-        m_stagingBufferManager.Reclaim();
-        GDynamicRHI->BeginFrame();
-        m_frameActive     = true;
-        m_frameWaitFailed = false;
+        if (ready)
+        {
+            if (m_pUploadQueue != nullptr)
+            {
+                m_pUploadQueue->ReclaimResources();
+            }
+            ProcessPendingFreeResources(slot);
+            m_stagingBufferManager.Reclaim();
+            GDynamicRHI->BeginFrame();
+            m_frameActive     = true;
+            m_frameWaitFailed = false;
+        }
     }
 }
 
@@ -1096,10 +1292,7 @@ RHISubmissionResult RenderDevice::SubmitCommandLists(VectorView<RHICommandList*>
     }
     else
     {
-        HeapVector<RHIPlatformCommandList*> platformLists;
-        GDynamicRHI->FinalizeCommandLists(lists, platformLists);
-        GDynamicRHI->SubmitPlatformCommandLists(platformLists);
-        const RHISubmissionResult result = GDynamicRHI->FlushAllGPUCommands();
+        const RHISubmissionResult result = m_pRHIExecutor->SubmitBatch(lists);
         // Accepted prefixes must protect resources even if a later submission in this flush failed.
         StampOutgoingFrameSerials();
         m_submissionBlocked |= result == RHISubmissionResult::eFatal;
@@ -1170,10 +1363,9 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader* shader,
     PipelineKey key;
 
     key.Add(graphics ? RHIPipelineType::eGraphics : RHIPipelineType::eCompute);
-    // ShaderProgram::Init replaces the native shader object. Stable identity and generation
-    // distinguish pipeline entries without rescanning immutable shader bytecode.
+    // ShaderProgram::Init replaces the shader object. Its stable ID distinguishes
+    // pipeline entries without rescanning immutable shader bytecode.
     key.Add(shader->GetStableId());
-    key.Add(shader->GetGenerationId());
 
     if (graphics != nullptr)
     {

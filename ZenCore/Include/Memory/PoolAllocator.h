@@ -18,6 +18,16 @@ public:
         m_allocators.clear();
     }
 
+    PoolAllocator(const PoolAllocator&)            = delete;
+    PoolAllocator& operator=(const PoolAllocator&) = delete;
+
+    void Swap(PoolAllocator& other)
+    {
+        std::swap(m_allocators, other.m_allocators);
+        std::swap(m_currentIndex, other.m_currentIndex);
+        std::swap(m_initialSize, other.m_initialSize);
+    }
+
     // allocate memory from current allocator
     void* Alloc(size_t size, size_t alignment = alignof(std::max_align_t))
     {

@@ -112,9 +112,8 @@ public:
 
     void SetContents(const RHIResource* resource, const RDGResourceContent& contents);
 
-    void RemoveTextureState(const RHITexture* pTexture);
-
-    void RemoveBufferState(const RHIBuffer* pBuffer);
+    // Explicit invalidation can advance the revision even when no state was tracked.
+    void RemoveResourceState(uint64_t resourceId, bool invalidatePlans = false);
 
     uint64_t GetRevision() const
     {
@@ -123,6 +122,7 @@ public:
 
 private:
     friend class RenderGraph;
+    friend struct RDGSubmissionTestAccess;
     uint64_t m_revision{0};
 
     // Graph accesses have already been observed by metrics. External updates invalidate history.
@@ -211,7 +211,8 @@ private:
 
     bool ExecutePrepared(ExecutionPlan& plan,
                          RHICommandList* cmdList,
-                         const std::function<RHISubmissionResult()>& submit = {});
+                         const std::function<RHISubmissionResult()>& submit = {},
+                         bool deferPublication                              = false);
 
     bool BuildExecutionPlan(ExecutionPlan& plan);
 
@@ -233,6 +234,8 @@ private:
 
     ResourceStateTracker m_resourceStateTracker;
     RDGMetrics m_metrics;
+    // Covers recording, submission, and commit/rollback of private tracker copies.
+    bool m_executing{false};
 
     FlatHashMap<RHIBuffer*, RDGBufferResourceState> m_frameBufferStates;
     FlatHashMap<RHITexture*, RDGTextureResourceState> m_frameTextureStates;

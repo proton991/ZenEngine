@@ -8,12 +8,42 @@
 #include "Templates/VectorView.h"
 #include <type_traits>
 #include <utility>
+#include <memory>
+#include "Templates/FlatHashMap.h"
 
 #define ALLOC_CMD(...) AllocateCmdTyped<__VA_ARGS__>
 
 namespace zen
 {
 class RHIPipeline;
+class RHICommandList;
+
+struct RHICommandListDeleter
+{
+    void operator()(RHICommandList* commands) const;
+};
+
+using RHICommandListPtr = std::unique_ptr<RHICommandList, RHICommandListDeleter>;
+
+class RHIResourceReferences
+{
+public:
+    RHIResourceReferences() = default;
+    ~RHIResourceReferences();
+    RHIResourceReferences(const RHIResourceReferences&)            = delete;
+    RHIResourceReferences& operator=(const RHIResourceReferences&) = delete;
+    RHIResourceReferences(RHIResourceReferences&& other) noexcept;
+    RHIResourceReferences& operator=(RHIResourceReferences&& other) noexcept;
+    void Retain(RHIResource* resource);
+    void Reset();
+    void Swap(RHIResourceReferences& other);
+    size_t GetCount() const;
+    void Rollback(size_t count);
+
+private:
+    HeapVector<RHIResource*> m_resources;
+    FlatHashMap<RHIResource*, size_t> m_unique;
+};
 
 class RHIPlatformCommandList
 {
@@ -164,19 +194,10 @@ public:
     {
         Reset();
         m_ppCmdPtr = nullptr;
-
-        if (!m_pGraphicsContext && m_pComputeContext)
-        {
-            ZEN_DELETE(m_pComputeContext);
-            m_pComputeContext = nullptr;
-        }
-
-        if (m_pGraphicsContext)
-        {
-            ZEN_DELETE(m_pGraphicsContext);
-            m_pGraphicsContext = nullptr;
-        }
     }
+
+    RHICommandListBase(const RHICommandListBase&)            = delete;
+    RHICommandListBase& operator=(const RHICommandListBase&) = delete;
 
     void* AllocateCmd(uint32_t size, uint32_t alignment)
     {
@@ -225,7 +246,7 @@ public:
     {
         if (IRHICommandContext* pContext = GetContext())
         {
-            pContext->RHIWaitUntilCompleted();
+            GetRHIThread().Invoke(&IRHICommandContext::RHIWaitUntilCompleted, pContext);
         }
     }
 
@@ -233,15 +254,21 @@ public:
 
     void Reset();
 
+    void RetainResource(RHIResource* resource)
+    {
+        m_resources.Retain(resource);
+    }
+
     struct CommandCheckpoint
     {
         RHICommandBase** tail;
         uint32_t count;
+        size_t resourceCount;
     };
 
     CommandCheckpoint GetCommandCheckpoint() const
     {
-        return {m_ppCmdPtr, m_numCommands};
+        return {m_ppCmdPtr, m_numCommands, m_resources.GetCount()};
     }
 
     uint32_t GetCommandCount() const
@@ -266,6 +293,8 @@ protected:
 
     uint32_t m_numCommands{0};
     PoolAllocator<LinearAllocator> m_cmdAllocator;
+    std::shared_ptr<IRHICommandContext> m_contextOwner;
+    RHIResourceReferences m_resources;
 };
 
 struct RHICommand : public RHICommandBase
@@ -296,7 +325,7 @@ struct RHICommandWithBindlessEpoch : public RHICommand
 
     void Execute(RHICommandListBase& cmdList) final
     {
-        auto* context = cmdList.GetContext();
+        IRHICommandContext* context = cmdList.GetContext();
         context->RHISetRecordedBindlessEpoch(m_bindlessEpoch);
         try
         {
@@ -476,15 +505,15 @@ struct RHICommandResolveTexture : public RHICommand
 
 struct RHICommandBeginRendering final : public RHICommand
 {
-    const RHIRenderingLayout* pRenderingLayout;
+    RHIRenderingLayout renderingLayout;
 
     explicit RHICommandBeginRendering(const RHIRenderingLayout* pRenderingLayout) :
-        pRenderingLayout(pRenderingLayout)
+        renderingLayout(*pRenderingLayout)
     {}
 
     void Execute(RHICommandListBase& cmdList) override
     {
-        cmdList.GetContext()->RHIBeginRendering(pRenderingLayout);
+        cmdList.GetContext()->RHIBeginRendering(&renderingLayout);
     }
 };
 
@@ -853,6 +882,10 @@ public:
     RHICommandList() = default;
 
     ~RHICommandList() override = default;
+
+    // Moves only CPU recording storage. The reusable producer and detached batch
+    // share a context whose native state is accessed exclusively by the executor.
+    RHICommandListPtr DetachCommands();
 
     void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
 

@@ -39,6 +39,8 @@ protected:
 private:
     explicit VulkanBuffer(const RHIBufferCreateInfo& createInfo) : RHIBuffer(createInfo) {}
 
+    void SetTexelFormatOnRHIThread(DataFormat format);
+
     VkBuffer m_vkBuffer{VK_NULL_HANDLE};
     VkBufferView m_bufferView{VK_NULL_HANDLE};
     DataFormat m_texelFormat{DataFormat::eUndefined};

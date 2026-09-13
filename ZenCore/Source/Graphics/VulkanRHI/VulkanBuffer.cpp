@@ -85,15 +85,20 @@ void VulkanBuffer::Destroy()
 
 uint8_t* VulkanBuffer::Map()
 {
-    return GVkMemAllocator->MapBuffer(m_memAlloc);
+    return GetRHIThread().Invoke([this] { return GVkMemAllocator->MapBuffer(m_memAlloc); });
 }
 
 void VulkanBuffer::Unmap()
 {
-    GVkMemAllocator->UnmapBuffer(m_memAlloc);
+    GetRHIThread().Invoke([this] { GVkMemAllocator->UnmapBuffer(m_memAlloc); });
 }
 
 void VulkanBuffer::SetTexelFormat(DataFormat format)
+{
+    GetRHIThread().Invoke(&VulkanBuffer::SetTexelFormatOnRHIThread, this, format);
+}
+
+void VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
 {
     if (m_bufferView == VK_NULL_HANDLE)
     {

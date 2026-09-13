@@ -748,6 +748,7 @@ void VulkanRHI::CollectRetiredBindlessResources()
 
 void VulkanRHI::BeginFrame()
 {
+    GetRHIThread().CheckOwnership();
     CollectRetiredBindlessResources();
     VERIFY_EXPR(m_pDescriptorPoolManager2 != nullptr);
     VERIFY_EXPR(m_pUniformBufferAllocator != nullptr);

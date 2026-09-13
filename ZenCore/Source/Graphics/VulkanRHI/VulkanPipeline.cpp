@@ -40,12 +40,12 @@ RHIPipeline* VulkanResourceFactory::CreatePipeline(const RHIGfxPipelineCreateInf
 
 RHIPipeline* VulkanRHI::CreatePipeline(const RHIComputePipelineCreateInfo& createInfo)
 {
-    return GDynamicRHI->GetResourceFactory()->CreatePipeline(createInfo);
+    return GVulkanRHI->GetResourceFactory()->CreatePipeline(createInfo);
 }
 
 RHIPipeline* VulkanRHI::CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)
 {
-    return GDynamicRHI->GetResourceFactory()->CreatePipeline(createInfo);
+    return GVulkanRHI->GetResourceFactory()->CreatePipeline(createInfo);
 }
 
 void VulkanRHI::DestroyPipeline(RHIPipeline* pPipeline)
@@ -57,7 +57,7 @@ void VulkanRHI::DestroyPipeline(RHIPipeline* pPipeline)
 
 RHIShader* VulkanRHI::CreateShader(const RHIShaderCreateInfo& createInfo)
 {
-    return GDynamicRHI->GetResourceFactory()->CreateShader(createInfo);
+    return GVulkanRHI->GetResourceFactory()->CreateShader(createInfo);
 }
 
 void VulkanRHI::DestroyShader(RHIShader* pShader)

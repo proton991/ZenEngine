@@ -108,6 +108,12 @@ struct RDGExtractionState
     RHIResource* resource{nullptr};
     RenderDevice* device{nullptr};
 };
+
+struct RDGDeferredExtraction
+{
+    std::shared_ptr<RDGExtractionState> state;
+    std::shared_ptr<RHIResource> resource;
+};
 template <typename Resource> class RDGExtractedResource
 {
 public:
@@ -253,6 +259,7 @@ public:
 private:
     friend class RenderGraph;
     friend class RDGExecutor;
+    friend class RenderDevice;
     friend class RDGMetrics;
     friend class RDGPassCompiler;
     friend class RDGTransferPassCmdRecorder;
@@ -354,6 +361,8 @@ private:
     bool DeclareExtractions();
 
     void PublishExtractions(RenderDevice* device);
+
+    void StageExtractions(HeapVector<RDGDeferredExtraction>& output);
 
     bool SetImportContents(const Allocation* resource, RDGImportContents contents);
 

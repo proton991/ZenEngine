@@ -16,11 +16,13 @@ public:
 
     void Prepare();
 
-    void Run();
+    bool Run(uint32_t frameLimit = 0, bool smokeTest = false);
 
     void Destroy();
 
 private:
+    void RunSmokeStep(uint32_t frame);
+
     UniquePtr<sg::Camera> m_camera;
 
     UniquePtr<rc::RenderDevice> m_renderDevice;

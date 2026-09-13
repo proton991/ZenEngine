@@ -328,6 +328,7 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
 
 void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 {
+    GetRHIThread().CheckOwnership();
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
         LOG_ERROR_AND_THROW("Cannot prepare presentation while Vulkan submissions are blocked");
@@ -360,52 +361,51 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 
 bool VulkanViewport::Present()
 {
+    GetRHIThread().CheckOwnership();
+    bool result = false;
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
         LOG_ERROR_AND_THROW("Cannot present while Vulkan submissions are blocked");
     }
-    if (m_suspended || m_pSwapchain == nullptr)
+    if (!m_suspended && m_pSwapchain != nullptr)
     {
-        return false;
-    }
-    if (m_presentAcquiredFailed)
-    {
-        m_presentAcquiredFailed = false;
-        if (m_pSwapchain->NeedsRecreation())
+        if (m_presentAcquiredFailed)
+        {
+            m_presentAcquiredFailed = false;
+        }
+        else if (m_acquiredImageIndex >= 0)
+        {
+            // Only a new accepted graphics-queue signal authorizes this copy.
+            VulkanSemaphore* semaphore =
+                m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex);
+            const uint64_t serial = semaphore->GetSignalSubmissionSerial(m_pDevice->GetGfxQueue(),
+                                                                         m_presentSignalGeneration);
+            if (serial != 0)
+            {
+                m_pSwapchain->MarkAcquireSemaphoreSubmitted(serial);
+                result                    = m_pSwapchain->Present(semaphore);
+                m_acquiredImageIndex      = -1;
+                m_pImageAcquiredSemaphore = nullptr;
+                m_presentSignalGeneration = 0;
+                ++m_presentCount;
+            }
+        }
+        if (m_pSwapchain->NeedsRecreation() && !GetRHIThread().IsThreaded())
         {
             RecreateSwapchain(m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
         }
-        return false;
-    }
-    if (m_acquiredImageIndex < 0)
-    {
-        return false;
-    }
-    // This image's semaphore must have a new accepted graphics-queue signal.
-    // Earlier signals and unrelated context submissions cannot authorize this copy.
-    VulkanSemaphore* pRenderingCompleteSemaphore =
-        m_pSwapchain->GetRenderingCompleteSemaphore(m_acquiredImageIndex);
-    const uint64_t submissionSerial = pRenderingCompleteSemaphore->GetSignalSubmissionSerial(
-        m_pDevice->GetGfxQueue(), m_presentSignalGeneration);
-    if (submissionSerial == 0)
-    {
-        return false;
-    }
-    m_pSwapchain->MarkAcquireSemaphoreSubmitted(submissionSerial);
-    const bool result         = m_pSwapchain->Present(pRenderingCompleteSemaphore);
-    m_acquiredImageIndex      = -1;
-    m_pImageAcquiredSemaphore = nullptr;
-    m_presentSignalGeneration = 0;
-    ++m_presentCount;
-    if (m_pSwapchain->NeedsRecreation())
-    {
-        RecreateSwapchain(m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
     }
     return result;
 }
 
+bool VulkanViewport::NeedsRecreation() const
+{
+    return m_pSwapchain != nullptr && m_pSwapchain->NeedsRecreation();
+}
+
 void VulkanViewport::Resize(uint32_t width, uint32_t height)
 {
+    GetRHIThread().CheckOwnership();
     if (GVulkanRHI->AreSubmissionsBlocked())
     {
         LOG_ERROR_AND_THROW("Cannot resize while Vulkan submissions are blocked");
@@ -414,16 +414,19 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
     {
         // Preserve the last usable backbuffers while the window is minimized.
         m_suspended = true;
-        return;
     }
-    m_width  = width;
-    m_height = height;
-    RecreateSwapchain();
-
-    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
+    else
     {
-        vkDestroyFramebuffer(m_pDevice->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
-        m_framebuffer.vkHandle = VK_NULL_HANDLE;
+        m_width  = width;
+        m_height = height;
+        RecreateSwapchain(m_pSwapchain != nullptr &&
+                          m_pSwapchain->GetLastResult() == VK_ERROR_SURFACE_LOST_KHR);
+
+        if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(m_pDevice->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
+            m_framebuffer.vkHandle = VK_NULL_HANDLE;
+        }
     }
 }
 

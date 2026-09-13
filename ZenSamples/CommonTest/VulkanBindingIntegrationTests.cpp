@@ -641,13 +641,13 @@ TEST_F(VulkanBindingIntegrationTest, BindlessViewRetainsOwnerAndBindsAlongsideSp
 
 TEST_F(VulkanBindingIntegrationTest, BindlessSlotsRejectReplacementAndInvalidRegistrations)
 {
-    auto* manager = session->rhi.GetBindlessDescriptorPoolManager();
+    VulkanBindlessDescriptorPoolManager* manager = session->rhi.GetBindlessDescriptorPoolManager();
     if (manager->GetGlobalBindlessSet() == VK_NULL_HANDLE)
     {
         GTEST_SKIP() << "Bindless heaps unavailable";
     }
-    auto* first       = Sampler();
-    auto* replacement = Sampler();
+    RHISampler* first       = Sampler();
+    RHISampler* replacement = Sampler();
     ASSERT_TRUE(manager->RegisterBindlessResource(first, 0));
     EXPECT_TRUE(manager->RegisterBindlessResource(first, 0));
     EXPECT_EQ(first->GetRefCount(), 2u);
@@ -661,10 +661,10 @@ TEST_F(VulkanBindingIntegrationTest, BindlessSlotsRejectReplacementAndInvalidReg
         manager->RegisterBindlessResource(Texture(RHITextureUsageFlagBits::eColorAttachment), 0));
     EXPECT_FALSE(manager->RegisterBindlessResource(
         first, GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler)));
-    first->BumpGeneration();
-    EXPECT_FALSE(manager->RegisterBindlessResource(first, 0));
+    EXPECT_TRUE(manager->RegisterBindlessResource(first, 0));
+    EXPECT_EQ(first->GetRefCount(), 2u);
 
-    auto* pipeline = Compute("binding_bindless.comp.spv");
+    RHIPipeline* pipeline = Compute("binding_bindless.comp.spv");
     RHIBatchedShaderParameters parameters;
     parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 2), replacement,
                                 nullptr, 0);

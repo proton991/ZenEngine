@@ -1418,34 +1418,33 @@ void VulkanRHI::DestroyPlatformCommandListPool()
 void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                                      HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
-    if (cmdLists.empty() || m_submissionBlocked)
+    GetRHIThread().CheckOwnership();
+    if (!m_submissionBlocked)
     {
-        return;
-    }
-
-    for (RHICommandList* pCmdList : cmdLists)
-    {
-        VulkanPlatformCommandList* pPlatformCmdList = AcquirePlatformCommandList();
-
-        pCmdList->Execute();
-
-        FVulkanCommandListContext* pContext =
-            static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
-        pContext->CollectWorkloads(pPlatformCmdList->m_workloads);
-
-        if (pPlatformCmdList->m_workloads.empty())
+        for (RHICommandList* pCmdList : cmdLists)
         {
-            ReleasePlatformCommandList(pPlatformCmdList);
-            continue;
-        }
+            VulkanPlatformCommandList* pPlatformCmdList = AcquirePlatformCommandList();
 
-        pPlatformCmdList->m_contextWorkloadRanges.push_back(
-            VulkanPlatformCommandList::ContextWorkloadRange{
-                pContext,
-                0,
-                static_cast<uint32_t>(pPlatformCmdList->m_workloads.size()),
-            });
-        outCommandLists.push_back(pPlatformCmdList);
+            pCmdList->Execute();
+
+            FVulkanCommandListContext* pContext =
+                static_cast<FVulkanCommandListContext*>(pCmdList->GetContext());
+            pContext->CollectWorkloads(pPlatformCmdList->m_workloads);
+
+            if (pPlatformCmdList->m_workloads.empty())
+            {
+                ReleasePlatformCommandList(pPlatformCmdList);
+                continue;
+            }
+
+            pPlatformCmdList->m_contextWorkloadRanges.push_back(
+                VulkanPlatformCommandList::ContextWorkloadRange{
+                    pContext,
+                    0,
+                    static_cast<uint32_t>(pPlatformCmdList->m_workloads.size()),
+                });
+            outCommandLists.push_back(pPlatformCmdList);
+        }
     }
 }
 
@@ -1473,6 +1472,7 @@ void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> c
 
 RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 {
+    GetRHIThread().CheckOwnership();
     HeapVector<VulkanQueue*> queues;
 
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)

@@ -3,8 +3,100 @@
 
 namespace zen
 {
+RHIResourceReferences::~RHIResourceReferences()
+{
+    Reset();
+}
+
+RHIResourceReferences::RHIResourceReferences(RHIResourceReferences&& other) noexcept
+{
+    Swap(other);
+}
+
+RHIResourceReferences& RHIResourceReferences::operator=(RHIResourceReferences&& other) noexcept
+{
+    if (this != &other)
+    {
+        Reset();
+        Swap(other);
+    }
+    return *this;
+}
+
+void RHIResourceReferences::Retain(RHIResource* resource)
+{
+    if (resource != nullptr && m_unique.try_emplace(resource, m_resources.size()).second)
+    {
+        m_resources.push_back(resource);
+        resource->AddReference();
+        if (resource->GetResourceType() == RHIResourceType::eTextureView)
+        {
+            Retain(static_cast<RHITextureView*>(resource)->GetTexture());
+        }
+    }
+}
+
+void RHIResourceReferences::Reset()
+{
+    Rollback(0);
+}
+
+size_t RHIResourceReferences::GetCount() const
+{
+    return m_resources.size();
+}
+
+void RHIResourceReferences::Rollback(size_t count)
+{
+    VERIFY_EXPR(count <= m_resources.size());
+    for (size_t i = count; i < m_resources.size(); ++i)
+    {
+        RHIResource* resource = m_resources[i];
+        m_unique.erase(resource);
+        resource->ReleaseReference();
+    }
+    m_resources.resize(count);
+}
+
+void RHIResourceReferences::Swap(RHIResourceReferences& other)
+{
+    std::swap(m_resources, other.m_resources);
+    m_unique.Swap(other.m_unique);
+}
+
+namespace
+{
+void DestroyCommandContext(IRHICommandContext* context)
+{
+    GetRHIThread().Invoke([context] { ZEN_DELETE(context); });
+}
+} // namespace
+
+void RHICommandListDeleter::operator()(RHICommandList* commands) const
+{
+    ZEN_DELETE(commands);
+}
+
+RHICommandListPtr RHICommandList::DetachCommands()
+{
+    RHICommandListPtr result(ZEN_NEW() RHICommandList());
+    result->m_contextOwner     = m_contextOwner;
+    result->m_pGraphicsContext = m_pGraphicsContext;
+    result->m_pComputeContext  = m_pComputeContext;
+    result->m_cmdAllocator.Swap(m_cmdAllocator);
+    result->m_resources.Swap(m_resources);
+    result->m_pCmdHead    = m_pCmdHead;
+    result->m_ppCmdPtr    = m_numCommands == 0 ? &result->m_pCmdHead : m_ppCmdPtr;
+    result->m_numCommands = m_numCommands;
+    m_pCmdHead            = nullptr;
+    m_ppCmdPtr            = &m_pCmdHead;
+    m_numCommands         = 0;
+    return result;
+}
+
 void RHICommandListBase::Execute()
 {
+    GetRHIThread().CheckOwnership();
     RHICommandBase* pCmd = m_pCmdHead;
 
     while (pCmd)
@@ -41,6 +133,7 @@ void RHICommandListBase::Reset()
     m_ppCmdPtr    = &m_pCmdHead;
     m_numCommands = 0;
     m_cmdAllocator.Reset();
+    m_resources.Reset();
 }
 
 void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
@@ -66,11 +159,13 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
     *checkpoint.tail = nullptr;
     m_ppCmdPtr       = checkpoint.tail;
     m_numCommands    = checkpoint.count;
+    m_resources.Rollback(checkpoint.resourceCount);
 }
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
     RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
+    pCmdList->m_contextOwner = std::shared_ptr<IRHICommandContext>(pContext, DestroyCommandContext);
     RHICommandContextType contextType = pContext->GetContextType();
 
     if (contextType == RHICommandContextType::eGraphics ||
@@ -90,6 +185,7 @@ RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 
 void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
 {
+    RetainResource(pBuffer);
     ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
 }
 
@@ -97,6 +193,8 @@ void RHICommandList::CopyBuffer(RHIBuffer* pSrcBuffer,
                                 RHIBuffer* pDstBuffer,
                                 const RHIBufferCopyRegion& region)
 {
+    RetainResource(pSrcBuffer);
+    RetainResource(pDstBuffer);
     ALLOC_CMD(RHICommandCopyBuffer)(pSrcBuffer, pDstBuffer, region);
 }
 
@@ -104,6 +202,7 @@ void RHICommandList::ClearTexture(RHITexture* pTexture,
                                   const Color& color,
                                   const RHITextureSubResourceRange& range)
 {
+    RetainResource(pTexture);
     ALLOC_CMD(RHICommandClearTexture)(pTexture, color, range);
 }
 
@@ -111,6 +210,8 @@ void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
                                  RHITexture* pDstTexture,
                                  VectorView<const RHITextureCopyRegion> regions)
 {
+    RetainResource(pSrcTexture);
+    RetainResource(pDstTexture);
     RHICommandCopyTexture* pCmd = ALLOC_CMD(RHICommandCopyTexture)(pSrcTexture, pDstTexture);
 
     RHITextureCopyRegion* pRegions = AllocateCmdData<RHITextureCopyRegion>(regions.size());
@@ -133,6 +234,8 @@ void RHICommandList::BlitTexture(RHITexture* pSrcTexture,
                                  VectorView<RHITextureBlitRegion> regions,
                                  RHISamplerFilter filter)
 {
+    RetainResource(pSrcTexture);
+    RetainResource(pDstTexture);
     RHICommandBlitTexture* pCmd =
         ALLOC_CMD(RHICommandBlitTexture)(pSrcTexture, pDstTexture, filter);
 
@@ -150,6 +253,8 @@ void RHICommandList::CopyTextureToBuffer(RHITexture* pSrcTex,
                                          RHIBuffer* pDstBuffer,
                                          VectorView<RHIBufferTextureCopyRegion> regions)
 {
+    RetainResource(pSrcTex);
+    RetainResource(pDstBuffer);
     RHICommandCopyTextureToBuffer* pCmd =
         ALLOC_CMD(RHICommandCopyTextureToBuffer)(pSrcTex, pDstBuffer);
 
@@ -168,6 +273,8 @@ void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
                                          RHITexture* pDstTexture,
                                          VectorView<const RHIBufferTextureCopyRegion> regions)
 {
+    RetainResource(pSrcBuffer);
+    RetainResource(pDstTexture);
     RHICommandCopyBufferToTexture* pCmd =
         ALLOC_CMD(RHICommandCopyBufferToTexture)(pSrcBuffer, pDstTexture);
 
@@ -194,6 +301,8 @@ void RHICommandList::ResolveTexture(RHITexture* pSrcTexture,
                                     uint32_t dstLayer,
                                     uint32_t dstMipmap)
 {
+    RetainResource(pSrcTexture);
+    RetainResource(pDstTexture);
     ALLOC_CMD(RHICommandResolveTexture)(pSrcTexture, pDstTexture, srcLayer, srcMipmap, dstLayer,
                                         dstMipmap);
 }
@@ -228,6 +337,17 @@ void RHICommandList::SetBlendConstants(const Color& color)
 
 void RHICommandList::BeginRendering(const RHIRenderingLayout* pRenderingLayout)
 {
+    VERIFY_EXPR(pRenderingLayout != nullptr);
+    for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; ++i)
+    {
+        RetainResource(pRenderingLayout->colorRenderTargets[i].pTextureView);
+        RetainResource(pRenderingLayout->colorRenderTargets[i].pTexture);
+    }
+    if (pRenderingLayout->hasDepthStencilRT)
+    {
+        RetainResource(pRenderingLayout->depthStencilRenderTarget.pTextureView);
+        RetainResource(pRenderingLayout->depthStencilRenderTarget.pTexture);
+    }
     ALLOC_CMD(RHICommandBeginRendering)(pRenderingLayout);
 }
 
@@ -238,17 +358,32 @@ void RHICommandList::EndRendering()
 
 void RHICommandList::BindPipeline(RHIPipelineType pipelineType, RHIPipeline* pPipeline)
 {
+    RetainResource(pPipeline);
     ALLOC_CMD(RHICommandBindPipeline)(pipelineType, pPipeline);
 }
 
 void RHICommandList::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
 {
+    for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
+    {
+        RetainResource(parameter.pResource);
+        RetainResource(parameter.pAuxResource);
+    }
+    for (const RHIShaderResourceParameter& parameter : parameters.GetBindlessParams())
+    {
+        RetainResource(parameter.pResource);
+        RetainResource(parameter.pAuxResource);
+    }
     ALLOC_CMD(RHICommandSetShaderParameters)(parameters, GetContext());
 }
 
 void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
                                        VectorView<uint64_t> offsets)
 {
+    for (RHIBuffer* buffer : vertexBuffers)
+    {
+        RetainResource(buffer);
+    }
     VERIFY_EXPR(vertexBuffers.size() == offsets.size());
 
     RHICommandBindVertexBuffers* pCmd = ALLOC_CMD(RHICommandBindVertexBuffers)();
@@ -273,6 +408,7 @@ void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
 
 void RHICommandList::BindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset)
 {
+    RetainResource(pBuffer);
     ALLOC_CMD(RHICommandBindVertexBuffer)(pBuffer, offset);
 }
 
@@ -286,11 +422,14 @@ void RHICommandList::Draw(uint32_t vertexCount,
 
 void RHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
 {
+    RetainResource(param.pIndexBuffer);
     ALLOC_CMD(RHICommandDrawIndexed)(param, GetContext());
 }
 
 void RHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
 {
+    RetainResource(param.pIndexBuffer);
+    RetainResource(param.pIndirectBuffer);
     ALLOC_CMD(RHICommandDrawIndexedIndirect)(param, GetContext());
 }
 
@@ -301,6 +440,7 @@ void RHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32
 
 void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
 {
+    RetainResource(pIndirectBuffer);
     ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset, GetContext());
 }
 
@@ -309,6 +449,7 @@ void RHICommandList::SetPushConstants(RHIPipeline* pPipeline,
                                       uint32_t sizeBytes,
                                       uint32_t offset)
 {
+    RetainResource(pPipeline);
     RHICommandSetPushConstants* pCmd = ALLOC_CMD(RHICommandSetPushConstants)(pPipeline);
 
     uint8_t* pAllocatedData = AllocateCmdData<uint8_t>(sizeBytes);
@@ -328,6 +469,14 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages
                                     VectorView<RHIBufferTransition> bufferTransitions,
                                     VectorView<RHITextureTransition> textureTransitions)
 {
+    for (const RHIBufferTransition& transition : bufferTransitions)
+    {
+        RetainResource(transition.pBuffer);
+    }
+    for (const RHITextureTransition& transition : textureTransitions)
+    {
+        RetainResource(transition.pTexture);
+    }
     RHICommandAddTransitions* pCmd = ALLOC_CMD(RHICommandAddTransitions)(srcStages, dstStages);
 
     RHIMemoryTransition* pMemoryTransitions =
@@ -376,6 +525,7 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages
 
 void RHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
 {
+    RetainResource(pTexture);
     ALLOC_CMD(RHICommandAddTextureTransition)(pTexture, newLayout);
 }
 } // namespace zen

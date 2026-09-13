@@ -8,6 +8,9 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Memory/Memory.h"
 #include "Platform/InputController.h"
+#include <charconv>
+#include <chrono>
+#include <string_view>
 
 // #if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
 // #    define _CRTDBG_MAP_ALLOC
@@ -107,10 +110,40 @@ void SceneRendererDemo::Destroy()
     m_renderDevice->Destroy();
 }
 
-void SceneRendererDemo::Run()
+void SceneRendererDemo::RunSmokeStep(uint32_t frame)
 {
-    while (!m_pWindow->ShouldClose())
+    if (frame == 4 || frame == 24)
     {
+        m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
+    }
+    else if (frame == 8 || frame == 28)
+    {
+        m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
+    }
+    else if (frame == 12)
+    {
+        glfwSetWindowSize(m_pWindow->GetHandle(), 960, 640);
+    }
+    else if (frame == 20)
+    {
+        glfwIconifyWindow(m_pWindow->GetHandle());
+        glfwPollEvents();
+        glfwRestoreWindow(m_pWindow->GetHandle());
+    }
+}
+
+bool SceneRendererDemo::Run(uint32_t frameLimit, bool smokeTest)
+{
+    uint32_t frames       = 0;
+    double renderThreadUs = 0;
+    while (!m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit) &&
+           !m_renderDevice->AreSubmissionsBlocked())
+    {
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        if (smokeTest)
+        {
+            RunSmokeStep(frames);
+        }
         float frameTime = static_cast<float>(m_timer->Tick());
         m_animationTimer += frameTime * m_animationSpeed;
 
@@ -130,7 +163,15 @@ void SceneRendererDemo::Run()
         if (extent.width == 0 || extent.height == 0)
         {
             // Wait for restore/close without submitting to an unavailable surface.
-            glfwWaitEvents();
+            if (smokeTest)
+            {
+                glfwRestoreWindow(m_pWindow->GetHandle());
+                glfwWaitEventsTimeout(0.05);
+            }
+            else
+            {
+                glfwWaitEvents();
+            }
             m_timer->Tick();
             continue;
         }
@@ -158,24 +199,85 @@ void SceneRendererDemo::Run()
         }
 
         m_renderDevice->NextFrame();
+        ++frames;
+        renderThreadUs +=
+            std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start)
+                .count();
     }
+    m_renderDevice->FlushRHIThread();
+    const RHIThreadMetrics metrics = m_renderDevice->GetRHIThreadMetrics();
+    LOGI(
+        "Render threads: mode={} frames={} render_wall_us={} rhi_cpu_us={} queue_wait_us={} batches={} peak_pending={}",
+        GetRHIThread().IsThreaded() ? "threaded" : "inline", frames, renderThreadUs,
+        metrics.executionCPUUs, metrics.queueWaitUs, metrics.completedBatches,
+        metrics.peakPendingBatches);
+    return !m_renderDevice->AreSubmissionsBlocked();
 }
 
 } // namespace zen
 
+namespace
+{
+struct DemoOptions
+{
+    uint32_t frames{0};
+    bool smokeTest{false};
+};
+
+bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
+{
+    bool valid = true;
+    for (int i = 1; i < argc && valid; ++i)
+    {
+        const std::string_view argument(arguments[i]);
+        if (argument == "--rhi-thread=0" || argument == "--rhi-thread=1")
+        {
+            zen::rc::RenderConfig::GetInstance().rhiExecutionMode = argument.back() == '1' ?
+                zen::RHIExecutionMode::eThreaded :
+                zen::RHIExecutionMode::eInline;
+        }
+        else if (argument == "--smoke-test")
+        {
+            options.smokeTest = true;
+        }
+        else if (argument.starts_with("--frames="))
+        {
+            const std::string_view value = argument.substr(9);
+            const std::from_chars_result parsed =
+                std::from_chars(value.data(), value.data() + value.size(), options.frames);
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size();
+        }
+        else
+        {
+            valid = false;
+        }
+    }
+    if (options.smokeTest && options.frames == 0)
+    {
+        options.frames = 32;
+    }
+    return valid;
+}
+} // namespace
+
 int main(int argc, char** pArgv)
 {
     using namespace zen;
-
-    platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
-
-    SceneRendererDemo* pDemo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
-
-    pDemo->Prepare();
-
-    pDemo->Run();
-
-    pDemo->Destroy();
-
-    delete pDemo;
+    DemoOptions options;
+    int result = 1;
+    if (ParseDemoOptions(argc, pArgv, options))
+    {
+        platform::WindowConfig windowConfig{"scene_renderer_demo", true, 1280, 720};
+        SceneRendererDemo* pDemo =
+            new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
+        pDemo->Prepare();
+        result = pDemo->Run(options.frames, options.smokeTest) ? 0 : 1;
+        pDemo->Destroy();
+        delete pDemo;
+    }
+    else
+    {
+        LOGE("Usage: scene_renderer_demo [--rhi-thread=0|1] [--frames=N] [--smoke-test]");
+    }
+    return result;
 }

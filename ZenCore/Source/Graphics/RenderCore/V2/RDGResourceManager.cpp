@@ -641,6 +641,23 @@ void RDGResourceManager::PublishExtractions(RenderDevice* device)
     }
 }
 
+void RDGResourceManager::StageExtractions(HeapVector<RDGDeferredExtraction>& output)
+{
+    for (const Extraction& extraction : m_extractions)
+    {
+        if (extraction.state->resource == nullptr)
+        {
+            RHIResource* resource = extraction.resource->type == RDGResourceType::eTexture ?
+                static_cast<RHIResource*>(extraction.resource->pTexture) :
+                extraction.resource->pBuffer;
+            resource->AddReference();
+            std::shared_ptr<RHIResource> owner(
+                resource, [](RHIResource* retained) { retained->ReleaseReference(); });
+            output.push_back({extraction.state, std::move(owner)});
+        }
+    }
+}
+
 void RDGResourceManager::Retain(RHIResource* resource)
 {
     if (resource == nullptr)
@@ -1505,8 +1522,8 @@ bool RDGResourceManager::TryAcquirePooledTexture(Allocation* pResource)
             RHITexture* pTexture = static_cast<RHITexture*>(iter->second.back().resource);
             iter->second.pop_back();
 
-            pTexture->BumpGeneration();
-
+            // RDG tracks logical versions; pool reuse preserves the native allocation
+            // and its stable ID for commands still translating on RHI.
             pResource->pTexture = pTexture;
 
             ++m_poolHits;
@@ -1531,8 +1548,8 @@ bool RDGResourceManager::TryAcquirePooledBuffer(Allocation* pResource)
             RHIBuffer* pBuffer = static_cast<RHIBuffer*>(iter->second.back().resource);
             iter->second.pop_back();
 
-            pBuffer->BumpGeneration();
-
+            // Pool reuse preserves native descriptor identity, including while an older
+            // frame still references this allocation on the RHI thread.
             pResource->pBuffer = pBuffer;
 
             ++m_poolHits;

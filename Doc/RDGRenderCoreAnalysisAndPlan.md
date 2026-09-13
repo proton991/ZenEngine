@@ -635,7 +635,7 @@ The pool keys in [RDGResourceManager.h][resources-header]:110–156 are a good i
 
 **First improvement:** add allocated/available/in-flight bytes, hit/miss counts, per-descriptor counts, last-use age, and a configurable budget. Evict least-recently-used available allocations through the device's completion-aware destruction path; trim obsolete extent families after resize. Test many distinct sizes and feature toggles, not just repeated use of one descriptor.
 
-Pool reuse does **not automatically imply a current GPU race**. Reusing the same image on the same ordered queue can be safe when the next use synchronizes against the previous physical state. The tracker keys by stable ID, which survives `BumpGeneration`, and graph barriers carry that history. CPU completion need not be awaited for every such ordered reuse. Do not erase physical state or assume `UNDEFINED` merely because a resource got a new logical name.
+Pool reuse does **not automatically imply a current GPU race**. Reusing the same image on the same ordered queue can be safe when the next use synchronizes against the previous physical state. The tracker keys by stable ID, which survives pool reuse, and graph barriers carry that history. CPU completion need not be awaited for every such ordered reuse. Do not erase physical state or assume `UNDEFINED` merely because a resource got a new logical name.
 
 At the same time, reuse on an unordered queue, by another executor, or through CPU mapping needs explicit completion or inter-queue dependencies. Add a retirement record or enforce an ordered-reuse contract before generalizing the allocator. Choose per-frame pools only if the overlap benefit justifies their multiplied memory footprint.
 

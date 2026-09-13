@@ -110,6 +110,8 @@ protected:
 private:
     explicit VulkanTexture(const RHITextureCreateInfo& createInfo) : RHITexture(createInfo) {}
 
+    RHITextureView* CreateViewOnRHIThread(const RHITextureViewCreateInfo& createInfo);
+
     VkImage m_vkImage{VK_NULL_HANDLE};
     VkImageCreateInfo m_vkImageCI{};
     VulkanMemoryAllocation m_memAlloc{};

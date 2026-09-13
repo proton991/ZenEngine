@@ -51,6 +51,9 @@ add_executable(RenderCoreTest
     RenderCoreTest/RDGMetricsTests.cpp
     ../ZenCore/Source/Memory/Memory.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
+    ../ZenCore/Source/Graphics/RHI/RHIResource.cpp
+    ../ZenCore/Source/Graphics/RHI/RHICommandListExecutor.cpp
+    ../ZenCore/Source/Graphics/RHI/RHIThread.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp
@@ -72,6 +75,9 @@ target_compile_definitions(RenderCoreTest PRIVATE
     $<TARGET_PROPERTY:ZenCore,INTERFACE_COMPILE_DEFINITIONS>
 )
 target_link_libraries(RenderCoreTest PRIVATE gtest_main spdlog::spdlog glm spriv-reflect)
+# The shared fake-backend test translation unit exceeds the standard COFF section limit.
+set_source_files_properties(RenderCoreTest/RenderCoreTests.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/bigobj>")
 add_dependencies(RenderCoreTest SpvShaders)
 add_executable(LRUCacheTest LRUCacheTest/LRUCacheTests.cpp)
 target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/Include)

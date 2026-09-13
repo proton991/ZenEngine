@@ -18,6 +18,8 @@
 #include "RenderGraph/RenderGraph.h"
 #include "RenderCoreDefs.h"
 #include "Utils/UniquePtr.h"
+#include "Graphics/RHI/RHICommandListExecutor.h"
+#include "RenderConfig.h"
 
 namespace zen::sg
 {
@@ -49,6 +51,7 @@ struct RenderFrame
     HeapVector<RHIResource*> resourcesPendingRelease;
     uint64_t graphicsSerial{0};
     uint64_t transferSerial{0};
+    RHISubmissionTicket submission;
 };
 
 struct RenderDeviceFeatures
@@ -60,19 +63,30 @@ struct RenderDeviceFeatures
 class RenderDevice
 {
 public:
-    explicit RenderDevice(RHIAPIType APIType, uint32_t numFrames);
+    explicit RenderDevice(
+        RHIAPIType APIType,
+        uint32_t numFrames,
+        RHIExecutionMode executionMode = RenderConfig::GetInstance().rhiExecutionMode);
 
     void Init(RHIViewport* pMainViewport);
 
     void Destroy();
 
+    // In threaded mode, success means queued. Poll/flush confirms native submission.
     bool ExecuteRenderGraph(RHIViewport* pViewport);
+
+    bool PollFrameSubmissions(bool wait = false);
+
+    void FlushRHIThread();
+
+    RHIThreadMetrics GetRHIThreadMetrics() const;
 
     bool ExecuteRenderGraph(RenderGraph& rdg);
 
     bool AreSubmissionsBlocked() const
     {
-        return m_submissionBlocked;
+        return m_submissionBlocked ||
+            (m_pRHIExecutor != nullptr && m_pRHIExecutor->AreSubmissionsBlocked());
     }
 
     void InvalidateRDGPassCompilerForResize();
@@ -242,6 +256,25 @@ public:
     }
 
 private:
+    struct PendingFrame
+    {
+        RHISubmissionTicket ticket;
+        // Selected from GRenderFrameState at dispatch; this frame storage never moves.
+        RenderFrame* frame{nullptr};
+        RHIViewport* viewport{nullptr};
+        ResourceStateTracker scheduledState;
+        HeapVector<RDGDeferredExtraction> extractions;
+    };
+
+    bool QueueRenderGraph(RHIViewport* viewport);
+    RHISubmissionResult QueueRecordedFrame(RenderGraph& graph,
+                                           RHICommandList& commands,
+                                           RHIViewport* viewport,
+                                           PendingFrame& pending);
+    void CompleteFrame(PendingFrame& pending, const RHIBatchResult& result);
+    void CollectDestroyedResourceHistory();
+    void ProcessDeferredViewportResize();
+
     uint32_t GetCurrentFrameSlot() const
     {
         return ToIndex(GRenderFrameState.GetFrameSlot());
@@ -335,8 +368,14 @@ private:
 
     const RHIAPIType m_APIType;
     const uint32_t m_numFrames;
+    const RHIExecutionMode m_executionMode;
+    RHICommandListExecutor* m_pRHIExecutor{nullptr};
+    HeapVector<PendingFrame> m_pendingFrames;
+    ResourceStateTracker m_confirmedResourceState;
+    HeapVector<uint64_t> m_destroyedResourceIds;
+    RHIViewport* m_pRecreateViewport{nullptr};
 
-    std::vector<RenderFrame> m_frames;
+    HeapVector<RenderFrame> m_frames;
 
     // DynamicRHI* GDynamicRHI{nullptr};
     RHIDebug* m_pRHIDebug{nullptr};
@@ -365,9 +404,9 @@ private:
     HashMap<size_t, RHISampler*> m_samplerCache;
 
     // HashMap<RHITexture*, RHITexture*> m_textureMap;
-    std::vector<RHIBuffer*> m_buffers;
+    HeapVector<RHIBuffer*> m_buffers;
 
-    std::vector<RHIViewport*> m_viewports;
+    HeapVector<RHIViewport*> m_viewports;
     RHIViewport* m_pMainViewport{nullptr};
 
     HeapVector<RHIRenderingLayout*> m_renderingLayoutPool;

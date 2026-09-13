@@ -180,6 +180,12 @@ VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInf
 
 RHITextureView* VulkanTexture::CreateView(const RHITextureViewCreateInfo& createInfo)
 {
+    return GetRHIThread().Invoke(&VulkanTexture::CreateViewOnRHIThread, this,
+                                 std::cref(createInfo));
+}
+
+RHITextureView* VulkanTexture::CreateViewOnRHIThread(const RHITextureViewCreateInfo& createInfo)
+{
     if (createInfo.format == DataFormat::eUndefined ||
         (createInfo.format != m_baseInfo.format && !m_baseInfo.mutableFormat))
     {

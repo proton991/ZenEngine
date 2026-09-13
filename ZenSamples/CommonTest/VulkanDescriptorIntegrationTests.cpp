@@ -362,17 +362,22 @@ TEST_F(VulkanDescriptorIntegrationTest, ParameterInsertionOrderDoesNotChangeCach
     EXPECT_EQ(Resolve(left), Resolve(right));
 }
 
-TEST_F(VulkanDescriptorIntegrationTest, ChangedResourceGenerationProducesDifferentCachedSet)
+TEST_F(VulkanDescriptorIntegrationTest, ResourceIdentityDistinguishesCachedSets)
 {
     VulkanPipeline* pipeline = Pipeline("descriptor_storage.comp.spv");
     RHIBuffer* buffer        = Buffer();
+    RHIBuffer* replacement   = Buffer();
+    EXPECT_NE(buffer->GetStableId(), replacement->GetStableId());
     VulkanDescriptorSetState state;
     state.SetPipeline(pipeline);
     state.SetShaderParameters(Parameters(pipeline, buffer));
-    VkDescriptorSet first = Resolve(state);
-    buffer->BumpGeneration();
+    const VkDescriptorSet first = Resolve(state);
     state.SetShaderParameters(Parameters(pipeline, buffer));
+    EXPECT_EQ(Resolve(state), first);
+    state.SetShaderParameters(Parameters(pipeline, replacement));
     EXPECT_NE(Resolve(state), first);
+    state.SetShaderParameters(Parameters(pipeline, buffer));
+    EXPECT_EQ(Resolve(state), first);
 }
 
 TEST_F(VulkanDescriptorIntegrationTest, UniformRangeDistinguishesOtherwiseCompatibleSets)

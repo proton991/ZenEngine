@@ -17,6 +17,10 @@ public:
 
     virtual void Destroy() = 0;
 
+    // Final buffer/texture destruction can occur on RHI after RenderCore releases
+    // its owners. Raw backends do not consume RenderCore retirement bookkeeping.
+    virtual void NotifyResourceDestroyed(uint64_t resourceId) {}
+
     virtual void BeginFrame() = 0;
 
     virtual void EndFrame()
