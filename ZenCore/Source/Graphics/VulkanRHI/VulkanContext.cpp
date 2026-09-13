@@ -743,6 +743,7 @@ void VulkanRHI::CollectRetiredBindlessResources()
     {
         m_pBindlessDescriptorPoolManager->CollectRetiredResources();
     }
+    m_lifetimeTracker.Collect();
 }
 
 void VulkanRHI::BeginFrame()
@@ -792,6 +793,7 @@ void VulkanRHI::Destroy()
         m_pBindlessDescriptorPoolManager = nullptr;
     }
 
+    m_lifetimeTracker.Destroy();
     ZEN_DELETE(GVkMemAllocator);
     GVkMemAllocator = nullptr;
 

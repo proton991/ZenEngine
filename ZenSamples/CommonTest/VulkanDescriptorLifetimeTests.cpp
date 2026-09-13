@@ -265,7 +265,7 @@ TEST_P(VulkanDescriptorLifetimeTest, RetiredPoolSurvivesRecordingAndPendingSubmi
         VulkanCommandContextBase context(&queue, VulkanCommandBufferType::ePrimary);
         auto* container       = manager.AcquireDescriptorPoolSetContainer();
         VkDescriptorSet first = Allocate(container);
-        context.RetainDescriptorPool(container);
+        context.RecordDescriptorPool(container);
         manager.ReleaseContainer(container);
         manager.BeginFrame(10);
         EXPECT_FALSE(DescriptorDriver::freedSets.contains(first));
@@ -292,9 +292,9 @@ TEST_P(VulkanDescriptorLifetimeTest, SharedPoolWaitsForBothQueuesAndDeduplicates
         VulkanCommandContextBase secondContext(&secondQueue, VulkanCommandBufferType::ePrimary);
         auto* container       = manager.AcquireDescriptorPoolSetContainer();
         VkDescriptorSet first = Allocate(container);
-        firstContext.RetainDescriptorPool(container);
-        firstContext.RetainDescriptorPool(container);
-        secondContext.RetainDescriptorPool(container);
+        firstContext.RecordDescriptorPool(container);
+        firstContext.RecordDescriptorPool(container);
+        secondContext.RecordDescriptorPool(container);
         manager.ReleaseContainer(container);
         Enqueue(firstContext, firstQueue);
         Enqueue(secondContext, secondQueue);
@@ -322,7 +322,7 @@ TEST_P(VulkanDescriptorLifetimeTest, BatchCompletionReleasesMergedChildOwnership
         for (int i = 0; i < 3; ++i)
         {
             VulkanCommandContextBase context(&queue, VulkanCommandBufferType::ePrimary);
-            context.RetainDescriptorPool(container);
+            context.RecordDescriptorPool(container);
             Enqueue(context, queue);
         }
         manager.ReleaseContainer(container);
@@ -344,7 +344,7 @@ TEST_P(VulkanDescriptorLifetimeTest, DefiniteRejectionReleasesPoolOnlyWhenDiscar
         VulkanCommandContextBase context(&queue, VulkanCommandBufferType::ePrimary);
         auto* container       = manager.AcquireDescriptorPoolSetContainer();
         VkDescriptorSet first = Allocate(container);
-        context.RetainDescriptorPool(container);
+        context.RecordDescriptorPool(container);
         manager.ReleaseContainer(container);
         Enqueue(context, queue);
         DescriptorDriver::submitResult = VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -368,7 +368,7 @@ TEST_P(VulkanDescriptorLifetimeTest, UncertainSubmissionKeepsPoolsThroughManager
             auto* container       = manager.AcquireDescriptorPoolSetContainer();
             VkDescriptorSet first = Allocate(container);
             pool                  = DescriptorDriver::owners[first];
-            context.RetainDescriptorPool(container);
+            context.RecordDescriptorPool(container);
             manager.ReleaseContainer(container);
             Enqueue(context, queue);
             DescriptorDriver::submitResult = VK_ERROR_DEVICE_LOST;

@@ -252,16 +252,12 @@ private:
 
     void Merge(VulkanWorkload* pOtherWorkload);
 
-    void RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
-
     VulkanQueue* m_pQueue{nullptr};
     HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
     uint64_t m_submissionSerial{0};
     VulkanWorkload* m_pMergedInto{nullptr};
     HeapVector<VulkanWorkload*> m_mergedWorkloads;
-    HeapVector<RefCountPtr<VulkanDescriptorPoolSetContainer>> m_descriptorContainers;
-    HeapVector<RefCountPtr<RHIBindlessUse>> m_bindlessUses;
-    HeapVector<uint64_t> m_uniformBufferBlocks;
+    HeapVector<uint64_t> m_lifetimeIds;
 
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
@@ -342,9 +338,9 @@ public:
         }
     }
 
-    void RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
+    void RecordDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
 
-    void RetainBindlessUse(RHIBindlessUse* pUse);
+    void RecordLifetime(uint64_t id);
 
     void RecordUniformBufferBlock(uint64_t blockId);
 
@@ -434,7 +430,7 @@ public:
     void SetPipelineState(RHIPipeline* pPipeline);
 
     void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             const RHIBindlessUse* recordedUse = nullptr);
+                             uint64_t recordedEpoch = 0);
 
     void PreDraw(FVulkanCommandListContext* pContext);
 
@@ -473,7 +469,7 @@ public:
     void SetPipelineState(RHIPipeline* pPipeline);
 
     void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             const RHIBindlessUse* recordedUse = nullptr);
+                             uint64_t recordedEpoch = 0);
 
     void PreDispatch(FVulkanCommandListContext* pContext);
 
@@ -514,12 +510,13 @@ public:
 
     void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) override;
 
-    RefCountPtr<RHIBindlessUse> RHICaptureBindlessUse() override;
-    void RHISetRecordedBindlessUse(RHIBindlessUse* pUse) override
+    uint64_t RHICaptureBindlessEpoch() override;
+    void RHIReleaseBindlessEpoch(uint64_t epoch) override;
+    void RHISetRecordedBindlessEpoch(uint64_t epoch) override
     {
-        m_pRecordedBindlessUse = pUse;
+        m_recordedBindlessEpoch = epoch;
     }
-    void RetainCurrentBindlessUse();
+    void RecordCurrentBindlessEpoch();
 
     void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
                               VectorView<uint64_t> offsets) override;
@@ -608,7 +605,7 @@ private:
 
     VulkanPipeline* m_pCurrentPipeline{nullptr};
 
-    RHIBindlessUse* m_pRecordedBindlessUse{nullptr};
+    uint64_t m_recordedBindlessEpoch{0};
 
     VulkanGfxState* m_pGfxState{nullptr};
     VulkanComputeState* m_pComputeState{nullptr};

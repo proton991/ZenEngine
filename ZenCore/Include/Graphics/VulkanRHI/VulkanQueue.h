@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include "Graphics/RHI/RHICommon.h"
 #include "VulkanHeaders.h"
 #include "Templates/HeapVector.h"
@@ -120,7 +121,8 @@ private:
     Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
     uint64_t m_lastSubmittedSerial{0};
-    uint64_t m_lastCompletedSerial{0};
+    // Lifetime queries can read completion while the submission thread polls the queue.
+    std::atomic<uint64_t> m_lastCompletedSerial{0};
     VulkanSemaphore* m_pTimelineSemaphore{nullptr};
 
     friend class VulkanRHI;

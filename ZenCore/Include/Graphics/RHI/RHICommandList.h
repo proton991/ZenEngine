@@ -66,13 +66,16 @@ public:
 
     virtual void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) = 0;
 
-    virtual RefCountPtr<RHIBindlessUse> RHICaptureBindlessUse()
+    // Capture holds a recording epoch until the matching release. Zero is invalid.
+    virtual uint64_t RHICaptureBindlessEpoch()
     {
-        return {};
+        return 0;
     }
 
-    // Scoped by command execution; the command owns the borrowed usage token.
-    virtual void RHISetRecordedBindlessUse(RHIBindlessUse* pUse) {}
+    virtual void RHIReleaseBindlessEpoch(uint64_t epoch) {}
+
+    // Scoped by command execution; the recorded command keeps this epoch alive.
+    virtual void RHISetRecordedBindlessEpoch(uint64_t epoch) {}
 
     virtual void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
                                       VectorView<uint64_t> offsets) = 0;
@@ -272,27 +275,46 @@ struct RHICommand : public RHICommandBase
     virtual void Execute(RHICommandListBase& cmdList) = 0;
 };
 
-struct RHICommandWithBindlessUse : public RHICommand
+struct RHICommandWithBindlessEpoch : public RHICommand
 {
-    RefCountPtr<RHIBindlessUse> bindlessUse;
+    explicit RHICommandWithBindlessEpoch(IRHICommandContext* context) :
+        m_pRecordingContext(context),
+        m_bindlessEpoch(context != nullptr ? context->RHICaptureBindlessEpoch() : 0)
+    {}
+
+    ~RHICommandWithBindlessEpoch() override
+    {
+        // Command lists reset their commands before destroying the owning context.
+        if (m_bindlessEpoch != 0)
+        {
+            m_pRecordingContext->RHIReleaseBindlessEpoch(m_bindlessEpoch);
+        }
+    }
+
+    RHICommandWithBindlessEpoch(const RHICommandWithBindlessEpoch&)            = delete;
+    RHICommandWithBindlessEpoch& operator=(const RHICommandWithBindlessEpoch&) = delete;
 
     void Execute(RHICommandListBase& cmdList) final
     {
         auto* context = cmdList.GetContext();
-        context->RHISetRecordedBindlessUse(bindlessUse.Get());
+        context->RHISetRecordedBindlessEpoch(m_bindlessEpoch);
         try
         {
             ExecuteCommand(cmdList);
         }
         catch (...)
         {
-            context->RHISetRecordedBindlessUse(nullptr);
+            context->RHISetRecordedBindlessEpoch(0);
             throw;
         }
-        context->RHISetRecordedBindlessUse(nullptr);
+        context->RHISetRecordedBindlessEpoch(0);
     }
 
     virtual void ExecuteCommand(RHICommandListBase& cmdList) = 0;
+
+private:
+    IRHICommandContext* m_pRecordingContext;
+    uint64_t m_bindlessEpoch;
 };
 
 struct RHICommandClearBuffer : public RHICommand
@@ -489,11 +511,13 @@ struct RHICommandBindPipeline final : public RHICommand
     }
 };
 
-struct RHICommandSetShaderParameters final : public RHICommandWithBindlessUse
+struct RHICommandSetShaderParameters final : public RHICommandWithBindlessEpoch
 {
     RHIBatchedShaderParameters parameters;
 
-    explicit RHICommandSetShaderParameters(const RHIBatchedShaderParameters& inParameters)
+    explicit RHICommandSetShaderParameters(const RHIBatchedShaderParameters& inParameters,
+                                           IRHICommandContext* context = nullptr) :
+        RHICommandWithBindlessEpoch(inParameters.GetBindlessParams().empty() ? nullptr : context)
     {
         // Recorded commands own their parameter bytes until the command list is reset.
         parameters.CopyFrom(inParameters);
@@ -614,7 +638,7 @@ struct RHICommandBindVertexBuffers final : public RHICommand
     }
 };
 
-struct RHICommandDraw final : public RHICommandWithBindlessUse
+struct RHICommandDraw final : public RHICommandWithBindlessEpoch
 {
     uint32_t vertexCount;
     uint32_t instanceCount;
@@ -624,7 +648,9 @@ struct RHICommandDraw final : public RHICommandWithBindlessUse
     RHICommandDraw(uint32_t vertexCount,
                    uint32_t instanceCount,
                    uint32_t firstVertex,
-                   uint32_t firstInstance) :
+                   uint32_t firstInstance,
+                   IRHICommandContext* context) :
+        RHICommandWithBindlessEpoch(context),
         vertexCount(vertexCount),
         instanceCount(instanceCount),
         firstVertex(firstVertex),
@@ -637,7 +663,7 @@ struct RHICommandDraw final : public RHICommandWithBindlessUse
     }
 };
 
-struct RHICommandDrawIndexed final : public RHICommandWithBindlessUse
+struct RHICommandDrawIndexed final : public RHICommandWithBindlessEpoch
 {
     struct Param
     {
@@ -661,7 +687,8 @@ struct RHICommandDrawIndexed final : public RHICommandWithBindlessUse
     int32_t vertexOffset;
     uint32_t firstInstance;
 
-    explicit RHICommandDrawIndexed(const Param& param) :
+    explicit RHICommandDrawIndexed(const Param& param, IRHICommandContext* context) :
+        RHICommandWithBindlessEpoch(context),
         pIndexBuffer(param.pIndexBuffer),
         indexFormat(param.indexFormat),
         indexBufferOffset(param.indexBufferOffset),
@@ -680,7 +707,7 @@ struct RHICommandDrawIndexed final : public RHICommandWithBindlessUse
     }
 };
 
-struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessUse
+struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessEpoch
 {
     struct Param
     {
@@ -701,7 +728,8 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessUse
     uint32_t drawCount;
     uint32_t stride;
 
-    explicit RHICommandDrawIndexedIndirect(const Param& param) :
+    explicit RHICommandDrawIndexedIndirect(const Param& param, IRHICommandContext* context) :
+        RHICommandWithBindlessEpoch(context),
         pIndirectBuffer(param.pIndirectBuffer),
         pIndexBuffer(param.pIndexBuffer),
         indexFormat(param.indexFormat),
@@ -718,14 +746,20 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessUse
     }
 };
 
-struct RHICommandDispatch final : public RHICommandWithBindlessUse
+struct RHICommandDispatch final : public RHICommandWithBindlessEpoch
 {
     uint32_t groupCountX;
     uint32_t groupCountY;
     uint32_t groupCountZ;
 
-    RHICommandDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) :
-        groupCountX(groupCountX), groupCountY(groupCountY), groupCountZ(groupCountZ)
+    RHICommandDispatch(uint32_t groupCountX,
+                       uint32_t groupCountY,
+                       uint32_t groupCountZ,
+                       IRHICommandContext* context) :
+        RHICommandWithBindlessEpoch(context),
+        groupCountX(groupCountX),
+        groupCountY(groupCountY),
+        groupCountZ(groupCountZ)
     {}
 
     void ExecuteCommand(RHICommandListBase& cmdList) override
@@ -734,13 +768,15 @@ struct RHICommandDispatch final : public RHICommandWithBindlessUse
     }
 };
 
-struct RHICommandDispatchIndirect final : public RHICommandWithBindlessUse
+struct RHICommandDispatchIndirect final : public RHICommandWithBindlessEpoch
 {
     RHIBuffer* pIndirectBuffer;
     uint32_t offset;
 
-    RHICommandDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) :
-        pIndirectBuffer(pIndirectBuffer), offset(offset)
+    RHICommandDispatchIndirect(RHIBuffer* pIndirectBuffer,
+                               uint32_t offset,
+                               IRHICommandContext* context) :
+        RHICommandWithBindlessEpoch(context), pIndirectBuffer(pIndirectBuffer), offset(offset)
     {}
 
     void ExecuteCommand(RHICommandListBase& cmdList) override

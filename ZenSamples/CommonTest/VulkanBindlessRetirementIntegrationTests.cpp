@@ -381,17 +381,50 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, NewRecordingsDoNotKeepOlderRetir
 {
     auto* sampler = Sampler();
     auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
-    auto oldUse   = context->RHICaptureBindlessUse();
+    const uint64_t oldEpoch = context->RHICaptureBindlessEpoch();
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
-    auto newUse = context->RHICaptureBindlessUse();
-    oldUse      = nullptr;
+    const uint64_t newEpoch = context->RHICaptureBindlessEpoch();
+    context->RHIReleaseBindlessEpoch(oldEpoch);
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_EQ(sampler->GetRefCount(), 1u);
     auto next = session->rhi.RegisterBindlessResource(sampler, 0);
     ASSERT_TRUE(next.IsValid());
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(next));
     EXPECT_EQ(sampler->GetRefCount(), 2u);
-    newUse = nullptr;
+    context->RHIReleaseBindlessEpoch(newEpoch);
+    session->rhi.CollectRetiredBindlessResources();
+    EXPECT_EQ(sampler->GetRefCount(), 1u);
+}
+
+TEST_F(VulkanBindlessRetirementIntegrationTest, OnlyLiveEpochsFromThisManagerPermitReplay)
+{
+    auto* sampler        = Sampler();
+    auto* manager        = session->rhi.GetBindlessDescriptorPoolManager();
+    auto handle          = session->rhi.RegisterBindlessResource(sampler, 0);
+    const uint64_t epoch = context->RHICaptureBindlessEpoch();
+    EXPECT_TRUE(session->rhi.UnregisterBindlessResource(handle));
+    const uint64_t newerEpoch = context->RHICaptureBindlessEpoch();
+    EXPECT_TRUE(manager->RegisterBindlessResource(sampler, 0, nullptr, epoch));
+    EXPECT_FALSE(manager->RegisterBindlessResource(sampler, 0, nullptr, newerEpoch));
+
+    VulkanBindlessDescriptorPoolManager other;
+    other.Init();
+    const uint64_t foreignEpoch = other.CaptureEpoch();
+    EXPECT_FALSE(manager->RegisterBindlessResource(sampler, 0, nullptr, foreignEpoch));
+    other.ReleaseEpoch(foreignEpoch);
+    other.Destroy();
+    other.Init();
+    const uint64_t recreatedEpoch = other.CaptureEpoch();
+    RHIBindlessHandle otherHandle;
+    EXPECT_TRUE(other.RegisterBindlessResource(sampler, 0, &otherHandle));
+    EXPECT_TRUE(other.UnregisterBindlessResource(otherHandle));
+    EXPECT_FALSE(other.RegisterBindlessResource(sampler, 0, nullptr, foreignEpoch));
+    EXPECT_TRUE(other.RegisterBindlessResource(sampler, 0, nullptr, recreatedEpoch));
+    other.ReleaseEpoch(recreatedEpoch);
+    other.Destroy();
+
+    context->RHIReleaseBindlessEpoch(epoch);
+    context->RHIReleaseBindlessEpoch(newerEpoch);
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_EQ(sampler->GetRefCount(), 1u);
 }
@@ -485,7 +518,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, ContextDestructionDiscardsUnsubm
     auto* sampler = Sampler();
     auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
     ASSERT_TRUE(handle.IsValid());
-    context->RetainCurrentBindlessUse();
+    context->RecordCurrentBindlessEpoch();
     context->GetCommandBuffer();
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
     EXPECT_EQ(sampler->GetRefCount(), 2u);
@@ -629,27 +662,33 @@ TEST_P(VulkanBindlessQueueRetirementTest, PendingGPUReadKeepsViewAndSamplerAlive
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(nextSampler, 0).IsValid());
 }
 
-TEST_P(VulkanBindlessQueueRetirementTest, EveryQueueMustReleaseItsRecordedUse)
+TEST_P(VulkanBindlessQueueRetirementTest, EveryQueueMustCompleteItsRecordedEpoch)
 {
     auto* sampler = Sampler();
     auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
     ASSERT_TRUE(handle.IsValid());
     auto* compute = static_cast<FVulkanCommandListContext*>(
         session->rhi.GetCommandContext(RHICommandContextType::eAsyncCompute));
-    auto use = context->RHICaptureBindlessUse();
-    context->RetainBindlessUse(use.Get());
-    compute->RetainBindlessUse(use.Get());
+    const uint64_t epoch = context->RHICaptureBindlessEpoch();
+    context->RecordLifetime(epoch);
+    compute->RecordLifetime(epoch);
     context->GetCommandBuffer();
     compute->GetCommandBuffer();
-    use = nullptr;
+    context->RHIReleaseBindlessEpoch(epoch);
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
     Enqueue(context);
     uint64_t serial = 0;
     ASSERT_EQ(context->GetQueue()->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
     ASSERT_TRUE(context->GetQueue()->WaitForSubmission(serial, UINT64_MAX));
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    HostGate gate(session->rhi.GetDevice());
+    gate.Record(compute);
     Enqueue(compute);
     ASSERT_EQ(compute->GetQueue()->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(compute->GetQueue()->WaitForSubmission(serial, 0));
+    session->rhi.CollectRetiredBindlessResources();
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    gate.Open();
     ASSERT_TRUE(compute->GetQueue()->WaitForSubmission(serial, UINT64_MAX));
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     ZEN_DELETE(compute);
@@ -660,6 +699,135 @@ static VKAPI_ATTR VkResult VKAPI_CALL RejectSubmit(VkQueue, uint32_t, const VkSu
     return VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 
+TEST_P(VulkanBindlessQueueRetirementTest, ReplayResetWaitsForLatestSubmission)
+{
+    auto* pipeline = Compute("binding_bindless.comp.spv");
+    auto* texture  = Texture();
+    auto* sampler  = Sampler();
+    auto* output   = Buffer();
+    Initialize(texture);
+    SubmitAndWait(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+    auto image    = session->rhi.RegisterBindlessResource(texture->GetDefaultView(), 0);
+    auto sampling = session->rhi.RegisterBindlessResource(sampler, 0);
+    ASSERT_TRUE(image.IsValid());
+    ASSERT_TRUE(sampling.IsValid());
+    SetOutput(pipeline, output, 2, 0);
+    commandList          = RHICommandList::Create(context);
+    const uint32_t index = 0;
+    commandList->SetPushConstants(pipeline, reinterpret_cast<const uint8_t*>(&index), sizeof(index),
+                                  0);
+    commandList->Dispatch(1, 1, 1);
+    const uint64_t epoch = context->RHICaptureBindlessEpoch();
+    ASSERT_TRUE(session->rhi.UnregisterBindlessResource(image));
+    ASSERT_TRUE(session->rhi.UnregisterBindlessResource(sampling));
+    commandList->Execute();
+    SubmitAndWait();
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+
+    HostGate gate(session->rhi.GetDevice());
+    gate.Record(context);
+    commandList->Execute();
+    Enqueue(context);
+    uint64_t serial = 0;
+    auto* queue     = context->GetQueue();
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    commandList->Reset();
+    context->RHIReleaseBindlessEpoch(epoch);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    session->rhi.CollectRetiredBindlessResources();
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    // A saved integer alone cannot reactivate a recording after its count is released.
+    EXPECT_FALSE(session->rhi.GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
+        sampler, 0, nullptr, epoch));
+    gate.Open();
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    SubmitAndWait();
+    CheckPixel(output, 0xFF0000FFu);
+    EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+}
+
+TEST_P(VulkanBindlessQueueRetirementTest, RejectedMergedEpochCountsTransferOnRetry)
+{
+    auto* sampler = Sampler();
+    auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
+    auto* other   = static_cast<FVulkanCommandListContext*>(
+        session->rhi.GetCommandContext(RHICommandContextType::eGraphics));
+    const uint64_t epoch = context->RHICaptureBindlessEpoch();
+    context->RecordLifetime(epoch);
+    context->RecordLifetime(epoch); // Deduplicate within one recording.
+    other->RecordLifetime(epoch);   // Preserve the other recording's count when merging.
+    context->GetCommandBuffer();
+    other->GetCommandBuffer();
+    context->RHIReleaseBindlessEpoch(epoch);
+    EXPECT_TRUE(session->rhi.UnregisterBindlessResource(handle));
+    Enqueue(context);
+    Enqueue(other);
+    uint64_t serial = 0;
+    auto* queue     = context->GetQueue();
+    {
+        test::ScopedVulkanCall<PFN_vkQueueSubmit> reject(vkQueueSubmit, RejectSubmit);
+        EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eRejected);
+    }
+    EXPECT_EQ(serial, 0u);
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    HostGate gate(session->rhi.GetDevice());
+    gate.Record(context);
+    EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    gate.Open();
+    EXPECT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    ZEN_DELETE(other);
+}
+
+TEST_P(VulkanBindlessQueueRetirementTest, OneSubmissionProtectsUniformsBindlessAndDescriptorPools)
+{
+    auto& tracker   = session->rhi.GetLifetimeTracker();
+    auto* allocator = session->rhi.GetUniformBufferAllocator();
+    auto* pools     = session->rhi.GetDescriptorPoolManager2();
+    allocator->BeginFrame(0);
+    const auto allocation = allocator->Alloc(64);
+    ASSERT_TRUE(allocation.IsValid());
+    auto* pool    = pools->AcquireDescriptorPoolSetContainer();
+    auto* sampler = Sampler();
+    auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
+    ASSERT_TRUE(handle.IsValid());
+    const uint64_t epoch         = context->RHICaptureBindlessEpoch();
+    const uint64_t blockLifetime = allocator->GetBlockLifetime(allocation.blockId);
+    EXPECT_NE(blockLifetime, epoch);
+    EXPECT_NE(pool->GetLifetimeId(), epoch);
+    EXPECT_NE(pool->GetLifetimeId(), blockLifetime);
+    context->RecordUniformBufferBlock(allocation.blockId);
+    context->RecordDescriptorPool(pool);
+    context->RecordLifetime(epoch);
+    context->RHIReleaseBindlessEpoch(epoch);
+    pools->ReleaseContainer(pool);
+    ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
+    HostGate gate(session->rhi.GetDevice());
+    gate.Record(context);
+    context->GetCommandBuffer();
+    Enqueue(context);
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(tracker.HasRecordings(blockLifetime));
+    EXPECT_FALSE(tracker.HasRecordings(epoch));
+    EXPECT_FALSE(tracker.HasRecordings(pool->GetLifetimeId()));
+    EXPECT_FALSE(tracker.IsComplete(blockLifetime));
+    EXPECT_FALSE(pool->CanReuse());
+    EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    allocator->BeginFrame(0);
+    EXPECT_NE(allocator->Alloc(64).blockId, allocation.blockId);
+    gate.Open();
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    EXPECT_TRUE(pool->CanReuse());
+    EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->Alloc(64).blockId, allocation.blockId);
+}
+
 TEST_P(VulkanBindlessQueueRetirementTest, RejectedMergedWorkRetainsUntilExplicitDiscard)
 {
     auto* first       = Sampler();
@@ -668,12 +836,12 @@ TEST_P(VulkanBindlessQueueRetirementTest, RejectedMergedWorkRetainsUntilExplicit
     auto secondHandle = session->rhi.RegisterBindlessResource(second, 1);
     auto* other       = static_cast<FVulkanCommandListContext*>(
         session->rhi.GetCommandContext(RHICommandContextType::eGraphics));
-    auto use = context->RHICaptureBindlessUse();
-    context->RetainBindlessUse(use.Get());
-    other->RetainBindlessUse(use.Get());
+    const uint64_t epoch = context->RHICaptureBindlessEpoch();
+    context->RecordLifetime(epoch);
+    other->RecordLifetime(epoch);
     context->GetCommandBuffer();
     other->GetCommandBuffer();
-    use = nullptr;
+    context->RHIReleaseBindlessEpoch(epoch);
     EXPECT_TRUE(session->rhi.UnregisterBindlessResource(firstHandle));
     EXPECT_TRUE(session->rhi.UnregisterBindlessResource(secondHandle));
     Enqueue(context);
@@ -698,7 +866,7 @@ TEST_P(VulkanBindlessQueueRetirementTest, UncertainSubmissionDoesNotPermitEarlyR
     auto* sampler = Sampler();
     auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
     ASSERT_TRUE(handle.IsValid());
-    context->RetainCurrentBindlessUse();
+    context->RecordCurrentBindlessEpoch();
     context->GetCommandBuffer();
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
     Enqueue(context);
@@ -715,7 +883,7 @@ TEST_P(VulkanBindlessQueueRetirementTest, UncertainSubmissionDoesNotPermitEarlyR
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_EQ(sampler->GetRefCount(), 2u);
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
-    // Uncertain work retains its ticket until queue/device teardown.
+    // Uncertain work retains its pending epoch count until queue/device teardown.
 }
 
 INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanBindlessQueueRetirementTest, testing::Bool());

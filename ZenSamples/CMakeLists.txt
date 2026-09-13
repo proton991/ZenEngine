@@ -4,6 +4,7 @@ add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
 add_executable(VulkanRHITest
     CommonTest/ShaderReflectionTests.cpp
     CommonTest/VulkanSynchronizationTests.cpp
+    CommonTest/VulkanLifetimeTrackerTests.cpp
     CommonTest/VulkanResourceCreationTests.cpp
 )
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)

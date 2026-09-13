@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommandList.h"
 #include "Templates/HeapVector.h"
 #include "VulkanExtension.h"
+#include "VulkanLifetimeTracker.h"
 #include "Memory/PagedAllocator.h"
 #include "Templates/HashMap.h"
 #include "Templates/ObjectPool.h"
@@ -256,6 +257,11 @@ public:
         return m_pUniformBufferAllocator;
     }
 
+    VulkanLifetimeTracker& GetLifetimeTracker()
+    {
+        return m_lifetimeTracker;
+    }
+
     InstanceExtensionFlags& GetInstanceExtensionFlags()
     {
         return m_instanceExtensionFlags;
@@ -316,6 +322,7 @@ private:
 
     HeapVector<VulkanPlatformCommandList*> m_pendingPlatformCmdLists;
     bool m_submissionBlocked{false};
+    VulkanLifetimeTracker m_lifetimeTracker;
 };
 
 class VulkanResourceFactory : public RHIResourceFactory

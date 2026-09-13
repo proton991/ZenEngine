@@ -160,7 +160,7 @@ void VulkanUniformBufferAllocator::Destroy()
     {
         for (Block& block : slot.blocks)
         {
-            DestroyBlock(block.memory);
+            DestroyBlock(block);
         }
 
         slot.blocks.clear();
@@ -183,7 +183,7 @@ void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
     m_currentSlotIdx = frameNum % static_cast<uint32_t>(m_slots.size());
 
     Slot& slot = m_slots[m_currentSlotIdx];
-    ++slot.reuseSerial;
+    ++slot.reuseCount;
 
     for (uint32_t i = 0; i < slot.blocks.size(); ++i)
     {
@@ -191,7 +191,7 @@ void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
         // Keep recent demand plus one spare. Age each slot only when it is reused.
         if (i <= slot.usedBlocks)
         {
-            block.lastNeededReuseSerial = slot.reuseSerial;
+            block.lastNeededReuseCount = slot.reuseCount;
         }
         // Invalidate borrowed cached values before any block can be reset by Alloc.
         // Recorded commands remain protected by pending counts / queue serials.
@@ -202,11 +202,11 @@ void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
     while (!slot.blocks.empty())
     {
         Block& block = slot.blocks.back();
-        if (slot.reuseSerial - block.lastNeededReuseSerial < kTrimDelay || !block.CanReuse())
+        if (slot.reuseCount - block.lastNeededReuseCount < kTrimDelay || !block.CanReuse())
         {
             break;
         }
-        DestroyBlock(block.memory);
+        DestroyBlock(block);
         slot.blocks.pop_back();
     }
 
@@ -216,22 +216,8 @@ void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
 
 bool VulkanUniformBufferAllocator::Block::CanReuse() const
 {
-    return pendingRecordings == 0 && memory.pBuffer->GetRefCount() == 1 &&
-        std::all_of(submissions.begin(), submissions.end(), [](const QueueSerial& submission) {
-               return submission.pQueue->GetLastCompletedSerial() >= submission.serial;
-           });
-}
-
-VulkanUniformBufferAllocator::Block* VulkanUniformBufferAllocator::FindBlock(uint64_t blockId)
-{
-    // High word identifies the frame slot; low word is block index + 1 (zero is invalid).
-    const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
-    const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
-    if (slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size())
-    {
-        return &m_slots[slotIndex].blocks[blockIndex];
-    }
-    return nullptr;
+    return memory.pBuffer->GetRefCount() == 1 &&
+        GVulkanRHI->GetLifetimeTracker().IsComplete(lifetimeId);
 }
 
 uint64_t VulkanUniformBufferAllocator::GetBlockGeneration(uint64_t blockId) const
@@ -242,48 +228,13 @@ uint64_t VulkanUniformBufferAllocator::GetBlockGeneration(uint64_t blockId) cons
         m_slots[slotIndex].blocks[blockIndex].memory.generation : 0;
 }
 
-void VulkanUniformBufferAllocator::RecordBlock(uint64_t blockId)
+uint64_t VulkanUniformBufferAllocator::GetBlockLifetime(uint64_t blockId) const
 {
-    Block* block = FindBlock(blockId);
-    VERIFY_EXPR(block != nullptr);
-    if (block != nullptr)
-    {
-        ++block->pendingRecordings;
-    }
-}
-
-void VulkanUniformBufferAllocator::SubmitBlock(uint64_t blockId,
-                                               const VulkanQueue* pQueue,
-                                               uint64_t serial)
-{
-    Block* block = FindBlock(blockId);
-    VERIFY_EXPR(block != nullptr && block->pendingRecordings > 0 && pQueue != nullptr &&
-                serial > 0);
-    if (block != nullptr && block->pendingRecordings > 0 && pQueue != nullptr && serial > 0)
-    {
-        auto entry =
-            std::find_if(block->submissions.begin(), block->submissions.end(),
-                         [pQueue](const QueueSerial& value) { return value.pQueue == pQueue; });
-        if (entry == block->submissions.end())
-        {
-            block->submissions.push_back(QueueSerial{pQueue, serial});
-        }
-        else
-        {
-            entry->serial = std::max(entry->serial, serial);
-        }
-        --block->pendingRecordings;
-    }
-}
-
-void VulkanUniformBufferAllocator::DiscardBlock(uint64_t blockId)
-{
-    Block* block = FindBlock(blockId);
-    VERIFY_EXPR(block != nullptr && block->pendingRecordings > 0);
-    if (block != nullptr && block->pendingRecordings > 0)
-    {
-        --block->pendingRecordings;
-    }
+    const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
+    const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
+    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size() ?
+        m_slots[slotIndex].blocks[blockIndex].lifetimeId :
+        0;
 }
 
 uint32_t VulkanUniformBufferAllocator::GetAllocatedBlockCount(uint32_t slotIndex) const
@@ -318,7 +269,8 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
                 block.generation              = ++m_nextGeneration;
                 Block& storage                = slot.blocks.emplace_back();
                 storage.memory                = block;
-                storage.lastNeededReuseSerial = slot.reuseSerial;
+                storage.lifetimeId            = GVulkanRHI->GetLifetimeTracker().Create();
+                storage.lastNeededReuseCount  = slot.reuseCount;
             }
 
             Block& storage = slot.blocks[slot.currentBlockIdx];
@@ -332,7 +284,6 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
                 }
                 storage.memory.offset = 0;
                 storage.resetPending  = false;
-                storage.submissions.clear();
             }
             VulkanUniformBufferBlock& block = storage.memory;
             const uint64_t alignedOffset =
@@ -388,15 +339,16 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::CreateBlock() const
     return block;
 }
 
-void VulkanUniformBufferAllocator::DestroyBlock(VulkanUniformBufferBlock& block) const
+void VulkanUniformBufferAllocator::DestroyBlock(Block& block) const
 {
-    if (block.pBuffer != nullptr)
+    if (block.memory.pBuffer != nullptr)
     {
-        if (block.pMapped != nullptr)
-        {
-            block.pBuffer->Unmap();
-        }
-        GVulkanRHI->DestroyBuffer(block.pBuffer);
+        GVulkanRHI->GetLifetimeTracker().Retire(
+            block.lifetimeId, block.memory.pBuffer, [](void* resource) {
+                auto* buffer = static_cast<RHIBuffer*>(resource);
+                buffer->Unmap();
+                GVulkanRHI->DestroyBuffer(buffer);
+            });
     }
     block = {};
 }

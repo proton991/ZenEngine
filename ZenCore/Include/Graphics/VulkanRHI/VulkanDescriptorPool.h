@@ -59,7 +59,7 @@ private:
 class VulkanDescriptorPoolSetContainer
 {
 public:
-    explicit VulkanDescriptorPoolSetContainer(VulkanDevice* pDevice) : m_pVulkanDevice(pDevice) {};
+    explicit VulkanDescriptorPoolSetContainer(VulkanDevice* pDevice);
 
     ~VulkanDescriptorPoolSetContainer();
 
@@ -74,19 +74,12 @@ public:
 
     void Reset();
 
-    // The manager owns one reference; recorded workloads retain additional references
-    // until completion or a definite rejection. References may outlive the manager.
-    uint32_t AddRef()
+    uint64_t GetLifetimeId() const
     {
-        return m_refCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        return m_lifetimeId;
     }
-
-    uint32_t Release();
-
-    uint32_t GetRefCount() const
-    {
-        return m_refCount.load(std::memory_order_acquire);
-    }
+    bool CanReuse() const;
+    void Retire();
 
 private:
     // A growable chain of VulkanDescriptorPool for ONE pool size.
@@ -120,7 +113,7 @@ private:
     PoolChainMap m_nonUABChainMap;
     PoolChainMap m_UABChainMap;
 
-    std::atomic_uint32_t m_refCount{1};
+    uint64_t m_lifetimeId{0};
 };
 
 class VulkanDescriptorSetCache
@@ -139,7 +132,7 @@ public:
 
     void Destroy();
 
-    uint64_t GetEpoch() const
+    uint64_t GetRevision() const
     {
         return m_nextSlotGeneration;
     }
@@ -244,7 +237,7 @@ public:
 
     VulkanDescriptorPoolSetContainer* AcquireDescriptorPoolSetContainer();
 
-    // Remove from the cache; reset/reuse waits for every retaining workload.
+    // Remove from the cache; reset/reuse waits for the shared lifetime tracker.
     void ReleaseContainer(VulkanDescriptorPoolSetContainer* pContainer);
 
     void TickPoolSetContainers();
@@ -318,14 +311,6 @@ inline constexpr uint32_t GetBindlessHeapCapacity(RHIBindlessHeapType heapType)
     return heapIdx < ToUnderlying(RHIBindlessHeapType::eMax) ? kBindlessHeapCapacity[heapIdx] : 0;
 }
 
-class VulkanBindlessUse final : public RHIBindlessUse
-{
-public:
-    VulkanBindlessUse(uint64_t owner, uint64_t epoch) : owner(owner), epoch(epoch) {}
-    const uint64_t owner;
-    const uint64_t epoch;
-};
-
 class VulkanBindlessDescriptorPoolManager
 {
 public:
@@ -336,15 +321,18 @@ public:
     void Destroy();
 
     // Published slots remain immutable until explicitly retired and all earlier
-    // uses finish. recordedUse permits idempotent playback of an old registration.
+    // recordings and submissions finish. recordedEpoch permits playback of an old registration.
     bool RegisterBindlessResource(RHIResource* pResource,
                                   uint32_t slotIdx,
-                                  RHIBindlessHandle* pOutHandle     = nullptr,
-                                  const RHIBindlessUse* recordedUse = nullptr);
+                                  RHIBindlessHandle* pOutHandle = nullptr,
+                                  uint64_t recordedEpoch        = 0);
     bool UnregisterBindlessResource(RHIBindlessHandle handle);
     bool IsRegistered(RHIBindlessHandle handle);
     void CollectRetiredResources();
-    RefCountPtr<RHIBindlessUse> CaptureUse();
+    // CPU commands hold their epoch until reset; native recordings transfer their
+    // count to queue serials only after submission succeeds. Zero is invalid.
+    uint64_t CaptureEpoch();
+    void ReleaseEpoch(uint64_t epoch);
 
     // Write all registered bindless resources in batch, call WriteDescriptorSetBatch
     void Flush();
@@ -385,9 +373,8 @@ private:
 
     uint32_t m_heapAllocCount[ToUnderlying(RHIBindlessHeapType::eMax)]{};
 
-    uint64_t m_ownerId{0};
-    uint64_t m_epoch{1};
-    HeapVector<RefCountPtr<VulkanBindlessUse>> m_uses;
+    uint64_t m_epoch{0};
+    HeapVector<uint64_t> m_epochs;
     HeapVector<RHIBindlessHandle> m_retiredSlots;
 
     HeapVector<BindlessDSWrite> m_pendingWrites[ToUnderlying(RHIBindlessHeapType::eMax)];

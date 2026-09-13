@@ -3,14 +3,6 @@
 
 namespace zen
 {
-namespace
-{
-RefCountPtr<RHIBindlessUse> CaptureBindlessUse(IRHICommandContext* context)
-{
-    return context != nullptr ? context->RHICaptureBindlessUse() : RefCountPtr<RHIBindlessUse>{};
-}
-} // namespace
-
 void RHICommandListBase::Execute()
 {
     RHICommandBase* pCmd = m_pCmdHead;
@@ -251,9 +243,7 @@ void RHICommandList::BindPipeline(RHIPipelineType pipelineType, RHIPipeline* pPi
 
 void RHICommandList::SetShaderParameters(const RHIBatchedShaderParameters& parameters)
 {
-    auto use = parameters.GetBindlessParams().empty() ? RefCountPtr<RHIBindlessUse>{} :
-                                                        CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandSetShaderParameters)(parameters)->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandSetShaderParameters)(parameters, GetContext());
 }
 
 void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
@@ -291,33 +281,27 @@ void RHICommandList::Draw(uint32_t vertexCount,
                           uint32_t firstVertex,
                           uint32_t firstInstance)
 {
-    auto use = CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance)
-        ->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance, GetContext());
 }
 
 void RHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
 {
-    auto use = CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandDrawIndexed)(param)->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandDrawIndexed)(param, GetContext());
 }
 
 void RHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
 {
-    auto use = CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandDrawIndexedIndirect)(param)->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandDrawIndexedIndirect)(param, GetContext());
 }
 
 void RHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
-    auto use = CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ)->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ, GetContext());
 }
 
 void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
 {
-    auto use = CaptureBindlessUse(GetContext());
-    ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset)->bindlessUse.Swap(use);
+    ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset, GetContext());
 }
 
 void RHICommandList::SetPushConstants(RHIPipeline* pPipeline,

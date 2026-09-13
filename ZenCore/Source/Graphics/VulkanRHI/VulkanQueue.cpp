@@ -58,6 +58,8 @@ VulkanQueue::~VulkanQueue()
         DestroyWorkload(workload);
     }
 
+    GVulkanRHI->GetLifetimeTracker().RemoveQueue(this);
+
     for (FVulkanCommandBufferPool* pCmdBufferPool : m_cmdBufferPools)
     {
         ZEN_DELETE(pCmdBufferPool);
@@ -137,13 +139,8 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
     }
 
     pWorkload->m_commandBuffers.clear();
-    pWorkload->m_descriptorContainers.clear();
-    pWorkload->m_bindlessUses.clear();
-    for (uint64_t blockId : pWorkload->m_uniformBufferBlocks)
-    {
-        GVulkanRHI->GetUniformBufferAllocator()->DiscardBlock(blockId);
-    }
-    pWorkload->m_uniformBufferBlocks.clear();
+    GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(pWorkload->m_lifetimeIds);
+    pWorkload->m_lifetimeIds.clear();
     pWorkload->m_submissionSerial = 0;
     pWorkload->m_pMergedInto      = nullptr;
     pWorkload->m_waitSemaphoreInfos.clear();
@@ -156,6 +153,7 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 
     pWorkload->m_mergedWorkloads.clear();
 
+    GVulkanRHI->GetLifetimeTracker().Collect();
     m_workloadPool.push_back(pWorkload);
 }
 
@@ -165,6 +163,9 @@ void VulkanQueue::DestroyWorkload(VulkanWorkload* pWorkload)
     {
         return;
     }
+
+    GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(pWorkload->m_lifetimeIds);
+    pWorkload->m_lifetimeIds.clear();
 
     if (pWorkload->m_pFence != nullptr)
     {
@@ -425,12 +426,10 @@ void VulkanQueue::AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
 void VulkanQueue::QueueSubmittedWorkload(VulkanWorkload* pWorkload, uint64_t submissionSerial)
 {
     pWorkload->m_submissionSerial = submissionSerial;
-    // Transfer recording counts only after acceptance, including all merged recordings.
-    for (uint64_t blockId : pWorkload->m_uniformBufferBlocks)
-    {
-        GVulkanRHI->GetUniformBufferAllocator()->SubmitBlock(blockId, this, submissionSerial);
-    }
-    pWorkload->m_uniformBufferBlocks.clear();
+    // One acceptance path for every tracked resource, including merged recordings.
+    GVulkanRHI->GetLifetimeTracker().SubmitRecordings(pWorkload->m_lifetimeIds, this,
+                                                      submissionSerial);
+    pWorkload->m_lifetimeIds.clear();
     // Only called after vkQueueSubmit succeeds. Merging already transfers all
     // signal entries to the root, so no separate receipt or child traversal is needed.
     for (const VulkanWorkload::SignalSemaphoreInfo& signal : pWorkload->m_signalSemaphoreInfos)
@@ -624,6 +623,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
     {
         pCmdBufferPool->FreeUnusedCommandBuffers();
     }
+    GVulkanRHI->GetLifetimeTracker().Collect();
 }
 
 bool VulkanQueue::WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS)

@@ -227,13 +227,13 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     {
         ClearAllSetStates();
         m_packedValueBuffers.clear();
-        m_cacheEpoch     = 0;
+        m_cacheRevision  = 0;
         m_pPipeline      = pPipeline;
     }
 }
 
 void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                                                   const RHIBindlessUse* recordedUse)
+                                                   uint64_t recordedEpoch)
 {
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
     {
@@ -255,7 +255,7 @@ void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParamet
     {
         if (parameter.bufferOffset != 0 ||
             !GVulkanRHI->GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
-                parameter.pResource, parameter.arrayIndex, nullptr, recordedUse))
+                parameter.pResource, parameter.arrayIndex, nullptr, recordedEpoch))
         {
             LOG_ERROR_AND_THROW(
                 "Invalid bindless registration: slots cannot be replaced or exceed heap capacity");
@@ -280,7 +280,7 @@ void VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 
     if (pShader != nullptr && pShader->HasGlobalBindlessSet())
     {
-        pContext->RetainCurrentBindlessUse();
+        pContext->RecordCurrentBindlessEpoch();
         GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
     }
 
@@ -295,7 +295,7 @@ void VulkanDescriptorSetState::Reset()
     m_packedValueBuffers.clear();
     m_updateSrbScratch.clear();
     m_dynamicOffsetScratch.clear();
-    m_cacheEpoch     = 0;
+    m_cacheRevision  = 0;
     m_pPipeline      = nullptr;
 }
 
@@ -714,12 +714,12 @@ void VulkanDescriptorSetState::BuildSetUpdates(uint32_t setIndex,
     }
 }
 
-void VulkanDescriptorSetState::SyncCacheEpoch(const VulkanDescriptorSetCache& cache)
+void VulkanDescriptorSetState::SyncCacheRevision(const VulkanDescriptorSetCache& cache)
 {
-    if (m_cacheEpoch != cache.GetEpoch())
+    if (m_cacheRevision != cache.GetRevision())
     {
         InvalidateResolvedCaches();
-        m_cacheEpoch = cache.GetEpoch();
+        m_cacheRevision = cache.GetRevision();
     }
 }
 
@@ -736,7 +736,7 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
         const VulkanDescriptorSetCache* cache =
             GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
         VERIFY_EXPR(cache != nullptr);
-        SyncCacheEpoch(*cache);
+        SyncCacheRevision(*cache);
         const uint32_t numSets = pShader->GetNumDescriptorSetLayouts();
 
         uint32_t firstUsed = MAX_NUM_DESCRIPTOR_SETS;
@@ -772,7 +772,7 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
             {
                 // Resolving an earlier set can rotate the cache. Check again before
                 // dereferencing a resolved handle/container from a previous draw.
-                SyncCacheEpoch(*cache);
+                SyncCacheRevision(*cache);
                 SetState& setState     = m_setStates[i];
                 const bool needResolve = setState.dirty || setState.vkSet == VK_NULL_HANDLE;
 
@@ -789,7 +789,7 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
                     {
                         // Retain on every bind, including unchanged bindings in a new
                         // workload. Queue retirement releases this ownership.
-                        pContext->RetainDescriptorPool(setState.pContainer);
+                        pContext->RecordDescriptorPool(setState.pContainer);
                     }
                     for (const BindingState& binding : setState.bindings)
                     {

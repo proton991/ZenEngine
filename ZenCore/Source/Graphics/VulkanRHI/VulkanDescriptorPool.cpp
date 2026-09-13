@@ -197,20 +197,26 @@ void VulkanDescriptorPoolSetContainer::DestroyChains(PoolChainMap& chainMap)
     chainMap.clear();
 }
 
+VulkanDescriptorPoolSetContainer::VulkanDescriptorPoolSetContainer(VulkanDevice* pDevice) :
+    m_pVulkanDevice(pDevice), m_lifetimeId(GVulkanRHI->GetLifetimeTracker().Create())
+{}
+
 VulkanDescriptorPoolSetContainer::~VulkanDescriptorPoolSetContainer()
 {
     DestroyChains(m_nonUABChainMap);
     DestroyChains(m_UABChainMap);
 }
 
-uint32_t VulkanDescriptorPoolSetContainer::Release()
+bool VulkanDescriptorPoolSetContainer::CanReuse() const
 {
-    const uint32_t remaining = m_refCount.fetch_sub(1, std::memory_order_acq_rel) - 1;
-    if (remaining == 0)
-    {
-        ZEN_DELETE(this);
-    }
-    return remaining;
+    return GVulkanRHI->GetLifetimeTracker().IsComplete(m_lifetimeId);
+}
+
+void VulkanDescriptorPoolSetContainer::Retire()
+{
+    GVulkanRHI->GetLifetimeTracker().Retire(m_lifetimeId, this, [](void* resource) {
+        ZEN_DELETE(static_cast<VulkanDescriptorPoolSetContainer*>(resource));
+    });
 }
 
 VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescriptorPoolKey& poolKey,
@@ -256,7 +262,7 @@ void VulkanDescriptorPoolSetContainer::ResetChains(PoolChainMap& chainMap)
 
 void VulkanDescriptorPoolSetContainer::Reset()
 {
-    VERIFY_EXPR(GetRefCount() == 1);
+    VERIFY_EXPR(CanReuse());
     ResetChains(m_nonUABChainMap);
     ResetChains(m_UABChainMap);
 }
@@ -366,7 +372,7 @@ void VulkanDescriptorSetCache::Destroy()
             }
             else
             {
-                slot.pContainer->Release();
+                slot.pContainer->Retire();
             }
         }
 
@@ -538,7 +544,7 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
         }
         else
         {
-            oldestSlot.pContainer->Release();
+            oldestSlot.pContainer->Retire();
         }
 
         oldestSlot = {};
@@ -694,8 +700,8 @@ void VulkanDescriptorPoolManager2::ReleaseContainer(VulkanDescriptorPoolSetConta
 
         if (containerWasUsed)
         {
-            // Eviction only removes lookup ownership. Workloads retain the pool from
-            // recording through completion, including merged and uncertain submissions.
+            // Eviction removes lookup ownership; the shared tracker protects
+            // recording and GPU lifetimes until this container can be reset.
             m_retiredContainers.push_back(pContainer);
             ReclaimRetiredContainers();
         }
@@ -704,7 +710,7 @@ void VulkanDescriptorPoolManager2::ReleaseContainer(VulkanDescriptorPoolSetConta
 
 void VulkanDescriptorPoolManager2::TickPoolSetContainers()
 {
-    // Only containers without recording/submission references reach this free list.
+    // Only containers whose recording/submission lifetimes completed reach this list.
     for (FreeContainerEntry& entry : m_freeContainers)
     {
         ++entry.idleTicks;
@@ -714,7 +720,7 @@ void VulkanDescriptorPoolManager2::TickPoolSetContainers()
 
     if (!m_freeContainers.empty() && m_freeContainers[0].idleTicks > kContanierIdleGCThreshold)
     {
-        m_freeContainers[0].pContainer->Release();
+        m_freeContainers[0].pContainer->Retire();
 
         m_freeContainers.pop_front();
 
@@ -782,23 +788,23 @@ void VulkanDescriptorPoolManager2::DestroyContainers()
 {
     for (VulkanDescriptorPoolSetContainer* pContainer : m_usedContainers)
     {
-        pContainer->Release();
+        pContainer->Retire();
     }
 
     m_usedContainers.clear();
 
     for (FreeContainerEntry& entry : m_freeContainers)
     {
-        entry.pContainer->Release();
+        entry.pContainer->Retire();
     }
 
     m_freeContainers.clear();
 
-    // A fatal submission may keep a workload alive until queue teardown. Its
-    // references own these containers independently of this manager.
+    // The shared tracker defers destruction independently of this manager,
+    // including uncertain submissions that survive until queue teardown.
     for (VulkanDescriptorPoolSetContainer* pContainer : m_retiredContainers)
     {
-        pContainer->Release();
+        pContainer->Retire();
     }
     m_retiredContainers.clear();
 }
@@ -809,7 +815,7 @@ void VulkanDescriptorPoolManager2::ReclaimRetiredContainers()
 
     for (VulkanDescriptorPoolSetContainer* pContainer : m_retiredContainers)
     {
-        if (pContainer->GetRefCount() != 1)
+        if (!pContainer->CanReuse())
         {
             m_retiredContainers[writeIndex++] = pContainer;
             continue;
@@ -940,9 +946,6 @@ bool SupportsBindlessDescriptorHeaps(VulkanDevice* pDevice)
 
 void VulkanBindlessDescriptorPoolManager::Init()
 {
-    static std::atomic<uint64_t> nextOwner{1};
-    m_ownerId                    = nextOwner.fetch_add(1, std::memory_order_relaxed);
-    m_epoch                      = 1;
     m_pDevice                    = GVulkanRHI->GetDevice();
     const bool bindlessSupported = SupportsBindlessDescriptorHeaps(m_pDevice);
 
@@ -952,6 +955,8 @@ void VulkanBindlessDescriptorPoolManager::Init()
 
         if (m_vkSet != VK_NULL_HANDLE)
         {
+            m_epoch = GVulkanRHI->GetLifetimeTracker().Create();
+            m_epochs.push_back(m_epoch);
             for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
             {
                 const RHIBindlessHeapType heapType = static_cast<RHIBindlessHeapType>(heapIdx);
@@ -964,7 +969,12 @@ void VulkanBindlessDescriptorPoolManager::Init()
 
 void VulkanBindlessDescriptorPoolManager::Destroy()
 {
-    m_uses.clear();
+    for (uint64_t epoch : m_epochs)
+    {
+        GVulkanRHI->GetLifetimeTracker().Retire(epoch);
+    }
+    m_epochs.clear();
+    m_epoch = 0;
     m_retiredSlots.clear();
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
@@ -1005,11 +1015,10 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     m_pDevice  = nullptr;
 }
 
-bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(
-    RHIResource* pResource,
-    uint32_t slotIdx,
-    RHIBindlessHandle* pOutHandle,
-    const RHIBindlessUse* recordedUse)
+bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* pResource,
+                                                                   uint32_t slotIdx,
+                                                                   RHIBindlessHandle* pOutHandle,
+                                                                   uint64_t recordedEpoch)
 {
     LockAuto lock(&m_mutex);
     if (pOutHandle != nullptr)
@@ -1050,9 +1059,9 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(
     BindlessSlotState& slot = m_slotStates[heapIdx][slotIdx];
     if (slot.pResource != nullptr)
     {
-        const auto* use = dynamic_cast<const VulkanBindlessUse*>(recordedUse);
-        const bool earlierRecording =
-            use != nullptr && use->owner == m_ownerId && use->epoch <= slot.retiredEpoch;
+        const bool earlierRecording = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch &&
+            std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch) &&
+            GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
         if ((slot.retiredEpoch != 0 && !earlierRecording) ||
             slot.resourceId != pResource->GetStableId() ||
             slot.resourceGeneration != pResource->GetGenerationId())
@@ -1112,26 +1121,33 @@ bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindless
         return false;
     }
     // Reserve before changing publication state. A failed allocation leaves it active.
+    m_retiredSlots.reserve(m_retiredSlots.size() + 1);
+    m_epochs.reserve(m_epochs.size() + 1);
+    const uint64_t nextEpoch = GVulkanRHI->GetLifetimeTracker().Create();
     m_retiredSlots.push_back(handle);
-    slot->retiredEpoch = m_epoch++;
+    slot->retiredEpoch = m_epoch;
+    m_epoch            = nextEpoch;
+    m_epochs.push_back(m_epoch);
     CollectRetiredResourcesLocked();
     return true;
 }
 
-RefCountPtr<RHIBindlessUse> VulkanBindlessDescriptorPoolManager::CaptureUse()
+uint64_t VulkanBindlessDescriptorPoolManager::CaptureEpoch()
 {
     LockAuto lock(&m_mutex);
     if (m_vkSet == VK_NULL_HANDLE)
     {
-        return {};
+        return 0;
     }
     // Remove completed epochs even when no resources are currently being retired.
     CollectRetiredResourcesLocked();
-    if (m_uses.empty() || m_uses.back()->epoch != m_epoch)
-    {
-        m_uses.push_back(MakeRefCountPtr<VulkanBindlessUse>(m_ownerId, m_epoch));
-    }
-    return RefCountPtr<RHIBindlessUse>(m_uses.back());
+    GVulkanRHI->GetLifetimeTracker().RetainRecording(m_epoch);
+    return m_epoch;
+}
+
+void VulkanBindlessDescriptorPoolManager::ReleaseEpoch(uint64_t epoch)
+{
+    GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(MakeVecView(&epoch, 1));
 }
 
 void VulkanBindlessDescriptorPoolManager::CollectRetiredResources()
@@ -1142,22 +1158,30 @@ void VulkanBindlessDescriptorPoolManager::CollectRetiredResources()
 
 void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
 {
-    for (auto it = m_uses.begin(); it != m_uses.end();)
+    auto& tracker          = GVulkanRHI->GetLifetimeTracker();
+    uint64_t earliestEpoch = UINT64_MAX;
+    size_t retained        = 0;
+    for (uint64_t epoch : m_epochs)
     {
-        if ((*it)->GetRefCount() == 1 && (*it)->epoch != m_epoch)
+        const bool completed = tracker.IsComplete(epoch);
+        if (completed && epoch != m_epoch)
         {
-            it = m_uses.erase(it);
+            tracker.Retire(epoch);
         }
         else
         {
-            ++it;
+            m_epochs[retained++] = epoch;
+            if (!completed)
+            {
+                earliestEpoch = std::min(earliestEpoch, epoch);
+            }
         }
     }
-    const uint64_t earliestUse = m_uses.empty() ? UINT64_MAX : m_uses[0]->epoch;
+    m_epochs.resize(retained);
     for (auto it = m_retiredSlots.begin(); it != m_retiredSlots.end();)
     {
         auto* slot = FindRegistration(*it);
-        if (slot != nullptr && slot->retiredEpoch < earliestUse)
+        if (slot != nullptr && slot->retiredEpoch < earliestEpoch)
         {
             // Unflushed writes must not outlive their retained resources or later
             // overwrite a recycled slot. Live old recordings keep their writes intact.

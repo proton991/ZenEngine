@@ -368,16 +368,6 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
 
 VulkanWorkload::~VulkanWorkload() {}
 
-void VulkanWorkload::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
-{
-    if (pContainer != nullptr &&
-        std::none_of(m_descriptorContainers.begin(), m_descriptorContainers.end(),
-                     [pContainer](const auto& owner) { return owner.Get() == pContainer; }))
-    {
-        m_descriptorContainers.emplace_back(pContainer);
-    }
-}
-
 FVulkanCommandBuffer* VulkanWorkload::GetLastCommandBuffer() const
 {
     return m_commandBuffers.empty() ? nullptr : m_commandBuffers.back();
@@ -403,8 +393,8 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
     pOtherWorkload->m_signalSemaphoreInfos.clear();
 
     // Keep duplicate IDs: each source recording contributed its own pending count.
-    m_uniformBufferBlocks.push_back(pOtherWorkload->m_uniformBufferBlocks);
-    pOtherWorkload->m_uniformBufferBlocks.clear();
+    m_lifetimeIds.push_back(pOtherWorkload->m_lifetimeIds);
+    pOtherWorkload->m_lifetimeIds.clear();
 
     pOtherWorkload->m_pMergedInto = this;
     m_mergedWorkloads.push_back(pOtherWorkload);
@@ -432,8 +422,7 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
 {
     return pWorkload != nullptr &&
         (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
-         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_descriptorContainers.empty() ||
-         !pWorkload->m_bindlessUses.empty() || !pWorkload->m_uniformBufferBlocks.empty());
+         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_lifetimeIds.empty());
 }
 
 VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
@@ -522,35 +511,30 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
     return submissionResult;
 }
 
-void VulkanCommandContextBase::RetainBindlessUse(RHIBindlessUse* pUse)
+void VulkanCommandContextBase::RecordLifetime(uint64_t id)
 {
-    if (pUse != nullptr)
+    if (id != 0)
     {
-        auto& uses = GetWorkload(WorkloadPhase::eExecute)->m_bindlessUses;
-        if (std::none_of(uses.begin(), uses.end(),
-                         [pUse](const auto& use) { return use.Get() == pUse; }))
+        auto& ids = GetWorkload(WorkloadPhase::eExecute)->m_lifetimeIds;
+        if (std::find(ids.begin(), ids.end(), id) == ids.end())
         {
-            uses.emplace_back(pUse);
+            ids.push_back(id);
+            GVulkanRHI->GetLifetimeTracker().RetainRecording(id);
         }
     }
 }
 
-void VulkanCommandContextBase::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
+void VulkanCommandContextBase::RecordDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
 {
-    GetWorkload(WorkloadPhase::eExecute)->RetainDescriptorPool(pContainer);
+    if (pContainer != nullptr)
+    {
+        RecordLifetime(pContainer->GetLifetimeId());
+    }
 }
 
 void VulkanCommandContextBase::RecordUniformBufferBlock(uint64_t blockId)
 {
-    if (blockId != 0)
-    {
-        auto& blocks = GetWorkload(WorkloadPhase::eExecute)->m_uniformBufferBlocks;
-        if (std::find(blocks.begin(), blocks.end(), blockId) == blocks.end())
-        {
-            GVulkanRHI->GetUniformBufferAllocator()->RecordBlock(blockId);
-            blocks.push_back(blockId);
-        }
-    }
+    RecordLifetime(GVulkanRHI->GetUniformBufferAllocator()->GetBlockLifetime(blockId));
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
@@ -736,12 +720,12 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
 }
 
 void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                                         const RHIBindlessUse* recordedUse)
+                                         uint64_t recordedEpoch)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
     VERIFY_EXPR(m_pDescriptorSetState != nullptr);
 
-    m_pDescriptorSetState->SetShaderParameters(parameters, recordedUse);
+    m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch);
 }
 
 void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
@@ -796,11 +780,11 @@ void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
 }
 
 void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                                             const RHIBindlessUse* recordedUse)
+                                             uint64_t recordedEpoch)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
     VERIFY_EXPR(m_pDescriptorSetState != nullptr);
-    m_pDescriptorSetState->SetShaderParameters(parameters, recordedUse);
+    m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch);
 }
 
 void VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
@@ -1084,21 +1068,27 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
     }
 }
 
-RefCountPtr<RHIBindlessUse> FVulkanCommandListContext::RHICaptureBindlessUse()
+uint64_t FVulkanCommandListContext::RHICaptureBindlessEpoch()
 {
-    return GVulkanRHI->GetBindlessDescriptorPoolManager()->CaptureUse();
+    return GVulkanRHI->GetBindlessDescriptorPoolManager()->CaptureEpoch();
 }
 
-void FVulkanCommandListContext::RetainCurrentBindlessUse()
+void FVulkanCommandListContext::RHIReleaseBindlessEpoch(uint64_t epoch)
 {
-    if (m_pRecordedBindlessUse != nullptr)
+    GVulkanRHI->GetBindlessDescriptorPoolManager()->ReleaseEpoch(epoch);
+}
+
+void FVulkanCommandListContext::RecordCurrentBindlessEpoch()
+{
+    if (m_recordedBindlessEpoch != 0)
     {
-        RetainBindlessUse(m_pRecordedBindlessUse);
+        RecordLifetime(m_recordedBindlessEpoch);
     }
     else
     {
-        auto use = RHICaptureBindlessUse();
-        RetainBindlessUse(use.Get());
+        const uint64_t epoch = RHICaptureBindlessEpoch();
+        RecordLifetime(epoch);
+        RHIReleaseBindlessEpoch(epoch);
     }
 }
 
@@ -1109,11 +1099,11 @@ void FVulkanCommandListContext::RHISetShaderParameters(const RHIBatchedShaderPar
     if (m_pCurrentPipeline != nullptr &&
         m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
     {
-        m_pComputeState->SetShaderParameters(parameters, m_pRecordedBindlessUse);
+        m_pComputeState->SetShaderParameters(parameters, m_recordedBindlessEpoch);
     }
     else if (m_pCurrentPipeline != nullptr)
     {
-        m_pGfxState->SetShaderParameters(parameters, m_pRecordedBindlessUse);
+        m_pGfxState->SetShaderParameters(parameters, m_recordedBindlessEpoch);
     }
 }
 

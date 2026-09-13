@@ -14,7 +14,7 @@ public:
     void SetPipeline(VulkanPipeline* pPipeline);
 
     void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             const RHIBindlessUse* recordedUse = nullptr);
+                             uint64_t recordedEpoch = 0);
 
     void FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
                                       HeapVector<VkDescriptorSet>& outDescriptorSets,
@@ -65,7 +65,7 @@ private:
 
     void BuildSetUpdates(uint32_t setIndex, HeapVector<RHIShaderResourceBinding>& outUpdates);
 
-    void SyncCacheEpoch(const VulkanDescriptorSetCache& cache);
+    void SyncCacheRevision(const VulkanDescriptorSetCache& cache);
 
     void BuildDescriptorSetList(FVulkanCommandListContext* pContext,
                                 HeapVector<VkDescriptorSet>& outDescriptorSets,
@@ -98,7 +98,7 @@ private:
 
     HeapVector<PackedValueBufferState> m_packedValueBuffers;
 
-    uint64_t m_cacheEpoch{0};
+    uint64_t m_cacheRevision{0};
 
     HeapVector<RHIShaderResourceBinding> m_updateSrbScratch;
 
