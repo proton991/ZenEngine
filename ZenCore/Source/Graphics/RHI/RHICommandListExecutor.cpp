@@ -5,8 +5,9 @@
 
 namespace zen
 {
-RHISubmissionTicket::RHISubmissionTicket(std::shared_future<RHIBatchResult> result) :
-    m_result(std::move(result))
+RHISubmissionTicket::RHISubmissionTicket(std::shared_future<RHIBatchResult> result,
+                                         std::shared_ptr<RHIThreadEvent> completion) :
+    m_result(std::move(result)), m_completion(std::move(completion))
 {}
 
 bool RHISubmissionTicket::IsValid() const
@@ -23,6 +24,10 @@ bool RHISubmissionTicket::IsReady() const
 RHIBatchResult RHISubmissionTicket::Wait() const
 {
     VERIFY_EXPR(m_result.valid());
+    if (m_result.valid())
+    {
+        m_completion->Wait();
+    }
     return m_result.get();
 }
 
@@ -101,6 +106,16 @@ void RHICommandListExecutor::PublishProgress()
         m_submitted[i].store(m_backend->GetLastSubmittedSerial(type), std::memory_order_release);
         m_completed[i].store(m_backend->GetLastCompletedSerial(type), std::memory_order_release);
     }
+    PublishSubmissionStatus();
+}
+
+void RHICommandListExecutor::PublishSubmissionStatus()
+{
+    GetRHIThread().CheckOwnership();
+    if (m_backend->AreSubmissionsBlocked())
+    {
+        m_blocked.store(true, std::memory_order_release);
+    }
 }
 
 void RHICommandListExecutor::CollectCompletedBatches(bool force)
@@ -129,6 +144,7 @@ RHISubmissionResult RHICommandListExecutor::ExecuteBatch(VectorView<RHICommandLi
 {
     GetRHIThread().CheckOwnership();
     RHISubmissionResult result = RHISubmissionResult::eFatal;
+    PublishSubmissionStatus();
     if (!m_blocked.load(std::memory_order_acquire))
     {
         HeapVector<RHIPlatformCommandList*> platformLists;
@@ -141,6 +157,10 @@ RHISubmissionResult RHICommandListExecutor::ExecuteBatch(VectorView<RHICommandLi
         }
     }
     PublishProgress();
+    if (AreSubmissionsBlocked())
+    {
+        result = RHISubmissionResult::eFatal;
+    }
     CollectCompletedBatches();
     return result;
 }
@@ -170,7 +190,8 @@ RHISubmissionTicket RHICommandListExecutor::SubmitFrame(RHICommandList& commands
         }
         batch->commands = commands.DetachCommands();
         batch->queuedAt = std::chrono::steady_clock::now();
-        ticket          = RHISubmissionTicket(batch->completion.get_future().share());
+        ticket =
+            RHISubmissionTicket(batch->completion.get_future().share(), batch->completionEvent);
         ++m_submittedBatches;
         const uint64_t pendingCount = m_pendingBatches.fetch_add(1) + 1;
         m_peakPendingBatches.store(std::max(m_peakPendingBatches.load(), pendingCount));
@@ -247,6 +268,11 @@ void RHICommandListExecutor::ExecuteFrame(const std::shared_ptr<RHICommandBatch>
     try
     {
         PublishProgress();
+        if (AreSubmissionsBlocked() && result.submission == RHISubmissionResult::eSuccess)
+        {
+            result.submission = RHISubmissionResult::eFatal;
+            result.error      = "Backend failed while querying RHI submission progress";
+        }
         for (uint32_t i = 0; i < 3; ++i)
         {
             result.serials[i] = m_submitted[i].load(std::memory_order_acquire);
@@ -271,6 +297,7 @@ void RHICommandListExecutor::ExecuteFrame(const std::shared_ptr<RHICommandBatch>
     --m_pendingBatches;
     batch->executionFinished = true;
     batch->completion.set_value(result);
+    batch->completionEvent->Signal();
     if (beganExecution)
     {
         CollectCompletedBatches();
@@ -342,9 +369,13 @@ uint64_t RHICommandListExecutor::GetLastSubmittedSerial(RHICommandContextType ty
 
 uint64_t RHICommandListExecutor::GetLastCompletedSerial(RHICommandContextType type)
 {
-    return m_mode == RHIExecutionMode::eInline ?
-        m_backend->GetLastCompletedSerial(type) :
-        m_completed[static_cast<uint32_t>(type)].load(std::memory_order_acquire);
+    uint64_t completed = m_completed[static_cast<uint32_t>(type)].load(std::memory_order_acquire);
+    if (m_mode == RHIExecutionMode::eInline)
+    {
+        completed = m_backend->GetLastCompletedSerial(type);
+        PublishSubmissionStatus();
+    }
+    return completed;
 }
 
 void RHICommandListExecutor::RefreshGPUProgress()
@@ -355,6 +386,7 @@ void RHICommandListExecutor::RefreshGPUProgress()
         CollectCompletedBatches();
         // Releasing command arenas can release the last recording of a bindless epoch.
         m_backend->CollectRetiredBindlessResources();
+        PublishSubmissionStatus();
     }
     catch (...)
     {
@@ -524,7 +556,7 @@ bool RHICommandListExecutor::IsBindlessResourceRegistered(RHIBindlessHandle hand
 
 void RHICommandListExecutor::CollectRetiredBindlessResources()
 {
-    GetRHIThread().Invoke(&DynamicRHI::CollectRetiredBindlessResources, m_backend);
+    GetRHIThread().Invoke(&RHICommandListExecutor::RefreshGPUProgress, this);
 }
 
 RHITexture* RHICommandListExecutor::CreateTexture(const RHITextureCreateInfo& info)

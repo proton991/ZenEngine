@@ -121,6 +121,13 @@ public:
     // Consumes all queued platform lists, including rejected work. Never retries them implicitly.
     virtual RHISubmissionResult FlushAllGPUCommands() = 0;
 
+    // Terminal backend failure, including failures discovered while polling GPU progress.
+    // Raw backends are queried on their owning thread; executors publish a thread-safe snapshot.
+    virtual bool AreSubmissionsBlocked() const
+    {
+        return false;
+    }
+
     virtual bool IsTransferQueueSharedWithGraphics() const = 0;
 
     virtual uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const = 0;

@@ -75,67 +75,33 @@ void VulkanFenceManager::ReleaseFence(VulkanFence*& fence)
     fence = nullptr;
 }
 
-bool VulkanFenceManager::IsFenceSignaled(VulkanFence* pFence)
+VkResult VulkanFenceManager::GetFenceStatus(VulkanFence* pFence)
 {
-    bool returnValue{};
-
-    if (pFence->IsSignaled())
+    VkResult result = VK_SUCCESS;
+    if (!pFence->IsSignaled())
     {
-        returnValue = true;
-    }
-    else
-    {
-        // double check
-        VkResult result = vkGetFenceStatus(m_pDevice->GetVkHandle(), pFence->m_fence);
-
+        result = vkGetFenceStatus(m_pDevice->GetVkHandle(), pFence->m_fence);
         if (result == VK_SUCCESS)
         {
             pFence->m_state = VulkanFence::State::eSignaled;
-            returnValue     = true;
-        }
-        else
-        {
-            returnValue = false;
         }
     }
-
-    return returnValue;
+    return result;
 }
 
-bool VulkanFenceManager::WaitForFence(VulkanFence* pFence, uint64_t timeNS)
+VkResult VulkanFenceManager::WaitForFence(VulkanFence* pFence, uint64_t timeNS)
 {
-    bool returnValue{};
-
-    if (IsFenceSignaled(pFence))
+    VkResult result = GetFenceStatus(pFence);
+    // A failed status query must not be hidden by a subsequent successful wait.
+    if (result == VK_NOT_READY)
     {
-        pFence->m_state = VulkanFence::State::eSignaled;
-        returnValue     = true;
-    }
-    else
-    {
-        VkResult result =
-            vkWaitForFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence, true, timeNS);
-
+        result = vkWaitForFences(m_pDevice->GetVkHandle(), 1, &pFence->m_fence, true, timeNS);
         if (result == VK_SUCCESS)
         {
             pFence->m_state = VulkanFence::State::eSignaled;
-            returnValue     = true;
-        }
-        else if (result == VK_TIMEOUT)
-        {
-            LOGI("vkWaitForFences timeout");
-
-            returnValue = false;
-        }
-        else
-        {
-            LOGE("vkWaitForFences failed: {}", int32_t(result));
-
-            returnValue = false;
         }
     }
-
-    return returnValue;
+    return result;
 }
 
 void VulkanFenceManager::ResetFence(VulkanFence* pFence)
@@ -201,34 +167,21 @@ void VulkanSemaphore::SetDebugName(NameID name)
                              name);
 }
 
-uint64_t VulkanSemaphore::GetCounterValue() const
+VkResult VulkanSemaphore::GetCounterValue(uint64_t& value) const
 {
-    uint64_t returnValue{};
-
     VERIFY_EXPR(IsTimeline());
-
-    uint64_t value = 0;
+    value = 0;
     const VkResult result =
         vkGetSemaphoreCounterValue(m_pDevice->GetVkHandle(), m_semaphore, &value);
-
     if (result != VK_SUCCESS)
     {
-        LOGE("Vulkan timeline counter query failed: {}", int32_t(result));
-
-        returnValue = 0;
+        value = 0;
     }
-    else
-    {
-        returnValue = value;
-    }
-
-    return returnValue;
+    return result;
 }
 
-bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
+VkResult VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
 {
-    bool returnValue{};
-
     VERIFY_EXPR(IsTimeline());
 
     VkSemaphoreWaitInfo waitInfo;
@@ -237,24 +190,7 @@ bool VulkanSemaphore::Wait(uint64_t value, uint64_t timeNS) const
     waitInfo.pSemaphores    = &m_semaphore;
     waitInfo.pValues        = &value;
 
-    VkResult result = vkWaitSemaphores(m_pDevice->GetVkHandle(), &waitInfo, timeNS);
-
-    if (result == VK_SUCCESS)
-    {
-        returnValue = true;
-    }
-    else if (result == VK_TIMEOUT)
-    {
-        returnValue = false;
-    }
-    else
-    {
-        LOGE("vkWaitSemaphores failed: {}", int32_t(result));
-
-        returnValue = false;
-    }
-
-    return returnValue;
+    return vkWaitSemaphores(m_pDevice->GetVkHandle(), &waitInfo, timeNS);
 }
 
 VulkanSemaphore::~VulkanSemaphore()

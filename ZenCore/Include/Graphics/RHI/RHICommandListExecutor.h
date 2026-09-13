@@ -25,13 +25,15 @@ class RHISubmissionTicket
 {
 public:
     RHISubmissionTicket() = default;
-    explicit RHISubmissionTicket(std::shared_future<RHIBatchResult> result);
+    RHISubmissionTicket(std::shared_future<RHIBatchResult> result,
+                        std::shared_ptr<RHIThreadEvent> completion);
     bool IsValid() const;
     bool IsReady() const;
     RHIBatchResult Wait() const;
 
 private:
     std::shared_future<RHIBatchResult> m_result;
+    std::shared_ptr<RHIThreadEvent> m_completion;
 };
 
 // Both the command arena and referenced resources survive until GPU retirement.
@@ -43,6 +45,7 @@ struct RHICommandBatch
     RHIResourceReferences resources;
     RHIViewport* viewport{nullptr};
     std::promise<RHIBatchResult> completion;
+    std::shared_ptr<RHIThreadEvent> completionEvent{std::make_shared<RHIThreadEvent>()};
     std::chrono::steady_clock::time_point queuedAt;
     RHIBatchResult result;
     bool executionFinished{false};
@@ -80,7 +83,7 @@ public:
     // Completed serial getters remain snapshots; poll again if work is still in flight.
     void PollGPUProgress();
     void FlushRHIThread();
-    bool AreSubmissionsBlocked() const;
+    bool AreSubmissionsBlocked() const override;
     RHIThreadMetrics GetThreadMetrics() const;
 
     void NotifyResourceDestroyed(uint64_t resourceId) override;
@@ -137,6 +140,7 @@ private:
     void ExecuteDestroy();
     void DeleteBackend();
     void PublishProgress();
+    void PublishSubmissionStatus();
     void RefreshGPUProgress();
     void ExecutePollGPUProgress();
     void CollectCompletedBatches(bool force = false);

@@ -19,7 +19,32 @@ enum class RHIExecutionMode
     eThreaded
 };
 
-// One ordered executor for backend operations. Tasks must never wait for RenderCore.
+// Manual-reset event. Windows waits service sent messages required by Vulkan WSI.
+// Posted messages stay queued; window callbacks must defer application work.
+class RHIThreadEvent
+{
+public:
+    explicit RHIThreadEvent(bool signaled = false);
+    ~RHIThreadEvent();
+    RHIThreadEvent(const RHIThreadEvent&)            = delete;
+    RHIThreadEvent& operator=(const RHIThreadEvent&) = delete;
+
+    void Signal();
+    void Reset();
+    void Wait() const;
+
+private:
+#if defined(ZEN_WIN32)
+    void* m_handle{nullptr};
+#else
+    mutable std::mutex m_mutex;
+    mutable std::condition_variable m_available;
+    bool m_signaled{false};
+#endif
+};
+
+// One ordered executor for backend operations. Tasks must never wait for RenderCore
+// work; Windows WSI may synchronously send messages to the window's owning thread.
 class RHIThread
 {
 public:
@@ -46,7 +71,12 @@ public:
             std::make_shared<std::packaged_task<Result()>>(
                 std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...));
         std::future<Result> result = task->get_future();
-        Dispatch([task] { (*task)(); });
+        std::shared_ptr<RHIThreadEvent> completion = std::make_shared<RHIThreadEvent>();
+        Dispatch([task, completion] {
+            (*task)();
+            completion->Signal();
+        });
+        completion->Wait();
         return result.get();
     }
 
@@ -57,7 +87,7 @@ private:
     std::thread m_worker;
     std::mutex m_mutex;
     std::condition_variable m_available;
-    std::condition_variable m_space;
+    RHIThreadEvent m_space{true};
     Queue<std::function<void()>> m_tasks;
     size_t m_capacity{64};
     bool m_stopping{false};

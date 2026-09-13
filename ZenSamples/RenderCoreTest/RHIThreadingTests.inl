@@ -1,4 +1,8 @@
 // Included by RenderCoreTests.cpp to exercise the same fake backend as RDG tests.
+#if defined(ZEN_WIN32)
+#    include <Windows.h>
+#endif
+
 namespace
 {
 class RHISubmissionGate
@@ -133,6 +137,171 @@ TEST(RHIThreadTest, InlineUsesCallingThread)
     EXPECT_EQ(thread.Invoke([] { return std::this_thread::get_id(); }), std::this_thread::get_id());
     thread.Stop();
 }
+
+#if defined(ZEN_WIN32)
+namespace
+{
+class RHIMessageWindow
+{
+public:
+    RHIMessageWindow()
+    {
+        handle = CreateWindowExW(0, L"STATIC", L"RHI message test", 0, 0, 0, 0, 0, HWND_MESSAGE,
+                                 nullptr, GetModuleHandleW(nullptr), nullptr);
+    }
+
+    ~RHIMessageWindow()
+    {
+        if (handle != nullptr)
+        {
+            DestroyWindow(handle);
+        }
+    }
+
+    void Send()
+    {
+        DWORD_PTR reply = 0;
+        SetLastError(ERROR_SUCCESS);
+        const LRESULT delivered =
+            SendMessageTimeoutW(handle, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &reply);
+        if (delivered != 0)
+        {
+            ++deliveredCount;
+        }
+        else
+        {
+            lastError = GetLastError();
+        }
+    }
+
+    HWND handle{nullptr};
+    uint32_t deliveredCount{0};
+    DWORD lastError{ERROR_SUCCESS};
+};
+
+class RHIGatedWindowMessage
+{
+public:
+    RHIGatedWindowMessage(RHIThread& thread, RHIMessageWindow& window) :
+        m_thread(thread), m_window(window), m_release(m_open.get_future().share())
+    {
+        entered = m_entered.get_future();
+    }
+
+    ~RHIGatedWindowMessage()
+    {
+        Open();
+        m_thread.Stop();
+    }
+
+    void Run()
+    {
+        m_entered.set_value();
+        m_release.wait();
+        m_window.Send();
+    }
+
+    void Open()
+    {
+        if (!m_opened)
+        {
+            m_opened = true;
+            m_open.set_value();
+        }
+    }
+
+    std::future<void> entered;
+
+private:
+    RHIThread& m_thread;
+    RHIMessageWindow& m_window;
+    std::promise<void> m_entered;
+    std::promise<void> m_open;
+    std::shared_future<void> m_release;
+    bool m_opened{false};
+};
+} // namespace
+
+TEST(RHIThreadTest, WindowsInvokeServicesSentMessagesAndPreservesPostedMessages)
+{
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    const UINT postedMessage = WM_APP + 31;
+    ASSERT_TRUE(PostMessageW(window.handle, postedMessage, 71, 0));
+    PostQuitMessage(19);
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded);
+    thread.Invoke(&RHIMessageWindow::Send, &window);
+    thread.Stop();
+    EXPECT_EQ(window.deliveredCount, 1u) << "Win32 error " << window.lastError;
+
+    // RHI waits must not consume the application's events or exit request.
+    MSG message{};
+    EXPECT_TRUE(PeekMessageW(&message, window.handle, postedMessage, postedMessage, PM_REMOVE));
+    EXPECT_EQ(message.message, postedMessage);
+    EXPECT_EQ(message.wParam, WPARAM(71));
+    EXPECT_TRUE(PeekMessageW(&message, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE));
+    EXPECT_EQ(message.message, UINT(WM_QUIT));
+    EXPECT_EQ(message.wParam, WPARAM(19));
+}
+
+TEST(RHIThreadTest, WindowsFullQueueServicesSentMessagesBeforeAcceptingMoreWork)
+{
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded, 1);
+    RHIGatedWindowMessage gate(thread, window);
+    thread.Dispatch(std::bind_front(&RHIGatedWindowMessage::Run, &gate));
+    ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    HeapVector<uint32_t> order;
+    thread.Dispatch([&order] { order.push_back(1); });
+    gate.Open();
+    // The worker cannot free this full FIFO until its sent window message completes.
+    thread.Dispatch([&order] { order.push_back(2); });
+    thread.Stop();
+    EXPECT_EQ(window.deliveredCount, 1u) << "Win32 error " << window.lastError;
+    ASSERT_EQ(order.size(), 2u);
+    EXPECT_EQ(order[0], 1u);
+    EXPECT_EQ(order[1], 2u);
+}
+
+TEST(RHIThreadTest, WindowsStopServicesSentMessagesWhileDrainingActiveAndQueuedWork)
+{
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded, 1);
+    RHIGatedWindowMessage gate(thread, window);
+    thread.Dispatch(std::bind_front(&RHIGatedWindowMessage::Run, &gate));
+    ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    thread.Dispatch(std::bind_front(&RHIMessageWindow::Send, &window));
+    gate.Open();
+    thread.Stop();
+    EXPECT_EQ(window.deliveredCount, 2u) << "Win32 error " << window.lastError;
+}
+
+TEST_F(ThreadedRenderCoreTest, WindowsFrameTicketWaitServicesSentMessages)
+{
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    RenderGraph* graph = device->GetCurrentFrameRDG();
+    ASSERT_TRUE(graph->Begin());
+    RDGTexture texture = graph->GetResourceManager()->CreateTexture(LogicalTexture());
+    graph->AddTransferPass("window-message").NeverCull().ClearTexture(texture, Color(0.f));
+    ASSERT_TRUE(graph->End());
+    device->FlushRHIThread();
+    rhi->beforeSubmission = std::bind_front(&RHIMessageWindow::Send, &window);
+    const bool queued     = device->ExecuteRenderGraph(&viewport);
+    const bool completed  = device->PollFrameSubmissions(true);
+    GetRHIThread().Flush();
+    rhi->beforeSubmission = {};
+    EXPECT_TRUE(queued);
+    EXPECT_TRUE(completed);
+    EXPECT_EQ(window.deliveredCount, 2u) << "Win32 error " << window.lastError;
+    EXPECT_EQ(viewport.presents, 1u);
+}
+#endif
 
 TEST_F(RHIExecutorTest, DetachedLayoutAndResourcesSurviveCpuAndGpuDelay)
 {
@@ -710,4 +879,38 @@ TEST_F(ThreadedRenderCoreTest, ProgressQueryFailureBlocksRetirementWithoutAPendi
     EXPECT_FALSE(destroyed.contains(id));
     device->Destroy();
     EXPECT_TRUE(destroyed.contains(id));
+}
+
+TEST_F(ThreadedRenderCoreTest, BackendFailureRetainsBatchAndDeferredOwnersUntilShutdown)
+{
+    RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
+    RHITextureCreateInfo info{};
+    RHITexture* batchOwned    = executor->CreateTexture(info);
+    RHITexture* deferred      = executor->CreateTexture(info);
+    const uint64_t batchId    = batchOwned->GetStableId();
+    const uint64_t deferredId = deferred->GetStableId();
+    RHICommandListPtr commands(
+        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
+    EXPECT_EQ(executor->SubmitFrame(*commands, nullptr).Wait().submission,
+              RHISubmissionResult::eSuccess);
+    batchOwned->ReleaseReference();
+    device->DeferReleaseResource(deferred);
+    GetRHIThread().Invoke([this] { rhi->submissionsBlocked = true; });
+    executor->PollGPUProgress();
+    GetRHIThread().Flush();
+    EXPECT_TRUE(device->AreSubmissionsBlocked());
+    // Later successful queries must not clear a published terminal failure.
+    GetRHIThread().Invoke([this] {
+        rhi->submissionsBlocked = false;
+        rhi->completed          = rhi->submitted;
+    });
+    device->CollectCompletedResources();
+    GetRHIThread().Flush();
+    EXPECT_TRUE(device->AreSubmissionsBlocked());
+    EXPECT_FALSE(destroyed.contains(batchId));
+    EXPECT_FALSE(destroyed.contains(deferredId));
+    device->Destroy();
+    EXPECT_TRUE(destroyed.contains(batchId));
+    EXPECT_TRUE(destroyed.contains(deferredId));
 }

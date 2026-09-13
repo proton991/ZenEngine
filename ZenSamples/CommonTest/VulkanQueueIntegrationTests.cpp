@@ -194,6 +194,71 @@ struct QueueDriver
 class VulkanQueueWaitTest : public testing::TestWithParam<bool>
 {
 protected:
+    static void CheckTimeout(zen::VulkanQueue& queue)
+    {
+        EXPECT_FALSE(queue.WaitForSubmission(2, 0));
+        EXPECT_FALSE(zen::GVulkanRHI->AreSubmissionsBlocked());
+        QueueDriver::waitResult = VK_TIMEOUT;
+        EXPECT_FALSE(queue.WaitForSubmission(2, 1000000000));
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
+        EXPECT_FALSE(zen::GVulkanRHI->AreSubmissionsBlocked());
+        ASSERT_EQ(QueueDriver::waitedSerials.size(), 1u);
+        EXPECT_LE(QueueDriver::timeouts[0], 1000000000u);
+        QueueDriver::waitResult = VK_SUCCESS;
+        EXPECT_TRUE(queue.WaitForSubmission(2, 1000000000));
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 2u);
+        ASSERT_EQ(QueueDriver::timeouts.size(), 3u);
+        EXPECT_LE(QueueDriver::timeouts[2], QueueDriver::timeouts[1]);
+        EXPECT_TRUE(queue.WaitForSubmission(3, UINT64_MAX));
+    }
+
+    static void CheckWaitFailure(zen::VulkanQueue& queue)
+    {
+        EXPECT_TRUE(queue.WaitForSubmission(1, UINT64_MAX));
+        QueueDriver::waitResult = VK_ERROR_DEVICE_LOST;
+        EXPECT_FALSE(queue.WaitForSubmission(3, UINT64_MAX));
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 1u);
+        EXPECT_TRUE(zen::GVulkanRHI->AreSubmissionsBlocked());
+        EXPECT_EQ(QueueDriver::waitedSerials.size(), 2u);
+        QueueDriver::waitResult = VK_SUCCESS;
+        EXPECT_FALSE(queue.WaitForSubmission(3, UINT64_MAX));
+        EXPECT_EQ(QueueDriver::waitedSerials.size(), 2u);
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 1u);
+    }
+
+    static void CheckQueryFailure(VkResult failure, zen::VulkanQueue& queue)
+    {
+        EXPECT_TRUE(queue.WaitForSubmission(1, UINT64_MAX));
+        QueueDriver::statusResult = failure;
+        QueueDriver::completed    = UINT64_MAX;
+        // A failed status query must never proceed to a wait that could hide the error.
+        EXPECT_FALSE(queue.WaitForSubmission(3, UINT64_MAX));
+        EXPECT_EQ(QueueDriver::waitedSerials.size(), 1u);
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 1u);
+        EXPECT_EQ(queue.GetLastSubmittedSerial(), 3u);
+        EXPECT_TRUE(zen::GVulkanRHI->AreSubmissionsBlocked());
+        QueueDriver::statusResult = VK_SUCCESS;
+        queue.ProcessPendingWorkloads(0);
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 1u);
+        uint64_t serial = UINT64_MAX;
+        queue.EnqueueWorkload(ZEN_NEW() zen::VulkanWorkload(&queue));
+        EXPECT_EQ(queue.SubmitPendingWorkloads(serial), zen::RHISubmissionResult::eFatal);
+        EXPECT_EQ(serial, 0u);
+        EXPECT_EQ(QueueDriver::submitCalls, 3u);
+    }
+
+    static void CheckQueryFailureDuringSubmission(zen::VulkanQueue& queue)
+    {
+        QueueDriver::statusResult = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        queue.EnqueueWorkload(ZEN_NEW() zen::VulkanWorkload(&queue));
+        uint64_t serial = UINT64_MAX;
+        EXPECT_EQ(queue.SubmitPendingWorkloads(serial), zen::RHISubmissionResult::eFatal);
+        EXPECT_TRUE(zen::GVulkanRHI->AreSubmissionsBlocked());
+        EXPECT_EQ(serial, 0u);
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
+        EXPECT_EQ(QueueDriver::submitCalls, 3u);
+    }
+
     template <typename Callback> void WithQueue(Callback callback)
     {
         using namespace zen;
@@ -271,25 +336,14 @@ TEST_P(VulkanQueueWaitTest, StopsAtRequestedSerialAndDoesNotWaitDuringPolling)
     });
 }
 
-TEST_P(VulkanQueueWaitTest, TimeoutAndBackendFailureReturnWithoutPublishingCompletion)
+TEST_P(VulkanQueueWaitTest, TimeoutDoesNotBlockSubmissionsOrPublishCompletion)
 {
-    WithQueue([](zen::VulkanQueue& queue) {
-        QueueDriver::waitResult = VK_TIMEOUT;
-        EXPECT_FALSE(queue.WaitForSubmission(2, 1000000000));
-        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
-        ASSERT_EQ(QueueDriver::waitedSerials.size(), 1u);
-        EXPECT_LE(QueueDriver::timeouts[0], 1000000000u);
-        QueueDriver::waitResult = VK_ERROR_DEVICE_LOST;
-        EXPECT_FALSE(queue.WaitForSubmission(2, UINT64_MAX));
-        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
-        EXPECT_EQ(QueueDriver::waitedSerials.size(), 2u);
-        QueueDriver::waitResult = VK_SUCCESS;
-        EXPECT_TRUE(queue.WaitForSubmission(2, 1000000000));
-        EXPECT_EQ(queue.GetLastCompletedSerial(), 2u);
-        ASSERT_EQ(QueueDriver::timeouts.size(), 4u);
-        EXPECT_LE(QueueDriver::timeouts[3], QueueDriver::timeouts[2]);
-        EXPECT_TRUE(queue.WaitForSubmission(3, UINT64_MAX));
-    });
+    WithQueue(&VulkanQueueWaitTest::CheckTimeout);
+}
+
+TEST_P(VulkanQueueWaitTest, WaitFailureBlocksSubmissionsPermanently)
+{
+    WithQueue(&VulkanQueueWaitTest::CheckWaitFailure);
 }
 
 INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanQueueWaitTest, testing::Bool());
@@ -376,14 +430,13 @@ TEST_P(VulkanQueueWaitTest, DeviceLossDoesNotInventASubmissionSerial)
 
 TEST_P(VulkanQueueWaitTest, FailedCompletionQueryCannotPublishReturnedGarbage)
 {
-    WithQueue([](zen::VulkanQueue& queue) {
-        QueueDriver::statusResult = VK_ERROR_DEVICE_LOST;
-        QueueDriver::completed    = UINT64_MAX;
-        queue.ProcessPendingWorkloads(0);
-        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
-        EXPECT_EQ(queue.GetLastSubmittedSerial(), 3u);
-        QueueDriver::completed    = 0;
-        QueueDriver::statusResult = VK_SUCCESS;
-        EXPECT_TRUE(queue.WaitForSubmission(3, UINT64_MAX));
-    });
+    for (VkResult failure : {VK_ERROR_DEVICE_LOST, VK_ERROR_OUT_OF_HOST_MEMORY})
+    {
+        WithQueue(std::bind_front(&VulkanQueueWaitTest::CheckQueryFailure, failure));
+    }
+}
+
+TEST_P(VulkanQueueWaitTest, CompletionQueryFailurePreventsNativeSubmission)
+{
+    WithQueue(&VulkanQueueWaitTest::CheckQueryFailureDuringSubmission);
 }

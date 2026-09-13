@@ -517,7 +517,11 @@ RHISubmissionResult VulkanQueue::SubmitPendingWorkloads(uint64_t& serial)
     // queue bounded to in-flight GPU work instead of growing for the whole app lifetime.
     ProcessPendingWorkloads(0);
 
-    if (m_workloadsPendingSubmit.Empty())
+    if (GVulkanRHI->AreSubmissionsBlocked())
+    {
+        result = RHISubmissionResult::eFatal;
+    }
+    else if (m_workloadsPendingSubmit.Empty())
     {
         result = RHISubmissionResult::eSuccess;
     }
@@ -545,7 +549,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
                                                           std::chrono::steady_clock::time_point{};
     HeapVector<FVulkanCommandBufferPool*> cmdBufferPoolsToTrim;
 
-    while (true)
+    while (!GVulkanRHI->AreSubmissionsBlocked())
     {
         if (m_workloadsPendingProcess.Empty())
         {
@@ -570,35 +574,45 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
             remainingNS            = elapsed < timeToWaitNS ? timeToWaitNS - elapsed : 0;
         }
 
-        bool success = false;
+        VkResult result = VK_NOT_READY;
 
         if (m_pDevice->SupportsTimelineSemaphore())
         {
-            uint64_t completedValue = m_pTimelineSemaphore->GetCounterValue();
-
-            if (completedValue >= pWorkload->m_submissionSerial)
+            uint64_t completedValue = 0;
+            result                  = m_pTimelineSemaphore->GetCounterValue(completedValue);
+            if (result == VK_SUCCESS && completedValue < pWorkload->m_submissionSerial)
             {
-                m_lastCompletedSerial = completedValue;
-                success               = true;
+                result = remainingNS == 0 ?
+                    VK_NOT_READY :
+                    m_pTimelineSemaphore->Wait(pWorkload->m_submissionSerial, remainingNS);
+                if (result == VK_SUCCESS)
+                {
+                    // The successful wait proves this serial completed without another query.
+                    completedValue = pWorkload->m_submissionSerial;
+                }
             }
-            else if (remainingNS != 0 &&
-                     m_pTimelineSemaphore->Wait(pWorkload->m_submissionSerial, remainingNS))
+            if (result == VK_SUCCESS)
             {
-                m_lastCompletedSerial = m_pTimelineSemaphore->GetCounterValue();
-                success               = m_lastCompletedSerial >= pWorkload->m_submissionSerial;
+                m_lastCompletedSerial = std::max(m_lastCompletedSerial.load(), completedValue);
             }
         }
         else
         {
             VulkanFence* pFence               = pWorkload->m_pFence;
             VulkanFenceManager* pFenceManager = pFence->GetOwner();
-            success = remainingNS == 0 ? pFenceManager->IsFenceSignaled(pFence) :
-                                         pFenceManager->WaitForFence(pFence, remainingNS);
+            result = remainingNS == 0 ? pFenceManager->GetFenceStatus(pFence) :
+                                        pFenceManager->WaitForFence(pFence, remainingNS);
         }
 
-        if (!success)
+        if (result != VK_SUCCESS)
         {
-            // Timeout or backend failure: leave ownership/completion unchanged and return.
+            if (result != VK_NOT_READY && result != VK_TIMEOUT)
+            {
+                LOGE("Vulkan queue {} completion query/wait failed: {}", m_familyIndex,
+                     int32_t(result));
+                GVulkanRHI->BlockSubmissions();
+            }
+            // Incomplete work and failures both retain ownership; only failures are terminal.
             break;
         }
 

@@ -64,9 +64,9 @@ public:
 
     void ReleaseFence(VulkanFence*& fence);
 
-    bool IsFenceSignaled(VulkanFence* pFence);
+    VkResult GetFenceStatus(VulkanFence* pFence);
 
-    bool WaitForFence(VulkanFence* pFence, uint64_t timeNS);
+    VkResult WaitForFence(VulkanFence* pFence, uint64_t timeNS);
 
     void ResetFence(VulkanFence* pFence);
 
@@ -101,9 +101,9 @@ public:
         return m_type == VK_SEMAPHORE_TYPE_TIMELINE;
     }
 
-    uint64_t GetCounterValue() const;
+    VkResult GetCounterValue(uint64_t& value) const;
 
-    bool Wait(uint64_t value, uint64_t timeNS) const;
+    VkResult Wait(uint64_t value, uint64_t timeNS) const;
 
     // CPU-side queue acceptance, not GPU completion or the semaphore's native state.
     // Read and publication are serialized with queue submission.

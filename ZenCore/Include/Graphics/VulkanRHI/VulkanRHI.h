@@ -191,7 +191,7 @@ public:
         m_submissionBlocked = true;
     }
 
-    bool AreSubmissionsBlocked() const
+    bool AreSubmissionsBlocked() const final
     {
         return m_submissionBlocked;
     }

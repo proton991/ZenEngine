@@ -194,3 +194,85 @@ Validation date: 2026-09-13, MSVC Debug, with the native validation setup descri
 | Threaded and inline scene smoke | 64 frames each, exit 0, no validation errors | `build/rhi-history-fix/smoke-threaded.log`, `smoke-inline.log` |
 
 All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.
+
+## Windows message waits
+
+Windows swapchain operations can synchronously send messages to the window's owning
+thread. Waiting for RHI through a future, a full FIFO, or a thread join without processing
+those messages can deadlock that thread with RHI. This applies to creation, resize,
+presentation and shutdown; see the
+[Vulkan Win32 surface requirements](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateWin32SurfaceKHR.html).
+
+`RHIThreadEvent` now uses a manual-reset Windows event and
+`MsgWaitForMultipleObjectsEx` with `QS_SENDMESSAGE`. `PeekMessageW` services sent messages
+without removing posted messages, input or `WM_QUIT`. Synchronous calls and frame tickets
+signal their own completion events; full-queue waits use a capacity event, and shutdown
+waits for the native thread handle before joining. Queue locks are released before a
+wait can enter a window procedure. Other platforms use condition-variable event waits.
+
+Sent `WM_SIZE` messages update the GLFW window's dimensions immediately. Application
+resize callbacks are coalesced and run from `GlfwWindowImpl::Update()` after event polling,
+so viewport recreation cannot re-enter a pending RHI wait. A new resize received while
+that callback runs remains pending for the following update.
+
+Four Windows RenderCore regressions cover synchronous invocation, frame-ticket waits,
+full-queue backpressure, and draining active and queued work during shutdown. They also
+verify that posted messages and quit requests remain available to the application. A GLFW
+regression sends resize messages from RHI, verifies callback deferral and coalescing, and
+uses a callback that makes a synchronous RHI call. The original bounded message-delivery
+reproductions pass unchanged. The deadlock tests use `SendMessageTimeoutW` to model the
+documented WSI behavior without hanging a failing test process.
+
+Validation date: 2026-09-13, MSVC Debug, with the native validation setup above.
+
+| Check | Result | Local evidence |
+| --- | --- | --- |
+| Four Debug targets | Build passed | `build/rhi-deadlock-fix/build-final.log` |
+| RenderCore | 228 passed, 7 existing disabled tests | `build/rhi-deadlock-fix/rendercore.log`, `.xml` |
+| Vulkan RHI unit tests | 28 passed | `build/rhi-deadlock-fix/vulkan-unit.log`, `.xml` |
+| Native Vulkan integration | 206 passed with synchronization validation; no validation errors | `build/rhi-phase4/rhi-deadlock-integration.log`, `build/rhi-deadlock-fix/vulkan-integration.xml` |
+| Original message-wait probes and control | All three passed unchanged | `build/rhi-deadlock-fix/original-probes.log` |
+| Threaded and inline scene smoke | 64 frames each, exit 0, no validation errors | `build/rhi-deadlock-fix/smoke-1.log`, `smoke-0.log` |
+
+All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.
+
+## Native GPU progress failures
+
+Timeline and fence helpers preserve `VkResult` through queue polling and waits. The queue
+treats `VK_NOT_READY` and `VK_TIMEOUT` as incomplete work; other unsuccessful results block
+the backend. This distinction follows the Vulkan return codes for
+[fence status](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetFenceStatus.html),
+[timeline counters](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetSemaphoreCounterValue.html)
+and [timeline waits](https://docs.vulkan.org/refpages/latest/refpages/source/vkWaitSemaphores.html).
+A failed status query cannot fall through to another wait, publish a returned counter value,
+or admit another native submission. Previously completed serials remain valid, and ownership
+of unfinished workloads remains with the queue until teardown. A successful timeline wait
+proves completion of its requested serial without requiring a second counter query.
+
+`DynamicRHI::AreSubmissionsBlocked()` exposes the terminal backend state. The executor reads
+it on RHI and permanently publishes it through its atomic blocked flag. Polling, synchronous
+waits, CPU flushes, explicit retirement collection and inline completion queries all propagate
+the failure. A failure detected during frame execution or final progress publication also
+produces a fatal submission ticket. RenderCore and batch retirement retain affected owners
+until device shutdown.
+
+The regression first reproduced the unblocked executor in both execution modes. Integration
+tests inject device-loss return codes into real Vulkan-backed executor calls; they do not
+cause actual hardware device loss. Queue tests exercise both timeline and fence paths,
+including timeouts, memory errors, invalid returned counters, preserved completion serials,
+and rejection of native work after a polling failure. A RenderCore regression verifies that
+batch and deferred owners survive subsequent successful queries and release during shutdown.
+
+Validation date: 2026-09-13, MSVC Debug, with the native validation setup above.
+
+| Check | Result | Local evidence |
+| --- | --- | --- |
+| Original polling regression before the fix | Failed in both execution modes | `build/rhi-phase4/rhi-progress-before.log`, `build/rhi-progress-fix/before.xml` |
+| Four Debug targets | Build passed | `build/rhi-progress-fix/build-final.log` |
+| Targeted executor and queue regressions | 28 passed | `build/rhi-phase4/rhi-progress-targeted.log`, `build/rhi-progress-fix/targeted.xml` |
+| RenderCore | 229 passed, 7 existing disabled tests | `build/rhi-progress-fix/rendercore.log`, `.xml` |
+| Vulkan RHI unit tests | 28 passed | `build/rhi-progress-fix/vulkan-unit.log`, `.xml` |
+| Native Vulkan integration | 222 passed with synchronization validation; no validation errors | `build/rhi-phase4/rhi-progress-integration.log`, `build/rhi-progress-fix/vulkan-integration.xml` |
+| Threaded and inline scene smoke | 64 frames each, exit 0, no validation errors | `build/rhi-progress-fix/smoke-1.log`, `smoke-0.log` |
+
+All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.

@@ -846,6 +846,7 @@ public:
     uint32_t deviceIdleWaits{0};
     bool failSubmissionWait{false};
     bool failProgressQuery{false};
+    bool submissionsBlocked{false};
     std::vector<std::pair<RHICommandContextType, uint64_t>> submissionWaits;
     uint32_t textureCreations{0};
     uint32_t finalizedLists{0};
@@ -1094,6 +1095,11 @@ public:
     bool IsTransferQueueSharedWithGraphics() const override
     {
         return shared;
+    }
+
+    bool AreSubmissionsBlocked() const override
+    {
+        return submissionsBlocked;
     }
 
     uint64_t GetLastSubmittedSerial(RHICommandContextType type) const override

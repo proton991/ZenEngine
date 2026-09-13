@@ -10,6 +10,8 @@ add_executable(VulkanRHITest
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
 # Explicit integration target: requires a Vulkan device and validation layer.
 add_executable(VulkanRHIIntegrationTest
+    CommonTest/RHIProgressIntegrationTests.cpp
+    CommonTest/RHIWindowThreadingTests.cpp
     CommonTest/VulkanDescriptorIntegrationTests.cpp
     CommonTest/VulkanDescriptorLifetimeTests.cpp
     CommonTest/VulkanQueueIntegrationTests.cpp

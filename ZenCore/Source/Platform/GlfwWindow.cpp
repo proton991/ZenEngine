@@ -132,21 +132,19 @@ bool GlfwWindowImpl::CenterWindow()
     return true;
 }
 
+void GlfwWindowImpl::OnWindowSize(GLFWwindow* handle, int width, int height)
+{
+    GlfwWindowImpl* window = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(handle));
+    window->m_data.width   = width;
+    window->m_data.height  = height;
+    // WSI can send WM_SIZE while RenderCore waits for RHI. Publish the dimensions
+    // now, but defer application callbacks so they cannot re-enter that RHI wait.
+    window->m_data.shouldResize = true;
+}
+
 void GlfwWindowImpl::SetupWindowCallbacks()
 {
-    const auto resize_callback = [](GLFWwindow* pW, int width, int height) {
-        GlfwWindowImpl* pWindow      = static_cast<GlfwWindowImpl*>(glfwGetWindowUserPointer(pW));
-        pWindow->m_data.width        = width;
-        pWindow->m_data.height       = height;
-        pWindow->m_data.shouldResize = true;
-
-        if (pWindow->m_onResize)
-        {
-            pWindow->m_onResize(width, height);
-        }
-        LOGI("Window resized to {} x {}", width, height);
-    };
-    glfwSetWindowSizeCallback(m_pHandle, resize_callback);
+    glfwSetWindowSizeCallback(m_pHandle, &GlfwWindowImpl::OnWindowSize);
 
     const auto key_callback = [](GLFWwindow* pW, auto key, auto scancode, auto action, auto mode) {
         if (key < 0 || key > GLFW_KEY_LAST)
@@ -205,6 +203,18 @@ void GlfwWindowImpl::HideCursor() const
 void GlfwWindowImpl::Update()
 {
     glfwPollEvents();
+    if (m_data.shouldResize)
+    {
+        const uint32_t width  = static_cast<uint32_t>(m_data.width);
+        const uint32_t height = static_cast<uint32_t>(m_data.height);
+        // Clear first: a new notification during the callback belongs to the next update.
+        m_data.shouldResize = false;
+        if (m_onResize)
+        {
+            m_onResize(width, height);
+        }
+        LOGI("Window resized to {} x {}", width, height);
+    }
     if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_TAB))
     {
         m_data.showCursor = !m_data.showCursor;

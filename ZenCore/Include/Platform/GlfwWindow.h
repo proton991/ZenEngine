@@ -50,6 +50,7 @@ public:
     }
 
 private:
+    static void OnWindowSize(GLFWwindow* handle, int width, int height);
     void SetupWindowCallbacks();
     bool CenterWindow();
     void Destroy();
