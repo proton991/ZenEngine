@@ -1,5 +1,7 @@
 # Vulkan tests
 
+`VulkanPipelineIntegrationTest.MultisampleMasksProduceExpectedResolvedPixels` draws and resolves a 4x MSAA color target, checking every pixel with the default mask, explicit one/two-sample masks, and a zero mask. RenderCore pipeline-key tests also distinguish masks that differ above bit 31.
+
 `VulkanRHITest` runs the CPU-only reflection, conversion, resource-create-info and descriptor-layout identity tests. It does not initialize Vulkan or require a GPU.
 
 Resource creation tests cover all graphics/compute/transfer family alias patterns, transfer usage, and the lifetime of the allocation callback's family-index storage. `VulkanAsyncComputeIntegrationTest` checks actual buffer/image creation arguments, the reported async transfer-buffer clear regression, storage-only graphics → compute → graphics access, and transfer → compute → graphics buffer/image access. Native semaphore handoffs run without intermediate host waits and check shader output in both timeline and fence completion modes. GPU cases explicitly skip if the compute family is not distinct from graphics and transfer.

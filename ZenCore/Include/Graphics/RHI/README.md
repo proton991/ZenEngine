@@ -92,6 +92,8 @@ Callers still provide image transitions for the selected subresources and retain
 
 ## Vulkan command recording and pipeline compilation
 
+`RHIGfxPipelineMultiSampleState::sampleMasks` is a 64-bit coverage mask: bit i enables sample i. It defaults to all samples enabled, including after changing `sampleCount`. Explicit zero or partial masks are preserved. Vulkan receives the low and high 32-bit words in sample order, and RenderCore pipeline keys include the full mask.
+
 Each native command buffer caches its graphics and compute pipeline/descriptor bindings independently. Unchanged descriptor sets and dynamic offsets avoid another native bind, but descriptor resolution, cache-epoch checks, pending writes and workload pool retention still run before every draw/dispatch. Dynamic-offset scratch arrays retain their storage across draws. Vertex buffers and offsets also avoid repeated native binds when unchanged.
 
 Beginning a command-buffer recording invalidates all cached native state, including when its Vulkan handle is reused. A graphics pipeline change invalidates cached dynamic values; the backend binds the pipeline first and then emits only the states it declares dynamic. Supported dynamic states remain viewport, scissor, line width and depth bias. Blend constants belong to `RHIGfxPipelineColorBlendState`; the current RHI has no dynamic blend-constant flag.

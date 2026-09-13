@@ -414,12 +414,8 @@ struct RHIGfxPipelineMultiSampleState
     float minSampleShading{0.0f};
     bool enableAlphaToCoverage{false};
     bool enableAlphaToOne{false};
-    uint32_t sampleMasks{0};
-
-    RHIGfxPipelineMultiSampleState()
-    {
-        sampleMasks = 1u << ToUnderlying(sampleCount);
-    }
+    // Bit i enables sample i. Keep all samples enabled when sampleCount changes.
+    uint64_t sampleMasks{UINT64_MAX};
 };
 
 enum class RHIStencilOp : uint32_t

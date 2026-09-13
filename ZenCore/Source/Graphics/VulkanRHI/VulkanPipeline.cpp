@@ -553,6 +553,10 @@ void VulkanPipeline::InitGraphics()
 
     // Multisample state
     const RHIGfxPipelineMultiSampleState& multisampleState = m_gfxStates.multiSampleState;
+    // Vulkan consumes one 32-bit word per 32 samples, in sample-index order.
+    const VkSampleMask sampleMasks[] = {
+        static_cast<VkSampleMask>(multisampleState.sampleMasks),
+        static_cast<VkSampleMask>(multisampleState.sampleMasks >> 32)};
     VkPipelineMultisampleStateCreateInfo MSStateCI;
     InitVkStruct(MSStateCI, VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO);
     MSStateCI.rasterizationSamples  = ToVkSampleCountFlagBits(multisampleState.sampleCount);
@@ -560,7 +564,7 @@ void VulkanPipeline::InitGraphics()
     MSStateCI.minSampleShading      = multisampleState.minSampleShading;
     MSStateCI.alphaToCoverageEnable = multisampleState.enableAlphaToCoverage;
     MSStateCI.alphaToOneEnable      = multisampleState.enableAlphaToOne;
-    MSStateCI.pSampleMask           = &multisampleState.sampleMasks;
+    MSStateCI.pSampleMask           = sampleMasks;
 
     // Depth Stencil
     const RHIGfxPipelineDepthStencilState& depthStencilState = m_gfxStates.depthStencilState;

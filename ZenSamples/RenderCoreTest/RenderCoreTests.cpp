@@ -10956,6 +10956,12 @@ TEST_F(RenderCoreTest, PipelineKeysCompareDescriptorsAndSurviveHashCollisions)
     }
 
     Access::CheckCollisions(shader, layout);
+    // A 64-sample pipeline must retain mask bits above the first Vulkan mask word.
+    RHIGfxPipelineStates fullMask         = base;
+    fullMask.multiSampleState.sampleCount = SampleCount::e64;
+    RHIGfxPipelineStates partialMask      = fullMask;
+    partialMask.multiSampleState.sampleMasks ^= uint64_t{1} << 40;
+    EXPECT_FALSE(Access::Key(shader, fullMask, layout) == Access::Key(shader, partialMask, layout));
     // Bitwise float identity remains reflexive, including unusual payloads.
     base.rasterizationState.lineWidth = std::numeric_limits<float>::quiet_NaN();
 

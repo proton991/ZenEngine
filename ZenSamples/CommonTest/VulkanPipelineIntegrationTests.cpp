@@ -398,6 +398,81 @@ TEST_F(VulkanPipelineIntegrationTest, IndependentColorAndAlphaFactorsProduceExpe
     buffer->Unmap();
 }
 
+TEST_F(VulkanPipelineIntegrationTest, MultisampleMasksProduceExpectedResolvedPixels)
+{
+    auto* shader = Shader();
+    struct MaskCase
+    {
+        bool useDefault;
+        uint64_t mask;
+        uint32_t red;
+    };
+    const MaskCase cases[] = {{true, 0, 255}, {false, 1, 64}, {false, 3, 128}, {false, 0, 0}};
+    for (const MaskCase& testCase : cases)
+    {
+        SCOPED_TRACE(testing::Message()
+                     << "default=" << testCase.useDefault << " mask=" << testCase.mask);
+        RHITextureCreateInfo textureInfo{};
+        textureInfo.type   = RHITextureType::e2D;
+        textureInfo.format = DataFormat::eR8G8B8A8UNORM;
+        textureInfo.width = textureInfo.height = 4;
+        textureInfo.samples                    = SampleCount::e4;
+        textureInfo.usageFlags.SetFlags(RHITextureUsageFlagBits::eColorAttachment,
+                                        RHITextureUsageFlagBits::eTransferSrc,
+                                        RHITextureUsageFlagBits::eTransferDst);
+        auto* color = static_cast<VulkanTexture*>(session->rhi.CreateTexture(textureInfo));
+        textures.push_back(color);
+        textureInfo.samples = SampleCount::e1;
+        auto* resolved      = static_cast<VulkanTexture*>(session->rhi.CreateTexture(textureInfo));
+        textures.push_back(resolved);
+        auto* buffer = Buffer();
+
+        RHIRenderingLayout layout{};
+        layout.SetRenderArea(0, 0, 4, 4);
+        layout.AddColorRenderTarget(color->GetFormat(), color, RHIRenderTargetLoadOp::eClear,
+                                    RHIRenderTargetStoreOp::eStore,
+                                    RHIRenderTargetClearValue(Color(0, 0, 0, 0)));
+        RHIGfxPipelineStates states{};
+        states.colorBlendState.AddAttachment();
+        states.multiSampleState.sampleCount = SampleCount::e4;
+        if (!testCase.useDefault)
+        {
+            states.multiSampleState.sampleMasks = testCase.mask;
+        }
+        auto* pipeline = Graphics(shader, layout, states);
+        Transition(color, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0,
+                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        context->RHIBeginRendering(&layout);
+        context->RHIBindPipeline(pipeline);
+        context->RHIDraw(3, 1, 0, 0);
+        context->RHIEndRendering();
+        Transition(color, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                   VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+        Transition(resolved, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+        context->RHIResolveTexture(color, resolved, 0, 0, 0, 0);
+        Transition(resolved, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+                   VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+        Copy(resolved, buffer, VK_IMAGE_ASPECT_COLOR_BIT);
+        SubmitAndWait(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        const auto* pixels = buffer->Map();
+        for (uint32_t pixel = 0; pixel < 16; ++pixel)
+        {
+            SCOPED_TRACE(pixel);
+            EXPECT_NEAR(pixels[pixel * 4], testCase.red, 1);
+            EXPECT_EQ(pixels[pixel * 4 + 1], 0);
+            EXPECT_EQ(pixels[pixel * 4 + 2], 0);
+        }
+        buffer->Unmap();
+    }
+}
+
 TEST_F(VulkanPipelineIntegrationTest, SparseBlendMaskPreservesRenderTargetLocations)
 {
     RHIRenderingLayout layout{};
