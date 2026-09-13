@@ -2,9 +2,12 @@
 #include "Graphics/RHI/RHIResource.h"
 #include "VulkanHeaders.h"
 #include "VulkanMemory.h"
+#include "Templates/SmallVector.h"
 
 namespace zen
 {
+class VulkanQueue;
+
 class VulkanBuffer : public RHIBuffer
 {
 public:
@@ -52,6 +55,8 @@ struct VulkanUniformBufferBlock
     uint32_t offset{0};
     uint32_t size{0};
     uint8_t* pMapped{nullptr};
+    uint64_t blockId{0};
+    uint64_t generation{0};
 
     bool IsValid() const
     {
@@ -64,7 +69,8 @@ class VulkanUniformBufferAllocator
 public:
     VulkanUniformBufferAllocator() = default;
 
-    void Init(uint32_t numSlots, uint32_t blockSize, uint32_t maxBlocksPerSlot);
+    // Reserve block metadata up front; each slot can grow without invalidating earlier allocations.
+    void Init(uint32_t numSlots, uint32_t blockSize, uint32_t reservedBlocksPerSlot);
 
     void Destroy();
 
@@ -72,14 +78,48 @@ public:
 
     VulkanUniformBufferBlock Alloc(uint32_t size);
 
+    static constexpr uint32_t kTrimDelay = 120;
+
+    uint32_t GetAllocatedBlockCount(uint32_t slotIndex) const;
+
+    // Allocation views are borrowed. Native workloads register each referenced block
+    // once, then transfer that recording to an accepted queue serial or discard it.
+    uint64_t GetBlockGeneration(uint64_t blockId) const;
+    void RecordBlock(uint64_t blockId);
+    void SubmitBlock(uint64_t blockId, const VulkanQueue* pQueue, uint64_t serial);
+    void DiscardBlock(uint64_t blockId);
+
 private:
+    struct QueueSerial
+    {
+        const VulkanQueue* pQueue{nullptr};
+        uint64_t serial{0};
+    };
+
+    struct Block
+    {
+        VulkanUniformBufferBlock memory;
+        SmallVector<QueueSerial, 3> submissions;
+        uint64_t lastNeededReuseSerial{0};
+        uint32_t pendingRecordings{0};
+        bool resetPending{false};
+
+        bool CanReuse() const;
+    };
+
     struct Slot
     {
-        HeapVector<VulkanUniformBufferBlock> blocks;
+        HeapVector<Block> blocks;
         uint32_t currentBlockIdx{0};
+        uint32_t usedBlocks{0};
+        uint64_t reuseSerial{0};
     };
 
     VulkanUniformBufferBlock CreateBlock() const;
+
+    void DestroyBlock(VulkanUniformBufferBlock& block) const;
+
+    Block* FindBlock(uint64_t blockId);
 
     HeapVector<Slot> m_slots;
 
@@ -87,8 +127,9 @@ private:
 
     uint32_t m_currentSlotIdx{0};
 
-    uint32_t m_maxBlocksPerSlot{0};
-
     uint32_t m_alignment{256};
+
+    // Never reset on Destroy/Init: an old cached location must not match new storage.
+    uint64_t m_nextGeneration{0};
 };
 } // namespace zen

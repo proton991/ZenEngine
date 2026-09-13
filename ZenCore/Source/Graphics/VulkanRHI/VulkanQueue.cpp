@@ -4,6 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include <chrono>
 
 namespace zen
@@ -138,6 +139,11 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
     pWorkload->m_commandBuffers.clear();
     pWorkload->m_descriptorContainers.clear();
     pWorkload->m_bindlessUses.clear();
+    for (uint64_t blockId : pWorkload->m_uniformBufferBlocks)
+    {
+        GVulkanRHI->GetUniformBufferAllocator()->DiscardBlock(blockId);
+    }
+    pWorkload->m_uniformBufferBlocks.clear();
     pWorkload->m_submissionSerial = 0;
     pWorkload->m_pMergedInto      = nullptr;
     pWorkload->m_waitSemaphoreInfos.clear();
@@ -229,7 +235,11 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithFences(uint64_t& lastSubmiss
     while (!m_workloadsPendingSubmit.Empty())
     {
         VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
-        pWorkload->m_pFence       = pFenceManager->CreateFence();
+        // A rejected attempt keeps its unsignaled fence. Preserve it on retry.
+        if (pWorkload->m_pFence == nullptr)
+        {
+            pWorkload->m_pFence = pFenceManager->CreateFence();
+        }
 
         VkSubmitInfo submitInfo;
         InitVkStruct(submitInfo, VK_STRUCTURE_TYPE_SUBMIT_INFO);
@@ -415,6 +425,12 @@ void VulkanQueue::AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
 void VulkanQueue::QueueSubmittedWorkload(VulkanWorkload* pWorkload, uint64_t submissionSerial)
 {
     pWorkload->m_submissionSerial = submissionSerial;
+    // Transfer recording counts only after acceptance, including all merged recordings.
+    for (uint64_t blockId : pWorkload->m_uniformBufferBlocks)
+    {
+        GVulkanRHI->GetUniformBufferAllocator()->SubmitBlock(blockId, this, submissionSerial);
+    }
+    pWorkload->m_uniformBufferBlocks.clear();
     // Only called after vkQueueSubmit succeeds. Merging already transfers all
     // signal entries to the root, so no separate receipt or child traversal is needed.
     for (const VulkanWorkload::SignalSemaphoreInfo& signal : pWorkload->m_signalSemaphoreInfos)

@@ -261,6 +261,7 @@ private:
     HeapVector<VulkanWorkload*> m_mergedWorkloads;
     HeapVector<RefCountPtr<VulkanDescriptorPoolSetContainer>> m_descriptorContainers;
     HeapVector<RefCountPtr<RHIBindlessUse>> m_bindlessUses;
+    HeapVector<uint64_t> m_uniformBufferBlocks;
 
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
@@ -344,6 +345,8 @@ public:
     void RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer);
 
     void RetainBindlessUse(RHIBindlessUse* pUse);
+
+    void RecordUniformBufferBlock(uint64_t blockId);
 
     // Finalize the current workload, then append all staged workloads to the output array.
     void CollectWorkloads(HeapVector<VulkanWorkload*>& outWorkloads);

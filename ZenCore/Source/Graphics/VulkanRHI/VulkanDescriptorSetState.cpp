@@ -524,6 +524,8 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
                 bindingState.dynamicOffsets.resize(param.arrayIndex + 1);
             }
             bindingState.dynamicOffsets[param.arrayIndex] = param.bufferOffset;
+            bindingState.uniformBlockId                   = 0;
+            bindingState.uniformGeneration                = 0;
             const RHIShaderResourceDescriptor* srd =
                 m_pPipeline->GetShader()->GetSRDByLocation(param.set, param.binding);
             bindingState.valueRange = srd != nullptr ? srd->blockSize : 0;
@@ -789,6 +791,10 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
                         // workload. Queue retirement releases this ownership.
                         pContext->RetainDescriptorPool(setState.pContainer);
                     }
+                    for (const BindingState& binding : setState.bindings)
+                    {
+                        pContext->RecordUniformBufferBlock(binding.uniformBlockId);
+                    }
                     outDescriptorSets[i - firstUsed] = setState.vkSet;
                     AppendDynamicOffsetsForSet(i, outDynamicOffsets);
                 }
@@ -889,6 +895,23 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
     {
         for (PackedValueBufferState& bufferState : m_packedValueBuffers)
         {
+            SetState& setState         = m_setStates[bufferState.setIdx];
+            BindingState& bindingState = FindOrAddBinding(setState, bufferState.bindingIdx,
+                                                          RHIShaderResourceType::eUniformBuffer);
+            // Cached values retain CPU bytes, not transient buffer ownership. Refresh
+            // before resolving descriptors if the slot was reused or its tail was trimmed.
+            if (bindingState.uniformBlockId != 0 &&
+                pAllocator->GetBlockGeneration(bindingState.uniformBlockId) !=
+                    bindingState.uniformGeneration)
+            {
+                bufferState.dirty = true;
+                // The old native buffer may already have been destroyed. Do not leave
+                // a dangling resource in descriptor resolution if the upload must retry.
+                bindingState.srb.resources.clear();
+                bindingState.uniformBlockId    = 0;
+                bindingState.uniformGeneration = 0;
+                setState.dirty                 = true;
+            }
             if (bufferState.dirty && bufferState.blockSize > 0)
             {
                 VulkanUniformBufferBlock block = pAllocator->Alloc(bufferState.blockSize);
@@ -898,18 +921,17 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
                 {
                     std::memcpy(block.pMapped, bufferState.bytes.data(), bufferState.blockSize);
 
-                    SetState& setState         = m_setStates[bufferState.setIdx];
-                    BindingState& bindingState = FindOrAddBinding(
-                        setState, bufferState.bindingIdx, RHIShaderResourceType::eUniformBuffer);
-
                     const bool bufferChanged = bindingState.srb.resources.size() != 1 ||
                         bindingState.srb.resources[0] != block.pBuffer ||
+                        bindingState.uniformGeneration != block.generation ||
                         bindingState.valueRange != bufferState.blockSize;
                     bindingState.srb.resources.clear();
                     bindingState.srb.resources.push_back(block.pBuffer);
                     bindingState.dynamicOffsets.resize(1);
                     bindingState.dynamicOffsets[0] = block.offset;
                     bindingState.valueRange    = bufferState.blockSize;
+                    bindingState.uniformBlockId    = block.blockId;
+                    bindingState.uniformGeneration = block.generation;
                     setState.dirty |= bufferChanged;
                     bufferState.dirty = false;
                 }

@@ -402,6 +402,10 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
     m_signalSemaphoreInfos.push_back(pOtherWorkload->m_signalSemaphoreInfos);
     pOtherWorkload->m_signalSemaphoreInfos.clear();
 
+    // Keep duplicate IDs: each source recording contributed its own pending count.
+    m_uniformBufferBlocks.push_back(pOtherWorkload->m_uniformBufferBlocks);
+    pOtherWorkload->m_uniformBufferBlocks.clear();
+
     pOtherWorkload->m_pMergedInto = this;
     m_mergedWorkloads.push_back(pOtherWorkload);
 }
@@ -429,7 +433,7 @@ bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) 
     return pWorkload != nullptr &&
         (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
          !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_descriptorContainers.empty() ||
-         !pWorkload->m_bindlessUses.empty());
+         !pWorkload->m_bindlessUses.empty() || !pWorkload->m_uniformBufferBlocks.empty());
 }
 
 VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
@@ -534,6 +538,19 @@ void VulkanCommandContextBase::RetainBindlessUse(RHIBindlessUse* pUse)
 void VulkanCommandContextBase::RetainDescriptorPool(VulkanDescriptorPoolSetContainer* pContainer)
 {
     GetWorkload(WorkloadPhase::eExecute)->RetainDescriptorPool(pContainer);
+}
+
+void VulkanCommandContextBase::RecordUniformBufferBlock(uint64_t blockId)
+{
+    if (blockId != 0)
+    {
+        auto& blocks = GetWorkload(WorkloadPhase::eExecute)->m_uniformBufferBlocks;
+        if (std::find(blocks.begin(), blocks.end(), blockId) == blocks.end())
+        {
+            GVulkanRHI->GetUniformBufferAllocator()->RecordBlock(blockId);
+            blocks.push_back(blockId);
+        }
+    }
 }
 
 void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)

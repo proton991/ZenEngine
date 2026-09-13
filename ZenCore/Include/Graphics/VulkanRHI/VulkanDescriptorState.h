@@ -29,6 +29,8 @@ private:
         RHIShaderResourceBinding srb;
         HeapVector<uint32_t> dynamicOffsets;
         uint32_t valueRange{0};
+        uint64_t uniformBlockId{0};
+        uint64_t uniformGeneration{0};
     };
 
     struct SetState

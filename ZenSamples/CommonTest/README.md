@@ -1,5 +1,7 @@
 # Vulkan tests
 
+`VulkanRecordingIntegrationTest.PackedUniformGrowthPreservesEarlierValuesAndReusesBlocks` checks growth past the former eight-block limit, GPU reads of both earlier and later packed values, and reuse of the grown blocks after completion. It exercises the allocator through its public API without changing the descriptor or draw/dispatch interfaces.
+
 `VulkanPipelineIntegrationTest.MultisampleMasksProduceExpectedResolvedPixels` draws and resolves a 4x MSAA color target, checking every pixel with the default mask, explicit one/two-sample masks, and a zero mask. RenderCore pipeline-key tests also distinguish masks that differ above bit 31.
 
 `VulkanRHITest` runs the CPU-only reflection, conversion, resource-create-info and descriptor-layout identity tests. It does not initialize Vulkan or require a GPU.
@@ -20,6 +22,8 @@ $env:VK_LAYER_VALIDATE_SYNC = '1'
 ```
 
 The descriptor integration suite includes 2,049 real compute dispatches across cache eviction, checked GPU output, delayed completion polling, unchanged bindings in a new workload, stale resolved handles, sparse arrays, binding ordering, resource generations, UBO ranges and packed/external UBO switching. Pool ownership and submission failure cases exercise both timeline-semaphore and fence modes.
+
+Uniform allocator regressions (`VulkanUniformTrimIntegrationTest.*` and `*VulkanUniformQueueTrimTest.*`) check the 120-reuse trimming cooldown, renewed demand, one spare block, idle retention, independent slots, regrowth, and protection against overwriting unsubmitted recordings. GPU readback verifies generation-based refresh after both block recycling and destruction. Native timeline waits gate GPU work while both timeline and fence completion tracking are tested, including independent graphics/compute serials, duplicate block counts across merged recordings, context destruction, rejected submission retry/discard, and uncertain submissions surviving unrelated completion. The existing packed-uniform growth test also checks values and block reuse beyond the former eight-block limit.
 
 Pipeline integration tests check bool/int/float specialization payloads and compute results, all 16 dynamic-state combinations (including static viewport/scissor fallback), independent RGB/alpha blend factors with pixel readback, sparse color-attachment locations, and format-derived image aspects. Depth/stencil cases create actual pipelines and read back rendering clears for D16, D32, S8, D24S8 and D32S8; individual unsupported formats are explicitly skipped. Reflection tests also check specialization IDs shared across vertex and fragment stages. These tests use public RHI APIs and observe Vulkan calls while forwarding them to the driver.
 

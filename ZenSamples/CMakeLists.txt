@@ -30,7 +30,7 @@ foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag
         descriptor_uniform.comp descriptor_uniform_large.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
         binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
-        recording_uniform.frag recording_vertex.vert async_resources.comp binding_texel.comp)
+        recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp)
     set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
     add_custom_command(OUTPUT "${OUTPUT}"

@@ -313,6 +313,508 @@ protected:
     }
 };
 
+TEST_F(VulkanRecordingIntegrationTest, PackedUniformGrowthPreservesEarlierValuesAndReusesBlocks)
+{
+    auto* shader = Shader("recording_uniform.comp.spv", true);
+    RHIComputePipelineCreateInfo info{};
+    info.pShader   = shader;
+    auto* pipeline = session->rhi.CreatePipeline(info);
+    pipelines.push_back(pipeline);
+    auto* first     = Buffer();
+    auto* second    = Buffer();
+    auto* allocator = session->rhi.GetUniformBufferAllocator();
+    HeapVector<RHIBuffer*> previousBlocks;
+    context->RHIBindPipeline(pipeline);
+
+    auto dispatch = [&](VulkanBuffer* output, uint32_t value) {
+        const uint32_t values[4]{value, 0, 0, 0};
+        RHIBatchedShaderParameters parameters;
+        parameters.AddValueParam(*shader->GetSRDByLocation(0, 0), values, sizeof(values));
+        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), output, nullptr, 0);
+        context->RHISetShaderParameters(parameters);
+        context->RHIDispatch(1, 1, 1);
+    };
+
+    for (uint32_t round = 0; round < 2; ++round)
+    {
+        SCOPED_TRACE(round);
+        // The prior round has completed before this slot's storage is reused.
+        allocator->BeginFrame(0);
+        dispatch(first, 7 + round);
+        HeapVector<RHIBuffer*> blocks;
+        auto allocation = allocator->Alloc(16);
+        ASSERT_TRUE(allocation.IsValid());
+        blocks.push_back(allocation.pBuffer);
+        // Fill blocks 1..7 after the first dispatch has used part of block 0.
+        // The next packed update must grow past the former eight-block limit.
+        for (uint32_t block = 0; block < 7; ++block)
+        {
+            allocation = allocator->Alloc(4 * 1024 * 1024);
+            ASSERT_TRUE(allocation.IsValid());
+            blocks.push_back(allocation.pBuffer);
+        }
+        dispatch(second, 29 + round);
+        allocation = allocator->Alloc(16);
+        ASSERT_TRUE(allocation.IsValid());
+        blocks.push_back(allocation.pBuffer);
+        SubmitAndWait();
+        const uint32_t firstValue = *reinterpret_cast<const uint32_t*>(first->Map());
+        first->Unmap();
+        const uint32_t secondValue = *reinterpret_cast<const uint32_t*>(second->Map());
+        second->Unmap();
+        EXPECT_EQ(firstValue, 7u + round);
+        EXPECT_EQ(secondValue, 29u + round);
+        // Compare actual buffer identities to verify reuse between completed frames.
+        if (round != 0)
+        {
+            ASSERT_EQ(blocks.size(), previousBlocks.size());
+            for (uint32_t i = 0; i < blocks.size(); ++i)
+            {
+                EXPECT_EQ(blocks[i], previousBlocks[i]);
+            }
+        }
+        previousBlocks = std::move(blocks);
+    }
+}
+
+class VulkanUniformTrimIntegrationTest : public VulkanRecordingIntegrationTest
+{
+protected:
+    static constexpr uint32_t blockSize = 1024;
+    VulkanUniformBufferAllocator* allocator{};
+
+    void SetUp() override
+    {
+        VulkanRecordingIntegrationTest::SetUp();
+        allocator = session->rhi.GetUniformBufferAllocator();
+        allocator->Destroy();
+        allocator->Init(2, blockSize, 1);
+    }
+
+    void Fill(uint32_t count)
+    {
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            auto allocation = allocator->Alloc(blockSize);
+            ASSERT_TRUE(allocation.IsValid());
+            std::memset(allocation.pMapped, 0xCD, allocation.size);
+        }
+    }
+
+    void LowDemand(uint32_t reuses)
+    {
+        for (uint32_t i = 0; i < reuses; ++i)
+        {
+            Fill(1);
+            allocator->BeginFrame(0);
+        }
+    }
+
+    VulkanShader* BindCompute()
+    {
+        auto* shader = Shader("recording_uniform.comp.spv", true);
+        RHIComputePipelineCreateInfo info{};
+        info.pShader   = shader;
+        auto* pipeline = session->rhi.CreatePipeline(info);
+        pipelines.push_back(pipeline);
+        context->RHIBindPipeline(pipeline);
+        return shader;
+    }
+
+    void Dispatch(VulkanShader* shader, VulkanBuffer* output, uint32_t value)
+    {
+        const uint32_t values[4]{value, 0, 0, 0};
+        RHIBatchedShaderParameters parameters;
+        parameters.AddValueParam(*shader->GetSRDByLocation(0, 0), values, sizeof(values));
+        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), output, nullptr, 0);
+        context->RHISetShaderParameters(parameters);
+        context->RHIDispatch(1, 1, 1);
+    }
+
+    void ReleaseCachedUniform(VulkanShader* shader)
+    {
+        auto parameters = Parameters(shader, Buffer());
+        context->RHISetShaderParameters(parameters);
+    }
+
+    void CheckValue(VulkanBuffer* output, uint32_t value)
+    {
+        EXPECT_EQ(*reinterpret_cast<const uint32_t*>(output->Map()), value);
+        output->Unmap();
+    }
+
+    void Enqueue(FVulkanCommandListContext* source)
+    {
+        HeapVector<VulkanWorkload*> workloads;
+        source->CollectWorkloads(workloads);
+        for (auto* workload : workloads)
+        {
+            source->GetQueue()->EnqueueWorkload(workload);
+        }
+    }
+};
+
+TEST_F(VulkanUniformTrimIntegrationTest, CooldownKeepsSpareAndRegrowsIndependentlyPerSlot)
+{
+    Fill(9);
+    allocator->BeginFrame(1);
+    Fill(5);
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay - 1);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 9u);
+    // Another peak restarts the cooldown instead of freeing and recreating blocks.
+    Fill(9);
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay - 1);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 9u);
+    LowDemand(1);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(1), 5u);
+    Fill(9);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 9u);
+    allocator->BeginFrame(0);
+    // An entirely idle slot eventually retains just one warm block.
+    for (uint32_t i = 0; i < allocator->kTrimDelay; ++i)
+    {
+        allocator->BeginFrame(0);
+    }
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 1u);
+}
+
+TEST_F(VulkanUniformTrimIntegrationTest, UnsubmittedRecordingPreventsTrimmingAndOverwrite)
+{
+    Fill(3);
+    auto retained = allocator->Alloc(blockSize);
+    ASSERT_TRUE(retained.IsValid());
+    context->RecordUniformBufferBlock(retained.blockId);
+    context->RecordUniformBufferBlock(retained.blockId); // Deduplicated within one workload.
+    context->GetCommandBuffer();
+    *reinterpret_cast<uint32_t*>(retained.pMapped) = 73;
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    Fill(4); // Must skip the pinned fourth block and grow a fifth.
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 5u);
+    EXPECT_EQ(*reinterpret_cast<const uint32_t*>(retained.pMapped), 73u);
+    ZEN_DELETE(context); // Abandon recording without ever assigning a queue serial.
+    context = static_cast<FVulkanCommandListContext*>(
+        session->rhi.GetCommandContext(RHICommandContextType::eGraphics));
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_F(VulkanUniformTrimIntegrationTest, CachedAndUnsubmittedPackedValuesSurviveTrimming)
+{
+    auto* shader = BindCompute();
+    auto* first  = Buffer();
+    auto* second = Buffer();
+    Fill(3);
+    Dispatch(shader, first, 73);
+    SubmitAndWait();
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+    // Cached CPU bytes survive destruction of the old buffer. Regrow into the
+    // same block location, then re-upload the clean value in a new workload.
+    Fill(3);
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    context->RHISetShaderParameters(parameters);
+    context->RHIDispatch(1, 1, 1);
+    ReleaseCachedUniform(shader);
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    SubmitAndWait();
+    CheckValue(first, 73);
+    CheckValue(second, 73);
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+    Dispatch(shader, second, 91);
+    SubmitAndWait();
+    CheckValue(second, 91);
+}
+
+TEST_F(VulkanUniformTrimIntegrationTest, RecycledBlockRefreshesCleanPackedValues)
+{
+    auto* shader = BindCompute();
+    auto* first  = Buffer();
+    auto* second = Buffer();
+    Dispatch(shader, first, 73);
+    SubmitAndWait();
+    allocator->BeginFrame(0);
+    auto overwrite = allocator->Alloc(16);
+    ASSERT_TRUE(overwrite.IsValid());
+    std::memset(overwrite.pMapped, 0xCD, overwrite.size);
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    context->RHISetShaderParameters(parameters);
+    context->RHIDispatch(1, 1, 1);
+    SubmitAndWait();
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 1u);
+    CheckValue(first, 73);
+    CheckValue(second, 73);
+}
+
+// Gate real GPU work while testing either production completion backend.
+class UniformHostGate
+{
+public:
+    explicit UniformHostGate(VulkanDevice* device) : device(device)
+    {
+        VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+        type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        info.pNext = &type;
+        EXPECT_EQ(vkCreateSemaphore(device->GetVkHandle(), &info, nullptr, &semaphore), VK_SUCCESS);
+        const uint64_t value = 1;
+        VkTimelineSemaphoreSubmitInfo timeline{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+        timeline.waitSemaphoreValueCount = 1;
+        timeline.pWaitSemaphoreValues    = &value;
+        const VkPipelineStageFlags stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.pNext              = &timeline;
+        submit.waitSemaphoreCount = 1;
+        submit.pWaitSemaphores    = &semaphore;
+        submit.pWaitDstStageMask  = &stage;
+        EXPECT_EQ(vkQueueSubmit(device->GetGfxQueue()->GetVkHandle(), 1, &submit, VK_NULL_HANDLE),
+                  VK_SUCCESS);
+    }
+    ~UniformHostGate()
+    {
+        Open();
+        device->WaitForIdle();
+        vkDestroySemaphore(device->GetVkHandle(), semaphore, nullptr);
+    }
+    void Open()
+    {
+        if (!opened)
+        {
+            VkSemaphoreSignalInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+            info.semaphore = semaphore;
+            info.value     = 1;
+            EXPECT_EQ(vkSignalSemaphore(device->GetVkHandle(), &info), VK_SUCCESS);
+            opened = true;
+        }
+    }
+
+private:
+    VulkanDevice* device;
+    VkSemaphore semaphore{};
+    bool opened{false};
+};
+
+class VulkanUniformQueueTrimTest :
+    public VulkanUniformTrimIntegrationTest,
+    public testing::WithParamInterface<bool>
+{
+    void SetUp() override
+    {
+        VulkanUniformTrimIntegrationTest::SetUp();
+        ASSERT_TRUE(session->rhi.GetDevice()->SupportsTimelineSemaphore());
+        session->rhi.GetDevice()->GetExtensionFlags().hasTimelineSemaphore = GetParam();
+    }
+};
+
+TEST_P(VulkanUniformQueueTrimTest, PendingGPUReadPinsStorageUntilCompletion)
+{
+    auto* shader = BindCompute();
+    auto* output = Buffer();
+    Fill(3);
+    Dispatch(shader, output, 73);
+    ReleaseCachedUniform(shader);
+    UniformHostGate gate(session->rhi.GetDevice());
+    Enqueue(context);
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    gate.Open();
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    SubmitAndWait(); // Make the completed compute write visible to the host.
+    CheckValue(output, 73);
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_P(VulkanUniformQueueTrimTest, MergedRejectedWorkloadsPinStorageUntilDiscard)
+{
+    Fill(3);
+    auto allocation = allocator->Alloc(blockSize);
+    ASSERT_TRUE(allocation.IsValid());
+    // Only the child references the block; merging must preserve its pending count.
+    context->GetCommandBuffer();
+    Enqueue(context);
+    context->RecordUniformBufferBlock(allocation.blockId);
+    context->GetCommandBuffer();
+    Enqueue(context);
+    allocation      = {};
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    {
+        test::ScopedVulkanCall<PFN_vkQueueSubmit> reject(
+            vkQueueSubmit, +[](VkQueue, uint32_t, const VkSubmitInfo*, VkFence) -> VkResult {
+                return VK_ERROR_OUT_OF_HOST_MEMORY;
+            });
+        EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eRejected);
+    }
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    queue->DiscardPendingWorkloads();
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_P(VulkanUniformQueueTrimTest, AcceptedRecordingsReleaseDuplicateBlockCounts)
+{
+    auto* shader = BindCompute();
+    auto* first  = Buffer();
+    auto* second = Buffer();
+    Fill(3);
+    Dispatch(shader, first, 73);
+    Enqueue(context);
+    RHIBatchedShaderParameters parameters;
+    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    context->RHISetShaderParameters(parameters);
+    context->RHIDispatch(1, 1, 1); // Same block in another recording (merged in timeline mode).
+    Enqueue(context);
+    ReleaseCachedUniform(shader);
+    UniformHostGate gate(session->rhi.GetDevice());
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    gate.Open();
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    SubmitAndWait();
+    CheckValue(first, 73);
+    CheckValue(second, 73);
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_P(VulkanUniformQueueTrimTest, EveryQueueMustCompleteItsOwnSerial)
+{
+    auto destroyContext = [](FVulkanCommandListContext* value) {
+        ZEN_DELETE(value);
+    };
+    auto compute = std::unique_ptr<FVulkanCommandListContext, decltype(destroyContext)>(
+        static_cast<FVulkanCommandListContext*>(
+            session->rhi.GetCommandContext(RHICommandContextType::eAsyncCompute)),
+        destroyContext);
+    auto* graphicsQueue = context->GetQueue();
+    auto* computeQueue  = compute->GetQueue();
+    if (graphicsQueue->GetVkHandle() == computeQueue->GetVkHandle())
+    {
+        GTEST_SKIP() << "Requires distinct native graphics and compute queues";
+    }
+    Fill(3);
+    auto allocation = allocator->Alloc(blockSize);
+    ASSERT_TRUE(allocation.IsValid());
+    context->RecordUniformBufferBlock(allocation.blockId);
+    context->GetCommandBuffer();
+    Enqueue(context);
+    UniformHostGate gate(session->rhi.GetDevice());
+    uint64_t graphicsSerial = 0;
+    ASSERT_EQ(graphicsQueue->SubmitPendingWorkloads(graphicsSerial), RHISubmissionResult::eSuccess);
+    // Higher completed serials on compute cannot satisfy an earlier graphics serial.
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        compute->RecordUniformBufferBlock(allocation.blockId);
+        compute->GetCommandBuffer();
+        Enqueue(compute.get());
+        uint64_t computeSerial = 0;
+        ASSERT_EQ(computeQueue->SubmitPendingWorkloads(computeSerial),
+                  RHISubmissionResult::eSuccess);
+        ASSERT_TRUE(computeQueue->WaitForSubmission(computeSerial, UINT64_MAX));
+    }
+    ASSERT_GT(computeQueue->GetLastCompletedSerial(), graphicsSerial);
+    EXPECT_FALSE(graphicsQueue->WaitForSubmission(graphicsSerial, 0));
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    gate.Open();
+    ASSERT_TRUE(graphicsQueue->WaitForSubmission(graphicsSerial, UINT64_MAX));
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_P(VulkanUniformQueueTrimTest, RejectedSubmissionTransfersCountsOnlyOnSuccessfulRetry)
+{
+    auto* shader = BindCompute();
+    auto* output = Buffer();
+    Fill(3);
+    Dispatch(shader, output, 73);
+    ReleaseCachedUniform(shader);
+    Enqueue(context);
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    {
+        test::ScopedVulkanCall<PFN_vkQueueSubmit> reject(
+            vkQueueSubmit, +[](VkQueue, uint32_t, const VkSubmitInfo*, VkFence) -> VkResult {
+                return VK_ERROR_OUT_OF_HOST_MEMORY;
+            });
+        EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eRejected);
+    }
+    EXPECT_EQ(serial, 0u);
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    UniformHostGate gate(session->rhi.GetDevice());
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    gate.Open();
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    SubmitAndWait();
+    CheckValue(output, 73);
+    allocator->BeginFrame(0);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
+}
+
+TEST_P(VulkanUniformQueueTrimTest, UncertainSubmissionRemainsProtectedAfterUnrelatedCompletion)
+{
+    Fill(3);
+    auto allocation = allocator->Alloc(blockSize);
+    ASSERT_TRUE(allocation.IsValid());
+    context->RecordUniformBufferBlock(allocation.blockId);
+    context->GetCommandBuffer();
+    Enqueue(context);
+    auto* queue     = context->GetQueue();
+    uint64_t serial = 0;
+    {
+        test::ScopedVulkanCall<PFN_vkQueueSubmit> fail(
+            vkQueueSubmit, +[](VkQueue, uint32_t, const VkSubmitInfo*, VkFence) -> VkResult {
+                return VK_ERROR_DEVICE_LOST;
+            });
+        EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eFatal);
+    }
+    queue->DiscardPendingWorkloads(true);
+    // The injected failure never reached the driver. Complete unrelated native work
+    // with the serial that the failed batch would have used, without unpinning it.
+    context->GetCommandBuffer();
+    Enqueue(context);
+    ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
+    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    allocator->BeginFrame(0);
+    LowDemand(allocator->kTrimDelay);
+    EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
+    // Uncertain recordings are retained until teardown, which also exercises cleanup
+    // after the allocator has been destroyed and the queue still has abandoned work.
+}
+
+INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanUniformQueueTrimTest, testing::Bool());
+
 TEST_F(VulkanRecordingIntegrationTest, MeasureRepeatedDrawRecording)
 {
     auto* target   = Texture();

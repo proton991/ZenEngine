@@ -126,13 +126,13 @@ void VulkanBuffer::SetTexelFormat(DataFormat format)
 
 void VulkanUniformBufferAllocator::Init(uint32_t numSlots,
                                         uint32_t blockSize,
-                                        uint32_t maxBlocksPerSlot)
+                                        uint32_t reservedBlocksPerSlot)
 {
     VERIFY_EXPR(numSlots > 0);
     VERIFY_EXPR(blockSize > 0);
-    VERIFY_EXPR(maxBlocksPerSlot > 0);
+    VERIFY_EXPR(reservedBlocksPerSlot > 0);
 
-    if (numSlots == 0 || blockSize == 0 || maxBlocksPerSlot == 0)
+    if (numSlots == 0 || blockSize == 0 || reservedBlocksPerSlot == 0)
     {
         return;
     }
@@ -140,18 +140,17 @@ void VulkanUniformBufferAllocator::Init(uint32_t numSlots,
     const size_t uniformBufferAlignment = GVulkanRHI->QueryGPUInfo().uniformBufferAlignment;
     VERIFY_EXPR(uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX);
 
-    m_blockSize        = blockSize;
-    m_maxBlocksPerSlot = maxBlocksPerSlot;
-    m_alignment        = uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX ?
+    m_blockSize      = blockSize;
+    m_alignment      = uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX ?
         static_cast<uint32_t>(uniformBufferAlignment) :
         1;
-    m_currentSlotIdx   = 0;
+    m_currentSlotIdx = 0;
 
     m_slots.resize(numSlots);
 
     for (Slot& slot : m_slots)
     {
-        slot.blocks.reserve(maxBlocksPerSlot);
+        slot.blocks.reserve(reservedBlocksPerSlot);
     }
 }
 
@@ -159,17 +158,9 @@ void VulkanUniformBufferAllocator::Destroy()
 {
     for (Slot& slot : m_slots)
     {
-        for (VulkanUniformBufferBlock& block : slot.blocks)
+        for (Block& block : slot.blocks)
         {
-            if (block.pBuffer != nullptr)
-            {
-                if (block.pMapped != nullptr)
-                {
-                    block.pBuffer->Unmap();
-                }
-
-                GVulkanRHI->DestroyBuffer(block.pBuffer);
-            }
+            DestroyBlock(block.memory);
         }
 
         slot.blocks.clear();
@@ -177,10 +168,9 @@ void VulkanUniformBufferAllocator::Destroy()
     }
 
     m_slots.clear();
-    m_blockSize        = 0;
-    m_currentSlotIdx   = 0;
-    m_maxBlocksPerSlot = 0;
-    m_alignment        = 1;
+    m_blockSize      = 0;
+    m_currentSlotIdx = 0;
+    m_alignment      = 1;
 }
 
 void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
@@ -192,13 +182,113 @@ void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
 
     m_currentSlotIdx = frameNum % static_cast<uint32_t>(m_slots.size());
 
-    Slot& slot           = m_slots[m_currentSlotIdx];
-    slot.currentBlockIdx = 0;
+    Slot& slot = m_slots[m_currentSlotIdx];
+    ++slot.reuseSerial;
 
-    for (VulkanUniformBufferBlock& block : slot.blocks)
+    for (uint32_t i = 0; i < slot.blocks.size(); ++i)
     {
-        block.offset = 0;
+        Block& block = slot.blocks[i];
+        // Keep recent demand plus one spare. Age each slot only when it is reused.
+        if (i <= slot.usedBlocks)
+        {
+            block.lastNeededReuseSerial = slot.reuseSerial;
+        }
+        // Invalidate borrowed cached values before any block can be reset by Alloc.
+        // Recorded commands remain protected by pending counts / queue serials.
+        block.memory.generation = ++m_nextGeneration;
+        block.resetPending      = true;
     }
+
+    while (!slot.blocks.empty())
+    {
+        Block& block = slot.blocks.back();
+        if (slot.reuseSerial - block.lastNeededReuseSerial < kTrimDelay || !block.CanReuse())
+        {
+            break;
+        }
+        DestroyBlock(block.memory);
+        slot.blocks.pop_back();
+    }
+
+    slot.currentBlockIdx = 0;
+    slot.usedBlocks      = 0;
+}
+
+bool VulkanUniformBufferAllocator::Block::CanReuse() const
+{
+    return pendingRecordings == 0 && memory.pBuffer->GetRefCount() == 1 &&
+        std::all_of(submissions.begin(), submissions.end(), [](const QueueSerial& submission) {
+               return submission.pQueue->GetLastCompletedSerial() >= submission.serial;
+           });
+}
+
+VulkanUniformBufferAllocator::Block* VulkanUniformBufferAllocator::FindBlock(uint64_t blockId)
+{
+    // High word identifies the frame slot; low word is block index + 1 (zero is invalid).
+    const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
+    const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
+    if (slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size())
+    {
+        return &m_slots[slotIndex].blocks[blockIndex];
+    }
+    return nullptr;
+}
+
+uint64_t VulkanUniformBufferAllocator::GetBlockGeneration(uint64_t blockId) const
+{
+    const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
+    const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
+    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size() ?
+        m_slots[slotIndex].blocks[blockIndex].memory.generation : 0;
+}
+
+void VulkanUniformBufferAllocator::RecordBlock(uint64_t blockId)
+{
+    Block* block = FindBlock(blockId);
+    VERIFY_EXPR(block != nullptr);
+    if (block != nullptr)
+    {
+        ++block->pendingRecordings;
+    }
+}
+
+void VulkanUniformBufferAllocator::SubmitBlock(uint64_t blockId,
+                                               const VulkanQueue* pQueue,
+                                               uint64_t serial)
+{
+    Block* block = FindBlock(blockId);
+    VERIFY_EXPR(block != nullptr && block->pendingRecordings > 0 && pQueue != nullptr &&
+                serial > 0);
+    if (block != nullptr && block->pendingRecordings > 0 && pQueue != nullptr && serial > 0)
+    {
+        auto entry =
+            std::find_if(block->submissions.begin(), block->submissions.end(),
+                         [pQueue](const QueueSerial& value) { return value.pQueue == pQueue; });
+        if (entry == block->submissions.end())
+        {
+            block->submissions.push_back(QueueSerial{pQueue, serial});
+        }
+        else
+        {
+            entry->serial = std::max(entry->serial, serial);
+        }
+        --block->pendingRecordings;
+    }
+}
+
+void VulkanUniformBufferAllocator::DiscardBlock(uint64_t blockId)
+{
+    Block* block = FindBlock(blockId);
+    VERIFY_EXPR(block != nullptr && block->pendingRecordings > 0);
+    if (block != nullptr && block->pendingRecordings > 0)
+    {
+        --block->pendingRecordings;
+    }
+}
+
+uint32_t VulkanUniformBufferAllocator::GetAllocatedBlockCount(uint32_t slotIndex) const
+{
+    return slotIndex < m_slots.size() ? static_cast<uint32_t>(m_slots[slotIndex].blocks.size()) : 0;
 }
 
 VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
@@ -212,7 +302,7 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
     {
         Slot& slot = m_slots[m_currentSlotIdx];
 
-        while (slot.currentBlockIdx < m_maxBlocksPerSlot)
+        while (true)
         {
             if (slot.currentBlockIdx == slot.blocks.size())
             {
@@ -223,10 +313,28 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
                     break;
                 }
 
-                slot.blocks.push_back(block);
+                block.blockId = (static_cast<uint64_t>(m_currentSlotIdx) << 32) |
+                    (static_cast<uint64_t>(slot.currentBlockIdx) + 1);
+                block.generation              = ++m_nextGeneration;
+                Block& storage                = slot.blocks.emplace_back();
+                storage.memory                = block;
+                storage.lastNeededReuseSerial = slot.reuseSerial;
             }
 
-            VulkanUniformBufferBlock& block = slot.blocks[slot.currentBlockIdx];
+            Block& storage = slot.blocks[slot.currentBlockIdx];
+            if (storage.resetPending)
+            {
+                // Unsubmitted and unfinished GPU work can outlive a slot reuse.
+                if (!storage.CanReuse())
+                {
+                    ++slot.currentBlockIdx;
+                    continue;
+                }
+                storage.memory.offset = 0;
+                storage.resetPending  = false;
+                storage.submissions.clear();
+            }
+            VulkanUniformBufferBlock& block = storage.memory;
             const uint64_t alignedOffset =
                 ((static_cast<uint64_t>(block.offset) + m_alignment - 1) / m_alignment) *
                 m_alignment;
@@ -234,12 +342,15 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
 
             if (allocationEnd <= block.size)
             {
-                allocation.pBuffer = block.pBuffer;
-                allocation.offset  = static_cast<uint32_t>(alignedOffset);
-                allocation.size    = size;
-                allocation.pMapped = block.pMapped + alignedOffset;
+                allocation.pBuffer    = block.pBuffer;
+                allocation.offset     = static_cast<uint32_t>(alignedOffset);
+                allocation.size       = size;
+                allocation.pMapped    = block.pMapped + alignedOffset;
+                allocation.blockId    = block.blockId;
+                allocation.generation = block.generation;
 
-                block.offset = static_cast<uint32_t>(allocationEnd);
+                block.offset    = static_cast<uint32_t>(allocationEnd);
+                slot.usedBlocks = slot.currentBlockIdx + 1;
 
                 break;
             }
@@ -270,10 +381,24 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::CreateBlock() const
         if (block.pMapped == nullptr)
         {
             GVulkanRHI->DestroyBuffer(block.pBuffer);
+            block = {};
         }
     }
 
     return block;
+}
+
+void VulkanUniformBufferAllocator::DestroyBlock(VulkanUniformBufferBlock& block) const
+{
+    if (block.pBuffer != nullptr)
+    {
+        if (block.pMapped != nullptr)
+        {
+            block.pBuffer->Unmap();
+        }
+        GVulkanRHI->DestroyBuffer(block.pBuffer);
+    }
+    block = {};
 }
 
 // BufferHandle VulkanRHI::CreateBuffer(uint32_t size,
