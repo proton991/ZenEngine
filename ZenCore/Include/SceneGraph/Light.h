@@ -32,7 +32,7 @@ public:
 
     static UniquePtr<Light> CreateDirLight(std::string name, const LightProperties& properties)
     {
-        auto light = MakeUnique<Light>(std::move(name));
+        UniquePtr<Light> light = MakeUnique<Light>(std::move(name));
         light->SetProperties(properties);
         light->SetType(LightType::Directional);
         return light;
@@ -40,7 +40,7 @@ public:
 
     static UniquePtr<Light> CreatePointLight(std::string name, const LightProperties& properties)
     {
-        auto light = MakeUnique<Light>(std::move(name));
+        UniquePtr<Light> light = MakeUnique<Light>(std::move(name));
         light->SetProperties(properties);
         light->SetType(LightType::Point);
         return light;

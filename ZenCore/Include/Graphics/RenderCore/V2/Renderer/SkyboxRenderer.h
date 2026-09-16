@@ -81,14 +81,14 @@ private:
     const DataFormat cIrradianceFormat  = DataFormat::eR32G32B32A32SFloat;
     const DataFormat cPrefilteredFormat = DataFormat::eR16G16B16A16SFloat;
 
-    const std::vector<SkyboxVertex> cSkyboxVertices = {
+    const HeapVector<SkyboxVertex> cSkyboxVertices = {
         {Vec3(-1.0f, 1.0f, -1.0f)}, // Front face
         {Vec3(1.0f, 1.0f, -1.0f)},  {Vec3(1.0f, -1.0f, -1.0f)}, {Vec3(-1.0f, -1.0f, -1.0f)},
 
         {Vec3(-1.0f, 1.0f, 1.0f)}, // Back face
         {Vec3(1.0f, 1.0f, 1.0f)},   {Vec3(1.0f, -1.0f, 1.0f)},  {Vec3(-1.0f, -1.0f, 1.0f)}};
 
-    const std::vector<uint32_t> cSkyboxIndices = {
+    const HeapVector<uint32_t> cSkyboxIndices = {
         0, 1, 2, 2, 3, 0, // Front face
         5, 4, 7, 7, 6, 5, // Back face
         4, 0, 3, 3, 7, 4, // Left face

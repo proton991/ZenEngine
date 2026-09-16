@@ -230,7 +230,8 @@ uint64_t VulkanUniformBufferAllocator::GetBlockGeneration(uint64_t blockId) cons
     const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
     const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
     return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size() ?
-        m_slots[slotIndex].blocks[blockIndex].memory.generation : 0;
+        m_slots[slotIndex].blocks[blockIndex].memory.generation :
+        0;
 }
 
 uint64_t VulkanUniformBufferAllocator::GetBlockLifetime(uint64_t blockId) const
@@ -271,11 +272,11 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
 
                 block.blockId = (static_cast<uint64_t>(m_currentSlotIdx) << 32) |
                     (static_cast<uint64_t>(slot.currentBlockIdx) + 1);
-                block.generation              = ++m_nextGeneration;
-                Block& storage                = slot.blocks.emplace_back();
-                storage.memory                = block;
-                storage.lifetimeId            = GVulkanRHI->GetLifetimeTracker().Create();
-                storage.lastNeededReuseCount  = slot.reuseCount;
+                block.generation             = ++m_nextGeneration;
+                Block& storage               = slot.blocks.emplace_back();
+                storage.memory               = block;
+                storage.lifetimeId           = GVulkanRHI->GetLifetimeTracker().Create();
+                storage.lastNeededReuseCount = slot.reuseCount;
             }
 
             Block& storage = slot.blocks[slot.currentBlockIdx];
@@ -350,7 +351,7 @@ void VulkanUniformBufferAllocator::DestroyBlock(Block& block) const
     {
         GVulkanRHI->GetLifetimeTracker().Retire(
             block.lifetimeId, block.memory.pBuffer, [](void* resource) {
-                auto* buffer = static_cast<RHIBuffer*>(resource);
+                RHIBuffer* buffer = static_cast<RHIBuffer*>(resource);
                 buffer->Unmap();
                 GVulkanRHI->DestroyBuffer(buffer);
             });

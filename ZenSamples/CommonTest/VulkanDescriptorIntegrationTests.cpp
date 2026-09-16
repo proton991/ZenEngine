@@ -71,9 +71,9 @@ struct DescriptorObserver
                                            uint32_t offsetCount,
                                            const uint32_t* offsets)
     {
-        if (count != 0)
+        if (firstSet <= test::kLocalResourceSet && test::kLocalResourceSet - firstSet < count)
         {
-            lastBound = sets[0];
+            lastBound = sets[test::kLocalResourceSet - firstSet];
         }
         bind(commandBuffer, point, layout, firstSet, count, sets, offsetCount, offsets);
     }
@@ -203,8 +203,9 @@ protected:
                                                  uint32_t element = 0)
     {
         RHIBatchedShaderParameters params;
-        params.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, binding), buffer,
-                                nullptr, element);
+        params.AddResourceParam(
+            *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, binding), buffer,
+            nullptr, element);
         return params;
     }
 
@@ -215,13 +216,14 @@ protected:
         uint32_t firstSet = 0;
         state.FlushPendingDescriptorWrites(context, sets, firstSet, offsets);
         EXPECT_EQ(firstSet, 0u);
-        EXPECT_EQ(sets.size(), 1u);
+        EXPECT_EQ(sets.size(), test::kLocalResourceSet + 1);
         if (dynamicOffset != nullptr)
         {
             EXPECT_EQ(offsets.size(), 1u);
             *dynamicOffset = offsets.empty() ? UINT32_MAX : offsets[0];
         }
-        return sets.empty() ? VK_NULL_HANDLE : sets[0];
+        return sets.size() <= test::kLocalResourceSet ? VK_NULL_HANDLE :
+                                                        sets[test::kLocalResourceSet];
     }
 
     void FillCache(VulkanPipeline* pipeline, uint32_t count)
@@ -403,7 +405,8 @@ TEST_F(VulkanDescriptorIntegrationTest, PackedOffsetsAreBindTimeStateAndExternal
     state.SetPipeline(pipeline);
     const uint32_t values[] = {1, 2, 3, 4};
     RHIBatchedShaderParameters packed;
-    packed.AddValueParam(*pipeline->GetShader()->GetSRDByLocation(0, 0), values, sizeof(values));
+    packed.AddValueParam(*pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 0),
+                         values, sizeof(values));
     state.SetShaderParameters(packed);
     uint32_t firstOffset = 0, nextOffset = 0;
     VkDescriptorSet first = Resolve(state, &firstOffset);

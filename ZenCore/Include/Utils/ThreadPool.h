@@ -1,10 +1,9 @@
 #pragma once
 #include "Templates/Queue.h"
+#include "Templates/HeapVector.h"
 #include <functional>
 #include <thread>
 #include <atomic>
-#include <vector>
-#include <exception>
 #include <future>
 #include "Mutex.h"
 #include "ConditionVariable.h"
@@ -16,34 +15,31 @@ namespace zen
 {
 template <class FuncRetType, class... FuncArgs> class ThreadPool
 {
+    using TaskFunction = std::function<FuncRetType(FuncArgs...)>;
+    using StopFlag     = SharedPtr<std::atomic<bool>, MultiThreadCounter>;
+
 public:
-    ThreadPool()
-    {
-        this->Init();
-    }
+    ThreadPool() = default;
 
     explicit ThreadPool(uint32_t nThreads)
     {
-        this->Init();
-        this->Resize(std::min(std::thread::hardware_concurrency(), nThreads));
+        const uint32_t available = std::max(1u, std::thread::hardware_concurrency());
+        Resize(std::min(available, nThreads));
     }
 
-    // the destructor waits for all the functions in the queue to be finished
     ~ThreadPool()
     {
-        this->Stop(true);
+        Stop(true);
     }
 
-    // get the number of running threads in the pool
-    auto GetSize()
+    size_t GetSize() const
     {
         return m_threads.size();
     }
 
-    // number of idle threads
-    int GetNIdle()
+    uint32_t GetNIdle() const
     {
-        return m_nWaiting;
+        return m_nWaiting.load();
     }
 
     std::thread& GetThread(uint32_t i)
@@ -51,214 +47,176 @@ public:
         return *m_threads[i];
     }
 
-    // change the number of threads in the pool
-    // should be called from one thread, otherwise be careful to not interleave, also with this->stop()
-    // nThreads must be >= 0
+    // Resize and Stop must be serialized by the owner, outside worker tasks.
     void Resize(uint32_t nThreads)
     {
         if (!m_stop && !m_finished)
         {
-            uint32_t numOldThreads = static_cast<uint32_t>(m_threads.size());
-            if (numOldThreads <= nThreads)
-            { // if the number of threads is increased
+            const uint32_t oldSize = static_cast<uint32_t>(m_threads.size());
+            if (oldSize <= nThreads)
+            {
                 m_threads.resize(nThreads);
                 m_flags.resize(nThreads);
-
-                for (uint32_t i = numOldThreads; i < nThreads; ++i)
+                for (uint32_t i = oldSize; i < nThreads; ++i)
                 {
-                    m_flags[i] = MakeShared<std::atomic<bool>>(false);
-                    this->SetThread(i);
+                    m_flags[i] = StopFlag(new std::atomic<bool>(false));
+                    m_threads[i] =
+                        MakeUnique<std::thread>(&ThreadPool::RunThread, this, i, m_flags[i]);
                 }
             }
             else
-            { // the number of threads is decreased
-                for (uint32_t i = numOldThreads - 1; i >= nThreads; --i)
+            {
+                for (uint32_t i = nThreads; i < oldSize; ++i)
                 {
-                    *m_flags[i] = true; // this thread will finish
-                    m_threads[i]->detach();
+                    *m_flags[i] = true;
                 }
+                NotifyAll();
+                for (uint32_t i = nThreads; i < oldSize; ++i)
                 {
-                    // stop the detached threads that were waiting
-                    LockAuto lock(&m_mutex);
-                    m_conVar.NotifyAll();
+                    m_threads[i]->join();
                 }
-                m_threads.resize(nThreads); // safe to delete because the threads are detached
-                m_flags.resize(
-                    nThreads); // safe to delete because the threads have copies of shared_ptr of the flags, not originals
+                m_threads.resize(nThreads);
+                m_flags.resize(nThreads);
             }
         }
     }
 
-    // empty the queue
     void ClearQueue()
     {
-        while (auto popped = m_q.TryPop())
+        while (std::optional<TaskFunction*> popped = m_q.TryPop())
         {
-            delete *popped; // empty the queue
+            delete *popped;
         }
     }
 
-    // pops a functional wrapper to the original function
-    std::function<FuncRetType(FuncArgs...)> Pop()
+    TaskFunction Pop()
     {
-        auto popped = m_q.TryPop();
-        if (!popped.has_value())
+        TaskFunction result;
+        const std::optional<TaskFunction*> popped = m_q.TryPop();
+        if (popped.has_value())
         {
-            return {};
+            UniquePtr<TaskFunction> task(*popped);
+            if (task)
+            {
+                result = std::move(*task);
+            }
         }
-
-        std::function<FuncRetType(FuncArgs...)>* pF = *popped;
-        // at return, delete the function even if an exception occurred
-        UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(pF);
-        std::function<FuncRetType(FuncArgs...)> f;
-        if (pF)
-            f = *pF;
-        return f;
+        return result;
     }
 
-    // wait for all computing threads to finish and stop all threads
-    // may be called asynchronously to not pause the calling thread while waiting
-    // if isWait == true, all the functions in the queue are run, otherwise the queue is cleared without running the functions
+    // A graceful stop drains pending work; an immediate stop discards queued work.
     void Stop(bool isWait = false)
     {
-        if (!isWait)
+        const bool shouldStop = isWait ? !m_finished && !m_stop : !m_stop;
+        if (shouldStop)
         {
-            if (m_stop)
-                return;
-            m_stop = true;
-            for (uint32_t i = 0, n = this->GetSize(); i < n; ++i)
+            if (isWait)
             {
-                *m_flags[i] = true; // command the threads to stop
+                m_finished = true;
             }
-            this->ClearQueue(); // empty the queue
+            else
+            {
+                m_stop = true;
+                for (const StopFlag& flag : m_flags)
+                {
+                    *flag = true;
+                }
+                ClearQueue();
+            }
+            NotifyAll();
+            for (const UniquePtr<std::thread>& thread : m_threads)
+            {
+                if (thread->joinable())
+                {
+                    thread->join();
+                }
+            }
+            ClearQueue();
+            m_threads.clear();
+            m_flags.clear();
         }
-        else
-        {
-            if (m_finished || m_stop)
-                return;
-            m_finished = true; // give the waiting threads a command to finish
-        }
-        {
-            LockAuto lock(&m_mutex);
-            m_conVar.NotifyAll(); // stop all waiting threads
-        }
-        for (const auto& t : m_threads)
-        { // wait for the computing threads to finish
-            if (t->joinable())
-                t->join();
-        }
-        // if there were no threads in the pool but some functors in the queue, the functors are not deleted by the threads
-        // therefore delete them here
-        ClearQueue();
-        m_threads.clear();
-        m_flags.clear();
     }
 
-    // add new work item to the pool
-    template <class F, class... Args> auto Push(F&& f, Args&&... args)
-        -> std::future<std::invoke_result_t<F, Args...>>
+    template <class F, class... Args>
+    std::future<std::invoke_result_t<F, Args...>> Push(F&& f, Args&&... args)
     {
         using ReturnType = std::invoke_result_t<F, Args...>;
-
-        auto task = MakeShared<std::packaged_task<ReturnType(Args...)>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
-        auto res = task->get_future();
-        auto _f =
-            new std::function<ReturnType(Args...)>([task](Args... args) { (*task)(args...); });
-        m_q.Push(_f);
-        LockAuto lock(&m_mutex);
-        m_conVar.NotifyOne();
-
-        return res;
+        SharedPtr<std::packaged_task<ReturnType()>, MultiThreadCounter> task(
+            new std::packaged_task<ReturnType()>(
+                std::bind(std::forward<F>(f), std::forward<Args>(args)...)));
+        std::future<ReturnType> result = task->get_future();
+        Enqueue(new TaskFunction([task](FuncArgs...) { (*task)(); }));
+        return result;
     }
 
-    // without parameters
-    template <class F> auto Push(F&& f) -> std::future<std::invoke_result_t<F, FuncArgs...>>
+    template <class F> std::future<std::invoke_result_t<F, FuncArgs...>> Push(F&& f)
     {
         using ReturnType = std::invoke_result_t<F, FuncArgs...>;
-        auto task = MakeShared<std::packaged_task<ReturnType(FuncArgs...)>>(std::forward<F>(f));
-        auto res  = task->get_future();
-        auto _f   = new std::function<FuncRetType(FuncArgs...)>(
-            [task](FuncArgs... args) { (*task)(args...); });
-        m_q.Push(_f);
-        LockAuto lock(&m_mutex);
-        m_conVar.NotifyOne();
-
-        return res;
+        SharedPtr<std::packaged_task<ReturnType(FuncArgs...)>, MultiThreadCounter> task(
+            new std::packaged_task<ReturnType(FuncArgs...)>(std::forward<F>(f)));
+        std::future<ReturnType> result = task->get_future();
+        Enqueue(new TaskFunction([task](FuncArgs... args) { (*task)(args...); }));
+        return result;
     }
 
 private:
     ZEN_NO_COPY_MOVE(ThreadPool)
 
-    void SetThread(uint32_t i)
+    void Enqueue(TaskFunction* task)
     {
-        SharedPtr<std::atomic<bool>> flag(m_flags[i]); // a copy of the shared ptr to the flag
-        auto f = [this, i, flag /* a copy of the shared ptr to the flag */]() {
-            std::atomic<bool>& _flag = *flag;
-            std::function<FuncRetType(FuncArgs...)>* pF = nullptr;
+        UniquePtr<TaskFunction> pending(task);
+        LockAuto lock(&m_mutex);
+        if (m_stop || m_finished)
+        {
+            throw std::runtime_error("Cannot enqueue work after the thread pool has stopped");
+        }
+        m_q.Push(task);
+        pending.Release();
+        m_conVar.NotifyOne();
+    }
 
-            auto popped = m_q.TryPop();
-            bool isPop  = popped.has_value();
-            if (isPop)
+    void NotifyAll()
+    {
+        LockAuto lock(&m_mutex);
+        m_conVar.NotifyAll();
+    }
+
+    bool TryTakeTask(TaskFunction*& task)
+    {
+        const std::optional<TaskFunction*> popped = m_q.TryPop();
+        task                                      = popped.value_or(nullptr);
+        return popped.has_value();
+    }
+
+    void RunThread(uint32_t index, StopFlag flag)
+    {
+        bool running = true;
+        while (running)
+        {
+            TaskFunction* nextTask = nullptr;
             {
-                pF = *popped;
-            }
-            while (true)
-            {
-                while (isPop) // if there is anything in the queue
-                {
-                    // at return, delete the function even if an exception occurred
-                    UniquePtr<std::function<FuncRetType(FuncArgs...)>> func(pF);
-                    (*pF)(i);
-                    if (_flag)
-                        return; // the thread is wanted to stop, return even if the queue is not empty yet
-                    else
-                    {
-                        popped = m_q.TryPop();
-                        isPop  = popped.has_value();
-                        if (isPop)
-                        {
-                            pF = *popped;
-                        }
-                    }
-                }
-                // the queue is empty here, wait for the next command
                 LockAuto lock(&m_mutex);
                 ++m_nWaiting;
-                m_conVar.Wait(&m_mutex, [this, &pF, &isPop, &_flag]() {
-                    auto popped = m_q.TryPop();
-                    isPop       = popped.has_value();
-                    if (isPop)
-                    {
-                        pF = *popped;
-                    }
-                    return isPop || m_finished || _flag;
+                m_conVar.Wait(&m_mutex, [this, &nextTask, &flag] {
+                    return flag->load() || TryTakeTask(nextTask) || m_finished.load();
                 });
                 --m_nWaiting;
-                if (!isPop)
-                    return;
             }
-        };
-        m_threads[i] = MakeUnique<std::thread>(f);
+            if (nextTask != nullptr)
+            {
+                UniquePtr<TaskFunction> task(nextTask);
+                (*task)(index);
+            }
+            running = nextTask != nullptr && !flag->load();
+        }
     }
 
-    void Init()
-    {
-        m_nWaiting = 0;
-        m_stop     = false;
-        m_finished = false;
-    }
-
-    std::vector<UniquePtr<std::thread>> m_threads;
-    // queue that holds pushed functions
-    ThreadSafeQueue<std::function<FuncRetType(FuncArgs...)>*> m_q;
-    // per thread status flags
-    std::vector<SharedPtr<std::atomic<bool>>> m_flags;
-    // ThreadPool status flags
-    std::atomic<bool> m_finished;
-    std::atomic<bool> m_stop;
-    std::atomic<uint32_t> m_nWaiting; // how many threads are waiting
-
+    HeapVector<UniquePtr<std::thread>> m_threads;
+    ThreadSafeQueue<TaskFunction*> m_q;
+    HeapVector<StopFlag> m_flags;
+    std::atomic<bool> m_finished{false};
+    std::atomic<bool> m_stop{false};
+    std::atomic<uint32_t> m_nWaiting{0};
     Mutex m_mutex;
     ConditionVariable m_conVar;
 };

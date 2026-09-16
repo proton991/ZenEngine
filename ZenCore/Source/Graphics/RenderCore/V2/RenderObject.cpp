@@ -6,14 +6,15 @@ namespace zen::rc
 RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath) :
     m_pRenderDevice(pRenderDevice)
 {
-    m_scene         = MakeUnique<sg::Scene>();
-    auto gltfLoader = MakeUnique<asset::FastGLTFLoader>();
+    m_scene                                     = MakeUnique<sg::Scene>();
+    UniquePtr<asset::FastGLTFLoader> gltfLoader = MakeUnique<asset::FastGLTFLoader>();
     gltfLoader->LoadFromFile(modelPath, m_scene.Get());
 
-    auto& vertices = gltfLoader->GetVertices();
-    auto& indices  = gltfLoader->GetIndices();
+    const std::vector<asset::Vertex>& vertices = gltfLoader->GetVertices();
+    const std::vector<uint32_t>& indices       = gltfLoader->GetIndices();
 
-    for (auto* pNode : m_scene->GetRenderableNodes())
+    m_nodesData.reserve(m_scene->GetRenderableCount());
+    for (const sg::Node* pNode : m_scene->GetRenderableNodes())
     {
         m_nodesData.emplace_back(pNode->GetData());
     }

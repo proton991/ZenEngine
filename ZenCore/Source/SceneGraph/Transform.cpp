@@ -11,22 +11,19 @@ Mat4 Transform::GetWorldMatrix()
 
 void Transform::UpdateWorldMatrix()
 {
-    if (!m_updateWorldMatrix)
-    {
-        return;
-    }
     m_worldMatrix = GetLocalMatrix();
-    auto parent   = m_node.GetParent();
+    Node* parent  = m_node.GetParent();
     while (parent)
     {
         if (parent->HasComponent<Transform>())
         {
-            auto* pTransform = parent->GetComponent<Transform>();
-            m_worldMatrix   = pTransform->GetWorldMatrix() * m_worldMatrix;
+            Transform* pTransform = parent->GetComponent<Transform>();
+            m_worldMatrix         = pTransform->GetWorldMatrix() * m_worldMatrix;
+            // The parent's world matrix already includes every ancestor.
+            break;
         }
         // Get parent node
         parent = parent->GetParent();
     }
-    m_updateWorldMatrix = false;
 }
 } // namespace zen::sg

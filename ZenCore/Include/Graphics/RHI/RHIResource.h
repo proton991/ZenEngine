@@ -554,9 +554,9 @@ private:
         m_subResourceRange.aspect         = m_viewInfo.aspect.IsEmpty() ?
             GetTextureFormatAspects(m_viewInfo.format) :
             m_viewInfo.aspect;
-        m_subResourceRange.layerCount   = m_viewInfo.arrayLayers;
-        m_subResourceRange.levelCount   = m_viewInfo.mipLevels;
-        m_subResourceRange.baseMipLevel = m_viewInfo.baseMipLevel;
+        m_subResourceRange.layerCount     = m_viewInfo.arrayLayers;
+        m_subResourceRange.levelCount     = m_viewInfo.mipLevels;
+        m_subResourceRange.baseMipLevel   = m_viewInfo.baseMipLevel;
         m_subResourceRange.baseArrayLayer = m_viewInfo.baseArrayLayer;
     }
 };
@@ -591,6 +591,19 @@ inline const RHITextureSubResourceRange& RHITexture::GetSubResourceRange() const
 
 struct RHISamplerCreateInfo
 {
+    static RHISamplerCreateInfo CreateLinearRepeat()
+    {
+        RHISamplerCreateInfo info{};
+        info.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
+        info.minFilter   = RHISamplerFilter::eLinear;
+        info.magFilter   = RHISamplerFilter::eLinear;
+        info.mipFilter   = RHISamplerFilter::eLinear;
+        info.repeatU     = RHISamplerRepeatMode::eRepeat;
+        info.repeatV     = RHISamplerRepeatMode::eRepeat;
+        info.repeatW     = RHISamplerRepeatMode::eRepeat;
+        return info;
+    }
+
     RHISamplerFilter magFilter{RHISamplerFilter::eNearest};
     RHISamplerFilter minFilter{RHISamplerFilter::eNearest};
     RHISamplerFilter mipFilter{RHISamplerFilter::eNearest};
@@ -852,15 +865,15 @@ struct RHIRenderingLayout
     {
         if (!hasDepthStencilRT)
         {
-            depthStencilRenderTarget.format     = format;
-            depthStencilRenderTarget.pTexture   = pTexture;
+            depthStencilRenderTarget.format   = format;
+            depthStencilRenderTarget.pTexture = pTexture;
             depthStencilRenderTarget.numSamples =
                 pTexture != nullptr ? pTexture->GetBaseInfo().samples : SampleCount::e1;
             depthStencilRenderTarget.loadOp     = loadOp;
             depthStencilRenderTarget.storeOp    = storeOp;
             depthStencilRenderTarget.clearValue = clearValue;
             IncludeAttachmentLayers(pTexture != nullptr ? pTexture->GetArrayLayers() : 1);
-            hasDepthStencilRT                   = true;
+            hasDepthStencilRT = true;
         }
     }
 

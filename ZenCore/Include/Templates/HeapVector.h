@@ -25,10 +25,14 @@ public:
         resize(count);
     }
 
-    // explicit HeapVector(size_type reserveCount)
-    // {
-    //     reserve(reserveCount);
-    // }
+    HeapVector(size_type count, const T& value)
+    {
+        reserve(count);
+        for (size_type i = 0; i < count; ++i)
+        {
+            emplace_back(value);
+        }
+    }
 
     HeapVector(std::initializer_list<T> init)
     {
@@ -44,25 +48,20 @@ public:
 
     HeapVector(const T* pSrcData, size_type count)
     {
-        if (count == 0)
+        if (count > 0)
         {
-            return;
-        }
-
-        reserve(count);
-
-        if constexpr (std::is_trivially_copy_constructible_v<T>)
-        {
-            std::memcpy(m_pData, pSrcData, sizeof(T) * count);
-            m_size = count;
-        }
-        else
-        {
-            for (size_type i = 0; i < count; ++i)
+            reserve(count);
+            if constexpr (std::is_trivially_copyable_v<T>)
             {
-                new (&m_pData[i]) T(pSrcData[i]);
+                std::memcpy(m_pData, pSrcData, sizeof(T) * count);
             }
-
+            else
+            {
+                for (size_type i = 0; i < count; ++i)
+                {
+                    new (&m_pData[i]) T(pSrcData[i]);
+                }
+            }
             m_size = count;
         }
     }
@@ -173,29 +172,7 @@ public:
     iterator erase(const_iterator pos)
     {
         ASSERT(pos >= begin() && pos < end());
-
-        const size_type index = static_cast<size_type>(pos - begin());
-
-        // Destroy the element at pos
-        m_pData[index].~T();
-
-        // Move elements left
-        if constexpr (std::is_trivially_move_assignable_v<T>)
-        {
-            std::memmove(m_pData + index, m_pData + index + 1, sizeof(T) * (m_size - index - 1));
-        }
-        else
-        {
-            for (size_type i = index; i < m_size - 1; ++i)
-            {
-                new (&m_pData[i]) T(std::move(m_pData[i + 1]));
-                m_pData[i + 1].~T();
-            }
-        }
-
-        --m_size;
-
-        return m_pData + index;
+        return erase(pos, pos + 1);
     }
 
     iterator erase(const_iterator first, const_iterator last)
@@ -205,21 +182,20 @@ public:
         ASSERT(first >= begin() && first <= end());
         ASSERT(last >= first && last <= end());
 
-        const size_type firstIndex = static_cast<size_type>(first - begin());
-        const size_type lastIndex  = static_cast<size_type>(last - begin());
-        const size_type count      = lastIndex - firstIndex;
-
-        if (count == 0)
+        if (first == last)
         {
-            result = m_pData + firstIndex;
+            result = first == end() ? end() : m_pData + (first - begin());
         }
         else
         {
+            const size_type firstIndex = static_cast<size_type>(first - begin());
+            const size_type lastIndex  = static_cast<size_type>(last - begin());
+            const size_type count      = lastIndex - firstIndex;
             // Destroy erased elements
             destroy_range(firstIndex, lastIndex);
 
             // Move tail
-            if constexpr (std::is_trivially_move_assignable_v<T>)
+            if constexpr (std::is_trivially_copyable_v<T>)
             {
                 std::memmove(m_pData + firstIndex, m_pData + lastIndex,
                              sizeof(T) * (m_size - lastIndex));
@@ -243,25 +219,7 @@ public:
     void remove(size_type index)
     {
         ASSERT(index < m_size);
-
-        // Destroy target element
-        m_pData[index].~T();
-
-        // Move elements left
-        if constexpr (std::is_trivially_move_assignable_v<T>)
-        {
-            std::memmove(m_pData + index, m_pData + index + 1, sizeof(T) * (m_size - index - 1));
-        }
-        else
-        {
-            for (size_type i = index; i < m_size - 1; ++i)
-            {
-                new (&m_pData[i]) T(std::move(m_pData[i + 1]));
-                m_pData[i + 1].~T();
-            }
-        }
-
-        --m_size;
+        erase(m_pData + index);
     }
 
     // ----------- element access -----------
@@ -276,6 +234,18 @@ public:
     {
         ASSERT(index < m_size);
         return m_pData[index];
+    }
+
+    T& front()
+    {
+        ASSERT(m_size > 0);
+        return m_pData[0];
+    }
+
+    const T& front() const
+    {
+        ASSERT(m_size > 0);
+        return m_pData[0];
     }
 
     T& back()
@@ -309,7 +279,7 @@ public:
 
     iterator end() noexcept
     {
-        return m_pData + m_size;
+        return m_size == 0 ? m_pData : m_pData + m_size;
     }
 
     const_iterator begin() const noexcept
@@ -319,7 +289,7 @@ public:
 
     const_iterator end() const noexcept
     {
-        return m_pData + m_size;
+        return m_size == 0 ? m_pData : m_pData + m_size;
     }
 
     // ----------- modifiers -----------
@@ -336,64 +306,26 @@ public:
 
     void push_back(const HeapVector<T>& values)
     {
-        if (values.empty())
-        {
-            return;
-        }
-
-        const size_type oldSize = m_size;
-        const size_type count   = values.size();
-
-        HeapVector<T> temp(values); // Make a copy first
-
-        reserve(oldSize + count);
-
-        const T* pSrcData = temp.data();
-
-        if constexpr (std::is_trivially_copy_constructible_v<T>)
-        {
-            std::memcpy(m_pData + oldSize, pSrcData, sizeof(T) * count);
-        }
-        else
-        {
-            for (size_type i = 0; i < count; ++i)
-            {
-                new (&m_pData[oldSize + i]) T(pSrcData[i]);
-            }
-        }
-
-        m_size = oldSize + count;
+        push_back(VectorView<const T>(values.data(), values.size()));
     }
 
     void push_back(VectorView<T> values)
     {
-        if (values.empty())
+        push_back(VectorView<const T>(values.data(), values.size()));
+    }
+
+    void push_back(VectorView<const T> values)
+    {
+        if (!values.empty())
         {
-            return;
-        }
-
-        HeapVector<T> temp(values); // Make a copy first
-
-        const size_type oldSize = m_size;
-        const size_type count   = values.size();
-
-        reserve(oldSize + count);
-
-        const T* pSrcData = temp.data();
-
-        if constexpr (std::is_trivially_copy_constructible_v<T>)
-        {
-            std::memcpy(m_pData + oldSize, pSrcData, sizeof(T) * count);
-        }
-        else
-        {
-            for (size_type i = 0; i < count; ++i)
+            // Snapshot before reserving so self-append and overlapping views remain valid.
+            const HeapVector<T> source(values.data(), values.size());
+            reserve(m_size + source.size());
+            for (const T& value : source)
             {
-                new (&m_pData[oldSize + i]) T(pSrcData[i]);
+                emplace_back(value);
             }
         }
-
-        m_size = oldSize + count;
     }
 
     template <typename... Args> T& emplace_back(Args&&... args)

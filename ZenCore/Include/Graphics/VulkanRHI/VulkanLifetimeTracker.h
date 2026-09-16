@@ -38,6 +38,9 @@ public:
     size_t GetTrackedCount();
 
 private:
+    using RetiredResource = std::pair<DestroyResource, void*>;
+    static void DestroyResources(VectorView<const RetiredResource> resources);
+
     struct QueueSerial
     {
         const VulkanQueue* pQueue;

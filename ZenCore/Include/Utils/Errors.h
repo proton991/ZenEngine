@@ -31,14 +31,16 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
 {
     std::string fileName(pFullFilePath);
 
-    auto LastSlashPos = fileName.find_last_of("/\\");
+    const std::string::size_type LastSlashPos = fileName.find_last_of("/\\");
     if (LastSlashPos != std::string::npos)
+    {
         fileName.erase(0, LastSlashPos + 1);
+    }
     std::string message;
     if (isCritical)
     {
-        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", pFunction, fileName, line,
-                              args...);
+        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", pFunction, fileName,
+                              line, args...);
         spdlog::critical(message);
     }
     else

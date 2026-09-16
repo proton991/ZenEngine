@@ -106,7 +106,9 @@ public:
             while (idx_ < BitCount)
             {
                 if (mask_ & (storage_type(1) << idx_))
+                {
                     break;
+                }
                 ++idx_;
             }
         }

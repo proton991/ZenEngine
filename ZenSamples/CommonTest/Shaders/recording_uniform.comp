@@ -1,5 +1,5 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 0) uniform Parameters { uvec4 value; } parameters;
-layout(set = 0, binding = 1) buffer Output { uint value; } outputData;
+layout(set = 1, binding = 0) uniform Parameters { uvec4 value; } parameters;
+layout(set = 1, binding = 1) buffer Output { uint value; } outputData;
 void main() { outputData.value = parameters.value.x; }

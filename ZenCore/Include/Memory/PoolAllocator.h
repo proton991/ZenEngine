@@ -14,7 +14,9 @@ public:
     ~PoolAllocator()
     {
         for (T* pAlloc : m_allocators)
+        {
             delete pAlloc;
+        }
         m_allocators.clear();
     }
 
@@ -61,7 +63,9 @@ public:
     void Reset()
     {
         for (T* pAlloc : m_allocators)
+        {
             pAlloc->Reset();
+        }
         m_currentIndex = 0;
     }
 

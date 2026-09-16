@@ -138,9 +138,9 @@ public:
     }
 
 private:
-    static constexpr uint32_t kMaxPoolLookups     = 2;
-    static constexpr uint32_t kRingSlots          = kMaxPoolLookups + 1;
-    static constexpr uint32_t kMaxSetsPerPool     = 512;
+    static constexpr uint32_t kMaxPoolLookups = 2;
+    static constexpr uint32_t kRingSlots      = kMaxPoolLookups + 1;
+    static constexpr uint32_t kMaxSetsPerPool = 512;
 
     struct ContentKey
     {

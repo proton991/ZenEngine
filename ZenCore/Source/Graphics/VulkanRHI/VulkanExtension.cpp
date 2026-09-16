@@ -415,6 +415,20 @@ HeapVector<VkExtensionProperties> VulkanInstanceExtension::GetSupportedInstanceE
     return extensions;
 }
 
+static bool HasInstanceExtension(const VulkanInstanceExtensionArray& extensions, NameID name)
+{
+    bool supported = false;
+    for (const UniquePtr<VulkanInstanceExtension>& extension : extensions)
+    {
+        if (extension->GetName() == name)
+        {
+            supported = extension->IsEnabledAndSupported();
+            break;
+        }
+    }
+    return supported;
+}
+
 VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensions(
     InstanceExtensionFlags& extensionFlags)
 {
@@ -438,19 +452,9 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     FlagExtensionSupported(enabledExtensions,
                            VulkanInstanceExtension::GetSupportedInstanceExtensions());
 
-    const auto hasExtension = [&](NameID name) {
-        for (const auto& extension : enabledExtensions)
-        {
-            if (extension->GetName() == name)
-            {
-                return extension->IsEnabledAndSupported();
-            }
-        }
-        return false;
-    };
-    const bool hasSurfaceCapabilities2 =
-        hasExtension(NameID(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
-    for (const auto& extension : enabledExtensions)
+    const bool hasSurfaceCapabilities2 = HasInstanceExtension(
+        enabledExtensions, NameID(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
+    for (const UniquePtr<VulkanInstanceExtension>& extension : enabledExtensions)
     {
         const NameID name = extension->GetName();
         if (name == NameID("VK_KHR_surface_maintenance1"))
@@ -533,8 +537,9 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
 
-    const auto supported      = GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
-    const auto& instanceFlags = GVulkanRHI->GetInstanceExtensionFlags();
+    const HeapVector<VkExtensionProperties> supported =
+        GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
+    const InstanceExtensionFlags& instanceFlags = GVulkanRHI->GetInstanceExtensionFlags();
     if (instanceFlags.hasSurfaceMaintenanceKHR &&
         FindExtensionIndex(NameID("VK_KHR_swapchain_maintenance1"), supported) >= 0)
     {
@@ -552,7 +557,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
     // These features are core in our minimum API version (1.2), even when the
     // driver does not advertise their former extension names.
-    for (auto& extension : enabledExtensions)
+    for (const UniquePtr<VulkanDeviceExtension>& extension : enabledExtensions)
     {
         const NameID name = extension->GetName();
         if (name == NameID(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) ||

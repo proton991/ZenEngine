@@ -464,7 +464,7 @@ protected:
         vkDestroyDebugUtilsMessengerEXT(session->rhi.GetInstance(), messenger, nullptr);
         window.reset();
         session.reset();
-        WSIDriver::presentModes = {};
+        WSIDriver::presentModes   = {};
         WSIDriver::liveSemaphores = {};
         WSIDriver::liveFences     = {};
     }
@@ -674,8 +674,9 @@ TEST_F(VulkanSwapchainIntegrationTest, NativeRejectedSubmissionRetriesSameAcquis
     EXPECT_EQ(WSIDriver::lastAcquire, acquired);
 }
 
-class VulkanPresentationSubmissionTest : public VulkanSwapchainIntegrationTest,
-                                         public testing::WithParamInterface<bool>
+class VulkanPresentationSubmissionTest :
+    public VulkanSwapchainIntegrationTest,
+    public testing::WithParamInterface<bool>
 {
 protected:
     void SetUp() override

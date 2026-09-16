@@ -51,31 +51,42 @@ template <typename T, typename Query> HeapVector<T> EnumerateWSI(Query query, co
 
 VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surface)
 {
-    const auto formats = EnumerateWSI<VkSurfaceFormatKHR>(
+    const HeapVector<VkSurfaceFormatKHR> formats = EnumerateWSI<VkSurfaceFormatKHR>(
         [=](uint32_t* count, VkSurfaceFormatKHR* values) {
             return vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, count, values);
         },
         "vkGetPhysicalDeviceSurfaceFormatsKHR");
+    VkSurfaceFormatKHR selected{};
+    bool found = false;
     // The renderer applies gamma itself, so prefer UNORM to avoid applying it twice.
     for (VkFormat preferred : {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
                                VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB})
     {
-        for (const auto& format : formats)
+        for (const VkSurfaceFormatKHR& format : formats)
         {
             if (format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
                 (format.format == preferred || format.format == VK_FORMAT_UNDEFINED))
             {
-                return {preferred, format.colorSpace};
+                selected = {preferred, format.colorSpace};
+                found    = true;
+                break;
             }
         }
+        if (found)
+        {
+            break;
+        }
     }
-    LOG_ERROR_AND_THROW("Surface has no supported RGBA8 presentation format");
-    return {};
+    if (!found)
+    {
+        LOG_ERROR_AND_THROW("Surface has no supported RGBA8 presentation format");
+    }
+    return selected;
 }
 
 VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, bool vsync)
 {
-    const auto modes = EnumerateWSI<VkPresentModeKHR>(
+    const HeapVector<VkPresentModeKHR> modes = EnumerateWSI<VkPresentModeKHR>(
         [=](uint32_t* count, VkPresentModeKHR* values) {
             return vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, count, values);
         },
@@ -83,15 +94,22 @@ VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, b
     const VkPresentModeKHR priority[] = {vsync ? VK_PRESENT_MODE_MAILBOX_KHR :
                                                  VK_PRESENT_MODE_IMMEDIATE_KHR,
                                          VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR};
+    VkPresentModeKHR selected         = VK_PRESENT_MODE_FIFO_KHR;
+    bool found                        = false;
     for (VkPresentModeKHR mode : priority)
     {
         if (std::find(modes.begin(), modes.end(), mode) != modes.end())
         {
-            return mode;
+            selected = mode;
+            found    = true;
+            break;
         }
     }
-    LOG_ERROR_AND_THROW("Surface has no supported presentation mode");
-    return VK_PRESENT_MODE_FIFO_KHR;
+    if (!found)
+    {
+        LOG_ERROR_AND_THROW("Surface has no supported presentation mode");
+    }
+    return selected;
 }
 } // namespace
 
@@ -128,6 +146,22 @@ static VkCompositeAlphaFlagBitsKHR ChooseCompositeAlpha(VkCompositeAlphaFlagBits
     return selected;
 }
 
+void VulkanSwapchain::DestroyOldSwapchain(VkSwapchainKHR& oldSwapchain)
+{
+    if (oldSwapchain != VK_NULL_HANDLE)
+    {
+        const bool retained = std::any_of(m_retiredSwapchains.begin(), m_retiredSwapchains.end(),
+                                          [oldSwapchain](const VulkanRetiredSwapchain& retired) {
+                                              return retired.swapchain == oldSwapchain;
+                                          });
+        if (!retained)
+        {
+            vkDestroySwapchainKHR(m_pDevice->GetVkHandle(), oldSwapchain, nullptr);
+        }
+        oldSwapchain = VK_NULL_HANDLE;
+    }
+}
+
 VulkanSwapchain::VulkanSwapchain(uint32_t width,
                                  uint32_t height,
                                  bool enableVSync,
@@ -141,24 +175,11 @@ VulkanSwapchain::VulkanSwapchain(uint32_t width,
     VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE;
     if (pRecreateInfo != nullptr)
     {
-        m_surface      = pRecreateInfo->surface;
-        oldSwapchain   = pRecreateInfo->swapchain;
+        m_surface           = pRecreateInfo->surface;
+        oldSwapchain        = pRecreateInfo->swapchain;
         m_retiredSwapchains = std::move(pRecreateInfo->retiredSwapchains);
-        *pRecreateInfo = {};
+        *pRecreateInfo      = {};
     }
-    const auto destroyOldSwapchain = [&] {
-        if (oldSwapchain != VK_NULL_HANDLE)
-        {
-            const bool retained =
-                std::any_of(m_retiredSwapchains.begin(), m_retiredSwapchains.end(),
-                            [&](const auto& retired) { return retired.swapchain == oldSwapchain; });
-            if (!retained)
-            {
-                vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
-            }
-            oldSwapchain = VK_NULL_HANDLE;
-        }
-    };
     try
     {
         ASSERT(m_surface != VK_NULL_HANDLE);
@@ -188,78 +209,80 @@ VulkanSwapchain::VulkanSwapchain(uint32_t width,
         {
             // Preserve the native oldSwapchain link while minimized: a fallback
             // predecessor may still be the surface's non-retired swapchain.
-            m_swaphchain = oldSwapchain;
+            m_swapchain  = oldSwapchain;
             oldSwapchain = VK_NULL_HANDLE;
-            return;
         }
-        uint32_t imageCount =
-            std::max(capabilities.minImageCount, GRHIFrameState.GetNumFramesInFlight());
-        if (capabilities.maxImageCount != 0)
+        else
         {
-            imageCount = std::min(imageCount, capabilities.maxImageCount);
-        }
-        if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
-        {
-            LOG_ERROR_AND_THROW(
-                "Surface does not support the transfer-destination presentation path");
-        }
-        const auto format = ChooseSurfaceFormat(gpu, m_surface);
-        m_format          = format.format;
-        m_colorSpace      = format.colorSpace;
-        m_presentMode     = ChoosePresentMode(gpu, m_surface, enableVSync);
-        VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-        info.surface          = m_surface;
-        info.minImageCount    = imageCount;
-        info.imageExtent      = extent;
-        info.imageArrayLayers = 1;
-        info.preTransform =
-            (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
-            VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR :
-            capabilities.currentTransform;
-        info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        info.imageFormat      = m_format;
-        info.imageColorSpace  = m_colorSpace;
-        info.imageUsage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-            (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-        info.presentMode    = m_presentMode;
-        info.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                                                   capabilities.supportedCompositeAlpha);
-        info.clipped        = VK_TRUE;
-        info.oldSwapchain   = oldSwapchain;
-        CheckWSIResult(vkCreateSwapchainKHR(device, &info, nullptr, &m_swaphchain),
-                       "vkCreateSwapchainKHR");
-        destroyOldSwapchain();
-        m_swapchainImages = EnumerateWSI<VkImage>(
-            [=, this](uint32_t* count, VkImage* images) {
-                return vkGetSwapchainImagesKHR(device, m_swaphchain, count, images);
-            },
-            "vkGetSwapchainImagesKHR");
-        m_numImages = static_cast<uint32_t>(m_swapchainImages.size());
-        m_acquireSync.resize(m_numImages);
-        m_presentSync.resize(m_numImages);
-        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        for (uint32_t i = 0; i < m_numImages; ++i)
-        {
-            auto& acquire     = m_acquireSync[i];
-            acquire.semaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
-            acquire.semaphore->SetDebugName(NameID(fmt::format("ImageAcquired-{}", i)));
-            CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &acquire.fence),
-                           "vkCreateFence(acquire)");
-            auto& present     = m_presentSync[i];
-            present.semaphore = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
-            present.semaphore->SetDebugName(NameID(fmt::format("RenderComplete-{}", i)));
-            if (m_hasPresentFences)
+            uint32_t imageCount =
+                std::max(capabilities.minImageCount, GRHIFrameState.GetNumFramesInFlight());
+            if (capabilities.maxImageCount != 0)
             {
-                CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &present.fence),
-                               "vkCreateFence(present)");
+                imageCount = std::min(imageCount, capabilities.maxImageCount);
             }
+            if (!(capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+            {
+                LOG_ERROR_AND_THROW(
+                    "Surface does not support the transfer-destination presentation path");
+            }
+            const VkSurfaceFormatKHR format = ChooseSurfaceFormat(gpu, m_surface);
+            m_format                        = format.format;
+            m_colorSpace                    = format.colorSpace;
+            m_presentMode                   = ChoosePresentMode(gpu, m_surface, enableVSync);
+            VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+            info.surface          = m_surface;
+            info.minImageCount    = imageCount;
+            info.imageExtent      = extent;
+            info.imageArrayLayers = 1;
+            info.preTransform =
+                (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
+                VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR :
+                capabilities.currentTransform;
+            info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            info.imageFormat      = m_format;
+            info.imageColorSpace  = m_colorSpace;
+            info.imageUsage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+            info.presentMode    = m_presentMode;
+            info.compositeAlpha = ChooseCompositeAlpha(VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+                                                       capabilities.supportedCompositeAlpha);
+            info.clipped        = VK_TRUE;
+            info.oldSwapchain   = oldSwapchain;
+            CheckWSIResult(vkCreateSwapchainKHR(device, &info, nullptr, &m_swapchain),
+                           "vkCreateSwapchainKHR");
+            DestroyOldSwapchain(oldSwapchain);
+            m_swapchainImages = EnumerateWSI<VkImage>(
+                [=, this](uint32_t* count, VkImage* images) {
+                    return vkGetSwapchainImagesKHR(device, m_swapchain, count, images);
+                },
+                "vkGetSwapchainImagesKHR");
+            m_numImages = static_cast<uint32_t>(m_swapchainImages.size());
+            m_acquireSync.resize(m_numImages);
+            m_presentSync.resize(m_numImages);
+            VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            for (uint32_t i = 0; i < m_numImages; ++i)
+            {
+                AcquireSync& acquire = m_acquireSync[i];
+                acquire.semaphore    = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+                acquire.semaphore->SetDebugName(NameID(fmt::format("ImageAcquired-{}", i)));
+                CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &acquire.fence),
+                               "vkCreateFence(acquire)");
+                PresentSync& present = m_presentSync[i];
+                present.semaphore    = m_pDevice->GetSemaphoreManager()->GetOrCreateSemaphore();
+                present.semaphore->SetDebugName(NameID(fmt::format("RenderComplete-{}", i)));
+                if (m_hasPresentFences)
+                {
+                    CheckWSIResult(vkCreateFence(device, &fenceInfo, nullptr, &present.fence),
+                                   "vkCreateFence(present)");
+                }
+            }
+            LOGI("Swapchain: {} images, {}x{}, format {}, present mode {}", m_numImages,
+                 extent.width, extent.height, VkToString(format), VkToString(m_presentMode));
         }
-        LOGI("Swapchain: {} images, {}x{}, format {}, present mode {}", m_numImages, extent.width,
-             extent.height, VkToString(format), VkToString(m_presentMode));
     }
     catch (...)
     {
-        destroyOldSwapchain();
+        DestroyOldSwapchain(oldSwapchain);
         Destroy(nullptr);
         throw;
     }
@@ -267,7 +290,8 @@ VulkanSwapchain::VulkanSwapchain(uint32_t width,
 
 int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
 {
-    *ppOutSemaphore = nullptr;
+    int32_t acquiredIndex = -1;
+    *ppOutSemaphore       = nullptr;
     if (m_imageIndex >= 0)
     {
         LOG_ERROR_AND_THROW("Swapchain already has an acquired image");
@@ -279,64 +303,68 @@ int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
     if (m_numImages == 0)
     {
         m_lastResult = VK_NOT_READY;
-        return -1;
     }
-    const int32_t nextSemaphore = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
-    for (auto& sync : m_acquireSync)
+    else
     {
-        CompleteAcquire(sync, false);
-    }
-    auto& acquire = m_acquireSync[nextSemaphore];
-    CompleteAcquire(acquire, true);
-    if (GVulkanRHI->AreSubmissionsBlocked())
-    {
-        LOG_ERROR_AND_THROW("Acquire fence completion reported device loss");
-    }
-    uint64_t& serial = acquire.submissionSerial;
-    if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForSubmission(serial, UINT64_MAX))
-    {
-        GVulkanRHI->BlockSubmissions();
-        LOG_ERROR_AND_THROW("Acquire semaphore submission {} did not complete", serial);
-    }
-    serial         = 0;
-    uint32_t index = UINT32_MAX;
-    // Finite timeout supports surfaces for which forward progress is not guaranteed.
-    m_lastResult = vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swaphchain, 1000000000ull,
-                                         acquire.semaphore->GetVkHandle(), acquire.fence, &index);
-    if (m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR)
-    {
-        acquire.pending = true;
-        if (index >= m_numImages)
+        const int32_t nextSemaphore = (m_semaphoreIndex + 1) % static_cast<int32_t>(m_numImages);
+        for (AcquireSync& sync : m_acquireSync)
+        {
+            CompleteAcquire(sync, false);
+        }
+        AcquireSync& acquire = m_acquireSync[nextSemaphore];
+        CompleteAcquire(acquire, true);
+        if (GVulkanRHI->AreSubmissionsBlocked())
+        {
+            LOG_ERROR_AND_THROW("Acquire fence completion reported device loss");
+        }
+        uint64_t& serial = acquire.submissionSerial;
+        if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForSubmission(serial, UINT64_MAX))
         {
             GVulkanRHI->BlockSubmissions();
-            LOG_ERROR_AND_THROW("Acquired image {} exceeds swapchain image count {}", index,
-                                m_numImages);
+            LOG_ERROR_AND_THROW("Acquire semaphore submission {} did not complete", serial);
         }
-        m_acquiredSuboptimal = m_lastResult == VK_SUBOPTIMAL_KHR;
-        m_semaphoreIndex     = nextSemaphore;
-        m_imageIndex         = static_cast<int32_t>(index);
-        acquire.imageIndex   = index;
-        acquire.previousPresentSerial =
-            m_presentSync[index].pending ? m_presentSync[index].serial : 0;
-        // A presentation fence must finish before it is reused, independently of
-        // graphics submission completion or acquisition of a different image.
-        if (m_hasPresentFences)
+        serial         = 0;
+        uint32_t index = UINT32_MAX;
+        // Finite timeout supports surfaces for which forward progress is not guaranteed.
+        m_lastResult =
+            vkAcquireNextImageKHR(m_pDevice->GetVkHandle(), m_swapchain, 1000000000ull,
+                                  acquire.semaphore->GetVkHandle(), acquire.fence, &index);
+        if (m_lastResult == VK_SUCCESS || m_lastResult == VK_SUBOPTIMAL_KHR)
         {
-            WaitForPresent(m_presentSync[index]);
-            if (GVulkanRHI->AreSubmissionsBlocked())
+            acquire.pending = true;
+            if (index >= m_numImages)
             {
-                LOG_ERROR_AND_THROW("Presentation fence completion reported device loss");
+                GVulkanRHI->BlockSubmissions();
+                LOG_ERROR_AND_THROW("Acquired image {} exceeds swapchain image count {}", index,
+                                    m_numImages);
             }
+            m_acquiredSuboptimal = m_lastResult == VK_SUBOPTIMAL_KHR;
+            m_semaphoreIndex     = nextSemaphore;
+            m_imageIndex         = static_cast<int32_t>(index);
+            acquire.imageIndex   = index;
+            acquire.previousPresentSerial =
+                m_presentSync[index].pending ? m_presentSync[index].serial : 0;
+            // A presentation fence must finish before it is reused, independently of
+            // graphics submission completion or acquisition of a different image.
+            if (m_hasPresentFences)
+            {
+                WaitForPresent(m_presentSync[index]);
+                if (GVulkanRHI->AreSubmissionsBlocked())
+                {
+                    LOG_ERROR_AND_THROW("Presentation fence completion reported device loss");
+                }
+            }
+            *ppOutSemaphore = acquire.semaphore;
+            acquiredIndex   = m_imageIndex;
         }
-        *ppOutSemaphore = acquire.semaphore;
-        return m_imageIndex;
+        else if (m_lastResult != VK_ERROR_OUT_OF_DATE_KHR &&
+                 m_lastResult != VK_ERROR_SURFACE_LOST_KHR && m_lastResult != VK_TIMEOUT &&
+                 m_lastResult != VK_NOT_READY)
+        {
+            CheckWSIResult(m_lastResult, "vkAcquireNextImageKHR");
+        }
     }
-    if (m_lastResult != VK_ERROR_OUT_OF_DATE_KHR && m_lastResult != VK_ERROR_SURFACE_LOST_KHR &&
-        m_lastResult != VK_TIMEOUT && m_lastResult != VK_NOT_READY)
-    {
-        CheckWSIResult(m_lastResult, "vkAcquireNextImageKHR");
-    }
-    return -1;
+    return acquiredIndex;
 }
 
 void VulkanSwapchain::MarkAcquireSemaphoreSubmitted(uint64_t submissionSerial)
@@ -356,10 +384,10 @@ bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
     }
     const uint32_t index = static_cast<uint32_t>(m_imageIndex);
     VkPresentInfoKHR info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-    info.swapchainCount   = 1;
-    info.pSwapchains      = &m_swaphchain;
-    info.pImageIndices    = &index;
-    auto& sync            = m_presentSync[index];
+    info.swapchainCount = 1;
+    info.pSwapchains    = &m_swapchain;
+    info.pImageIndices  = &index;
+    PresentSync& sync   = m_presentSync[index];
     VkSwapchainPresentFenceInfoEXT fenceInfo{VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT};
     if (m_hasPresentFences)
     {
@@ -399,9 +427,9 @@ bool VulkanSwapchain::Present(VulkanSemaphore* pRenderingCompleteSemaphore)
 
 void VulkanSwapchain::ReleaseRetiredSwapchains()
 {
-    for (auto& retired : m_retiredSwapchains)
+    for (VulkanRetiredSwapchain& retired : m_retiredSwapchains)
     {
-        for (auto*& semaphore : retired.presentationSemaphores)
+        for (VulkanSemaphore*& semaphore : retired.presentationSemaphores)
         {
             m_pDevice->GetSemaphoreManager()->DestroySemaphore(semaphore);
         }
@@ -412,64 +440,63 @@ void VulkanSwapchain::ReleaseRetiredSwapchains()
 
 void VulkanSwapchain::CompleteAcquire(AcquireSync& sync, bool wait)
 {
-    if (!sync.pending)
+    if (sync.pending)
     {
-        return;
-    }
-    const VkDevice device = m_pDevice->GetVkHandle();
-    const VkResult result = wait ? vkWaitForFences(device, 1, &sync.fence, VK_TRUE, UINT64_MAX) :
-                                   vkGetFenceStatus(device, sync.fence);
-    if (result == VK_NOT_READY)
-    {
-        return;
-    }
-    if (result == VK_ERROR_DEVICE_LOST)
-    {
-        GVulkanRHI->BlockSubmissions();
-        sync.pending = false;
-        return;
-    }
-    CheckWSIResult(result, "Acquire fence completion");
-    if (sync.previousPresentSerial != 0)
-    {
-        // Reacquiring an image and waiting for its acquisition proves its previous
-        // presentation finished. On this same presentation queue, that also retires
-        // predecessors carried across swapchain recreation (KHR sample approach).
-        ReleaseRetiredSwapchains();
-        auto& present = m_presentSync[sync.imageIndex];
-        if (!m_hasPresentFences && present.serial == sync.previousPresentSerial)
+        const VkDevice device = m_pDevice->GetVkHandle();
+        const VkResult result = wait ?
+            vkWaitForFences(device, 1, &sync.fence, VK_TRUE, UINT64_MAX) :
+            vkGetFenceStatus(device, sync.fence);
+        if (result == VK_ERROR_DEVICE_LOST)
         {
-            present.pending = false;
+            GVulkanRHI->BlockSubmissions();
+            sync.pending = false;
+        }
+        else if (result != VK_NOT_READY)
+        {
+            CheckWSIResult(result, "Acquire fence completion");
+            if (sync.previousPresentSerial != 0)
+            {
+                // Reacquiring an image and waiting for its acquisition proves its previous
+                // presentation finished. On this same presentation queue, that also retires
+                // predecessors carried across swapchain recreation (KHR sample approach).
+                ReleaseRetiredSwapchains();
+                PresentSync& present = m_presentSync[sync.imageIndex];
+                if (!m_hasPresentFences && present.serial == sync.previousPresentSerial)
+                {
+                    present.pending = false;
+                }
+            }
+            CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(acquire)");
+            sync.pending               = false;
+            sync.previousPresentSerial = 0;
         }
     }
-    CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(acquire)");
-    sync.pending               = false;
-    sync.previousPresentSerial = 0;
 }
 
 void VulkanSwapchain::WaitForPresent(PresentSync& sync)
 {
-    if (!sync.pending)
+    if (sync.pending)
     {
-        return;
+        const VkDevice device = m_pDevice->GetVkHandle();
+        const VkResult result = vkWaitForFences(device, 1, &sync.fence, VK_TRUE, UINT64_MAX);
+        if (result == VK_ERROR_DEVICE_LOST)
+        {
+            GVulkanRHI->BlockSubmissions();
+            sync.pending = false;
+        }
+        else
+        {
+            CheckWSIResult(result, "Presentation fence completion");
+            CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(present)");
+            sync.pending = false;
+        }
     }
-    const VkDevice device = m_pDevice->GetVkHandle();
-    const VkResult result = vkWaitForFences(device, 1, &sync.fence, VK_TRUE, UINT64_MAX);
-    if (result == VK_ERROR_DEVICE_LOST)
-    {
-        GVulkanRHI->BlockSubmissions();
-        sync.pending = false;
-        return;
-    }
-    CheckWSIResult(result, "Presentation fence completion");
-    CheckWSIResult(vkResetFences(device, 1, &sync.fence), "vkResetFences(present)");
-    sync.pending = false;
 }
 
 void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
 {
     const VkDevice device = m_pDevice->GetVkHandle();
-    for (auto& sync : m_acquireSync)
+    for (AcquireSync& sync : m_acquireSync)
     {
         CompleteAcquire(sync, true);
         if (sync.submissionSerial != 0 &&
@@ -489,12 +516,12 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     }
     if (m_hasPresentFences)
     {
-        for (auto& sync : m_presentSync)
+        for (PresentSync& sync : m_presentSync)
         {
             WaitForPresent(sync);
         }
     }
-    else if (pRecreateInfo == nullptr && (m_swaphchain || !m_retiredSwapchains.empty()))
+    else if (pRecreateInfo == nullptr && (m_swapchain || !m_retiredSwapchains.empty()))
     {
         // Unextended WSI has no host present-completion primitive at shutdown or
         // surface loss, when future reacquisition is impossible. Use the Vulkan
@@ -515,13 +542,13 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
         pRecreateInfo = nullptr;
     }
     VulkanRetiredSwapchain retired;
-    retired.swapchain = m_swaphchain;
+    retired.swapchain = m_swapchain;
     if (pRecreateInfo != nullptr)
     {
         retired.presentationSemaphores.reserve(m_presentSync.size());
         m_retiredSwapchains.reserve(m_retiredSwapchains.size() + 1);
     }
-    for (auto& sync : m_presentSync)
+    for (PresentSync& sync : m_presentSync)
     {
         if (sync.pending && pRecreateInfo != nullptr)
         {
@@ -537,7 +564,7 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
             vkDestroyFence(device, sync.fence, nullptr);
         }
     }
-    for (auto& sync : m_acquireSync)
+    for (AcquireSync& sync : m_acquireSync)
     {
         // An unused acquisition may still be signaled. Destroy it after its acquire
         // fence, rather than returning it to the pool of unsignaled semaphores.
@@ -553,19 +580,20 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
         {
             m_retiredSwapchains.push_back(std::move(retired));
         }
-        pRecreateInfo->swapchain = m_swaphchain;
+        pRecreateInfo->swapchain         = m_swapchain;
         pRecreateInfo->surface           = m_surface;
         pRecreateInfo->retiredSwapchains = std::move(m_retiredSwapchains);
     }
     else
     {
-        const bool retained =
-            std::any_of(m_retiredSwapchains.begin(), m_retiredSwapchains.end(),
-                        [&](const auto& previous) { return previous.swapchain == m_swaphchain; });
+        const bool retained = std::any_of(m_retiredSwapchains.begin(), m_retiredSwapchains.end(),
+                                          [&](const VulkanRetiredSwapchain& previous) {
+                                              return previous.swapchain == m_swapchain;
+                                          });
         ReleaseRetiredSwapchains();
-        if (m_swaphchain != VK_NULL_HANDLE && !retained)
+        if (m_swapchain != VK_NULL_HANDLE && !retained)
         {
-            vkDestroySwapchainKHR(device, m_swaphchain, nullptr);
+            vkDestroySwapchainKHR(device, m_swapchain, nullptr);
         }
         VulkanPlatform::DestroySurface(GVulkanRHI->GetInstance(), m_surface);
     }
@@ -575,7 +603,7 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     m_numImages      = 0;
     m_imageIndex     = -1;
     m_semaphoreIndex = -1;
-    m_swaphchain     = VK_NULL_HANDLE;
-    m_surface = VK_NULL_HANDLE;
+    m_swapchain      = VK_NULL_HANDLE;
+    m_surface        = VK_NULL_HANDLE;
 }
 } // namespace zen

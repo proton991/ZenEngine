@@ -53,9 +53,9 @@ void VulkanMemoryAllocator::Init(VkInstance instance,
     vmaVkFunc.vkCmdCopyBuffer                     = vkCmdCopyBuffer;
 
     VmaAllocatorCreateInfo allocatorCI{};
-    allocatorCI.instance       = instance;
-    allocatorCI.device         = device;
-    allocatorCI.physicalDevice = gpu;
+    allocatorCI.instance         = instance;
+    allocatorCI.device           = device;
+    allocatorCI.physicalDevice   = gpu;
     allocatorCI.vulkanApiVersion = VK_API_VERSION_1_2;
     if (bufferDeviceAddress)
     {

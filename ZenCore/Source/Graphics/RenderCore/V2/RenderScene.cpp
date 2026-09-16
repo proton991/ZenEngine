@@ -6,15 +6,11 @@
 namespace zen::rc
 {
 RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData) :
-    m_pRenderDevice(pRenderDevice)
+    m_pRenderDevice(pRenderDevice),
+    m_pScene(sceneData.pScene),
+    m_pCamera(sceneData.pCamera),
+    m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName)
 {
-    m_pCamera = sceneData.pCamera;
-    m_pScene  = sceneData.pScene;
-    if (sceneData.envTextureName.empty())
-    {
-        // use default env texture
-        m_envTextureName = "papermill.ktx";
-    }
 
     std::memcpy(m_sceneUniformData.lightPositions, sceneData.lightPositions,
                 sizeof(sceneData.lightPositions));
@@ -25,18 +21,19 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
 
     sys::SceneEditor::CenterAndNormalizeScene(m_pScene);
 
-    for (auto* pNode : m_pScene->GetRenderableNodes())
+    m_nodesData.reserve(m_pScene->GetRenderableCount());
+    for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
         m_nodesData.emplace_back(pNode->GetData());
     }
 
     m_pVertexBuffer =
         m_pRenderDevice->CreateVertexBuffer(sceneData.numVertices * sizeof(asset::Vertex),
-                                           reinterpret_cast<const uint8_t*>(sceneData.pVertices));
+                                            reinterpret_cast<const uint8_t*>(sceneData.pVertices));
 
     m_pIndexBuffer =
         m_pRenderDevice->CreateIndexBuffer(sceneData.numIndices * sizeof(uint32_t),
-                                          reinterpret_cast<const uint8_t*>(sceneData.pIndices));
+                                           reinterpret_cast<const uint8_t*>(sceneData.pIndices));
 
     m_numIndices = sceneData.numIndices;
 }
@@ -60,9 +57,10 @@ void RenderScene::Destroy()
 
 void RenderScene::LoadSceneMaterials()
 {
-    auto sgMaterials = m_pScene->GetComponents<sg::Material>();
+    const std::vector<sg::Material*> sgMaterials = m_pScene->GetComponents<sg::Material>();
+    m_materialsData.clear();
     m_materialsData.reserve(sgMaterials.size());
-    for (const auto* pMat : sgMaterials)
+    for (const sg::Material* pMat : sgMaterials)
     {
         m_materialsData.emplace_back(pMat->data);
     }
@@ -80,19 +78,18 @@ void RenderScene::LoadSceneTextures()
 
 void RenderScene::PrepareBuffers()
 {
-    std::vector<uint32_t> triangleSubMeshMap;
-    for (auto* pNode : m_pScene->GetRenderableNodes())
+    HeapVector<uint32_t> triangleSubMeshMap;
+    triangleSubMeshMap.reserve(m_numIndices / 3);
+    for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
-        uint32_t subMeshIndex = 0;
-        for (auto* pSubMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
+        for (const sg::SubMesh* pSubMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            const int triangleCount = pSubMesh->GetIndexCount() / 3;
+            const uint32_t triangleCount = pSubMesh->GetIndexCount() / 3;
             for (uint32_t i = 0; i < triangleCount; i++)
             {
                 triangleSubMeshMap.push_back(
                     m_materialsData[pSubMesh->GetMaterialIndex()].bcTexIndex);
             }
-            subMeshIndex++;
         }
     }
 

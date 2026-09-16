@@ -43,7 +43,7 @@ template <typename T> static bool SameValues(const HeapVector<T>& left, const He
 
 void FVulkanCommandBuffer::InvalidateCachedState()
 {
-    for (auto& state : m_boundStates)
+    for (BoundPipelineState& state : m_boundStates)
     {
         state.pipeline         = VK_NULL_HANDLE;
         state.descriptorLayout = VK_NULL_HANDLE;
@@ -66,7 +66,7 @@ void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipelin
         LOG_ERROR_AND_THROW("Draw or dispatch requires a pipeline");
     }
     const VkPipelineBindPoint bindPoint = pipeline->GetVkPipelineBindPoint();
-    auto& state = m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
+    BoundPipelineState& state = m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
     if (state.pipeline != pipeline->GetVkPipeline())
     {
         vkCmdBindPipeline(m_vkHandle, bindPoint, pipeline->GetVkPipeline());
@@ -515,7 +515,7 @@ void VulkanCommandContextBase::RecordLifetime(uint64_t id)
 {
     if (id != 0)
     {
-        auto& ids = GetWorkload(WorkloadPhase::eExecute)->m_lifetimeIds;
+        HeapVector<uint64_t>& ids = GetWorkload(WorkloadPhase::eExecute)->m_lifetimeIds;
         if (std::find(ids.begin(), ids.end(), id) == ids.end())
         {
             ids.push_back(id);
@@ -840,15 +840,16 @@ static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget& target,
     }
     const bool hasDepthStencilFormat = FormatIsDepthOnly(target.format) ||
         FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format);
-    const auto usage = depthStencil ? RHITextureUsageFlagBits::eDepthStencilAttachment :
-                                      RHITextureUsageFlagBits::eColorAttachment;
+    const RHITextureUsageFlagBits usage = depthStencil ?
+        RHITextureUsageFlagBits::eDepthStencilAttachment :
+        RHITextureUsageFlagBits::eColorAttachment;
     if (depthStencil != hasDepthStencilFormat ||
         !target.pTexture->GetBaseInfo().usageFlags.HasFlag(usage))
     {
         LOG_ERROR_AND_THROW(
             "Rendering attachment format or image usage is incompatible with its role");
     }
-    const auto& range = view->GetSubResourceRange();
+    const RHITextureSubResourceRange& range = view->GetSubResourceRange();
     if (view->GetTextureType() == RHITextureType::e3D || range.levelCount != 1 ||
         layout.numLayers > range.layerCount)
     {
@@ -883,7 +884,8 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
         VkRenderingInfoKHR renderingInfo{};
 
         const Rect2<int>& area = pRenderingLayout->renderArea;
-        const auto& limits     = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+        const VkPhysicalDeviceLimits& limits =
+            GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
         if (area.minX < 0 || area.minY < 0 || area.maxX <= area.minX || area.maxY <= area.minY ||
             uint32_t(area.maxX) > limits.maxFramebufferWidth ||
             uint32_t(area.maxY) > limits.maxFramebufferHeight || pRenderingLayout->numLayers == 0 ||
@@ -943,7 +945,7 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
 
             // Vulkan ignores the view's aspectMask for rendering. Select the intended
             // depth/stencil operations through these attachment pointers instead.
-            const auto aspects = depthStencilRT.GetAspects();
+            const BitField<RHITextureAspectFlagBits> aspects = depthStencilRT.GetAspects();
             if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
             {
                 renderingInfo.pDepthAttachment = &depthStencilAttachment;

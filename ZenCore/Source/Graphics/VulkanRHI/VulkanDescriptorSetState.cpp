@@ -227,8 +227,8 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     {
         ClearAllSetStates();
         m_packedValueBuffers.clear();
-        m_cacheRevision  = 0;
-        m_pPipeline      = pPipeline;
+        m_cacheRevision = 0;
+        m_pPipeline     = pPipeline;
     }
 }
 
@@ -295,16 +295,16 @@ void VulkanDescriptorSetState::Reset()
     m_packedValueBuffers.clear();
     m_updateSrbScratch.clear();
     m_dynamicOffsetScratch.clear();
-    m_cacheRevision  = 0;
-    m_pPipeline      = nullptr;
+    m_cacheRevision = 0;
+    m_pPipeline     = nullptr;
 }
 
 VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
                                                            FVulkanCommandListContext* pContext,
                                                            bool& outNeedsWrite)
 {
-    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-    outNeedsWrite                 = false;
+    VkDescriptorSet descriptorSet  = VK_NULL_HANDLE;
+    outNeedsWrite                  = false;
     m_setStates[setIdx].pContainer = nullptr;
 
     if (m_pPipeline != nullptr)
@@ -452,7 +452,7 @@ void VulkanDescriptorSetState::ClearAllSetStates()
 {
     for (SetState& setState : m_setStates)
     {
-        setState.vkSet = VK_NULL_HANDLE;
+        setState.vkSet      = VK_NULL_HANDLE;
         setState.pContainer = nullptr;
         setState.bindings.clear();
         setState.dirty = false;
@@ -465,7 +465,7 @@ void VulkanDescriptorSetState::InvalidateResolvedCaches()
 {
     for (SetState& setState : m_setStates)
     {
-        setState.vkSet = VK_NULL_HANDLE;
+        setState.vkSet      = VK_NULL_HANDLE;
         setState.pContainer = nullptr;
     }
 }
@@ -633,9 +633,9 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
                         uint64_t(offset) + range <= buffer->GetRequiredSize();
                     if (offset != 0)
                     {
-                        const auto alignment = GVulkanRHI->GetDevice()
-                                                   ->GetPhysicalDeviceProperties()
-                                                   .limits.minUniformBufferOffsetAlignment;
+                        const VkDeviceSize alignment = GVulkanRHI->GetDevice()
+                                                           ->GetPhysicalDeviceProperties()
+                                                           .limits.minUniformBufferOffsetAlignment;
                         valid &= offset % alignment == 0;
                     }
                     break;
@@ -929,7 +929,7 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
                     bindingState.srb.resources.push_back(block.pBuffer);
                     bindingState.dynamicOffsets.resize(1);
                     bindingState.dynamicOffsets[0] = block.offset;
-                    bindingState.valueRange    = bufferState.blockSize;
+                    bindingState.valueRange        = bufferState.blockSize;
                     bindingState.uniformBlockId    = block.blockId;
                     bindingState.uniformGeneration = block.generation;
                     setState.dirty |= bufferChanged;

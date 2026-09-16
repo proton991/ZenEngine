@@ -10,7 +10,7 @@
 
 namespace zen::rc
 {
-static const std::vector<Mat4> cMatrices = {
+static const HeapVector<Mat4> cMatrices = {
     glm::rotate(glm::rotate(Mat4(1.0f), glm::radians(90.0f), Vec3(0.0f, 1.0f, 0.0f)),
                 glm::radians(180.0f),
                 Vec3(1.0f, 0.0f, 0.0f)),

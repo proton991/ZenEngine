@@ -124,8 +124,8 @@ private:
             }
             ZEN_MEM_FREE(m_pPagePool);
             ZEN_MEM_FREE(m_pFreePages);
-            m_pPagePool          = nullptr;
-            m_pFreePages         = nullptr;
+            m_pPagePool         = nullptr;
+            m_pFreePages        = nullptr;
             m_numPagesAllocated = 0;
             m_allocsAvailable   = 0;
         }

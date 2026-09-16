@@ -23,7 +23,7 @@ class RenderObject
 public:
     RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath);
 
-    const auto& GetRenderableNodes() const
+    const std::vector<sg::Node*>& GetRenderableNodes() const
     {
         return m_scene->GetRenderableNodes();
     }
@@ -38,7 +38,7 @@ public:
         return m_pIndexBuffer;
     }
 
-    const auto& GetAABB() const
+    const sg::AABB& GetAABB() const
     {
         return m_scene->GetAABB();
     }
@@ -47,15 +47,15 @@ private:
     RenderDevice* m_pRenderDevice{nullptr};
     UniquePtr<sg::Scene> m_scene;
 
-    std::vector<sg::MaterialData> m_materialsData;
-    RHIBuffer* m_pMaterialSSBO;
+    HeapVector<sg::MaterialData> m_materialsData;
+    RHIBuffer* m_pMaterialSSBO{nullptr};
 
-    std::vector<sg::NodeData> m_nodesData;
-    RHIBuffer* m_pNodeSSBO;
+    HeapVector<sg::NodeData> m_nodesData;
+    RHIBuffer* m_pNodeSSBO{nullptr};
 
-    RHIBuffer* m_pVertexBuffer;
-    RHIBuffer* m_pIndexBuffer;
+    RHIBuffer* m_pVertexBuffer{nullptr};
+    RHIBuffer* m_pIndexBuffer{nullptr};
 
-    std::vector<RHITexture*> m_sceneTextures;
+    HeapVector<RHITexture*> m_sceneTextures;
 };
 } // namespace zen::rc

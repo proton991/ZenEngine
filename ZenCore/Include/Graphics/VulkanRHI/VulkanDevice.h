@@ -141,7 +141,6 @@ public:
     void WaitForIdle();
 
 private:
-
     void SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions);
 
     VkPhysicalDevice m_gpu{VK_NULL_HANDLE};

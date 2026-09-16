@@ -26,8 +26,8 @@ void AllocateWithQueueSharing(CreateInfo& info,
     {
         families[familyCount++] = transferFamily;
     }
-    const bool concurrent      = familyCount > 1;
-    info.sharingMode          = concurrent ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
+    const bool concurrent = familyCount > 1;
+    info.sharingMode      = concurrent ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
     info.queueFamilyIndexCount = concurrent ? familyCount : 0;
     info.pQueueFamilyIndices   = concurrent ? families : nullptr;
     allocate();

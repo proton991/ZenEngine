@@ -28,7 +28,7 @@ public:
 
     void SetMaterial(uint32_t materialIndex, Material* pMaterial)
     {
-        m_pMaterial      = pMaterial;
+        m_pMaterial     = pMaterial;
         m_materialIndex = materialIndex;
     }
 
@@ -39,26 +39,27 @@ public:
     void SetIndexCount(uint32_t indexCount)
     {
         m_indexCount = indexCount;
+        m_hasIndices = indexCount != 0;
     }
     void SetVertexCount(uint32_t vertexCount)
     {
         m_vertexCount = vertexCount;
     }
 
-    auto GetVertexCount() const
+    uint32_t GetVertexCount() const
     {
         return m_vertexCount;
     }
 
-    auto GetIndexCount() const
+    uint32_t GetIndexCount() const
     {
         return m_indexCount;
     }
-    auto GetFirstIndex() const
+    uint32_t GetFirstIndex() const
     {
         return m_firstIndex;
     }
-    auto GetMaterial() const
+    Material* GetMaterial() const
     {
         return m_pMaterial;
     }
@@ -69,12 +70,12 @@ public:
         m_aabb.SetMax(max);
     }
 
-    const auto& GetAABB() const
+    const AABB& GetAABB() const
     {
         return m_aabb;
     }
 
-    auto& GetAABB()
+    AABB& GetAABB()
     {
         return m_aabb;
     }
@@ -84,7 +85,7 @@ public:
         return m_hasIndices;
     }
 
-    auto GetMaterialIndex() const
+    uint32_t GetMaterialIndex() const
     {
         return m_materialIndex;
     }
@@ -104,35 +105,10 @@ private:
 
 inline bool operator==(const SubMesh& lhs, const SubMesh& rhs)
 {
-    // Compare the name
-    //    if (lhs.GetName() != rhs.GetName())
-    //        return false;
-
-    // Compare the AABB (bounding box)
-    if (lhs.GetAABB() != rhs.GetAABB())
-        return false;
-
-    // Compare the first index
-    if (lhs.GetFirstIndex() != rhs.GetFirstIndex())
-        return false;
-
-    // Compare the index count
-    if (lhs.GetIndexCount() != rhs.GetIndexCount())
-        return false;
-
-    // Compare the vertex count
-    if (lhs.GetVertexCount() != rhs.GetVertexCount())
-        return false;
-
-    // Compare if they have the same material and material index
-    if (lhs.GetMaterial() != rhs.GetMaterial() || lhs.GetMaterialIndex() != rhs.GetMaterialIndex())
-        return false;
-
-    // Compare whether both have indices
-    if (lhs.HasIndices() != rhs.HasIndices())
-        return false;
-
-    return true;
+    return lhs.GetAABB() == rhs.GetAABB() && lhs.GetFirstIndex() == rhs.GetFirstIndex() &&
+        lhs.GetIndexCount() == rhs.GetIndexCount() &&
+        lhs.GetVertexCount() == rhs.GetVertexCount() && lhs.GetMaterial() == rhs.GetMaterial() &&
+        lhs.GetMaterialIndex() == rhs.GetMaterialIndex() && lhs.HasIndices() == rhs.HasIndices();
 }
 
 inline bool operator!=(const SubMesh& lhs, const SubMesh& rhs)

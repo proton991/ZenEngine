@@ -9,11 +9,8 @@ class AABB
 public:
     AABB(const Vec3& min, const Vec3& max) : m_min(min), m_max(max) {}
 
-    AABB()
-    {
-        m_min = std::numeric_limits<glm::vec3>::max();
-        m_max = std::numeric_limits<glm::vec3>::min();
-    }
+    AABB() : m_min(std::numeric_limits<float>::max()), m_max(std::numeric_limits<float>::lowest())
+    {}
 
     ~AABB() = default;
 
@@ -27,17 +24,17 @@ public:
         m_max = glm::max(max, m_max);
     }
 
-    auto GetMin() const
+    Vec3 GetMin() const
     {
         return m_min;
     }
 
-    auto GetMax() const
+    Vec3 GetMax() const
     {
         return m_max;
     }
 
-    auto GetCenter() const
+    Vec3 GetCenter() const
     {
         return (m_min + m_max) * 0.5f;
     }
@@ -54,21 +51,28 @@ public:
 
     float GetMaxExtent() const
     {
-        auto extent = GetExtent3D();
+        const Vec3 extent = GetExtent3D();
         return std::max(extent.x, std::max(extent.y, extent.z));
     }
 
     void Transform(const Mat4& transform)
     {
-        m_min = Vec3(transform * Vec4(m_min, 1.0f));
-        m_max = Vec3(transform * Vec4(m_max, 1.0f));
+        const Vec3 min = m_min;
+        const Vec3 max = m_max;
+        *this          = AABB();
+        for (uint32_t corner = 0; corner < 8; ++corner)
+        {
+            const Vec3 point((corner & 1) ? max.x : min.x, (corner & 2) ? max.y : min.y,
+                             (corner & 4) ? max.z : min.z);
+            Update(Vec3(transform * Vec4(point, 1.0f)));
+        }
     }
 
 private:
     void Update(const Vec3& point)
     {
         m_min = glm::min(m_min, point);
-        m_max = glm::min(m_max, point);
+        m_max = glm::max(m_max, point);
     }
     Vec3 m_min;
     Vec3 m_max;

@@ -27,7 +27,7 @@ public:
         return m_renderableNodes;
     }
 
-    auto GetRenderableCount() const
+    size_t GetRenderableCount() const
     {
         return m_renderableNodes.size();
     }
@@ -52,11 +52,11 @@ public:
 	 */
     template <class T> void SetComponents(std::vector<UniquePtr<T>>&& components)
     {
-        std::vector<UniquePtr<Component>> result(components.size());
-        std::transform(components.begin(), components.end(), result.begin(),
-                       [](UniquePtr<T>& component) -> UniquePtr<Component> {
-                           return UniquePtr<Component>(std::move(component));
-                       });
+        HeapVector<UniquePtr<Component>> result(components.size());
+        for (size_t i = 0; i < components.size(); ++i)
+        {
+            result[i] = UniquePtr<Component>(std::move(components[i]));
+        }
         m_components[typeid(T)] = std::move(result);
     }
 
@@ -68,12 +68,12 @@ public:
         std::vector<T*> result;
         if (HasComponent(typeid(T)))
         {
-            auto& sceneComponents = m_components.at(typeid(T));
+            const HeapVector<UniquePtr<Component>>& sceneComponents = m_components.at(typeid(T));
             result.resize(sceneComponents.size());
-            std::transform(sceneComponents.begin(), sceneComponents.end(), result.begin(),
-                           [](const UniquePtr<Component>& component) -> T* {
-                               return dynamic_cast<T*>(component.Get());
-                           });
+            for (size_t i = 0; i < sceneComponents.size(); ++i)
+            {
+                result[i] = dynamic_cast<T*>(sceneComponents[i].Get());
+            }
         }
         return result;
     }
@@ -91,22 +91,22 @@ public:
 
     void UpdateAABB();
 
-    auto GetSize() const
+    float GetSize() const
     {
         return m_aabb.GetScale();
     }
 
-    auto GetAABB() const
+    const AABB& GetAABB() const
     {
         return m_aabb;
     }
 
-    auto& GetAABB()
+    AABB& GetAABB()
     {
         return m_aabb;
     }
 
-    const auto& GetLocalAABB() const
+    const AABB& GetLocalAABB() const
     {
         return m_localAABB;
     }
@@ -120,7 +120,7 @@ public:
         m_name = std::move(name);
     }
 
-    const std::string GetName() const
+    const std::string& GetName() const
     {
         return m_name;
     }
@@ -139,7 +139,7 @@ private:
 
     Node* m_pRootNode{nullptr};
 
-    HashMap<TypeId, std::vector<UniquePtr<Component>>> m_components;
+    HashMap<TypeId, HeapVector<UniquePtr<Component>>> m_components;
 
     static DefaultTextures sDefaultTextures;
 };

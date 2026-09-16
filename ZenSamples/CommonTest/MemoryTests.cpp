@@ -29,7 +29,7 @@ TEST(mem_alloc_test, allocator)
 {
     constexpr int numElements = 10;
     auto arraySize            = sizeof(int) * numElements;
-    int* pArr = static_cast<int*>(ZEN_MEM_ALLOC(arraySize));
+    int* pArr                 = static_cast<int*>(ZEN_MEM_ALLOC(arraySize));
 
     for (int i = 0; i < numElements; ++i)
     {
@@ -39,7 +39,7 @@ TEST(mem_alloc_test, allocator)
     EXPECT_NE(pArr, nullptr);
     EXPECT_EQ(pArr[0], 1);
 
-    auto newSize    = arraySize * 2;
+    auto newSize     = arraySize * 2;
     int* pResizedArr = static_cast<int*>(ZEN_MEM_REALLOC(pArr, newSize));
     for (int i = 0; i < numElements; ++i)
     {

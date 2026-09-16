@@ -27,7 +27,7 @@ public:
     // scene and environment loads create independent instances owned by this manager.
     RHITexture* LoadTexture2D(const std::string& file, bool requireMipmap = false);
 
-    void LoadSceneTextures(const sg::Scene* pScene, std::vector<RHITexture*>& outTextures);
+    void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture);
 

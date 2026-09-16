@@ -1621,7 +1621,7 @@ RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMip
     return m_pTextureManager->LoadTexture2D(file, requireMipmap);
 }
 
-void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, std::vector<RHITexture*>& outTextures)
+void RenderDevice::LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures)
 {
     m_pTextureManager->LoadSceneTextures(pScene, outTextures);
 }

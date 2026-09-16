@@ -763,8 +763,8 @@ uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(
         }
     }
 
-    const auto layoutIdIt                                    = m_layoutIdMap.find(key);
-    uint32_t layoutId                                        = 0;
+    const auto layoutIdIt = m_layoutIdMap.find(key);
+    uint32_t layoutId     = 0;
 
     if (layoutIdIt != m_layoutIdMap.end())
     {
@@ -1096,7 +1096,7 @@ VulkanBindlessDescriptorPoolManager::BindlessSlotState* VulkanBindlessDescriptor
     {
         return nullptr;
     }
-    auto& slot = m_slotStates[ToUnderlying(handle.heapType)][handle.slotIndex];
+    BindlessSlotState& slot = m_slotStates[ToUnderlying(handle.heapType)][handle.slotIndex];
     return slot.pResource != nullptr && slot.generation == handle.generation ? &slot : nullptr;
 }
 
@@ -1110,7 +1110,7 @@ bool VulkanBindlessDescriptorPoolManager::IsRegistered(RHIBindlessHandle handle)
 bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindlessHandle handle)
 {
     LockAuto lock(&m_mutex);
-    auto* slot = FindRegistration(handle);
+    BindlessSlotState* slot = FindRegistration(handle);
     if (slot == nullptr || slot->retiredEpoch != 0 || m_epoch == UINT64_MAX)
     {
         return false;
@@ -1154,9 +1154,9 @@ void VulkanBindlessDescriptorPoolManager::CollectRetiredResources()
 
 void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
 {
-    auto& tracker          = GVulkanRHI->GetLifetimeTracker();
-    uint64_t earliestEpoch = UINT64_MAX;
-    size_t retained        = 0;
+    VulkanLifetimeTracker& tracker = GVulkanRHI->GetLifetimeTracker();
+    uint64_t earliestEpoch         = UINT64_MAX;
+    size_t retained                = 0;
     for (uint64_t epoch : m_epochs)
     {
         const bool completed = tracker.IsComplete(epoch);
@@ -1176,16 +1176,17 @@ void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
     m_epochs.resize(retained);
     for (auto it = m_retiredSlots.begin(); it != m_retiredSlots.end();)
     {
-        auto* slot = FindRegistration(*it);
+        BindlessSlotState* slot = FindRegistration(*it);
         if (slot != nullptr && slot->retiredEpoch < earliestEpoch)
         {
             // Unflushed writes must not outlive their retained resources or later
             // overwrite a recycled slot. Live old recordings keep their writes intact.
-            auto& writes = m_pendingWrites[ToUnderlying(it->heapType)];
-            writes.erase(
-                std::remove_if(writes.begin(), writes.end(),
-                               [it](const auto& write) { return write.slotIdx == it->slotIndex; }),
-                writes.end());
+            HeapVector<BindlessDSWrite>& writes = m_pendingWrites[ToUnderlying(it->heapType)];
+            writes.erase(std::remove_if(writes.begin(), writes.end(),
+                                        [it](const BindlessDSWrite& write) {
+                                            return write.slotIdx == it->slotIndex;
+                                        }),
+                         writes.end());
             slot->pResource->ReleaseReference();
             if (slot->pTextureOwner != nullptr)
             {

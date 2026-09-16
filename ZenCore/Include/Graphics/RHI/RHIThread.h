@@ -70,7 +70,7 @@ public:
         std::shared_ptr<std::packaged_task<Result()>> task =
             std::make_shared<std::packaged_task<Result()>>(
                 std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...));
-        std::future<Result> result = task->get_future();
+        std::future<Result> result                 = task->get_future();
         std::shared_ptr<RHIThreadEvent> completion = std::make_shared<RHIThreadEvent>();
         Dispatch([task, completion] {
             (*task)();

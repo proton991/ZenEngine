@@ -118,6 +118,8 @@ protected:
 private:
     VulkanShader(const RHIShaderCreateInfo& createInfo) : RHIShader(createInfo) {}
 
+    bool LoadSpirvFiles();
+
     struct VertexInputInfo
     {
         SmallVector<VkVertexInputBindingDescription> vkBindings;
@@ -184,7 +186,6 @@ protected:
     void Destroy() override;
 
 private:
-
     VulkanPipeline(const RHIGfxPipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
 
     VulkanPipeline(const RHIComputePipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}

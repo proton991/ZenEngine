@@ -23,7 +23,7 @@ public:
 
     void Update();
 
-    [[nodiscard]] auto ShouldClose() const
+    [[nodiscard]] bool ShouldClose() const
     {
         return m_data.shouldClose;
     }

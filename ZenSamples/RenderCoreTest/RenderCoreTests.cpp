@@ -52,7 +52,7 @@ struct SceneInputs
     RHIBuffer* indices{};
     RHIBuffer* nodes{};
     RHIBuffer* materials{};
-    std::vector<RHITexture*> textures;
+    HeapVector<RHITexture*> textures;
     EnvTexture environment;
     sg::CameraUniformData camera{};
     SceneUniformData uniforms{};
@@ -339,7 +339,7 @@ public:
             descriptor.arraySize = descriptor.name == NameID("uTextureArray") ? 1024 : 1;
             descriptor.bindless  = descriptor.name == NameID("uTexture2DHeap") ||
                 descriptor.name == NameID("uSamplerHeap");
-            descriptor.writable  = binding.second == RHIShaderResourceType::eImage ||
+            descriptor.writable = binding.second == RHIShaderResourceType::eImage ||
                 binding.second == RHIShaderResourceType::eStorageBuffer;
 
             if (descriptor.name == NameID("read_buffer"))
@@ -1371,7 +1371,7 @@ protected:
     void AllocateRendererInputs(int epoch,
                                 TestViewport& viewport,
                                 std::vector<RHIBuffer*>& ownedBuffers,
-                                std::vector<RHITexture*>& ownedTextures,
+                                HeapVector<RHITexture*>& ownedTextures,
                                 RenderConfig& config);
     TestRHI* rhi;
     RenderDevice* device;
@@ -2915,7 +2915,7 @@ TEST_F(RenderCoreTest, ProductionSceneTextureNamesDoNotOverwriteOwners)
     StagingBufferManager staging(1024, 4096);
     StagingUploadQueue uploads(device, &staging);
     TextureManager textures(device, &uploads);
-    std::vector<RHITexture*> first, second;
+    HeapVector<RHITexture*> first, second;
     textures.LoadSceneTextures(&scene, first);
     textures.LoadSceneTextures(&scene, second);
 
@@ -3121,7 +3121,7 @@ TEST_F(RenderCoreTest, VoxelVolumesAreZeroedBeforeFirstAndRequestedVoxelizations
         TestVoxelVolumes volumes(device, configuration.first, configuration.second);
         volumes.Init();
         const VoxelTextures& textures = volumes.GetVoxelTextures();
-        std::vector<RHITexture*> all{textures.pAlbedo};
+        HeapVector<RHITexture*> all{textures.pAlbedo};
 
         if (configuration.second)
         {
@@ -3243,7 +3243,7 @@ TEST_F(RenderCoreTest, VoxelVolumesAreZeroedBeforeFirstAndRequestedVoxelizations
 void RenderCoreTest::AllocateRendererInputs(int epoch,
                                             TestViewport& viewport,
                                             std::vector<RHIBuffer*>& ownedBuffers,
-                                            std::vector<RHITexture*>& ownedTextures,
+                                            HeapVector<RHITexture*>& ownedTextures,
                                             RenderConfig& config)
 {
     sceneInputs.vertices  = Buffer();
@@ -3357,7 +3357,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
     TestViewport viewport;
     std::vector<RHIBuffer*> ownedBuffers;
-    std::vector<RHITexture*> ownedTextures;
+    HeapVector<RHITexture*> ownedTextures;
 
     AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures, config);
     sg::Scene source;
@@ -11390,7 +11390,7 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
     options.preparationTimings  = true;
     device->GetRDGMetrics().Configure(options);
     device->GetRDGMetrics().SetSink({});
-    std::vector<RHITexture*> textures;
+    HeapVector<RHITexture*> textures;
     std::vector<RHITextureView*> views;
 
     for (uint32_t i = 0; i < 32; ++i)

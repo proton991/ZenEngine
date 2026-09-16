@@ -12,33 +12,33 @@ UniquePtr<Camera> Camera::CreateUniqueOnAABB(const Vec3& minPos,
                                              float aspect,
                                              CameraType type)
 {
-    const auto diag   = maxPos - minPos;
-    auto maxDistance  = glm::length(diag);
-    float near        = 0.001f * maxDistance;
-    float far         = 100.f * maxDistance;
-    float fov         = 70.0f;
-    const auto center = 0.5f * (maxPos + minPos);
-    const auto up     = Vec3(0, 1, 0);
+    const Vec3 diag         = maxPos - minPos;
+    const float maxDistance = glm::length(diag);
+    float near              = 0.001f * maxDistance;
+    float far               = 100.f * maxDistance;
+    float fov               = 70.0f;
+    const Vec3 center       = 0.5f * (maxPos + minPos);
+    const Vec3 up           = Vec3(0, 1, 0);
     //  const auto eye    = diag.z > 0 ? center + 1.5f * diag : center + 2.f * glm::cross(diag, up);
     // place camera at the bbx corner
-    const auto eye   = Vec3(maxPos.x, maxPos.y + 0.5f * maxDistance, maxPos.z);
-    const auto speed = maxDistance;
+    const Vec3 eye    = Vec3(maxPos.x, maxPos.y + 0.5f * maxDistance, maxPos.z);
+    const float speed = maxDistance;
     return MakeUnique<Camera>(eye, center, aspect, fov, near, far, speed, type);
 }
 
 UniquePtr<Camera> Camera::CreateOrthoOnAABB(const sg::AABB& aabb)
 {
-    auto radius = aabb.GetScale() * 0.5f;
-    Vec3 target = aabb.GetCenter();
-    float near  = -radius;
-    float far   = 2.0f * radius;
-    float fov   = 70.0f;
+    const float radius = aabb.GetScale() * 0.5f;
+    Vec3 target        = aabb.GetCenter();
+    float near         = -radius;
+    float far          = 2.0f * radius;
+    float fov          = 70.0f;
 
-    auto direction = aabb.GetMax() - target;
-    const auto eye = target + direction * radius;
+    Vec3 direction = aabb.GetMax() - target;
+    const Vec3 eye = target + direction * radius;
 
-    auto* pCamera = new Camera(eye, target, 1.0f, fov, near, far, radius, CameraType::eFirstPerson,
-                              CameraProjectionType::eOrthographic);
+    Camera* pCamera = new Camera(eye, target, 1.0f, fov, near, far, radius,
+                                 CameraType::eFirstPerson, CameraProjectionType::eOrthographic);
     pCamera->SetOrthoRect(Vec4(-radius, radius, -radius, radius));
     return UniquePtr<Camera>(pCamera);
 }
@@ -182,7 +182,8 @@ void Camera::UpdatePosition(float velocity)
 
 void Camera::UpdateViewFirstPerson()
 {
-    auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
+    const std::array<float, 2> delta =
+        KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
     m_yaw += delta[0] * m_sensitivity;
     m_pitch += delta[1] * m_sensitivity;
     m_pitch      = std::clamp(m_pitch, m_pitchMin, m_pitchMax);
@@ -228,7 +229,8 @@ void Camera::Update(float deltaTime)
     {
         if (!KeyboardMouseInput::GetInstance().IsMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT))
         {
-            auto delta = KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
+            const std::array<float, 2> delta =
+                KeyboardMouseInput::GetInstance().CalculateCursorPositionDelta();
             UpdateViewOrbit({delta[1] * m_rotationSpeed, delta[0] * m_rotationSpeed, 0.0f});
             m_cameraData.projViewMatrix = GetProjectionMatrix() * m_cameraData.view;
             m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
@@ -266,9 +268,9 @@ void Camera::SetOrthoRect(const Vec4& rect)
 
 void Camera::SetupOnAABB(const AABB& aabb)
 {
-    auto sceneMax    = aabb.GetMax();
-    auto sceneCenter = aabb.GetCenter();
-    auto radius      = aabb.GetScale() * 0.5f;
+    const Vec3 sceneMax    = aabb.GetMax();
+    const Vec3 sceneCenter = aabb.GetCenter();
+    const float radius     = aabb.GetScale() * 0.5f;
     if (m_projectionType == CameraProjectionType::eOrthographic)
     {
         Vec4 rect = Vec4(-radius, radius, -radius, radius);
@@ -280,8 +282,8 @@ void Camera::SetupOnAABB(const AABB& aabb)
         m_far  = 5.0f * radius;
     }
     m_target       = sceneCenter;
-    auto direction = glm::normalize(sceneMax - sceneCenter);
-    const auto eye = sceneCenter + direction * radius * 2.0f;
+    Vec3 direction = glm::normalize(sceneMax - sceneCenter);
+    const Vec3 eye = sceneCenter + direction * radius * 2.0f;
 
     SetPosition(eye);
 }

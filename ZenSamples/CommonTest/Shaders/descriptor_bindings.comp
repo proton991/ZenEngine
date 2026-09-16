@@ -1,5 +1,5 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 2) buffer OutputA { uint value; } outputA;
-layout(set = 0, binding = 7) buffer OutputB { uint value; } outputB;
+layout(set = 1, binding = 2) buffer OutputA { uint value; } outputA;
+layout(set = 1, binding = 7) buffer OutputB { uint value; } outputB;
 void main() { outputA.value = 1u; outputB.value = 2u; }

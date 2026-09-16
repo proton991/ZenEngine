@@ -223,7 +223,8 @@ protected:
     RHIBatchedShaderParameters Parameters(RHIShader* shader, RHIBuffer* buffer, uint32_t offset = 0)
     {
         RHIBatchedShaderParameters parameters;
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 0), buffer, nullptr, 0, offset);
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), buffer,
+                                    nullptr, 0, offset);
         return parameters;
     }
 
@@ -329,8 +330,10 @@ TEST_F(VulkanRecordingIntegrationTest, PackedUniformGrowthPreservesEarlierValues
     auto dispatch = [&](VulkanBuffer* output, uint32_t value) {
         const uint32_t values[4]{value, 0, 0, 0};
         RHIBatchedShaderParameters parameters;
-        parameters.AddValueParam(*shader->GetSRDByLocation(0, 0), values, sizeof(values));
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), output, nullptr, 0);
+        parameters.AddValueParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), values,
+                                 sizeof(values));
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1), output,
+                                    nullptr, 0);
         context->RHISetShaderParameters(parameters);
         context->RHIDispatch(1, 1, 1);
     };
@@ -425,8 +428,10 @@ protected:
     {
         const uint32_t values[4]{value, 0, 0, 0};
         RHIBatchedShaderParameters parameters;
-        parameters.AddValueParam(*shader->GetSRDByLocation(0, 0), values, sizeof(values));
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), output, nullptr, 0);
+        parameters.AddValueParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), values,
+                                 sizeof(values));
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1), output,
+                                    nullptr, 0);
         context->RHISetShaderParameters(parameters);
         context->RHIDispatch(1, 1, 1);
     }
@@ -519,7 +524,8 @@ TEST_F(VulkanUniformTrimIntegrationTest, CachedAndUnsubmittedPackedValuesSurvive
     // same block location, then re-upload the clean value in a new workload.
     Fill(3);
     RHIBatchedShaderParameters parameters;
-    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1), second,
+                                nullptr, 0);
     context->RHISetShaderParameters(parameters);
     context->RHIDispatch(1, 1, 1);
     ReleaseCachedUniform(shader);
@@ -548,7 +554,8 @@ TEST_F(VulkanUniformTrimIntegrationTest, RecycledBlockRefreshesCleanPackedValues
     ASSERT_TRUE(overwrite.IsValid());
     std::memset(overwrite.pMapped, 0xCD, overwrite.size);
     RHIBatchedShaderParameters parameters;
-    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1), second,
+                                nullptr, 0);
     context->RHISetShaderParameters(parameters);
     context->RHIDispatch(1, 1, 1);
     SubmitAndWait();
@@ -680,7 +687,8 @@ TEST_P(VulkanUniformQueueTrimTest, AcceptedRecordingsReleaseDuplicateBlockCounts
     Dispatch(shader, first, 73);
     Enqueue(context);
     RHIBatchedShaderParameters parameters;
-    parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), second, nullptr, 0);
+    parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1), second,
+                                nullptr, 0);
     context->RHISetShaderParameters(parameters);
     context->RHIDispatch(1, 1, 1); // Same block in another recording (merged in timeline mode).
     Enqueue(context);

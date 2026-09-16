@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 
 namespace zen
 {
@@ -21,10 +22,10 @@ public:
     inline bool Release()
     {
         // result is the value before fetch sub
-        auto result = m_count.fetch_sub(1, std::memory_order_acq_rel);
+        const unsigned int result = m_count.fetch_sub(1, std::memory_order_acq_rel);
         return result == 1;
     }
-    inline auto GetValue() const
+    inline uint32_t GetValue() const
     {
         return m_count.load();
     }
@@ -44,11 +45,11 @@ public:
     {
         return --m_count == 0;
     }
-    inline auto Dec()
+    inline void Dec()
     {
         m_count--;
     }
-    inline auto GetValue() const
+    inline uint32_t GetValue() const
     {
         return m_count;
     }

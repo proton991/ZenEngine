@@ -112,7 +112,9 @@ public:
         // Static up-cast here to avoid potential issues with multiple intrusive inheritance.
         // Also makes sure that the pointer type actually inherits from this type.
         if (m_pPtr)
+        {
             static_cast<ReferenceBase*>(m_pPtr)->ReleaseReference();
+        }
         m_pPtr = nullptr;
     }
 
@@ -131,7 +133,9 @@ public:
         // Static up-cast here to avoid potential issues with multiple intrusive inheritance.
         // Also makes sure that the pointer type actually inherits from this type.
         if (m_pPtr)
+        {
             static_cast<ReferenceBase*>(m_pPtr)->AddReference();
+        }
         return *this;
     }
 
@@ -146,7 +150,9 @@ public:
             Reset();
             m_pPtr = other.m_pPtr;
             if (m_pPtr)
+            {
                 static_cast<ReferenceBase*>(m_pPtr)->AddReference();
+            }
         }
         return *this;
     }

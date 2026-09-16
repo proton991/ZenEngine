@@ -160,7 +160,7 @@ void SetBufferContents(RDGResourceContent& contents,
         return;
     }
 
-    std::vector<RDGBufferContentRange> updated;
+    HeapVector<RDGBufferContentRange> updated;
     updated.reserve(contents.bufferRanges.size() + 2);
 
     for (RDGBufferContentRange const& range : contents.bufferRanges)

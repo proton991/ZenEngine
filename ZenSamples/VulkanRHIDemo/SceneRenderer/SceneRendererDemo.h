@@ -21,6 +21,8 @@ public:
     void Destroy();
 
 private:
+    void OnResize(uint32_t width, uint32_t height);
+
     void RunSmokeStep(uint32_t frame);
 
     UniquePtr<sg::Camera> m_camera;

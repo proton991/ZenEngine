@@ -72,7 +72,15 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     new (pShader) VulkanShader(createInfo);
 
-    pShader->Init();
+    if (pShader->LoadSpirvFiles())
+    {
+        pShader->Init();
+    }
+    else
+    {
+        pShader->Destroy();
+        pShader = nullptr;
+    }
 
     return pShader;
 }
@@ -93,19 +101,29 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 //     return pDescriptorSet;
 // }
 
-void VulkanShader::Init()
+bool VulkanShader::LoadSpirvFiles()
 {
-    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
+    bool loaded = true;
+    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax) && loaded; ++i)
     {
-        RHIShaderStage stage = static_cast<RHIShaderStage>(i);
-
+        const RHIShaderStage stage = static_cast<RHIShaderStage>(i);
         if (m_shaderGroupSPIRV->HasShaderStage(stage))
         {
-            m_shaderGroupSPIRV->SetStageSPIRV(
-                stage, platform::FileSystem::LoadSpvFile(m_spirvFileName[i]));
+            platform::FileLoadError error = platform::FileLoadError::eNone;
+            HeapVector<uint8_t> code =
+                platform::FileSystem::LoadSpvFile(m_spirvFileName[i], &error);
+            loaded = error == platform::FileLoadError::eNone;
+            if (loaded)
+            {
+                m_shaderGroupSPIRV->SetStageSPIRV(stage, std::move(code));
+            }
         }
     }
+    return loaded;
+}
 
+void VulkanShader::Init()
+{
     RHIShaderGroupInfo sgInfo{};
     RHIShaderUtil::ReflectShaderGroupInfo(m_shaderGroupSPIRV, sgInfo);
     sgInfo.name = m_name;
@@ -436,7 +454,7 @@ VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& cre
         const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
         for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
         {
-            const auto& target = layout->colorRenderTargets[i];
+            const RHIRenderTarget& target = layout->colorRenderTargets[i];
             if (target.numSamples != samples || FormatIsDepthOnly(target.format) ||
                 FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format))
             {
@@ -446,7 +464,7 @@ VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& cre
         }
         if (layout->hasDepthStencilRT)
         {
-            const auto& target = layout->depthStencilRenderTarget;
+            const RHIRenderTarget& target = layout->depthStencilRenderTarget;
             if (target.numSamples != samples ||
                 !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
                   FormatIsDepthStencil(target.format)))
@@ -510,9 +528,9 @@ void VulkanPipeline::InitGraphics()
     // Viewport State
     VkPipelineViewportStateCreateInfo VPStateCI;
     InitVkStruct(VPStateCI, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO);
-    VPStateCI.scissorCount  = 1;
-    VPStateCI.viewportCount = 1;
-    const auto& renderArea  = m_pRenderingLayout->renderArea;
+    VPStateCI.scissorCount       = 1;
+    VPStateCI.viewportCount      = 1;
+    const Rect2<int>& renderArea = m_pRenderingLayout->renderArea;
     const VkViewport viewport{static_cast<float>(renderArea.minX),
                               static_cast<float>(renderArea.minY),
                               static_cast<float>(renderArea.Width()),
@@ -700,7 +718,8 @@ void VulkanPipeline::InitGraphics()
         if (m_pRenderingLayout->hasDepthStencilRT)
         {
             const DataFormat format = m_pRenderingLayout->depthStencilRenderTarget.format;
-            const auto aspects      = m_pRenderingLayout->depthStencilRenderTarget.GetAspects();
+            const BitField<RHITextureAspectFlagBits> aspects =
+                m_pRenderingLayout->depthStencilRenderTarget.GetAspects();
             if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
             {
                 renderingCI.depthAttachmentFormat = ToVkFormat(format);

@@ -66,7 +66,7 @@ struct RDGResourceContent
 
     // Content coverage only. Barrier/dependency range tracking is a later phase.
     HashMap<uint64_t, RDGContentStatus> textureSubresources;
-    std::vector<RDGBufferContentRange> bufferRanges;
+    HeapVector<RDGBufferContentRange> bufferRanges;
     bool hasProducedElements{false}; // Does not imply initialized unused capacity.
 
     // Retained with physical contents across graph rebuilds; invalidation resets it.

@@ -8,7 +8,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
-#include <vector>
+#include "Templates/HeapVector.h"
 
 namespace zen::rc
 {
@@ -206,8 +206,8 @@ struct RDGMetricsSnapshot
     std::array<uint32_t, static_cast<size_t>(RDGMetricIssue::eCount)> issues{};
     uint32_t omittedNodes{0};
     uint32_t omittedDiagnostics{0};
-    std::vector<RDGNodeMetrics> nodes;
-    std::vector<RDGMetricDiagnostic> diagnostics;
+    HeapVector<RDGNodeMetrics> nodes;
+    HeapVector<RDGMetricDiagnostic> diagnostics;
 };
 
 struct RDGMetricsOptions
@@ -294,7 +294,7 @@ private:
     RDGMetricsSnapshot m_snapshot;
     RDGNodeMetrics m_node;
     RDGBarrierValidator m_validator;
-    std::vector<RDGMetricBarrier> m_barriers;
+    HeapVector<RDGMetricBarrier> m_barriers;
     bool m_capture{false};
     std::array<uint64_t, 2> m_executions{};
     std::array<uint64_t, 2> m_windowExecutions{};

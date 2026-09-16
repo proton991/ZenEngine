@@ -1,7 +1,7 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 0) uniform usamplerBuffer inputBuffer;
-layout(set = 0, binding = 1, r32ui) uniform writeonly uimageBuffer outputBuffer;
+layout(set = 1, binding = 0) uniform usamplerBuffer inputBuffer;
+layout(set = 1, binding = 1, r32ui) uniform writeonly uimageBuffer outputBuffer;
 void main()
 {
     int inputCount = textureSize(inputBuffer);

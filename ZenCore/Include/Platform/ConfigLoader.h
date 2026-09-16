@@ -29,60 +29,35 @@ public:
 
     VoxelizerMode GetVoxelizerMode() const
     {
-        auto it = m_configData.find("voxelizer");
-        if (it == m_configData.end() || it->second == "auto")
+        VoxelizerMode mode = VoxelizerMode::eAuto;
+        auto it            = m_configData.find("voxelizer");
+        if (it != m_configData.end() && it->second != "auto")
         {
-            return VoxelizerMode::eAuto;
+            if (it->second == "comp")
+            {
+                mode = VoxelizerMode::eCompute;
+            }
+            else if (it->second == "geom")
+            {
+                mode = VoxelizerMode::eGeometry;
+            }
+            else
+            {
+                LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.",
+                     it->second);
+            }
         }
-        if (it->second == "comp")
-        {
-            return VoxelizerMode::eCompute;
-        }
-        if (it->second == "geom")
-        {
-            return VoxelizerMode::eGeometry;
-        }
-
-        LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.", it->second);
-        return VoxelizerMode::eAuto;
+        return mode;
     }
 
     std::string GetSkyboxModelPath() const
     {
-        std::string path    = "";
-        auto basePathIt     = m_configData.find("model_base_path");
-        auto defaultModelIt = m_configData.find("skybox_model");
-
-        if (basePathIt != m_configData.end() && defaultModelIt != m_configData.end())
-        {
-            path = basePathIt->second + "/" + defaultModelIt->second + "/glTF/" +
-                defaultModelIt->second + ".gltf";
-        }
-        else
-        {
-            LOGE("Missing configuration values for GLTF model path.");
-        }
-
-        return path;
+        return GetConfiguredModelPath("skybox_model");
     }
 
     std::string GetDefaultGLTFModelPath() const
     {
-        std::string path    = "";
-        auto basePathIt     = m_configData.find("model_base_path");
-        auto defaultModelIt = m_configData.find("default_model");
-
-        if (basePathIt != m_configData.end() && defaultModelIt != m_configData.end())
-        {
-            path = basePathIt->second + "/" + defaultModelIt->second + "/glTF/" +
-                defaultModelIt->second + ".gltf";
-        }
-        else
-        {
-            LOGE("Missing configuration values for GLTF model path.");
-        }
-
-        return path;
+        return GetConfiguredModelPath("default_model");
     }
 
     std::string GetGLTFModelPath(const std::string& name) const
@@ -106,6 +81,21 @@ public:
     ConfigLoader& operator=(const ConfigLoader&) = delete;
 
 private:
+    std::string GetConfiguredModelPath(const char* key) const
+    {
+        std::string path;
+        auto model = m_configData.find(key);
+        if (model != m_configData.end())
+        {
+            path = GetGLTFModelPath(model->second);
+        }
+        else
+        {
+            LOGE("Missing configuration values for GLTF model path.");
+        }
+        return path;
+    }
+
     ConfigLoader()
     {
         LoadConfig(ZEN_CONFIG_PATH);

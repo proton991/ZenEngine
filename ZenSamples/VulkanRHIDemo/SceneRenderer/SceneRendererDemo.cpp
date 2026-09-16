@@ -8,8 +8,10 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Memory/Memory.h"
 #include "Platform/InputController.h"
+#include <algorithm>
 #include <charconv>
 #include <chrono>
+#include <iterator>
 #include <string_view>
 
 // #if defined(ZEN_WIN32) && defined(ZEN_DEBUG)
@@ -40,16 +42,8 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
     m_renderDevice->Init(m_pViewport);
 
-    float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
-    m_pWindow->SetOnResize([&](uint32_t width, uint32_t height) {
-        // Minimized windows can report 0 x 0; keep the last valid camera projection.
-        if (width == 0 || height == 0)
-        {
-            return;
-        }
-        m_camera->UpdateAspect(m_pWindow->GetAspect());
-        m_renderDevice->ProcessViewportResize(width, height);
-    });
+    const float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
+    m_pWindow->SetOnResize([this](uint32_t width, uint32_t height) { OnResize(width, height); });
 
     m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect,
                                         type, sg::CameraProjectionType::ePerspective);
@@ -61,6 +55,16 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 SceneRendererDemo::~SceneRendererDemo()
 {
     delete m_pWindow;
+}
+
+void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
+{
+    // Minimized windows retain the last valid camera projection.
+    if (width > 0 && height > 0)
+    {
+        m_camera->UpdateAspect(m_pWindow->GetAspect());
+        m_renderDevice->ProcessViewportResize(width, height);
+    }
 }
 
 void SceneRendererDemo::Prepare()
@@ -86,15 +90,10 @@ void SceneRendererDemo::Prepare()
     sceneData.lightPositions[2] = glm::vec4(-1.0f, 1.0f, 1.0f, 1.0f);  // Bottom-left
     sceneData.lightPositions[3] = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);   // Bottom-right
 
-    sceneData.lightColors[0] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightColors[1] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightColors[2] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    sceneData.lightColors[3] = Vec4(1.0f, 1.0f, 1.0f, 0.0f);
-
-    sceneData.lightIntensities[0] = Vec4(5.0f);
-    sceneData.lightIntensities[1] = Vec4(5.0f);
-    sceneData.lightIntensities[2] = Vec4(5.0f);
-    sceneData.lightIntensities[3] = Vec4(5.0f);
+    std::fill(std::begin(sceneData.lightColors), std::end(sceneData.lightColors),
+              Vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    std::fill(std::begin(sceneData.lightIntensities), std::end(sceneData.lightIntensities),
+              Vec4(5.0f));
 
     m_renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), sceneData);
     m_renderScene->Init();

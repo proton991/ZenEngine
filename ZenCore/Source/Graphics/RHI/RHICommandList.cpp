@@ -178,7 +178,7 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
-    RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
+    RHICommandList* pCmdList = ZEN_NEW() RHICommandList();
     pCmdList->m_contextOwner = std::shared_ptr<IRHICommandContext>(pContext, DestroyCommandContext);
     RHICommandContextType contextType = pContext->GetContextType();
 

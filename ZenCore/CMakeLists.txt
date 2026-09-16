@@ -267,6 +267,13 @@ set(ZEN_CORE_SOURCES
     Source/vk_mem_alloc.cpp
 )
 
+if (NOT ZEN_BUILD_LEGACY)
+    list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/Val/")
+    list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/RenderCore/[^/]+[.]h$")
+    list(FILTER ZEN_CORE_SOURCES EXCLUDE REGEX "Source/Graphics/Val/")
+    list(FILTER ZEN_CORE_SOURCES EXCLUDE REGEX "Source/Graphics/RenderCore/[^/]+[.]cpp$")
+endif ()
+
 add_library(ZenCore)
 target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
 target_compile_definitions(ZenCore PUBLIC ZEN_DEBUG)

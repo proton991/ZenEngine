@@ -5,6 +5,7 @@
 #include <fastgltf/tools.hpp>
 #include "Types.h"
 #include "Utils/UniquePtr.h"
+#include "Templates/HeapVector.h"
 
 namespace zen::sg
 {
@@ -22,11 +23,11 @@ public:
 
     void LoadFromFile(const std::string& path, sg::Scene* pScene);
 
-    const auto& GetVertices() const
+    const std::vector<Vertex>& GetVertices() const
     {
         return m_vertices;
     }
-    const auto& GetIndices() const
+    const std::vector<uint32_t>& GetIndices() const
     {
         return m_indices;
     }
@@ -53,6 +54,7 @@ private:
         sg::Scene* pScene);
 
     sg::Texture* LoadGltfTextureVisitor(uint32_t imageIndex);
+    HeapVector<UniquePtr<sg::Texture>> LoadGltfTextureBatch(uint32_t begin, uint32_t end);
 
     template <typename T> void LoadAccessor(const fastgltf::Accessor& accessor,
                                             const T*& bufferPtr,
@@ -61,7 +63,7 @@ private:
     {
         const fastgltf::BufferView& bufferView =
             m_gltfAsset.bufferViews[accessor.bufferViewIndex.value()];
-        auto& buffer = m_gltfAsset.buffers[bufferView.bufferIndex];
+        const fastgltf::Buffer& buffer = m_gltfAsset.buffers[bufferView.bufferIndex];
 
         const fastgltf::sources::Array* pVector =
             std::get_if<fastgltf::sources::Array>(&buffer.data);

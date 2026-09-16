@@ -1,7 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/VoxelRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -32,18 +31,8 @@ void DeferredLightingRenderer::PrepareSamplers()
         m_pDepthSampler         = m_pRenderDevice->CreateSampler(samplerInfo);
     }
 
-    {
-        RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
-        samplerInfo.minFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.magFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
-        m_pColorSampler         = m_pRenderDevice->CreateSampler(samplerInfo);
-    }
+    const RHISamplerCreateInfo colorSamplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
+    m_pColorSampler                             = m_pRenderDevice->CreateSampler(colorSamplerInfo);
 }
 
 void DeferredLightingRenderer::BuildRenderGraph()

@@ -1,23 +1,23 @@
 #pragma once
 
 #include <tcb/span.hpp>
+#include <type_traits>
 namespace zen
 {
 template <typename T> using ArrayView = tcb::span<T, tcb::dynamic_extent>;
 
-template <typename T> constexpr auto MakeView(T&& v)
+template <typename T> using ArrayViewElement =
+    std::conditional_t<std::is_const_v<std::remove_reference_t<T>>,
+                       const typename std::decay_t<T>::value_type,
+                       typename std::decay_t<T>::value_type>;
+
+template <typename T> constexpr ArrayView<ArrayViewElement<T>> MakeView(T&& value)
 {
-    using ValueType = typename std::decay_t<T>::value_type;
-    using FinalType =
-        std::conditional_t<std::is_const_v<std::remove_reference_t<T>>, const ValueType, ValueType>;
-    return ArrayView<FinalType>{v.data(), v.size()};
+    return ArrayView<ArrayViewElement<T>>{value.data(), value.size()};
 }
 
-template <class T> size_t GetArrayViewSize(T&& v)
+template <class T> size_t GetArrayViewSize(T&& value)
 {
-    using ValueType = typename std::decay_t<T>::value_type;
-    using FinalType =
-        std::conditional_t<std::is_const_v<std::remove_reference_t<T>>, const ValueType, ValueType>;
-    return v.size() * sizeof(FinalType);
+    return value.size() * sizeof(ArrayViewElement<T>);
 }
 } // namespace zen

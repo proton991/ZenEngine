@@ -113,7 +113,9 @@ public:
     void reserve(size_t newCap)
     {
         if (newCap > m_capacity)
+        {
             ReserveInternal(newCap);
+        }
     }
 
     void push_back(const T& value)
@@ -141,7 +143,7 @@ public:
 private:
     Allocator* m_pAllocator = nullptr;
 
-    T* m_pData         = nullptr;
+    T* m_pData        = nullptr;
     size_t m_size     = 0;
     size_t m_capacity = 0;
 
@@ -162,7 +164,7 @@ private:
             }
         }
 
-        m_pData     = pNewMem;
+        m_pData    = pNewMem;
         m_capacity = newCap;
     }
 
@@ -178,17 +180,19 @@ private:
     void DestroyElements()
     {
         for (size_t i = 0; i < m_size; i++)
+        {
             m_pData[i].~T();
+        }
     }
 
     void MoveFrom(ArenaVector& other)
     {
         m_pAllocator = other.m_pAllocator;
         m_pData      = other.m_pData;
-        m_size      = other.m_size;
-        m_capacity  = other.m_capacity;
+        m_size       = other.m_size;
+        m_capacity   = other.m_capacity;
 
-        other.m_pData     = nullptr;
+        other.m_pData    = nullptr;
         other.m_size     = 0;
         other.m_capacity = 0;
     }

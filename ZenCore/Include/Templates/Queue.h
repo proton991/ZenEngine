@@ -33,13 +33,12 @@ public:
     std::optional<T> TryPop()
     {
         LockAuto lock(&m_mutex);
-        if (m_q.empty())
+        std::optional<T> value;
+        if (!m_q.empty())
         {
-            return std::nullopt;
+            value.emplace(std::move(m_q.front()));
+            m_q.pop();
         }
-
-        T value = m_q.front();
-        m_q.pop();
         return value;
     }
 
@@ -93,7 +92,7 @@ class DeletionQueue
 public:
     void Enqueue(std::function<void()>&& function)
     {
-        m_deletors.push_back(function);
+        m_deletors.push_back(std::move(function));
     }
 
     void Flush()

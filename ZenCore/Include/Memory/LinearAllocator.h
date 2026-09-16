@@ -14,7 +14,7 @@ public:
     LinearAllocator(size_t capacity) : m_capacity(capacity)
     {
         m_pBuffer = static_cast<uint8_t*>(ZEN_MEM_ALLOC(capacity));
-        m_offset = 0;
+        m_offset  = 0;
     }
 
     // Rule of Zero/Five: Disable copy and move operations    // as this class owns the underlying memory buffer.
@@ -27,7 +27,7 @@ public:
     {
         ZEN_MEM_FREE(m_pBuffer);
         // Set members to zero for safety/clarity (optional, but good practice)
-        m_pBuffer   = nullptr;
+        m_pBuffer  = nullptr;
         m_capacity = 0;
         m_offset   = 0;
     }
@@ -40,7 +40,9 @@ public:
 
         size_t newOffset = (aligned - base) + size;
         if (newOffset > m_capacity)
+        {
             return nullptr; // out of memory
+        }
 
         m_offset = newOffset;
         return reinterpret_cast<void*>(aligned);
@@ -69,7 +71,7 @@ private:
 
 
     uint8_t* m_pBuffer = nullptr;
-    size_t m_capacity = 0;
-    size_t m_offset   = 0;
+    size_t m_capacity  = 0;
+    size_t m_offset    = 0;
 };
 } // namespace zen

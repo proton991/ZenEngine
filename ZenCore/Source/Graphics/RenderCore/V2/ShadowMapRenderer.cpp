@@ -71,18 +71,8 @@ void ShadowMapRenderer::PrepareTextures()
             texFormat, {.copyUsage = false}, "shadowmap_render_depth");
     }
 
-    {
-        RHISamplerCreateInfo samplerInfo{};
-        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
-        samplerInfo.minFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.magFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.mipFilter   = RHISamplerFilter::eLinear;
-        samplerInfo.repeatU     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.repeatV     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.repeatW     = RHISamplerRepeatMode::eRepeat;
-        samplerInfo.borderColor = RHISamplerBorderColor::eFloatOpaqueWhite;
-        m_pColorSampler         = m_pRenderDevice->CreateSampler(samplerInfo);
-    }
+    const RHISamplerCreateInfo colorSamplerInfo = RHISamplerCreateInfo::CreateLinearRepeat();
+    m_pColorSampler                             = m_pRenderDevice->CreateSampler(colorSamplerInfo);
 }
 
 void ShadowMapRenderer::BuildRenderGraph()

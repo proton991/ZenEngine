@@ -2,7 +2,7 @@
 
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
-#include <vector>
+#include "Templates/HeapVector.h"
 
 namespace zen::rc
 {
@@ -48,9 +48,10 @@ inline void ClearPassResourceBindings(RDGPassDescBase& desc)
 
 inline void BindSceneTextureArray(RDGPassDescBase& desc,
                                   RHISampler* pSampler,
-                                  const std::vector<RHITexture*>& textures)
+                                  const HeapVector<RHITexture*>& textures)
 {
     HeapVector<RHITextureView*> views;
+    views.reserve(textures.size());
 
     for (RHITexture* pTexture : textures)
     {

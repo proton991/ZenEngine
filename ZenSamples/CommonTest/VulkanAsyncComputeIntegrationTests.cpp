@@ -246,10 +246,12 @@ protected:
         }
         context->RHIBindPipeline(pipeline);
         RHIBatchedShaderParameters parameters;
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 0), data, nullptr, 0);
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 1), texture->GetDefaultView(),
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 0), data,
                                     nullptr, 0);
-        parameters.AddResourceParam(*shader->GetSRDByLocation(0, 2), output, nullptr, 0);
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 1),
+                                    texture->GetDefaultView(), nullptr, 0);
+        parameters.AddResourceParam(*shader->GetSRDByLocation(test::kLocalResourceSet, 2), output,
+                                    nullptr, 0);
         context->RHISetShaderParameters(parameters);
         const uint32_t mode = initialize ? 1 : 0;
         context->RHISetPushConstants(

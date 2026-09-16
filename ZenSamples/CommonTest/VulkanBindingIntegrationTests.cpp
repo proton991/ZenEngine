@@ -442,8 +442,10 @@ TEST_F(VulkanBindingIntegrationTest, TexelViewsPreserveRecordedDescriptorsAndRea
     const VkBufferView inputView  = input->GetVkBufferView();
     const VkBufferView outputView = output->GetVkBufferView();
     RHIBatchedShaderParameters parameters;
-    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 0), input, nullptr, 0);
-    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 1), output, nullptr, 0);
+    parameters.AddResourceParam(
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 0), input, nullptr, 0);
+    parameters.AddResourceParam(
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 1), output, nullptr, 0);
     context->RHISetShaderParameters(parameters);
     context->RHIDispatch(1, 1, 1);
 
@@ -476,10 +478,12 @@ TEST_F(VulkanBindingIntegrationTest, UniformArraysEmitAllZeroOffsetsByDefault)
         auto* buffer                                = Buffer(16, true);
         *reinterpret_cast<uint32_t*>(buffer->Map()) = 100 + i;
         buffer->Unmap();
-        parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, i == 0 ? 1 : 3),
-                                    buffer, nullptr, i == 0 ? 0 : i - 1);
+        parameters.AddResourceParam(
+            *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, i == 0 ? 1 : 3),
+            buffer, nullptr, i == 0 ? 0 : i - 1);
     }
-    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 7), output, nullptr, 0);
+    parameters.AddResourceParam(
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 7), output, nullptr, 0);
     context->RHISetShaderParameters(parameters);
     context->RHIDispatch(1, 1, 1);
     EXPECT_EQ(BindingObserver::offsets, (std::vector<uint32_t>{0, 0, 0, 0}));
@@ -509,13 +513,16 @@ TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndR
     }
     uniform->Unmap();
     RHIBatchedShaderParameters parameters;
-    const auto& array = *pipeline->GetShader()->GetSRDByLocation(0, 3);
+    const RHIShaderResourceDescriptor& array =
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 3);
     parameters.AddResourceParam(array, uniform, nullptr, 2, alignment * 2);
     parameters.AddResourceParam(array, uniform, nullptr, 0, alignment);
     parameters.AddResourceParam(array, uniform, nullptr, 1);
-    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 1), uniform, nullptr, 0,
-                                alignment * 3);
-    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 7), output, nullptr, 0);
+    parameters.AddResourceParam(
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 1), uniform, nullptr, 0,
+        alignment * 3);
+    parameters.AddResourceParam(
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 7), output, nullptr, 0);
 
     VulkanDescriptorSetState state;
     state.SetPipeline(static_cast<VulkanPipeline*>(pipeline));
@@ -524,21 +531,21 @@ TEST_F(VulkanBindingIntegrationTest, UniformElementOffsetsFollowBindingOrderAndR
     HeapVector<uint32_t> offsets;
     uint32_t first = 0;
     state.FlushPendingDescriptorWrites(context, sets, first, offsets);
-    ASSERT_EQ(sets.size(), 1u);
-    const auto original = sets[0];
+    ASSERT_EQ(sets.size(), test::kLocalResourceSet + 1);
+    const VkDescriptorSet original = sets[test::kLocalResourceSet];
     RHIBatchedShaderParameters changed;
     changed.AddResourceParam(array, uniform, nullptr, 1, alignment * 2);
     state.SetShaderParameters(changed);
     state.FlushPendingDescriptorWrites(context, sets, first, offsets);
-    ASSERT_EQ(sets.size(), 1u);
-    EXPECT_EQ(sets[0], original);
+    ASSERT_EQ(sets.size(), test::kLocalResourceSet + 1);
+    EXPECT_EQ(sets[test::kLocalResourceSet], original);
     EXPECT_EQ((std::vector<uint32_t>(offsets.begin(), offsets.end())),
               (std::vector<uint32_t>{alignment * 3, alignment, alignment * 2, alignment * 2}));
 
     context->RHISetShaderParameters(parameters);
     context->RHISetShaderParameters(changed);
     context->RHIDispatch(1, 1, 1);
-    EXPECT_EQ(BindingObserver::sets[0], original);
+    EXPECT_EQ(BindingObserver::sets[test::kLocalResourceSet], original);
     SubmitAndWait();
     const auto* values = reinterpret_cast<const uint32_t*>(output->Map());
     EXPECT_EQ((std::vector<uint32_t>(values, values + 4)), (std::vector<uint32_t>{13, 11, 12, 12}));
@@ -694,7 +701,7 @@ TEST_F(VulkanBindingIntegrationTest, RecordedPushConstantOffsetPreservesEarlierF
 {
     auto* pipeline = Compute("binding_push_constants.comp.spv");
     auto* output   = Buffer();
-    SetOutput(pipeline, output, 0, 0);
+    SetOutput(pipeline, output, test::kLocalResourceSet, 0);
     auto* list               = RHICommandList::Create(context);
     commandList              = list;
     const uint32_t initial[] = {11, 22};

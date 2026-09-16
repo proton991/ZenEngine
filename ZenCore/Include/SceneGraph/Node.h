@@ -1,5 +1,5 @@
 #pragma once
-#include <vector>
+#include "Templates/HeapVector.h"
 #include <string>
 #include "Templates/HashMap.h"
 #include "Math/Math.h"
@@ -35,7 +35,7 @@ public:
         return m_components.count(typeid(T)) > 0;
     }
 
-    template <class T> inline T* GetComponent()
+    template <class T> inline T* GetComponent() const
     {
         return dynamic_cast<T*>(m_components.at(typeid(T)));
     }
@@ -50,22 +50,22 @@ public:
         m_pParent = pNode;
     }
 
-    auto GetParent() const
+    Node* GetParent() const
     {
         return m_pParent;
     }
 
-    auto& GetName() const
+    const std::string& GetName() const
     {
         return m_name;
     }
 
-    auto GetIndex() const
+    uint32_t GetIndex() const
     {
         return m_index;
     }
 
-    auto GetRenderableIndex() const
+    uint32_t GetRenderableIndex() const
     {
         return m_renderableIndex;
     }
@@ -102,7 +102,7 @@ private:
 
     Node* m_pParent{nullptr};
 
-    std::vector<Node*> m_children;
+    HeapVector<Node*> m_children;
 
     // One unique instance for each Component
     HashMap<TypeId, Component*> m_components;

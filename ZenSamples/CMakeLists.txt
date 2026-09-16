@@ -1,4 +1,7 @@
-add_executable(ZenCoreTest ZenCoreTest/main.cpp)
+if (ZEN_BUILD_LEGACY)
+    add_executable(ZenCoreTest ZenCoreTest/main.cpp)
+    target_link_libraries(ZenCoreTest ZenCore)
+endif ()
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
 add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
 add_executable(VulkanRHITest
@@ -90,6 +93,7 @@ add_executable(ConfigLoaderTest CommonTest/ConfigLoaderTests.cpp)
 target_link_libraries(ConfigLoaderTest PRIVATE ZenCore gtest_main)
 
 add_executable(CommonTest
+    CommonTest/CleanupRegressionTests.cpp
     CommonTest/SmallVectorTests.cpp
     CommonTest/MemoryTests.cpp
     CommonTest/LockTests.cpp
@@ -103,7 +107,8 @@ add_executable(SmartPtrTest
     SmartPtrTest/RefCountPtrTests.cpp
 )
 
-# VulkanRHI (v2) Exmaples
+# Historical demos still use the retired RHI interfaces.
+if (ZEN_BUILD_LEGACY)
 add_executable(hello_triangle
     VulkanRHIDemo/HelloTriangle/HelloTriangle.cpp
     VulkanRHIDemo/HelloTriangle/HelloTriangle.h
@@ -151,13 +156,13 @@ add_executable(shadowmapping
     VulkanRHIDemo/Application.cpp
 )
 target_link_libraries(shadowmapping ZenCore)
+endif ()
 
 add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.h)
 target_link_libraries(scene_renderer_demo ZenCore)
 
-target_link_libraries(ZenCoreTest ZenCore)
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(FlatHashMapTest ZenCore gtest_main)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
@@ -165,6 +170,7 @@ target_link_libraries(CommonTest ZenCore gtest_main)
 
 
 # Applications
+if (ZEN_BUILD_LEGACY)
 add_executable(HelloTriangle
     Applications/Application.h
     Applications/HelloTriangle/HelloTriangle.cpp
@@ -188,3 +194,14 @@ add_executable(SceneGraphDemo
 target_link_libraries(HelloTriangle ZenCore)
 target_link_libraries(GLTFViewer ZenCore)
 target_link_libraries(SceneGraphDemo ZenCore)
+endif ()
+
+if (BUILD_TESTING)
+    foreach(TEST_TARGET CommonTest SmartPtrTest FlatHashMapTest LRUCacheTest
+            InputControllerTest ConfigLoaderTest VulkanRHITest RenderCoreTest)
+        add_test(NAME ${TEST_TARGET} COMMAND ${TEST_TARGET})
+        set_tests_properties(${TEST_TARGET} PROPERTIES LABELS "unit" TIMEOUT 120)
+    endforeach()
+    add_test(NAME VulkanRHIIntegrationTest COMMAND VulkanRHIIntegrationTest)
+    set_tests_properties(VulkanRHIIntegrationTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 300)
+endif ()

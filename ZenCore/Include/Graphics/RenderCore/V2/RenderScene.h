@@ -70,7 +70,7 @@ public:
         return m_pTriangleMapBuffer;
     }
 
-    auto GetNumIndices() const
+    uint32_t GetNumIndices() const
     {
         return m_numIndices;
     }
@@ -90,12 +90,12 @@ public:
         return m_envTexture;
     }
 
-    const std::vector<RHITexture*>& GetSceneTextures() const
+    const HeapVector<RHITexture*>& GetSceneTextures() const
     {
         return m_sceneTextures;
     }
 
-    const auto& GetRenderableNodes() const
+    const std::vector<sg::Node*>& GetRenderableNodes() const
     {
         return m_pScene->GetRenderableNodes();
     }
@@ -116,7 +116,7 @@ public:
 
     const uint8_t* GetSceneUniformData() const;
 
-    const auto& GetMaterialsData() const
+    const HeapVector<sg::MaterialData>& GetMaterialsData() const
     {
         return m_materialsData;
     }
@@ -126,26 +126,26 @@ private:
     sg::Scene* m_pScene{nullptr};
     sg::Camera* m_pCamera{nullptr};
 
-    std::vector<sg::NodeData> m_nodesData;
-    RHIBuffer* m_pNodeSSBO;
+    HeapVector<sg::NodeData> m_nodesData;
+    RHIBuffer* m_pNodeSSBO{nullptr};
 
-    std::vector<sg::MaterialData> m_materialsData;
-    RHIBuffer* m_pMaterialSSBO;
+    HeapVector<sg::MaterialData> m_materialsData;
+    RHIBuffer* m_pMaterialSSBO{nullptr};
 
     SceneUniformData m_sceneUniformData{};
 
-    RHIBuffer* m_pVertexBuffer;
-    RHIBuffer* m_pIndexBuffer;
+    RHIBuffer* m_pVertexBuffer{nullptr};
+    RHIBuffer* m_pIndexBuffer{nullptr};
 
-    RHIBuffer* m_pTriangleMapBuffer;
+    RHIBuffer* m_pTriangleMapBuffer{nullptr};
 
     uint32_t m_numIndices{0};
 
     // std::vector<TextureHandle> m_sceneTextures;
-    std::vector<RHITexture*> m_sceneTextures;
+    HeapVector<RHITexture*> m_sceneTextures;
     std::string m_envTextureName;
     EnvTexture m_envTexture;
-    RHITexture* m_pDefaultBaseColorTexture;
+    RHITexture* m_pDefaultBaseColorTexture{nullptr};
     // TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

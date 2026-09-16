@@ -109,7 +109,7 @@ void GLTFLoader::LoadGltfTextures(sg::Scene* pScene)
             // Most devices don't support RGB only on Vulkan so convert if necessary
             // TODO: Check actual format support and transform only if required
             bufferSize = gltfImage.width * gltfImage.height * 4;
-            pBuffer     = new unsigned char[bufferSize];
+            pBuffer    = new unsigned char[bufferSize];
 
             unsigned char* pRgba = pBuffer;
             unsigned char* pRgb  = const_cast<unsigned char*>(gltfImage.image.data());
@@ -122,7 +122,7 @@ void GLTFLoader::LoadGltfTextures(sg::Scene* pScene)
                 pRgba += 4;
                 pRgb += 3;
             }
-            deleteBuffer     = true;
+            deleteBuffer      = true;
             pSgTex->bytesData = std::move(std::vector<uint8_t>(pBuffer, pBuffer + bufferSize));
         }
         else if (gltfImage.component == 4)
@@ -164,9 +164,9 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         pSgMat->metallicFactor  = mat.pbrMetallicRoughness.metallicFactor;
         if (mat.pbrMetallicRoughness.baseColorTexture.index != -1)
         {
-            const auto& textureInfo       = mat.pbrMetallicRoughness.baseColorTexture;
+            const auto& textureInfo        = mat.pbrMetallicRoughness.baseColorTexture;
             pSgMat->texCoordSets.baseColor = textureInfo.texCoord;
-            pSgMat->m_pBaseColorTexture       = pScene->GetComponents<sg::Texture>()[textureInfo.index];
+            pSgMat->m_pBaseColorTexture = pScene->GetComponents<sg::Texture>()[textureInfo.index];
         }
         else
         {
@@ -187,9 +187,9 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.normalTexture.index != -1)
         {
-            const auto& textureInfo    = mat.normalTexture;
+            const auto& textureInfo     = mat.normalTexture;
             pSgMat->texCoordSets.normal = textureInfo.texCoord;
-            pSgMat->m_pNormalTexture       = pScene->GetComponents<sg::Texture>()[textureInfo.index];
+            pSgMat->m_pNormalTexture    = pScene->GetComponents<sg::Texture>()[textureInfo.index];
         }
         else
         {
@@ -198,9 +198,9 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.emissiveTexture.index != -1)
         {
-            const auto& textureInfo      = mat.emissiveTexture;
+            const auto& textureInfo       = mat.emissiveTexture;
             pSgMat->texCoordSets.emissive = textureInfo.texCoord;
-            pSgMat->m_pEmissiveTexture       = pScene->GetComponents<sg::Texture>()[textureInfo.index];
+            pSgMat->m_pEmissiveTexture    = pScene->GetComponents<sg::Texture>()[textureInfo.index];
         }
         else
         {
@@ -209,9 +209,9 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.occlusionTexture.index != -1)
         {
-            const auto& textureInfo       = mat.occlusionTexture;
+            const auto& textureInfo        = mat.occlusionTexture;
             pSgMat->texCoordSets.occlusion = textureInfo.texCoord;
-            pSgMat->m_pOcclusionTexture       = pScene->GetComponents<sg::Texture>()[textureInfo.index];
+            pSgMat->m_pOcclusionTexture = pScene->GetComponents<sg::Texture>()[textureInfo.index];
         }
         else
         {
@@ -279,7 +279,7 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
             auto ext = mat.extensions.find("KHR_materials_emissive_strength");
             if (ext->second.Has("emissiveStrength"))
             {
-                auto value              = ext->second.Get("emissiveStrength");
+                auto value               = ext->second.Get("emissiveStrength");
                 pSgMat->emissiveStrength = (float)value.Get<double>();
             }
         }
@@ -290,7 +290,7 @@ void GLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         materials.emplace_back(pSgMat);
     }
     // Push a default material at the end of the list for meshes with no material assigned
-    UniquePtr<sg::Material> defaultMaterial   = sg::Material::CreateDefaultUnique();
+    UniquePtr<sg::Material> defaultMaterial      = sg::Material::CreateDefaultUnique();
     defaultMaterial->m_pBaseColorTexture         = defaultTextures.pBaseColor;
     defaultMaterial->m_pMetallicRoughnessTexture = defaultTextures.pMetallicRoughness;
     defaultMaterial->m_pNormalTexture            = defaultTextures.pNormal;
@@ -441,7 +441,7 @@ void GLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                     const tinygltf::Accessor& accessor =
                         m_gltfModel.accessors[primitive.attributes.find("COLOR_0")->second];
                     const tinygltf::BufferView& view = m_gltfModel.bufferViews[accessor.bufferView];
-                    pBufferColorSet0                  = reinterpret_cast<const float*>(
+                    pBufferColorSet0                 = reinterpret_cast<const float*>(
                         &(m_gltfModel.buffers[view.buffer]
                               .data[accessor.byteOffset + view.byteOffset]));
                     color0ByteStride = accessor.ByteStride(view) ?
@@ -457,13 +457,13 @@ void GLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                         m_gltfModel.accessors[primitive.attributes.find("JOINTS_0")->second];
                     const tinygltf::BufferView& jointView =
                         m_gltfModel.bufferViews[jointAccessor.bufferView];
-                    pBufferJoints       = &(m_gltfModel.buffers[jointView.buffer]
-                                         .data[jointAccessor.byteOffset + jointView.byteOffset]);
+                    pBufferJoints = &(m_gltfModel.buffers[jointView.buffer]
+                                          .data[jointAccessor.byteOffset + jointView.byteOffset]);
                     jointComponentType = jointAccessor.componentType;
                     jointByteStride    = jointAccessor.ByteStride(jointView) ?
-                           (jointAccessor.ByteStride(jointView) /
+                        (jointAccessor.ByteStride(jointView) /
                          tinygltf::GetComponentSizeInBytes(jointComponentType)) :
-                           tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC4);
+                        tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC4);
                 }
 
                 if (primitive.attributes.find("WEIGHTS_0") != primitive.attributes.end())
@@ -488,17 +488,17 @@ void GLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                     vert.pos     = Vec4(glm::make_vec3(&pBufferPos[v * posByteStride]), 1.0f);
                     vert.normal  = glm::normalize(
                         Vec4(pBufferNormals ?
-                                  Vec4(glm::make_vec3(&pBufferNormals[v * normByteStride]), 0.0f) :
-                                  Vec4(0.0f)));
+                                 Vec4(glm::make_vec3(&pBufferNormals[v * normByteStride]), 0.0f) :
+                                 Vec4(0.0f)));
                     vert.tangent = glm::normalize(
                         Vec4(pBufferTangents ? glm::make_vec4(&pBufferTangents[v * tanByteStride]) :
-                                              Vec4(0.0f)));
+                                               Vec4(0.0f)));
                     vert.uv0   = pBufferTexCoordSet0 ?
-                          glm::make_vec2(&pBufferTexCoordSet0[v * uv0ByteStride]) :
-                          Vec3(0.0f);
+                        glm::make_vec2(&pBufferTexCoordSet0[v * uv0ByteStride]) :
+                        Vec3(0.0f);
                     vert.uv1   = pBufferTexCoordSet1 ?
-                          glm::make_vec2(&pBufferTexCoordSet1[v * uv1ByteStride]) :
-                          Vec3(0.0f);
+                        glm::make_vec2(&pBufferTexCoordSet1[v * uv1ByteStride]) :
+                        Vec3(0.0f);
                     vert.color = pBufferColorSet0 ?
                         glm::make_vec4(&pBufferColorSet0[v * color0ByteStride]) :
                         Vec4(1.0f);
@@ -530,8 +530,8 @@ void GLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                     {
                         vert.joint0 = Vec4(0.0f);
                     }
-                    vert.weight0 =
-                        hasSkin ? glm::make_vec4(&pBufferWeights[v * weightByteStride]) : Vec4(0.0f);
+                    vert.weight0 = hasSkin ? glm::make_vec4(&pBufferWeights[v * weightByteStride]) :
+                                             Vec4(0.0f);
                     // Fix for all zero weights
                     if (glm::length(vert.weight0) == 0.0f)
                     {

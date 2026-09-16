@@ -3,6 +3,9 @@
 
 namespace zen::test
 {
+// Set zero is reserved for the global heap in every Vulkan pipeline layout.
+inline constexpr uint32_t kLocalResourceSet = kGlobalBindlessHeapIndex + 1;
+
 // Used only by the explicitly invoked VulkanRHIIntegrationTest executable.
 // Objects are initialized through the same public entry points as the renderer.
 class VulkanSession

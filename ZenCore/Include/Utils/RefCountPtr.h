@@ -111,7 +111,7 @@ public:
 
     template <class U> explicit RefCountPtr(RefCountPtr<U>&& other)
     {
-        m_pRawPtr       = static_cast<T*>(other.Get());
+        m_pRawPtr     = static_cast<T*>(other.Get());
         other.pRawPtr = nullptr;
     }
 
@@ -174,8 +174,8 @@ public:
 
     template <class U> RefCountPtr& operator=(RefCountPtr<U>&& other) noexcept
     {
-        T* pOldPtr      = m_pRawPtr;
-        m_pRawPtr       = other.pRawPtr;
+        T* pOldPtr    = m_pRawPtr;
+        m_pRawPtr     = other.pRawPtr;
         other.pRawPtr = nullptr;
         if (pOldPtr)
         {

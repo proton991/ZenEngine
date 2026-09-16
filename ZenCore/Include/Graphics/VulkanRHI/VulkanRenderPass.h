@@ -45,12 +45,12 @@ public:
         return m_renderPass;
     }
 
-    auto GetWidth() const
+    uint32_t GetWidth() const
     {
         return m_width;
     }
 
-    auto GetHeight() const
+    uint32_t GetHeight() const
     {
         return m_height;
     }

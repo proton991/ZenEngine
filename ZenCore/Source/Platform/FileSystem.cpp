@@ -4,16 +4,36 @@
 
 namespace zen::platform
 {
-std::string FileSystem::LoadTextFile(const std::string& path)
+std::string FileSystem::LoadTextFile(const std::string& path, FileLoadError* pError)
 {
-    std::ifstream file;
-    file.open(path, std::ios::in);
+    std::ifstream file(path);
+    std::string text;
+    FileLoadError error = FileLoadError::eNone;
     if (!file.is_open())
     {
-        throw std::runtime_error("Failed to open file: " + path);
+        LOGE("Failed to open text file: {}", path);
+        error = FileLoadError::eOpenFailed;
+    }
+    else
+    {
+        char chunk[4096];
+        while (file.read(chunk, sizeof(chunk)) || file.gcount() > 0)
+        {
+            text.append(chunk, static_cast<size_t>(file.gcount()));
+        }
+        if (file.bad() || !file.eof())
+        {
+            LOGE("Failed to read text file: {}", path);
+            error = FileLoadError::eReadFailed;
+            text.clear();
+        }
     }
 
-    return std::string{(std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>())};
+    if (pError != nullptr)
+    {
+        *pError = error;
+    }
+    return text;
 }
 
 // template <typename T> std::vector<T> FileSystem::LoadSpvFile(const std::string& name)

@@ -55,11 +55,12 @@ public:
             return 0;
         }
 
-        m_running     = false;
-        m_lapping     = false;
-        auto duration = std::chrono::duration<double, T>(Clock::now() - m_startTime);
-        m_startTime   = Clock::now();
-        m_lapTime     = Clock::now();
+        m_running = false;
+        m_lapping = false;
+        const std::chrono::duration<double, T> duration =
+            std::chrono::duration<double, T>(Clock::now() - m_startTime);
+        m_startTime = Clock::now();
+        m_lapTime   = Clock::now();
 
         return duration.count();
     }
@@ -92,8 +93,9 @@ public:
 	 */
     template <typename T = DefaultResolution> double Tick()
     {
-        auto now       = Clock::now();
-        auto duration  = std::chrono::duration<double, T>(now - m_previousTick);
+        const Clock::time_point now = Clock::now();
+        const std::chrono::duration<double, T> duration =
+            std::chrono::duration<double, T>(now - m_previousTick);
         m_previousTick = now;
         return duration.count();
     }

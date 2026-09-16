@@ -35,7 +35,7 @@ public:
 
     VkSwapchainKHR GetVkHandle() const
     {
-        return m_swaphchain;
+        return m_swapchain;
     }
 
     VkFormat GetFormat() const
@@ -98,12 +98,13 @@ private:
         bool pending{false};
     };
 
+    void DestroyOldSwapchain(VkSwapchainKHR& oldSwapchain);
     void CompleteAcquire(AcquireSync& sync, bool wait);
     void ReleaseRetiredSwapchains();
     void WaitForPresent(PresentSync& sync);
 
     VulkanDevice* m_pDevice{nullptr};
-    VkSwapchainKHR m_swaphchain{VK_NULL_HANDLE};
+    VkSwapchainKHR m_swapchain{VK_NULL_HANDLE};
     VkSurfaceKHR m_surface{VK_NULL_HANDLE};
     uint32_t m_internalWidth{0};
     uint32_t m_internalHeight{0};

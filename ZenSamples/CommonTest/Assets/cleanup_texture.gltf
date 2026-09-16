@@ -1,0 +1,19 @@
+{
+  "asset": { "version": "2.0" },
+  "scene": 0,
+  "scenes": [ { "nodes": [0] } ],
+  "nodes": [
+    { "translation": [10, 0, 0], "children": [1] },
+    { "translation": [2, 0, 0], "children": [2] },
+    { "translation": [1, 0, 0] }
+  ],
+  "images": [
+    {
+      "uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1cAAAAASUVORK5CYII="
+    }
+  ],
+  "textures": [ { "source": 0 }, { "source": 0 } ],
+  "materials": [
+    { "pbrMetallicRoughness": { "baseColorTexture": { "index": 1 } } }
+  ]
+}

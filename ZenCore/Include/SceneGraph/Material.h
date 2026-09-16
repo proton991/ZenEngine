@@ -96,8 +96,8 @@ public:
     } texCoordSets;
     struct Extension
     {
-        Texture* pSpecularGlossinessTexture;
-        Texture* pDiffuseTexture;
+        Texture* pSpecularGlossinessTexture{nullptr};
+        Texture* pDiffuseTexture{nullptr};
         Vec4 diffuseFactor{1.0f};
         Vec3 specularFactor{0.0f};
     } extension;
@@ -113,79 +113,36 @@ public:
     MaterialData data;
 };
 
+inline bool EqualMaterialTexture(const Texture* left, const Texture* right)
+{
+    return left == right || (left != nullptr && right != nullptr && *left == *right);
+}
+
 inline bool operator==(const Material& lhs, const Material& rhs)
 {
-    // Compare the name
-    if (lhs.GetName() != rhs.GetName())
-        return false;
-
-    // Compare alphaMode
-    if (lhs.alphaMode != rhs.alphaMode)
-        return false;
-
-    // Compare doubleSided flag
-    if (lhs.doubleSided != rhs.doubleSided)
-        return false;
-
-    // Compare material factors
-    if (lhs.alphaCutoff != rhs.alphaCutoff)
-        return false;
-
-    if (lhs.metallicFactor != rhs.metallicFactor)
-        return false;
-
-    if (lhs.roughnessFactor != rhs.roughnessFactor)
-        return false;
-
-    if (lhs.baseColorFactor != rhs.baseColorFactor)
-        return false;
-
-    if (lhs.emissiveFactor != rhs.emissiveFactor)
-        return false;
-
-    // Compare textures (check if the texture pointers are the same)
-    if (*lhs.m_pBaseColorTexture != *rhs.m_pBaseColorTexture)
-        return false;
-
-    if (*lhs.m_pMetallicRoughnessTexture != *rhs.m_pMetallicRoughnessTexture)
-        return false;
-
-    if (*lhs.m_pNormalTexture != *rhs.m_pNormalTexture)
-        return false;
-
-    if (*lhs.m_pOcclusionTexture != *rhs.m_pOcclusionTexture)
-        return false;
-
-    if (*lhs.m_pEmissiveTexture != *rhs.m_pEmissiveTexture)
-        return false;
-
-    // Compare texCoordSets
-    if (lhs.texCoordSets.baseColor != rhs.texCoordSets.baseColor ||
-        lhs.texCoordSets.metallicRoughness != rhs.texCoordSets.metallicRoughness ||
-        lhs.texCoordSets.specularGlossiness != rhs.texCoordSets.specularGlossiness ||
-        lhs.texCoordSets.normal != rhs.texCoordSets.normal ||
-        lhs.texCoordSets.occlusion != rhs.texCoordSets.occlusion ||
-        lhs.texCoordSets.emissive != rhs.texCoordSets.emissive)
-        return false;
-
-    // Compare extension fields
-    if (lhs.extension.pSpecularGlossinessTexture != rhs.extension.pSpecularGlossinessTexture ||
-        lhs.extension.pDiffuseTexture != rhs.extension.pDiffuseTexture ||
-        lhs.extension.diffuseFactor != rhs.extension.diffuseFactor ||
-        lhs.extension.specularFactor != rhs.extension.specularFactor)
-        return false;
-
-    // Compare PBR workflows
-    if (lhs.pbrWorkflows.metallicRoughness != rhs.pbrWorkflows.metallicRoughness ||
-        lhs.pbrWorkflows.specularGlossiness != rhs.pbrWorkflows.specularGlossiness)
-        return false;
-
-    // Compare other scalar values and flags
-    if (lhs.index != rhs.index || lhs.unlit != rhs.unlit ||
-        lhs.emissiveStrength != rhs.emissiveStrength)
-        return false;
-
-    return true;
+    return lhs.GetName() == rhs.GetName() && lhs.alphaMode == rhs.alphaMode &&
+        lhs.doubleSided == rhs.doubleSided && lhs.alphaCutoff == rhs.alphaCutoff &&
+        lhs.metallicFactor == rhs.metallicFactor && lhs.roughnessFactor == rhs.roughnessFactor &&
+        lhs.baseColorFactor == rhs.baseColorFactor && lhs.emissiveFactor == rhs.emissiveFactor &&
+        EqualMaterialTexture(lhs.m_pBaseColorTexture, rhs.m_pBaseColorTexture) &&
+        EqualMaterialTexture(lhs.m_pMetallicRoughnessTexture, rhs.m_pMetallicRoughnessTexture) &&
+        EqualMaterialTexture(lhs.m_pNormalTexture, rhs.m_pNormalTexture) &&
+        EqualMaterialTexture(lhs.m_pOcclusionTexture, rhs.m_pOcclusionTexture) &&
+        EqualMaterialTexture(lhs.m_pEmissiveTexture, rhs.m_pEmissiveTexture) &&
+        lhs.texCoordSets.baseColor == rhs.texCoordSets.baseColor &&
+        lhs.texCoordSets.metallicRoughness == rhs.texCoordSets.metallicRoughness &&
+        lhs.texCoordSets.specularGlossiness == rhs.texCoordSets.specularGlossiness &&
+        lhs.texCoordSets.normal == rhs.texCoordSets.normal &&
+        lhs.texCoordSets.occlusion == rhs.texCoordSets.occlusion &&
+        lhs.texCoordSets.emissive == rhs.texCoordSets.emissive &&
+        lhs.extension.pSpecularGlossinessTexture == rhs.extension.pSpecularGlossinessTexture &&
+        lhs.extension.pDiffuseTexture == rhs.extension.pDiffuseTexture &&
+        lhs.extension.diffuseFactor == rhs.extension.diffuseFactor &&
+        lhs.extension.specularFactor == rhs.extension.specularFactor &&
+        lhs.pbrWorkflows.metallicRoughness == rhs.pbrWorkflows.metallicRoughness &&
+        lhs.pbrWorkflows.specularGlossiness == rhs.pbrWorkflows.specularGlossiness &&
+        lhs.index == rhs.index && lhs.unlit == rhs.unlit &&
+        lhs.emissiveStrength == rhs.emissiveStrength;
 }
 
 inline bool operator!=(const Material& lhs, const Material& rhs)

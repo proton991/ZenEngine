@@ -72,7 +72,7 @@ public:
 
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;
-    auto GetPos() const
+    Vec3 GetPos() const
     {
         return m_position;
     }

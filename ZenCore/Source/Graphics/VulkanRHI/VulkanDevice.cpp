@@ -21,76 +21,90 @@ VulkanDevice::VulkanDevice(VkPhysicalDevice gpu) : m_device(VK_NULL_HANDLE), m_g
 
 std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
 {
+    std::string reason;
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(gpu, &properties);
     if (properties.apiVersion < VK_API_VERSION_1_2)
     {
-        return "Vulkan 1.2 is required";
+        reason = "Vulkan 1.2 is required";
     }
-    const auto extensions = VulkanDeviceExtension::GetSupportedExtensions(gpu);
-    for (const char* required :
-         {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME})
+    if (reason.empty())
     {
-        if (std::none_of(extensions.begin(), extensions.end(), [required](const auto& extension) {
-                return strcmp(required, extension.extensionName) == 0;
-            }))
+        const HeapVector<VkExtensionProperties> extensions =
+            VulkanDeviceExtension::GetSupportedExtensions(gpu);
+        for (const char* required :
+             {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME})
         {
-            return std::string("Required extension is missing: ") + required;
+            if (std::none_of(extensions.begin(), extensions.end(),
+                             [required](const VkExtensionProperties& extension) {
+                                 return strcmp(required, extension.extensionName) == 0;
+                             }))
+            {
+                reason = std::string("Required extension is missing: ") + required;
+                break;
+            }
         }
     }
-
-    uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
-    HeapVector<VkQueueFamilyProperties> queues(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, queues.data());
-    if (std::none_of(queues.begin(), queues.end(), [](const auto& queue) {
-            return queue.queueCount != 0 &&
-                (queue.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
-                (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
-        }))
+    if (reason.empty())
     {
-        return "A graphics queue with compute support is required";
+        uint32_t count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
+        HeapVector<VkQueueFamilyProperties> queues(count);
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, queues.data());
+        if (std::none_of(queues.begin(), queues.end(), [](const VkQueueFamilyProperties& queue) {
+                return queue.queueCount != 0 &&
+                    (queue.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+                    (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
+            }))
+        {
+            reason = "A graphics queue with compute support is required";
+        }
     }
-
-    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    VkPhysicalDeviceDynamicRenderingFeatures dynamic{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
-    VkPhysicalDeviceDescriptorIndexingFeatures indexing{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
-    features.pNext = &dynamic;
-    dynamic.pNext  = &indexing;
-    vkGetPhysicalDeviceFeatures2(gpu, &features);
-    if (!dynamic.dynamicRendering)
+    if (reason.empty())
     {
-        return "The dynamicRendering feature is required";
+        VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+        VkPhysicalDeviceDynamicRenderingFeatures dynamic{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+        features.pNext = &dynamic;
+        dynamic.pNext  = &indexing;
+        vkGetPhysicalDeviceFeatures2(gpu, &features);
+        if (!dynamic.dynamicRendering)
+        {
+            reason = "The dynamicRendering feature is required";
+        }
+        else if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound ||
+                 !indexing.descriptorBindingUpdateUnusedWhilePending ||
+                 !indexing.descriptorBindingSampledImageUpdateAfterBind ||
+                 !indexing.descriptorBindingVariableDescriptorCount ||
+                 !indexing.shaderSampledImageArrayNonUniformIndexing)
+        {
+            reason =
+                "Descriptor indexing with partially bound, variable, update-after-bind sampled images and nonuniform indexing is required";
+        }
     }
-    if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound ||
-        !indexing.descriptorBindingUpdateUnusedWhilePending ||
-        !indexing.descriptorBindingSampledImageUpdateAfterBind ||
-        !indexing.descriptorBindingVariableDescriptorCount ||
-        !indexing.shaderSampledImageArrayNonUniformIndexing)
+    if (reason.empty())
     {
-        return "Descriptor indexing with partially bound, variable, update-after-bind sampled images and nonuniform indexing is required";
+        VkPhysicalDeviceDescriptorIndexingProperties limits{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+        VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        properties2.pNext = &limits;
+        vkGetPhysicalDeviceProperties2(gpu, &properties2);
+        const uint32_t images = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
+            GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+        const uint32_t samplers = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
+        if (limits.maxDescriptorSetUpdateAfterBindSampledImages < images ||
+            limits.maxPerStageDescriptorUpdateAfterBindSampledImages < images ||
+            limits.maxDescriptorSetUpdateAfterBindSamplers < samplers ||
+            limits.maxPerStageDescriptorUpdateAfterBindSamplers < samplers ||
+            limits.maxPerStageUpdateAfterBindResources < images + samplers ||
+            limits.maxUpdateAfterBindDescriptorsInAllPools < images + samplers)
+        {
+            reason = "Descriptor indexing limits cannot accommodate the global bindless heaps";
+        }
     }
-
-    VkPhysicalDeviceDescriptorIndexingProperties limits{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
-    VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-    properties2.pNext = &limits;
-    vkGetPhysicalDeviceProperties2(gpu, &properties2);
-    const uint32_t images = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
-        GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
-    const uint32_t samplers = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
-    if (limits.maxDescriptorSetUpdateAfterBindSampledImages < images ||
-        limits.maxPerStageDescriptorUpdateAfterBindSampledImages < images ||
-        limits.maxDescriptorSetUpdateAfterBindSamplers < samplers ||
-        limits.maxPerStageDescriptorUpdateAfterBindSamplers < samplers ||
-        limits.maxPerStageUpdateAfterBindResources < images + samplers ||
-        limits.maxUpdateAfterBindDescriptorsInAllPools < images + samplers)
-    {
-        return "Descriptor indexing limits cannot accommodate the global bindless heaps";
-    }
-    return {};
+    return reason;
 }
 
 uint32_t VulkanDevice::GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType descriptorType) const
@@ -283,7 +297,7 @@ void VulkanDevice::Init()
         m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;
     m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;
     m_extensionFlags.hasRayQuery &= m_extensionFlags.hasAccelerationStructure;
-    for (auto& extension : extensionArray)
+    for (const UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
     {
         const NameID name = extension->GetName();
         if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
@@ -495,7 +509,7 @@ void VulkanDevice::WaitForIdle()
     // GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager()->RefreshFenceStatus();
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
-        if (auto* queue = GetQueue(static_cast<RHICommandContextType>(i)))
+        if (VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i)))
         {
             queue->ProcessPendingWorkloads(0);
         }

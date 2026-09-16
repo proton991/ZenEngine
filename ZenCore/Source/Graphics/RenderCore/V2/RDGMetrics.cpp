@@ -563,11 +563,11 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
             else
             {
                 // Preserve detail storage capacity between samples.
-                std::vector<RDGNodeMetrics> nodes            = std::move(m_snapshot.nodes);
-                std::vector<RDGMetricDiagnostic> diagnostics = std::move(m_snapshot.diagnostics);
-                m_snapshot                                   = {};
-                m_snapshot.nodes                             = std::move(nodes);
-                m_snapshot.diagnostics                       = std::move(diagnostics);
+                HeapVector<RDGNodeMetrics> nodes            = std::move(m_snapshot.nodes);
+                HeapVector<RDGMetricDiagnostic> diagnostics = std::move(m_snapshot.diagnostics);
+                m_snapshot                                  = {};
+                m_snapshot.nodes                            = std::move(nodes);
+                m_snapshot.diagnostics                      = std::move(diagnostics);
                 m_snapshot.nodes.clear();
                 m_snapshot.diagnostics.clear();
                 m_snapshot.graph            = graph.m_rdgTag;
@@ -649,7 +649,7 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
             record = false;
         }
 
-        std::vector<RDGMetricDiagnostic>::iterator replacement = m_snapshot.diagnostics.end();
+        HeapVector<RDGMetricDiagnostic>::iterator replacement = m_snapshot.diagnostics.end();
 
         if (record && m_snapshot.diagnostics.size() >= m_options.maxDiagnosticDetails)
         {
@@ -697,9 +697,9 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
 
 void RDGMetrics::ValidateOrder(RenderGraph& graph)
 {
-    std::vector<int32_t> order;
-    std::vector<RDGMetricOrderAccess> declarations;
-    std::vector<int32_t> dense(graph.m_nodeCount, -1), original;
+    HeapVector<int32_t> order;
+    HeapVector<RDGMetricOrderAccess> declarations;
+    HeapVector<int32_t> dense(graph.m_nodeCount, -1), original;
 
     for (const RDGNodeBase* base : graph.m_nodes)
     {
@@ -746,7 +746,7 @@ void RDGMetrics::ValidateOrder(RenderGraph& graph)
 }
 
 static void CheckAccessOrder(
-    const std::vector<int32_t>& positions,
+    const HeapVector<int32_t>& positions,
     const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report,
     int32_t previous,
     const RDGMetricOrderAccess& access)
@@ -763,7 +763,7 @@ void RDGBarrierValidator::CheckOrder(
     std::span<const RDGMetricOrderAccess> declarations,
     const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report)
 {
-    std::vector<int32_t> positions(nodeCount, -1);
+    HeapVector<int32_t> positions(nodeCount, -1);
 
     for (uint32_t order = 0; order < executionOrder.size(); ++order)
     {
@@ -791,7 +791,7 @@ void RDGBarrierValidator::CheckOrder(
     struct VersionUsers
     {
         const RDGMetricOrderAccess* writer{nullptr};
-        std::vector<const RDGMetricOrderAccess*> readers;
+        HeapVector<const RDGMetricOrderAccess*> readers;
     };
 
     std::unordered_map<uint64_t, std::map<int32_t, VersionUsers>> versions;

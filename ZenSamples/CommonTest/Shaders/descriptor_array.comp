@@ -1,4 +1,4 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 0) buffer Output { uint value; } outputData[3];
+layout(set = 1, binding = 0) buffer Output { uint value; } outputData[3];
 void main() { outputData[0].value = 0x1234u; }

@@ -93,8 +93,9 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         }
         else
         {
-            auto now     = std::chrono::system_clock::now();
-            auto timeout = now + std::chrono::milliseconds(milliseconds);
+            const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+            const std::chrono::system_clock::time_point timeout =
+                now + std::chrono::milliseconds(milliseconds);
             timespec ts;
             ts.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout.time_since_epoch())
                             .count();

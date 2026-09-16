@@ -83,7 +83,9 @@ bool GlfwWindowImpl::CenterWindow()
     // Iterate throug all monitors
     GLFWmonitor** ppMonitors = glfwGetMonitors(&monitorCount);
     if (!ppMonitors)
+    {
         return false;
+    }
 
     for (int j = 0; j < monitorCount; ++j)
     {
@@ -91,7 +93,9 @@ bool GlfwWindowImpl::CenterWindow()
         glfwGetMonitorPos(ppMonitors[j], &mx, &my);
         const GLFWvidmode* pMode = glfwGetVideoMode(ppMonitors[j]);
         if (!pMode)
+        {
             continue;
+        }
 
         // Get intersection of two rectangles - screen and window
         int minX = std::max(mx, px);
@@ -116,7 +120,9 @@ bool GlfwWindowImpl::CenterWindow()
 
     // We found something
     if (best_area)
+    {
         glfwSetWindowPos(m_pHandle, final_x, final_y);
+    }
 
     // Something is wrong - current window has NOT any intersection with any monitors. Move it to the default one.
     else
@@ -127,12 +133,19 @@ bool GlfwWindowImpl::CenterWindow()
             const GLFWvidmode* pDesktop = glfwGetVideoMode(pPrimary);
 
             if (pDesktop)
-                glfwSetWindowPos(m_pHandle, (pDesktop->width - sx) / 2, (pDesktop->height - sy) / 2);
+            {
+                glfwSetWindowPos(m_pHandle, (pDesktop->width - sx) / 2,
+                                 (pDesktop->height - sy) / 2);
+            }
             else
+            {
                 return false;
+            }
         }
         else
+        {
             return false;
+        }
     }
 
     return true;
@@ -148,52 +161,48 @@ void GlfwWindowImpl::OnWindowSize(GLFWwindow* handle, int width, int height)
     window->m_data.shouldResize = true;
 }
 
-void GlfwWindowImpl::SetupWindowCallbacks()
+static void OnKey(GLFWwindow*, int key, int, int action, int)
 {
-    glfwSetWindowSizeCallback(m_pHandle, &GlfwWindowImpl::OnWindowSize);
-
-    const auto key_callback = [](GLFWwindow* pW, auto key, auto scancode, auto action, auto mode) {
-        if (key < 0 || key > GLFW_KEY_LAST)
-        {
-            return;
-        }
+    if (key >= 0 && key <= GLFW_KEY_LAST)
+    {
         switch (action)
         {
             case GLFW_PRESS: KeyboardMouseInput::GetInstance().PressKey(key); break;
             case GLFW_RELEASE: KeyboardMouseInput::GetInstance().ReleaseKey(key); break;
             default: break;
         }
-    };
-    glfwSetKeyCallback(m_pHandle, key_callback);
+    }
+}
 
-    const auto cursor_pos_callback = [](GLFWwindow* pW, auto xPos, auto yPos) {
-        KeyboardMouseInput::GetInstance().SetCursorPos(xPos, yPos);
-    };
-    glfwSetCursorPosCallback(m_pHandle, cursor_pos_callback);
+static void OnCursorPosition(GLFWwindow*, double x, double y)
+{
+    KeyboardMouseInput::GetInstance().SetCursorPos(x, y);
+}
 
-    auto mouse_button_callback = [](GLFWwindow* pWindow, int button, int action, int mods) {
-        if (button < 0 || button > GLFW_MOUSE_BUTTON_LAST)
+static void OnMouseButton(GLFWwindow*, int button, int action, int)
+{
+    if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST)
+    {
+        KeyboardMouseInput& input = KeyboardMouseInput::GetInstance();
+        if (action == GLFW_PRESS)
         {
-            return;
+            input.PressMouseButton(button);
+            input.SetMouseButtonRelease(button, false);
         }
-        switch (action)
+        else if (action == GLFW_RELEASE)
         {
-            case GLFW_PRESS:
-            {
-                KeyboardMouseInput::GetInstance().PressMouseButton(button);
-                KeyboardMouseInput::GetInstance().SetMouseButtonRelease(button, false);
-                break;
-            }
-            case GLFW_RELEASE:
-            {
-                KeyboardMouseInput::GetInstance().ReleaseMouseButton(button);
-                KeyboardMouseInput::GetInstance().SetMouseButtonRelease(button, true);
-                break;
-            }
-            default: break;
+            input.ReleaseMouseButton(button);
+            input.SetMouseButtonRelease(button, true);
         }
-    };
-    glfwSetMouseButtonCallback(m_pHandle, mouse_button_callback);
+    }
+}
+
+void GlfwWindowImpl::SetupWindowCallbacks()
+{
+    glfwSetWindowSizeCallback(m_pHandle, &GlfwWindowImpl::OnWindowSize);
+    glfwSetKeyCallback(m_pHandle, OnKey);
+    glfwSetCursorPosCallback(m_pHandle, OnCursorPosition);
+    glfwSetMouseButtonCallback(m_pHandle, OnMouseButton);
 }
 
 void GlfwWindowImpl::ShowCursor() const

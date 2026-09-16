@@ -33,11 +33,12 @@ public:
     void SetLocalMatrix(const Mat4& mat)
     {
         m_localMatrix = mat;
+        InvalidateWorldMatrix();
     }
 
     void InvalidateWorldMatrix()
     {
-        m_updateWorldMatrix = true;
+        m_validLocalMatrix = false;
     }
 
     TypeId GetTypeId() const override
@@ -50,11 +51,11 @@ private:
     {
         if (!m_validLocalMatrix)
         {
-            m_localMatrix = glm::translate(Mat4(1.0f), m_translation) * glm::mat4_cast(m_rotation) *
-                glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
+            m_cachedLocalMatrix = glm::translate(Mat4(1.0f), m_translation) *
+                glm::mat4_cast(m_rotation) * glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
             m_validLocalMatrix = true;
         }
-        return m_localMatrix;
+        return m_cachedLocalMatrix;
     }
 
     void UpdateWorldMatrix();
@@ -66,9 +67,9 @@ private:
     Quat m_rotation{};
     // node local matrix
     Mat4 m_localMatrix{1.0f};
+    Mat4 m_cachedLocalMatrix{1.0f};
     // combined transform matrix
     Mat4 m_worldMatrix{1.0f};
-    bool m_updateWorldMatrix{false};
     bool m_validLocalMatrix{false};
 };
 } // namespace zen::sg

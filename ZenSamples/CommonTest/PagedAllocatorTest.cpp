@@ -118,6 +118,5 @@ TEST_F(PagedAllocatorTest, ThreadSafePageGrowthPreservesLiveObjects)
 int main(int argc, char** pArgv)
 {
     ::testing::InitGoogleTest(&argc, pArgv);
-    ::testing::GTEST_FLAG(filter) = "PagedAllocator*";
     return RUN_ALL_TESTS();
 }

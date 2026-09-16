@@ -57,37 +57,9 @@ public:
 
 inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
-    // Compare the name
-    //    if (lhs.GetName() != rhs.GetName())
-    //        return false;
-
-    // Compare the index
-    if (lhs.index != rhs.index)
-        return false;
-
-    // Compare samplerIndex
-    if (lhs.samplerIndex != rhs.samplerIndex)
-        return false;
-
-    // Compare width and height
-    if (lhs.width != rhs.width || lhs.height != rhs.height)
-        return false;
-
-    // Compare format
-    if (lhs.format != rhs.format)
-        return false;
-
-    // Compare the byte data (check if sizes and contents match)
-    if (lhs.bytesData.size() != rhs.bytesData.size())
-        return false;
-
-    for (size_t i = 0; i < lhs.bytesData.size(); ++i)
-    {
-        if (lhs.bytesData[i] != rhs.bytesData[i])
-            return false;
-    }
-
-    return true;
+    return lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex &&
+        lhs.width == rhs.width && lhs.height == rhs.height && lhs.format == rhs.format &&
+        lhs.bytesData == rhs.bytesData;
 }
 
 inline bool operator!=(const Texture& lhs, const Texture& rhs)

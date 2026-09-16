@@ -11,11 +11,7 @@ namespace zen::asset
 static sg::TextureFilter FromFastGltfFilter(fastgltf::Optional<fastgltf::Filter> filter)
 {
     sg::TextureFilter result = sg::TextureFilter::Linear;
-    if (!filter.has_value())
-    {
-        return result;
-    }
-    switch (filter.value())
+    switch (filter.value_or(fastgltf::Filter::Linear))
     {
         case fastgltf::Filter::Nearest:
         case fastgltf::Filter::NearestMipMapNearest:
@@ -63,7 +59,7 @@ static sg::SamplerAddressMode FromFastGltfWrap(fastgltf::Wrap wrap)
 
 FastGLTFLoader::FastGLTFLoader()
 {
-    static constexpr auto supportedExtensions{fastgltf::Extensions::None};
+    static constexpr fastgltf::Extensions supportedExtensions{fastgltf::Extensions::None};
     m_gltfParser  = fastgltf::Parser(supportedExtensions);
     m_loadOptions = fastgltf::Options::DontRequireValidAssetMember |
         fastgltf::Options::DecomposeNodeMatrices | fastgltf::Options::AllowDouble |
@@ -75,25 +71,31 @@ void FastGLTFLoader::LoadFromFile(const std::string& path, sg::Scene* pScene)
 {
     m_name = std::filesystem::path(path).stem().string();
     pScene->SetName(m_name);
-    auto gltfFile = fastgltf::MappedGltfFile::FromPath(path);
+    fastgltf::Expected<fastgltf::MappedGltfFile> gltfFile =
+        fastgltf::MappedGltfFile::FromPath(path);
     if (!bool(gltfFile))
     {
         LOGE("Failed to open glTF file: {}", fastgltf::getErrorMessage(gltfFile.error()));
-        return;
     }
-    auto loadedAsset = m_gltfParser.loadGltf(
-        gltfFile.get(), std::filesystem::path(path).parent_path(), m_loadOptions);
-    if (loadedAsset.error() != fastgltf::Error::None)
+    else
     {
-        LOGE("Failed to load glTF: {}", fastgltf::getErrorMessage(loadedAsset.error()));
+        fastgltf::Expected<fastgltf::Asset> loadedAsset = m_gltfParser.loadGltf(
+            gltfFile.get(), std::filesystem::path(path).parent_path(), m_loadOptions);
+        if (loadedAsset.error() != fastgltf::Error::None)
+        {
+            LOGE("Failed to load glTF: {}", fastgltf::getErrorMessage(loadedAsset.error()));
+        }
+        else
+        {
+            m_gltfAsset = std::move(loadedAsset.get());
+            LoadGltfSamplers(pScene);
+            LoadGltfTextures(pScene);
+            LoadGltfMaterials(pScene);
+            LoadGltfMeshes(pScene);
+            LoadGltfRenderableNodes(pScene);
+            pScene->UpdateAABB();
+        }
     }
-    m_gltfAsset = std::move(loadedAsset.get());
-    LoadGltfSamplers(pScene);
-    LoadGltfTextures(pScene);
-    LoadGltfMaterials(pScene);
-    LoadGltfMeshes(pScene);
-    LoadGltfRenderableNodes(pScene);
-    pScene->UpdateAABB();
 }
 
 void FastGLTFLoader::LoadGltfSamplers(sg::Scene* pScene)
@@ -102,7 +104,7 @@ void FastGLTFLoader::LoadGltfSamplers(sg::Scene* pScene)
     samplers.reserve(m_gltfAsset.samplers.size());
     for (const fastgltf::Sampler& s : m_gltfAsset.samplers)
     {
-        auto* pSampler = new sg::Sampler(std::string(s.name));
+        sg::Sampler* pSampler = new sg::Sampler(std::string(s.name));
         // set props
         pSampler->minFilter = FromFastGltfFilter(s.minFilter);
         pSampler->magFilter = FromFastGltfFilter(s.magFilter);
@@ -113,170 +115,139 @@ void FastGLTFLoader::LoadGltfSamplers(sg::Scene* pScene)
     pScene->SetComponents(std::move(samplers));
 }
 
-static Format GetTextureFormat(uint32_t imageIndex, fastgltf::Asset* pGltfAsset)
+static Format GetTextureFormat(uint32_t imageIndex, const fastgltf::Asset* asset)
 {
-    for (fastgltf::Material& material : pGltfAsset->materials)
+    Format format = Format::R8G8B8A8_UNORM;
+    for (const fastgltf::Material& material : asset->materials)
     {
-        if (material.pbrData.baseColorTexture
-                .has_value()) // albedo aka diffuse map aka bas color -> sRGB
+        const fastgltf::Optional<fastgltf::TextureInfo>* colorTextures[] = {
+            &material.pbrData.baseColorTexture, &material.emissiveTexture};
+        for (const fastgltf::Optional<fastgltf::TextureInfo>* info : colorTextures)
         {
-            uint32_t diffuseTextureIndex = material.pbrData.baseColorTexture.value().textureIndex;
-            auto& diffuseTexture         = pGltfAsset->textures[diffuseTextureIndex];
-            if (imageIndex == diffuseTexture.imageIndex.value())
+            if (info->has_value())
             {
-                return Format::R8G8B8A8_SRGB;
+                const fastgltf::Texture& texture = asset->textures[info->value().textureIndex];
+                if (texture.imageIndex.has_value() && texture.imageIndex.value() == imageIndex)
+                {
+                    format = Format::R8G8B8A8_SRGB;
+                    break;
+                }
             }
         }
-        if (material.emissiveTexture.has_value())
+        if (format == Format::R8G8B8A8_SRGB)
         {
-            uint32_t emissiveTextureIndex = material.emissiveTexture.value().textureIndex;
-            auto& emissiveTexture         = pGltfAsset->textures[emissiveTextureIndex];
-            if (imageIndex == emissiveTexture.imageIndex.value())
-            {
-                return Format::R8G8B8A8_SRGB;
-            }
+            break;
         }
     }
-
-    return Format::R8G8B8A8_UNORM;
+    return format;
 }
 
-sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t imageIndex)
+sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t textureIndex)
 {
-    fastgltf::Texture& gltfTexture = m_gltfAsset.textures[imageIndex];
+    const fastgltf::Texture& gltfTexture = m_gltfAsset.textures[textureIndex];
     VERIFY_EXPR(gltfTexture.imageIndex.has_value());
-    fastgltf::Image& gltfImage    = m_gltfAsset.images[gltfTexture.imageIndex.value()];
-    const std::string textureName = m_name + "Texture_" + std::to_string(imageIndex);
-
-    sg::Texture* pSgTexture = new sg::Texture(textureName);
-    const int samplerIndex = gltfTexture.samplerIndex.has_value() ?
+    const uint32_t imageIndex        = static_cast<uint32_t>(gltfTexture.imageIndex.value());
+    const fastgltf::Image& gltfImage = m_gltfAsset.images[imageIndex];
+    const std::string textureName    = m_name + "Texture_" + std::to_string(textureIndex);
+    const int samplerIndex           = gltfTexture.samplerIndex.has_value() ?
         static_cast<int>(gltfTexture.samplerIndex.value()) :
         -1;
-    // image data is of type std::variant:
-    // the data type can be a URI/filepath, an Array, or a BufferView
-    // std::visit calls the appropriate function
-    std::visit(
-        fastgltf::visitor{
-            [&](fastgltf::sources::URI& filePath) // load from file name
-            {
-                const std::string imageFilepath(filePath.uri.path().begin(),
-                                                filePath.uri.path().end());
 
-                int width = 0, height = 0, nrChannels = 0;
-                unsigned char* pBuffer = stbi_load(imageFilepath.c_str(), &width, &height,
-                                                  &nrChannels, 4 /*int desired_channels*/);
-                size_t bufferSize     = width * height * 4;
-
-                VERIFY_EXPR_MSG(nrChannels == 4, "wrong number of channels");
-
-                TextureInfo textureInfo{
-                    (uint32_t)width, (uint32_t)height, GetTextureFormat(imageIndex, &m_gltfAsset),
-                    std::vector<uint8_t>(pBuffer, pBuffer + bufferSize), samplerIndex};
-
-                pSgTexture->Init(imageIndex, textureInfo);
-
-                stbi_image_free(pBuffer);
-            },
-            [&](fastgltf::sources::Array& vector) // load from memory
-            {
-                int width = 0, height = 0, nrChannels = 0;
-
-                using byte = unsigned char;
-                byte* pBuffer =
-                    stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data()),
-                                          static_cast<int>(vector.bytes.size()), &width, &height,
-                                          &nrChannels, 4 /*int desired_channels*/);
-                size_t bufferSize = width * height * 4;
-
-                TextureInfo textureInfo{
-                    (uint32_t)width, (uint32_t)height, GetTextureFormat(imageIndex, &m_gltfAsset),
-                    std::vector<uint8_t>(pBuffer, pBuffer + bufferSize), samplerIndex};
-
-                pSgTexture->Init(imageIndex, textureInfo);
-
-                stbi_image_free(pBuffer);
-            },
-            [&](fastgltf::sources::BufferView& view) // load from buffer view
-            {
-                auto& bufferView           = m_gltfAsset.bufferViews[view.bufferViewIndex];
-                auto& bufferFromBufferView = m_gltfAsset.buffers[bufferView.bufferIndex];
-
-                std::visit(fastgltf::visitor{
-                               [&](auto& arg) // default branch if image data is not supported
-                               {
-                                   LOGE("not supported default branch (image data = BUfferView) {}",
-                                        textureName);
-                               },
-                               [&](fastgltf::sources::Array& vector) // load from memory
-                               {
-                                   int width = 0, height = 0, nrChannels = 0;
-                                   using byte      = unsigned char;
-                                   stbi_uc* pBuffer = stbi_load_from_memory(
-                                       reinterpret_cast<const stbi_uc*>(vector.bytes.data() +
-                                                                        bufferView.byteOffset),
-                                       static_cast<int>(bufferView.byteLength), &width, &height,
-                                       &nrChannels, 4);
-                                   size_t bufferSize = width * height * 4;
-
-                                   TextureInfo textureInfo{
-                                       (uint32_t)width, (uint32_t)height,
-                                       GetTextureFormat(imageIndex, &m_gltfAsset),
-                                       std::vector<uint8_t>(pBuffer, pBuffer + bufferSize),
-                                       samplerIndex};
-                                   pSgTexture->Init(imageIndex, textureInfo);
-
-                                   stbi_image_free(pBuffer);
-                               }},
-                           bufferFromBufferView.data);
-            },
-            [&](auto& arg) {
-                // default branch if image data is not supported
-                LOG_FATAL_ERROR("not supported default branch {}", textureName);
-            },
-        },
-        gltfImage.data);
-    return pSgTexture;
-}
-
-template <typename ReturnType, typename... Args> class Task
-{
-public:
-    // Submit a task (lambda or callable) with parameters
-    template <typename Callable, typename... Params>
-    void SubmitTask(Callable&& task, Params&&... params)
+    // The decoder owns STB memory until the scene has copied the pixels.
+    struct DecodedImage
     {
-        // Using std::bind to allow passing arguments to the callable
-        futures.push_back(std::async(std::launch::async, std::forward<Callable>(task),
-                                     std::forward<Params>(params)...));
-    }
-
-    // Wait for all tasks to finish
-    void Execute()
-    {
-        for (auto& f : futures)
+        stbi_uc* pixels{nullptr};
+        int width{0};
+        int height{0};
+        int channels{0};
+        ~DecodedImage()
         {
-            f.get(); // Block until the task finishes
+            stbi_image_free(pixels);
+        }
+    } image;
+
+    const fastgltf::sources::URI* file    = std::get_if<fastgltf::sources::URI>(&gltfImage.data);
+    const fastgltf::sources::Array* array = std::get_if<fastgltf::sources::Array>(&gltfImage.data);
+    const fastgltf::sources::BufferView* view =
+        std::get_if<fastgltf::sources::BufferView>(&gltfImage.data);
+    if (file != nullptr)
+    {
+        const std::string path(file->uri.path().begin(), file->uri.path().end());
+        image.pixels =
+            stbi_load(path.c_str(), &image.width, &image.height, &image.channels, STBI_rgb_alpha);
+    }
+    else
+    {
+        const stbi_uc* data = nullptr;
+        size_t size         = 0;
+        if (array != nullptr)
+        {
+            data = reinterpret_cast<const stbi_uc*>(array->bytes.data());
+            size = array->bytes.size();
+        }
+        else if (view != nullptr)
+        {
+            const fastgltf::BufferView& bufferView = m_gltfAsset.bufferViews[view->bufferViewIndex];
+            const fastgltf::Buffer& buffer         = m_gltfAsset.buffers[bufferView.bufferIndex];
+            const fastgltf::sources::Array* storage =
+                std::get_if<fastgltf::sources::Array>(&buffer.data);
+            if (storage != nullptr && bufferView.byteOffset <= storage->bytes.size() &&
+                bufferView.byteLength <= storage->bytes.size() - bufferView.byteOffset)
+            {
+                data =
+                    reinterpret_cast<const stbi_uc*>(storage->bytes.data() + bufferView.byteOffset);
+                size = bufferView.byteLength;
+            }
+        }
+        if (data != nullptr && size <= static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            image.pixels = stbi_load_from_memory(data, static_cast<int>(size), &image.width,
+                                                 &image.height, &image.channels, STBI_rgb_alpha);
         }
     }
+    if (image.pixels == nullptr || image.width <= 0 || image.height <= 0)
+    {
+        LOG_ERROR_AND_THROW("Failed to decode glTF texture '{}'", textureName);
+    }
+    const size_t byteCount = size_t(image.width) * size_t(image.height) * STBI_rgb_alpha;
+    TextureInfo info(static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height),
+                     GetTextureFormat(imageIndex, &m_gltfAsset),
+                     std::vector<uint8_t>(image.pixels, image.pixels + byteCount), samplerIndex);
+    UniquePtr<sg::Texture> texture = MakeUnique<sg::Texture>(textureName);
+    texture->Init(textureIndex, info);
+    sg::Texture* result = texture.Get();
+    texture.Release();
+    return result;
+}
 
-private:
-    std::vector<std::future<ReturnType>> futures;
-};
+HeapVector<UniquePtr<sg::Texture>> FastGLTFLoader::LoadGltfTextureBatch(uint32_t begin,
+                                                                        uint32_t end)
+{
+    HeapVector<UniquePtr<sg::Texture>> textures;
+    textures.reserve(end - begin);
+    for (uint32_t index = begin; index < end; ++index)
+    {
+        textures.emplace_back(LoadGltfTextureVisitor(index));
+    }
+    return textures;
+}
 
 void FastGLTFLoader::LoadGltfTextures(sg::Scene* pScene)
 {
-    uint32_t groupSize = rc::RenderConfig::GetInstance().numThreads;
-    auto threadPool    = MakeUnique<ThreadPool<void, uint32_t>>(groupSize);
+    const uint32_t groupSize = std::max(1u, rc::RenderConfig::GetInstance().numThreads);
+    UniquePtr<ThreadPool<void, uint32_t>> threadPool =
+        MakeUnique<ThreadPool<void, uint32_t>>(groupSize);
 
     std::vector<UniquePtr<sg::Texture>> textures;
     size_t numTextures = m_gltfAsset.textures.size();
     textures.resize(numTextures);
 
     uint32_t groupWorkLoad = numTextures / groupSize;
-    uint32_t workRemained  = numTextures % rc::RenderConfig::GetInstance().numThreads;
+    uint32_t workRemained  = numTextures % groupSize;
 
     uint32_t startIdx = 0;
-    std::vector<std::future<std::vector<sg::Texture*>>> futures;
+    HeapVector<std::future<HeapVector<UniquePtr<sg::Texture>>>> futures;
+    futures.reserve(groupSize);
     for (size_t i = 0; i < groupSize; ++i)
     {
         uint32_t endIdx = startIdx + groupWorkLoad;
@@ -285,24 +256,18 @@ void FastGLTFLoader::LoadGltfTextures(sg::Scene* pScene)
             workRemained--;
             endIdx++;
         }
-        auto future = threadPool->Push([this, startIdx, endIdx](uint32_t threadId) {
-            std::vector<sg::Texture*> batchResult;
-            for (uint32_t j = startIdx; j < endIdx; j++)
-            {
-                sg::Texture* pTexture = LoadGltfTextureVisitor(j);
-                batchResult.push_back(pTexture);
-            }
-            return batchResult;
-        });
+        std::future<HeapVector<UniquePtr<sg::Texture>>> future = threadPool->Push(
+            [this, startIdx, endIdx](uint32_t) { return LoadGltfTextureBatch(startIdx, endIdx); });
         futures.emplace_back(std::move(future));
         startIdx = endIdx;
     }
-    for (auto& fut : futures)
+    for (std::future<HeapVector<UniquePtr<sg::Texture>>>& fut : futures)
     {
-        std::vector<sg::Texture*> batch = fut.get();
-        for (auto* pSgTex : batch)
+        HeapVector<UniquePtr<sg::Texture>> batch = fut.get();
+        for (UniquePtr<sg::Texture>& texture : batch)
         {
-            textures[pSgTex->index] = UniquePtr(pSgTex);
+            const uint32_t index = texture->index;
+            textures[index]      = std::move(texture);
         }
     }
     sg::Scene::LoadDefaultTextures(textures.size());
@@ -320,10 +285,11 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
     sg::Scene::DefaultTextures defaultTextures = sg::Scene::GetDefaultTextures();
     std::vector<UniquePtr<sg::Material>> materials;
     materials.resize(m_gltfAsset.materials.size());
-    uint32_t currIndex = 0;
+    const std::vector<sg::Texture*> sceneTextures = pScene->GetComponents<sg::Texture>();
+    uint32_t currIndex                            = 0;
     for (const fastgltf::Material& mat : m_gltfAsset.materials)
     {
-        auto* pSgMat            = new sg::Material(std::string(mat.name));
+        sg::Material* pSgMat    = new sg::Material(std::string(mat.name));
         pSgMat->index           = static_cast<uint32_t>(currIndex);
         pSgMat->doubleSided     = mat.doubleSided;
         pSgMat->alphaCutoff     = mat.alphaCutoff;
@@ -332,10 +298,9 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         pSgMat->metallicFactor  = mat.pbrData.metallicFactor;
         if (mat.pbrData.baseColorTexture.has_value())
         {
-            const auto& textureInfo       = mat.pbrData.baseColorTexture;
-            pSgMat->texCoordSets.baseColor = textureInfo->texCoordIndex;
-            pSgMat->m_pBaseColorTexture =
-                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            const fastgltf::TextureInfo* textureInfo = &mat.pbrData.baseColorTexture.value();
+            pSgMat->texCoordSets.baseColor           = textureInfo->texCoordIndex;
+            pSgMat->m_pBaseColorTexture              = sceneTextures[textureInfo->textureIndex];
         }
         else
         {
@@ -344,10 +309,10 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.pbrData.metallicRoughnessTexture.has_value())
         {
-            const auto& textureInfo               = mat.pbrData.metallicRoughnessTexture;
+            const fastgltf::TextureInfo* textureInfo =
+                &mat.pbrData.metallicRoughnessTexture.value();
             pSgMat->texCoordSets.metallicRoughness = textureInfo->texCoordIndex;
-            pSgMat->m_pMetallicRoughnessTexture =
-                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            pSgMat->m_pMetallicRoughnessTexture    = sceneTextures[textureInfo->textureIndex];
         }
         else
         {
@@ -356,9 +321,9 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.normalTexture.has_value())
         {
-            const auto& textureInfo    = mat.normalTexture;
-            pSgMat->texCoordSets.normal = textureInfo->texCoordIndex;
-            pSgMat->m_pNormalTexture = pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            const fastgltf::TextureInfo* textureInfo = &mat.normalTexture.value();
+            pSgMat->texCoordSets.normal              = textureInfo->texCoordIndex;
+            pSgMat->m_pNormalTexture                 = sceneTextures[textureInfo->textureIndex];
         }
         else
         {
@@ -367,9 +332,9 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
 
         if (mat.emissiveTexture.has_value())
         {
-            const auto& textureInfo      = mat.emissiveTexture;
-            pSgMat->texCoordSets.emissive = textureInfo->texCoordIndex;
-            pSgMat->m_pEmissiveTexture = pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            const fastgltf::TextureInfo* textureInfo = &mat.emissiveTexture.value();
+            pSgMat->texCoordSets.emissive            = textureInfo->texCoordIndex;
+            pSgMat->m_pEmissiveTexture               = sceneTextures[textureInfo->textureIndex];
         }
         else
         {
@@ -381,10 +346,9 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         }
         if (mat.occlusionTexture.has_value())
         {
-            const auto& textureInfo       = mat.occlusionTexture;
-            pSgMat->texCoordSets.occlusion = textureInfo->texCoordIndex;
-            pSgMat->m_pOcclusionTexture =
-                pScene->GetComponents<sg::Texture>()[textureInfo->textureIndex];
+            const fastgltf::TextureInfo* textureInfo = &mat.occlusionTexture.value();
+            pSgMat->texCoordSets.occlusion           = textureInfo->texCoordIndex;
+            pSgMat->m_pOcclusionTexture              = sceneTextures[textureInfo->textureIndex];
         }
         else
         {
@@ -410,7 +374,7 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         currIndex++;
     }
     // Push a default material at the end of the list for meshes with no material assigned
-    UniquePtr<sg::Material> defaultMaterial   = sg::Material::CreateDefaultUnique();
+    UniquePtr<sg::Material> defaultMaterial      = sg::Material::CreateDefaultUnique();
     defaultMaterial->m_pBaseColorTexture         = defaultTextures.pBaseColor;
     defaultMaterial->m_pMetallicRoughnessTexture = defaultTextures.pMetallicRoughness;
     defaultMaterial->m_pNormalTexture            = defaultTextures.pNormal;
@@ -426,7 +390,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
     size_t totalIndexCount  = 0;
     for (const fastgltf::Mesh& mesh : m_gltfAsset.meshes)
     {
-        for (const auto& primitive : mesh.primitives)
+        for (const fastgltf::Primitive& primitive : mesh.primitives)
         {
             totalVertexCount +=
                 m_gltfAsset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
@@ -443,7 +407,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
     {
         UniquePtr<sg::Mesh> sgMesh = MakeUnique<sg::Mesh>(std::string(gltfMesh.name));
         uint32_t subMeshIndex      = 0;
-        for (const auto& primitive : gltfMesh.primitives)
+        for (const fastgltf::Primitive& primitive : gltfMesh.primitives)
         {
             uint32_t vertexStart = static_cast<uint32_t>(m_vertexPos);
             uint32_t indexStart  = static_cast<uint32_t>(m_indexPos);
@@ -455,18 +419,18 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
             // get sub mesh material
             sg::Material* pSgMaterial = nullptr;
             uint32_t materialIndex;
-            const auto& sgMaterials = pScene->GetComponents<sg::Material>();
+            const std::vector<sg::Material*>& sgMaterials = pScene->GetComponents<sg::Material>();
             if (primitive.materialIndex.has_value())
             {
                 materialIndex = primitive.materialIndex.value();
-                pSgMaterial    = sgMaterials[materialIndex];
+                pSgMaterial   = sgMaterials[materialIndex];
                 diffuseColor  = glm::make_vec4(
                     m_gltfAsset.materials[materialIndex].pbrData.baseColorFactor.data());
             }
             else
             {
                 materialIndex = sgMaterials.size() - 1;
-                pSgMaterial    = sgMaterials.back();
+                pSgMaterial   = sgMaterials.back();
             }
 
             // Vertices
@@ -487,8 +451,10 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                 fastgltf::Accessor& accessor =
                     m_gltfAsset.accessors[primitive.findAttribute("POSITION")->accessorIndex];
                 LoadAccessor<float>(accessor, pBufferPos, &vertexCount);
-                auto minValues = *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.min));
-                auto maxValues = *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.max));
+                const FASTGLTF_STD_PMR_NS::vector<double>& minValues =
+                    *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.min));
+                const FASTGLTF_STD_PMR_NS::vector<double>& maxValues =
+                    *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.max));
                 // update min max position
                 posMin = Vec3(minValues[0], minValues[1], minValues[2]);
                 posMax = Vec3(maxValues[0], maxValues[1], maxValues[2]);
@@ -587,7 +553,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
             {
                 Vertex vertex{};
                 // position
-                auto position =
+                const Vec3 position =
                     pBufferPos ? glm::make_vec3(&pBufferPos[vertexIterator * 3]) : glm::vec3(0.0f);
                 vertex.pos = glm::vec4(position.x, position.y, position.z, 1.0f);
                 // color
@@ -597,8 +563,8 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                     case fastgltf::ComponentType::Float:
                     {
                         vertexColor = pBufferColorSet0 ?
-                            glm::make_vec3(&(
-                                (static_cast<const float*>(pBufferColorSet0))[vertexIterator * 3])) :
+                            glm::make_vec3(&((
+                                static_cast<const float*>(pBufferColorSet0))[vertexIterator * 3])) :
                             glm::vec3(1.0f);
                         break;
                     }
@@ -635,15 +601,15 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                         glm::vec4(glm::make_vec3(&pBufferNormals[vertexIterator * 3]), 0.0f) :
                         glm::vec4(0.0f)));
                 // uv0
-                auto uv0   = pBufferTexCoordSet0 ?
-                      glm::make_vec2(&pBufferTexCoordSet0[vertexIterator * 2]) :
-                      glm::vec3(0.0f);
-                vertex.uv0 = uv0;
+                const Vec2 uv0 = pBufferTexCoordSet0 ?
+                    glm::make_vec2(&pBufferTexCoordSet0[vertexIterator * 2]) :
+                    glm::vec2(0.0f);
+                vertex.uv0     = uv0;
                 // uv1
-                auto uv1   = pBufferTexCoordSet1 ?
-                      glm::make_vec2(&pBufferTexCoordSet1[vertexIterator * 2]) :
-                      glm::vec3(0.0f);
-                vertex.uv1 = uv1;
+                const Vec2 uv1 = pBufferTexCoordSet1 ?
+                    glm::make_vec2(&pBufferTexCoordSet1[vertexIterator * 2]) :
+                    glm::vec2(0.0f);
+                vertex.uv1     = uv1;
                 // tangent
                 glm::vec4 tangent = pBufferTangents ?
                     glm::make_vec4(&pBufferTangents[vertexIterator * 4]) :
@@ -683,8 +649,9 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
             // Indices
             if (primitive.indicesAccessor.has_value())
             {
-                const auto& accessor = m_gltfAsset.accessors[primitive.indicesAccessor.value()];
-                indexCount           = accessor.count;
+                const fastgltf::Accessor& accessor =
+                    m_gltfAsset.accessors[primitive.indicesAccessor.value()];
+                indexCount = accessor.count;
                 switch (accessor.componentType)
                 {
                     case fastgltf::ComponentType::UnsignedInt:
@@ -724,7 +691,7 @@ void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
                 }
             }
 
-            const auto subMeshName =
+            const std::string subMeshName =
                 fmt::format("Mesh_{}_SubMesh#{}", std::string(gltfMesh.name), subMeshIndex);
             // create sub mesh
             UniquePtr<sg::SubMesh> subMesh =
@@ -763,13 +730,13 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
                                              std::vector<UniquePtr<sg::Node>>& sgNodes,
                                              sg::Scene* pScene)
 {
-    const auto& gltfNode = m_gltfAsset.nodes[nodeIndex];
+    const fastgltf::Node& gltfNode = m_gltfAsset.nodes[nodeIndex];
 
-    auto newNode   = MakeUnique<sg::Node>(nodeIndex, std::string(gltfNode.name));
-    auto transform = MakeUnique<sg::Transform>(*newNode);
+    UniquePtr<sg::Node> newNode = MakeUnique<sg::Node>(nodeIndex, std::string(gltfNode.name));
+    UniquePtr<sg::Transform> transform = MakeUnique<sg::Transform>(*newNode);
     newNode->SetParent(pParent);
 
-    auto TRS = std::get_if<fastgltf::TRS>(&gltfNode.transform);
+    const fastgltf::TRS* TRS = std::get_if<fastgltf::TRS>(&gltfNode.transform);
     if (TRS->translation.size() == 3)
     {
         transform->SetTranslation(glm::make_vec3(TRS->translation.data()));
@@ -785,6 +752,10 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
         transform->SetScale(glm::make_vec3(TRS->scale.data()));
     }
 
+    // Descendants need their ancestors' transforms even when those nodes have no mesh.
+    newNode->AddComponent(transform.Get());
+    pScene->AddComponent(std::move(transform));
+
     // Node with children
     if (!gltfNode.children.empty())
     {
@@ -796,10 +767,7 @@ void FastGLTFLoader::LoadGltfRenderableNodes(uint32_t nodeIndex,
 
     if (gltfNode.meshIndex.has_value())
     {
-        newNode->AddComponent(transform.Get());
-        pScene->AddComponent(transform);
-
-        auto* pSgMesh = pScene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
+        sg::Mesh* pSgMesh = pScene->GetComponents<sg::Mesh>()[gltfNode.meshIndex.value()];
         newNode->AddComponent(pSgMesh);
         newNode->SetData(pScene->GetRenderableCount(),
                          newNode->GetComponent<sg::Transform>()->GetWorldMatrix());

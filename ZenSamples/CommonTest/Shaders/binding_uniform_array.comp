@@ -1,8 +1,8 @@
 #version 450
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 3, std140) uniform Values { uint value; } values[3];
-layout(set = 0, binding = 1, std140) uniform Single { uint value; } singleValue;
-layout(set = 0, binding = 7, std430) buffer Result { uint values[4]; } result;
+layout(set = 1, binding = 3, std140) uniform Values { uint value; } values[3];
+layout(set = 1, binding = 1, std140) uniform Single { uint value; } singleValue;
+layout(set = 1, binding = 7, std430) buffer Result { uint values[4]; } result;
 void main()
 {
     result.values[0] = singleValue.value;

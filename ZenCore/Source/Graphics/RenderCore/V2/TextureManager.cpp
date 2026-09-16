@@ -96,7 +96,7 @@ RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireM
 }
 
 void TextureManager::LoadSceneTextures(const sg::Scene* pScene,
-                                       std::vector<RHITexture*>& outTextures)
+                                       HeapVector<RHITexture*>& outTextures)
 {
     if (pScene == nullptr)
     {

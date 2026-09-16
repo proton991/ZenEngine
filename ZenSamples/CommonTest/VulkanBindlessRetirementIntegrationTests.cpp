@@ -279,7 +279,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, HandlesRejectStaleRetirementAfte
     EXPECT_TRUE(session->rhi.IsBindlessResourceRegistered(next));
     EXPECT_FALSE(session->rhi.UnregisterBindlessResource({}));
     RHIBindlessHandle invalid = next;
-    invalid.slotIndex = GetBindlessHeapCapacity(next.heapType);
+    invalid.slotIndex         = GetBindlessHeapCapacity(next.heapType);
     EXPECT_FALSE(session->rhi.UnregisterBindlessResource(invalid));
     invalid          = next;
     invalid.heapType = RHIBindlessHeapType::eMax;
@@ -341,7 +341,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, UnflushedRetirementReleasesViewA
 TEST_F(VulkanBindlessRetirementIntegrationTest, AllRecordedDrawAndDispatchFormsPinUntilRollback)
 {
     RHISampler* sampler = Sampler();
-    commandList   = RHICommandList::Create(context);
+    commandList         = RHICommandList::Create(context);
     for (uint32_t form = 0; form < 6; ++form)
     {
         SCOPED_TRACE(form);
@@ -378,8 +378,8 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, AllRecordedDrawAndDispatchFormsP
 
 TEST_F(VulkanBindlessRetirementIntegrationTest, NewRecordingsDoNotKeepOlderRetirementsAlive)
 {
-    auto* sampler = Sampler();
-    auto handle   = session->rhi.RegisterBindlessResource(sampler, 0);
+    auto* sampler           = Sampler();
+    auto handle             = session->rhi.RegisterBindlessResource(sampler, 0);
     const uint64_t oldEpoch = context->RHICaptureBindlessEpoch();
     ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
     const uint64_t newEpoch = context->RHICaptureBindlessEpoch();

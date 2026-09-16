@@ -11,8 +11,7 @@ namespace zen
 {
 namespace detail
 {
-template <typename Policy, typename T, typename = void> struct HasObjectPoolPolicy
-    : std::false_type
+template <typename Policy, typename T, typename = void> struct HasObjectPoolPolicy : std::false_type
 {};
 
 template <typename Policy, typename T>
@@ -20,11 +19,11 @@ struct HasObjectPoolPolicy<Policy,
                            T,
                            std::void_t<decltype(Policy::Create()),
                                        decltype(Policy::Reset(std::declval<T*>())),
-                                       decltype(Policy::Destroy(std::declval<T*>()))>>
-    : std::integral_constant<bool,
-                             std::is_convertible_v<decltype(Policy::Create()), T*> &&
-                                 std::is_same_v<decltype(Policy::Reset(std::declval<T*>())), void> &&
-                                 std::is_same_v<decltype(Policy::Destroy(std::declval<T*>())), void>>
+                                       decltype(Policy::Destroy(std::declval<T*>()))>> :
+    std::integral_constant<bool,
+                           std::is_convertible_v<decltype(Policy::Create()), T*> &&
+                               std::is_same_v<decltype(Policy::Reset(std::declval<T*>())), void> &&
+                               std::is_same_v<decltype(Policy::Destroy(std::declval<T*>())), void>>
 {};
 } // namespace detail
 

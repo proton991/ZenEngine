@@ -276,7 +276,8 @@ TEST_F(VulkanPipelineIntegrationTest,
         auto* buffer = Buffer();
         context->RHIBindPipeline(pipeline);
         RHIBatchedShaderParameters parameters;
-        parameters.AddResourceParam(*inputs[i]->GetSRDByLocation(0, 0), buffer, nullptr, 0);
+        parameters.AddResourceParam(*inputs[i]->GetSRDByLocation(test::kLocalResourceSet, 0),
+                                    buffer, nullptr, 0);
         context->RHISetShaderParameters(parameters);
         context->RHIDispatch(1, 1, 1);
     }
@@ -289,6 +290,19 @@ TEST_F(VulkanPipelineIntegrationTest,
             EXPECT_EQ(values[j], expected[i][j]);
         }
         buffers[i]->Unmap();
+    }
+}
+
+TEST_F(VulkanPipelineIntegrationTest, MissingShaderFileRejectsCreation)
+{
+    RHIShaderCreateInfo info{};
+    Stage(info, RHIShaderStage::eVertex, "pipeline.vert.spv");
+    Stage(info, RHIShaderStage::eFragment, "nonexistent-file-error.frag.spv");
+    RHIShader* shader = session->rhi.CreateShader(info);
+    EXPECT_EQ(shader, nullptr);
+    if (shader != nullptr)
+    {
+        shaders.push_back(shader);
     }
 }
 
