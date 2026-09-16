@@ -86,6 +86,8 @@ target_include_directories(LRUCacheTest PRIVATE ${PROJECT_SOURCE_DIR}/ZenCore/In
 target_link_libraries(LRUCacheTest PRIVATE gtest_main)
 add_executable(InputControllerTest CommonTest/InputControllerTests.cpp)
 target_link_libraries(InputControllerTest PRIVATE ZenCore gtest_main)
+add_executable(ConfigLoaderTest CommonTest/ConfigLoaderTests.cpp)
+target_link_libraries(ConfigLoaderTest PRIVATE ZenCore gtest_main)
 
 add_executable(CommonTest
     CommonTest/SmallVectorTests.cpp

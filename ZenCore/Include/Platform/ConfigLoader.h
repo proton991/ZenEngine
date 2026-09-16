@@ -1,12 +1,18 @@
 #pragma once
 #include <fstream>
-#include <sstream>
 #include <string>
 #include "Utils/Errors.h"
 #include "Templates/HashMap.h"
 
 namespace zen::platform
 {
+enum class VoxelizerMode
+{
+    eAuto,
+    eCompute,
+    eGeometry
+};
+
 class ConfigLoader
 {
 public:
@@ -14,6 +20,31 @@ public:
     {
         static ConfigLoader instance;
         return instance;
+    }
+
+    explicit ConfigLoader(std::istream& config)
+    {
+        LoadConfig(config);
+    }
+
+    VoxelizerMode GetVoxelizerMode() const
+    {
+        auto it = m_configData.find("voxelizer");
+        if (it == m_configData.end() || it->second == "auto")
+        {
+            return VoxelizerMode::eAuto;
+        }
+        if (it->second == "comp")
+        {
+            return VoxelizerMode::eCompute;
+        }
+        if (it->second == "geom")
+        {
+            return VoxelizerMode::eGeometry;
+        }
+
+        LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.", it->second);
+        return VoxelizerMode::eAuto;
     }
 
     std::string GetSkyboxModelPath() const
@@ -71,7 +102,6 @@ public:
         return path;
     }
 
-    // Delete copy constructor and assignment operator to enforce singleton
     ConfigLoader(const ConfigLoader&)            = delete;
     ConfigLoader& operator=(const ConfigLoader&) = delete;
 
@@ -92,17 +122,47 @@ private:
             std::ofstream outFile(configPath);
             outFile << "model_base_path=../../glTF-Sample-Assets/Models" << std::endl;
             outFile << "default_model=Suzanne" << std::endl;
+            outFile << "# Voxelizer: auto, comp or geom (falls back to comp if unsupported)."
+                    << std::endl;
+            outFile << "voxelizer=auto" << std::endl;
             outFile.close();
             LOGI("Default config created at {}.", configPath);
             return;
         }
 
-        std::string line;
-        while (std::getline(file, line))
+        LoadConfig(file);
+    }
+
+    static std::string Trim(const std::string& text)
+    {
+        const size_t first = text.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos)
         {
-            std::istringstream lineStream(line);
-            std::string key, value;
-            if (std::getline(lineStream, key, '=') && std::getline(lineStream, value))
+            return {};
+        }
+        return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+    }
+
+    void LoadConfig(std::istream& config)
+    {
+        std::string line;
+        while (std::getline(config, line))
+        {
+            const size_t comment = line.find('#');
+            if (comment != std::string::npos)
+            {
+                line.erase(comment);
+            }
+
+            const size_t separator = line.find('=');
+            if (separator == std::string::npos)
+            {
+                continue;
+            }
+
+            const std::string key   = Trim(line.substr(0, separator));
+            const std::string value = Trim(line.substr(separator + 1));
+            if (!key.empty())
             {
                 m_configData[key] = value;
                 LOGI("Loaded config: {}={}", key, value);

@@ -20,7 +20,19 @@ void RendererServer::Init()
     m_pSkyboxRenderer = ZEN_NEW() SkyboxRenderer(m_pRenderDevice, m_pViewport);
     m_pSkyboxRenderer->Init();
 
-    if (m_pRenderDevice->GetGPUInfo().supportGeometryShader)
+    const platform::VoxelizerMode requestedMode =
+        platform::ConfigLoader::GetInstance().GetVoxelizerMode();
+    const platform::VoxelizerMode selectedMode =
+        ResolveVoxelizerMode(requestedMode, m_pRenderDevice->GetGPUInfo());
+    if (requestedMode == platform::VoxelizerMode::eGeometry &&
+        selectedMode != platform::VoxelizerMode::eGeometry)
+    {
+        LOGW("Geometry voxelization is not supported by the GPU; using comp.");
+    }
+    LOGI("Selected voxelizer: {}",
+         selectedMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp");
+
+    if (selectedMode == platform::VoxelizerMode::eGeometry)
     {
         m_pVoxelizer = ZEN_NEW() GeometryVoxelizer(m_pRenderDevice, m_pViewport);
     }

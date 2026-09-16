@@ -1,9 +1,20 @@
 #pragma once
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIThread.h"
+#include "Platform/ConfigLoader.h"
 
 namespace zen::rc
 {
+inline platform::VoxelizerMode ResolveVoxelizerMode(platform::VoxelizerMode requestedMode,
+                                                    const RHIGPUInfo& gpuInfo)
+{
+    if (requestedMode != platform::VoxelizerMode::eCompute && gpuInfo.supportGeometryShader)
+    {
+        return platform::VoxelizerMode::eGeometry;
+    }
+    return platform::VoxelizerMode::eCompute;
+}
+
 struct RenderConfig
 {
     static RenderConfig& GetInstance()
