@@ -64,13 +64,10 @@ void RHIResourceReferences::Swap(RHIResourceReferences& other)
     m_unique.Swap(other.m_unique);
 }
 
-namespace
+void IRHICommandContext::OnFinalRelease()
 {
-void DestroyCommandContext(IRHICommandContext* context)
-{
-    GetRHIThread().Invoke([context] { ZEN_DELETE(context); });
+    GetRHIThread().Invoke([this] { ZEN_DELETE(this); });
 }
-} // namespace
 
 void RHICommandListDeleter::operator()(RHICommandList* commands) const
 {
@@ -103,7 +100,7 @@ void RHICommandList::ResetForReuse()
 {
     GetRHIThread().CheckOwnership();
     Reset();
-    m_contextOwner.reset();
+    m_contextOwner.Reset();
     m_pGraphicsContext = nullptr;
     m_pComputeContext  = nullptr;
 }
@@ -178,8 +175,8 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
-    RHICommandList* pCmdList = ZEN_NEW() RHICommandList();
-    pCmdList->m_contextOwner = std::shared_ptr<IRHICommandContext>(pContext, DestroyCommandContext);
+    RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
+    pCmdList->m_contextOwner          = RefCountPtr<IRHICommandContext>(pContext);
     RHICommandContextType contextType = pContext->GetContextType();
 
     if (contextType == RHICommandContextType::eGraphics ||

@@ -194,6 +194,26 @@ TEST(RHICommandListTest, DetachedStorageReusesAllArenaBlocksWithoutAllocating)
     EXPECT_EQ(DefaultAllocator::GetTrackedAllocationEvents(), allocations);
 }
 
+TEST_F(RHIExecutorTest, DetachedListsKeepContextAliveUntilFinalReleaseOnRhi)
+{
+    RHICommandListPtr producer(
+        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    IRHICommandContext* context = producer->GetContext();
+    RHICommandListPtr first     = producer->DetachCommands();
+    RHICommandListPtr second    = producer->DetachCommands();
+    EXPECT_EQ(context->GetRefCount(), 3u);
+    producer.reset();
+    EXPECT_EQ(context->GetRefCount(), 2u);
+    GetRHIThread().Invoke(&RHICommandList::ResetForReuse, first.get());
+    EXPECT_EQ(context->GetRefCount(), 1u);
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 0u);
+    first.reset();
+    second.reset();
+    const std::thread::id worker = GetRHIThread().Invoke([] { return std::this_thread::get_id(); });
+    EXPECT_EQ(rhi->graphics.proxyDestructions, 1u);
+    EXPECT_EQ(rhi->graphics.lastProxyDestroyThread, worker);
+}
+
 TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
 {
     TestViewport viewport;

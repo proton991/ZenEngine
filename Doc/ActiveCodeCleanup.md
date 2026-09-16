@@ -55,7 +55,7 @@ python tools/format_active.py --check
 ```
 
 `python tools/format_active.py` applies the repository's `.clang-format` to the
-218 active C++ files. `--check` verifies formatting without writing files.
+219 active C++ files. `--check` verifies formatting without writing files.
 Vulkan integration tests require a compatible GPU and validation layer.
 
 VSCode can apply the same style on save with the Microsoft C/C++ extension:
@@ -114,3 +114,40 @@ The follow-up MSVC Debug build, all 336 unit tests, and all seven Vulkan pipelin
 integration tests passed, including the new missing-shader-file case. Formatting
 and diff checks passed. Logs are `build/filesystem-error-unit-details.log` and
 `build/filesystem-error-vulkan.log`.
+
+## Shared ownership follow-up
+
+Active RHI command contexts, batches, completion events, and RenderCore extraction
+state now use `RefCountPtr`. `RefCounted` supplies atomic reference counting and a
+final-release hook; command contexts use that hook to preserve RHI-thread
+destruction through `ZEN_DELETE`. `RHIResourcePtr` adapts `RefCountPtr` to the
+existing `AddReference`/`ReleaseReference` protocol, preserving its counter and
+destruction path without adding another control block.
+
+`RefCountPtr` now handles self-assignment, replacement, and converting moves
+correctly. Conversions require compatible pointer types and the same reference
+policy. Final release acquires writes from previous releasing owners. `Reset`,
+`Adopt`, and `Detach` make ownership changes explicit; unsafe implicit raw-pointer
+conversion and the writable address-of overload were removed. Use `Get()` for
+borrowed access. Each handle remains one pointer in size.
+
+`SharedPtr` with `MultiThreadCounter` remains appropriate for `std::packaged_task`,
+which does not implement intrusive reference counting. The remaining active
+`std::shared_ptr` uses belong to spdlog's public logger/sink APIs.
+
+`SharedPtr` now supports custom deleters and retains the original allocation
+through aliases and type conversions. Self-assignment and move-assignment lifetime
+bugs were fixed, and casts preserve the selected counter type. Seven regression
+tests cover these ownership cases and concurrent reference counting. Six further
+`RefCountPtr` regressions cover assignment, type conversion, explicit ownership
+transfer, concurrent final release, and the RHI resource adapter. A RenderCore
+regression verifies detached lists keep their context alive and the final owner
+destroys it on the RHI thread.
+
+The complete MSVC Debug build, all 350 unit tests, and all 231 Vulkan integration
+tests passed. Integration tests used the RTSS isolation procedure above with
+Khronos synchronization validation enabled. Scene smoke tests passed for 32 frames
+each in inline and threaded RHI modes, with no validation errors or tracked leaks.
+Formatting and diff checks passed. Logs are `build/refcount-unit.log`,
+`build/refcount-integration-isolated-final.log`, `build/refcount-integration.xml`,
+and `build/refcount-scene-{0,1}.log`.

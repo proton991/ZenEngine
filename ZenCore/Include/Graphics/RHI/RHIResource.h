@@ -127,6 +127,22 @@ private:
     uint64_t m_stableId{GenerateStableId()};
 };
 
+// Preserve RHIResource's existing counter and RHI-thread destruction protocol.
+struct RHIResourceRefCountPolicy
+{
+    static void AddRef(RHIResource* resource)
+    {
+        resource->AddReference();
+    }
+
+    static void Release(RHIResource* resource)
+    {
+        resource->ReleaseReference();
+    }
+};
+
+template <class T> using RHIResourcePtr = RefCountPtr<T, RHIResourceRefCountPolicy>;
+
 class RHIShaderGroupSource : public RefCounted
 {
 public:

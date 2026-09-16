@@ -1,148 +1,134 @@
 #pragma once
 #include "Counter.h"
-#if defined(ZEN_MACOS)
-#    include <utility>
-#endif
+#include <cstddef>
+#include <type_traits>
+#include <utility>
 
 namespace zen
 {
-template <class RefCounterType> class SharedPtrCount
+namespace detail
 {
-public:
-    SharedPtrCount() : m_pCounter(nullptr) {}
-
-    SharedPtrCount(const SharedPtrCount& other) : m_pCounter(other.m_pCounter) {}
-
-    void Swap(SharedPtrCount& other) noexcept
-    {
-        std::swap(m_pCounter, other.m_pCounter);
-    }
-
-    uint32_t GetValue() const noexcept
-    {
-        uint32_t count = 0;
-        if (m_pCounter != nullptr)
-        {
-            count = m_pCounter->GetValue();
-        }
-        return count;
-    }
-
-    template <class U> void Acquire(U* p) noexcept
-    {
-        if (p != nullptr)
-        {
-            if (m_pCounter == nullptr)
-            {
-                m_pCounter = new RefCounterType();
-            }
-            else
-            {
-                m_pCounter->Add();
-            }
-        }
-    }
-
-    template <class U> void Release(U* p) noexcept
-    {
-        if (m_pCounter != nullptr)
-        {
-            //            m_counter->Dec();
-            //            if (m_counter->GetValue() == 0)
-            //            {
-            //                delete p;
-            //                delete m_counter;
-            //            }
-            if (m_pCounter->Release())
-            {
-                delete p;
-                delete m_pCounter;
-            }
-            m_pCounter = nullptr;
-        }
-    }
-
-    void Reset()
-    {
-        m_pCounter = nullptr;
-    }
-
-private:
-    RefCounterType* m_pCounter;
+template <class RefCounterType> struct SharedPtrControlBlock
+{
+    virtual ~SharedPtrControlBlock() = default;
+    RefCounterType count;
 };
 
-template <class RefCounterType> class SharedPtrBase
+template <class T> struct SharedPtrDelete
 {
-protected:
-    SharedPtrBase() : m_count() {}
-    SharedPtrBase(const SharedPtrBase& other) : m_count(other.m_count) {}
-
-    SharedPtrCount<RefCounterType> m_count;
+    void operator()(T* object) const noexcept
+    {
+        delete object;
+    }
 };
 
-template <class T, class RefCounterType = SingleThreadCounter> class SharedPtr :
-    public SharedPtrBase<RefCounterType>
+template <class T, class Deleter, class RefCounterType> struct SharedPtrOwnedBlock final :
+    SharedPtrControlBlock<RefCounterType>
+{
+    SharedPtrOwnedBlock(T* object, Deleter deleter) : object(object), deleter(std::move(deleter)) {}
+
+    ~SharedPtrOwnedBlock() override
+    {
+        deleter(object);
+    }
+
+    T* object;
+    Deleter deleter;
+};
+
+// Retain ownership until control-block construction has succeeded.
+template <class T, class Deleter> struct SharedPtrPendingOwner
+{
+    ~SharedPtrPendingOwner()
+    {
+        if (pending)
+        {
+            deleter(object);
+        }
+    }
+
+    T* object;
+    Deleter& deleter;
+    bool pending{true};
+};
+} // namespace detail
+
+// MultiThreadCounter protects ownership across separate pointer instances.
+// Concurrent mutation of the same SharedPtr still requires external synchronization.
+template <class T, class RefCounterType = SingleThreadCounter> class SharedPtr
 {
 public:
-    using ElementType = std::remove_extent_t<T>;
+    using ElementType = T;
 
-    SharedPtr() noexcept : SharedPtrBase<RefCounterType>(), m_pObj(nullptr) {}
+    SharedPtr() noexcept = default;
+    SharedPtr(std::nullptr_t) noexcept {}
 
-    explicit SharedPtr(T* p) : SharedPtrBase<RefCounterType>()
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    explicit SharedPtr(U* object)
     {
-        Acquire(p);
+        if (object != nullptr)
+        {
+            Acquire(object, detail::SharedPtrDelete<U>{});
+        }
     }
 
-    /**
-     * @brief Used for pointer cast
-     */
-    template <class U> SharedPtr(const SharedPtr<U>& ptr, T* p) : SharedPtrBase<RefCounterType>(ptr)
+    template <class U, class Deleter>
+        requires std::is_convertible_v<U*, T*>
+    SharedPtr(U* object, Deleter deleter)
     {
-        Acquire(p);
+        Acquire(object, std::move(deleter));
     }
 
-    /**
-     * @brief Copy constructor using another pointer type
-     */
-    template <class U> SharedPtr(const SharedPtr<U>& ptr) noexcept :
-        SharedPtrBase<RefCounterType>(ptr)
+    // Aliases retain the original object and deleter, including null aliases.
+    template <class U> SharedPtr(const SharedPtr<U, RefCounterType>& owner, T* object) noexcept :
+        m_pObj(object), m_control(owner.m_control)
     {
-        Acquire(static_cast<typename SharedPtr<T>::ElementType*>(ptr.Get()));
+        AddReference();
     }
 
-    SharedPtr(const SharedPtr& other) noexcept : SharedPtrBase<RefCounterType>(other)
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    SharedPtr(const SharedPtr<U, RefCounterType>& other) noexcept :
+        m_pObj(other.m_pObj), m_control(other.m_control)
     {
-        Acquire(other.m_pObj);
+        AddReference();
     }
 
-    SharedPtr(SharedPtr&& other) noexcept
+    SharedPtr(const SharedPtr& other) noexcept : m_pObj(other.m_pObj), m_control(other.m_control)
     {
-        m_pObj        = std::move(other.m_pObj);
-        this->m_count = std::move(other.m_count);
-        other.m_pObj  = nullptr;
-        other.m_count.Reset();
+        AddReference();
     }
 
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    SharedPtr(SharedPtr<U, RefCounterType>&& other) noexcept :
+        m_pObj(std::exchange(other.m_pObj, nullptr)),
+        m_control(std::exchange(other.m_control, nullptr))
+    {}
+
+    SharedPtr(SharedPtr&& other) noexcept :
+        m_pObj(std::exchange(other.m_pObj, nullptr)),
+        m_control(std::exchange(other.m_control, nullptr))
+    {}
 
     SharedPtr& operator=(const SharedPtr& other) noexcept
     {
-        Reset();
-        m_pObj        = other.m_pObj;
-        this->m_count = other.m_count;
-        if (m_pObj != nullptr)
-        {
-            this->m_count.Acquire(other.m_pObj);
-        }
+        SharedPtr copy(other);
+        Swap(copy);
         return *this;
     }
 
     SharedPtr& operator=(SharedPtr&& other) noexcept
     {
-        m_pObj        = std::move(other.m_pObj);
-        this->m_count = std::move(other.m_count);
-        other.m_pObj  = nullptr;
-        other.m_count.Reset();
+        SharedPtr moved(std::move(other));
+        Swap(moved);
         return *this;
+    }
+
+    ~SharedPtr() noexcept
+    {
+        Release();
     }
 
     T* Get() const noexcept
@@ -162,114 +148,148 @@ public:
 
     operator bool() const noexcept
     {
-        return this->m_count.GetValue() > 0;
+        return m_pObj != nullptr;
     }
 
     bool Unique() const noexcept
     {
-        return this->m_count.GetValue() == 1;
+        return UseCount() == 1;
     }
 
     uint32_t UseCount() const noexcept
     {
-        return this->m_count.GetValue();
-    }
-
-    ~SharedPtr() noexcept
-    {
-        Release();
+        return m_control != nullptr ? m_control->count.GetValue() : 0;
     }
 
     void Reset() noexcept
     {
-        Release();
+        SharedPtr empty;
+        Swap(empty);
     }
 
-    void Reset(T* p)
+    void Reset(std::nullptr_t) noexcept
     {
-        Release();
-        Acquire(p);
+        Reset();
     }
 
-    void Swap(SharedPtr& lhs)
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    void Reset(U* object)
     {
-        std::swap(m_pObj, lhs.m_pObj);
-        this->m_count.Swap(lhs.m_count);
+        SharedPtr replacement(object);
+        Swap(replacement);
+    }
+
+    template <class U, class Deleter>
+        requires std::is_convertible_v<U*, T*>
+    void Reset(U* object, Deleter deleter)
+    {
+        SharedPtr replacement(object, std::move(deleter));
+        Swap(replacement);
+    }
+
+    void Swap(SharedPtr& other) noexcept
+    {
+        std::swap(m_pObj, other.m_pObj);
+        std::swap(m_control, other.m_control);
     }
 
 private:
-    void Acquire(T* p)
+    template <class, class> friend class SharedPtr;
+
+    template <class U, class Deleter> void Acquire(U* object, Deleter deleter)
     {
-        this->m_count.Acquire(p);
-        m_pObj = p;
+        static_assert(std::is_nothrow_move_constructible_v<Deleter>);
+        detail::SharedPtrPendingOwner<U, Deleter> owner{object, deleter};
+        m_control =
+            new detail::SharedPtrOwnedBlock<U, Deleter, RefCounterType>(object, std::move(deleter));
+        m_pObj        = object;
+        owner.pending = false;
     }
 
-    void Release()
+    void AddReference() noexcept
     {
-        this->m_count.Release(m_pObj);
-        m_pObj = nullptr;
+        if (m_control != nullptr)
+        {
+            m_control->count.Add();
+        }
     }
-    ElementType* m_pObj;
+
+    void Release() noexcept
+    {
+        if (m_control != nullptr && m_control->count.Release())
+        {
+            delete m_control;
+        }
+    }
+
+    T* m_pObj{nullptr};
+    detail::SharedPtrControlBlock<RefCounterType>* m_control{nullptr};
 };
 
-// comparison operators
-template <class T, class U>
-bool operator==(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
+template <class T, class U, class LeftCounter, class RightCounter>
+bool operator==(const SharedPtr<T, LeftCounter>& left,
+                const SharedPtr<U, RightCounter>& right) noexcept
 {
-    return (l.Get() == r.Get());
-}
-template <class T, class U>
-bool operator!=(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
-{
-    return (l.Get() != r.Get());
-}
-template <class T, class U>
-bool operator<=(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
-{
-    return (l.Get() <= r.Get());
-}
-template <class T, class U>
-bool operator<(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
-{
-    return (l.Get() < r.Get());
-}
-template <class T, class U>
-bool operator>=(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
-{
-    return (l.Get() >= r.Get());
-}
-template <class T, class U>
-bool operator>(const SharedPtr<T>& l, const SharedPtr<U>& r) noexcept // never throws
-{
-    return (l.Get() > r.Get());
+    return left.Get() == right.Get();
 }
 
-
-// static cast of SharedPtr
-template <class T, class U>
-SharedPtr<T> static_pointer_cast(const SharedPtr<U>& ptr) // never throws
+template <class T, class Counter>
+bool operator==(const SharedPtr<T, Counter>& pointer, std::nullptr_t) noexcept
 {
-    return SharedPtr<T>(ptr, static_cast<typename SharedPtr<T>::ElementType*>(ptr.Get()));
+    return pointer.Get() == nullptr;
 }
 
-// dynamic cast of SharedPtr
-template <class T, class U>
-SharedPtr<T> dynamic_pointer_cast(const SharedPtr<U>& ptr) // never throws
+template <class T, class U, class LeftCounter, class RightCounter>
+bool operator<(const SharedPtr<T, LeftCounter>& left,
+               const SharedPtr<U, RightCounter>& right) noexcept
 {
-    T* p = dynamic_cast<typename SharedPtr<T>::ElementType*>(ptr.Get());
-    if (nullptr != p)
+    return left.Get() < right.Get();
+}
+
+template <class T, class U, class LeftCounter, class RightCounter>
+bool operator<=(const SharedPtr<T, LeftCounter>& left,
+                const SharedPtr<U, RightCounter>& right) noexcept
+{
+    return left.Get() <= right.Get();
+}
+
+template <class T, class U, class LeftCounter, class RightCounter>
+bool operator>(const SharedPtr<T, LeftCounter>& left,
+               const SharedPtr<U, RightCounter>& right) noexcept
+{
+    return right < left;
+}
+
+template <class T, class U, class LeftCounter, class RightCounter>
+bool operator>=(const SharedPtr<T, LeftCounter>& left,
+                const SharedPtr<U, RightCounter>& right) noexcept
+{
+    return right <= left;
+}
+
+template <class T, class U, class Counter>
+SharedPtr<T, Counter> static_pointer_cast(const SharedPtr<U, Counter>& pointer) noexcept
+{
+    return SharedPtr<T, Counter>(pointer, static_cast<T*>(pointer.Get()));
+}
+
+template <class T, class U, class Counter>
+SharedPtr<T, Counter> dynamic_pointer_cast(const SharedPtr<U, Counter>& pointer) noexcept
+{
+    SharedPtr<T, Counter> result;
+    T* object = dynamic_cast<T*>(pointer.Get());
+    if (object != nullptr)
     {
-        return SharedPtr<T>(ptr, p);
+        result = SharedPtr<T, Counter>(pointer, object);
     }
-    else
-    {
-        return SharedPtr<T>();
-    }
+    return result;
 }
 
-template <class T, class... Args> SharedPtr<T> MakeShared(Args&&... args_)
+template <class T, class RefCounterType = SingleThreadCounter, class... Args>
+SharedPtr<T, RefCounterType> MakeShared(Args&&... args)
 {
-    return SharedPtr<T>(new T(std::forward<Args>(args_)...));
+    return SharedPtr<T, RefCounterType>(new T(std::forward<Args>(args)...));
 }
 
 } // namespace zen

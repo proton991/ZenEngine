@@ -6,7 +6,7 @@
 namespace zen
 {
 RHISubmissionTicket::RHISubmissionTicket(std::shared_future<RHIBatchResult> result,
-                                         std::shared_ptr<RHIThreadEvent> completion) :
+                                         RefCountPtr<RHIThreadEvent> completion) :
     m_result(std::move(result)), m_completion(std::move(completion))
 {}
 
@@ -125,7 +125,7 @@ void RHICommandListExecutor::PublishSubmissionStatus()
 
 void RHICommandListExecutor::CollectCompletedBatches(bool force)
 {
-    for (HeapVector<std::shared_ptr<RHICommandBatch>>::iterator it = m_retired.begin();
+    for (HeapVector<RefCountPtr<RHICommandBatch>>::iterator it = m_retired.begin();
          it != m_retired.end();)
     {
         bool completed = (*it)->executionFinished && !m_blocked.load(std::memory_order_acquire);
@@ -241,8 +241,8 @@ RHISubmissionTicket RHICommandListExecutor::SubmitFrame(RHICommandList& commands
     RHISubmissionTicket ticket;
     if (!AreSubmissionsBlocked())
     {
-        std::shared_ptr<RHICommandBatch> batch = std::make_shared<RHICommandBatch>();
-        batch->viewport                        = viewport;
+        RefCountPtr<RHICommandBatch> batch = MakeRefCountPtr<RHICommandBatch>();
+        batch->viewport                    = viewport;
         batch->resources.Retain(viewport);
         if (viewport != nullptr)
         {
@@ -262,7 +262,7 @@ RHISubmissionTicket RHICommandListExecutor::SubmitFrame(RHICommandList& commands
     return ticket;
 }
 
-void RHICommandListExecutor::ExecuteFrame(const std::shared_ptr<RHICommandBatch>& batch)
+void RHICommandListExecutor::ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch)
 {
     GetRHIThread().CheckOwnership();
     const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();

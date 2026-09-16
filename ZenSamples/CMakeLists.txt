@@ -102,6 +102,7 @@ add_executable(CommonTest
 )
 add_executable(SmartPtrTest
     SmartPtrTest/SharedPtrTests.cpp
+    SmartPtrTest/SharedPtrLifetimeTests.cpp
     SmartPtrTest/UniquePtrTests.cpp
     SmartPtrTest/IntrusivePtrTests.cpp
     SmartPtrTest/RefCountPtrTests.cpp

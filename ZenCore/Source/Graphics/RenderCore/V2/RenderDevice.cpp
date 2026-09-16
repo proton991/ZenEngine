@@ -375,7 +375,7 @@ void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& re
             if (extraction.state->resource == nullptr)
             {
                 extraction.resource->AddReference();
-                extraction.state->resource = extraction.resource.get();
+                extraction.state->resource = extraction.resource.Get();
                 extraction.state->device   = this;
             }
         }

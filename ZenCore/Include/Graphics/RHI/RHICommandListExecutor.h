@@ -6,7 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
-#include <memory>
+#include "Utils/RefCountPtr.h"
 
 namespace zen
 {
@@ -26,26 +26,26 @@ class RHISubmissionTicket
 public:
     RHISubmissionTicket() = default;
     RHISubmissionTicket(std::shared_future<RHIBatchResult> result,
-                        std::shared_ptr<RHIThreadEvent> completion);
+                        RefCountPtr<RHIThreadEvent> completion);
     bool IsValid() const;
     bool IsReady() const;
     RHIBatchResult Wait() const;
 
 private:
     std::shared_future<RHIBatchResult> m_result;
-    std::shared_ptr<RHIThreadEvent> m_completion;
+    RefCountPtr<RHIThreadEvent> m_completion;
 };
 
 // Both the command arena and referenced resources survive until GPU retirement.
 // This conservative first implementation can later recycle the arena after translation.
-struct RHICommandBatch
+struct RHICommandBatch : RefCounted
 {
     RHICommandListPtr commands;
     RHICommandListPtr presentCommands;
     RHIResourceReferences resources;
     RHIViewport* viewport{nullptr};
     std::promise<RHIBatchResult> completion;
-    std::shared_ptr<RHIThreadEvent> completionEvent{std::make_shared<RHIThreadEvent>()};
+    RefCountPtr<RHIThreadEvent> completionEvent{MakeRefCountPtr<RHIThreadEvent>()};
     std::chrono::steady_clock::time_point queuedAt;
     RHIBatchResult result;
     bool executionFinished{false};
@@ -53,8 +53,8 @@ struct RHICommandBatch
     RHICommandBatch()                                  = default;
     RHICommandBatch(const RHICommandBatch&)            = delete;
     RHICommandBatch& operator=(const RHICommandBatch&) = delete;
-    RHICommandBatch(RHICommandBatch&&)                 = default;
-    RHICommandBatch& operator=(RHICommandBatch&&)      = default;
+    RHICommandBatch(RHICommandBatch&&)                 = delete;
+    RHICommandBatch& operator=(RHICommandBatch&&)      = delete;
 };
 
 struct RHIThreadMetrics
@@ -133,7 +133,7 @@ public:
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const override;
 
 private:
-    void ExecuteFrame(const std::shared_ptr<RHICommandBatch>& batch);
+    void ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch);
     RHISubmissionResult ExecuteBatch(VectorView<RHICommandList*> lists);
     void ExecuteBeginFrame();
     void ExecuteWaitIdle();
@@ -163,7 +163,7 @@ private:
     // SmallVector relocation requires movable elements; atomic counters need fixed storage.
     std::array<std::atomic<uint64_t>, 3> m_submitted{};
     std::array<std::atomic<uint64_t>, 3> m_completed{};
-    HeapVector<std::shared_ptr<RHICommandBatch>> m_retired;
+    HeapVector<RefCountPtr<RHICommandBatch>> m_retired;
     // Limit idle storage after a burst. In-flight batches always retain their own lists.
     static constexpr size_t kMaxRecycledCommandLists = RHIFrameState::kMaxFramesInFlight;
     std::mutex m_recordingCommandListMutex;

@@ -1799,6 +1799,7 @@ TEST_F(RenderCoreTest, UnknownContentWarningsSurviveRebuildWithoutRepeatingLogs)
     CreateTestShaderProgram(device, "intent");
     TestBuffer* buffer = Buffer();
     std::ostringstream output;
+    // spdlog's public logger/sink APIs require std::shared_ptr.
     std::shared_ptr<spdlog::logger> logger = std::make_shared<spdlog::logger>(
         "content_warning_test", std::make_shared<spdlog::sinks::ostream_sink_mt>(output));
 

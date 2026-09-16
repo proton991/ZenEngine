@@ -5,7 +5,8 @@
 #include "Templates/Queue.h"
 #include <functional>
 #include <future>
-#include <memory>
+#include "Utils/SharedPtr.h"
+#include "Utils/RefCountPtr.h"
 #include <mutex>
 #include <thread>
 #include <type_traits>
@@ -21,11 +22,11 @@ enum class RHIExecutionMode
 
 // Manual-reset event. Windows waits service sent messages required by Vulkan WSI.
 // Posted messages stay queued; window callbacks must defer application work.
-class RHIThreadEvent
+class RHIThreadEvent : public RefCounted
 {
 public:
     explicit RHIThreadEvent(bool signaled = false);
-    ~RHIThreadEvent();
+    ~RHIThreadEvent() override;
     RHIThreadEvent(const RHIThreadEvent&)            = delete;
     RHIThreadEvent& operator=(const RHIThreadEvent&) = delete;
 
@@ -67,11 +68,11 @@ public:
     std::invoke_result_t<Function, Args...> Invoke(Function&& function, Args&&... args)
     {
         using Result = std::invoke_result_t<Function, Args...>;
-        std::shared_ptr<std::packaged_task<Result()>> task =
-            std::make_shared<std::packaged_task<Result()>>(
+        SharedPtr<std::packaged_task<Result()>, MultiThreadCounter> task =
+            MakeShared<std::packaged_task<Result()>, MultiThreadCounter>(
                 std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...));
-        std::future<Result> result                 = task->get_future();
-        std::shared_ptr<RHIThreadEvent> completion = std::make_shared<RHIThreadEvent>();
+        std::future<Result> result             = task->get_future();
+        RefCountPtr<RHIThreadEvent> completion = MakeRefCountPtr<RHIThreadEvent>();
         Dispatch([task, completion] {
             (*task)();
             completion->Signal();

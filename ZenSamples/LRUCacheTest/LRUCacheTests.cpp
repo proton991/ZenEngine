@@ -1,4 +1,5 @@
 #include "Templates/LRUCache.h"
+#include "Utils/SharedPtr.h"
 
 #include <gtest/gtest.h>
 
@@ -216,13 +217,17 @@ TEST(LRUCacheTest, SupportsMoveOnlyValuesAndReleasesEvictedObjects)
 
     EXPECT_EQ(*cache.at("first"), 8);
 
-    zen::LRUCache<int, std::shared_ptr<int>> lifetimeCache(1);
-    std::shared_ptr<int> owner = std::make_shared<int>(10);
-    std::weak_ptr<int> weak    = owner;
+    uint32_t destructions = 0;
+    zen::LRUCache<int, zen::SharedPtr<int>> lifetimeCache(1);
+    zen::SharedPtr<int> owner(new int(10), [&destructions](int* pointer) {
+        ++destructions;
+        delete pointer;
+    });
     lifetimeCache.try_emplace(1, std::move(owner));
-    lifetimeCache.try_emplace(2, std::make_shared<int>(20));
+    EXPECT_EQ(destructions, 0u);
+    lifetimeCache.try_emplace(2, zen::MakeShared<int>(20));
 
-    EXPECT_TRUE(weak.expired());
+    EXPECT_EQ(destructions, 1u);
 
     zen::LRUCache<int, std::unique_ptr<int>> disabled(0);
     std::unique_ptr<int> retained = std::make_unique<int>(9);

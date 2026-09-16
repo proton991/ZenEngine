@@ -1,6 +1,6 @@
 #pragma once
 #include "Memory/LinearAllocator.h"
-#include <memory>
+#include "Utils/RefCountPtr.h"
 #include "Memory/PoolAllocator.h"
 #include "Templates/FlatHashMap.h"
 #include "Templates/NameID.h"
@@ -101,9 +101,9 @@ struct RDGResourceInfo
 
 // The shared request keeps pending publication safe if the caller moves or discards its ticket.
 // Only one move-only public owner is issued; the graph separately retains its execution reference.
-struct RDGExtractionState
+struct RDGExtractionState : RefCounted
 {
-    ~RDGExtractionState();
+    ~RDGExtractionState() override;
 
     RHIResource* resource{nullptr};
     RenderDevice* device{nullptr};
@@ -111,8 +111,8 @@ struct RDGExtractionState
 
 struct RDGDeferredExtraction
 {
-    std::shared_ptr<RDGExtractionState> state;
-    std::shared_ptr<RHIResource> resource;
+    RefCountPtr<RDGExtractionState> state;
+    RHIResourcePtr<RHIResource> resource;
 };
 template <typename Resource> class RDGExtractedResource
 {
@@ -139,17 +139,16 @@ public:
 
     void Reset()
     {
-        m_state.reset();
+        m_state.Reset();
     }
 
 private:
     friend class RDGResourceManager;
 
-    explicit RDGExtractedResource(std::shared_ptr<RDGExtractionState> state) :
-        m_state(std::move(state))
+    explicit RDGExtractedResource(RefCountPtr<RDGExtractionState> state) : m_state(std::move(state))
     {}
 
-    std::shared_ptr<RDGExtractionState> m_state;
+    RefCountPtr<RDGExtractionState> m_state;
 };
 using RDGExtractedTexture = RDGExtractedResource<RHITexture>;
 using RDGExtractedBuffer  = RDGExtractedResource<RHIBuffer>;
@@ -328,7 +327,7 @@ private:
         RDGResource value;
         RHITextureUsage textureUsage{RHITextureUsage::eNone};
         BitField<RHIBufferUsageFlagBits> bufferUsage;
-        std::shared_ptr<RDGExtractionState> state;
+        RefCountPtr<RDGExtractionState> state;
     };
     HeapVector<Extraction> m_extractions;
     struct ResourceVersion
@@ -352,11 +351,10 @@ private:
     };
     HeapVector<CachedView> m_viewCache;
 
-    std::shared_ptr<RDGExtractionState> QueueExtraction(
-        RDGResource resource,
-        RDGResourceType type,
-        RHITextureUsage textureUsage,
-        BitField<RHIBufferUsageFlagBits> bufferUsage);
+    RefCountPtr<RDGExtractionState> QueueExtraction(RDGResource resource,
+                                                    RDGResourceType type,
+                                                    RHITextureUsage textureUsage,
+                                                    BitField<RHIBufferUsageFlagBits> bufferUsage);
 
     bool DeclareExtractions();
 

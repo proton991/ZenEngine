@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <utility>
 #include <memory>
+#include "Utils/RefCountPtr.h"
 #include "Templates/FlatHashMap.h"
 
 #define ALLOC_CMD(...) AllocateCmdTyped<__VA_ARGS__>
@@ -67,7 +68,7 @@ enum class RHICommandContextType : uint32_t
     eMax          = 3
 };
 
-class IRHICommandContext
+class IRHICommandContext : public RefCounted
 {
 public:
     // Resource arguments are borrowed through GPU completion (including the base
@@ -185,6 +186,9 @@ public:
                                    uint32_t dstMipmap) = 0;
 
     virtual void RHIWaitUntilCompleted() = 0;
+
+private:
+    void OnFinalRelease() override final;
 };
 
 class RHICommandListBase
@@ -293,7 +297,7 @@ protected:
 
     uint32_t m_numCommands{0};
     PoolAllocator<LinearAllocator> m_cmdAllocator;
-    std::shared_ptr<IRHICommandContext> m_contextOwner;
+    RefCountPtr<IRHICommandContext> m_contextOwner;
     RHIResourceReferences m_resources;
 };
 

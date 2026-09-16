@@ -63,6 +63,7 @@ TEST(VulkanSynchronizationTests, UploadToUniformBufferUsesUniformReadAccess)
 TEST(VulkanSynchronizationTests, ReleasingUnusedSemaphoreSlotsDoesNotPopulateThePool)
 {
     std::ostringstream errors;
+    // spdlog's public logger/sink APIs require std::shared_ptr.
     std::shared_ptr<spdlog::sinks::ostream_sink<std::mutex>> sink =
         std::make_shared<spdlog::sinks::ostream_sink_mt>(errors);
     std::shared_ptr<spdlog::logger> logger =

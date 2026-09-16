@@ -504,13 +504,13 @@ RDGExtractionState::~RDGExtractionState()
     }
 }
 
-std::shared_ptr<RDGExtractionState> RDGResourceManager::QueueExtraction(
+RefCountPtr<RDGExtractionState> RDGResourceManager::QueueExtraction(
     RDGResource value,
     RDGResourceType type,
     RHITextureUsage textureUsage,
     BitField<RHIBufferUsageFlagBits> bufferUsage)
 {
-    std::shared_ptr<RDGExtractionState> result{};
+    RefCountPtr<RDGExtractionState> result{};
 
     if (!CheckMutation())
     {
@@ -541,9 +541,9 @@ std::shared_ptr<RDGExtractionState> RDGResourceManager::QueueExtraction(
         }
         else
         {
-            std::shared_ptr<RDGExtractionState> state = std::make_shared<RDGExtractionState>();
-            Allocation* mutableResource               = m_resources[resource->id];
-            mutableResource->exported                 = true;
+            RefCountPtr<RDGExtractionState> state = MakeRefCountPtr<RDGExtractionState>();
+            Allocation* mutableResource           = m_resources[resource->id];
+            mutableResource->exported             = true;
             m_extractions.push_back({mutableResource, value, textureUsage, bufferUsage, state});
             result = state;
         }
@@ -650,9 +650,7 @@ void RDGResourceManager::StageExtractions(HeapVector<RDGDeferredExtraction>& out
             RHIResource* resource = extraction.resource->type == RDGResourceType::eTexture ?
                 static_cast<RHIResource*>(extraction.resource->pTexture) :
                 extraction.resource->pBuffer;
-            resource->AddReference();
-            std::shared_ptr<RHIResource> owner(
-                resource, [](RHIResource* retained) { retained->ReleaseReference(); });
+            RHIResourcePtr<RHIResource> owner(resource);
             output.push_back({extraction.state, std::move(owner)});
         }
     }

@@ -1,235 +1,216 @@
 #pragma once
 
-#include "Utils/Errors.h"
+#include <atomic>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
+#include <utility>
 
 namespace zen
 {
+// Atomic ownership protects separate handles, not concurrent access to the object
+// or mutation of the same handle. New objects begin without an owning reference.
 class RefCounted
 {
 public:
-    RefCounted() = default;
+    RefCounted()                             = default;
+    RefCounted(const RefCounted&)            = delete;
+    RefCounted& operator=(const RefCounted&) = delete;
 
     virtual ~RefCounted()
     {
-        VERIFY_EXPR(m_counter.GetValue() == 0);
+        assert(GetRefCount() == 0);
     }
 
-    uint32_t AddRef()
+    uint32_t AddRef() const noexcept
     {
-        uint32_t newValue = m_counter.AddRef();
-        return newValue;
+        return m_refCount.fetch_add(1, std::memory_order_relaxed) + 1;
     }
 
-    uint32_t Release()
+    uint32_t Release() const noexcept
     {
-        uint32_t newValue = m_counter.Release();
-        if (newValue == 0)
+        // The final owner observes writes published by earlier releasing owners.
+        const uint32_t previous = m_refCount.fetch_sub(1, std::memory_order_acq_rel);
+        assert(previous != 0);
+        if (previous == 1)
         {
-            delete this;
+            const_cast<RefCounted*>(this)->OnFinalRelease();
         }
-        return newValue;
+        return previous - 1;
     }
 
-    uint32_t GetRefCount() const
+    uint32_t GetRefCount() const noexcept
     {
-        return m_counter.GetValue();
+        return m_refCount.load(std::memory_order_relaxed);
+    }
+
+protected:
+    // Override when an object needs a specific allocator or destruction thread.
+    virtual void OnFinalRelease()
+    {
+        delete this;
     }
 
 private:
-    class AtomicCounter
-    {
-    public:
-        uint32_t AddRef()
-        {
-            uint32_t oldValue = m_count.fetch_add(1, std::memory_order_acquire);
-            return oldValue + 1;
-        }
-
-        uint32_t Release()
-        {
-            uint32_t oldValue = m_count.fetch_sub(1, std::memory_order_release);
-            return oldValue - 1;
-        }
-
-        uint32_t GetValue()
-        {
-            return m_count.load(std::memory_order_relaxed);
-        }
-
-    private:
-        std::atomic_uint m_count{0};
-    };
-
-    mutable AtomicCounter m_counter;
+    mutable std::atomic<uint32_t> m_refCount{0};
 };
 
-/**
- * A smart pointer to an object which implements AddRef/Release.
- */
-template <class T> class RefCountPtr
+struct DefaultRefCountPolicy
+{
+    template <class T> static void AddRef(T* object)
+    {
+        object->AddRef();
+    }
+
+    template <class T> static void Release(T* object)
+    {
+        object->Release();
+    }
+};
+
+// A policy adapts an existing intrusive counter without adding another counter.
+// Conversions preserve the policy and only allow implicit pointer conversions.
+template <class T, class RefCountPolicy = DefaultRefCountPolicy> class RefCountPtr
 {
 public:
-    RefCountPtr() : m_pRawPtr(nullptr) {}
+    RefCountPtr() noexcept = default;
+    RefCountPtr(std::nullptr_t) noexcept {}
 
-    explicit RefCountPtr(T* pPtr, bool addRef = true)
+    // addRef=false adopts one reference already held by the caller.
+    explicit RefCountPtr(T* object, bool addRef = true) noexcept : m_pRawPtr(object)
     {
-        m_pRawPtr = pPtr;
-        if (pPtr && addRef)
+        if (m_pRawPtr != nullptr && addRef)
         {
-            m_pRawPtr->AddRef();
+            RefCountPolicy::AddRef(m_pRawPtr);
         }
     }
 
-    RefCountPtr(const RefCountPtr& other)
-    {
-        m_pRawPtr = other.m_pRawPtr;
-        if (m_pRawPtr)
-        {
-            m_pRawPtr->AddRef();
-        }
-    }
+    RefCountPtr(const RefCountPtr& other) noexcept : RefCountPtr(other.Get()) {}
 
-    T* Get() const
-    {
-        return m_pRawPtr;
-    }
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    RefCountPtr(const RefCountPtr<U, RefCountPolicy>& other) noexcept : RefCountPtr(other.Get())
+    {}
 
-    template <class U> explicit RefCountPtr(const RefCountPtr<U>& other)
-    {
-        m_pRawPtr = static_cast<T*>(other.Get());
-        if (m_pRawPtr)
-        {
-            m_pRawPtr->AddRef();
-        }
-    }
+    RefCountPtr(RefCountPtr&& other) noexcept : m_pRawPtr(other.Detach()) {}
 
-    RefCountPtr(RefCountPtr&& other) noexcept
-    {
-        m_pRawPtr       = other.m_pRawPtr;
-        other.m_pRawPtr = nullptr;
-    }
-
-    template <class U> explicit RefCountPtr(RefCountPtr<U>&& other)
-    {
-        m_pRawPtr     = static_cast<T*>(other.Get());
-        other.pRawPtr = nullptr;
-    }
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    RefCountPtr(RefCountPtr<U, RefCountPolicy>&& other) noexcept : m_pRawPtr(other.Detach())
+    {}
 
     ~RefCountPtr()
     {
-        if (m_pRawPtr)
+        if (m_pRawPtr != nullptr)
         {
-            m_pRawPtr->Release();
+            RefCountPolicy::Release(m_pRawPtr);
         }
     }
 
-    RefCountPtr& operator=(T* pPtr)
+    RefCountPtr& operator=(T* object) noexcept
     {
-        if (m_pRawPtr != pPtr)
-        {
-            T* pOldPtr = m_pRawPtr;
-            m_pRawPtr  = pPtr;
-            if (m_pRawPtr)
-            {
-                m_pRawPtr->AddRef();
-            }
-            if (pOldPtr)
-            {
-                pOldPtr->Release();
-            }
-        }
-
+        Reset(object);
         return *this;
     }
 
-    RefCountPtr& operator=(const RefCountPtr& other) // NOLINT(bugprone-unhandled-self-assignment)
+    RefCountPtr& operator=(const RefCountPtr& other) noexcept
     {
-        if (m_pRawPtr != other.m_pRawPtr)
-        {
-            RefCountPtr(other).Swap(*this);
-        }
+        RefCountPtr copy(other);
+        Swap(copy);
         return *this;
     }
 
-    template <class U> RefCountPtr& operator=(const RefCountPtr<U>& other) noexcept
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    RefCountPtr& operator=(const RefCountPtr<U, RefCountPolicy>& other) noexcept
     {
-        RefCountPtr(other).Swap(*this);
+        RefCountPtr copy(other);
+        Swap(copy);
         return *this;
     }
 
     RefCountPtr& operator=(RefCountPtr&& other) noexcept
     {
-        if (this != &other)
-        {
-            T* pOldPtr      = m_pRawPtr;
-            m_pRawPtr       = other.m_pRawPtr;
-            other.m_pRawPtr = nullptr;
-            if (pOldPtr)
-            {
-                pOldPtr->Release();
-            }
-        }
+        RefCountPtr moved(std::move(other));
+        Swap(moved);
         return *this;
     }
 
-    template <class U> RefCountPtr& operator=(RefCountPtr<U>&& other) noexcept
+    template <class U>
+        requires std::is_convertible_v<U*, T*>
+    RefCountPtr& operator=(RefCountPtr<U, RefCountPolicy>&& other) noexcept
     {
-        T* pOldPtr    = m_pRawPtr;
-        m_pRawPtr     = other.pRawPtr;
-        other.pRawPtr = nullptr;
-        if (pOldPtr)
-        {
-            pOldPtr->Release();
-        }
+        RefCountPtr moved(std::move(other));
+        Swap(moved);
         return *this;
     }
 
-    T* operator->() const
+    T* Get() const noexcept
     {
         return m_pRawPtr;
     }
 
-    operator T*() const
+    T* operator->() const noexcept
     {
         return m_pRawPtr;
     }
 
-    T** operator&() // NOLINT(google-runtime-operator)
+    T& operator*() const noexcept
     {
-        return &m_pRawPtr;
+        return *m_pRawPtr;
     }
 
-    uint32_t GetRefCount()
+    explicit operator bool() const noexcept
     {
-        uint32_t count = 0;
-        if (m_pRawPtr)
-        {
-            count = m_pRawPtr->GetRefCount();
-            assert(count > 0);
-        }
-        return count;
+        return m_pRawPtr != nullptr;
     }
 
-    void Swap(RefCountPtr&& other) noexcept
+    uint32_t GetRefCount() const noexcept
     {
-        T* pTmp         = m_pRawPtr;
-        m_pRawPtr       = other.m_pRawPtr;
-        other.m_pRawPtr = pTmp;
+        return m_pRawPtr != nullptr ? m_pRawPtr->GetRefCount() : 0;
+    }
+
+    void Reset(T* object = nullptr) noexcept
+    {
+        RefCountPtr replacement(object);
+        Swap(replacement);
+    }
+
+    // Transfer an existing reference without incrementing or releasing it.
+    static RefCountPtr Adopt(T* object) noexcept
+    {
+        return RefCountPtr(object, false);
+    }
+
+    T* Detach() noexcept
+    {
+        return std::exchange(m_pRawPtr, nullptr);
     }
 
     void Swap(RefCountPtr& other) noexcept
     {
-        T* pTmp         = m_pRawPtr;
-        m_pRawPtr       = other.m_pRawPtr;
-        other.m_pRawPtr = pTmp;
+        std::swap(m_pRawPtr, other.m_pRawPtr);
     }
 
 private:
-    T* m_pRawPtr;
+    T* m_pRawPtr{nullptr};
 };
 
-template <class T, class... Args> RefCountPtr<T> MakeRefCountPtr(Args&&... args_)
+template <class T, class U, class Policy>
+bool operator==(const RefCountPtr<T, Policy>& left, const RefCountPtr<U, Policy>& right) noexcept
 {
-    return RefCountPtr<T>(new T(std::forward<Args>(args_)...));
+    return left.Get() == right.Get();
+}
+
+template <class T, class Policy>
+bool operator==(const RefCountPtr<T, Policy>& pointer, std::nullptr_t) noexcept
+{
+    return pointer.Get() == nullptr;
+}
+
+template <class T, class... Args> RefCountPtr<T> MakeRefCountPtr(Args&&... args)
+{
+    return RefCountPtr<T>(new T(std::forward<Args>(args)...));
 }
 } // namespace zen
