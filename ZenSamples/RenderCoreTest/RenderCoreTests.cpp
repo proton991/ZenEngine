@@ -324,6 +324,8 @@ public:
                  {"buffer", RHIShaderResourceType::eStorageBuffer},
                  {"texture", RHIShaderResourceType::eSamplerWithTexture},
                  {"uTextureArray", RHIShaderResourceType::eSamplerWithTexture},
+                 {"uTexture2DHeap", RHIShaderResourceType::eTexture},
+                 {"uSamplerHeap", RHIShaderResourceType::eSampler},
                  {"image", RHIShaderResourceType::eImage},
                  {"value", RHIShaderResourceType::eUniformBuffer},
                  {"read_buffer", RHIShaderResourceType::eStorageBuffer},
@@ -335,6 +337,8 @@ public:
             descriptor.type      = binding.second;
             descriptor.binding   = static_cast<uint32_t>(m_SRDTable[0].size());
             descriptor.arraySize = descriptor.name == NameID("uTextureArray") ? 1024 : 1;
+            descriptor.bindless  = descriptor.name == NameID("uTexture2DHeap") ||
+                descriptor.name == NameID("uSamplerHeap");
             descriptor.writable  = binding.second == RHIShaderResourceType::eImage ||
                 binding.second == RHIShaderResourceType::eStorageBuffer;
 
@@ -473,6 +477,12 @@ public:
         }
 
         for (const RHIShaderResourceParameter& resource : parameters.GetResourceParams())
+        {
+            boundResources.push_back(resource.pResource);
+            boundArrayIndices.push_back(resource.arrayIndex);
+        }
+
+        for (const RHIShaderResourceParameter& resource : parameters.GetBindlessParams())
         {
             boundResources.push_back(resource.pResource);
             boundArrayIndices.push_back(resource.arrayIndex);
@@ -2830,7 +2840,7 @@ TEST_F(RenderCoreTest, ProductionShaderReinitializationAndDestructionAreIdempote
         ids.push_back(program->GetShader()->GetStableId());
         ASSERT_TRUE(program->Init());
         EXPECT_EQ(program->GetStorageBufferSRDs().size(), 3u);
-        EXPECT_EQ(program->GetSampledTextureSRDs().size(), 2u);
+        EXPECT_EQ(program->GetSampledTextureSRDs().size(), 3u);
         EXPECT_EQ(program->GetStorageImageSRDs().size(), 2u);
         EXPECT_NE(program->GetShaderResourceDescriptor("buffer"), nullptr);
     }
@@ -6481,25 +6491,26 @@ TEST_F(RenderCoreTest, ReflectedVoxelDrawReadsKeepInitializationAndSkipSteadyBar
 TEST_F(RenderCoreTest, RendererTextureBindingsUseViewsAndCanBeRebuilt)
 {
     CreateTestShaderProgram(device, "textures");
-    RHITexture* first  = Texture();
-    RHITexture* second = Texture();
+    RHITexture* first   = Texture();
+    RHITexture* second  = Texture();
+    RHISampler* sampler = device->CreateSampler({});
 
     RDGComputePassDesc desc{};
     desc.SetShaderProgramName("textures");
     desc.BindValue("value", uint32_t(42));
-    BindSceneTextureArray(desc, nullptr, {first, second});
+    BindSceneTextureArray(desc, sampler, {first, second});
     RenderGraph graph("texture_bindings");
-    graph.Begin();
+    ASSERT_TRUE(graph.Begin());
     graph.AddComputePass(desc);
     ClearPassResourceBindings(desc);
-    BindSceneTextureArray(desc, nullptr, {second});
+    BindSceneTextureArray(desc, sampler, {second});
     graph.AddComputePass(desc);
-    graph.End();
-    device->ExecuteRenderGraph(graph);
+    ASSERT_TRUE(graph.End());
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph));
 
     EXPECT_EQ(rhi->graphics.boundResources,
-              (std::vector<RHIResource*>{first->GetDefaultView(), second->GetDefaultView(),
-                                         second->GetDefaultView()}));
+              (std::vector<RHIResource*>{first->GetDefaultView(), second->GetDefaultView(), sampler,
+                                         second->GetDefaultView(), sampler}));
     EXPECT_EQ(rhi->graphics.values.size(), 2u);
 
     device->DestroyTexture(first);

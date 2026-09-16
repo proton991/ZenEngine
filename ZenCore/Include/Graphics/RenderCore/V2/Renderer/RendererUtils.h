@@ -35,6 +35,8 @@ inline void ClearPassResourceBindings(RDGPassDescBase& desc)
 {
     desc.UAVBufferBindings.clear();
     desc.sampledTexBindings.clear();
+    desc.separateTexBindings.clear();
+    desc.samplerBindings.clear();
     desc.UAVTexBindings.clear();
     desc.resourceBindings.clear();
     desc.resourceStorage.clear();
@@ -55,7 +57,9 @@ inline void BindSceneTextureArray(RDGPassDescBase& desc,
         views.push_back(pTexture->GetDefaultView());
     }
 
-    desc.BindSampledTexture("uTextureArray", pSampler, views);
+    // Material texture indices address heap slots directly; scene sampling uses sampler slot 0.
+    desc.BindSeparateTexture("uTexture2DHeap", views);
+    desc.BindSampler("uSamplerHeap", pSampler);
 }
 
 } // namespace zen::rc

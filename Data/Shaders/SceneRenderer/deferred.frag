@@ -1,14 +1,17 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
 
-layout (set = 0, binding = 0) uniform sampler2D positionMap;
-layout (set = 0, binding = 1) uniform sampler2D normalMap;
-layout (set = 0, binding = 2) uniform sampler2D albedoMap;
-layout (set = 0, binding = 3) uniform sampler2D metallicRoughnessMap;
-layout (set = 0, binding = 4) uniform sampler2D emissiveOcclusionMap;
-layout (set = 0, binding = 5) uniform sampler2D depthMap;
-layout (set = 0, binding = 6) uniform samplerCube envIrradianceMap;
-layout (set = 0, binding = 7) uniform samplerCube envPrefilteredMap;
-layout (set = 0, binding = 8) uniform sampler2D lutBRDFMap;
+#include "../Common/bindless_heap.glsl"
+
+layout (set = 1, binding = 0) uniform sampler2D positionMap;
+layout (set = 1, binding = 1) uniform sampler2D normalMap;
+layout (set = 1, binding = 2) uniform sampler2D albedoMap;
+layout (set = 1, binding = 3) uniform sampler2D metallicRoughnessMap;
+layout (set = 1, binding = 4) uniform sampler2D emissiveOcclusionMap;
+layout (set = 1, binding = 5) uniform sampler2D depthMap;
+layout (set = 1, binding = 6) uniform samplerCube envIrradianceMap;
+layout (set = 1, binding = 7) uniform samplerCube envPrefilteredMap;
+layout (set = 1, binding = 8) uniform sampler2D lutBRDFMap;
 
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outFragColor;
@@ -17,7 +20,7 @@ const int NUM_LIGHTS = 4;
 const float PI = 3.14159265359;
 const float MAX_REFLECTION_LOD = 4.0;
 
-layout (set = 1, binding = 0) uniform uSceneData {
+layout (set = 2, binding = 0) uniform uSceneData {
 	vec4 lightPosition[NUM_LIGHTS];
 	vec4 lightColor[NUM_LIGHTS];
 	vec4 lightIntensity[NUM_LIGHTS];

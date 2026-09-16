@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
@@ -11,7 +14,7 @@ struct DrawIndexedIndirectCommand
     uint firstInstance;
 };
 
-layout(std430, set = 0, binding = 0) writeonly buffer IndirectBuffer
+layout(std430, set = 1, binding = 0) writeonly buffer IndirectBuffer
 {
     DrawIndexedIndirectCommand command;
 };

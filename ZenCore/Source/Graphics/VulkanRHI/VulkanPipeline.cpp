@@ -111,6 +111,11 @@ void VulkanShader::Init()
     sgInfo.name = m_name;
     m_SRDTable  = sgInfo.SRDTable;
 
+    if (m_SRDTable.size() <= kGlobalBindlessHeapIndex)
+    {
+        m_SRDTable.resize(kGlobalBindlessHeapIndex + 1);
+    }
+
     for (SmallVector<RHIShaderResourceDescriptor> const& setSRDs : m_SRDTable)
     {
         for (const RHIShaderResourceDescriptor& srd : setSRDs)
@@ -239,35 +244,20 @@ void VulkanShader::Init()
 
     for (uint32_t i = 0; i < setCount; i++)
     {
-        // process global bindless descriptor set 0
-        if (i == kGlobalBindlessHeapIndex && !m_SRDTable[kGlobalBindlessHeapIndex].empty())
+        // Set 0 is reserved for the same global heap in every pipeline layout.
+        if (i == kGlobalBindlessHeapIndex)
         {
-            bool isBindless = false;
+            const VkDescriptorSetLayout dsLayout =
+                GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessLayout();
+            VERIFY_EXPR(dsLayout != nullptr);
 
-            for (const RHIShaderResourceDescriptor& srd : m_SRDTable[0])
-            {
-                if (srd.bindless)
-                {
-                    isBindless = true;
-                    break;
-                }
-            }
+            m_descriptorSetLayouts[i]             = dsLayout;
+            m_descriptorSetInfos[i].layoutId      = 0;
+            m_descriptorSetInfos[i].poolKey       = {};
+            m_descriptorSetInfos[i].variableCount = 0;
+            m_hasGlobalBindlessSet                = true;
 
-            if (isBindless)
-            {
-                const VkDescriptorSetLayout dsLayout =
-                    GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessLayout();
-                VERIFY_EXPR(dsLayout != nullptr);
-
-                m_descriptorSetLayouts[i]             = dsLayout;
-                m_descriptorSetInfos[i].layoutId      = 0;
-                m_descriptorSetInfos[i].poolKey       = {};
-                m_descriptorSetInfos[i].variableCount = 0;
-
-                m_hasGlobalBindlessSet = true;
-
-                continue;
-            }
+            continue;
         }
 
         uint32_t setVariableCount = 0;

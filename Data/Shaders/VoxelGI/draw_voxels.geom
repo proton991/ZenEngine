@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 // receive voxels points position
 layout(points) in;
@@ -6,7 +9,7 @@ layout(points) in;
 layout(triangle_strip, max_vertices = 24) out;
 
 
-layout(set = 0, binding = 1) uniform uVoxelInfo
+layout(set = 1, binding = 1) uniform uVoxelInfo
 {
 	mat4 modelViewProjection;
 	vec4 frustumPlanes[6];

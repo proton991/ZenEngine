@@ -16,18 +16,34 @@ TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
     RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
 
     ASSERT_EQ(info.SRDTable.size(), 2u);
-    ASSERT_EQ(info.SRDTable[0].size(), 3u);
-    ASSERT_EQ(info.SRDTable[1].size(), 1u);
+    ASSERT_EQ(info.SRDTable[0].size(), 2u);
+    ASSERT_EQ(info.SRDTable[1].size(), 3u);
+
+    for (const RHIShaderResourceDescriptor& heap : info.SRDTable[0])
+    {
+        EXPECT_EQ(heap.set, kGlobalBindlessHeapIndex);
+        EXPECT_TRUE(heap.bindless);
+        EXPECT_TRUE(heap.stageFlags.HasFlag(RHIShaderStageFlagBits::eVertex));
+        EXPECT_TRUE(heap.stageFlags.HasFlag(RHIShaderStageFlagBits::eFragment));
+
+        if (heap.name == NameID("uTexture2DHeap"))
+        {
+            EXPECT_EQ(heap.binding, ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D);
+            EXPECT_EQ(heap.type, RHIShaderResourceType::eTexture);
+        }
+        else
+        {
+            EXPECT_EQ(heap.name, NameID("uSamplerHeap"));
+            EXPECT_EQ(heap.binding, ZEN_BINDLESS_HEAP_BINDING_SAMPLER);
+            EXPECT_EQ(heap.type, RHIShaderResourceType::eSampler);
+        }
+    }
 
     for (uint32_t binding = 0; binding < 3; ++binding)
     {
-        EXPECT_EQ(info.SRDTable[0][binding].set, 0u);
-        EXPECT_EQ(info.SRDTable[0][binding].binding, binding);
+        EXPECT_EQ(info.SRDTable[1][binding].set, 1u);
+        EXPECT_EQ(info.SRDTable[1][binding].binding, binding);
     }
-
-    EXPECT_EQ(info.SRDTable[1][0].set, 1u);
-    EXPECT_EQ(info.SRDTable[1][0].binding, 0u);
-    EXPECT_EQ(info.SRDTable[1][0].arraySize, 1024u);
 }
 
 TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
@@ -39,7 +55,7 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
     RHIShaderGroupInfo info{};
     RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
 
-    const uint32_t bindingCounts[] = {1, 1, 3, 1, 2, 1};
+    const uint32_t bindingCounts[] = {2, 1, 1, 3, 0, 2, 1};
     ASSERT_EQ(info.SRDTable.size(), std::size(bindingCounts));
 
     for (uint32_t set = 0; set < std::size(bindingCounts); ++set)
@@ -63,13 +79,16 @@ TEST(ShaderReflectionTests, SparseDescriptorSetsPreserveTheirShaderSetNumbers)
     RHIShaderGroupInfo info{};
     RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
 
-    ASSERT_EQ(info.SRDTable.size(), 3u);
-    EXPECT_TRUE(info.SRDTable[0].empty());
+    ASSERT_EQ(info.SRDTable.size(), 4u);
+    ASSERT_EQ(info.SRDTable[0].size(), 2u);
+    EXPECT_TRUE(info.SRDTable[0][0].bindless);
+    EXPECT_TRUE(info.SRDTable[0][1].bindless);
     EXPECT_TRUE(info.SRDTable[1].empty());
-    ASSERT_EQ(info.SRDTable[2].size(), 1u);
-    EXPECT_EQ(info.SRDTable[2][0].set, 2u);
-    EXPECT_EQ(info.SRDTable[2][0].binding, 0u);
-    EXPECT_EQ(info.SRDTable[2][0].type, RHIShaderResourceType::eStorageBuffer);
+    EXPECT_TRUE(info.SRDTable[2].empty());
+    ASSERT_EQ(info.SRDTable[3].size(), 1u);
+    EXPECT_EQ(info.SRDTable[3][0].set, 3u);
+    EXPECT_EQ(info.SRDTable[3][0].binding, 0u);
+    EXPECT_EQ(info.SRDTable[3][0].type, RHIShaderResourceType::eStorageBuffer);
 }
 
 namespace
@@ -154,9 +173,9 @@ TEST(ShaderReflectionTests, ComputeVoxelizerBindingsMatchProducerAndConsumerAcce
     ExpectWritable(producer, "IndirectBuffer", true);
     ExpectWritable(consumer, "LargeTriangleArray", false);
 
-    ASSERT_GT(consumer.SRDTable.size(), 4u);
-    ASSERT_EQ(consumer.SRDTable[4].size(), 1u);
-    EXPECT_EQ(consumer.SRDTable[4][0].binding, 1u);
+    ASSERT_GT(consumer.SRDTable.size(), 5u);
+    ASSERT_EQ(consumer.SRDTable[5].size(), 1u);
+    EXPECT_EQ(consumer.SRDTable[5][0].binding, 1u);
     EXPECT_EQ(FindBinding(consumer, "IndirectBuffer"), nullptr);
 }
 

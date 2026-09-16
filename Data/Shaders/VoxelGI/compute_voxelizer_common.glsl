@@ -10,21 +10,21 @@ struct Vertex
     vec4 color;
 };
 
-layout(set = 0, binding = 0, rgba8) uniform writeonly image3D voxelTexture;
+layout(set = 1, binding = 0, rgba8) uniform writeonly image3D voxelTexture;
 
-layout(set = 1, binding = 0) uniform uSceneInfo
+layout(set = 2, binding = 0) uniform uSceneInfo
 {
     vec4 aabbMin;
     vec4 aabbMax;
 }
 ubo;
 
-layout(set = 2, binding = 0) readonly buffer VertexBuffer
+layout(set = 3, binding = 0) readonly buffer VertexBuffer
 {
     Vertex vertices[];
 };
 
-layout(set = 2, binding = 1) readonly buffer IndexBuffer
+layout(set = 3, binding = 1) readonly buffer IndexBuffer
 {
     uint indices[];
 };
@@ -35,20 +35,14 @@ struct NodeData
     mat4 normalMatrix;
 };
 
-layout(std140, set = 2, binding = 2) readonly buffer NodeBuffer
+layout(std140, set = 3, binding = 2) readonly buffer NodeBuffer
 {
     NodeData nodesData[];
 };
 
-layout(set = 3, binding = 0) uniform sampler2D uTextureArray[1024];
 
-//layout(set = 3, binding = 0) uniform sampler2D s_Diffuse_unbound[];
-//layout(set = 4, binding = 1) uniform sampler2D s_Normal_unbound[];
-//layout(set = 4, binding = 2) uniform sampler2D s_Metallic_unbound[];
-//layout(set = 4, binding = 3) uniform sampler2D s_Roughness_unbound[];
-//layout(set = 4, binding = 4) uniform sampler2D s_Emissive_unbound[];
 
-layout(set = 5, binding = 0) readonly buffer TriangleMap
+layout(set = 6, binding = 0) readonly buffer TriangleMap
 {
     uint triangleMap[];
 };

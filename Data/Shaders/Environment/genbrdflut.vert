@@ -5,6 +5,9 @@
  */
 
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout (location = 0) out vec2 outUV;
 

@@ -1,14 +1,17 @@
 #version 450
 #extension GL_ARB_shader_image_load_store : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
-layout(set = 0, binding = 0) uniform sampler3D voxelAlbedo;
-//layout(set = 0, binding = 0, rgba8) uniform image3D voxelAlbedo;
-layout(set = 0, binding = 1, rgba8) uniform image3D voxelNormal;
-layout(set = 0, binding = 2, rgba8) uniform writeonly image3D voxelRadiance;
-layout(set = 0, binding = 3, rgba8) uniform readonly image3D voxelEmissive;
+layout(set = 1, binding = 0) uniform sampler3D voxelAlbedo;
+//layout(set = 1, binding = 0, rgba8) uniform image3D voxelAlbedo;
+layout(set = 1, binding = 1, rgba8) uniform image3D voxelNormal;
+layout(set = 1, binding = 2, rgba8) uniform writeonly image3D voxelRadiance;
+layout(set = 1, binding = 3, rgba8) uniform readonly image3D voxelEmissive;
 
-layout(set = 1, binding = 0) uniform sampler2D shadowMap;
+layout(set = 2, binding = 0) uniform sampler2D shadowMap;
 
 const float PI = 3.14159265f;
 const float EPSILON = 1e-30;
@@ -41,7 +44,7 @@ struct Light {
     Attenuation attenuation;
 };
 
-layout(set = 2, binding = 0, std140) uniform uLightInfo {
+layout(set = 3, binding = 0, std140) uniform uLightInfo {
     Light directionalLight[MAX_DIRECTIONAL_LIGHTS];
     Light pointLight[MAX_POINT_LIGHTS];
     Light spotLight[MAX_SPOT_LIGHTS];
@@ -54,7 +57,7 @@ layout(set = 2, binding = 0, std140) uniform uLightInfo {
     vec2 _padding;
 };
 
-//layout(set = 2, binding = 1) uniform uSceneInfo
+//layout(set = 3, binding = 1) uniform uSceneInfo
 //{
 //    float voxelSize;
 //    float voxelScale;

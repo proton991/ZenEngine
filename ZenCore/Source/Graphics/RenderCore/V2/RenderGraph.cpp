@@ -1,6 +1,9 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
+#include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RHI/RHICommandList.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Utils/Errors.h"
 
 #include <algorithm>
@@ -1586,6 +1589,27 @@ struct RenderGraph::PassBindingValidator
         return allValid;
     }
 
+    bool ValidateSamplers()
+    {
+        bool allValid = true;
+        for (const RDGSamplerBinding& binding : desc.samplerBindings)
+        {
+            const RHIShaderResourceDescriptor* srd =
+                Descriptor(binding.glslName, RHIShaderResourceType::eSampler, 1);
+
+            allValid = srd != nullptr &&
+                Check(binding.pSampler != nullptr, RDGErrorCode::eBinding,
+                      prefix + "Null sampler in '" + binding.glslName.ToString() + "'");
+
+            if (!allValid)
+            {
+                break;
+            }
+        }
+
+        return allValid;
+    }
+
     bool ValidateResources()
     {
         bool allValid = true;
@@ -1723,6 +1747,8 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
         valid = validator.ValidateValues() && validator.ValidateBuffers() &&
             validator.ValidateTextures(desc.sampledTexBindings,
                                        RHIShaderResourceType::eSamplerWithTexture) &&
+            validator.ValidateTextures(desc.separateTexBindings, RHIShaderResourceType::eTexture) &&
+            validator.ValidateSamplers() &&
             validator.ValidateTextures(desc.UAVTexBindings, RHIShaderResourceType::eImage) &&
             validator.ValidateResources() && validator.ValidateIndirectBuffers();
     }
@@ -2914,6 +2940,11 @@ bool RenderGraph::DeclarePassBindingAccess(RDGPassNode* node,
     {
         valid = DeclareTextureBindings(node, desc, shader, desc->sampledTexBindings,
                                        RHITextureUsage::eSampled);
+
+        valid = valid &&
+            DeclareTextureBindings(node, desc, shader, desc->separateTexBindings,
+                                   RHITextureUsage::eSampled);
+
         valid = valid &&
             (DeclareTextureBindings(node, desc, shader, desc->UAVTexBindings,
                                     RHITextureUsage::eStorage));

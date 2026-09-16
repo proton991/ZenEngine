@@ -1,7 +1,10 @@
 #version 450
 #extension GL_ARB_shader_image_load_store : require
+#extension GL_GOOGLE_include_directive : require
 
-layout(set = 0, binding = 0, rgba8) uniform readonly image3D voxelRadiance;
+#include "../Common/bindless_heap.glsl"
+
+layout(set = 1, binding = 0, rgba8) uniform readonly image3D voxelRadiance;
 
 layout (push_constant) uniform uNodePushConstant
 {

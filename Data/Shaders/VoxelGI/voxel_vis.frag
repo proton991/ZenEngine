@@ -1,8 +1,11 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout(location = 0) out vec3 FS_OUT_Color;
 
-layout(std140, set = 2, binding = 0) readonly buffer InstanceColorBuffer
+layout(std140, set = 3, binding = 0) readonly buffer InstanceColorBuffer
 {
     vec4 colors[];
 };

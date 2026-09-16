@@ -5,11 +5,14 @@
  */
 
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout (location = 0) in vec3 inUVW;
 layout (location = 0) out vec4 outColor;
 
-layout (set = 1, binding = 0) uniform samplerCube samplerEnv;
+layout (set = 2, binding = 0) uniform samplerCube samplerEnv;
 
 const float exposure = 4.5f;
 const float gamma = 2.2f;

@@ -1,7 +1,9 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : require
 
-layout (set = 1, binding = 0) uniform sampler2D uTextureArray[1024];
+#include "../Common/bindless_heap.glsl"
+
 
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec2 inUV;
@@ -32,7 +34,7 @@ struct Material
     vec4 emissiveFactor;
 };
 
-layout(std140, set = 0, binding = 2) readonly buffer MaterialBuffer {
+layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer {
     Material materialData[];
 };
 
@@ -73,19 +75,19 @@ void SurfaceShaderTextured(out SurfaceOut surface)
     surface.normal = GetNormal();
 
     surface.albedo = surfMat.baseColorFactor;
-    surface.albedo *= texture(uTextureArray[surfMat.bcTexIndex], inUV);
+    surface.albedo *= SamplerHeap2D(surfMat.bcTexIndex, 0, inUV);
 
     surface.roughness = surfMat.roughnessFactor;
-    surface.roughness *= texture(uTextureArray[surfMat.mrTexIndex], inUV).g;
+    surface.roughness *= SamplerHeap2D(surfMat.mrTexIndex, 0, inUV).g;
 
     surface.metallic = surfMat.metallicFactor;
-    surface.metallic *= texture(uTextureArray[surfMat.mrTexIndex], inUV).b;
+    surface.metallic *= SamplerHeap2D(surfMat.mrTexIndex, 0, inUV).b;
 
     surface.emissive = surfMat.emissiveFactor.rbg;
-    surface.emissive *= texture(uTextureArray[surfMat.emissiveTexIndex], inUV).rgb;
+    surface.emissive *= SamplerHeap2D(surfMat.emissiveTexIndex, 0, inUV).rgb;
 
     surface.occlusion = 1.0f;
-    surface.occlusion *= texture(uTextureArray[surfMat.occlusionTexIndex], inUV).r;
+    surface.occlusion *= SamplerHeap2D(surfMat.occlusionTexIndex, 0, inUV).r;
 
 }
 

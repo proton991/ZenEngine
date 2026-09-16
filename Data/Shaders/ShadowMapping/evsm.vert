@@ -1,4 +1,7 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout (location = 0) in vec4 inPos;
 layout (location = 1) in vec4 inNormal;
@@ -19,12 +22,12 @@ struct NodeData {
     mat4 normalMatrix;
 };
 
-layout (set = 0, binding = 0) uniform uLightInfo
+layout (set = 1, binding = 0) uniform uLightInfo
 {
     mat4 uLightViewProjection;
 };
 
-layout(std140, set = 0, binding = 1) readonly buffer NodeBuffer {
+layout(std140, set = 1, binding = 1) readonly buffer NodeBuffer {
     NodeData nodesData[];
 };
 

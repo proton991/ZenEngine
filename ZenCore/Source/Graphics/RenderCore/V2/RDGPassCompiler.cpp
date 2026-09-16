@@ -436,6 +436,29 @@ struct RDGPassCompiler::ShaderParameterBuilder
         return allValid;
     }
 
+    bool BindSamplers()
+    {
+        bool allValid = true;
+
+        for (const RDGSamplerBinding& binding : pDesc->samplerBindings)
+        {
+            const RHIShaderResourceDescriptor* pSRD =
+                Descriptor(binding.glslName, RHIShaderResourceType::eSampler);
+
+            if (pSRD != nullptr)
+            {
+                parameters.AddResourceParam(*pSRD, binding.pSampler, nullptr, 0);
+            }
+            else
+            {
+                allValid = false;
+                break;
+            }
+        }
+
+        return allValid;
+    }
+
     bool BindResources()
     {
         bool allValid = true;
@@ -510,7 +533,8 @@ bool RDGPassCompiler::BuildShaderParameters(ShaderProgram* pShaderProgram,
             builder.BindTextures(pDesc->sampledTexBindings,
                                  RHIShaderResourceType::eSamplerWithTexture) &&
             builder.BindTextures(pDesc->UAVTexBindings, RHIShaderResourceType::eImage) &&
-            builder.BindResources();
+            builder.BindTextures(pDesc->separateTexBindings, RHIShaderResourceType::eTexture) &&
+            builder.BindSamplers() && builder.BindResources();
     }
 
     return valid;

@@ -1,4 +1,7 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout(location = 0) in FS_IN {
     vec4 position;
@@ -33,11 +36,10 @@ struct Material
     vec4 emissiveFactor;
 };
 
-layout(std140, set = 0, binding = 2) readonly buffer MaterialBuffer {
+layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer {
     Material materialData[];
 };
 
-layout (set = 1, binding = 0) uniform sampler2D uTextureArray[1024];
 
 vec2 WarpDepth(float depth)
 {
@@ -59,7 +61,7 @@ vec4 ShadowDepthToEVSM(float depth)
 
 void main()
 {
-    vec4 diffuseColor = texture(uTextureArray[materialData[pc.materialIndex].bcTexIndex], fs_in.texCoord);
+    vec4 diffuseColor = SamplerHeap2D(materialData[pc.materialIndex].bcTexIndex, 0, fs_in.texCoord);
 
     if (diffuseColor.a <= pc.alphaCutoff) { discard; }
 

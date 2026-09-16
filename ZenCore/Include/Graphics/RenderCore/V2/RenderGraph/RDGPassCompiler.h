@@ -45,6 +45,12 @@ struct RDGTextureBinding
     RDGContentGuarantee contents{RDGContentGuarantee::eNone};
 };
 
+struct RDGSamplerBinding
+{
+    NameID glslName;
+    RHISampler* pSampler{nullptr};
+};
+
 enum class RDGBindingType
 {
     eNone           = 0,
@@ -101,6 +107,8 @@ struct RDGPassDescBase
     // external bindings
     HeapVector<RDGBufferBinding> UAVBufferBindings;
     HeapVector<RDGTextureBinding> sampledTexBindings;
+    HeapVector<RDGTextureBinding> separateTexBindings;
+    HeapVector<RDGSamplerBinding> samplerBindings;
     HeapVector<RDGTextureBinding> UAVTexBindings;
     HeapVector<RDGValueBinding> valueBindings;
 
@@ -213,6 +221,24 @@ struct RDGPassDescBase
         binding.buffers.count     = buffers.size();
         binding.buffers.offset    = bufferStorage.size();
         bufferStorage.push_back(buffers);
+    }
+
+    void BindSeparateTexture(NameID glslName, VectorView<RHITextureView*> textureViews)
+    {
+        RDGTextureBinding& binding = separateTexBindings.emplace_back();
+        binding.glslName           = glslName;
+        binding.pSampler           = nullptr;
+        binding.views.count        = textureViews.size();
+        binding.views.offset       = textureViewStorage.size();
+
+        textureViewStorage.push_back(textureViews);
+    }
+
+    void BindSampler(NameID glslName, RHISampler* pSampler)
+    {
+        RDGSamplerBinding& binding = samplerBindings.emplace_back();
+        binding.glslName           = glslName;
+        binding.pSampler           = pSampler;
     }
 
     void BindSampledTexture(NameID glslName, RHISampler* pSampler, RHITextureView* pTextureView)

@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout(triangles) in;
 layout(triangle_strip, max_vertices = 3) out;
@@ -23,7 +26,7 @@ layout( location = 0 ) out GS_OUT {
 } gs_out;
 
 
-layout(set = 0, binding = 1) uniform uVoxelConfig
+layout(set = 1, binding = 1) uniform uVoxelConfig
 {
     mat4 viewProjections[3];
     mat4 viewProjectionsI[3];

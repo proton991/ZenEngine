@@ -313,6 +313,7 @@ foreach (GLSL ${ZEN_SHADER_FILES})
     add_custom_command(
         OUTPUT ${SPIRV}
         COMMAND ${GLSL_VALIDATOR} --target-env spirv1.3 -V ${GLSL} -o ${SPIRV}
+                -I${PROJECT_SOURCE_DIR}/ZenCore/Include
                 --depfile ${SPIRV}.d
         DEPENDS ${GLSL}
         DEPFILE ${SPIRV}.d

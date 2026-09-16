@@ -1,5 +1,8 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : require
+
+#include "../Common/bindless_heap.glsl"
 
 layout(location = 0) in GS_OUT
 {
@@ -13,9 +16,8 @@ layout(location = 0) in GS_OUT
 }
 fs_in;
 
-layout(set = 1, binding = 0, r32ui) uniform volatile uimage3D voxelAlbedo;
+layout(set = 2, binding = 0, r32ui) uniform volatile uimage3D voxelAlbedo;
 
-layout(set = 2, binding = 0) uniform sampler2D uTextureArray[1024];
 
 //layout (location = 0) out vec4 outFragColor;
 
@@ -37,7 +39,7 @@ struct Material
     vec4 emissiveFactor;
 };
 
-layout(std140, set = 0, binding = 2) readonly buffer MaterialBuffer
+layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer
 {
     Material materialData[];
 };
@@ -117,7 +119,7 @@ void main()
     //        discard;
     //    }
     Material surfMat = materialData[pc.materialIndex];
-    vec4 albedoColor = texture(uTextureArray[surfMat.bcTexIndex], fs_in.texCoord);
+    vec4 albedoColor = SamplerHeap2D(surfMat.bcTexIndex, 0, fs_in.texCoord);
 
     //alpha clip
     if (albedoColor.w == 0)

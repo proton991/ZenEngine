@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics/Common/Format.h"
 #include "Graphics/Common/Color.h"
+#include "Graphics/Shared/Bindless.h"
 #include "Templates/BitField.h"
 #include "Templates/SmallVector.h"
 #include "Math/Math.h"
@@ -250,6 +251,12 @@ enum class RHIBindlessHeapType : uint8_t
     eMax         = 3
 };
 
+static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D == ToUnderlying(RHIBindlessHeapType::eTexture2D));
+static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURECUBE ==
+              ToUnderlying(RHIBindlessHeapType::eTextureCube));
+static_assert(ZEN_BINDLESS_HEAP_BINDING_SAMPLER == ToUnderlying(RHIBindlessHeapType::eSampler));
+
+
 inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHeapType heapType)
 {
     RHIShaderResourceType resourceType = RHIShaderResourceType::eMax;
@@ -267,7 +274,7 @@ inline constexpr RHIShaderResourceType GetBindlessHeapResourceType(RHIBindlessHe
     return resourceType;
 }
 
-inline constexpr uint32_t kGlobalBindlessHeapIndex  = 0;
+inline constexpr uint32_t kGlobalBindlessHeapIndex  = ZEN_BINDLESS_HEAP_SET;
 inline constexpr uint32_t kInvalidBindlessSlotIndex = std::numeric_limits<uint32_t>::max();
 
 // Keep this CPU handle when publishing slotIndex to shaders. The generation is
