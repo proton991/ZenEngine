@@ -4,13 +4,14 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "SceneGraph/Camera.h"
+#include "Templates/SmallVector.h"
 
 #define IRRADIANCE_DIM  64
 #define PREFILTERED_DIM 512
 
 namespace zen::rc
 {
-static const HeapVector<Mat4> cMatrices = {
+static const SmallVector<Mat4, 6> cMatrices = {
     glm::rotate(glm::rotate(Mat4(1.0f), glm::radians(90.0f), Vec3(0.0f, 1.0f, 0.0f)),
                 glm::radians(180.0f),
                 Vec3(1.0f, 0.0f, 0.0f)),
