@@ -18,6 +18,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanDescriptorIntegrationTests.cpp
     CommonTest/VulkanDescriptorLifetimeTests.cpp
     CommonTest/VulkanQueueIntegrationTests.cpp
+    CommonTest/VulkanCommandBufferLifetimeTests.cpp
     CommonTest/VulkanPipelineIntegrationTests.cpp
     CommonTest/VulkanBindingIntegrationTests.cpp
     CommonTest/VulkanSwapchainIntegrationTests.cpp

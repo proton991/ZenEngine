@@ -104,6 +104,9 @@ private:
 
     VulkanWorkload* AcquireWorkload();
 
+    // Release context-owned or rejected work known not to have reached the GPU.
+    void DiscardWorkload(VulkanWorkload* pWorkload);
+
     void ReleaseWorkload(VulkanWorkload* pWorkload);
 
     void DestroyWorkload(VulkanWorkload* pWorkload);

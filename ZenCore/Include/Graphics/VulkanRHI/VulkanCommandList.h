@@ -73,6 +73,7 @@ public:
 
     void SetSubmitted();
 
+    // The owner must know this recording was not submitted; repeated discard is harmless.
     void Discard();
 
     void SetCompleted();

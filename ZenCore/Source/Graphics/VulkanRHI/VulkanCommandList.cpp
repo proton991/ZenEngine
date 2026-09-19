@@ -231,8 +231,13 @@ void FVulkanCommandBuffer::SetCompleted()
 void FVulkanCommandBuffer::Discard()
 {
     LockAuto lock(m_pCmdBufferPool->GetMutex());
-    VERIFY_EXPR(m_state == State::eHasEnded);
-    m_state = State::eNeedReset;
+    const bool canDiscard = m_state != State::eSubmitted && m_state != State::eNotAllocated;
+    VERIFY_EXPR_MSG(canDiscard, "Cannot discard a submitted or unallocated command buffer");
+    if (canDiscard)
+    {
+        // Recording (including an open render pass) can be reset on reuse or freed by trimming.
+        m_state = State::eNeedReset;
+    }
 }
 
 VulkanCommandBufferType FVulkanCommandBuffer::GetCommandBufferType() const
@@ -402,15 +407,16 @@ void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
 
 VulkanCommandContextBase::~VulkanCommandContextBase()
 {
+    // CollectWorkloads transfers ownership out of these lists before queue submission.
     if (m_pCurrentWorkload != nullptr)
     {
-        m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
+        m_pQueue->DiscardWorkload(m_pCurrentWorkload);
         m_pCurrentWorkload = nullptr;
     }
 
     for (VulkanWorkload* pWorkload : m_finalizedWorkloads)
     {
-        m_pQueue->ReleaseWorkload(pWorkload);
+        m_pQueue->DiscardWorkload(pWorkload);
     }
 
     m_finalizedWorkloads.clear();

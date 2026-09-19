@@ -123,6 +123,15 @@ VulkanWorkload* VulkanQueue::AcquireWorkload()
     return result;
 }
 
+void VulkanQueue::DiscardWorkload(VulkanWorkload* pWorkload)
+{
+    for (FVulkanCommandBuffer* buffer : pWorkload->m_commandBuffers)
+    {
+        buffer->Discard();
+    }
+    ReleaseWorkload(pWorkload);
+}
+
 void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 {
     if (pWorkload == nullptr)
@@ -215,15 +224,11 @@ void VulkanQueue::DiscardPendingWorkloads(bool uncertain)
         if (uncertain)
         {
             m_abandonedWorkloads.push_back(workload);
-            continue;
         }
-
-        for (FVulkanCommandBuffer* buffer : workload->m_commandBuffers)
+        else
         {
-            buffer->Discard();
+            DiscardWorkload(workload);
         }
-
-        ReleaseWorkload(workload);
     }
 }
 
