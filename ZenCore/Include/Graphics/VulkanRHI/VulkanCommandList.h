@@ -299,8 +299,25 @@ public:
                           uint64_t value)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
-        pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
-            VulkanWorkload::WaitSemaphoreInfo{waitFlags, pWaitSemaphore, value});
+        bool merged                      = false;
+        if (value != 0)
+        {
+            for (VulkanWorkload::WaitSemaphoreInfo& wait : pCurrentWorkload->m_waitSemaphoreInfos)
+            {
+                if (wait.pSemaphore == pWaitSemaphore)
+                {
+                    wait.value = std::max(wait.value, value);
+                    wait.waitFlags |= waitFlags;
+                    merged = true;
+                    break;
+                }
+            }
+        }
+        if (!merged)
+        {
+            pCurrentWorkload->m_waitSemaphoreInfos.emplace_back(
+                VulkanWorkload::WaitSemaphoreInfo{waitFlags, pWaitSemaphore, value});
+        }
     }
 
     void AddWaitSemaphores(VkPipelineStageFlags waitFlags,

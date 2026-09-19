@@ -40,6 +40,7 @@ RHICommandListExecutor::RHICommandListExecutor(DynamicRHI* backend, RHIExecution
     m_name(backend->GetName()),
     m_depthFormat(backend->GetSupportedDepthFormat()),
     m_sharedTransfer(backend->IsTransferQueueSharedWithGraphics()),
+    m_asyncSubmissionDependencies(backend->SupportsAsyncSubmissionDependencies()),
     m_queueCapabilities(3)
 {
     for (uint32_t i = 0; i < 3; ++i)
@@ -229,6 +230,20 @@ RHISubmissionResult RHICommandListExecutor::ExecuteBatch(VectorView<RHICommandLi
 RHISubmissionResult RHICommandListExecutor::SubmitBatch(VectorView<RHICommandList*> lists)
 {
     return GetRHIThread().Invoke(&RHICommandListExecutor::ExecuteBatch, this, lists);
+}
+
+bool RHICommandListExecutor::SupportsAsyncSubmissionDependencies() const
+{
+    return m_mode == RHIExecutionMode::eInline ? m_backend->SupportsAsyncSubmissionDependencies() :
+                                                 m_asyncSubmissionDependencies;
+}
+
+bool RHICommandListExecutor::PrepareSubmissionDependencies(
+    IRHICommandContext* context,
+    VectorView<const RHISubmissionDependency> dependencies)
+{
+    return GetRHIThread().Invoke(&DynamicRHI::PrepareSubmissionDependencies, m_backend, context,
+                                 dependencies);
 }
 
 RHISubmissionTicket RHICommandListExecutor::SubmitFrame(RHICommandList& commands,

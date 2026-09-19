@@ -103,6 +103,10 @@ public:
     NameID GetName() override;
     DataFormat GetSupportedDepthFormat() override;
     bool IsTransferQueueSharedWithGraphics() const override;
+    bool SupportsAsyncSubmissionDependencies() const override;
+    bool PrepareSubmissionDependencies(
+        IRHICommandContext* context,
+        VectorView<const RHISubmissionDependency> dependencies) override;
     const RHIGPUInfo& QueryGPUInfo() const override;
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const override;
     void Init() override;
@@ -159,6 +163,7 @@ private:
     NameID m_name;
     DataFormat m_depthFormat;
     bool m_sharedTransfer;
+    bool m_asyncSubmissionDependencies;
     SmallVector<RHIQueueCopyCapabilities, 3> m_queueCapabilities;
     // SmallVector relocation requires movable elements; atomic counters need fixed storage.
     std::array<std::atomic<uint64_t>, 3> m_submitted{};

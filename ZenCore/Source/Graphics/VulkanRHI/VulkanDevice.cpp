@@ -550,6 +550,53 @@ bool VulkanRHI::IsTransferQueueSharedWithGraphics() const
     return m_pDevice->GetTransferQueue()->GetVkHandle() == m_pDevice->GetGfxQueue()->GetVkHandle();
 }
 
+bool VulkanRHI::SupportsAsyncSubmissionDependencies() const
+{
+    return m_pDevice->SupportsTimelineSemaphore();
+}
+
+bool VulkanRHI::PrepareSubmissionDependencies(
+    IRHICommandContext* context,
+    VectorView<const RHISubmissionDependency> dependencies)
+{
+    GetRHIThread().CheckOwnership();
+    bool result                         = context != nullptr && !m_submissionBlocked;
+    FVulkanCommandListContext* consumer = static_cast<FVulkanCommandListContext*>(context);
+    for (const RHISubmissionDependency& dependency : dependencies)
+    {
+        if (result)
+        {
+            VulkanQueue* producer    = dependency.queue < RHICommandContextType::eMax ?
+                m_pDevice->GetQueue(dependency.queue) :
+                nullptr;
+            const uint64_t submitted = producer != nullptr ? producer->GetLastSubmittedSerial() : 0;
+            const uint64_t serial = dependency.serial == RHISubmissionDependency::kLatestSubmitted ?
+                submitted :
+                dependency.serial;
+            result                = producer != nullptr && serial <= submitted;
+            if (result && serial != 0 &&
+                producer->GetVkHandle() != consumer->GetQueue()->GetVkHandle())
+            {
+                if (SupportsAsyncSubmissionDependencies())
+                {
+                    consumer->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                               producer->m_pTimelineSemaphore, serial);
+                }
+                else
+                {
+                    result = producer->WaitForSubmission(serial, UINT64_MAX);
+                }
+            }
+        }
+    }
+    if (!result)
+    {
+        LOGE("Vulkan submission dependency is invalid or failed");
+        BlockSubmissions();
+    }
+    return result;
+}
+
 uint64_t VulkanRHI::GetLastSubmittedSerial(RHICommandContextType contextType) const
 {
     VulkanQueue* pQueue = m_pDevice->GetQueue(contextType);

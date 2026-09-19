@@ -87,6 +87,7 @@ RHICommandListPtr RHICommandList::DetachCommands(RHICommandListPtr reusable)
     result->m_pComputeContext  = m_pComputeContext;
     result->m_cmdAllocator.Swap(m_cmdAllocator);
     result->m_resources.Swap(m_resources);
+    std::swap(result->m_submissionDependencies, m_submissionDependencies);
     result->m_pCmdHead    = m_pCmdHead;
     result->m_ppCmdPtr    = m_numCommands == 0 ? &result->m_pCmdHead : m_ppCmdPtr;
     result->m_numCommands = m_numCommands;
@@ -145,6 +146,7 @@ void RHICommandListBase::Reset()
     m_numCommands = 0;
     m_cmdAllocator.Reset();
     m_resources.Reset();
+    m_submissionDependencies.clear();
 }
 
 void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
@@ -171,6 +173,7 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
     m_ppCmdPtr       = checkpoint.tail;
     m_numCommands    = checkpoint.count;
     m_resources.Rollback(checkpoint.resourceCount);
+    m_submissionDependencies.resize(checkpoint.dependencyCount);
 }
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)

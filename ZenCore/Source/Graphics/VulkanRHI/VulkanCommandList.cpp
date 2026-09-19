@@ -1421,6 +1421,10 @@ void VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                                      HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
     GetRHIThread().CheckOwnership();
+    if (!m_submissionBlocked && !PrepareCommandListDependencies(cmdLists))
+    {
+        BlockSubmissions();
+    }
     if (!m_submissionBlocked)
     {
         for (RHICommandList* pCmdList : cmdLists)

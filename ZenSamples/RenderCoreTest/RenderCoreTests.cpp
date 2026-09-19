@@ -859,6 +859,13 @@ public:
     RHIQueueCopyCapabilities transferCopy{false, false, true, {1, 1, 1}};
     std::unordered_map<DataFormat, RHITextureCopyCapabilities> copyCapabilities;
     bool shared{false};
+    bool asyncDependencies{false};
+    struct SubmissionDependency
+    {
+        RHICommandContextType consumer;
+        RHISubmissionDependency producer;
+    };
+    HeapVector<SubmissionDependency> gpuDependencies;
     uint32_t pipelineCount{0};
     uint32_t frameBegins{0};
     uint32_t deviceIdleWaits{0};
@@ -1046,11 +1053,15 @@ public:
     void FinalizeCommandLists(VectorView<RHICommandList*> lists,
                               HeapVector<RHIPlatformCommandList*>&) override
     {
+        submissionsBlocked |= !PrepareCommandListDependencies(lists);
         for (RHICommandList* list : lists)
         {
-            ++finalizedLists;
-            pendingCommandLists.push_back(list);
-            pending[Index(list->GetContext()->GetContextType())] = true;
+            if (!submissionsBlocked)
+            {
+                ++finalizedLists;
+                pendingCommandLists.push_back(list);
+                pending[Index(list->GetContext()->GetContextType())] = true;
+            }
         }
     }
 
@@ -1115,6 +1126,39 @@ public:
     bool IsTransferQueueSharedWithGraphics() const override
     {
         return shared;
+    }
+
+    bool SupportsAsyncSubmissionDependencies() const override
+    {
+        return asyncDependencies;
+    }
+
+    bool PrepareSubmissionDependencies(
+        IRHICommandContext* context,
+        VectorView<const RHISubmissionDependency> dependencies) override
+    {
+        bool result = true;
+        if (!asyncDependencies)
+        {
+            result = DynamicRHI::PrepareSubmissionDependencies(context, dependencies);
+        }
+        else
+        {
+            for (RHISubmissionDependency dependency : dependencies)
+            {
+                if (dependency.serial == RHISubmissionDependency::kLatestSubmitted)
+                {
+                    dependency.serial = GetLastSubmittedSerial(dependency.queue);
+                }
+                result = result && dependency.serial <= GetLastSubmittedSerial(dependency.queue);
+                if (result && dependency.serial != 0 &&
+                    Index(dependency.queue) != Index(context->GetContextType()))
+                {
+                    gpuDependencies.push_back({context->GetContextType(), dependency});
+                }
+            }
+        }
+        return result;
     }
 
     bool AreSubmissionsBlocked() const override
@@ -1287,6 +1331,19 @@ struct RDGSubmissionTestAccess
         return device.m_rdgExecutor.GetResourceStateTracker();
     }
 
+    static RHISubmissionDependency Submission(const RenderDevice& device,
+                                              const RHIResource* resource)
+    {
+        RHISubmissionDependency result;
+        const HashMap<uint64_t, RHISubmissionDependency>::const_iterator found =
+            device.m_resourceSubmissions.find(resource->GetStableId());
+        if (found != device.m_resourceSubmissions.end())
+        {
+            result = found->second;
+        }
+        return result;
+    }
+
     static bool HasHistory(const ResourceStateTracker& tracker, uint64_t id)
     {
         return tracker.m_textureStates.contains(id) || tracker.m_bufferStates.contains(id) ||
@@ -1297,6 +1354,7 @@ struct RDGSubmissionTestAccess
     {
         bool found = HasHistory(device.m_rdgExecutor.GetResourceStateTracker(), id) ||
             HasHistory(device.m_confirmedResourceState, id) ||
+            device.m_resourceSubmissions.contains(id) ||
             device.m_rdgExecutor.GetMetrics().m_validator.HasState(id);
         for (const RenderDevice::PendingFrame& pending : device.m_pendingFrames)
         {
@@ -1323,16 +1381,18 @@ protected:
     }
 
     void InitializeDevice(RHIViewport* viewport,
-                          uint32_t frameCount   = 2,
-                          RHIExecutionMode mode = RHIExecutionMode::eInline)
+                          uint32_t frameCount    = 2,
+                          RHIExecutionMode mode  = RHIExecutionMode::eInline,
+                          bool asyncDependencies = false)
     {
         destroyed.clear();
         reflectedShaderInfos.clear();
         textureFiles.clear();
-        sceneInputs = {};
-        rhi         = ZEN_NEW() TestRHI();
-        GDynamicRHI = rhi;
-        device      = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode);
+        sceneInputs            = {};
+        rhi                    = ZEN_NEW() TestRHI();
+        rhi->asyncDependencies = asyncDependencies;
+        GDynamicRHI            = rhi;
+        device                 = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode);
         device->Init(viewport);
     }
 
@@ -11497,3 +11557,4 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 }
 
 #include "RHIThreadingTests.inl"
+#include "AsyncUploadTests.inl"

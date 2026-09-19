@@ -68,6 +68,14 @@ enum class RHICommandContextType : uint32_t
     eMax          = 3
 };
 
+struct RHISubmissionDependency
+{
+    // Resolve on the submission thread, after previously queued CPU batches have executed.
+    static constexpr uint64_t kLatestSubmitted = UINT64_MAX;
+    RHICommandContextType queue{RHICommandContextType::eGraphics};
+    uint64_t serial{0};
+};
+
 class IRHICommandContext : public RefCounted
 {
 public:
@@ -263,16 +271,30 @@ public:
         m_resources.Retain(resource);
     }
 
+    void AddSubmissionDependency(RHISubmissionDependency dependency)
+    {
+        if (dependency.serial != 0)
+        {
+            m_submissionDependencies.push_back(dependency);
+        }
+    }
+
+    VectorView<const RHISubmissionDependency> GetSubmissionDependencies() const
+    {
+        return m_submissionDependencies;
+    }
+
     struct CommandCheckpoint
     {
         RHICommandBase** tail;
         uint32_t count;
         size_t resourceCount;
+        size_t dependencyCount;
     };
 
     CommandCheckpoint GetCommandCheckpoint() const
     {
-        return {m_ppCmdPtr, m_numCommands, m_resources.GetCount()};
+        return {m_ppCmdPtr, m_numCommands, m_resources.GetCount(), m_submissionDependencies.size()};
     }
 
     uint32_t GetCommandCount() const
@@ -299,6 +321,7 @@ protected:
     PoolAllocator<LinearAllocator> m_cmdAllocator;
     RefCountPtr<IRHICommandContext> m_contextOwner;
     RHIResourceReferences m_resources;
+    HeapVector<RHISubmissionDependency> m_submissionDependencies;
 };
 
 struct RHICommand : public RHICommandBase

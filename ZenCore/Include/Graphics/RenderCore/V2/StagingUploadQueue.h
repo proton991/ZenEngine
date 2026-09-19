@@ -116,6 +116,8 @@ public:
                         const uint8_t* pData,
                         bool generateMipmaps = false);
 
+    // Success establishes submission, not GPU completion on timeline-capable backends.
+    // Dependent graphs wait on the GPU; staging/resources remain retained until completion.
     // False retains unsubmitted payloads for retry and prevents dependent graph execution.
     bool Flush();
 

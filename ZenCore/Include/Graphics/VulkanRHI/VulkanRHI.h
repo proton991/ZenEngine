@@ -59,6 +59,11 @@ public:
 
     IRHICommandContext* GetTransferCommandContext() override;
 
+    bool SupportsAsyncSubmissionDependencies() const override;
+    bool PrepareSubmissionDependencies(
+        IRHICommandContext* context,
+        VectorView<const RHISubmissionDependency> dependencies) override;
+
     void Init() override;
 
     void Destroy() override;

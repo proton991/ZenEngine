@@ -72,7 +72,8 @@ public:
 
     void Destroy();
 
-    // In threaded mode, success means queued. Poll/flush confirms native submission.
+    // Executes the RDG on the render thread. In threaded mode, success means the RHI executor
+    // accepted the recorded frame; poll/flush confirms native submission.
     bool ExecuteRenderGraph(RHIViewport* pViewport);
 
     bool PollFrameSubmissions(bool wait = false);
@@ -266,11 +267,27 @@ private:
         HeapVector<RDGDeferredExtraction> extractions;
     };
 
-    bool QueueRenderGraph(RHIViewport* viewport);
-    RHISubmissionResult QueueRecordedFrame(RenderGraph& graph,
-                                           RHICommandList& commands,
-                                           RHIViewport* viewport,
-                                           PendingFrame& pending);
+    // Executes the frame RDG here, with native submission deferred to the RHI thread.
+    bool ExecuteFrameGraph(RHIViewport* viewport);
+
+    RHISubmissionResult SubmitRecordedGraph(RenderGraph& graph, RHICommandList& commands);
+
+    void PrepareGraphSubmission(const RenderGraph& graph,
+                                RHICommandList& commands,
+                                HeapVector<uint64_t>& resourceIds);
+
+    void CommitGraphSubmission(VectorView<const uint64_t> resourceIds,
+                               RHISubmissionDependency submission);
+
+    void LogTransferSubmission(const RenderGraph& graph,
+                               RHICommandContextType queue,
+                               uint64_t serial);
+
+    // Submits recorded commands to the RHI executor and retains its completion ticket.
+    RHISubmissionResult SubmitRecordedFrame(RenderGraph& graph,
+                                            RHICommandList& commands,
+                                            RHIViewport* viewport,
+                                            PendingFrame& pending);
     void CompleteFrame(PendingFrame& pending, const RHIBatchResult& result);
     void CollectDestroyedResourceHistory();
     void ProcessDeferredViewportResize();
@@ -372,6 +389,8 @@ private:
     RHICommandListExecutor* m_pRHIExecutor{nullptr};
     HeapVector<PendingFrame> m_pendingFrames;
     ResourceStateTracker m_confirmedResourceState;
+    // Render-thread submission history; the graph never queries backend queue progress.
+    HashMap<uint64_t, RHISubmissionDependency> m_resourceSubmissions;
     HeapVector<uint64_t> m_destroyedResourceIds;
     RHIViewport* m_pRecreateViewport{nullptr};
 
@@ -382,6 +401,8 @@ private:
 
     ObjectPool<RHICommandList, GraphicsCommandListPoolPolicy> m_graphicsCmdListPool;
     RHICommandList* m_pImmediateTransferCmdList{nullptr};
+    bool m_loggedTransferSubmission{false};
+    bool m_loggedGraphicsTransferSubmission{false};
 
     StagingBufferManager m_stagingBufferManager;
 

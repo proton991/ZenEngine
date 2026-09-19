@@ -115,6 +115,23 @@ public:
     //     DescriptorSetHandle descriptorSetHandle,
     //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
 
+    // Backends prepare dependencies for the entire batch before translating any commands.
+    // On failure, block submissions and leave all input lists unexecuted.
+    bool PrepareCommandListDependencies(VectorView<RHICommandList*> lists)
+    {
+        bool result = true;
+        for (RHICommandList* list : lists)
+        {
+            if (result)
+            {
+                result = list != nullptr &&
+                    PrepareSubmissionDependencies(list->GetContext(),
+                                                  list->GetSubmissionDependencies());
+            }
+        }
+        return result;
+    }
+
     virtual void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                                       HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
 
@@ -131,6 +148,47 @@ public:
     }
 
     virtual bool IsTransferQueueSharedWithGraphics() const = 0;
+
+    virtual bool SupportsAsyncSubmissionDependencies() const
+    {
+        return false;
+    }
+
+    // Attach dependencies before recording/finalizing the consumer context. Producers must
+    // already be submitted; kLatestSubmitted resolves here, never to future submissions.
+    // Backends without GPU waits retain a completion-wait fallback. Failure blocks the batch.
+    virtual bool PrepareSubmissionDependencies(
+        IRHICommandContext* context,
+        VectorView<const RHISubmissionDependency> dependencies)
+    {
+        bool result = context != nullptr;
+        for (const RHISubmissionDependency& dependency : dependencies)
+        {
+            if (result)
+            {
+                const bool validQueue = dependency.queue < RHICommandContextType::eMax;
+                const uint64_t submitted =
+                    validQueue ? GetLastSubmittedSerial(dependency.queue) : 0;
+                const uint64_t serial =
+                    dependency.serial == RHISubmissionDependency::kLatestSubmitted ?
+                    submitted :
+                    dependency.serial;
+                result                               = validQueue && serial <= submitted;
+                const RHICommandContextType consumer = context->GetContextType();
+                const bool shared                    = dependency.queue == consumer ||
+                    (IsTransferQueueSharedWithGraphics() &&
+                     ((consumer == RHICommandContextType::eGraphics &&
+                       dependency.queue == RHICommandContextType::eTransfer) ||
+                      (consumer == RHICommandContextType::eTransfer &&
+                       dependency.queue == RHICommandContextType::eGraphics)));
+                if (result && !shared && GetLastCompletedSerial(dependency.queue) < serial)
+                {
+                    result = WaitForSubmission(dependency.queue, serial);
+                }
+            }
+        }
+        return result;
+    }
 
     virtual uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const = 0;
 
