@@ -1,12 +1,12 @@
 # Async compute implementation plan
 
-Status: proposed; no async-compute implementation is included in this document. Based on the working tree on 2026-09-18, including the async-upload patch and the `ExecuteFrameGraph` / `SubmitRecordedFrame` naming changes.
+Status: Steps 1–8 are complete. Step 9 renderer integration, submission diagnostics, and correctness coverage are implemented; paused for user verification. After counter access was enabled, six Nsight Graphics traces verified dedicated compute execution and consumer dependencies, but showed zero graphics/compute overlap across nine captured update frames. Measured async update spans were longer. First-load timing, isolated graphics-wait timing, and full performance acceptance remain open; see [Nsight verification](AsyncComputeNsightVerification.md). Async compute remains opt-in. ComputeVoxelizer now requests compute for its reset/update chain; drawing and presentation stay on graphics. See [Step 8 verification](AsyncComputeStep8Verification.md), [Step 9 verification](AsyncComputeStep9Verification.md), and the linked earlier reports. The baseline below describes the working tree reviewed on 2026-09-20, before implementation.
 
 Implement GPU async compute for the existing `ComputeVoxelizer` pass chain. Keep RDG construction, compilation, and pass callbacks on the RenderCore thread. Use the existing RHI executor to submit work to graphics, compute, and transfer queues. Keep all backend queries, submission serials, semaphore operations, and native queue interaction outside RenderGraph.
 
 The first release should preserve current images, voxelization requests, and failure behavior. It should allow independent graphics work to overlap voxel computation, with graphics waiting only in the submission that consumes compute results. A separate GPU compute queue does not require another CPU worker thread.
 
-## 1. Current implementation and what can be reused
+## 1. Baseline implementation and what can be reused
 
 | Area | Current behavior | Required change |
 | --- | --- | --- |
@@ -17,12 +17,12 @@ The first release should preserve current images, voxelization requests, and fai
 | [RenderDevice.cpp](../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp) | Chooses graphics or transfer for a whole standalone graph. `ExecuteFrameGraph()` uses one graphics list. `SubmitRecordedFrame()` hands it to RHI. | Assign actual queues, acquire lists per queue, package a frame schedule, and maintain resource submission history. |
 | [RHICommandListExecutor.h](../ZenCore/Include/Graphics/RHI/RHICommandListExecutor.h), [implementation](../ZenCore/Source/Graphics/RHI/RHICommandListExecutor.cpp) | `RHICommandBatch` owns one main list and a presentation list. Its result already contains three queue serials. | Own multiple scheduled lists, resolve dependencies between them, and retain every list until its GPU work completes. |
 | [RHICommandList.h](../ZenCore/Include/Graphics/RHI/RHICommandList.h) | Already defines `eAsyncCompute` and submission dependencies. Detach/reset/rollback preserve dependency metadata. | Reuse concrete queue/serial dependencies; add explicit references to earlier scheduled submissions. |
-| [VulkanDevice.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanDevice.cpp), [VulkanContext.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanContext.cpp) | Compute queue selection and compute command-context creation already exist. Timeline waits accept a producer queue type. | Expose actual compute availability and queue sharing through the RHI facade; validate compute-context execution. |
+| [VulkanDevice.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanDevice.cpp), [VulkanQueue.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanQueue.cpp), [VulkanContext.cpp](../ZenCore/Source/Graphics/VulkanRHI/VulkanContext.cpp) | Compute-family selection and compute command-context creation already exist, but every queue wrapper selects index `0`. Timeline waits accept a producer queue type and are skipped when producer and consumer have the same native queue handle. | Select queue family/index pairs, expose actual availability and sharing through the RHI facade, and preserve barriers between logical contexts sharing one native queue. |
 | [VulkanResourceSharing.h](../ZenCore/Include/Graphics/VulkanRHI/VulkanResourceSharing.h) | Engine-created buffers and textures already include graphics and compute families in concurrent sharing when the families differ. Transfer usage also includes the transfer family. | Reuse this policy; retain explicit synchronization. Treat swapchain/external resources separately. |
 | [RenderDevice.h](../ZenCore/Include/Graphics/RenderCore/V2/RenderDevice.h) | `RenderFrame` retirement tracks graphics and transfer serials only. | Include compute completion in frame reuse, resource destruction, and resize/shutdown handling. |
-| [RDGResourceManager.h](../ZenCore/Include/Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h), [implementation](../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp) | Pool retirement records graphics/transfer serials. Within a graph, native objects can be reused using linear first/last-use intervals. Some pool operations query `GDynamicRHI` directly. | Make reuse safe under concurrent execution and obtain completion information through RenderDevice; move those backend queries out of the RDG resource manager. |
+| [RDGResourceManager.h](../ZenCore/Include/Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h), [implementation](../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp) | Pool retirement records graphics/transfer serials. Within a graph, native objects can be reused using linear first/last-use intervals. Pool operations query `GDynamicRHI` directly, and physical materialization calls its buffer/texture creation methods. | Make reuse safe under concurrent execution and route allocation, completion, and retirement services through RenderDevice; remove direct backend access from the RDG resource manager. |
 
-The upload patch provides the synchronization primitives, not a multi-queue frame scheduler. `m_resourceSubmissions` currently stores one last queue/serial per physical resource and applies dependencies to a whole graph submission. That is a useful conservative starting point, but it cannot simply be copied unchanged into a graph with several overlapping submissions.
+At the review baseline, the upload patch supplied synchronization primitives and `m_resourceSubmissions` stored one last queue/serial per physical resource, applying dependencies to a whole graph submission. Step 6 replaces that map with writer/reader history and exact submission references. Step 7 connects it to production multi-queue frame submission when async policy is enabled and supported.
 
 ## 2. Actual voxel workloads and dependencies
 
@@ -72,7 +72,8 @@ Independent environment preprocessing can offer overlap on an initial frame when
 | --- | --- |
 | Renderer / ComputeVoxelizer | Declare passes, resource accesses, and a preference for async compute. No queue submissions or manual GPU waits. |
 | RenderGraph / RDGExecutor | Validate and compile the logical DAG, preserve content guarantees, produce logical scheduling/barrier requirements, and record pass commands through the existing encoder boundary. No `GDynamicRHI`, native queue queries, semaphore calls, or submission-progress queries. |
-| RenderDevice | Supply a capability snapshot to planning, choose queues, build physical submission groups, maintain scheduled resource history, and manage commit/rollback and lifetime gates. |
+| RDGResourceManager | Describe logical resources, materialize through RenderDevice allocation services, and manage pools using supplied completion/retirement services. No direct backend allocation or progress queries. |
+| RenderDevice | Supply capability and queue-sharing snapshots to planning, choose queues, build physical submission groups, provide allocation/retirement services, maintain scheduled resource history, and manage commit/rollback and lifetime gates. |
 | RHICommandListExecutor | Own detached command lists, resolve scheduled dependency references, execute native submissions on its existing worker, and report results. It must not access live RDG objects or renderer callbacks. |
 | Vulkan RHI | Own queue identities, command pools, timeline semaphores, legal native barriers, submission acceptance, and GPU completion. |
 
@@ -85,6 +86,16 @@ Suggested new names below describe proposed APIs, not APIs already present in th
 ### Step 1 — Capability selection and startup controls
 
 Add a backend-neutral capability query describing compute support, whether compute and graphics resolve to different native queues, and async GPU dependency support. Cache it in the RHI executor as is already done for transfer capabilities. Also expose queue-sharing relationships for compute versus transfer; two different logical queue types may refer to the same native queue.
+
+Implement native queue selection before publishing that snapshot. The current `VulkanQueue` constructor fixes `m_queueIndex` to `0`; exposing capabilities alone would still alias graphics and compute on a device whose only compute-capable family is the graphics family. Select a `(familyIndex, queueIndex)` pair for each logical context and pass both values into queue construction:
+
+1. Prefer a suitable separate compute-capable family when available; it need not be compute-only.
+2. Otherwise, if the graphics family has another usable queue, select an index distinct from graphics within that family.
+3. If no distinct queue is available, alias graphics and use the graphics fallback.
+
+Ensure `VkDeviceQueueCreateInfo::queueCount` covers every selected index before `vkCreateDevice`, and never request an index beyond the family's advertised count. The current code requests all queues in selected families, but still needs explicit index selection. Resolve transfer selection against the same assignments so its sharing with graphics or compute is intentional. Retrieve and compare the resulting handles inside Vulkan RHI; equal family indices alone do not imply equal queues. See [`vkGetDeviceQueue`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDeviceQueue.html).
+
+Expose sharing as backend-neutral equivalence IDs or a pairwise relation in the capability snapshot. Scheduling and barrier planning use that relation without seeing native handles or family/index values. Preserve logical context types for command-list ownership and submission serial provenance; sharing a native queue does not authorize comparing serials from separate timeline objects.
 
 Select async compute only when all of the following hold:
 
@@ -99,7 +110,9 @@ Proposed controls: `AsyncComputeMode::eDisabled` and `eAuto` in `RenderConfig`, 
 
 Log requested mode, support, selected queue sharing, and fallback reason once at startup. Log the first successful compute submission separately so capability is distinguishable from actual use.
 
-### Step 2 — Extend completion and lifetime tracking before scheduling compute
+Completion gate: exercise separate families, one family with two selected queue indices, a single available queue, and compute/transfer aliasing. Verify requested queue counts, selected handles, capability results, and fallback reasons. Classify sharing by actual handles rather than requiring different family indices or comparing logical context enums.
+
+### Step 2 — Extend lifetime tracking and isolate RDG resource services
 
 Introduce one reusable completion-set value with a slot for each `RHICommandContextType`, sized using `eMax`. It should support extending a requirement by per-queue maximum, testing completion, and resetting. Queue serials are comparable only within their own timeline; never take a global maximum across queues.
 
@@ -116,7 +129,11 @@ Include pending CPU submissions in reuse protection. A queued compute batch can 
 
 Provide completion snapshots/retirement services through RenderDevice to the RDG resource manager. Remove its direct `GDynamicRHI` progress queries as part of this work. Logical RDG state should not discover backend progress on its own.
 
-Completion gate: deliberately delay compute in a test and prove that completing graphics/transfer alone cannot recycle its resources or frame slot.
+Also route physical buffer/texture allocation through RenderDevice. `RDGResourceManager::CreatePhysicalResource()` currently calls `GDynamicRHI->CreateTexture()` and `CreateBuffer()`, and materialization checks `GDynamicRHI` directly. Replace these with RenderDevice services that accept the compiled resource description, preserve its usage flags, dimensions, format, allocation type, and debug name, and report allocation failure explicitly. Keep RDG pool/extraction ownership intact: creating a resource through the service must not accidentally add a second owner in RenderDevice's persistent resource collections. Route native work through the existing RHI facade and worker.
+
+The boundary applies to compilation and transient materialization as well as recording and retirement. Supply an appropriate allocation service for the standalone CPU harness or require pre-materialized resources there; do not restore a global-backend fallback for tests. Add service-backed tests for cold buffer/texture allocation, allocation failure with rollback, and pooled reuse. Audit the RDG implementation for remaining direct `GDynamicRHI` access, including availability checks.
+
+Completion gate: deliberately delay compute and prove that completing graphics/transfer alone cannot recycle its resources or frame slot. Verify that cold materialization uses the allocation service, preserves resource descriptors and ownership, and propagates failure without publishing state or extractions.
 
 ### Step 3 — Add logical pass queue preferences
 
@@ -126,17 +143,19 @@ The preference is a scheduling hint, not an RHI context type. RenderDevice resol
 
 Allow transfer operations such as `ResetVoxelVolumes` to share a compute batch when that queue supports the operation. Do not equate a transfer pass with mandatory use of the transfer queue. Keep mipmap blits and graphics-only operations on a capable queue.
 
+Completion gate: verify descriptor copies, recorded and compiled metadata, metrics, graph rebuilds, stale-plan rejection, and unchanged default routing. In both CPU execution modes, cover policy/capability fallbacks, legal compute clears, unsupported copy/blit commands, external resource contracts, and viewport restrictions. Eligibility must be resolved before transient materialization without creating compute submissions; physical queue assignment starts in Step 4.
+
 ### Step 4 — Build a schedule from the live pass DAG
 
 Extend preparation beyond the current whole-graph `plan.transfer` boolean. Preserve culling, version validation, content checks, and logical graph ordering constraints, then assign eligible live passes to queues and form submission groups.
 
 Each group needs a stable ID, logical queue assignment, pass IDs, resource access summary, predecessor group IDs, boundary transitions, and diagnostic reasons for its placement. The RDG representation should contain values and IDs, not Vulkan handles or backend completion counters.
 
-Use actual RAW, WAR, WAW, layout-change, and explicit-order edges. Side effects, `NeverCull`, initial states, extraction, indirect accesses, and bindless declarations must survive scheduling. Shader access reflection is part of the input; do not infer independence merely because descriptor names differ.
+Use actual RAW, WAR, WAW, and layout-change edges derived from declared resource accesses. Keep side-effect passes live through `NeverCull` or `allowCulling=false`; express required GPU ordering through resource declarations. Initial states, extraction, indirect accesses, and bindless declarations must survive scheduling. Shader access reflection is part of the input; do not infer independence merely because descriptor names differ. A public manual pass-ordering API is outside this implementation's scope.
 
 Initially keep the voxel reset and dependent compute passes together in one compute group where legal. Keep independent graphics before the consumer in a separate group. Coalesce groups only when it preserves an acyclic submission DAG and does not pull a wait in front of unrelated work. Stable topological tie-breaking should make captures reproducible.
 
-Disable within-graph physical-object reuse based only on linear first/last-use intervals for any graph using multiple queues. Two intervals that do not overlap in a topological listing may execute concurrently. Later optimization may reuse a native object only with a proven happens-before relationship or an explicit dependency. Pool reuse between frames must also honor every queue's completion and pending work.
+Disable within-graph physical-object reuse based only on linear first/last-use intervals for any graph using multiple queues. Two intervals that do not overlap in a topological listing may execute concurrently. Later optimization may reuse a native object only with a proven happens-before relationship in the dependency graph. Pool reuse between frames must also honor every queue's completion and pending work.
 
 Determine the effective queue plan and reuse policy before `MaterializeTransientResources()` assigns physical objects. Disabling reuse after materialization would leave already-shared objects in the schedule. Adjust the existing preparation order accordingly, while retaining upload-state refresh and execution-plan revision checks.
 
@@ -150,16 +169,18 @@ Prepare every pass and record every group before handing the frame schedule to R
 
 Make barrier planning queue-aware. A graphics stage from an earlier use cannot simply be emitted as the source stage of a barrier recorded into a compute-only command buffer. Cross-queue memory dependencies use semaphores; image layout transitions still need explicit planning. Vulkan requires stage masks to be valid for the command buffer's queue family. Follow the [Vulkan synchronization specification](https://docs.vulkan.org/spec/latest/chapters/synchronization.html) when generating native barriers.
 
-Replace the assumption that one CPU traversal defines all prior GPU accesses with queue-local access state plus the scheduled cross-queue edges. Preserve the graph's content state, but track concurrent readers and ordered layout changes explicitly. Use the current Vulkan barrier API initially; a Synchronization2 migration is not a prerequisite. Represent cross-queue availability explicitly at the RenderCore/RHI boundary and translate it into legal scopes for the API in use.
+Replace the assumption that one CPU traversal defines all prior GPU accesses with queue-local access state plus the scheduled cross-queue edges. Here, "same queue" means the same native queue according to the supplied sharing relation, including accesses recorded through different logical context types. Preserve the graph's content state, but track concurrent readers and ordered layout changes explicitly. Use the current Vulkan barrier API initially; a Synchronization2 migration is not a prerequisite. Represent cross-queue availability explicitly at the RenderCore/RHI boundary and translate it into legal scopes for the API in use.
 
 For this implementation, use these rules:
 
-- Preserve ordinary barriers between dependent commands on the same queue, including separate submissions on that queue where necessary.
-- For different queues, establish a producer signal and consumer wait covering the accesses. Retain any same-queue hazards in the consumer independently of that cross-queue edge.
+- Preserve ordinary barriers between dependent commands on the same native queue, including separate submissions and different logical contexts. Merge their access history for barrier planning using the sharing relation. Submission order alone does not supply memory visibility.
+- For different native queues, establish a producer signal and consumer wait covering the accesses, including when their family indices are equal. Retain any same-queue hazards in the consumer independently of that cross-queue edge.
 - For a buffer with no ownership transfer, a correctly scoped semaphore dependency can supply the cross-queue memory dependency. Do not copy a graphics-only source stage into a compute barrier just to repeat that dependency.
 - Assign an image layout transition to one ordered point, before a producer signal or after a consumer wait, using legal scopes there. Multiple read consumers must agree on layout and wait for the transition's completion. Do not transition the same image concurrently on two queues. See the [Khronos semaphore synchronization examples](https://docs.vulkan.org/guide/latest/synchronization_examples.html#interactions-with-semaphores).
 - Engine-created concurrent-sharing resources need no queue-family ownership transfer between their permitted families. For exclusive external resources, initially fall back to graphics unless their owner explicitly supports the required transfer protocol. Keep viewport/presentation resources on graphics.
 - Keep the first version's `ALL_COMMANDS` semaphore wait and split submissions to preserve overlap. Narrowing waits to first-use stages can be a later measured optimization.
+
+For example, when transfer and compute share one native queue, an upload writing a buffer followed by a compute shader reading it needs a transfer-write -> compute-shader-read barrier. The current `PrepareSubmissionDependencies()` skips the semaphore wait for equal native handles; that behavior is safe only when the schedule retains the required ordinary barrier. Keep the producer-before-consumer submission edge even if no semaphore is emitted. Conversely, distinct queues in the same family still need the semaphore dependency, although they need no queue-family ownership transfer. Engine-created resources using exclusive sharing within that one family remain legal on either queue. These distinctions follow the [Khronos synchronization examples](https://docs.vulkan.org/guide/latest/synchronization_examples.html).
 
 Specific voxel hazards to cover are clear -> storage image access, shader write -> indirect dispatch read, large-triangle producer -> consumer, voxel image write -> pre-draw read, pre-draw write -> vertex-shader SSBO read, and pre-draw write -> draw-indirect read. Preserve both the shader and indirect-command access scopes.
 
@@ -167,11 +188,15 @@ Do not silently discard unsupported stage bits. Either account for the foreign-q
 
 An already-submitted producer cannot be edited to add a transition. For that case, schedule the required transition after its wait on a legal consumer or bridge submission, and make all affected users depend on that point.
 
+Completion gate: for aliased transfer/compute contexts, assert the ordinary buffer barrier, image transition, and submission order even though the backend emits no inter-queue wait. For distinct queues in one family, assert the semaphore dependency and absence of ownership transfer. Include fallback to graphics so queue reassignment rebuilds the barrier plan before recording.
+
 ### Step 6 — Replace whole-graph submission history with scheduled access tracking
 
 Keep the physical-resource history in RenderDevice. Index it by stable identity, with texture views normalized to their backing resource. Start with whole-resource granularity, matching the current conservative approach; subresource/range optimization is a later task.
 
 For general parallel scheduling, track the last writer/transition and outstanding readers per queue. A read waits for the writer and required layout transition. A write or incompatible layout change waits for the writer and all relevant readers. Read/read overlap is permitted only when layout and ownership allow it. Treat read/write accesses as writers and preserve existing logical content guarantees separately.
+
+Use the native-queue sharing relation when deciding between an ordinary barrier and a semaphore dependency. Keep each accepted point's originating logical queue/timeline with its serial; do not collapse completion requirements by taking the maximum of unrelated serials merely because their wrappers share a native handle. Aliased contexts still retain their scheduled producer references until those producers are accepted.
 
 The current single last-use map is safe only while every cross-queue use is chained. It may be retained during early bring-up, but removing read/read waits without retaining every outstanding reader would make a later overwrite unsafe.
 
@@ -188,6 +213,8 @@ Do not use `kLatestSubmitted` to represent dependencies between groups in the ne
 Construct a private scheduled-history update during preparation. Publish it when the executor accepts the complete owned frame batch. Convert scheduled references to concrete points after native acceptance. A rejected batch leaves prior history intact; a later partial native failure blocks further dependent execution and invalidates speculative history. Destroyed-resource and external-invalidation paths must clear the new records too.
 
 Preserve upload dependencies at group granularity: compute reading uploaded scene data waits for its upload producer; independent graphics does not inherit an unrelated compute wait. A later upload overwriting compute-read data must wait for the compute reader as well as any graphics readers.
+
+Completion gate: verify parallel readers followed by overwrite, image layout changes, exact references across queued frames, aliased logical timelines, physical texture-view identity, rejected/stale updates, producer failure, destruction, and external invalidation while a frame is pending. Use native wait capture and deterministic readback to prove an intervening unrelated submission does not change an exact producer point. Keep production single-list read/read chaining until Step 7 switches recording and submission together; the group preparation/recording harness verifies the parallel behavior at this boundary.
 
 ### Step 7 — Submit an owned multi-queue frame through the existing executor
 
@@ -212,6 +239,8 @@ Also do not rely on the current `FlushAllGPUCommands()` graphics/compute/transfe
 
 There remains one RHI CPU worker. Inline mode executes the same schedule on the calling thread, while still allowing distinct GPU queues to overlap. A frame ticket means that native submission/presentation processing finished; it does not mean all GPU work completed. The [Khronos timeline semaphore sample](https://docs.vulkan.org/samples/latest/samples/extensions/timeline_semaphore/README.html) illustrates the distinction between GPU semaphore waits and host waits.
 
+Completion gate: verify all-or-nothing handoff validation, exact per-group results, producer-before-consumer native preflight, independent prefixes, one presentation/frame boundary, context-aware recycling, compute lifetime without a graphics join, and graph rebuilding while an owned frame remains queued. Standalone graph submission must use the same group execution without advancing the native frame and preserve retryable rejection before any GPU acceptance. Native dispatch/readback must pass in inline/threaded modes, and timeline-based execution must introduce no host completion wait before the explicit readback wait.
+
 ### Step 8 — Define rejection, partial failure, and publication behavior
 
 | Failure point | Required behavior |
@@ -226,13 +255,15 @@ Only publish graph extractions after the frame's required native submissions are
 
 Keep the current `RequestVoxelization()` retry on immediate graph failure. Document that a deferred fatal submission failure requires device recovery instead of a normal retry against uncertain state. Do not lose a request merely because CPU recording toggled `m_needVoxelization` before a handoff failed.
 
+Completion gate: exercise the matrix in inline/threaded modes, including presentation-command rejection after accepted compute, completion-query failure, and an already-recorded speculative frame whose producer fails. Every valid handoff ticket must reach frame retirement even when execution fails immediately. Confirmation failure must suppress extraction publication. Verify recoverable viewport recreation preserves accepted outputs and compute completion gates, immediate voxel-request restoration remains retryable, and fatal work remains retained until safe device teardown. Step 8 passed this gate with 758 enabled tests and eight scene smoke runs; see [verification](AsyncComputeStep8Verification.md).
+
 ### Step 9 — Integrate ComputeVoxelizer with minimal renderer changes
 
 Set the async preference on `ResetComputeIndirectComp`, every `VoxelizationComp`, `VoxelizationLargeTriangleComp`, `ResetDrawIndirectComp`, and `VoxelPreDrawComp`. Use a small shared configuration helper if needed instead of duplicating the policy decision in every descriptor.
 
 Extend `BeginVoxelization()` with an optional logical queue preference, defaulting to existing behavior. ComputeVoxelizer passes the preference through to `ResetVoxelVolumes`; GeometryVoxelizer continues using the default. Validate clear support from the supplied capability snapshot.
 
-Illustrative proposed API usage inside the existing builder:
+The builder uses a shared descriptor helper equivalent to:
 
 ```cpp
 RDGComputePassDesc voxelization{};
@@ -254,20 +285,22 @@ Do not move the entire `ComputeVoxelizer::BuildRenderGraph()` function to an RHI
 
 Retain one persistent set of voxel outputs initially. A revoxelization must wait on earlier graphics readers before overwriting instance and indirect buffers. Submit the draw consuming the new output after compute. This preserves same-frame output without adding a frame of latency. Double-buffered voxel outputs are a separate future optimization with substantial memory cost and explicit publication semantics.
 
+Completion gate: verify the reset and all five compute pass types on compute, graphics draw/presentation, cached-frame reuse without empty compute submissions, first-use logs only after acceptance, repeated updates and resize with zero synchronization errors, and unchanged opt-in policy. Correctness checks passed. Nsight GPU timestamps now verify routing/dependencies and quantify longer async spans with zero overlap in the captured repeated updates. First-load timing, isolated graphics-wait timing, and full performance acceptance remain open; see [Nsight verification](AsyncComputeNsightVerification.md). See [Step 9 verification](AsyncComputeStep9Verification.md).
+
 ## 6. How to use it in the current renderer after implementation
 
-These are planned controls. `async_compute` and `--async-compute` are not implemented at the time of writing.
+The `async_compute` config key and `--async-compute` CLI override select policy and capability. ComputeVoxelizer now marks its reset and compute chain with `ePreferAsyncCompute`; eligible passes submit on compute when policy and device support permit it. Startup logs report `enabled for opted-in passes` or `graphics fallback`. A separate first-use log is emitted only after native acceptance and history confirmation. Geometry/PBR frames without opted-in work do not emit that first-use log. Nsight captured repeated-update timings but found no overlap or speedup in that workload; first-load timing and full performance acceptance are still pending. The commands below run the implemented renderer path.
 
-Set the existing voxelizer selection explicitly in [Data/engine.cfg](../Data/engine.cfg), then enable the proposed async policy:
+Set the existing voxelizer selection explicitly in [Data/engine.cfg](../Data/engine.cfg), then enable async policy:
 
 ```ini
 voxelizer=comp
 async_compute=auto
 ```
 
-The current config uses `voxelizer=auto`, which selects geometry voxelization on a GPU with geometry-shader support. Merely enabling async compute would not change that renderer selection. Keep voxelizer choice and queue policy separate; use `comp` when testing this feature.
+Setting `voxelizer=auto` selects geometry voxelization on a GPU with geometry-shader support. Merely enabling async compute would not change that renderer selection. Keep voxelizer choice and queue policy separate; use `comp` when testing this feature.
 
-From `E:\Dev\ZenEngine\bin`, the planned run commands are:
+From `E:\Dev\ZenEngine\bin`, the run commands are:
 
 ```powershell
 .\scene_renderer_demo.exe --rhi-thread=1 --async-compute=1
@@ -277,37 +310,38 @@ From `E:\Dev\ZenEngine\bin`, the planned run commands are:
 
 Run from `bin` so the current relative model path resolves correctly. Use key `1` for voxel visualization, key `2` for PBR, and `R` in voxel mode to request a fresh voxelization. A camera move alone should not schedule voxel computation. The last command provides the graphics-queue baseline with the same compute voxelizer and shaders.
 
-Expected diagnostics should distinguish support, selection, and use, for example:
+Diagnostics distinguish support, selection, and confirmed use. For example, a supported Sponza compute-voxelizer run reports:
 
 ```text
-Async compute: requested=auto; supported=yes; compute queue=separate; enabled=yes
-Async compute in use: voxel update submitted; passes=N; compute serial=C
+Async compute: requested=auto; supported=yes; compute/graphics=separate; compute/transfer=separate; policy=available; scheduling=enabled for opted-in passes
+Async compute in use: graph=frame_rdg; passes=6; compute serial=1
 ```
 
 Fallback messages should state `disabled by configuration`, `compute shares graphics queue`, `timeline dependencies unavailable`, or the specific unsupported pass/resource condition. A geometry/PBR frame with no eligible workload must not report async compute as used. Log first use and capture requested per-frame details; avoid printing every pass every frame.
 
-Extend RDG captures with pass queue, submission group, dependency producer, wait stage, and fallback reason. Add GPU timestamps per relevant queue when supported. Show CPU submission time, GPU compute time, graphics wait time/critical path, and total frame time separately. CPU RHI-thread metrics alone cannot establish GPU overlap.
+Extend RDG captures with pass logical queue, native-queue equivalence ID, submission group, dependency producer, synchronization kind (ordinary barrier or semaphore boundary), wait stage, and fallback reason. Equivalence IDs come from the capability snapshot and contain no native handles. Add GPU timestamps per relevant queue when supported. Show CPU submission time, GPU compute time, graphics wait time/critical path, and total frame time separately. CPU RHI-thread metrics alone cannot establish GPU overlap.
 
 ## 7. Validation and acceptance criteria
 
-Use existing fake-backend fixtures in [RenderCoreTests.cpp](../ZenSamples/RenderCoreTest/RenderCoreTests.cpp), [RHIThreadingTests.inl](../ZenSamples/RenderCoreTest/RHIThreadingTests.inl), and [AsyncUploadTests.inl](../ZenSamples/RenderCoreTest/AsyncUploadTests.inl). Add focused async-compute cases and register real-backend cases alongside [VulkanUploadIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanUploadIntegrationTests.cpp).
+Use existing fake-backend fixtures in [RenderCoreTests.cpp](../ZenSamples/RenderCoreTest/RenderCoreTests.cpp), [RHIThreadingTests.inl](../ZenSamples/RenderCoreTest/RHIThreadingTests.inl), and [AsyncUploadTests.inl](../ZenSamples/RenderCoreTest/AsyncUploadTests.inl). Add focused async-compute cases and reuse real-backend coverage in [VulkanUploadIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanUploadIntegrationTests.cpp) and [VulkanAsyncComputeIntegrationTests.cpp](../ZenSamples/CommonTest/VulkanAsyncComputeIntegrationTests.cpp) where applicable. The existing async-compute fixture requires a compute family distinct from graphics and transfer; add topology-aware cases for shared native queues and distinct queues within one family so those paths are not skipped by that prerequisite.
 
 | Test group | Required cases and evidence |
 | --- | --- |
-| Capability/fallback | Policy off/on, inline/threaded CPU execution, separate/shared graphics-compute queues, shared compute-transfer queue, timelines disabled, unsupported transfer operation in compute group. Outputs and fallback reasons agree. |
+| Capability/fallback | Policy off/on, inline/threaded CPU execution, separate families, distinct graphics/compute queue indices in one family, a single available queue, shared compute-transfer queue, timelines disabled, unsupported transfer operation in compute group. Verify device queue counts and selected indices/handles as well as reported support; outputs and fallback reasons agree. |
 | Schedule structure | Independent graphics prefix has no compute wait; consumer draw has one; graphics -> compute -> graphics stays acyclic; no empty compute batch on ordinary frames. |
 | Resource hazards | Upload -> compute, compute -> graphics, graphics -> compute overwrite, compute -> transfer overwrite, multiple read queues followed by a writer, image transition followed by parallel readers, buffer/view stable identity. |
+| Native queue sharing | Aliased logical contexts retain producer order and ordinary buffer/image barriers when semaphore waits are skipped. Distinct queues in one family use semaphore dependencies without ownership transfer. Queue fallback rebuilds the barrier plan. Serial provenance and retirement remain correct when aliased wrappers have separate timelines. |
 | Voxel resources | Reset before accumulation, producer records before indirect dispatch, instance streams and draw count before drawing, preserved produced-element validity, correct first upload of untouched indirect fields. |
 | Frame/lifetime | One and three frames in flight; delayed compute while graphics completes; standalone compute with no graphics join; frame-slot reuse, transient pool reuse, resize, minimize/restore, mode switching, and shutdown. No early destruction or command-pool reset. |
 | Transactions | Failure during recording, rejection before native acceptance, rejection/fatal failure after compute is accepted, deferred failure followed by another scheduled frame, presentation failure, extraction publication, and retryable voxel request handling. |
 | Aliasing | Independent cross-queue transient resources never reuse one physical object without an ordering proof. Pool accounting includes compute and pending submissions. |
-| Architectural boundary | Recording-only RDG execution performs no backend submission/progress query. Native tests verify valid compute command pools, barriers, and semaphore waits. |
+| Architectural boundary | RDG compilation, cold materialization, recording, and retirement have no direct `GDynamicRHI` access. Buffer/texture creation uses RenderDevice services and preserves descriptors and ownership; allocation failure rolls back without publication; pooled reuse avoids unnecessary allocation. Recording-only execution performs no backend submission/progress query. Native tests verify valid compute command pools, barriers, and semaphore waits. |
 
 Real Vulkan tests should dispatch a small deterministic compute shader that writes a known buffer, consume it on graphics or a following queue, and read back an expected result. Include image transition and indirect-command cases. Count host completion waits to prove the normal async path does not introduce a CPU GPU-completion wait. Do not infer correctness from successful `vkQueueSubmit` alone.
 
-Run synchronization validation on a device with a separate compute queue, and exercise shared-queue/timeline-disabled fallback through controlled fixtures. A single GPU cannot validate every topology. Require zero synchronization hazards and no reported leaks. If an overlay contaminates the run, use the existing isolated test-launch procedure without disabling validation or changing persistent user settings.
+Run synchronization validation on a device with a separate compute queue. Cover both distinct queues in one family and aliased transfer/compute contexts on native devices where available, and exercise unavailable topologies and timeline-disabled fallback through controlled fixtures. Native tests must state the required topology and report an explicit skip when it is unavailable; a family-based skip must not hide support for distinct queue indices. A single GPU cannot validate every topology. Require zero synchronization hazards and no reported leaks. If an overlay contaminates the run, use the existing isolated test-launch procedure without disabling validation or changing persistent user settings.
 
-Extend `RunSmokeStep()` to request repeated voxelization explicitly; its present mode-switch/resize sequence alone mostly exercises cached outputs. Include requests while prior draws are in flight, return from PBR, and a request near resize. Suggested planned smoke commands:
+`RunSmokeStep()` now requests voxelization at frames 0, 2, 3, 8, 11, 12, 21, and 28. This includes consecutive updates, return from PBR, and updates around resize/restore. It captures reset/pass placement and reports final queue serials; the 64-frame run must produce exactly eight compute submissions for supported `comp`/async-on runs and none for geometry or async-off. Smoke commands:
 
 ```powershell
 $env:VK_LAYER_VALIDATE_SYNC = '1'
@@ -326,22 +360,24 @@ Build and run the existing `RenderCoreTest`, `VulkanRHITest`, `VulkanRHIIntegrat
 
 Implement in this order so each change has a testable boundary:
 
-1. Capability snapshot, config/CLI parsing, and all-queue completion gates. Async scheduling remains disabled. Validate lifetime tests first.
+1. Native family/index selection, capability and sharing snapshots, config/CLI parsing, all-queue completion gates, and RenderDevice allocation/retirement services. Async scheduling remains disabled. Validate queue topology, lifetime, and cold materialization tests first.
 2. Logical queue preferences, schedule representation, and safe transient materialization. Test planning without submitting on compute.
-3. Multi-list recording, queue-aware barriers, and exact dependency references. Validate rollback and graph boundaries with the fake backend.
+3. Multi-list recording, barriers based on native queue sharing, and exact dependency references. Validate aliased-context barriers, same-family semaphore boundaries, rollback, and graph boundaries with the fake backend.
 4. Owned multi-queue RHI batches, compute command-list pools, native timeline dependencies, and failure handling. Validate deterministic GPU results before renderer opt-in.
 5. ComputeVoxelizer annotations, reset placement, renderer controls, diagnostics, repeated-update smoke tests, and performance captures.
 
 The feature is complete when:
 
 - Eligible voxel work actually submits on `eAsyncCompute` when enabled and supported, while `VoxelDraw2` and presentation remain graphics work.
+- Compute selection can use a distinct queue index in the graphics family when no suitable separate compute family exists; a single available queue produces the documented fallback.
 - All upload, intra-frame, and cross-frame hazards have correct dependencies without routine CPU completion waits on the async path.
+- Aliased logical contexts preserve ordinary barriers and producer order; distinct queues in the same family retain semaphore dependencies without ownership transfers. Completion tracking preserves each timeline's serial provenance.
 - Independent graphics work can be submitted without inheriting the voxel consumer's wait; GPU capture demonstrates overlap when the device/workload permits it.
 - Completion, reuse, extraction, and failure handling cover compute work even without a final graphics consumer.
-- RenderGraph performs no direct backend interaction, including completion queries in its resource manager.
+- RenderGraph and its resource manager perform no direct backend interaction during compilation, materialization, recording, or retirement. Physical allocation and completion/retirement services go through RenderDevice with tested ownership and failure behavior.
 - Inline mode, threaded mode, and graphics fallback preserve the renderer's behavior and pass validation.
 - The usage instructions and logs clearly distinguish the implemented async mode from the existing compute voxelizer selection.
 
 Parallel CPU RDG recording, exclusive-resource ownership migration, subresource-granular scheduling, double-buffered voxel outputs, automatic cost-based placement of every compute pass, and new voxel-GI renderer integration are follow-up work. They are not prerequisites for safely enabling the current ComputeVoxelizer chain.
 
-Apply the project's C++ rules throughout implementation: explicit types except iterators, one final return per function, short necessary lambdas, engine containers, no new exception-based error handling, shared helpers for repeated logic, and the repository `.clang-format`.
+Apply the project's C++ rules throughout implementation: explicit types except iterators, one final return per function, short necessary lambdas, engine containers (`Templates/SmallVector.h` instead of `std::array`), no new exception-based error handling, shared helpers for repeated logic, and the repository `.clang-format`.

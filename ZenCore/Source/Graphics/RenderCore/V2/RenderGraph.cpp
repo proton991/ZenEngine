@@ -4,6 +4,7 @@
 #include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
+#include "Templates/SmallVector.h"
 #include "Utils/Errors.h"
 
 #include <algorithm>
@@ -762,6 +763,7 @@ bool RDGExecutor::BuildExecutionPlan(ExecutionPlan& plan)
     else
     {
         plan.transfer          = plan.graph->CanExecuteOnTransferQueue(m_resourceStateTracker);
+        plan.schedule          = plan.graph->m_schedule;
         plan.stateRevision     = m_resourceStateTracker.GetRevision();
         plan.preparationSerial = plan.graph->m_preparationSerial;
         plan.prepareCPUUs +=
@@ -836,6 +838,41 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
                                   const std::function<RHISubmissionResult()>& submit,
                                   bool deferPublication)
 {
+    RHICommandList* lists[] = {cmdList};
+    return ExecuteTransaction(plan, lists, false, {}, submit, deferPublication);
+}
+
+bool RDGExecutor::ExecuteGroups(RenderGraph* graph,
+                                VectorView<RHICommandList*> lists,
+                                RDGSchedule& recordedSchedule,
+                                VectorView<const RDGExternalQueueState> externalStates)
+{
+    ExecutionPlan plan;
+    const bool result =
+        PrepareExecution(graph, plan) && ExecutePreparedGroups(plan, lists, externalStates);
+    if (result)
+    {
+        recordedSchedule = std::move(plan.schedule);
+    }
+    return result;
+}
+
+bool RDGExecutor::ExecutePreparedGroups(ExecutionPlan& plan,
+                                        VectorView<RHICommandList*> lists,
+                                        VectorView<const RDGExternalQueueState> externalStates,
+                                        const std::function<RHISubmissionResult()>& submit,
+                                        bool deferPublication)
+{
+    return ExecuteTransaction(plan, lists, true, externalStates, submit, deferPublication);
+}
+
+bool RDGExecutor::ExecuteTransaction(ExecutionPlan& plan,
+                                     VectorView<RHICommandList*> lists,
+                                     bool grouped,
+                                     VectorView<const RDGExternalQueueState> externalStates,
+                                     const std::function<RHISubmissionResult()>& submit,
+                                     bool deferPublication)
+{
     struct ExecutionScope
     {
         bool& executing;
@@ -860,14 +897,31 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
         const std::chrono::steady_clock::time_point validationStart =
             std::chrono::steady_clock::now();
 
-        if (!graph->Check(cmdList != nullptr, RDGErrorCode::eLifecycle,
-                          "RDG execution requires a command list") ||
+        bool validLists = lists.size() == (grouped ? plan.schedule.groups.size() : 1);
+        for (size_t i = 0; validLists && i < lists.size(); ++i)
+        {
+            validLists = lists[i] != nullptr && (!grouped || lists[i]->GetContext() != nullptr);
+            if (validLists && grouped)
+            {
+                validLists = size_t(lists[i]->GetContext()->GetContextType()) ==
+                    size_t(plan.schedule.groups[i].queue);
+            }
+            for (size_t j = 0; validLists && j < i; ++j)
+            {
+                validLists = lists[i] != lists[j];
+            }
+        }
+        HeapVector<RDGCompiledNode> scheduledNodes;
+        if (!graph->Check(
+                validLists, RDGErrorCode::eLifecycle,
+                "RDG execution requires one distinct command list per assigned queue group") ||
             !graph->Check(
                 plan.stateRevision == m_resourceStateTracker.GetRevision() &&
                     plan.preparationSerial == graph->m_preparationSerial,
                 RDGErrorCode::eLifecycle,
                 "Execution state changed after queue selection; refresh the execution plan") ||
-            !graph->ValidateShaderIdentities())
+            !graph->ValidateShaderIdentities() ||
+            (grouped && !BuildGroupBarriers(plan, externalStates, scheduledNodes)))
         {
             graph->ReleaseCompiledShaderPasses();
             graph->m_resourceManager.ReleaseTransientResources();
@@ -878,8 +932,11 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
             plan.prepareCPUUs += std::chrono::duration<double, std::micro>(
                                      std::chrono::steady_clock::now() - validationStart)
                                      .count();
-            const RHICommandListBase::CommandCheckpoint checkpoint =
-                cmdList->GetCommandCheckpoint();
+            HeapVector<RHICommandListBase::CommandCheckpoint> checkpoints;
+            for (RHICommandList* list : lists)
+            {
+                checkpoints.push_back(list->GetCommandCheckpoint());
+            }
             graph->m_executorIdentity = m_identity;
             // Record into private state. Upload submissions before this checkpoint remain committed.
             ResourceStateTracker nextTracker = m_resourceStateTracker;
@@ -917,13 +974,18 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
 
             if (observe)
             {
-                m_metrics.Compiled(*graph, plan.prepareCPUUs, plan.preparationPasses,
+                if (grouped)
+                {
+                    m_metrics.BeginGroups(*graph, nextTracker, externalStates);
+                }
+                m_metrics.Compiled(*graph, plan.schedule, plan.prepareCPUUs, plan.preparationPasses,
                                    plan.passTimings);
                 graph->m_activeMetrics = &m_metrics;
             }
 
-            graph->m_inExecution                 = true;
-            bool success                         = graph->Execute(cmdList, nextTracker);
+            graph->m_inExecution = true;
+            bool success         = graph->Execute(
+                lists, nextTracker, grouped ? scheduledNodes : graph->m_compiledNodes, grouped);
             graph->m_inExecution                 = false;
             graph->m_pCmdList                    = nullptr;
             graph->m_activeMetrics               = nullptr;
@@ -974,7 +1036,10 @@ bool RDGExecutor::ExecutePrepared(ExecutionPlan& plan,
             }
             else
             {
-                cmdList->RollbackCommands(checkpoint);
+                for (size_t i = 0; i < lists.size(); ++i)
+                {
+                    lists[i]->RollbackCommands(checkpoints[i]);
+                }
                 m_metrics = std::move(previousMetrics);
 
                 if (submissionResult == RHISubmissionResult::eFatal)
@@ -1096,6 +1161,9 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
             graph->DetermineLiveness();
             graph->BuildCompiledNodeList();
             valid = graph->ValidateContents(m_resourceStateTracker);
+            valid = valid &&
+                graph->BuildSchedule(m_resourceStateTracker,
+                                     graph->CanPlanOnTransferQueue(m_resourceStateTracker));
         }
 
         if (valid)
@@ -1175,8 +1243,307 @@ bool RDGExecutor::CompileGraphInternal(RenderGraph* graph)
         }
     }
 
-    return valid && (!alreadyCompiled || graph->ValidateContents(m_resourceStateTracker)) &&
+    // Materialization can select pooled objects with prior graphics state. Refresh placement
+    // and initial boundaries using that state; the conservative reuse gate was chosen earlier.
+    valid = valid && (!alreadyCompiled || graph->ValidateContents(m_resourceStateTracker)) &&
         AttachGraphBarriers(graph);
+    valid = valid &&
+        graph->BuildSchedule(m_resourceStateTracker,
+                             graph->CanExecuteOnTransferQueue(m_resourceStateTracker));
+    return valid;
+}
+
+namespace
+{
+struct GroupResourceState
+{
+    static constexpr size_t kQueueCount = size_t(RDGQueue::eCount);
+    SmallVector<RDGBufferResourceState, kQueueCount> buffers =
+        SmallVector<RDGBufferResourceState, kQueueCount>(kQueueCount);
+    SmallVector<RDGTextureResourceState, kQueueCount> textures =
+        SmallVector<RDGTextureResourceState, kQueueCount>(kQueueCount);
+    RHITextureUsage layoutUsage{RHITextureUsage::eNone};
+    HeapVector<RDGExternalQueueState> externalProducers;
+};
+
+size_t NativeQueueIndex(const RHIQueueCapabilities& queues, size_t logical)
+{
+    size_t result = logical;
+    for (size_t i = 0; i < logical; ++i)
+    {
+        if (queues.queueIds[i] == queues.queueIds[logical])
+        {
+            result = i;
+            break;
+        }
+    }
+    return result;
+}
+
+void IncludeDependencyId(HeapVector<uint32_t>& dependencies, uint32_t id)
+{
+    if (id != UINT32_MAX &&
+        std::find(dependencies.begin(), dependencies.end(), id) == dependencies.end())
+    {
+        dependencies.push_back(id);
+    }
+}
+
+template <typename Allocation> void PlanGroupAccess(const Allocation* resource,
+                                                    const RDGAccess& access,
+                                                    size_t queue,
+                                                    GroupResourceState& state,
+                                                    RDGCompiledNode& compiled,
+                                                    bool first)
+{
+    bool barrier = false;
+    if (resource->type == RDGResourceType::eBuffer)
+    {
+        RDGBufferResourceState& previous = state.buffers[queue];
+        barrier                          = NeedsResourceBarrier(previous, access);
+        if (barrier)
+        {
+            compiled.prologueSrcStages.SetFlag(previous.pipelineStages);
+            compiled.prologueSrcStages.SetFlag(previous.writer.stages);
+            AddBufferTransitions(compiled.prologueBufferTransitions, resource->pBuffer,
+                                 previous.accessMode, access.accessMode, previous.usage,
+                                 access.bufferUsage, previous.writer.access);
+        }
+        previous = AdvanceState(previous, access, barrier ? int64_t(access.pipelineStages) : 0);
+    }
+    else
+    {
+        RDGTextureResourceState& previous = state.textures[queue];
+        const bool localAccess            = previous.accessMode != RHIAccessMode::eNone;
+        const bool layoutChange           = RHITextureUsageToLayout(state.layoutUsage) !=
+            RHITextureUsageToLayout(access.textureUsage);
+        barrier = layoutChange || (localAccess && NeedsResourceBarrier(previous, access));
+        if (barrier)
+        {
+            RHITextureTransition transition{};
+            transition.pTexture                = resource->pTexture;
+            transition.oldUsage                = state.layoutUsage;
+            transition.newUsage                = access.textureUsage;
+            transition.oldAccessMode           = previous.accessMode;
+            transition.newAccessMode           = access.accessMode;
+            transition.subResourceRange        = FullRange(resource);
+            transition.hasSourceAccessOverride = true;
+            if (localAccess)
+            {
+                transition.sourceAccess =
+                    int64_t(RHITextureUsageToAccessFlagBits(previous.usage, previous.accessMode)) |
+                    int64_t(previous.writer.access);
+                compiled.prologueSrcStages.SetFlag(previous.pipelineStages);
+                compiled.prologueSrcStages.SetFlag(previous.writer.stages);
+            }
+            // Legacy vkCmdPipelineBarrier: chain the transition after ALL_COMMANDS waits.
+            // Foreign accesses are supplied by the semaphore, never by this local access mask.
+            compiled.prologueSrcStages.SetFlag(RHIPipelineStageFlagBits::eAllCommands);
+            compiled.prologueTextureTransitions.push_back(transition);
+        }
+        previous = AdvanceState(previous, access, barrier ? int64_t(access.pipelineStages) : 0);
+        state.layoutUsage = access.textureUsage;
+    }
+    if (barrier)
+    {
+        compiled.prologueDstStages.SetFlag(access.pipelineStages);
+        compiled.initialBarrierCount += first;
+    }
+    if (first)
+    {
+        compiled.initialResourceAccesses.push_back(access);
+    }
+}
+} // namespace
+
+bool RDGExecutor::BuildGroupBarriers(ExecutionPlan& plan,
+                                     VectorView<const RDGExternalQueueState> externalStates,
+                                     HeapVector<RDGCompiledNode>& nodes)
+{
+    RenderGraph& graph                 = *plan.graph;
+    const RHIQueueCapabilities& queues = m_pRenderDevice->GetQueueCapabilities();
+    HashMap<uint64_t, HeapVector<RDGExternalQueueState>> external;
+    HashMap<uint64_t, GroupResourceState> states;
+    bool valid = true;
+    for (const RDGExternalQueueState& state : externalStates)
+    {
+        HeapVector<RDGExternalQueueState>& prior = external[state.resourceId];
+        valid                                    = graph.Check(
+            state.resourceId != 0 && size_t(state.queue) < size_t(RDGQueue::eCount) &&
+                state.dependencyId != UINT32_MAX &&
+                (prior.empty() || (state.hasAccessState && prior[0].hasAccessState)) &&
+                (!state.hasAccessState || state.access.accessMode != RHIAccessMode::eNone),
+            RDGErrorCode::eLifecycle,
+            "Group recording requires exact external points with queue-local access scopes");
+        if (valid)
+        {
+            prior.push_back(state);
+        }
+        else
+        {
+            break;
+        }
+    }
+    for (RDGSubmissionGroup& group : plan.schedule.groups)
+    {
+        if (!valid)
+        {
+            break;
+        }
+        const size_t queue = NativeQueueIndex(queues, size_t(group.queue));
+        const RHIQueueCopyCapabilities capabilities =
+            RenderDevice::GetQueueCopyCapabilities(static_cast<RHICommandContextType>(group.queue));
+        for (const RDGScheduledPass& pass : group.passes)
+        {
+            RDGCompiledNode& compiled        = nodes.emplace_back();
+            compiled.nodeId                  = pass.nodeId;
+            compiled.queuePreference         = pass.preference;
+            compiled.asyncComputeEligibility = pass.eligibility;
+            compiled.plannedQueue            = group.queue;
+            compiled.submissionGroup         = group.id;
+            const RDGNodeBase* node          = graph.GetNodeBaseById(pass.nodeId);
+            for (uint32_t i = 0; valid && i < node->accessCount; ++i)
+            {
+                const RDGAccess& access = graph.m_accesses[node->accessOffset + i];
+                const RDGResourceManager::Allocation* resource =
+                    graph.m_resourceManager.FindResourceByIdx(access.resourceId);
+                const uint64_t id = PhysicalResource(resource)->GetStableId();
+                const std::pair<HashMap<uint64_t, GroupResourceState>::iterator, bool> insertion =
+                    states.try_emplace(id);
+                GroupResourceState& state = insertion.first->second;
+                if (insertion.second)
+                {
+                    const RDGBufferResourceState buffer =
+                        InitialBufferState(resource, m_resourceStateTracker);
+                    const RDGTextureResourceState texture =
+                        InitialTextureState(resource, m_resourceStateTracker);
+                    const bool priorAccess = resource->type == RDGResourceType::eBuffer ?
+                        buffer.accessMode != RHIAccessMode::eNone :
+                        texture.usage != RHITextureUsage::eNone;
+                    const HashMap<uint64_t, HeapVector<RDGExternalQueueState>>::const_iterator
+                        producer = external.find(id);
+                    valid        = graph.Check(
+                        !priorAccess || resource->hasInitialState || producer != external.end(),
+                        RDGErrorCode::eLifecycle,
+                        "Initial resource state requires queue provenance before group recording");
+                    if (producer != external.end())
+                    {
+                        state.externalProducers = producer->second;
+                    }
+                    state.layoutUsage = texture.usage;
+                    if (producer != external.end() && producer->second[0].hasAccessState)
+                    {
+                        bool firstScope = true;
+                        for (const RDGExternalQueueState& prior : producer->second)
+                        {
+                            const size_t local = NativeQueueIndex(queues, size_t(prior.queue));
+                            if (resource->type == RDGResourceType::eTexture)
+                            {
+                                valid = valid &&
+                                    graph.Check(
+                                        firstScope ||
+                                            RHITextureUsageToLayout(state.layoutUsage) ==
+                                                RHITextureUsageToLayout(prior.access.textureUsage),
+                                        RDGErrorCode::eLifecycle,
+                                        "External readers have incompatible image layouts");
+                                RDGTextureResourceState& initial = state.textures[local];
+                                if (initial.accessMode == RHIAccessMode::eNone)
+                                {
+                                    initial.usage = prior.access.textureUsage;
+                                }
+                                initial = AdvanceState(initial, prior.access, 0);
+                                initial.writer.hasWriter |= prior.ordersReaders;
+                                state.layoutUsage = prior.access.textureUsage;
+                            }
+                            else
+                            {
+                                state.buffers[local] =
+                                    AdvanceState(state.buffers[local], prior.access, 0);
+                            }
+                            firstScope = false;
+                        }
+                    }
+                    else
+                    {
+                        const size_t initialQueue = NativeQueueIndex(
+                            queues,
+                            producer != external.end() ? size_t(producer->second[0].queue) :
+                                                         size_t(RDGQueue::eGraphics));
+                        state.buffers[initialQueue]  = buffer;
+                        state.textures[initialQueue] = texture;
+                    }
+                    for (size_t initialQueue = 0; valid && initialQueue < size_t(RDGQueue::eCount);
+                         ++initialQueue)
+                    {
+                        const RDGBufferResourceState& initialBuffer = state.buffers[initialQueue];
+                        const RDGTextureResourceState& initialTexture =
+                            state.textures[initialQueue];
+                        const BitField<RHIPipelineStageFlagBits> initialStages =
+                            resource->type == RDGResourceType::eBuffer ?
+                            BitField<RHIPipelineStageFlagBits>(
+                                int64_t(initialBuffer.pipelineStages) |
+                                int64_t(initialBuffer.writer.stages)) :
+                            BitField<RHIPipelineStageFlagBits>(
+                                int64_t(initialTexture.pipelineStages) |
+                                int64_t(initialTexture.writer.stages));
+                        valid = graph.Check(
+                            RHIQueueSupportsStages(
+                                RenderDevice::GetQueueCopyCapabilities(
+                                    static_cast<RHICommandContextType>(initialQueue)),
+                                initialStages),
+                            RDGErrorCode::eBinding,
+                            "Initial access stages are unsupported by their producer queue");
+                    }
+                }
+                const bool layoutChange = resource->type == RDGResourceType::eTexture &&
+                    RHITextureUsageToLayout(state.layoutUsage) !=
+                        RHITextureUsageToLayout(access.textureUsage);
+                for (const RDGExternalQueueState& prior : state.externalProducers)
+                {
+                    const bool depends = prior.ordersReaders ||
+                        access.accessMode == RHIAccessMode::eReadWrite || layoutChange ||
+                        !PhysicalResource(resource)->IsAsyncComputeAccessible();
+                    if (valid && depends)
+                    {
+                        IncludeDependencyId(group.externalPredecessors, prior.dependencyId);
+                        if (NativeQueueIndex(queues, size_t(prior.queue)) != queue)
+                        {
+                            valid = graph.Check(
+                                queues.asyncSubmissionDependencies &&
+                                    PhysicalResource(resource)->IsAsyncComputeAccessible(),
+                                RDGErrorCode::eLifecycle,
+                                "External queue dependency requires semaphore support and a shared resource contract");
+                            IncludeDependencyId(group.externalSemaphorePredecessors,
+                                                prior.dependencyId);
+                        }
+                    }
+                }
+                if (valid)
+                {
+                    valid = graph.Check(RHIQueueSupportsStages(capabilities, access.pipelineStages),
+                                        RDGErrorCode::eBinding,
+                                        "Pass stages are unsupported by its assigned queue");
+                }
+                if (valid)
+                {
+                    PlanGroupAccess(resource, access, queue, state, compiled, insertion.second);
+                }
+            }
+            if (valid)
+            {
+                valid = graph.Check(
+                    RHIQueueSupportsStages(capabilities, compiled.prologueSrcStages) &&
+                        RHIQueueSupportsStages(capabilities, compiled.prologueDstStages),
+                    RDGErrorCode::eBinding,
+                    "Local barrier stages are unsupported; queue history cannot be discarded");
+            }
+            if (!valid)
+            {
+                break;
+            }
+        }
+    }
+    return valid;
 }
 
 bool RDGExecutor::AttachGraphBarriers(RenderGraph* graph)
@@ -2245,7 +2612,9 @@ RDGShaderPassCmdRecorder RenderGraph::AddComputePass(RDGComputePassDesc desc)
 
     if (m_result &&
         Check(m_executionState == RDGExecutionState::eBuilding, RDGErrorCode::eLifecycle,
-              "AddComputePass requires Begin"))
+              "AddComputePass requires Begin") &&
+        Check(IsValidQueuePreference(desc.GetQueuePreference()), RDGErrorCode::eBinding,
+              "Invalid compute queue preference"))
     {
         ShaderProgram* pShader = ValidatePassDescription(desc, false);
 
@@ -2253,10 +2622,11 @@ RDGShaderPassCmdRecorder RenderGraph::AddComputePass(RDGComputePassDesc desc)
         {
             desc.shaderIdentity = pShader->GetShader()->GetStableId();
             m_resourceManager.Retain(pShader->GetShader());
-            RDGPassNode* pNode = AllocNode<RDGPassNode>(sizeof(RDGPassNode));
-            pNode->neverCull   = !desc.allowCulling;
-            pNode->type        = RDGNodeType::eComputePass;
-            pNode->tag         = desc.passTag.ToString();
+            RDGPassNode* pNode     = AllocNode<RDGPassNode>(sizeof(RDGPassNode));
+            pNode->neverCull       = !desc.allowCulling;
+            pNode->type            = RDGNodeType::eComputePass;
+            pNode->queuePreference = desc.GetQueuePreference();
+            pNode->tag             = desc.passTag.ToString();
             pNode->selfStages.SetFlag(RHIPipelineStageFlagBits::eComputeShader);
             pNode->passDescIdx = static_cast<int32_t>(m_pendingComputePassDescs.size());
 
@@ -3189,30 +3559,29 @@ void RenderGraph::AddDependency(HeapVector<HeapVector<uint32_t>>& adjacency,
                                 HashMap<uint64_t, bool>& edges,
                                 RDGDependency dependency)
 {
-    if (dependency.source == dependency.destination || !dependency.source.IsValid())
+    if (dependency.source != dependency.destination && dependency.source.IsValid())
     {
-        return;
-    }
+        const RDGResourceManager::Allocation* resource =
+            m_resourceManager.FindResourceByIdx(dependency.resourceId);
 
-    const RDGResourceManager::Allocation* resource =
-        m_resourceManager.FindResourceByIdx(dependency.resourceId);
+        if (resource != nullptr && resource->type == RDGResourceType::eTexture)
+        {
+            dependency.textureRange = FullRange(resource);
+        }
+        else if (resource != nullptr)
+        {
+            dependency.bufferSize = resource->bufferSize;
+        }
 
-    if (resource->type == RDGResourceType::eTexture)
-    {
-        dependency.textureRange = FullRange(resource);
-    }
-    else
-    {
-        dependency.bufferSize = resource->bufferSize;
-    }
+        const uint32_t index = uint32_t(m_dependencies.size());
+        m_dependencies.push_back(dependency);
 
-    const uint32_t index = uint32_t(m_dependencies.size());
-    m_dependencies.push_back(dependency);
-
-    if (edges.emplace(CreateNodePairKey(dependency.source, dependency.destination), true).second)
-    {
-        adjacency[dependency.source].push_back(index);
-        ++m_inDegrees[dependency.destination];
+        if (edges.emplace(CreateNodePairKey(dependency.source, dependency.destination), true)
+                .second)
+        {
+            adjacency[dependency.source].push_back(index);
+            ++m_inDegrees[dependency.destination];
+        }
     }
 }
 
@@ -3413,14 +3782,20 @@ bool RenderGraph::ReportDependencyCycle(const HeapVector<HeapVector<uint32_t>>& 
                         case RDGDependencyReason::eWriteAfterRead: reason = "WAR"; break;
                         case RDGDependencyReason::eWriteAfterWrite: reason = "WAW"; break;
                         case RDGDependencyReason::eVersionProducer: break;
+                        case RDGDependencyReason::eLayoutChange: reason = "layout change"; break;
                     }
 
                     message += " [#" + std::to_string(int32_t(cause.source)) + " '" +
                         GetNodeBaseById(cause.source)->tag.ToString() + "' -> #" +
                         std::to_string(int32_t(cause.destination)) + " '" +
-                        GetNodeBaseById(cause.destination)->tag.ToString() + "': " + reason + " '" +
-                        m_resourceManager.FindResourceByIdx(cause.resourceId)->name.ToString() +
-                        "'";
+                        GetNodeBaseById(cause.destination)->tag.ToString() + "': " + reason;
+
+                    if (cause.resourceId.IsValid())
+                    {
+                        message += " '" +
+                            m_resourceManager.FindResourceByIdx(cause.resourceId)->name.ToString() +
+                            "'";
+                    }
 
                     if (cause.version >= 0)
                     {
@@ -3730,7 +4105,12 @@ void RenderGraph::BuildCompiledNodeList()
 
     for (RDG_ID id : m_sortedNodes)
     {
-        m_compiledNodes.emplace_back().nodeId = id;
+        const RDGPassNode* node   = static_cast<const RDGPassNode*>(GetNodeBaseById(id));
+        RDGCompiledNode& compiled = m_compiledNodes.emplace_back();
+        compiled.nodeId           = id;
+        compiled.queuePreference  = node->queuePreference;
+        compiled.asyncComputeEligibility =
+            m_pRenderDevice->ResolveAsyncComputeEligibility(*this, *node);
     }
 
     m_compileStats.nodeCount       = uint32_t(m_sortedNodes.size());
@@ -3743,6 +4123,420 @@ void RenderGraph::BuildCompiledNodeList()
     }
 
     m_compileStats.resourceCount = static_cast<uint32_t>(m_resourceManager.m_resources.size());
+}
+
+namespace
+{
+bool GroupHasPredecessor(const HeapVector<RDGSubmissionGroup>& groups,
+                         uint32_t group,
+                         uint32_t predecessor)
+{
+    bool found = false;
+    if (predecessor < group)
+    {
+        HeapVector<uint32_t> pending{group};
+        HeapVector<uint8_t> visited(groups.size());
+        while (!pending.empty() && !found)
+        {
+            const uint32_t current = pending.back();
+            pending.pop_back();
+            for (uint32_t prior : groups[current].predecessors)
+            {
+                found |= prior == predecessor;
+                if (prior > predecessor && !visited[prior])
+                {
+                    visited[prior] = 1;
+                    pending.push_back(prior);
+                }
+            }
+        }
+    }
+    return found;
+}
+
+} // namespace
+
+RDGAccess RenderGraph::GetScheduleAccess(RDG_ID pass, RDG_ID resource) const
+{
+    RDGAccess result;
+    const RDGNodeBase* node = GetNodeBaseById(pass);
+    for (uint32_t i = 0; i < node->accessCount; ++i)
+    {
+        const RDGAccess& access = m_accesses[node->accessOffset + i];
+        if (access.resourceId == resource)
+        {
+            result = access;
+            const RDGResourceManager::Allocation* allocation =
+                m_resourceManager.FindResourceByIdx(resource);
+            if (allocation->type == RDGResourceType::eTexture)
+            {
+                result.textureSubResourceRange = FullRange(allocation);
+            }
+            break;
+        }
+    }
+    return result;
+}
+
+RDGAccess RenderGraph::GetInitialScheduleAccess(RDG_ID id,
+                                                const ResourceStateTracker& tracker) const
+{
+    RDGAccess result;
+    result.resourceId                              = id;
+    const RDGResourceManager::Allocation* resource = m_resourceManager.FindResourceByIdx(id);
+    if (resource->type == RDGResourceType::eTexture)
+    {
+        const RDGTextureResourceState state = InitialTextureState(resource, tracker);
+        result.textureUsage                 = state.usage;
+        result.accessMode                   = state.accessMode;
+        result.pipelineStages               = state.pipelineStages | state.writer.stages;
+        result.accessFlags =
+            RHITextureUsageToAccessFlagBits(state.usage, state.accessMode) | state.writer.access;
+        result.textureSubResourceRange = FullRange(resource);
+    }
+    else
+    {
+        const RDGBufferResourceState state = InitialBufferState(resource, tracker);
+        result.accessMode                  = state.accessMode;
+        result.bufferUsage                 = state.usage;
+        result.pipelineStages              = state.pipelineStages | state.writer.stages;
+        result.accessFlags                 = state.writer.access;
+        for (uint32_t bit = 0; bit < 9; ++bit)
+        {
+            if (int64_t(state.usage) & (1u << bit))
+            {
+                result.accessFlags.SetFlag(RHIBufferUsageToAccessFlagBits(
+                    static_cast<RHIBufferUsage>(bit + 1), state.accessMode));
+            }
+        }
+    }
+    return result;
+}
+
+bool RenderGraph::CanPlanOnTransferQueue(const ResourceStateTracker& tracker) const
+{
+    bool compatible = true;
+    for (const RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        const RDGPassNode* node = static_cast<const RDGPassNode*>(GetNodeBaseById(compiled.nodeId));
+        compatible = node->type == RDGNodeType::eTransferPass && TransferStages(node->selfStages) &&
+            static_cast<const RDGTransferPass*>(node->pCompiledPass)->queueCapabilities.transfer;
+        for (uint32_t i = 0; compatible && i < node->accessCount; ++i)
+        {
+            const RDGAccess initial =
+                GetInitialScheduleAccess(m_accesses[node->accessOffset + i].resourceId, tracker);
+            compatible = TransferStages(initial.pipelineStages);
+        }
+        if (!compatible)
+        {
+            break;
+        }
+    }
+    return compatible;
+}
+
+void RenderGraph::BuildScheduleDependencies(const ResourceStateTracker& tracker)
+{
+    m_schedule.dependencies = m_dependencies;
+    struct LayoutEpoch
+    {
+        bool initialized{false};
+        RHITextureUsage usage{RHITextureUsage::eNone};
+        RDG_ID transitionOwner;
+        HeapVector<RDG_ID> users;
+    };
+    HeapVector<LayoutEpoch> layouts(m_resourceManager.m_resources.size());
+    for (const RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        const RDGNodeBase* node = GetNodeBaseById(compiled.nodeId);
+        for (uint32_t i = 0; i < node->accessCount; ++i)
+        {
+            const RDGAccess& access = m_accesses[node->accessOffset + i];
+            const RDGResourceManager::Allocation* resource =
+                m_resourceManager.FindResourceByIdx(access.resourceId);
+            if (resource->type == RDGResourceType::eTexture)
+            {
+                LayoutEpoch& epoch = layouts[access.resourceId];
+                if (!epoch.initialized)
+                {
+                    epoch.initialized = true;
+                    epoch.usage       = InitialTextureState(resource, tracker).usage;
+                }
+                const bool change = RHITextureUsageToLayout(epoch.usage) !=
+                    RHITextureUsageToLayout(access.textureUsage);
+                // All readers of the old layout must finish before a layout change. Subsequent
+                // readers of the new layout wait for its single establishing pass, even if read-only.
+                HeapVector<RDG_ID> sources;
+                if (change)
+                {
+                    sources = std::move(epoch.users);
+                    epoch.users.clear();
+                    epoch.transitionOwner = node->id;
+                }
+                else if (epoch.transitionOwner.IsValid())
+                {
+                    sources.push_back(epoch.transitionOwner);
+                }
+                for (RDG_ID source : sources)
+                {
+                    if (source != node->id)
+                    {
+                        RDGDependency dependency{source, node->id, resource->id, -1,
+                                                 RDGDependencyReason::eLayoutChange};
+                        dependency.textureRange = FullRange(resource);
+                        m_schedule.dependencies.push_back(dependency);
+                    }
+                }
+                epoch.usage = access.textureUsage;
+                epoch.users.push_back(node->id);
+            }
+        }
+    }
+}
+
+void RenderGraph::BuildSubmissionGroups(bool transferCompatible)
+{
+    const RHIQueueCapabilities& queues     = m_pRenderDevice->GetQueueCapabilities();
+    const RHICommandContextType contexts[] = {RHICommandContextType::eGraphics,
+                                              RHICommandContextType::eAsyncCompute,
+                                              RHICommandContextType::eTransfer};
+    SmallVector<uint32_t, size_t(RDGQueue::eCount)> lastGroups(
+        static_cast<size_t>(RDGQueue::eCount));
+    std::fill(lastGroups.begin(), lastGroups.end(), UINT32_MAX);
+    HeapVector<uint32_t> nodeGroups(m_nodeCount, UINT32_MAX);
+    HeapVector<HeapVector<RDG_ID>> predecessors(m_nodeCount);
+    HeapVector<HeapVector<RDG_ID>> successors(m_nodeCount);
+    HeapVector<HeapVector<uint32_t>> consumers(m_nodeCount);
+    HeapVector<RDGQueue> plannedQueues(m_nodeCount, RDGQueue::eGraphics);
+    HeapVector<uint8_t> sealed;
+    for (const RDGDependency& dependency : m_schedule.dependencies)
+    {
+        predecessors[dependency.destination].push_back(dependency.source);
+        successors[dependency.source].push_back(dependency.destination);
+    }
+    for (const RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        plannedQueues[compiled.nodeId] =
+            compiled.asyncComputeEligibility == RDGAsyncComputeEligibility::eEligible ?
+            RDGQueue::eAsyncCompute :
+            transferCompatible ? RDGQueue::eTransfer :
+                                 RDGQueue::eGraphics;
+    }
+    // Equal first foreign consumers are required for coalescing. This prevents unrelated
+    // ready work from delaying a producer's signal, even before its consumer is visited.
+    for (size_t i = m_compiledNodes.size(); i > 0; --i)
+    {
+        const RDG_ID node = m_compiledNodes[i - 1].nodeId;
+        for (RDG_ID next : successors[node])
+        {
+            if (plannedQueues[node] != plannedQueues[next])
+            {
+                IncludeDependencyId(consumers[node], uint32_t(next));
+            }
+            else
+            {
+                for (uint32_t consumer : consumers[next])
+                {
+                    IncludeDependencyId(consumers[node], consumer);
+                }
+            }
+        }
+        std::sort(consumers[node].begin(), consumers[node].end());
+    }
+    for (RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        const RDGQueue queue       = plannedQueues[compiled.nodeId];
+        const uint32_t equivalence = queues.queueIds[size_t(contexts[size_t(queue)])];
+        HeapVector<uint32_t> incoming;
+        for (RDG_ID predecessor : predecessors[compiled.nodeId])
+        {
+            IncludeDependencyId(incoming, nodeGroups[predecessor]);
+        }
+        uint32_t groupId = lastGroups[size_t(queue)];
+        bool append      = groupId != UINT32_MAX && !sealed[groupId];
+        if (append)
+        {
+            const HeapVector<uint32_t>& previous =
+                consumers[m_schedule.groups[groupId].passes.back().nodeId];
+            const HeapVector<uint32_t>& next = consumers[compiled.nodeId];
+            append                           = previous.size() == next.size() &&
+                std::equal(previous.begin(), previous.end(), next.begin());
+        }
+        for (uint32_t predecessor : incoming)
+        {
+            if (append && predecessor != groupId)
+            {
+                // Never pull a new foreign wait in front of work already assigned to a group.
+                append = GroupHasPredecessor(m_schedule.groups, groupId, predecessor);
+            }
+        }
+        if (!append)
+        {
+            for (size_t i = 0; i < lastGroups.size(); ++i)
+            {
+                if (queues.queueIds[size_t(contexts[i])] == equivalence)
+                {
+                    IncludeDependencyId(incoming, lastGroups[i]);
+                }
+            }
+            groupId                   = uint32_t(m_schedule.groups.size());
+            RDGSubmissionGroup& group = m_schedule.groups.emplace_back();
+            group.id                  = groupId;
+            group.queue               = queue;
+            group.queueEquivalenceId  = equivalence;
+            std::sort(incoming.begin(), incoming.end());
+            group.predecessors = std::move(incoming);
+            for (uint32_t predecessor : group.predecessors)
+            {
+                // Once another group consumes this signal, do not postpone it by appending work.
+                sealed[predecessor] = 1;
+            }
+            sealed.push_back(0);
+            lastGroups[size_t(queue)] = groupId;
+        }
+        RDGSubmissionGroup& group = m_schedule.groups[groupId];
+        group.passes.push_back(
+            {compiled.nodeId, compiled.queuePreference, compiled.asyncComputeEligibility});
+        compiled.plannedQueue       = queue;
+        compiled.submissionGroup    = groupId;
+        nodeGroups[compiled.nodeId] = groupId;
+    }
+    for (RDGSubmissionGroup& group : m_schedule.groups)
+    {
+        for (uint32_t predecessor : group.predecessors)
+        {
+            if (m_schedule.groups[predecessor].queueEquivalenceId != group.queueEquivalenceId)
+            {
+                group.semaphorePredecessors.push_back(predecessor);
+            }
+        }
+    }
+    uint32_t usedQueues = 0;
+    for (uint32_t last : lastGroups)
+    {
+        usedQueues += last != UINT32_MAX;
+    }
+    // Conservative even when logical queue classes alias one native queue.
+    m_schedule.usesMultipleQueues    = usedQueues > 1;
+    m_schedule.allowsAllocationReuse = m_reuseAllocations && !m_schedule.usesMultipleQueues;
+}
+
+void RenderGraph::BuildScheduleResources(const ResourceStateTracker& tracker)
+{
+    HeapVector<uint32_t> nodeGroups(m_nodeCount, UINT32_MAX);
+    for (const RDGCompiledNode& compiled : m_compiledNodes)
+    {
+        nodeGroups[compiled.nodeId] = compiled.submissionGroup;
+    }
+    for (RDGSubmissionGroup& group : m_schedule.groups)
+    {
+        HashMap<int32_t, uint32_t> resources;
+        for (const RDGScheduledPass& pass : group.passes)
+        {
+            const RDGNodeBase* node = GetNodeBaseById(pass.nodeId);
+            for (uint32_t i = 0; i < node->accessCount; ++i)
+            {
+                const RDGAccess access =
+                    GetScheduleAccess(node->id, m_accesses[node->accessOffset + i].resourceId);
+                const std::pair<HashMap<int32_t, uint32_t>::iterator, bool> insertion =
+                    resources.emplace(int32_t(access.resourceId), uint32_t(group.resources.size()));
+                if (insertion.second)
+                {
+                    group.resources.emplace_back().firstAccess = access;
+                }
+                RDGScheduledResource& summary = group.resources[insertion.first->second];
+                summary.lastAccess            = access;
+                summary.accessFlags.SetFlag(access.accessFlags);
+                summary.stages.SetFlag(access.pipelineStages);
+                summary.reads |= access.accessMode != RHIAccessMode::eNone;
+                summary.writes |= access.accessMode == RHIAccessMode::eReadWrite;
+            }
+        }
+    }
+    for (const RDGDependency& dependency : m_schedule.dependencies)
+    {
+        const uint32_t source      = nodeGroups[dependency.source];
+        const uint32_t destination = nodeGroups[dependency.destination];
+        if (source != destination && dependency.resourceId.IsValid())
+        {
+            m_schedule.groups[destination].boundaries.push_back(
+                {GetScheduleAccess(dependency.source, dependency.resourceId),
+                 GetScheduleAccess(dependency.destination, dependency.resourceId)});
+        }
+    }
+    for (RDGSubmissionGroup& group : m_schedule.groups)
+    {
+        HashMap<const RHIResource*, bool> physicalResources;
+        for (const RDGScheduledResource& summary : group.resources)
+        {
+            const RDG_ID resourceId = summary.firstAccess.resourceId;
+            const RHIResource* physical =
+                PhysicalResource(m_resourceManager.FindResourceByIdx(resourceId));
+            bool initial = physical == nullptr || physicalResources.emplace(physical, true).second;
+            for (const RDGScheduleBoundary& boundary : group.boundaries)
+            {
+                initial &= boundary.destination.resourceId != resourceId;
+            }
+            if (initial)
+            {
+                group.boundaries.push_back(
+                    {GetInitialScheduleAccess(resourceId, tracker), summary.firstAccess});
+            }
+        }
+    }
+}
+
+bool RenderGraph::ValidateSchedule()
+{
+    bool valid = Check(!m_schedule.usesMultipleQueues || m_compileStats.reusedAllocationCount == 0,
+                       RDGErrorCode::eAllocation,
+                       "Multi-queue schedule cannot reuse linear transient allocations");
+    HeapVector<uint32_t> nodeGroups(m_nodeCount, UINT32_MAX);
+    HeapVector<uint32_t> positions(m_nodeCount, UINT32_MAX);
+    uint32_t count = 0;
+    for (const RDGSubmissionGroup& group : m_schedule.groups)
+    {
+        valid = valid &&
+            Check(!group.passes.empty(), RDGErrorCode::eBinding, "Empty RDG submission group");
+        for (uint32_t predecessor : group.predecessors)
+        {
+            valid = valid &&
+                Check(predecessor < group.id, RDGErrorCode::eDependencyCycle,
+                      "Submission groups are not in topological order");
+        }
+        for (const RDGScheduledPass& pass : group.passes)
+        {
+            valid = valid &&
+                Check(nodeGroups[pass.nodeId] == UINT32_MAX, RDGErrorCode::eBinding,
+                      "Pass occurs in multiple submission groups");
+            nodeGroups[pass.nodeId] = group.id;
+            positions[pass.nodeId]  = count++;
+        }
+    }
+    valid = valid &&
+        Check(count == m_compiledNodes.size(), RDGErrorCode::eBinding,
+              "Schedule does not contain every live pass");
+    for (const RDGDependency& dependency : m_schedule.dependencies)
+    {
+        const uint32_t source      = nodeGroups[dependency.source];
+        const uint32_t destination = nodeGroups[dependency.destination];
+        valid                      = valid &&
+            Check(source != UINT32_MAX && destination != UINT32_MAX &&
+                      (source == destination ?
+                           positions[dependency.source] < positions[dependency.destination] :
+                           GroupHasPredecessor(m_schedule.groups, destination, source)),
+                  RDGErrorCode::eDependencyCycle, "Submission schedule lost a pass dependency");
+    }
+    return valid;
+}
+
+bool RenderGraph::BuildSchedule(const ResourceStateTracker& tracker, bool transferCompatible)
+{
+    m_schedule = {};
+    BuildScheduleDependencies(tracker);
+    BuildSubmissionGroups(transferCompatible);
+    BuildScheduleResources(tracker);
+    return ValidateSchedule();
 }
 
 bool RenderGraph::ValidateCompiledGraph()
@@ -3765,6 +4559,12 @@ bool RenderGraph::ValidateCompiledGraph()
 
             valid = Check(node->pCompiledPass != nullptr, RDGErrorCode::eAllocation,
                           "Uncompiled RDG pass");
+            valid = valid &&
+                Check(IsValidQueuePreference(node->queuePreference) &&
+                          node->pCompiledPass->queuePreference == node->queuePreference &&
+                          (node->type != RDGNodeType::eGraphicsPass ||
+                           node->queuePreference == RDGQueuePreference::eDefault),
+                      RDGErrorCode::eBinding, "Compiled RDG queue preference mismatch");
             valid = valid &&
                 (Check(uint64_t(node->accessOffset) + node->accessCount <= m_accesses.size(),
                        RDGErrorCode::eBinding, "Invalid access slice"));
@@ -3810,8 +4610,8 @@ bool RenderGraph::CanExecuteOnTransferQueue(const ResourceStateTracker& tracker)
         if (valid)
         {
             const RDGPassNode* passNode = static_cast<const RDGPassNode*>(node);
-            valid = !(static_cast<const RDGTransferPass*>(passNode->pCompiledPass)
-                          ->requiresGraphicsQueue);
+            valid = static_cast<const RDGTransferPass*>(passNode->pCompiledPass)
+                        ->queueCapabilities.transfer;
 
             if (valid)
             {
@@ -3890,7 +4690,10 @@ void RenderGraph::UpdateResourceStatesForNodeAccesses(const RDGCompiledNode& com
     }
 }
 
-bool RenderGraph::Execute(RHICommandList* cmdList, ResourceStateTracker& tracker)
+bool RenderGraph::Execute(VectorView<RHICommandList*> lists,
+                          ResourceStateTracker& tracker,
+                          HeapVector<RDGCompiledNode>& nodes,
+                          bool grouped)
 {
     bool valid = true;
 
@@ -3899,12 +4702,12 @@ bool RenderGraph::Execute(RHICommandList* cmdList, ResourceStateTracker& tracker
 
     if (valid)
     {
-        m_pCmdList                 = cmdList;
         m_executionState           = RDGExecutionState::eExecuting;
         m_recordedInitBarrierCount = 0;
 
-        for (RDGCompiledNode& compiled : m_compiledNodes)
+        for (RDGCompiledNode& compiled : nodes)
         {
+            m_pCmdList = lists[grouped ? compiled.submissionGroup : 0];
             if (m_activeMetrics != nullptr)
             {
                 m_activeMetrics->BeginNode(*this, compiled);
@@ -4141,8 +4944,9 @@ template <typename Pass> void RenderGraph::ReleaseCompiledPass(Pass* pass, HeapV
         m_pRenderDevice->DeferDestroyPipeline(pass->pPipeline);
     }
 
-    pass->pPipeline = nullptr;
-    pass->passTag   = {};
+    pass->pPipeline       = nullptr;
+    pass->passTag         = {};
+    pass->queuePreference = RDGQueuePreference::eDefault;
     pass->shaderParameters.Reset();
     pass->indirectBindings.clear();
     const size_t bytes = pass->GetStorageBytes();
@@ -4241,6 +5045,7 @@ void RenderGraph::ResetBuildState()
     m_transientRTMap.clear();
     m_inDegrees.clear();
     m_dependencies.clear();
+    m_schedule       = {};
     m_nodeCount      = 0;
     m_pCmdList       = nullptr;
     m_compileStats   = {};

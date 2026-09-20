@@ -13,6 +13,7 @@
 #include "Memory/PoolAllocator.h"
 #include "../RenderCoreDefs.h"
 #include "RDGDefs.h"
+#include "RDGSchedule.h"
 #include "RDGResourceManager.h"
 #include "RDGPassCompiler.h"
 #include "RDGMetrics.h"
@@ -139,6 +140,7 @@ private:
 };
 
 class RenderGraph;
+struct RDGCompiledNode;
 
 class RDGExecutor
 {
@@ -154,6 +156,12 @@ public:
     // CPU recording harness: updates this executor's recording history, without publishing
     // extractions. Use RenderDevice::ExecuteRenderGraph for submission and publication.
     bool Execute(RenderGraph* pGraph, RHICommandList* pCmdList);
+
+    // CPU recording only. Lists are indexed by schedule group ID and remain caller-owned.
+    bool ExecuteGroups(RenderGraph* graph,
+                       VectorView<RHICommandList*> lists,
+                       RDGSchedule& recordedSchedule,
+                       VectorView<const RDGExternalQueueState> externalStates = {});
 
     bool Prepare(RenderGraph* pGraph);
 
@@ -200,6 +208,7 @@ private:
         uint32_t preparationPasses{0};
         bool precompiled{false};
         bool transfer{false};
+        RDGSchedule schedule;
         bool consumed{true};
     };
 
@@ -215,6 +224,23 @@ private:
                          bool deferPublication                              = false);
 
     bool BuildExecutionPlan(ExecutionPlan& plan);
+
+    bool ExecutePreparedGroups(ExecutionPlan& plan,
+                               VectorView<RHICommandList*> lists,
+                               VectorView<const RDGExternalQueueState> externalStates = {},
+                               const std::function<RHISubmissionResult()>& submit     = {},
+                               bool deferPublication                                  = false);
+
+    bool BuildGroupBarriers(ExecutionPlan& plan,
+                            VectorView<const RDGExternalQueueState> externalStates,
+                            HeapVector<RDGCompiledNode>& nodes);
+
+    bool ExecuteTransaction(ExecutionPlan& plan,
+                            VectorView<RHICommandList*> lists,
+                            bool grouped,
+                            VectorView<const RDGExternalQueueState> externalStates,
+                            const std::function<RHISubmissionResult()>& submit,
+                            bool deferPublication);
 
     RenderDevice* m_pRenderDevice{nullptr};
 
@@ -260,6 +286,7 @@ struct RDGNodeBase
     RDG_ID id{-1};
     NameID tag;
     RDGNodeType type{RDGNodeType::eNone};
+    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
     BitField<RHIPipelineStageFlagBits> selfStages;
     uint32_t accessOffset{0};
     uint32_t accessCount{0};
@@ -283,6 +310,10 @@ struct RDGPassNode : RDGNodeBase
 struct RDGCompiledNode
 {
     RDG_ID nodeId{-1};
+    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
+    RDGAsyncComputeEligibility asyncComputeEligibility{RDGAsyncComputeEligibility::eNotRequested};
+    RDGQueue plannedQueue{RDGQueue::eGraphics};
+    uint32_t submissionGroup{UINT32_MAX};
     BitField<RHIPipelineStageFlagBits> prologueSrcStages;
     BitField<RHIPipelineStageFlagBits> prologueDstStages;
     uint32_t initialBarrierCount{0};
@@ -323,6 +354,12 @@ public:
 
     RDGTransferPassCmdRecorder AddTransferPass(NameID passName);
 
+    // Preparation result with logical queue/layout requirements; native submission is separate.
+    const RDGSchedule& GetSchedule() const
+    {
+        return m_schedule;
+    }
+
     // Imports are retained from declaration through Reset/Begin/destruction. Submitted uses
     // retire through the execution device, which must outlive this graph.
     bool Reset();
@@ -336,7 +373,8 @@ public:
         return m_warnings;
     }
 
-    // Retains every resource/hazard reason, including reasons sharing the same node pair.
+    // Resource-version edges, including reasons sharing the same node pair.
+    // GetSchedule() additionally includes layout requirements and group ordering.
     // Available after compilation; cleared on Begin/Reset. IDs refer to this build only.
     const HeapVector<RDGDependency>& GetDependencies() const
     {
@@ -474,7 +512,10 @@ private:
                                   ShaderProgram* pShaderProgram,
                                   RDGPassDescBase* pPassDesc);
 
-    bool Execute(RHICommandList* pCmdList, ResourceStateTracker& resourceStateTracker);
+    bool Execute(VectorView<RHICommandList*> lists,
+                 ResourceStateTracker& resourceStateTracker,
+                 HeapVector<RDGCompiledNode>& nodes,
+                 bool grouped);
 
     bool CanExecuteOnTransferQueue(const ResourceStateTracker& resourceStateTracker) const;
 
@@ -535,6 +576,15 @@ private:
     uint64_t m_executorIdentity{0};
 
     void BuildCompiledNodeList();
+
+    bool BuildSchedule(const ResourceStateTracker& tracker, bool transferCompatible);
+    bool CanPlanOnTransferQueue(const ResourceStateTracker& tracker) const;
+    void BuildScheduleDependencies(const ResourceStateTracker& tracker);
+    void BuildSubmissionGroups(bool transferCompatible);
+    void BuildScheduleResources(const ResourceStateTracker& tracker);
+    bool ValidateSchedule();
+    RDGAccess GetScheduleAccess(RDG_ID pass, RDG_ID resource) const;
+    RDGAccess GetInitialScheduleAccess(RDG_ID resource, const ResourceStateTracker& tracker) const;
 
     bool AddResourceAccess(RDGPassNode* pNode,
                            RDGResourceManager::Allocation* pResource,
@@ -610,6 +660,7 @@ private:
 
     HeapVector<uint32_t> m_inDegrees;
     HeapVector<RDGDependency> m_dependencies;
+    RDGSchedule m_schedule;
 
     // transient output
     struct RDGTransientOutput

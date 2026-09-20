@@ -47,6 +47,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/Types/Frustum.h
 
     Include/Graphics/RenderCore/V2/RenderGraph/RDGDefs.h
+    Include/Graphics/RenderCore/V2/RenderGraph/RDGSchedule.h
     Include/Graphics/RenderCore/V2/RenderGraph/RDGMetrics.h
     Include/Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h
     Include/Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h
@@ -67,6 +68,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderObject.h
     Include/Graphics/RenderCore/V2/RenderResource.h
     Include/Graphics/RenderCore/V2/RenderDevice.h
+    Include/Graphics/RenderCore/V2/RenderSubmissionHistory.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
     Include/Graphics/RenderCore/V2/TextureManager.h
@@ -118,6 +120,7 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/Platform/VulkanMacOSPlatform.h
     Include/Graphics/VulkanRHI/VulkanExtension.h
     Include/Graphics/VulkanRHI/VulkanDevice.h
+    Include/Graphics/VulkanRHI/VulkanQueueSelection.h
     Include/Graphics/VulkanRHI/VulkanHeaders.h
     Include/Graphics/VulkanRHI/VulkanRHI.h
     Include/Graphics/VulkanRHI/VulkanCommon.h
@@ -186,6 +189,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderResource.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     Source/Graphics/RenderCore/V2/TextureManager.cpp

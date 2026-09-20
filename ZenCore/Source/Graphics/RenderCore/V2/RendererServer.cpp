@@ -81,6 +81,8 @@ void RendererServer::DispatchRenderWorkloads()
 
     if (!succeeded && m_renderOption == RenderOption::eVoxelize)
     {
+        // Recording consumes the request before handoff. Restore it on immediate failure.
+        // Deferred native failure blocks the device; recovery must precede another update.
         m_pVoxelizer->RequestVoxelization();
     }
 }

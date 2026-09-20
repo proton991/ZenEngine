@@ -21,8 +21,8 @@ void AppendCommandBufferPool(HeapVector<FVulkanCommandBufferPool*>& pools,
 }
 } // namespace
 
-VulkanQueue::VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex) :
-    m_pDevice(pDevice), m_familyIndex(familyIndex), m_queueIndex(0)
+VulkanQueue::VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex, uint32_t queueIndex) :
+    m_pDevice(pDevice), m_familyIndex(familyIndex), m_queueIndex(queueIndex)
 {
     vkGetDeviceQueue(m_pDevice->GetVkHandle(), m_familyIndex, m_queueIndex, &m_handle);
 

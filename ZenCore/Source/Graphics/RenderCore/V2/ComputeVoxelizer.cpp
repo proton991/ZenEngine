@@ -12,6 +12,18 @@
 
 namespace zen::rc
 {
+namespace
+{
+RDGComputePassDesc VoxelComputePass(NameID shader, NameID tag)
+{
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName(shader);
+    pass.SetPassTag(tag);
+    pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
+    return pass;
+}
+} // namespace
+
 void ComputeVoxelizer::Init()
 {
     m_voxelTexResolution = 256;
@@ -89,28 +101,25 @@ void ComputeVoxelizer::BuildRenderGraph()
     const Mat4 voxelTransform =
         glm::scale(Mat4(1.0f), Vec3(extent / m_voxelTexResolution * scaleFactor));
 
-    if (BeginVoxelization(*pRDG))
+    if (BeginVoxelization(*pRDG, RDGQueuePreference::ePreferAsyncCompute))
     {
         const uint32_t groups = (m_voxelTexResolution + 7) / 8;
         const VoxelizationCompSP::SceneInfo sceneInfo{Vec4(voxelAABB.GetMin(), 1.0f),
                                                       Vec4(voxelAABB.GetMax(), 1.0f)};
 
-        RDGComputePassDesc resetCompute{};
-        resetCompute.SetShaderProgramName("ResetComputeIndirectSP");
-        resetCompute.SetPassTag("ResetComputeIndirectComp");
+        RDGComputePassDesc resetCompute =
+            VoxelComputePass("ResetComputeIndirectSP", "ResetComputeIndirectComp");
 
         resetCompute.BindStorageBuffer("IndirectBuffer", m_buffers.pComputeIndirectBuffer);
 
         pRDG->AddComputePass(std::move(resetCompute))
             .RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
 
-        RDGComputePassDesc voxelization{};
-        voxelization.SetShaderProgramName("VoxelizationCompSP");
-        voxelization.SetPassTag("VoxelizationComp");
+        RDGComputePassDesc voxelization =
+            VoxelComputePass("VoxelizationCompSP", "VoxelizationComp");
 
-        RDGComputePassDesc largeTriangles{};
-        largeTriangles.SetShaderProgramName("VoxelizationLargeTriangleCompSP");
-        largeTriangles.SetPassTag("VoxelizationLargeTriangleComp");
+        RDGComputePassDesc largeTriangles =
+            VoxelComputePass("VoxelizationLargeTriangleCompSP", "VoxelizationLargeTriangleComp");
 
         for (RDGComputePassDesc* desc : {&voxelization, &largeTriangles})
         {
@@ -155,18 +164,15 @@ void ComputeVoxelizer::BuildRenderGraph()
                     encoder.DispatchIndirect(indirect, 0);
                 });
 
-        RDGComputePassDesc resetDraw{};
-        resetDraw.SetShaderProgramName("ResetDrawIndirectSP");
-        resetDraw.SetPassTag("ResetDrawIndirectComp");
+        RDGComputePassDesc resetDraw =
+            VoxelComputePass("ResetDrawIndirectSP", "ResetDrawIndirectComp");
 
         resetDraw.BindStorageBuffer("IndirectBuffer", m_buffers.pDrawIndirectBuffer);
 
         pRDG->AddComputePass(std::move(resetDraw))
             .RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
 
-        RDGComputePassDesc preDraw{};
-        preDraw.SetShaderProgramName("VoxelPreDrawSP");
-        preDraw.SetPassTag("VoxelPreDrawComp");
+        RDGComputePassDesc preDraw = VoxelComputePass("VoxelPreDrawSP", "VoxelPreDrawComp");
 
         preDraw.BindStorageImage("voxelTexture", m_voxelTextures.pAlbedo->GetDefaultView());
         preDraw.BindStorageBuffer("InstancePositionBuffer", m_buffers.pInstancePositionBuffer,

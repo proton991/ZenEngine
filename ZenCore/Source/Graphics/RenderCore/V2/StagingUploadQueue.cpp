@@ -12,10 +12,19 @@ namespace zen::rc
 {
 namespace
 {
-StagingCompletion SubmittedCompletion()
+// Capture only queues advanced by this synchronous upload attempt. Destination users
+// in other submissions retain their own references and must not pin staging blocks.
+StagingCompletion SubmittedCompletion(const RHICompletionSet& before, const RHICompletionSet& after)
 {
-    return {GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer),
-            GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics)};
+    StagingCompletion result;
+    for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
+    {
+        if (after.serials[i] > before.serials[i])
+        {
+            result.serials[i] = after.serials[i];
+        }
+    }
+    return result;
 }
 } // namespace
 
@@ -114,12 +123,11 @@ void StagingBufferManager::Release(const StagingAllocation& allocation,
 
 void StagingBufferManager::Reclaim()
 {
-    const uint64_t transfer = GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eTransfer);
-    const uint64_t graphics = GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eGraphics);
+    const RHICompletionSet completed = GDynamicRHI->GetCompletedCompletion();
 
     for (Block& block : m_blocks)
     {
-        if (block.outstandingAllocCount == 0 && block.completion.IsCompleteAt(transfer, graphics))
+        if (block.outstandingAllocCount == 0 && block.completion.IsCompleteAt(completed))
         {
             block.occupiedSize = 0;
             block.completion   = {};
@@ -141,15 +149,14 @@ bool StagingBufferManager::WaitForSubmittedAllocations()
         }
     }
 
-    for (const std::pair<RHICommandContextType, uint64_t>& completion :
-         {std::pair{RHICommandContextType::eGraphics, required.graphicsSerial},
-          std::pair{RHICommandContextType::eTransfer, required.transferSerial}})
+    for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
     {
-        if (GDynamicRHI->GetLastCompletedSerial(completion.first) < completion.second &&
-            !GDynamicRHI->WaitForSubmission(completion.first, completion.second))
+        const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
+        const uint64_t serial             = required.Get(queue);
+        if (GDynamicRHI->GetLastCompletedSerial(queue) < serial &&
+            !GDynamicRHI->WaitForSubmission(queue, serial))
         {
-            LOGE("Staging: cannot reclaim queue {} serial {}", uint32_t(completion.first),
-                 completion.second);
+            LOGE("Staging: cannot reclaim queue {} serial {}", uint32_t(queue), serial);
             valid = false;
         }
 
@@ -318,8 +325,8 @@ void StagingUploadQueue::EnqueueTexture(RHITexture* pTexture,
         // RDG later sees the whole staging buffer; only this boundary knows the payload's size.
         RDGResult result;
         const RHITextureCreateInfo& info = pTexture->GetBaseInfo();
-        bool requiresGraphics            = false;
-        uint32_t alignment               = 16;
+        RDGTransferQueueCapabilities queues;
+        uint32_t alignment = 16;
 
         if (!result.Check(info.usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferDst) &&
                               (!generateMipmaps ||
@@ -341,7 +348,7 @@ void StagingUploadQueue::EnqueueTexture(RHITexture* pTexture,
                                             pTexture->GetResourceTag(), region.textureSubresources,
                                             region.textureOffset, region.textureSize) ||
                     !ValidateBufferTextureFootprint(result, dataSize, info, region) ||
-                    !ValidateBufferTextureCopyCapabilities(result, info, region, requiresGraphics))
+                    !ValidateBufferTextureCopyCapabilities(result, info, region, queues))
                 {
                     LOGE("Texture upload '{}' region {} [{}]: {} (payload bytes: {})",
                          pTexture->GetResourceTag().CStr(), i, uint32_t(result.code),
@@ -450,11 +457,16 @@ bool StagingUploadQueue::Flush()
 
             m_uploadRDG.End();
 
+            // Drain older CPU frames before taking the baseline, so their submissions
+            // cannot be mistaken for accesses made by this upload.
+            m_pRenderDevice->PollFrameSubmissions(true);
+            const RHICompletionSet before = m_pRenderDevice->GetSubmittedCompletion();
             if (!m_pRenderDevice->ExecuteRenderGraph(m_uploadRDG))
             {
                 // A failed completion wait or partial submission may still have accepted GPU work.
                 // Preserve its gates if teardown later cancels these retained allocations.
-                const StagingCompletion completion = SubmittedCompletion();
+                const StagingCompletion completion =
+                    SubmittedCompletion(before, m_pRenderDevice->GetSubmittedCompletion());
 
                 for (StagingUploadQueue::PendingUpload& upload : m_pendingUploads)
                 {
@@ -466,15 +478,18 @@ bool StagingUploadQueue::Flush()
             }
             else
             {
-                const StagingCompletion completion = SubmittedCompletion();
+                const StagingCompletion completion =
+                    SubmittedCompletion(before, m_pRenderDevice->GetSubmittedCompletion());
 
                 for (const PendingUpload& upload : m_pendingUploads)
                 {
-                    m_pStagingMgr->Release(upload.stagingAlloc, completion);
+                    StagingCompletion required = upload.attemptedCompletion;
+                    required.Extend(completion);
+                    m_pStagingMgr->Release(upload.stagingAlloc, required);
                     RHIResource* pResource = upload.pDstBuffer != nullptr ?
                         static_cast<RHIResource*>(upload.pDstBuffer) :
                         upload.pDstTexture;
-                    m_retainedResources.push_back({pResource, completion});
+                    m_retainedResources.push_back({pResource, required});
                 }
 
                 m_pendingUploads.clear();
@@ -493,12 +508,11 @@ bool StagingUploadQueue::Flush()
 
 void StagingUploadQueue::ReclaimResources()
 {
-    const uint64_t transfer = GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eTransfer);
-    const uint64_t graphics = GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eGraphics);
+    const RHICompletionSet completed = GDynamicRHI->GetCompletedCompletion();
 
     for (size_t i = 0; i < m_retainedResources.size();)
     {
-        if (m_retainedResources[i].completion.IsCompleteAt(transfer, graphics))
+        if (m_retainedResources[i].completion.IsCompleteAt(completed))
         {
             m_retainedResources[i].pResource->ReleaseReference();
             m_retainedResources.erase(m_retainedResources.begin() + i);

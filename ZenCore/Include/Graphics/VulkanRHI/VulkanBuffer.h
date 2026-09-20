@@ -10,6 +10,11 @@ class VulkanBuffer : public RHIBuffer
 public:
     static VulkanBuffer* CreateObject(const RHIBufferCreateInfo& createInfo);
 
+    bool IsAsyncComputeAccessible() const override
+    {
+        return true; // Engine allocation sharing includes graphics and compute families.
+    }
+
     uint8_t* Map() override;
 
     void Unmap() override;

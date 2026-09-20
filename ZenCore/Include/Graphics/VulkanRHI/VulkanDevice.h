@@ -99,6 +99,8 @@ public:
         return m_pTransferQueue;
     }
 
+    RHIQueueCapabilities GetQueueCapabilities() const;
+
     VulkanQueue* GetQueue(RHICommandContextType type) const
     {
         VulkanQueue* result{};

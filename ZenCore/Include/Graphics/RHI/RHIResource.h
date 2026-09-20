@@ -34,6 +34,13 @@ public:
 
     virtual ~RHIResource();
 
+    // Immutable backend contract: this allocation permits the selected compute queue
+    // without a queue-family ownership transfer. Unknown/external wrappers opt out.
+    virtual bool IsAsyncComputeAccessible() const
+    {
+        return false;
+    }
+
     explicit RHIResource(RHIResourceType resourceType) : m_resourceType(resourceType)
     {
         AddReference();

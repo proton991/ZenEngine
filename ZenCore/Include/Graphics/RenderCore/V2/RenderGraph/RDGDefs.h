@@ -316,6 +316,72 @@ enum class RDGNodeType : uint32_t
     eMax          = 4
 };
 
+enum class RDGQueuePreference : uint8_t
+{
+    eDefault,
+    ePreferAsyncCompute
+};
+
+// Eligibility is a planning input, not proof that a pass was submitted to compute.
+enum class RDGAsyncComputeEligibility : uint8_t
+{
+    eNotRequested,
+    eEligible,
+    eGraphicsPass,
+    ePolicyDisabled,
+    eComputeUnavailable,
+    eSharedGraphicsQueue,
+    eDependenciesUnavailable,
+    eUnsupportedCommands,
+    eResourceUnavailable,
+    eExternalState,
+    eViewportResource
+};
+
+inline bool IsValidQueuePreference(RDGQueuePreference preference)
+{
+    return preference == RDGQueuePreference::eDefault ||
+        preference == RDGQueuePreference::ePreferAsyncCompute;
+}
+
+inline const char* QueuePreferenceName(RDGQueuePreference preference)
+{
+    return preference == RDGQueuePreference::ePreferAsyncCompute ? "prefer_async_compute" :
+                                                                   "default";
+}
+
+inline const char* AsyncComputeEligibilityName(RDGAsyncComputeEligibility eligibility)
+{
+    const char* name = "unknown";
+    switch (eligibility)
+    {
+        case RDGAsyncComputeEligibility::eNotRequested: name = "not_requested"; break;
+        case RDGAsyncComputeEligibility::eEligible: name = "eligible"; break;
+        case RDGAsyncComputeEligibility::eGraphicsPass: name = "graphics_pass"; break;
+        case RDGAsyncComputeEligibility::ePolicyDisabled: name = "policy_disabled"; break;
+        case RDGAsyncComputeEligibility::eComputeUnavailable: name = "compute_unavailable"; break;
+        case RDGAsyncComputeEligibility::eSharedGraphicsQueue:
+            name = "shares_graphics_queue";
+            break;
+        case RDGAsyncComputeEligibility::eDependenciesUnavailable:
+            name = "dependencies_unavailable";
+            break;
+        case RDGAsyncComputeEligibility::eUnsupportedCommands: name = "unsupported_commands"; break;
+        case RDGAsyncComputeEligibility::eResourceUnavailable:
+            name = "resource_queue_unsupported";
+            break;
+        case RDGAsyncComputeEligibility::eExternalState: name = "external_state_contract"; break;
+        case RDGAsyncComputeEligibility::eViewportResource: name = "viewport_resource"; break;
+    }
+    return name;
+}
+
+struct RDGTransferQueueCapabilities
+{
+    bool transfer{true};
+    bool compute{true};
+};
+
 // A shader write defines this version and reads its predecessor when its content intent
 // requires existing data. A separate read binding consumes the named version itself.
 struct RDGVersionAccess
@@ -329,7 +395,8 @@ enum class RDGDependencyReason : uint8_t
 {
     eWriteAfterRead,
     eWriteAfterWrite,
-    eVersionProducer
+    eVersionProducer,
+    eLayoutChange
 };
 
 struct RDGDependency
@@ -337,7 +404,7 @@ struct RDGDependency
     RDG_ID source{-1};
     RDG_ID destination{-1};
     RDG_ID resourceId{-1};
-    int32_t version{-1}; // Per-resource version number; every compiled dependency has a version.
+    int32_t version{-1}; // Absent for layout requirements.
     RDGDependencyReason reason{};
 
     // Whole allocation scope until range-aware dependencies land in Phase 4.

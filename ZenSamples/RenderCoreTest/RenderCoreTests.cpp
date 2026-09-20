@@ -61,6 +61,13 @@ struct SceneInputs
 class TestBuffer : public RHIBuffer
 {
 public:
+    bool asyncComputeAccessible{true};
+
+    bool IsAsyncComputeAccessible() const override
+    {
+        return asyncComputeAccessible;
+    }
+
     explicit TestBuffer(const RHIBufferCreateInfo& info) : RHIBuffer(info), bytes(info.size, 0xCD)
     {}
 
@@ -123,6 +130,13 @@ private:
 class TestTexture : public RHITexture
 {
 public:
+    bool asyncComputeAccessible{true};
+
+    bool IsAsyncComputeAccessible() const override
+    {
+        return asyncComputeAccessible;
+    }
+
     explicit TestTexture(const RHITextureCreateInfo& info) : RHITexture(info)
     {
         RHITextureViewCreateInfo view{};
@@ -167,16 +181,28 @@ public:
     uint32_t preparePresents{0};
     uint32_t presents{0};
     bool presentResult{true};
+    bool recordPresentCommands{false};
+    bool recreationRequested{false};
+    uint32_t resizes{0};
 
-    void PrepareForPresent(RHICommandList*) override
+    void PrepareForPresent(RHICommandList* commands) override
     {
         ++preparePresents;
+        if (recordPresentCommands)
+        {
+            commands->Dispatch(1, 1, 1);
+        }
     }
 
     bool Present() override
     {
         ++presents;
         return presentResult;
+    }
+
+    bool NeedsRecreation() const override
+    {
+        return recreationRequested;
     }
 
     uint32_t GetWidth() const override
@@ -221,8 +247,10 @@ public:
 
     void Resize(uint32_t width, uint32_t height) override
     {
-        m_width  = width;
-        m_height = height;
+        ++resizes;
+        recreationRequested = false;
+        m_width             = width;
+        m_height            = height;
     }
 
 private:
@@ -842,7 +870,7 @@ class TestRHI : public DynamicRHI
 public:
     TestRHI()
     {
-        graphics.wait = transfer.wait = [this] {
+        graphics.wait = compute.wait = transfer.wait = [this] {
             completed = submitted;
         };
         info.uniformBufferAlignment = 16;
@@ -850,16 +878,20 @@ public:
     }
 
     TestContext graphics{RHICommandContextType::eGraphics};
+    TestContext compute{RHICommandContextType::eAsyncCompute};
     TestContext transfer{RHICommandContextType::eTransfer};
     std::array<uint64_t, 3> submitted{};
     std::array<uint64_t, 3> completed{};
     std::array<bool, 3> pending{};
     RHIGPUInfo info{};
     RHIQueueCopyCapabilities graphicsCopy{true, true, true, {1, 1, 1}};
+    RHIQueueCopyCapabilities computeCopy{false, true, true, {1, 1, 1}};
     RHIQueueCopyCapabilities transferCopy{false, false, true, {1, 1, 1}};
     std::unordered_map<DataFormat, RHITextureCopyCapabilities> copyCapabilities;
     bool shared{false};
     bool asyncDependencies{false};
+    RHIQueueCapabilities submissionQueueCapabilities;
+    mutable uint32_t queueCapabilityQueries{0};
     struct SubmissionDependency
     {
         RHICommandContextType consumer;
@@ -869,12 +901,20 @@ public:
     uint32_t pipelineCount{0};
     uint32_t frameBegins{0};
     uint32_t deviceIdleWaits{0};
+    mutable uint64_t progressQueries{0};
     uint32_t contextCreations{0};
     bool failSubmissionWait{false};
     bool failProgressQuery{false};
     bool submissionsBlocked{false};
     std::vector<std::pair<RHICommandContextType, uint64_t>> submissionWaits;
     uint32_t textureCreations{0};
+    RHITexture* lastCreatedTexture{nullptr};
+    uint32_t bufferCreations{0};
+    uint32_t failBufferCreationAt{0};
+    RHIBufferCreateInfo lastBufferInfo;
+    uint64_t lastBufferId{0};
+    std::thread::id lastBufferCreationThread;
+    std::thread::id lastTextureCreationThread;
     uint32_t finalizedLists{0};
     uint32_t submissionAttempts{0};
     uint32_t failSubmissionAt{0};
@@ -896,10 +936,13 @@ public:
         ++frameBegins;
     }
 
-    IRHICommandContext* GetCommandContext(RHICommandContextType) override
+    IRHICommandContext* GetCommandContext(RHICommandContextType type) override
     {
         ++contextCreations;
-        return ZEN_NEW() TestContextProxy(graphics);
+        TestContext& context = type == RHICommandContextType::eAsyncCompute ? compute :
+            type == RHICommandContextType::eTransfer                        ? transfer :
+                                                                              graphics;
+        return ZEN_NEW() TestContextProxy(context);
     }
 
     IRHICommandContext* GetTransferCommandContext() override
@@ -1020,10 +1063,12 @@ public:
         RHITexture* result{};
 
         ++textureCreations;
+        lastTextureCreationThread = std::this_thread::get_id();
 
         if (!(textureCreations == failTextureCreationAt))
         {
-            result = ZEN_NEW() TestTexture(info);
+            result             = ZEN_NEW() TestTexture(info);
+            lastCreatedTexture = result;
         }
 
         return result;
@@ -1042,7 +1087,16 @@ public:
 
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info) override
     {
-        return ZEN_NEW() TestBuffer(info);
+        RHIBuffer* result = nullptr;
+        ++bufferCreations;
+        lastBufferCreationThread = std::this_thread::get_id();
+        if (bufferCreations != failBufferCreationAt)
+        {
+            result         = ZEN_NEW() TestBuffer(info);
+            lastBufferInfo = info;
+            lastBufferId   = result->GetStableId();
+        }
+        return result;
     }
 
     void DestroyBuffer(RHIBuffer* buffer) override
@@ -1133,6 +1187,12 @@ public:
         return asyncDependencies;
     }
 
+    RHIQueueCapabilities GetQueueCapabilities() const override
+    {
+        ++queueCapabilityQueries;
+        return submissionQueueCapabilities;
+    }
+
     bool PrepareSubmissionDependencies(
         IRHICommandContext* context,
         VectorView<const RHISubmissionDependency> dependencies) override
@@ -1152,7 +1212,10 @@ public:
                 }
                 result = result && dependency.serial <= GetLastSubmittedSerial(dependency.queue);
                 if (result && dependency.serial != 0 &&
-                    Index(dependency.queue) != Index(context->GetContextType()))
+                    (submissionQueueCapabilities.computeSupported ?
+                         !submissionQueueCapabilities.AreQueuesShared(dependency.queue,
+                                                                      context->GetContextType()) :
+                         Index(dependency.queue) != Index(context->GetContextType())))
                 {
                     gpuDependencies.push_back({context->GetContextType(), dependency});
                 }
@@ -1168,11 +1231,13 @@ public:
 
     uint64_t GetLastSubmittedSerial(RHICommandContextType type) const override
     {
+        ++progressQueries;
         return submitted[Index(type)];
     }
 
     uint64_t GetLastCompletedSerial(RHICommandContextType type) override
     {
+        ++progressQueries;
         if (failProgressQuery)
         {
             throw std::runtime_error("test GPU progress query failure");
@@ -1239,7 +1304,9 @@ public:
 
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const override
     {
-        return type == RHICommandContextType::eTransfer && !shared ? transferCopy : graphicsCopy;
+        return type == RHICommandContextType::eAsyncCompute     ? computeCopy :
+            type == RHICommandContextType::eTransfer && !shared ? transferCopy :
+                                                                  graphicsCopy;
     }
 };
 } // namespace
@@ -1326,6 +1393,39 @@ namespace zen::rc
 {
 struct RDGSubmissionTestAccess
 {
+    static bool LoggedAsyncCompute(const RenderDevice& device)
+    {
+        return device.m_loggedAsyncComputeSubmission;
+    }
+
+    static RHICompletionSet FrameCompletion(const RenderDevice& device)
+    {
+        return device.m_frames[ToIndex(GRenderFrameState.GetFrameSlot())].retirement.completion;
+    }
+
+    static RHIViewport* RecreateViewport(const RenderDevice& device)
+    {
+        return device.m_pRecreateViewport;
+    }
+
+    static void SetRecreateViewport(RenderDevice& device, RHIViewport* viewport)
+    {
+        device.m_pRecreateViewport = viewport;
+    }
+
+    static RenderSubmissionHistory& History(RenderDevice& device)
+    {
+        return device.m_submissionHistory;
+    }
+
+    static bool PrepareHistory(RenderDevice& device,
+                               const RenderGraph& graph,
+                               const RDGSchedule& schedule,
+                               RenderSubmissionUpdate& update)
+    {
+        return device.PrepareScheduledSubmissionHistory(graph, schedule, update);
+    }
+
     static ResourceStateTracker& Tracker(RenderDevice& device)
     {
         return device.m_rdgExecutor.GetResourceStateTracker();
@@ -1335,11 +1435,11 @@ struct RDGSubmissionTestAccess
                                               const RHIResource* resource)
     {
         RHISubmissionDependency result;
-        const HashMap<uint64_t, RHISubmissionDependency>::const_iterator found =
-            device.m_resourceSubmissions.find(resource->GetStableId());
-        if (found != device.m_resourceSubmissions.end())
+        const RenderResourceHistory* history =
+            device.m_submissionHistory.Find(resource->GetStableId());
+        if (history != nullptr)
         {
-            result = found->second;
+            history->writer.point.Resolve(result);
         }
         return result;
     }
@@ -1354,7 +1454,7 @@ struct RDGSubmissionTestAccess
     {
         bool found = HasHistory(device.m_rdgExecutor.GetResourceStateTracker(), id) ||
             HasHistory(device.m_confirmedResourceState, id) ||
-            device.m_resourceSubmissions.contains(id) ||
+            device.m_submissionHistory.Find(id) != nullptr ||
             device.m_rdgExecutor.GetMetrics().m_validator.HasState(id);
         for (const RenderDevice::PendingFrame& pending : device.m_pendingFrames)
         {
@@ -1381,18 +1481,23 @@ protected:
     }
 
     void InitializeDevice(RHIViewport* viewport,
-                          uint32_t frameCount    = 2,
-                          RHIExecutionMode mode  = RHIExecutionMode::eInline,
-                          bool asyncDependencies = false)
+                          uint32_t frameCount        = 2,
+                          RHIExecutionMode mode      = RHIExecutionMode::eInline,
+                          bool asyncDependencies     = false,
+                          AsyncComputeMode asyncMode = RenderConfig::GetInstance().asyncComputeMode,
+                          RHIQueueCapabilities queues          = {},
+                          RHIQueueCopyCapabilities computeCopy = {false, true, true, {1, 1, 1}})
     {
         destroyed.clear();
         reflectedShaderInfos.clear();
         textureFiles.clear();
-        sceneInputs            = {};
-        rhi                    = ZEN_NEW() TestRHI();
-        rhi->asyncDependencies = asyncDependencies;
-        GDynamicRHI            = rhi;
-        device                 = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode);
+        sceneInputs                      = {};
+        rhi                              = ZEN_NEW() TestRHI();
+        rhi->asyncDependencies           = asyncDependencies;
+        rhi->submissionQueueCapabilities = queues;
+        rhi->computeCopy                 = computeCopy;
+        GDynamicRHI                      = rhi;
+        device = ZEN_NEW() RenderDevice(RHIAPIType::eVulkan, frameCount, mode, asyncMode);
         device->Init(viewport);
     }
 
@@ -2013,6 +2118,7 @@ TEST_F(RenderCoreTest, TextureExtractionRetainsOneOwnerAndNeverReturnsToTransien
     const size_t transfer = rhi->Index(RHICommandContextType::eTransfer);
     ++rhi->submitted[graphics];
     ++rhi->submitted[transfer];
+    device->FlushRHIThread(); // Publish simulated native acceptance through the facade.
     output.Reset();
     device->CollectCompletedResources();
 
@@ -2649,6 +2755,7 @@ TEST_F(RenderCoreTest, RecordedGraphRetainsImportsBeforeCompilationAndReleasesOn
     // Include both queues in retirement and prove that completion of only one is insufficient.
     rhi->submitted[graphics] = std::max(rhi->submitted[graphics], rhi->completed[graphics]) + 1;
     rhi->submitted[transfer] = std::max(rhi->submitted[transfer], rhi->completed[transfer]) + 1;
+    device->FlushRHIThread(); // Publish simulated native acceptance through the facade.
 
     ASSERT_TRUE(graph.Reset());
 
@@ -3070,9 +3177,10 @@ public:
         PrepareTextures();
     }
 
-    bool BeginVolumeUpdate(RenderGraph& graph)
+    bool BeginVolumeUpdate(RenderGraph& graph,
+                           RDGQueuePreference preference = RDGQueuePreference::eDefault)
     {
-        return BeginVoxelization(graph);
+        return BeginVoxelization(graph, preference);
     }
 
     bool ProducesRadianceInputs() const override
@@ -3686,11 +3794,11 @@ TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
     ASSERT_EQ(manager.Allocate(5, 4, &first), StagingFlushAction::eNone);
     ASSERT_EQ(manager.Allocate(5, 4, &second), StagingFlushAction::eNone);
     EXPECT_EQ(second.offset, 8u);
-    manager.Release(first, {2, 3});
+    manager.Release(first, {{3, 0, 2}});
     rhi->completed = {3, 0, 2};
     StagingAllocation blocked;
     EXPECT_EQ(manager.Allocate(16, 4, &blocked), StagingFlushAction::eFlush);
-    manager.Release(second, {2, 4});
+    manager.Release(second, {{4, 0, 2}});
     EXPECT_EQ(manager.Allocate(16, 4, &blocked), StagingFlushAction::eFlush);
     rhi->completed[0] = 4;
     EXPECT_EQ(manager.Allocate(16, 4, &blocked), StagingFlushAction::eNone);
@@ -3805,7 +3913,7 @@ TEST_F(RenderCoreTest, CancelledUploadsPreserveSharedStagingUsersAndBothCompleti
     StagingAllocation submitted, unrelated;
     ASSERT_EQ(manager.Allocate(16, 16, &submitted), StagingFlushAction::eNone);
 
-    manager.Release(submitted, {5, 7});
+    manager.Release(submitted, {{7, 0, 5}});
 
     ASSERT_EQ(manager.Allocate(16, 16, &unrelated), StagingFlushAction::eNone);
 
@@ -9489,7 +9597,7 @@ TEST_F(RenderCoreTest, NonOverlappingBuffersReuseStorageAndReplayWithIndependent
     }
 }
 
-TEST_F(RenderCoreTest, PoolBudgetEvictsIdleAllocationsThroughBothQueueCompletionGates)
+TEST_F(RenderCoreTest, PoolBudgetDoesNotReuseAllocationsBeforeEveryQueueCompletes)
 {
     CreateTestShaderProgram(device, "intent");
     RenderGraph graph("bounded_pool");
@@ -9522,6 +9630,7 @@ TEST_F(RenderCoreTest, PoolBudgetEvictsIdleAllocationsThroughBothQueueCompletion
 
         // Conservatively protect retirement against both submitted queues.
         ++rhi->submitted[rhi->Index(RHICommandContextType::eTransfer)];
+        device->FlushRHIThread(); // Publish the simulated transfer submission.
 
         ASSERT_TRUE(graph.Reset());
 
@@ -9532,10 +9641,10 @@ TEST_F(RenderCoreTest, PoolBudgetEvictsIdleAllocationsThroughBothQueueCompletion
     }
 
     RDGPoolStats stats = resources->GetPoolStats();
-    EXPECT_EQ(stats.hits, 1u);
-    EXPECT_EQ(stats.misses, 2u);
+    EXPECT_EQ(stats.hits, 0u);
+    EXPECT_EQ(stats.misses, 3u);
     EXPECT_EQ(stats.evictions, 1u);
-    EXPECT_EQ(stats.availableBytes, 32u);
+    EXPECT_EQ(stats.availableBytes, 64u);
     EXPECT_EQ(stats.retiringBytes, 64u);
     ASSERT_EQ(resources->GetPoolBuckets().size(), 1u);
     EXPECT_EQ(resources->GetPoolBuckets()[0].bufferSize, 32u);
@@ -9976,6 +10085,7 @@ TEST_P(RDGPoolFrameCountTest, ZeroBudgetRetirementProtectsEveryFrameSlot)
 
         ids.push_back(DescribeResource(resources, texture).physicalStableId);
         ++rhi->submitted[rhi->Index(RHICommandContextType::eTransfer)];
+        device->FlushRHIThread(); // Publish the simulated transfer submission.
 
         ASSERT_TRUE(graph.Reset());
         EXPECT_EQ(resources->GetPoolStats().availableBytes, 0u);
@@ -10017,7 +10127,7 @@ TEST_P(RDGPoolFrameCountTest, DISABLED_FrameSlotWaitScopeBenchmark)
 {
     for (uint32_t frame = 0; frame < GetParam(); ++frame)
     {
-        rhi->submitted = {uint64_t(frame + 1), 100, uint64_t(frame + 1)};
+        rhi->submitted = {uint64_t(frame + 1), uint64_t(frame + 100), uint64_t(frame + 1)};
         device->NextFrame();
     }
 
@@ -10027,7 +10137,7 @@ TEST_P(RDGPoolFrameCountTest, DISABLED_FrameSlotWaitScopeBenchmark)
               << " completed_transfer=" << rhi->completed[2] << '\n';
 }
 
-TEST_P(RDGPoolFrameCountTest, FrameSlotWaitLeavesNewerSubmissionsAndComputePending)
+TEST_P(RDGPoolFrameCountTest, FrameSlotWaitIncludesComputeAndLeavesNewerSubmissionsPending)
 {
     TestBuffer* oldest      = Buffer();
     TestBuffer* newer       = Buffer();
@@ -10036,7 +10146,7 @@ TEST_P(RDGPoolFrameCountTest, FrameSlotWaitLeavesNewerSubmissionsAndComputePendi
 
     for (uint32_t frame = 0; frame < GetParam(); ++frame)
     {
-        rhi->submitted = {uint64_t(frame + 1), 100, uint64_t(frame + 1)};
+        rhi->submitted = {uint64_t(frame + 1), uint64_t(frame + 100), uint64_t(frame + 1)};
 
         if (frame == 0)
         {
@@ -10052,10 +10162,14 @@ TEST_P(RDGPoolFrameCountTest, FrameSlotWaitLeavesNewerSubmissionsAndComputePendi
     }
 
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
-    EXPECT_EQ(rhi->completed, (std::array<uint64_t, 3>{1, 0, 1}));
-    ASSERT_EQ(rhi->submissionWaits.size(), 2u);
+    const SmallVector<uint64_t, 3> expectedCompleted{1, 100, 1};
+    EXPECT_TRUE(std::equal(rhi->completed.begin(), rhi->completed.end(), expectedCompleted.begin(),
+                           expectedCompleted.end()));
+    ASSERT_EQ(rhi->submissionWaits.size(), 3u);
     EXPECT_EQ(rhi->submissionWaits[0], (std::pair{RHICommandContextType::eGraphics, uint64_t(1)}));
-    EXPECT_EQ(rhi->submissionWaits[1], (std::pair{RHICommandContextType::eTransfer, uint64_t(1)}));
+    EXPECT_EQ(rhi->submissionWaits[1],
+              (std::pair{RHICommandContextType::eAsyncCompute, uint64_t(100)}));
+    EXPECT_EQ(rhi->submissionWaits[2], (std::pair{RHICommandContextType::eTransfer, uint64_t(1)}));
     EXPECT_TRUE(destroyed.contains(oldestId));
     EXPECT_FALSE(destroyed.contains(newerId));
 }
@@ -10117,7 +10231,7 @@ TEST_F(RenderCoreTest, StagingWaitsForItsOwnBlocksAndKeepsUnsubmittedAllocations
     StagingAllocation submitted, unsubmitted, reuse;
     ASSERT_EQ(manager.Allocate(16, 4, &submitted), StagingFlushAction::eNone);
     ASSERT_EQ(manager.Allocate(16, 4, &unsubmitted), StagingFlushAction::eNone);
-    manager.Release(submitted, {3, 2});
+    manager.Release(submitted, {{2, 0, 3}});
     rhi->submitted = {10, 100, 20};
     ASSERT_TRUE(device->ResolveStagingFlushAction(StagingFlushAction::eFlush, &manager));
     EXPECT_EQ(rhi->completed, (std::array<uint64_t, 3>{2, 0, 3}));
@@ -10136,7 +10250,7 @@ TEST_F(RenderCoreTest, FailedStagingWaitDoesNotReuseTheBlock)
     StagingBufferManager manager(16, 16);
     StagingAllocation allocation, blocked;
     ASSERT_EQ(manager.Allocate(16, 4, &allocation), StagingFlushAction::eNone);
-    manager.Release(allocation, {1, 1});
+    manager.Release(allocation, {{1, 0, 1}});
     rhi->submitted          = {3, 0, 3};
     rhi->failSubmissionWait = true;
     EXPECT_FALSE(device->ResolveStagingFlushAction(StagingFlushAction::eFlush, &manager));
@@ -10311,6 +10425,26 @@ struct RDGExecutionPlanTestAccess
         return executor.ExecutePrepared(plan, &commands);
     }
 
+    static bool ExecuteGroups(RDGExecutor& executor,
+                              Plan& plan,
+                              VectorView<RHICommandList*> lists,
+                              VectorView<const RDGExternalQueueState> external = {})
+    {
+        return executor.ExecutePreparedGroups(plan, lists, external);
+    }
+
+    static void AcquireGroups(RenderDevice& device,
+                              const RDGSchedule& schedule,
+                              HeapVector<RHICommandList*>& lists)
+    {
+        device.AcquireScheduledCmdLists(schedule, lists);
+    }
+
+    static void ReleaseGroups(RenderDevice& device, VectorView<RHICommandList*> lists)
+    {
+        device.ReleaseScheduledCmdLists(lists);
+    }
+
     static RDGGraphicsPass* Graphics(RenderGraph& graph)
     {
         return graph.m_compiledGfxPasses.empty() ? nullptr : graph.m_compiledGfxPasses[0];
@@ -10326,6 +10460,16 @@ struct RDGExecutionPlanTestAccess
         return graph.m_idleGfxPasses.size() + graph.m_idleComputePasses.size();
     }
 
+    static const RDGCompiledNode& CompiledNode(const RenderGraph& graph, size_t index = 0)
+    {
+        return graph.m_compiledNodes[index];
+    }
+
+    static const RDGPassNode& RecordedNode(const RenderGraph& graph, size_t index = 0)
+    {
+        return *static_cast<const RDGPassNode*>(graph.m_nodes[index]);
+    }
+
     static size_t IdleBytes(const RenderGraph& graph)
     {
         return graph.m_idlePassBytes;
@@ -10334,6 +10478,7 @@ struct RDGExecutionPlanTestAccess
     template <typename Pass> static void CheckIdlePass(Pass* pass, size_t& bytes)
     {
         EXPECT_EQ(pass->pPipeline, nullptr);
+        EXPECT_EQ(pass->queuePreference, RDGQueuePreference::eDefault);
         EXPECT_TRUE(pass->passTag.ToString().empty());
         EXPECT_FALSE(pass->shaderParameters.HasAnyParameter());
         EXPECT_TRUE(pass->indirectBindings.empty());
@@ -11558,3 +11703,13 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 
 #include "RHIThreadingTests.inl"
 #include "AsyncUploadTests.inl"
+
+#include "AsyncComputeLifetimeTests.inl"
+#include "RDGQueuePreferenceTests.inl"
+#include "RDGScheduleTests.inl"
+#include "RDGGroupRecordingTests.inl"
+#include "RDGSubmissionHistoryTests.inl"
+
+#include "RDGScheduledSubmissionTests.inl"
+#include "RDGSubmissionFailureTests.inl"
+#include "VoxelAsyncComputeTests.inl"

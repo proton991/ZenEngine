@@ -5,6 +5,7 @@
 #include "Templates/FlatHashMap.h"
 #include "Templates/NameID.h"
 #include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHICommandListExecutor.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 
@@ -429,7 +430,7 @@ private:
 
     Allocation* AllocAllocation();
 
-    void CreatePhysicalResource(Allocation* pResource);
+    void CreatePhysicalResource(Allocation* pResource, RenderDevice& device);
 
     // Acquire pooled RHIResource from pool, return null on miss
     bool TryAcquirePooledTexture(Allocation* pResource);
@@ -450,24 +451,26 @@ private:
         RHIResource* resource{nullptr};
         uint64_t bytes{0};
         uint64_t lastUsedBuild{0};
-        uint64_t graphicsSerial{0};
-        uint64_t transferSerial{0};
+        RHIRetirementRequirement retirement;
     };
     struct RetiredPoolBytes
     {
-        uint64_t bytes, graphicsSerial, transferSerial;
+        uint64_t bytes;
+        RHIRetirementRequirement retirement;
     };
 
     static uint64_t EstimateBytes(const Allocation& resource);
 
-    static bool InFlight(uint64_t graphics, uint64_t transfer);
+    bool InFlight(const RHIRetirementRequirement& requirement) const;
+    RHIRetirementRequirement CaptureRetirement() const;
+    RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries);
 
     void RetirePoolEntry(const PoolEntry& entry);
 
     RDGPoolConfig m_poolConfig;
     uint64_t m_poolHits{0}, m_poolMisses{0}, m_poolEvictions{0};
 
-    template <typename Pool> static void CountPoolStats(const Pool& pool, RDGPoolStats& stats);
+    template <typename Pool> void CountPoolStats(const Pool& pool, RDGPoolStats& stats) const;
 
     template <typename Pool>
     static void CollectPoolEntries(Pool& pool, HeapVector<PoolEntry*>& candidates);

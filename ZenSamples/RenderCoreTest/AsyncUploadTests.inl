@@ -224,9 +224,8 @@ TEST_P(AsyncUploadTest, FrameSubmissionKeepsUploadWaitAndOrdersLaterTransfer)
     ASSERT_EQ(rhi->gpuDependencies.size(), 2u);
     EXPECT_EQ(rhi->gpuDependencies[1].consumer, RHICommandContextType::eTransfer);
     EXPECT_EQ(rhi->gpuDependencies[1].producer.queue, RHICommandContextType::eGraphics);
-    // Queued frames resolve their serial on RHI after all earlier frame work is submitted.
-    const uint64_t expected =
-        GetParam() == RHIExecutionMode::eThreaded ? graphicsSerial : graphicsSerial - 1;
+    // Both modes reference the exact resource producer, excluding the later presentation copy.
+    const uint64_t expected = graphicsSerial - 1;
     EXPECT_EQ(rhi->gpuDependencies[1].producer.serial, expected);
     EXPECT_TRUE(rhi->submissionWaits.empty());
     device->DestroyBuffer(source);

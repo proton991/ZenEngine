@@ -323,8 +323,9 @@ TEST_P(VulkanAsyncComputeIntegrationTest, NativeAllocationsIncludeAllPermittedFa
     GVkMemAllocator   = observedAllocator.get();
     for (bool transfer : {false, true})
     {
-        Buffer(RHIBufferUsageFlagBits::eStorageBuffer, transfer);
-        Texture(transfer);
+        EXPECT_TRUE(
+            Buffer(RHIBufferUsageFlagBits::eStorageBuffer, transfer)->IsAsyncComputeAccessible());
+        EXPECT_TRUE(Texture(transfer)->IsAsyncComputeAccessible());
     }
     EXPECT_GE(bufferCreateCalls, 2u);
     EXPECT_GE(imageCreateCalls, 2u);
@@ -371,6 +372,169 @@ TEST_P(VulkanAsyncComputeIntegrationTest, TransferResourcesSurviveTransferComput
     ASSERT_TRUE(Handoff(compute, graphics));
     Dispatch(graphics, data, texture, output, false);
     Readback(graphics, output, 10, 54);
+}
+
+struct ConsumerTransitionObserver
+{
+    static inline PFN_vkCmdPipelineBarrier original;
+    static inline uint32_t observed;
+
+    static VKAPI_ATTR void VKAPI_CALL Barrier(VkCommandBuffer commands,
+                                              VkPipelineStageFlags source,
+                                              VkPipelineStageFlags destination,
+                                              VkDependencyFlags flags,
+                                              uint32_t memoryCount,
+                                              const VkMemoryBarrier* memory,
+                                              uint32_t bufferCount,
+                                              const VkBufferMemoryBarrier* buffers,
+                                              uint32_t imageCount,
+                                              const VkImageMemoryBarrier* images)
+    {
+        for (uint32_t i = 0; i < imageCount; ++i)
+        {
+            EXPECT_EQ(images[i].srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+            EXPECT_EQ(images[i].dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+            if (images[i].oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL &&
+                images[i].newLayout == VK_IMAGE_LAYOUT_GENERAL)
+            {
+                ++observed;
+                EXPECT_EQ(source, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                EXPECT_EQ(destination, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                EXPECT_EQ(images[i].srcAccessMask, 0u);
+                EXPECT_EQ(images[i].dstAccessMask,
+                          VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+            }
+        }
+        original(commands, source, destination, flags, memoryCount, memory, bufferCount, buffers,
+                 imageCount, images);
+    }
+};
+
+TEST_P(VulkanAsyncComputeIntegrationTest,
+       ConsumerTransitionAfterAcceptedProducerUsesLegalLocalScope)
+{
+    ConsumerTransitionObserver::original = vkCmdPipelineBarrier;
+    ConsumerTransitionObserver::observed = 0;
+    test::ScopedVulkanCall<PFN_vkCmdPipelineBarrier> observer(vkCmdPipelineBarrier,
+                                                              &ConsumerTransitionObserver::Barrier);
+    RHITextureCreateInfo info{};
+    info.type   = RHITextureType::e2D;
+    info.format = DataFormat::eR32UInt;
+    info.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage,
+                             RHITextureUsageFlagBits::eTransferDst,
+                             RHITextureUsageFlagBits::eColorAttachment);
+    VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(info));
+    textures.push_back(texture);
+    VulkanBuffer* data                        = Buffer(RHIBufferUsageFlagBits::eStorageBuffer);
+    VulkanBuffer* output                      = Buffer(RHIBufferUsageFlagBits::eStorageBuffer);
+    *reinterpret_cast<uint32_t*>(data->Map()) = 6;
+    data->Unmap();
+    FVulkanCommandListContext* graphics = Context(RHICommandContextType::eGraphics);
+    FVulkanCommandListContext* compute  = Context(RHICommandContextType::eAsyncCompute);
+    RHITextureTransition transition{};
+    transition.pTexture         = texture;
+    transition.subResourceRange = texture->GetSubResourceRange();
+    transition.oldUsage         = RHITextureUsage::eNone;
+    transition.newUsage         = RHITextureUsage::eTransferDst;
+    transition.oldAccessMode    = RHIAccessMode::eNone;
+    transition.newAccessMode    = RHIAccessMode::eReadWrite;
+    graphics->RHIAddTransitions(
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTopOfPipe),
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer), {}, {},
+        transition);
+    VkClearColorValue clear{};
+    clear.uint32[0]                     = 40;
+    const VkImageSubresourceRange range = texture->GetVkSubresourceRange();
+    vkCmdClearColorImage(graphics->GetCommandBuffer()->GetVkHandle(), texture->GetVkImage(),
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+    transition.oldUsage      = RHITextureUsage::eTransferDst;
+    transition.newUsage      = RHITextureUsage::eColorAttachment;
+    transition.oldAccessMode = RHIAccessMode::eReadWrite;
+    graphics->RHIAddTransitions(
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer),
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput), {},
+        {}, transition);
+    ASSERT_TRUE(Handoff(graphics, compute));
+    transition.oldUsage                = RHITextureUsage::eColorAttachment;
+    transition.newUsage                = RHITextureUsage::eStorage;
+    transition.hasSourceAccessOverride = true;
+    transition.sourceAccess.Clear();
+    compute->RHIAddTransitions(
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eAllCommands),
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eComputeShader), {}, {},
+        transition);
+    Dispatch(compute, data, texture, output, false);
+    Readback(compute, output, 11, 47);
+    EXPECT_EQ(ConsumerTransitionObserver::observed, 1u);
+}
+
+struct AliasSubmitObserver
+{
+    static inline PFN_vkQueueSubmit original;
+    static inline uint32_t waits;
+    static VKAPI_ATTR VkResult VKAPI_CALL Submit(VkQueue queue,
+                                                 uint32_t count,
+                                                 const VkSubmitInfo* submissions,
+                                                 VkFence fence)
+    {
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            waits += submissions[i].waitSemaphoreCount;
+        }
+        return original(queue, count, submissions, fence);
+    }
+};
+
+TEST_P(VulkanAsyncComputeIntegrationTest, NativeQueueAliasKeepsUploadBarriersWithoutSemaphoreWait)
+{
+    VulkanBuffer* data   = Buffer(RHIBufferUsageFlagBits::eStorageBuffer, true);
+    VulkanBuffer* upload = Buffer(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+    VulkanBuffer* output = Buffer(RHIBufferUsageFlagBits::eStorageBuffer);
+    VulkanTexture* image = Texture(true);
+    *reinterpret_cast<uint32_t*>(upload->Map()) = 40;
+    upload->Unmap();
+    // Two command pools/contexts on the same native compute queue. The producer records uploads.
+    FVulkanCommandListContext* producer = Context(RHICommandContextType::eAsyncCompute);
+    FVulkanCommandListContext* consumer = Context(RHICommandContextType::eAsyncCompute);
+    producer->RHIClearBuffer(data, 0, 8);
+    RHITextureTransition texture{};
+    texture.pTexture         = image;
+    texture.subResourceRange = image->GetSubResourceRange();
+    texture.oldUsage         = RHITextureUsage::eNone;
+    texture.newUsage         = RHITextureUsage::eTransferDst;
+    texture.newAccessMode    = RHIAccessMode::eReadWrite;
+    producer->RHIAddTransitions(
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTopOfPipe),
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer), {}, {}, texture);
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageExtent      = {1, 1, 1};
+    vkCmdCopyBufferToImage(producer->GetCommandBuffer()->GetVkHandle(), upload->GetVkBuffer(),
+                           image->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    ASSERT_TRUE(Submit(producer));
+    const RHISubmissionDependency dependency{
+        RHICommandContextType::eAsyncCompute,
+        session->rhi.GetLastSubmittedSerial(RHICommandContextType::eAsyncCompute)};
+    ASSERT_TRUE(session->rhi.PrepareSubmissionDependencies(consumer, dependency));
+    RHIBufferTransition buffer{};
+    buffer.pBuffer        = data;
+    buffer.oldUsage       = RHIBufferUsage::eTransferDst;
+    buffer.newUsage       = RHIBufferUsage::eStorageBuffer;
+    buffer.oldAccessMode  = RHIAccessMode::eReadWrite;
+    buffer.newAccessMode  = RHIAccessMode::eRead;
+    texture.oldUsage      = RHITextureUsage::eTransferDst;
+    texture.newUsage      = RHITextureUsage::eStorage;
+    texture.oldAccessMode = RHIAccessMode::eReadWrite;
+    consumer->RHIAddTransitions(
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer),
+        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eComputeShader), {}, buffer,
+        texture);
+    Dispatch(consumer, data, image, output, false);
+    AliasSubmitObserver::original = vkQueueSubmit;
+    AliasSubmitObserver::waits    = 0;
+    test::ScopedVulkanCall<PFN_vkQueueSubmit> observer(vkQueueSubmit, &AliasSubmitObserver::Submit);
+    Readback(consumer, output, 5, 47);
+    EXPECT_EQ(AliasSubmitObserver::waits, 0u);
 }
 
 INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanAsyncComputeIntegrationTest, testing::Bool());

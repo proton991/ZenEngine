@@ -72,7 +72,8 @@ public:
 
 protected:
     // Start every initial/repeated voxelization from empty accumulation volumes.
-    bool BeginVoxelization(RenderGraph& graph);
+    bool BeginVoxelization(RenderGraph& graph,
+                           RDGQueuePreference queuePreference = RDGQueuePreference::eDefault);
 
     virtual void PrepareTextures();
 

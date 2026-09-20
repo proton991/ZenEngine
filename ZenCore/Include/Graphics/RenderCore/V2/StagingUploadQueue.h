@@ -24,22 +24,7 @@ struct StagingAllocation
     uint32_t size{0};
 };
 
-struct StagingCompletion
-{
-    uint64_t transferSerial{0};
-    uint64_t graphicsSerial{0};
-
-    void Extend(const StagingCompletion& other)
-    {
-        transferSerial = std::max(transferSerial, other.transferSerial);
-        graphicsSerial = std::max(graphicsSerial, other.graphicsSerial);
-    }
-
-    bool IsCompleteAt(uint64_t completedTransfer, uint64_t completedGraphics) const
-    {
-        return completedTransfer >= transferSerial && completedGraphics >= graphicsSerial;
-    }
-};
+using StagingCompletion = RHICompletionSet;
 
 // Append-only blocks. Both unsubmitted allocations and submitted GPU work prevent reuse.
 class StagingBufferManager

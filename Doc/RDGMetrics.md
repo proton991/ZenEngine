@@ -14,8 +14,8 @@ default. Transfer nodes in mixed graphs also contribute to totals.
 ## Configuration
 
 ```cpp
-auto& metrics = renderDevice.GetRDGMetrics();
-auto options = metrics.GetOptions();
+zen::rc::RDGMetrics& metrics = renderDevice.GetRDGMetrics();
+zen::rc::RDGMetricsOptions options = metrics.GetOptions();
 options.logging.sampleEvery = 120;
 options.logging.minInterval = std::chrono::milliseconds(5000);
 options.validate = true;
@@ -23,6 +23,8 @@ options.nodeTimings = false;
 options.preparationTimings = false;
 options.maxNodeDetails = 32;
 options.maxDiagnosticDetails = 16;
+options.maxSubmissionDetails = 32;
+options.maxDependencyDetails = 128;
 options.includeOptimizationDetails = false; // Keep optimization counts; omit per-node entries.
 metrics.Configure(options);
 
@@ -55,7 +57,7 @@ metrics.SetSink([](const zen::rc::RDGMetricsSnapshot& sample) {
 
 // Keep the last structured sample, but perform no log I/O.
 metrics.SetSink({});
-const auto& last = metrics.GetLastSnapshot();
+const zen::rc::RDGMetricsSnapshot& last = metrics.GetLastSnapshot();
 ```
 
 The last snapshot survives graph rebuilds and graph destruction; it owns its labels
@@ -91,6 +93,10 @@ sampled graph**. They are not totals or averages across unsampled frames.
 | `pipeline_cpu_us(key,lookup,create)` | Optional CPU attribution within pass setup's `pipeline` time. Key construction, cache lookup/equality/LRU update, and miss-side creation are measured separately. Creation includes specialization shader preparation and the RHI creation call; it excludes cache insertion/eviction and GPU execution. |
 | `precompiled` | The graph was already compiled before this execution began preparing. First device execution normally reports false; replay or an earlier explicit `Prepare()` reports true. |
 | `execute` | CPU graph command recording and state tracking, including sampled diagnostics; excludes report formatting, sink I/O, submission, and GPU work. |
+
+Queue captures include each submission group's logical queue, backend-neutral native queue equivalence ID, conservative wait-stage mask, and producer references. `producer_group` names a group in this graph; `producer_external` names a submission-history reference supplied for this execution. `producer_queue` identifies its logical queue. External IDs are scoped to one capture and are not native serials. `semaphore_boundary` denotes a foreign native queue dependency; `queue_order/barrier` denotes ordering on a shared native queue with ordinary resource barriers as required. Node details retain queue preference, eligibility/fallback reason, planned queue, and group ID.
+
+These details use the prepared schedule, including cross-frame writer/reader dependencies, rather than the earlier compile-only schedule. `maxSubmissionDetails` and `maxDependencyDetails` bound capture output without changing the executed schedule; omitted counts remain visible. `submission_cpu_us` measures CPU handoff and backpressure separately from recording. It is not GPU duration or graphics wait time. GPU timestamp/overlap measurements remain outside this RDG collector. Step 9's Nsight Graphics captures now verify dedicated compute execution, but show no overlap in the captured repeated updates; first-load timing and full performance acceptance remain open. See [Nsight verification](AsyncComputeNsightVerification.md). See [Step 9 verification](AsyncComputeStep9Verification.md).
 
 Phase 6B moved automatic preparation into this timing. Compare end-to-end CPU measurements across the change; the old `compile` counter omitted the device’s preliminary preparation and queue-selection work.
 

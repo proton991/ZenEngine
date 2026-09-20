@@ -5,10 +5,12 @@
 #include "Memory/LinearAllocator.h"
 #include "Memory/Memory.h"
 #include "Templates/HeapVector.h"
+#include "Templates/SmallVector.h"
 #include "Templates/VectorView.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
+#include <algorithm>
 #include "Utils/RefCountPtr.h"
 #include "Templates/FlatHashMap.h"
 
@@ -66,6 +68,72 @@ enum class RHICommandContextType : uint32_t
     eAsyncCompute = 1,
     eTransfer     = 2,
     eMax          = 3
+};
+
+// Serial values belong to their logical queue's timeline, even when native queues alias.
+struct RHICompletionSet
+{
+    static constexpr size_t kQueueCount        = static_cast<size_t>(RHICommandContextType::eMax);
+    SmallVector<uint64_t, kQueueCount> serials = SmallVector<uint64_t, kQueueCount>(kQueueCount);
+
+    uint64_t Get(RHICommandContextType queue) const
+    {
+        return serials[static_cast<size_t>(queue)];
+    }
+
+    void Extend(RHICommandContextType queue, uint64_t serial)
+    {
+        uint64_t& required = serials[static_cast<size_t>(queue)];
+        required           = std::max(required, serial);
+    }
+
+    void Extend(const RHICompletionSet& other)
+    {
+        for (size_t i = 0; i < kQueueCount; ++i)
+        {
+            serials[i] = std::max(serials[i], other.serials[i]);
+        }
+    }
+
+    bool IsCompleteAt(const RHICompletionSet& completed) const
+    {
+        bool ready = true;
+        for (size_t i = 0; i < kQueueCount; ++i)
+        {
+            ready &= completed.serials[i] >= serials[i];
+        }
+        return ready;
+    }
+
+    void Reset()
+    {
+        serials.resize(kQueueCount);
+        std::fill(serials.begin(), serials.end(), 0);
+    }
+};
+
+struct RHIQueueCapabilities
+{
+    bool computeSupported{false};
+    bool asyncSubmissionDependencies{false};
+    // Equal IDs identify one native queue. They do not identify a shared serial timeline.
+    SmallVector<uint32_t, RHICompletionSet::kQueueCount> queueIds =
+        SmallVector<uint32_t, RHICompletionSet::kQueueCount>(RHICompletionSet::kQueueCount);
+
+    bool AreQueuesShared(RHICommandContextType first, RHICommandContextType second) const
+    {
+        const size_t firstIndex  = static_cast<size_t>(first);
+        const size_t secondIndex = static_cast<size_t>(second);
+        return firstIndex < queueIds.size() && secondIndex < queueIds.size() &&
+            queueIds[firstIndex] == queueIds[secondIndex];
+    }
+
+    bool SupportsAsyncCompute() const
+    {
+        return computeSupported && asyncSubmissionDependencies &&
+            !AreQueuesShared(RHICommandContextType::eGraphics,
+                             RHICommandContextType::eAsyncCompute);
+    }
 };
 
 struct RHISubmissionDependency

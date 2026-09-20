@@ -28,6 +28,28 @@ public:
         GRHIFrameState.Advance();
     }
 
+    RHICompletionSet GetSubmittedCompletion() const
+    {
+        RHICompletionSet result;
+        for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
+        {
+            const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
+            result.Extend(queue, GetLastSubmittedSerial(queue));
+        }
+        return result;
+    }
+
+    RHICompletionSet GetCompletedCompletion()
+    {
+        RHICompletionSet result;
+        for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
+        {
+            const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
+            result.Extend(queue, GetLastCompletedSerial(queue));
+        }
+        return result;
+    }
+
     virtual IRHICommandContext* GetCommandContext(RHICommandContextType contextType) = 0;
 
     virtual IRHICommandContext* GetTransferCommandContext() = 0;
@@ -148,6 +170,11 @@ public:
     }
 
     virtual bool IsTransferQueueSharedWithGraphics() const = 0;
+
+    virtual RHIQueueCapabilities GetQueueCapabilities() const
+    {
+        return {};
+    }
 
     virtual bool SupportsAsyncSubmissionDependencies() const
     {

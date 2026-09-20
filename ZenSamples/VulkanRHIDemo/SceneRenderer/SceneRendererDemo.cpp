@@ -129,10 +129,26 @@ void SceneRendererDemo::RunSmokeStep(uint32_t frame)
         glfwPollEvents();
         glfwRestoreWindow(m_pWindow->GetHandle());
     }
+    // Consecutive updates exercise overwrite dependencies while previous draws are in flight.
+    // Also update after returning from PBR and on both sides of resize/restore.
+    if (frame == 0 || frame == 2 || frame == 3 || frame == 8 || frame == 11 || frame == 12 ||
+        frame == 21 || frame == 28)
+    {
+        m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
+        m_renderDevice->GetRDGMetrics().RequestCapture();
+        LOGI("Smoke voxel update: frame={}", frame);
+    }
 }
 
 bool SceneRendererDemo::Run(uint32_t frameLimit, bool smokeTest)
 {
+    if (smokeTest)
+    {
+        rc::RDGMetricsOptions options = m_renderDevice->GetRDGMetrics().GetOptions();
+        options.includeTransferNodes  = true;
+        options.maxNodeDetails        = 64;
+        m_renderDevice->GetRDGMetrics().Configure(options);
+    }
     uint32_t frames       = 0;
     double renderThreadUs = 0;
     while (!m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit) &&
@@ -204,6 +220,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit, bool smokeTest)
                 .count();
     }
     m_renderDevice->FlushRHIThread();
+    if (smokeTest)
+    {
+        LOGI("Smoke queue submissions: graphics={} compute={} transfer={}",
+             GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics),
+             GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eAsyncCompute),
+             GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer));
+    }
     const RHIThreadMetrics metrics = m_renderDevice->GetRHIThreadMetrics();
     LOGI(
         "Render threads: mode={} frames={} render_wall_us={} rhi_cpu_us={} queue_wait_us={} batches={} peak_pending={}",
@@ -234,6 +257,11 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             zen::rc::RenderConfig::GetInstance().rhiExecutionMode = argument.back() == '1' ?
                 zen::RHIExecutionMode::eThreaded :
                 zen::RHIExecutionMode::eInline;
+        }
+        else if (argument.starts_with("--async-compute="))
+        {
+            valid = zen::rc::ParseAsyncComputeOverride(
+                argument, zen::rc::RenderConfig::GetInstance().asyncComputeMode);
         }
         else if (argument == "--smoke-test")
         {
@@ -276,7 +304,8 @@ int main(int argc, char** pArgv)
     }
     else
     {
-        LOGE("Usage: scene_renderer_demo [--rhi-thread=0|1] [--frames=N] [--smoke-test]");
+        LOGE(
+            "Usage: scene_renderer_demo [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--smoke-test]");
     }
     return result;
 }

@@ -1211,11 +1211,6 @@ void FVulkanCommandListContext::RHIAddTransitions(
     VectorView<RHIBufferTransition> bufferTransitions,
     VectorView<RHITextureTransition> textureTransitions)
 {
-    if (memoryTransitions.empty() && bufferTransitions.empty() && textureTransitions.empty())
-    {
-        return;
-    }
-
     VulkanPipelineBarrier barrier;
     bool hasBarrier = false;
 
@@ -1243,11 +1238,9 @@ void FVulkanCommandListContext::RHIAddTransitions(
     {
         VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(textureTransition.pTexture);
 
-        VkAccessFlags srcAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
-            textureTransition.oldUsage, textureTransition.oldAccessMode));
+        VkAccessFlags srcAccess = ToVkAccessFlags(textureTransition.GetSourceAccess());
         VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
             textureTransition.newUsage, textureTransition.newAccessMode));
-        srcAccess |= ToVkAccessFlags(textureTransition.additionalSrcAccess);
         VkImageLayout oldLayout =
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
         VkImageLayout newLayout =

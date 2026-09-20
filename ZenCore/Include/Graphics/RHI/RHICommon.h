@@ -1253,6 +1253,23 @@ enum class RHIPipelineStageFlagBits : uint32_t
     eMax                          = 0x7FFFFFFF
 };
 
+inline bool RHIQueueSupportsStages(const RHIQueueCopyCapabilities& queue,
+                                   BitField<RHIPipelineStageFlagBits> stages)
+{
+    using Stage     = RHIPipelineStageFlagBits;
+    int64_t allowed = int64_t(Stage::eTopOfPipe) | int64_t(Stage::eBottomOfPipe) |
+        int64_t(Stage::eHost) | int64_t(Stage::eAllCommands) | int64_t(Stage::eTransfer);
+    if (queue.compute)
+    {
+        allowed |= int64_t(Stage::eComputeShader) | int64_t(Stage::eDrawIndirect);
+    }
+    if (queue.graphics)
+    {
+        allowed |= ((int64_t(1) << 11) - 1) | int64_t(Stage::eAllGraphics);
+    }
+    return (int64_t(stages) & ~allowed) == 0;
+}
+
 inline BitField<RHIAccessFlagBits> RHITextureUsageToAccessFlagBits(RHITextureUsage usage,
                                                                    RHIAccessMode mode)
 {
@@ -1441,6 +1458,20 @@ struct RHITextureTransition
 
     // Earlier writes may need visibility even when oldUsage describes a later reader/layout.
     BitField<RHIAccessFlagBits> additionalSrcAccess;
+
+    // Layout and source memory scope can belong to different queues. After a validated
+    // semaphore wait, use only the remaining local accesses (possibly empty).
+    bool hasSourceAccessOverride{false};
+    BitField<RHIAccessFlagBits> sourceAccess;
+
+    BitField<RHIAccessFlagBits> GetSourceAccess() const
+    {
+        return hasSourceAccessOverride ?
+            sourceAccess :
+            BitField<RHIAccessFlagBits>(
+                int64_t(RHITextureUsageToAccessFlagBits(oldUsage, oldAccessMode)) |
+                int64_t(additionalSrcAccess));
+    }
 };
 
 struct RHIBufferTransition

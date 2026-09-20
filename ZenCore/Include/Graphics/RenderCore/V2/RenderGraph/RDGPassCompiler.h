@@ -672,11 +672,26 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
 };
 
 struct RDGComputePassDesc : RDGPassDescBase
-{};
+{
+    RDGComputePassDesc& SetQueuePreference(RDGQueuePreference preference)
+    {
+        m_queuePreference = preference;
+        return *this;
+    }
+
+    RDGQueuePreference GetQueuePreference() const
+    {
+        return m_queuePreference;
+    }
+
+private:
+    RDGQueuePreference m_queuePreference{RDGQueuePreference::eDefault};
+};
 
 struct RDGTransferPassDesc
 {
     NameID passTag;
+    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
 };
 
 enum class RDGCompiledPassType : uint8_t
@@ -696,6 +711,7 @@ struct RDGCompiledPass
 
     RDGCompiledPassType type{RDGCompiledPassType::eNone};
     NameID passTag;
+    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
 };
 
 struct RDGShaderPass : RDGCompiledPass
@@ -744,7 +760,7 @@ struct RDGComputePass : RDGShaderPass
 
 struct RDGTransferPass : RDGCompiledPass
 {
-    bool requiresGraphicsQueue{false};
+    RDGTransferQueueCapabilities queueCapabilities;
 
     RDGTransferPass() : RDGCompiledPass(RDGCompiledPassType::eTransfer) {}
 };
@@ -925,6 +941,8 @@ public:
 
     RDGTransferPassCmdRecorder& NeverCull();
 
+    RDGTransferPassCmdRecorder& SetQueuePreference(RDGQueuePreference preference);
+
     RDGTransferPassCmdRecorder& CopyTexture(RHITexture* pSrcTexture,
                                             RHITexture* pDstTexture,
                                             VectorView<RHITextureCopyRegion> regions);
@@ -958,5 +976,7 @@ private:
     RDGPassNode* m_pNode{nullptr};
     uint64_t m_generation{0};
     HeapVector<std::function<void(RDGPassCmdEncoder&)>> m_ops;
+
+    void RestrictTransferQueues(bool graphicsOnly);
 };
 } // namespace zen::rc

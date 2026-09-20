@@ -1,8 +1,9 @@
 #pragma once
+#include <mutex>
 #include "DynamicRHI.h"
 #include "RHIThread.h"
 #include "Templates/SmallVector.h"
-#include <array>
+#include "Utils/UniquePtr.h"
 #include <atomic>
 #include <chrono>
 #include <future>
@@ -10,10 +11,73 @@
 
 namespace zen
 {
+enum class RHISubmissionPointStatus : uint8_t
+{
+    eInvalid,
+    ePending,
+    eAccepted,
+    eFailed
+};
+
+// Owned native-acceptance results. Queue assignments never change after construction.
+// RenderCore can retain a point while the ordered RHI worker fills its exact serial.
+class RHISubmissionState final : public RefCounted
+{
+public:
+    explicit RHISubmissionState(VectorView<const RHICommandContextType> queues);
+    bool Queue();
+    bool IsQueued() const;
+    bool Matches(uint32_t group, RHICommandContextType queue) const;
+    size_t GetGroupCount() const;
+    bool Accept(uint32_t group, RHISubmissionDependency submission);
+    bool Complete();
+    bool IsComplete() const;
+    void Fail();
+    RHISubmissionPointStatus Resolve(uint32_t group, RHISubmissionDependency& submission) const;
+
+private:
+    struct Group
+    {
+        RHISubmissionDependency submission;
+        bool accepted{false};
+    };
+    HeapVector<Group> m_groups;
+    mutable std::mutex m_mutex;
+    bool m_queued{false};
+    bool m_failed{false};
+    bool m_complete{false};
+};
+
+struct RHISubmissionPoint
+{
+    RHICommandContextType queue{RHICommandContextType::eGraphics};
+    uint64_t serial{0};
+    RefCountPtr<RHISubmissionState> state;
+    uint32_t group{UINT32_MAX};
+
+    bool IsValid() const;
+    bool operator==(const RHISubmissionPoint& other) const;
+    RHISubmissionPointStatus Resolve(RHISubmissionDependency& submission) const;
+};
+
+// Borrowed recording inputs. Handoff validates the complete schedule before detaching any list.
+struct RHISubmissionGroup
+{
+    RHICommandList* commands{nullptr};
+    HeapVector<RHISubmissionPoint> predecessors;
+};
+
+struct RHISubmissionGroupResult
+{
+    RHISubmissionResult submission{RHISubmissionResult::eRejected};
+    RHISubmissionDependency accepted;
+};
+
 struct RHIBatchResult
 {
     RHISubmissionResult submission{RHISubmissionResult::eRejected};
-    SmallVector<uint64_t, 3> serials{0, 0, 0};
+    RHICompletionSet completion;
+    HeapVector<RHISubmissionGroupResult> groups;
     bool presented{false};
     bool needsRecreation{false};
     double executionCPUUs{0};
@@ -36,19 +100,36 @@ private:
     RefCountPtr<RHIThreadEvent> m_completion;
 };
 
+// A native serial cannot protect work still waiting on the CPU submission queue.
+// Tickets own their result until it can replace that pending requirement.
+struct RHIRetirementRequirement
+{
+    RHICompletionSet completion;
+    HeapVector<RHISubmissionTicket> pending;
+
+    bool IsCompleteAt(const RHICompletionSet& completed) const;
+};
+
 // Both the command arena and referenced resources survive until GPU retirement.
 // This conservative first implementation can later recycle the arena after translation.
 struct RHICommandBatch : RefCounted
 {
-    RHICommandListPtr commands;
+    struct Group
+    {
+        RHICommandListPtr commands;
+        HeapVector<RHISubmissionPoint> predecessors;
+    };
+    HeapVector<Group> groups;
     RHICommandListPtr presentCommands;
     RHIResourceReferences resources;
+    RefCountPtr<RHISubmissionState> submissionState;
     RHIViewport* viewport{nullptr};
     std::promise<RHIBatchResult> completion;
     RefCountPtr<RHIThreadEvent> completionEvent{MakeRefCountPtr<RHIThreadEvent>()};
     std::chrono::steady_clock::time_point queuedAt;
     RHIBatchResult result;
     bool executionFinished{false};
+    bool endFrame{true};
 
     RHICommandBatch()                                  = default;
     RHICommandBatch(const RHICommandBatch&)            = delete;
@@ -77,11 +158,22 @@ public:
     RHICommandListExecutor(const RHICommandListExecutor&)            = delete;
     RHICommandListExecutor& operator=(const RHICommandListExecutor&) = delete;
 
-    RHISubmissionTicket SubmitFrame(RHICommandList& commands, RHIViewport* viewport);
+    RHISubmissionTicket SubmitFrame(RHICommandList& commands,
+                                    RHIViewport* viewport,
+                                    RefCountPtr<RHISubmissionState> state             = {},
+                                    VectorView<const RHISubmissionPoint> predecessors = {});
+    RHISubmissionTicket SubmitFrame(VectorView<const RHISubmissionGroup> groups,
+                                    RHIViewport* viewport,
+                                    RefCountPtr<RHISubmissionState> state = {});
+    // Synchronous CPU handoff for standalone graphs; does not end the native frame.
+    RHIBatchResult SubmitGroups(VectorView<const RHISubmissionGroup> groups,
+                                RefCountPtr<RHISubmissionState> state);
     RHISubmissionResult SubmitBatch(VectorView<RHICommandList*> lists);
     // Request one coalesced, nonblocking GPU progress/retirement sweep on RHI.
     // Completed serial getters remain snapshots; poll again if work is still in flight.
     void PollGPUProgress();
+    RHICompletionSet GetSubmittedSnapshot() const;
+    RHICompletionSet GetCompletedSnapshot() const;
     void FlushRHIThread();
     bool AreSubmissionsBlocked() const override;
     RHIThreadMetrics GetThreadMetrics() const;
@@ -103,6 +195,7 @@ public:
     NameID GetName() override;
     DataFormat GetSupportedDepthFormat() override;
     bool IsTransferQueueSharedWithGraphics() const override;
+    RHIQueueCapabilities GetQueueCapabilities() const override;
     bool SupportsAsyncSubmissionDependencies() const override;
     bool PrepareSubmissionDependencies(
         IRHICommandContext* context,
@@ -137,6 +230,20 @@ public:
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const override;
 
 private:
+    RHISubmissionTicket QueueBatch(VectorView<const RHISubmissionGroup> groups,
+                                   RHIViewport* viewport,
+                                   RefCountPtr<RHISubmissionState> state,
+                                   bool endFrame);
+    bool ValidateGroups(VectorView<const RHISubmissionGroup> groups,
+                        const RHISubmissionState& state) const;
+    bool ResolvePredecessors(RHICommandList& commands, VectorView<const RHISubmissionPoint> points);
+    bool ExecuteGroups(RHICommandBatch& batch);
+    struct QueueProgress
+    {
+        std::atomic<uint64_t> submitted{0};
+        std::atomic<uint64_t> completed{0};
+    };
+
     void ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch);
     RHISubmissionResult ExecuteBatch(VectorView<RHICommandList*> lists);
     void ExecuteBeginFrame();
@@ -148,7 +255,7 @@ private:
     void RefreshGPUProgress();
     void ExecutePollGPUProgress();
     void CollectCompletedBatches(bool force = false);
-    RHICommandListPtr AcquireRecordingCommandList();
+    RHICommandListPtr AcquireRecordingCommandList(RHICommandContextType queue);
     RHICommandListPtr AcquirePresentCommandList();
     void RecycleCommandLists(RHICommandBatch& batch);
 
@@ -164,15 +271,18 @@ private:
     DataFormat m_depthFormat;
     bool m_sharedTransfer;
     bool m_asyncSubmissionDependencies;
-    SmallVector<RHIQueueCopyCapabilities, 3> m_queueCapabilities;
-    // SmallVector relocation requires movable elements; atomic counters need fixed storage.
-    std::array<std::atomic<uint64_t>, 3> m_submitted{};
-    std::array<std::atomic<uint64_t>, 3> m_completed{};
+    const RHIQueueCapabilities m_submissionQueueCapabilities;
+    SmallVector<RHIQueueCopyCapabilities, RHICompletionSet::kQueueCount> m_queueCapabilities;
+    // Populate before starting the worker; owned atomics retain stable addresses.
+    SmallVector<UniquePtr<QueueProgress>, RHICompletionSet::kQueueCount> m_queueProgress;
     HeapVector<RefCountPtr<RHICommandBatch>> m_retired;
     // Limit idle storage after a burst. In-flight batches always retain their own lists.
     static constexpr size_t kMaxRecycledCommandLists = RHIFrameState::kMaxFramesInFlight;
     std::mutex m_recordingCommandListMutex;
-    HeapVector<RHICommandListPtr> m_recordingCommandLists;
+    SmallVector<HeapVector<RHICommandListPtr>, RHICompletionSet::kQueueCount>
+        m_recordingCommandLists =
+            SmallVector<HeapVector<RHICommandListPtr>, RHICompletionSet::kQueueCount>(
+                RHICompletionSet::kQueueCount);
     // Presentation lists and their contexts stay on RHI until executor destruction.
     HeapVector<RHICommandListPtr> m_presentCommandLists;
     std::mutex m_destroyedResourceMutex;

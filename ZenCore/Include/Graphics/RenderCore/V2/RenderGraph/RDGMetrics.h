@@ -1,14 +1,17 @@
 #pragma once
 
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
+#include "Graphics/RenderCore/V2/RenderGraph/RDGSchedule.h"
 #include "Graphics/RenderCore/V2/PipelineCacheMetrics.h"
 #include "Templates/VectorView.h"
+#include "Templates/SmallVector.h"
 #include "Utils/MetricsLogger.h"
 #include <array>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include "Templates/HeapVector.h"
+#include "Templates/HashMap.h"
 
 namespace zen::rc
 {
@@ -55,6 +58,7 @@ struct RDGMetricAccess
     RHITextureSubResourceRange range;
     bool imported{true};
     bool hostWritten{false}; // Initialized buffer reads are visible through queue submission.
+    bool availableFromQueue{false}; // A validated semaphore supplies foreign contents.
 };
 
 struct RDGMetricBarrier
@@ -105,6 +109,11 @@ public:
 
     void Seed(const RDGMetricAccess& initial);
 
+    void SetOrderedLayout(uint64_t resource, RHITextureLayout layout)
+    {
+        m_states[resource].access.layout = layout;
+    }
+
     // Reports previous node and resource. The caller supplies the current node.
     void Check(int32_t node,
                const RDGMetricAccess& access,
@@ -143,6 +152,10 @@ struct RDGNodeMetrics
     uint32_t order{0};
     NameID name;
     RDGNodeType type{RDGNodeType::eNone};
+    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
+    RDGAsyncComputeEligibility asyncComputeEligibility{RDGAsyncComputeEligibility::eNotRequested};
+    RDGQueue plannedQueue{RDGQueue::eGraphics};
+    uint32_t submissionGroup{UINT32_MAX};
     uint32_t reads{0};
     uint32_t writes{0};
     uint32_t initialResources{0};
@@ -175,6 +188,23 @@ struct RDGPassCompileTimings
     }
 };
 
+struct RDGSubmissionDependencyMetrics
+{
+    uint32_t producer{0}; // Group ID, or external submission-reference ID when external is true.
+    bool external{false};
+    bool semaphore{false};
+    RDGQueue producerQueue{RDGQueue::eCount};
+};
+
+struct RDGSubmissionMetrics
+{
+    uint32_t id{0};
+    RDGQueue queue{RDGQueue::eGraphics};
+    uint32_t queueEquivalenceId{0};
+    int64_t waitStages{0};
+    HeapVector<RDGSubmissionDependencyMetrics> dependencies;
+};
+
 struct RDGMetricsSnapshot
 {
     NameID graph;
@@ -191,6 +221,9 @@ struct RDGMetricsSnapshot
     uint32_t dependencyEdges{0};
     uint32_t culledPasses{0};
     uint32_t reusedAllocations{0};
+    uint32_t plannedGroups{0};
+    bool plannedMultipleQueues{false};
+    bool allowsAllocationReuse{true};
     uint64_t assignedTransientBytes{0};
     uint64_t availableTransientBytes{0};
     uint64_t retiringTransientBytes{0};
@@ -202,10 +235,14 @@ struct RDGMetricsSnapshot
     double compileCPUUs{0}; // All preparation/refresh work for this execution, excluding uploads.
     uint32_t preparationPasses{0}; // Full compile/barrier passes, including state refreshes.
     RDGPassCompileTimings passCompileTimings;
-    double executeCPUUs{0}; // Includes sampled diagnostics; excludes formatting and sink I/O.
+    double executeCPUUs{0};    // Includes sampled diagnostics; excludes formatting and sink I/O.
+    double submissionCPUUs{0}; // CPU handoff/backpressure, not GPU work or completion time.
     std::array<uint32_t, static_cast<size_t>(RDGMetricIssue::eCount)> issues{};
     uint32_t omittedNodes{0};
     uint32_t omittedDiagnostics{0};
+    uint32_t omittedSubmissionDetails{0};
+    uint32_t omittedDependencyDetails{0};
+    HeapVector<RDGSubmissionMetrics> submissions;
     HeapVector<RDGNodeMetrics> nodes;
     HeapVector<RDGMetricDiagnostic> diagnostics;
 };
@@ -219,6 +256,8 @@ struct RDGMetricsOptions
     bool includeTransferNodes{false};
     uint32_t maxNodeDetails{32};
     uint32_t maxDiagnosticDetails{16};
+    uint32_t maxSubmissionDetails{32};
+    uint32_t maxDependencyDetails{128}; // Total across the captured groups.
 
     // Counts are always collected. Per-node optimization candidates are opt-in.
     bool includeOptimizationDetails{false};
@@ -264,10 +303,19 @@ private:
 
     bool Begin(RenderGraph& graph, bool precompiled);
 
+    void BeginGroups(const RenderGraph& graph,
+                     const ResourceStateTracker& tracker,
+                     VectorView<const struct RDGExternalQueueState> externalStates);
+
     void Compiled(RenderGraph& graph,
+                  const RDGSchedule& schedule,
                   double prepareCPUUs,
                   uint32_t preparationPasses,
                   const RDGPassCompileTimings& passTimings);
+
+    void CaptureSchedule(const RDGSchedule& schedule);
+
+    RDGQueue GetProducerQueue(const RDGSchedule& schedule, uint32_t producer, bool external) const;
 
     void BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled);
 
@@ -289,11 +337,21 @@ private:
     void ValidateOrder(RenderGraph& graph);
 
     RDGMetricsOptions m_options;
+    HashMap<uint32_t, RDGQueue> m_externalProducerQueues;
     MetricsLogger<RDGMetricsSnapshot> m_logger;
     MetricsLogger<RDGMetricsSnapshot> m_transferLogger;
     RDGMetricsSnapshot m_snapshot;
     RDGNodeMetrics m_node;
     RDGBarrierValidator m_validator;
+    SmallVector<RDGBarrierValidator, size_t(RDGQueue::eCount)> m_groupValidators =
+        SmallVector<RDGBarrierValidator, size_t(RDGQueue::eCount)>(size_t(RDGQueue::eCount));
+    HashMap<uint64_t, bool> m_externalResources;
+    HashMap<uint64_t, RHITextureLayout> m_groupLayouts;
+    SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RDGQueue::eCount)>
+        m_groupInitialAccesses =
+            SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RDGQueue::eCount)>(
+                size_t(RDGQueue::eCount));
+    bool m_grouped{false};
     HeapVector<RDGMetricBarrier> m_barriers;
     bool m_capture{false};
     std::array<uint64_t, 2> m_executions{};

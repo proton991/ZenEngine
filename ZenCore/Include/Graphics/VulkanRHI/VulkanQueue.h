@@ -16,7 +16,7 @@ class FVulkanCommandBufferPool;
 class VulkanQueue
 {
 public:
-    VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex);
+    VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex, uint32_t queueIndex = 0);
 
     ~VulkanQueue();
 

@@ -1,6 +1,5 @@
 #include "Utils/Helpers.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGResourceManager.h"
-#include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIResource.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 
@@ -1032,15 +1031,24 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
     return estimatedBytes;
 }
 
-bool RDGResourceManager::InFlight(uint64_t graphics, uint64_t transfer)
+bool RDGResourceManager::InFlight(const RHIRetirementRequirement& requirement) const
 {
-    return GDynamicRHI &&
-        (graphics > GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eGraphics) ||
-         transfer > GDynamicRHI->GetLastCompletedSerial(RHICommandContextType::eTransfer));
+    return m_owner && m_owner->m_pRenderDevice &&
+        !m_owner->m_pRenderDevice->IsResourceRetired(requirement);
+}
+
+RHIRetirementRequirement RDGResourceManager::CaptureRetirement() const
+{
+    RHIRetirementRequirement result;
+    if (m_owner && m_owner->m_pRenderDevice)
+    {
+        result = m_owner->m_pRenderDevice->CaptureResourceRetirement();
+    }
+    return result;
 }
 
 template <typename Pool>
-void RDGResourceManager::CountPoolStats(const Pool& pool, RDGPoolStats& stats)
+void RDGResourceManager::CountPoolStats(const Pool& pool, RDGPoolStats& stats) const
 {
     for (const typename Pool::value_type& bucket : pool)
     {
@@ -1051,7 +1059,7 @@ void RDGResourceManager::CountPoolStats(const Pool& pool, RDGPoolStats& stats)
             stats.availableBytes = PoolAdd(stats.availableBytes, entry.bytes);
             ++stats.availableCount;
 
-            if (InFlight(entry.graphicsSerial, entry.transferSerial))
+            if (InFlight(entry.retirement))
             {
                 stats.inFlightBytes = PoolAdd(stats.inFlightBytes, entry.bytes);
             }
@@ -1065,9 +1073,7 @@ RDGPoolStats RDGResourceManager::GetPoolStats() const
     stats.hits           = m_poolHits;
     stats.misses         = m_poolMisses;
     stats.evictions      = m_poolEvictions;
-    const bool submitted = GDynamicRHI &&
-        InFlight(GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics),
-                 GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer));
+    const bool submitted = InFlight(CaptureRetirement());
 
     for (const Allocation* resource : m_resources)
     {
@@ -1090,7 +1096,7 @@ RDGPoolStats RDGResourceManager::GetPoolStats() const
 
     for (RetiredPoolBytes const& entry : m_retiredPoolBytes)
     {
-        if (InFlight(entry.graphicsSerial, entry.transferSerial))
+        if (InFlight(entry.retirement))
         {
             stats.retiringBytes = PoolAdd(stats.retiringBytes, entry.bytes);
         }
@@ -1167,14 +1173,12 @@ bool RDGResourceManager::SetPoolConfig(const RDGPoolConfig& config)
 void RDGResourceManager::RetirePoolEntry(const PoolEntry& entry)
 {
     ++m_poolEvictions;
-    const uint64_t graphics =
-        GDynamicRHI ? GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics) : 0;
-    const uint64_t transfer =
-        GDynamicRHI ? GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer) : 0;
-
-    if (InFlight(graphics, transfer))
+    // Owner release joins the current frame's conservative retirement gate.
+    RHIRetirementRequirement retirement = CaptureRetirement();
+    retirement.completion.Extend(entry.retirement.completion);
+    if (InFlight(retirement))
     {
-        m_retiredPoolBytes.push_back({entry.bytes, graphics, transfer});
+        m_retiredPoolBytes.push_back({entry.bytes, std::move(retirement)});
     }
 
     // Keep physical hazard/layout history until the final native reference is retired.
@@ -1232,12 +1236,12 @@ bool RDGResourceManager::TrimPool(bool allAvailable)
     }
     else
     {
-        m_retiredPoolBytes.erase(
-            std::remove_if(m_retiredPoolBytes.begin(), m_retiredPoolBytes.end(),
-                           [](const RetiredPoolBytes& entry) {
-                               return !InFlight(entry.graphicsSerial, entry.transferSerial);
-                           }),
-            m_retiredPoolBytes.end());
+        m_retiredPoolBytes.erase(std::remove_if(m_retiredPoolBytes.begin(),
+                                                m_retiredPoolBytes.end(),
+                                                [this](const RetiredPoolBytes& entry) {
+                                                    return !InFlight(entry.retirement);
+                                                }),
+                                 m_retiredPoolBytes.end());
         HeapVector<PoolEntry*> candidates;
 
         CollectPoolEntries(m_texturePool, candidates);
@@ -1314,8 +1318,8 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
             continue;
         }
 
-        if (!result.Check(GDynamicRHI != nullptr, RDGErrorCode::eAllocation,
-                          "Missing RHI during materialization"))
+        if (!result.Check(pDevice != nullptr, RDGErrorCode::eAllocation,
+                          "Missing RenderDevice allocation service during materialization"))
         {
             break;
         }
@@ -1326,7 +1330,7 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
 
         bool reused = false;
 
-        if (!resource->exported && m_owner->m_reuseAllocations && !slots.empty() &&
+        if (!resource->exported && m_owner->m_schedule.allowsAllocationReuse && !slots.empty() &&
             slots[0].lastUse < resource->firstUse)
         {
             std::pop_heap(slots.begin(), slots.end(), Slot::Later);
@@ -1341,7 +1345,7 @@ RDGResult RDGResourceManager::MaterializeTransientResources(RenderDevice* pDevic
 
         if (!reused)
         {
-            CreatePhysicalResource(resource);
+            CreatePhysicalResource(resource, *pDevice);
 
             if (!result.Check(resource->pBuffer != nullptr || resource->pTexture != nullptr,
                               RDGErrorCode::eAllocation,
@@ -1392,14 +1396,8 @@ void RDGResourceManager::ReleaseTransientResources()
             }
             else
             {
-                PoolEntry entry{
-                    physical, EstimateBytes(*resource), m_generation,
-                    GDynamicRHI ?
-                        GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics) :
-                        0,
-                    GDynamicRHI ?
-                        GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer) :
-                        0};
+                PoolEntry entry{physical, EstimateBytes(*resource), m_generation,
+                                CaptureRetirement()};
 
                 if (resource->type == RDGResourceType::eTexture)
                 {
@@ -1440,7 +1438,7 @@ RDGResourceManager::Allocation* RDGResourceManager::AllocAllocation()
     return pResource;
 }
 
-void RDGResourceManager::CreatePhysicalResource(Allocation* pResource)
+void RDGResourceManager::CreatePhysicalResource(Allocation* pResource, RenderDevice& device)
 {
     if (pResource != nullptr && !pResource->imported)
     {
@@ -1464,7 +1462,7 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource)
                 createInfo.type = static_cast<RHITextureType>(pResource->texFormat.dimension);
                 createInfo.mutableFormat = pResource->texFormat.mutableFormat;
 
-                pResource->pTexture = GDynamicRHI->CreateTexture(createInfo);
+                pResource->pTexture = device.CreateTexture(createInfo);
             }
 
             if (pResource->pTexture != nullptr)
@@ -1482,16 +1480,17 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource)
                 {
                     LOGE("RDG buffer '{}' exceeds the maximum supported size: {}",
                          pResource->name.CStr(), pResource->bufferSize);
-                    return;
                 }
+                else
+                {
+                    RHIBufferCreateInfo createInfo{};
+                    createInfo.size         = static_cast<uint32_t>(pResource->bufferSize);
+                    createInfo.usageFlags   = pResource->usageFlags;
+                    createInfo.allocateType = RHIBufferAllocateType::eGPU;
+                    createInfo.tag          = pResource->name;
 
-                RHIBufferCreateInfo createInfo{};
-                createInfo.size         = static_cast<uint32_t>(pResource->bufferSize);
-                createInfo.usageFlags   = pResource->usageFlags;
-                createInfo.allocateType = RHIBufferAllocateType::eGPU;
-                createInfo.tag          = pResource->name;
-
-                pResource->pBuffer = GDynamicRHI->CreateBuffer(createInfo);
+                    pResource->pBuffer = device.CreateBuffer(createInfo);
+                }
             }
 
             if (pResource->pBuffer != nullptr)
@@ -1506,56 +1505,40 @@ void RDGResourceManager::CreatePhysicalResource(Allocation* pResource)
     }
 }
 
-bool RDGResourceManager::TryAcquirePooledTexture(Allocation* pResource)
+RHIResource* RDGResourceManager::AcquirePoolEntry(HeapVector<PoolEntry>& entries)
 {
-    bool acquired = false;
-
-    if (pResource->type == RDGResourceType::eTexture)
+    RHIResource* resource = nullptr;
+    for (size_t i = entries.size(); i > 0; --i)
     {
-        FlatHashMap<RDGTexturePoolKey, HeapVector<PoolEntry>, RDGTexturePoolKeyHasher>::iterator
-            iter = m_texturePool.find(MakeTexturePoolKey(*pResource));
-
-        if (iter != m_texturePool.end() && !iter->second.empty())
+        if (!InFlight(entries[i - 1].retirement))
         {
-            RHITexture* pTexture = static_cast<RHITexture*>(iter->second.back().resource);
-            iter->second.pop_back();
-
-            // RDG tracks logical versions; pool reuse preserves the native allocation
-            // and its stable ID for commands still translating on RHI.
-            pResource->pTexture = pTexture;
-
+            resource = entries[i - 1].resource;
+            entries.erase(entries.begin() + i - 1);
             ++m_poolHits;
-            acquired = true;
+            break;
         }
     }
+    return resource;
+}
 
-    return acquired;
+bool RDGResourceManager::TryAcquirePooledTexture(Allocation* pResource)
+{
+    const TexturePool::iterator iter = m_texturePool.find(MakeTexturePoolKey(*pResource));
+    if (iter != m_texturePool.end())
+    {
+        pResource->pTexture = static_cast<RHITexture*>(AcquirePoolEntry(iter->second));
+    }
+    return pResource->pTexture != nullptr;
 }
 
 bool RDGResourceManager::TryAcquirePooledBuffer(Allocation* pResource)
 {
-    bool acquired = false;
-
-    if (pResource->type == RDGResourceType::eBuffer)
+    const BufferPool::iterator iter = m_bufferPool.find(MakeBufferPoolKey(*pResource));
+    if (iter != m_bufferPool.end())
     {
-        FlatHashMap<RDGBufferPoolKey, HeapVector<PoolEntry>, RDGBufferPoolKeyHasher>::iterator
-            iter = m_bufferPool.find(MakeBufferPoolKey(*pResource));
-
-        if (iter != m_bufferPool.end() && !iter->second.empty())
-        {
-            RHIBuffer* pBuffer = static_cast<RHIBuffer*>(iter->second.back().resource);
-            iter->second.pop_back();
-
-            // Pool reuse preserves native descriptor identity, including while an older
-            // frame still references this allocation on the RHI thread.
-            pResource->pBuffer = pBuffer;
-
-            ++m_poolHits;
-            acquired = true;
-        }
+        pResource->pBuffer = static_cast<RHIBuffer*>(AcquirePoolEntry(iter->second));
     }
-
-    return acquired;
+    return pResource->pBuffer != nullptr;
 }
 
 bool RDGResourceManager::ValidateRDGTextureDesc(const RDGTextureDesc& desc)

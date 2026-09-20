@@ -9,6 +9,7 @@ add_executable(VulkanRHITest
     CommonTest/VulkanSynchronizationTests.cpp
     CommonTest/VulkanLifetimeTrackerTests.cpp
     CommonTest/VulkanResourceCreationTests.cpp
+    CommonTest/VulkanQueueSelectionTests.cpp
 )
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
 # Explicit integration target: requires a Vulkan device and validation layer.
@@ -62,6 +63,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RHI/RHICommandListExecutor.cpp
     ../ZenCore/Source/Graphics/RHI/RHIThread.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/ShaderProgram.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/TextureManager.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderGraph.cpp

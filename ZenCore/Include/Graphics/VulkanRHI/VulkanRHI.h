@@ -202,6 +202,7 @@ public:
     }
 
     bool IsTransferQueueSharedWithGraphics() const final;
+    RHIQueueCapabilities GetQueueCapabilities() const final;
 
     uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const final;
 

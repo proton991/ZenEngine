@@ -143,6 +143,81 @@ protected:
 };
 } // namespace
 
+TEST(RHIQueueCapabilitiesTest, ExecutorCachesNativeSharingWithoutBackendQueriesInEitherMode)
+{
+    for (RHIExecutionMode mode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
+    {
+        TestRHI* backend                     = ZEN_NEW() TestRHI();
+        backend->submissionQueueCapabilities = {true, true, {0, 1, 1}};
+        {
+            RHICommandListExecutor executor(backend, mode);
+            GDynamicRHI = &executor;
+            EXPECT_EQ(backend->queueCapabilityQueries, 1u);
+            // Hardware capabilities are immutable for this executor's lifetime.
+            backend->submissionQueueCapabilities = {};
+            for (uint32_t i = 0; i < 3; ++i)
+            {
+                const RHIQueueCapabilities capabilities = executor.GetQueueCapabilities();
+                EXPECT_TRUE(capabilities.SupportsAsyncCompute());
+                EXPECT_TRUE(capabilities.AreQueuesShared(RHICommandContextType::eAsyncCompute,
+                                                         RHICommandContextType::eTransfer));
+                EXPECT_FALSE(capabilities.AreQueuesShared(RHICommandContextType::eGraphics,
+                                                          RHICommandContextType::eAsyncCompute));
+                EXPECT_FALSE(capabilities.AreQueuesShared(RHICommandContextType::eMax,
+                                                          RHICommandContextType::eGraphics));
+            }
+            EXPECT_EQ(backend->queueCapabilityQueries, 1u);
+            EXPECT_EQ(backend->contextCreations, 0u);
+            EXPECT_EQ(backend->submissionAttempts, 0u);
+        }
+        GDynamicRHI = nullptr;
+    }
+}
+
+TEST(RHIQueueCapabilitiesTest, RenderDeviceResolvesStartupPolicyBeforeInitialization)
+{
+    struct Case
+    {
+        AsyncComputeMode mode;
+        RHIQueueCapabilities capabilities;
+        AsyncComputeStatus status;
+    };
+    const Case cases[] = {
+        {AsyncComputeMode::eDisabled, {true, true, {0, 1, 2}}, AsyncComputeStatus::eDisabled},
+        {AsyncComputeMode::eAuto,
+         {false, true, {0, 1, 2}},
+         AsyncComputeStatus::eComputeUnavailable},
+        {AsyncComputeMode::eAuto,
+         {true, true, {0, 0, 0}},
+         AsyncComputeStatus::eSharedGraphicsQueue},
+        {AsyncComputeMode::eAuto,
+         {true, false, {0, 1, 1}},
+         AsyncComputeStatus::eDependenciesUnavailable},
+        {AsyncComputeMode::eAuto, {true, true, {0, 1, 1}}, AsyncComputeStatus::eAvailable}};
+    for (RHIExecutionMode cpuMode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
+    {
+        for (const Case& test : cases)
+        {
+            TestRHI* backend                     = ZEN_NEW() TestRHI();
+            backend->submissionQueueCapabilities = test.capabilities;
+            backend->asyncDependencies           = test.capabilities.asyncSubmissionDependencies;
+            GDynamicRHI                          = backend;
+            RenderDevice device(RHIAPIType::eVulkan, 2, cpuMode, test.mode);
+            EXPECT_EQ(device.GetAsyncComputeStatus(), test.status);
+            const SmallVector<uint32_t, RHICompletionSet::kQueueCount>& queueIds =
+                device.GetQueueCapabilities().queueIds;
+            EXPECT_TRUE(std::equal(queueIds.begin(), queueIds.end(),
+                                   test.capabilities.queueIds.begin(),
+                                   test.capabilities.queueIds.end()));
+            EXPECT_EQ(backend->queueCapabilityQueries, 1u);
+            device.Init(nullptr);
+            EXPECT_EQ(backend->submissionAttempts, 0u);
+            EXPECT_EQ(device.GetAsyncComputeStatus(), test.status);
+            device.Destroy();
+        }
+    }
+}
+
 TEST(RHICommandListTest, PoolAllocatorReusesOverflowBlocksAfterReset)
 {
     PoolAllocator<LinearAllocator> allocator(256);
@@ -225,7 +300,8 @@ TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
         const RHIBatchResult result = executor->SubmitFrame(*commands, &viewport).Wait();
         EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
         EXPECT_TRUE(
-            executor->WaitForSubmission(RHICommandContextType::eGraphics, result.serials[0]));
+            executor->WaitForSubmission(RHICommandContextType::eGraphics,
+                                        result.completion.Get(RHICommandContextType::eGraphics)));
     }
     EXPECT_EQ(viewport.presents, 16u);
     EXPECT_EQ(rhi->contextCreations, 2u);
@@ -256,7 +332,8 @@ TEST_F(RHIExecutorTest, DelayedGpuCompletionRetainsListsAndBoundsTheRetiredCache
     executor->FlushRHIThread();
     EXPECT_EQ(rhi->contextCreations, frameCount + 1);
     EXPECT_EQ(rhi->graphics.proxyDestructions, 0u);
-    EXPECT_TRUE(executor->WaitForSubmission(RHICommandContextType::eGraphics, result.serials[0]));
+    EXPECT_TRUE(executor->WaitForSubmission(
+        RHICommandContextType::eGraphics, result.completion.Get(RHICommandContextType::eGraphics)));
     EXPECT_EQ(rhi->contextCreations - rhi->graphics.proxyDestructions,
               RHIFrameState::kMaxFramesInFlight);
     executor->Destroy();
@@ -494,7 +571,8 @@ TEST_F(RHIExecutorTest, DetachedLayoutAndResourcesSurviveCpuAndGpuDelay)
     EXPECT_EQ(rhi->graphics.renderingLayouts[0].renderArea.maxX, 8);
     EXPECT_FALSE(destroyed.contains(id));
     EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
-    EXPECT_TRUE(executor->WaitForSubmission(RHICommandContextType::eGraphics, result.serials[0]));
+    EXPECT_TRUE(executor->WaitForSubmission(
+        RHICommandContextType::eGraphics, result.completion.Get(RHICommandContextType::eGraphics)));
     EXPECT_TRUE(destroyed.contains(id));
 }
 
@@ -642,7 +720,7 @@ TEST_F(RHIExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
     RHISubmissionTicket ticket  = executor->SubmitFrame(*commands, nullptr);
     const RHIBatchResult result = ticket.Wait();
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
-    EXPECT_GT(result.serials[0], 0u);
+    EXPECT_GT(result.completion.Get(RHICommandContextType::eGraphics), 0u);
     texture->ReleaseReference();
     executor->WaitDeviceIdle();
     EXPECT_FALSE(destroyed.contains(id));
@@ -713,82 +791,66 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
     EXPECT_EQ(ToIndex(GRHIFrameState.GetFrameSlot()), 0u);
 }
 
-TEST_F(ThreadedRenderCoreTest, PooledNativeIdentityStaysStableDuringOverlappingRecording)
+TEST_F(ThreadedRenderCoreTest, PooledResourcesWaitForPendingCPUAndGPUWork)
 {
     CreateTestShaderProgram(device, "intent");
-    RenderGraph* graph          = device->GetCurrentFrameRDG();
-    RHIBuffer* physicalBuffer   = nullptr;
-    RHITexture* physicalTexture = nullptr;
-    uint64_t bufferId           = 0;
-    uint64_t textureId          = 0;
+    RenderGraph* graph            = device->GetCurrentFrameRDG();
+    RDGResourceManager* resources = graph->GetResourceManager();
+    uint64_t bufferId             = 0;
+    uint64_t textureId            = 0;
+    RHIRetirementRequirement retirement;
     for (uint32_t phase = 0; phase < 3; ++phase)
     {
         ASSERT_TRUE(graph->Begin());
-        const RDGBuffer buffer   = graph->GetResourceManager()->CreateBuffer(LogicalBuffer());
-        const RDGTexture texture = graph->GetResourceManager()->CreateTexture(LogicalTexture());
+        const RDGBuffer buffer   = resources->CreateBuffer(LogicalBuffer());
+        const RDGTexture texture = resources->CreateTexture(LogicalTexture());
         RDGComputePassDesc pass  = IntentPass();
         pass.BindStorageBuffer("write_buffer", buffer, RDGContentGuarantee::eFullWrite);
         pass.BindStorageImage("write_image", texture, RDGContentGuarantee::eFullWrite);
-        if (phase == 2)
-        {
-            graph->AddComputePass(pass).RecordPassCommands([this, physicalBuffer, physicalTexture,
-                                                            bufferId,
-                                                            textureId](RDGPassCmdEncoder& encoder) {
-                EXPECT_EQ(physicalBuffer->GetStableId(), bufferId);
-                EXPECT_EQ(physicalTexture->GetStableId(), textureId);
-                encoder.Dispatch(1, 1, 1);
-                gate.Open();
-            });
-        }
-        else
-        {
-            graph->AddComputePass(pass).RecordPassCommands(
-                [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-        }
+        graph->AddComputePass(pass).RecordPassCommands(
+            [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
         ASSERT_TRUE(graph->End());
         if (phase == 0)
         {
-            // Warm the producer, pipeline, and physical allocation pool.
-            ASSERT_TRUE(device->ExecuteRenderGraph(*graph));
-            for (RHIResource* resource : rhi->graphics.boundResources)
-            {
-                if (resource->GetResourceType() == RHIResourceType::eBuffer)
-                {
-                    physicalBuffer = static_cast<RHIBuffer*>(resource);
-                }
-                else if (resource->GetResourceType() == RHIResourceType::eTextureView)
-                {
-                    physicalTexture = static_cast<RHITextureView*>(resource)->GetTexture();
-                }
-            }
-            ASSERT_NE(physicalBuffer, nullptr);
-            ASSERT_NE(physicalTexture, nullptr);
-            bufferId  = physicalBuffer->GetStableId();
-            textureId = physicalTexture->GetStableId();
+            ArmGate();
+            ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+            ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+            bufferId   = DescribeResource(resources, buffer).physicalStableId;
+            textureId  = DescribeResource(resources, texture).physicalStableId;
+            retirement = device->CaptureResourceRetirement();
+            EXPECT_FALSE(retirement.pending.empty());
+            EXPECT_EQ(retirement.completion.Get(RHICommandContextType::eGraphics), 0u);
+            EXPECT_FALSE(device->IsResourceRetired(retirement));
+            ASSERT_TRUE(graph->Reset());
+            EXPECT_GT(resources->GetPoolStats().inFlightBytes, 0u);
+            EXPECT_FALSE(destroyed.contains(bufferId));
+            EXPECT_FALSE(destroyed.contains(textureId));
+            // Cold allocation runs on the same RHI worker; open the CPU gate before
+            // preparing the next graph, while leaving GPU completion at zero.
+            gate.Open();
+            device->FlushRHIThread();
+            EXPECT_FALSE(device->IsResourceRetired(retirement));
         }
         else
         {
+            ASSERT_TRUE(device->ExecuteRenderGraph(*graph));
             if (phase == 1)
             {
-                ArmGate();
+                EXPECT_NE(DescribeResource(resources, buffer).physicalStableId, bufferId);
+                EXPECT_NE(DescribeResource(resources, texture).physicalStableId, textureId);
+                ASSERT_TRUE(graph->Reset());
+                GDynamicRHI->WaitDeviceIdle();
+                device->FlushRHIThread();
+                EXPECT_TRUE(device->IsResourceRetired(retirement));
             }
-            ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
-            EXPECT_EQ(DescribeResource(graph->GetResourceManager(), buffer).physicalStableId,
-                      physicalBuffer->GetStableId());
-            EXPECT_EQ(DescribeResource(graph->GetResourceManager(), texture).physicalStableId,
-                      physicalTexture->GetStableId());
-            if (phase == 1)
+            else
             {
-                ASSERT_EQ(gate.entered.wait_for(std::chrono::seconds(2)),
-                          std::future_status::ready);
-                device->NextFrame();
+                EXPECT_EQ(resources->GetPoolStats().hits, 2u);
+                EXPECT_EQ(resources->GetPoolStats().misses, 4u);
             }
         }
     }
-    device->FlushRHIThread();
     EXPECT_TRUE(gate.releasedInTime);
-    EXPECT_EQ(physicalBuffer->GetStableId(), bufferId);
-    EXPECT_EQ(physicalTexture->GetStableId(), textureId);
 }
 
 TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKindsOfOwners)
@@ -804,7 +866,7 @@ TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKind
     commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
     commands->ClearTexture(deviceOwned, Color(0.f), RHITextureSubResourceRange());
     const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
-    ASSERT_GT(result.serials[0], 0u);
+    ASSERT_GT(result.completion.Get(RHICommandContextType::eGraphics), 0u);
     batchOwned->ReleaseReference();
     device->DeferReleaseResource(deviceOwned);
     device->CollectCompletedResources();
@@ -818,7 +880,7 @@ TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKind
     device->CollectCompletedResources();
     GetRHIThread().Flush(); // Only fence the worker; do not refresh through executor Flush.
     EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics),
-              result.serials[0]);
+              result.completion.Get(RHICommandContextType::eGraphics));
     EXPECT_TRUE(destroyed.contains(batchId));
     device->CollectCompletedResources(); // Consume the published progress on RenderCore.
     GetRHIThread().Flush();
@@ -959,7 +1021,7 @@ TEST_F(RHIExecutorTest, FlushSamplesGpuProgressWithoutWaitingForGpuCompletion)
         RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearTexture(texture, Color(0.f), RHITextureSubResourceRange());
     const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
-    ASSERT_GT(result.serials[0], 0u);
+    ASSERT_GT(result.completion.Get(RHICommandContextType::eGraphics), 0u);
     texture->ReleaseReference();
     executor->FlushRHIThread();
     EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
@@ -967,7 +1029,7 @@ TEST_F(RHIExecutorTest, FlushSamplesGpuProgressWithoutWaitingForGpuCompletion)
     GetRHIThread().Invoke([this] { rhi->completed = rhi->submitted; });
     executor->FlushRHIThread();
     EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics),
-              result.serials[0]);
+              result.completion.Get(RHICommandContextType::eGraphics));
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_TRUE(rhi->submissionWaits.empty());
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);

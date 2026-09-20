@@ -13,6 +13,12 @@ enum class VoxelizerMode
     eGeometry
 };
 
+enum class AsyncComputeMode
+{
+    eDisabled,
+    eAuto
+};
+
 class ConfigLoader
 {
 public:
@@ -45,6 +51,24 @@ public:
             {
                 LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.",
                      it->second);
+            }
+        }
+        return mode;
+    }
+
+    AsyncComputeMode GetAsyncComputeMode() const
+    {
+        AsyncComputeMode mode = AsyncComputeMode::eDisabled;
+        const auto entry      = m_configData.find("async_compute");
+        if (entry != m_configData.end())
+        {
+            if (entry->second == "auto")
+            {
+                mode = AsyncComputeMode::eAuto;
+            }
+            else if (entry->second != "off")
+            {
+                LOGW("Invalid async_compute '{}'; expected off or auto. Using off.", entry->second);
             }
         }
         return mode;
@@ -115,6 +139,10 @@ private:
             outFile << "# Voxelizer: auto, comp or geom (falls back to comp if unsupported)."
                     << std::endl;
             outFile << "voxelizer=auto" << std::endl;
+            outFile
+                << "# Async compute: off or auto (requires a separate queue and GPU dependencies)."
+                << std::endl;
+            outFile << "async_compute=off" << std::endl;
             outFile.close();
             LOGI("Default config created at {}.", configPath);
             return;

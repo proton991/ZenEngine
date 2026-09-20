@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
-#include "Graphics/RHI/DynamicRHI.h"
+#include "Graphics/RenderCore/V2/RenderDevice.h"
 #include <algorithm>
 
 namespace zen::rc
@@ -202,7 +202,7 @@ inline bool SupportsBufferTextureCopy(const RHITextureCreateInfo& info,
                                       const RHIBufferTextureCopyRegion& region,
                                       RHICommandContextType type)
 {
-    const RHIQueueCopyCapabilities queue = GDynamicRHI->GetQueueCopyCapabilities(type);
+    const RHIQueueCopyCapabilities queue = RenderDevice::GetQueueCopyCapabilities(type);
 
     // The backend does not enable maintenance10/11: depth/stencil uploads need graphics,
     // and transfer-only queues require four-byte buffer offsets.
@@ -215,11 +215,11 @@ inline bool SupportsBufferTextureCopy(const RHITextureCreateInfo& info,
 inline bool ValidateBufferTextureCopyCapabilities(RDGResult& result,
                                                   const RHITextureCreateInfo& info,
                                                   const RHIBufferTextureCopyRegion& region,
-                                                  bool& requiresGraphics)
+                                                  RDGTransferQueueCapabilities& queues)
 {
     bool returnValue{};
 
-    if (result.Check(GDynamicRHI->GetTextureCopyCapabilities(info.format).transferDst,
+    if (result.Check(RenderDevice::GetTextureCopyCapabilities(info.format).transferDst,
                      RDGErrorCode::eBinding,
                      "Texture format does not support transfer destination"))
     {
@@ -227,8 +227,10 @@ inline bool ValidateBufferTextureCopyCapabilities(RDGResult& result,
                          RDGErrorCode::eBinding,
                          "Buffer-to-texture copy is unsupported by the graphics queue"))
         {
-            requiresGraphics |=
-                !SupportsBufferTextureCopy(info, region, RHICommandContextType::eTransfer);
+            queues.transfer &=
+                SupportsBufferTextureCopy(info, region, RHICommandContextType::eTransfer);
+            queues.compute &=
+                SupportsBufferTextureCopy(info, region, RHICommandContextType::eAsyncCompute);
             returnValue = true;
         }
     }
@@ -241,7 +243,7 @@ inline bool SupportsTextureCopy(const RHITextureCreateInfo& src,
                                 const RHITextureCopyRegion& region,
                                 RHICommandContextType type)
 {
-    const RHIQueueCopyCapabilities queue = GDynamicRHI->GetQueueCopyCapabilities(type);
+    const RHIQueueCopyCapabilities queue = RenderDevice::GetQueueCopyCapabilities(type);
 
     return QueueSupportsCopyBox(queue, src, region.srcSubresources.mipmap, region.srcOffset,
                                 region.size) &&
@@ -254,7 +256,7 @@ inline bool ValidateTextureCopyCapabilities(RDGResult& result,
                                             const RHITextureCreateInfo& src,
                                             const RHITextureCreateInfo& dst,
                                             const RHITextureCopyRegion& region,
-                                            bool& requiresGraphics)
+                                            RDGTransferQueueCapabilities& queues)
 {
     bool returnValue{};
 
@@ -262,7 +264,8 @@ inline bool ValidateTextureCopyCapabilities(RDGResult& result,
     if (result.Check(src.format == dst.format && src.samples == dst.samples, RDGErrorCode::eRange,
                      "Texture copy requires matching formats and samples"))
     {
-        const RHITextureCopyCapabilities caps = GDynamicRHI->GetTextureCopyCapabilities(src.format);
+        const RHITextureCopyCapabilities caps =
+            RenderDevice::GetTextureCopyCapabilities(src.format);
 
         if (result.Check(caps.transferSrc && caps.transferDst, RDGErrorCode::eBinding,
                          "Texture format does not support image copies"))
@@ -271,8 +274,10 @@ inline bool ValidateTextureCopyCapabilities(RDGResult& result,
                     SupportsTextureCopy(src, dst, region, RHICommandContextType::eGraphics),
                     RDGErrorCode::eBinding, "Texture copy is unsupported by the graphics queue"))
             {
-                requiresGraphics |=
-                    !SupportsTextureCopy(src, dst, region, RHICommandContextType::eTransfer);
+                queues.transfer &=
+                    SupportsTextureCopy(src, dst, region, RHICommandContextType::eTransfer);
+                queues.compute &=
+                    SupportsTextureCopy(src, dst, region, RHICommandContextType::eAsyncCompute);
                 returnValue = true;
             }
         }
@@ -283,7 +288,7 @@ inline bool ValidateTextureCopyCapabilities(RDGResult& result,
 
 inline bool ValidateMipmapCapabilities(RDGResult& result, const RHITextureCreateInfo& info)
 {
-    const RHITextureCopyCapabilities caps = GDynamicRHI->GetTextureCopyCapabilities(info.format);
+    const RHITextureCopyCapabilities caps = RenderDevice::GetTextureCopyCapabilities(info.format);
 
     return result.Check(info.mipmaps > 0 && info.mipmaps <= 32 && info.samples == SampleCount::e1 &&
                             !IsDepthStencilCopyFormat(info.format),
@@ -292,7 +297,7 @@ inline bool ValidateMipmapCapabilities(RDGResult& result, const RHITextureCreate
         result.Check(
             caps.transferSrc && caps.transferDst && caps.blitSrc && caps.blitDst &&
                 caps.linearFilter &&
-                GDynamicRHI->GetQueueCopyCapabilities(RHICommandContextType::eGraphics).graphics,
+                RenderDevice::GetQueueCopyCapabilities(RHICommandContextType::eGraphics).graphics,
             RDGErrorCode::eBinding, "Texture format does not support linear mip blits");
 }
 } // namespace zen::rc

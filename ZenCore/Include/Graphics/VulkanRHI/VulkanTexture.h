@@ -31,6 +31,11 @@ class VulkanTexture : public RHITexture
 public:
     static VulkanTexture* CreateObject(const RHITextureCreateInfo& createInfo);
 
+    bool IsAsyncComputeAccessible() const override
+    {
+        return true; // Engine allocation sharing includes graphics and compute families.
+    }
+
     RHITextureView* CreateView(const RHITextureViewCreateInfo& createInfo) override;
 
     VkImageSubresourceRange GetVkSubresourceRange(uint32_t baseMipLevel,

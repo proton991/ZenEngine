@@ -7,7 +7,7 @@ VoxelizerBase::VoxelizerBase(RenderDevice* pRenderDevice, RHIViewport* pViewport
     m_pRenderDevice(pRenderDevice), m_pViewport(pViewport)
 {}
 
-bool VoxelizerBase::BeginVoxelization(RenderGraph& graph)
+bool VoxelizerBase::BeginVoxelization(RenderGraph& graph, RDGQueuePreference queuePreference)
 {
     bool result{};
 
@@ -16,6 +16,8 @@ bool VoxelizerBase::BeginVoxelization(RenderGraph& graph)
         // Zero also clears the packed UINT geometry accumulators. Color() has alpha 1, which
         // would incorrectly mark empty albedo voxels occupied, so clear all four channels explicitly.
         RDGTransferPassCmdRecorder reset = graph.AddTransferPass("ResetVoxelVolumes");
+        // The scheduler validates clear support using the supplied queue capabilities.
+        reset.SetQueuePreference(queuePreference);
         reset.ClearTexture(m_voxelTextures.pAlbedo, Color(0.0f));
 
         if (m_voxelTextures.pNormal != nullptr)

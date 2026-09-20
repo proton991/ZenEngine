@@ -270,7 +270,8 @@ RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& de
         {
             RDGComputePass* pComputePass = m_pRDG->AcquireComputePass();
             m_pRDG->m_compiledComputePasses.push_back(pComputePass);
-            pComputePass->passTag = desc.passTag;
+            pComputePass->passTag         = desc.passTag;
+            pComputePass->queuePreference = desc.GetQueuePreference();
 
             if (BuildShaderParameters(pSP, &desc, pComputePass->shaderParameters))
             {
@@ -981,6 +982,20 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::NeverCull()
     return *this;
 }
 
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::SetQueuePreference(
+    RDGQueuePreference preference)
+{
+    if (m_pRDG->CheckRecorder(m_pNode, m_generation) &&
+        Check(IsValidQueuePreference(preference), RDGErrorCode::eBinding,
+              "Invalid transfer queue preference"))
+    {
+        m_pNode->queuePreference                                                 = preference;
+        m_pNode->pCompiledPass->queuePreference                                  = preference;
+        m_pRDG->m_pendingTransferPassDescs[m_pNode->passDescIdx].queuePreference = preference;
+    }
+    return *this;
+}
+
 RDGTransferPassCmdRecorder::~RDGTransferPassCmdRecorder()
 {
     if (m_pNode != nullptr && m_generation == m_pRDG->m_buildGeneration)
@@ -1031,6 +1046,17 @@ bool RDGTransferPassCmdRecorder::Check(bool condition,
     return m_pRDG->Check(condition, code, "Pass '" + m_pNode->tag.ToString() + "': " + message);
 }
 
+void RDGTransferPassCmdRecorder::RestrictTransferQueues(bool graphicsOnly)
+{
+    RDGTransferQueueCapabilities& queues =
+        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities;
+    const RHIQueueCopyCapabilities compute =
+        RenderDevice::GetQueueCopyCapabilities(RHICommandContextType::eAsyncCompute);
+    // Preserve default transfer routing while allowing legal clears on compute.
+    queues.transfer = false;
+    queues.compute &= compute.graphics || (!graphicsOnly && compute.compute);
+}
+
 RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITexture* pTexture)
 {
     bool valid = true;
@@ -1057,7 +1083,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
         if ((valid) && (pTexture != nullptr))
         {
             // Image blits require graphics capability even though they execute at transfer stage.
-            static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->requiresGraphicsQueue = true;
+            RestrictTransferQueues(true);
             const RDGResourceManager::Allocation* pResource =
                 m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
             RHITextureSubResourceRange baseRange = pTexture->GetSubResourceRange();
@@ -1115,8 +1141,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
                                             region.dstOffset, region.size) ||
                     !ValidateTextureCopyCapabilities(
                         result, pSrcTexture->GetBaseInfo(), pDstTexture->GetBaseInfo(), region,
-                        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)
-                            ->requiresGraphicsQueue))
+                        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
                 {
                     m_pRDG->Fail(result.code,
                                  "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
@@ -1281,7 +1306,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
         if (!ValidateBufferTextureFootprint(result, pSrcBuffer, pDstTexture, region, &footprint) ||
             !ValidateBufferTextureCopyCapabilities(
                 result, pDstTexture->GetBaseInfo(), region,
-                static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->requiresGraphicsQueue))
+                static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
         {
             m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
             valid = false;
@@ -1340,7 +1365,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RHITexture*
     if ((valid) && (pTexture != nullptr))
     {
         // vkCmdClearColorImage requires graphics or compute capability, not a transfer-only queue.
-        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->requiresGraphicsQueue = true;
+        RestrictTransferQueues(false);
         const RHITextureSubResourceRange range = pTexture->GetSubResourceRange();
         const RDGResourceManager::Allocation* pResource =
             m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
@@ -1419,8 +1444,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
                     {
                         m_pNode->contentAccesses.back().sourceResourceId = resource->id;
                         m_pNode->contentAccesses.back().sourceRange      = base;
-                        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)
-                            ->requiresGraphicsQueue = true;
+                        RestrictTransferQueues(true);
                         m_ops.push_back([resource](RDGPassCmdEncoder& encoder) {
                             encoder.GenerateMipmaps(resource->pTexture);
                         });
@@ -1460,7 +1484,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
                                                 &footprint) ||
                 !ValidateBufferTextureCopyCapabilities(
                     result, info, region,
-                    static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->requiresGraphicsQueue))
+                    static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
             {
                 m_pRDG->Fail(result.code,
                              "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
@@ -1532,7 +1556,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture 
 
             if (valid)
             {
-                static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->requiresGraphicsQueue = true;
+                RestrictTransferQueues(false);
                 m_ops.push_back([resource, color, range](RDGPassCmdEncoder& encoder) {
                     encoder.ClearTexture(resource->pTexture, color, range);
                 });
@@ -1637,8 +1661,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
                                             region.dstOffset, region.size) ||
                     !ValidateTextureCopyCapabilities(
                         result, srcInfo, dstInfo, region,
-                        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)
-                            ->requiresGraphicsQueue))
+                        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
                 {
                     m_pRDG->Fail(result.code,
                                  "Pass '" + m_pNode->tag.ToString() + "': " + result.message);

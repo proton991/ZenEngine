@@ -3,6 +3,7 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
+#include "Graphics/VulkanRHI/VulkanQueueSelection.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
@@ -335,9 +336,9 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     // set up queue info
     HeapVector<VkDeviceQueueCreateInfo> deviceQueueInfos;
 
-    int32_t graphicsQueueFamilyIndex = -1;
-    int32_t computeQueueFamilyIndex  = -1;
-    int32_t transferQueueFamilyIndex = -1;
+    const VulkanQueueSelection queues = SelectVulkanQueues(m_queueFamilyProps);
+    // Init's supported-device check requires a nonempty graphics/compute family.
+    ASSERT(queues.IsValid());
     LOGI("Found {} Vulkan Queue Families", m_queueFamilyProps.size());
     uint32_t numPriorities = 0;
 
@@ -349,41 +350,10 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
         {
             continue;
         }
-        bool isValidQueue = false;
-
-        if (((queueFamilyProp.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
-             (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) &&
-            (graphicsQueueFamilyIndex == -1))
+        const uint32_t requestedCount = queues.GetRequestedQueueCount(queueFamilyIndex);
+        if (requestedCount == 0)
         {
-            graphicsQueueFamilyIndex = queueFamilyIndex;
-            isValidQueue             = true;
-        }
-
-        if ((queueFamilyProp.queueFlags & VK_QUEUE_COMPUTE_BIT) == VK_QUEUE_COMPUTE_BIT)
-        {
-            // prefer dedicated compute queue
-            if (computeQueueFamilyIndex == -1 && graphicsQueueFamilyIndex != queueFamilyIndex)
-            {
-                computeQueueFamilyIndex = queueFamilyIndex;
-                isValidQueue            = true;
-            }
-        }
-
-        if ((queueFamilyProp.queueFlags & VK_QUEUE_TRANSFER_BIT) == VK_QUEUE_TRANSFER_BIT)
-        {
-            // prefer non-graphics transfer queue
-            if (transferQueueFamilyIndex == -1 &&
-                (queueFamilyProp.queueFlags & VK_QUEUE_GRAPHICS_BIT) != VK_QUEUE_GRAPHICS_BIT &&
-                (queueFamilyProp.queueFlags & VK_QUEUE_COMPUTE_BIT) != VK_QUEUE_COMPUTE_BIT)
-            {
-                transferQueueFamilyIndex = queueFamilyIndex;
-                isValidQueue             = true;
-            }
-        }
-
-        if (!isValidQueue)
-        {
-            LOGI("Skipping Invalid Queue Family at index: {} ({})", queueFamilyIndex,
+            LOGI("Skipping unused queue family at index: {} ({})", queueFamilyIndex,
                  GetQueuePropString(queueFamilyProp));
             continue;
         }
@@ -391,9 +361,9 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
         VkDeviceQueueCreateInfo queueInfo;
         InitVkStruct(queueInfo, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
         queueInfo.queueFamilyIndex = queueFamilyIndex;
-        queueInfo.queueCount       = queueFamilyProp.queueCount;
+        queueInfo.queueCount       = requestedCount;
         deviceQueueInfos.emplace_back(queueInfo);
-        numPriorities += queueFamilyProp.queueCount;
+        numPriorities += requestedCount;
         LOGI("Initializing Queue Family at index {} ({})", queueFamilyIndex,
              GetQueuePropString(queueFamilyProp));
     }
@@ -406,10 +376,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     {
         VkDeviceQueueCreateInfo& queueInfo = deviceQueueInfos[i];
         queueInfo.pQueuePriorities         = pCurrentPriority;
-        const VkQueueFamilyProperties& queueFamilyProp =
-            m_queueFamilyProps[queueInfo.queueFamilyIndex];
-
-        for (int queueIndex = 0; queueIndex < queueFamilyProp.queueCount; queueIndex++)
+        for (uint32_t queueIndex = 0; queueIndex < queueInfo.queueCount; queueIndex++)
         {
             *pCurrentPriority++ = 1.0f;
         }
@@ -456,21 +423,15 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
              int32_t(cacheResult));
     }
     // setup queues
-    m_pGfxQueue = ZEN_NEW() VulkanQueue(this, graphicsQueueFamilyIndex);
-
-    if (computeQueueFamilyIndex == -1)
-    {
-        computeQueueFamilyIndex = graphicsQueueFamilyIndex;
-    }
-
-    m_pComputeQueue = ZEN_NEW() VulkanQueue(this, computeQueueFamilyIndex);
-
-    if (transferQueueFamilyIndex == -1)
-    {
-        transferQueueFamilyIndex = computeQueueFamilyIndex;
-    }
-
-    m_pTransferQueue = ZEN_NEW() VulkanQueue(this, transferQueueFamilyIndex);
+    m_pGfxQueue =
+        ZEN_NEW() VulkanQueue(this, queues.graphics.familyIndex, queues.graphics.queueIndex);
+    m_pComputeQueue =
+        ZEN_NEW() VulkanQueue(this, queues.compute.familyIndex, queues.compute.queueIndex);
+    m_pTransferQueue =
+        ZEN_NEW() VulkanQueue(this, queues.transfer.familyIndex, queues.transfer.queueIndex);
+    LOGI("Vulkan queues: graphics={}:{}; compute={}:{}; transfer={}:{}",
+         queues.graphics.familyIndex, queues.graphics.queueIndex, queues.compute.familyIndex,
+         queues.compute.queueIndex, queues.transfer.familyIndex, queues.transfer.queueIndex);
 }
 
 void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, NameID name)
@@ -548,6 +509,40 @@ void VulkanDevice::Destroy()
 bool VulkanRHI::IsTransferQueueSharedWithGraphics() const
 {
     return m_pDevice->GetTransferQueue()->GetVkHandle() == m_pDevice->GetGfxQueue()->GetVkHandle();
+}
+
+RHIQueueCapabilities VulkanRHI::GetQueueCapabilities() const
+{
+    return m_pDevice != nullptr ? m_pDevice->GetQueueCapabilities() : RHIQueueCapabilities{};
+}
+
+RHIQueueCapabilities VulkanDevice::GetQueueCapabilities() const
+{
+    RHIQueueCapabilities capabilities;
+    if (m_device != VK_NULL_HANDLE)
+    {
+        const VulkanQueue* compute    = GetComputeQueue();
+        capabilities.computeSupported = compute != nullptr &&
+            (GetQueueFamilyProperties(compute->GetFamilyIndex()).queueFlags &
+             VK_QUEUE_COMPUTE_BIT) != 0;
+        capabilities.asyncSubmissionDependencies = SupportsTimelineSemaphore();
+        for (uint32_t i = 0; i < capabilities.queueIds.size(); ++i)
+        {
+            const VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i));
+            capabilities.queueIds[i] = i;
+            for (uint32_t j = 0; j < i; ++j)
+            {
+                const VulkanQueue* previous = GetQueue(static_cast<RHICommandContextType>(j));
+                if (queue != nullptr && previous != nullptr &&
+                    queue->GetVkHandle() == previous->GetVkHandle())
+                {
+                    capabilities.queueIds[i] = capabilities.queueIds[j];
+                    break;
+                }
+            }
+        }
+    }
+    return capabilities;
 }
 
 bool VulkanRHI::SupportsAsyncSubmissionDependencies() const
