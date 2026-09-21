@@ -735,9 +735,9 @@ void VulkanRHI::CollectRetiredBindlessResources()
 {
     if (m_pDevice != nullptr && !AreSubmissionsBlocked())
     {
-        GetLastCompletedSerial(RHICommandContextType::eGraphics);
-        GetLastCompletedSerial(RHICommandContextType::eAsyncCompute);
-        GetLastCompletedSerial(RHICommandContextType::eTransfer);
+        QueryLastCompletedSerial(RHICommandContextType::eGraphics);
+        QueryLastCompletedSerial(RHICommandContextType::eAsyncCompute);
+        QueryLastCompletedSerial(RHICommandContextType::eTransfer);
     }
     if (m_pBindlessDescriptorPoolManager != nullptr)
     {

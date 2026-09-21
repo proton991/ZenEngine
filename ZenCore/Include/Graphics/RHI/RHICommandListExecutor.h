@@ -25,17 +25,23 @@ class RHISubmissionState final : public RefCounted
 {
 public:
     explicit RHISubmissionState(VectorView<const RHICommandContextType> queues);
-    bool Queue();
     bool IsQueued() const;
     bool Matches(uint32_t group, RHICommandContextType queue) const;
     size_t GetGroupCount() const;
-    bool Accept(uint32_t group, RHISubmissionDependency submission);
-    bool Complete();
-    bool IsComplete() const;
-    void Fail();
+    // Successful CPU processing of every group; does not establish GPU completion.
+    bool IsSubmissionFinished() const;
     RHISubmissionPointStatus Resolve(uint32_t group, RHISubmissionDependency& submission) const;
 
 private:
+    friend class RHICommandListExecutor;
+    friend struct RHISubmissionStateTestAccess;
+
+    // Only the executor publishes handoff, native acceptance, and final status.
+    bool Queue();
+    bool Accept(uint32_t group, RHISubmissionDependency submission);
+    bool FinishSubmission();
+    void Fail();
+
     struct Group
     {
         RHISubmissionDependency submission;
@@ -45,7 +51,7 @@ private:
     mutable std::mutex m_mutex;
     bool m_queued{false};
     bool m_failed{false};
-    bool m_complete{false};
+    bool m_submissionFinished{false};
 };
 
 struct RHISubmissionPoint
@@ -76,7 +82,7 @@ struct RHISubmissionGroupResult
 struct RHIBatchResult
 {
     RHISubmissionResult submission{RHISubmissionResult::eRejected};
-    RHICompletionSet completion;
+    RHICompletionSet requiredSerials;
     HeapVector<RHISubmissionGroupResult> groups;
     bool presented{false};
     bool needsRecreation{false};
@@ -93,21 +99,13 @@ public:
                         RefCountPtr<RHIThreadEvent> completion);
     bool IsValid() const;
     bool IsReady() const;
-    RHIBatchResult Wait() const;
+    // Waits for CPU submission processing, not GPU completion. The result is
+    // borrowed from this ticket; keep a ticket alive while using the reference.
+    const RHIBatchResult& Wait() const;
 
 private:
     std::shared_future<RHIBatchResult> m_result;
     RefCountPtr<RHIThreadEvent> m_completion;
-};
-
-// A native serial cannot protect work still waiting on the CPU submission queue.
-// Tickets own their result until it can replace that pending requirement.
-struct RHIRetirementRequirement
-{
-    RHICompletionSet completion;
-    HeapVector<RHISubmissionTicket> pending;
-
-    bool IsCompleteAt(const RHICompletionSet& completed) const;
 };
 
 // Both the command arena and referenced resources survive until GPU retirement.
@@ -170,10 +168,11 @@ public:
                                 RefCountPtr<RHISubmissionState> state);
     RHISubmissionResult SubmitBatch(VectorView<RHICommandList*> lists);
     // Request one coalesced, nonblocking GPU progress/retirement sweep on RHI.
-    // Completed serial getters remain snapshots; poll again if work is still in flight.
+    // Cached getters do not refresh progress; poll again if work is still in flight.
     void PollGPUProgress();
-    RHICompletionSet GetSubmittedSnapshot() const;
-    RHICompletionSet GetCompletedSnapshot() const;
+    // Published values only, in both execution modes. No backend calls or worker waits.
+    RHICompletionSet GetCachedSubmittedSerials() const;
+    RHICompletionSet GetCachedCompletedSerials() const;
     void FlushRHIThread();
     bool AreSubmissionsBlocked() const override;
     RHIThreadMetrics GetThreadMetrics() const;
@@ -186,17 +185,16 @@ public:
     void EndFrame() override;
     RHISubmissionResult FlushAllGPUCommands() override;
     void WaitDeviceIdle() override;
-    bool WaitForSubmission(RHICommandContextType type,
+    bool WaitForCompletion(RHICommandContextType type,
                            uint64_t serial,
                            uint64_t timeoutNS = UINT64_MAX) override;
     uint64_t GetLastSubmittedSerial(RHICommandContextType type) const override;
-    uint64_t GetLastCompletedSerial(RHICommandContextType type) override;
+    // Polls the backend inline; threaded mode reads published progress without a worker wait.
+    uint64_t QueryLastCompletedSerial(RHICommandContextType type) override;
     RHIAPIType GetAPIType() override;
     NameID GetName() override;
     DataFormat GetSupportedDepthFormat() override;
-    bool IsTransferQueueSharedWithGraphics() const override;
     RHIQueueCapabilities GetQueueCapabilities() const override;
-    bool SupportsAsyncSubmissionDependencies() const override;
     bool PrepareSubmissionDependencies(
         IRHICommandContext* context,
         VectorView<const RHISubmissionDependency> dependencies) override;
@@ -269,8 +267,6 @@ private:
     RHIAPIType m_apiType;
     NameID m_name;
     DataFormat m_depthFormat;
-    bool m_sharedTransfer;
-    bool m_asyncSubmissionDependencies;
     const RHIQueueCapabilities m_submissionQueueCapabilities;
     SmallVector<RHIQueueCopyCapabilities, RHICompletionSet::kQueueCount> m_queueCapabilities;
     // Populate before starting the worker; owned atomics retain stable addresses.

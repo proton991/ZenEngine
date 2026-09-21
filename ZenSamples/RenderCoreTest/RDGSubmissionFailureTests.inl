@@ -15,11 +15,11 @@ TEST_P(RHIScheduledSubmissionTest, PresentationRejectionAfterComputeIsFatalAndRe
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
     EXPECT_EQ(result.groups[0].submission, RHISubmissionResult::eSuccess);
     EXPECT_EQ(result.groups[0].accepted.serial, 1u);
-    EXPECT_EQ(result.completion.Get(queues[0]), 1u);
+    EXPECT_EQ(result.requiredSerials.Get(queues[0]), 1u);
     EXPECT_EQ(viewport.preparePresents, 1u);
     EXPECT_EQ(viewport.presents, 0u);
     EXPECT_TRUE(executor->AreSubmissionsBlocked());
-    EXPECT_FALSE(schedule.state->IsComplete());
+    EXPECT_FALSE(schedule.state->IsSubmissionFinished());
     resource.Reset();
     executor->WaitDeviceIdle();
     EXPECT_FALSE(destroyed.contains(id));
@@ -40,7 +40,7 @@ TEST_P(RHIScheduledSubmissionTest, FirstGroupWithAcceptedWorkCannotBeRetried)
     rhi->submitBeforeFailure    = true;
     const RHIBatchResult result = executor->SubmitGroups(schedule.groups, schedule.state);
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
-    EXPECT_EQ(result.completion.Get(queues[0]), 1u);
+    EXPECT_EQ(result.requiredSerials.Get(queues[0]), 1u);
     EXPECT_EQ(result.groups[0].accepted.serial, 1u);
     EXPECT_EQ(result.groups[1].submission, RHISubmissionResult::eRejected);
     EXPECT_EQ(rhi->submissionAttempts, 1u);
@@ -63,7 +63,7 @@ TEST_P(RHIScheduledSubmissionTest, CompletionQueryFailurePreservesAcceptedComput
         executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
     GetRHIThread().Invoke([this] { rhi->failProgressQuery = false; });
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
-    EXPECT_EQ(result.completion.Get(queues[0]), 1u);
+    EXPECT_EQ(result.requiredSerials.Get(queues[0]), 1u);
     EXPECT_EQ(result.groups[0].submission, RHISubmissionResult::eFatal);
     EXPECT_EQ(result.groups[1].submission, RHISubmissionResult::eRejected);
     EXPECT_EQ(rhi->submissionAttempts, 1u);
@@ -83,7 +83,7 @@ TEST_P(RHIScheduledSubmissionTest, FirstFrameGroupRejectionBlocksSubsequentFrame
     const RHIBatchResult result =
         executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
     EXPECT_EQ(result.submission, RHISubmissionResult::eRejected);
-    EXPECT_EQ(result.completion.Get(queues[0]), 0u);
+    EXPECT_EQ(result.requiredSerials.Get(queues[0]), 0u);
     EXPECT_EQ(result.groups[1].submission, RHISubmissionResult::eRejected);
     EXPECT_EQ(rhi->submissionAttempts, 1u);
     EXPECT_EQ(viewport.preparePresents, 0u);
@@ -277,9 +277,9 @@ TEST_F(ThreadedScheduledGraphTest, UnconfirmedHistoryCannotPublishSuccessfulNati
     ASSERT_TRUE(state);
     gate.Open();
     GetRHIThread().Flush();
-    ASSERT_TRUE(state->IsComplete());
+    ASSERT_TRUE(state->IsSubmissionFinished());
     // Inject invalid confirmation after native success, before RenderCore publication.
-    state->Fail();
+    RHISubmissionStateTestAccess::Fail(*state);
     device->FlushRHIThread();
     EXPECT_TRUE(device->AreSubmissionsBlocked());
     EXPECT_FALSE(extracted);

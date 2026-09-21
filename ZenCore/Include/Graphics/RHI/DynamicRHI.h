@@ -28,7 +28,7 @@ public:
         GRHIFrameState.Advance();
     }
 
-    RHICompletionSet GetSubmittedCompletion() const
+    RHICompletionSet GetSubmittedSerials() const
     {
         RHICompletionSet result;
         for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
@@ -39,13 +39,15 @@ public:
         return result;
     }
 
-    RHICompletionSet GetCompletedCompletion()
+    // Uses the facade's query policy for each queue; does not wait for GPU completion.
+    // Raw backends poll; the executor polls inline or reads published progress when threaded.
+    RHICompletionSet QueryCompletedSerials()
     {
         RHICompletionSet result;
         for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
         {
             const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
-            result.Extend(queue, GetLastCompletedSerial(queue));
+            result.Extend(queue, QueryLastCompletedSerial(queue));
         }
         return result;
     }
@@ -169,16 +171,20 @@ public:
         return false;
     }
 
-    virtual bool IsTransferQueueSharedWithGraphics() const = 0;
+    bool IsTransferQueueSharedWithGraphics() const
+    {
+        return GetQueueCapabilities().AreQueuesShared(RHICommandContextType::eTransfer,
+                                                      RHICommandContextType::eGraphics);
+    }
 
     virtual RHIQueueCapabilities GetQueueCapabilities() const
     {
         return {};
     }
 
-    virtual bool SupportsAsyncSubmissionDependencies() const
+    bool SupportsAsyncSubmissionDependencies() const
     {
-        return false;
+        return GetQueueCapabilities().asyncSubmissionDependencies;
     }
 
     // Attach dependencies before recording/finalizing the consumer context. Producers must
@@ -202,15 +208,11 @@ public:
                     dependency.serial;
                 result                               = validQueue && serial <= submitted;
                 const RHICommandContextType consumer = context->GetContextType();
-                const bool shared                    = dependency.queue == consumer ||
-                    (IsTransferQueueSharedWithGraphics() &&
-                     ((consumer == RHICommandContextType::eGraphics &&
-                       dependency.queue == RHICommandContextType::eTransfer) ||
-                      (consumer == RHICommandContextType::eTransfer &&
-                       dependency.queue == RHICommandContextType::eGraphics)));
-                if (result && !shared && GetLastCompletedSerial(dependency.queue) < serial)
+                const bool shared =
+                    GetQueueCapabilities().AreQueuesShared(dependency.queue, consumer);
+                if (result && !shared && QueryLastCompletedSerial(dependency.queue) < serial)
                 {
-                    result = WaitForSubmission(dependency.queue, serial);
+                    result = WaitForCompletion(dependency.queue, serial);
                 }
             }
         }
@@ -219,11 +221,12 @@ public:
 
     virtual uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const = 0;
 
-    virtual uint64_t GetLastCompletedSerial(RHICommandContextType contextType) = 0;
+    // May poll native progress. For cached-only reads, use the executor's GetCached* APIs.
+    virtual uint64_t QueryLastCompletedSerial(RHICommandContextType contextType) = 0;
 
     // Wait only for an already-submitted queue serial. Zero is already complete; zero timeout
     // polls. False means timeout/failure and must never be treated as permission to reuse work.
-    virtual bool WaitForSubmission(RHICommandContextType contextType,
+    virtual bool WaitForCompletion(RHICommandContextType contextType,
                                    uint64_t submissionSerial,
                                    uint64_t timeoutNS = UINT64_MAX) = 0;
 

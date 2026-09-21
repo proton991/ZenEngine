@@ -1,12 +1,12 @@
 # Synchronization simplification plan
 
-Status: Proposed on 2026-09-20 after reviewing the current async-compute changes. This document does not implement the refactor. Complete the five core phases in order; reassess the optional submission-handle redesign afterward.
+Status: Core phases 1–5 implemented and verified in order on 2026-09-20, with staging-release and API-boundary follow-ups recorded in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md). Latest validation on 2026-09-21 passed 764 enabled tests and eight renderer smoke runs, including engine error-log checks. Submission-state mutation is now executor-only, and progress APIs explicitly distinguish cached reads from mode-dependent queries. Phase 3 retains the inline presentation lifecycle adapter to preserve its tested retry behavior. The optional shared-owner redesign was reassessed and deferred because exact per-group publication and whole-batch results retain distinct contracts. The evidence and phase descriptions below preserve the original plan for review.
 
 ## 1. Objective and scope
 
 Reduce duplicated synchronization state, representations, and execution paths across RenderCore and RHI while preserving current rendering and failure behavior. Prefer deleting unused data and reusing existing mechanisms over adding abstractions.
 
-The baseline is the current working tree, including the async-compute implementation described in [AsyncComputeImplementationPlan.md](AsyncComputeImplementationPlan.md) and its step verification reports. Some duplication, particularly the confirmed resource-state snapshots, predates that implementation.
+The baseline is commit `7171a23d`, committed and pushed at the user's request before implementing this plan, including the async-compute implementation described in [AsyncComputeImplementationPlan.md](AsyncComputeImplementationPlan.md) and its step verification reports. Some duplication, particularly the confirmed resource-state snapshots, predates that implementation.
 
 The command-list pool policy consolidation and the `CreateBuffer` / `CreateTexture` naming refinement are already present. Preserve those changes.
 

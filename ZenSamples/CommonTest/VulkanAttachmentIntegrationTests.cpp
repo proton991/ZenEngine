@@ -279,7 +279,7 @@ protected:
         }
         uint64_t serial = 0;
         ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-        ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+        ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     }
 
     RHIShader* Shader(bool depthOnly = false)

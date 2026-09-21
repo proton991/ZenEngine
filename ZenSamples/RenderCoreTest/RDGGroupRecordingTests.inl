@@ -55,16 +55,17 @@ TEST_P(RDGGroupRecordingTest, ForeignBufferWaitRetainsIndependentLocalHazards)
     RenderGraph graph("local_and_foreign_readers");
     ASSERT_TRUE(graph.Begin());
     const RDGBuffer buffer = graph.GetResourceManager()->ImportHostWrittenBuffer(physical);
-    AddScheduledBufferPass(graph, "compute_read", RDGQueue::eAsyncCompute, buffer);
-    AddScheduledBufferPass(graph, "graphics_read", RDGQueue::eGraphics, buffer);
-    AddScheduledBufferPass(graph, "compute_write", RDGQueue::eAsyncCompute, {}, buffer);
+    AddScheduledBufferPass(graph, "compute_read", RHICommandContextType::eAsyncCompute, buffer);
+    AddScheduledBufferPass(graph, "graphics_read", RHICommandContextType::eGraphics, buffer);
+    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {},
+                           buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 3u);
-    EXPECT_EQ(plan.schedule.groups[2].semaphorePredecessors.size(), 1u);
+    ExpectPredecessor(plan.schedule, 1, 2);
     ExpectPredecessor(plan.schedule, 0, 2);
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
@@ -83,18 +84,16 @@ TEST_P(RDGGroupRecordingTest, GraphicsComputeGraphicsUsesExactGroupsAndQueuePool
     RenderGraph graph("group_lists");
     ASSERT_TRUE(graph.Begin());
     const RDGBuffer buffer = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
-    AddScheduledBufferPass(graph, "graphics_write", RDGQueue::eGraphics, {}, buffer);
-    AddScheduledBufferPass(graph, "compute_read", RDGQueue::eAsyncCompute, buffer);
-    AddScheduledBufferPass(graph, "graphics_read", RDGQueue::eGraphics, buffer);
+    AddScheduledBufferPass(graph, "graphics_write", RHICommandContextType::eGraphics, {}, buffer);
+    AddScheduledBufferPass(graph, "compute_read", RHICommandContextType::eAsyncCompute, buffer);
+    AddScheduledBufferPass(graph, "graphics_read", RHICommandContextType::eGraphics, buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 3u);
-    EXPECT_EQ(plan.schedule.groups[1].semaphorePredecessors[0], 0u);
-    EXPECT_EQ(int64_t(plan.schedule.groups[1].waitStages),
-              int64_t(RHIPipelineStageFlagBits::eAllCommands));
+    EXPECT_EQ(plan.schedule.groups[1].predecessors[0], 0u);
     RHICommandList* computeList = nullptr;
     {
         RecordedGroupLists recorded(*device, plan.schedule);
@@ -222,12 +221,7 @@ TEST_P(RDGGroupRecordingTest, ClearStorageIndirectAndVertexScopesSurviveRecordin
     EXPECT_TRUE(shader);
     EXPECT_TRUE(clearToStorage);
     EXPECT_EQ(rhi->compute.indirectDispatches.size(), 1u);
-    const RDGScheduledResource& final = plan.schedule.groups.back().resources[0];
-    EXPECT_TRUE(final.stages.HasFlag(RHIPipelineStageFlagBits::eVertexShader));
-    EXPECT_TRUE(final.stages.HasFlag(RHIPipelineStageFlagBits::eDrawIndirect));
-    EXPECT_TRUE(final.accessFlags.HasFlag(RHIAccessFlagBits::eShaderRead));
-    EXPECT_TRUE(final.accessFlags.HasFlag(RHIAccessFlagBits::eIndirectCommandRead));
-    EXPECT_FALSE(plan.schedule.groups.back().semaphorePredecessors.empty());
+    EXPECT_FALSE(plan.schedule.groups.back().predecessors.empty());
 }
 
 TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateState)
@@ -266,7 +260,7 @@ TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateSt
             BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
             BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
         const RDGExternalQueueState external[] = {
-            {physical->GetStableId(), RDGQueue::eGraphics, 11}};
+            {physical->GetStableId(), RHICommandContextType::eGraphics, 11}};
         GroupAccess::Plan plan;
         ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
         const uint64_t revision = executor.GetResourceStateTracker().GetRevision();
@@ -304,8 +298,8 @@ TEST_P(RDGGroupRecordingTest, WrongContextOrRepeatedListFailsBeforeCallbacks)
         RenderGraph graph("invalid_group_lists");
         ASSERT_TRUE(graph.Begin());
         const RDGBuffer buffer = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
-        AddScheduledBufferPass(graph, "write", RDGQueue::eGraphics, {}, buffer);
-        AddScheduledBufferPass(graph, "read", RDGQueue::eAsyncCompute, buffer);
+        AddScheduledBufferPass(graph, "write", RHICommandContextType::eGraphics, {}, buffer);
+        AddScheduledBufferPass(graph, "read", RHICommandContextType::eAsyncCompute, buffer);
         ASSERT_TRUE(graph.End());
         RDGExecutor executor(device);
         ConfigureGroupMetrics(executor);
@@ -337,7 +331,7 @@ TEST_P(RDGGroupRecordingTest, MissingOrInvalidInitialProvenanceIsRejectedBeforeR
         RenderGraph graph("initial_queue_validation");
         ASSERT_TRUE(graph.Begin());
         const RDGBuffer buffer = graph.GetResourceManager()->ImportHostWrittenBuffer(physical);
-        AddScheduledBufferPass(graph, "read", RDGQueue::eAsyncCompute, buffer);
+        AddScheduledBufferPass(graph, "read", RHICommandContextType::eAsyncCompute, buffer);
         ASSERT_TRUE(graph.End());
         RDGExecutor executor(device);
         ConfigureGroupMetrics(executor);
@@ -351,8 +345,8 @@ TEST_P(RDGGroupRecordingTest, MissingOrInvalidInitialProvenanceIsRejectedBeforeR
         HeapVector<RDGExternalQueueState> external;
         if (scenario != 0)
         {
-            external.push_back(
-                {physical->GetStableId(), RDGQueue::eAsyncCompute, scenario == 1 ? UINT32_MAX : 9});
+            external.push_back({physical->GetStableId(), RHICommandContextType::eAsyncCompute,
+                                scenario == 1 ? UINT32_MAX : 9});
         }
         // Scenario 2 supplies impossible local fragment stages on a compute-only queue.
         EXPECT_FALSE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, external));
@@ -368,16 +362,16 @@ TEST_P(RDGGroupRecordingTest, GraphicsFallbackRebuildsOrdinaryBarriers)
     RenderGraph graph("graphics_fallback_barriers");
     ASSERT_TRUE(graph.Begin());
     const RDGBuffer buffer = graph.GetResourceManager()->ImportBuffer(physical);
-    AddScheduledBufferPass(graph, "graphics_write", RDGQueue::eGraphics, {}, buffer);
-    AddScheduledBufferPass(graph, "preferred_read", RDGQueue::eAsyncCompute, buffer);
+    AddScheduledBufferPass(graph, "graphics_write", RHICommandContextType::eGraphics, {}, buffer);
+    AddScheduledBufferPass(graph, "preferred_read", RHICommandContextType::eAsyncCompute, buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 1u);
-    EXPECT_EQ(plan.schedule.groups[0].queue, RDGQueue::eGraphics);
-    EXPECT_TRUE(plan.schedule.groups[0].semaphorePredecessors.empty());
+    EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eGraphics);
+    EXPECT_TRUE(plan.schedule.groups[0].predecessors.empty());
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
     ExpectValidGroupMetrics(executor);
@@ -393,8 +387,9 @@ TEST_P(RDGGroupRecordingTest, InitialQueueHistoryIsPreservedAcrossForeignOverwri
     RenderGraph graph("external_graphics_compute_graphics");
     ASSERT_TRUE(graph.Begin());
     const RDGBuffer buffer = graph.GetResourceManager()->ImportBuffer(physical);
-    AddScheduledBufferPass(graph, "compute_write", RDGQueue::eAsyncCompute, {}, buffer);
-    AddScheduledBufferPass(graph, "graphics_read", RDGQueue::eGraphics, buffer);
+    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {},
+                           buffer);
+    AddScheduledBufferPass(graph, "graphics_read", RHICommandContextType::eGraphics, buffer);
     RDGExtractedBuffer extraction = graph.GetResourceManager()->QueueBufferExtraction(buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
@@ -403,7 +398,8 @@ TEST_P(RDGGroupRecordingTest, InitialQueueHistoryIsPreservedAcrossForeignOverwri
         physical, RHIAccessMode::eReadWrite,
         BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
-    const RDGExternalQueueState external[] = {{physical->GetStableId(), RDGQueue::eGraphics, 17}};
+    const RDGExternalQueueState external[] = {
+        {physical->GetStableId(), RHICommandContextType::eGraphics, 17}};
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     RecordedGroupLists recorded(*device, plan.schedule);
@@ -430,14 +426,15 @@ TEST_P(RDGGroupRecordingTest, RefreshAfterGraphicsHistoryReassignsTransferAndReb
     ConfigureGroupMetrics(executor);
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-    EXPECT_EQ(plan.schedule.groups[0].queue, RDGQueue::eTransfer);
+    EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eTransfer);
     executor.GetResourceStateTracker().UpdateBufferState(
         target, RHIAccessMode::eRead,
         BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
     ASSERT_TRUE(GroupAccess::Refresh(executor, plan));
-    EXPECT_EQ(plan.schedule.groups[0].queue, RDGQueue::eGraphics);
-    const RDGExternalQueueState external[] = {{target->GetStableId(), RDGQueue::eGraphics, 23}};
+    EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eGraphics);
+    const RDGExternalQueueState external[] = {
+        {target->GetStableId(), RHICommandContextType::eGraphics, 23}};
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, external));
     ExpectValidGroupMetrics(executor);
@@ -467,8 +464,7 @@ protected:
     {
         RHIQueueCapabilities queues = DistinctComputeQueues();
         queues.queueIds[2]          = std::get<1>(GetParam()) ? 1 : 2;
-        InitializeDevice(&viewport, 2, std::get<0>(GetParam()), true, AsyncComputeMode::eAuto,
-                         queues);
+        InitializeDevice(&viewport, 2, std::get<0>(GetParam()), AsyncComputeMode::eAuto, queues);
         CreateTestShaderProgram(device, "intent");
     }
 };
@@ -499,20 +495,19 @@ TEST_P(RDGGroupQueueTest, AcceptedUploadUsesLocalBarrierForAliasAndWaitForDistin
     executor.GetResourceStateTracker().UpdateTextureState(
         image, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
-    const RDGExternalQueueState external[] = {{physical->GetStableId(), RDGQueue::eTransfer, 12},
-                                              {image->GetStableId(), RDGQueue::eTransfer, 12}};
+    const RDGExternalQueueState external[] = {
+        {physical->GetStableId(), RHICommandContextType::eTransfer, 12},
+        {image->GetStableId(), RHICommandContextType::eTransfer, 12}};
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     RecordedGroupLists recorded(*device, plan.schedule);
     RDGSchedule recordedSchedule;
     ASSERT_TRUE(executor.ExecuteGroups(&graph, recorded.lists, recordedSchedule, external));
-    EXPECT_EQ(recordedSchedule.groups[0].externalSemaphorePredecessors.size(), alias ? 0u : 1u);
     ASSERT_EQ(recordedSchedule.groups[0].externalPredecessors.size(), 1u);
     EXPECT_EQ(recordedSchedule.groups[0].externalPredecessors[0], 12u);
-    if (!alias)
-    {
-        EXPECT_EQ(recordedSchedule.groups[0].externalSemaphorePredecessors[0], 12u);
-    }
+    const RDGMetricsSnapshot& sample = executor.GetMetrics().GetLastSnapshot();
+    ASSERT_EQ(sample.submissions[0].dependencies.size(), 1u);
+    EXPECT_EQ(sample.submissions[0].dependencies[0].semaphore, !alias);
     ExpectValidGroupMetrics(executor);
     recorded.Replay();
     EXPECT_EQ(rhi->compute.bufferTransitions.empty(), !alias);
@@ -548,10 +543,10 @@ TEST_P(RDGGroupQueueTest, ScheduledTransferComputeAliasesKeepSubmissionOrderAndB
     GroupAccess::Plan plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 2u);
-    EXPECT_EQ(plan.schedule.groups[0].queue, RDGQueue::eTransfer);
-    EXPECT_EQ(plan.schedule.groups[1].queue, RDGQueue::eAsyncCompute);
+    EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eTransfer);
+    EXPECT_EQ(plan.schedule.groups[1].queue, RHICommandContextType::eAsyncCompute);
     ExpectPredecessor(plan.schedule, 0, 1);
-    EXPECT_EQ(plan.schedule.groups[1].semaphorePredecessors.size(), alias ? 0u : 1u);
+    EXPECT_EQ(plan.schedule.groups[1].predecessors.size(), 1u);
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
     ExpectValidGroupMetrics(executor);

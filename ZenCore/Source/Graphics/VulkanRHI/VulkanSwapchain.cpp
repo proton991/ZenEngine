@@ -318,7 +318,7 @@ int32_t VulkanSwapchain::AcquireNextImage(VulkanSemaphore** ppOutSemaphore)
             LOG_ERROR_AND_THROW("Acquire fence completion reported device loss");
         }
         uint64_t& serial = acquire.submissionSerial;
-        if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForSubmission(serial, UINT64_MAX))
+        if (serial != 0 && !m_pDevice->GetGfxQueue()->WaitForCompletion(serial, UINT64_MAX))
         {
             GVulkanRHI->BlockSubmissions();
             LOG_ERROR_AND_THROW("Acquire semaphore submission {} did not complete", serial);
@@ -500,7 +500,7 @@ void VulkanSwapchain::Destroy(VulkanSwapchainRecreateInfo* pRecreateInfo)
     {
         CompleteAcquire(sync, true);
         if (sync.submissionSerial != 0 &&
-            !m_pDevice->GetGfxQueue()->WaitForSubmission(sync.submissionSerial, UINT64_MAX))
+            !m_pDevice->GetGfxQueue()->WaitForCompletion(sync.submissionSerial, UINT64_MAX))
         {
             // Distinguish device loss (destruction is legal) from an unproven wait.
             const VkResult result = vkDeviceWaitIdle(device);

@@ -8,7 +8,8 @@ protected:
 
     void SetUp() override
     {
-        InitializeDevice(nullptr, 3, GetParam(), true);
+        InitializeDevice(nullptr, 3, GetParam(), AsyncComputeMode::eDisabled,
+                         {false, true, {0, 1, 2}});
         CreateTestShaderProgram(device, "intent");
     }
 
@@ -113,7 +114,7 @@ TEST_P(AsyncUploadTest, StagingAllocationCannotBeReusedBeforeTransferCompletion)
     StagingAllocation allocation;
     EXPECT_NE(staging.Allocate(64, 4, &allocation), StagingFlushAction::eNone);
     ASSERT_TRUE(
-        GDynamicRHI->WaitForSubmission(RHICommandContextType::eTransfer, rhi->submitted[2]));
+        GDynamicRHI->WaitForCompletion(RHICommandContextType::eTransfer, rhi->submitted[2]));
     uploads.ReclaimResources();
     ASSERT_EQ(staging.Allocate(64, 4, &allocation), StagingFlushAction::eNone);
     staging.Release(allocation, {});

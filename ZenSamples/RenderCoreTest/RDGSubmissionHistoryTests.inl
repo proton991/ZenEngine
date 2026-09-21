@@ -1,11 +1,19 @@
 namespace
 {
+template <typename State> constexpr bool HasPublicSubmissionMutation =
+    requires(State& state) { state.Queue(); } ||
+    requires(State& state) { state.Accept(0, RHISubmissionDependency{}); } ||
+    requires(State& state) { state.FinishSubmission(); } ||
+    requires(State& state) { state.Fail(); };
+
+static_assert(!HasPublicSubmissionMutation<RHISubmissionState>);
+
 struct HistoryInput
 {
     RDGSchedule schedule;
     HeapVector<HeapVector<RenderSubmissionAccess>> accesses;
 
-    void Add(RDGQueue queue,
+    void Add(RHICommandContextType queue,
              uint64_t resourceId,
              RHIAccessMode mode,
              RHITextureUsage usage = RHITextureUsage::eMax)
@@ -20,15 +28,16 @@ struct HistoryInput
         access.access.accessMode   = mode;
         access.access.textureUsage = usage;
         access.access.bufferUsage.SetFlag(
-            queue != RDGQueue::eTransfer     ? RHIBufferUsageFlagBits::eStorageBuffer :
-                mode == RHIAccessMode::eRead ? RHIBufferUsageFlagBits::eTransferSrcBuffer :
-                                               RHIBufferUsageFlagBits::eTransferDstBuffer);
-        access.access.pipelineStages.SetFlag(
-            queue == RDGQueue::eGraphics         ? RHIPipelineStageFlagBits::eFragmentShader :
-                queue == RDGQueue::eAsyncCompute ? RHIPipelineStageFlagBits::eComputeShader :
-                                                   RHIPipelineStageFlagBits::eTransfer);
+            queue != RHICommandContextType::eTransfer ? RHIBufferUsageFlagBits::eStorageBuffer :
+                mode == RHIAccessMode::eRead          ? RHIBufferUsageFlagBits::eTransferSrcBuffer :
+                                                        RHIBufferUsageFlagBits::eTransferDstBuffer);
+        access.access.pipelineStages.SetFlag(queue == RHICommandContextType::eGraphics ?
+                                                 RHIPipelineStageFlagBits::eFragmentShader :
+                                                 queue == RHICommandContextType::eAsyncCompute ?
+                                                 RHIPipelineStageFlagBits::eComputeShader :
+                                                 RHIPipelineStageFlagBits::eTransfer);
         access.access.accessFlags.SetFlag(
-            queue == RDGQueue::eTransfer ?
+            queue == RHICommandContextType::eTransfer ?
                 (mode == RHIAccessMode::eRead ? RHIAccessFlagBits::eTransferRead :
                                                 RHIAccessFlagBits::eTransferWrite) :
                 (mode == RHIAccessMode::eRead ? RHIAccessFlagBits::eShaderRead :
@@ -50,15 +59,15 @@ void AcceptHistory(RenderSubmissionHistory& history,
                    VectorView<const uint64_t> serials)
 {
     ASSERT_EQ(serials.size(), update.schedule.groups.size());
-    ASSERT_TRUE(update.state->Queue());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*update.state));
     ASSERT_TRUE(history.Commit(update));
     for (size_t i = 0; i < serials.size(); ++i)
     {
-        ASSERT_TRUE(update.state->Accept(
-            uint32_t(i),
+        ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(
+            *update.state, uint32_t(i),
             {static_cast<RHICommandContextType>(update.schedule.groups[i].queue), serials[i]}));
     }
-    ASSERT_TRUE(update.state->Complete());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::FinishSubmission(*update.state));
     ASSERT_TRUE(history.ResolveAccepted());
 }
 
@@ -79,16 +88,17 @@ TEST(RHISubmissionPointTest, ExactGroupsRetainIndependentLogicalTimelines)
     RHISubmissionPoint transfer{queues[1], 0, state, 1};
     RHISubmissionDependency resolved;
     EXPECT_EQ(compute.Resolve(resolved), RHISubmissionPointStatus::ePending);
-    EXPECT_FALSE(state->Accept(0, {queues[0], 91}));
-    ASSERT_TRUE(state->Queue());
-    EXPECT_FALSE(state->Queue());
-    EXPECT_FALSE(state->Accept(0, {queues[1], 91}));
-    EXPECT_FALSE(state->Accept(0, {queues[0], RHISubmissionDependency::kLatestSubmitted}));
-    ASSERT_TRUE(state->Accept(0, {queues[0], 91}));
-    EXPECT_FALSE(state->Complete());
+    EXPECT_FALSE(RHISubmissionStateTestAccess::Accept(*state, 0, {queues[0], 91}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*state));
+    EXPECT_FALSE(RHISubmissionStateTestAccess::Queue(*state));
+    EXPECT_FALSE(RHISubmissionStateTestAccess::Accept(*state, 0, {queues[1], 91}));
+    EXPECT_FALSE(RHISubmissionStateTestAccess::Accept(
+        *state, 0, {queues[0], RHISubmissionDependency::kLatestSubmitted}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*state, 0, {queues[0], 91}));
+    EXPECT_FALSE(RHISubmissionStateTestAccess::FinishSubmission(*state));
     EXPECT_EQ(transfer.Resolve(resolved), RHISubmissionPointStatus::ePending);
-    ASSERT_TRUE(state->Accept(1, {queues[1], 4}));
-    ASSERT_TRUE(state->Complete());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*state, 1, {queues[1], 4}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::FinishSubmission(*state));
     state.Reset();
     ExpectPoint(compute, queues[0], 91);
     ExpectPoint(transfer, queues[1], 4);
@@ -104,11 +114,11 @@ TEST(RenderSubmissionHistoryTest, ParallelReadersProtectOverwriteIncludingAliase
         queues.queueIds[2]          = alias ? 1 : 2;
         RenderSubmissionHistory history;
         HistoryInput reads;
-        reads.Add(RDGQueue::eAsyncCompute, 11, RHIAccessMode::eRead);
-        reads.Add(RDGQueue::eTransfer, 11, RHIAccessMode::eRead);
+        reads.Add(RHICommandContextType::eAsyncCompute, 11, RHIAccessMode::eRead);
+        reads.Add(RHICommandContextType::eTransfer, 11, RHIAccessMode::eRead);
         RenderSubmissionUpdate readers;
         ASSERT_TRUE(PrepareHistory(history, reads, readers, queues));
-        EXPECT_TRUE(readers.schedule.groups[1].semaphorePredecessors.empty());
+        EXPECT_TRUE(readers.schedule.groups[1].predecessors.empty());
         EXPECT_EQ(history.Find(11), nullptr);
         const SmallVector<uint64_t, 2> serials{91, 4};
         AcceptHistory(history, readers, serials);
@@ -116,11 +126,10 @@ TEST(RenderSubmissionHistoryTest, ParallelReadersProtectOverwriteIncludingAliase
         ExpectPoint(history.Find(11)->readers[1].point, RHICommandContextType::eAsyncCompute, 91);
         ExpectPoint(history.Find(11)->readers[2].point, RHICommandContextType::eTransfer, 4);
         HistoryInput write;
-        write.Add(RDGQueue::eGraphics, 11, RHIAccessMode::eReadWrite);
+        write.Add(RHICommandContextType::eGraphics, 11, RHIAccessMode::eReadWrite);
         RenderSubmissionUpdate overwrite;
         ASSERT_TRUE(PrepareHistory(history, write, overwrite, queues));
         ASSERT_EQ(overwrite.schedule.groups[0].externalPredecessors.size(), 2u);
-        EXPECT_EQ(overwrite.schedule.groups[0].externalSemaphorePredecessors.size(), 2u);
         EXPECT_EQ(history.Find(11)->writer.point.IsValid(), false);
         const SmallVector<uint64_t, 1> graphics{7};
         AcceptHistory(history, overwrite, graphics);
@@ -134,20 +143,19 @@ TEST(RenderSubmissionHistoryTest, CurrentAndEarlierFrameReferencesStayExactBefor
 {
     RenderSubmissionHistory history;
     HistoryInput input;
-    input.Add(RDGQueue::eTransfer, 22, RHIAccessMode::eReadWrite);
-    input.Add(RDGQueue::eGraphics, 33, RHIAccessMode::eRead);
-    input.Add(RDGQueue::eAsyncCompute, 22, RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eTransfer, 22, RHIAccessMode::eReadWrite);
+    input.Add(RHICommandContextType::eGraphics, 33, RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eAsyncCompute, 22, RHIAccessMode::eRead);
     RenderSubmissionUpdate frame;
     ASSERT_TRUE(PrepareHistory(history, input, frame));
     EXPECT_TRUE(frame.schedule.groups[1].predecessors.empty());
     ASSERT_EQ(frame.schedule.groups[2].predecessors.size(), 1u);
     EXPECT_EQ(frame.schedule.groups[2].predecessors[0], 0u);
-    EXPECT_EQ(frame.schedule.groups[2].semaphorePredecessors[0], 0u);
     EXPECT_FALSE(history.Commit(frame));
-    ASSERT_TRUE(frame.state->Queue());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*frame.state));
     ASSERT_TRUE(history.Commit(frame));
     HistoryInput overwrite;
-    overwrite.Add(RDGQueue::eTransfer, 22, RHIAccessMode::eReadWrite);
+    overwrite.Add(RHICommandContextType::eTransfer, 22, RHIAccessMode::eReadWrite);
     RenderSubmissionUpdate later;
     ASSERT_TRUE(PrepareHistory(history, overwrite, later));
     ASSERT_EQ(later.externalPoints.size(), 2u);
@@ -157,11 +165,14 @@ TEST(RenderSubmissionHistoryTest, CurrentAndEarlierFrameReferencesStayExactBefor
     EXPECT_EQ(later.externalPoints[1].group, 2u);
     RHISubmissionDependency resolved;
     EXPECT_EQ(later.externalPoints[1].Resolve(resolved), RHISubmissionPointStatus::ePending);
-    ASSERT_TRUE(frame.state->Accept(0, {RHICommandContextType::eTransfer, 8}));
-    ASSERT_TRUE(frame.state->Accept(1, {RHICommandContextType::eGraphics, 100}));
-    ASSERT_TRUE(frame.state->Accept(2, {RHICommandContextType::eAsyncCompute, 3}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*frame.state, 0,
+                                                     {RHICommandContextType::eTransfer, 8}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*frame.state, 1,
+                                                     {RHICommandContextType::eGraphics, 100}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*frame.state, 2,
+                                                     {RHICommandContextType::eAsyncCompute, 3}));
     ExpectPoint(later.externalPoints[1], RHICommandContextType::eAsyncCompute, 3);
-    ASSERT_TRUE(frame.state->Complete());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::FinishSubmission(*frame.state));
     ASSERT_TRUE(history.ResolveAccepted());
     EXPECT_FALSE(history.Find(22)->readers[1].point.state);
     ExpectPoint(history.Find(22)->readers[1].point, RHICommandContextType::eAsyncCompute, 3);
@@ -171,8 +182,10 @@ TEST(RenderSubmissionHistoryTest, LayoutChangesWaitForAllReadersAndEstablishNewR
 {
     RenderSubmissionHistory history;
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, 44, RHIAccessMode::eRead, RHITextureUsage::eSampled);
-    input.Add(RDGQueue::eAsyncCompute, 44, RHIAccessMode::eRead, RHITextureUsage::eSampled);
+    input.Add(RHICommandContextType::eGraphics, 44, RHIAccessMode::eRead,
+              RHITextureUsage::eSampled);
+    input.Add(RHICommandContextType::eAsyncCompute, 44, RHIAccessMode::eRead,
+              RHITextureUsage::eSampled);
     RenderSubmissionUpdate readers;
     ASSERT_TRUE(PrepareHistory(history, input, readers));
     // The first reader establishes the initially undefined layout; the next consumes it.
@@ -180,7 +193,8 @@ TEST(RenderSubmissionHistoryTest, LayoutChangesWaitForAllReadersAndEstablishNewR
     const SmallVector<uint64_t, 2> serials{5, 9};
     AcceptHistory(history, readers, serials);
     HistoryInput transition;
-    transition.Add(RDGQueue::eTransfer, 44, RHIAccessMode::eRead, RHITextureUsage::eTransferSrc);
+    transition.Add(RHICommandContextType::eTransfer, 44, RHIAccessMode::eRead,
+                   RHITextureUsage::eTransferSrc);
     RenderSubmissionUpdate changed;
     ASSERT_TRUE(PrepareHistory(history, transition, changed));
     EXPECT_EQ(changed.schedule.groups[0].externalPredecessors.size(), 2u);
@@ -190,7 +204,8 @@ TEST(RenderSubmissionHistoryTest, LayoutChangesWaitForAllReadersAndEstablishNewR
     EXPECT_FALSE(history.Find(44)->readers[0].point.IsValid());
     EXPECT_FALSE(history.Find(44)->readers[1].point.IsValid());
     HistoryInput next;
-    next.Add(RDGQueue::eGraphics, 44, RHIAccessMode::eRead, RHITextureUsage::eTransferSrc);
+    next.Add(RHICommandContextType::eGraphics, 44, RHIAccessMode::eRead,
+             RHITextureUsage::eTransferSrc);
     RenderSubmissionUpdate read;
     ASSERT_TRUE(PrepareHistory(history, next, read));
     ASSERT_EQ(read.schedule.groups[0].externalPredecessors.size(), 1u);
@@ -202,33 +217,34 @@ TEST(RenderSubmissionHistoryTest, RejectionInvalidationAndPartialFailurePreserve
 {
     RenderSubmissionHistory history;
     HistoryInput input;
-    input.Add(RDGQueue::eTransfer, 55, RHIAccessMode::eReadWrite);
+    input.Add(RHICommandContextType::eTransfer, 55, RHIAccessMode::eReadWrite);
     RenderSubmissionUpdate upload;
     ASSERT_TRUE(PrepareHistory(history, input, upload));
     const SmallVector<uint64_t, 1> serials{6};
     AcceptHistory(history, upload, serials);
     HistoryInput use;
-    use.Add(RDGQueue::eAsyncCompute, 55, RHIAccessMode::eReadWrite);
-    use.Add(RDGQueue::eGraphics, 66, RHIAccessMode::eReadWrite);
+    use.Add(RHICommandContextType::eAsyncCompute, 55, RHIAccessMode::eReadWrite);
+    use.Add(RHICommandContextType::eGraphics, 66, RHIAccessMode::eReadWrite);
     RenderSubmissionUpdate rejected;
     ASSERT_TRUE(PrepareHistory(history, use, rejected));
     EXPECT_FALSE(history.Commit(rejected));
     ExpectPoint(history.Find(55)->writer.point, RHICommandContextType::eTransfer, 6);
     history.Erase(66); // Any external invalidation invalidates an already prepared delta.
-    ASSERT_TRUE(rejected.state->Queue());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*rejected.state));
     EXPECT_FALSE(history.Commit(rejected));
     ExpectPoint(history.Find(55)->writer.point, RHICommandContextType::eTransfer, 6);
     RenderSubmissionUpdate accepted;
     ASSERT_TRUE(PrepareHistory(history, use, accepted));
-    ASSERT_TRUE(accepted.state->Queue());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*accepted.state));
     ASSERT_TRUE(history.Commit(accepted));
-    ASSERT_TRUE(accepted.state->Accept(0, {RHICommandContextType::eAsyncCompute, 7}));
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Accept(*accepted.state, 0,
+                                                     {RHICommandContextType::eAsyncCompute, 7}));
     ASSERT_TRUE(history.ResolveAccepted());
     EXPECT_TRUE(
         history.Find(55)->writer.point.state); // Keep failure provenance until batch success.
     RenderSubmissionUpdate dependent;
     ASSERT_TRUE(PrepareHistory(history, input, dependent));
-    accepted.state->Fail();
+    RHISubmissionStateTestAccess::Fail(*accepted.state);
     EXPECT_FALSE(history.CanCommit(dependent));
     EXPECT_FALSE(history.ResolveAccepted());
     EXPECT_EQ(history.Find(55), nullptr);
@@ -239,7 +255,7 @@ TEST(RenderSubmissionHistoryTest, SameQueueReadersAccumulateScopesWithoutLosingP
 {
     RenderSubmissionHistory history;
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, 77, RHIAccessMode::eReadWrite);
+    input.Add(RHICommandContextType::eGraphics, 77, RHIAccessMode::eReadWrite);
     RenderSubmissionUpdate writer;
     ASSERT_TRUE(PrepareHistory(history, input, writer));
     const SmallVector<uint64_t, 1> first{3};
@@ -268,9 +284,11 @@ TEST(RenderSubmissionHistoryTest, CompatibleImageUsagesKeepEveryReaderStageForOv
 {
     RenderSubmissionHistory history;
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, 88, RHIAccessMode::eRead, RHITextureUsage::eSampled);
+    input.Add(RHICommandContextType::eGraphics, 88, RHIAccessMode::eRead,
+              RHITextureUsage::eSampled);
     input.accesses[0][0].access.pipelineStages = int64_t(RHIPipelineStageFlagBits::eVertexShader);
-    input.Add(RDGQueue::eGraphics, 88, RHIAccessMode::eRead, RHITextureUsage::eInputAttachment);
+    input.Add(RHICommandContextType::eGraphics, 88, RHIAccessMode::eRead,
+              RHITextureUsage::eInputAttachment);
     input.accesses[1][0].access.accessFlags = int64_t(RHIAccessFlagBits::eInputAttachmentRead);
     RenderSubmissionUpdate readers;
     ASSERT_TRUE(PrepareHistory(history, input, readers));
@@ -301,9 +319,9 @@ TEST_P(RDGSubmissionHistoryTest, UploadedResourceWaitIsAttachedOnlyToItsComputeC
     ASSERT_GT(producer.serial, 0u);
     RenderGraph graph("group_upload_history");
     ASSERT_TRUE(graph.Begin());
-    AddScheduledBufferPass(graph, "independent", RDGQueue::eGraphics,
+    AddScheduledBufferPass(graph, "independent", RHICommandContextType::eGraphics,
                            graph.GetResourceManager()->ImportHostWrittenBuffer(unrelated));
-    AddScheduledBufferPass(graph, "consumer", RDGQueue::eAsyncCompute,
+    AddScheduledBufferPass(graph, "consumer", RHICommandContextType::eAsyncCompute,
                            graph.GetResourceManager()->ImportBuffer(uploaded));
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
@@ -317,8 +335,8 @@ TEST_P(RDGSubmissionHistoryTest, UploadedResourceWaitIsAttachedOnlyToItsComputeC
     EXPECT_EQ(rhi->progressQueries, queries);
     ASSERT_EQ(update.schedule.groups.size(), 2u);
     EXPECT_TRUE(update.schedule.groups[0].externalPredecessors.empty());
-    ASSERT_EQ(update.schedule.groups[1].externalSemaphorePredecessors.size(), 1u);
-    const uint32_t id = update.schedule.groups[1].externalSemaphorePredecessors[0];
+    ASSERT_EQ(update.schedule.groups[1].externalPredecessors.size(), 1u);
+    const uint32_t id = update.schedule.groups[1].externalPredecessors[0];
     ExpectPoint(update.externalPoints[id], producer.queue, producer.serial);
     plan.schedule = update.schedule;
     RecordedGroupLists recorded(*device, plan.schedule);
@@ -334,8 +352,8 @@ TEST_P(RDGSubmissionHistoryTest, GroupRecordingMergesAllLocalReadersAndForeignWa
 {
     TestBuffer* buffer = Buffer();
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, buffer->GetStableId(), RHIAccessMode::eRead);
-    input.Add(RDGQueue::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eGraphics, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
     RenderSubmissionHistory& history = RDGSubmissionTestAccess::History(*device);
     RenderSubmissionUpdate readers;
     ASSERT_TRUE(PrepareHistory(history, input, readers));
@@ -343,7 +361,7 @@ TEST_P(RDGSubmissionHistoryTest, GroupRecordingMergesAllLocalReadersAndForeignWa
     AcceptHistory(history, readers, serials);
     RenderGraph graph("overwrite_parallel_readers");
     ASSERT_TRUE(graph.Begin());
-    AddScheduledBufferPass(graph, "overwrite", RDGQueue::eAsyncCompute, {},
+    AddScheduledBufferPass(graph, "overwrite", RHICommandContextType::eAsyncCompute, {},
                            graph.GetResourceManager()->ImportBuffer(buffer));
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
@@ -354,7 +372,6 @@ TEST_P(RDGSubmissionHistoryTest, GroupRecordingMergesAllLocalReadersAndForeignWa
     ASSERT_TRUE(RDGSubmissionTestAccess::PrepareHistory(*device, graph, plan.schedule, update));
     ASSERT_EQ(update.initialStates.size(), 2u);
     EXPECT_EQ(update.schedule.groups[0].externalPredecessors.size(), 2u);
-    EXPECT_EQ(update.schedule.groups[0].externalSemaphorePredecessors.size(), 1u);
     plan.schedule = update.schedule;
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, update.initialStates));
@@ -393,7 +410,7 @@ TEST_P(RDGSubmissionHistoryTest, TextureViewsSharePhysicalHistoryAndInvalidation
     RenderSubmissionUpdate update;
     ASSERT_TRUE(RDGSubmissionTestAccess::PrepareHistory(*device, graph, plan.schedule, update));
     RenderSubmissionHistory& history = RDGSubmissionTestAccess::History(*device);
-    ASSERT_TRUE(update.state->Queue());
+    ASSERT_TRUE(RHISubmissionStateTestAccess::Queue(*update.state));
     ASSERT_TRUE(history.Commit(update));
     EXPECT_NE(history.Find(texture->GetStableId()), nullptr);
     EXPECT_EQ(history.Find(view->GetStableId()), nullptr);
@@ -407,9 +424,9 @@ TEST_P(RDGSubmissionHistoryTest, ParallelImageReadersRetainLayoutAndWaitBeforeTr
     RHITexture* texture              = Texture();
     RenderSubmissionHistory& history = RDGSubmissionTestAccess::History(*device);
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, texture->GetStableId(), RHIAccessMode::eRead,
+    input.Add(RHICommandContextType::eGraphics, texture->GetStableId(), RHIAccessMode::eRead,
               RHITextureUsage::eSampled);
-    input.Add(RDGQueue::eAsyncCompute, texture->GetStableId(), RHIAccessMode::eRead,
+    input.Add(RHICommandContextType::eAsyncCompute, texture->GetStableId(), RHIAccessMode::eRead,
               RHITextureUsage::eSampled);
     RenderSubmissionUpdate readers;
     ASSERT_TRUE(PrepareHistory(history, input, readers));
@@ -441,7 +458,6 @@ TEST_P(RDGSubmissionHistoryTest, ParallelImageReadersRetainLayoutAndWaitBeforeTr
         RenderSubmissionUpdate update;
         ASSERT_TRUE(RDGSubmissionTestAccess::PrepareHistory(*device, graph, plan.schedule, update));
         EXPECT_EQ(update.schedule.groups[0].externalPredecessors.size(), transition ? 2u : 1u);
-        EXPECT_EQ(update.schedule.groups[0].externalSemaphorePredecessors.size(), 1u);
         plan.schedule = update.schedule;
         RecordedGroupLists recorded(*device, plan.schedule);
         ASSERT_TRUE(
@@ -469,8 +485,8 @@ TEST_P(RDGGroupQueueTest, ExactReaderTimelinesShareLocalBarrierOnlyWhenNativeQue
     const bool alias   = std::get<1>(GetParam());
     TestBuffer* buffer = Buffer();
     HistoryInput input;
-    input.Add(RDGQueue::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
-    input.Add(RDGQueue::eTransfer, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eTransfer, buffer->GetStableId(), RHIAccessMode::eRead);
     RenderSubmissionHistory& history = RDGSubmissionTestAccess::History(*device);
     RenderSubmissionUpdate readers;
     RHIQueueCapabilities queues = DistinctComputeQueues();
@@ -480,7 +496,7 @@ TEST_P(RDGGroupQueueTest, ExactReaderTimelinesShareLocalBarrierOnlyWhenNativeQue
     AcceptHistory(history, readers, serials);
     RenderGraph graph("overwrite_aliased_readers");
     ASSERT_TRUE(graph.Begin());
-    AddScheduledBufferPass(graph, "overwrite", RDGQueue::eAsyncCompute, {},
+    AddScheduledBufferPass(graph, "overwrite", RHICommandContextType::eAsyncCompute, {},
                            graph.GetResourceManager()->ImportBuffer(buffer));
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
@@ -490,7 +506,6 @@ TEST_P(RDGGroupQueueTest, ExactReaderTimelinesShareLocalBarrierOnlyWhenNativeQue
     RenderSubmissionUpdate update;
     ASSERT_TRUE(RDGSubmissionTestAccess::PrepareHistory(*device, graph, plan.schedule, update));
     EXPECT_EQ(update.schedule.groups[0].externalPredecessors.size(), 2u);
-    EXPECT_EQ(update.schedule.groups[0].externalSemaphorePredecessors.size(), alias ? 0u : 1u);
     plan.schedule = update.schedule;
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, update.initialStates));
@@ -510,8 +525,8 @@ TEST_P(RDGSubmissionHistoryTest, LaterUploadWaitsForBothGraphicsAndComputeReader
 {
     TestBuffer* buffer = Buffer();
     HistoryInput input;
-    input.Add(RDGQueue::eGraphics, buffer->GetStableId(), RHIAccessMode::eRead);
-    input.Add(RDGQueue::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eGraphics, buffer->GetStableId(), RHIAccessMode::eRead);
+    input.Add(RHICommandContextType::eAsyncCompute, buffer->GetStableId(), RHIAccessMode::eRead);
     RenderSubmissionHistory& history = RDGSubmissionTestAccess::History(*device);
     RenderSubmissionUpdate readers;
     ASSERT_TRUE(PrepareHistory(history, input, readers));
@@ -551,7 +566,7 @@ INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
 
 TEST_F(RHIExecutorTest, QueuedConsumerResolvesExactProducerBeforeUnrelatedSubmissions)
 {
-    rhi->asyncDependencies                    = true;
+    rhi->submissionQueueCapabilities.asyncSubmissionDependencies = true;
     const RHICommandContextType producerQueue = RHICommandContextType::eAsyncCompute;
     RefCountPtr<RHISubmissionState> state =
         MakeRefCountPtr<RHISubmissionState>(MakeVecView(producerQueue));

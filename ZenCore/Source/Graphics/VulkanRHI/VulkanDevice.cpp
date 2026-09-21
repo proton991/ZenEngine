@@ -506,11 +506,6 @@ void VulkanDevice::Destroy()
     }
 }
 
-bool VulkanRHI::IsTransferQueueSharedWithGraphics() const
-{
-    return m_pDevice->GetTransferQueue()->GetVkHandle() == m_pDevice->GetGfxQueue()->GetVkHandle();
-}
-
 RHIQueueCapabilities VulkanRHI::GetQueueCapabilities() const
 {
     return m_pDevice != nullptr ? m_pDevice->GetQueueCapabilities() : RHIQueueCapabilities{};
@@ -545,11 +540,6 @@ RHIQueueCapabilities VulkanDevice::GetQueueCapabilities() const
     return capabilities;
 }
 
-bool VulkanRHI::SupportsAsyncSubmissionDependencies() const
-{
-    return m_pDevice->SupportsTimelineSemaphore();
-}
-
 bool VulkanRHI::PrepareSubmissionDependencies(
     IRHICommandContext* context,
     VectorView<const RHISubmissionDependency> dependencies)
@@ -574,12 +564,13 @@ bool VulkanRHI::PrepareSubmissionDependencies(
             {
                 if (SupportsAsyncSubmissionDependencies())
                 {
-                    consumer->AddWaitSemaphore(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                               producer->m_pTimelineSemaphore, serial);
+                    consumer->AddWaitSemaphore(
+                        VkPipelineStageFlags(RHISubmissionDependency::kWaitStage),
+                        producer->m_pTimelineSemaphore, serial);
                 }
                 else
                 {
-                    result = producer->WaitForSubmission(serial, UINT64_MAX);
+                    result = producer->WaitForCompletion(serial, UINT64_MAX);
                 }
             }
         }
@@ -599,7 +590,7 @@ uint64_t VulkanRHI::GetLastSubmittedSerial(RHICommandContextType contextType) co
     return pQueue != nullptr ? pQueue->GetLastSubmittedSerial() : 0;
 }
 
-uint64_t VulkanRHI::GetLastCompletedSerial(RHICommandContextType contextType)
+uint64_t VulkanRHI::QueryLastCompletedSerial(RHICommandContextType contextType)
 {
     VulkanQueue* pQueue = m_pDevice->GetQueue(contextType);
 
@@ -611,12 +602,12 @@ uint64_t VulkanRHI::GetLastCompletedSerial(RHICommandContextType contextType)
     return pQueue != nullptr ? pQueue->GetLastCompletedSerial() : 0;
 }
 
-bool VulkanRHI::WaitForSubmission(RHICommandContextType contextType,
+bool VulkanRHI::WaitForCompletion(RHICommandContextType contextType,
                                   uint64_t submissionSerial,
                                   uint64_t timeoutNS)
 {
     VulkanQueue* pQueue = m_pDevice->GetQueue(contextType);
-    return pQueue != nullptr && pQueue->WaitForSubmission(submissionSerial, timeoutNS);
+    return pQueue != nullptr && pQueue->WaitForCompletion(submissionSerial, timeoutNS);
 }
 
 void VulkanRHI::WaitDeviceIdle()

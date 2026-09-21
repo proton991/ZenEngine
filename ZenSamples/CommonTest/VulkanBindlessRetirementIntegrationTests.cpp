@@ -239,7 +239,7 @@ protected:
         }
         uint64_t serial = 0;
         ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-        ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+        ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     }
 
     void PushIndex(RHIPipeline* pipeline, uint32_t index)
@@ -648,12 +648,12 @@ TEST_P(VulkanBindlessQueueRetirementTest, PendingGPUReadKeepsViewAndSamplerAlive
     uint64_t serial = 0;
     auto* queue     = context->GetQueue();
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(replacement, 0).IsValid());
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(nextSampler, 0).IsValid());
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     // Submit a host-read barrier after the now-completed compute write.
     SubmitAndWait();
     CheckPixel(output, 0xFF0000FFu);
@@ -678,17 +678,17 @@ TEST_P(VulkanBindlessQueueRetirementTest, EveryQueueMustCompleteItsRecordedEpoch
     Enqueue(context);
     uint64_t serial = 0;
     ASSERT_EQ(context->GetQueue()->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    ASSERT_TRUE(context->GetQueue()->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(context->GetQueue()->WaitForCompletion(serial, UINT64_MAX));
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     HostGate gate(session->rhi.GetDevice());
     gate.Record(compute);
     Enqueue(compute);
     ASSERT_EQ(compute->GetQueue()->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(compute->GetQueue()->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(compute->GetQueue()->WaitForCompletion(serial, 0));
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     gate.Open();
-    ASSERT_TRUE(compute->GetQueue()->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(compute->GetQueue()->WaitForCompletion(serial, UINT64_MAX));
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     ZEN_DELETE(compute);
 }
@@ -732,14 +732,14 @@ TEST_P(VulkanBindlessQueueRetirementTest, ReplayResetWaitsForLatestSubmission)
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
     commandList->Reset();
     context->RHIReleaseBindlessEpoch(epoch);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     session->rhi.CollectRetiredBindlessResources();
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     // A saved integer alone cannot reactivate a recording after its count is released.
     EXPECT_FALSE(session->rhi.GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
         sampler, 0, nullptr, epoch));
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     SubmitAndWait();
     CheckPixel(output, 0xFF0000FFu);
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
@@ -772,10 +772,10 @@ TEST_P(VulkanBindlessQueueRetirementTest, RejectedMergedEpochCountsTransferOnRet
     HostGate gate(session->rhi.GetDevice());
     gate.Record(context);
     EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     EXPECT_FALSE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     gate.Open();
-    EXPECT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    EXPECT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     ZEN_DELETE(other);
 }
@@ -810,7 +810,7 @@ TEST_P(VulkanBindlessQueueRetirementTest, OneSubmissionProtectsUniformsBindlessA
     auto* queue     = context->GetQueue();
     uint64_t serial = 0;
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     EXPECT_FALSE(tracker.HasRecordings(blockLifetime));
     EXPECT_FALSE(tracker.HasRecordings(epoch));
     EXPECT_FALSE(tracker.HasRecordings(pool->GetLifetimeId()));
@@ -820,7 +820,7 @@ TEST_P(VulkanBindlessQueueRetirementTest, OneSubmissionProtectsUniformsBindlessA
     allocator->BeginFrame(0);
     EXPECT_NE(allocator->Alloc(64).blockId, allocation.blockId);
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     EXPECT_TRUE(pool->CanReuse());
     EXPECT_TRUE(session->rhi.RegisterBindlessResource(sampler, 0).IsValid());
     allocator->BeginFrame(0);

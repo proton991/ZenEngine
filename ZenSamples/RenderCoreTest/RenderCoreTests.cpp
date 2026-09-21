@@ -888,9 +888,7 @@ public:
     RHIQueueCopyCapabilities computeCopy{false, true, true, {1, 1, 1}};
     RHIQueueCopyCapabilities transferCopy{false, false, true, {1, 1, 1}};
     std::unordered_map<DataFormat, RHITextureCopyCapabilities> copyCapabilities;
-    bool shared{false};
-    bool asyncDependencies{false};
-    RHIQueueCapabilities submissionQueueCapabilities;
+    RHIQueueCapabilities submissionQueueCapabilities{false, false, {0, 1, 2}};
     mutable uint32_t queueCapabilityQueries{0};
     struct SubmissionDependency
     {
@@ -1174,17 +1172,7 @@ public:
 
     size_t Index(RHICommandContextType type) const
     {
-        return shared && type == RHICommandContextType::eTransfer ? 0 : static_cast<size_t>(type);
-    }
-
-    bool IsTransferQueueSharedWithGraphics() const override
-    {
-        return shared;
-    }
-
-    bool SupportsAsyncSubmissionDependencies() const override
-    {
-        return asyncDependencies;
+        return static_cast<size_t>(type);
     }
 
     RHIQueueCapabilities GetQueueCapabilities() const override
@@ -1198,7 +1186,7 @@ public:
         VectorView<const RHISubmissionDependency> dependencies) override
     {
         bool result = true;
-        if (!asyncDependencies)
+        if (!submissionQueueCapabilities.asyncSubmissionDependencies)
         {
             result = DynamicRHI::PrepareSubmissionDependencies(context, dependencies);
         }
@@ -1212,10 +1200,8 @@ public:
                 }
                 result = result && dependency.serial <= GetLastSubmittedSerial(dependency.queue);
                 if (result && dependency.serial != 0 &&
-                    (submissionQueueCapabilities.computeSupported ?
-                         !submissionQueueCapabilities.AreQueuesShared(dependency.queue,
-                                                                      context->GetContextType()) :
-                         Index(dependency.queue) != Index(context->GetContextType())))
+                    !submissionQueueCapabilities.AreQueuesShared(dependency.queue,
+                                                                 context->GetContextType()))
                 {
                     gpuDependencies.push_back({context->GetContextType(), dependency});
                 }
@@ -1235,7 +1221,7 @@ public:
         return submitted[Index(type)];
     }
 
-    uint64_t GetLastCompletedSerial(RHICommandContextType type) override
+    uint64_t QueryLastCompletedSerial(RHICommandContextType type) override
     {
         ++progressQueries;
         if (failProgressQuery)
@@ -1245,7 +1231,7 @@ public:
         return completed[Index(type)];
     }
 
-    bool WaitForSubmission(RHICommandContextType type,
+    bool WaitForCompletion(RHICommandContextType type,
                            uint64_t serial,
                            uint64_t timeoutNS = UINT64_MAX) override
     {
@@ -1304,9 +1290,12 @@ public:
 
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const override
     {
-        return type == RHICommandContextType::eAsyncCompute     ? computeCopy :
-            type == RHICommandContextType::eTransfer && !shared ? transferCopy :
-                                                                  graphicsCopy;
+        return type == RHICommandContextType::eAsyncCompute ? computeCopy :
+            type == RHICommandContextType::eTransfer &&
+                !submissionQueueCapabilities.AreQueuesShared(RHICommandContextType::eTransfer,
+                                                             RHICommandContextType::eGraphics) ?
+                                                              transferCopy :
+                                                              graphicsCopy;
     }
 };
 } // namespace
@@ -1318,6 +1307,30 @@ DynamicRHI* GDynamicRHI = nullptr;
 RHIFrameState GRHIFrameState;
 namespace zen
 {
+// White-box state tests can inject acceptance/failure without exposing production mutators.
+struct RHISubmissionStateTestAccess
+{
+    static bool Queue(RHISubmissionState& state)
+    {
+        return state.Queue();
+    }
+
+    static bool Accept(RHISubmissionState& state, uint32_t group, RHISubmissionDependency accepted)
+    {
+        return state.Accept(group, accepted);
+    }
+
+    static bool FinishSubmission(RHISubmissionState& state)
+    {
+        return state.FinishSubmission();
+    }
+
+    static void Fail(RHISubmissionState& state)
+    {
+        state.Fail();
+    }
+};
+
 DynamicRHI* DynamicRHI::Create(RHIAPIType)
 {
     return GDynamicRHI;
@@ -1400,7 +1413,8 @@ struct RDGSubmissionTestAccess
 
     static RHICompletionSet FrameCompletion(const RenderDevice& device)
     {
-        return device.m_frames[ToIndex(GRenderFrameState.GetFrameSlot())].retirement.completion;
+        return device.m_frames[ToIndex(GRenderFrameState.GetFrameSlot())]
+            .retirement.requiredSerials;
     }
 
     static RHIViewport* RecreateViewport(const RenderDevice& device)
@@ -1453,13 +1467,8 @@ struct RDGSubmissionTestAccess
     static bool HasHistory(const RenderDevice& device, uint64_t id)
     {
         bool found = HasHistory(device.m_rdgExecutor.GetResourceStateTracker(), id) ||
-            HasHistory(device.m_confirmedResourceState, id) ||
             device.m_submissionHistory.Find(id) != nullptr ||
             device.m_rdgExecutor.GetMetrics().m_validator.HasState(id);
-        for (const RenderDevice::PendingFrame& pending : device.m_pendingFrames)
-        {
-            found |= HasHistory(pending.scheduledState, id);
-        }
         return found;
     }
 
@@ -1483,9 +1492,8 @@ protected:
     void InitializeDevice(RHIViewport* viewport,
                           uint32_t frameCount        = 2,
                           RHIExecutionMode mode      = RHIExecutionMode::eInline,
-                          bool asyncDependencies     = false,
                           AsyncComputeMode asyncMode = RenderConfig::GetInstance().asyncComputeMode,
-                          RHIQueueCapabilities queues          = {},
+                          RHIQueueCapabilities queues          = {false, false, {0, 1, 2}},
                           RHIQueueCopyCapabilities computeCopy = {false, true, true, {1, 1, 1}})
     {
         destroyed.clear();
@@ -1493,7 +1501,6 @@ protected:
         textureFiles.clear();
         sceneInputs                      = {};
         rhi                              = ZEN_NEW() TestRHI();
-        rhi->asyncDependencies           = asyncDependencies;
         rhi->submissionQueueCapabilities = queues;
         rhi->computeCopy                 = computeCopy;
         GDynamicRHI                      = rhi;
@@ -1797,7 +1804,7 @@ TEST_F(RenderCoreTest, LogicalBuffersBindCopyAndExtractWithoutExposingPhysicalAl
     const uint32_t refs = output.Get()->GetRefCount();
     ASSERT_TRUE(device->ExecuteRenderGraph(graph));
     EXPECT_EQ(output.Get()->GetStableId(), id);
-    EXPECT_EQ(output.Get()->GetRefCount(), refs);
+    EXPECT_GT(output.Get()->GetRefCount(), refs); // Both in-flight batches retain their resources.
 
     graph.Reset();
     rhi->completed = rhi->submitted;
@@ -2059,7 +2066,7 @@ TEST_F(RenderCoreTest, LogicalViewsTrackMipInitializationAndRejectExpiredResourc
 
 TEST_F(RenderCoreTest, TextureExtractionRetainsOneOwnerAndNeverReturnsToTransientPool)
 {
-    rhi->shared = false;
+    rhi->submissionQueueCapabilities.queueIds[2] = 2;
     CreateTestShaderProgram(device, "intent");
     RenderGraph graph("extract_texture");
     graph.Begin();
@@ -2721,12 +2728,12 @@ TEST_F(RenderCoreTest, ImportedCapabilitiesAreValidatedInsteadOfExpanded)
 
 TEST_F(RenderCoreTest, RecordedGraphRetainsImportsBeforeCompilationAndReleasesOnReset)
 {
-    rhi->shared             = false;
-    TestBuffer* source      = Buffer();
-    TestBuffer* target      = Buffer();
-    source->bytes[0]        = 37;
-    const uint64_t sourceId = source->GetStableId();
-    const uint64_t targetId = target->GetStableId();
+    rhi->submissionQueueCapabilities.queueIds[2] = 2;
+    TestBuffer* source                           = Buffer();
+    TestBuffer* target                           = Buffer();
+    source->bytes[0]                             = 37;
+    const uint64_t sourceId                      = source->GetStableId();
+    const uint64_t targetId                      = target->GetStableId();
     RenderGraph graph("retained_imports");
     ASSERT_TRUE(graph.Begin());
 
@@ -2797,7 +2804,9 @@ TEST_F(RenderCoreTest, ExecutorWithoutRetirementDeviceRejectsRecording)
 
 TEST_F(RenderCoreTest, OwnerRetirementPreservesHazardsForGraphReplay)
 {
-    rhi->shared = true;
+    TearDown();
+    InitializeDevice(nullptr, 2, RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                     {false, false, {0, 1, 0}});
     CreateTestShaderProgram(device, "retained_writer");
     TestBuffer* buffer = Buffer();
     const uint64_t id  = buffer->GetStableId();
@@ -3817,6 +3826,47 @@ TEST_F(RenderCoreTest, StagingHandlesOversizeRequests)
     manager.Destroy();
 }
 
+TEST_F(RenderCoreTest, StagingReleaseLogsOnlyInvalidAllocationsAndPreservesReuse)
+{
+    StagingBufferManager manager(16, 16);
+    StagingBufferManager other(16, 16);
+    StagingAllocation allocation, foreign;
+    ASSERT_EQ(manager.Allocate(16, 4, &allocation), StagingFlushAction::eNone);
+    ASSERT_EQ(other.Allocate(16, 4, &foreign), StagingFlushAction::eNone);
+
+    std::ostringstream output;
+    const std::shared_ptr<spdlog::logger> previous = spdlog::default_logger();
+    const std::shared_ptr<spdlog::logger> logger   = std::make_shared<spdlog::logger>(
+        "staging_release_test", std::make_shared<spdlog::sinks::ostream_sink_mt>(output));
+    spdlog::set_default_logger(logger);
+    manager.Release(allocation, {{3, 0, 2}});
+    const std::string validLog = output.str();
+    output.str("");
+    manager.Release(allocation, {});
+    const std::string duplicateLog = output.str();
+    output.str("");
+    manager.Release(foreign, {});
+    const std::string foreignLog = output.str();
+    spdlog::set_default_logger(previous);
+
+    EXPECT_TRUE(validLog.empty()) << validLog;
+    EXPECT_NE(duplicateLog.find("Staging allocation released twice"), std::string::npos);
+    EXPECT_EQ(duplicateLog.find("does not belong"), std::string::npos);
+    EXPECT_NE(foreignLog.find("Staging allocation does not belong"), std::string::npos);
+
+    StagingAllocation reused;
+    EXPECT_EQ(manager.Allocate(16, 4, &reused), StagingFlushAction::eFlush);
+    rhi->completed = {3, 0, 2};
+    EXPECT_EQ(manager.Allocate(16, 4, &reused), StagingFlushAction::eNone);
+    if (reused.pBuffer != nullptr)
+    {
+        manager.Release(reused, {});
+    }
+    other.Release(foreign, {});
+    manager.Destroy();
+    other.Destroy();
+}
+
 TEST_F(RenderCoreTest, UploadsSnapshotInputAndFlushUnderPoolPressure)
 {
     StagingBufferManager manager(16, 16);
@@ -3984,6 +4034,9 @@ TEST_F(RenderCoreTest, CancelledUploadsPreserveSharedStagingUsersAndBothCompleti
 
 TEST_F(RenderCoreTest, FailedUploadFlushRetainsSnapshotsForRetryAndDestroyStillFlushesValidWork)
 {
+    TearDown();
+    InitializeDevice(nullptr, 2, RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                     {false, false, {0, 1, 0}});
     rhi->submitted          = {1, 0, 1};
     rhi->failSubmissionWait = true;
     device->NextFrame();
@@ -4023,13 +4076,17 @@ TEST_F(RenderCoreTest, FailedUploadFlushRetainsSnapshotsForRetryAndDestroyStillF
     EXPECT_EQ(buffer->bytes, (std::vector<uint8_t>(expected.begin(), expected.end())));
     EXPECT_EQ(rhi->transfer.textureCopies.size(), 1u);
 
+    // Shared native queues still have independent logical completion serials.
+    EXPECT_GT(buffer->GetRefCount(), 1u);
+    ASSERT_TRUE(
+        GDynamicRHI->WaitForCompletion(RHICommandContextType::eTransfer, rhi->submitted[2]));
+    queue.ReclaimResources();
     device->CollectCompletedResources();
 
     EXPECT_EQ(buffer->GetRefCount(), 1u);
     EXPECT_EQ(texture->GetRefCount(), 1u);
 
     // A final valid upload still submits during Destroy, including the shared-queue wait path.
-    rhi->shared = true;
     bytes.fill(73);
     queue.EnqueueBuffer(buffer, 0, bytes.size(), bytes.data());
     queue.Destroy();
@@ -4149,12 +4206,15 @@ TEST_F(RenderCoreTest, BufferInitializationZeroFillsPaddingWithoutReadingPastCal
 
 TEST_F(RenderCoreTest, DeferredBufferDestructionUsesCompletionSerials)
 {
-    rhi->shared = true;
+    TearDown();
+    InitializeDevice(nullptr, 2, RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                     {false, false, {0, 1, 0}});
     std::array<uint8_t, 4> bytes{};
     RHIBuffer* buffer = device->CreateVertexBuffer(bytes.size(), bytes.data());
     const uint64_t id = buffer->GetStableId();
     device->DestroyBuffer(buffer);
-    EXPECT_GT(rhi->submitted[0], 0u);
+    EXPECT_GT(rhi->submitted[2], 0u);
+    EXPECT_EQ(rhi->submitted[0], 0u);
     EXPECT_FALSE(destroyed.contains(id));
     device->NextFrame();
     EXPECT_FALSE(destroyed.contains(id));
@@ -5255,8 +5315,10 @@ TEST_F(RenderCoreTest, ByteOffsetCopiesUseActualTransferQueueFlags)
         {
             SCOPED_TRACE(logical);
             SCOPED_TRACE(scenario);
+            TearDown();
+            InitializeDevice(nullptr, 2, RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                             {false, false, {0, 1, scenario == 2 ? 0u : 2u}});
             rhi->transferCopy.compute = scenario == 1;
-            rhi->shared               = scenario == 2;
             TestBuffer* buffer        = Buffer();
 
             RHITextureCreateInfo info{};
@@ -10176,7 +10238,9 @@ TEST_P(RDGPoolFrameCountTest, FrameSlotWaitIncludesComputeAndLeavesNewerSubmissi
 
 TEST_P(RDGPoolFrameCountTest, SharedQueueWaitUsesTheOldestSlotsHighestSerial)
 {
-    rhi->shared             = true;
+    TearDown();
+    InitializeDevice(nullptr, GetParam(), RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                     {false, false, {0, 1, 0}});
     constexpr uint64_t base = uint64_t(1) << 32;
 
     for (uint32_t frame = 0; frame < GetParam(); ++frame)
@@ -10266,7 +10330,9 @@ TEST_F(RenderCoreTest, FailedStagingWaitDoesNotReuseTheBlock)
 
 TEST_F(RenderCoreTest, SharedQueueUploadPressureWaitsWithoutIdlingTheDevice)
 {
-    rhi->shared = true;
+    TearDown();
+    InitializeDevice(nullptr, 2, RHIExecutionMode::eInline, AsyncComputeMode::eDisabled,
+                     {false, false, {0, 1, 0}});
     StagingBufferManager manager(16, 16);
     StagingUploadQueue queue(device, &manager);
     TestBuffer* buffer = Buffer();
@@ -10283,8 +10349,8 @@ TEST_F(RenderCoreTest, SharedQueueUploadPressureWaitsWithoutIdlingTheDevice)
     EXPECT_FALSE(queue.HasPending());
     EXPECT_TRUE(std::equal(bytes.begin(), bytes.end(), buffer->bytes.begin()));
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
-    EXPECT_EQ(rhi->submitted[0], 3u);
-    EXPECT_EQ(rhi->completed[0], 2u);
+    EXPECT_EQ(rhi->submitted[2], 3u);
+    EXPECT_EQ(rhi->completed[2], 2u);
     ASSERT_EQ(rhi->submissionWaits.size(), 2u);
     EXPECT_EQ(rhi->submissionWaits[0].second, 1u);
     EXPECT_EQ(rhi->submissionWaits[1].second, 2u);

@@ -312,7 +312,7 @@ struct RDGCompiledNode
     RDG_ID nodeId{-1};
     RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
     RDGAsyncComputeEligibility asyncComputeEligibility{RDGAsyncComputeEligibility::eNotRequested};
-    RDGQueue plannedQueue{RDGQueue::eGraphics};
+    RHICommandContextType plannedQueue{RHICommandContextType::eGraphics};
     uint32_t submissionGroup{UINT32_MAX};
     BitField<RHIPipelineStageFlagBits> prologueSrcStages;
     BitField<RHIPipelineStageFlagBits> prologueDstStages;
@@ -581,9 +581,7 @@ private:
     bool CanPlanOnTransferQueue(const ResourceStateTracker& tracker) const;
     void BuildScheduleDependencies(const ResourceStateTracker& tracker);
     void BuildSubmissionGroups(bool transferCompatible);
-    void BuildScheduleResources(const ResourceStateTracker& tracker);
     bool ValidateSchedule();
-    RDGAccess GetScheduleAccess(RDG_ID pass, RDG_ID resource) const;
     RDGAccess GetInitialScheduleAccess(RDG_ID resource, const ResourceStateTracker& tracker) const;
 
     bool AddResourceAccess(RDGPassNode* pNode,

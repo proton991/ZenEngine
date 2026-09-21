@@ -38,7 +38,7 @@ void RenderSubmissionHistory::IncludeInitial(RenderSubmissionUpdate& update,
     {
         RDGExternalQueueState initial;
         initial.resourceId     = id;
-        initial.queue          = static_cast<RDGQueue>(use.point.queue);
+        initial.queue          = use.point.queue;
         initial.dependencyId   = IncludePoint(update, use.point);
         initial.hasAccessState = true;
         initial.access         = use.access;
@@ -59,9 +59,8 @@ bool RenderSubmissionHistory::IncludeDependency(RenderSubmissionUpdate& update,
     {
         RHISubmissionDependency resolved;
         const RHISubmissionPointStatus status = point.Resolve(resolved);
-        const bool local =
-            queues.AreQueuesShared(point.queue, static_cast<RHICommandContextType>(group.queue));
-        valid = status != RHISubmissionPointStatus::eFailed &&
+        const bool local                      = queues.AreQueuesShared(point.queue, group.queue);
+        valid                                 = status != RHISubmissionPointStatus::eFailed &&
             (local || serializeReads || (queues.asyncSubmissionDependencies && shared));
         if (valid && point.state.Get() == update.state.Get())
         {
@@ -69,10 +68,6 @@ bool RenderSubmissionHistory::IncludeDependency(RenderSubmissionUpdate& update,
             if (valid && point.group != group.id)
             {
                 IncludeId(group.predecessors, point.group);
-                if (!local)
-                {
-                    IncludeId(group.semaphorePredecessors, point.group);
-                }
             }
         }
         else if (valid)
@@ -82,10 +77,6 @@ bool RenderSubmissionHistory::IncludeDependency(RenderSubmissionUpdate& update,
             {
                 const uint32_t id = IncludePoint(update, point);
                 IncludeId(group.externalPredecessors, id);
-                if (!local)
-                {
-                    IncludeId(group.externalSemaphorePredecessors, id);
-                }
             }
         }
     }
@@ -164,8 +155,7 @@ bool RenderSubmissionHistory::PrepareAccess(RenderSubmissionUpdate& update,
         }
         if (valid)
         {
-            const RHISubmissionPoint point{static_cast<RHICommandContextType>(group.queue), 0,
-                                           update.state, group.id};
+            const RHISubmissionPoint point{group.queue, 0, update.state, group.id};
             if (writes || transition)
             {
                 MergeUse(history.writer, point, access.access);
@@ -201,7 +191,7 @@ bool RenderSubmissionHistory::Prepare(const RDGSchedule& schedule,
     for (const RDGSubmissionGroup& group : schedule.groups)
     {
         valid &= group.id == contexts.size() && size_t(group.queue) < RHICompletionSet::kQueueCount;
-        contexts.push_back(static_cast<RHICommandContextType>(group.queue));
+        contexts.push_back(group.queue);
     }
     if (valid)
     {
@@ -209,23 +199,15 @@ bool RenderSubmissionHistory::Prepare(const RDGSchedule& schedule,
         for (RDGSubmissionGroup& group : update.schedule.groups)
         {
             group.externalPredecessors.clear();
-            group.externalSemaphorePredecessors.clear();
             for (uint32_t predecessor : group.predecessors)
             {
                 valid &= predecessor < group.id;
-            }
-            for (uint32_t predecessor : group.semaphorePredecessors)
-            {
-                valid &= predecessor < group.id &&
-                    std::find(group.predecessors.begin(), group.predecessors.end(), predecessor) !=
-                        group.predecessors.end();
             }
             for (const RenderSubmissionAccess& access : accesses[group.id])
             {
                 valid = valid && PrepareAccess(update, group, access, queues, serializeReads);
             }
             std::sort(group.predecessors.begin(), group.predecessors.end());
-            std::sort(group.semaphorePredecessors.begin(), group.semaphorePredecessors.end());
         }
     }
     update.prepared = valid;
@@ -266,7 +248,7 @@ bool RenderSubmissionHistory::ResolveUse(RenderResourceUse& use)
     const RHISubmissionPointStatus status = use.point.Resolve(accepted);
     const bool valid                      = status != RHISubmissionPointStatus::eFailed;
     if (status == RHISubmissionPointStatus::eAccepted && accepted.serial != 0 && use.point.state &&
-        use.point.state->IsComplete())
+        use.point.state->IsSubmissionFinished())
     {
         use.point = {accepted.queue, accepted.serial};
     }

@@ -645,7 +645,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
     GVulkanRHI->GetLifetimeTracker().Collect();
 }
 
-bool VulkanQueue::WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS)
+bool VulkanQueue::WaitForCompletion(uint64_t submissionSerial, uint64_t timeToWaitNS)
 {
     bool result{};
 

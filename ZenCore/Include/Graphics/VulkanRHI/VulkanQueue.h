@@ -51,7 +51,7 @@ public:
 
     void ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSubmissionSerial = UINT64_MAX);
 
-    bool WaitForSubmission(uint64_t submissionSerial, uint64_t timeToWaitNS);
+    bool WaitForCompletion(uint64_t submissionSerial, uint64_t timeToWaitNS);
 
     uint64_t GetLastSubmittedSerial() const
     {

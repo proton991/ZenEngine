@@ -70,6 +70,20 @@ enum class RHICommandContextType : uint32_t
     eMax          = 3
 };
 
+inline const char* RHIQueueName(RHICommandContextType queue)
+{
+    const char* name = "graphics";
+    if (queue == RHICommandContextType::eAsyncCompute)
+    {
+        name = "compute";
+    }
+    else if (queue == RHICommandContextType::eTransfer)
+    {
+        name = "transfer";
+    }
+    return name;
+}
+
 // Serial values belong to their logical queue's timeline, even when native queues alias.
 struct RHICompletionSet
 {
@@ -128,6 +142,22 @@ struct RHIQueueCapabilities
             queueIds[firstIndex] == queueIds[secondIndex];
     }
 
+    // Representative index for access history; completion serials keep their logical index.
+    size_t GetNativeQueueIndex(RHICommandContextType queue) const
+    {
+        const size_t logical = static_cast<size_t>(queue);
+        size_t result        = logical;
+        for (size_t i = 0; logical < queueIds.size() && i < logical; ++i)
+        {
+            if (queueIds[i] == queueIds[logical])
+            {
+                result = i;
+                break;
+            }
+        }
+        return result;
+    }
+
     bool SupportsAsyncCompute() const
     {
         return computeSupported && asyncSubmissionDependencies &&
@@ -138,6 +168,7 @@ struct RHIQueueCapabilities
 
 struct RHISubmissionDependency
 {
+    static constexpr RHIPipelineStageFlagBits kWaitStage = RHIPipelineStageFlagBits::eAllCommands;
     // Resolve on the submission thread, after previously queued CPU batches have executed.
     static constexpr uint64_t kLatestSubmitted = UINT64_MAX;
     RHICommandContextType queue{RHICommandContextType::eGraphics};

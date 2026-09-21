@@ -31,9 +31,9 @@ protected:
     {
         destroyed.clear();
         GRHIFrameState.Init(3);
-        rhi                                          = ZEN_NEW() TestRHI();
-        rhi->asyncDependencies                       = true;
-        rhi->submissionQueueCapabilities             = DistinctComputeQueues();
+        rhi                                                          = ZEN_NEW() TestRHI();
+        rhi->submissionQueueCapabilities.asyncSubmissionDependencies = true;
+        rhi->submissionQueueCapabilities                             = DistinctComputeQueues();
         rhi->submissionQueueCapabilities.queueIds[2] = std::get<1>(GetParam()) ? 1 : 2;
         executor    = ZEN_NEW() RHICommandListExecutor(rhi, std::get<0>(GetParam()));
         GDynamicRHI = executor;
@@ -228,7 +228,7 @@ TEST_P(RDGScheduledSubmissionTest, FrameSubmitsIndependentPrefixComputeAndConsum
     compute.BindStorageBuffer("write_buffer", output, RDGContentGuarantee::eFullWrite);
     graph.AddComputePass(compute).RecordPassCommands(
         [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-    AddScheduledBufferPass(graph, "consumer", RDGQueue::eGraphics, output);
+    AddScheduledBufferPass(graph, "consumer", RHICommandContextType::eGraphics, output);
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
     const uint64_t batches = device->GetRHIThreadMetrics().submittedBatches;
@@ -288,7 +288,7 @@ class ThreadedScheduledGraphTest : public ThreadedRenderCoreTest
 protected:
     void SetUp() override
     {
-        InitializeDevice(&viewport, 3, RHIExecutionMode::eThreaded, true, AsyncComputeMode::eAuto,
+        InitializeDevice(&viewport, 3, RHIExecutionMode::eThreaded, AsyncComputeMode::eAuto,
                          DistinctComputeQueues());
         CreateTestShaderProgram(device, "intent");
     }

@@ -8,7 +8,7 @@ protected:
     void SetUp() override
     {
         const RHIQueueCopyCapabilities compute{false, std::get<1>(GetParam()), true, {1, 1, 1}};
-        InitializeDevice(nullptr, 2, std::get<0>(GetParam()), true, AsyncComputeMode::eAuto,
+        InitializeDevice(nullptr, 2, std::get<0>(GetParam()), AsyncComputeMode::eAuto,
                          DistinctComputeQueues(), compute);
         CaptureVersionGraph(device);
         RDGMetricsOptions options    = device->GetRDGMetrics().GetOptions();
@@ -38,7 +38,8 @@ TEST_P(VoxelAsyncResetTest, PreferenceReachesResetAndUnsupportedClearFallsBack)
         EXPECT_EQ(capture.nodes[0].name, NameID("ResetVoxelVolumes"));
         EXPECT_EQ(capture.nodes[0].queuePreference, preference);
         EXPECT_EQ(capture.nodes[0].plannedQueue,
-                  compute ? RDGQueue::eAsyncCompute : RDGQueue::eGraphics);
+                  compute ? RHICommandContextType::eAsyncCompute :
+                            RHICommandContextType::eGraphics);
         EXPECT_EQ(RDGSubmissionTestAccess::LoggedAsyncCompute(*device), compute);
     }
     EXPECT_EQ(rhi->compute.textureClears.size(), std::get<1>(GetParam()) ? 1u : 0u);
@@ -64,12 +65,13 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     EXPECT_TRUE(RDGSubmissionTestAccess::LoggedAsyncCompute(*device));
     const RDGMetricsSnapshot initial = device->GetRDGMetrics().GetLastSnapshot();
     ASSERT_EQ(initial.submissions.size(), 2u);
-    EXPECT_EQ(initial.submissions[0].queue, RDGQueue::eAsyncCompute);
+    EXPECT_EQ(initial.submissions[0].queue, RHICommandContextType::eAsyncCompute);
     EXPECT_EQ(initial.submissions[0].queueEquivalenceId, 1u);
     ASSERT_EQ(initial.submissions[1].dependencies.size(), 1u);
     EXPECT_EQ(initial.submissions[1].dependencies[0].producer, 0u);
     EXPECT_TRUE(initial.submissions[1].dependencies[0].semaphore);
-    EXPECT_EQ(initial.submissions[1].dependencies[0].producerQueue, RDGQueue::eAsyncCompute);
+    EXPECT_EQ(initial.submissions[1].dependencies[0].producerQueue,
+              RHICommandContextType::eAsyncCompute);
     EXPECT_FALSE(initial.submissions[1].dependencies[0].external);
     EXPECT_EQ(initial.submissions[1].waitStages, int64_t(RHIPipelineStageFlagBits::eAllCommands));
     device->NextFrame();
@@ -82,7 +84,7 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     for (const RDGSubmissionDependencyMetrics& dependency : repeated.submissions[0].dependencies)
     {
         foundExternalSemaphore |= dependency.external && dependency.semaphore &&
-            dependency.producerQueue == RDGQueue::eGraphics;
+            dependency.producerQueue == RHICommandContextType::eGraphics;
     }
     EXPECT_TRUE(foundExternalSemaphore);
     EXPECT_GE(repeated.submissionCPUUs, 0.0);

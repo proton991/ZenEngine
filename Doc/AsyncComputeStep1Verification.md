@@ -1,5 +1,7 @@
 # Async compute — Step 1 verification
 
+Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
+
 Date: 2026-09-20. Scope: **Step 1 — Capability selection and startup controls** in [the implementation plan](AsyncComputeImplementationPlan.md). Stop here for user verification; Step 2 has not started.
 
 ## Implemented behavior

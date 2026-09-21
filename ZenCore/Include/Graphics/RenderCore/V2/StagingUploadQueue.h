@@ -24,8 +24,6 @@ struct StagingAllocation
     uint32_t size{0};
 };
 
-using StagingCompletion = RHICompletionSet;
-
 // Append-only blocks. Both unsubmitted allocations and submitted GPU work prevent reuse.
 class StagingBufferManager
 {
@@ -39,7 +37,7 @@ public:
 
     StagingFlushAction Allocate(uint32_t size, uint32_t alignment, StagingAllocation* pAllocation);
 
-    void Release(const StagingAllocation& allocation, const StagingCompletion& completion);
+    void Release(const StagingAllocation& allocation, const RHICompletionSet& requiredSerials);
 
     void Reclaim();
 
@@ -66,7 +64,7 @@ private:
         uint32_t capacity{0};
         uint32_t occupiedSize{0};
         uint32_t outstandingAllocCount{0};
-        StagingCompletion completion{};
+        RHICompletionSet requiredSerials{};
     };
 
     HeapVector<Block> m_blocks;
@@ -123,7 +121,7 @@ private:
     struct PendingUpload
     {
         StagingAllocation stagingAlloc{};
-        StagingCompletion attemptedCompletion{};
+        RHICompletionSet attemptedSerials{};
         RHIBuffer* pDstBuffer{nullptr};
         RHITexture* pDstTexture{nullptr};
         RHIBufferCopyRegion bufferCopyRegion{};
@@ -135,7 +133,7 @@ private:
     struct RetainedResource
     {
         RHIResource* pResource{nullptr};
-        StagingCompletion completion{};
+        RHICompletionSet requiredSerials{};
     };
 
     bool StageBytes(uint32_t size,

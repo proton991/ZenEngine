@@ -549,7 +549,7 @@ void VulkanCommandContextBase::WaitForLastSubmittedWork(uint64_t timeToWaitNS)
 
     if (m_lastSubmittedSerial != 0)
     {
-        if (m_pQueue->WaitForSubmission(m_lastSubmittedSerial, timeToWaitNS))
+        if (m_pQueue->WaitForCompletion(m_lastSubmittedSerial, timeToWaitNS))
         {
             m_lastSubmittedSerial = 0;
         }

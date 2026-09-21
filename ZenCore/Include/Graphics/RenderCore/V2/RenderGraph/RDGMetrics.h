@@ -154,7 +154,7 @@ struct RDGNodeMetrics
     RDGNodeType type{RDGNodeType::eNone};
     RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
     RDGAsyncComputeEligibility asyncComputeEligibility{RDGAsyncComputeEligibility::eNotRequested};
-    RDGQueue plannedQueue{RDGQueue::eGraphics};
+    RHICommandContextType plannedQueue{RHICommandContextType::eGraphics};
     uint32_t submissionGroup{UINT32_MAX};
     uint32_t reads{0};
     uint32_t writes{0};
@@ -193,13 +193,13 @@ struct RDGSubmissionDependencyMetrics
     uint32_t producer{0}; // Group ID, or external submission-reference ID when external is true.
     bool external{false};
     bool semaphore{false};
-    RDGQueue producerQueue{RDGQueue::eCount};
+    RHICommandContextType producerQueue{RHICommandContextType::eMax};
 };
 
 struct RDGSubmissionMetrics
 {
     uint32_t id{0};
-    RDGQueue queue{RDGQueue::eGraphics};
+    RHICommandContextType queue{RHICommandContextType::eGraphics};
     uint32_t queueEquivalenceId{0};
     int64_t waitStages{0};
     HeapVector<RDGSubmissionDependencyMetrics> dependencies;
@@ -313,9 +313,11 @@ private:
                   uint32_t preparationPasses,
                   const RDGPassCompileTimings& passTimings);
 
-    void CaptureSchedule(const RDGSchedule& schedule);
+    void CaptureSchedule(const RDGSchedule& schedule, const RHIQueueCapabilities& queues);
 
-    RDGQueue GetProducerQueue(const RDGSchedule& schedule, uint32_t producer, bool external) const;
+    RHICommandContextType GetProducerQueue(const RDGSchedule& schedule,
+                                           uint32_t producer,
+                                           bool external) const;
 
     void BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled);
 
@@ -337,20 +339,21 @@ private:
     void ValidateOrder(RenderGraph& graph);
 
     RDGMetricsOptions m_options;
-    HashMap<uint32_t, RDGQueue> m_externalProducerQueues;
+    HashMap<uint32_t, RHICommandContextType> m_externalProducerQueues;
     MetricsLogger<RDGMetricsSnapshot> m_logger;
     MetricsLogger<RDGMetricsSnapshot> m_transferLogger;
     RDGMetricsSnapshot m_snapshot;
     RDGNodeMetrics m_node;
     RDGBarrierValidator m_validator;
-    SmallVector<RDGBarrierValidator, size_t(RDGQueue::eCount)> m_groupValidators =
-        SmallVector<RDGBarrierValidator, size_t(RDGQueue::eCount)>(size_t(RDGQueue::eCount));
+    SmallVector<RDGBarrierValidator, size_t(RHICommandContextType::eMax)> m_groupValidators =
+        SmallVector<RDGBarrierValidator, size_t(RHICommandContextType::eMax)>(
+            size_t(RHICommandContextType::eMax));
     HashMap<uint64_t, bool> m_externalResources;
     HashMap<uint64_t, RHITextureLayout> m_groupLayouts;
-    SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RDGQueue::eCount)>
+    SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RHICommandContextType::eMax)>
         m_groupInitialAccesses =
-            SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RDGQueue::eCount)>(
-                size_t(RDGQueue::eCount));
+            SmallVector<HashMap<uint64_t, RDGMetricAccess>, size_t(RHICommandContextType::eMax)>(
+                size_t(RHICommandContextType::eMax));
     bool m_grouped{false};
     HeapVector<RDGMetricBarrier> m_barriers;
     bool m_capture{false};

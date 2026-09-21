@@ -1,5 +1,7 @@
 # Async compute Step 6 verification
 
+Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
+
 Implemented and verified on 2026-09-20. This step replaces resource submission history and prepares it for the owned multi-queue handoff in Step 7.
 
 ## Resource history and exact producer points

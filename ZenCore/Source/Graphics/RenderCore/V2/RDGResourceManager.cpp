@@ -1031,15 +1031,15 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
     return estimatedBytes;
 }
 
-bool RDGResourceManager::InFlight(const RHIRetirementRequirement& requirement) const
+bool RDGResourceManager::InFlight(const ResourceRetirement& requirement) const
 {
     return m_owner && m_owner->m_pRenderDevice &&
         !m_owner->m_pRenderDevice->IsResourceRetired(requirement);
 }
 
-RHIRetirementRequirement RDGResourceManager::CaptureRetirement() const
+ResourceRetirement RDGResourceManager::CaptureRetirement() const
 {
-    RHIRetirementRequirement result;
+    ResourceRetirement result;
     if (m_owner && m_owner->m_pRenderDevice)
     {
         result = m_owner->m_pRenderDevice->CaptureResourceRetirement();
@@ -1174,8 +1174,8 @@ void RDGResourceManager::RetirePoolEntry(const PoolEntry& entry)
 {
     ++m_poolEvictions;
     // Owner release joins the current frame's conservative retirement gate.
-    RHIRetirementRequirement retirement = CaptureRetirement();
-    retirement.completion.Extend(entry.retirement.completion);
+    ResourceRetirement retirement = CaptureRetirement();
+    retirement.requiredSerials.Extend(entry.retirement.requiredSerials);
     if (InFlight(retirement))
     {
         m_retiredPoolBytes.push_back({entry.bytes, std::move(retirement)});

@@ -193,8 +193,9 @@ TEST_P(VulkanUploadIntegrationTest, TransferFeedsGraphicsThroughSubmissionDepend
         ASSERT_EQ(waitValues.size(), 1u);
         EXPECT_EQ(waitValues[0], transfer);
     }
-    ASSERT_TRUE(executor->WaitForSubmission(
-        RHICommandContextType::eGraphics, result.completion.Get(RHICommandContextType::eGraphics)));
+    ASSERT_TRUE(
+        executor->WaitForCompletion(RHICommandContextType::eGraphics,
+                                    result.requiredSerials.Get(RHICommandContextType::eGraphics)));
     uint8_t* mapped = readback->Map();
     ASSERT_NE(mapped, nullptr);
     EXPECT_EQ(std::memcmp(mapped, bytes.data(), bytes.size()), 0);
@@ -240,8 +241,9 @@ TEST_P(VulkanUploadIntegrationTest, ExactComputeProducerSurvivesInterveningCompu
         ASSERT_EQ(waitValues.size(), 1u);
         EXPECT_EQ(waitValues[0], accepted.serial);
     }
-    ASSERT_TRUE(executor->WaitForSubmission(
-        RHICommandContextType::eGraphics, result.completion.Get(RHICommandContextType::eGraphics)));
+    ASSERT_TRUE(
+        executor->WaitForCompletion(RHICommandContextType::eGraphics,
+                                    result.requiredSerials.Get(RHICommandContextType::eGraphics)));
     uint8_t* mapped = readback->Map();
     ASSERT_NE(mapped, nullptr);
     EXPECT_EQ(std::memcmp(mapped, bytes.data(), bytes.size()), 0);
@@ -364,7 +366,7 @@ TEST_P(VulkanUploadIntegrationTest, OwnedScheduleDispatchesBetweenProducerAndGra
             }
             EXPECT_EQ(waitValues.back(), result.groups[2].accepted.serial);
         }
-        ASSERT_TRUE(executor->WaitForSubmission(RHICommandContextType::eGraphics,
+        ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
                                                 result.groups[3].accepted.serial));
         uint32_t expected = 0;
         std::memcpy(&expected, bytes.data(), sizeof(expected));

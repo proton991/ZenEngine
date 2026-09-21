@@ -1,5 +1,7 @@
 # Async compute Step 4 verification
 
+Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
+
 Implemented and verified on 2026-09-20. Stopped before Step 5 for user verification.
 
 ## Implemented behavior

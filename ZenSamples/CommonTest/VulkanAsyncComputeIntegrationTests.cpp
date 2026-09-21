@@ -272,7 +272,7 @@ protected:
                         VK_PIPELINE_STAGE_HOST_BIT);
         ASSERT_TRUE(Submit(context));
         VulkanQueue* queue = context->GetQueue();
-        ASSERT_TRUE(queue->WaitForSubmission(queue->GetLastSubmittedSerial(), UINT64_MAX));
+        ASSERT_TRUE(queue->WaitForCompletion(queue->GetLastSubmittedSerial(), UINT64_MAX));
         const uint32_t* values = reinterpret_cast<const uint32_t*>(output->Map());
         EXPECT_EQ(values[0], expectedBuffer);
         EXPECT_EQ(values[1], expectedImage);

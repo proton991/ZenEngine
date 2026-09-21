@@ -71,7 +71,7 @@ protected:
             FVulkanCommandListContext context(RHICommandContextType::eGraphics, device);
             context.GetCommandBuffer();
             ASSERT_EQ(context.SubmitRecordedWorkloads(), RHISubmissionResult::eSuccess);
-            ASSERT_TRUE(context.GetQueue()->WaitForSubmission(context.GetLastSubmittedSerial(),
+            ASSERT_TRUE(context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(),
                                                               UINT64_MAX));
         }
 
@@ -187,7 +187,7 @@ TEST_P(VulkanCommandBufferOwnershipTest, ContextDestructionPreservesTransferredW
     {
         ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
     }
-    EXPECT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    EXPECT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
 }
 
 INSTANTIATE_TEST_SUITE_P(QueuedOrSubmitted, VulkanCommandBufferOwnershipTest, testing::Bool());

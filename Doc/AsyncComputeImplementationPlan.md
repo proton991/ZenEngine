@@ -2,6 +2,8 @@
 
 Status: Steps 1–8 are complete. Step 9 renderer integration, submission diagnostics, and correctness coverage are implemented; paused for user verification. After counter access was enabled, six Nsight Graphics traces verified dedicated compute execution and consumer dependencies, but showed zero graphics/compute overlap across nine captured update frames. Measured async update spans were longer. First-load timing, isolated graphics-wait timing, and full performance acceptance remain open; see [Nsight verification](AsyncComputeNsightVerification.md). Async compute remains opt-in. ComputeVoxelizer now requests compute for its reset/update chain; drawing and presentation stay on graphics. See [Step 8 verification](AsyncComputeStep8Verification.md), [Step 9 verification](AsyncComputeStep9Verification.md), and the linked earlier reports. The baseline below describes the working tree reviewed on 2026-09-20, before implementation.
 
+Representation update (2026-09-20): the five core phases of [SynchronizationSimplificationPlan.md](SynchronizationSimplificationPlan.md) remove unused state and schedule summaries, use `RHICommandContextType` and one `RHIQueueCapabilities` snapshot, route graph submission through the grouped executor, and reduce RenderCore retirement to `ResourceRetirement`. See [simplification verification](SynchronizationSimplificationVerification.md) for the final contracts and validation. The original baseline table and historical step reports remain records of the earlier implementation.
+
 Implement GPU async compute for the existing `ComputeVoxelizer` pass chain. Keep RDG construction, compilation, and pass callbacks on the RenderCore thread. Use the existing RHI executor to submit work to graphics, compute, and transfer queues. Keep all backend queries, submission serials, semaphore operations, and native queue interaction outside RenderGraph.
 
 The first release should preserve current images, voxelization requests, and failure behavior. It should allow independent graphics work to overlap voxel computation, with graphics waiting only in the submission that consumes compute results. A separate GPU compute queue does not require another CPU worker thread.
@@ -77,7 +79,7 @@ Independent environment preprocessing can offer overlap on an initial frame when
 | RHICommandListExecutor | Own detached command lists, resolve scheduled dependency references, execute native submissions on its existing worker, and report results. It must not access live RDG objects or renderer callbacks. |
 | Vulkan RHI | Own queue identities, command pools, timeline semaphores, legal native barriers, submission acceptance, and GPU completion. |
 
-Use `Execute` for RDG CPU execution, `Submit` for command handoff, and `Wait` for an actual blocking operation. Keep `ExecuteFrameGraph`, `SubmitRecordedFrame`, and `SubmitRecordedGraph` as orchestration entry points, refactoring shared recording/submission logic instead of creating separate voxel-only paths.
+Use `Execute` for RDG CPU execution, `Submit` for command handoff, and `Wait` for an actual blocking operation. Use `ExecuteFrameGraph` for frame ownership and `SubmitRecordedGraph` as the single-list adapter into `SubmitRecordedGroups`. One grouped executor path resolves exact dependencies and publishes native acceptance. The legacy inline presentation adapter retains its tested rejection/retry behavior; it uses the same graph submission path.
 
 Suggested new names below describe proposed APIs, not APIs already present in the tree.
 
@@ -120,12 +122,12 @@ Replace duplicated graphics/transfer-only retirement fields with this value wher
 
 - `RenderFrame`, `CompleteFrame`, `StampOutgoingFrameSerials`, `BeginFrame`, `ProcessPendingFreeResources`, `WaitForPreviousFrames`, resize, and shutdown.
 - RDG pool entries, retired-byte accounting, pool trim/reuse, and extracted-resource ownership.
-- `StagingCompletion`, staging reuse, and retained destination references. A staging allocation normally needs only the copy submission, but preserve every queue that actually accesses it; later use of the destination has its own lifetime requirement.
+- `RHICompletionSet` requirements for staging reuse and retained destination references. A staging allocation normally needs only the copy submission, but preserve every queue that actually accesses it; later use of the destination has its own lifetime requirement.
 - RHI batch retirement, detached command storage, render-layout ownership, shader-parameter copies, uniform allocations, descriptors, bindless epochs, samplers, pipelines, and native command-pool reuse.
 
 The executor already has three queue serial slots and the Vulkan lifetime tracker already records queue/serial pairs. Reuse those facilities rather than adding a separate compute retirement system. Audit assumptions about completion of a frame slot even when a compute branch has no final graphics consumer.
 
-Include pending CPU submissions in reuse protection. A queued compute batch can own a resource before a native serial has been assigned. Protect it with a pending submission reference until an accepted serial replaces that reference, or until the work is definitively discarded.
+Include pending CPU submissions in reuse protection. A queued compute batch can own a resource before a native serial has been assigned. Use RenderCore `ResourceRetirement`: a `requiredSerials` completion set and one optional `RHISubmissionTicket`, under RenderDevice's enforced one-pending-frame policy. Resolve a ready CPU ticket into required serials before releasing it; then require GPU completion. Preserve the initial serial snapshot and retain fatal/uncertain work. General RHI batching still supports multiple queued tickets.
 
 Provide completion snapshots/retirement services through RenderDevice to the RDG resource manager. Remove its direct `GDynamicRHI` progress queries as part of this work. Logical RDG state should not discover backend progress on its own.
 
@@ -149,7 +151,7 @@ Completion gate: verify descriptor copies, recorded and compiled metadata, metri
 
 Extend preparation beyond the current whole-graph `plan.transfer` boolean. Preserve culling, version validation, content checks, and logical graph ordering constraints, then assign eligible live passes to queues and form submission groups.
 
-Each group needs a stable ID, logical queue assignment, pass IDs, resource access summary, predecessor group IDs, boundary transitions, and diagnostic reasons for its placement. The RDG representation should contain values and IDs, not Vulkan handles or backend completion counters.
+Each group keeps a stable ID, logical `RHICommandContextType`, pass IDs/eligibility reasons, and predecessor/external producer IDs. Actual compiled accesses and transitions remain the source for barrier planning and submission history; do not duplicate them as unused group resource summaries or boundary arrays. Derive semaphore classification from `RHIQueueCapabilities`. The wait-stage contract is `RHISubmissionDependency::kWaitStage` (`ALL_COMMANDS`), rather than an editable per-group field. The schedule contains values and IDs, not Vulkan handles or backend completion counters.
 
 Use actual RAW, WAR, WAW, and layout-change edges derived from declared resource accesses. Keep side-effect passes live through `NeverCull` or `allowCulling=false`; express required GPU ordering through resource declarations. Initial states, extraction, indirect accesses, and bindless declarations must survive scheduling. Shader access reflection is part of the input; do not infer independence merely because descriptor names differ. A public manual pass-ordering API is outside this implementation's scope.
 

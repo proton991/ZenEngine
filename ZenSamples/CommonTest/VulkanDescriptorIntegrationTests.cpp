@@ -253,7 +253,7 @@ protected:
 
     void Complete(uint64_t serial)
     {
-        EXPECT_TRUE(session->rhi.GetDevice()->GetGfxQueue()->WaitForSubmission(serial, UINT64_MAX));
+        EXPECT_TRUE(session->rhi.GetDevice()->GetGfxQueue()->WaitForCompletion(serial, UINT64_MAX));
         session->rhi.GetDescriptorPoolManager2()->BeginFrame(1);
     }
 };

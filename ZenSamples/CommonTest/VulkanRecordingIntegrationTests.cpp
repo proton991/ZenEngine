@@ -271,7 +271,7 @@ protected:
         }
         uint64_t serial = 0;
         ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-        ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+        ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     }
 
     VulkanBuffer* Copy(VulkanTexture* texture)
@@ -636,13 +636,13 @@ TEST_P(VulkanUniformQueueTrimTest, PendingGPUReadPinsStorageUntilCompletion)
     auto* queue     = context->GetQueue();
     uint64_t serial = 0;
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     allocator->BeginFrame(0);
     LowDemand(allocator->kTrimDelay);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     SubmitAndWait(); // Make the completed compute write visible to the host.
     CheckValue(output, 73);
     allocator->BeginFrame(0);
@@ -697,12 +697,12 @@ TEST_P(VulkanUniformQueueTrimTest, AcceptedRecordingsReleaseDuplicateBlockCounts
     auto* queue     = context->GetQueue();
     uint64_t serial = 0;
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     allocator->BeginFrame(0);
     LowDemand(allocator->kTrimDelay);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     SubmitAndWait();
     CheckValue(first, 73);
     CheckValue(second, 73);
@@ -743,15 +743,15 @@ TEST_P(VulkanUniformQueueTrimTest, EveryQueueMustCompleteItsOwnSerial)
         uint64_t computeSerial = 0;
         ASSERT_EQ(computeQueue->SubmitPendingWorkloads(computeSerial),
                   RHISubmissionResult::eSuccess);
-        ASSERT_TRUE(computeQueue->WaitForSubmission(computeSerial, UINT64_MAX));
+        ASSERT_TRUE(computeQueue->WaitForCompletion(computeSerial, UINT64_MAX));
     }
     ASSERT_GT(computeQueue->GetLastCompletedSerial(), graphicsSerial);
-    EXPECT_FALSE(graphicsQueue->WaitForSubmission(graphicsSerial, 0));
+    EXPECT_FALSE(graphicsQueue->WaitForCompletion(graphicsSerial, 0));
     allocator->BeginFrame(0);
     LowDemand(allocator->kTrimDelay);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
     gate.Open();
-    ASSERT_TRUE(graphicsQueue->WaitForSubmission(graphicsSerial, UINT64_MAX));
+    ASSERT_TRUE(graphicsQueue->WaitForCompletion(graphicsSerial, UINT64_MAX));
     allocator->BeginFrame(0);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 2u);
 }
@@ -779,11 +779,11 @@ TEST_P(VulkanUniformQueueTrimTest, RejectedSubmissionTransfersCountsOnlyOnSucces
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
     UniformHostGate gate(session->rhi.GetDevice());
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    EXPECT_FALSE(queue->WaitForSubmission(serial, 0));
+    EXPECT_FALSE(queue->WaitForCompletion(serial, 0));
     allocator->BeginFrame(0);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
     gate.Open();
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     SubmitAndWait();
     CheckValue(output, 73);
     allocator->BeginFrame(0);
@@ -813,7 +813,7 @@ TEST_P(VulkanUniformQueueTrimTest, UncertainSubmissionRemainsProtectedAfterUnrel
     context->GetCommandBuffer();
     Enqueue(context);
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
-    ASSERT_TRUE(queue->WaitForSubmission(serial, UINT64_MAX));
+    ASSERT_TRUE(queue->WaitForCompletion(serial, UINT64_MAX));
     allocator->BeginFrame(0);
     LowDemand(allocator->kTrimDelay);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);

@@ -273,7 +273,7 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
                 const bool executed = m_rdgExecutor.ExecutePrepared(
                     plan, lists[0],
                     std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                    std::ref(*lists[0])));
+                                    std::ref(*lists[0]), nullptr, nullptr));
                 m_graphicsCmdListPool.Release(lists[0]);
 
                 if (!executed)
@@ -352,8 +352,8 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
                 RHICommandList* commands = m_graphicsCmdListPool.Acquire();
                 result                   = m_rdgExecutor.ExecutePrepared(
                     plan, commands,
-                    std::bind_front(&RenderDevice::SubmitRecordedFrame, this, std::ref(graph),
-                                    std::ref(*commands), viewport, std::ref(pending)),
+                    std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
+                                    std::ref(*commands), viewport, &pending),
                     true);
                 m_graphicsCmdListPool.Release(commands);
             }
@@ -366,7 +366,6 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
                     RHITextureUsage::eColorAttachment,
                     BitField<RHIPipelineStageFlagBits>(
                         RHIPipelineStageFlagBits::eColorAttachmentOutput));
-                pending.scheduledState = m_rdgExecutor.GetResourceStateTracker();
             }
             if (pending.ticket.IsValid())
             {
@@ -390,35 +389,14 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
     return result;
 }
 
-RHISubmissionResult RenderDevice::SubmitRecordedFrame(RenderGraph& graph,
-                                                      RHICommandList& commands,
-                                                      RHIViewport* viewport,
-                                                      PendingFrame& pending)
-{
-    RenderSubmissionUpdate update;
-    RHISubmissionResult result = RHISubmissionResult::eRejected;
-    if (PrepareGraphSubmission(graph, commands, update))
-    {
-        RHICommandList* list = &commands;
-        result = SubmitRecordedGroups(graph, update.schedule, update, MakeVecView(&list, 1),
-                                      viewport, &pending);
-    }
-    else if (AreSubmissionsBlocked())
-    {
-        result = RHISubmissionResult::eFatal;
-    }
-    return result;
-}
-
 void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& result)
 {
     RenderFrame& frame = *pending.frame;
-    frame.retirement.completion.Extend(result.completion);
+    frame.retirement.requiredSerials.Extend(result.requiredSerials);
     frame.submission = {};
     if (result.submission == RHISubmissionResult::eSuccess && !m_submissionBlocked &&
         m_submissionHistory.ResolveAccepted())
     {
-        m_confirmedResourceState = pending.scheduledState;
         LogAsyncComputeSubmission(pending.graphName, pending.computePassCount, result);
         for (const RDGDeferredExtraction& extraction : pending.extractions)
         {
@@ -438,7 +416,6 @@ void RenderDevice::CompleteFrame(PendingFrame& pending, const RHIBatchResult& re
     {
         m_submissionBlocked                     = true;
         m_rdgExecutor.GetResourceStateTracker() = ResourceStateTracker();
-        m_confirmedResourceState                = ResourceStateTracker();
         m_submissionHistory.Clear();
         LOGE("RHI submission failed: {}; recreate the device before continuing",
              result.error.empty() ? "Scheduled producer history could not be confirmed" :
@@ -470,11 +447,6 @@ void RenderDevice::CollectDestroyedResourceHistory()
         {
             m_submissionHistory.Erase(resourceId);
             m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(resourceId);
-            m_confirmedResourceState.RemoveResourceState(resourceId);
-            for (PendingFrame& pending : m_pendingFrames)
-            {
-                pending.scheduledState.RemoveResourceState(resourceId);
-            }
         }
         m_destroyedResourceIds.clear();
     }
@@ -563,7 +535,7 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
                 const bool executed = m_rdgExecutor.ExecutePrepared(
                     plan, list,
                     std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                    std::ref(*list)));
+                                    std::ref(*list), nullptr, nullptr));
 
                 // Keep CPU command storage alive through rollback, then discard it on both paths.
                 if (transfer)
@@ -592,7 +564,7 @@ bool RenderDevice::ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
     bool result = PrepareScheduledSubmissionHistory(*plan.graph, plan.schedule, update);
     if (result)
     {
-        plan.schedule = update.schedule;
+        plan.schedule = std::move(update.schedule);
         HeapVector<RHICommandList*> lists;
         AcquireScheduledCmdLists(plan.schedule, lists);
         result = m_rdgExecutor.ExecutePreparedGroups(
@@ -626,7 +598,7 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph& graph,
     for (size_t i = 0; valid && i < schedule.groups.size(); ++i)
     {
         const RDGSubmissionGroup& source = schedule.groups[i];
-        if (source.queue == RDGQueue::eAsyncCompute)
+        if (source.queue == RHICommandContextType::eAsyncCompute)
         {
             computePassCount += uint32_t(source.passes.size());
         }
@@ -637,9 +609,7 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph& graph,
             valid &= id < i;
             if (valid)
             {
-                submission.predecessors.push_back(
-                    {static_cast<RHICommandContextType>(schedule.groups[id].queue), 0, update.state,
-                     id});
+                submission.predecessors.push_back({schedule.groups[id].queue, 0, update.state, id});
             }
         }
         for (uint32_t id : source.externalPredecessors)
@@ -668,6 +638,22 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph& graph,
         const RHIBatchResult native = m_pRHIExecutor->SubmitGroups(submissions, update.state);
         StampOutgoingFrameSerials();
         result = native.submission;
+        if (result == RHISubmissionResult::eSuccess &&
+            !m_queueCapabilities.asyncSubmissionDependencies &&
+            !m_queueCapabilities.AreQueuesShared(RHICommandContextType::eTransfer,
+                                                 RHICommandContextType::eGraphics))
+        {
+            // Preserve synchronous upload completion on backends without timeline waits.
+            for (const RHISubmissionGroupResult& group : native.groups)
+            {
+                if (result == RHISubmissionResult::eSuccess &&
+                    group.accepted.queue == RHICommandContextType::eTransfer &&
+                    !m_pRHIExecutor->WaitForCompletion(group.accepted.queue, group.accepted.serial))
+                {
+                    result = RHISubmissionResult::eFatal;
+                }
+            }
+        }
         if (result == RHISubmissionResult::eSuccess)
         {
             if (m_submissionHistory.Commit(update) && m_submissionHistory.ResolveAccepted())
@@ -771,7 +757,7 @@ bool RenderDevice::PrepareGraphSubmission(const RenderGraph& graph,
 {
     RDGSchedule schedule;
     RDGSubmissionGroup& group = schedule.groups.emplace_back();
-    group.queue               = static_cast<RDGQueue>(commands.GetContext()->GetContextType());
+    group.queue               = commands.GetContext()->GetContextType();
     group.queueEquivalenceId  = m_queueCapabilities.queueIds[size_t(group.queue)];
     for (const RDGCompiledNode& compiled : graph.m_compiledNodes)
     {
@@ -782,53 +768,22 @@ bool RenderDevice::PrepareGraphSubmission(const RenderGraph& graph,
     return valid;
 }
 
-RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph& graph, RHICommandList& commands)
+RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph& graph,
+                                                      RHICommandList& commands,
+                                                      RHIViewport* viewport,
+                                                      PendingFrame* pending)
 {
     RenderSubmissionUpdate update;
     RHISubmissionResult result = RHISubmissionResult::eRejected;
-    bool ready                 = PrepareGraphSubmission(graph, commands, update);
-    if (ready)
-    {
-        for (uint32_t id : update.schedule.groups[0].externalPredecessors)
-        {
-            const RHISubmissionPoint& predecessor = update.externalPoints[id];
-            RHISubmissionDependency resolved;
-            ready = ready && predecessor.Resolve(resolved) == RHISubmissionPointStatus::eAccepted;
-            if (ready && resolved.queue != commands.GetContext()->GetContextType())
-            {
-                commands.AddSubmissionDependency(resolved);
-            }
-        }
-    }
-    const RHICommandContextType queue = commands.GetContext()->GetContextType();
-    if (ready && m_submissionHistory.CanCommit(update))
+    if (PrepareGraphSubmission(graph, commands, update))
     {
         RHICommandList* list = &commands;
-        result               = queue == RHICommandContextType::eTransfer ?
-            SubmitImmediateTransferCmdList() :
-            SubmitCommandLists(MakeVecView(&list, 1));
-        if (result == RHISubmissionResult::eSuccess)
-        {
-            const uint64_t serial = GDynamicRHI->GetLastSubmittedSerial(queue);
-            if (update.state->Queue() && update.state->Accept(0, {queue, serial}) &&
-                update.state->Complete() && m_submissionHistory.Commit(update) &&
-                m_submissionHistory.ResolveAccepted())
-            {
-                if (commands.GetCommandCount() != 0 && serial != 0)
-                {
-                    LogTransferSubmission(graph, queue, serial);
-                }
-            }
-            else
-            {
-                result = RHISubmissionResult::eFatal;
-            }
-        }
+        result = SubmitRecordedGroups(graph, update.schedule, update, MakeVecView(&list, 1),
+                                      viewport, pending);
     }
-    if (result == RHISubmissionResult::eFatal)
+    else if (AreSubmissionsBlocked())
     {
-        m_submissionBlocked = true;
-        m_submissionHistory.Clear();
+        result = RHISubmissionResult::eFatal;
     }
     return result;
 }
@@ -855,38 +810,6 @@ void RenderDevice::LogTransferSubmission(const RenderGraph& graph,
         LOGI("Upload/transfer in use: graphics queue fallback; first submission serial={}", serial);
         m_loggedGraphicsTransferSubmission = true;
     }
-}
-
-RHISubmissionResult RenderDevice::SubmitImmediateTransferCmdList()
-{
-    RHISubmissionResult returnValue{};
-
-    const RHISubmissionResult result =
-        SubmitCommandLists(MakeVecView(&m_pImmediateTransferCmdList, 1));
-
-    if (result != RHISubmissionResult::eSuccess)
-    {
-        returnValue = result;
-    }
-    else
-    {
-        // Timeline-capable backends synchronize only dependent consumers on the GPU.
-        if (!GDynamicRHI->SupportsAsyncSubmissionDependencies() &&
-            !GDynamicRHI->IsTransferQueueSharedWithGraphics() &&
-            !GDynamicRHI->WaitForSubmission(
-                RHICommandContextType::eTransfer,
-                GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer)))
-        {
-            m_submissionBlocked = true;
-            returnValue         = RHISubmissionResult::eFatal;
-        }
-        else
-        {
-            returnValue = RHISubmissionResult::eSuccess;
-        }
-    }
-
-    return returnValue;
 }
 
 void RenderDevice::InvalidateRDGPassCompilerForResize()
@@ -917,11 +840,6 @@ void RenderDevice::InvalidateExternalTextureState(RHITexture* texture)
     {
         m_submissionHistory.Erase(texture->GetStableId());
         m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(texture->GetStableId(), true);
-        m_confirmedResourceState.RemoveResourceState(texture->GetStableId(), true);
-        for (PendingFrame& pending : m_pendingFrames)
-        {
-            pending.scheduledState.RemoveResourceState(texture->GetStableId(), true);
-        }
     }
 }
 
@@ -931,11 +849,6 @@ void RenderDevice::InvalidateExternalBufferState(RHIBuffer* buffer)
     {
         m_submissionHistory.Erase(buffer->GetStableId());
         m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(buffer->GetStableId(), true);
-        m_confirmedResourceState.RemoveResourceState(buffer->GetStableId(), true);
-        for (PendingFrame& pending : m_pendingFrames)
-        {
-            pending.scheduledState.RemoveResourceState(buffer->GetStableId(), true);
-        }
     }
 }
 
@@ -1424,9 +1337,9 @@ void RenderDevice::WaitForPreviousFrames()
 
 void RenderDevice::StampOutgoingFrameSerials()
 {
-    RenderFrame& frame              = m_frames[GetCurrentFrameSlot()];
-    RHIRetirementRequirement latest = CaptureResourceRetirement();
-    frame.retirement.completion.Extend(latest.completion);
+    RenderFrame& frame        = m_frames[GetCurrentFrameSlot()];
+    ResourceRetirement latest = CaptureResourceRetirement();
+    frame.retirement.requiredSerials.Extend(latest.requiredSerials);
     frame.retirement.pending = std::move(latest.pending);
 }
 
@@ -1534,24 +1447,21 @@ void RenderDevice::BeginFrame()
     {
         const RenderFrameSlot slot = GRenderFrameState.GetFrameSlot();
         RenderFrame& frame         = m_frames[ToIndex(slot)];
-        if (frame.submission.IsValid() || !frame.retirement.pending.empty())
+        if (frame.submission.IsValid() || frame.retirement.pending.IsValid())
         {
             PollFrameSubmissions(true);
         }
-        bool ready = !AreSubmissionsBlocked();
-        for (const RHISubmissionTicket& ticket : frame.retirement.pending)
+        if (frame.retirement.pending.IsValid())
         {
-            const RHIBatchResult result = ticket.Wait();
-            frame.retirement.completion.Extend(result.completion);
-            ready &= result.submission != RHISubmissionResult::eFatal;
+            frame.retirement.pending.Wait();
         }
-        frame.retirement.pending.clear();
+        bool ready = !AreSubmissionsBlocked() && frame.retirement.Resolve();
         for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
         {
             const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
-            const uint64_t serial             = frame.retirement.completion.Get(queue);
-            if (ready && GDynamicRHI->GetLastCompletedSerial(queue) < serial &&
-                !GDynamicRHI->WaitForSubmission(queue, serial))
+            const uint64_t serial             = frame.retirement.requiredSerials.Get(queue);
+            if (ready && GDynamicRHI->QueryLastCompletedSerial(queue) < serial &&
+                !GDynamicRHI->WaitForCompletion(queue, serial))
             {
                 LOGE("RenderDevice: frame slot {} cannot reuse queue {} serial {}", ToIndex(slot),
                      uint32_t(queue), serial);
@@ -1597,32 +1507,39 @@ RHITexture* RenderDevice::CreateTexture(const RHITextureCreateInfo& info)
     return m_pRHIExecutor->CreateTexture(info);
 }
 
-RHICompletionSet RenderDevice::GetSubmittedCompletion() const
+RHICompletionSet RenderDevice::GetSubmittedSerials() const
 {
-    return m_pRHIExecutor->GetSubmittedCompletion();
+    return m_pRHIExecutor->GetSubmittedSerials();
 }
 
-RHICompletionSet RenderDevice::GetCompletedCompletion() const
+RHICompletionSet RenderDevice::GetCachedCompletedSerials() const
 {
-    return m_pRHIExecutor->GetCompletedSnapshot();
+    return m_pRHIExecutor->GetCachedCompletedSerials();
 }
 
-RHIRetirementRequirement RenderDevice::CaptureResourceRetirement() const
+ResourceRetirement RenderDevice::CaptureResourceRetirement()
 {
-    RHIRetirementRequirement result;
+    ResourceRetirement result;
     // RDG preparation/recording only reads published progress; polling is owned by
     // frame boundaries, submissions, explicit collection, and completion waits.
-    result.completion = m_pRHIExecutor->GetSubmittedSnapshot();
-    for (const PendingFrame& frame : m_pendingFrames)
+    result.requiredSerials = m_pRHIExecutor->GetCachedSubmittedSerials();
+    if (m_pendingFrames.size() > 1)
     {
-        result.pending.push_back(frame.ticket);
+        // RenderDevice drains the previous frame at handoff. Never discard an
+        // unexpected second ticket and then permit resource reuse in release builds.
+        m_submissionBlocked = true;
+        LOGE("RenderDevice: more than one pending frame; resource reuse is blocked");
+    }
+    else if (!m_pendingFrames.empty())
+    {
+        result.pending = m_pendingFrames[0].ticket;
     }
     return result;
 }
 
-bool RenderDevice::IsResourceRetired(const RHIRetirementRequirement& requirement) const
+bool RenderDevice::IsResourceRetired(const ResourceRetirement& requirement) const
 {
-    return !AreSubmissionsBlocked() && requirement.IsCompleteAt(GetCompletedCompletion());
+    return !AreSubmissionsBlocked() && requirement.IsCompleteAt(GetCachedCompletedSerials());
 }
 
 RDGAsyncComputeEligibility RenderDevice::ResolveAsyncComputeEligibility(
@@ -1742,9 +1659,9 @@ void RenderDevice::AcquireScheduledCmdLists(const RDGSchedule& schedule,
         RHICommandList* list = nullptr;
         switch (group.queue)
         {
-            case RDGQueue::eGraphics: list = m_graphicsCmdListPool.Acquire(); break;
-            case RDGQueue::eAsyncCompute: list = m_computeCmdListPool.Acquire(); break;
-            case RDGQueue::eTransfer: list = m_transferCmdListPool.Acquire(); break;
+            case RHICommandContextType::eGraphics: list = m_graphicsCmdListPool.Acquire(); break;
+            case RHICommandContextType::eAsyncCompute: list = m_computeCmdListPool.Acquire(); break;
+            case RHICommandContextType::eTransfer: list = m_transferCmdListPool.Acquire(); break;
             default: ASSERT(false); break;
         }
         lists.push_back(list);

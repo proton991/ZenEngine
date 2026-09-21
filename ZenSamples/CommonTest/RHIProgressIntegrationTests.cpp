@@ -91,7 +91,7 @@ protected:
         const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
         GetRHIThread().Flush();
         EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
-        EXPECT_GT(result.completion.Get(RHICommandContextType::eGraphics), 0u);
+        EXPECT_GT(result.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
         EXPECT_FALSE(executor->AreSubmissionsBlocked());
         return result;
     }
@@ -100,7 +100,7 @@ protected:
     {
         EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
         EXPECT_TRUE(executor->AreSubmissionsBlocked());
-        EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
+        EXPECT_EQ(executor->QueryLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
         EXPECT_FALSE(executor->SubmitFrame(*commands, nullptr).IsValid());
         EXPECT_EQ(executor->FlushAllGPUCommands(), RHISubmissionResult::eFatal);
         EXPECT_EQ(executor->GetLastSubmittedSerial(RHICommandContextType::eGraphics),
@@ -123,14 +123,14 @@ TEST_P(RHIProgressIntegrationTest, CounterFailureDuringPollingBlocksSubmissions)
     GetRHIThread().Invoke(&RHIProgressIntegrationTest::FailCounter);
     if (GetParam() == RHIExecutionMode::eInline)
     {
-        EXPECT_EQ(executor->GetLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
+        EXPECT_EQ(executor->QueryLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
     }
     else
     {
         executor->PollGPUProgress();
     }
     GetRHIThread().Flush();
-    CheckBlocked(result.completion.Get(RHICommandContextType::eGraphics));
+    CheckBlocked(result.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, CounterFailureDuringFlushBlocksSubmissions)
@@ -138,17 +138,17 @@ TEST_P(RHIProgressIntegrationTest, CounterFailureDuringFlushBlocksSubmissions)
     const RHIBatchResult result = SubmitPendingFrame();
     GetRHIThread().Invoke(&RHIProgressIntegrationTest::FailCounter);
     executor->FlushRHIThread();
-    CheckBlocked(result.completion.Get(RHICommandContextType::eGraphics));
+    CheckBlocked(result.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, WaitFailureBlocksSubmissions)
 {
     const RHIBatchResult result = SubmitPendingFrame();
     GetRHIThread().Invoke(&RHIProgressIntegrationTest::FailWait);
-    EXPECT_FALSE(executor->WaitForSubmission(
-        RHICommandContextType::eGraphics, result.completion.Get(RHICommandContextType::eGraphics),
-        UINT64_MAX));
-    CheckBlocked(result.completion.Get(RHICommandContextType::eGraphics));
+    EXPECT_FALSE(executor->WaitForCompletion(
+        RHICommandContextType::eGraphics,
+        result.requiredSerials.Get(RHICommandContextType::eGraphics), UINT64_MAX));
+    CheckBlocked(result.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, CounterFailureDuringRetirementBlocksSubmissions)
@@ -156,7 +156,7 @@ TEST_P(RHIProgressIntegrationTest, CounterFailureDuringRetirementBlocksSubmissio
     const RHIBatchResult result = SubmitPendingFrame();
     GetRHIThread().Invoke(&RHIProgressIntegrationTest::FailCounter);
     executor->CollectRetiredBindlessResources();
-    CheckBlocked(result.completion.Get(RHICommandContextType::eGraphics));
+    CheckBlocked(result.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, CounterFailureDuringSubmissionFailsFrameTicket)
@@ -166,7 +166,7 @@ TEST_P(RHIProgressIntegrationTest, CounterFailureDuringSubmissionFailsFrameTicke
     commands->ClearBuffer(buffer, 0, 64);
     const RHIBatchResult failed = executor->SubmitFrame(*commands, nullptr).Wait();
     EXPECT_EQ(failed.submission, RHISubmissionResult::eFatal);
-    CheckBlocked(first.completion.Get(RHICommandContextType::eGraphics));
+    CheckBlocked(first.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, CounterFailureAfterSubmissionFailsFrameTicket)
@@ -176,12 +176,12 @@ TEST_P(RHIProgressIntegrationTest, CounterFailureAfterSubmissionFailsFrameTicket
     RefCountPtr<RHISubmissionState> state = MakeRefCountPtr<RHISubmissionState>(MakeVecView(queue));
     const RHIBatchResult failed           = executor->SubmitFrame(*commands, nullptr, state).Wait();
     EXPECT_EQ(failed.submission, RHISubmissionResult::eFatal);
-    EXPECT_GT(failed.completion.Get(RHICommandContextType::eGraphics), 0u);
+    EXPECT_GT(failed.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
     const RHISubmissionPoint point{queue, 0, state, 0};
     RHISubmissionDependency accepted;
     EXPECT_EQ(point.Resolve(accepted), RHISubmissionPointStatus::eFailed);
-    EXPECT_FALSE(state->IsComplete());
-    CheckBlocked(failed.completion.Get(RHICommandContextType::eGraphics));
+    EXPECT_FALSE(state->IsSubmissionFinished());
+    CheckBlocked(failed.requiredSerials.Get(RHICommandContextType::eGraphics));
 }
 
 TEST_P(RHIProgressIntegrationTest, ComputeProgressFailureRetainsSerialAndStopsDependentGroup)
@@ -202,7 +202,7 @@ TEST_P(RHIProgressIntegrationTest, ComputeProgressFailureRetainsSerialAndStopsDe
     GetRHIThread().Invoke(&RHIProgressIntegrationTest::FailCounter);
     const RHIBatchResult failed = executor->SubmitFrame(groups, nullptr, state).Wait();
     EXPECT_EQ(failed.submission, RHISubmissionResult::eFatal);
-    EXPECT_GT(failed.completion.Get(queues[0]), 0u);
+    EXPECT_GT(failed.requiredSerials.Get(queues[0]), 0u);
     ASSERT_EQ(failed.groups.size(), 2u);
     EXPECT_EQ(failed.groups[0].submission, RHISubmissionResult::eFatal);
     EXPECT_EQ(failed.groups[1].submission, RHISubmissionResult::eRejected);

@@ -1,5 +1,7 @@
 # Async compute Step 9 verification
 
+Historical report: the test results below describe the original step. Later synchronization representations and APIs are superseded where noted in [SynchronizationSimplificationVerification.md](SynchronizationSimplificationVerification.md); the original measurements are preserved.
+
 Renderer integration and correctness checks implemented on 2026-09-20. Paused for user verification. **Nsight Graphics capture now succeeds: dedicated compute execution and dependencies are verified, with zero overlap in nine captured update frames and longer measured async update spans. First-load timing and full performance acceptance remain open.**
 
 ## Renderer behavior

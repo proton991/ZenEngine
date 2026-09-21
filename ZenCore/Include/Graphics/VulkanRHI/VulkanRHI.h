@@ -59,7 +59,6 @@ public:
 
     IRHICommandContext* GetTransferCommandContext() override;
 
-    bool SupportsAsyncSubmissionDependencies() const override;
     bool PrepareSubmissionDependencies(
         IRHICommandContext* context,
         VectorView<const RHISubmissionDependency> dependencies) override;
@@ -201,14 +200,13 @@ public:
         return m_submissionBlocked;
     }
 
-    bool IsTransferQueueSharedWithGraphics() const final;
     RHIQueueCapabilities GetQueueCapabilities() const final;
 
     uint64_t GetLastSubmittedSerial(RHICommandContextType contextType) const final;
 
-    uint64_t GetLastCompletedSerial(RHICommandContextType contextType) final;
+    uint64_t QueryLastCompletedSerial(RHICommandContextType contextType) final;
 
-    bool WaitForSubmission(RHICommandContextType contextType,
+    bool WaitForCompletion(RHICommandContextType contextType,
                            uint64_t submissionSerial,
                            uint64_t timeoutNS = UINT64_MAX) final;
 

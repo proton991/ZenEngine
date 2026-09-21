@@ -15,7 +15,7 @@ protected:
 
     void SetUp() override
     {
-        InitializeDevice(&viewport, 2, GetParam(), true, AsyncComputeMode::eAuto,
+        InitializeDevice(&viewport, 2, GetParam(), AsyncComputeMode::eAuto,
                          DistinctComputeQueues());
         CreateTestShaderProgram(device, "intent");
         CaptureVersionGraph(device);
@@ -303,7 +303,7 @@ protected:
         {
             compute.minImageTransferGranularity.fill(4);
         }
-        InitializeDevice(nullptr, 2, std::get<0>(GetParam()), true,
+        InitializeDevice(nullptr, 2, std::get<0>(GetParam()),
                          scenario == 1 ? AsyncComputeMode::eDisabled : AsyncComputeMode::eAuto,
                          queues, compute);
         CaptureVersionGraph(device);

@@ -640,18 +640,10 @@ void RDGMetrics::BeginGroups(const RenderGraph& graph,
             {
                 if (external.resourceId == initial.resource)
                 {
-                    supplied       = true;
-                    uint32_t queue = uint32_t(external.queue);
+                    supplied = true;
                     const RHIQueueCapabilities& queues =
                         graph.m_pRenderDevice->GetQueueCapabilities();
-                    for (uint32_t i = 0; i < uint32_t(external.queue); ++i)
-                    {
-                        if (queues.queueIds[i] == queues.queueIds[queue])
-                        {
-                            queue = i;
-                            break;
-                        }
-                    }
+                    const size_t queue     = queues.GetNativeQueueIndex(external.queue);
                     RDGMetricAccess source = initial;
                     if (external.hasAccessState)
                     {
@@ -706,7 +698,7 @@ void RDGMetrics::Compiled(RenderGraph& graph,
         m_snapshot.plannedGroups         = uint32_t(schedule.groups.size());
         m_snapshot.plannedMultipleQueues = schedule.usesMultipleQueues;
         m_snapshot.allowsAllocationReuse = schedule.allowsAllocationReuse;
-        CaptureSchedule(schedule);
+        CaptureSchedule(schedule, graph.m_pRenderDevice->GetQueueCapabilities());
         const RDGPoolStats pool            = graph.m_resourceManager.GetPoolStats();
         m_snapshot.assignedTransientBytes  = pool.assignedBytes;
         m_snapshot.availableTransientBytes = pool.availableBytes;
@@ -735,7 +727,7 @@ void RDGMetrics::Compiled(RenderGraph& graph,
     }
 }
 
-void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule)
+void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule, const RHIQueueCapabilities& queues)
 {
     uint32_t dependencyDetails = 0;
     for (const RDGSubmissionGroup& group : schedule.groups)
@@ -746,22 +738,21 @@ void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule)
             detail.id                    = group.id;
             detail.queue                 = group.queue;
             detail.queueEquivalenceId    = group.queueEquivalenceId;
-            detail.waitStages            = int64_t(group.waitStages);
+            detail.waitStages            = int64_t(RHISubmissionDependency::kWaitStage);
             for (bool external : {false, true})
             {
                 const HeapVector<uint32_t>& predecessors =
                     external ? group.externalPredecessors : group.predecessors;
-                const HeapVector<uint32_t>& semaphores =
-                    external ? group.externalSemaphorePredecessors : group.semaphorePredecessors;
                 for (uint32_t producer : predecessors)
                 {
                     if (dependencyDetails < m_options.maxDependencyDetails)
                     {
-                        const bool semaphore = std::find(semaphores.begin(), semaphores.end(),
-                                                         producer) != semaphores.end();
+                        const RHICommandContextType producerQueue =
+                            GetProducerQueue(schedule, producer, external);
+                        const bool semaphore = producerQueue != RHICommandContextType::eMax &&
+                            !queues.AreQueuesShared(producerQueue, group.queue);
                         detail.dependencies.push_back(
-                            {producer, external, semaphore,
-                             GetProducerQueue(schedule, producer, external)});
+                            {producer, external, semaphore, producerQueue});
                         ++dependencyDetails;
                     }
                     else
@@ -780,14 +771,14 @@ void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule)
     }
 }
 
-RDGQueue RDGMetrics::GetProducerQueue(const RDGSchedule& schedule,
-                                      uint32_t producer,
-                                      bool external) const
+RHICommandContextType RDGMetrics::GetProducerQueue(const RDGSchedule& schedule,
+                                                   uint32_t producer,
+                                                   bool external) const
 {
-    RDGQueue queue = RDGQueue::eCount;
+    RHICommandContextType queue = RHICommandContextType::eMax;
     if (external)
     {
-        const HashMap<uint32_t, RDGQueue>::const_iterator found =
+        const HashMap<uint32_t, RHICommandContextType>::const_iterator found =
             m_externalProducerQueues.find(producer);
         if (found != m_externalProducerQueues.end())
         {
@@ -1153,17 +1144,9 @@ void RDGMetrics::ObserveBarriers(RenderGraph& graph,
         }
 
         const RDGNodeBase* node            = graph.GetNodeBaseById(compiled.nodeId);
-        uint32_t queue                     = uint32_t(compiled.plannedQueue);
         const RHIQueueCapabilities& queues = graph.m_pRenderDevice->GetQueueCapabilities();
-        for (uint32_t i = 0; i < uint32_t(compiled.plannedQueue); ++i)
-        {
-            if (queues.queueIds[i] == queues.queueIds[queue])
-            {
-                queue = i;
-                break;
-            }
-        }
-        RDGBarrierValidator& validator = m_grouped ? m_groupValidators[queue] : m_validator;
+        const size_t queue                 = queues.GetNativeQueueIndex(compiled.plannedQueue);
+        RDGBarrierValidator& validator     = m_grouped ? m_groupValidators[queue] : m_validator;
 
         for (uint32_t i = 0; i < node->accessCount; ++i)
         {
@@ -1363,15 +1346,15 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
     {
         text += fmt::format(
             "\n  submission_group={} queue={} native_queue_id={} wait_stages=0x{:x}", group.id,
-            RDGQueueName(group.queue), group.queueEquivalenceId, group.waitStages);
+            RHIQueueName(group.queue), group.queueEquivalenceId, group.waitStages);
         for (const RDGSubmissionDependencyMetrics& dependency : group.dependencies)
         {
             text +=
                 fmt::format("\n    producer_{}={} producer_queue={} synchronization={}",
                             dependency.external ? "external" : "group", dependency.producer,
-                            dependency.producerQueue == RDGQueue::eCount ?
+                            dependency.producerQueue == RHICommandContextType::eMax ?
                                 "unknown" :
-                                RDGQueueName(dependency.producerQueue),
+                                RHIQueueName(dependency.producerQueue),
                             dependency.semaphore ? "semaphore_boundary" : "queue_order/barrier");
         }
     }
@@ -1390,7 +1373,7 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
             node.id, node.order, Label(node.name), NodeTypeName(node.type),
             QueuePreferenceName(node.queuePreference),
             AsyncComputeEligibilityName(node.asyncComputeEligibility),
-            RDGQueueName(node.plannedQueue), node.submissionGroup, node.reads, node.writes,
+            RHIQueueName(node.plannedQueue), node.submissionGroup, node.reads, node.writes,
             node.barrierCalls, node.bufferTransitions, node.textureTransitions,
             node.initialResources, node.internalMemoryTransitions, node.internalTextureTransitions,
             node.srcStages, node.dstStages,

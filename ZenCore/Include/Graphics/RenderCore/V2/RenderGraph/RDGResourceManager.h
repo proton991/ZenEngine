@@ -5,7 +5,7 @@
 #include "Templates/FlatHashMap.h"
 #include "Templates/NameID.h"
 #include "Graphics/RHI/RHICommon.h"
-#include "Graphics/RHI/RHICommandListExecutor.h"
+#include "Graphics/RenderCore/V2/ResourceRetirement.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 
@@ -451,18 +451,18 @@ private:
         RHIResource* resource{nullptr};
         uint64_t bytes{0};
         uint64_t lastUsedBuild{0};
-        RHIRetirementRequirement retirement;
+        ResourceRetirement retirement;
     };
     struct RetiredPoolBytes
     {
         uint64_t bytes;
-        RHIRetirementRequirement retirement;
+        ResourceRetirement retirement;
     };
 
     static uint64_t EstimateBytes(const Allocation& resource);
 
-    bool InFlight(const RHIRetirementRequirement& requirement) const;
-    RHIRetirementRequirement CaptureRetirement() const;
+    bool InFlight(const ResourceRetirement& requirement) const;
+    ResourceRetirement CaptureRetirement() const;
     RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries);
 
     void RetirePoolEntry(const PoolEntry& entry);
