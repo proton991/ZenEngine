@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "scope": "Stage A one-bounce diffuse, matched primary surfaces, environment off, averaged material policy",
+  "reference_samples_per_replica": 2048,
+  "reference_max_samples_per_replica": 8192,
+  "reference_relative_rmse_limit": 0.04,
+  "primary_offset_world": 0.0006,
+  "secondary_offset_world": 0.00001,
+  "minimum_pixels": 64,
+  "relative_rmse": {
+    "fixture": {"64": 0.40, "128": 0.30},
+    "room": {"64": 0.60, "128": 0.50},
+    "sponza": {"64": 0.60, "128": 0.50}
+  },
+  "relative_mean_bias": {"64": 0.35, "128": 0.25},
+  "umbra_fullscale_mean_limit": 0.01,
+  "umbra_fullscale_max_limit": 0.03,
+  "filter_added_umbra_fullscale_mean_limit": 0.005,
+  "stationary_relative_rms_limit": 0.001,
+  "temporal_decay_relative_error_limit": 0.003,
+  "notes": [
+    "Engineering acceptance limits, frozen before this suite's first GPU capture; never calibrated to its results.",
+    "40% fixture NRMSE at 64 is a declared coarse-voxel allowance, above the previously documented 22.89% panel baseline; 128 must meet a tighter limit.",
+    "Scene tolerances include finite directional resolution and occupied-cell approximation; passing does not imply triangle-equivalent visibility.",
+    "Reference uncertainty is checked independently with two deterministic scrambled cosine integrations; failure is inconclusive, not an engine pass.",
+    "Umbra is defined analytically by fixture geometry, not by missing Monte Carlo samples. Fullscale is emitter radiance times maximum receiver diffuse reflectance.",
+    "Stationary and decay limits are numerical/history checks, independent of the image approximation allowances."
+  ]
+}

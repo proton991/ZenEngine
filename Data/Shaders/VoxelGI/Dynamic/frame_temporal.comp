@@ -1,0 +1,28 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "filter_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,rgba16f) readonly uniform image3D rawIrradiance;
+layout(set=3,binding=2,rgba32f) uniform image3D history;
+layout(set=3,binding=3,std430) readonly buffer HistoryMetadata { uvec4 metadata[]; };
+layout(set=3,binding=4,r32ui) readonly uniform uimage3D owner;
+layout(set=3,binding=5,std430) readonly buffer GIStatus { uvec4 giStatus; };
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        ivec3 p=StaticCell(cell);
+        vec4 value=imageLoad(rawIrradiance,p);
+        uvec4 previous=metadata[cell];
+        float dt=giFilter.timing.x-uintBitsToFloat(previous.y);
+        if(giStatus.z!=0u) value=vec4(0);
+        if(value.a>0 && giFilter.control.x!=0u && giFilter.control.z==0u && previous.w!=0u &&
+           previous.x==imageLoad(owner,p).r && dt>=0 && dt<=giFilter.timing.y) {
+            vec4 old=imageLoad(history,p);
+            float alpha=giFilter.control.x==1u ? giFilter.timing.z :
+                1.0-pow(1.0-giFilter.timing.z,giFilter.timing.w*dt);
+            if(old.a>0) value.rgb=mix(old.rgb,value.rgb,alpha);
+        }
+        // One invocation owns each history cell; only spatial filtering reads neighbors.
+        imageStore(history,p,value);
+    }
+}

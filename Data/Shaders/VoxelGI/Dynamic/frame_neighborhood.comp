@@ -1,0 +1,16 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,r32ui) readonly uniform uimage3D dynamicOwner;
+layout(set=3,binding=2,std430) buffer DynamicFlags { uint flags[]; };
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n && giWork.state.w!=0u && imageLoad(dynamicOwner,StaticCell(cell)).r!=GI_INVALID_CELL) {
+        int radius=int(staticGI.volume.z); ivec3 center=StaticCell(cell);
+        for(int x=-radius;x<=radius;++x) for(int y=-radius;y<=radius;++y) for(int z=-radius;z<=radius;++z) {
+            ivec3 p=center+ivec3(x,y,z);
+            if(all(greaterThanEqual(p,ivec3(0))) && all(lessThan(p,ivec3(n)))) atomicOr(flags[StaticCellID(p)],1u);
+        }
+    }
+}

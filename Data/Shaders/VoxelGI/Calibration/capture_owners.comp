@@ -1,0 +1,10 @@
+#version 450
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+layout(set=1,binding=0,r32ui) uniform readonly uimage3D voxelOwner;
+layout(set=1,binding=1,std430) writeonly buffer Owners { uint owners[]; };
+void main()
+{
+    ivec3 p=ivec3(gl_GlobalInvocationID);
+    ivec3 size=imageSize(voxelOwner);
+    if(all(lessThan(p,size))) owners[p.x+size.x*(p.y+size.y*p.z)]=imageLoad(voxelOwner,p).r;
+}

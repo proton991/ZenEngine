@@ -60,6 +60,9 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/Renderer/VoxelRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelizerBase.h
     Include/Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h
+    Include/Graphics/RenderCore/V2/Renderer/DynamicVoxelGIRenderer.h
+    Include/Graphics/Shared/DynamicVoxelGI.h
+    Include/Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h
     Include/Graphics/RenderCore/V2/Renderer/ComputeVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/GeometryVoxelizer.h
     Include/Graphics/RenderCore/V2/Renderer/ShadowMapRenderer.h
@@ -70,6 +73,8 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderDevice.h
     Include/Graphics/RenderCore/V2/RenderSubmissionHistory.h
     Include/Graphics/RenderCore/V2/RenderConfig.h
+    Include/Graphics/RenderCore/V2/ComputeDispatch.h
+    Include/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h
     Include/Graphics/RenderCore/V2/RenderCoreDefs.h
     Include/Graphics/RenderCore/V2/TextureManager.h
     Include/Graphics/RenderCore/V2/ShaderProgram.h
@@ -185,7 +190,12 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RDGMetrics.cpp
     Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
     Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
+    Source/Graphics/RenderCore/V2/SceneLighting.cpp
+    Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp
+    Source/Graphics/RenderCore/V2/DynamicVoxelGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/GIVisibilityProvider.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
+    Source/Graphics/RenderCore/V2/RenderSceneGeometry.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderResource.cpp
     Source/Graphics/RenderCore/V2/RenderDevice.cpp
@@ -198,7 +208,9 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/ComputeVoxelizer.cpp
     Source/Graphics/RenderCore/V2/GeometryVoxelizer.cpp
     Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    Source/Graphics/RenderCore/V2/VoxelCompaction.cpp
     Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
+    Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp
     Source/Graphics/RenderCore/V2/ShaderProgram.cpp
 

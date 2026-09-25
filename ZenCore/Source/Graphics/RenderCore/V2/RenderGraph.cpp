@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
 #include "Graphics/RHI/RHICommandList.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Templates/SmallVector.h"
@@ -4599,8 +4600,17 @@ bool RenderGraph::Execute(VectorView<RHICommandList*> lists,
                 m_activeMetrics->BeginNode(*this, compiled);
             }
 
+            const bool markers = RHIOptions::GetInstance().GPUProfilerMarkers();
+            if (markers)
+            {
+                m_pCmdList->BeginDebugLabel(GetNodeBaseById(compiled.nodeId)->tag);
+            }
             EmitCompiledNodeBarriers(compiled, tracker);
             valid = RunNode(GetNodeBaseById(compiled.nodeId));
+            if (markers)
+            {
+                m_pCmdList->EndDebugLabel();
+            }
 
             if (valid)
             {

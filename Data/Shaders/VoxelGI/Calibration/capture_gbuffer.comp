@@ -1,0 +1,41 @@
+#version 450
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=1,binding=0) uniform sampler2D positionMap;
+layout(set=1,binding=1) uniform sampler2D normalMap;
+layout(set=1,binding=2) uniform sampler2D albedoMap;
+layout(set=1,binding=3) uniform sampler2D metallicMap;
+layout(set=1,binding=4) uniform sampler2D emissionMap;
+layout(set=1,binding=5,std430) writeonly buffer GBufferCapture { uint words[]; };
+void main()
+{
+    ivec2 size=textureSize(positionMap,0)/9;
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(p,size))) return;
+    uint index=12u*uint(p.x+size.x*p.y);
+    // An odd supersample ratio puts this pixel exactly at the voxel XY center.
+    ivec2 source=p*9+4;
+    vec4 position=texelFetch(positionMap,source,0);
+    vec4 emission=texelFetch(emissionMap,source,0);
+    uint footprint=0;
+    for(int y=0;y<9;++y)
+    {
+        for(int x=0;x<9;++x)
+        {
+            vec4 samplePosition=texelFetch(positionMap,p*9+ivec2(x,y),0);
+            if(samplePosition.w!=0.0)
+            {
+                ++footprint;
+                if(position.w==0.0) position.z=samplePosition.z;
+            }
+        }
+    }
+    for(uint i=0;i<4;++i)
+    {
+        words[index+i]=floatBitsToUint(position[i]);
+        words[index+8+i]=floatBitsToUint(emission[i]);
+    }
+    words[index+4]=packUnorm4x8(texelFetch(albedoMap,source,0));
+    words[index+5]=packUnorm4x8(vec4(texelFetch(normalMap,source,0).xyz*.5+.5,0));
+    words[index+6]=packUnorm4x8(texelFetch(metallicMap,source,0));
+    words[index+7]=footprint;
+}

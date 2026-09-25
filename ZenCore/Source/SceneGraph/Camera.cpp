@@ -243,6 +243,10 @@ void Camera::UpdateAspect(float aspect)
 {
     m_aspect = aspect;
     SetProjectionMatrix();
+    // Resize must publish projection changes even when input-driven Update is idle.
+    m_cameraData.proj           = m_projMatrix;
+    m_cameraData.projViewMatrix = m_projMatrix * m_cameraData.view;
+    m_frustum.ExtractPlanes(m_cameraData.projViewMatrix);
 }
 
 void Camera::SetFarPlane(float far)

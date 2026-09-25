@@ -1,0 +1,4 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "query_reference.glsl"
+#include "sender_environment.glsl"

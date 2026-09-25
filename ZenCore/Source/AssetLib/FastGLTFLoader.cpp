@@ -1,6 +1,8 @@
 #include <future>
+#include <cmath>
 #include <stb_image.h>
 #include "AssetLib/FastGLTFLoader.h"
+#include <fastgltf/glm_element_traits.hpp>
 #include "SceneGraph/Scene.h"
 #include "Utils/Errors.h"
 #include "Utils/ThreadPool.h"
@@ -59,7 +61,8 @@ static sg::SamplerAddressMode FromFastGltfWrap(fastgltf::Wrap wrap)
 
 FastGLTFLoader::FastGLTFLoader()
 {
-    static constexpr fastgltf::Extensions supportedExtensions{fastgltf::Extensions::None};
+    static constexpr fastgltf::Extensions supportedExtensions{
+        fastgltf::Extensions::KHR_materials_emissive_strength};
     m_gltfParser  = fastgltf::Parser(supportedExtensions);
     m_loadOptions = fastgltf::Options::DontRequireValidAssetMember |
         fastgltf::Options::DecomposeNodeMatrices | fastgltf::Options::AllowDouble |
@@ -115,7 +118,7 @@ void FastGLTFLoader::LoadGltfSamplers(sg::Scene* pScene)
     pScene->SetComponents(std::move(samplers));
 }
 
-static Format GetTextureFormat(uint32_t imageIndex, const fastgltf::Asset* asset)
+static Format GetTextureFormat(uint32_t textureIndex, const fastgltf::Asset* asset)
 {
     Format format = Format::R8G8B8A8_UNORM;
     for (const fastgltf::Material& material : asset->materials)
@@ -126,8 +129,7 @@ static Format GetTextureFormat(uint32_t imageIndex, const fastgltf::Asset* asset
         {
             if (info->has_value())
             {
-                const fastgltf::Texture& texture = asset->textures[info->value().textureIndex];
-                if (texture.imageIndex.has_value() && texture.imageIndex.value() == imageIndex)
+                if (info->value().textureIndex == textureIndex)
                 {
                     format = Format::R8G8B8A8_SRGB;
                     break;
@@ -140,6 +142,25 @@ static Format GetTextureFormat(uint32_t imageIndex, const fastgltf::Asset* asset
         }
     }
     return format;
+}
+
+static bool UsesLinearTexture(uint32_t textureIndex, const fastgltf::Asset& asset)
+{
+    bool used = false;
+    for (const fastgltf::Material& material : asset.materials)
+    {
+        used = (material.pbrData.metallicRoughnessTexture.has_value() &&
+                material.pbrData.metallicRoughnessTexture->textureIndex == textureIndex) ||
+            (material.normalTexture.has_value() &&
+             material.normalTexture->textureIndex == textureIndex) ||
+            (material.occlusionTexture.has_value() &&
+             material.occlusionTexture->textureIndex == textureIndex);
+        if (used)
+        {
+            break;
+        }
+    }
+    return used;
 }
 
 sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t textureIndex)
@@ -211,7 +232,7 @@ sg::Texture* FastGLTFLoader::LoadGltfTextureVisitor(uint32_t textureIndex)
     }
     const size_t byteCount = size_t(image.width) * size_t(image.height) * STBI_rgb_alpha;
     TextureInfo info(static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height),
-                     GetTextureFormat(imageIndex, &m_gltfAsset),
+                     GetTextureFormat(textureIndex, &m_gltfAsset),
                      std::vector<uint8_t>(image.pixels, image.pixels + byteCount), samplerIndex);
     UniquePtr<sg::Texture> texture = MakeUnique<sg::Texture>(textureName);
     texture->Init(textureIndex, info);
@@ -270,6 +291,22 @@ void FastGLTFLoader::LoadGltfTextures(sg::Scene* pScene)
             textures[index]      = std::move(texture);
         }
     }
+    // Texture indices, not image indices, carry material usage. A single glTF texture
+    // may also serve both roles, in which case its linear interpretation needs a new slot.
+    m_linearTextureIndices.resize(numTextures);
+    for (uint32_t index = 0; index < numTextures; ++index)
+    {
+        m_linearTextureIndices[index] = index;
+        const sg::Texture& source     = *textures[index];
+        if (source.format == Format::R8G8B8A8_SRGB && UsesLinearTexture(index, m_gltfAsset))
+        {
+            const uint32_t linearIndex = static_cast<uint32_t>(textures.size());
+            textures.emplace_back(MakeUnique<sg::Texture>(
+                source.GetName() + "_linear", linearIndex, source.width, source.height,
+                Format::R8G8B8A8_UNORM, source.bytesData, source.samplerIndex));
+            m_linearTextureIndices[index] = linearIndex;
+        }
+    }
     sg::Scene::LoadDefaultTextures(textures.size());
     sg::Scene::DefaultTextures defaultTextures = sg::Scene::GetDefaultTextures();
     textures.emplace_back(defaultTextures.pBaseColor);
@@ -312,7 +349,8 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
             const fastgltf::TextureInfo* textureInfo =
                 &mat.pbrData.metallicRoughnessTexture.value();
             pSgMat->texCoordSets.metallicRoughness = textureInfo->texCoordIndex;
-            pSgMat->m_pMetallicRoughnessTexture    = sceneTextures[textureInfo->textureIndex];
+            pSgMat->m_pMetallicRoughnessTexture =
+                sceneTextures[m_linearTextureIndices[textureInfo->textureIndex]];
         }
         else
         {
@@ -323,7 +361,9 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         {
             const fastgltf::TextureInfo* textureInfo = &mat.normalTexture.value();
             pSgMat->texCoordSets.normal              = textureInfo->texCoordIndex;
-            pSgMat->m_pNormalTexture                 = sceneTextures[textureInfo->textureIndex];
+            pSgMat->m_pNormalTexture =
+                sceneTextures[m_linearTextureIndices[textureInfo->textureIndex]];
+            pSgMat->normalScale = mat.normalTexture->scale;
         }
         else
         {
@@ -348,7 +388,8 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
         {
             const fastgltf::TextureInfo* textureInfo = &mat.occlusionTexture.value();
             pSgMat->texCoordSets.occlusion           = textureInfo->texCoordIndex;
-            pSgMat->m_pOcclusionTexture              = sceneTextures[textureInfo->textureIndex];
+            pSgMat->m_pOcclusionTexture =
+                sceneTextures[m_linearTextureIndices[textureInfo->textureIndex]];
         }
         else
         {
@@ -380,332 +421,228 @@ void FastGLTFLoader::LoadGltfMaterials(sg::Scene* pScene)
     defaultMaterial->m_pNormalTexture            = defaultTextures.pNormal;
     defaultMaterial->m_pOcclusionTexture         = defaultTextures.pOcclusion;
     defaultMaterial->m_pEmissiveTexture          = defaultTextures.pEmissive;
+    defaultMaterial->index                       = static_cast<uint32_t>(materials.size());
+    defaultMaterial->SetData();
     materials.emplace_back(defaultMaterial);
     pScene->SetComponents(std::move(materials));
 }
 
-void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
+const fastgltf::Accessor* FastGLTFLoader::GetVertexAccessor(const fastgltf::Primitive& primitive,
+                                                            const char* name,
+                                                            fastgltf::AccessorType type,
+                                                            size_t vertexCount) const
 {
-    size_t totalVertexCount = 0;
-    size_t totalIndexCount  = 0;
-    for (const fastgltf::Mesh& mesh : m_gltfAsset.meshes)
+    const fastgltf::Accessor* result = nullptr;
+    const auto attribute             = primitive.findAttribute(name);
+    if (attribute != primitive.attributes.end())
     {
-        for (const fastgltf::Primitive& primitive : mesh.primitives)
+        const fastgltf::Accessor& accessor = m_gltfAsset.accessors[attribute->accessorIndex];
+        const std::string_view semantic(name);
+        const bool integer = accessor.componentType == fastgltf::ComponentType::UnsignedByte ||
+            accessor.componentType == fastgltf::ComponentType::UnsignedShort;
+        bool componentValid = accessor.componentType == fastgltf::ComponentType::Float;
+        if (semantic == "JOINTS_0")
         {
-            totalVertexCount +=
-                m_gltfAsset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
-            if (primitive.indicesAccessor.has_value())
-            {
-                totalIndexCount += m_gltfAsset.accessors[primitive.indicesAccessor.value()].count;
-            }
+            componentValid = integer && !accessor.normalized;
+        }
+        else if (semantic == "COLOR_0" || semantic == "TEXCOORD_0" || semantic == "TEXCOORD_1" ||
+                 semantic == "WEIGHTS_0")
+        {
+            componentValid |= integer && accessor.normalized;
+        }
+        const bool typeValid = accessor.type == type ||
+            (semantic == "COLOR_0" && accessor.type == fastgltf::AccessorType::Vec3);
+        if (componentValid && typeValid && (vertexCount == 0 || accessor.count == vertexCount))
+        {
+            result = &accessor;
+        }
+        else
+        {
+            LOGE("Invalid {} accessor; using the attribute default", name);
         }
     }
-    m_vertices.resize(totalVertexCount);
-    m_indices.resize(totalIndexCount);
+    return result;
+}
 
+template <typename T> static T DecodeAttribute(const fastgltf::Asset& asset,
+                                               const fastgltf::Accessor* accessor,
+                                               size_t index,
+                                               const T& fallback)
+{
+    T result = fallback;
+    if (accessor != nullptr)
+    {
+        result = fastgltf::getAccessorElement<T>(asset, *accessor, index);
+    }
+    return result;
+}
+
+static bool NormalizeSurfaceNormal(Vec3& normal)
+{
+    const float lengthSquared = glm::dot(normal, normal);
+    const bool valid          = std::isfinite(lengthSquared) && lengthSquared > 1e-12f;
+    if (valid)
+    {
+        normal /= std::sqrt(lengthSquared);
+    }
+    return valid;
+}
+
+static void GenerateFlatNormals(HeapVector<Vertex>& vertices, HeapVector<uint32_t>& indices)
+{
+    // Indexed vertices can belong to faces with different normals. Split them so both
+    // the raster path and voxel attribute resolve receive the same flat-shaded surface.
+    HeapVector<Vertex> flatVertices(indices.size());
+    for (size_t first = 0; first < indices.size(); first += 3)
+    {
+        const Vec3 a(vertices[indices[first]].pos);
+        const Vec3 b(vertices[indices[first + 1]].pos);
+        const Vec3 c(vertices[indices[first + 2]].pos);
+        Vec3 normal = glm::cross(b - a, c - a);
+        if (!NormalizeSurfaceNormal(normal))
+        {
+            normal = Vec3(0, 1, 0);
+        }
+        for (size_t corner = 0; corner < 3; ++corner)
+        {
+            const size_t index          = first + corner;
+            flatVertices[index]         = vertices[indices[index]];
+            flatVertices[index].normal  = Vec4(normal, 0);
+            flatVertices[index].tangent = Vec4(0);
+            indices[index]              = static_cast<uint32_t>(index);
+        }
+    }
+    vertices = std::move(flatVertices);
+}
+
+bool FastGLTFLoader::LoadPrimitive(const fastgltf::Primitive& primitive,
+                                   HeapVector<Vertex>& vertices,
+                                   HeapVector<uint32_t>& indices) const
+{
+    vertices.clear();
+    indices.clear();
+    const fastgltf::Accessor* positions =
+        GetVertexAccessor(primitive, "POSITION", fastgltf::AccessorType::Vec3, 0);
+    bool valid = positions != nullptr && primitive.type == fastgltf::PrimitiveType::Triangles;
+    if (valid)
+    {
+        const size_t count = positions->count;
+        const fastgltf::Accessor* normals =
+            GetVertexAccessor(primitive, "NORMAL", fastgltf::AccessorType::Vec3, count);
+        const fastgltf::Accessor* tangents =
+            GetVertexAccessor(primitive, "TANGENT", fastgltf::AccessorType::Vec4, count);
+        const fastgltf::Accessor* colors =
+            GetVertexAccessor(primitive, "COLOR_0", fastgltf::AccessorType::Vec4, count);
+        const fastgltf::Accessor* uv0 =
+            GetVertexAccessor(primitive, "TEXCOORD_0", fastgltf::AccessorType::Vec2, count);
+        const fastgltf::Accessor* uv1 =
+            GetVertexAccessor(primitive, "TEXCOORD_1", fastgltf::AccessorType::Vec2, count);
+        const fastgltf::Accessor* joints =
+            GetVertexAccessor(primitive, "JOINTS_0", fastgltf::AccessorType::Vec4, count);
+        const fastgltf::Accessor* weights =
+            GetVertexAccessor(primitive, "WEIGHTS_0", fastgltf::AccessorType::Vec4, count);
+        bool generateNormals = normals == nullptr;
+        vertices.resize(count);
+        for (size_t index = 0; index < count; ++index)
+        {
+            Vertex& vertex = vertices[index];
+            vertex.pos     = Vec4(DecodeAttribute(m_gltfAsset, positions, index, Vec3(0)), 1);
+            valid &= std::isfinite(vertex.pos.x) && std::isfinite(vertex.pos.y) &&
+                std::isfinite(vertex.pos.z);
+            Vec3 normal = DecodeAttribute(m_gltfAsset, normals, index, Vec3(0));
+            generateNormals |= !NormalizeSurfaceNormal(normal);
+            vertex.normal  = Vec4(normal, 0);
+            vertex.tangent = DecodeAttribute(m_gltfAsset, tangents, index, Vec4(0));
+            vertex.uv0     = DecodeAttribute(m_gltfAsset, uv0, index, Vec2(0));
+            vertex.uv1     = DecodeAttribute(m_gltfAsset, uv1, index, Vec2(0));
+            vertex.joint0  = DecodeAttribute(m_gltfAsset, joints, index, Vec4(0));
+            vertex.weight0 = DecodeAttribute(m_gltfAsset, weights, index, Vec4(0));
+            vertex.color   = colors != nullptr && colors->type == fastgltf::AccessorType::Vec3 ?
+                Vec4(DecodeAttribute(m_gltfAsset, colors, index, Vec3(1)), 1) :
+                DecodeAttribute(m_gltfAsset, colors, index, Vec4(1));
+        }
+        if (primitive.indicesAccessor.has_value())
+        {
+            const fastgltf::Accessor& accessor = m_gltfAsset.accessors[*primitive.indicesAccessor];
+            valid &= accessor.type == fastgltf::AccessorType::Scalar && !accessor.normalized &&
+                (accessor.componentType == fastgltf::ComponentType::UnsignedByte ||
+                 accessor.componentType == fastgltf::ComponentType::UnsignedShort ||
+                 accessor.componentType == fastgltf::ComponentType::UnsignedInt);
+            if (valid)
+            {
+                indices.resize(accessor.count);
+                fastgltf::copyFromAccessor<uint32_t>(m_gltfAsset, accessor, indices.data());
+            }
+        }
+        else
+        {
+            indices.resize(count);
+            for (uint32_t index = 0; index < count; ++index)
+            {
+                indices[index] = index;
+            }
+        }
+        valid &= !indices.empty() && indices.size() % 3 == 0;
+        for (uint32_t index : indices)
+        {
+            valid &= index < count;
+        }
+        if (valid && generateNormals)
+        {
+            GenerateFlatNormals(vertices, indices);
+        }
+    }
+    if (!valid)
+    {
+        LOGE("Skipping invalid or unsupported glTF triangle primitive");
+    }
+    return valid;
+}
+
+void FastGLTFLoader::LoadGltfMeshes(sg::Scene* pScene)
+{
+    m_vertices.clear();
+    m_indices.clear();
+    const std::vector<sg::Material*> materials = pScene->GetComponents<sg::Material>();
+    HeapVector<Vertex> vertices;
+    HeapVector<uint32_t> indices;
     for (const fastgltf::Mesh& gltfMesh : m_gltfAsset.meshes)
     {
-        UniquePtr<sg::Mesh> sgMesh = MakeUnique<sg::Mesh>(std::string(gltfMesh.name));
-        uint32_t subMeshIndex      = 0;
+        UniquePtr<sg::Mesh> mesh = MakeUnique<sg::Mesh>(std::string(gltfMesh.name));
+        uint32_t subMeshIndex    = 0;
         for (const fastgltf::Primitive& primitive : gltfMesh.primitives)
         {
-            uint32_t vertexStart = static_cast<uint32_t>(m_vertexPos);
-            uint32_t indexStart  = static_cast<uint32_t>(m_indexPos);
-            uint32_t indexCount  = 0;
-            uint32_t vertexCount = 0;
-            Vec3 posMin{};
-            Vec3 posMax{};
-            Vec4 diffuseColor = Vec4(1.0f);
-            // get sub mesh material
-            sg::Material* pSgMaterial = nullptr;
-            uint32_t materialIndex;
-            const std::vector<sg::Material*>& sgMaterials = pScene->GetComponents<sg::Material>();
-            if (primitive.materialIndex.has_value())
+            if (LoadPrimitive(primitive, vertices, indices))
             {
-                materialIndex = primitive.materialIndex.value();
-                pSgMaterial   = sgMaterials[materialIndex];
-                diffuseColor  = glm::make_vec4(
-                    m_gltfAsset.materials[materialIndex].pbrData.baseColorFactor.data());
-            }
-            else
-            {
-                materialIndex = sgMaterials.size() - 1;
-                pSgMaterial   = sgMaterials.back();
-            }
-
-            // Vertices
-            const float* pBufferPos          = nullptr;
-            const float* pBufferNormals      = nullptr;
-            const float* pBufferTangents     = nullptr;
-            const float* pBufferTexCoordSet0 = nullptr;
-            const float* pBufferTexCoordSet1 = nullptr;
-            const void* pBufferColorSet0     = nullptr;
-            const uint32_t* pBufferJoints    = nullptr;
-            const float* pBufferWeights      = nullptr;
-
-            fastgltf::ComponentType jointsBufferComponentType = fastgltf::ComponentType::Invalid;
-            fastgltf::ComponentType colorBufferComponentType  = fastgltf::ComponentType::Invalid;
-            // Get buffer data for vertex positions
-            if (primitive.findAttribute("POSITION") != primitive.attributes.end())
-            {
-                fastgltf::Accessor& accessor =
-                    m_gltfAsset.accessors[primitive.findAttribute("POSITION")->accessorIndex];
-                LoadAccessor<float>(accessor, pBufferPos, &vertexCount);
-                const FASTGLTF_STD_PMR_NS::vector<double>& minValues =
-                    *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.min));
-                const FASTGLTF_STD_PMR_NS::vector<double>& maxValues =
-                    *(std::get_if<FASTGLTF_STD_PMR_NS::vector<double>>(&accessor.max));
-                // update min max position
-                posMin = Vec3(minValues[0], minValues[1], minValues[2]);
-                posMax = Vec3(maxValues[0], maxValues[1], maxValues[2]);
-            }
-            // Get buffer data for vertex color
-            if (primitive.findAttribute("COLOR_0") != primitive.attributes.end())
-            {
-                fastgltf::Accessor& accessor =
-                    m_gltfAsset.accessors[primitive.findAttribute("COLOR_0")->accessorIndex];
-                colorBufferComponentType = accessor.componentType;
-                switch (colorBufferComponentType)
+                const uint32_t vertexStart = static_cast<uint32_t>(m_vertices.size());
+                const uint32_t indexStart  = static_cast<uint32_t>(m_indices.size());
+                sg::AABB bounds;
+                for (const Vertex& vertex : vertices)
                 {
-                    case fastgltf::ComponentType::Float:
-                    {
-                        const float* pBuffer;
-                        LoadAccessor<float>(
-                            m_gltfAsset
-                                .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            pBuffer);
-                        pBufferColorSet0 = pBuffer;
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedShort:
-                    {
-                        const uint16_t* pBuffer;
-                        LoadAccessor<uint16_t>(
-                            m_gltfAsset
-                                .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            pBuffer);
-                        pBufferColorSet0 = pBuffer;
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedByte:
-                    {
-                        const uint8_t* pBuffer;
-                        LoadAccessor<uint8_t>(
-                            m_gltfAsset
-                                .accessors[primitive.findAttribute("COLOR_0")->accessorIndex],
-                            pBuffer);
-                        pBufferColorSet0 = pBuffer;
-                        break;
-                    }
-                    default:
-                    {
-                        LOGE("Unexpected component type {}", (uint16_t)colorBufferComponentType);
-                        break;
-                    }
+                    bounds.SetMin(Vec3(vertex.pos));
+                    bounds.SetMax(Vec3(vertex.pos));
+                    m_vertices.push_back(vertex);
                 }
-            }
-            // Get buffer data for vertex normals
-            if (primitive.findAttribute("NORMAL") != primitive.attributes.end())
-            {
-                LoadAccessor<float>(
-                    m_gltfAsset.accessors[primitive.findAttribute("NORMAL")->accessorIndex],
-                    pBufferNormals);
-            }
-            // Get buffer data for vertex tangents
-            if (primitive.findAttribute("TANGENT") != primitive.attributes.end())
-            {
-                LoadAccessor<float>(
-                    m_gltfAsset.accessors[primitive.findAttribute("TANGENT")->accessorIndex],
-                    pBufferTangents);
-            }
-            // Get buffer data for vertex texture coordinates
-            // glTF supports multiple sets
-            if (primitive.findAttribute("TEXCOORD_0") != primitive.attributes.end())
-            {
-                LoadAccessor<float>(
-                    m_gltfAsset.accessors[primitive.findAttribute("TEXCOORD_0")->accessorIndex],
-                    pBufferTexCoordSet0);
-            }
-            if (primitive.findAttribute("TEXCOORD_1") != primitive.attributes.end())
-            {
-                LoadAccessor<float>(
-                    m_gltfAsset.accessors[primitive.findAttribute("TEXCOORD_1")->accessorIndex],
-                    pBufferTexCoordSet1);
-            }
-
-            // Get buffer data for joints
-            if (primitive.findAttribute("JOINTS_0") != primitive.attributes.end())
-            {
-                fastgltf::Accessor& accessor =
-                    m_gltfAsset.accessors[primitive.findAttribute("JOINTS_0")->accessorIndex];
-                LoadAccessor<uint32_t>(accessor, pBufferJoints);
-                jointsBufferComponentType = accessor.componentType;
-            }
-            // Get buffer data for joint weights
-            if (primitive.findAttribute("WEIGHTS_0") != primitive.attributes.end())
-            {
-                LoadAccessor<float>(
-                    m_gltfAsset.accessors[primitive.findAttribute("WEIGHTS_0")->accessorIndex],
-                    pBufferWeights);
-            }
-            // Append data to model's vertex buffer
-            for (size_t vertexIterator = 0; vertexIterator < vertexCount; ++vertexIterator)
-            {
-                Vertex vertex{};
-                // position
-                const Vec3 position =
-                    pBufferPos ? glm::make_vec3(&pBufferPos[vertexIterator * 3]) : glm::vec3(0.0f);
-                vertex.pos = glm::vec4(position.x, position.y, position.z, 1.0f);
-                // color
-                glm::vec3 vertexColor{1.0f};
-                switch (colorBufferComponentType)
+                for (uint32_t index : indices)
                 {
-                    case fastgltf::ComponentType::Float:
-                    {
-                        vertexColor = pBufferColorSet0 ?
-                            glm::make_vec3(&((
-                                static_cast<const float*>(pBufferColorSet0))[vertexIterator * 3])) :
-                            glm::vec3(1.0f);
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedShort:
-                    {
-                        const uint16_t* pVec3 =
-                            &((static_cast<const uint16_t*>(pBufferColorSet0))[vertexIterator * 3]);
-                        float norm  = 0xFFFF;
-                        vertexColor = pBufferColorSet0 ?
-                            glm::vec3(pVec3[0] / norm, pVec3[1] / norm, pVec3[2] / norm) :
-                            glm::vec3(1.0f);
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedByte:
-                    {
-                        const uint8_t* pVec3 =
-                            &((static_cast<const uint8_t*>(pBufferColorSet0))[vertexIterator * 3]);
-                        float norm  = 0xFF;
-                        vertexColor = pBufferColorSet0 ?
-                            glm::vec3(pVec3[0] / norm, pVec3[1] / norm, pVec3[2] / norm) :
-                            glm::vec3(1.0f);
-                        break;
-                    }
-                    default:
-                    {
-                        break;
-                    }
+                    m_indices.push_back(vertexStart + index);
                 }
-                vertex.color =
-                    glm::vec4(vertexColor.x, vertexColor.y, vertexColor.z, 1.0f) * diffuseColor;
-                // normal
-                vertex.normal = glm::normalize(glm::vec4(
-                    pBufferNormals ?
-                        glm::vec4(glm::make_vec3(&pBufferNormals[vertexIterator * 3]), 0.0f) :
-                        glm::vec4(0.0f)));
-                // uv0
-                const Vec2 uv0 = pBufferTexCoordSet0 ?
-                    glm::make_vec2(&pBufferTexCoordSet0[vertexIterator * 2]) :
-                    glm::vec2(0.0f);
-                vertex.uv0     = uv0;
-                // uv1
-                const Vec2 uv1 = pBufferTexCoordSet1 ?
-                    glm::make_vec2(&pBufferTexCoordSet1[vertexIterator * 2]) :
-                    glm::vec2(0.0f);
-                vertex.uv1     = uv1;
-                // tangent
-                glm::vec4 tangent = pBufferTangents ?
-                    glm::make_vec4(&pBufferTangents[vertexIterator * 4]) :
-                    glm::vec4(0.0f);
-                vertex.tangent =
-                    Vec4(glm::vec3(tangent.x, tangent.y, tangent.z) * tangent.w, tangent.w);
-                // joint indices and joint weights
-                if (pBufferJoints && pBufferWeights)
-                {
-                    switch (jointsBufferComponentType)
-                    {
-                        case fastgltf::ComponentType::Byte:
-                        case fastgltf::ComponentType::UnsignedByte:
-                            vertex.joint0 =
-                                glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int8_t*>(
-                                    pBufferJoints)[vertexIterator * 4])));
-                            break;
-                        case fastgltf::ComponentType::Short:
-                        case fastgltf::ComponentType::UnsignedShort:
-                            vertex.joint0 =
-                                glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int16_t*>(
-                                    pBufferJoints)[vertexIterator * 4])));
-                            break;
-                        case fastgltf::ComponentType::Int:
-                        case fastgltf::ComponentType::UnsignedInt:
-                            vertex.joint0 =
-                                glm::ivec4(glm::make_vec4(&(reinterpret_cast<const int32_t*>(
-                                    pBufferJoints)[vertexIterator * 4])));
-                            break;
-                        default: LOGE("data type of joints buffer not found"); break;
-                    }
-                    vertex.weight0 = glm::make_vec4(&pBufferWeights[vertexIterator * 4]);
-                }
-                m_vertices[m_vertexPos] = vertex;
-                m_vertexPos++;
+                const uint32_t materialIndex =
+                    static_cast<uint32_t>(primitive.materialIndex.value_or(materials.size() - 1));
+                const std::string name =
+                    fmt::format("Mesh_{}_SubMesh#{}", gltfMesh.name, subMeshIndex);
+                UniquePtr<sg::SubMesh> subMesh =
+                    MakeUnique<sg::SubMesh>(name, indexStart, static_cast<uint32_t>(indices.size()),
+                                            static_cast<uint32_t>(vertices.size()));
+                subMesh->SetMaterial(materialIndex, materials[materialIndex]);
+                subMesh->SetAABB(bounds.GetMin(), bounds.GetMax());
+                mesh->AddSubMesh(subMesh.Get());
+                mesh->SetAABB(bounds.GetMin(), bounds.GetMax());
+                pScene->AddComponent(std::move(subMesh));
             }
-            // Indices
-            if (primitive.indicesAccessor.has_value())
-            {
-                const fastgltf::Accessor& accessor =
-                    m_gltfAsset.accessors[primitive.indicesAccessor.value()];
-                indexCount = accessor.count;
-                switch (accessor.componentType)
-                {
-                    case fastgltf::ComponentType::UnsignedInt:
-                    {
-                        const uint32_t* pBufferIndices = nullptr;
-                        LoadAccessor<uint32_t>(accessor, pBufferIndices);
-                        for (size_t index = 0; index < accessor.count; index++)
-                        {
-                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
-                            m_indexPos++;
-                        }
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedShort:
-                    {
-                        const uint16_t* pBufferIndices = nullptr;
-                        LoadAccessor<uint16_t>(accessor, pBufferIndices);
-                        for (size_t index = 0; index < accessor.count; index++)
-                        {
-                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
-                            m_indexPos++;
-                        }
-                        break;
-                    }
-                    case fastgltf::ComponentType::UnsignedByte:
-                    {
-                        const uint8_t* pBufferIndices = nullptr;
-                        LoadAccessor<uint8_t>(accessor, pBufferIndices);
-                        for (size_t index = 0; index < accessor.count; index++)
-                        {
-                            m_indices[m_indexPos] = pBufferIndices[index] + vertexStart;
-                            m_indexPos++;
-                        }
-                        break;
-                    }
-                    default: LOGE("Unsupported gltf index component type!"); break;
-                }
-            }
-
-            const std::string subMeshName =
-                fmt::format("Mesh_{}_SubMesh#{}", std::string(gltfMesh.name), subMeshIndex);
-            // create sub mesh
-            UniquePtr<sg::SubMesh> subMesh =
-                MakeUnique<sg::SubMesh>(subMeshName, indexStart, indexCount, vertexCount);
-            subMesh->SetMaterial(materialIndex, pSgMaterial);
-            subMesh->SetAABB(posMin, posMax);
-
-            sgMesh->AddSubMesh(subMesh.Get());
-            sgMesh->SetAABB(posMin, posMax);
-
-            pScene->AddComponent(std::move(subMesh));
-            subMeshIndex++;
+            ++subMeshIndex;
         }
-        pScene->AddComponent(std::move(sgMesh));
+        pScene->AddComponent(std::move(mesh));
     }
 }
 

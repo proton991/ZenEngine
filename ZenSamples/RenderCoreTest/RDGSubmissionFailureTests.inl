@@ -207,18 +207,18 @@ TEST_P(RDGScheduledSubmissionTest, ImmediateHandoffFailureCanRestoreConsumedVoxe
     RDGSubmissionTestAccess::SetRecreateViewport(*device, &viewport);
     const bool succeeded = device->ExecuteRenderGraph(&viewport);
     EXPECT_FALSE(succeeded);
-    // RendererServer's immediate-failure path restores the consumed request.
-    if (!succeeded)
-    {
-        volumes.RequestVoxelization();
-    }
+    volumes.OnRenderGraphExecuted(succeeded);
+    EXPECT_EQ(volumes.GetGeometryRevision(), 0u);
     RDGSubmissionTestAccess::SetRecreateViewport(*device, nullptr);
     ASSERT_TRUE(graph.Begin());
     EXPECT_TRUE(volumes.BeginVolumeUpdate(graph));
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    volumes.OnRenderGraphExecuted(true);
+    EXPECT_EQ(volumes.GetGeometryRevision(), 1u);
     device->FlushRHIThread();
-    EXPECT_EQ(rhi->graphics.textureClears.size(), 1u);
+    EXPECT_EQ(rhi->graphics.dispatchCount, 1u);
+    EXPECT_TRUE(rhi->graphics.textureClears.empty());
     ASSERT_TRUE(graph.Begin());
     EXPECT_FALSE(volumes.BeginVolumeUpdate(graph));
     volumes.Destroy();

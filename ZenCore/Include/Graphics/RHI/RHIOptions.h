@@ -44,7 +44,46 @@ public:
         return m_VkRHIOptions.maxDescriptorSetPerPool;
     }
 
+    // Startup capability switch used by non-RT conformance runs. Set before device creation.
+    void SetRayTracingEnabled(bool enabled)
+    {
+        m_rayTracingEnabled = enabled;
+    }
+    bool RayTracingEnabled() const
+    {
+        return m_rayTracingEnabled;
+    }
+
+    void SetGPUProfilerMarkers(bool enabled)
+    {
+        m_gpuProfilerMarkers = enabled;
+    }
+    bool GPUProfilerMarkers() const
+    {
+        return m_gpuProfilerMarkers;
+    }
+    void SetGPUMemoryStats(bool enabled)
+    {
+        m_gpuMemoryStats = enabled;
+    }
+    bool GPUMemoryStats() const
+    {
+        return m_gpuMemoryStats;
+    }
+    void SetValidationEnabled(bool enabled)
+    {
+        m_validationEnabled = enabled;
+    }
+    bool ValidationEnabled() const
+    {
+        return m_validationEnabled;
+    }
+
 private:
+    bool m_rayTracingEnabled{true};
+    bool m_gpuProfilerMarkers{false};
+    bool m_gpuMemoryStats{false};
+    bool m_validationEnabled{true};
     // Private constructor to prevent instantiation
     RHIOptions()
     {

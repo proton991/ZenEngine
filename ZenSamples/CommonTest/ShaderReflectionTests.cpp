@@ -1,6 +1,8 @@
 #include "Graphics/RHI/RHIShaderUtil.h"
 #include "Platform/FileSystem.h"
 #include <gtest/gtest.h>
+#include "AssetLib/Types.h"
+#include "Graphics/Shared/VoxelGI.h"
 
 using namespace zen;
 
@@ -55,7 +57,7 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
     RHIShaderGroupInfo info{};
     RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
 
-    const uint32_t bindingCounts[] = {2, 1, 1, 3, 0, 2, 1};
+    const uint32_t bindingCounts[] = {2, 1, 0, 5, 1};
     ASSERT_EQ(info.SRDTable.size(), std::size(bindingCounts));
 
     for (uint32_t set = 0; set < std::size(bindingCounts); ++set)
@@ -156,34 +158,29 @@ TEST(ShaderReflectionTests, ComputeVoxelizerBindingsMatchProducerAndConsumerAcce
 {
     const RHIShaderGroupInfo producer =
         ReflectStage(RHIShaderStage::eCompute, "VoxelGI/voxelization.comp.spv");
-    const RHIShaderGroupInfo consumer =
-        ReflectStage(RHIShaderStage::eCompute, "VoxelGI/voxelization_large_triangles.comp.spv");
-
-    for (const zen::RHIShaderGroupInfo* shader : {&producer, &consumer})
+    const RHIShaderGroupInfo resolve =
+        ReflectStage(RHIShaderStage::eCompute, "VoxelGI/resolve_surface.comp.spv");
+    for (const RHIShaderGroupInfo* shader : {&producer, &resolve})
     {
-        for (NameID name : {"VertexBuffer", "IndexBuffer", "NodeBuffer", "TriangleMap"})
+        for (NameID name :
+             {"VertexBuffer", "IndexBuffer", "NodeBuffer", "TriangleRecords", "MaterialBuffer"})
         {
             ExpectWritable(*shader, name, false);
         }
-
-        ExpectWritable(*shader, "voxelTexture", true);
     }
-
-    ExpectWritable(producer, "LargeTriangleArray", true);
-    ExpectWritable(producer, "IndirectBuffer", true);
-    ExpectWritable(consumer, "LargeTriangleArray", false);
-
-    ASSERT_GT(consumer.SRDTable.size(), 5u);
-    ASSERT_EQ(consumer.SRDTable[5].size(), 1u);
-    EXPECT_EQ(consumer.SRDTable[5][0].binding, 1u);
-    EXPECT_EQ(FindBinding(consumer, "IndirectBuffer"), nullptr);
+    ExpectWritable(producer, "voxelOwner", true);
+    ExpectWritable(resolve, "voxelOwner", false);
+    for (NameID name : {"voxelAlbedo", "voxelNormal", "voxelEmissive"})
+    {
+        ExpectWritable(resolve, name, true);
+    }
 }
 
 TEST(ShaderReflectionTests, VoxelAtomicAndRadianceWritesRemainWritable)
 {
     const RHIShaderGroupInfo geometry =
         ReflectStage(RHIShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
-    ExpectWritable(geometry, "voxelAlbedo", true);
+    ExpectWritable(geometry, "voxelOwner", true);
 
     for (NameID name : {"voxelNormal", "voxelEmissive", "staticVoxelFlag"})
     {
@@ -192,7 +189,7 @@ TEST(ShaderReflectionTests, VoxelAtomicAndRadianceWritesRemainWritable)
 
     const RHIShaderGroupInfo inject =
         ReflectStage(RHIShaderStage::eCompute, "VoxelGI/inject_radiance.comp.spv");
-    ExpectWritable(inject, "voxelNormal", true); // Reads normals, then writes occupancy into alpha.
+    ExpectWritable(inject, "voxelNormal", false);
     ExpectWritable(inject, "voxelRadiance", true);
     ExpectWritable(inject, "voxelEmissive", false);
     const RHIShaderGroupInfo reset =
@@ -405,4 +402,91 @@ TEST(ShaderReflectionTests, VoxelWriteOnlyBindingsRetainPartialWriteSemantics)
     ExpectAccess(preDraw, "IndirectBuffer", true, true);
     ExpectAccess(ReflectStage(RHIShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv"),
                  "voxelTexture", false, true);
+}
+
+TEST(ShaderReflectionTests, GeometryVoxelizationKeepsTheFullSceneVertexStride)
+{
+    const RHIShaderGroupInfo voxel =
+        ReflectStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
+    const RHIShaderGroupInfo gbuffer =
+        ReflectStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
+    EXPECT_EQ(voxel.vertexBindingStride, sizeof(asset::Vertex));
+    EXPECT_EQ(gbuffer.vertexBindingStride, sizeof(asset::Vertex));
+    EXPECT_EQ(voxel.pushConstants.size, 4u * sizeof(uint32_t));
+}
+
+TEST(ShaderReflectionTests, SceneShadowsKeepTheMeshVertexLayoutAndUniformContract)
+{
+    const RHIShaderGroupInfo shadow =
+        ReflectStage(RHIShaderStage::eVertex, "ShadowMapping/scene_shadow.vert.spv");
+    EXPECT_EQ(shadow.vertexBindingStride, sizeof(asset::Vertex));
+    const size_t offsets[] = {offsetof(asset::Vertex, pos),     offsetof(asset::Vertex, normal),
+                              offsetof(asset::Vertex, tangent), offsetof(asset::Vertex, uv0),
+                              offsetof(asset::Vertex, uv1),     offsetof(asset::Vertex, joint0),
+                              offsetof(asset::Vertex, weight0), offsetof(asset::Vertex, color)};
+    ASSERT_EQ(shadow.vertexInputAttributes.size(), std::size(offsets));
+    for (uint32_t index = 0; index < std::size(offsets); ++index)
+    {
+        EXPECT_EQ(shadow.vertexInputAttributes[index].location, index);
+        EXPECT_EQ(shadow.vertexInputAttributes[index].offset, offsets[index]);
+    }
+    EXPECT_GE(shadow.pushConstants.size, 2u * sizeof(uint32_t));
+    ASSERT_NE(FindBinding(shadow, "uShadowFace"), nullptr);
+    EXPECT_EQ(FindBinding(shadow, "uShadowFace")->blockSize, 80u);
+}
+
+TEST(ShaderReflectionTests, VoxelMipFilteringDeclaresSeparateReadAndWriteImages)
+{
+    for (const char* path : {"VoxelGI/filter_albedo.comp.spv", "VoxelGI/filter_radiance.comp.spv"})
+    {
+        const RHIShaderGroupInfo info = ReflectStage(RHIShaderStage::eCompute, path);
+        ExpectWritable(info, "sourceVolume", false);
+        ExpectWritable(info, "targetVolume", true);
+        ASSERT_NE(FindBinding(info, "sourceVolume"), nullptr);
+        EXPECT_EQ(FindBinding(info, "sourceVolume")->type, RHIShaderResourceType::eImage);
+    }
+}
+
+TEST(ShaderReflectionTests, VoxelVolumeWorkgroupsExposeSpecializationAndSafeDefaults)
+{
+    for (const char* path : {"VoxelGI/clear_owners.comp.spv", "VoxelGI/resolve_albedo.comp.spv",
+                             "VoxelGI/resolve_surface.comp.spv", "VoxelGI/sky_irradiance.comp.spv",
+                             "VoxelGI/inject_radiance.comp.spv", "VoxelGI/filter_albedo.comp.spv",
+                             "VoxelGI/filter_radiance.comp.spv", "VoxelGI/voxel_pre_draw.comp.spv"})
+    {
+        SCOPED_TRACE(path);
+        const HeapVector<uint8_t> bytes = platform::FileSystem::LoadSpvFile(path);
+        ASSERT_FALSE(bytes.empty());
+        SpvReflectShaderModule module{};
+        ASSERT_EQ(spvReflectCreateShaderModule(bytes.size(), bytes.data(), &module),
+                  SPV_REFLECT_RESULT_SUCCESS);
+        const SpvReflectEntryPoint* entry = spvReflectGetEntryPoint(&module, "main");
+        EXPECT_NE(entry, nullptr);
+        if (entry != nullptr)
+        {
+            EXPECT_EQ(entry->local_size.x, ZEN_VOXEL_VOLUME_GROUP_SIZE);
+            EXPECT_EQ(entry->local_size.y, ZEN_VOXEL_VOLUME_GROUP_SIZE);
+            EXPECT_EQ(entry->local_size.z, ZEN_VOXEL_VOLUME_GROUP_SIZE);
+            EXPECT_LE(entry->local_size.x, 128u);
+            EXPECT_LE(entry->local_size.y, 128u);
+            EXPECT_LE(entry->local_size.z, 64u);
+            EXPECT_LE(uint64_t(entry->local_size.x) * entry->local_size.y * entry->local_size.z,
+                      128u);
+        }
+        spvReflectDestroyShaderModule(&module);
+        const RHIShaderGroupInfo info = ReflectStage(RHIShaderStage::eCompute, path);
+        ASSERT_EQ(info.specializationConstants.size(), 3u);
+        std::array<bool, 3> seen{};
+        for (const RHIShaderSpecializationConstant& constant : info.specializationConstants)
+        {
+            ASSERT_LT(constant.constantId, seen.size());
+            EXPECT_FALSE(seen[constant.constantId]);
+            seen[constant.constantId] = true;
+            EXPECT_EQ(constant.type, RHIShaderSpecializationConstantType::eInt);
+            EXPECT_EQ(constant.intValue, ZEN_VOXEL_VOLUME_GROUP_SIZE);
+        }
+        EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_X_ID]);
+        EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_Y_ID]);
+        EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_Z_ID]);
+    }
 }

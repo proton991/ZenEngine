@@ -1,0 +1,20 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "static_composition.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+struct Probe { vec4 position; vec4 normal; };
+layout(set=1,binding=0,std430) readonly buffer Probes { Probe probes[]; };
+layout(set=1,binding=1,std430) writeonly buffer ProbeResults { vec4 results[]; };
+layout(push_constant) uniform ProbeBatch { uint firstItem; uint itemCount; } batch;
+void main()
+{
+    uint group=gl_WorkGroupID.x+gl_NumWorkGroups.x*(gl_WorkGroupID.y+gl_NumWorkGroups.y*gl_WorkGroupID.z);
+    uint local=group*GI_QUERY_GROUP_SIZE+gl_LocalInvocationIndex;
+    if(local<batch.itemCount)
+    {
+        uint index=batch.firstItem+local;
+        vec3 irradiance=vec3(0);
+        bool valid=giStatus.z==0u && StaticDiffuseIrradiance(probes[index].position.xyz,probes[index].normal.xyz,irradiance);
+        results[index]=vec4(irradiance,valid ? 1 : 0);
+    }
+}

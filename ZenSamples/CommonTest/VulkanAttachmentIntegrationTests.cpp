@@ -4,6 +4,7 @@
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanTexture.h"
+#include "Graphics/VulkanRHI/VulkanExtension.h"
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <memory>
@@ -24,6 +25,7 @@ struct AttachmentObserver
     static inline uint32_t layers;
     static inline VkImageView colorView;
     static inline bool failView;
+    static inline uint32_t failViewAt;
 
     static VKAPI_ATTR VkResult VKAPI_CALL CreatePipeline(VkDevice device,
                                                          VkPipelineCache cache,
@@ -61,11 +63,14 @@ struct AttachmentObserver
                                                      VkImageView* view)
     {
         ++viewCreates;
-        if (failView)
+        if (failView || viewCreates == failViewAt)
         {
-            return VK_ERROR_OUT_OF_HOST_MEMORY;
+            *view = VK_NULL_HANDLE;
         }
-        return createView(device, info, allocator, view);
+        const VkResult result = failView || viewCreates == failViewAt ?
+            VK_ERROR_OUT_OF_HOST_MEMORY :
+            createView(device, info, allocator, view);
+        return result;
     }
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL
@@ -109,6 +114,7 @@ protected:
         AttachmentObserver::createPipeline = vkCreateGraphicsPipelines;
         AttachmentObserver::begins = AttachmentObserver::viewCreates = 0;
         AttachmentObserver::failView                                 = false;
+        AttachmentObserver::failViewAt                               = 0;
         observeBegin = std::make_unique<test::ScopedVulkanCall<PFN_vkCmdBeginRenderingKHR>>(
             vkCmdBeginRenderingKHR, AttachmentObserver::Begin);
         observeView = std::make_unique<test::ScopedVulkanCall<PFN_vkCreateImageView>>(
@@ -165,8 +171,11 @@ protected:
         info.samples     = samples;
         info.usageFlags.SetFlags(usage, RHITextureUsageFlagBits::eTransferSrc,
                                  RHITextureUsageFlagBits::eTransferDst);
-        auto* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(info));
-        textures.push_back(texture);
+        VulkanTexture* texture = static_cast<VulkanTexture*>(session->rhi.CreateTexture(info));
+        if (texture != nullptr)
+        {
+            textures.push_back(texture);
+        }
         return texture;
     }
 
@@ -409,7 +418,7 @@ TEST_F(VulkanAttachmentIntegrationTest, DrawsIntoOneMipAndNonzeroArrayLayer)
 
 TEST_F(VulkanAttachmentIntegrationTest, TextureConvenienceReusesSingleMipViewAndRendersAllLayers)
 {
-    auto* texture = Texture();
+    VulkanTexture* texture = Texture();
     RHIRenderingLayout layout{};
     layout.SetRenderArea(0, 0, 8, 8);
     layout.AddColorRenderTarget(texture->GetFormat(), texture, RHIRenderTargetLoadOp::eClear,
@@ -417,22 +426,23 @@ TEST_F(VulkanAttachmentIntegrationTest, TextureConvenienceReusesSingleMipViewAnd
                                 RHIRenderTargetClearValue(Color(1, 0, 0, 1)));
     EXPECT_EQ(layout.numLayers, 4u);
     const uint32_t viewCount = AttachmentObserver::viewCreates;
+    EXPECT_EQ(viewCount, 2u); // Default and attachment views are ready before publication.
     Initialize(texture);
     context->RHIBeginRendering(&layout);
     const VkImageView firstView = AttachmentObserver::colorView;
     EXPECT_NE(firstView, texture->GetVkImageView());
-    EXPECT_EQ(AttachmentObserver::viewCreates, viewCount + 1);
+    EXPECT_EQ(AttachmentObserver::viewCreates, viewCount);
     context->RHIEndRendering();
     Transition(texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     context->RHIBeginRendering(&layout);
     EXPECT_EQ(AttachmentObserver::colorView, firstView);
-    EXPECT_EQ(AttachmentObserver::viewCreates, viewCount + 1);
+    EXPECT_EQ(AttachmentObserver::viewCreates, viewCount);
     context->RHIEndRendering();
     EXPECT_EQ(texture->GetDefaultView()->GetSubResourceRange().levelCount, 3u);
     Transition(texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    auto* buffer = Buffer();
+    VulkanBuffer* buffer = Buffer();
     CopyAll(texture, buffer, VK_IMAGE_ASPECT_COLOR_BIT, 4);
     SubmitAndWait();
     CheckColor(texture, buffer, 0, 0, 4, false, false);
@@ -572,7 +582,7 @@ class VulkanInvalidViewTest :
 
 TEST_P(VulkanInvalidViewTest, RejectsInvalidViewBeforeCallingVulkan)
 {
-    auto* texture = Texture();
+    VulkanTexture* texture = Texture();
     RHITextureViewCreateInfo info{};
     info.type   = RHITextureType::e2D;
     info.format = texture->GetFormat();
@@ -594,8 +604,8 @@ TEST_P(VulkanInvalidViewTest, RejectsInvalidViewBeforeCallingVulkan)
         case 7: info.format = DataFormat::eR8G8B8A8SRGB; break;
         case 8: info.aspect.SetFlag(RHITextureAspectFlagBits::eDepth); break;
     }
-    const auto count = AttachmentObserver::viewCreates;
-    EXPECT_THROW(texture->CreateView(info), std::runtime_error);
+    const uint32_t count = AttachmentObserver::viewCreates;
+    EXPECT_EQ(texture->CreateView(info), nullptr);
     EXPECT_EQ(AttachmentObserver::viewCreates, count);
 }
 
@@ -662,14 +672,140 @@ INSTANTIATE_TEST_SUITE_P(Compatibility, VulkanInvalidAttachmentTest, testing::Ra
 
 TEST_F(VulkanAttachmentIntegrationTest, FailedViewCreationDoesNotPublishViewAndCanBeRetried)
 {
-    auto* texture                = Texture();
+    VulkanTexture* texture       = Texture();
     AttachmentObserver::failView = true;
-    EXPECT_THROW(View(texture, 1, 1), std::runtime_error);
+    EXPECT_EQ(View(texture, 1, 1), nullptr);
     // Also exercise cleanup when the texture's initial default view cannot be created.
-    EXPECT_THROW(Texture(), std::runtime_error);
+    EXPECT_EQ(Texture(), nullptr);
     AttachmentObserver::failView = false;
     EXPECT_NE(View(texture, 1, 1), nullptr);
     EXPECT_NE(Texture(), nullptr);
+}
+
+struct TextureAllocationDriver
+{
+    static inline PFN_vkCreateImage createImage;
+    static inline PFN_vkDestroyImage destroyImage;
+    static inline PFN_vkAllocateMemory allocateMemory;
+    static inline uint32_t liveImages;
+    static inline bool failImage;
+    static inline bool failMemory;
+
+    static VKAPI_ATTR VkResult VKAPI_CALL CreateImage(VkDevice device,
+                                                      const VkImageCreateInfo* info,
+                                                      const VkAllocationCallbacks* callbacks,
+                                                      VkImage* image)
+    {
+        *image = VK_NULL_HANDLE;
+        const VkResult result =
+            failImage ? VK_ERROR_OUT_OF_DEVICE_MEMORY : createImage(device, info, callbacks, image);
+        if (result == VK_SUCCESS)
+        {
+            ++liveImages;
+        }
+        return result;
+    }
+
+    static VKAPI_ATTR void VKAPI_CALL DestroyImage(VkDevice device,
+                                                   VkImage image,
+                                                   const VkAllocationCallbacks* callbacks)
+    {
+        if (image != VK_NULL_HANDLE)
+        {
+            EXPECT_GT(liveImages, 0u);
+            --liveImages;
+        }
+        destroyImage(device, image, callbacks);
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL AllocateMemory(VkDevice device,
+                                                         const VkMemoryAllocateInfo* info,
+                                                         const VkAllocationCallbacks* callbacks,
+                                                         VkDeviceMemory* memory)
+    {
+        *memory               = VK_NULL_HANDLE;
+        const VkResult result = failMemory ? VK_ERROR_OUT_OF_DEVICE_MEMORY :
+                                             allocateMemory(device, info, callbacks, memory);
+        return result;
+    }
+};
+
+// VMA retains its function table. Use an isolated allocator to observe failures and keep
+// successful allocations from a previous attempt from masking memory-allocation failures.
+class ScopedTextureTestAllocator
+{
+public:
+    explicit ScopedTextureTestAllocator(VulkanRHI& rhi) : m_previous(GVkMemAllocator)
+    {
+        m_allocator.Init(rhi.GetInstance(), rhi.GetPhysicalDevice(), rhi.GetVkDevice(),
+                         rhi.GetDevice()->GetExtensionFlags().hasBufferDeviceAddress != 0);
+        GVkMemAllocator = &m_allocator;
+    }
+
+    ~ScopedTextureTestAllocator()
+    {
+        GVkMemAllocator = m_previous;
+    }
+
+private:
+    VulkanMemoryAllocator* m_previous;
+    VulkanMemoryAllocator m_allocator;
+};
+
+TEST_F(VulkanAttachmentIntegrationTest, TextureAllocationFailuresCleanUpAndAllowRetry)
+{
+    TextureAllocationDriver::createImage    = vkCreateImage;
+    TextureAllocationDriver::destroyImage   = vkDestroyImage;
+    TextureAllocationDriver::allocateMemory = vkAllocateMemory;
+    TextureAllocationDriver::liveImages     = 0;
+    test::ScopedVulkanCall<PFN_vkCreateImage> images(vkCreateImage,
+                                                     TextureAllocationDriver::CreateImage);
+    test::ScopedVulkanCall<PFN_vkDestroyImage> destruction(vkDestroyImage,
+                                                           TextureAllocationDriver::DestroyImage);
+    test::ScopedVulkanCall<PFN_vkAllocateMemory> memory(vkAllocateMemory,
+                                                        TextureAllocationDriver::AllocateMemory);
+    for (uint32_t dimension : {4u, 32u})
+    {
+        for (uint32_t failure = 0; failure < 4; ++failure)
+        {
+            SCOPED_TRACE(testing::Message() << dimension << " failure=" << failure);
+            ScopedTextureTestAllocator allocator(session->rhi);
+            RHITextureCreateInfo info{};
+            info.type   = failure == 3 ? RHITextureType::e2D : RHITextureType::e3D;
+            info.format = DataFormat::eR16G16B16A16SFloat;
+            info.width = info.height = dimension;
+            info.depth               = failure == 3 ? 1 : dimension;
+            info.mipmaps             = 3;
+            info.usageFlags.SetFlags(RHITextureUsageFlagBits::eStorage,
+                                     RHITextureUsageFlagBits::eSampled);
+            if (failure == 3)
+            {
+                info.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+            }
+            TextureAllocationDriver::failImage  = failure == 0;
+            TextureAllocationDriver::failMemory = failure == 1;
+            AttachmentObserver::failView        = failure == 2;
+            AttachmentObserver::failViewAt = failure == 3 ? AttachmentObserver::viewCreates + 2 : 0;
+            RHITexture* failed             = session->rhi.CreateTexture(info);
+            EXPECT_EQ(failed, nullptr);
+            if (failed != nullptr)
+            {
+                session->rhi.DestroyTexture(failed);
+            }
+            EXPECT_EQ(TextureAllocationDriver::liveImages, 0u);
+            TextureAllocationDriver::failImage = TextureAllocationDriver::failMemory = false;
+            AttachmentObserver::failView                                             = false;
+            AttachmentObserver::failViewAt                                           = 0;
+            RHITexture* recovered = session->rhi.CreateTexture(info);
+            EXPECT_NE(recovered, nullptr);
+            if (recovered != nullptr)
+            {
+                EXPECT_NE(recovered->GetDefaultView(), nullptr);
+                session->rhi.DestroyTexture(recovered);
+            }
+            EXPECT_EQ(TextureAllocationDriver::liveImages, 0u);
+        }
+    }
 }
 
 TEST_F(VulkanAttachmentIntegrationTest, LayoutResetAndAttachmentCapacityPreserveInvariants)

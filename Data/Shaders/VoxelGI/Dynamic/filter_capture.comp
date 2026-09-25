@@ -1,0 +1,17 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=1) in;
+layout(set=3,binding=0,rgba16f) readonly uniform image3D rawIrradiance;
+layout(set=3,binding=1,rgba32f) readonly uniform image3D history;
+layout(set=3,binding=2,rgba16f) readonly uniform image3D filteredIrradiance;
+layout(set=3,binding=3,std430) writeonly buffer FilterCapture { vec4 values[4]; };
+layout(push_constant) uniform Probe { uint cell; uint side; } probe;
+void main() {
+    uint n=probe.side,id=probe.cell;
+    ivec3 p=ivec3(id/(n*n),(id/n)%n,id%n);
+    values[0]=imageLoad(rawIrradiance,p);
+    vec4 old=imageLoad(history,p);
+    values[1]=old;
+    values[2]=old;
+    values[3]=imageLoad(filteredIrradiance,p);
+}

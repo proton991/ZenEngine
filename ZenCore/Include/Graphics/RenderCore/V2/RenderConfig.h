@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIThread.h"
 #include "Graphics/RHI/RHICommandList.h"
+#include "Graphics/Shared/VoxelGI.h"
 #include "Platform/ConfigLoader.h"
 #include <string_view>
 
@@ -78,6 +79,31 @@ inline platform::VoxelizerMode ResolveVoxelizerMode(platform::VoxelizerMode requ
         return platform::VoxelizerMode::eGeometry;
     }
     return platform::VoxelizerMode::eCompute;
+}
+
+inline glm::uvec3 ResolveVoxelVolumeWorkgroupSize(const RHIGPUInfo& gpuInfo)
+{
+    // A bounded capability-based default, not a substitute for per-pass GPU profiling.
+    glm::uvec3 size(ZEN_VOXEL_VOLUME_GROUP_SIZE);
+    const glm::uvec3 candidates[] = {{8, 8, 8}, {8, 8, 4}, {8, 4, 4}};
+    for (const glm::uvec3& candidate : candidates)
+    {
+        if (candidate.x <= gpuInfo.maxComputeWorkGroupSize[0] &&
+            candidate.y <= gpuInfo.maxComputeWorkGroupSize[1] &&
+            candidate.z <= gpuInfo.maxComputeWorkGroupSize[2] &&
+            candidate.x * candidate.y * candidate.z <= gpuInfo.maxComputeWorkGroupInvocations)
+        {
+            size = candidate;
+            break;
+        }
+    }
+    return size;
+}
+
+inline glm::uvec3 GetVoxelVolumeDispatchGroups(uint32_t dimension, const RHIGPUInfo& gpuInfo)
+{
+    const glm::uvec3 size = ResolveVoxelVolumeWorkgroupSize(gpuInfo);
+    return (glm::uvec3(dimension) + size - 1u) / size;
 }
 
 struct RenderConfig

@@ -16,7 +16,8 @@ public:
 
     void Init() final;
 
-    void BuildRenderGraph() final;
+    void BuildVoxelizationGraph() final;
+    void BuildVisualizationGraph() final;
 
     void Destroy() final;
 };

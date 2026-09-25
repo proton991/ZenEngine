@@ -22,8 +22,8 @@ layout (location = 0) out vec3 outUVW;
 
 void main() 
 {
-	// trick to solve upside down
-	outUVW = vec3(inPos.x, -inPos.y, inPos.z);
+	// Pass world direction; the fragment shader converts to source cubemap coordinates.
+	outUVW = inPos;
 	mat4 viewMat = mat4(mat3(uViewMatrix));
 	vec4 pos = uProjMatrix * viewMat * vec4(inPos, 1.0);
 	gl_Position = pos.xyww; // Force depth to 1.0 to avoid clipping

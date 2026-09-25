@@ -344,6 +344,16 @@ void RHICommandList::SetLineWidth(float width)
     ALLOC_CMD(RHICommandSetLineWidth)(width);
 }
 
+void RHICommandList::BeginDebugLabel(NameID name)
+{
+    ALLOC_CMD(RHICommandDebugLabel)(name, true);
+}
+
+void RHICommandList::EndDebugLabel()
+{
+    ALLOC_CMD(RHICommandDebugLabel)(NameID(), false);
+}
+
 void RHICommandList::SetBlendConstants(const Color& color)
 {
     ALLOC_CMD(RHICommandSetBlendConstants)(color);

@@ -3,7 +3,10 @@
 
 #include "../Common/bindless_heap.glsl"
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+#include "Graphics/Shared/VoxelGI.h"
+layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
+       local_size_y=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_y_id=ZEN_VOXEL_VOLUME_GROUP_Y_ID,
+       local_size_z=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_z_id=ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
 
 struct DrawIndexedIndirectCommand
 {
@@ -51,8 +54,14 @@ void main()
     {
         uint index = atomicAdd(command.instanceCount, 1);
 
-        vec3 _min           = ubo.aabbMin.xyz * 2;
-        vec3 _max           = ubo.aabbMax.xyz * 2;
+        if (index >= positions.length() || index >= colors.length())
+        {
+            atomicMin(command.instanceCount, min(positions.length(), colors.length()));
+            return;
+        }
+
+        vec3 _min           = ubo.aabbMin.xyz;
+        vec3 _max           = ubo.aabbMax.xyz;
         int voxels_per_side = imageSize(voxelTexture).x;
         float voxel_width   = (_max.x - _min.x) / float(voxels_per_side);
 

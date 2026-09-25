@@ -751,11 +751,15 @@ void RDGPassCmdEncoder::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
 
 void RDGPassCmdEncoder::Dispatch(uint32_t groupCountX, int32_t groupCountY, int32_t groupCountZ)
 {
-    if (((ValidateDispatch())) &&
-        (((Check(groupCountY >= 0 && groupCountZ >= 0, RDGErrorCode::eRange,
-                 "Negative dispatch group count"))) &&
-         ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                 "Command encoder requires a command list")))))
+    if (ValidateDispatch() &&
+        Check(groupCountY >= 0 && groupCountZ >= 0, RDGErrorCode::eRange,
+              "Negative dispatch group count") &&
+        Check(m_pCmdList != nullptr && GDynamicRHI != nullptr, RDGErrorCode::eLifecycle,
+              "Command encoder requires a command list and RHI") &&
+        Check(GDynamicRHI->QueryGPUInfo().IsDispatchWithinLimits(
+                  groupCountX, static_cast<uint32_t>(groupCountY),
+                  static_cast<uint32_t>(groupCountZ)),
+              RDGErrorCode::eRange, "Dispatch group count exceeds device axis limits"))
     {
         m_pCmdList->Dispatch(groupCountX, groupCountY, groupCountZ);
     }

@@ -1,0 +1,36 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "filter_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,rgba32f) readonly uniform image3D sourceIrradiance;
+layout(set=3,binding=2,rgba16f) writeonly uniform image3D filteredIrradiance;
+layout(set=3,binding=3,rgba8) readonly uniform image3D surfaceNormal;
+layout(set=3,binding=4,r32ui) readonly uniform uimage3D surfaceOwner;
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        ivec3 p=StaticCell(cell);
+        vec4 value=imageLoad(sourceIrradiance,p);
+        if(value.a>0 && giFilter.control.y!=0u) {
+            vec3 sum=vec3(0); float weights=0;
+            bool surface=imageLoad(surfaceOwner,p).r!=GI_INVALID_CELL;
+            vec3 normal=normalize(imageLoad(surfaceNormal,p).xyz*2.0-1.0);
+            for(int x=-1;x<=1;++x) for(int y=-1;y<=1;++y) for(int z=-1;z<=1;++z) {
+                ivec3 q=p+ivec3(x,y,z);
+                if(all(greaterThanEqual(q,ivec3(0))) && all(lessThan(q,ivec3(n)))) {
+                    vec4 donor=imageLoad(sourceIrradiance,q);
+                    float weight=float((x==0 ? 2 : 1)*(y==0 ? 2 : 1)*(z==0 ? 2 : 1));
+                    // Do not blur irradiance across oppositely oriented surfaces.
+                    // Empty dynamic-neighborhood receivers keep the spatial kernel.
+                    if(surface && imageLoad(surfaceOwner,q).r!=GI_INVALID_CELL) {
+                        vec3 donorNormal=normalize(imageLoad(surfaceNormal,q).xyz*2.0-1.0);
+                        weight*=max(dot(normal,donorNormal),0.0);
+                    }
+                    if(donor.a>0) { sum+=donor.rgb*weight; weights+=weight; }
+                }
+            }
+            value=vec4(sum/weights,1);
+        }
+        imageStore(filteredIrradiance,p,value);
+    }
+}

@@ -1,4 +1,5 @@
 #include "Graphics/VulkanRHI/VulkanRHI.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
@@ -421,6 +422,7 @@ void VulkanRHI::SetupInstanceLayers(VulkanInstanceExtensionArray& instanceExtens
     // Add Debug Layer
     const NameID debugLayerName("VK_LAYER_KHRONOS_validation");
 
+    if (RHIOptions::GetInstance().ValidationEnabled())
     {
         bool valid = true;
 
@@ -683,11 +685,20 @@ void VulkanRHI::Init()
         SelectGPU();
         m_pDevice->Init();
 
+        const VkPhysicalDeviceLimits& limits = m_pDevice->GetPhysicalDeviceProperties().limits;
         m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
-        m_gpuInfo.uniformBufferAlignment =
-            m_pDevice->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
-        m_gpuInfo.storageBufferAlignment =
-            m_pDevice->GetPhysicalDeviceProperties().limits.minStorageBufferOffsetAlignment;
+        m_gpuInfo.supportFragmentStoresAndAtomics =
+            m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
+        m_gpuInfo.uniformBufferAlignment = limits.minUniformBufferOffsetAlignment;
+        m_gpuInfo.storageBufferAlignment = limits.minStorageBufferOffsetAlignment;
+        m_gpuInfo.maxComputeWorkGroupInvocations = limits.maxComputeWorkGroupInvocations;
+        m_gpuInfo.maxStorageBufferRange          = limits.maxStorageBufferRange;
+        m_gpuInfo.maxColorAttachments            = limits.maxColorAttachments;
+        for (uint32_t axis = 0; axis < 3; ++axis)
+        {
+            m_gpuInfo.maxComputeWorkGroupSize[axis] = limits.maxComputeWorkGroupSize[axis];
+            m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
+        }
 
         // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
         //                        m_device->GetVkHandle());

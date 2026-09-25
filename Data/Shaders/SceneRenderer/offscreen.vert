@@ -37,8 +37,10 @@ layout (push_constant) uniform uNodePushConstant
 
 layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec2 outUV;
-layout (location = 2) out vec3 outColor;
+layout (location = 2) out vec4 outColor;
 layout (location = 3) out vec3 outWorldPos;
+layout (location = 4) out vec2 outUV1;
+layout (location = 5) out vec4 outTangent;
 
 void main()
 {
@@ -47,6 +49,7 @@ void main()
     gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
 
     outUV = inUV0;
+    outUV1 = inUV1;
 
     // Vertex position in world space
     outWorldPos = locPos.xyz / locPos.w;
@@ -54,7 +57,9 @@ void main()
     // Normal in world space
     mat3 mNormal = mat3(nodesData[uNodeIndex].normalMatrix);
     outNormal = mNormal * normalize(inNormal.xyz);
+    mat3 mModel = mat3(nodesData[uNodeIndex].modelMatrix);
+    outTangent = vec4(mModel * inTangent.xyz, inTangent.w * sign(determinant(mModel)));
 
     // Currently just vertex color
-    outColor = inColor.rgb;
+    outColor = inColor;
 }

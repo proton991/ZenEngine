@@ -34,6 +34,7 @@ struct Material
     float roughnessFactor;
     vec4 baseColorFactor;
     vec4 emissiveFactor;
+    vec4 surfaceProperties;
 };
 
 layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer {

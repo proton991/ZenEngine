@@ -1,0 +1,32 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,r32ui) readonly uniform uimage3D staticOwner;
+layout(set=3,binding=2,rgba16f) readonly uniform image3D rawIrradiance;
+layout(set=3,binding=3,rgba16f) writeonly uniform image3D paddedIrradiance;
+void main()
+{
+    uint cell=StaticItem();
+    uint n=staticGI.volume.x;
+    if(cell<n*n*n)
+    {
+        ivec3 p=StaticCell(cell);
+        vec4 result=imageLoad(rawIrradiance,p);
+        if(imageLoad(staticOwner,p).r==GI_INVALID_CELL)
+        {
+            vec3 sum=vec3(0); float count=0;
+            for(int x=-1;x<=1;++x) for(int y=-1;y<=1;++y) for(int z=-1;z<=1;++z)
+            {
+                ivec3 q=p+ivec3(x,y,z);
+                if(all(greaterThanEqual(q,ivec3(0))) && all(lessThan(q,ivec3(n))) && imageLoad(staticOwner,q).r!=GI_INVALID_CELL)
+                {
+                    vec4 donor=imageLoad(rawIrradiance,q);
+                    if(donor.a>0) { sum+=donor.rgb; count+=1; }
+                }
+            }
+            result=count>0 ? vec4(sum/count,1) : vec4(0);
+        }
+        imageStore(paddedIrradiance,p,result);
+    }
+}

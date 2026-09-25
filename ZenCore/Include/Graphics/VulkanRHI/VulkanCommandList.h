@@ -511,6 +511,8 @@ public:
     void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) override;
 
     void RHIEndRendering() override;
+    void RHIBeginDebugLabel(NameID name) override;
+    void RHIEndDebugLabel() override;
 
     void RHISetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) override;
 

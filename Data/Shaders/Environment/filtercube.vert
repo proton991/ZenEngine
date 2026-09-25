@@ -19,7 +19,7 @@ layout (location = 0) out vec3 outUVW;
 
 void main() 
 {
-	// trick to solve upside down
+	// Convert world directions to the source cubemap's inverted-Y convention.
 	outUVW = vec3(inPos.x, -inPos.y, inPos.z);
 	gl_Position = pushConsts.mvp * vec4(inPos.xyz, 1.0);
 }

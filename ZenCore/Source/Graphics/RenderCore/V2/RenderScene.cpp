@@ -12,20 +12,20 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName)
 {
 
-    std::memcpy(m_sceneUniformData.lightPositions, sceneData.lightPositions,
-                sizeof(sceneData.lightPositions));
-    std::memcpy(m_sceneUniformData.lightColors, sceneData.lightColors,
-                sizeof(sceneData.lightColors));
-    std::memcpy(m_sceneUniformData.lightIntensities, sceneData.lightIntensities,
-                sizeof(sceneData.lightIntensities));
-
     sys::SceneEditor::CenterAndNormalizeScene(m_pScene);
+    m_vertices        = HeapVector<asset::Vertex>(sceneData.pVertices, sceneData.numVertices);
+    m_indices         = HeapVector<uint32_t>(sceneData.pIndices, sceneData.numIndices);
+    m_instanceClasses = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), GI_STATIC);
+    m_instanceEnabled = HeapVector<uint32_t>(m_pScene->GetRenderableCount(), 1);
 
     m_nodesData.reserve(m_pScene->GetRenderableCount());
     for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
     {
         m_nodesData.emplace_back(pNode->GetData());
     }
+    m_voxelBounds = m_pScene->GetAABB();
+    sg::AABB bounds;
+    m_geometryReady = ComputeGeometryBounds(bounds, m_classBounds);
 
     m_pVertexBuffer =
         m_pRenderDevice->CreateVertexBuffer(sceneData.numVertices * sizeof(asset::Vertex),
@@ -78,39 +78,50 @@ void RenderScene::LoadSceneTextures()
 
 void RenderScene::PrepareBuffers()
 {
-    HeapVector<uint32_t> triangleSubMeshMap;
-    triangleSubMeshMap.reserve(m_numIndices / 3);
-    for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
+    const HeapVector<glm::uvec4> voxelTriangles = BuildTriangleRecords();
+    m_pRenderDevice->DestroyBuffer(m_pVoxelTriangleBuffer);
+    m_pVoxelTriangleBuffer = nullptr;
+    m_voxelTriangleCount   = static_cast<uint32_t>(voxelTriangles.size());
+    if (!voxelTriangles.empty())
     {
-        for (const sg::SubMesh* pSubMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
-        {
-            const uint32_t triangleCount = pSubMesh->GetIndexCount() / 3;
-            for (uint32_t i = 0; i < triangleCount; i++)
-            {
-                triangleSubMeshMap.push_back(
-                    m_materialsData[pSubMesh->GetMaterialIndex()].bcTexIndex);
-            }
-        }
+        m_pVoxelTriangleBuffer = m_pRenderDevice->CreateStorageBuffer(
+            static_cast<uint32_t>(sizeof(glm::uvec4) * voxelTriangles.size()),
+            reinterpret_cast<const uint8_t*>(voxelTriangles.data()), "voxel_triangles");
     }
-
-    m_pTriangleMapBuffer = m_pRenderDevice->CreateStorageBuffer(
-        sizeof(uint32_t) * triangleSubMeshMap.size(),
-        reinterpret_cast<const uint8_t*>(triangleSubMeshMap.data()), "triangle_map_storage_buffer");
-
-    // nodes data ssbo
+    m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
+    m_pRenderDevice->DestroyBuffer(m_pMaterialSSBO);
     m_pNodeSSBO = m_pRenderDevice->CreateStorageBuffer(
-        sizeof(sg::NodeData) * m_nodesData.size(),
+        static_cast<uint32_t>(sizeof(sg::NodeData) * m_nodesData.size()),
         reinterpret_cast<const uint8_t*>(m_nodesData.data()), "node_data_ssbo");
-
-    // material data ssbo
     m_pMaterialSSBO = m_pRenderDevice->CreateStorageBuffer(
-        sizeof(sg::MaterialData) * m_materialsData.size(),
+        static_cast<uint32_t>(sizeof(sg::MaterialData) * m_materialsData.size()),
         reinterpret_cast<const uint8_t*>(m_materialsData.data()), "material_data_ssbo");
 }
 
-void RenderScene::Update()
+HeapVector<glm::uvec4> RenderScene::BuildTriangleRecords() const
 {
+    HeapVector<glm::uvec4> voxelTriangles;
+    for (const sg::Node* pNode : m_pScene->GetRenderableNodes())
+    {
+        for (const sg::SubMesh* pMesh : pNode->GetComponent<sg::Mesh>()->GetSubMeshes())
+        {
+            for (uint32_t i = 0; i + 2 < pMesh->GetIndexCount(); i += 3)
+            {
+                voxelTriangles.push_back(glm::uvec4(
+                    pMesh->GetFirstIndex() + i, pNode->GetRenderableIndex(),
+                    pMesh->GetMaterial()->index, GetInstanceMask(pNode->GetRenderableIndex())));
+            }
+        }
+    }
+    return voxelTriangles;
+}
+
+bool RenderScene::Update()
+{
+    const bool ready           = CommitGeometryUpdates();
     m_sceneUniformData.viewPos = Vec4(m_pCamera->GetPos(), 1.0f);
+    m_lights.WriteUniforms(m_sceneUniformData);
+    return ready;
 }
 
 const sg::Camera* RenderScene::GetCamera() const

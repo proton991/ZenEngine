@@ -1,6 +1,7 @@
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/RHI/RHICommandList.h"
 #include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanQueueSelection.h"
@@ -294,6 +295,7 @@ void VulkanDevice::Init()
     }
 
     // Optional ray-tracing features require the complete enabled dependency chain.
+    m_extensionFlags.hasAccelerationStructure &= RHIOptions::GetInstance().RayTracingEnabled();
     m_extensionFlags.hasAccelerationStructure &=
         m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;
     m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;

@@ -119,13 +119,30 @@ private:
     friend class GraphicsPassBuilder;
 };
 
+class ComputeFileSP : public ShaderProgram
+{
+public:
+    ComputeFileSP(RenderDevice* device,
+                  NameID name,
+                  const std::string& path,
+                  const HashMap<uint32_t, int>& specializationConstants = {}) :
+        ShaderProgram(device, name)
+    {
+        AddShaderStage(RHIShaderStage::eCompute, path);
+        Init(specializationConstants);
+    }
+};
+
 class GBufferSP : public ShaderProgram
 {
 public:
-    explicit GBufferSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "GBufferSP")
+    explicit GBufferSP(RenderDevice* pRenderDevice, bool dynamicGI = false) :
+        ShaderProgram(pRenderDevice, dynamicGI ? "GBufferDynamicSP" : "GBufferSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment, "SceneRenderer/offscreen.frag.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       dynamicGI ? "SceneRenderer/offscreen_dynamic.frag.spv" :
+                                   "SceneRenderer/offscreen.frag.spv");
         Init();
     }
 
@@ -139,11 +156,64 @@ public:
 class DeferredLightingSP : public ShaderProgram
 {
 public:
-    explicit DeferredLightingSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "DeferredLightingSP")
+    explicit DeferredLightingSP(RenderDevice* pRenderDevice, bool capture = false) :
+        ShaderProgram(pRenderDevice, capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment, "SceneRenderer/deferred.frag.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       capture ? "SceneRenderer/deferred_capture.frag.spv" :
+                                 "SceneRenderer/deferred.frag.spv");
+        Init();
+    }
+};
+
+class DeferredVoxelGISP : public ShaderProgram
+{
+public:
+    explicit DeferredVoxelGISP(RenderDevice* device, bool capture = false) :
+        ShaderProgram(device, capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       capture ? "SceneRenderer/voxel_gi_capture.frag.spv" :
+                                 "SceneRenderer/voxel_gi.frag.spv");
+        Init();
+    }
+};
+
+class DeferredDynamicVoxelGISP : public ShaderProgram
+{
+public:
+    explicit DeferredDynamicVoxelGISP(RenderDevice* device, bool capture = false) :
+        ShaderProgram(device,
+                      capture ? "DeferredDynamicVoxelGICaptureSP" : "DeferredDynamicVoxelGISP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       capture ? "SceneRenderer/dynamic_voxel_gi_capture.frag.spv" :
+                                 "SceneRenderer/dynamic_voxel_gi.frag.spv");
+        Init();
+    }
+};
+
+class SceneShadowSP : public ShaderProgram
+{
+public:
+    explicit SceneShadowSP(RenderDevice* device) : ShaderProgram(device, "SceneShadowSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "ShadowMapping/scene_shadow.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment, "ShadowMapping/scene_shadow.frag.spv");
+        Init();
+    }
+};
+
+class LightMarkerSP : public ShaderProgram
+{
+public:
+    explicit LightMarkerSP(RenderDevice* device) : ShaderProgram(device, "LightMarkerSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/light_marker.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment, "SceneRenderer/light_marker.frag.spv");
         Init();
     }
 };
@@ -199,12 +269,15 @@ public:
 class VoxelizationSP : public ShaderProgram
 {
 public:
-    explicit VoxelizationSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "VoxelizationSP")
+    explicit VoxelizationSP(RenderDevice* pRenderDevice, bool averagedReflectance = false) :
+        ShaderProgram(pRenderDevice,
+                      averagedReflectance ? "VoxelizationAveragedSP" : "VoxelizationSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
         AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
-        AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/voxelization.frag.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       averagedReflectance ? "VoxelGI/voxelization_averaged.frag.spv" :
+                                             "VoxelGI/voxelization.frag.spv");
         Init();
     }
 
@@ -224,7 +297,7 @@ public:
     {
         uint32_t nodeIndex;
         uint32_t materialIndex;
-        uint32_t flagStaticVoxels;
+        uint32_t firstTriangle;
         uint32_t volumeDimension;
     } pushConstantsData;
 };
@@ -353,11 +426,12 @@ public:
 class VoxelPreDrawSP : public ShaderProgram
 {
 public:
-    explicit VoxelPreDrawSP(RenderDevice* pRenderDevice) :
+    explicit VoxelPreDrawSP(RenderDevice* pRenderDevice,
+                            const HashMap<uint32_t, int>& specializationConstants = {}) :
         ShaderProgram(pRenderDevice, "VoxelPreDrawSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
-        Init();
+        Init(specializationConstants);
     }
 
     const uint8_t* GetSceneInfoData() const
@@ -394,69 +468,6 @@ public:
         Mat4 viewMatrix;
         Mat4 projMatrix;
     } transformData;
-};
-
-const uint32_t MAX_DIRECTIONAL_LIGHTS = 3;
-const uint32_t MAX_POINT_LIGHTS       = 6;
-const uint32_t MAX_SPOT_LIGHTS        = 6;
-
-enum LightType
-{
-    DIRECTIONAL_LIGHT = 0,
-    POINT_LIGHT       = 1,
-    SPOT_LIGHT        = 2,
-};
-class VoxelInjectRadianceSP : public ShaderProgram
-{
-public:
-    explicit VoxelInjectRadianceSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "VoxelInjectRadianceSP")
-    {
-        AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/inject_radiance.comp.spv");
-        Init();
-    }
-
-    // const uint8_t* GetSceneInfoData() const
-    // {
-    //     return reinterpret_cast<const uint8_t*>(&sceneInfo);
-    // }
-
-    const uint8_t* GetLightInfoData() const
-    {
-        return reinterpret_cast<const uint8_t*>(&lightInfo);
-    }
-
-    // struct SceneInfo
-    // {
-    //     float voxelSize;
-    //     float voxelScale;
-    //     Vec3 worldMinPoint;
-    //     int volumeDimension;
-    // } sceneInfo;
-
-    struct LightInfo
-    {
-        Light directionalLight[MAX_DIRECTIONAL_LIGHTS];
-        Light pointLight[MAX_POINT_LIGHTS];
-        Light spotLight[MAX_SPOT_LIGHTS];
-
-        // uint32_t lightTypeCount[3]{};
-        Mat4 lightViewProjection{1.0f};
-
-        float lightBleedingReduction{0.0f};
-        Vec2 exponents{0.0f};
-        float _padding{0.0f};
-    } lightInfo;
-
-    struct PushConstantsData
-    {
-        float traceShadowHit;
-        uint32_t normalWeightedLambert;
-        float voxelSize;
-        float voxelScale;
-        Vec3 worldMinPoint;
-        int volumeDimension;
-    } pushConstantsData;
 };
 
 class ShadowMapRenderSP : public ShaderProgram

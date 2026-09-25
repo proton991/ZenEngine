@@ -1,0 +1,12 @@
+#version 460
+layout(local_size_x=8, local_size_y=8) in;
+layout(set=1, binding=0) uniform sampler2D sourceColor;
+layout(set=1, binding=1, std430) writeonly buffer packedColor { uint pixels[]; };
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(sourceColor, 0);
+    if (any(greaterThanEqual(p, size))) return;
+    pixels[p.y * size.x + p.x] = packUnorm4x8(texelFetch(sourceColor, p, 0));
+}
+

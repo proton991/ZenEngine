@@ -101,35 +101,33 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene,
     if (pScene == nullptr)
     {
         LOGE("Cannot load textures from a null scene");
-        return;
     }
-
-    std::vector<sg::Texture*> sgTextures = pScene->GetComponents<sg::Texture>();
-
-    for (sg::Texture* pSgTexture : sgTextures)
+    else
     {
-        TextureFormat texFormat{};
-        texFormat.format      = DataFormat::eR8G8B8A8SRGB;
-        texFormat.sampleCount = SampleCount::e1;
-        texFormat.dimension   = TextureDimension::e2D;
-        texFormat.width       = pSgTexture->width;
-        texFormat.height      = pSgTexture->height;
-        texFormat.depth       = 1;
-        texFormat.arrayLayers = 1;
-        texFormat.mipmaps     = 1;
-
-        RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true},
-                                                                     pSgTexture->GetName());
-
-        if (pTexture == nullptr)
+        for (const sg::Texture* pSgTexture : pScene->GetComponents<sg::Texture>())
         {
-            outTextures.push_back(nullptr);
-            continue;
-        }
+            TextureFormat texFormat{};
+            // Both format enums use Vulkan values. Preserve linear material data and sRGB color.
+            texFormat.format      = static_cast<DataFormat>(pSgTexture->format);
+            texFormat.sampleCount = SampleCount::e1;
+            texFormat.dimension   = TextureDimension::e2D;
+            texFormat.width       = pSgTexture->width;
+            texFormat.height      = pSgTexture->height;
+            texFormat.depth       = 1;
+            texFormat.arrayLayers = 1;
+            texFormat.mipmaps =
+                RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height);
 
-        OwnTexture(pTexture);
-        UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data());
-        outTextures.push_back(pTexture);
+            RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(
+                texFormat, {.copyUsage = true}, pSgTexture->GetName());
+            if (pTexture != nullptr)
+            {
+                OwnTexture(pTexture);
+                UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data(),
+                              texFormat.mipmaps > 1);
+            }
+            outTextures.push_back(pTexture);
+        }
     }
 }
 
@@ -143,13 +141,21 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
     }
     else
     {
-        gli::texture_cube texCube(gli::load(file.c_str()));
-
-        if (texCube.empty())
+        const gli::texture loaded = gli::load(file.c_str());
+        gli::texture_cube texCube;
+        if (!loaded.empty() && loaded.target() == gli::TARGET_CUBE &&
+            loaded.format() == gli::FORMAT_RGBA16_SFLOAT_PACK16)
         {
-            LOGE("Failed to load environment '{}'", file);
+            texCube = gli::texture_cube(loaded);
         }
         else
+        {
+            LOGW("Environment '{}' is missing or not an RGBA16F cubemap; using black", file);
+            texCube = gli::texture_cube(gli::FORMAT_RGBA16_SFLOAT_PACK16,
+                                        gli::texture_cube::extent_type(1), 1);
+            std::memset(texCube.data(), 0, texCube.size());
+        }
+        if (!texCube.empty())
         {
             uint32_t width     = static_cast<uint32_t>(texCube.extent().x);
             uint32_t height    = static_cast<uint32_t>(texCube.extent().y);

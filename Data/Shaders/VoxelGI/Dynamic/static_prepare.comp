@@ -1,0 +1,29 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+#include "lighting_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,std430) readonly buffer StaticCount { uint occupiedCount; };
+layout(set=3,binding=2,std430) readonly buffer DynamicCount { uint dynamicCount; };
+layout(set=3,binding=3,std430) writeonly buffer GIStatus { uvec4 giStatus; };
+layout(set=3,binding=4,std430) writeonly buffer GIWorkCounts { uvec4 workCounts; };
+layout(set=3,binding=5,std430) writeonly buffer GIArguments { uvec4 arguments[]; };
+layout(set=3,binding=15,std430) buffer GILightMaskStatus { uvec4 lightMaskStatus; };
+void main() {
+    uint index=StaticItem();
+    if(index<giWork.limits.w) arguments[index]=uvec4(0,1,1,0);
+    if(index==0u) {
+        // Clear only the light slots being recomputed. A cached Unknown must not
+        // become a confirmed-clear result when the mask passes are skipped.
+        uint unknown=giLighting.enabled.w==0xffffffffu ? 0u :
+            lightMaskStatus.x&~giLighting.enabled.w;
+        lightMaskStatus=uvec4(unknown,0,0,0);
+        giStatus=uvec4(occupiedCount,staticGI.volume.y,
+            (unknown!=0u ? GI_STATIC_UNKNOWN : 0u)|
+            (occupiedCount>staticGI.volume.y ? GI_STATIC_OVERFLOW : 0u)|
+            (occupiedCount<=staticGI.volume.y && occupiedCount>giWork.state.x ? GI_CACHE_PENDING : 0u)|
+            (dynamicCount!=0u && giWork.state.w==0u ? GI_STATIC_UNSUPPORTED : 0u),dynamicCount);
+        uint end=min(occupiedCount,giWork.state.x);
+        workCounts=uvec4(0,0,end>giWork.state.y ? end-giWork.state.y : 0u,end);
+    }
+}

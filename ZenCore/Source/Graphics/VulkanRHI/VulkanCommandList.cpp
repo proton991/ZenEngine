@@ -765,7 +765,13 @@ void VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
         commandBuffer->SetLineWidth(m_rasterizationState.lineWidth);
     }
     // Blend constants are static pipeline state in the current RHI dynamic-state enum.
-    commandBuffer->BindVertexBuffers(m_vertexBuffers, m_vertexBufferOffsets);
+    // Procedural draws declare no vertex inputs. Rebinding a previous draw's
+    // cached handles would introduce an undeclared use after their owner retires.
+    const VulkanShader* shader = TO_VK_SHADER(m_pCurrentPipeline->GetShader());
+    if (shader->GetVertexInputStateCreateInfoData()->vertexBindingDescriptionCount != 0)
+    {
+        commandBuffer->BindVertexBuffers(m_vertexBuffers, m_vertexBufferOffsets);
+    }
 }
 
 VulkanComputeState::VulkanComputeState()
@@ -1024,6 +1030,26 @@ void FVulkanCommandListContext::RHIEndRendering()
     else
     {
         GetCommandBuffer()->EndRenderPass();
+    }
+}
+
+void FVulkanCommandListContext::RHIBeginDebugLabel(NameID name)
+{
+    if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
+        vkCmdBeginDebugUtilsLabelEXT != nullptr && vkCmdEndDebugUtilsLabelEXT != nullptr)
+    {
+        VkDebugUtilsLabelEXT label{VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+        label.pLabelName = name.CStr();
+        vkCmdBeginDebugUtilsLabelEXT(GetCommandBuffer()->GetVkHandle(), &label);
+    }
+}
+
+void FVulkanCommandListContext::RHIEndDebugLabel()
+{
+    if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
+        vkCmdBeginDebugUtilsLabelEXT != nullptr && vkCmdEndDebugUtilsLabelEXT != nullptr)
+    {
+        vkCmdEndDebugUtilsLabelEXT(GetCommandBuffer()->GetVkHandle());
     }
 }
 

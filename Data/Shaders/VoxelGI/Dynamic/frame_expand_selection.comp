@@ -1,0 +1,26 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "filter_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,r32ui) readonly uniform uimage3D staticOwner;
+layout(set=3,binding=2,std430) readonly buffer SelectionTaps { uint taps[]; };
+layout(set=3,binding=3,std430) writeonly buffer StaticFlags { uint flags[]; };
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        ivec3 p=StaticCell(cell);
+        bool selected=false;
+        if(imageLoad(staticOwner,p).r!=GI_INVALID_CELL) {
+            // Union of each visible trilinear tap's padding and Gaussian donors.
+            int radius=giFilter.control.y!=0u ? 2 : 1;
+            for(int x=-radius;x<=radius && !selected;++x)
+            for(int y=-radius;y<=radius && !selected;++y)
+            for(int z=-radius;z<=radius && !selected;++z) {
+                ivec3 q=p+ivec3(x,y,z);
+                if(all(greaterThanEqual(q,ivec3(0))) && all(lessThan(q,ivec3(n))))
+                    selected=taps[StaticCellID(q)]!=GI_INVALID_CELL;
+            }
+        }
+        flags[cell]=selected ? 1u : 0u;
+    }
+}

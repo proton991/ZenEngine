@@ -1,0 +1,25 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,std430) readonly buffer GIWorkCounts { uvec4 workCounts; };
+layout(set=3,binding=2,std430) writeonly buffer GIArguments { uvec4 arguments[]; };
+// CPU records one command per M0 chunk. Each argument generator invocation gets
+// that exact first/span; the same XYZ mapping bounds the smaller live count.
+void main() {
+    if(gl_LocalInvocationIndex==0u) {
+        uint count=batch.face==0u ? workCounts.x : workCounts.y;
+        uint items=min(count>batch.firstItem ? count-batch.firstItem : 0u,batch.itemCount);
+        uvec3 groups=uvec3(0,1,1);
+        if(items>0u) {
+            // Each group cooperates on one receiver's rays.
+            uint remaining=items;
+            uint capacity=0xffffffffu;
+            for(uint axis=0u;axis<3u;++axis) {
+                groups[axis]=min(max(1u,remaining),min(giWork.limits[axis],capacity));
+                remaining=(remaining+groups[axis]-1u)/groups[axis]; capacity/=groups[axis];
+            }
+        }
+        arguments[batch.reserved]=uvec4(groups,items);
+    }
+}

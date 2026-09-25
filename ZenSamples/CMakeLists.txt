@@ -57,6 +57,7 @@ target_compile_definitions(VulkanRHIIntegrationTest PRIVATE RDG_REFLECTION_TEST_
 add_executable(RenderCoreTest
     RenderCoreTest/RenderCoreTests.cpp
     RenderCoreTest/RDGMetricsTests.cpp
+    RenderCoreTest/DynamicVoxelGIPlanningTests.cpp
     ../ZenCore/Source/Memory/Memory.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
     ../ZenCore/Source/Graphics/RHI/RHIResource.cpp
@@ -71,8 +72,14 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/StagingUploadQueue.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGPassCompiler.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/SceneLighting.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/GIVisibilityProvider.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/VoxelCompaction.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
 )
@@ -165,8 +172,18 @@ endif ()
 
 add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoClassCapture.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp
+    VulkanRHIDemo/SceneRenderer/SceneRendererDemoStaticCapture.cpp
+    VulkanRHIDemo/SceneRenderer/SceneRendererDemoDynamicCapture.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.h)
 target_link_libraries(scene_renderer_demo ZenCore)
+
+# Explicit native query/scene verification, isolated from suite-global Vulkan fixtures.
+add_executable(DynamicVoxelGIIntegrationTest CommonTest/DynamicVoxelGIIntegrationTests.cpp)
+target_link_libraries(DynamicVoxelGIIntegrationTest PRIVATE ZenCore gtest_main)
+add_dependencies(DynamicVoxelGIIntegrationTest SpvShaders)
 
 target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(FlatHashMapTest ZenCore gtest_main)

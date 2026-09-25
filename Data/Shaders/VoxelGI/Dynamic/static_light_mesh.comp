@@ -1,0 +1,8 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define GI_MESH_LIGHT_VISIBILITY
+#define VOXEL_GEOMETRY_SET 5
+#include "../voxel_geometry.glsl"
+#include "../../ShadowMapping/scene_shadows.glsl"
+#include "query_dda.glsl"
+#include "static_light.glsl"

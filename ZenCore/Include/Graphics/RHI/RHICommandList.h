@@ -178,6 +178,9 @@ struct RHISubmissionDependency
 class IRHICommandContext : public RefCounted
 {
 public:
+    // Optional profiler annotations; no resource or synchronization semantics.
+    virtual void RHIBeginDebugLabel(NameID name) {}
+    virtual void RHIEndDebugLabel() {}
     // Resource arguments are borrowed through GPU completion (including the base
     // texture of a view). Recorded rendering layouts must survive command execution.
     virtual RHICommandContextType GetContextType() = 0;
@@ -651,6 +654,24 @@ struct RHICommandEndRendering final : public RHICommand
     }
 };
 
+struct RHICommandDebugLabel final : public RHICommand
+{
+    NameID name;
+    bool begin;
+    RHICommandDebugLabel(NameID label, bool isBegin) : name(label), begin(isBegin) {}
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        if (begin)
+        {
+            cmdList.GetContext()->RHIBeginDebugLabel(name);
+        }
+        else
+        {
+            cmdList.GetContext()->RHIEndDebugLabel();
+        }
+    }
+};
+
 struct RHICommandBindPipeline final : public RHICommand
 {
     RHIPipelineType pipelineType;
@@ -1060,6 +1081,8 @@ public:
                       float depthBiasSlopeFactor);
 
     void SetLineWidth(float width);
+    void BeginDebugLabel(NameID name);
+    void EndDebugLabel();
 
     void SetBlendConstants(const Color& color);
 

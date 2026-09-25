@@ -1,0 +1,23 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "filter_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,std430) readonly buffer StaticFlags { uint staticFlags[]; };
+layout(set=3,binding=2,std430) buffer DynamicFlags { uint dynamicFlags[]; };
+layout(set=3,binding=3,std430) writeonly buffer StaticReceivers { uint staticReceivers[]; };
+layout(set=3,binding=4,std430) writeonly buffer DynamicReceivers { uint dynamicReceivers[]; };
+layout(set=3,binding=5,std430) buffer GIWorkCounts { uvec4 workCounts; };
+layout(set=3,binding=7,r32ui) readonly uniform uimage3D staticOwner;
+layout(set=3,binding=8,std430) readonly buffer HistoryMetadata { uvec4 metadata[]; };
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        if(staticFlags[cell]!=0u || (giWork.state.z==0u && imageLoad(staticOwner,StaticCell(cell)).r!=GI_INVALID_CELL))
+            staticReceivers[atomicAdd(workCounts.x,1u)]=cell;
+        uvec4 previous=metadata[cell];
+        float age=giFilter.timing.x-uintBitsToFloat(previous.z);
+        if(dynamicFlags[cell]==0u && giFilter.control.x!=0u && previous.w!=0u && age>=0 && age<giFilter.timing.y)
+            dynamicFlags[cell]=2u; // Re-query the vacated neighborhood during its timed cooldown.
+        if(dynamicFlags[cell]!=0u) dynamicReceivers[atomicAdd(workCounts.y,1u)]=cell;
+    }
+}

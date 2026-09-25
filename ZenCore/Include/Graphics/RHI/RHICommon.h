@@ -37,8 +37,21 @@ enum class RHIAPIType
 struct RHIGPUInfo
 {
     bool supportGeometryShader{false};
+    bool supportFragmentStoresAndAtomics{false};
     size_t uniformBufferAlignment{0};
     size_t storageBufferAlignment{0};
+    // Conservative defaults; the backend supplies the physical device limits.
+    uint32_t maxComputeWorkGroupInvocations{128};
+    std::array<uint32_t, 3> maxComputeWorkGroupSize{128, 128, 64};
+    std::array<uint32_t, 3> maxComputeWorkGroupCount{65535, 65535, 65535};
+    uint32_t maxStorageBufferRange{128u * 1024u * 1024u};
+    uint32_t maxColorAttachments{4};
+
+    bool IsDispatchWithinLimits(uint32_t x, uint32_t y, uint32_t z) const
+    {
+        return x <= maxComputeWorkGroupCount[0] && y <= maxComputeWorkGroupCount[1] &&
+            z <= maxComputeWorkGroupCount[2];
+    }
 };
 
 enum class RHISubmissionResult : uint8_t

@@ -29,7 +29,7 @@ layout (location = 1) flat out int instanceIndex;
 void main() 
 {
     // Transform position into world space
-	vec4 world_pos =  ubo.model * vec4(inPos.xyz, 1.0) + vec4(positions[gl_InstanceIndex]);
+	vec4 world_pos =  ubo.model * vec4(inPos.xyz, 1.0) + vec4(positions[gl_InstanceIndex].xyz, 0.0);
 
     // Transform world position into clip space
 	gl_Position = ubo.projection * ubo.view * world_pos;

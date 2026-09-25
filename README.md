@@ -9,6 +9,29 @@ This is a personal project build by myself while learning Vulkan API. It mainly 
     * `SceneRenderer`: Render scene-graph based scenes.
     * `SkyboxRenderer`: Process environment textures and draw skybox.
 
+## Windows Release build and run
+
+Use an **x64 Developer PowerShell for Visual Studio** with CMake, Ninja and the
+Vulkan SDK installed. From the repository root:
+
+```powershell
+cmake --preset x64-windows-msvc-release
+cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --parallel 8
+./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe --mode=3
+```
+
+Every preset writes executables to `build/<preset-name>/bin`, including Debug.
+The Windows release preset selects `Release` (`/O2`, `NDEBUG`). In a CMake preset-aware IDE, select the
+matching configure/build presets and `scene_renderer_demo` as the launch target.
+Model paths in `Data/engine.cfg` are resolved relative to that file's directory;
+the launch working directory does not affect asset lookup. Absolute paths are preserved.
+Configure once before using a build preset. Vulkan validation remains enabled by
+default; add `--disable-validation` when measuring performance.
+
+For an automatic Visual Studio environment setup, build and mode-3 launch, use
+`tools/run_voxel_gi_performance.cmd`. This uses the separate Release performance
+preset described in [VoxelGI performance](Doc/VoxelGIPerformance.md).
+
 ## M4-2025.2.6
 
 **Current Status:**

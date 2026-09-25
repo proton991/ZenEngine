@@ -28,5 +28,5 @@ void main()
     ivec3 texPos = ivec3(position);
 
     vs_out.albedo = imageLoad(voxelRadiance, texPos);
-    gl_Position = vec4(position, 1.0f);
+    gl_Position = vec4(position + 0.5, 1.0f);
 }

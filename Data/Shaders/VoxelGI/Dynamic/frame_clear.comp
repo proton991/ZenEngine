@@ -1,0 +1,13 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,rgba16f) writeonly uniform image3D rawIrradiance;
+layout(set=3,binding=2,rgba16f) writeonly uniform image3D dynamicIrradiance;
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        imageStore(rawIrradiance,StaticCell(cell),vec4(0));
+        imageStore(dynamicIrradiance,StaticCell(cell),vec4(0));
+    }
+}

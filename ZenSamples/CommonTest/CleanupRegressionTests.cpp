@@ -251,7 +251,8 @@ TEST(FastGLTFLoaderRegression, TextureBatchesTransferOwnershipAndResolveImageFor
     {
         ASSERT_NE(textures[index], nullptr);
         EXPECT_EQ(textures[index]->index, index);
-        EXPECT_EQ(textures[index]->format, asset::Format::R8G8B8A8_SRGB);
+        EXPECT_EQ(textures[index]->format,
+                  index == 1 ? asset::Format::R8G8B8A8_SRGB : asset::Format::R8G8B8A8_UNORM);
         EXPECT_EQ(textures[index]->width, 1u);
         EXPECT_EQ(textures[index]->height, 1u);
         EXPECT_EQ(textures[index]->bytesData.size(), 4u);
@@ -307,4 +308,207 @@ TEST(ThreadPoolRegression, GracefulStopDrainsTasksAndPropagatesExceptions)
     pool.Stop(true);
     EXPECT_EQ(count.load(), 20u);
     EXPECT_THROW(failed.get(), std::runtime_error);
+}
+
+TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEmission)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/voxel_gi_material.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+    const sg::Scene::DefaultTextures defaults = sg::Scene::GetDefaultTextures();
+    for (const sg::Texture* texture :
+         {defaults.pBaseColor, defaults.pMetallicRoughness, defaults.pEmissive})
+    {
+        ASSERT_NE(texture, nullptr);
+        ASSERT_EQ(texture->bytesData.size(), 4u);
+        for (uint8_t channel : texture->bytesData)
+        {
+            EXPECT_EQ(channel, 255u);
+        }
+    }
+    const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
+    ASSERT_FALSE(materials.empty());
+    EXPECT_EQ(materials[0]->data.baseColorFactor, Vec4(0.2f, 0.3f, 0.4f, 0.5f));
+    EXPECT_EQ(materials[0]->data.emissiveFactor, Vec4(8, 4, 2, 0));
+    ASSERT_EQ(loader.GetVertices().size(), 3u);
+    for (const asset::Vertex& vertex : loader.GetVertices())
+    {
+        EXPECT_EQ(vertex.color, Vec4(1.0f));
+    }
+}
+
+TEST(FastGLTFLoaderRegression, PreservesNormalMapScaleUVSetAndMirroredTangents)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/normal_material.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+
+    ASSERT_EQ(loader.GetVertices().size(), 3u);
+    for (const asset::Vertex& vertex : loader.GetVertices())
+    {
+        EXPECT_EQ(vertex.tangent, Vec4(1, 0, 0, -1));
+    }
+    ASSERT_FALSE(scene.GetComponents<sg::Material>().empty());
+    const sg::Material* material = scene.GetComponents<sg::Material>().front();
+    ASSERT_NE(material->m_pNormalTexture, nullptr);
+    EXPECT_EQ(material->m_pNormalTexture->format, asset::Format::R8G8B8A8_UNORM);
+    EXPECT_FLOAT_EQ(material->normalScale, 0.35f);
+    EXPECT_FLOAT_EQ(material->data.surfaceProperties.z, 0.35f);
+    EXPECT_EQ(material->data.normalTexSet, 1);
+    EXPECT_EQ(sizeof(sg::MaterialData), 96u);
+}
+
+TEST(FastGLTFLoaderRegression, PreservesRGBAndRGBAColorsAcrossComponentTypesAndStrides)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/vertex_colors.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+    // RGB and RGBA, each with float/normalized byte/normalized short, tightly packed
+    // (with glTF's four-byte vertex alignment) and padded with an accessor offset.
+    constexpr uint32_t variants = 12;
+    const Vec4 expected[]       = {Vec4(0, 1.0f / 3, 2.0f / 3, 1), Vec4(1, 2.0f / 3, 1.0f / 3, 0),
+                                   Vec4(2.0f / 3, 1, 0, 1.0f / 3)};
+    ASSERT_EQ(loader.GetVertices().size(), variants * 3u);
+    for (uint32_t variant = 0; variant < variants; ++variant)
+    {
+        SCOPED_TRACE(variant);
+        for (uint32_t vertex = 0; vertex < 3; ++vertex)
+        {
+            SCOPED_TRACE(vertex);
+            const Vec4 color = loader.GetVertices()[variant * 3 + vertex].color;
+            for (uint32_t channel = 0; channel < 4; ++channel)
+            {
+                const float value = variant < 6 && channel == 3 ? 1.0f : expected[vertex][channel];
+                EXPECT_FLOAT_EQ(color[channel], value);
+            }
+        }
+    }
+}
+
+TEST(FastGLTFLoaderRegression, DecodesInterleavedNormalizedAndSparseVertexAttributes)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/vertex_attributes.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_EQ(loader.GetVertices().size(), 9u);
+    ASSERT_EQ(loader.GetIndices().size(), 9u);
+    const Vec3 positions[] = {Vec3(0, 0, 0), Vec3(1, 0, 0), Vec3(0, 1, 0)};
+    const Vec2 uv[]        = {Vec2(0, 1), Vec2(1, 0), Vec2(1.0f / 3, 2.0f / 3)};
+    const Vec4 weights[]   = {Vec4(1, 0, 0, 0), Vec4(0, 1, 0, 0), Vec4(1.0f / 3, 2.0f / 3, 0, 0)};
+    for (uint32_t variant = 0; variant < 3; ++variant)
+    {
+        SCOPED_TRACE(variant);
+        for (uint32_t index = 0; index < 3; ++index)
+        {
+            SCOPED_TRACE(index);
+            const asset::Vertex& vertex = loader.GetVertices()[variant * 3 + index];
+            EXPECT_EQ(vertex.pos, Vec4(positions[index], 1));
+            EXPECT_EQ(vertex.normal, Vec4(0, 0, 1, 0));
+            EXPECT_EQ(vertex.tangent, Vec4(1, 0, 0, -1));
+            EXPECT_EQ(vertex.joint0, Vec4(0, 128, 200, 255));
+            for (uint32_t channel = 0; channel < 2; ++channel)
+            {
+                EXPECT_FLOAT_EQ(vertex.uv0[channel], uv[index][channel]);
+                EXPECT_FLOAT_EQ(vertex.uv1[channel], uv[index][1 - channel]);
+            }
+            for (uint32_t channel = 0; channel < 4; ++channel)
+            {
+                EXPECT_FLOAT_EQ(vertex.weight0[channel], weights[index][channel]);
+                EXPECT_FLOAT_EQ(vertex.color[channel], channel == index || channel == 3 ? 1 : 0);
+            }
+            EXPECT_EQ(loader.GetIndices()[variant * 3 + index], variant * 3 + index);
+        }
+    }
+}
+
+TEST(FastGLTFLoaderRegression, SplitsSharedVerticesForFlatNormalsAndIgnoresAuthoredTangents)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/flat_normals_default.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+    ASSERT_EQ(loader.GetVertices().size(), 9u);
+    ASSERT_EQ(loader.GetIndices().size(), 9u);
+    for (uint32_t index = 0; index < 9; ++index)
+    {
+        const asset::Vertex& vertex = loader.GetVertices()[index];
+        EXPECT_EQ(vertex.normal, index < 3 ? Vec4(0, 0, 1, 0) : Vec4(0, 1, 0, 0));
+        EXPECT_EQ(vertex.tangent, Vec4(0));
+        EXPECT_EQ(loader.GetIndices()[index], index);
+    }
+    EXPECT_EQ(loader.GetVertices()[0].pos, loader.GetVertices()[3].pos);
+    EXPECT_EQ(loader.GetVertices()[0].color, loader.GetVertices()[3].color);
+    EXPECT_EQ(loader.GetVertices()[1].color, loader.GetVertices()[5].color);
+}
+
+TEST(FastGLTFLoaderRegression, InitializesAndIndexesDefaultMaterialWithAndWithoutAuthoredMaterials)
+{
+    for (const char* fixture : {"flat_normals_default.gltf", "default_material.gltf"})
+    {
+        SCOPED_TRACE(fixture);
+        const std::filesystem::path path =
+            std::filesystem::path(__FILE__).parent_path() / "Assets" / fixture;
+        sg::Scene scene;
+        asset::FastGLTFLoader loader;
+        loader.LoadFromFile(path.string(), &scene);
+        const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
+        const std::vector<sg::SubMesh*> meshes     = scene.GetComponents<sg::SubMesh>();
+        ASSERT_FALSE(materials.empty());
+        ASSERT_FALSE(meshes.empty());
+        const sg::Material* fallback = materials.back();
+        EXPECT_EQ(fallback->index, materials.size() - 1);
+        EXPECT_EQ(fallback->data.baseColorFactor, Vec4(1));
+        EXPECT_EQ(fallback->data.emissiveFactor, Vec4(0));
+        EXPECT_FLOAT_EQ(fallback->data.metallicFactor, 1);
+        EXPECT_FLOAT_EQ(fallback->data.roughnessFactor, 1);
+        EXPECT_EQ(fallback->data.bcTexIndex, fallback->m_pBaseColorTexture->index);
+        EXPECT_EQ(fallback->data.mrTexIndex, fallback->m_pMetallicRoughnessTexture->index);
+        for (const sg::SubMesh* mesh : meshes)
+        {
+            EXPECT_EQ(mesh->GetMaterial(), fallback);
+            EXPECT_EQ(mesh->GetMaterialIndex(), fallback->index);
+        }
+    }
+}
+
+TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextures)
+{
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path() / "Assets/texture_roles.gltf";
+    sg::Scene scene;
+    asset::FastGLTFLoader loader;
+    loader.LoadFromFile(path.string(), &scene);
+    const std::vector<sg::Texture*> textures   = scene.GetComponents<sg::Texture>();
+    const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
+    ASSERT_EQ(textures.size(), 8u); // Two authored textures, one linear copy, five defaults.
+    ASSERT_EQ(materials.size(), 3u);
+    for (uint32_t index = 0; index < textures.size(); ++index)
+    {
+        EXPECT_EQ(textures[index]->index, index);
+    }
+    EXPECT_EQ(textures[0]->format, asset::Format::R8G8B8A8_SRGB);
+    EXPECT_EQ(textures[1]->format, asset::Format::R8G8B8A8_UNORM);
+    EXPECT_EQ(textures[2]->format, asset::Format::R8G8B8A8_UNORM);
+    EXPECT_EQ(textures[0]->bytesData, textures[1]->bytesData);
+    EXPECT_EQ(textures[0]->bytesData, textures[2]->bytesData);
+    for (uint32_t materialIndex = 0; materialIndex < 2; ++materialIndex)
+    {
+        const sg::MaterialData& material = materials[materialIndex]->data;
+        const int linearIndex            = materialIndex == 0 ? 2 : 1;
+        EXPECT_EQ(material.bcTexIndex, 0);
+        EXPECT_EQ(material.mrTexIndex, linearIndex);
+        EXPECT_EQ(material.normalTexIndex, linearIndex);
+        EXPECT_EQ(material.occlusionTexIndex, linearIndex);
+    }
+    EXPECT_EQ(materials[0]->data.emissiveTexIndex, 0);
+    EXPECT_EQ(materials.back()->data.bcTexIndex, 3);
 }

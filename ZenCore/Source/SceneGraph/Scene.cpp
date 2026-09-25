@@ -68,13 +68,13 @@ static Texture* CreateDefaultTexture(const char* name,
 void Scene::LoadDefaultTextures(uint32_t startIndex)
 {
     sDefaultTextures.pBaseColor =
-        CreateDefaultTexture("DefaultBaseColor", startIndex, {129, 133, 137, 255});
+        CreateDefaultTexture("DefaultBaseColor", startIndex, {255, 255, 255, 255});
     sDefaultTextures.pMetallicRoughness =
-        CreateDefaultTexture("DefaultMetallicRoughness", startIndex + 1, {0, 0, 255, 255});
+        CreateDefaultTexture("DefaultMetallicRoughness", startIndex + 1, {255, 255, 255, 255});
     sDefaultTextures.pNormal =
         CreateDefaultTexture("DefaultNormal", startIndex + 2, {127, 127, 255, 255});
     sDefaultTextures.pEmissive =
-        CreateDefaultTexture("DefaultEmissive", startIndex + 3, {0, 0, 0, 255});
+        CreateDefaultTexture("DefaultEmissive", startIndex + 3, {255, 255, 255, 255});
     sDefaultTextures.pOcclusion =
         CreateDefaultTexture("DefaultOcclusion", startIndex + 4, {255, 0, 0, 255});
 }

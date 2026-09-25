@@ -28,6 +28,8 @@ struct MaterialData
     float roughnessFactor{1.0f};
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
+    // Alpha cutoff, alpha mode, normal scale, reserved.
+    Vec4 surfaceProperties{0.5f, 0.0f, 1.0f, 0.0f};
 };
 
 class Material : public Component
@@ -67,7 +69,10 @@ public:
 
         data.metallicFactor  = metallicFactor;
         data.roughnessFactor = roughnessFactor;
-        data.emissiveFactor  = emissiveFactor;
+        data.baseColorFactor = baseColorFactor;
+        data.emissiveFactor  = emissiveFactor * emissiveStrength;
+        data.surfaceProperties =
+            Vec4(alphaCutoff, static_cast<float>(alphaMode), normalScale, 0.0f);
     }
 
     AlphaMode alphaMode{AlphaMode::Opaque};
@@ -76,6 +81,7 @@ public:
     float alphaCutoff{1.0f};
     float metallicFactor{1.0f};
     float roughnessFactor{1.0f};
+    float normalScale{1.0f};
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
     // textures
@@ -123,7 +129,8 @@ inline bool operator==(const Material& lhs, const Material& rhs)
     return lhs.GetName() == rhs.GetName() && lhs.alphaMode == rhs.alphaMode &&
         lhs.doubleSided == rhs.doubleSided && lhs.alphaCutoff == rhs.alphaCutoff &&
         lhs.metallicFactor == rhs.metallicFactor && lhs.roughnessFactor == rhs.roughnessFactor &&
-        lhs.baseColorFactor == rhs.baseColorFactor && lhs.emissiveFactor == rhs.emissiveFactor &&
+        lhs.normalScale == rhs.normalScale && lhs.baseColorFactor == rhs.baseColorFactor &&
+        lhs.emissiveFactor == rhs.emissiveFactor &&
         EqualMaterialTexture(lhs.m_pBaseColorTexture, rhs.m_pBaseColorTexture) &&
         EqualMaterialTexture(lhs.m_pMetallicRoughnessTexture, rhs.m_pMetallicRoughnessTexture) &&
         EqualMaterialTexture(lhs.m_pNormalTexture, rhs.m_pNormalTexture) &&

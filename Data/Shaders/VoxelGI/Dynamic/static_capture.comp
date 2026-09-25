@@ -1,0 +1,22 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Graphics/Shared/DynamicVoxelGI.h"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=1,binding=0,rgba16f) readonly uniform image3D rawIrradiance;
+layout(set=1,binding=1,rgba16f) readonly uniform image3D paddedIrradiance;
+layout(set=1,binding=2,std430) writeonly buffer StaticCapture { vec4 values[]; };
+layout(push_constant) uniform CaptureBatch { uint firstItem; uint itemCount; } batch;
+void main()
+{
+    uint group=gl_WorkGroupID.x+gl_NumWorkGroups.x*(gl_WorkGroupID.y+gl_NumWorkGroups.y*gl_WorkGroupID.z);
+    uint local=group*GI_QUERY_GROUP_SIZE+gl_LocalInvocationIndex;
+    if(local<batch.itemCount)
+    {
+        uint cell=batch.firstItem+local;
+        uint n=uint(imageSize(rawIrradiance).x);
+        ivec3 p=ivec3(cell/(n*n),(cell/n)%n,cell%n);
+        uint offset=2u*cell;
+        values[offset]=imageLoad(rawIrradiance,p);
+        values[offset+1u]=imageLoad(paddedIrradiance,p);
+    }
+}

@@ -223,6 +223,7 @@ void SkyboxRenderer::BuildRenderGraph()
     const EnvTexture& env = m_pScene->GetEnvTexture();
     desc.BindSampledTexture("samplerEnv", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
     desc.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
+    desc.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
 
     pRDG->AddGraphicsPass(std::move(desc))
         .RecordPassCommands(
@@ -260,6 +261,7 @@ void SkyboxRenderer::PrepareEnvCubemaps(EnvTexture* pTexture)
         RHISamplerCreateInfo samplerInfo{};
         samplerInfo.minFilter     = RHISamplerFilter::eLinear;
         samplerInfo.magFilter     = RHISamplerFilter::eLinear;
+        samplerInfo.mipFilter     = RHISamplerFilter::eLinear;
         samplerInfo.repeatU       = RHISamplerRepeatMode::eClampToEdge;
         samplerInfo.repeatV       = RHISamplerRepeatMode::eClampToEdge;
         samplerInfo.repeatW       = RHISamplerRepeatMode::eClampToEdge;

@@ -17,7 +17,7 @@ protected:
     }
 };
 
-TEST_P(VoxelAsyncResetTest, PreferenceReachesResetAndUnsupportedClearFallsBack)
+TEST_P(VoxelAsyncResetTest, OwnerResetRespectsComputeQueueSupport)
 {
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
     volumes.Init();
@@ -31,23 +31,24 @@ TEST_P(VoxelAsyncResetTest, PreferenceReachesResetAndUnsupportedClearFallsBack)
         EXPECT_FALSE(volumes.BeginVolumeUpdate(graph, preference));
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        volumes.OnRenderGraphExecuted(true);
         const bool compute =
             preference == RDGQueuePreference::ePreferAsyncCompute && std::get<1>(GetParam());
         const RDGMetricsSnapshot& capture = device->GetRDGMetrics().GetLastSnapshot();
         ASSERT_EQ(capture.nodes.size(), 1u);
-        EXPECT_EQ(capture.nodes[0].name, NameID("ResetVoxelVolumes"));
+        EXPECT_EQ(capture.nodes[0].name, NameID("ResetVoxelOwners"));
         EXPECT_EQ(capture.nodes[0].queuePreference, preference);
         EXPECT_EQ(capture.nodes[0].plannedQueue,
                   compute ? RHICommandContextType::eAsyncCompute :
                             RHICommandContextType::eGraphics);
         EXPECT_EQ(RDGSubmissionTestAccess::LoggedAsyncCompute(*device), compute);
     }
-    EXPECT_EQ(rhi->compute.textureClears.size(), std::get<1>(GetParam()) ? 1u : 0u);
-    EXPECT_EQ(rhi->graphics.textureClears.size(), std::get<1>(GetParam()) ? 1u : 2u);
+    EXPECT_TRUE(rhi->compute.textureClears.empty());
+    EXPECT_TRUE(rhi->graphics.textureClears.empty());
     volumes.Destroy();
 }
 
-INSTANTIATE_TEST_SUITE_P(InlineThreadedAndClearSupport,
+INSTANTIATE_TEST_SUITE_P(InlineThreadedAndComputeSupport,
                          VoxelAsyncResetTest,
                          testing::Combine(testing::Values(RHIExecutionMode::eInline,
                                                           RHIExecutionMode::eThreaded),

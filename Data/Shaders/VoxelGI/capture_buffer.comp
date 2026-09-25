@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x=64) in;
+layout(set=1,binding=0,std430) readonly buffer CaptureSource { uint sourceWords[]; };
+layout(set=1,binding=1,std430) writeonly buffer CaptureCopy { uint copiedWords[]; };
+void main()
+{
+    for(uint i=gl_GlobalInvocationID.x; i<sourceWords.length(); i+=gl_NumWorkGroups.x*64u)
+        copiedWords[i]=sourceWords[i];
+}

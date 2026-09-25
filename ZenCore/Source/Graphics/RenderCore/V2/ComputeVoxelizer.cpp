@@ -7,6 +7,7 @@
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/Val/CommandBuffer.h"
 #include "Platform/ConfigLoader.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "SceneGraph/Scene.h"
 #include "SceneGraph/Camera.h"
 
@@ -26,21 +27,27 @@ RDGComputePassDesc VoxelComputePass(NameID shader, NameID tag)
 
 void ComputeVoxelizer::Init()
 {
-    m_voxelTexResolution = 256;
+    m_voxelTexResolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
     m_voxelTexFormat     = DataFormat::eR8G8B8A8UNORM;
     m_voxelCount         = m_voxelTexResolution * m_voxelTexResolution * m_voxelTexResolution;
-
-    PrepareTextures();
-
-    PrepareBuffers();
-
-    LoadCubeModel();
 }
 
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
-    ZEN_DELETE(m_pCube);
+    if (m_pCube != nullptr)
+    {
+        ZEN_DELETE(m_pCube);
+    }
+}
+
+void ComputeVoxelizer::OnRenderGraphExecuted(bool succeeded)
+{
+    VoxelizerBase::OnRenderGraphExecuted(succeeded);
+    if (!succeeded)
+    {
+        m_visualizationRevision = 0;
+    }
 }
 
 void ComputeVoxelizer::LoadCubeModel()
@@ -59,17 +66,6 @@ void ComputeVoxelizer::PrepareTextures()
 
 void ComputeVoxelizer::PrepareBuffers()
 {
-    ComputeIndirectCommand indirectCommand{};
-    indirectCommand.x                = 0;
-    indirectCommand.y                = 1;
-    indirectCommand.z                = 1;
-    m_buffers.pComputeIndirectBuffer = m_pRenderDevice->CreateIndirectBuffer(
-        sizeof(ComputeIndirectCommand), reinterpret_cast<const uint8_t*>(&indirectCommand),
-        "voxel_comp_indirect_buffer");
-
-    m_buffers.pLargeTriangleBuffer = m_pRenderDevice->CreateStorageBuffer(
-        sizeof(LargeTriangle) * 200000, nullptr, "large_triangle_buffer");
-
     m_buffers.pInstancePositionBuffer = m_pRenderDevice->CreateStorageBuffer(
         sizeof(Vec4) * 3000000, nullptr, "instance_position_buffer");
 
@@ -88,82 +84,55 @@ void ComputeVoxelizer::PrepareBuffers()
         "voxel_draw_indirect_buffer");
 }
 
-void ComputeVoxelizer::BuildRenderGraph()
+void ComputeVoxelizer::BuildVoxelizationGraph()
 {
-    RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
-    VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
-
-    const Vec3 center  = m_pScene->GetAABB().GetCenter();
-    const float extent = m_pScene->GetAABB().GetMaxExtent();
-    const Vec3 halfExtent(extent / 2.0f);
-    const sg::AABB voxelAABB{center - halfExtent, center + halfExtent};
-    const float scaleFactor = 2.0f / m_pCube->GetAABB().GetExtent3D().x;
-    const Mat4 voxelTransform =
-        glm::scale(Mat4(1.0f), Vec3(extent / m_voxelTexResolution * scaleFactor));
-
-    if (BeginVoxelization(*pRDG, RDGQueuePreference::ePreferAsyncCompute))
+    RenderGraph* graph = m_pRenderDevice->GetCurrentFrameRDG();
+    if (BeginVoxelization(*graph, RDGQueuePreference::ePreferAsyncCompute))
     {
-        const uint32_t groups = (m_voxelTexResolution + 7) / 8;
+        if (m_pScene->GetVoxelTriangleCount() != 0)
+        {
+            RDGComputePassDesc pass = VoxelComputePass(
+                UsesAveragedReflectance() ? "VoxelizationCompAveragedSP" : "VoxelizationCompSP",
+                "VoxelizationComp");
+            BindVoxelScene(pass);
+            BindReflectanceSums(pass);
+            pass.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView());
+            const uint32_t count = m_pScene->GetVoxelTriangleCount();
+            // Dispatch count is bounded by Vulkan's minimum supported X workgroup limit.
+            for (uint32_t first = 0; first < count; first += 65535)
+            {
+                const glm::uvec2 constants(first, count);
+                const uint32_t groups = std::min(65535u, count - first);
+                graph->AddComputePass(pass).RecordPassCommands(
+                    [constants, groups](RDGPassCmdEncoder& encoder) {
+                        encoder.SetPushConstants(constants);
+                        encoder.Dispatch(groups, 1, 1);
+                    });
+            }
+        }
+        ResolveSurface(RDGQueuePreference::ePreferAsyncCompute);
+        BuildCompaction(RDGQueuePreference::ePreferAsyncCompute);
+    }
+}
+
+void ComputeVoxelizer::BuildVisualizationGraph()
+{
+    if (m_pCube == nullptr)
+    {
+        PrepareBuffers();
+        LoadCubeModel();
+    }
+    RenderGraph* pRDG         = m_pRenderDevice->GetCurrentFrameRDG();
+    const sg::AABB voxelAABB  = GetVoxelBounds();
+    const float scaleFactor   = 1.0f / m_pCube->GetAABB().GetExtent3D().x;
+    const Mat4 voxelTransform = glm::scale(Mat4(1.0f), Vec3(GetVoxelSize() * scaleFactor));
+    if (m_visualizationRevision != GetRecordedGeometryRevision())
+    {
+        m_visualizationRevision = GetRecordedGeometryRevision();
+        const glm::uvec3 groups =
+            GetVoxelVolumeDispatchGroups(m_voxelTexResolution, m_pRenderDevice->GetGPUInfo());
         const VoxelizationCompSP::SceneInfo sceneInfo{Vec4(voxelAABB.GetMin(), 1.0f),
                                                       Vec4(voxelAABB.GetMax(), 1.0f)};
-
-        RDGComputePassDesc resetCompute =
-            VoxelComputePass("ResetComputeIndirectSP", "ResetComputeIndirectComp");
-
-        resetCompute.BindStorageBuffer("IndirectBuffer", m_buffers.pComputeIndirectBuffer);
-
-        pRDG->AddComputePass(std::move(resetCompute))
-            .RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-
-        RDGComputePassDesc voxelization =
-            VoxelComputePass("VoxelizationCompSP", "VoxelizationComp");
-
-        RDGComputePassDesc largeTriangles =
-            VoxelComputePass("VoxelizationLargeTriangleCompSP", "VoxelizationLargeTriangleComp");
-
-        for (RDGComputePassDesc* desc : {&voxelization, &largeTriangles})
-        {
-            desc->BindStorageImage("voxelTexture", m_voxelTextures.pAlbedo->GetDefaultView());
-            desc->BindStorageBuffer("VertexBuffer", m_pScene->GetVertexBuffer());
-            desc->BindStorageBuffer("IndexBuffer", m_pScene->GetIndexBuffer());
-            desc->BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
-            desc->BindStorageBuffer("TriangleMap", m_pScene->GetTriangleMapBuffer());
-            BindSceneTextureArray(*desc, m_pColorSampler, m_pScene->GetSceneTextures());
-            desc->BindValue("uSceneInfo", sceneInfo);
-        }
-
-        // The producer emits exactly the records counted by command.x; indirect
-        // dispatch indexes only those records, not the allocation's unused capacity.
-        voxelization.BindStorageBuffer("LargeTriangleArray", m_buffers.pLargeTriangleBuffer,
-                                       RDGContentGuarantee::eProducedElements);
-        largeTriangles.BindStorageBuffer("LargeTriangleArray", m_buffers.pLargeTriangleBuffer,
-                                         RDGContentGuarantee::eConsumeProducedElements);
-        voxelization.BindStorageBuffer("IndirectBuffer", m_buffers.pComputeIndirectBuffer);
-
-        for (sg::Node* node : m_pScene->GetRenderableNodes())
-        {
-            const uint32_t triangleCount = node->GetComponent<sg::Mesh>()->GetNumIndices() / 3;
-            VERIFY_EXPR(triangleCount == m_pScene->GetNumIndices() / 3);
-
-            const VoxelizationCompSP::PushConstantsData constants{node->GetRenderableIndex(),
-                                                                  triangleCount, 15};
-
-            // Each node owns a pass so shared writes remain visible to RDG.
-            pRDG->AddComputePass(voxelization)
-                .RecordPassCommands([constants](RDGPassCmdEncoder& encoder) {
-                    encoder.SetPushConstants(constants);
-                    encoder.Dispatch((constants.triangleCount + 31) / 32, 1, 1);
-                });
-        }
-
-        largeTriangles.UseIndirectBuffer(m_buffers.pComputeIndirectBuffer);
-
-        pRDG->AddComputePass(std::move(largeTriangles))
-            .RecordPassCommands(
-                [indirect = m_buffers.pComputeIndirectBuffer](RDGPassCmdEncoder& encoder) {
-                    encoder.DispatchIndirect(indirect, 0);
-                });
-
         RDGComputePassDesc resetDraw =
             VoxelComputePass("ResetDrawIndirectSP", "ResetDrawIndirectComp");
 
@@ -174,7 +143,7 @@ void ComputeVoxelizer::BuildRenderGraph()
 
         RDGComputePassDesc preDraw = VoxelComputePass("VoxelPreDrawSP", "VoxelPreDrawComp");
 
-        preDraw.BindStorageImage("voxelTexture", m_voxelTextures.pAlbedo->GetDefaultView());
+        preDraw.BindStorageImage("voxelTexture", m_voxelTextures.pAlbedoView);
         preDraw.BindStorageBuffer("InstancePositionBuffer", m_buffers.pInstancePositionBuffer,
                                   RDGContentGuarantee::eProducedElements);
         preDraw.BindStorageBuffer("InstanceColorBuffer", m_buffers.pInstanceColorBuffer,
@@ -183,8 +152,9 @@ void ComputeVoxelizer::BuildRenderGraph()
         preDraw.BindValue("uSceneInfo", sceneInfo);
 
         pRDG->AddComputePass(std::move(preDraw))
-            .RecordPassCommands(
-                [groups](RDGPassCmdEncoder& encoder) { encoder.Dispatch(groups, groups, groups); });
+            .RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
+                encoder.Dispatch(groups.x, groups.y, groups.z);
+            });
     }
 
     RHIGfxPipelineStates pso{};

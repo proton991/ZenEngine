@@ -1,0 +1,20 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "filter_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,std430) buffer HistoryMetadata { uvec4 metadata[]; };
+layout(set=3,binding=2,std430) readonly buffer ReceiverFlags { uint flags[]; };
+layout(set=3,binding=3,r32ui) readonly uniform uimage3D owner;
+layout(set=3,binding=4,rgba32f) readonly uniform image3D history;
+layout(set=3,binding=5,std430) readonly buffer GIStatus { uvec4 giStatus; };
+void main() {
+    uint cell=StaticItem(),n=staticGI.volume.x;
+    if(cell<n*n*n) {
+        uvec4 next=metadata[cell];
+        next.x=imageLoad(owner,StaticCell(cell)).r;
+        next.y=floatBitsToUint(giFilter.timing.x);
+        if(flags[cell]==1u) next.z=next.y;
+        next.w=giStatus.z==0u && imageLoad(history,StaticCell(cell)).a>0 ? 1u : 0u;
+        metadata[cell]=next;
+    }
+}

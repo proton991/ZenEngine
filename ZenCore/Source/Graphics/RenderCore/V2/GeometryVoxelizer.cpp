@@ -11,11 +11,9 @@ namespace zen::rc
 {
 void GeometryVoxelizer::Init()
 {
-    m_voxelTexResolution = 256;
-    m_voxelTexFormat     = DataFormat::eR32UInt;
+    m_voxelTexResolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
+    m_voxelTexFormat     = DataFormat::eR8G8B8A8UNORM;
     m_voxelCount         = m_voxelTexResolution * m_voxelTexResolution * m_voxelTexResolution;
-
-    PrepareTextures();
 }
 
 void GeometryVoxelizer::Destroy()
@@ -23,78 +21,64 @@ void GeometryVoxelizer::Destroy()
     VoxelizerBase::Destroy();
 }
 
-void GeometryVoxelizer::BuildRenderGraph()
+void GeometryVoxelizer::BuildVoxelizationGraph()
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
 
-    const sg::AABB& sceneAABB = m_pScene->GetAABB();
-    const float sceneExtent   = sceneAABB.GetMaxExtent();
-    const float voxelSize     = sceneExtent / m_voxelTexResolution;
-
     if (BeginVoxelization(*pRDG))
     {
-        RHIGfxPipelineStates pso{};
-        pso.rasterizationState = {};
-        pso.depthStencilState =
-            RHIGfxPipelineDepthStencilState::Create(false, false, RHIDepthCompareOperator::eNever);
-        pso.multiSampleState = {};
-        pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
-
-        RDGGraphicsPassDesc desc{};
-        desc.SetShaderProgramName("VoxelizationSP");
-        desc.SetPipelineStates(pso);
-        desc.SetRenderArea(0, 0, m_voxelTexResolution, m_voxelTexResolution);
-        desc.SetPassTag("Voxelization");
-
-        desc.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
-        desc.BindStorageBuffer("MaterialBuffer", m_pScene->GetMaterialsDataSSBO());
-        desc.BindStorageImage("voxelAlbedo", m_voxelTextures.pAlbedo->GetDefaultView());
-        BindSceneTextureArray(desc, m_pColorSampler, m_pScene->GetSceneTextures());
-
-        const Vec3 center = sceneAABB.GetCenter();
-        float halfSize    = sceneExtent / 2.0f;
-        Mat4 projection   = glm::ortho(-halfSize, halfSize, -halfSize, halfSize, 0.0f, sceneExtent);
-        projection[1][1] *= -1;
-
-        VoxelizationSP::VoxelConfigData voxelConfig{};
-        voxelConfig.viewProjectionMatrices[0] =
-            glm::lookAt(center - Vec3(halfSize, 0.0f, 0.0f), center, Vec3(0.0f, 1.0f, 0.0f));
-        voxelConfig.viewProjectionMatrices[1] =
-            glm::lookAt(center - Vec3(0.0f, halfSize, 0.0f), center, Vec3(-1.0f, 0.0f, 0.0f));
-        voxelConfig.viewProjectionMatrices[2] =
-            glm::lookAt(center - Vec3(0.0f, 0.0f, halfSize), center, Vec3(0.0f, 1.0f, 0.0f));
-
-        voxelConfig.worldMinPointScale = Vec4(m_pScene->GetAABB().GetMin(), 1.0f / sceneExtent);
-
-        for (int i = 0; i < 3; ++i)
+        if (m_pScene->GetVoxelTriangleCount() != 0)
         {
-            voxelConfig.viewProjectionMatrices[i] =
-                projection * voxelConfig.viewProjectionMatrices[i];
-            voxelConfig.viewProjectionMatricesI[i] =
-                glm::inverse(voxelConfig.viewProjectionMatrices[i]);
+            RHIGfxPipelineStates pso{};
+            pso.rasterizationState          = {};
+            pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
+            pso.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
+                false, false, RHIDepthCompareOperator::eNever);
+            pso.multiSampleState = {};
+            pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
+
+            RDGGraphicsPassDesc desc{};
+            desc.SetShaderProgramName(UsesAveragedReflectance() ? "VoxelizationAveragedSP" :
+                                                                  "VoxelizationSP");
+            desc.SetPipelineStates(pso);
+            desc.SetRenderArea(0, 0, m_voxelTexResolution, m_voxelTexResolution);
+            desc.SetPassTag("Voxelization");
+
+            BindVoxelScene(desc);
+            BindReflectanceSums(desc);
+            desc.BindStorageImage("voxelOwner", m_voxelTextures.pOwner->GetDefaultView());
+            desc.BindVertexBuffer(m_pScene->GetVertexBuffer());
+            desc.BindIndexBuffer(m_pScene->GetIndexBuffer());
+
+            pRDG->AddGraphicsPass(std::move(desc))
+                .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, m_classMask),
+                                     dimension = m_voxelTexResolution](RDGPassCmdEncoder& encoder) {
+                    VoxelizationSP::PushConstantsData constants{};
+                    constants.firstTriangle   = 0;
+                    constants.volumeDimension = dimension;
+
+                    for (SceneMeshDraw const& draw : draws)
+                    {
+                        constants.nodeIndex     = draw.nodeIndex;
+                        constants.materialIndex = draw.materialIndex;
+                        constants.firstTriangle = draw.firstTriangle;
+                        encoder.SetPushConstants(constants);
+                        encoder.DrawIndexed(draw.indexCount, 1, draw.firstIndex, 0, 0);
+                    }
+                });
         }
-
-        desc.BindValue("uVoxelConfig", voxelConfig);
-        desc.BindVertexBuffer(m_pScene->GetVertexBuffer());
-        desc.BindIndexBuffer(m_pScene->GetIndexBuffer());
-
-        pRDG->AddGraphicsPass(std::move(desc))
-            .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene),
-                                 dimension = m_voxelTexResolution](RDGPassCmdEncoder& encoder) {
-                VoxelizationSP::PushConstantsData constants{};
-                constants.flagStaticVoxels = 1;
-                constants.volumeDimension  = dimension;
-
-                for (SceneMeshDraw const& draw : draws)
-                {
-                    constants.nodeIndex     = draw.nodeIndex;
-                    constants.materialIndex = draw.materialIndex;
-                    encoder.SetPushConstants(constants);
-                    encoder.DrawIndexed(draw.indexCount, 1, draw.firstIndex, 0, 0);
-                }
-            });
+        ResolveSurface(RDGQueuePreference::eDefault);
+        BuildCompaction(RDGQueuePreference::eDefault);
     }
+}
+
+void GeometryVoxelizer::BuildVisualizationGraph()
+{
+    RenderGraph* pRDG        = m_pRenderDevice->GetCurrentFrameRDG();
+    const sg::AABB sceneAABB = GetVoxelBounds();
+    const float sceneExtent  = sceneAABB.GetMaxExtent();
+    const float voxelSize    = GetVoxelSize();
 
     RHIGfxPipelineStates pso{};
     pso.primitiveType                = RHIDrawPrimitiveType::ePointList;

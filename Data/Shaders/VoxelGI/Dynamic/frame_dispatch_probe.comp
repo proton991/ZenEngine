@@ -1,0 +1,13 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "frame_common.glsl"
+layout(local_size_x=GI_QUERY_GROUP_SIZE) in;
+layout(set=3,binding=1,std430) buffer Coverage { uint coverage[]; };
+layout(set=3,binding=2,std430) readonly buffer GIWorkCounts { uvec4 workCounts; };
+void main() {
+    uint group=gl_WorkGroupID.x+gl_NumWorkGroups.x*(gl_WorkGroupID.y+gl_NumWorkGroups.y*gl_WorkGroupID.z);
+    if(gl_LocalInvocationIndex==0u && group<batch.itemCount) {
+        uint index=batch.firstItem+group;
+        if(index<workCounts.x) atomicAdd(coverage[index],1u);
+    }
+}

@@ -1,55 +1,78 @@
 #pragma once
-#include "../RenderDevice.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
-#include "Utils/UniquePtr.h"
+#include "Math/Math.h"
 
 namespace zen::rc
 {
-class VoxelizerBase;
+class RenderDevice;
 class RenderScene;
-class ShadowMapRenderer;
+class VoxelizerBase;
+
+struct VoxelGISettings
+{
+    float indirectIntensity{1.0f};
+    float coneAngleDegrees{60.0f};
+    float stepScale{1.0f};
+    float normalBiasVoxels{1.5f};
+    float maxDistanceGridLengths{1.7321f};
+    uint32_t coneCount{6};
+    uint32_t maxSteps{128};
+    bool shadows{true};
+};
+
+struct VoxelGIUniformData
+{
+    Vec4 gridMinVoxelSize;
+    Vec4 volume;
+    Vec4 cone;
+    Vec4 limits;
+};
+static_assert(sizeof(VoxelGIUniformData) == 64);
 
 class VoxelGIRenderer
 {
 public:
-    // Kept for a future radiance consumer; the albedo renderer server does not create GI.
-    VoxelGIRenderer(RenderDevice* pRenderDevice,
-                    RHIViewport* pViewport,
-                    VoxelizerBase* pVoxelizer,
-                    ShadowMapRenderer* pShadowMapRenderer);
-
-    void Init();
-
+    VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer);
+    bool Init();
     void BuildRenderGraph();
-
-    void SetRenderScene(RenderScene* pScene);
-
+    void OnRenderGraphExecuted(bool succeeded);
+    void SetRenderScene(RenderScene* scene);
     void Destroy();
+    bool SetSettings(const VoxelGISettings& settings);
+    const VoxelGISettings& GetSettings() const
+    {
+        return m_settings;
+    }
+    void BindLightingInputs(RDGPassDescBase& pass) const;
+    bool IsInitialized() const
+    {
+        return m_radiance != nullptr && m_skyIrradiance != nullptr;
+    }
+    RHITexture* GetRadianceTexture() const
+    {
+        return m_radiance;
+    }
 
 private:
-    void PrepareTextures();
+    void LoadSettings();
+    void BuildMipChain(const HeapVector<RHITextureView*>& views, NameID program, const char* tag);
+    bool PrepareMipViews(RHITexture* texture, HeapVector<RHITextureView*>& views);
+    void BindFrameData(RDGPassDescBase& pass) const;
 
-    RenderDevice* m_pRenderDevice{nullptr};
-
-    RenderScene* m_pScene{nullptr};
-
-    RHIViewport* m_pViewport{nullptr};
-
-    VoxelizerBase* m_pVoxelizer{nullptr};
-    ShadowMapRenderer* m_pShadowMapRenderer{nullptr};
-    bool m_initialized{false};
-
-    struct
-    {
-        bool injectFirstBounce;
-        bool traceShadowCones;
-        bool normalWeightedLambert;
-        float traceShadowHit;
-    } m_config{};
-
-    struct
-    {
-        RHITexture* pVoxelRadiance;
-    } m_textures{};
+    RenderDevice* m_device{nullptr};
+    RenderScene* m_scene{nullptr};
+    VoxelizerBase* m_voxelizer{nullptr};
+    RHITexture* m_radiance{nullptr};
+    RHITexture* m_skyIrradiance{nullptr};
+    HeapVector<RHITextureView*> m_radianceMips;
+    HeapVector<RHITextureView*> m_albedoMips;
+    VoxelGISettings m_settings;
+    VoxelGIUniformData m_uniforms{};
+    uint64_t m_geometryRevision{0};
+    uint64_t m_lightingRevision{0};
+    uint64_t m_environmentRevision{0};
+    uint64_t m_recordedGeometry{0};
+    uint64_t m_recordedLighting{0};
+    uint64_t m_recordedEnvironment{0};
 };
 } // namespace zen::rc

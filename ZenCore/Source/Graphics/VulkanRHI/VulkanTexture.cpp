@@ -146,11 +146,16 @@ RHITexture* VulkanRHI::CreateTexture(const RHITextureCreateInfo& createInfo)
 RHITextureView* VulkanRHI::CreateTextureView(RHITexture* pBaseTexture,
                                              const RHITextureViewCreateInfo& createInfo)
 {
+    RHITextureView* view = nullptr;
     if (pBaseTexture == nullptr)
     {
-        LOG_ERROR_AND_THROW("Cannot create a view of a null texture");
+        LOGE("Cannot create a view of a null texture");
     }
-    return pBaseTexture->CreateView(createInfo);
+    else
+    {
+        view = pBaseTexture->CreateView(createInfo);
+    }
+    return view;
 }
 
 void VulkanRHI::DestroyTexture(RHITexture* pTexture)
@@ -165,14 +170,15 @@ VulkanTexture* VulkanTexture::CreateObject(const RHITextureCreateInfo& createInf
 
     new (pTexture) VulkanTexture(createInfo);
 
-    try
+    pTexture->Init();
+    const bool needsAttachmentView = createInfo.type != RHITextureType::e3D &&
+        (createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eColorAttachment) ||
+         createInfo.usageFlags.HasFlag(RHITextureUsageFlagBits::eDepthStencilAttachment));
+    if (pTexture->GetDefaultView() == nullptr ||
+        (needsAttachmentView && pTexture->GetAttachmentView() == nullptr))
     {
-        pTexture->Init();
-    }
-    catch (...)
-    {
-        pTexture->Destroy();
-        throw;
+        pTexture->ReleaseReference();
+        pTexture = nullptr;
     }
 
     return pTexture;
@@ -186,37 +192,47 @@ RHITextureView* VulkanTexture::CreateView(const RHITextureViewCreateInfo& create
 
 RHITextureView* VulkanTexture::CreateViewOnRHIThread(const RHITextureViewCreateInfo& createInfo)
 {
+    const char* error = nullptr;
     if (createInfo.format == DataFormat::eUndefined ||
         (createInfo.format != m_baseInfo.format && !m_baseInfo.mutableFormat))
     {
-        LOG_ERROR_AND_THROW("Texture view format requires a compatible mutable-format image");
+        error = "Texture view format requires a compatible mutable-format image";
     }
-    if (createInfo.mipLevels == 0 || createInfo.baseMipLevel >= m_baseInfo.mipmaps ||
-        createInfo.mipLevels > m_baseInfo.mipmaps - createInfo.baseMipLevel ||
-        createInfo.arrayLayers == 0 || createInfo.baseArrayLayer >= m_baseInfo.arrayLayers ||
-        createInfo.arrayLayers > m_baseInfo.arrayLayers - createInfo.baseArrayLayer)
+    else if (createInfo.mipLevels == 0 || createInfo.baseMipLevel >= m_baseInfo.mipmaps ||
+             createInfo.mipLevels > m_baseInfo.mipmaps - createInfo.baseMipLevel ||
+             createInfo.arrayLayers == 0 || createInfo.baseArrayLayer >= m_baseInfo.arrayLayers ||
+             createInfo.arrayLayers > m_baseInfo.arrayLayers - createInfo.baseArrayLayer)
     {
-        LOG_ERROR_AND_THROW("Texture view mip or array-layer range is outside its image");
+        error = "Texture view mip or array-layer range is outside its image";
     }
-    const bool cubeImage = m_baseInfo.type == RHITextureType::eCube;
-    if (createInfo.type != m_baseInfo.type &&
-        !(cubeImage && createInfo.type == RHITextureType::e2D))
+    else if (createInfo.type != m_baseInfo.type &&
+             !(m_baseInfo.type == RHITextureType::eCube && createInfo.type == RHITextureType::e2D))
     {
-        LOG_ERROR_AND_THROW("Texture view type is incompatible with its image");
+        error = "Texture view type is incompatible with its image";
     }
-    if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers % 6 != 0)
+    else if (createInfo.type == RHITextureType::eCube && createInfo.arrayLayers % 6 != 0)
     {
-        LOG_ERROR_AND_THROW("Cube views require a multiple of six array layers");
+        error = "Cube views require a multiple of six array layers";
     }
-    if ((int64_t(createInfo.aspect) & ~int64_t(GetTextureFormatAspects(createInfo.format))) != 0)
+    else if ((int64_t(createInfo.aspect) & ~int64_t(GetTextureFormatAspects(createInfo.format))) !=
+             0)
     {
-        LOG_ERROR_AND_THROW("Texture view aspects are incompatible with its format");
+        error = "Texture view aspects are incompatible with its format";
     }
 
-    VulkanTextureView* pView = VulkanTextureView::CreateObject(this, createInfo);
-
-    RegisterOwnedView(pView);
-
+    VulkanTextureView* pView = nullptr;
+    if (error != nullptr)
+    {
+        LOGE("{}", error);
+    }
+    else
+    {
+        pView = VulkanTextureView::CreateObject(this, createInfo);
+        if (pView != nullptr)
+        {
+            RegisterOwnedView(pView);
+        }
+    }
     return pView;
 }
 
@@ -294,52 +310,56 @@ void VulkanTexture::Init()
         GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
 
     const uint32_t textureSize = CalculateTextureSize(m_baseInfo);
+    bool allocated             = false;
 
     AllocateWithQueueSharing(
         imageCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
         (imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0,
-        [this, &imageCI, textureSize] {
-            GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage, &m_memAlloc,
-                                        textureSize);
+        [this, &imageCI, textureSize, &allocated] {
+            allocated = GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage,
+                                                    &m_memAlloc, textureSize);
         });
-    m_vkImageCI                       = imageCI;
-    m_vkImageCI.queueFamilyIndexCount = 0;
-    m_vkImageCI.pQueueFamilyIndices   = nullptr;
-
-    if (!m_baseInfo.tag.IsNone())
+    if (allocated)
     {
-        GVulkanRHI->GetDevice()->SetObjectName(
-            VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_vkImage), m_baseInfo.tag);
+        m_vkImageCI = imageCI;
+
+        if (!m_baseInfo.tag.IsNone())
+        {
+            GVulkanRHI->GetDevice()->SetObjectName(
+                VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_vkImage), m_baseInfo.tag);
+        }
+
+        // Only successfully allocated images enter layout tracking or acquire views.
+        GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
+        m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+        if (FormatIsDepthStencil(m_baseInfo.format))
+        {
+            m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        else if (FormatIsDepthOnly(m_baseInfo.format))
+        {
+            m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else if (FormatIsStencilOnly(m_baseInfo.format))
+        {
+            m_vkAspectFlags = VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+
+        RHITextureViewCreateInfo viewCI{};
+        viewCI.format       = m_baseInfo.format;
+        viewCI.type         = m_baseInfo.type;
+        viewCI.arrayLayers  = m_baseInfo.arrayLayers;
+        viewCI.mipLevels    = m_baseInfo.mipmaps;
+        viewCI.baseMipLevel = 0;
+        viewCI.tag          = m_baseInfo.tag;
+
+        m_pDefaultView = CreateView(viewCI);
     }
-
-    // set layout as undefined when first created
-    GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
-
-    // set aspect flags
-    m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-
-    if (FormatIsDepthStencil(m_baseInfo.format))
+    else
     {
-        m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        LOGE("Texture '{}' allocation failed", m_baseInfo.tag.CStr());
     }
-    else if (FormatIsDepthOnly(m_baseInfo.format))
-    {
-        m_vkAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-    }
-    else if (FormatIsStencilOnly(m_baseInfo.format))
-    {
-        m_vkAspectFlags = VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-
-    RHITextureViewCreateInfo viewCI{};
-    viewCI.format       = m_baseInfo.format;
-    viewCI.type         = m_baseInfo.type;
-    viewCI.arrayLayers  = m_baseInfo.arrayLayers;
-    viewCI.mipLevels    = m_baseInfo.mipmaps;
-    viewCI.baseMipLevel = 0;
-    viewCI.tag          = m_baseInfo.tag;
-
-    m_pDefaultView = CreateView(viewCI);
 }
 
 void VulkanTexture::Destroy()
@@ -362,14 +382,11 @@ VulkanTextureView* VulkanTextureView::CreateObject(VulkanTexture* pTexture,
 
     new (pView) VulkanTextureView(pTexture, createInfo);
 
-    try
+    pView->Init();
+    if (pView->m_vkImageView == VK_NULL_HANDLE)
     {
-        pView->Init();
-    }
-    catch (...)
-    {
-        pView->Destroy();
-        throw;
+        pView->ReleaseReference();
+        pView = nullptr;
     }
 
     return pView;
@@ -390,13 +407,15 @@ void VulkanTextureView::Init()
     const VkImageViewCreateInfo imageViewCI = MakeVkImageViewCreateInfo(
         m_viewInfo.type, m_viewInfo.format, pVkTexture->GetVkImage(), range);
 
-    if (vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView) !=
-        VK_SUCCESS)
+    const VkResult result =
+        vkCreateImageView(GVulkanRHI->GetVkDevice(), &imageViewCI, nullptr, &m_vkImageView);
+    if (result != VK_SUCCESS)
     {
-        LOG_ERROR_AND_THROW("vkCreateImageView failed");
+        m_vkImageView = VK_NULL_HANDLE;
+        LOGE("Texture view '{}' creation failed: {}", m_viewInfo.tag.CStr(),
+             GetResultString(result));
     }
-
-    if (!m_viewInfo.tag.IsNone())
+    else if (!m_viewInfo.tag.IsNone())
     {
         GVulkanRHI->GetDevice()->SetObjectName(
             VK_OBJECT_TYPE_IMAGE_VIEW, reinterpret_cast<uint64_t>(m_vkImageView), m_viewInfo.tag);

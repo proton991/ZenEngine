@@ -22,7 +22,9 @@ public:
 
     void Init() final;
 
-    void BuildRenderGraph() final;
+    void BuildVoxelizationGraph() final;
+    void BuildVisualizationGraph() final;
+    void OnRenderGraphExecuted(bool succeeded) final;
 
     void Destroy() final;
 
@@ -37,22 +39,14 @@ protected:
 
     void PrepareBuffers() final;
 
-    struct LargeTriangle
-    {
-        uint32_t triangleIndex{0};
-        uint32_t innerTriangleIndex{0};
-        Mat4 modelMatrix{1.0f};
-    };
-
     struct
     {
-        RHIBuffer* pComputeIndirectBuffer;
-        RHIBuffer* pLargeTriangleBuffer;
         RHIBuffer* pInstancePositionBuffer;
         RHIBuffer* pInstanceColorBuffer;
         RHIBuffer* pDrawIndirectBuffer;
-    } m_buffers;
+    } m_buffers{};
 
-    RenderObject* m_pCube;
+    RenderObject* m_pCube{nullptr};
+    uint64_t m_visualizationRevision{0};
 };
 } // namespace zen::rc

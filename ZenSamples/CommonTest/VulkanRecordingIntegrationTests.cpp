@@ -825,13 +825,13 @@ INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanUniformQueueTrimTest, testing::
 
 TEST_F(VulkanRecordingIntegrationTest, MeasureRepeatedDrawRecording)
 {
-    auto* target   = Texture();
-    auto layout    = Layout(target);
-    auto* shader   = Shader();
-    auto* pipeline = Graphics(PipelineInfo(shader, layout));
-    auto* uniform  = Buffer();
+    VulkanTexture* target     = Texture();
+    RHIRenderingLayout layout = Layout(target);
+    VulkanShader* shader      = Shader();
+    RHIPipeline* pipeline     = Graphics(PipelineInfo(shader, layout));
+    VulkanBuffer* uniform     = Buffer();
     Uniform(uniform, 0, Color(1, 0, 0, 1));
-    auto parameters = Parameters(shader, uniform);
+    RHIBatchedShaderParameters parameters = Parameters(shader, uniform);
     context->RHIBindPipeline(pipeline);
     context->RHISetShaderParameters(parameters);
     context->RHIBindVertexBuffer(uniform, 0);
@@ -846,12 +846,12 @@ TEST_F(VulkanRecordingIntegrationTest, MeasureRepeatedDrawRecording)
                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         context->RHIBeginRendering(&layout);
-        const auto commands = Commands();
+        const VkCommandBuffer commands = Commands();
         reusedHandle |=
             std::find(recordings.begin(), recordings.end(), commands) != recordings.end();
         recordings.push_back(commands);
         ResetCounts();
-        const auto start = Clock::now();
+        const Clock::time_point start = Clock::now();
         for (uint32_t i = 0; i < drawsPerSample; ++i)
         {
             DynamicState();
@@ -872,7 +872,7 @@ TEST_F(VulkanRecordingIntegrationTest, MeasureRepeatedDrawRecording)
         EXPECT_EQ(depthBias->calls, 1u);
         EXPECT_EQ(lineWidth->calls, 1u);
         EXPECT_EQ(blendConstants->calls, 0u);
-        EXPECT_EQ(vertices->calls, 1u);
+        EXPECT_EQ(vertices->calls, 0u); // The shader generates vertices procedurally.
         context->RHIEndRendering();
         SubmitAndWait();
     }
@@ -883,9 +883,38 @@ TEST_F(VulkanRecordingIntegrationTest, MeasureRepeatedDrawRecording)
         drawsPerSample, times[times.size() / 2], times[0], times.back(), bindPipeline->calls,
         bindDescriptors->calls, updateDescriptors->calls, viewport->calls, scissor->calls,
         depthBias->calls, lineWidth->calls, blendConstants->calls, vertices->calls);
-    auto* readback = Copy(target);
+    VulkanBuffer* readback = Copy(target);
     SubmitAndWait();
     CheckPixel(readback, 4, 4, Color(1, 0, 0, 1));
+}
+
+TEST_F(VulkanRecordingIntegrationTest, ProceduralDrawDoesNotRebindRetiredVertexStorage)
+{
+    VulkanTexture* target     = Texture();
+    RHIRenderingLayout layout = Layout(target);
+    VulkanShader* shader      = Shader();
+    RHIPipeline* pipeline     = Graphics(PipelineInfo(shader, layout));
+    VulkanBuffer* uniform     = Buffer();
+    Uniform(uniform, 0, Color(1, 0, 0, 1));
+    VulkanBuffer* previousVertices = Buffer();
+    context->RHIBindVertexBuffer(previousVertices, 0);
+    HeapVector<RHIBuffer*>::iterator old =
+        std::find(buffers.begin(), buffers.end(), previousVertices);
+    ASSERT_NE(old, buffers.end());
+    buffers.erase(old);
+    session->rhi.DestroyBuffer(previousVertices);
+    Transition(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    context->RHIBeginRendering(&layout);
+    context->RHIBindPipeline(pipeline);
+    context->RHISetShaderParameters(Parameters(shader, uniform));
+    DynamicState();
+    ResetCounts();
+    context->RHIDraw(3, 1, 0, 0);
+    context->RHIEndRendering();
+    EXPECT_EQ(vertices->calls, 0);
+    VulkanBuffer* result = Copy(target);
+    SubmitAndWait();
+    CheckPixel(result, 4, 4, Color(1, 0, 0, 1));
 }
 
 TEST_F(VulkanRecordingIntegrationTest, ChangedDescriptorOffsetsResourcesAndScissorsReachTheGPU)

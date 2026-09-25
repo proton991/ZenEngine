@@ -6,9 +6,11 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Graphics/Shared/LightingCapture.h"
 #include "SceneGraph/Camera.h"
 #include "SceneGraph/Scene.h"
 #include "AssetLib/TextureLoader.h"
@@ -906,6 +908,9 @@ public:
     bool submissionsBlocked{false};
     std::vector<std::pair<RHICommandContextType, uint64_t>> submissionWaits;
     uint32_t textureCreations{0};
+    uint32_t textureViewCreations{0};
+    uint32_t failTextureViewCreationAt{0};
+    HeapVector<uint64_t> createdTextureIds;
     RHITexture* lastCreatedTexture{nullptr};
     uint32_t bufferCreations{0};
     uint32_t failBufferCreationAt{0};
@@ -1067,6 +1072,7 @@ public:
         {
             result             = ZEN_NEW() TestTexture(info);
             lastCreatedTexture = result;
+            createdTextureIds.push_back(result->GetStableId());
         }
 
         return result;
@@ -1075,7 +1081,13 @@ public:
     RHITextureView* CreateTextureView(RHITexture* texture,
                                       const RHITextureViewCreateInfo& info) override
     {
-        return texture->CreateView(info);
+        RHITextureView* view = nullptr;
+        ++textureViewCreations;
+        if (textureViewCreations != failTextureViewCreationAt)
+        {
+            view = texture->CreateView(info);
+        }
+        return view;
     }
 
     void DestroyTexture(RHITexture* texture) override
@@ -1373,6 +1385,7 @@ void RendererServer::Destroy()
 RenderScene::RenderScene(RenderDevice* device, const SceneData& data) :
     m_pRenderDevice(device), m_pScene(data.pScene), m_pCamera(data.pCamera)
 {
+    m_voxelBounds = m_pScene->GetAABB();
     PrepareBuffers();
     LoadSceneTextures();
 }
@@ -1383,6 +1396,12 @@ void RenderScene::PrepareBuffers()
     m_pIndexBuffer  = sceneInputs.indices;
     m_pNodeSSBO     = sceneInputs.nodes;
     m_pMaterialSSBO = sceneInputs.materials;
+}
+
+// The renderer facade above supplies synthetic node indices independently of assets.
+uint32_t RenderScene::GetInstanceMask(uint32_t) const
+{
+    return GI_STATIC;
 }
 
 void RenderScene::LoadSceneTextures()
@@ -1398,6 +1417,8 @@ const uint8_t* RenderScene::GetCameraUniformData() const
 
 const uint8_t* RenderScene::GetSceneUniformData() const
 {
+    // Environment edits use the production setter; retain the injected camera/light data.
+    sceneInputs.uniforms.environment = m_sceneUniformData.environment;
     return reinterpret_cast<const uint8_t*>(&sceneInputs.uniforms);
 }
 } // namespace zen::rc
@@ -1542,7 +1563,7 @@ protected:
 
     void AllocateRendererInputs(int epoch,
                                 TestViewport& viewport,
-                                std::vector<RHIBuffer*>& ownedBuffers,
+                                HeapVector<RHIBuffer*>& ownedBuffers,
                                 HeapVector<RHITexture*>& ownedTextures,
                                 RenderConfig& config);
     TestRHI* rhi;
@@ -3077,7 +3098,7 @@ TEST_F(RenderCoreTest, ProductionTextureCacheSeparatesMipPolicyAndRetiresEveryIn
     EXPECT_TRUE(destroyed.contains(mippedId));
 }
 
-TEST_F(RenderCoreTest, ProductionSceneTextureNamesDoNotOverwriteOwners)
+TEST_F(RenderCoreTest, ProductionSceneTexturesPreserveFormatsMipsAndDistinctOwners)
 {
     sg::Scene scene;
 
@@ -3085,6 +3106,7 @@ TEST_F(RenderCoreTest, ProductionSceneTextureNamesDoNotOverwriteOwners)
     {
         UniquePtr<sg::Texture> texture = MakeUnique<sg::Texture>("duplicate");
         texture->width = texture->height = 2;
+        texture->format = i == 0 ? asset::Format::R8G8B8A8_SRGB : asset::Format::R8G8B8A8_UNORM;
         texture->bytesData.resize(16, uint8_t(i + 1));
         scene.AddComponent(std::move(texture));
     }
@@ -3098,6 +3120,15 @@ TEST_F(RenderCoreTest, ProductionSceneTextureNamesDoNotOverwriteOwners)
 
     ASSERT_EQ(first.size(), 2u);
     ASSERT_EQ(second.size(), 2u);
+    for (const HeapVector<RHITexture*>* batch : {&first, &second})
+    {
+        ASSERT_NE((*batch)[0], nullptr);
+        ASSERT_NE((*batch)[1], nullptr);
+        EXPECT_EQ((*batch)[0]->GetFormat(), DataFormat::eR8G8B8A8SRGB);
+        EXPECT_EQ((*batch)[1]->GetFormat(), DataFormat::eR8G8B8A8UNORM);
+        EXPECT_EQ((*batch)[0]->GetNumMipmaps(), 2u);
+        EXPECT_EQ((*batch)[1]->GetNumMipmaps(), 2u);
+    }
 
     std::unordered_set<uint64_t> ids;
 
@@ -3174,32 +3205,57 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentReplacementRetainsAndRetiresAllOutp
 class TestVoxelVolumes : public VoxelizerBase
 {
 public:
-    TestVoxelVolumes(RenderDevice* device, DataFormat format, bool radianceInputs = false) :
+    TestVoxelVolumes(RenderDevice* device,
+                     DataFormat format,
+                     bool radianceInputs = false,
+                     uint32_t dimension  = 8) :
         VoxelizerBase(device, nullptr), m_radianceInputs(radianceInputs)
     {
-        m_voxelTexResolution = 8;
+        m_voxelTexResolution = dimension;
+        m_voxelCount         = dimension * dimension * dimension;
         m_voxelTexFormat     = format;
     }
-
     void Init() override
     {
+        RHIShaderCreateInfo info;
+        info.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+        info.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+            "VoxelGI/clear_owners.comp.spv";
+        reflectedShaderInfos["VoxelClearOwnersSP"] = info;
+        CreateTestShaderProgram(m_pRenderDevice, "VoxelClearOwnersSP");
         PrepareTextures();
+        // Mock fixtures select their policy explicitly, independent of engine.cfg.
+        m_requestAveragedReflectance = false;
+        if (m_radianceInputs)
+        {
+            EXPECT_TRUE(EnableRadianceInputs());
+        }
     }
-
     bool BeginVolumeUpdate(RenderGraph& graph,
                            RDGQueuePreference preference = RDGQueuePreference::eDefault)
     {
         return BeginVoxelization(graph, preference);
     }
 
-    bool ProducesRadianceInputs() const override
+    void ResolveVolume()
     {
-        return m_radianceInputs;
+        ResolveSurface(RDGQueuePreference::eDefault);
+    }
+
+    void EnableAveragedReflectanceForTest()
+    {
+        m_requestAveragedReflectance = true;
+        m_reflectanceBudgetBytes     = 8 * 1024 * 1024;
+        RHIShaderCreateInfo info;
+        info.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+        info.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+            "VoxelGI/clear_owners_averaged.comp.spv";
+        reflectedShaderInfos["VoxelClearOwnersAveragedSP"] = info;
+        CreateTestShaderProgram(m_pRenderDevice, "VoxelClearOwnersAveragedSP");
     }
 
 private:
     bool m_radianceInputs;
-
     void BuildRenderGraph() override {}
 };
 
@@ -3279,148 +3335,41 @@ TEST_F(RenderCoreTest, TextureClearsRequireGraphicsCapability)
     device->DestroyTexture(texture);
 }
 
-TEST_F(RenderCoreTest, VoxelVolumesAreZeroedBeforeFirstAndRequestedVoxelizations)
+TEST_F(RenderCoreTest, VoxelOwnersResetBeforeFirstAndRequestedVoxelizations)
 {
-    RDGMetrics& metrics          = device->GetRDGMetrics();
-    RDGMetricsOptions options    = metrics.GetOptions();
-    options.logging.sampleEvery  = 1;
-    options.logging.minInterval  = std::chrono::milliseconds(0);
-    options.includeTransferNodes = true;
-    metrics.Configure(options);
-    metrics.SetSink({});
-    CreateTestShaderProgram(device, "volume_writer");
-
-    // Geometry atomics use packed UINT storage; compute uses normalized RGBA storage.
-    for (const std::pair<DataFormat, bool> configuration : {std::pair{DataFormat::eR32UInt, false},
-                                                            {DataFormat::eR8G8B8A8UNORM, false},
-                                                            {DataFormat::eR32UInt, true},
-                                                            {DataFormat::eR8G8B8A8UNORM, true}})
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM, true);
+    volumes.Init();
+    EXPECT_TRUE(volumes.ProducesRadianceInputs());
+    EXPECT_EQ(volumes.GetVoxelTextures().pEmissive->GetFormat(), DataFormat::eR16G16B16A16SFloat);
+    CreateTestShaderProgram(device, "owner_writer");
+    RenderGraph graph("voxel_volume_lifecycle");
+    for (int frame = 0; frame < 3; ++frame)
     {
-        TestVoxelVolumes volumes(device, configuration.first, configuration.second);
-        volumes.Init();
-        const VoxelTextures& textures = volumes.GetVoxelTextures();
-        HeapVector<RHITexture*> all{textures.pAlbedo};
-
-        if (configuration.second)
+        if (frame == 2)
         {
-            all.push_back(textures.pNormal);
-            all.push_back(textures.pEmissive);
+            volumes.RequestVoxelization();
         }
-
-        const size_t volumeCount = all.size();
-
-        for (RHITexture* texture : all)
-        {
-            EXPECT_EQ(texture->GetBaseInfo().type, RHITextureType::e3D);
-            EXPECT_TRUE(
-                texture->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferDst));
-        }
-
-        rhi->graphics.textureClears.clear();
-        rhi->graphics.clearsBeforeDraw.clear();
-        rhi->graphics.clearsBeforeDispatch.clear();
-        RenderGraph graph("voxel_volume_lifecycle");
-
-        for (int frame = 0; frame < 3; ++frame)
-        {
-            if (frame == 2)
-            {
-                volumes.RequestVoxelization();
-            }
-
-            graph.Begin();
-
-            EXPECT_EQ(volumes.BeginVolumeUpdate(graph), frame != 1);
-            // A second request in the same recording must not reset a producer's results.
-            EXPECT_FALSE(volumes.BeginVolumeUpdate(graph));
-
-            for (RHITexture* texture : all)
-            {
-                if (configuration.first == DataFormat::eR32UInt)
-                {
-                    RDGGraphicsPassDesc pass{};
-                    pass.SetShaderProgramName("volume_writer");
-                    pass.BindStorageImage("image", texture->GetDefaultView());
-                    graph.AddGraphicsPass(pass).RecordPassCommands(
-                        [](RDGPassCmdEncoder& encoder) { encoder.Draw(1, 1); });
-                }
-                else
-                {
-                    RDGComputePassDesc pass{};
-                    pass.SetShaderProgramName("volume_writer");
-                    pass.BindStorageImage("image", texture->GetDefaultView());
-                    graph.AddComputePass(pass).RecordPassCommands(
-                        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
-                }
-            }
-
-            graph.End();
-            rhi->graphics.barrierBatches.clear();
-            device->ExecuteRenderGraph(graph);
-            const size_t expectedClears = (frame == 2 ? 2 : 1) * volumeCount;
-            ASSERT_EQ(rhi->graphics.textureClears.size(), expectedClears);
-
-            const std::vector<size_t>& observations = configuration.first == DataFormat::eR32UInt ?
-                rhi->graphics.clearsBeforeDraw :
-                rhi->graphics.clearsBeforeDispatch;
-            ASSERT_EQ(observations.size(), (frame + 1) * volumeCount);
-
-            for (size_t i = observations.size() - volumeCount; i < observations.size(); ++i)
-            {
-                EXPECT_EQ(observations[i], expectedClears);
-            }
-
-            for (size_t i = 0; i < expectedClears; ++i)
-            {
-                const TestContext::TextureClear& clear = rhi->graphics.textureClears[i];
-                EXPECT_EQ(clear.texture, all[i % volumeCount]);
-                EXPECT_EQ(clear.color, Color(0.0f)); // Alpha must be zero too.
-                EXPECT_EQ(clear.range.baseMipLevel, 0u);
-                EXPECT_EQ(clear.range.levelCount, 1u);
-                EXPECT_EQ(clear.range.baseArrayLayer, 0u);
-                EXPECT_EQ(clear.range.layerCount, 1u);
-            }
-
-            if (frame != 1)
-            {
-                std::unordered_set<RHITexture*> synchronized;
-
-                for (TestContext::BarrierBatch const& batch : rhi->graphics.barrierBatches)
-                {
-                    for (const RHITextureTransition& barrier : batch.textures)
-                    {
-                        if (barrier.oldUsage == RHITextureUsage::eTransferDst &&
-                            barrier.newUsage == RHITextureUsage::eStorage)
-                        {
-                            EXPECT_TRUE(batch.source.HasFlag(RHIPipelineStageFlagBits::eTransfer));
-                            EXPECT_TRUE(batch.destination.HasFlag(
-                                configuration.first == DataFormat::eR32UInt ?
-                                    RHIPipelineStageFlagBits::eFragmentShader :
-                                    RHIPipelineStageFlagBits::eComputeShader));
-                            synchronized.insert(barrier.pTexture);
-                        }
-                    }
-                }
-
-                EXPECT_EQ(synchronized.size(), volumeCount);
-            }
-
-            for (RDGMetricIssue issue :
-                 {RDGMetricIssue::eMissingBarrier, RDGMetricIssue::eStageCoverage,
-                  RDGMetricIssue::eAccessCoverage, RDGMetricIssue::eUnknownImportState})
-            {
-                EXPECT_EQ(metrics.GetLastSnapshot().issues[size_t(issue)], 0u)
-                    << RDGMetrics::Format(metrics.GetLastSnapshot());
-            }
-        }
-
-        volumes.Destroy();
+        ASSERT_TRUE(graph.Begin());
+        EXPECT_EQ(volumes.BeginVolumeUpdate(graph), frame != 1);
+        EXPECT_FALSE(volumes.BeginVolumeUpdate(graph));
+        RDGComputePassDesc writer;
+        writer.SetShaderProgramName("owner_writer");
+        writer.BindStorageImage("image", volumes.GetVoxelTextures().pOwner->GetDefaultView());
+        graph.AddComputePass(std::move(writer)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch(2, 1, 1);
+        });
+        ASSERT_TRUE(graph.End());
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        volumes.OnRenderGraphExecuted(true);
+        EXPECT_EQ(volumes.GetGeometryRevision(), frame == 2 ? 2u : 1u);
     }
+    EXPECT_TRUE(rhi->graphics.textureClears.empty());
+    volumes.Destroy();
 }
 
 void RenderCoreTest::AllocateRendererInputs(int epoch,
                                             TestViewport& viewport,
-                                            std::vector<RHIBuffer*>& ownedBuffers,
+                                            HeapVector<RHIBuffer*>& ownedBuffers,
                                             HeapVector<RHITexture*>& ownedTextures,
                                             RenderConfig& config)
 {
@@ -3458,6 +3407,7 @@ void RenderCoreTest::AllocateRendererInputs(int epoch,
     colorInfo.width  = 8 + epoch * 8;
     colorInfo.height = 8 + epoch * 4;
     colorInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+    colorInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferDst);
     viewport.color = rhi->CreateTexture(colorInfo);
 
     RHITextureCreateInfo depthInfo{};
@@ -3486,6 +3436,102 @@ template <typename T> static bool HasShaderValue(const TestContext& context, con
                            return bytes.size() == sizeof(value) &&
                                std::memcmp(bytes.data(), &value, sizeof(value)) == 0;
                        });
+}
+
+TEST_F(RenderCoreTest, LightingCaptureRejectsInvalidTargetsAndRetriesWithoutCopyingStaleData)
+{
+    for (const std::array<const char*, 3>& files :
+         {std::array<const char*, 3>{"GBufferSP", "SceneRenderer/offscreen.vert.spv",
+                                     "SceneRenderer/offscreen.frag.spv"},
+          {"DeferredLightingCaptureSP", "SceneRenderer/deferred.vert.spv",
+           "SceneRenderer/deferred_capture.frag.spv"}})
+    {
+        RHIShaderCreateInfo shader;
+        shader.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex,
+                                   RHIShaderStageFlagBits::eFragment);
+        shader.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = files[1];
+        shader.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = files[2];
+        reflectedShaderInfos[files[0]]                                = shader;
+        CreateTestShaderProgram(device, files[0]);
+    }
+    RHIShaderCreateInfo clear;
+    clear.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    clear.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+        "SceneRenderer/clear_lighting_capture.comp.spv";
+    reflectedShaderInfos["ClearLightingCaptureSP"] = clear;
+    CreateTestShaderProgram(device, "ClearLightingCaptureSP");
+    RenderConfig& config          = RenderConfig::GetInstance();
+    const uint32_t previousExtent = config.offScreenFbSize;
+    TestViewport viewport;
+    HeapVector<RHIBuffer*> buffers;
+    HeapVector<RHITexture*> textures;
+    AllocateRendererInputs(0, viewport, buffers, textures, config);
+    sg::Scene source;
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene scene(device, data);
+    DeferredLightingRenderer lighting(device, &viewport);
+    lighting.Init();
+    lighting.SetRenderScene(&scene);
+    constexpr uint32_t bytes  = 8 * 8 * ZEN_LIGHTING_CAPTURE_BYTES_PER_PIXEL;
+    TestBuffer* output        = Buffer(bytes);
+    TestBuffer* readback      = Buffer(bytes);
+    TestBuffer* smallReadback = Buffer(bytes - 1);
+    buffers.push_back(output);
+    buffers.push_back(readback);
+    buffers.push_back(smallReadback);
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+    // Successful capture, three rejected requests, then a fresh successful retry.
+    for (uint32_t scenario = 0; scenario < 5; ++scenario)
+    {
+        SCOPED_TRACE(scenario);
+        rhi->info.supportFragmentStoresAndAtomics = scenario != 1;
+        rhi->info.maxStorageBufferRange           = scenario == 2 ? bytes - 1 : bytes;
+        lighting.SetLightingCapture(output, scenario == 3 ? smallReadback : readback);
+        EXPECT_FALSE(lighting.WasLightingCaptureRecorded());
+        EXPECT_TRUE(graph.Begin());
+        for (RHIBuffer* buffer :
+             {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
+        {
+            graph.GetResourceManager()->ImportHostWrittenBuffer(buffer);
+        }
+        for (RHITexture* texture : textures)
+        {
+            if (texture != viewport.depth)
+            {
+                graph.AddTransferPass("InitializeCaptureInputs").ClearTexture(texture, Color(0));
+            }
+        }
+        lighting.BuildRenderGraph();
+        const bool valid = scenario == 0 || scenario == 4;
+        EXPECT_EQ(lighting.WasLightingCaptureRecorded(), valid);
+        const uint32_t submissions = rhi->finalizedLists;
+        rhi->graphics.bufferCopies.clear();
+        EXPECT_TRUE(graph.End());
+        EXPECT_EQ(device->ExecuteRenderGraph(graph), valid) << graph.GetResult().message;
+        device->FlushRHIThread();
+        if (valid)
+        {
+            EXPECT_EQ(rhi->graphics.bufferCopies.size(), 1u);
+        }
+        else
+        {
+            EXPECT_EQ(rhi->finalizedLists, submissions);
+            EXPECT_TRUE(rhi->graphics.bufferCopies.empty());
+        }
+    }
+    lighting.SetLightingCapture(nullptr, nullptr);
+    EXPECT_FALSE(lighting.WasLightingCaptureRecorded());
+    config.offScreenFbSize = previousExtent;
+    for (RHIBuffer* buffer : buffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+    for (RHITexture* texture : textures)
+    {
+        device->DestroyTexture(texture);
+    }
+    sceneInputs = {};
 }
 
 TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData)
@@ -3534,7 +3580,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
     } restore{originalOffscreenSize};
 
     TestViewport viewport;
-    std::vector<RHIBuffer*> ownedBuffers;
+    HeapVector<RHIBuffer*> ownedBuffers;
     HeapVector<RHITexture*> ownedTextures;
 
     AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures, config);
@@ -3754,47 +3800,33 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
     }
 }
 
-TEST_F(RenderCoreTest, AlbedoVoxelizersDoNotAllocateOrScheduleRadiance)
+TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 {
-    RDGMetrics& metrics         = device->GetRDGMetrics();
-    RDGMetricsOptions options   = metrics.GetOptions();
-    options.logging.sampleEvery = 1;
-    options.logging.minInterval = std::chrono::milliseconds(0);
-    metrics.Configure(options);
-    metrics.SetSink({});
-
-    for (DataFormat format : {DataFormat::eR32UInt, DataFormat::eR8G8B8A8UNORM})
-    {
-        const uint32_t before = rhi->textureCreations;
-        TestVoxelVolumes volumes(device, format);
-        volumes.Init();
-
-        EXPECT_FALSE(volumes.ProducesRadianceInputs());
-        EXPECT_EQ(rhi->textureCreations, before + 1);
-        EXPECT_NE(volumes.GetVoxelTextures().pAlbedo, nullptr);
-        EXPECT_NE(volumes.GetVoxelTextures().pAlbedoView, nullptr);
-        EXPECT_EQ(volumes.GetVoxelTextures().pNormal, nullptr);
-        EXPECT_EQ(volumes.GetVoxelTextures().pNormalView, nullptr);
-        EXPECT_EQ(volumes.GetVoxelTextures().pEmissive, nullptr);
-        EXPECT_EQ(volumes.GetVoxelTextures().pEmissiveView, nullptr);
-
-        // An albedo-only producer also keeps the standalone GI lifecycle inert.
-        VoxelGIRenderer gi(device, nullptr, &volumes, nullptr);
-        gi.Init();
-        gi.SetRenderScene(nullptr);
-        RenderGraph* graph = device->GetCurrentFrameRDG();
-        graph->Begin();
-        gi.BuildRenderGraph();
-        graph->End();
-        device->ExecuteRenderGraph(*graph);
-
-        EXPECT_EQ(metrics.GetLastSnapshot().nodeCount, 0u);
-        EXPECT_EQ(rhi->textureCreations, before + 1);
-
-        gi.Destroy();
-        volumes.Destroy();
-    }
+    const uint32_t before = rhi->textureCreations;
+    TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
+    volumes.Init();
+    EXPECT_FALSE(volumes.ProducesRadianceInputs());
+    EXPECT_EQ(rhi->textureCreations, before + 2);
+    EXPECT_NE(volumes.GetVoxelTextures().pOwner, nullptr);
+    EXPECT_EQ(volumes.GetVoxelTextures().pNormal, nullptr);
+    EXPECT_EQ(volumes.GetVoxelTextures().pEmissive, nullptr);
+    VoxelGIRenderer gi(device, &volumes);
+    EXPECT_EQ(rhi->textureCreations, before + 2);
+    ASSERT_TRUE(gi.Init());
+    EXPECT_TRUE(volumes.ProducesRadianceInputs());
+    EXPECT_EQ(rhi->textureCreations, before + 6);
+    EXPECT_TRUE(gi.Init());
+    EXPECT_EQ(rhi->textureCreations, before + 6);
+    VoxelGISettings invalid = gi.GetSettings();
+    invalid.maxSteps        = 0;
+    EXPECT_FALSE(gi.SetSettings(invalid));
+    EXPECT_NE(gi.GetSettings().maxSteps, 0u);
+    gi.Destroy();
+    volumes.Destroy();
 }
+
+#include "VoxelGIRendererTests.inl"
+#include "SceneShadowRendererTests.inl"
 
 TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
 {
@@ -4522,6 +4554,39 @@ TEST_F(RenderCoreTest, CallbackFailureRollsBackCommandsStateAndMetrics)
     device->DestroyBuffer(target);
 }
 
+TEST_F(RenderCoreTest, DirectDispatchRejectsDeviceAxisLimitsBeforeSubmission)
+{
+    CreateTestShaderProgram(device, "validation");
+    rhi->info.maxComputeWorkGroupCount = {2, 3, 4};
+    struct Case
+    {
+        uint32_t x;
+        int32_t y;
+        int32_t z;
+        bool valid;
+    };
+    const Case cases[] = {{2, 3, 4, true},  {3, 1, 1, false},  {1, 4, 1, false},
+                          {1, 1, 5, false}, {1, -1, 1, false}, {0, 1, 1, true}};
+    for (const Case& test : cases)
+    {
+        const uint32_t submissions = rhi->finalizedLists;
+        RenderGraph graph("dispatch_limits");
+        graph.Begin();
+        RDGComputePassDesc desc;
+        desc.SetShaderProgramName("validation");
+        graph.AddComputePass(desc).RecordPassCommands(
+            [test](RDGPassCmdEncoder& encoder) { encoder.Dispatch(test.x, test.y, test.z); });
+        EXPECT_TRUE(graph.End());
+        EXPECT_EQ(device->ExecuteRenderGraph(graph), test.valid);
+        device->FlushRHIThread();
+        if (!test.valid)
+        {
+            EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eRange);
+            EXPECT_EQ(rhi->finalizedLists, submissions);
+        }
+    }
+}
+
 TEST_F(RenderCoreTest, UnsupportedCommandsAndExplicitCallbackErrorsPreventSubmission)
 {
     CreateTestShaderProgram(device, "validation");
@@ -4658,7 +4723,7 @@ TEST(RenderCoreUtilities, CommandRollbackDestroysOnlyAppendedCommands)
     EXPECT_EQ(appendedDestroyed, 3u);
 }
 
-TEST(RenderCoreUtilities, EncoderFailureStopsCommandsAndRetainsFirstError)
+TEST_F(RenderCoreTest, EncoderFailureStopsCommandsAndRetainsFirstError)
 {
     for (bool explicitFailure : {false, true})
     {

@@ -1,0 +1,25 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "Graphics/Shared/VoxelGI.h"
+layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
+       local_size_y=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_y_id=ZEN_VOXEL_VOLUME_GROUP_Y_ID,
+       local_size_z=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_z_id=ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
+layout(set=1,binding=0,r32ui) uniform readonly uimage3D voxelOwner;
+layout(set=1,binding=1) uniform sampler3D voxelAlbedo;
+layout(set=1,binding=2) uniform sampler3D voxelNormal;
+layout(set=1,binding=3) uniform sampler3D voxelEmissive;
+layout(set=1,binding=4,std430) writeonly buffer VolumeCapture { uint words[]; };
+void main()
+{
+    ivec3 p=ivec3(gl_GlobalInvocationID);
+    ivec3 size=imageSize(voxelOwner);
+    if(any(greaterThanEqual(p,size))) return;
+    uint index=8u*uint(p.x+size.x*(p.y+size.y*p.z));
+    uint owner=imageLoad(voxelOwner,p).r;
+    words[index]=owner;
+    words[index+1]=packUnorm4x8(texelFetch(voxelAlbedo,p,0));
+    words[index+2]=packUnorm4x8(texelFetch(voxelNormal,p,0));
+    words[index+3]=owner==0xffffffffu ? 0u : 1u;
+    vec4 emission=texelFetch(voxelEmissive,p,0);
+    for(uint channel=0;channel<4;++channel) words[index+4+channel]=floatBitsToUint(emission[channel]);
+}
