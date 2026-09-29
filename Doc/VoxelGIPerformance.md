@@ -1,4 +1,67 @@
-# Key-3 VoxelGI performance, 2026-09-25
+# VoxelGI performance
+
+## RX 7900 XT environment visibility fix, 2026-09-30
+
+At 2560x1377, the configured Sponza starting camera now measures **74.53 FPS**
+versus **42.66 FPS** with the original shaders, a **1.75x** throughput increase.
+The retained change replaces dynamic vector indexing with vector selects in the
+fragment shader's environment-visibility traversal. It preserves base-level voxel
+occupancy, the existing z/y/x tie priority, finite-segment endpoints and occlusion.
+The compute injection and sky shaders retain their original binaries.
+
+Both variants use the same current MSVC Release executable, 256-cubed cone GI,
+geometry voxelization, owner reflectance, six cones, five lights with the animated
+fifth light, a 2048-square G-buffer and 1024-square shadow faces. Each accepted
+trial has 120 warmup and 240 measured frames, fixed 1/60-second light-animation
+increments, validation disabled and VSync disabled. Three accepted throughput
+trials per variant run serially; FPS below is the median of those trials. A
+separate matched pair collects GPU timestamps. Pass intervals overlap and must
+not be summed.
+
+| Measurement | Original shaders | Retained shaders |
+| --- | ---: | ---: |
+| Throughput, median FPS | 42.66 | 74.53 |
+| Throughput, mean frame interval across trials | 23.42 ms | 13.38 ms |
+| Profiled GPU frame, mean | 23.97 ms | 13.76 ms |
+| SceneLighting GPU interval, mean | 18.81 ms | 8.77 ms |
+
+A normal launch with validation and VSync enabled, without a `--mode` override,
+measured 73.62 FPS using the same frame sequence. The original reported 30 FPS
+was not exactly reproduced at the configured camera. The initial benchmark pair
+overlapped native-test warmup and is explicitly excluded; the three accepted
+pairs and separate profile pair are identified in the
+[measurement record](../build/cone-visibility-fix/performance/results.json).
+
+Validation on the retained implementation:
+
+- [32 native tests pass](../build/cone-visibility-fix/final-native.json), including
+  196,680 GPU comparisons against the frozen scalar traversal across 64/128/256
+  grids and all four submission modes. These cover sparse black occluders, a
+  one-cell wall, axis-aligned and nearly parallel rays, boundary ties, outside
+  origins and finite endpoints, with independent known hit/miss cases.
+- [15 frozen image comparisons](../build/cone-visibility-fix/images-final/results.json)
+  are byte-identical for every HDR lighting component and final screenshot:
+  Sponza/room at 64/128/256 with both voxelizers, plus thin/slanted/cutout fixtures.
+- Five new or changed SPIR-V modules validate for Vulkan 1.1. The demo's existing
+  mode-switch, resize/restore and revoxelization
+  [smoke test passes](../build/cone-visibility-fix/smoke-result.json) with
+  synchronization validation enabled using a byte-identical executable alias
+  covered by the existing RTSS exclusion. The ordinary filename produces
+  `PRESENT_AFTER_WRITE` diagnostics after resize in the installed overlay
+  environment; both logs are retained. No global overlay setting was changed.
+- [Window input verification](../build/cone-visibility-fix/keys-result.json)
+  confirms VoxelGI at startup, key/numpad 1 for VoxelGI, key/numpad 2 for voxelization
+  and no key-3 binding. Deferred PBR code and diagnostic `--mode=2` remain available;
+  diagnostic mode IDs stay independent of keyboard bindings.
+
+`Data/engine.cfg` is restored byte for byte. Exact commands, logs, shader snapshots
+and image captures are retained under `build/cone-visibility-fix`. A broader
+experiment that also changed compute traversal was rejected after small HDR
+differences; its approximately 84 FPS result is not the retained implementation.
+These measurements concern this AMD cone workload, separately from the M8
+64/128-cubed directional-GI matrix and historical NVIDIA results below.
+
+## Historical RTX 5080 investigation, 2026-09-25
 
 The reported approximately 40 FPS / 30–40% GPU activity is reproducible in the Debug build after the gap fixes. The same workload in an optimized MSVC build reaches **150–157 FPS and 99% GPU activity**. The immediate bottleneck is CPU work in the unoptimized build, with additional Vulkan validation overhead. No shader, voxel resolution, lighting, shadow, or GI quality change is needed to meet the requested GPU activity target on this machine.
 

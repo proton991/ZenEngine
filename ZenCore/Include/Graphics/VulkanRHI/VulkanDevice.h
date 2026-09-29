@@ -2,6 +2,7 @@
 #include "VulkanHeaders.h"
 #include "Graphics/RHI/RHICommandList.h"
 #include "Utils/UniquePtr.h"
+#include "Utils/Mutex.h"
 #include "Templates/HeapVector.h"
 #include <string>
 
@@ -26,6 +27,7 @@ struct DeviceExtensionFlags
     uint32_t hasSPIRV_14 : 1;
     uint32_t hasDynamicRendering : 1;
     uint32_t hasSwapchainMaintenance1 : 1;
+    uint32_t hasCalibratedTimestamps : 1;
 };
 
 class VulkanDevice
@@ -39,6 +41,11 @@ public:
     void Init();
 
     void Destroy();
+
+    VkResult AcquireGPUTimingPool(VkQueryPool& pool);
+
+    // Call only after all referencing submissions retire, or the recording is discarded.
+    void ReleaseGPUTimingPool(VkQueryPool pool);
 
     VkDevice GetVkHandle() const
     {
@@ -153,6 +160,9 @@ private:
     // logical device
     VkDevice m_device{VK_NULL_HANDLE};
     VkPipelineCache m_pipelineCache{VK_NULL_HANDLE};
+    Mutex m_timingPoolMutex;
+    HeapVector<VkQueryPool> m_timingPools;
+    HeapVector<VkQueryPool> m_freeTimingPools;
 
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};

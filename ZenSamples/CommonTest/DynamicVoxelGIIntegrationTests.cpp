@@ -447,6 +447,7 @@ TEST_P(DynamicVoxelGIIntegrationTest, QueriesMatchIndependentBoxesAndProviderSub
     }
 }
 
+#include "ConeVoxelVisibilityTests.inl"
 #include "DynamicVoxelGIStaticTests.inl"
 #include "DynamicVoxelGIFrameTests.inl"
 #include "DynamicVoxelGIFilterTests.inl"

@@ -151,6 +151,8 @@ TEST_P(DynamicVoxelGIIntegrationTest, CacheInitializationIsBatchedAndFailedPubli
             renderer->BuildRenderGraph(fixture.inputs, provider, StaticLighting(), 1, false));
         const FrameReadback work = CaptureWork(graph, *renderer);
         EXPECT_EQ(work.status.z, frame == 0 || frame == 3 ? GI_CACHE_PENDING : 0);
+        EXPECT_EQ(renderer->GetCacheEpoch(), frame == 3 ? 2 : 1);
+        EXPECT_EQ(renderer->GetVisibilityRevision(), provider.GetInfo().generation);
         EXPECT_EQ(work.counts.x, 0);
         EXPECT_EQ(work.counts.z, frame == 0 || frame == 3 ? GI_CACHE_BATCH : frame == 1 ? 1 : 0);
         EXPECT_EQ(renderer->GetCacheBuildBatches(), frame == 0 ? 1 : frame == 3 ? 3 : 2);

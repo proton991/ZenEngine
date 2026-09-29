@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--output', type=Path, default=ROOT/'build/dynamic-voxel-m5/scenes')
     parser.add_argument('--compare-only', action='store_true')
     parser.add_argument('--quick', action='store_true')
@@ -52,7 +53,7 @@ def main():
                     assert cfg.read_bytes() == last, 'Configuration changed externally'
                     last = original+b'\n'+''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
                     cfg.write_bytes(last); Path(str(prefix)+'.cfg').write_bytes(last)
-                    command = [str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'),'--frames=12','--mode=3',
+                    command = [str(args.executable.resolve()),'--disable-rt','--frames=12','--mode=3',
                         f'--rhi-thread={thread}',f'--async-compute={queue}','--gbuffer-size=256','--width=320','--height=180',
                         '--dynamic-gi-lifecycle',f'--capture-lighting={prefix}']
                     with Path(str(prefix)+'.log').open('w') as log:
@@ -75,8 +76,7 @@ def main():
                 baseline = results[prefix.name+'.initial']
                 for stage in lifecycle.STAGES:
                     current = results[prefix.name+'.'+stage]
-                    assert current['static_generation'] == baseline['static_generation']
-                    assert current['cache_batches'] == baseline['cache_batches']
+                    lifecycle.assert_cache_reused(current, baseline)
     finally:
         assert cfg.read_bytes() == last, 'Configuration changed externally; preserving it'
         cfg.write_bytes(original)

@@ -4503,8 +4503,19 @@ TEST_F(RenderCoreTest, CallbackFailureRollsBackCommandsStateAndMetrics)
     TestBuffer* source = Buffer();
     TestBuffer* target = Buffer();
     RDGExecutor executor(device);
+
     executor.GetMetrics().SetSink({});
+
+    RDGMetricsOptions profilingOptions = executor.GetMetrics().GetOptions();
+
+    profilingOptions.gpuTimings = true;
+
+    profilingOptions.includeTransferNodes = true;
+
+    executor.GetMetrics().Configure(profilingOptions);
+
     RHICommandList* list = RHICommandList::Create(ZEN_NEW() TestContextProxy(rhi->graphics));
+
     list->CopyBuffer(source, target, {0, 4, 4});
     const uint32_t originalCommands     = list->GetCommandCount();
     const RDGMetricsSnapshot oldMetrics = executor.GetMetrics().GetLastSnapshot();
@@ -4544,8 +4555,13 @@ TEST_F(RenderCoreTest, CallbackFailureRollsBackCommandsStateAndMetrics)
     EXPECT_EQ(int64_t(restoredState.pipelineStages), int64_t(oldState.pipelineStages));
     EXPECT_EQ(restoredState.writer.visibleStages, oldState.writer.visibleStages);
     EXPECT_EQ(executor.GetMetrics().GetLastSnapshot().execution, oldMetrics.execution);
+
     EXPECT_EQ(executor.GetMetrics().GetLastSnapshot().graph, oldMetrics.graph);
+
+    EXPECT_EQ(executor.GetMetrics().GetPendingGPUCaptureCount(), 0u);
+
     EXPECT_TRUE(rhi->graphics.bufferCopies.empty());
+
     EXPECT_EQ(target->bytes[0], 0xCD);
     EXPECT_EQ(rhi->finalizedLists, 0u);
 
@@ -6880,6 +6896,88 @@ TEST_F(RenderCoreTest, MetricsCountActualTransitionsAndResetOnRebuild)
               std::string::npos);
 
     device->DestroyBuffer(source);
+
+    device->DestroyBuffer(destination);
+}
+
+TEST_F(RenderCoreTest, GPUProfilingRecordsRealGraphReplayAndUnsupportedBackend)
+{
+    RDGMetrics& metrics = device->GetRDGMetrics();
+
+    RDGMetricsOptions options;
+
+    options.logging.sampleEvery = 1;
+
+    options.logging.minInterval = std::chrono::milliseconds(0);
+
+    options.includeTransferNodes = true;
+
+    options.gpuTimings = true;
+
+    metrics.Configure(options);
+
+    metrics.SetSink({});
+
+    HeapVector<RDGMetricsSnapshot> samples;
+
+    metrics.SetGPUSink([&](const RDGMetricsSnapshot& sample) { samples.push_back(sample); });
+
+    TestBuffer* source = Buffer();
+
+    TestBuffer* destination = Buffer();
+
+    {
+        RenderGraph graph("profile_replay");
+
+        ASSERT_TRUE(graph.Begin());
+
+        graph.AddTransferPass("profile_copy").CopyBuffer(source, destination, {0, 0, 4});
+
+        ASSERT_TRUE(graph.End());
+
+        for (uint64_t frame : {41u, 42u})
+        {
+            metrics.SetFrameIndex(frame);
+
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+        }
+    }
+
+    EXPECT_TRUE(samples.empty());
+
+    EXPECT_EQ(metrics.GetPendingGPUCaptureCount(), 2u);
+
+    metrics.CollectGPUResults();
+
+    ASSERT_EQ(samples.size(), 2u);
+
+    for (size_t index = 0; index < samples.size(); ++index)
+    {
+        EXPECT_EQ(samples[index].frameIndex, 41u + index);
+
+        EXPECT_EQ(samples[index].execution, 1u + index);
+
+        EXPECT_EQ(samples[index].graph, "profile_replay");
+
+        ASSERT_EQ(samples[index].nodes.size(), 1u);
+
+        EXPECT_EQ(samples[index].nodes[0].name, "profile_copy");
+
+        EXPECT_EQ(samples[index].nodes[0].gpuStatus, RHIGPUTimingStatus::eUnsupported);
+
+        EXPECT_EQ(samples[index].nodes[0].gpuUs, 0);
+    }
+
+    EXPECT_EQ(metrics.GetPendingGPUCaptureCount(), 0u);
+
+    metrics.CollectGPUResults();
+
+    EXPECT_EQ(samples.size(), 2u);
+
+    metrics.SetGPUSink({});
+
+    device->DestroyBuffer(source);
+
     device->DestroyBuffer(destination);
 }
 
@@ -9172,8 +9270,8 @@ TEST_F(RenderCoreTest, LogicalUploadsAndMipGenerationRejectMissingOrPartialSourc
 
         RDGResourceManager* resources = graph.GetResourceManager();
         const RDGBuffer source        = scenario == 0 ?
-            resources->ImportBuffer(input, RDGImportContents::eUndefined) :
-            resources->ImportHostWrittenBuffer(input);
+                   resources->ImportBuffer(input, RDGImportContents::eUndefined) :
+                   resources->ImportHostWrittenBuffer(input);
         const RDGTexture uploaded =
             resources->CreateVersion(resources->CreateTexture(LogicalTexture(3)));
         RHIBufferTextureCopyRegion region;
@@ -11833,6 +11931,7 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 }
 
 #include "RHIThreadingTests.inl"
+#include "RHIGPUFrameExecutorTests.inl"
 #include "AsyncUploadTests.inl"
 
 #include "AsyncComputeLifetimeTests.inl"

@@ -1,6 +1,7 @@
 #pragma once
 #include "RHIResource.h"
 #include "RHIShaderParameters.h"
+#include "RHIGPUTiming.h"
 #include "Memory/PoolAllocator.h"
 #include "Memory/LinearAllocator.h"
 #include "Memory/Memory.h"
@@ -180,7 +181,19 @@ class IRHICommandContext : public RefCounted
 public:
     // Optional profiler annotations; no resource or synchronization semantics.
     virtual void RHIBeginDebugLabel(NameID name) {}
+
     virtual void RHIEndDebugLabel() {}
+
+    virtual void RHIBeginGPUTiming(const RHIGPUTimingPtr& result)
+    {
+        if (result != nullptr)
+        {
+            result->Publish(RHIGPUTimingStatus::eUnsupported);
+        }
+    }
+
+    virtual void RHIEndGPUTiming(const RHIGPUTimingPtr& result) {}
+
     // Resource arguments are borrowed through GPU completion (including the base
     // texture of a view). Recorded rendering layouts must survive command execution.
     virtual RHICommandContextType GetContextType() = 0;
@@ -672,6 +685,38 @@ struct RHICommandDebugLabel final : public RHICommand
     }
 };
 
+struct RHICommandGPUTiming final : public RHICommand
+{
+    RHIGPUTimingPtr result;
+    bool begin;
+    bool executed{false};
+
+    RHICommandGPUTiming(const RHIGPUTimingPtr& timing, bool isBegin) :
+        result(timing), begin(isBegin)
+    {}
+
+    ~RHICommandGPUTiming() override
+    {
+        if (begin && !executed && result != nullptr)
+        {
+            result->Publish(RHIGPUTimingStatus::eDiscarded);
+        }
+    }
+
+    void Execute(RHICommandListBase& cmdList) override
+    {
+        if (begin)
+        {
+            cmdList.GetContext()->RHIBeginGPUTiming(result);
+        }
+        else
+        {
+            cmdList.GetContext()->RHIEndGPUTiming(result);
+        }
+        executed = true;
+    }
+};
+
 struct RHICommandBindPipeline final : public RHICommand
 {
     RHIPipelineType pipelineType;
@@ -1082,7 +1127,12 @@ public:
 
     void SetLineWidth(float width);
     void BeginDebugLabel(NameID name);
+
     void EndDebugLabel();
+
+    void BeginGPUTiming(const RHIGPUTimingPtr& result);
+
+    void EndGPUTiming(const RHIGPUTimingPtr& result);
 
     void SetBlendConstants(const Color& color);
 

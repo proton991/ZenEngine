@@ -36,6 +36,12 @@ enum class RHIAPIType
 
 struct RHIGPUInfo
 {
+    // Backend-reported identity. Driver version encoding is vendor-specific.
+    std::array<char, 256> deviceName{};
+    uint32_t vendorID{0};
+    uint32_t deviceID{0};
+    uint32_t apiVersion{0};
+    uint32_t driverVersionRaw{0};
     bool supportGeometryShader{false};
     bool supportFragmentStoresAndAtomics{false};
     size_t uniformBufferAlignment{0};

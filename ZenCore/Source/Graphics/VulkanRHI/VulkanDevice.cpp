@@ -479,6 +479,50 @@ void VulkanDevice::WaitForIdle()
     }
 }
 
+VkResult VulkanDevice::AcquireGPUTimingPool(VkQueryPool& pool)
+{
+    LockAuto lock(&m_timingPoolMutex);
+
+    pool = VK_NULL_HANDLE;
+
+    VkResult result = VK_SUCCESS;
+
+    if (!m_freeTimingPools.empty())
+    {
+        pool = m_freeTimingPools.back();
+
+        m_freeTimingPools.pop_back();
+    }
+    else if (m_timingPools.size() < FVulkanCommandBuffer::kMaxGPUTimingPools)
+    {
+        VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+
+        info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+
+        info.queryCount = 2 * FVulkanCommandBuffer::kMaxGPUTimingScopes;
+
+        result = vkCreateQueryPool(m_device, &info, nullptr, &pool);
+
+        if (result == VK_SUCCESS)
+        {
+            m_timingPools.push_back(pool);
+        }
+    }
+    else
+    {
+        result = VK_ERROR_TOO_MANY_OBJECTS;
+    }
+
+    return result;
+}
+
+void VulkanDevice::ReleaseGPUTimingPool(VkQueryPool pool)
+{
+    LockAuto lock(&m_timingPoolMutex);
+
+    m_freeTimingPools.push_back(pool);
+}
+
 void VulkanDevice::Destroy()
 {
     ZEN_DELETE(m_pGfxQueue);
@@ -499,6 +543,15 @@ void VulkanDevice::Destroy()
 
     if (m_device != VK_NULL_HANDLE)
     {
+        for (VkQueryPool pool : m_timingPools)
+        {
+            vkDestroyQueryPool(m_device, pool, nullptr);
+        }
+
+        m_timingPools.clear();
+
+        m_freeTimingPools.clear();
+
         if (m_pipelineCache != VK_NULL_HANDLE)
         {
             vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
@@ -554,8 +607,8 @@ bool VulkanRHI::PrepareSubmissionDependencies(
         if (result)
         {
             VulkanQueue* producer    = dependency.queue < RHICommandContextType::eMax ?
-                m_pDevice->GetQueue(dependency.queue) :
-                nullptr;
+                   m_pDevice->GetQueue(dependency.queue) :
+                   nullptr;
             const uint64_t submitted = producer != nullptr ? producer->GetLastSubmittedSerial() : 0;
             const uint64_t serial = dependency.serial == RHISubmissionDependency::kLatestSubmitted ?
                 submitted :

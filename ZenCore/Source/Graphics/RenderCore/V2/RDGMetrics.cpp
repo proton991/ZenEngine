@@ -513,7 +513,11 @@ void RDGMetrics::Configure(const RDGMetricsOptions& options)
     }
 
     m_options = options;
+
+    m_options.maxPendingGPUCaptures = std::clamp(options.maxPendingGPUCaptures, 1u, 256u);
+
     m_logger.Configure(options.logging);
+
     m_transferLogger.Configure(options.logging);
     m_options.logging = m_logger.GetOptions();
     m_windowExecutions.fill(0);
@@ -526,6 +530,77 @@ void RDGMetrics::SetSink(Sink sink)
     m_transferLogger.SetSink(std::move(sink));
 }
 
+void RDGMetrics::SetGPUSink(Sink sink)
+{
+    m_gpuState->sink = std::move(sink);
+}
+
+size_t RDGMetrics::GetPendingGPUCaptureCount() const
+{
+    return m_gpuState->pending.size();
+}
+
+const RDGMetricsSnapshot& RDGMetrics::GetLastGPUSnapshot() const
+{
+    return m_gpuState->last;
+}
+
+void RDGMetrics::PublishGPUCapture(PendingGPUCapture capture, bool abandonPending)
+{
+    for (size_t i = 0; i < capture.snapshot.nodes.size(); ++i)
+    {
+        RDGNodeMetrics& node = capture.snapshot.nodes[i];
+
+        const RHIGPUTimingPtr& timing = capture.timings[i];
+
+        node.gpuStatus = timing ? timing->GetStatus() : RHIGPUTimingStatus::eUnsupported;
+
+        if (node.gpuStatus == RHIGPUTimingStatus::ePending && abandonPending)
+        {
+            // Do not mutate a token still owned by native work. This report was dropped;
+            // its resources continue to follow normal GPU completion independently.
+            node.gpuStatus = RHIGPUTimingStatus::eDropped;
+        }
+
+        node.gpuUs =
+            node.gpuStatus == RHIGPUTimingStatus::eAvailable ? timing->GetMicroseconds() : 0.0;
+    }
+
+    m_gpuState->last = std::move(capture.snapshot);
+
+    if (m_gpuState->sink)
+    {
+        m_gpuState->sink(m_gpuState->last);
+    }
+}
+
+void RDGMetrics::CollectGPUResults(bool abandonPending)
+{
+    // Vulkan publishes terminal results during its ordinary completion sweep. This
+    // function only examines host-side results and never touches or waits for the GPU.
+    for (HeapVector<PendingGPUCapture>::iterator it = m_gpuState->pending.begin();
+         it != m_gpuState->pending.end();)
+    {
+        const bool ready =
+            std::all_of(it->timings.begin(), it->timings.end(), [](const RHIGPUTimingPtr& timing) {
+                return !timing || timing->GetStatus() != RHIGPUTimingStatus::ePending;
+            });
+
+        if (ready || abandonPending)
+        {
+            PendingGPUCapture capture = std::move(*it);
+
+            it = m_gpuState->pending.erase(it);
+
+            PublishGPUCapture(std::move(capture), abandonPending);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 void RDGMetrics::RequestCapture(bool transferOnly)
 {
     (transferOnly ? m_transferLogger : m_logger).RequestSample();
@@ -536,7 +611,12 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
     bool result{};
 
     m_capture = false;
+
     m_grouped = false;
+
+    m_gpuTimings.clear();
+
+    m_nodeGPUTiming.Reset();
 
     if (m_options.logging.enabled)
     {
@@ -572,17 +652,27 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
                 m_snapshot.diagnostics                      = std::move(diagnostics);
                 m_snapshot.nodes.clear();
                 m_snapshot.diagnostics.clear();
-                m_snapshot.graph            = graph.m_rdgTag;
-                m_snapshot.transferOnly     = transfer;
-                m_snapshot.execution        = m_executions[stream];
+                m_snapshot.graph        = graph.m_rdgTag;
+                m_snapshot.transferOnly = transfer;
+
+                m_snapshot.execution = m_executions[stream];
+
+                m_snapshot.frameIndex = m_frameIndex;
+
                 m_snapshot.windowExecutions = m_windowExecutions[stream];
-                m_snapshot.windowNodes      = m_windowNodes[stream];
+
+                m_snapshot.windowNodes     = m_windowNodes[stream];
                 m_windowExecutions[stream] = m_windowNodes[stream] = 0;
                 m_snapshot.precompiled                             = precompiled;
                 m_snapshot.validated                               = m_options.validate;
-                m_snapshot.nodeTimingsEnabled                      = m_options.nodeTimings;
-                m_node                                             = {};
-                result                                             = true;
+
+                m_snapshot.nodeTimingsEnabled = m_options.nodeTimings;
+
+                m_snapshot.gpuTimingsEnabled = m_options.gpuTimings;
+
+                m_node = {};
+
+                result = true;
             }
         }
     }
@@ -1050,41 +1140,59 @@ void RDGBarrierValidator::CheckOrder(
 
 void RDGMetrics::BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled)
 {
-    if (!m_capture)
+    m_nodeGPUTiming.Reset();
+
+    if (m_capture)
     {
-        return;
-    }
+        const RDGNodeBase* node = graph.GetNodeBaseById(compiled.nodeId);
 
-    const RDGNodeBase* node        = graph.GetNodeBaseById(compiled.nodeId);
-    const uint32_t order           = m_node.order;
-    m_node                         = {};
-    m_node.id                      = compiled.nodeId;
-    m_node.order                   = order;
-    m_node.type                    = node->type;
-    m_node.queuePreference         = compiled.queuePreference;
-    m_node.asyncComputeEligibility = compiled.asyncComputeEligibility;
-    m_node.plannedQueue            = compiled.plannedQueue;
-    m_node.submissionGroup         = compiled.submissionGroup;
+        const uint32_t order = m_node.order;
 
-    // Only copy labels that will be retained in the bounded report.
-    if ((node->type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
-        m_snapshot.nodes.size() < m_options.maxNodeDetails)
-    {
-        m_node.name = node->tag;
-    }
+        m_node = {};
 
-    ++m_snapshot.passCounts[static_cast<size_t>(node->type)];
+        m_node.id = compiled.nodeId;
 
-    for (uint32_t i = 0; i < node->accessCount; ++i)
-    {
-        RDGAccess const& access = graph.m_accesses[node->accessOffset + i];
-        m_node.reads += access.accessMode == RHIAccessMode::eRead;
-        m_node.writes += access.accessMode == RHIAccessMode::eReadWrite;
-    }
+        m_node.order = order;
 
-    if (m_options.nodeTimings)
-    {
-        m_nodeStart = Clock::now();
+        m_node.type = node->type;
+
+        m_node.queuePreference = compiled.queuePreference;
+
+        m_node.asyncComputeEligibility = compiled.asyncComputeEligibility;
+
+        m_node.plannedQueue = compiled.plannedQueue;
+
+        m_node.submissionGroup = compiled.submissionGroup;
+
+        // Only copy labels that will be retained in the bounded report.
+        if ((node->type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
+            m_snapshot.nodes.size() < m_options.maxNodeDetails)
+        {
+            m_node.name = node->tag;
+
+            if (m_options.gpuTimings)
+            {
+                m_nodeGPUTiming = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+
+                m_node.gpuStatus = RHIGPUTimingStatus::ePending;
+            }
+        }
+
+        ++m_snapshot.passCounts[static_cast<size_t>(node->type)];
+
+        for (uint32_t i = 0; i < node->accessCount; ++i)
+        {
+            RDGAccess const& access = graph.m_accesses[node->accessOffset + i];
+
+            m_node.reads += access.accessMode == RHIAccessMode::eRead;
+
+            m_node.writes += access.accessMode == RHIAccessMode::eReadWrite;
+        }
+
+        if (m_options.nodeTimings)
+        {
+            m_nodeStart = Clock::now();
+        }
     }
 }
 
@@ -1236,40 +1344,54 @@ void RDGMetrics::ObserveBarriers(RenderGraph& graph,
 
 void RDGMetrics::EndNode()
 {
-    if (!m_capture)
+    if (m_capture)
     {
-        return;
-    }
+        if (m_options.nodeTimings)
+        {
+            m_node.recordCPUUs = Microseconds(m_nodeStart);
+        }
 
-    if (m_options.nodeTimings)
-    {
-        m_node.recordCPUUs = Microseconds(m_nodeStart);
-    }
+        RDGNodeMetrics& total = m_snapshot.totals;
 
-    RDGNodeMetrics& total = m_snapshot.totals;
-    total.reads += m_node.reads;
-    total.writes += m_node.writes;
-    total.initialResources += m_node.initialResources;
-    total.bufferTransitions += m_node.bufferTransitions;
-    total.textureTransitions += m_node.textureTransitions;
-    total.internalMemoryTransitions += m_node.internalMemoryTransitions;
-    total.internalTextureTransitions += m_node.internalTextureTransitions;
-    total.barrierCalls += m_node.barrierCalls;
-    total.srcStages |= m_node.srcStages;
-    total.dstStages |= m_node.dstStages;
-    total.recordCPUUs += m_node.recordCPUUs;
+        total.reads += m_node.reads;
 
-    if ((m_node.type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
-        m_snapshot.nodes.size() < m_options.maxNodeDetails)
-    {
-        m_snapshot.nodes.push_back(m_node);
-    }
-    else
-    {
-        ++m_snapshot.omittedNodes;
-    }
+        total.writes += m_node.writes;
 
-    ++m_node.order;
+        total.initialResources += m_node.initialResources;
+
+        total.bufferTransitions += m_node.bufferTransitions;
+
+        total.textureTransitions += m_node.textureTransitions;
+
+        total.internalMemoryTransitions += m_node.internalMemoryTransitions;
+
+        total.internalTextureTransitions += m_node.internalTextureTransitions;
+
+        total.barrierCalls += m_node.barrierCalls;
+
+        total.srcStages |= m_node.srcStages;
+
+        total.dstStages |= m_node.dstStages;
+
+        total.recordCPUUs += m_node.recordCPUUs;
+
+        if ((m_node.type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
+            m_snapshot.nodes.size() < m_options.maxNodeDetails)
+        {
+            m_snapshot.nodes.push_back(m_node);
+
+            if (m_options.gpuTimings)
+            {
+                m_gpuTimings.push_back(m_nodeGPUTiming);
+            }
+        }
+        else
+        {
+            ++m_snapshot.omittedNodes;
+        }
+
+        ++m_node.order;
+    }
 }
 
 void RDGMetrics::End(double submissionCPUUs)
@@ -1280,7 +1402,22 @@ void RDGMetrics::End(double submissionCPUUs)
     {
         m_snapshot.executeCPUUs    = std::max(0.0, Microseconds(m_executeStart) - submissionCPUUs);
         m_snapshot.submissionCPUUs = submissionCPUUs;
+
         (m_snapshot.transferOnly ? m_transferLogger : m_logger).Publish(m_snapshot);
+
+        if (m_snapshot.gpuTimingsEnabled)
+        {
+            while (m_gpuState->pending.size() >= m_options.maxPendingGPUCaptures)
+            {
+                PendingGPUCapture oldest = std::move(m_gpuState->pending.front());
+
+                m_gpuState->pending.pop_front();
+
+                PublishGPUCapture(std::move(oldest), true);
+            }
+
+            m_gpuState->pending.push_back({m_snapshot, std::move(m_gpuTimings)});
+        }
     }
 }
 
@@ -1289,10 +1426,10 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
     const RDGNodeMetrics& t = sample.totals;
     std::string text        = fmt::format(
         "[RDG metrics] graph=\"{}\" stream={} execution={} window(executions={},nodes={}) "
-        "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
-        "edges={},dependency_hazards={},reordered={}) "
-        "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
-        "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
+               "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
+               "edges={},dependency_hazards={},reordered={}) "
+               "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
+               "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
         Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution,
         sample.windowExecutions, sample.windowNodes, sample.nodeCount, sample.passCounts[1],
         sample.passCounts[2], sample.passCounts[3], sample.resources, sample.importedResources,
@@ -1378,6 +1515,14 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
             node.initialResources, node.internalMemoryTransitions, node.internalTextureTransitions,
             node.srcStages, node.dstStages,
             sample.nodeTimingsEnabled ? fmt::format("{:.1f}", node.recordCPUUs) : "disabled");
+
+        if (sample.gpuTimingsEnabled)
+        {
+            text += fmt::format(" gpu_status={} gpu_us={}", RHIGPUTimingStatusName(node.gpuStatus),
+                                node.gpuStatus == RHIGPUTimingStatus::eAvailable ?
+                                    fmt::format("{:.3f}", node.gpuUs) :
+                                    "unavailable");
+        }
     }
 
     for (const RDGMetricDiagnostic& issue : sample.diagnostics)

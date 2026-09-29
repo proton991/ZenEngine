@@ -1,6 +1,6 @@
 # Dynamic voxel-based GI implementation plan
 
-Date: 2026-09-22; implementation status updated 2026-09-25. **V0, V1 and M0-M7 passed, including the locked M7 quality matrix:** calibrated voxelization is recorded in [VoxelizationCalibration.md](VoxelizationCalibration.md), deterministic averaged diffuse reflectance in [VoxelReflectanceVerification.md](VoxelReflectanceVerification.md), and the reference audit/HDR baseline in [DynamicVoxelGIM0Verification.md](DynamicVoxelGIM0Verification.md). Owner remains the compatibility default; averaging is selectable. [M1 queries](DynamicVoxelGIM1Verification.md), [M2 geometry/classes](DynamicVoxelGIM2Verification.md), [M3 static GI](DynamicVoxelGIM3Verification.md), [M4 dynamic visibility](DynamicVoxelGIM4Verification.md), [M5 filtering/history](DynamicVoxelGIM5Verification.md), [M6 lighting/materials](DynamicVoxelGIM6Verification.md), and [M7 functional acceptance](DynamicVoxelGIM7Verification.md) passed. **M8 is in progress:** [current measurements and validation boundaries](DynamicVoxelGIM8Profiling.md#current-work-at-the-stop-point-2026-09-25) cover receiver selection, compact caching and parallel gathering. The latest static-scene regression, final validation, remaining experiments and promotion decision are open; see the [M8 unfinished-work checklist](#m8-unfinished-work-at-the-stop-point-2026-09-25). Explicit directional GI is verified at 64³/128³ with static/dynamic geometry, temporal/spatial filtering, zero through 32 analytic lights, environment/emissive transport, and method switching. It uses ordinary compute DDA for bounce/environment visibility, existing mesh shadow maps for analytic sender visibility, RT features disabled, 128 rays per face and a checked memory budget. The [M7 quality corrections](DynamicVoxelGIM7QualityFixVerification.md) pass all 56 image profiles under unchanged limits. At 256³, only budget rejection/cone fallback is verified. Unsupported profiles and `auto` use cone tracing when it fits the configured GI cap; exhausted caps or incomplete voxel coverage use PBR. Runtime material/opacity updates, fixed bounds and explicit bounds rebuilds are implemented; see the [gap follow-up](DynamicVoxelGIGapVerification.md). M8 and hardware RT remain unfinished.
+Date: 2026-09-22; implementation status and M8 phases updated 2026-09-29. **V0, V1 and M0-M7 passed, including the locked M7 quality matrix:** calibrated voxelization is recorded in [VoxelizationCalibration.md](VoxelizationCalibration.md), deterministic averaged diffuse reflectance in [VoxelReflectanceVerification.md](VoxelReflectanceVerification.md), and the reference audit/HDR baseline in [DynamicVoxelGIM0Verification.md](DynamicVoxelGIM0Verification.md). Owner remains the compatibility default; averaging is selectable. [M1 queries](DynamicVoxelGIM1Verification.md), [M2 geometry/classes](DynamicVoxelGIM2Verification.md), [M3 static GI](DynamicVoxelGIM3Verification.md), [M4 dynamic visibility](DynamicVoxelGIM4Verification.md), [M5 filtering/history](DynamicVoxelGIM5Verification.md), [M6 lighting/materials](DynamicVoxelGIM6Verification.md), and [M7 functional acceptance](DynamicVoxelGIM7Verification.md) passed. **M8.0-M8.9 are complete for the stated AMD scope, with non-promotion:** the [final verification](DynamicVoxelGIM8FinalVerification.md) and [1080p measurements](DynamicVoxelGIM8Measurements.md) cover the provider boundary, completed-readiness telemetry, runner, four rejected optimization experiments, quality presets, 24-cell matrix and final validation. `auto` remains cone. The isolated planar error is explicitly accepted without changing its bound; NVIDIA regression reproduction and the RTX 5080 target remain open hardware/artifact gates. See the [M8 execution phases](#m8-execution-phases). Explicit directional GI is verified at 64³/128³ with static/dynamic geometry, temporal/spatial filtering, zero through 32 analytic lights, environment/emissive transport, and method switching. It uses ordinary compute DDA for bounce/environment visibility, existing mesh shadow maps for analytic sender visibility, RT features disabled, 128 rays per face and a checked memory budget. The [M7 quality corrections](DynamicVoxelGIM7QualityFixVerification.md) pass all 56 image profiles under unchanged limits. At 256³, only budget rejection/cone fallback is verified. Unsupported profiles and `auto` use cone tracing when it fits the configured GI cap; exhausted caps or incomplete voxel coverage use PBR. Runtime material/opacity updates, fixed bounds and explicit bounds rebuilds are implemented; see the [gap follow-up](DynamicVoxelGIGapVerification.md). Hardware RT remains unfinished; M8 does not close untested hardware-specific gates.
 
 Implement the algorithm from **Dynamic Voxel-Based Global Illumination**, Alejandro Cosin Ayerbe, Pierre Poulin, and Gustavo Patow, Computer Graphics Forum 44(1), e15262 (2025; first published online in 2024), as the new GI method for ZenEngine mode 3. The paper uses a voxel irradiance cache whose visibility is computed against triangle geometry. Deliver its irradiance/cache pipeline first with replaceable compute-based voxel visibility, then add triangle queries when RT support reaches RHI and RenderCore. The first stage is an explicit approximation; the later triangle backend completes the paper's geometry-visibility requirement. Neither stage is voxel cone tracing or the reflective-shadow-map algorithm from the separate 2011 paper.
 
@@ -414,7 +414,7 @@ For unavailable providers, incomplete coverage, or pre-allocation buffer-limit/b
 
 Each milestone ends with a build and the checks for the affected contracts. Complete functional implementation and correctness acceptance before starting GPU profiling, profiling infrastructure, or optimization. M8 and H2 are the final profiling/performance milestones of their respective deliveries. File names for new components below are proposed; use existing local naming conventions during implementation.
 
-**The dependency order is V0 (passed) -> V1 (passed) -> M0-M7 functionality/correctness (passed) -> M8 profiling/performance -> deferred H0-H1 functionality/correctness -> H2 profiling/performance.** M8 is next; M8 and H0-H2 remain unfinished. Stage A is M0-M8 and does not depend on H0-H2, but it depends on both verified voxelization prerequisites. Stage B remains deferred. The optional software triangle BVH is not on either critical path.
+**The dependency order is V0 (passed) -> V1 (passed) -> M0-M7 functionality/correctness (passed) -> M8 profiling/performance -> deferred H0-H1 functionality/correctness -> H2 profiling/performance.** M8 is complete for the stated AMD scope with non-promotion; H0-H2 remain unfinished. Stage A is M0-M8 and does not depend on H0-H2, but it depends on both verified voxelization prerequisites. Stage B remains deferred. The optional software triangle BVH is not on either critical path.
 
 ### V0. Mandatory: calibrate and correct current voxelization
 
@@ -523,7 +523,7 @@ Exit: all existing lighting capabilities have explicit passing cases; zero analy
 
 ### M7. Complete Stage A functionality and correctness
 
-**Status: functionality and locked quality gates passed.** Stage A compute visibility has passing functional tests at 64³/128³, with budget-gated 256³ rejection/fallback. The [M7 quality validation](DynamicVoxelGIM7QualityVerification.md) now supplies independent triangle image references, locked tolerances, coverage/leakage measurements, stationary variance and light-removal decay. The original run exposed eight Sponza failures. The [quality corrections](DynamicVoxelGIM7QualityFixVerification.md) now pass 56/56 image profiles, all four stationary sequences, 132 native GI tests, 12 mesh-light controls and 11 CPU-reference tests under unchanged limits. Sponza raw relative RMSE is now 52.22% at 64³ and 45.00% at 128³. Automatic promotion still requires M8 performance acceptance. [M7 verification](DynamicVoxelGIM7Verification.md) records RT-disabled execution, wider-grid/default/cache fixes, method switching, transition preflight, triangle-reference error and the completed regression matrix. The known V1 padded-grid material comparison limit remains documented; the prescribed fixed-grid checks pass. The [follow-up gap verification](DynamicVoxelGIGapVerification.md) adds checked cone/PBR budget fallback, runtime material and opacity publication, stable visibility caching across surface-only edits, and fixed-grid exit/return/explicit-rebuild behavior. This is approximate voxel visibility, not hardware triangle reproduction. M8 remains in progress; its earlier timings must be repeated after the gather changes.
+**Status: functionality and locked quality gates passed.** Stage A compute visibility has passing functional tests at 64³/128³, with budget-gated 256³ rejection/fallback. The [M7 quality validation](DynamicVoxelGIM7QualityVerification.md) now supplies independent triangle image references, locked tolerances, coverage/leakage measurements, stationary variance and light-removal decay. The original run exposed eight Sponza failures. The [quality corrections](DynamicVoxelGIM7QualityFixVerification.md) now pass 56/56 image profiles, all four stationary sequences, 132 native GI tests, 12 mesh-light controls and 11 CPU-reference tests under unchanged limits. Sponza raw relative RMSE is now 52.22% at 64³ and 45.00% at 128³. M8 subsequently retained explicit selection under its non-promotion decision. [M7 verification](DynamicVoxelGIM7Verification.md) records RT-disabled execution, wider-grid/default/cache fixes, method switching, transition preflight, triangle-reference error and the completed regression matrix. The known V1 padded-grid material comparison limit remains documented; the prescribed fixed-grid checks pass. The [follow-up gap verification](DynamicVoxelGIGapVerification.md) adds checked cone/PBR budget fallback, runtime material and opacity publication, stable visibility caching across surface-only edits, and fixed-grid exit/return/explicit-rebuild behavior. This is approximate voxel visibility, not hardware triangle reproduction. M8 repeated final-candidate quality and timing validation; see the [final M8 report](DynamicVoxelGIM8FinalVerification.md).
 
 - Complete the functional/correctness test matrix below and review the implementation against the paper contracts, engine adaptations, and current RHI lifetime rules.
 - Exercise 64/128 grids and budget-gated 256; verify per-buffer size/range/indexing limits, direct/indirect dispatch-count limits, and pre-allocation budget rejection while an older generation remains in flight. Include cone fallback transition estimates. Native allocation-failure recovery tests are deferred.
@@ -533,6 +533,13 @@ Exit: all existing lighting capabilities have explicit passing cases; zero analy
 Exit: the Stage A functional checklist in Section 10 is satisfied. GPU profiling infrastructure, timing measurements, and performance targets do not gate this milestone. The prototype single-light milestone alone is not functional completion, and Stage A is not labeled full triangle-visibility reproduction of the paper.
 
 ### M8. Final Stage A milestone: GPU profiling and performance
+
+Portable profiling infrastructure is tracked in
+[EngineProfilingImplementationPlan.md](EngineProfilingImplementationPlan.md).
+It adds engine-owned RDG CPU/GPU pass capture and reproducible exports so M8 can be
+measured across vendors. M8.1 adds an explicitly scoped GPU frame interval; overlapping
+per-pass intervals are never summed. The final AMD performance matrix and non-promotion
+decision are complete; NVIDIA reproduction and the RTX 5080 target remain open.
 
 **Key-3 performance follow-up (2026-09-25):** the current 256³ cone configuration reproduces approximately 42 FPS / 31% GPU activity in Debug and reaches 150–157 FPS / 99% in an isolated optimized build, with identical shader binaries and quality settings. A dedicated launcher, warmed benchmark runner and post-gap-fix cone GPU trace are recorded in [VoxelGIPerformance.md](VoxelGIPerformance.md). This addresses the reported interactive CPU bottleneck; directional M8 acceptance remains open.
 
@@ -546,16 +553,195 @@ Exit: the Stage A functional checklist in Section 10 is satisfied. GPU profiling
 
 Exit: the final Stage A profiling checklist in Section 10 is satisfied and the promotion decision is documented. Do not infer speed from legal workgroup limits or transfer CPU submission timings into GPU claims.
 
-#### M8 unfinished work at the stop point (2026-09-25)
+#### M8 execution phases
 
-The following items are unfinished, not additional completed optimizations. Artifacts are under `build/dynamic-voxel-m8-current-20260925/`. Hardware triangle queries remain H0-H2; a general runtime settings/UI layer is separate work.
+**Status updated 2026-09-29:** M8.0-M8.9 are complete for the stated AMD scope, with `auto` retained on cone. See [final acceptance](DynamicVoxelGIM8FinalVerification.md) and [execution evidence](DynamicVoxelGIM8Execution.md). The historical
+measurements above are evidence for choosing experiments, not final acceptance of the
+current implementation. Old artifacts are under `build/dynamic-voxel-m8-current-20260925/`;
+profiler foundation evidence is under `build/engine-profile-validation/`, and final M8 artifacts are under `build/dynamic-voxel-m8-final/`.
 
-- [ ] **Resolve the latest static-scene regression.** Reproduce the 168.8 -> 153.2 FPS and 89.2% -> 63.9% GPU-activity change under matched settings, then select a gather/dispatch strategy that retains the moving-scene improvement without the static regression. Compare inline/threaded submission and optional async compute on the final implementation. Check presentation/frame pacing as a possible contributor, not an established cause; a VSync benchmark toggle has not been implemented. GPU activity is not SM occupancy and must be assessed alongside FPS, GPU median/p95 and frame pacing.
-- [ ] **Complete the final profiling matrix.** Existing captures cover cold startup, static Sponza, animated lights, moving geometry, traversal samples and VMA lifetime peaks, but several predate parallel gathering. Repeat affected comparisons on the selected final implementation: 64/128 cubed, compute/geometry producers, static/moving/light-update workloads, and matched cone baselines. Publish cold initialization/cache readiness separately from steady-state median/p95 and per-pass costs. Rerun traversal sampling after the new deterministic receiver sorting; retain query/ray/visited-cell counts and fallback flags. VMA peaks measure allocator commitment, excluding driver/private/swapchain allocations; do not label them total physical residency. Hardware-event buffer overflow and stale/repeated exported cold-pass ranges must not enter accepted aggregates.
-- [ ] **Finish isolated optimization experiments.** Only the 64-thread parallel gather is implemented/measured; benchmark legal 32/64/128-thread variants independently of rays per face. Active-receiver scratch clearing/compaction is not implemented. A tiled-filter shader exists only under the experiment artifacts and has not been installed, built or measured. Evaluate these candidates individually with correctness checks, then record an evidence-backed adoption/rejection decision; do not count prototypes or unrun variants as delivered speedups.
-- [ ] **Finalize sample-quality presets.** Startup 32/64/128-ray controls are implemented, but 128 remains the reference/default. Before parallel gathering, 128 rays passed all 56 image profiles plus four stationary summaries; 64 rays failed 20 profiles at 128 cubed, and the partial 32-ray run failed 11 of 14 recorded cases. These failures are not accepted quality presets. Complete any lower-sample evaluation needed for a proposed preset, keep the locked tolerances, and publish explicit quality/performance limits rather than silently reducing samples. No live sample-count/cache-layout reconfiguration API is implemented.
-- [ ] **Validate the final code and shaders.** The earlier compact-cache version passed 136 native GI tests, the complete 56-profile quality matrix and stationary checks, with 68/68 captured static-face sequences byte-identical to accepted M7. After parallel gathering, only 16 focused native tests and 484 RenderCore tests (seven disabled) have passed. Rerun the full native GI suite and quality/stationary matrix on the final changes with synchronization validation, both producers and the existing submission modes; cover changed dispatch/cache/resource-budget behavior and affected lifecycle/switching cases. Complete changed-code formatting/review, build and shader validation. Earlier M7/cache passes do not certify the latest gather implementation.
-- [ ] **Publish the final preset and promotion decision.** Consolidate comparable measurements, memory scope, sample/workgroup/filter/submission choices and remaining limitations in the M8 report and example settings. Decide whether DDA meets the quality/resource/frame-time gates or remains an explicit experimental method; document the decision before changing automatic selection. All three Section 10 M8 acceptance boxes remain open. Current `auto` is cone; `dynamic_voxel` must be requested explicitly, with DDA selected by its `auto`/`voxel_dda` backend setting. Cone ignores that backend setting.
+| Phase | Status | Deliverable | Depends on |
+| --- | --- | --- | --- |
+| M8.0 Portable profiler foundation | Complete on AMD | Validated per-pass CPU/GPU captures and exports | M7 |
+| M8.1 Whole-frame GPU timing | Complete on AMD | Defined and verified mode-3 GPU duration | M8.0 |
+| M8.2 Cache readiness and workload diagnostics | Complete (AMD) | Reliable initialization-to-ready and fallback evidence | M8.0 |
+| M8.3 Reproducible benchmark runner | Complete | Repeatable captures with automatic acceptance checks | M8.1, M8.2 |
+| M8.4 Baseline and regression diagnosis | Complete; NVIDIA reproduction gap retained | Matched baselines and evidence identifying the bottleneck | M8.3 |
+| M8.5 Isolated optimization experiments | Complete; all alternatives rejected | Adopt/reject decisions for individual candidates | M8.4 |
+| M8.6 Sample-quality presets | Complete; 128 rays retained | Explicit quality/performance choices | M8.5 |
+| M8.7 Final performance matrix | Complete on AMD; NVIDIA target open | Complete measurements on the frozen candidate | M8.6 |
+| M8.8 Final correctness validation | Complete with explicit planar exception | Current-code quality, native, and lifecycle evidence | M8.6 |
+| M8.9 Publish and decide promotion | Complete; non-promotion | Final report, settings, and automatic-selection decision | M8.7, M8.8 |
+
+Execute one bounded change or experiment at a time. M8.1 and M8.2 can be developed
+independently; runner scaffolding can start alongside them. M8.7 and M8.8 use the same
+frozen candidate, with performance and validation captures run separately. Do not run
+GPU benchmarks concurrently or let multiple runners modify `Data/engine.cfg`. If final
+validation requires a code or preset change, return to the affected phase and repeat
+its dependent measurements. Hardware triangle queries remain H0-H2; a profiler UI and
+general live settings layer are outside M8.
+
+#### M8.0 Portable profiler foundation
+
+- [x] Add opt-in RDG pass CPU/GPU timing, asynchronous result collection, bounded storage,
+  named unavailable statuses, and frame/graph/pass/queue identity.
+- [x] Export CSV/JSON, median/p95, input/configuration identity, and cold/warmup phases;
+  provide `--profile=PREFIX` and `--vsync=0|1`.
+- [x] Verify on AMD with unit/native tests and profiled/unprofiled image comparisons.
+
+Exit: satisfied by [EngineProfilingImplementationPlan.md](EngineProfilingImplementationPlan.md).
+[EngineProfiling.md](EngineProfiling.md) records use and limits. NVIDIA/MoltenVK validation
+is still a platform followup; dedicated transfer-only queues currently report unsupported.
+This phase does not certify whole-frame GPU duration or GI cache readiness.
+
+#### M8.1 Whole-frame GPU timing
+
+- [x] Define mode-3 timing boundaries, including participating graphics/compute work,
+  and state whether presentation/copies are included. Keep CPU frame wall time separate.
+- [x] Add a measurement path across the existing submissions and dependencies without
+  inserting waits that serialize rendering. Never derive frame duration by summing pass
+  intervals. Preserve nonblocking collection, bounded lifetime, and explicit unsupported status.
+- [x] Verify inline/threaded execution, shared/dedicated queues, replay, rejected/partial
+  submissions, and profiling-disabled behavior; cross-check a controlled workload.
+
+Exit: raw frame GPU samples and median/p95 have a documented scope and validated ownership.
+If a platform needs an external trace, identify that path explicitly; CPU time is not a substitute.
+Deliverable: profiler tests, schema/documentation updates, and a short measurement report.
+
+**Verified on AMD Radeon RX 7900 XT, 2026-09-29:**
+[M8.1 verification](DynamicVoxelGIM81Verification.md) records native frame intervals,
+optional common timestamp-domain support, schema-2 exports, submission-failure and
+counter-wrap tests, and all four inline/threaded + async-compute combinations. The
+graphics/compute interval includes the swapchain copy, excludes dedicated transfer-only
+buffers, and does not directly measure host acquire/present calls or display latency.
+NVIDIA/MoltenVK validation remains a platform followup. These Debug correctness captures
+do not close M8's optimized performance, readiness, quality, or promotion gates.
+
+#### M8.2 Cache readiness and workload diagnostics
+
+- [x] Correlate GPU cache-ready, receiver/work counts, unknown/overflow conditions, and
+  effective fallback with application frames. Submitted cache-batch counts alone do not prove readiness.
+- [x] Identify initialization-to-first-ready separately from warmup, temporal convergence,
+  and accepted steady-state samples. Record revisions so rebuilds start a new initialization interval.
+- [x] Associate existing traversal captures and VMA peak-commitment diagnostics with the
+  same workload/configuration. Keep intrusive diagnostic readbacks outside timed runs;
+  any in-run telemetry must use completion-aware asynchronous readback.
+
+Exit: captures demonstrate an initialization interval, a ready interval, and an explicit
+fallback case without silently timing fallback as DDA. Deliverable: readiness/workload
+records and checks. VMA commitment excludes driver/private/swapchain allocations and is not residency.
+
+#### M8.3 Reproducible benchmark runner
+
+- [x] Adapt the Nsight-specific workflow or add a runner using the engine's `--profile`
+  outputs. Allow an explicit executable and asset/config paths, optimized builds,
+  warmup/measurement lengths, repeated trials, and controlled thread/async/VSync settings.
+- [x] Write a fresh run manifest with binary/shader/config identities, asset identity
+  and hash scope, GPU/driver, camera, viewport/G-buffer/shadows, method/backend, rays,
+  cache layout, workgroup size, and filter settings. Prevent partial reruns from mixing
+  different implementations. Restore original config bytes on exit/failure if a runner owns the config.
+- [x] Validate exports, readiness/fallback, sample completeness, and required queue support.
+  Pair instrumented pass analysis with uninstrumented throughput runs. Reject missing,
+  stale, dropped, or repeated samples; report unsupported measurement coverage explicitly.
+
+Exit: a small DDA/cone pair can be reproduced and summarized automatically, with cold,
+steady GPU, CPU/frame-pacing, memory, and traversal evidence kept distinct. Deliverable:
+runner, failure-path tests, and manifests. Fixed animation steps do not freeze elapsed GI history time.
+
+#### M8.4 Baseline and regression diagnosis
+
+- [x] Freeze a 128-ray reference, selected cache layout, scene/camera, and quality settings.
+  Establish current DDA and cone baselines before changing shaders or scheduling.
+- [x] Compare static Sponza and a moving fixture while varying one of inline/threaded
+  execution, async compute, or VSync at a time. Use pass timings, frame GPU duration,
+  CPU submission/backpressure, and frame pacing to identify the regression's contributor.
+- [x] Reproduce the historical 168.8 -> 153.2 FPS / 89.2% -> 63.9% activity change using
+  matched old/new implementations on the same NVIDIA GPU. Establish AMD comparisons
+  separately; record unavailable historical builds/hardware as an open reproduction item.
+
+Exit: comparable baseline artifacts and an evidence-backed diagnosis or clearly isolated
+remaining reproduction gap. GPU activity is not occupancy and is not the sole acceptance
+metric. An AMD-only result cannot close the NVIDIA regression or satisfy the RTX 5080-specific target.
+
+#### M8.5 Isolated optimization experiments
+
+Hold rays per face at 128 and keep quality settings fixed throughout this phase.
+
+- [x] **M8.5a Gather/dispatch:** compare legal 32/64/128-thread workgroups independently
+  of ray count, including any dispatch/scheduling correction identified in M8.4. Check
+  static and moving scenes so a local gain does not hide the other regression.
+- [x] **M8.5b Active scratch:** prototype active-receiver clearing/compaction; verify
+  empty/changing active sets, indirect dispatch coverage, capacity limits, and stale-data exclusion.
+- [x] **M8.5c Filtering:** integrate/build a bounded tiled-filter candidate for comparison;
+  verify boundaries, padding, and spatial/temporal toggles against the existing filter.
+- [x] Preserve compact/decoded cell/class/distance identity and size/range/transition
+  budgets wherever an experiment affects cache layout or receiver indexing.
+
+Exit: each candidate has a measured adopt/reject decision and affected correctness checks.
+Only adopted, validated changes enter the candidate. The existing 64-thread gather and
+artifact-only tiled prototype are starting points, not evidence that the other variants passed.
+Deliverable: one experiment record per candidate, including rejected candidates.
+
+#### M8.6 Sample-quality presets
+
+- [x] Reconfirm the 128-ray reference on the selected implementation. Evaluate 32/64-ray
+  alternatives separately from workgroup tuning using locked image, leakage, and temporal gates.
+- [x] Record quality/performance limits for each proposed preset, including resolution,
+  voxelizer, cache layout, filters/neighborhood, and memory budget. Compare compact with
+  the decoded reference where relevant; no silent ray-count reduction is allowed.
+- [x] Select the reference/default and any supported optional presets. Retaining only
+  128 rays is a valid outcome; live ray-count/cache-layout reconfiguration is not required.
+
+Exit: a candidate/preset set is frozen with explicit accepted or rejected alternatives.
+Earlier 64-ray failures (20 profiles at 128 cubed) and partial 32-ray failures (11/14)
+remain failures unless fresh evidence passes the existing gates. Deliverable: preset decision table.
+
+#### M8.7 Final performance matrix
+
+- [x] Run the frozen candidate at 64/128 cubed with compute/geometry voxelizers, static,
+  moving-geometry, and light-update workloads, plus matched cone baselines. Include
+  selected presets and the thread/queue comparisons affected by adopted changes.
+- [x] Report initialization-to-ready separately from steady-state GPU/CPU median and
+  p95, per-pass costs, VMA lifetime peaks, and logical resource budgets. Repeat traversal
+  sampling after receiver sorting/gather changes, retaining query/ray/visited-cell counts and fallback flags.
+- [x] Retain raw samples, repeated-run variation, manifests, and explicit measurement
+  gaps. GPU event overflow and stale/repeated exported ranges cannot enter accepted aggregates.
+
+Exit: every required matrix cell has valid evidence on the final candidate; missing or
+unsupported cells remain visible and open. Deliverable: consolidated performance tables
+and artifact index, with AMD results separated from NVIDIA targets/historical results.
+
+#### M8.8 Final correctness validation
+
+- [x] Run the full native GI suite, the 56-profile image matrix and stationary sequences
+  on the final candidate; include both producers and affected submission modes. Preserve
+  V0/V1 coverage/material contracts, compact/decoded equivalence, and locked quality limits.
+- [x] Cover dispatch/cache/budget boundaries, graph/resource lifetimes, filtering,
+  material/lighting updates, method switching, and cone/PBR fallback. Build, validate
+  SPIR-V, run synchronization validation, and review/format changed C++ and shaders.
+- [x] Use fresh or identity-checked quality results; earlier M7/cache reports do not
+  certify later gather changes. Record the user-accepted isolated planar-irradiance
+  difference (`0.002159` versus `0.002`) as nonblocking without relabeling its test as
+  passed or widening unrelated tolerances.
+
+Exit: the final revision has complete correctness evidence with explicit exceptions;
+any further fix invalidates the affected measurements and requires their rerun.
+Deliverable: final-code verification report linked to the same candidate as M8.7.
+
+#### M8.9 Publish and decide promotion
+
+- [x] Consolidate M8.4-M8.8 evidence, selected sample/workgroup/cache/filter/submission
+  choices, memory accounting, supported hardware, and remaining limits in the M8 report.
+- [x] Decide whether DDA meets the quality/resource/frame-time gates or remains an
+  explicit experimental method. Resolve or retain the named NVIDIA reproduction gap;
+  do not present missing hardware results as a pass or silently change the target hardware.
+- [x] Update example settings and guidance. Change automatic selection only for
+  profiles whose promotion gates pass, then verify selection/fallback behavior.
+
+Exit: the Section 10 M8 checklist is satisfied for the stated acceptance scope, with
+unmet hardware-specific gates still identified. A documented non-promotion is valid;
+performance speedups are not guaranteed. The completed AMD decision retains `auto` on cone and
+`dynamic_voxel` as explicit. Deliverable: final report, preset guidance, and promotion decision.
 
 ### H0. Deferred: add hardware triangle queries through RHI/RDG
 
@@ -590,13 +776,13 @@ Proposed settings, finalized together with parsing and runtime validation:
 
 | Setting | Initial behavior |
 | --- | --- |
-| `voxel_gi_method=auto\|cone\|dynamic_voxel` | Keep `auto` on legacy until M8; report the resolved method |
+| `voxel_gi_method=auto\|cone\|dynamic_voxel` | M8 retains `auto` on cone; report the resolved method |
 | `dynamic_voxel_gi_query_backend=auto\|voxel_dda\|hardware_rt` | Stage A `auto` selects DDA; explicit `hardware_rt` becomes available after H0-H1 functional acceptance, with automatic preference considered in H2; report unsupported explicit requests and actual fallback |
 | `voxel_resolution` | Shared mode-1/mode-3 grid; 64 default for the new method when unspecified; explicit requests budget-checked |
-| `dynamic_voxel_gi_rays_per_face` | Startup 32/64/128 supported; 128 remains the reference/default. Lower-sample quality/performance acceptance is unfinished M8 work. |
-| `dynamic_voxel_gi_cache=compact\|decoded` | Startup layout selection; compact is the config default, decoded remains the reference. Final M8 validation is pending. |
+| `dynamic_voxel_gi_rays_per_face` | Startup 32/64/128 supported; 128 remains the reference/default. M8 retains only 128 as the general reference; 32/64 remain experimental controls after locked-quality failures. |
+| `dynamic_voxel_gi_cache=compact\|decoded` | Startup layout selection; compact is the config default, decoded remains the reference. M8 compact/decoded image equivalence passes; compact is retained. |
 | `dynamic_voxel_gi_neighbor_radius` | 2 reference (`5x5x5`), 1 optional (`3x3x3`) |
-| `dynamic_voxel_gi_memory_budget_mb` | Explicit total method budget during functional implementation; tune the shipped value from M8 peak measurements |
+| `dynamic_voxel_gi_memory_budget_mb` | Explicit total method budget; M8 records 6144 MiB compact fixture caps and scoped peaks without guessing a universal default |
 | `dynamic_voxel_gi_temporal_filter=off\|fixed\|elapsed` | Implemented in M5; elapsed-time default, fixed alpha 0.03 reference, off for raw estimator verification |
 | `dynamic_voxel_gi_spatial_filter=true\|false` | Enabled for normal rendering; disables Gaussian smoothing only; required interpolation padding remains active, including when temporal filtering is also disabled |
 | `dynamic_voxel_gi_analytic_lighting=true\|false` | M6 directional diffuse transport from enabled analytic lights; direct analytic lighting remains independent |
@@ -617,7 +803,7 @@ Expose debug views for class/instance ID, actual occupancy versus receiver paddi
 | Setting or operation | Runtime status | Implemented path and limits |
 | --- | --- | --- |
 | Voxel visualization / PBR / GI render mode | Supported | [`RendererServer::SetRenderOption`](../ZenCore/Include/Graphics/RenderCore/V2/Renderer/RendererServer.h); selection is consumed by the next frame. |
-| `voxel_gi_method`: `cone`, `dynamic_voxel`, `auto` | Supported, conditional | [`SetVoxelGIMethod` / `PrepareVoxelGI`](../ZenCore/Source/Graphics/RenderCore/V2/RendererServer.cpp) invalidate history and select/initialize retained methods. Switching preserves the startup grid resolution and budget; an unsupported or over-budget request can resolve to cone/PBR. A successful setter call does not guarantee that the requested method becomes the effective method. `auto` still resolves to cone pending M8. |
+| `voxel_gi_method`: `cone`, `dynamic_voxel`, `auto` | Supported, conditional | [`SetVoxelGIMethod` / `PrepareVoxelGI`](../ZenCore/Source/Graphics/RenderCore/V2/RendererServer.cpp) invalidate history and select/initialize retained methods. Switching preserves the startup grid resolution and budget; an unsupported or over-budget request can resolve to cone/PBR. A successful setter call does not guarantee that the requested method becomes the effective method. `auto` retains cone under the M8 non-promotion decision. |
 | `voxel_gi_indirect_intensity`, `voxel_gi_shadow_enabled` | Supported | [`VoxelGIRenderer::SetSettings`](../ZenCore/Source/Graphics/RenderCore/V2/VoxelGIRenderer.cpp) validates and stores the values. `RendererServer` also forwards these two controls to directional GI each frame; affected lighting/history is invalidated. |
 | Cone count, angle, step scale, normal bias, maximum distance and step limit | Supported for cone tracing | The same `SetSettings` API validates supported ranges and updates uniforms/cache revisions. These cone controls do not tune DDA sampling or traversal. |
 | `dynamic_voxel_gi_temporal_filter`, `dynamic_voxel_gi_spatial_filter` | Supported after directional-renderer initialization | [`DynamicVoxelGIRenderer::SetFiltering`](../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIRenderer.cpp) changes temporal mode/spatial enable and invalidates history. Required interpolation padding remains active. |
@@ -631,7 +817,7 @@ Expose debug views for class/instance ID, actual occupancy versus receiver paddi
 | `voxel_reflectance_policy`, `voxel_reflectance_budget_mb` | Initialization-only | [`VoxelizerBase::PrepareTextures`](../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp) selects the policy and allocates its resources. No complete runtime policy/budget migration API exists. |
 | `dynamic_voxel_gi_memory_budget_mb` | Initialization-only | Settings are retained by `RendererServer`; directional capacity is allocated by `DynamicVoxelGIRenderer::Init`. There is no live budget/capacity resize setter. |
 | `dynamic_voxel_gi_neighbor_radius` | Initialization-only | Radius 1 or 2 is copied into the directional grid uniform during `Init`; no runtime setter exists. |
-| `dynamic_voxel_gi_rays_per_face` | Initialization-only | [`LoadDynamicVoxelGISettings`](../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp) accepts 32/64/128; allocation and shader sampling use the selected count. Default remains 128. No live count/cache migration setter exists; lower-sample quality acceptance remains open in M8. |
+| `dynamic_voxel_gi_rays_per_face` | Initialization-only | [`LoadDynamicVoxelGISettings`](../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp) accepts 32/64/128; allocation and shader sampling use the selected count. Default remains 128. No live count/cache migration setter exists; M8 rejected lower counts as general quality presets. |
 | `dynamic_voxel_gi_cache` | Initialization-only | Startup `compact`/`decoded` selects an 8/96-byte hit-cache stride and corresponding preflight/allocation. No runtime layout-switch API exists. |
 | `dynamic_voxel_gi_query_backend` | No runtime provider-switch API; hardware backend unavailable | Startup `auto`/`voxel_dda` use DDA. `hardware_rt` is a recognized but unavailable request with fallback; H0-H1 implementation is still deferred. |
 | `shadow_map_resolution` | Initialization-only | [`SceneShadowRenderer`](../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp) reads it in its constructor. There is no resolution setter/recreation transaction. |
@@ -764,9 +950,15 @@ Recommended implementation checks remain the existing CMake/MSVC builds for `sce
 
 ### Final Stage A profiling acceptance (M8)
 
-- [ ] GPU profiling workflow/infrastructure was added after functional acceptance; cold/steady-state timings and peak memory are recorded.
-- [ ] Performance changes preserve correctness, numeric tolerances, and resource limits.
-- [ ] Quality/performance presets and the automatic-method promotion decision are documented.
+- [x] Portable per-pass profiling infrastructure and exports are implemented and verified on AMD (M8.0); other platform limits are documented.
+- [x] Scoped whole-frame GPU timing and schema-2 frame exports are implemented and verified on AMD (M8.1); unavailable platform support remains explicit.
+- [x] Cache-readiness diagnostics and the reproducible runner are verified (M8.2-M8.3).
+- [x] Matched baselines, regression findings, isolated optimization decisions, and sample-quality presets are recorded without conflating hardware results (M8.4-M8.6).
+- [x] The final candidate has the complete cold/steady-state performance matrix, per-pass costs, traversal evidence, and scoped peak-memory accounting (M8.7).
+- [x] Final-code correctness/quality validation preserves resource limits and locked tolerances, with explicit accepted exceptions (M8.8).
+- [x] Final presets, hardware coverage and remaining gates, and the automatic-method promotion or non-promotion decision are documented (M8.9).
+
+Acceptance is scoped to AMD Radeon RX 7900 XT, with the explicit planar exception and a non-promotion decision. NVIDIA regression reproduction/RTX 5080 timing and other platform validation remain open; see [the final report](DynamicVoxelGIM8FinalVerification.md).
 
 ### Stage B functional acceptance (H1): deferred triangle-visibility completion
 

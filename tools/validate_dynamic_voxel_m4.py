@@ -59,13 +59,24 @@ def analyze(prefix):
     assert classes[1] > 100
     assert classes[2] > 100 if prefix.name.endswith('.removed') is False else classes[2] == 0
     stats.update({k:metadata[k] for k in ('selected_static','selected_dynamic','dynamic_occupied',
-        'cache_updated','cache_batches','static_generation','dynamic_generation')})
+        'cache_updated','cache_batches','cache_ready_receivers','occupied','static_generation',
+        'dynamic_generation','static_visibility_generation','minimum_cell_size')})
     stats.update(static_pixels=classes[1], dynamic_pixels=classes[2], width=lighting_meta['width'], height=lighting_meta['height'])
     return stats
 
 
+def assert_cache_reused(current, baseline):
+    # Submitted ranges can keep advancing past occupied compact receivers. Only
+    # completed GPU work/readiness and unchanged visibility describe cache reuse.
+    assert current['cache_updated'] == 0
+    assert current['cache_ready_receivers'] == current['occupied']
+    for key in ('static_generation', 'static_visibility_generation', 'minimum_cell_size'):
+        assert current[key] == baseline[key], ('Static cache invalidated', key)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--output', type=Path, default=ROOT/'build/dynamic-voxel-m4/scenes')
     parser.add_argument('--quick', action='store_true')
     parser.add_argument('--compare-only', action='store_true')
@@ -93,7 +104,7 @@ def main():
                 assert config.read_bytes() == last, 'Configuration changed externally'
                 last = original+b'\n'+''.join(f'{k}={v}\n' for k,v in settings.items()).encode(); config.write_bytes(last)
                 Path(str(prefix)+'.cfg').write_bytes(last)
-                command = [str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'),'--frames=12','--mode=3',
+                command = [str(args.executable.resolve()),'--disable-rt','--frames=12','--mode=3',
                     f'--rhi-thread={thread}',f'--async-compute={queue}','--gbuffer-size=256','--width=320','--height=180',
                     '--dynamic-gi-lifecycle',f'--capture-lighting={prefix}']
                 with Path(str(prefix)+'.log').open('w') as log:
@@ -106,8 +117,7 @@ def main():
                 tag = name+'.'+stage; capture = out/tag
                 result = analyze(capture); results[tag] = result
                 initial = results[name+'.initial']
-                assert result['cache_batches'] == initial['cache_batches'] and result['cache_updated'] == 0
-                assert result['static_generation'] == initial['static_generation'], 'Dynamic/camera change rebuilt static cache'
+                assert_cache_reused(result, initial)
                 if stage == 'removed':
                     assert result['dynamic_occupied'] == result['selected_dynamic'] == 0
                 else:

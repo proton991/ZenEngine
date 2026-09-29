@@ -8,6 +8,7 @@
 #include "Templates/ObjectPool.h"
 #include "Templates/VectorView.h"
 #include "Graphics/RHI/DynamicRHI.h"
+#include "Graphics/RHI/RHIGPUFrameTiming.h"
 #include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #if defined(ZEN_MACOS)
 #    include "Platform/VulkanMacOSPlatform.h"
@@ -68,6 +69,14 @@ public:
     void Destroy() override;
 
     void BeginFrame() override;
+
+    void BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing) override;
+
+    void EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded) override;
+
+    RHIGPUTimingPtr RegisterNativeGPUFrameRecording(bool included);
+
+    void ReleaseNativeGPUFrameRecording();
 
     RHIAPIType GetAPIType() override
     {
@@ -326,6 +335,8 @@ private:
 
     HeapVector<VulkanPlatformCommandList*> m_pendingPlatformCmdLists;
     bool m_submissionBlocked{false};
+    RHIGPUFrameTimingPtr m_gpuFrameTiming;
+    uint32_t m_pendingNativeRecordings{0};
     VulkanLifetimeTracker m_lifetimeTracker;
 };
 

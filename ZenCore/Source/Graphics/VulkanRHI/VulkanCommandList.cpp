@@ -16,6 +16,8 @@
 #include "Templates/HeapVector.h"
 #include "Utils/Errors.h"
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstdint>
 
 namespace zen
@@ -161,7 +163,12 @@ void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers
 
 void FVulkanCommandBuffer::Begin()
 {
+    DiscardGPUTimings();
+
+    m_timestampsReset = false;
+
     InvalidateCachedState();
+
     if (m_state == State::eNeedReset)
     {
         vkResetCommandBuffer(m_vkHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
@@ -173,16 +180,36 @@ void FVulkanCommandBuffer::Begin()
     }
 
     m_state = State::eIsInsideBegin;
+
     VkCommandBufferBeginInfo beginInfo;
+
     InitVkStruct(beginInfo, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
+
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
     VKCHECK(vkBeginCommandBuffer(m_vkHandle, &beginInfo));
+
+    const VkQueueFamilyProperties& family = GVulkanRHI->GetDevice()->GetQueueFamilyProperties(
+        m_pCmdBufferPool->GetQueue()->GetFamilyIndex());
+
+    m_frameTimingInterval = GVulkanRHI->RegisterNativeGPUFrameRecording(
+        (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0);
+
+    m_nativeTimingRecording = true;
+
+    BeginGPUTiming(m_frameTimingInterval);
 }
 
 void FVulkanCommandBuffer::End()
 {
     VERIFY_EXPR_MSG(IsOutsideRenderPass(), "Can't end command buffer inside a render pass");
+
+    EndGPUTiming(m_frameTimingInterval);
+
+    m_frameTimingInterval.Reset();
+
     vkEndCommandBuffer(m_vkHandle);
+
     m_state = State::eHasEnded;
 }
 
@@ -214,7 +241,17 @@ void FVulkanCommandBuffer::EndRenderPass()
 void FVulkanCommandBuffer::SetSubmitted()
 {
     LockAuto lock(m_pCmdBufferPool->GetMutex());
-    m_state      = State::eSubmitted;
+
+    // Native acceptance, rather than vkEndCommandBuffer, closes the capture boundary.
+    if (m_nativeTimingRecording)
+    {
+        GVulkanRHI->ReleaseNativeGPUFrameRecording();
+
+        m_nativeTimingRecording = false;
+    }
+
+    m_state = State::eSubmitted;
+
     m_submitTime = platform::Timer::Now<>();
 }
 
@@ -224,6 +261,8 @@ void FVulkanCommandBuffer::SetCompleted()
 
     if (m_state == State::eSubmitted)
     {
+        ResolveGPUTimings();
+
         m_state = State::eNeedReset;
     }
 }
@@ -235,6 +274,8 @@ void FVulkanCommandBuffer::Discard()
     VERIFY_EXPR_MSG(canDiscard, "Cannot discard a submitted or unallocated command buffer");
     if (canDiscard)
     {
+        DiscardGPUTimings();
+
         // Recording (including an open render pass) can be reset on reuse or freed by trimming.
         m_state = State::eNeedReset;
     }
@@ -274,10 +315,211 @@ void FVulkanCommandBuffer::AllocMemory()
 
 void FVulkanCommandBuffer::FreeMemory()
 {
+    DiscardGPUTimings();
+
+    ReleaseGPUTimingPool();
+
     vkFreeCommandBuffers(GVulkanRHI->GetVkDevice(), m_pCmdBufferPool->GetVkHandle(), 1,
                          &m_vkHandle);
-    m_state    = State::eNotAllocated;
+    m_state = State::eNotAllocated;
+
     m_vkHandle = VK_NULL_HANDLE;
+}
+
+void FVulkanCommandBuffer::BeginGPUTiming(const RHIGPUTimingPtr& result)
+{
+    if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        RHIGPUTimingStatus status = RHIGPUTimingStatus::ePending;
+
+        if (!IsOutsideRenderPass())
+        {
+            status = RHIGPUTimingStatus::eError;
+        }
+        else if (m_timingScopes.size() >= kMaxGPUTimingScopes)
+        {
+            status = RHIGPUTimingStatus::eDropped;
+        }
+        else if (std::any_of(
+                     m_timingScopes.begin(), m_timingScopes.end(),
+                     [&result](const GPUTimingScope& scope) { return scope.result == result; }))
+        {
+            status = RHIGPUTimingStatus::eError;
+        }
+        else
+        {
+            status = PrepareGPUTimingPool();
+        }
+
+        if (status == RHIGPUTimingStatus::ePending)
+        {
+            if (!m_timestampsReset)
+            {
+                vkCmdResetQueryPool(m_vkHandle, m_timestampPool, 0, 2 * kMaxGPUTimingScopes);
+
+                m_timestampsReset = true;
+            }
+
+            const uint32_t query = static_cast<uint32_t>(m_timingScopes.size()) * 2;
+
+            m_timingScopes.push_back({result, false});
+
+            vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool,
+                                query);
+        }
+        else
+        {
+            result->Publish(status);
+        }
+    }
+}
+
+RHIGPUTimingStatus FVulkanCommandBuffer::PrepareGPUTimingPool()
+{
+    RHIGPUTimingStatus status = RHIGPUTimingStatus::ePending;
+
+    if (m_timestampPool == VK_NULL_HANDLE)
+    {
+        VulkanDevice* device = GVulkanRHI->GetDevice();
+
+        const VkQueueFamilyProperties& family =
+            device->GetQueueFamilyProperties(m_pCmdBufferPool->GetQueue()->GetFamilyIndex());
+
+        m_timestampValidBits = family.timestampValidBits;
+
+        m_timestampPeriod = device->GetPhysicalDeviceProperties().limits.timestampPeriod;
+
+        // Command-buffer query resets require graphics or compute capability.
+        // Dedicated transfer timing would need the optional hostQueryReset feature.
+        if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 ||
+            m_timestampValidBits == 0 || m_timestampValidBits > 64 ||
+            !std::isfinite(m_timestampPeriod) || m_timestampPeriod <= 0 ||
+            vkCreateQueryPool == nullptr || vkDestroyQueryPool == nullptr ||
+            vkCmdResetQueryPool == nullptr || vkCmdWriteTimestamp == nullptr ||
+            vkGetQueryPoolResults == nullptr)
+        {
+            status = RHIGPUTimingStatus::eUnsupported;
+        }
+        else
+        {
+            const VkResult acquired = device->AcquireGPUTimingPool(m_timestampPool);
+
+            if (acquired != VK_SUCCESS)
+            {
+                m_timestampPool = VK_NULL_HANDLE;
+
+                status = acquired == VK_ERROR_TOO_MANY_OBJECTS ? RHIGPUTimingStatus::eDropped :
+                                                                 RHIGPUTimingStatus::eError;
+            }
+        }
+    }
+
+    return status;
+}
+
+void FVulkanCommandBuffer::EndGPUTiming(const RHIGPUTimingPtr& result)
+{
+    if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        bool ended = false;
+
+        for (size_t index = m_timingScopes.size(); index > 0 && !ended; --index)
+        {
+            GPUTimingScope& scope = m_timingScopes[index - 1];
+
+            if (scope.result == result && !scope.ended && IsOutsideRenderPass())
+            {
+                vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    m_timestampPool, static_cast<uint32_t>(index - 1) * 2 + 1);
+
+                scope.ended = true;
+
+                ended = true;
+            }
+        }
+
+        if (!ended)
+        {
+            result->Publish(RHIGPUTimingStatus::eError);
+        }
+    }
+}
+
+void FVulkanCommandBuffer::ResolveGPUTimings()
+{
+    if (!m_timingScopes.empty())
+    {
+        struct TimestampValue
+        {
+            uint64_t ticks{0};
+
+            uint64_t available{0};
+        };
+
+        std::array<TimestampValue, 2 * kMaxGPUTimingScopes> values{};
+
+        const uint32_t count = static_cast<uint32_t>(m_timingScopes.size()) * 2;
+
+        // The queue's fence/timeline proves completion. Never wait for a profiler query.
+        const VkResult status = vkGetQueryPoolResults(
+            GVulkanRHI->GetVkDevice(), m_timestampPool, 0, count, count * sizeof(TimestampValue),
+            values.data(), sizeof(TimestampValue),
+            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+
+        for (uint32_t index = 0; index < m_timingScopes.size(); ++index)
+        {
+            GPUTimingScope& scope = m_timingScopes[index];
+
+            const bool available = scope.ended &&
+                (status == VK_SUCCESS || status == VK_NOT_READY) &&
+                values[2 * index].available != 0 && values[2 * index + 1].available != 0;
+
+            if (available)
+            {
+                scope.result->PublishTimestamps({values[2 * index].ticks,
+                                                 values[2 * index + 1].ticks, m_timestampValidBits,
+                                                 m_timestampPeriod});
+            }
+            else
+            {
+                scope.result->Publish(scope.ended ? RHIGPUTimingStatus::eError :
+                                                    RHIGPUTimingStatus::eDiscarded);
+            }
+        }
+
+        m_timingScopes.clear();
+
+        ReleaseGPUTimingPool();
+    }
+}
+
+void FVulkanCommandBuffer::DiscardGPUTimings()
+{
+    if (m_nativeTimingRecording)
+    {
+        GVulkanRHI->ReleaseNativeGPUFrameRecording();
+
+        m_nativeTimingRecording = false;
+    }
+
+    m_frameTimingInterval.Reset();
+
+    for (GPUTimingScope& scope : m_timingScopes)
+    {
+        scope.result->Publish(RHIGPUTimingStatus::eDiscarded);
+    }
+
+    m_timingScopes.clear();
+}
+
+void FVulkanCommandBuffer::ReleaseGPUTimingPool()
+{
+    if (m_timestampPool != VK_NULL_HANDLE)
+    {
+        GVulkanRHI->GetDevice()->ReleaseGPUTimingPool(m_timestampPool);
+
+        m_timestampPool = VK_NULL_HANDLE;
+    }
 }
 
 FVulkanCommandBufferPool::FVulkanCommandBufferPool(VulkanQueue* pQueue,
@@ -1053,6 +1295,22 @@ void FVulkanCommandListContext::RHIEndDebugLabel()
     }
 }
 
+void FVulkanCommandListContext::RHIBeginGPUTiming(const RHIGPUTimingPtr& result)
+{
+    if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        GetCommandBuffer()->BeginGPUTiming(result);
+    }
+}
+
+void FVulkanCommandListContext::RHIEndGPUTiming(const RHIGPUTimingPtr& result)
+{
+    if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        GetCommandBuffer()->EndGPUTiming(result);
+    }
+}
+
 void FVulkanCommandListContext::RHISetScissor(uint32_t minX,
                                               uint32_t minY,
                                               uint32_t maxX,
@@ -1250,10 +1508,10 @@ void FVulkanCommandListContext::RHIAddTransitions(
     for (RHIBufferTransition const& bufferTransition : bufferTransitions)
     {
         VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
-        VkAccessFlags srcAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
-                                                                 bufferTransition.oldAccessMode);
-        VkAccessFlags dstAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
-                                                                 bufferTransition.newAccessMode);
+        VkAccessFlags srcAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage,
+                                                                     bufferTransition.oldAccessMode);
+        VkAccessFlags dstAccess     = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage,
+                                                                     bufferTransition.newAccessMode);
         srcAccess |= ToVkAccessFlags(bufferTransition.additionalSrcAccess);
         barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
                                  bufferTransition.size, srcAccess, dstAccess);

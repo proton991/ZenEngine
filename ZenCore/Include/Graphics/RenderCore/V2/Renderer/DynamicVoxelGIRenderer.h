@@ -46,102 +46,140 @@ class DynamicVoxelGIRenderer
 {
 public:
     explicit DynamicVoxelGIRenderer(RenderDevice* device) : m_device(device) {}
+
     bool Init(const DynamicVoxelGISettings& settings,
               bool averaged,
               uint64_t receiverSurfaceBytes = 0,
               uint64_t retiringBytes        = 0);
+
     bool BuildRenderGraph(const StaticVoxelGIInputs& inputs,
                           const GIVisibilityProvider& provider,
                           const SceneUniformData& scene,
                           float indirectGain,
                           bool shadows);
+
     void BindLightingInputs(RDGPassDescBase& pass) const;
     void OnRenderGraphExecuted(bool succeeded);
+
     void SetFiltering(GITemporalMode temporal, bool spatial);
+
     void SetLighting(bool analytic, bool environment, bool emissive);
+
     void Destroy();
+
     uint32_t GetCapacity() const
     {
         return m_uniform.volume.y;
     }
+
     uint32_t GetCacheStride() const
     {
         return m_work.cache.x != 0 ? GI_COMPACT_HIT_BYTES : sizeof(GIHit);
     }
+
     uint32_t GetRaysPerFace() const
     {
         return m_uniform.sampling.x;
     }
+
     // Reserved method peak includes class/cone resources and receiver attachments.
     uint64_t GetResourceBytes() const
     {
         return m_resourceBytes;
     }
+
     RHIBuffer* GetStatus() const
     {
         return m_status;
     }
+
     RHIBuffer* GetLightMask() const
     {
         return m_lightMask;
     }
+
     RHIBuffer* GetWorkCounts() const
     {
         return m_workCounts;
     }
+
     RHIBuffer* GetReceiverList(uint32_t objectClass) const
     {
         return m_receiverLists[objectClass == GI_DYNAMIC ? 1 : 0];
     }
+
     RHIBuffer* GetIndirectArguments() const
     {
         return m_indirect;
     }
+
     uint64_t GetCacheBuildBatches() const
     {
         return m_cacheBuildBatches;
     }
+
+    // Successful graph generations; readiness is established by the GPU status readback.
+    uint64_t GetCacheEpoch() const
+    {
+        return m_cacheEpoch;
+    }
+
+    uint64_t GetVisibilityRevision() const
+    {
+        return m_environmentGeneration;
+    }
+
     // Bits rebuilt by the last recorded frame; zero means both mask passes were reused.
     uint32_t GetLightMaskUpdateBits() const
     {
         return m_lighting.enabled.w;
     }
+
     RHITexture* GetDynamicIrradiance(uint32_t face) const
     {
         return face < GI_FACE_COUNT ? m_dynamicRaw[face] : nullptr;
     }
+
     RHIBuffer* GetDynamicLightMask() const
     {
         return m_dynamicLightMask;
     }
+
     RHITexture* GetDynamicFilteredIrradiance(uint32_t face) const
     {
         return face < GI_FACE_COUNT ? m_dynamicFiltered[face] : nullptr;
     }
+
     RHITexture* GetHistoryIrradiance(uint32_t face, uint32_t objectClass) const
     {
         return face < GI_FACE_COUNT ? m_history[objectClass == GI_DYNAMIC ? 1 : 0][face] : nullptr;
     }
+
     const GIFilterUniform& GetFilterUniform() const
     {
         return m_filter;
     }
+
     RHITexture* GetSenderEnvironment(uint32_t objectClass) const
     {
         return m_senderEnvironment[objectClass == GI_DYNAMIC ? 1 : 0];
     }
+
     RHIBuffer* GetHistoryMetadata(uint32_t objectClass) const
     {
         return m_historyMetadata[objectClass == GI_DYNAMIC ? 1 : 0];
     }
+
     RHIBuffer* GetCache(uint32_t face) const
     {
         return face < GI_FACE_COUNT ? m_hits[face] : nullptr;
     }
+
     RHITexture* GetRawIrradiance(uint32_t face) const
     {
         return face < GI_FACE_COUNT ? m_raw[face] : nullptr;
     }
+
     RHITexture* GetPaddedIrradiance(uint32_t face) const
     {
         return face < GI_FACE_COUNT ? m_padded[face] : nullptr;
@@ -163,16 +201,20 @@ private:
                            const GIVisibilityInfo& visibility,
                            const SceneUniformData& scene,
                            bool shadows);
+
     bool BuildEnvironmentGraph(const StaticVoxelGIInputs& inputs,
                                const GIVisibilityProvider& provider,
                                const SceneUniformData& scene,
                                const HeapVector<ComputeDispatchChunk>& cells);
+
     bool BuildReceiverSelection(const StaticVoxelGIInputs& inputs,
                                 const HeapVector<ComputeDispatchChunk>& cells);
+
     void BindFrameInputs(RDGPassDescBase& pass) const;
     void BuildFilterGraph(const StaticVoxelGIInputs& inputs,
                           const HeapVector<ComputeDispatchChunk>& cells,
                           uint32_t face);
+
     void BuildHistoryMetadata(const StaticVoxelGIInputs& inputs,
                               const HeapVector<ComputeDispatchChunk>& cells,
                               bool clear);
@@ -222,6 +264,8 @@ private:
     uint32_t m_cacheEnd{0};
     uint32_t m_recordedCacheEnd{0};
     uint64_t m_cacheBuildBatches{0};
+    uint64_t m_cacheEpoch{0};
+    bool m_recordedCacheReset{false};
     bool m_recordedCacheBatch{false};
     uint64_t m_generation{0};
     uint64_t m_listGeneration{0};

@@ -717,6 +717,24 @@ void RHICommandListExecutor::EndFrame()
     GetRHIThread().Invoke(&DynamicRHI::EndFrame, m_backend);
 }
 
+void RHICommandListExecutor::BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing)
+{
+    GetRHIThread().Dispatch(std::bind_front(&DynamicRHI::BeginGPUFrameTiming, m_backend, timing));
+}
+
+void RHICommandListExecutor::EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded)
+{
+    GetRHIThread().Dispatch(std::bind_front(&RHICommandListExecutor::ExecuteEndGPUFrameTiming, this,
+                                            timing, succeeded));
+}
+
+void RHICommandListExecutor::ExecuteEndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing,
+                                                      bool succeeded)
+{
+    // Include failures discovered asynchronously after render-thread handoff.
+    m_backend->EndGPUFrameTiming(timing, succeeded && !AreSubmissionsBlocked());
+}
+
 RHISubmissionResult RHICommandListExecutor::FlushAllGPUCommands()
 {
     return GetRHIThread().Invoke(&RHICommandListExecutor::ExecuteBatch, this,

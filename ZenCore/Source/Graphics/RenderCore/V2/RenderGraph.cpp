@@ -1005,8 +1005,8 @@ bool RDGExecutor::ExecuteTransaction(ExecutionPlan& plan,
                     std::chrono::steady_clock::now();
                 submissionResult = submit();
                 submissionCPUUs  = std::chrono::duration<double, std::micro>(
-                                       std::chrono::steady_clock::now() - start)
-                                       .count();
+                                      std::chrono::steady_clock::now() - start)
+                                      .count();
 
                 if (submissionResult != RHISubmissionResult::eSuccess)
                 {
@@ -1998,8 +1998,8 @@ struct RenderGraph::PassBindingValidator
                     if (element.resource)
                     {
                         resource   = buffer ?
-                            graph.m_resourceManager.Resolve(element.resource) :
-                            graph.m_resourceManager.ResolveView(element.resource, element.view);
+                              graph.m_resourceManager.Resolve(element.resource) :
+                              graph.m_resourceManager.ResolveView(element.resource, element.view);
                         compatible = resource != nullptr;
                     }
                     else
@@ -2069,8 +2069,8 @@ ShaderProgram* RenderGraph::ValidatePassDescription(const RDGPassDescBase& desc,
     bool valid               = Check(bool(desc.validationResult), desc.validationResult.code,
                                      prefix + desc.validationResult.message);
     ShaderProgram* program   = valid ?
-        ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName) :
-        nullptr;
+          ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName) :
+          nullptr;
     valid                    = valid &&
         Check(program != nullptr && program->GetShader() != nullptr, RDGErrorCode::eShader,
               prefix + "Unknown or uninitialized shader '" + desc.shaderProgramName.ToString() +
@@ -2179,14 +2179,14 @@ template <typename Output> bool RenderGraph::ValidateAttachment(const RDGGraphic
         const RDGResourceManager::Allocation* attachment =
             out.texture ? m_resourceManager.Resolve(out.texture) : nullptr;
         const RHITexture* physical = out.pTexture;
-        valid = Check(physical == nullptr ||
-                          (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 &&
+        valid                      = Check(physical == nullptr ||
+                                               (physical->GetNumMipmaps() == 1 && physical->GetArrayLayers() == 1 &&
                            physical->GetDepth() == 1 &&
                            physical->GetBaseInfo().samples ==
                                desc.pipelineStates.multiSampleState.sampleCount),
-                      RDGErrorCode::eAttachment,
-                      prefix + "Attachment shape or samples do not match the pass");
-        valid = valid &&
+                                           RDGErrorCode::eAttachment,
+                                           prefix + "Attachment shape or samples do not match the pass");
+        valid                      = valid &&
             (Check(attachment == nullptr ||
                        attachment->texFormat.sampleCount ==
                            desc.pipelineStates.multiSampleState.sampleCount,
@@ -2329,12 +2329,12 @@ bool RenderGraph::ValidateGraphicsDescription(const RDGGraphicsPassDesc& desc)
                 if (valid)
                 {
                     const uint32_t stride = desc.indexBufferFormat == DataFormat::eR16UInt ? 2 : 4;
-                    valid = Check((desc.indexBufferFormat == DataFormat::eR16UInt ||
+                    valid                 = Check((desc.indexBufferFormat == DataFormat::eR16UInt ||
                                    desc.indexBufferFormat == DataFormat::eR32UInt) &&
-                                      desc.indexBufferOffset % stride == 0 &&
-                                      desc.indexBufferOffset < resource->bufferSize,
-                                  RDGErrorCode::eRange,
-                                  prefix + "Invalid logical index buffer format or offset");
+                                                      desc.indexBufferOffset % stride == 0 &&
+                                                      desc.indexBufferOffset < resource->bufferSize,
+                                                  RDGErrorCode::eRange,
+                                                  prefix + "Invalid logical index buffer format or offset");
                 }
             }
         }
@@ -2863,11 +2863,11 @@ bool RenderGraph::ApplyContentStatus(const RDGPassNode* node,
             {
                 const RHIResource* physical = PhysicalResource(resource);
                 const std::string name      = !resource->name.IsNone() ?
-                    resource->name.ToString() :
-                    std::string(resource->type == RDGResourceType::eBuffer ? "buffer #" :
-                                                                             "texture #") +
+                         resource->name.ToString() :
+                         std::string(resource->type == RDGResourceType::eBuffer ? "buffer #" :
+                                                                                  "texture #") +
                         std::to_string(physical ? physical->GetStableId() :
-                                                  uint64_t(int32_t(resource->id)));
+                                                       uint64_t(int32_t(resource->id)));
                 const std::string message   = "Pass '" + node->tag.ToString() +
                     "': initialization coverage is unknown for '" + name + "'";
                 m_warnings.push_back({RDGErrorCode::eUnknownContents, message});
@@ -4601,12 +4601,28 @@ bool RenderGraph::Execute(VectorView<RHICommandList*> lists,
             }
 
             const bool markers = RHIOptions::GetInstance().GPUProfilerMarkers();
+
+            const RHIGPUTimingPtr gpuTiming =
+                m_activeMetrics != nullptr ? m_activeMetrics->m_nodeGPUTiming : RHIGPUTimingPtr{};
+
+            if (gpuTiming)
+            {
+                m_pCmdList->BeginGPUTiming(gpuTiming);
+            }
+
             if (markers)
             {
                 m_pCmdList->BeginDebugLabel(GetNodeBaseById(compiled.nodeId)->tag);
             }
             EmitCompiledNodeBarriers(compiled, tracker);
+
             valid = RunNode(GetNodeBaseById(compiled.nodeId));
+
+            if (gpuTiming)
+            {
+                m_pCmdList->EndGPUTiming(gpuTiming);
+            }
+
             if (markers)
             {
                 m_pCmdList->EndDebugLabel();

@@ -1,6 +1,6 @@
 # M8: Nsight Graphics profiling
 
-2026-09-25. **In progress; work stopped before final acceptance.** Current progress and validation boundaries are recorded below. `auto` still selects cone tracing; prior M7 acceptance does not certify the latest M8 gather changes.
+Historical record, 2026-09-25. **Superseded for current acceptance by the [2026-09-29 final M8 report](DynamicVoxelGIM8FinalVerification.md) and [AMD measurement tables](DynamicVoxelGIM8Measurements.md).** M8 is complete for the stated AMD scope with non-promotion; `auto` remains cone. NVIDIA reproduction and the RTX 5080 target remain open. The stop-point findings and measurements below are preserved as historical evidence, not current acceptance.
 
 The historical sections beginning with "Capture conditions and reproduction" predate the [runtime material/bounds/budget fixes](DynamicVoxelGIGapVerification.md). Preserve those numbers and test counts as earlier evidence only. The following stop-point section records the later work on the corrected implementation.
 
@@ -28,7 +28,7 @@ GPU trace frame times are separate from unprofiled throughput, which uses CPU fr
 
 Cold compact/decoded captures, animated-light and compute/geometry-motion profiles, 128-cubed and cone profiles, and traversal samples exist in the artifact root, but most predate parallel gathering. Deterministic receiver sorting was subsequently added to traversal capture and has not been recaptured. Cold hardware-event traces overflowed their event buffer; API-timestamp captures are available, but changing/absent pass ranges in exports can repeat or accumulate and must not be summed as initialization cost. Final cold readiness, matrix, memory and traversal reporting remain open.
 
-The authoritative [unfinished-work checklist in the plan](DynamicVoxelGIImplementationPlan.md#m8-unfinished-work-at-the-stop-point-2026-09-25) covers the static regression, final profiling matrix, unrun workgroup/scratch/tiled-filter experiments, preset decisions, final validation and automatic-selection decision. A tiled-filter candidate exists only in experiment artifacts; active-receiver scratch compaction is unimplemented. Keep `auto` on cone until the documented promotion decision; hardware queries remain deferred to H0-H2.
+The authoritative [M8 execution phases in the plan](DynamicVoxelGIImplementationPlan.md#m8-execution-phases) cover the static regression, final profiling matrix, unrun workgroup/scratch/tiled-filter experiments, preset decisions, final validation and automatic-selection decision. A tiled-filter candidate exists only in experiment artifacts; active-receiver scratch compaction is unimplemented. Keep `auto` on cone until the documented promotion decision; hardware queries remain deferred to H0-H2.
 
 ## Capture conditions and reproduction
 
@@ -92,4 +92,4 @@ The affected debug/release targets build. **573 CPU tests pass**, with seven exi
 
 ## Remaining M8 gates
 
-These historical results do not close M8. Use the [current stop-point evidence](#current-work-at-the-stop-point-2026-09-25) and [unfinished-work checklist](DynamicVoxelGIImplementationPlan.md#m8-unfinished-work-at-the-stop-point-2026-09-25) for current status: compact-cache checks, VMA peaks and dynamic/traversal captures now exist, while the latest static regression, remaining experiments, final validation/reporting and promotion decision are still open. Hardware-query work remains deferred to H0-H2.
+These historical results do not close M8. Use the [current stop-point evidence](#current-work-at-the-stop-point-2026-09-25) and [M8 execution phases](DynamicVoxelGIImplementationPlan.md#m8-execution-phases) for current status: compact-cache checks, VMA peaks and dynamic/traversal captures now exist, while the latest static regression, remaining experiments, final validation/reporting and promotion decision are still open. Hardware-query work remains deferred to H0-H2.

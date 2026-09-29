@@ -21,10 +21,13 @@ import validate_voxelization as calibration
 from voxelization_materials import MaterialOracle
 from voxelization_fixtures import Fixture, rgba_png
 import voxel_gi_triangle_reference as reference
+import benchmark_dynamic_voxel_gi as benchmark
 
 ROOT = Path(__file__).resolve().parents[1]
 LIMITS = Path(__file__).with_name('voxel_gi_quality_limits.json')
 COVERAGE_CACHE = {}
+CAPTURE_OPTIONS = dict(executable=ROOT/'build/x64-windows-msvc-release/bin/scene_renderer_demo.exe',
+                       thread=1, async_compute=1)
 
 
 def fixture(folder, name):
@@ -95,19 +98,16 @@ def capture(out, tag, asset, n, producer, filtered, original, frames=64, tempora
     edited = original+b'\n'+''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
     prefix = out/tag
     Path(str(prefix)+'.cfg').write_bytes(edited)
-    config.write_bytes(edited)
-    command = [str(ROOT/'build/x64-windows-msvc-release/bin/scene_renderer_demo.exe'), '--disable-rt',
-        f'--frames={frames}', '--fixed-step', '--mode=3', '--rhi-thread=1', '--async-compute=1',
+    command = [str(CAPTURE_OPTIONS['executable']), '--disable-rt',
+        f'--frames={frames}', '--fixed-step', '--mode=3', f'--rhi-thread={CAPTURE_OPTIONS["thread"]}',
+        f'--async-compute={CAPTURE_OPTIONS["async_compute"]}',
         '--width=128', '--height=96', '--gbuffer-size=128', f'--capture-lighting={prefix}', f'--capture-voxels={prefix}']
     environment = os.environ.copy()
     environment.update(VK_LAYER_VALIDATE_SYNC='1', VK_LOADER_LAYERS_DISABLE='~implicit~', DISABLE_RTSS_LAYER='1')
     start = time.time()
-    try:
+    with benchmark.config_lease(config, edited, out):
         with Path(str(prefix)+'.log').open('w') as log:
             process = subprocess.run(command, cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, timeout=900)
-    finally:
-        assert config.read_bytes() == edited, 'Configuration changed externally; preserving it'
-        config.write_bytes(original)
     log = Path(str(prefix)+'.log').read_text(errors='replace')
     errors = [line for line in log.splitlines() if any(token in line for token in ('[error]', 'VUID-', 'SYNC-HAZARD'))]
     assert process.returncode == 0 and not errors, (tag, process.returncode, errors[:3])
@@ -306,6 +306,10 @@ def light_visibility_diagnostics(prefix, asset):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executable', type=Path, default=CAPTURE_OPTIONS['executable'])
+    parser.add_argument('--sponza', type=Path, default=ROOT/'../glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf')
+    parser.add_argument('--thread', type=int, choices=(0, 1), default=1)
+    parser.add_argument('--async-compute', type=int, choices=(0, 1), default=1)
     parser.add_argument('--output', type=Path, default=ROOT/'build/dynamic-voxel-m7-quality-20260925/scenes')
     parser.add_argument('--cases', nargs='+', default=['emitter', 'thin', 'slanted', 'cutout', 'backface', 'room', 'sponza'],
                         choices=['emitter', 'thin', 'slanted', 'cutout', 'backface', 'room', 'sponza'])
@@ -318,6 +322,7 @@ def main():
     parser.add_argument('--temporal-scenes', action='store_true', help='Also measure converged stationary room/Sponza images')
     parser.add_argument('--temporal-only', action='store_true', help='Use existing spatial baselines and capture only stationary room/Sponza sequences')
     args = parser.parse_args()
+    CAPTURE_OPTIONS.update(executable=args.executable.resolve(), thread=args.thread, async_compute=args.async_compute)
     assert all('=' in item and '\n' not in item for item in args.set)
     overrides = dict(item.split('=', 1) for item in args.set)
     out = args.output.resolve(); out.mkdir(parents=True, exist_ok=True)
@@ -330,13 +335,27 @@ def main():
         locked.write_bytes(contract)
     limits = json.loads(contract)
     original = (ROOT/'Data/engine.cfg').read_bytes()
+    identity = dict(implementation=benchmark.implementation_identity(args.executable, ROOT/'Data/SpvShaders'),
+                    configuration_sha256=hashlib.sha256(original).hexdigest(), overrides=overrides,
+                    thread=args.thread, async_compute=args.async_compute)
+    identity_path = out/'implementation.json'
+    if identity_path.exists():
+        assert json.loads(identity_path.read_text()) == identity, 'Quality artifacts belong to a different implementation/configuration'
+    else:
+        identity_path.write_text(json.dumps(identity, indent=2))
     (out/'config.sha256').write_text(hashlib.sha256(original).hexdigest())
     legacy.OUT = folder; legacy.make_fixture()
     result_path = out/'results.json'
     results = json.loads(result_path.read_text()) if result_path.exists() else {}
     for name in args.cases:
-        asset = ((ROOT/'../glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf').resolve() if name == 'sponza' else
+        asset = (args.sponza.resolve() if name == 'sponza' else
                  folder/'emissive.gltf' if name == 'room' else fixture(folder, name))
+        asset_id = benchmark.asset_identity(asset)
+        asset_path = out/(name+'-asset.json')
+        if asset_path.exists():
+            assert json.loads(asset_path.read_text()) == asset_id, 'Asset changed since previous quality capture'
+        else:
+            asset_path.write_text(json.dumps(asset_id, indent=2))
         refreshed = False
         for n, producer in (() if args.temporal_only else itertools.product(args.resolutions, args.producers)):
             pair = {}
@@ -365,6 +384,7 @@ def main():
                     out, name, asset, producer, original, limits, args.compare_only, overrides)
                 result_path.write_text(json.dumps(results, indent=2))
     failed = [name for name, result in results.items() if not all(result['checks'].values())]
+    assert benchmark.implementation_identity(args.executable, ROOT/'Data/SpvShaders') == identity['implementation'], 'Implementation changed during quality validation'
     print(json.dumps(dict(cases=len(results), failed=failed, limits_sha256=hashlib.sha256(contract).hexdigest()), indent=2))
     return 1 if failed else 0
 

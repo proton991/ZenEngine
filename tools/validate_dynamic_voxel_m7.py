@@ -88,6 +88,8 @@ def triangle_error(prefix,triangles):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--sponza', type=Path, default=ROOT/'../glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf')
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--output',type=Path,default=ROOT/'build/dynamic-voxel-m7/scenes')
     parser.add_argument('--phase',choices=('all','defaults','grids','switches','triangles','sponza'),default='all')
     parser.add_argument('--quick',action='store_true')
@@ -115,7 +117,7 @@ def main():
         base=b''.join(line for line in original.splitlines(keepends=True) if line.partition(b'=')[0].strip() not in omitted)
         last=base+b'\n'+''.join(f'{k}={v}\n' for k,v in settings.items() if v is not None).encode();config.write_bytes(last)
         prefix=out/tag;Path(str(prefix)+'.cfg').write_bytes(last)
-        command=[str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'),'--disable-rt',f'--frames={frames}','--mode=3',f'--rhi-thread={thread}',
+        command=[str(args.executable.resolve()),'--disable-rt',f'--frames={frames}','--mode=3',f'--rhi-thread={thread}',
             f'--async-compute={queue}','--width=320','--height=180','--gbuffer-size=256',f'--capture-lighting={prefix}',*flags]
         with Path(str(prefix)+'.log').open('w') as log:
             process=subprocess.run(command,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=600)
@@ -161,7 +163,7 @@ def main():
             for voxelizer,thread,queue in modes:
                 p,_=run(f'switch-{voxelizer}-t{thread}-q{queue}',voxelizer=voxelizer,thread=thread,queue=queue,
                         flags=['--gi-method-switching'])
-                batches=None
+                initial_cache=None
                 for stage in lifecycle.STAGES:
                     capture=Path(str(p)+'.'+stage);directional=stage not in ('moved','deformed','removed','camera')
                     stats=analyze(capture,'dynamic_voxel' if directional else 'cone',directional)
@@ -169,8 +171,8 @@ def main():
                     assert stage not in images or images[stage]==digest,'Method switching output mismatch'
                     images[stage]=digest
                     if directional:
-                        assert batches is None or batches==stats['cache_batches']
-                        batches=stats['cache_batches']
+                        if initial_cache is None: initial_cache=stats
+                        lifecycle.assert_cache_reused(stats, initial_cache)
                 assert images['initial']==images['returned']==images['restored']
         if args.phase in ('all','triangles'):
             for name,n,voxelizer in itertools.product(('emitter','thin','slanted'),(64,128),('comp',) if args.quick else ('comp','geom')):
@@ -178,7 +180,7 @@ def main():
                 p,_=run(f'triangle-{name}-{n}-{voxelizer}',n,voxelizer,changes=dict(light_count=0,environment_lighting='false'),asset=asset)
                 analyze(p);results[p.name]['triangle_error']=triangle_error(p,triangles)
         if args.phase in ('all','sponza'):
-            asset=(ROOT/'../glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf').resolve();assert asset.exists()
+            asset=args.sponza.resolve();assert asset.exists()
             changes={'camera_position':'.55,-.15,0','dynamic_voxel_gi_memory_budget_mb':6144}
             for i,position in enumerate(('-.55,-.25,-.13','.55,-.25,-.13','-.55,-.25,.13','.55,-.25,.13','0,-.25,0')):
                 changes.update({f'light.{i}.position':position,f'light.{i}.intensity':5,f'light.{i}.range':1000})

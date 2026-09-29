@@ -189,6 +189,7 @@ def main():
     parser.add_argument('--variant', choices=('base', 'reverse', 'duplicate', 'tessellated'), default='base')
     parser.add_argument('--matrix', action='store_true')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--compare-only', action='store_true')
     args = parser.parse_args()
     folder = args.output.resolve(); folder.mkdir(parents=True, exist_ok=True)
@@ -216,7 +217,7 @@ def main():
                 last = original+b'\n'+''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
                 config.write_bytes(last); Path(str(prefix)+'.cfg').write_bytes(last)
                 with Path(str(prefix)+'.log').open('w') as log:
-                    run = subprocess.run([str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'), '--frames=2', '--mode=1',
+                    run = subprocess.run([str(args.executable.resolve()), '--disable-rt', '--frames=2', '--mode=1',
                         f'--rhi-thread={thread}', f'--async-compute={queue}', f'--capture-voxels={prefix}',
                         '--voxel-classes'], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=240)
                 log = Path(str(prefix)+'.log').read_text(errors='replace')

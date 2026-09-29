@@ -25,11 +25,15 @@ cd bin
 ./scene_renderer_demo.exe --mode=3
 ```
 
-- `1` / keypad 1: voxel visualization.
-- `2` / keypad 2: deferred PBR with environment IBL.
-- `3` / keypad 3: deferred PBR with mesh-based direct shadows and the selected voxel GI method (`auto` defaults to cone).
-- `R` in mode 1 or 3: rebuild geometry and invalidate dependent lighting.
+- Startup and `1` / keypad 1: VoxelGI with mesh-based direct shadows and the selected voxel GI method (`auto` defaults to cone).
+- `2` / keypad 2: voxel visualization.
+- Deferred PBR has no keyboard binding; key 3 is unbound.
+- `R` in either view: rebuild geometry and invalidate dependent lighting.
 - `--capture=frame.ppm --frames=3 --mode=3`: save the final framebuffer. Capture waits for completion explicitly; ordinary rendering does not add this wait.
+
+The keyboard mapping above was updated on 2026-09-30. Diagnostic `--mode` IDs stay
+unchanged for existing tools: 1 = voxelization, 2 = PBR, 3 = VoxelGI. Omitting
+`--mode` starts in VoxelGI.
 
 Configure `Data/engine.cfg`. This file is ignored by Git; [Data/engine.example.cfg](../Data/engine.example.cfg) is the tracked complete example. Adjust `model_base_path` to the glTF Sample Assets checkout. The existing local configuration has the GI controls and an animated fifth point light. Optional `default_model_path` and `camera_position` support reproducible custom scenes.
 

@@ -1,3 +1,97 @@
+// Deliberately advertise the diagnostic identity while forwarding a DDA implementation.
+// Consumers must dispatch through the provider, never infer shaders or cache policy from the ID.
+class ForwardingGIProvider final : public GIVisibilityProvider
+{
+public:
+    explicit ForwardingGIProvider(const GIVisibilityProvider& provider) : m_provider(provider)
+    {
+        m_info = provider.GetInfo();
+
+        m_info.backend = GIVisibilityBackend::eDeterministic;
+    }
+
+    bool BindQueryInputs(RDGComputePassDesc& pass) const override
+    {
+        return m_provider.BindQueryInputs(pass);
+    }
+
+    bool BindLightingInputs(RDGComputePassDesc& pass,
+                            const RenderScene* scene,
+                            const SceneShadowRenderer* shadows) const override
+    {
+        return m_provider.BindLightingInputs(pass, scene, shadows);
+    }
+
+    NameID GetShader(GIQueryStage stage, GIQueryVariant variant = {}) const override
+    {
+        return m_provider.GetShader(stage, variant);
+    }
+
+    GIStaticVisibilityKey GetStaticCacheKey(uint64_t listGeneration) const override
+    {
+        return m_provider.GetStaticCacheKey(listGeneration);
+    }
+
+private:
+    const GIVisibilityProvider& m_provider;
+};
+
+TEST_P(DynamicVoxelGIIntegrationTest, ProviderOwnsProductionPipelinesAndCachePolicy)
+{
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+
+    ASSERT_TRUE(graph.Begin());
+
+    const StaticFixture fixture =
+        StaticInputs(graph, {{{10, 10, 10}, GI_STATIC}, {{10, 10, 12}, GI_STATIC}});
+
+    VoxelDDAProvider provider;
+
+    ASSERT_TRUE(
+        provider.Prepare(fixture.staticVoxels, fixture.dynamicVoxels, fixture.inputs.grid, 1));
+
+    DynamicVoxelGIRenderer* original = StaticRenderer(2, 2, StaticSide, true);
+
+    ASSERT_TRUE(original->BuildRenderGraph(fixture.inputs, provider, StaticLighting(), 1, true));
+
+    const StaticReadback expected = CaptureStatic(graph, *original);
+
+    ASSERT_TRUE(graph.Begin());
+
+    const ForwardingGIProvider forwarding(provider);
+
+    DynamicVoxelGIRenderer* replacement = StaticRenderer(2, 2, StaticSide, true);
+
+    ASSERT_TRUE(
+        replacement->BuildRenderGraph(fixture.inputs, forwarding, StaticLighting(), 1, true));
+
+    const StaticReadback actual = CaptureStatic(graph, *replacement);
+
+    ASSERT_EQ(actual.status, expected.status);
+
+    ASSERT_EQ(actual.faces.size(), expected.faces.size());
+
+    EXPECT_EQ(
+        std::memcmp(actual.faces.data(), expected.faces.data(), actual.faces.size() * sizeof(Vec4)),
+        0);
+
+    ASSERT_TRUE(graph.Begin());
+
+    ASSERT_TRUE(
+        provider.Prepare(fixture.staticVoxels, fixture.dynamicVoxels, fixture.inputs.grid, 2));
+
+    const ForwardingGIProvider refreshed(provider);
+
+    ASSERT_TRUE(
+        replacement->BuildRenderGraph(fixture.inputs, refreshed, StaticLighting(), 1, true));
+
+    EXPECT_TRUE(FinishStatic(graph, *replacement));
+
+    EXPECT_EQ(replacement->GetCacheBuildBatches(), 1);
+
+    EXPECT_EQ(replacement->GetCacheEpoch(), 1);
+}
+
 TEST_P(DynamicVoxelGIIntegrationTest, SampleCountsPreserveConstantFieldEnergy)
 {
     RenderGraph& graph = *device->GetCurrentFrameRDG();
@@ -353,7 +447,7 @@ TEST_P(DynamicVoxelGIIntegrationTest, UnlitHiddenBlockerPreventsALitSenderBehind
         {
             cells.pop_back();
         }
-        StaticFixture fixture = StaticInputs(graph, cells);
+        StaticFixture fixture         = StaticInputs(graph, cells);
         fixture.inputs.listGeneration = state + 1;
         VoxelDDAProvider provider;
         ASSERT_TRUE(provider.Prepare(fixture.staticVoxels, fixture.dynamicVoxels,

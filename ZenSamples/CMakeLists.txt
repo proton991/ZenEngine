@@ -20,6 +20,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanDescriptorLifetimeTests.cpp
     CommonTest/VulkanQueueIntegrationTests.cpp
     CommonTest/VulkanCommandBufferLifetimeTests.cpp
+    CommonTest/VulkanGPUTimingIntegrationTests.cpp
     CommonTest/VulkanPipelineIntegrationTests.cpp
     CommonTest/VulkanBindingIntegrationTests.cpp
     CommonTest/VulkanSwapchainIntegrationTests.cpp
@@ -57,11 +58,15 @@ target_compile_definitions(VulkanRHIIntegrationTest PRIVATE RDG_REFLECTION_TEST_
 add_executable(RenderCoreTest
     RenderCoreTest/RenderCoreTests.cpp
     RenderCoreTest/RDGMetricsTests.cpp
+    RenderCoreTest/RDGProfilingTests.cpp
+    RenderCoreTest/RHIGPUTimingTests.cpp
+    RenderCoreTest/RHIGPUFrameTimingTests.cpp
     RenderCoreTest/DynamicVoxelGIPlanningTests.cpp
     ../ZenCore/Source/Memory/Memory.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
     ../ZenCore/Source/Graphics/RHI/RHIResource.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandListExecutor.cpp
+    ../ZenCore/Source/Graphics/RHI/RHIGPUFrameTiming.cpp
     ../ZenCore/Source/Graphics/RHI/RHIThread.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderDevice.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/RenderSubmissionHistory.cpp
@@ -172,6 +177,7 @@ endif ()
 
 add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
+        VulkanRHIDemo/SceneRenderer/SceneRendererDemoProfiling.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoClassCapture.cpp
         VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp

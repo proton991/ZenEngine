@@ -17,7 +17,7 @@ Vulkan SDK installed. From the repository root:
 ```powershell
 cmake --preset x64-windows-msvc-release
 cmake --build --preset x64-windows-msvc-release --target scene_renderer_demo --parallel 8
-./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe --mode=3
+./build/x64-windows-msvc-release/bin/scene_renderer_demo.exe
 ```
 
 Every preset writes executables to `build/<preset-name>/bin`, including Debug.
@@ -27,6 +27,11 @@ Model paths in `Data/engine.cfg` are resolved relative to that file's directory;
 the launch working directory does not affect asset lookup. Absolute paths are preserved.
 Configure once before using a build preset. Vulkan validation remains enabled by
 default; add `--disable-validation` when measuring performance.
+
+The demo starts in **VoxelGI**. Press **1** (or numpad 1) for VoxelGI and **2**
+(or numpad 2) for voxelization. **R** rebuilds the voxels. Deferred PBR lighting
+has no keyboard binding. Existing diagnostic command-line IDs remain available
+for automation: `--mode=1` voxelization, `--mode=2` PBR, `--mode=3` VoxelGI.
 
 For an automatic Visual Studio environment setup, build and mode-3 launch, use
 `tools/run_voxel_gi_performance.cmd`. This uses the separate Release performance

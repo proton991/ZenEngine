@@ -98,6 +98,7 @@ GIResourceStatus ValidateGIStorageBuffer(uint64_t elements,
                                          uint32_t stride,
                                          const RHIGPUInfo& gpu,
                                          uint64_t& bytes);
+
 // Incremental V1 budget: one uint4 scratch and one RGBA8 output per cell,
 // including any previous V1 allocations still awaiting retirement.
 GIResourceStatus ValidateVoxelReflectanceResources(uint32_t resolution,
@@ -106,6 +107,7 @@ GIResourceStatus ValidateVoxelReflectanceResources(uint32_t resolution,
                                                    uint64_t retiringBytes,
                                                    const RHIGPUInfo& gpu,
                                                    uint64_t& peakBytes);
+
 // M2 class surfaces/lists plus the retained cone transition, without future hit caches.
 GIResourceStatus ValidateVoxelConeResources(uint32_t resolution,
                                             bool averaged,
@@ -113,12 +115,14 @@ GIResourceStatus ValidateVoxelConeResources(uint32_t resolution,
                                             uint64_t retiringBytes,
                                             const RHIGPUInfo& gpu,
                                             uint64_t& peakBytes);
+
 GIResourceStatus ValidateVoxelClassResources(uint32_t resolution,
                                              bool averaged,
                                              uint64_t budgetBytes,
                                              uint64_t retiringBytes,
                                              const RHIGPUInfo& gpu,
                                              uint64_t& peakBytes);
+
 // Six static GIHit caches; raw/final faces, float histories and per-cell metadata,
 // masks, receiver lists/flags and bounded indirect arguments. The static
 // capacity is bounded by both the total cap and the range of each face buffer.
@@ -132,6 +136,7 @@ GIResourceStatus PlanStaticVoxelGIResources(uint32_t resolution,
                                             uint64_t retiringBytes        = 0,
                                             bool compactCache             = false,
                                             uint32_t raysPerFace          = 128);
+
 DynamicVoxelGIResourceEstimate EstimateDynamicVoxelGIResources(
     const DynamicVoxelGIResourceRequest& request,
     const RHIGPUInfo& gpu);

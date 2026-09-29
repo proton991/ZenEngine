@@ -351,6 +351,7 @@ def write_slices(prefix, dimension, expected, actual, certain, possible, referen
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument('--output', type=Path, default=OUT/'current')
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--resolution', type=int, choices=(64, 128, 256), default=64)
     parser.add_argument('--fixture', choices=('analytic', 'geometry', 'materials', 'mixtures'), default='analytic')
     parser.add_argument('--reflectance-policy', choices=('owner','averaged'), default='owner')
@@ -419,7 +420,7 @@ def main():
             last = original + b'\n' + ''.join(f'{k}={v}\n' for k,v in settings.items()).encode()
             config.write_bytes(last)
             with Path(str(prefix)+'.log').open('w') as log:
-                command = [str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'), '--frames=2',
+                command = [str(args.executable.resolve()), '--disable-rt', '--frames=2',
                     '--mode=1', f'--rhi-thread={thread}', f'--async-compute={queue}',
                     f'--capture-voxels={prefix}']
                 if args.reference:

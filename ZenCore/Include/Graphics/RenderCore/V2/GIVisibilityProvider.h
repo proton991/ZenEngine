@@ -4,10 +4,34 @@
 
 namespace zen::rc
 {
+class RenderScene;
+class SceneShadowRenderer;
+
 enum class GIVisibilityBackend
 {
     eVoxelDDA,
     eDeterministic
+};
+
+enum class GIQueryStage
+{
+    eConformance,
+    eStaticCache,
+    eSenderLighting,
+    eSenderEnvironment,
+    eGather
+};
+
+struct GIQueryVariant
+{
+    bool environment{false};
+    bool meshLightVisibility{false};
+};
+
+struct GIStaticVisibilityKey
+{
+    uint64_t generation{0};
+    glm::uvec4 settings{};
 };
 
 struct GIVisibilityInfo
@@ -19,6 +43,7 @@ struct GIVisibilityInfo
     // DDA coverage bounds and the class-completeness mask. Coverage/material
     // acceptance is the voxelized opaque/masked approximation, not exact triangles.
     GIGridUniform grid{};
+    bool compactCache{false};
 };
 
 // Prepared snapshots borrow resources. Binding declares them to RDG, which retains
@@ -26,9 +51,18 @@ struct GIVisibilityInfo
 class GIVisibilityProvider
 {
 public:
-    virtual ~GIVisibilityProvider()                              = default;
+    virtual ~GIVisibilityProvider() = default;
+
     virtual bool BindQueryInputs(RDGComputePassDesc& pass) const = 0;
-    virtual NameID GetQueryShader() const                        = 0;
+
+    virtual bool BindLightingInputs(RDGComputePassDesc& pass,
+                                    const RenderScene* scene,
+                                    const SceneShadowRenderer* shadows) const = 0;
+
+    virtual NameID GetShader(GIQueryStage stage, GIQueryVariant variant = {}) const = 0;
+
+    virtual GIStaticVisibilityKey GetStaticCacheKey(uint64_t listGeneration) const = 0;
+
     const GIVisibilityInfo& GetInfo() const
     {
         return m_info;
@@ -45,8 +79,16 @@ public:
                  const VoxelTextures& dynamicVoxels,
                  const GIGridUniform& grid,
                  uint64_t generation);
+
     bool BindQueryInputs(RDGComputePassDesc& pass) const override;
-    NameID GetQueryShader() const override;
+
+    bool BindLightingInputs(RDGComputePassDesc& pass,
+                            const RenderScene* scene,
+                            const SceneShadowRenderer* shadows) const override;
+
+    NameID GetShader(GIQueryStage stage, GIQueryVariant variant = {}) const override;
+
+    GIStaticVisibilityKey GetStaticCacheKey(uint64_t listGeneration) const override;
 
 private:
     VoxelTextures m_static;
@@ -59,8 +101,16 @@ class DeterministicGIProvider final : public GIVisibilityProvider
 {
 public:
     bool Prepare(RHIBuffer* responses, uint32_t count, uint64_t generation, const RHIGPUInfo& gpu);
+
     bool BindQueryInputs(RDGComputePassDesc& pass) const override;
-    NameID GetQueryShader() const override;
+
+    bool BindLightingInputs(RDGComputePassDesc& pass,
+                            const RenderScene* scene,
+                            const SceneShadowRenderer* shadows) const override;
+
+    NameID GetShader(GIQueryStage stage, GIQueryVariant variant = {}) const override;
+
+    GIStaticVisibilityKey GetStaticCacheKey(uint64_t listGeneration) const override;
 
 private:
     RHIBuffer* m_responses{nullptr};

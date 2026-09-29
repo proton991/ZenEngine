@@ -267,6 +267,10 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                          "VoxelGI/Calibration/capture_owners.comp.spv"));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelCaptureGBufferSP",
                                          "VoxelGI/Calibration/capture_gbuffer.comp.spv"));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelVisibilityCheckSP",
+                                         "VoxelGI/Calibration/visibility_check.comp.spv"));
+
     StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)
     {

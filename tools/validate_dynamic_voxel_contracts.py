@@ -27,7 +27,8 @@ def capture_stats(prefix):
     if metadata['method'] == 'dynamic_voxel':
         static = json.loads(Path(str(prefix)+'.static.json').read_text())
         stats.update({key: static[key] for key in ('cache_batches', 'static_visibility_generation',
-            'dynamic_visibility_generation', 'occupied', 'dynamic_occupied', 'minimum_cell_size')})
+            'dynamic_visibility_generation', 'occupied', 'dynamic_occupied', 'minimum_cell_size',
+            'cache_updated', 'cache_ready_receivers')})
     return stats
 
 
@@ -41,8 +42,10 @@ def check_lifecycle(results, name):
         if not outside and stage != 'expanded':
             assert result['minimum_cell_size'] == initial['minimum_cell_size'], stage
         if stage in ('tint', 'metal', 'emission'):
-            for key in ('cache_batches', 'static_visibility_generation', 'scene_geometry_generation'):
+            for key in ('static_visibility_generation', 'scene_geometry_generation'):
                 assert result[key] == initial[key], (stage, key)
+            assert result['cache_updated'] == 0
+            assert result['cache_ready_receivers'] == result['occupied']
             assert result['scene_surface_generation'] > initial['scene_surface_generation']
         if stage in ('restored', 'materials-restored', 'returned', 'grid-restored'):
             assert result['sha256'] == initial['sha256'], ('Stale restored lighting', stage)
@@ -56,10 +59,13 @@ def check_lifecycle(results, name):
     assert stages['dynamic-emission']['emission_sum'][1] > 0
     assert stages['dynamic-alpha']['dynamic_occupied'] == 0
     assert stages['dynamic-alpha']['occupied'] == initial['occupied']
-    assert stages['dynamic-alpha']['cache_batches'] == stages['restored']['cache_batches']
-    assert stages['returned']['cache_batches'] == stages['materials-restored']['cache_batches']
+    for stage, baseline in (('dynamic-alpha', 'restored'), ('returned', 'materials-restored')):
+        assert stages[stage]['static_visibility_generation'] == stages[baseline]['static_visibility_generation']
+        assert stages[stage]['cache_updated'] == 0
+        assert stages[stage]['cache_ready_receivers'] == stages[stage]['occupied']
     assert stages['expanded']['minimum_cell_size'] != initial['minimum_cell_size']
-    assert stages['expanded']['cache_batches'] > stages['returned']['cache_batches']
+    assert stages['expanded']['static_visibility_generation'] > stages['returned']['static_visibility_generation']
+    assert stages['expanded']['cache_ready_receivers'] == stages['expanded']['occupied']
     for stage in STAGES[:9]:
         cone = results[name+'.'+stage+'.cone']
         assert cone['method'] == 'cone'
@@ -69,6 +75,7 @@ def check_lifecycle(results, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--executable', type=Path, default=ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe')
     parser.add_argument('--output', type=Path, default=ROOT/'build/dynamic-voxel-gap-fixes/contracts')
     parser.add_argument('--quick', action='store_true')
     parser.add_argument('--compare-only', action='store_true')
@@ -102,7 +109,7 @@ def main():
                 last = original+b'\n'+''.join(f'{k}={v}\n' for k, v in settings.items()).encode()
                 config.write_bytes(last)
                 Path(str(prefix)+'.cfg').write_bytes(last)
-                command = [str(ROOT/'build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe'), '--disable-rt', '--frames=12', '--mode=3',
+                command = [str(args.executable.resolve()), '--disable-rt', '--frames=12', '--mode=3',
                     f'--rhi-thread={thread}', f'--async-compute={queue}', '--gbuffer-size=256',
                     '--width=320', '--height=180', '--gi-contracts', f'--capture-lighting={prefix}']
                 with Path(str(prefix)+'.log').open('w') as log:

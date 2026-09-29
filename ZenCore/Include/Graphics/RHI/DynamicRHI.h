@@ -3,6 +3,7 @@
 #include "RHICommon.h"
 #include "RHIResource.h"
 #include "RHIFrameState.h"
+#include "RHIGPUFrameTiming.h"
 
 namespace zen
 {
@@ -22,6 +23,18 @@ public:
     virtual void NotifyResourceDestroyed(uint64_t resourceId) {}
 
     virtual void BeginFrame() = 0;
+
+    // Scope native graphics/compute command buffers without changing submission order.
+    // The executor marshals these markers onto the ordered RHI worker.
+    virtual void BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing)
+    {
+        if (timing)
+        {
+            timing->Seal(RHIGPUTimingStatus::eUnsupported);
+        }
+    }
+
+    virtual void EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded) {}
 
     virtual void EndFrame()
     {

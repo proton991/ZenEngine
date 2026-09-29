@@ -1,4 +1,4 @@
-#include "gi_common.glsl"
+#include "environment_visibility.glsl"
 layout(set=1,binding=9) uniform sampler3D voxelRadiance;
 layout(set=1,binding=10) uniform sampler3D voxelOpacity;
 layout(set=1,binding=11) uniform samplerCube skyboxMap;
@@ -34,7 +34,7 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
 #endif
     if(!InsideVoxelVolume(uv) && sceneUbo.environment.z>0 && transmittance>0.01)
     {
-        float visibility=VoxelVisibility(voxelOpacity,origin,direction,1e20);
+        float visibility=VoxelEnvironmentVisibility(voxelOpacity,origin,direction,1e20);
         vec3 escaped=transmittance*visibility*textureLod(skyboxMap,EnvironmentSourceDirection(direction),0).rgb*
             sceneUbo.environment.x;
         incoming+=escaped;

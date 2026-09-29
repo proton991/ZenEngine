@@ -9,3 +9,4 @@ out/
 Data/SpvShaders
 Data/engine.cfg
 .DS_Store
+__pycache__/

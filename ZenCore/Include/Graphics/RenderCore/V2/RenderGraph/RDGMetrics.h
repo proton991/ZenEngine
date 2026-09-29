@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RDGDefs.h"
 #include "Graphics/RenderCore/V2/RenderGraph/RDGSchedule.h"
 #include "Graphics/RenderCore/V2/PipelineCacheMetrics.h"
+#include "Graphics/RHI/RHIGPUTiming.h"
 #include "Templates/VectorView.h"
 #include "Templates/SmallVector.h"
 #include "Utils/MetricsLogger.h"
@@ -167,6 +168,8 @@ struct RDGNodeMetrics
     int64_t srcStages{0};
     int64_t dstStages{0};
     double recordCPUUs{0}; // CPU command recording; valid only when snapshot.nodeTimingsEnabled.
+    RHIGPUTimingStatus gpuStatus{RHIGPUTimingStatus::eDisabled};
+    double gpuUs{0}; // Valid only for eAvailable; includes this node's prologue barriers.
 };
 
 // Binding and pipeline timings are subsets of total pass setup, not additional phases.
@@ -209,12 +212,15 @@ struct RDGMetricsSnapshot
 {
     NameID graph;
     uint64_t execution{0};
+    uint64_t frameIndex{
+        UINT64_MAX}; // Application frame identity; UINT64_MAX denotes startup/unset.
     uint64_t windowExecutions{0};
     uint64_t windowNodes{0};
     bool transferOnly{false};
     bool precompiled{false}; // Graph was compiled before this execution's preparation began.
     bool validated{false};
     bool nodeTimingsEnabled{false}; // Captured configuration; false means unmeasured, not zero.
+    bool gpuTimingsEnabled{false};
     uint32_t resources{0};
     uint32_t importedResources{0};
     uint32_t transientResources{0};
@@ -253,6 +259,9 @@ struct RDGMetricsOptions
     bool validate{true};
     bool nodeTimings{false};
     bool preparationTimings{false}; // Opt-in per-pass setup/binding/pipeline CPU attribution.
+    bool gpuTimings{false};         // Opt-in native GPU elapsed time for retained node details.
+    uint32_t maxPendingGPUCaptures{
+        32}; // Oldest pending samples are dropped on overflow, never waited.
     bool includeTransferNodes{false};
     uint32_t maxNodeDetails{32};
     uint32_t maxDiagnosticDetails{16};
@@ -281,6 +290,21 @@ public:
 
     void SetSink(Sink sink);
 
+    // Deferred sink runs only on the caller's thread during collection or bounded overflow.
+    // It receives owned snapshots with terminal GPU statuses, independently of the CPU sink.
+    void SetGPUSink(Sink sink);
+
+    void CollectGPUResults(bool abandonPending = false);
+
+    size_t GetPendingGPUCaptureCount() const;
+
+    const RDGMetricsSnapshot& GetLastGPUSnapshot() const;
+
+    void SetFrameIndex(uint64_t frameIndex)
+    {
+        m_frameIndex = frameIndex;
+    }
+
     void RequestCapture(bool transferOnly = false);
 
     const RDGMetricsSnapshot& GetLastSnapshot() const
@@ -295,6 +319,7 @@ private:
     friend class RenderGraph;
     friend class ResourceStateTracker;
     friend struct RDGSubmissionTestAccess;
+    friend struct RDGProfilingTestAccess;
 
     void ForgetResource(uint64_t resource)
     {
@@ -333,6 +358,26 @@ private:
     void EndNode();
 
     void End(double submissionCPUUs = 0);
+
+    struct PendingGPUCapture
+    {
+        RDGMetricsSnapshot snapshot;
+        HeapVector<RHIGPUTimingPtr> timings; // One slot for each retained node, in snapshot order.
+    };
+    struct GPUState
+    {
+        Sink sink;
+        RDGMetricsSnapshot last;
+        HeapVector<PendingGPUCapture> pending; // Bounded to at most 256 captures.
+    };
+    void PublishGPUCapture(PendingGPUCapture capture, bool abandonPending);
+
+    // Executor rollback copies RDGMetrics. Completed reports and older pending GPU work
+    // belong to the executor, and must not be duplicated or resurrected by that copy.
+    SharedPtr<GPUState, MultiThreadCounter> m_gpuState{MakeShared<GPUState, MultiThreadCounter>()};
+    HeapVector<RHIGPUTimingPtr> m_gpuTimings;
+    RHIGPUTimingPtr m_nodeGPUTiming;
+    uint64_t m_frameIndex{UINT64_MAX};
 
     void Report(RDGMetricIssue issue, int32_t node, int32_t previous, uint64_t resource);
 

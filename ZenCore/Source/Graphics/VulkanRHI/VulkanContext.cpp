@@ -685,18 +685,33 @@ void VulkanRHI::Init()
         SelectGPU();
         m_pDevice->Init();
 
-        const VkPhysicalDeviceLimits& limits = m_pDevice->GetPhysicalDeviceProperties().limits;
+        const VkPhysicalDeviceProperties properties = m_pDevice->GetPhysicalDeviceProperties();
+
+        const VkPhysicalDeviceLimits& limits = properties.limits;
+
+        std::copy_n(properties.deviceName, m_gpuInfo.deviceName.size(),
+                    m_gpuInfo.deviceName.begin());
+
+        m_gpuInfo.vendorID = properties.vendorID;
+
+        m_gpuInfo.deviceID = properties.deviceID;
+
+        m_gpuInfo.apiVersion = properties.apiVersion;
+
+        m_gpuInfo.driverVersionRaw = properties.driverVersion;
+
         m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
+
         m_gpuInfo.supportFragmentStoresAndAtomics =
             m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
-        m_gpuInfo.uniformBufferAlignment = limits.minUniformBufferOffsetAlignment;
-        m_gpuInfo.storageBufferAlignment = limits.minStorageBufferOffsetAlignment;
+        m_gpuInfo.uniformBufferAlignment         = limits.minUniformBufferOffsetAlignment;
+        m_gpuInfo.storageBufferAlignment         = limits.minStorageBufferOffsetAlignment;
         m_gpuInfo.maxComputeWorkGroupInvocations = limits.maxComputeWorkGroupInvocations;
         m_gpuInfo.maxStorageBufferRange          = limits.maxStorageBufferRange;
         m_gpuInfo.maxColorAttachments            = limits.maxColorAttachments;
         for (uint32_t axis = 0; axis < 3; ++axis)
         {
-            m_gpuInfo.maxComputeWorkGroupSize[axis] = limits.maxComputeWorkGroupSize[axis];
+            m_gpuInfo.maxComputeWorkGroupSize[axis]  = limits.maxComputeWorkGroupSize[axis];
             m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
         }
 
@@ -769,8 +784,95 @@ void VulkanRHI::BeginFrame()
     m_pUniformBufferAllocator->BeginFrame(ToIndex(GRHIFrameState.GetFrameSlot()));
 }
 
+void VulkanRHI::BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing)
+{
+    GetRHIThread().CheckOwnership();
+
+    const bool overlapping = m_gpuFrameTiming != nullptr;
+
+    if (overlapping)
+    {
+        m_gpuFrameTiming->Seal(RHIGPUTimingStatus::eError);
+    }
+
+    m_gpuFrameTiming = timing;
+
+    if (m_gpuFrameTiming != nullptr)
+    {
+        if (overlapping || m_pendingNativeRecordings != 0 || AreSubmissionsBlocked())
+        {
+            m_gpuFrameTiming->Seal(RHIGPUTimingStatus::eError);
+        }
+        else if (!m_pDevice->GetExtensionFlags().hasCalibratedTimestamps)
+        {
+            m_gpuFrameTiming->Seal(RHIGPUTimingStatus::eUnsupported);
+        }
+    }
+}
+
+void VulkanRHI::EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded)
+{
+    GetRHIThread().CheckOwnership();
+
+    const bool valid = timing != nullptr && timing == m_gpuFrameTiming && succeeded &&
+        m_pendingNativeRecordings == 0 && !AreSubmissionsBlocked();
+
+    if (m_gpuFrameTiming != nullptr)
+    {
+        m_gpuFrameTiming->Seal(valid ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eError);
+
+        m_gpuFrameTiming.Reset();
+    }
+
+    if (!valid && timing != nullptr)
+    {
+        timing->Seal(RHIGPUTimingStatus::eError);
+    }
+}
+
+RHIGPUTimingPtr VulkanRHI::RegisterNativeGPUFrameRecording(bool included)
+{
+    ++m_pendingNativeRecordings;
+
+    RHIGPUTimingPtr interval;
+
+    if (m_gpuFrameTiming != nullptr &&
+        m_gpuFrameTiming->GetStatus() == RHIGPUTimingStatus::ePending)
+    {
+        if (included)
+        {
+            interval = m_gpuFrameTiming->AddInterval();
+        }
+        else
+        {
+            m_gpuFrameTiming->ExcludeInterval();
+        }
+    }
+
+    return interval;
+}
+
+void VulkanRHI::ReleaseNativeGPUFrameRecording()
+{
+    if (m_pendingNativeRecordings != 0)
+    {
+        --m_pendingNativeRecordings;
+    }
+    else if (m_gpuFrameTiming != nullptr)
+    {
+        m_gpuFrameTiming->Seal(RHIGPUTimingStatus::eError);
+    }
+}
+
 void VulkanRHI::Destroy()
 {
+    if (m_gpuFrameTiming != nullptr)
+    {
+        m_gpuFrameTiming->Seal(RHIGPUTimingStatus::eDiscarded);
+
+        m_gpuFrameTiming.Reset();
+    }
+
     WaitDeviceIdle();
     DestroyPlatformCommandListPool();
 

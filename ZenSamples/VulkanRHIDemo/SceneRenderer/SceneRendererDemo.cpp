@@ -30,15 +30,21 @@
 namespace zen
 {
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
-                                     sg::CameraType type)
+                                     sg::CameraType type,
+                                     const DemoProfilingOptions& profiling)
 {
     m_pWindow = new platform::GlfwWindowImpl(windowConfig);
 
     m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan,
                                                   rc::RenderConfig::GetInstance().numFrames);
 
-    m_pViewport =
-        m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height, true);
+    if (!profiling.prefix.empty())
+    {
+        m_profiling = MakeUnique<SceneRendererProfiling>(*m_renderDevice, profiling);
+    }
+
+    m_pViewport = m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height,
+                                                 profiling.vsync);
 
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
@@ -99,6 +105,9 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
         m_camera->SetPosition(cameraPosition);
     }
     m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
+
+    LOGI("Views: 1 = VoxelGI; 2 = voxelization; R = rebuild voxels");
+
     //    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
     bool gridValid = true;
     if (captureVoxels && calibrationGridPercent != 0)
@@ -160,10 +169,10 @@ void SceneRendererDemo::UpdateDynamicLight(float frameTime)
     const rc::SceneLight* current = m_renderScene->GetLights().Find(m_dynamicLight);
     if (current != nullptr && frameTime > 0.0f)
     {
-        m_lightAngle = std::fmod(m_lightAngle +
-                                     glm::radians(static_cast<double>(m_orbitSpeedDegrees)) *
-                                         static_cast<double>(frameTime),
-                                 glm::two_pi<double>());
+        m_lightAngle         = std::fmod(m_lightAngle +
+                                             glm::radians(static_cast<double>(m_orbitSpeedDegrees)) *
+                                                 static_cast<double>(frameTime),
+                                         glm::two_pi<double>());
         rc::SceneLight light = *current;
         light.position       = m_orbitCenter +
             m_orbitRadius *
@@ -261,10 +270,31 @@ bool SceneRendererDemo::CaptureFrame(const std::string& path)
     return succeeded;
 }
 
-void SceneRendererDemo::Destroy()
+void SceneRendererDemo::StopProfiling()
 {
+    if (m_profiling)
+    {
+        m_profiling->Stop(*m_renderDevice, m_renderScene.Get(), *m_pViewport);
+    }
+}
+
+bool SceneRendererDemo::Destroy(bool runSucceeded)
+{
+    StopProfiling();
+
+    if (m_profiling)
+    {
+        // Drain the same outstanding frames required by device shutdown, outside the capture.
+        m_renderDevice->WaitForPreviousFrames();
+
+        m_profiling->CompleteDiagnostics(*m_renderDevice);
+    }
+
     rc::ShaderProgramManager::GetInstance().Destroy();
+
     m_renderDevice->Destroy();
+
+    return !m_profiling || m_profiling->Export(m_renderDevice->GetRDGMetrics(), runSucceeded);
 }
 
 void SceneRendererDemo::RunSmokeStep(uint32_t frame)
@@ -323,7 +353,8 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
                             const std::string& frameTimesPath,
                             bool fixedStep,
                             uint32_t giStartFrame,
-                            bool motionFixture)
+                            bool motionFixture,
+                            bool profileWarmup)
 {
     HeapVector<double> frameTimes;
     if (!frameTimesPath.empty())
@@ -333,15 +364,18 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
     if (smokeTest)
     {
         rc::RDGMetricsOptions options = m_renderDevice->GetRDGMetrics().GetOptions();
-        options.includeTransferNodes  = true;
-        options.maxNodeDetails        = 64;
+
+        options.includeTransferNodes = true;
+
+        options.maxNodeDetails = m_profiling ? options.maxNodeDetails : 64;
+
         m_renderDevice->GetRDGMetrics().Configure(options);
     }
     m_renderDevice->GetRendererServer()->SetRenderOption(
         giStartFrame != 0 ? rc::RenderOption::ePBR :
                             static_cast<rc::RenderOption>(initialMode - 1));
-    bool succeeded        = true;
-    uint32_t moving       = 0;
+    bool succeeded  = true;
+    uint32_t moving = 0;
     Mat4 motionOriginal(1);
     if (motionFixture)
     {
@@ -410,19 +444,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_1) |
             platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_1))
         {
-            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
+            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelGI);
         }
 
         if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_2) |
             platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_2))
         {
-            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::ePBR);
-        }
-
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_3) |
-            platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_3))
-        {
-            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelGI);
+            m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
         }
 
         // Always consume R; geometry updates are meaningful in both voxel modes.
@@ -433,7 +461,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             m_renderDevice->GetRDGMetrics().RequestCapture();
         }
 
+        if (m_profiling)
+        {
+            m_profiling->BeginFrame(*m_renderDevice, frames, profileWarmup);
+        }
+
         succeeded &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads();
+
         if (smokeTest)
         {
             LOGI("Smoke lighting: frame={} mode={} geometry_revision={} lighting_revision={}",
@@ -451,6 +485,11 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         if (!frameTimesPath.empty())
         {
             frameTimes.push_back(elapsed);
+        }
+
+        if (m_profiling)
+        {
+            m_profiling->RecordFrame(*m_renderDevice, *m_pViewport, elapsed, succeeded);
         }
     }
     m_renderDevice->FlushRHIThread();
@@ -493,7 +532,8 @@ struct DemoOptions
 {
     uint32_t frames{0};
     uint32_t warmup{0};
-    uint32_t initialMode{1};
+    // Retain the diagnostic --mode IDs independently of interactive key bindings.
+    uint32_t initialMode{3};
     uint32_t giStartFrame{0};
     bool smokeTest{false};
     bool disableRT{false};
@@ -501,8 +541,15 @@ struct DemoOptions
     bool gpuMarkers{false};
     bool gpuMemoryStats{false};
     bool motionFixture{false};
+
     bool fixedStep{false};
+
+    bool vsync{true};
+
+    std::string profilePath;
+
     std::string frameTimesPath;
+
     std::string capturePath;
     std::string lightingCapturePath;
     std::string traversalCapturePath;
@@ -552,7 +599,18 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument.starts_with("--frame-times="))
         {
             options.frameTimesPath = argument.substr(14);
-            valid                  = !options.frameTimesPath.empty();
+
+            valid = !options.frameTimesPath.empty();
+        }
+        else if (argument.starts_with("--profile="))
+        {
+            options.profilePath = argument.substr(10);
+
+            valid = !options.profilePath.empty();
+        }
+        else if (argument == "--vsync=0" || argument == "--vsync=1")
+        {
+            options.vsync = argument.back() == '1';
         }
         else if (argument == "--fixed-step")
         {
@@ -684,7 +742,9 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
     {
         options.frames = 48;
     }
+
     return valid && (options.frameTimesPath.empty() || options.frames != 0) &&
+        (options.profilePath.empty() || options.frames != 0) &&
         (options.giStartFrame == 0 ||
          (options.initialMode == 3 && options.warmup == 0 && !options.smokeTest &&
           (options.frames == 0 || options.giStartFrame < options.frames))) &&
@@ -709,20 +769,49 @@ int main(int argc, char** pArgv)
         RHIOptions::GetInstance().SetGPUMemoryStats(options.gpuMemoryStats);
         platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width,
                                             options.height};
+
+        DemoProfilingOptions profiling;
+
+        profiling.prefix = options.profilePath;
+
+        profiling.frames = options.frames;
+
+        profiling.warmup = options.warmup;
+
+        profiling.giStartFrame = options.giStartFrame;
+
+        profiling.fixedStep = options.fixedStep;
+
+        profiling.vsync = options.vsync;
+
+        if (!profiling.prefix.empty())
+        {
+            for (int index = 0; index < argc; ++index)
+            {
+                profiling.arguments.emplace_back(pArgv[index]);
+            }
+        }
+
         SceneRendererDemo* pDemo =
-            new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson);
+            new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling);
+
         const bool prepared =
             pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
         const bool warmed = prepared &&
             (options.warmup == 0 ||
              pDemo->Run(options.warmup, false, options.initialMode, {}, options.fixedStep, 0,
-                        options.motionFixture));
+                        options.motionFixture, true));
+
         result = warmed &&
                 pDemo->Run(options.frames, options.smokeTest, options.initialMode,
                            options.frameTimesPath, options.fixedStep, options.giStartFrame,
                            options.motionFixture) ?
             0 :
             1;
+
+        // Extra diagnostic capture graphs are outside the requested profiling workload.
+        pDemo->StopProfiling();
+
         if (result == 0 && !options.lightingCapturePath.empty())
         {
             result =
@@ -762,13 +851,16 @@ int main(int argc, char** pArgv)
         {
             result = pDemo->CaptureVoxelGBuffer(options.voxelCapturePath) ? 0 : 1;
         }
-        pDemo->Destroy();
+
+        result = pDemo->Destroy(result == 0) ? result : 1;
+
         delete pDemo;
     }
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--disable-rt] [--disable-validation] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--disable-rt] [--disable-validation] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
     }
+
     return result;
 }

@@ -65,6 +65,61 @@ and stores stable resource IDs rather than resource pointers. It changes at the 
 capture. Configuration, execution, and sink access belong on the executor's thread.
 Sinks run synchronously; a slow sink can still stall a captured frame.
 
+## Portable GPU pass timing
+
+GPU timing is separately opt-in. It uses native Vulkan timestamp queries and works
+without Nsight or debug-label extensions. The existing CPU sink remains immediate;
+GPU-complete reports use a separate sink on the executor's caller thread:
+
+```cpp
+auto options = metrics.GetOptions();
+options.gpuTimings = true;
+options.nodeTimings = true;
+options.includeTransferNodes = true;
+options.maxNodeDetails = 4096;
+options.maxPendingGPUCaptures = 32;
+metrics.Configure(options);
+metrics.SetGPUSink([](const zen::rc::RDGMetricsSnapshot& sample) {
+    SaveCompletedMetrics(sample); // Copy before retaining; avoid slow per-frame I/O.
+});
+
+metrics.SetFrameIndex(applicationFrameIndex); // Before recording this frame's graphs.
+// After ordinary RHI progress/completion processing, on the executor's caller thread:
+metrics.CollectGPUResults();
+```
+
+Sampling still follows `logging.sampleEvery` and `logging.minInterval`. For a finite
+benchmark, set them to `1` and `0ms`. Only retained node details receive timestamp
+scopes; omitted node counts remain visible. Each replay owns fresh results. Reports
+retain frame identity, graph/stream execution identity, node IDs and submission queues
+after graph destruction. An unset frame index (`UINT64_MAX`) denotes startup work.
+
+For each node, `gpuStatus == eAvailable` makes `gpuUs` valid. Other statuses distinguish
+pending, unsupported, dropped, discarded, error, and disabled measurements; their zero
+storage value is not a measured zero. Scopes include node prologue barriers. Native
+queries resolve only after the command buffer completes, without a new GPU wait.
+Timestamp counter wraparound is handled for intervals shorter than one counter wrap.
+Timestamp support and granularity depend on the queue family and implementation.
+
+`CollectGPUResults()` only examines published host-side results. The application's
+normal RHI progress processing must continue; this method does not force submission or
+poll the driver. It emits ready snapshots without waiting for older incomplete ones.
+The pending capture limit is clamped to 1..256. Overflow publishes the oldest capture
+with unresolved nodes marked dropped, preserving any already available nodes. Thus the
+GPU sink may also run during a successful graph execution that exceeds this bound.
+Configure and sinks must not re-enter graph recording or mutate the active collector.
+
+At shutdown, after the application's existing completion/drain step, call
+`CollectGPUResults(true)` to publish remaining captures with unresolved nodes dropped.
+Abandonment does not release native query resources early. They continue to follow GPU
+completion and native command-buffer lifetime. `GetLastGPUSnapshot()` exposes the last
+deferred report; it does not replace the immediate `GetLastSnapshot()` CPU report.
+
+GPU intervals on different queues can overlap. Do not add pass timings into a GPU
+frame duration or interpret uncalibrated timestamps as an aligned multi-queue timeline.
+Physical queue equivalence remains available in the submission details. These timings
+do not report shader occupancy or complete hardware memory residency.
+
 ## Reading a report
 
 `window(executions,nodes)` counts **all** executions/declared nodes in that stream since the
@@ -98,7 +153,7 @@ Queue captures use `RHICommandContextType` and the captured `RHIQueueCapabilitie
 
 Queue captures include each submission group's logical queue, backend-neutral native queue equivalence ID, conservative wait-stage mask, and producer references. `producer_group` names a group in this graph; `producer_external` names a submission-history reference supplied for this execution. `producer_queue` identifies its logical queue. External IDs are scoped to one capture and are not native serials. `semaphore_boundary` denotes a foreign native queue dependency; `queue_order/barrier` denotes ordering on a shared native queue with ordinary resource barriers as required. Node details retain queue preference, eligibility/fallback reason, planned queue, and group ID.
 
-These details use the prepared schedule, including cross-frame writer/reader dependencies, rather than the earlier compile-only schedule. `maxSubmissionDetails` and `maxDependencyDetails` bound capture output without changing the executed schedule; omitted counts remain visible. `submission_cpu_us` measures CPU handoff and backpressure separately from recording. It is not GPU duration or graphics wait time. GPU timestamp/overlap measurements remain outside this RDG collector. Step 9's Nsight Graphics captures now verify dedicated compute execution, but show no overlap in the captured repeated updates; first-load timing and full performance acceptance remain open. See [Nsight verification](AsyncComputeNsightVerification.md). See [Step 9 verification](AsyncComputeStep9Verification.md).
+These details use the prepared schedule, including cross-frame writer/reader dependencies, rather than the earlier compile-only schedule. `maxSubmissionDetails` and `maxDependencyDetails` bound capture output without changing the executed schedule; omitted counts remain visible. `submission_cpu_us` measures CPU handoff and backpressure separately from recording. It is not GPU duration or graphics wait time. Opt-in GPU pass timestamps are delivered through the deferred GPU sink described above; calibrated overlap measurement remains outside this collector. Step 9's Nsight Graphics captures now verify dedicated compute execution, but show no overlap in the captured repeated updates; first-load timing and full performance acceptance remain open. See [Nsight verification](AsyncComputeNsightVerification.md). See [Step 9 verification](AsyncComputeStep9Verification.md).
 
 Phase 6B moved automatic preparation into this timing. Compare end-to-end CPU measurements across the change; the old `compile` counter omitted the device’s preliminary preparation and queue-selection work.
 
@@ -144,7 +199,7 @@ and structured snapshots have `nodeTimingsEnabled=false` (their timing values ar
 unmeasured). Set `options.nodeTimings = true` before `metrics.Configure(options)`
 to measure sampled nodes. Enabled values are printed to one decimal place, so very
 short measurements can round to `0.0`. This is CPU command recording, not GPU pass
-execution; no GPU timing queries or waits are introduced.
+execution. This CPU option does not enable GPU queries; use the separate gpuTimings option for GPU measurements.
 
 Compiled shader passes reuse cleared CPU storage across graph rebuilds. Idle storage
 is bounded internally to **256 objects and 1 MiB of object/vector payload per graph**,

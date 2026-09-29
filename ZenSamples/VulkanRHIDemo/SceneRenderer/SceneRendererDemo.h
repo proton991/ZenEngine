@@ -3,6 +3,7 @@
 #include "SceneGraph/Camera.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/GlfwWindow.h"
+#include "SceneRendererDemoProfiling.h"
 
 
 namespace zen
@@ -14,7 +15,9 @@ class VoxelizerBase;
 class SceneRendererDemo
 {
 public:
-    SceneRendererDemo(const platform::WindowConfig& windowConfig, sg::CameraType type);
+    SceneRendererDemo(const platform::WindowConfig& windowConfig,
+                      sg::CameraType type,
+                      const DemoProfilingOptions& profiling = {});
 
     ~SceneRendererDemo();
 
@@ -26,7 +29,8 @@ public:
              const std::string& frameTimesPath = {},
              bool fixedStep                    = false,
              uint32_t giStartFrame             = 0,
-             bool motionFixture                = false);
+             bool motionFixture                = false,
+             bool profileWarmup                = false);
 
     bool CaptureFrame(const std::string& path);
     bool CaptureLighting(const std::string& path);
@@ -41,7 +45,9 @@ public:
     bool CaptureVoxelLifecycle(const std::string& path);
     bool CaptureVoxelGBuffer(const std::string& path);
 
-    void Destroy();
+    void StopProfiling();
+
+    bool Destroy(bool runSucceeded = true);
 
 private:
     bool CaptureVoxelOutput(const std::string& path, rc::VoxelizerBase& output);
@@ -72,5 +78,6 @@ private:
     float m_orbitSpeedDegrees{45.0f};
     double m_lightAngle{0.0};
     uint64_t m_motionFrame{0};
+    UniquePtr<SceneRendererProfiling> m_profiling;
 };
 } // namespace zen

@@ -182,6 +182,11 @@ public:
 
     void Destroy() override;
     void BeginFrame() override;
+
+    void BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing) override;
+
+    void EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded) override;
+
     void EndFrame() override;
     RHISubmissionResult FlushAllGPUCommands() override;
     void WaitDeviceIdle() override;
@@ -245,6 +250,9 @@ private:
     void ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch);
     RHISubmissionResult ExecuteBatch(VectorView<RHICommandList*> lists);
     void ExecuteBeginFrame();
+
+    void ExecuteEndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded);
+
     void ExecuteWaitIdle();
     void ExecuteDestroy();
     void DeleteBackend();

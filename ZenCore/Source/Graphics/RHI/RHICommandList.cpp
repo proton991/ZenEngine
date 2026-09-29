@@ -354,6 +354,16 @@ void RHICommandList::EndDebugLabel()
     ALLOC_CMD(RHICommandDebugLabel)(NameID(), false);
 }
 
+void RHICommandList::BeginGPUTiming(const RHIGPUTimingPtr& result)
+{
+    ALLOC_CMD(RHICommandGPUTiming)(result, true);
+}
+
+void RHICommandList::EndGPUTiming(const RHIGPUTimingPtr& result)
+{
+    ALLOC_CMD(RHICommandGPUTiming)(result, false);
+}
+
 void RHICommandList::SetBlendConstants(const Color& color)
 {
     ALLOC_CMD(RHICommandSetBlendConstants)(color);

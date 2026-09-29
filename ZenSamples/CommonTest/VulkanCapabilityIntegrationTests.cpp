@@ -738,9 +738,41 @@ TEST_F(VulkanCapabilityIntegrationTest, MissingSurfaceMaintenanceDependencyDisab
 
 TEST_F(VulkanCapabilityIntegrationTest, MaintenanceSelectsEXTWhenKHRNameIsAbsent)
 {
-    const auto& flags = session->rhi.GetInstanceExtensionFlags();
-    ASSERT_TRUE(flags.hasSurfaceMaintenanceEXT);
+    const InstanceExtensionFlags& flags = session->rhi.GetInstanceExtensionFlags();
+
+    if (!flags.hasSurfaceMaintenanceEXT)
+    {
+        GTEST_SKIP() << "Requires the EXT surface maintenance instance dependency";
+    }
+
+    const HeapVector<VkExtensionProperties> supported =
+        VulkanDeviceExtension::GetSupportedExtensions(session->rhi.GetPhysicalDevice());
+
+    if (std::none_of(supported.begin(), supported.end(),
+                     [](const VkExtensionProperties& extension) {
+                         return strcmp(extension.extensionName,
+                                       VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0;
+                     }))
+    {
+        GTEST_SKIP() << "Requires the EXT swapchain maintenance device extension";
+    }
+
+    VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT maintenance{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT};
+
+    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+
+    features.pNext = &maintenance;
+
+    vkGetPhysicalDeviceFeatures2(session->rhi.GetPhysicalDevice(), &features);
+
+    if (!maintenance.swapchainMaintenance1)
+    {
+        GTEST_SKIP() << "Requires the swapchainMaintenance1 feature";
+    }
+
     CapabilityDriver::hiddenExtensions = {"VK_KHR_swapchain_maintenance1"};
+
     VulkanDevice device(session->rhi.GetPhysicalDevice());
     device.Init();
     EXPECT_TRUE(device.GetExtensionFlags().hasSwapchainMaintenance1);
@@ -752,7 +784,179 @@ TEST_F(VulkanCapabilityIntegrationTest, MaintenanceSelectsEXTWhenKHRNameIsAbsent
                          CapabilityDriver::enabledExtensions.end(),
                          "VK_KHR_swapchain_maintenance1"),
               0);
+
     device.Destroy();
+}
+
+// Exercise extension selection without passing synthetic extension names to native
+// instance/device creation. A newer driver may advertise names unknown to the SDK.
+struct MaintenanceSelectionDriver
+{
+    static inline const HeapVector<const char*>* advertised;
+
+    HeapVector<const char*> names;
+
+    MaintenanceSelectionDriver(std::initializer_list<const char*> extensions) : names(extensions)
+    {
+        advertised = &names;
+    }
+
+    ~MaintenanceSelectionDriver()
+    {
+        advertised = nullptr;
+    }
+
+    static VkResult Enumerate(uint32_t* count, VkExtensionProperties* output)
+    {
+        const uint32_t available = static_cast<uint32_t>(advertised->size());
+
+        const uint32_t written = output ? std::min(*count, available) : available;
+
+        if (output)
+        {
+            for (uint32_t i = 0; i < written; ++i)
+            {
+                output[i] = {};
+
+                const char* name = (*advertised)[i];
+
+                std::copy_n(name, strlen(name) + 1, output[i].extensionName);
+
+                output[i].specVersion = 1;
+            }
+        }
+
+        *count = written;
+
+        return written < available ? VK_INCOMPLETE : VK_SUCCESS;
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL InstanceExtensions(const char*,
+                                                             uint32_t* count,
+                                                             VkExtensionProperties* output)
+    {
+        return Enumerate(count, output);
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL DeviceExtensions(VkPhysicalDevice,
+                                                           const char*,
+                                                           uint32_t* count,
+                                                           VkExtensionProperties* output)
+    {
+        return Enumerate(count, output);
+    }
+};
+
+template <typename Extensions>
+bool HasEnabledMaintenanceExtension(const Extensions& extensions, const char* name)
+{
+    return std::any_of(extensions.begin(), extensions.end(),
+                       [name](const typename Extensions::value_type& extension) {
+                           return extension->GetName() == NameID(name) &&
+                               extension->IsEnabledAndSupported();
+                       });
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, SurfaceMaintenanceAdvertisementRequiresSDKSupport)
+{
+    for (bool advertiseKHR : {false, true})
+    {
+        for (bool advertiseEXT : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << "KHR=" << advertiseKHR << " EXT=" << advertiseEXT);
+
+            MaintenanceSelectionDriver driver{VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_win32_surface",
+                                              "VK_EXT_metal_surface",
+                                              VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME};
+
+            if (advertiseKHR)
+            {
+                driver.names.push_back("VK_KHR_surface_maintenance1");
+            }
+
+            if (advertiseEXT)
+            {
+                driver.names.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+            }
+
+            test::ScopedVulkanCall hook(vkEnumerateInstanceExtensionProperties,
+                                        MaintenanceSelectionDriver::InstanceExtensions);
+
+            InstanceExtensionFlags flags{};
+
+            const VulkanInstanceExtensionArray extensions =
+                VulkanInstanceExtension::GetEnabledInstanceExtensions(flags);
+#if defined(VK_KHR_surface_maintenance1)
+            const bool expectKHR = advertiseKHR;
+#else
+            const bool expectKHR = false;
+#endif
+            EXPECT_EQ(bool(flags.hasSurfaceMaintenanceKHR), expectKHR);
+
+            EXPECT_EQ(bool(flags.hasSurfaceMaintenanceEXT), advertiseEXT);
+
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions, "VK_KHR_surface_maintenance1"),
+                      expectKHR);
+
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions,
+                                                     VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME),
+                      advertiseEXT);
+        }
+    }
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, SwapchainMaintenanceAdvertisementRequiresSDKSupport)
+{
+    for (bool advertiseKHR : {false, true})
+    {
+        for (bool advertiseEXT : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << "KHR=" << advertiseKHR << " EXT=" << advertiseEXT);
+
+            MaintenanceSelectionDriver driver{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+            if (advertiseKHR)
+            {
+                driver.names.push_back("VK_KHR_swapchain_maintenance1");
+            }
+
+            if (advertiseEXT)
+            {
+                driver.names.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+            }
+
+            test::ScopedVulkanCall hook(vkEnumerateDeviceExtensionProperties,
+                                        MaintenanceSelectionDriver::DeviceExtensions);
+
+            VulkanDevice device(session->rhi.GetPhysicalDevice());
+
+            InstanceExtensionFlags& instanceFlags = session->rhi.GetInstanceExtensionFlags();
+
+            const InstanceExtensionFlags saved = instanceFlags;
+
+            instanceFlags.hasSurfaceMaintenanceKHR = 1;
+
+            instanceFlags.hasSurfaceMaintenanceEXT = 1;
+
+            const VulkanDeviceExtensionArray extensions =
+                VulkanDeviceExtension::GetEnabledExtensions(&device);
+
+            instanceFlags = saved;
+#if defined(VK_KHR_swapchain_maintenance1)
+            const bool expectKHR = advertiseKHR;
+#else
+            const bool expectKHR = false;
+#endif
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions, "VK_KHR_swapchain_maintenance1"),
+                      expectKHR);
+
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions,
+                                                     VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME),
+                      advertiseEXT && !expectKHR);
+
+            EXPECT_EQ(CapabilityDriver::createCalls, 0u);
+        }
+    }
 }
 
 TEST_F(VulkanCapabilityIntegrationTest, AbsentMaintenanceNamesKeepDeviceUsable)
@@ -766,6 +970,74 @@ TEST_F(VulkanCapabilityIntegrationTest, AbsentMaintenanceNamesKeepDeviceUsable)
                          CapabilityDriver::enabledStructures.end(),
                          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT),
               0);
+    device.Destroy();
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, CalibratedTimestampSelectionPrefersSupportedSDKName)
+{
+    for (bool advertiseKHR : {false, true})
+    {
+        for (bool advertiseEXT : {false, true})
+        {
+            SCOPED_TRACE(testing::Message() << "KHR=" << advertiseKHR << " EXT=" << advertiseEXT);
+
+            MaintenanceSelectionDriver driver{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+            if (advertiseKHR)
+            {
+                driver.names.push_back("VK_KHR_calibrated_timestamps");
+            }
+
+            if (advertiseEXT)
+            {
+                driver.names.push_back("VK_EXT_calibrated_timestamps");
+            }
+
+            test::ScopedVulkanCall hook(vkEnumerateDeviceExtensionProperties,
+                                        MaintenanceSelectionDriver::DeviceExtensions);
+
+            VulkanDevice device(session->rhi.GetPhysicalDevice());
+
+            const VulkanDeviceExtensionArray extensions =
+                VulkanDeviceExtension::GetEnabledExtensions(&device);
+
+#if defined(VK_KHR_calibrated_timestamps)
+            const bool expectKHR = advertiseKHR;
+#else
+            const bool expectKHR = false;
+#endif
+
+#if defined(VK_EXT_calibrated_timestamps)
+            const bool expectEXT = advertiseEXT && !expectKHR;
+#else
+            const bool expectEXT = false;
+#endif
+
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions, "VK_KHR_calibrated_timestamps"),
+                      expectKHR);
+
+            EXPECT_EQ(HasEnabledMaintenanceExtension(extensions, "VK_EXT_calibrated_timestamps"),
+                      expectEXT);
+
+            EXPECT_EQ(bool(device.GetExtensionFlags().hasCalibratedTimestamps),
+                      expectKHR || expectEXT);
+
+            EXPECT_EQ(CapabilityDriver::createCalls, 0u);
+        }
+    }
+}
+
+TEST_F(VulkanCapabilityIntegrationTest, MissingCalibratedTimestampsKeepsDeviceUsable)
+{
+    CapabilityDriver::hiddenExtensions = {"VK_KHR_calibrated_timestamps",
+                                          "VK_EXT_calibrated_timestamps"};
+
+    VulkanDevice device(session->rhi.GetPhysicalDevice());
+
+    EXPECT_NO_THROW(device.Init());
+
+    EXPECT_FALSE(device.GetExtensionFlags().hasCalibratedTimestamps);
+
     device.Destroy();
 }
 

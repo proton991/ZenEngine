@@ -60,6 +60,7 @@ public:
 
     // Opt-in M2 resources; allocate once after the complete transition preflight.
     bool EnableClassVoxelization(uint64_t budgetBytes);
+
     const VoxelDDAProvider& GetClassVisibility() const
     {
         return m_classVisibility;
@@ -72,7 +73,7 @@ public:
 
     void SetRenderOption(RenderOption option)
     {
-        m_renderOption = option;
+        m_renderOption      = option;
         m_frameRenderOption = option;
     }
 
@@ -90,16 +91,32 @@ public:
     {
         return m_giSelection;
     }
+
     // Select between retained methods between frame recordings; resolution is fixed at startup.
     bool SetVoxelGIMethod(VoxelGIMethod method);
+
     DynamicVoxelGIRenderer* RequestDynamicVoxelGI() const
     {
         return m_pDynamicVoxelGI;
     }
 
+    // Optional 32-byte status/work-count readback, borrowed for the next frame graph.
+    // The caller must wait for ordinary resource retirement before mapping/reusing it.
+    void SetGIDiagnosticsReadback(RHIBuffer* buffer)
+    {
+        m_giDiagnosticsReadback = buffer;
+    }
+
+    bool HasRecordedGIDiagnostics() const
+    {
+        return m_recordedGIDiagnostics;
+    }
+
 private:
     VoxelizerBase* CreateVoxelizer(RHIViewport* viewport, uint32_t classMask);
+
     bool BuildClassVoxelization();
+
     bool PrepareVoxelGI();
     platform::VoxelizerMode m_voxelizerMode{platform::VoxelizerMode::eCompute};
     VoxelizerBase* m_pStaticVoxels{nullptr};
@@ -120,5 +137,7 @@ private:
     RenderOption m_frameRenderOption{RenderOption::eVoxelize};
     VoxelGISelection m_giSelection;
     DynamicVoxelGISettings m_dynamicSettings;
+    RHIBuffer* m_giDiagnosticsReadback{nullptr};
+    bool m_recordedGIDiagnostics{false};
 };
 } // namespace zen::rc

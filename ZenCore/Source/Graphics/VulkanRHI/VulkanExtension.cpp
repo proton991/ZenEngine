@@ -443,8 +443,14 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     SET_INSTANCE_EXTENSION_FLAG(hasGetPhysicalDeviceProperties);
     ADD_INSTANCE_EXTENSION(VK_KHR_SURFACE_EXTENSION_NAME);
     ADD_INSTANCE_EXTENSION(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
     ADD_INSTANCE_EXTENSION(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
-    ADD_INSTANCE_EXTENSION("VK_KHR_surface_maintenance1");
+
+    // Do not opt into newer extensions by name when building against an older SDK.
+    // The matching validation layer only recognizes the EXT maintenance structs.
+#if defined(VK_KHR_surface_maintenance1)
+    ADD_INSTANCE_EXTENSION(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+#endif
     ADD_INSTANCE_EXTENSION(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
 
     VulkanPlatform::AddInstanceExtensions(enabledExtensions);
@@ -457,11 +463,13 @@ VulkanInstanceExtensionArray VulkanInstanceExtension::GetEnabledInstanceExtensio
     for (const UniquePtr<VulkanInstanceExtension>& extension : enabledExtensions)
     {
         const NameID name = extension->GetName();
-        if (name == NameID("VK_KHR_surface_maintenance1"))
+#if defined(VK_KHR_surface_maintenance1)
+        if (name == NameID(VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
         {
             extension->SetSupport(extension->IsEnabledAndSupported() && hasSurfaceCapabilities2);
             extensionFlags.hasSurfaceMaintenanceKHR = extension->IsEnabledAndSupported();
         }
+#endif
         if (name == NameID(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
         {
             extension->SetSupport(extension->IsEnabledAndSupported() && hasSurfaceCapabilities2);
@@ -539,16 +547,48 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 
     const HeapVector<VkExtensionProperties> supported =
         GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
+
+    // Enabling either extension guarantees one timestamp domain across submissions and queues.
+    // Whole-frame timing needs this guarantee without querying any host-clock calibration.
+    NameID calibratedTimestamps;
+
+#if defined(VK_KHR_calibrated_timestamps)
+    if (FindExtensionIndex(NameID(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME), supported) >= 0)
+    {
+        calibratedTimestamps = NameID(VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+    }
+#endif
+
+#if defined(VK_EXT_calibrated_timestamps)
+    if (calibratedTimestamps == NameID() &&
+        FindExtensionIndex(NameID(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME), supported) >= 0)
+    {
+        calibratedTimestamps = NameID(VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+    }
+#endif
+
+    if (calibratedTimestamps != NameID())
+    {
+        enabledExtensions.emplace_back(
+            MakeUnique<VulkanDeviceExtension>(pDevice, calibratedTimestamps));
+    }
+
     const InstanceExtensionFlags& instanceFlags = GVulkanRHI->GetInstanceExtensionFlags();
-    if (instanceFlags.hasSurfaceMaintenanceKHR &&
-        FindExtensionIndex(NameID("VK_KHR_swapchain_maintenance1"), supported) >= 0)
+
+    bool hasSwapchainMaintenanceKHR = false;
+
+#if defined(VK_KHR_swapchain_maintenance1)
+    hasSwapchainMaintenanceKHR = instanceFlags.hasSurfaceMaintenanceKHR &&
+        FindExtensionIndex(NameID(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME), supported) >= 0;
+
+    if (hasSwapchainMaintenanceKHR)
     {
         enabledExtensions.emplace_back(MakeUnique<VulkanSwapchainMaintenanceExtension>(
-            pDevice, NameID("VK_KHR_swapchain_maintenance1")));
+            pDevice, NameID(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)));
     }
-    else if (instanceFlags.hasSurfaceMaintenanceEXT &&
-             FindExtensionIndex(NameID(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME), supported) >=
-                 0)
+#endif
+    if (!hasSwapchainMaintenanceKHR && instanceFlags.hasSurfaceMaintenanceEXT &&
+        FindExtensionIndex(NameID(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME), supported) >= 0)
     {
         enabledExtensions.emplace_back(MakeUnique<VulkanSwapchainMaintenanceExtension>(
             pDevice, NameID(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)));
@@ -570,6 +610,12 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
         if (name == NameID(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME))
         {
             pDevice->GetExtensionFlags().hasDeferredHostOperation =
+                extension->IsEnabledAndSupported();
+        }
+
+        if (name == calibratedTimestamps)
+        {
+            pDevice->GetExtensionFlags().hasCalibratedTimestamps =
                 extension->IsEnabledAndSupported();
         }
     }

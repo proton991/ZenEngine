@@ -78,6 +78,15 @@ public:
 
     void SetCompleted();
 
+    static constexpr uint32_t kMaxGPUTimingScopes = 512;
+    // Directional-GI startup can record over 180 native buffers before steady-state reuse.
+    // Bound profiler storage while accommodating startup and the frames in flight.
+    static constexpr uint32_t kMaxGPUTimingPools = 256;
+
+    void BeginGPUTiming(const RHIGPUTimingPtr& result);
+
+    void EndGPUTiming(const RHIGPUTimingPtr& result);
+
     bool IsInsideRenderPass() const
     {
         return m_state == State::eIsInsideRenderPass;
@@ -133,6 +142,14 @@ private:
 
     void FreeMemory();
 
+    RHIGPUTimingStatus PrepareGPUTimingPool();
+
+    void ResolveGPUTimings();
+
+    void DiscardGPUTimings();
+
+    void ReleaseGPUTimingPool();
+
     VkCommandBuffer m_vkHandle{VK_NULL_HANDLE};
 
     FVulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
@@ -142,6 +159,19 @@ private:
     double m_submitTime{0.0f};
 
     VkRenderingFlags m_lastRenderingFlags{0};
+
+    struct GPUTimingScope
+    {
+        RHIGPUTimingPtr result;
+        bool ended{false};
+    };
+    VkQueryPool m_timestampPool{VK_NULL_HANDLE};
+    HeapVector<GPUTimingScope> m_timingScopes;
+    uint32_t m_timestampValidBits{0};
+    double m_timestampPeriod{0};
+    bool m_timestampsReset{false};
+    RHIGPUTimingPtr m_frameTimingInterval;
+    bool m_nativeTimingRecording{false};
 
     struct BoundPipelineState
     {
@@ -512,7 +542,12 @@ public:
 
     void RHIEndRendering() override;
     void RHIBeginDebugLabel(NameID name) override;
+
     void RHIEndDebugLabel() override;
+
+    void RHIBeginGPUTiming(const RHIGPUTimingPtr& result) override;
+
+    void RHIEndGPUTiming(const RHIGPUTimingPtr& result) override;
 
     void RHISetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) override;
 
