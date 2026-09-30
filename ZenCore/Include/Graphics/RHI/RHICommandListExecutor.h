@@ -204,6 +204,9 @@ public:
         IRHICommandContext* context,
         VectorView<const RHISubmissionDependency> dependencies) override;
     const RHIGPUInfo& QueryGPUInfo() const override;
+
+    RHIGPUMemoryStats GetGPUMemoryStats() const override;
+
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const override;
     void Init() override;
     void DestroyViewport(RHIViewport* viewport) override;

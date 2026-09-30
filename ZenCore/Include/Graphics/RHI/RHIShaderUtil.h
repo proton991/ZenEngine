@@ -74,8 +74,9 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
             RHIShaderGroupInfo::VertexInputAttribute& vertexAttribute =
                 shaderGroupInfo.vertexInputAttributes[i];
             SpvReflectInterfaceVariable* const& inputVar = inputVars[i];
-            const uint32_t inputVarSize =
-                (inputVar->numeric.scalar.width / 8) * inputVar->numeric.vector.component_count;
+            // SPIRV-Reflect leaves vector.component_count at zero for scalar inputs.
+            const uint32_t inputVarSize = (inputVar->numeric.scalar.width / 8) *
+                std::max(1u, inputVar->numeric.vector.component_count);
             vertexAttribute.name     = inputVar->name;
             vertexAttribute.location = inputVar->location;
             vertexAttribute.binding  = 0;

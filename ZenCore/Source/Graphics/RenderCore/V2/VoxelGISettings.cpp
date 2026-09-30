@@ -12,7 +12,8 @@ bool ValidateVoxelGIRuntimeSettings(const VoxelGIRuntimeSettings& settings)
     const bool async = settings.asyncCompute == platform::AsyncComputeMode::eDisabled ||
         settings.asyncCompute == platform::AsyncComputeMode::eAuto;
 
-    return ValidateDynamicVoxelGISettings(settings.dynamic) &&
+    return (settings.resolution == 64 || settings.resolution == 128 ||
+            settings.resolution == 256) &&
         ValidateVoxelGISettings(settings.cone) && voxelizer && async &&
         (!settings.averagedReflectance || settings.reflectanceBudgetBytes != 0) &&
         settings.shadowMapResolution >= 128 && settings.shadowMapResolution <= 2048;
@@ -31,7 +32,7 @@ bool LoadVoxelGIRuntimeSettings(const platform::ConfigLoader& config,
 
     uint64_t budgetMiB = 0;
 
-    bool valid = LoadDynamicVoxelGISettings(config, settings.dynamic) &&
+    bool valid = config.ReadNumber("voxel_resolution", settings.resolution) &&
         LoadVoxelGISettings(config, settings.cone) &&
         (voxelizer == "auto" || voxelizer == "comp" || voxelizer == "geom") &&
         (async == "off" || async == "auto") &&
@@ -66,12 +67,8 @@ bool RequiresVoxelGIRebuild(const VoxelGIRuntimeSettings& previous,
 {
     return previous.voxelizer != next.voxelizer ||
         previous.averagedReflectance != next.averagedReflectance ||
-        previous.reflectanceBudgetBytes != next.reflectanceBudgetBytes ||
-        previous.dynamic.resolution != next.dynamic.resolution ||
-        previous.dynamic.raysPerFace != next.dynamic.raysPerFace ||
-        previous.dynamic.neighborRadius != next.dynamic.neighborRadius ||
-        previous.dynamic.backend != next.dynamic.backend ||
-        previous.dynamic.compactCache != next.dynamic.compactCache ||
-        previous.dynamic.memoryBudgetBytes != next.dynamic.memoryBudgetBytes;
+        ((previous.averagedReflectance || next.averagedReflectance) &&
+         previous.reflectanceBudgetBytes != next.reflectanceBudgetBytes) ||
+        previous.resolution != next.resolution;
 }
 } // namespace zen::rc

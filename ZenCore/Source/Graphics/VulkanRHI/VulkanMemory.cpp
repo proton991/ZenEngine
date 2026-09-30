@@ -2,6 +2,7 @@
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
+#include "Graphics/VulkanRHI/VulkanRHI.h"
 
 namespace zen
 {
@@ -73,7 +74,7 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
         }
 
         vmaDestroyAllocator(m_vmaAllocator);
-        if (m_trackMemory)
+        if (m_logMemoryStats)
         {
             LOGI(
                 "GPU memory VMA: peak_committed_bytes={} peak_device_local_bytes={} remaining_bytes={}",
@@ -119,14 +120,43 @@ void VulkanMemoryAllocator::Init(VkInstance instance,
         allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     }
     allocatorCI.pVulkanFunctions = &vmaVkFunc;
-    m_trackMemory                = RHIOptions::GetInstance().GPUMemoryStats();
+    m_logMemoryStats             = RHIOptions::GetInstance().GPUMemoryStats();
+
+    // Block allocation/free callbacks are inexpensive and keep the live UI available
+    // without enabling the optional shutdown log or scanning allocations every frame.
     VmaDeviceMemoryCallbacks memoryCallbacks{MemoryAllocated, MemoryFreed, this};
-    if (m_trackMemory)
-    {
-        vkGetPhysicalDeviceMemoryProperties(gpu, &m_memoryProperties);
-        allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
-    }
+
+    vkGetPhysicalDeviceMemoryProperties(gpu, &m_memoryProperties);
+
+    allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
+
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
+}
+
+RHIGPUMemoryStats VulkanMemoryAllocator::GetGPUMemoryStats() const
+{
+    RHIGPUMemoryStats stats;
+
+    stats.available = m_vmaAllocator != VK_NULL_HANDLE;
+
+    stats.committedBytes = m_liveBytes.load(std::memory_order_relaxed);
+
+    stats.deviceLocalBytes = m_liveDeviceBytes.load(std::memory_order_relaxed);
+
+    // Allocation callbacks update live before peak; avoid displaying a smaller peak
+    // if this sample lands between those atomic updates.
+    stats.peakCommittedBytes =
+        std::max(stats.committedBytes, m_peakBytes.load(std::memory_order_relaxed));
+
+    stats.peakDeviceLocalBytes =
+        std::max(stats.deviceLocalBytes, m_peakDeviceBytes.load(std::memory_order_relaxed));
+
+    return stats;
+}
+
+RHIGPUMemoryStats VulkanRHI::GetGPUMemoryStats() const
+{
+    return GVkMemAllocator != nullptr ? GVkMemAllocator->GetGPUMemoryStats() : RHIGPUMemoryStats{};
 }
 
 bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,

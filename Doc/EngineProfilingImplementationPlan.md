@@ -1,3 +1,5 @@
+> 2026-09-30 update: Dynamic Voxel readiness telemetry and its specialized runner were removed with that implementation. General frame/pass profiling remains; see [current profiling documentation](EngineProfiling.md). The checkpoints below are historical.
+
 # Portable engine profiling implementation plan
 
 ## Objective and scope

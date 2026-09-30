@@ -1,8 +1,7 @@
 #pragma once
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
-#include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
-#include "Graphics/RenderCore/V2/GIVisibilityProvider.h"
 #include "Graphics/RenderCore/V2/VoxelGISettings.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 
 namespace zen
 {
@@ -16,10 +15,10 @@ class SkyboxRenderer;
 class DeferredLightingRenderer;
 class VoxelizerBase;
 class VoxelGIRenderer;
-class DynamicVoxelGIRenderer;
 class SceneShadowRenderer;
 class RenderScene;
 class RenderGraph;
+class RenderOverlay;
 
 enum class RenderOption : uint32_t
 {
@@ -40,7 +39,7 @@ public:
 
     void SetRenderScene(RenderScene* pScene);
 
-    bool DispatchRenderWorkloads();
+    bool DispatchRenderWorkloads(RenderOverlay* overlay = nullptr);
 
     DeferredLightingRenderer* RequestDeferredLightingRenderer() const
     {
@@ -52,19 +51,9 @@ public:
         return m_pSkyboxRenderer;
     }
 
-    VoxelizerBase* RequestVoxelizer(uint32_t classMask = GI_ALL) const
+    VoxelizerBase* RequestVoxelizer() const
     {
-        return classMask == GI_STATIC ? m_pStaticVoxels :
-            classMask == GI_DYNAMIC   ? m_pDynamicVoxels :
-                                        m_pVoxelizer;
-    }
-
-    // Opt-in M2 resources; allocate once after the complete transition preflight.
-    bool EnableClassVoxelization(uint64_t budgetBytes);
-
-    const VoxelDDAProvider& GetClassVisibility() const
-    {
-        return m_classVisibility;
+        return m_pVoxelizer;
     }
 
     VoxelGIRenderer* RequestVoxelGI() const
@@ -88,53 +77,23 @@ public:
         return m_renderOption;
     }
 
-    const VoxelGISelection& GetVoxelGISelection() const
-    {
-        return m_giSelection;
-    }
-
-    // Select between retained methods between frame recordings.
-    bool SetVoxelGIMethod(VoxelGIMethod method);
-
     VoxelGIRuntimeSettings GetVoxelGISettings() const;
+
+    // Read-only preflight: no waits, settings changes or resource allocation.
+    GIResourceStatus ValidateVoxelGIResources(const VoxelGIRuntimeSettings& settings,
+                                              uint64_t& reflectanceBytes) const;
 
     // Main/render thread between frames. Invalid inputs leave the current settings intact.
     // Structural changes synchronously retire the old resources, then rebuild lazily.
-    // Success accepts settings; GetVoxelGISelection after rendering reports actual fallback.
-    // Pointers returned by RequestVoxelizer/RequestVoxelGI/RequestDynamicVoxelGI may change.
+    // Pointers returned by RequestVoxelizer/RequestVoxelGI may change.
     bool ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings);
 
-    DynamicVoxelGIRenderer* RequestDynamicVoxelGI() const
-    {
-        return m_pDynamicVoxelGI;
-    }
-
-    // Optional 32-byte status/work-count readback, borrowed for the next frame graph.
-    // The caller must wait for ordinary resource retirement before mapping/reusing it.
-    void SetGIDiagnosticsReadback(RHIBuffer* buffer)
-    {
-        m_giDiagnosticsReadback = buffer;
-    }
-
-    bool HasRecordedGIDiagnostics() const
-    {
-        return m_recordedGIDiagnostics;
-    }
-
 private:
-    friend struct VoxelGIRuntimeTestAccess;
-
     void DestroyVoxelGIResources();
 
-    VoxelizerBase* CreateVoxelizer(RHIViewport* viewport, uint32_t classMask);
+    VoxelizerBase* CreateVoxelizer(RHIViewport* viewport);
 
-    bool BuildClassVoxelization();
-
-    bool PrepareVoxelGI();
     platform::VoxelizerMode m_voxelizerMode{platform::VoxelizerMode::eCompute};
-    VoxelizerBase* m_pStaticVoxels{nullptr};
-    VoxelizerBase* m_pDynamicVoxels{nullptr};
-    VoxelDDAProvider m_classVisibility;
     RHIViewport* m_pViewport{nullptr};
     RenderDevice* m_pRenderDevice{nullptr};
     RenderScene* m_pScene{nullptr};
@@ -143,14 +102,10 @@ private:
     SkyboxRenderer* m_pSkyboxRenderer{nullptr};
     VoxelizerBase* m_pVoxelizer{nullptr};
     VoxelGIRenderer* m_pVoxelGI{nullptr};
-    DynamicVoxelGIRenderer* m_pDynamicVoxelGI{nullptr};
     SceneShadowRenderer* m_pSceneShadows{nullptr};
 
     RenderOption m_renderOption{RenderOption::eVoxelize};
     RenderOption m_frameRenderOption{RenderOption::eVoxelize};
-    VoxelGISelection m_giSelection;
     VoxelGIRuntimeSettings m_giSettings;
-    RHIBuffer* m_giDiagnosticsReadback{nullptr};
-    bool m_recordedGIDiagnostics{false};
 };
 } // namespace zen::rc

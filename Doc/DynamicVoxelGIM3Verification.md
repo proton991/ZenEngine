@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M3 static diffuse GI verification
 
 Date: 2026-09-24. **M3 passed** for the explicit static, 64³, single analytic light profile. [Implementation plan](DynamicVoxelGIImplementationPlan.md). Hardware RT remains deferred; visibility is the M1 occupied-cell DDA approximation.

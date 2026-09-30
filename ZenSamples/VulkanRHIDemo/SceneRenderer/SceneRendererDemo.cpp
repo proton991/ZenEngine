@@ -1,4 +1,5 @@
 #include "SceneRendererDemo.h"
+#include "SceneRendererWindowTest.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "AssetLib/FastGLTFLoader.h"
 #include "Platform/ConfigLoader.h"
@@ -9,6 +10,9 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Memory/Memory.h"
 #include "Platform/InputController.h"
+#if defined(ZEN_RUNTIME_UI)
+#    include "UI/RuntimeDebugUI.h"
+#endif
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -62,7 +66,38 @@ SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
 
 SceneRendererDemo::~SceneRendererDemo()
 {
+#if defined(ZEN_RUNTIME_UI)
+    m_runtimeUI.Reset();
+#endif
+
     delete m_pWindow;
+}
+
+bool SceneRendererDemo::EnableRuntimeUI()
+{
+    bool enabled = false;
+
+#if defined(ZEN_RUNTIME_UI)
+    if (!m_runtimeUI)
+    {
+        m_runtimeUI = MakeUnique<ui::RuntimeDebugUI>(*m_renderDevice, *m_pWindow, *this);
+
+        enabled = m_runtimeUI->Init();
+
+        if (!enabled)
+        {
+            m_runtimeUI.Reset();
+        }
+    }
+    else
+    {
+        enabled = true;
+    }
+#else
+    LOGE("Runtime UI was disabled at build time; configure ZEN_BUILD_RUNTIME_UI=ON");
+#endif
+
+    return enabled;
 }
 
 void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
@@ -137,9 +172,22 @@ void SceneRendererDemo::PrepareLighting()
     valid &= config.ReadNumber("dynamic_light.angular_speed_degrees", m_orbitSpeedDegrees);
     valid = valid && m_orbitRadius >= 0.0f && std::abs(m_orbitSpeedDegrees) <= 3600.0f;
     const HeapVector<rc::ConfiguredLight> lights = rc::LoadSceneLights(config);
+
+    m_animatedLightIndex = std::min(animatedIndex, rc::MaxSceneLights - 1);
+
+    m_configLightCount = 4;
+
+    if (!config.ReadNumber("light_count", m_configLightCount) ||
+        m_configLightCount > rc::MaxSceneLights)
+    {
+        m_configLightCount = 0;
+    }
+
     for (const rc::ConfiguredLight& light : lights)
     {
         const rc::LightId id = m_renderScene->GetLights().Add(light.light);
+
+        m_configLightIds[light.configIndex] = id;
         if (valid && animate && light.configIndex == animatedIndex &&
             light.light.type != rc::SceneLightType::eDirectional)
         {
@@ -162,6 +210,31 @@ void SceneRendererDemo::PrepareLighting()
     {
         LOGW("Invalid environment settings; using defaults");
     }
+}
+
+bool SceneRendererDemo::GetGIMotionFixture(uint32_t& moving, Mat4& original) const
+{
+    // Fixed motion diagnostic fixture: four
+    // independent six-vertex meshes, with the moving receiver last. Reject other assets.
+    const HeapVector<asset::Vertex>& vertices = m_renderScene->GetVertices();
+
+    bool valid = m_scene->GetRenderableNodes().size() == 4 && vertices.size() == 24;
+
+    if (valid)
+    {
+        const sg::Node* node = m_scene->GetRenderableNodes()[3];
+
+        const HeapVector<sg::SubMesh*>& meshes = node->GetComponent<sg::Mesh>()->GetSubMeshes();
+
+        valid = meshes.size() == 1 && meshes[0]->GetFirstIndex() == 18 &&
+            meshes[0]->GetIndexCount() == 6;
+
+        moving = node->GetRenderableIndex();
+
+        original = node->GetData().modelMatrix;
+    }
+
+    return valid;
 }
 
 void SceneRendererDemo::UpdateDynamicLight(float frameTime)
@@ -286,9 +359,12 @@ bool SceneRendererDemo::Destroy(bool runSucceeded)
     {
         // Drain the same outstanding frames required by device shutdown, outside the capture.
         m_renderDevice->WaitForPreviousFrames();
-
-        m_profiling->CompleteDiagnostics(*m_renderDevice);
     }
+
+#if defined(ZEN_RUNTIME_UI)
+    // UI resources retire through the live device; restore GLFW callbacks before window teardown.
+    m_runtimeUI.Reset();
+#endif
 
     rc::ShaderProgramManager::GetInstance().Destroy();
 
@@ -354,8 +430,11 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
                             bool fixedStep,
                             uint32_t giStartFrame,
                             bool motionFixture,
-                            bool profileWarmup)
+                            bool profileWarmup,
+                            uint32_t backgroundTestSeconds)
 {
+    SceneRendererWindowTest windowTest(m_pWindow->GetHandle(), backgroundTestSeconds);
+
     HeapVector<double> frameTimes;
     if (!frameTimesPath.empty())
     {
@@ -389,9 +468,17 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
     uint32_t frames       = 0;
     double renderThreadUs = 0;
     while (succeeded && !m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit) &&
-           !m_renderDevice->AreSubmissionsBlocked())
+           !m_renderDevice->AreSubmissionsBlocked() && !windowTest.Complete())
     {
         const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+        windowTest.Update(frames);
+
+        if (windowTest.Complete())
+        {
+            break;
+        }
+
         if (giStartFrame != 0 && frames == giStartFrame)
         {
             LOGI("GI cold-start trigger: frame={}", frames);
@@ -401,8 +488,14 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         {
             RunSmokeStep(frames);
         }
-        float frameTime = static_cast<float>(m_timer->Tick());
-        m_pWindow->Update();
+        float frameTime           = static_cast<float>(m_timer->Tick());
+        bool routeWindowShortcuts = true;
+
+#if defined(ZEN_RUNTIME_UI)
+        routeWindowShortcuts = !m_runtimeUI;
+#endif
+
+        m_pWindow->Update(routeWindowShortcuts);
 
         if (m_pWindow->ShouldClose())
         {
@@ -413,7 +506,11 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         if (extent.width == 0 || extent.height == 0)
         {
             // Wait for restore/close without submitting to an unavailable surface.
-            if (smokeTest)
+            if (windowTest.Enabled())
+            {
+                glfwWaitEventsTimeout(0.05);
+            }
+            else if (smokeTest)
             {
                 glfwRestoreWindow(m_pWindow->GetHandle());
                 glfwWaitEventsTimeout(0.05);
@@ -425,6 +522,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             m_timer->Tick();
             continue;
         }
+
+#if defined(ZEN_RUNTIME_UI)
+        if (m_runtimeUI)
+        {
+            m_runtimeUI->Update(frameTime, *m_pViewport);
+        }
+#endif
 
         m_camera->Update(frameTime);
         UpdateDynamicLight(smokeTest ? 1.0f / 30.0f : fixedStep ? 1.0f / 60.0f : frameTime);
@@ -466,7 +570,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             m_profiling->BeginFrame(*m_renderDevice, frames, profileWarmup);
         }
 
-        succeeded &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads();
+        rc::RenderOverlay* overlay = nullptr;
+
+#if defined(ZEN_RUNTIME_UI)
+        overlay = m_runtimeUI.Get();
+#endif
+
+        succeeded &= m_renderDevice->GetRendererServer()->DispatchRenderWorkloads(overlay);
 
         if (smokeTest)
         {
@@ -521,7 +631,8 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             succeeded = false;
         }
     }
-    return succeeded && !m_renderDevice->AreSubmissionsBlocked();
+    return succeeded && !m_renderDevice->AreSubmissionsBlocked() &&
+        (!windowTest.Enabled() || windowTest.Succeeded());
 }
 
 } // namespace zen
@@ -530,11 +641,13 @@ namespace
 {
 struct DemoOptions
 {
+    int runtimeUI{-1}; // Interactive runs default on; diagnostic runs remain reproducible.
     uint32_t frames{0};
     uint32_t warmup{0};
     // Retain the diagnostic --mode IDs independently of interactive key bindings.
     uint32_t initialMode{3};
     uint32_t giStartFrame{0};
+    uint32_t backgroundTestSeconds{0};
     bool smokeTest{false};
     bool disableRT{false};
     bool disableValidation{false};
@@ -552,14 +665,9 @@ struct DemoOptions
 
     std::string capturePath;
     std::string lightingCapturePath;
-    std::string traversalCapturePath;
     std::string voxelCapturePath;
-    bool dynamicGILifecycle{false};
-    bool giMethodSwitching{false};
-    bool giContracts{false};
     bool voxelReference{false};
     bool voxelLifecycle{false};
-    bool voxelClasses{false};
     bool voxelGBuffer{false};
     uint32_t voxelGridPercent{0};
     uint32_t width{1280};
@@ -590,6 +698,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             {
                 options.initialMode = static_cast<uint32_t>(argument.back() - '0');
             }
+        }
+        else if (argument == "--ui" || argument == "--no-ui")
+        {
+            options.runtimeUI = argument == "--ui" ? 1 : 0;
         }
         else if (argument.starts_with("--capture="))
         {
@@ -626,24 +738,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             options.lightingCapturePath = argument.substr(19);
             valid                       = !options.lightingCapturePath.empty();
         }
-        else if (argument.starts_with("--capture-traversal="))
-        {
-            options.traversalCapturePath = argument.substr(20);
-            valid                        = !options.traversalCapturePath.empty();
-        }
-        else if (argument == "--dynamic-gi-lifecycle")
-        {
-            options.dynamicGILifecycle = true;
-        }
-        else if (argument == "--gi-method-switching")
-        {
-            options.dynamicGILifecycle = true;
-            options.giMethodSwitching  = true;
-        }
-        else if (argument == "--gi-contracts")
-        {
-            options.giContracts = true;
-        }
+
         else if (argument == "--voxel-reference")
         {
             options.voxelReference = true;
@@ -652,10 +747,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             options.voxelLifecycle = true;
         }
-        else if (argument == "--voxel-classes")
-        {
-            options.voxelClasses = true;
-        }
+
         else if (argument == "--voxel-gbuffer")
         {
             options.voxelGBuffer = true;
@@ -698,6 +790,16 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument == "--smoke-test")
         {
             options.smokeTest = true;
+        }
+        else if (argument.starts_with("--background-test-seconds="))
+        {
+            const std::string_view value = argument.substr(26);
+
+            const std::from_chars_result parsed = std::from_chars(
+                value.data(), value.data() + value.size(), options.backgroundTestSeconds);
+
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() &&
+                options.backgroundTestSeconds > 0 && options.backgroundTestSeconds <= 600;
         }
         else if (argument.starts_with("--gbuffer-size=") || argument.starts_with("--width=") ||
                  argument.starts_with("--height="))
@@ -745,13 +847,13 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 
     return valid && (options.frameTimesPath.empty() || options.frames != 0) &&
         (options.profilePath.empty() || options.frames != 0) &&
+        (options.backgroundTestSeconds == 0 ||
+         (options.frames == 0 && options.warmup == 0 && !options.smokeTest)) &&
         (options.giStartFrame == 0 ||
          (options.initialMode == 3 && options.warmup == 0 && !options.smokeTest &&
           (options.frames == 0 || options.giStartFrame < options.frames))) &&
-        (!(options.dynamicGILifecycle || options.giContracts) ||
-         !options.lightingCapturePath.empty()) &&
-        (!(options.voxelReference || options.voxelLifecycle || options.voxelClasses ||
-           options.voxelGBuffer || options.voxelGridPercent != 0) ||
+        (!(options.voxelReference || options.voxelLifecycle || options.voxelGBuffer ||
+           options.voxelGridPercent != 0) ||
          !options.voxelCapturePath.empty());
 }
 } // namespace
@@ -795,8 +897,21 @@ int main(int argc, char** pArgv)
         SceneRendererDemo* pDemo =
             new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling);
 
-        const bool prepared =
-            pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
+        bool prepared = pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
+
+        bool enableUI = options.runtimeUI == 1;
+
+#if defined(ZEN_RUNTIME_UI)
+        enableUI = enableUI ||
+            (options.runtimeUI < 0 && options.frames == 0 && !options.smokeTest &&
+             options.profilePath.empty() && options.capturePath.empty() &&
+             options.voxelCapturePath.empty() && options.lightingCapturePath.empty());
+#endif
+
+        if (prepared && enableUI)
+        {
+            prepared = pDemo->EnableRuntimeUI();
+        }
         const bool warmed = prepared &&
             (options.warmup == 0 ||
              pDemo->Run(options.warmup, false, options.initialMode, {}, options.fixedStep, 0,
@@ -805,7 +920,7 @@ int main(int argc, char** pArgv)
         result = warmed &&
                 pDemo->Run(options.frames, options.smokeTest, options.initialMode,
                            options.frameTimesPath, options.fixedStep, options.giStartFrame,
-                           options.motionFixture) ?
+                           options.motionFixture, false, options.backgroundTestSeconds) ?
             0 :
             1;
 
@@ -814,19 +929,9 @@ int main(int argc, char** pArgv)
 
         if (result == 0 && !options.lightingCapturePath.empty())
         {
-            result =
-                (options.giContracts ? pDemo->CaptureGIContracts(options.lightingCapturePath) :
-                     options.dynamicGILifecycle ?
-                                       pDemo->CaptureDynamicGILifecycle(options.lightingCapturePath,
-                                                                        options.giMethodSwitching) :
-                                       pDemo->CaptureLighting(options.lightingCapturePath)) ?
-                0 :
-                1;
+            result = pDemo->CaptureLighting(options.lightingCapturePath) ? 0 : 1;
         }
-        if (result == 0 && !options.traversalCapturePath.empty())
-        {
-            result = pDemo->CaptureGITraversal(options.traversalCapturePath) ? 0 : 1;
-        }
+
         if (result == 0 && !options.capturePath.empty())
         {
             result = pDemo->CaptureFrame(options.capturePath) ? 0 : 1;
@@ -843,10 +948,7 @@ int main(int argc, char** pArgv)
         {
             result = pDemo->CaptureVoxelLifecycle(options.voxelCapturePath) ? 0 : 1;
         }
-        if (result == 0 && options.voxelClasses)
-        {
-            result = pDemo->CaptureVoxelClasses(options.voxelCapturePath) ? 0 : 1;
-        }
+
         if (result == 0 && options.voxelGBuffer)
         {
             result = pDemo->CaptureVoxelGBuffer(options.voxelCapturePath) ? 0 : 1;
@@ -859,7 +961,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--disable-rt] [--disable-validation] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
     }
 
     return result;

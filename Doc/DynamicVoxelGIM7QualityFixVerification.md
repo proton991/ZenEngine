@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M7 quality corrections and acceptance
 
 Date: 2026-09-25. **All eight previously failing Sponza profiles now pass.** The full locked suite passes **56/56 image comparisons and 4/4 stationary sequences**, covering both voxelizers, 64³/128³, and raw/spatial filtering. The [original report](DynamicVoxelGIM7QualityVerification.md) retains the failing baseline and independent-reference methodology.

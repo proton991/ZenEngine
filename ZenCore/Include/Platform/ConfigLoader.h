@@ -40,8 +40,8 @@ public:
 
     VoxelizerMode GetVoxelizerMode() const
     {
-        VoxelizerMode mode = VoxelizerMode::eAuto;
-        auto it            = m_configData.find("voxelizer");
+        VoxelizerMode mode                                   = VoxelizerMode::eAuto;
+        HashMap<std::string, std::string>::const_iterator it = m_configData.find("voxelizer");
         if (it != m_configData.end() && it->second != "auto")
         {
             if (it->second == "comp")
@@ -64,7 +64,8 @@ public:
     AsyncComputeMode GetAsyncComputeMode() const
     {
         AsyncComputeMode mode = AsyncComputeMode::eDisabled;
-        const auto entry      = m_configData.find("async_compute");
+        const HashMap<std::string, std::string>::const_iterator entry =
+            m_configData.find("async_compute");
         if (entry != m_configData.end())
         {
             if (entry->second == "auto")
@@ -94,7 +95,8 @@ public:
     std::string GetGLTFModelPath(const std::string& name) const
     {
         std::string path = "";
-        auto basePathIt  = m_configData.find("model_base_path");
+        HashMap<std::string, std::string>::const_iterator basePathIt =
+            m_configData.find("model_base_path");
 
         if (basePathIt != m_configData.end())
         {
@@ -113,7 +115,7 @@ public:
 
     uint32_t GetVoxelResolution() const
     {
-        uint32_t resolution = GetString("voxel_gi_method", "auto") == "dynamic_voxel" ? 64 : 256;
+        uint32_t resolution = 256;
         if (!ReadNumber("voxel_resolution", resolution) ||
             (resolution != 64 && resolution != 128 && resolution != 256))
         {
@@ -130,15 +132,15 @@ public:
 
     std::string GetString(const std::string& key, const std::string& fallback) const
     {
-        const auto entry = m_configData.find(key);
+        const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         return entry == m_configData.end() ? fallback : entry->second;
     }
 
     // Missing optional values preserve the caller's default. Invalid values do not modify it.
     template <typename T> bool ReadNumber(const std::string& key, T& value) const
     {
-        bool valid       = true;
-        const auto entry = m_configData.find(key);
+        bool valid                                                    = true;
+        const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
             T parsed{};
@@ -161,8 +163,8 @@ public:
 
     bool ReadBool(const std::string& key, bool& value) const
     {
-        bool valid       = true;
-        const auto entry = m_configData.find(key);
+        bool valid                                                    = true;
+        const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
             valid = entry->second == "true" || entry->second == "false";
@@ -180,8 +182,8 @@ public:
 
     bool ReadVec3(const std::string& key, Vec3& value) const
     {
-        bool valid       = true;
-        const auto entry = m_configData.find(key);
+        bool valid                                                    = true;
+        const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
             Vec3 parsed(0.0f);
@@ -223,7 +225,7 @@ private:
     std::string GetConfiguredModelPath(const char* key) const
     {
         std::string path;
-        auto model = m_configData.find(key);
+        HashMap<std::string, std::string>::const_iterator model = m_configData.find(key);
         if (model != m_configData.end())
         {
             path = GetGLTFModelPath(model->second);

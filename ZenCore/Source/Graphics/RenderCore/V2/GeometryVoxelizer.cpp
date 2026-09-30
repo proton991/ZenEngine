@@ -52,7 +52,7 @@ void GeometryVoxelizer::BuildVoxelizationGraph()
             desc.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
             pRDG->AddGraphicsPass(std::move(desc))
-                .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, m_classMask),
+                .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, GI_ALL),
                                      dimension = m_voxelTexResolution](RDGPassCmdEncoder& encoder) {
                     VoxelizationSP::PushConstantsData constants{};
                     constants.firstTriangle   = 0;
@@ -69,7 +69,6 @@ void GeometryVoxelizer::BuildVoxelizationGraph()
                 });
         }
         ResolveSurface(RDGQueuePreference::eDefault);
-        BuildCompaction(RDGQueuePreference::eDefault);
     }
 }
 

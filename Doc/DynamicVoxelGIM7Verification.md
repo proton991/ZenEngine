@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M7 Stage A functional acceptance
 
 Date: 2026-09-25. **M7 functionality and the locked quality matrix pass.** Stage A functional tests accept approximate compute visibility at 64³/128³ and budget rejection/fallback at 256³. The [initial quality validation](DynamicVoxelGIM7QualityVerification.md) exposed eight Sponza failures; the [quality corrections and rerun](DynamicVoxelGIM7QualityFixVerification.md) now pass 56/56 image profiles and all four stationary sequences. M8 performance acceptance remains open. [Implementation plan](DynamicVoxelGIImplementationPlan.md), [M6 baseline](DynamicVoxelGIM6Verification.md).

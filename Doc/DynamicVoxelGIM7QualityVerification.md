@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M7 quality validation
 
 Date: 2026-09-25. **Current status: all 56 image comparisons pass after the [quality corrections](DynamicVoxelGIM7QualityFixVerification.md).** The sections below preserve the original failing baseline.

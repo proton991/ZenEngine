@@ -13,7 +13,6 @@ struct SceneMeshDraw
     uint32_t indexCount;
     uint32_t firstIndex;
     uint32_t firstTriangle{0};
-    uint32_t objectClass{GI_STATIC};
 };
 
 // Commands and resource declarations must describe the same scene snapshot.
@@ -30,8 +29,7 @@ inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
             if ((scene.GetInstanceMask(node->GetRenderableIndex()) & classMask) != 0)
             {
                 draws.push_back({node->GetRenderableIndex(), mesh->GetMaterial()->index,
-                                 mesh->GetIndexCount(), mesh->GetFirstIndex(), firstTriangle,
-                                 scene.GetInstanceMask(node->GetRenderableIndex())});
+                                 mesh->GetIndexCount(), mesh->GetFirstIndex(), firstTriangle});
             }
             firstTriangle += mesh->GetIndexCount() / 3;
         }

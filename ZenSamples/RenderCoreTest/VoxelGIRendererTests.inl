@@ -23,28 +23,17 @@ TEST_F(RenderCoreTest, VoxelRevisionPublishesOnlyAfterSuccessfulHandoff)
     volumes.Destroy();
 }
 
-TEST_F(RenderCoreTest, VoxelOutputsAllocateLazilyAndKeepTheirConfiguredClass)
+TEST_F(RenderCoreTest, VoxelOutputsAllocateLazily)
 {
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM, false, 64);
     EXPECT_FALSE(volumes.IsReady());
     EXPECT_EQ(volumes.GetVoxelTextures().pOwner, nullptr);
-    EXPECT_FALSE(volumes.ConfigureClass(0));
-    ASSERT_TRUE(volumes.ConfigureClass(GI_DYNAMIC));
     ASSERT_TRUE(volumes.EnsureReady());
     RHITexture* owner          = volumes.GetVoxelTextures().pOwner;
     const uint32_t allocations = rhi->textureCreations;
     EXPECT_TRUE(volumes.EnsureReady());
     EXPECT_EQ(rhi->textureCreations, allocations);
     EXPECT_EQ(volumes.GetVoxelTextures().pOwner, owner);
-    EXPECT_FALSE(volumes.ConfigureClass(GI_STATIC));
-    EXPECT_EQ(volumes.GetClassMask(), GI_DYNAMIC);
-    ASSERT_TRUE(volumes.EnableCompaction());
-    RHIBuffer* list = volumes.GetOccupiedList();
-    EXPECT_TRUE(volumes.EnableCompaction());
-    EXPECT_EQ(volumes.GetOccupiedList(), list);
-    EXPECT_EQ(list->GetRequiredSize(), 64u * 64 * 64 * sizeof(uint32_t));
-    EXPECT_EQ(volumes.GetGridToList()->GetRequiredSize(), list->GetRequiredSize());
-    EXPECT_EQ(volumes.GetOccupiedCount()->GetRequiredSize(), sizeof(uint32_t));
     volumes.Destroy();
 }
 
@@ -227,7 +216,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     float environmentRotation  = 0.0f;
     bool environmentEnabled    = true;
     bool skyboxVisible         = true;
-    for (uint32_t frame = 0; frame < 24; ++frame)
+    for (uint32_t frame = 0; frame < 32; ++frame)
     {
         SCOPED_TRACE(frame);
         switch (frame)
@@ -271,6 +260,12 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
                 break;
             }
             case 21: environmentEnabled = true; break;
+            case 24: settings.analyticLighting = false; break;
+            case 25: settings.environmentLighting = false; break;
+            case 26: settings.emissiveLighting = false; break;
+            case 28: settings.analyticLighting = true; break;
+            case 29: settings.environmentLighting = true; break;
+            case 30: settings.emissiveLighting = true; break;
             default: break;
         }
         EXPECT_TRUE(gi.SetSettings(settings)); // Also covers repeated unchanged settings.
@@ -307,8 +302,10 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         gi.OnRenderGraphExecuted(true);
         volumes.OnRenderGraphExecuted(true);
-        const bool skyChanged = geometryChanged || environmentChanged || frame == 8 || frame == 9;
-        const bool radianceChanged         = skyChanged || frame == 7 || frame == 11;
+        const bool skyChanged = geometryChanged || environmentChanged || frame == 8 || frame == 9 ||
+            frame == 25 || frame == 29;
+        const bool radianceChanged = skyChanged || frame == 7 || frame == 11 || frame == 24 ||
+            frame == 26 || frame == 28 || frame == 30;
         const RDGMetricsSnapshot& snapshot = metrics.GetLastSnapshot();
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelOpacityMip"), geometryChanged ? 3u : 0u);
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelSkyIrradiance"), skyChanged ? 1u : 0u);

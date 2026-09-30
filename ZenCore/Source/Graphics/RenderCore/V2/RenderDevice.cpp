@@ -1081,6 +1081,17 @@ void RenderDevice::UpdateBuffer(RHIBuffer* buffer,
     UpdateBufferInternal(buffer, offset, size, data);
 }
 
+void RenderDevice::UpdateTexture(RHITexture* texture,
+                                 VectorView<RHIBufferTextureCopyRegion> regions,
+                                 uint32_t dataSize,
+                                 const uint8_t* data)
+{
+    VERIFY_EXPR_MSG(m_pUploadQueue != nullptr,
+                    "RenderDevice must be initialized before texture uploads");
+
+    m_pUploadQueue->EnqueueTexture(texture, regions, dataSize, data);
+}
+
 void RenderDevice::InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data)
 {
     if (data == nullptr || dataSize == 0)

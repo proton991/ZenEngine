@@ -1,8 +1,8 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
-#include "Graphics/RenderCore/V2/Renderer/DynamicVoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
+#include "Graphics/RenderCore/V2/RenderConfig.h"
 
 namespace zen::rc
 {
@@ -17,27 +17,33 @@ VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
         settings.cone = m_pVoxelGI->GetSettings();
     }
 
-    if (m_pDynamicVoxelGI != nullptr && m_pDynamicVoxelGI->GetResourceBytes() != 0)
-    {
-        settings.dynamic = m_pDynamicVoxelGI->GetSettings();
+    return settings;
+}
 
-        // Method selection is owned by the server, including while cone is active.
-        settings.dynamic.method = m_giSettings.dynamic.method;
+GIResourceStatus RendererServer::ValidateVoxelGIResources(const VoxelGIRuntimeSettings& settings,
+                                                          uint64_t& reflectanceBytes) const
+{
+    reflectanceBytes =
+        settings.averagedReflectance ? GetVoxelReflectanceRequiredBytes(settings.resolution) : 0;
+
+    GIResourceStatus status = ValidateVoxelGIRuntimeSettings(settings) ?
+        GIResourceStatus::eSuccess :
+        GIResourceStatus::eInvalidInput;
+
+    if (status == GIResourceStatus::eSuccess && settings.averagedReflectance)
+    {
+        const uint64_t triangles = m_pScene != nullptr ? m_pScene->GetVoxelTriangleCount() : 0;
+
+        status = ValidateVoxelReflectanceResources(settings.resolution, triangles,
+                                                   settings.reflectanceBudgetBytes, 0,
+                                                   m_pRenderDevice->GetGPUInfo(), reflectanceBytes);
     }
 
-    return settings;
+    return status;
 }
 
 void RendererServer::DestroyVoxelGIResources()
 {
-    if (m_pDynamicVoxelGI != nullptr)
-    {
-        m_pDynamicVoxelGI->Destroy();
-
-        ZEN_DELETE(m_pDynamicVoxelGI);
-
-        m_pDynamicVoxelGI = nullptr;
-    }
 
     if (m_pVoxelGI != nullptr)
     {
@@ -48,29 +54,25 @@ void RendererServer::DestroyVoxelGIResources()
         m_pVoxelGI = nullptr;
     }
 
-    for (VoxelizerBase* voxelizer : {m_pVoxelizer, m_pStaticVoxels, m_pDynamicVoxels})
+    if (m_pVoxelizer != nullptr)
     {
-        if (voxelizer != nullptr)
-        {
-            voxelizer->Destroy();
+        m_pVoxelizer->Destroy();
 
-            ZEN_DELETE(voxelizer);
-        }
+        ZEN_DELETE(m_pVoxelizer);
     }
 
-    m_pVoxelizer = m_pStaticVoxels = m_pDynamicVoxels = nullptr;
-
-    m_classVisibility = VoxelDDAProvider();
-
-    m_giDiagnosticsReadback = nullptr;
-
-    m_recordedGIDiagnostics = false;
+    m_pVoxelizer = nullptr;
 }
 
-bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings)
+bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requested)
 {
-    bool valid = ValidateVoxelGIRuntimeSettings(settings) && m_pVoxelGI != nullptr &&
-        m_pRenderDevice->CanReconfigureResources();
+    VoxelGIRuntimeSettings settings = requested;
+
+    uint64_t reflectanceBytes = 0;
+
+    bool valid =
+        ValidateVoxelGIResources(settings, reflectanceBytes) == GIResourceStatus::eSuccess &&
+        m_pVoxelGI != nullptr && m_pRenderDevice->CanReconfigureResources();
 
     if (valid)
     {
@@ -108,7 +110,7 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings
 
             if (rebuild)
             {
-                m_pVoxelizer = CreateVoxelizer(m_pViewport, GI_ALL);
+                m_pVoxelizer = CreateVoxelizer(m_pViewport);
 
                 m_pVoxelizer->SetRenderScene(m_pScene);
 
@@ -121,37 +123,15 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings
 
             m_pSceneShadows->SetResolution(settings.shadowMapResolution);
 
+            if (resizeShadows)
+            {
+                m_pVoxelGI->OnRenderGraphExecuted(false);
+            }
+
             m_pRenderDevice->CollectCompletedResources();
 
-            if (m_pDynamicVoxelGI != nullptr)
-            {
-                m_pDynamicVoxelGI->SetFiltering(settings.dynamic.temporal,
-                                                settings.dynamic.spatialFilter);
-
-                m_pDynamicVoxelGI->SetLighting(settings.dynamic.analyticLighting,
-                                               settings.dynamic.environmentLighting,
-                                               settings.dynamic.emissiveLighting);
-
-                m_pDynamicVoxelGI->SetTemporalParameters(settings.dynamic.temporalAlpha,
-                                                         settings.dynamic.historyGapSeconds,
-                                                         settings.dynamic.temporalReferenceHz);
-
-                m_pDynamicVoxelGI->SetCacheBatchSize(settings.dynamic.cacheBatchSize);
-            }
-
-            if (m_pScene != nullptr &&
-                (rebuild || previous.dynamic.method != settings.dynamic.method))
-            {
-                m_pScene->InvalidateGIHistory();
-            }
-
-            if (rebuild || previous.dynamic.method != settings.dynamic.method)
-            {
-                m_giSelection = ResolveVoxelGISelection(settings.dynamic);
-            }
-
             LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}",
-                 settings.dynamic.resolution,
+                 settings.resolution,
                  m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp",
                  rebuild ? "recreated" : "retained");
         }

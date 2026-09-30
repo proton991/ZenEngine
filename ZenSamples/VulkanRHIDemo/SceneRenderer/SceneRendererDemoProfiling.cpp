@@ -5,7 +5,6 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/DynamicVoxelGIRenderer.h"
 #include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/RHI/DynamicRHI.h"
 #include "Graphics/RHI/RHIGPUFrameTiming.h"
@@ -109,21 +108,6 @@ void ConfigureStream(std::ostream& output)
     output.imbue(std::locale::classic());
 
     output << std::setprecision(std::numeric_limits<double>::max_digits10) << std::boolalpha;
-}
-
-const char* MethodName(rc::VoxelGIMethod method)
-{
-    const char* name = "none";
-
-    switch (method)
-    {
-        case rc::VoxelGIMethod::eAuto: name = "auto"; break;
-        case rc::VoxelGIMethod::eCone: name = "cone"; break;
-        case rc::VoxelGIMethod::eDynamicVoxel: name = "dynamic_voxel"; break;
-        case rc::VoxelGIMethod::eNone: break;
-    }
-
-    return name;
 }
 
 const char* QueueName(RHICommandContextType queue)
@@ -304,21 +288,9 @@ struct SceneRendererProfiling::State
 
         uint32_t width{0}, height{0}, requestedMode{0}, resolvedMode{0};
 
-        rc::VoxelGIMethod method{rc::VoxelGIMethod::eNone};
-
-        uint64_t cacheBatches{0};
-
-        uint64_t cacheEpoch{0}, visibilityRevision{0};
+        const char* method{"none"};
 
         double startUs{0}, endUs{0};
-
-        RHIBuffer* giReadback{nullptr};
-
-        rc::ResourceRetirement giRetirement;
-
-        RHIGPUTimingStatus giStatus{RHIGPUTimingStatus::eDisabled};
-
-        glm::uvec4 giState{}, giWork{};
 
         RHIGPUFrameTimingPtr gpuTiming;
 
@@ -367,10 +339,6 @@ struct SceneRendererProfiling::State
 
     HeapVector<size_t> pendingGPUFrames;
 
-    HeapVector<size_t> pendingGIFrames;
-
-    HeapVector<RHIBuffer*> giReadbacks, freeGIReadbacks;
-
     std::chrono::steady_clock::time_point frameOrigin{};
 
     HeapVector<Graph> graphs;
@@ -379,18 +347,13 @@ struct SceneRendererProfiling::State
 
     Frame current;
 
-    uint64_t droppedFrames{0}, droppedGraphs{0}, droppedPasses{0}, droppedGPUFrames{0},
-        droppedGIFrames{0};
+    uint64_t droppedFrames{0}, droppedGraphs{0}, droppedPasses{0}, droppedGPUFrames{0};
 
     bool active{true};
 
     bool frameOpen{false};
 
     void CollectGPUFrames(bool abandon = false);
-
-    void CollectGIFrames(rc::RenderDevice& device, bool abandon = false);
-
-    RHIBuffer* AcquireGIReadback(rc::RenderDevice& device);
 
     void RetainCurrentFrame();
 
@@ -467,89 +430,6 @@ struct SceneRendererProfiling::State
     }
 };
 
-RHIBuffer* SceneRendererProfiling::State::AcquireGIReadback(rc::RenderDevice& device)
-{
-    RHIBuffer* result = nullptr;
-
-    if (!freeGIReadbacks.empty())
-    {
-        result = freeGIReadbacks.back();
-
-        freeGIReadbacks.pop_back();
-    }
-    else if (giReadbacks.size() < MaxPendingGPUFrames)
-    {
-        RHIBufferCreateInfo info;
-
-        info.size = 32;
-
-        info.allocateType = RHIBufferAllocateType::eCPURead;
-
-        info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
-
-        info.tag = "gi_profile_readback";
-
-        result = device.CreateBuffer(info);
-
-        if (result != nullptr)
-        {
-            giReadbacks.push_back(result);
-        }
-    }
-
-    return result;
-}
-
-void SceneRendererProfiling::State::CollectGIFrames(rc::RenderDevice& device, bool abandon)
-{
-    size_t pending = 0;
-
-    while (pending < pendingGIFrames.size())
-    {
-        Frame& frame = frames[pendingGIFrames[pending]];
-
-        const bool complete = device.IsResourceRetired(frame.giRetirement);
-
-        if (complete || abandon)
-        {
-            frame.giStatus = RHIGPUTimingStatus::eError;
-
-            if (complete && frame.succeeded)
-            {
-                const uint8_t* data = frame.giReadback->Map();
-
-                if (data != nullptr)
-                {
-                    std::memcpy(&frame.giState, data, 16);
-
-                    std::memcpy(&frame.giWork, data + 16, 16);
-
-                    frame.giReadback->Unmap();
-
-                    frame.giStatus = RHIGPUTimingStatus::eAvailable;
-                }
-            }
-
-            if (!complete)
-            {
-                ++droppedGIFrames;
-            }
-            else
-            {
-                freeGIReadbacks.push_back(frame.giReadback);
-            }
-
-            frame.giReadback = nullptr;
-
-            pendingGIFrames.erase(pendingGIFrames.begin() + pending);
-        }
-        else
-        {
-            ++pending;
-        }
-    }
-}
-
 void SceneRendererProfiling::State::CollectGPUFrames(bool abandon)
 {
     size_t pending = 0;
@@ -612,11 +492,6 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
 
         pendingGPUFrames.push_back(frames.size());
 
-        if (current.giReadback != nullptr)
-        {
-            pendingGIFrames.push_back(frames.size());
-        }
-
         frames.push_back(current);
     }
     else
@@ -626,8 +501,6 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
 
     current.gpuTiming.Reset();
 
-    current.giReadback = nullptr;
-
     CollectGPUFrames();
 }
 
@@ -635,7 +508,7 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
                                                    ProfileFrameSummary& summary) const
 {
     output
-        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,cache_batches,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,gi_status,gi_effective_method,gi_cache_epoch,gi_visibility_revision,gi_occupied_static,gi_occupied_dynamic,gi_cache_capacity,gi_cache_ready_receivers,gi_cache_batch_receivers,gi_selected_static,gi_selected_dynamic,gi_fallback_flags\n";
+        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms\n";
 
     for (const State::Frame& frame : frames)
     {
@@ -643,10 +516,9 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
                << frame.cpuUs / 1000 << ',' << frame.succeeded << ',' << frame.width << ','
                << frame.height << ',' << frame.requestedMode << ',' << frame.resolvedMode << ',';
 
-        CSVString(output, MethodName(frame.method));
+        CSVString(output, frame.method);
 
-        output << ',' << frame.cacheBatches << ',' << RHIGPUTimingStatusName(frame.gpuStatus)
-               << ',';
+        output << ',' << RHIGPUTimingStatusName(frame.gpuStatus) << ',';
 
         if (frame.gpuStatus == RHIGPUTimingStatus::eAvailable)
         {
@@ -663,30 +535,7 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
         }
 
         output << ',' << frame.gpuIntervals << ',' << frame.gpuExcludedIntervals << ','
-               << frame.startUs / 1000 << ',' << frame.endUs / 1000 << ','
-               << RHIGPUTimingStatusName(frame.giStatus) << ',';
-
-        const bool directional = frame.method == rc::VoxelGIMethod::eDynamicVoxel;
-
-        const char* effective = directional ? "unavailable" : MethodName(frame.method);
-
-        if (directional && frame.giStatus == RHIGPUTimingStatus::eAvailable)
-        {
-            effective = frame.giState.z == 0 ? "dynamic_voxel" : "cone";
-        }
-
-        output << effective << ',' << frame.cacheEpoch << ',' << frame.visibilityRevision;
-
-        if (frame.giStatus == RHIGPUTimingStatus::eAvailable)
-        {
-            output << ',' << frame.giState.x << ',' << frame.giState.w << ',' << frame.giState.y
-                   << ',' << frame.giWork.w << ',' << frame.giWork.z << ',' << frame.giWork.x << ','
-                   << frame.giWork.y << ',' << frame.giState.z;
-        }
-        else
-        {
-            output << ",,,,,,,,";
-        }
+               << frame.startUs / 1000 << ',' << frame.endUs / 1000;
 
         output << '\n';
 
@@ -781,7 +630,7 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
                                                      bool runSucceeded,
                                                      bool unchanged) const
 {
-    output << "{\"schema_version\":3,\"run_id\":";
+    output << "{\"schema_version\":4,\"run_id\":";
 
     JSONString(output, runID);
 
@@ -820,20 +669,19 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
         << "},\"requested_frames\":" << options.frames
         << ",\"requested_warmup_frames\":" << options.warmup
         << ",\"gi_start_frame\":" << options.giStartFrame << ",\"fixed_step\":" << options.fixedStep
-        << ",\"fixed_step_scope\":\"light and motion animation; elapsed GI temporal history still uses the renderer wall clock\""
-        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded; measured means requested measurement interval, not proven GI cache readiness\""
+        << ",\"fixed_step_scope\":\"light and motion animation\""
+        << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded; measured is the requested measurement interval\""
         << ",\"gpu_scope\":\"per-pass elapsed intervals including barriers; pass durations are not summed\""
         << ",\"gpu_frame_scope\":\"elapsed earliest TOP to latest BOTTOM across native graphics/compute-capable command buffers begun during the application render workload, including graph preparation GPU work and the graphics swapchain copy; excludes dedicated transfer-only buffers, asset startup outside the frame, and screenshot readback; does not directly measure host acquire/present calls or compositor/display latency; dependency waits and submission gaps may be included; requires a common device timestamp domain; this is not GPU-active time or occupancy\""
         << ",\"cpu_scope\":\"application frame wall time includes submission and frame-slot backpressure; pass CPU records measure command recording\""
-        << ",\"gi_diagnostics_scope\":\"32-byte GPU status/work snapshots copied by the frame graph and mapped only after ordinary submission retirement; frame-level fallback, not per-pixel interpolation validity; first-ready frame wall interval is separate from temporal convergence and readback observation latency\""
-        << ",\"memory_scope\":\"RDG transient allocation accounting and GI logical reserves, not hardware residency\""
+        << ",\"memory_scope\":\"RDG transient allocation accounting, not hardware residency\""
         << ",\"percentile_policy\":\"median averages the two central samples; p95 uses nearest rank\""
         << ",\"limits\":{\"frames\":" << MaxProfileFrames << ",\"graphs\":" << MaxProfileGraphs
         << ",\"passes\":" << MaxProfilePasses << ",\"pending_gpu_frames\":" << MaxPendingGPUFrames
         << "},\"dropped\":{\"frames\":" << droppedFrames << ",\"graphs\":" << droppedGraphs
         << ",\"passes\":" << droppedPasses << ",\"gpu_frames\":" << droppedGPUFrames
-        << ",\"gi_frames\":" << droppedGIFrames << "},\"frame_count\":" << frames.size()
-        << ",\"pass_count\":" << passes.size() << ",\"cpu_frame_ms\":{";
+        << "},\"frame_count\":" << frames.size() << ",\"pass_count\":" << passes.size()
+        << ",\"cpu_frame_ms\":{";
 
     bool separator = false;
 
@@ -1043,16 +891,10 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
         {
             GDynamicRHI->EndGPUFrameTiming(state.current.gpuTiming, false);
 
-            state.current.giRetirement = device.CaptureResourceRetirement();
-
-            state.current.giStatus = RHIGPUTimingStatus::ePending;
-
             state.RetainCurrentFrame();
         }
 
         state.CollectGPUFrames();
-
-        state.CollectGIFrames(device);
 
         state.current = {};
 
@@ -1065,14 +907,6 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         state.current.startUs =
             std::chrono::duration<double, std::micro>(now - state.frameOrigin).count();
-
-        if (state.frames.size() < MaxProfileFrames &&
-            device.GetRendererServer()->GetRequestedRenderOption() == rc::RenderOption::eVoxelGI)
-        {
-            state.current.giReadback = state.AcquireGIReadback(device);
-
-            device.GetRendererServer()->SetGIDiagnosticsReadback(state.current.giReadback);
-        }
 
         state.current.index = rc::ToValue(GRenderFrameState.GetFrameNumber());
 
@@ -1134,44 +968,9 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device,
 
         frame.resolvedMode = static_cast<uint32_t>(server.GetRenderOption()) + 1;
 
-        frame.method = server.GetRenderOption() == rc::RenderOption::eVoxelGI ?
-            server.GetVoxelGISelection().method :
-            rc::VoxelGIMethod::eNone;
-
-        const rc::DynamicVoxelGIRenderer* directional = server.RequestDynamicVoxelGI();
-
-        frame.cacheBatches = directional != nullptr ? directional->GetCacheBuildBatches() : 0;
-
-        if (frame.method == rc::VoxelGIMethod::eDynamicVoxel)
-        {
-            frame.cacheEpoch = directional->GetCacheEpoch();
-
-            frame.visibilityRevision = directional->GetVisibilityRevision();
-
-            frame.giStatus = RHIGPUTimingStatus::eDropped;
-
-            if (frame.giReadback != nullptr && server.HasRecordedGIDiagnostics())
-            {
-                frame.giStatus = RHIGPUTimingStatus::ePending;
-
-                frame.giRetirement = device.CaptureResourceRetirement();
-            }
-            else
-            {
-                ++state.droppedGIFrames;
-            }
-        }
-
-        if (frame.giReadback != nullptr && frame.giStatus != RHIGPUTimingStatus::ePending)
-        {
-            state.freeGIReadbacks.push_back(frame.giReadback);
-
-            frame.giReadback = nullptr;
-        }
+        frame.method = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone" : "none";
 
         state.RetainCurrentFrame();
-
-        state.CollectGIFrames(device);
 
         device.GetRDGMetrics().CollectGPUResults();
     }
@@ -1208,12 +1007,6 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device,
 
         const rc::VoxelGISettings& cone = server.RequestVoxelGI()->GetSettings();
 
-        const rc::DynamicVoxelGIRenderer* directional = server.RequestDynamicVoxelGI();
-
-        rc::DynamicVoxelGISettings gi;
-
-        const bool giSettingsValid = rc::LoadDynamicVoxelGISettings(config, gi);
-
         std::ostringstream output;
 
         ConfigureStream(output);
@@ -1246,44 +1039,10 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device,
 
         JSONString(output, voxels.UsesAveragedReflectance() ? "averaged" : "owner");
 
-        output << ",\"requested_gi_method\":";
-
-        JSONString(output, MethodName(gi.method));
-
-        output << ",\"selected_gi_method\":";
-
-        JSONString(output, MethodName(server.GetVoxelGISelection().method));
-
-        output << ",\"query_backend\":";
-
-        JSONString(output, server.GetVoxelGISelection().backend);
-
-        output << ",\"selection_reason\":";
-
-        JSONString(output, server.GetVoxelGISelection().reason);
-
-        output << ",\"directional_settings_valid\":" << giSettingsValid
-               << ",\"directional_initialized\":" << (directional != nullptr)
-               << ",\"rays_per_face\":"
-               << (directional ? directional->GetRaysPerFace() : gi.raysPerFace) << ",\"cache\":";
-
-        JSONString(output,
-                   (directional ? directional->GetCacheStride() == GI_COMPACT_HIT_BYTES :
-                                  gi.compactCache) ?
-                       "compact" :
-                       "decoded");
-
-        output << ",\"neighbor_radius\":" << gi.neighborRadius << ",\"temporal_mode\":"
-               << (directional ? directional->GetFilterUniform().control.x :
-                                 static_cast<uint32_t>(gi.temporal))
-               << ",\"spatial_filter\":"
-               << (directional ? directional->GetFilterUniform().control.y != 0 : gi.spatialFilter)
-               << ",\"analytic_lighting\":" << gi.analyticLighting
-               << ",\"environment_lighting\":" << gi.environmentLighting
-               << ",\"emissive_lighting\":" << gi.emissiveLighting
-               << ",\"gi_budget_bytes\":" << gi.memoryBudgetBytes
-               << ",\"directional_reserved_bytes\":"
-               << (directional ? directional->GetResourceBytes() : 0)
+        output << ",\"gi_method\":\"cone\""
+               << ",\"analytic_lighting\":" << cone.analyticLighting
+               << ",\"environment_lighting\":" << cone.environmentLighting
+               << ",\"emissive_lighting\":" << cone.emissiveLighting
                << ",\"indirect_intensity\":" << cone.indirectIntensity
                << ",\"shadows\":" << cone.shadows << ",\"cone_count\":" << cone.coneCount
                << ",\"cone_max_steps\":" << cone.maxSteps
@@ -1339,22 +1098,6 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device,
 
         state.settings = output.str();
     }
-}
-
-void SceneRendererProfiling::CompleteDiagnostics(rc::RenderDevice& device)
-{
-    State& state = *m_state;
-
-    state.CollectGIFrames(device, true);
-
-    for (RHIBuffer* buffer : state.giReadbacks)
-    {
-        device.DestroyBuffer(buffer);
-    }
-
-    state.giReadbacks.clear();
-
-    state.freeGIReadbacks.clear();
 }
 
 bool SceneRendererProfiling::Export(rc::RDGMetrics& metrics, bool runSucceeded)
@@ -1415,13 +1158,10 @@ bool SceneRendererProfiling::Export(rc::RDGMetrics& metrics, bool runSucceeded)
 
     valid = valid && output.good() && unchanged;
 
-    if (state.droppedFrames || state.droppedGraphs || state.droppedPasses ||
-        state.droppedGPUFrames || state.droppedGIFrames)
+    if (state.droppedFrames || state.droppedGraphs || state.droppedPasses || state.droppedGPUFrames)
     {
-        LOGW(
-            "Profile capture limit reached: omitted frames={} graphs={} passes={} gpu_frames={} gi_frames={}",
-            state.droppedFrames, state.droppedGraphs, state.droppedPasses, state.droppedGPUFrames,
-            state.droppedGIFrames);
+        LOGW("Profile capture limit reached: omitted frames={} graphs={} passes={} gpu_frames={}",
+             state.droppedFrames, state.droppedGraphs, state.droppedPasses, state.droppedGPUFrames);
     }
 
     if (!valid)

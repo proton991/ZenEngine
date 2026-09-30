@@ -123,43 +123,13 @@ are collected into immutable frame records before export.
 Reported RDG resource bytes describe logical/pool payload accounting. They exclude
 allocator alignment, external resources, driver allocations, and swapchain memory.
 The existing `--gpu-memory-stats` VMA diagnostics remain useful for allocator commitment
-peaks; neither measurement establishes complete device memory residency. Ray/sample
-settings are workload metadata; traversal statistics requiring readback remain in the
-existing GI traversal capture path.
+peaks; neither measurement establishes complete device memory residency.
 
-## Directional GI readiness and repeatable benchmarks
+## Cone-only profile schema (2026-09-30)
 
-Schema 3 adds completed GPU status/work snapshots to each application frame. Cache epoch,
-provider revision, occupied/selected receiver counts, reserved capacity, cache-ready count,
-batch count, and fallback bits distinguish DDA work from cone fallback. Submitted batches
-alone do not prove readiness. A bounded pool of 32 readback buffers is mapped only after
-ordinary submission retirement; no diagnostic GPU wait is added inside a frame.
+Schema 4 retains CPU/GPU frame timings, pass timings, frame wall intervals, resource accounting and input identities. `gi_method` is `cone` or `none`, according to the rendered mode. Directional cache/readiness telemetry, its readback pool and the specialized benchmark runner were removed with Dynamic Voxel GI.
 
-`python tools/validate_engine_profile.py PREFIX --require-gpu --require-frame-gpu --require-ready-gi`
-requires completed telemetry and DDA readiness for every measured frame. Its epoch report
-measures the application wall interval through the first frame whose GPU snapshot proves
-readiness. This is separate from readback observation latency and temporal convergence;
-it is not an exact timestamp of the cache's GPU completion. The effective method describes
-frame-level fallback; per-pixel validity/coverage can still select the ordinary fallback.
-
-`tools/benchmark_dynamic_voxel_gi.py --executable PATH --asset SCENE.gltf --output NEW_DIRECTORY`
-runs serial cold/profile/throughput trials. Use `--base-config PATH` to supply settings and
-`--config PATH` for the configuration file compiled into the selected engine executable.
-The runner compares exported paths, sizes and fingerprints against the executable,
-configuration, scene document and complete shader set frozen before capture. It rejects
-different inputs, unreadable files, incomplete shader enumeration and duplicate shader
-entries, including scene overrides that disagree with `--asset`. It records SHA-256 identities
-for the executable, every SPIR-V module, configuration, environment texture, main glTF/GLB,
-and referenced external buffers/images. A lock prevents overlapping owners, exact original
-configuration bytes are restored on success/failure, and external edits are preserved.
-
-Controls include resolution, producer, cache, rays, budget, workload, warmup, frames, trials,
-threading, async compute and VSync. `--require-async` rejects unavailable dedicated compute.
-`--diagnostics` adds separate intrusive traversal captures with class-specific visited-cell
-counts. `--expect-fallback` explicitly labels rejection cases. Instrumented GPU/pass results,
-uninstrumented CPU frame pacing, cold initialization, traversal, and VMA lifetime peaks remain
-separate measurements. Failed, stale, repeated, missing or dropped exports cannot enter
-accepted aggregates; unsupported dedicated-transfer timings remain explicitly unavailable.
+Use `python tools/validate_engine_profile.py PREFIX --require-gpu --require-frame-gpu` to require completed timings. The verifier checks monotonic frame wall intervals for schema 4. It accepts older timing schemas for historical analysis but no longer verifies their retired directional-GI readiness fields. The former `--require-ready-gi` option is removed.
 
 ## Platform and tool boundaries
 
@@ -179,4 +149,4 @@ matched instrumented runs for pass analysis, and use uninstrumented runs to conf
 final application throughput. Use Nsight Graphics, Radeon GPU Profiler, or platform
 tools when shader occupancy, bandwidth, cache behavior, or hardware counters are needed.
 
-The [M8 final verification](DynamicVoxelGIM8FinalVerification.md) and [AMD measurements](DynamicVoxelGIM8Measurements.md) exercise schema 3 on the frozen candidate, including readiness, fallback, pool reuse, 210 unique profile runs and profiling-on/off image equivalence. NVIDIA and MoltenVK timing validation remain open.
+The [M8 final verification](DynamicVoxelGIM8FinalVerification.md) and [AMD measurements](DynamicVoxelGIM8Measurements.md) archive schema 3 measurements on the retired directional candidate, including readiness, fallback, pool reuse, 210 unique profile runs and profiling-on/off image equivalence. NVIDIA and MoltenVK timing validation remain open.

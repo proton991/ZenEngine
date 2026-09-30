@@ -223,6 +223,8 @@ public:
 
     const RHIGPUInfo& QueryGPUInfo() const final;
 
+    RHIGPUMemoryStats GetGPUMemoryStats() const final;
+
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const final;
 
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const final;

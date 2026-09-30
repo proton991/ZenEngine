@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # Dynamic voxel GI: follow-up contract fixes
 
 2026-09-25. The implementation audit found three gaps in the M7 acceptance claim: cone fallback could exceed the GI cap, runtime material edits had no publication/invalidation path, and geometry updates silently expanded the voxel grid. These contracts are now implemented. [Implementation plan](DynamicVoxelGIImplementationPlan.md), [original M7 evidence](DynamicVoxelGIM7Verification.md).

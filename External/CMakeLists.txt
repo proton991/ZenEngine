@@ -87,3 +87,25 @@ target_include_directories(tinygltf INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/tinyg
 
 # fastgltf
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/fastgltf)
+
+if (ZEN_BUILD_RUNTIME_UI)
+  if (POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+  endif ()
+  include(FetchContent)
+  # Core and GLFW backend come from the same immutable archive. No Vulkan backend.
+  FetchContent_Declare(zen_imgui
+      URL https://codeload.github.com/ocornut/imgui/zip/refs/tags/v1.92.5-docking
+      URL_HASH SHA256=c893a95aa68e8e7380ca7868adfb2b19c45b9c6e6777a3bdd945c945972c2264)
+  FetchContent_MakeAvailable(zen_imgui)
+  add_library(zen_imgui STATIC
+      ${zen_imgui_SOURCE_DIR}/imgui.cpp
+      ${zen_imgui_SOURCE_DIR}/imgui_draw.cpp
+      ${zen_imgui_SOURCE_DIR}/imgui_tables.cpp
+      ${zen_imgui_SOURCE_DIR}/imgui_widgets.cpp
+      ${zen_imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp)
+  target_include_directories(zen_imgui PUBLIC ${zen_imgui_SOURCE_DIR})
+  target_compile_definitions(zen_imgui PUBLIC
+      IMGUI_USER_CONFIG="${PROJECT_SOURCE_DIR}/ZenUI/Include/UI/ImGuiConfig.h")
+  target_link_libraries(zen_imgui PRIVATE glfw)
+endif ()

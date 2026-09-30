@@ -45,9 +45,9 @@ bool WriteVoxelCaptureBuffer(const std::string& prefix, const VoxelCaptureBuffer
 
 // Opt-in diagnostic path. All production work completes before CPU mapping; capture
 // resources and scene inputs stay alive through the diagnostic graph's completion.
-bool SceneRendererDemo::CaptureVoxelVolume(const std::string& path, uint32_t classMask)
+bool SceneRendererDemo::CaptureVoxelVolume(const std::string& path)
 {
-    rc::VoxelizerBase* output = m_renderDevice->GetRendererServer()->RequestVoxelizer(classMask);
+    rc::VoxelizerBase* output = m_renderDevice->GetRendererServer()->RequestVoxelizer();
     return output != nullptr && CaptureVoxelOutput(path, *output);
 }
 
@@ -63,14 +63,14 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
         voxelizer->ProducesRadianceInputs() && voxelizer->GetGeometryRevision() != 0 &&
         bytes <= std::numeric_limits<uint32_t>::max() &&
         bytes <= m_renderDevice->GetGPUInfo().maxStorageBufferRange;
-    RHIBuffer* packed = nullptr;
+    RHIBuffer* packed            = nullptr;
     RHIBuffer* reflectancePacked = nullptr;
     const bool averaged          = voxelizer->UsesAveragedReflectance();
     rc::VoxelGIRenderer* gi      = m_renderDevice->GetRendererServer()->RequestVoxelGI();
-    const uint32_t hasRadiance   = output.GetClassMask() == GI_ALL && gi->IsInitialized() &&
+    const uint32_t hasRadiance   = gi->IsInitialized() &&
             m_renderDevice->GetRendererServer()->GetRenderOption() == rc::RenderOption::eVoxelGI ?
-        1u :
-        0u;
+          1u :
+          0u;
     if (succeeded)
     {
         RHIBufferCreateInfo info;
@@ -94,10 +94,7 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
                                     {"indices", m_renderScene->GetIndexBuffer()},
                                     {"nodes", m_renderScene->GetNodesDataSSBO()},
                                     {"triangles", m_renderScene->GetVoxelTriangleBuffer()},
-                                    {"materials", m_renderScene->GetMaterialsDataSSBO()},
-                                    {"occupied-list", output.GetOccupiedList()},
-                                    {"grid-to-list", output.GetGridToList()},
-                                    {"occupied-count", output.GetOccupiedCount()}};
+                                    {"materials", m_renderScene->GetMaterialsDataSSBO()}};
     for (VoxelCaptureBuffer& buffer : buffers)
     {
         if (succeeded && buffer.source != nullptr)
@@ -211,10 +208,9 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
                  << ",\"node_stride\":" << sizeof(sg::NodeData)
                  << ",\"material_stride\":" << sizeof(sg::MaterialData)
                  << ",\"geometry_revision\":" << voxelizer->GetGeometryRevision()
-                 << ",\"class_mask\":" << output.GetClassMask()
+                 << ",\"class_mask\":" << GI_ALL
                  << ",\"scene_revision\":" << m_renderScene->GetGeometryRevision()
-                 << ",\"class_scene_revision\":"
-                 << m_renderScene->GetGeometryRevision(output.GetClassMask())
+                 << ",\"class_scene_revision\":" << m_renderScene->GetGeometryRevision(GI_ALL)
                  << ",\"triangle_count\":" << m_renderScene->GetVoxelTriangleCount()
                  << ",\"reflectance_policy\":\"" << (averaged ? "averaged" : "owner")
                  << "\",\"reflectance_scale\":" << ZEN_VOXEL_REFLECTANCE_SCALE

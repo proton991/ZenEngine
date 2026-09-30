@@ -2,7 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
-#include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/VoxelGI.h"
 #include <bit>
 #include <limits>
@@ -55,16 +55,13 @@ bool VoxelizerBase::EnsureReady()
 
 bool VoxelizerBase::BeginVoxelization(RenderGraph& graph, RDGQueuePreference queuePreference)
 {
-    bool result = false;
-    const uint64_t sceneRevision =
-        m_pScene != nullptr ? m_pScene->GetGeometryRevision(m_classMask) : 0;
-    const uint64_t surfaceRevision =
-        m_pScene != nullptr ? m_pScene->GetSurfaceRevision(m_classMask) : 0;
+    bool result                  = false;
+    const uint64_t sceneRevision = m_pScene != nullptr ? m_pScene->GetGeometryRevision(GI_ALL) : 0;
+    const uint64_t surfaceRevision = m_pScene != nullptr ? m_pScene->GetSurfaceRevision(GI_ALL) : 0;
     if ((m_needVoxelization || sceneRevision != m_sceneRevision ||
          surfaceRevision != m_surfaceRevision) &&
         !m_voxelizationPending && EnsureReady())
     {
-        m_visibilityChanged = m_needVoxelization || sceneRevision != m_sceneRevision;
         PrepareReflectance();
         RDGComputePassDesc reset;
         reset.SetShaderProgramName(m_useAveragedReflectance ? "VoxelClearOwnersAveragedSP" :
@@ -100,10 +97,7 @@ void VoxelizerBase::OnRenderGraphExecuted(bool succeeded)
         if (succeeded)
         {
             ++m_geometryRevision;
-            if (m_visibilityChanged)
-            {
-                ++m_visibilityRevision;
-            }
+
             m_sceneRevision   = m_pendingSceneRevision;
             m_surfaceRevision = m_pendingSurfaceRevision;
         }
@@ -156,10 +150,9 @@ void VoxelizerBase::PrepareTextures()
     voxelSampler.repeatW   = RHISamplerRepeatMode::eClampToEdge;
     m_pVoxelSampler        = m_pRenderDevice->CreateSampler(voxelSampler);
     m_pColorSampler = m_pRenderDevice->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
-    m_voxelTextures.pOwner = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
-    m_voxelTextures.pAlbedo =
-        CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_albedo",
-                     m_classMask == GI_ALL ? std::bit_width(m_voxelTexResolution) : 1);
+    m_voxelTextures.pOwner  = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
+    m_voxelTextures.pAlbedo = CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_albedo",
+                                           std::bit_width(m_voxelTexResolution));
     if (m_voxelTextures.pAlbedo != nullptr)
     {
         TextureViewFormat view;
@@ -245,9 +238,9 @@ void VoxelizerBase::BindVoxelScene(RDGPassDescBase& pass) const
     pass.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
     pass.BindStorageBuffer("MaterialBuffer", m_pScene->GetMaterialsDataSSBO());
     pass.BindStorageBuffer("TriangleRecords", m_pScene->GetVoxelTriangleBuffer());
-    pass.BindValue("uVoxelGrid",
-                   VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()),
-                                    glm::uvec4(m_classMask, 0, 0, 0)});
+    pass.BindValue(
+        "uVoxelGrid",
+        VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()), glm::uvec4(GI_ALL, 0, 0, 0)});
     BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextures());
 }
 
@@ -349,12 +342,8 @@ void VoxelizerBase::Destroy()
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pEmissive);
     m_pRenderDevice->DestroyTexture(m_voxelTextures.pReflectance);
     m_pRenderDevice->DestroyBuffer(m_pReflectanceSums);
-    m_pRenderDevice->DestroyBuffer(m_occupiedList);
-    m_pRenderDevice->DestroyBuffer(m_gridToList);
-    m_pRenderDevice->DestroyBuffer(m_occupiedCount);
-    m_occupiedList = m_gridToList = m_occupiedCount = nullptr;
-    m_pReflectanceSums                              = nullptr;
-    m_useAveragedReflectance                        = false;
-    m_voxelTextures                                 = {};
+    m_pReflectanceSums       = nullptr;
+    m_useAveragedReflectance = false;
+    m_voxelTextures          = {};
 }
 } // namespace zen::rc

@@ -1,5 +1,5 @@
 #pragma once
-#include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
+#include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 
 namespace zen::rc
@@ -7,7 +7,7 @@ namespace zen::rc
 // Apply on the render/main thread between frame recordings. Resource changes may stall.
 struct VoxelGIRuntimeSettings
 {
-    DynamicVoxelGISettings dynamic;
+    uint32_t resolution{256};
     VoxelGISettings cone;
     platform::VoxelizerMode voxelizer{platform::VoxelizerMode::eAuto};
     platform::AsyncComputeMode asyncCompute{platform::AsyncComputeMode::eDisabled};
@@ -24,4 +24,5 @@ bool LoadVoxelGIRuntimeSettings(const platform::ConfigLoader& config,
 
 bool RequiresVoxelGIRebuild(const VoxelGIRuntimeSettings& previous,
                             const VoxelGIRuntimeSettings& next);
+
 } // namespace zen::rc

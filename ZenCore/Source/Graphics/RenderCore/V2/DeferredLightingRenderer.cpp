@@ -1,6 +1,5 @@
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
-#include "Graphics/RenderCore/V2/Renderer/DynamicVoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
 #include "Graphics/RenderCore/V2/Renderer/SkyboxRenderer.h"
@@ -11,7 +10,7 @@
 #include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
-#include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/Shared/LightingCapture.h"
 #include "SceneGraph/Camera.h"
 #include <cmath>
@@ -20,9 +19,7 @@ namespace zen::rc
 {
 namespace
 {
-void RecordGBufferDraws(RDGPassCmdEncoder& encoder,
-                        const HeapVector<SceneMeshDraw>& draws,
-                        bool dynamicGI)
+void RecordGBufferDraws(RDGPassCmdEncoder& encoder, const HeapVector<SceneMeshDraw>& draws)
 {
     GBufferSP::PushConstantsData constants{};
 
@@ -30,15 +27,8 @@ void RecordGBufferDraws(RDGPassCmdEncoder& encoder,
     {
         constants.nodeIndex     = draw.nodeIndex;
         constants.materialIndex = draw.materialIndex;
-        if (dynamicGI)
-        {
-            encoder.SetPushConstants(
-                glm::uvec3(draw.nodeIndex, draw.materialIndex, draw.objectClass));
-        }
-        else
-        {
-            encoder.SetPushConstants(constants);
-        }
+        encoder.SetPushConstants(constants);
+
         encoder.DrawIndexed(draw.indexCount, 1, draw.firstIndex, 0, 0);
     }
 }
@@ -68,7 +58,7 @@ void DeferredLightingRenderer::Init()
     const bool valid = config.ReadBool("light_markers.enabled", markersEnabled) &&
         config.ReadNumber("light_markers.size", markerSize) && std::isfinite(markerSize) &&
         markerSize > 0.0f;
-    m_lightMarkerSize = valid && markersEnabled ? markerSize : 0.0f;
+    SetLightMarkers(valid && markersEnabled, valid ? markerSize : 0.02f);
     if (!valid)
     {
         LOGW("Invalid light_markers configuration; markers disabled");
@@ -76,6 +66,20 @@ void DeferredLightingRenderer::Init()
 }
 
 void DeferredLightingRenderer::Destroy() {}
+
+bool DeferredLightingRenderer::SetLightMarkers(bool enabled, float size)
+{
+    const bool valid = std::isfinite(size) && size > 0.0f;
+
+    if (valid)
+    {
+        m_lightMarkersEnabled = enabled;
+
+        m_lightMarkerSize = size;
+    }
+
+    return valid;
+}
 
 void DeferredLightingRenderer::PrepareSamplers()
 {
@@ -100,12 +104,7 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear()
         m_captureOutput != nullptr && m_captureReadback != nullptr &&
         m_captureOutput->GetRequiredSize() == bytes &&
         m_captureReadback->GetRequiredSize() == bytes;
-    if (valid && m_surfaceOutput != nullptr)
-    {
-        valid = m_surfaceReadback != nullptr &&
-            m_surfaceOutput->GetRequiredSize() == pixels * ZEN_SURFACE_CAPTURE_BYTES_PER_PIXEL &&
-            m_surfaceReadback->GetRequiredSize() == m_surfaceOutput->GetRequiredSize();
-    }
+
     HeapVector<ComputeDispatchChunk> chunks;
     uint32_t first = 0;
     while (valid && first < pixels)
@@ -119,15 +118,13 @@ bool DeferredLightingRenderer::BuildLightingCaptureClear()
             first += chunk.itemCount;
         }
     }
-    for (uint32_t surface = 0; valid && surface < (m_surfaceOutput != nullptr ? 2u : 1u); ++surface)
+    if (valid)
     {
         RDGComputePassDesc clear;
-        clear.SetShaderProgramName(surface != 0 ? "ClearSurfaceCaptureSP" :
-                                                  "ClearLightingCaptureSP");
+        clear.SetShaderProgramName("ClearLightingCaptureSP");
         clear.SetPassTag("ClearLightingCapture");
         clear.independentDispatches = true;
-        clear.BindStorageBuffer(surface != 0 ? "SurfaceCapture" : "LightingCapture",
-                                surface != 0 ? m_surfaceOutput : m_captureOutput,
+        clear.BindStorageBuffer("LightingCapture", m_captureOutput,
                                 RDGContentGuarantee::eFullWrite);
         m_pRenderDevice->GetCurrentFrameRDG()
             ->AddComputePass(std::move(clear))
@@ -145,7 +142,7 @@ void DeferredLightingRenderer::BuildRenderGraph(VoxelGIRenderer* voxelGI,
     BuildCompositionGraph(voxelGI, shadows);
 }
 
-void DeferredLightingRenderer::BuildGBufferGraph(bool dynamicGI)
+void DeferredLightingRenderer::BuildGBufferGraph()
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
@@ -159,11 +156,11 @@ void DeferredLightingRenderer::BuildGBufferGraph(bool dynamicGI)
         pso.depthStencilState =
             RHIGfxPipelineDepthStencilState::Create(true, true, RHIDepthCompareOperator::eLess);
         pso.multiSampleState = {};
-        pso.colorBlendState.AddAttachments(dynamicGI ? 7 : 5);
+        pso.colorBlendState.AddAttachments(5);
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
         RDGGraphicsPassDesc offscreen{};
-        offscreen.SetShaderProgramName(dynamicGI ? "GBufferDynamicSP" : "GBufferSP");
+        offscreen.SetShaderProgramName("GBufferSP");
         offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize,
                                  "offscreen_position");
         offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize,
@@ -174,13 +171,7 @@ void DeferredLightingRenderer::BuildGBufferGraph(bool dynamicGI)
                                  "offscreen_roughness");
         offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize,
                                  "offscreen_emissive_occlusion");
-        if (dynamicGI)
-        {
-            offscreen.AddColorOutput(DataFormat::eR32G32UInt, offscreenSize, offscreenSize,
-                                     "offscreen_receiver");
-            offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize,
-                                     "offscreen_geometric_normal");
-        }
+
         offscreen.AddDepthStencilOutput(
             m_pViewport->GetDepthStencilFormat(), offscreenSize, offscreenSize, "offscreen_depth",
             RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
@@ -199,24 +190,21 @@ void DeferredLightingRenderer::BuildGBufferGraph(bool dynamicGI)
 
         pRDG->AddGraphicsPass(std::move(offscreen))
             .RecordPassCommands(
-                [draws = SnapshotSceneDraws(*m_pScene), dynamicGI](RDGPassCmdEncoder& encoder) {
-                    RecordGBufferDraws(encoder, draws, dynamicGI);
+                [draws = SnapshotSceneDraws(*m_pScene)](RDGPassCmdEncoder& encoder) {
+                    RecordGBufferDraws(encoder, draws);
                 });
     }
 }
 
 void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI,
-                                                     SceneShadowRenderer* shadows,
-                                                     DynamicVoxelGIRenderer* dynamicGI)
+                                                     SceneShadowRenderer* shadows)
 {
     RenderGraph* pRDG = m_pRenderDevice->GetCurrentFrameRDG();
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
     m_captureRecorded       = false;
     const bool capture      = m_captureOutput != nullptr;
-    const bool captureValid = !capture ||
-        ((dynamicGI == nullptr || m_surfaceOutput != nullptr) && BuildLightingCaptureClear());
+    const bool captureValid = !capture || BuildLightingCaptureClear();
     const glm::uvec2 captureExtent(m_pViewport->GetWidth(), m_pViewport->GetHeight());
-
 
     {
         RHIGfxPipelineStates pso{};
@@ -231,11 +219,8 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI,
 
         RDGGraphicsPassDesc lighting{};
         lighting.SetShaderProgramName(
-            dynamicGI != nullptr ?
-                (capture ? "DeferredDynamicVoxelGICaptureSP" : "DeferredDynamicVoxelGISP") :
-                voxelGI == nullptr ?
-                (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP") :
-                (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
+            voxelGI == nullptr ? (capture ? "DeferredLightingCaptureSP" : "DeferredLightingSP") :
+                                 (capture ? "DeferredVoxelGICaptureSP" : "DeferredVoxelGISP"));
         lighting.AddColorOutput(m_pViewport->GetColorBackBuffer(), RHIRenderTargetLoadOp::eLoad);
         lighting.AddDepthStencilOutput(m_pViewport->GetDepthStencilBackBuffer(),
                                        RHIRenderTargetLoadOp::eClear,
@@ -262,21 +247,8 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI,
         if (capture)
         {
             lighting.BindStorageBuffer("LightingCapture", m_captureOutput);
-            if (dynamicGI != nullptr)
-            {
-                lighting.BindStorageBuffer("SurfaceCapture", m_surfaceOutput);
-            }
         }
 
-        if (dynamicGI != nullptr)
-        {
-            dynamicGI->BindLightingInputs(lighting);
-            lighting.BindValue("uSurfaceLookup",
-                               glm::uvec4(m_pViewport->GetWidth(), m_pViewport->GetHeight(), 0, 0));
-            lighting.BindSampledTexture("receiverMap", m_pDepthSampler, "offscreen_receiver");
-            lighting.BindSampledTexture("geometricNormalMap", m_pColorSampler,
-                                        "offscreen_geometric_normal");
-        }
         if (voxelGI != nullptr)
         {
             voxelGI->BindLightingInputs(lighting);
@@ -304,13 +276,7 @@ void DeferredLightingRenderer::BuildCompositionGraph(VoxelGIRenderer* voxelGI,
             .CopyBuffer(m_captureOutput, m_captureReadback,
                         {0, 0, m_captureOutput->GetRequiredSize()})
             .NeverCull();
-        if (dynamicGI != nullptr)
-        {
-            pRDG->AddTransferPass("ReadSurfaceCapture")
-                .CopyBuffer(m_surfaceOutput, m_surfaceReadback,
-                            {0, 0, m_surfaceOutput->GetRequiredSize()})
-                .NeverCull();
-        }
+
         m_captureRecorded = true;
     }
     BuildLightMarkers();
@@ -321,7 +287,7 @@ void DeferredLightingRenderer::BuildLightMarkers()
     const SceneUniformData& sceneData =
         *reinterpret_cast<const SceneUniformData*>(m_pScene->GetSceneUniformData());
     const uint32_t lightCount = static_cast<uint32_t>(sceneData.lightInfo.x);
-    if (m_lightMarkerSize > 0.0f && lightCount > 0)
+    if (m_lightMarkersEnabled && lightCount > 0)
     {
         RHIGfxPipelineStates pso{};
         pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;

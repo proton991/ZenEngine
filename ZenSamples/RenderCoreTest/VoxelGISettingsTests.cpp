@@ -1,4 +1,5 @@
 #include "Graphics/RenderCore/V2/VoxelGISettings.h"
+#include "Platform/ConfigLoader.h"
 #include <gtest/gtest.h>
 #include <limits>
 #include <sstream>
@@ -6,6 +7,7 @@
 namespace
 {
 using namespace zen;
+
 using namespace zen::rc;
 
 TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
@@ -13,23 +15,14 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
     const char* rejected[] = {"voxelizer=invalid",
                               "async_compute=invalid",
                               "voxel_resolution=65",
-                              "voxel_gi_method=invalid",
                               "voxel_gi_cone_count=5",
                               "shadow_map_resolution=0",
-                              "dynamic_voxel_gi_rays_per_face=16",
-                              "dynamic_voxel_gi_neighbor_radius=3",
-                              "dynamic_voxel_gi_cache=invalid",
-                              "dynamic_voxel_gi_query_backend=invalid",
-                              "dynamic_voxel_gi_memory_budget_mb=0",
                               "voxel_reflectance_policy=invalid",
                               "voxel_reflectance_policy=averaged",
                               "voxel_reflectance_budget_mb=18446744073709551615",
-                              "dynamic_voxel_gi_temporal_alpha=0",
-                              "dynamic_voxel_gi_temporal_alpha=1.1",
-                              "dynamic_voxel_gi_history_gap_seconds=-1",
-                              "dynamic_voxel_gi_temporal_reference_hz=nan",
-                              "dynamic_voxel_gi_cache_batch_size=0",
-                              "dynamic_voxel_gi_cache_batch_size=4097"};
+                              "voxel_gi_analytic_lighting=invalid",
+                              "voxel_gi_environment_lighting=1",
+                              "voxel_gi_emissive_lighting=0"};
 
     for (const char* input : rejected)
     {
@@ -41,11 +34,11 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
 
         VoxelGIRuntimeSettings settings;
 
-        settings.dynamic.resolution = 128;
+        settings.resolution = 128;
 
         EXPECT_FALSE(LoadVoxelGIRuntimeSettings(config, settings));
 
-        EXPECT_EQ(settings.dynamic.resolution, 128u);
+        EXPECT_EQ(settings.resolution, 128u);
 
         EXPECT_EQ(settings.cone.indirectIntensity, 1.0f);
     }
@@ -54,13 +47,10 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
 TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 {
     std::istringstream stream(
-        "voxelizer=comp\nasync_compute=auto\nvoxel_gi_method=dynamic_voxel\n"
-        "voxel_resolution=128\ndynamic_voxel_gi_rays_per_face=32\n"
-        "dynamic_voxel_gi_neighbor_radius=1\ndynamic_voxel_gi_cache=decoded\n"
-        "dynamic_voxel_gi_memory_budget_mb=3072\nvoxel_reflectance_policy=averaged\n"
-        "voxel_reflectance_budget_mb=128\nshadow_map_resolution=512\n"
-        "dynamic_voxel_gi_temporal_alpha=0.1\ndynamic_voxel_gi_history_gap_seconds=0.5\n"
-        "dynamic_voxel_gi_temporal_reference_hz=30\ndynamic_voxel_gi_cache_batch_size=512\n");
+        "voxelizer=comp\nasync_compute=auto\nvoxel_resolution=128\n"
+        "voxel_reflectance_policy=averaged\nvoxel_reflectance_budget_mb=128\n"
+        "shadow_map_resolution=512\nvoxel_gi_analytic_lighting=false\n"
+        "voxel_gi_environment_lighting=false\nvoxel_gi_emissive_lighting=false\n");
 
     platform::ConfigLoader config(stream);
 
@@ -72,15 +62,7 @@ TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 
     EXPECT_EQ(settings.asyncCompute, platform::AsyncComputeMode::eAuto);
 
-    EXPECT_EQ(settings.dynamic.resolution, 128u);
-
-    EXPECT_EQ(settings.dynamic.raysPerFace, 32u);
-
-    EXPECT_EQ(settings.dynamic.neighborRadius, 1u);
-
-    EXPECT_FALSE(settings.dynamic.compactCache);
-
-    EXPECT_EQ(settings.dynamic.memoryBudgetBytes, 3072ull * 1024 * 1024);
+    EXPECT_EQ(settings.resolution, 128u);
 
     EXPECT_TRUE(settings.averagedReflectance);
 
@@ -88,13 +70,11 @@ TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 
     EXPECT_EQ(settings.shadowMapResolution, 512u);
 
-    EXPECT_FLOAT_EQ(settings.dynamic.temporalAlpha, 0.1f);
+    EXPECT_FALSE(settings.cone.analyticLighting);
 
-    EXPECT_FLOAT_EQ(settings.dynamic.historyGapSeconds, 0.5f);
+    EXPECT_FALSE(settings.cone.environmentLighting);
 
-    EXPECT_FLOAT_EQ(settings.dynamic.temporalReferenceHz, 30.0f);
-
-    EXPECT_EQ(settings.dynamic.cacheBatchSize, 512u);
+    EXPECT_FALSE(settings.cone.emissiveLighting);
 }
 
 TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)
@@ -107,14 +87,54 @@ TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)
 
     settings = {};
 
-    settings.dynamic.backend = static_cast<VoxelGIQueryBackend>(99);
+    settings.asyncCompute = static_cast<platform::AsyncComputeMode>(99);
 
     EXPECT_FALSE(ValidateVoxelGIRuntimeSettings(settings));
 
     settings = {};
 
-    settings.dynamic.temporalAlpha = std::numeric_limits<float>::infinity();
+    settings.cone.indirectIntensity = std::numeric_limits<float>::infinity();
 
     EXPECT_FALSE(ValidateVoxelGIRuntimeSettings(settings));
+}
+
+TEST(VoxelGIRuntimeSettings, ContributionChangesAreLiveAndResolutionRequiresRebuild)
+{
+    VoxelGIRuntimeSettings previous;
+
+    VoxelGIRuntimeSettings next = previous;
+
+    next.cone.analyticLighting = false;
+
+    next.cone.environmentLighting = false;
+
+    next.cone.emissiveLighting = false;
+
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, next));
+
+    next.resolution = 64;
+
+    EXPECT_TRUE(RequiresVoxelGIRebuild(previous, next));
+}
+
+TEST(VoxelGIRuntimeSettings, InactiveReflectanceBudgetChangesDoNotRebuild)
+{
+    VoxelGIRuntimeSettings previous;
+
+    VoxelGIRuntimeSettings next = previous;
+
+    next.reflectanceBudgetBytes = 320ull * 1024 * 1024;
+
+    EXPECT_FALSE(RequiresVoxelGIRebuild(previous, next));
+
+    next.averagedReflectance = true;
+
+    EXPECT_TRUE(RequiresVoxelGIRebuild(previous, next));
+
+    previous = next;
+
+    next.reflectanceBudgetBytes *= 2;
+
+    EXPECT_TRUE(RequiresVoxelGIRebuild(previous, next));
 }
 } // namespace

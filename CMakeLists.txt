@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" CACHE PATH "Runtime output directory")
 option(ZEN_BUILD_LEGACY "Build the legacy renderer and samples (may require API migration)" OFF)
+option(ZEN_BUILD_RUNTIME_UI "Build the optional runtime debug UI and shared UI integration" ON)
 include(CTest)
 
 set(VULKAN_INCLUDE_DIR $ENV{VULKAN_SDK}/Include)
@@ -25,6 +26,9 @@ endif ()
 add_subdirectory(ZenCore)
 add_subdirectory(ZenSamples)
 add_subdirectory(External)
+if (ZEN_BUILD_RUNTIME_UI)
+  add_subdirectory(ZenUI)
+endif ()
 
 # Platform Definitions
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")

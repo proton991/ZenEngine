@@ -39,7 +39,6 @@ public:
     void Stop(rc::RenderDevice& device, const rc::RenderScene* scene, RHIViewport& viewport);
 
     // Called after the application's ordinary shutdown drain, before destroying resources.
-    void CompleteDiagnostics(rc::RenderDevice& device);
 
     // Call after ordinary device shutdown has drained native GPU work.
     bool Export(rc::RDGMetrics& metrics, bool runSucceeded);

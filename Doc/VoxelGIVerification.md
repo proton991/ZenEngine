@@ -2,17 +2,27 @@
 
 Date: 2026-09-21. Implementation follows [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md), with execution refinements recorded there.
 
-## Directional GI update (2026-09-25)
+## Cone-only update (2026-09-30)
 
-The explicit `voxel_gi_method=dynamic_voxel` path implements the paper-derived single-bounce diffuse pipeline using ordinary compute voxel DDA. It includes static/dynamic transport, zero through 32 analytic lights, environment and emissive transport, temporal/spatial filtering, and runtime method switching. See [M7 verification](DynamicVoxelGIM7Verification.md) and the [directional GI plan](DynamicVoxelGIImplementationPlan.md) for acceptance evidence and remaining work. The original cone implementation and its historical results below remain applicable to `auto` and `cone`.
+Dynamic Voxel GI has been removed at the user's request. Cone tracing is the only supported voxel GI method. Analytic radiance injection now reuses the mesh shadow atlas at a representative point on the owner triangle. The `voxel_gi_analytic_lighting`, `voxel_gi_environment_lighting`, and `voxel_gi_emissive_lighting` switches control diffuse GI independently; direct lighting, visible emission, and specular IBL remain independent. All three default to true and apply live through the runtime UI.
 
-Use `dynamic_voxel_gi_query_backend=voxel_dda`, 128 rays per face, a verified 64/128 grid and an explicit `dynamic_voxel_gi_memory_budget_mb`. The M7 fixtures use 3072 MiB; 64-cubed Sponza uses 6144 MiB. These caps cover the checked method resources, not total measured device memory or a shipping preset. If resolution is omitted, explicit directional GI defaults to 64 and cone/auto to 256; an existing explicit resolution is preserved. Budget/capability rejection, cache initialization, overflow and unknown visibility use cone fallback. Only rejection/fallback is verified at 256 cubed. `auto` remains cone pending M8 profiling.
+Removed: directional caches, query providers, history/filter volumes, class-specific voxel producers, extra G-buffer targets, method selection, automatic multi-GiB budget, related command-line captures and tools. Merged voxelization still supports moving geometry. Averaged reflectance, checked storage limits, direct shadows, profiling, GPU memory display and automatic UI application remain. Historical comparison and deferred quality ideas are in the [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
 
-`dynamic_voxel_gi_temporal_filter=off|fixed|elapsed`, `dynamic_voxel_gi_spatial_filter`, and the independent `dynamic_voxel_gi_analytic_lighting`, `dynamic_voxel_gi_environment_lighting`, and `dynamic_voxel_gi_emissive_lighting` controls affect directional diffuse transport. `skybox_visible` changes background visibility independently of environment lighting. Average diffuse reflectance is selectable with `voxel_reflectance_policy=averaged` and its separate V1 budget; owner remains the compatibility default.
+Validation: Debug and Release demo builds, a UI-disabled build, 511 active renderer unit tests, 21 config/lighting tests, 7 input tests, 8 UI packet tests, 4 native Cone visibility modes, 3 native UI integration tests, and 15 profiler verifier tests passed. Ten HDR capture cases cover contribution isolation with compute/owner and geometry/averaged voxelization. Combined diffuse light agrees with isolated contributions within 0.057% aggregate error; disabling all GI leaves zero diffuse light and preserves other lighting components. Schema-4 native profiling captures pass the verifier.
 
-`RendererServer::SetVoxelGIMethod` changes the requested method between frame recordings, resets history and retains compatible, budgeted static caches; the grid stays fixed at startup. `--disable-rt` disables native RT features before device creation. The M7 runner uses this flag for all its scene captures. `--gi-method-switching` is a diagnostic for the generated four-mesh lifecycle fixture, used with `--capture-lighting=prefix`; it is not a general animation command. Full directional volume capture supports 64/128 only because a combined 256-cubed readback exceeds the current RHI buffer-size type.
+The initial retirement check exercised the existing 158-case GPU/image suite. It exposed a pre-existing exact-black spotlight endpoint failure for both voxelizers (maximum 6/255), reproduced with the pre-change Cone composition shader. That initial suite was not fully passing; the subsequent fix is recorded below. Historical evidence: `build/cone-image-regression`, `build/cone-shadow-baseline`, and `build/cone-lighting-final`.
 
-DDA has cell-shaped occlusion and representative-surface error, and Gaussian filtering can leak across surfaces. Current specular IBL remains separate and unoccluded. Hardware triangle queries, multi-bounce/glossy transport and a measured frame-time claim are outside this delivery; M8 profiling and deferred H0-H2 remain.
+Run the focused regression with `python tools/validate_cone_lighting.py --exe PATH_TO_SCENE_RENDERER_DEMO`. It restores config bytes after each run. The dated records below describe their original checkpoints.
+
+## Spotlight shadow edge fix (2026-09-30)
+
+The endpoint failure was a shader bug, not a tolerance problem. `SceneLightVisibility` projected a normal-offset receiver into the spotlight shadow map. Near the cone boundary, that offset could move a still-illuminated surface outside the finite shadow projection; the out-of-projection path returned full visibility without testing the blocker. In the reproduced fixture, a leaking pixel moved from approximately 0.9969 to 1.0036 in shadow NDC X. Indirect lighting was disabled, so the residual came from direct light.
+
+Spotlight lookups now retry at the original surface position when the normal offset leaves the projection. Receiver-plane filtering and the per-tap depth bias remain. The blocked receiver changed from eight nonzero pixels (maximum 6/255) to exact black across all four cone edges; unblocked, behind-light-blocker, and shadow-disabled captures remained pixel-identical to their pre-fix images.
+
+The GPU regression pins the spotlight angles, shadow-map resolution and image extent, checks all four edges, and adds a shadow-disabled control for both light types and voxelizers. The exact-zero assertion remains unchanged. Reproduction captures and metrics are under `build/spotlight-investigation/{before,after}`.
+
+Validation: all four affected shader variants compiled; the complete GPU/image suite passed all **162 cases and image assertions**, without application errors, Vulkan VUIDs or synchronization hazards. All **10 HDR contribution-isolation cases** also passed with unchanged additivity error (below 0.057%). Both runners restored `engine.cfg` byte-for-byte. Evidence: `build/spotlight-fix-validation/results.json`, `build/spotlight-fix-validation.log`, and `build/spotlight-fix-hdr/results.json`.
 
 ## Using the demo
 
@@ -25,7 +35,7 @@ cd bin
 ./scene_renderer_demo.exe --mode=3
 ```
 
-- Startup and `1` / keypad 1: VoxelGI with mesh-based direct shadows and the selected voxel GI method (`auto` defaults to cone).
+- Startup and `1` / keypad 1: Cone tracing GI with mesh-based direct shadows.
 - `2` / keypad 2: voxel visualization.
 - Deferred PBR has no keyboard binding; key 3 is unbound.
 - `R` in either view: rebuild geometry and invalidate dependent lighting.

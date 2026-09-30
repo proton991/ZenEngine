@@ -3,7 +3,7 @@
 #include "SceneGraph/Scene.h"
 #include "SceneLighting.h"
 #include "AssetLib/Types.h"
-#include "Graphics/Shared/GIVisibility.h"
+#include "Graphics/Shared/VoxelGI.h"
 
 namespace zen::sg
 {
@@ -64,14 +64,7 @@ public:
     }
     uint32_t GetVoxelCoverageMask(const sg::AABB& gridBounds) const;
     // Use for discontinuous transforms/deformation; ordinary animation keeps GI history.
-    void InvalidateGIHistory()
-    {
-        ++m_giHistoryRevision;
-    }
-    uint64_t GetGIHistoryRevision() const
-    {
-        return m_giHistoryRevision + m_lights.GetStructureRevision() + m_environmentRevision;
-    }
+
     bool CommitGeometryUpdates();
     uint32_t GetInstanceMask(uint32_t instance) const;
     uint64_t GetGeometryRevision(uint32_t mask = GI_ALL) const
@@ -192,7 +185,6 @@ private:
     bool m_verticesDirty{false};
     bool m_geometryReady{true};
     uint64_t m_geometryRevision{1};
-    uint64_t m_giHistoryRevision{1};
     uint64_t m_staticRevision{1};
     uint64_t m_dynamicRevision{1};
     uint64_t m_surfaceRevision{1};
@@ -216,7 +208,6 @@ private:
 
     RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};
-
 
     uint32_t m_numIndices{0};
     RHIBuffer* m_pVoxelTriangleBuffer{nullptr};

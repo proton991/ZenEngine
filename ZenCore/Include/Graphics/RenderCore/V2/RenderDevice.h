@@ -187,6 +187,12 @@ public:
 
     void DestroyTexture(RHITexture* pTexture);
 
+    // Copies the payload into the engine staging queue; graph execution submits it.
+    void UpdateTexture(RHITexture* texture,
+                       VectorView<RHIBufferTextureCopyRegion> regions,
+                       uint32_t dataSize,
+                       const uint8_t* data);
+
     // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
     // RHITexture* CreateTextureProxy(const RHITexture* baseTexture,
@@ -306,6 +312,11 @@ public:
     const RHIGPUInfo& GetGPUInfo() const
     {
         return GDynamicRHI->QueryGPUInfo();
+    }
+
+    RHIGPUMemoryStats GetGPUMemoryStats() const
+    {
+        return GDynamicRHI->GetGPUMemoryStats();
     }
 
 private:

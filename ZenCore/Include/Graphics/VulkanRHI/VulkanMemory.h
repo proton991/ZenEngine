@@ -3,6 +3,7 @@
 #include <atomic>
 #include "Templates/HashMap.h"
 #include "Graphics/RHI/RHICommon.h"
+#include "Graphics/RHI/RHIGPUMemoryStats.h"
 
 namespace zen
 {
@@ -22,6 +23,8 @@ public:
     ~VulkanMemoryAllocator();
 
     void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, bool bufferDeviceAddress);
+
+    RHIGPUMemoryStats GetGPUMemoryStats() const;
 
     bool AllocImage(const VkImageCreateInfo* pImageCI,
                     bool cpuReadable,
@@ -67,6 +70,6 @@ private:
     std::atomic<uint64_t> m_peakBytes{0};
     std::atomic<uint64_t> m_liveDeviceBytes{0};
     std::atomic<uint64_t> m_peakDeviceBytes{0};
-    bool m_trackMemory{false};
+    bool m_logMemoryStats{false};
 };
 } // namespace zen

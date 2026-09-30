@@ -12,6 +12,7 @@ namespace zen::rc
 class RenderDevice;
 class RenderScene;
 class VoxelizerBase;
+class SceneShadowRenderer;
 
 struct VoxelGISettings
 {
@@ -23,6 +24,9 @@ struct VoxelGISettings
     uint32_t coneCount{6};
     uint32_t maxSteps{128};
     bool shadows{true};
+    bool analyticLighting{true};
+    bool environmentLighting{true};
+    bool emissiveLighting{true};
 };
 
 bool ValidateVoxelGISettings(const VoxelGISettings& settings);
@@ -35,15 +39,16 @@ struct VoxelGIUniformData
     Vec4 volume;
     Vec4 cone;
     Vec4 limits;
+    Vec4 lighting{1.0f}; // Analytic, environment, emissive contributions; reserved.
 };
-static_assert(sizeof(VoxelGIUniformData) == 64);
+static_assert(sizeof(VoxelGIUniformData) == 80);
 
 class VoxelGIRenderer
 {
 public:
     VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer);
     bool Init();
-    void BuildRenderGraph();
+    void BuildRenderGraph(SceneShadowRenderer* shadows = nullptr);
     void OnRenderGraphExecuted(bool succeeded);
     void SetRenderScene(RenderScene* scene);
     void Destroy();

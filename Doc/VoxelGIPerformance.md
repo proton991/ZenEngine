@@ -95,7 +95,7 @@ The runner records 120 warmup frames followed by 1200 measured frames, at 1920×
 
 - RTX 5080, driver 616.92; Ryzen 9 9950X3D; Windows 11 25H2.
 - Current Sponza configuration: compute voxelization, 256³ grid, owner reflectance, six cones, five point lights, shadows, environment lighting and the animated fifth light.
-- Key 3 resolves to **`cone`**, query backend `none`. It does not select the experimental `dynamic_voxel` method in this configuration.
+- Key 3 resolves to **`cone`**, now the only supported voxel GI method.
 - Three frames in flight; identical input configuration and shader binaries across the final Debug/performance comparisons. Configuration SHA-256: `2bd8e0658e24304bd053ab9f55a9bfa8a047f616878571de9771deaf9c171d57`.
 - The benchmark's `--fixed-step` advances the demo light by 1/60 second per frame, so each build renders the same sequence of light positions. Interactive launches retain elapsed-time animation. This flag does not change the directional GI temporal-filter clock.
 
@@ -140,4 +140,4 @@ The retained changes are the isolated performance preset/launcher, reusable benc
 
 Debug and performance builds pass. The [verification record](../build/voxel-gi-performance-20260925/verification.json) covers identical frozen-scene images before/after and with split warmup, timing-output failure propagation, the existing mode-switch/resize/revoxelization smoke run, and the quick material/bounds/budget and static-GI suites with synchronization validation enabled. Logs contain no validation errors or reported memory leaks in successful runs. The expected file-output failure is recorded separately. The user configuration is restored byte for byte after fixture tests. Benchmark input failures are recorded in [CLI validation](../build/voxel-gi-performance-20260925/cli-validation.json).
 
-This resolves the measured key-3 CPU starvation and exceeds the requested 90% activity target for the current cone configuration. The separate directional-GI [M8 gates](DynamicVoxelGIM8Profiling.md#remaining-m8-gates), including its post-gap-fix performance audit, remain open; these cone results do not promote automatic method selection or certify other scenes, resolutions or GPUs.
+This resolves the measured key-3 CPU starvation and exceeds the requested 90% activity target for the current cone configuration. The directional implementation has since been [retired](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30). These historical Cone results do not certify other scenes, resolutions or GPUs.

@@ -15,7 +15,7 @@ void main()
     ivec3 p=ivec3(gl_GlobalInvocationID);
     if(any(greaterThanEqual(p,imageSize(skyIrradiance)))) return;
     vec3 irradiance=vec3(0);
-    if(texelFetch(voxelAlbedo,p,0).a>0.5 && sceneUbo.environment.z>0)
+    if(texelFetch(voxelAlbedo,p,0).a>0.5 && sceneUbo.environment.z>0 && gi.lighting.y>0)
     {
         vec3 normal=normalize(texelFetch(voxelNormal,p,0).rgb*2.0-1.0);
         vec3 position=gi.gridMinVoxelSize.xyz+(vec3(p)+0.5)*gi.gridMinVoxelSize.w;

@@ -136,13 +136,10 @@ public:
 class GBufferSP : public ShaderProgram
 {
 public:
-    explicit GBufferSP(RenderDevice* pRenderDevice, bool dynamicGI = false) :
-        ShaderProgram(pRenderDevice, dynamicGI ? "GBufferDynamicSP" : "GBufferSP")
+    explicit GBufferSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "GBufferSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment,
-                       dynamicGI ? "SceneRenderer/offscreen_dynamic.frag.spv" :
-                                   "SceneRenderer/offscreen.frag.spv");
+        AddShaderStage(RHIShaderStage::eFragment, "SceneRenderer/offscreen.frag.spv");
         Init();
     }
 
@@ -177,21 +174,6 @@ public:
         AddShaderStage(RHIShaderStage::eFragment,
                        capture ? "SceneRenderer/voxel_gi_capture.frag.spv" :
                                  "SceneRenderer/voxel_gi.frag.spv");
-        Init();
-    }
-};
-
-class DeferredDynamicVoxelGISP : public ShaderProgram
-{
-public:
-    explicit DeferredDynamicVoxelGISP(RenderDevice* device, bool capture = false) :
-        ShaderProgram(device,
-                      capture ? "DeferredDynamicVoxelGICaptureSP" : "DeferredDynamicVoxelGISP")
-    {
-        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
-        AddShaderStage(RHIShaderStage::eFragment,
-                       capture ? "SceneRenderer/dynamic_voxel_gi_capture.frag.spv" :
-                                 "SceneRenderer/dynamic_voxel_gi.frag.spv");
         Init();
     }
 };
@@ -515,6 +497,9 @@ public:
 
     void BuildShaderPrograms(RenderDevice* pRenderDevice);
 
+    // Takes ownership; integrations may register programs without coupling ZenCore to them.
+    void StoreProgram(ShaderProgram* program);
+
     ShaderProgram* RequestShaderProgram(NameID name)
     {
         return m_programCache.contains(name) ? m_programCache[name] : nullptr;
@@ -525,8 +510,6 @@ private:
     {
         m_programCache = {};
     }
-
-    void StoreProgram(ShaderProgram* program);
 
     HashMap<NameID, ShaderProgram*> m_programCache;
 };

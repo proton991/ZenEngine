@@ -13,37 +13,8 @@ layout(location=3) out vec4 outMetallicRoughness;
 layout(location=4) out vec4 outEmissiveOcclusion;
 layout(std140,set=1,binding=2) readonly buffer MaterialBuffer { Material materialData[]; };
 layout(push_constant) uniform Constants { uint uNodeIndex; uint uMaterialIndex;
-#ifdef DYNAMIC_VOXEL_GI
-uint uObjectClass;
-#endif
 };
 
-#ifdef DYNAMIC_VOXEL_GI
-layout(location=5) out uvec2 outReceiver;
-layout(location=6) out vec4 outGeometricNormal;
-// w=1: derivative normal; w=2: degenerate derivatives, unperturbed normal.
-// w=0: invalid surface. Normal maps never supply this fallback.
-vec4 GeometricNormal()
-{
-    vec3 reference=inNormal;
-    float referenceLength=length(reference);
-    vec3 geometric=cross(dFdx(inWorldPos),dFdy(inWorldPos));
-    float geometricLength=length(geometric);
-    bool referenceValid=referenceLength>1e-12 && !any(isnan(reference)) && !any(isinf(reference));
-    vec4 result=vec4(0);
-    if(referenceValid)
-    {
-        reference/=referenceLength;
-        result=vec4(reference,2);
-        if(geometricLength>1e-12 && !any(isnan(geometric)) && !any(isinf(geometric)))
-        {
-            geometric/=geometricLength;
-            result=vec4(dot(geometric,reference)<0 ? -geometric : geometric,1);
-        }
-    }
-    return result;
-}
-#endif
 
 vec3 SurfaceNormal(Material material)
 {
@@ -81,9 +52,6 @@ vec3 SurfaceNormal(Material material)
 
 void main()
 {
-#ifdef DYNAMIC_VOXEL_GI
-    vec4 geometric=GeometricNormal();
-#endif
     Material material=materialData[uMaterialIndex];
     vec3 normal=SurfaceNormal(material);
     vec4 albedo=MaterialAlbedo(material,inUV,inUV1,inColor);
@@ -93,10 +61,6 @@ void main()
         MaterialUV(material.emissiveTexSet,inUV,inUV1)).rgb;
     float occlusion=MaterialTexture(material.occlusionTexIndex,
         MaterialUV(material.aoTexSet,inUV,inUV1)).r;
-#ifdef DYNAMIC_VOXEL_GI
-    outReceiver=uvec2(uNodeIndex+1u,uObjectClass);
-    outGeometricNormal=geometric;
-#endif
     outPosition=vec4(inWorldPos,1);
     outNormal=vec4(normal,1);
     outAlbedo=vec4(albedo.rgb,1);

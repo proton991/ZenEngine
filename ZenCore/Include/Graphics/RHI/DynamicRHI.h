@@ -4,6 +4,7 @@
 #include "RHIResource.h"
 #include "RHIFrameState.h"
 #include "RHIGPUFrameTiming.h"
+#include "RHIGPUMemoryStats.h"
 
 namespace zen
 {
@@ -246,6 +247,13 @@ public:
     virtual void WaitDeviceIdle() = 0;
 
     virtual const RHIGPUInfo& QueryGPUInfo() const = 0;
+
+    // Safe to read while the initialized backend is alive, including from the render
+    // thread. Reads published counters only; never waits for RHI/GPU work or polls a driver.
+    virtual RHIGPUMemoryStats GetGPUMemoryStats() const
+    {
+        return {};
+    }
 
     virtual RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const = 0;
 

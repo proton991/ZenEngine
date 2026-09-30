@@ -73,7 +73,7 @@ HeapVector<ConeVisibilityRay> VisibilityRays(uint32_t side)
     return rays;
 }
 
-TEST_P(DynamicVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSegments)
+TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSegments)
 {
     for (uint32_t side : {64u, 128u, 256u})
     {

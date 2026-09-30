@@ -2,7 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Utils/UniquePtr.h"
 #include "SceneGraph/AABB.h"
-#include "Graphics/Shared/GIVisibility.h"
+#include "Graphics/Shared/VoxelGI.h"
 
 namespace zen::rc
 {
@@ -33,25 +33,6 @@ public:
     // Configure a newly initialized producer before allocating any volume resources.
     bool Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes);
 
-    bool ConfigureClass(uint32_t mask);
-    uint32_t GetClassMask() const
-    {
-        return m_classMask;
-    }
-    bool EnableCompaction();
-    RHIBuffer* GetOccupiedList() const
-    {
-        return m_occupiedList;
-    }
-    RHIBuffer* GetGridToList() const
-    {
-        return m_gridToList;
-    }
-    RHIBuffer* GetOccupiedCount() const
-    {
-        return m_occupiedCount;
-    }
-
     virtual void BuildRenderGraph();
 
     virtual void BuildVoxelizationGraph() {}
@@ -67,12 +48,6 @@ public:
     {
         return m_geometryRevision + (m_voxelizationPending ? 1 : 0);
     }
-    // Surface-only rebuilds keep compaction and the geometric visibility cache valid.
-    uint64_t GetRecordedVisibilityRevision() const
-    {
-        return m_visibilityRevision + (m_voxelizationPending && m_visibilityChanged ? 1 : 0);
-    }
-
     virtual void OnRenderGraphExecuted(bool succeeded);
 
     sg::AABB GetVoxelBounds() const;
@@ -142,7 +117,6 @@ protected:
     void BindReflectanceSums(RDGPassDescBase& pass) const;
     void PrepareReflectance();
     void ResolveSurface(RDGQueuePreference queuePreference);
-    void BuildCompaction(RDGQueuePreference queuePreference);
     RHITexture* CreateVolume(DataFormat format, NameID name, uint32_t mipCount = 1);
 
     virtual void PrepareTextures();
@@ -168,20 +142,14 @@ protected:
     bool m_textureInitializationAttempted{false};
     bool m_voxelizationPending{false};
     uint64_t m_geometryRevision{0};
-    uint64_t m_visibilityRevision{0};
-    bool m_visibilityChanged{false};
     RHIBuffer* m_pReflectanceSums{nullptr};
     bool m_requestAveragedReflectance{false};
     bool m_explicitConfiguration{false};
     bool m_useAveragedReflectance{false};
     uint64_t m_reflectanceBudgetBytes{0};
-    uint32_t m_classMask{GI_ALL};
     uint64_t m_sceneRevision{0};
     uint64_t m_pendingSceneRevision{0};
     uint64_t m_surfaceRevision{0};
     uint64_t m_pendingSurfaceRevision{0};
-    RHIBuffer* m_occupiedList{nullptr};
-    RHIBuffer* m_gridToList{nullptr};
-    RHIBuffer* m_occupiedCount{nullptr};
 };
 } // namespace zen::rc

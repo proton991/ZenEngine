@@ -1,6 +1,11 @@
 #ifndef ZEN_VOXEL_GI_H
 #define ZEN_VOXEL_GI_H
 
+// Scene mobility classes used by voxelization and coverage checks.
+#define GI_STATIC  1u
+#define GI_DYNAMIC 2u
+#define GI_ALL     3u
+
 // Safe shader defaults, specialized per device by the volume workgroup policy.
 #define ZEN_VOXEL_VOLUME_GROUP_SIZE 4
 #define ZEN_VOXEL_VOLUME_GROUP_X_ID 0

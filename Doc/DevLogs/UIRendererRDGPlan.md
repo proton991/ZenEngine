@@ -1,8 +1,12 @@
 # UIRenderer RDG Implementation Plan
 
+Historical draft. See [the current evaluation and split runtime/editor plan](../UIIntegrationReview.md)
+and [the implemented runtime UI contract](../../ZenUI/README.md). The code sketches
+below predate the current RDG pass-description API and are not current integration instructions.
+
 ## Goal
 
-Add Dear ImGui based engine UI as a RenderCore V2 renderer, following the same ownership and dispatch model as `SkyboxRenderer`, `Deferr  zxdΩΩΩΩzedLightingRenderer`, and the voxel renderers.
+Add Dear ImGui based engine UI as a RenderCore V2 renderer, following the same ownership and dispatch model as `SkyboxRenderer`, `DeferredLightingRenderer`, and the voxel renderers.
 
 The UI pass should be appended by `RendererServer::DispatchRenderWorkloads()` and should participate in RenderGraph resource tracking. VulkanRHI should only execute normal RHI commands; it should not expose ImGui, workload, or command-buffer details to RenderCore.
 

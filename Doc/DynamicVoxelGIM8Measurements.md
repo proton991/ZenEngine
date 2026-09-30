@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M8 final AMD measurements
 
 See [final verification and promotion decision](DynamicVoxelGIM8FinalVerification.md) for acceptance, exceptions and scope.
@@ -120,3 +122,22 @@ These use the same final application and compute producer at 1080p. All are 64 c
 | rays-64-static | 3.105 / 3.353 | 3.938 / 4.509 | 3.099-3.117 | n/a | 1.875 / 1.750 | 0.939 |
 | shared-motion | 11.373 / 12.524 | 11.719 / 13.119 | 11.367-11.412 | 50.96 [50.35-51.25] | 2.375 / 2.250 | 1.689 |
 | shared-static | 2.571 / 2.860 | 3.544 / 3.821 | 2.569-2.574 | 106.67 [105.14-107.71] | 2.625 / 2.500 | 1.689 |
+
+## Retirement evaluation (2026-09-30)
+
+Decision: remove the Dynamic Voxel implementation at the user's request after recurring hangs. No additional hang diagnosis or Dynamic Voxel runs were performed for this change. The matrix above is historical controlled evidence, not a new benchmark of the refactor.
+
+At 128 cubed with compute voxelization, static GPU time was 5.798 ms for Cone versus 9.142 ms for Dynamic Voxel; animated lights were 6.477 versus 10.234 ms, and the moving-geometry fixture was 2.197 versus 66.487 ms. Static device-local allocator peaks were 1.000 versus 6.817 GiB. At 64 cubed the static timing gap was smaller (3.136 versus 3.357 ms), but allocator peaks were still 0.750 versus 2.500 GiB. These results support retaining Cone on the measured AMD system; they do not predict every scene or GPU.
+
+Cone stores a radiance mip chain and sky irradiance, rebuilding them only when geometry, lighting or relevant settings change. The directional implementation added separate static/dynamic voxel sets, per-receiver hit caches, six-face lighting, neighborhood lists, history/filter/padding volumes, and extra G-buffer attachments. Cached visibility did not remove gathering, filtering, padding or motion-driven environment traversal. The largest recorded costs identify those passes directly. Its better directional representation was not enough to justify the observed cost and reliability problems.
+
+| Feature | Decision and reason |
+| --- | --- |
+| Mesh shadow visibility at an owner-triangle surface point | Ported to Cone analytic radiance injection. Reuses the direct-light shadow atlas and existing triangle records, avoiding a coarse voxel-center visibility query for valid surfaces. It adds no persistent directional cache. Retains voxel visibility for missing/degenerate surface data. |
+| Analytic, environment and emissive GI controls | Ported to Cone configuration and runtime UI; live edits invalidate only the affected irradiance/radiance work. Turning a contribution off skips its shader work. Defaults preserve all contributions. |
+| Averaged diffuse reflectance, material/alpha correctness, exact environment visibility, async scheduling | Already shared with Cone and retained, including their regression coverage and checked resource sizes. |
+| Normal-aware temporal/spatial denoising | Do not copy the 3D history stack. A future depth/normal-aware screen-space temporal resolve could reduce Cone shimmer at lower memory cost, but requires motion vectors, disocclusion rejection and image validation. Not implemented here. |
+| Six-face directional irradiance reconstruction | Not compatible with Cone's isotropic radiance texture as a local change. Directional radiance mips could reduce opposite-face leakage, but would multiply storage/bandwidth; defer until an isolated benchmark demonstrates a worthwhile quality gain. |
+| Receiver caches, class-specific producers, query providers, automatic multi-GiB cap and fallback machinery | Removed with the implementation. Preserve ordinary scene transforms/mobility and merged voxel rebuilding so moving geometry still works in Cone. |
+
+The runtime method dropdown is gone; voxel resolution remains configurable at 64/128/256. GPU memory reporting and default automatic application of UI edits remain. Obsolete config entries were removed from the example and local config without changing scene/light/camera values. Historical documents are retained only as research evidence.

@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M2 mutable geometry and class voxel outputs
 
 2026-09-24. **M2 passed.** [M1](DynamicVoxelGIM1Verification.md) passed before this stage. Mode 3 still selects cone GI; directional irradiance gathering starts at M3.

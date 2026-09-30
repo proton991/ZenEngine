@@ -12,20 +12,16 @@ using zen::platform::VoxelizerMode;
 using zen::rc::AsyncComputeMode;
 using zen::rc::AsyncComputeStatus;
 
-TEST(ConfigLoaderTests, VoxelGridDefaultsFollowTheSelectedMethodAndPreserveExplicitValues)
+TEST(ConfigLoaderTests, VoxelGridDefaultsAndExplicitValues)
 {
-    for (const char* method : {"auto", "cone", "dynamic_voxel"})
+    std::istringstream defaults("");
+    ConfigLoader config(defaults);
+    EXPECT_EQ(config.GetVoxelResolution(), 256u);
+    for (uint32_t side : {64u, 128u, 256u})
     {
-        std::istringstream defaults(std::string("voxel_gi_method=") + method);
-        ConfigLoader config(defaults);
-        EXPECT_EQ(config.GetVoxelResolution(), std::string(method) == "dynamic_voxel" ? 64u : 256u);
-        for (uint32_t side : {64u, 128u, 256u})
-        {
-            std::istringstream explicitInput(std::string("voxel_gi_method=") + method +
-                                             "\nvoxel_resolution=" + std::to_string(side));
-            ConfigLoader explicitConfig(explicitInput);
-            EXPECT_EQ(explicitConfig.GetVoxelResolution(), side);
-        }
+        std::istringstream input("voxel_resolution=" + std::to_string(side));
+        ConfigLoader explicitConfig(input);
+        EXPECT_EQ(explicitConfig.GetVoxelResolution(), side);
     }
 }
 
@@ -133,14 +129,14 @@ TEST(ConfigLoaderTests, AsyncComputePolicyReportsEveryFallback)
 
 TEST(ConfigLoaderTests, ParsesVoxelizerModes)
 {
-    for (const auto& [value, expected] :
+    for (const std::pair<const char*, VoxelizerMode>& entry :
          {std::pair{"auto", VoxelizerMode::eAuto}, std::pair{"comp", VoxelizerMode::eCompute},
           std::pair{"geom", VoxelizerMode::eGeometry}})
     {
-        SCOPED_TRACE(value);
-        std::istringstream input(std::string("voxelizer=") + value);
+        SCOPED_TRACE(entry.first);
+        std::istringstream input(std::string("voxelizer=") + entry.first);
         ConfigLoader config(input);
-        EXPECT_EQ(config.GetVoxelizerMode(), expected);
+        EXPECT_EQ(config.GetVoxelizerMode(), entry.second);
     }
 }
 

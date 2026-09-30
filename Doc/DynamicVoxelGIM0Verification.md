@@ -1,3 +1,5 @@
+> Historical archive: implementation retired on 2026-09-30. Dynamic Voxel code, shaders, configuration and tools referenced below have been removed. Cone tracing is the supported GI path. See [retirement evaluation](DynamicVoxelGIM8Measurements.md#retirement-evaluation-2026-09-30).
+
 # M0 reference audit and HDR baseline
 
 Date: 2026-09-24. **M0 passed.** [V0](VoxelizationCalibration.md) and [V1](VoxelReflectanceVerification.md) passed before these baselines. M0 adds diagnostics, configuration and preflight checks; mode 3 still executes the existing cone tracer. No DDA provider, directional irradiance algorithm or RHI ray-tracing path is implemented by this milestone.

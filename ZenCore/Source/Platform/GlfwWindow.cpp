@@ -197,12 +197,21 @@ static void OnMouseButton(GLFWwindow*, int button, int action, int)
     }
 }
 
+static void OnFocus(GLFWwindow*, int focused)
+{
+    if (focused == GLFW_FALSE)
+    {
+        KeyboardMouseInput::GetInstance().Reset();
+    }
+}
+
 void GlfwWindowImpl::SetupWindowCallbacks()
 {
     glfwSetWindowSizeCallback(m_pHandle, &GlfwWindowImpl::OnWindowSize);
     glfwSetKeyCallback(m_pHandle, OnKey);
     glfwSetCursorPosCallback(m_pHandle, OnCursorPosition);
     glfwSetMouseButtonCallback(m_pHandle, OnMouseButton);
+    glfwSetWindowFocusCallback(m_pHandle, OnFocus);
 }
 
 void GlfwWindowImpl::ShowCursor() const
@@ -215,7 +224,7 @@ void GlfwWindowImpl::HideCursor() const
     glfwSetInputMode(m_pHandle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
-void GlfwWindowImpl::Update()
+void GlfwWindowImpl::Update(bool processInputShortcuts)
 {
     glfwPollEvents();
     if (m_data.shouldResize)
@@ -230,7 +239,7 @@ void GlfwWindowImpl::Update()
         }
         LOGI("Window resized to {} x {}", width, height);
     }
-    if (KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_TAB))
+    if (processInputShortcuts && KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_TAB))
     {
         m_data.showCursor = !m_data.showCursor;
         if (m_data.showCursor)
@@ -246,7 +255,8 @@ void GlfwWindowImpl::Update()
             KeyboardMouseInput::GetInstance().Resume();
         }
     }
-    if (KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE) ||
+    if ((processInputShortcuts &&
+         KeyboardMouseInput::GetInstance().IsKeyPressed(GLFW_KEY_ESCAPE)) ||
         glfwWindowShouldClose(m_pHandle))
     {
         m_data.shouldClose = true;

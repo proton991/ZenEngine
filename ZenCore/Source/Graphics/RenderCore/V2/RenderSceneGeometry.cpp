@@ -1,5 +1,5 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
-#include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
+#include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include <cmath>
 #include <cstring>
 
@@ -20,7 +20,6 @@ bool RenderScene::SetInstanceClass(uint32_t instance, uint32_t objectClass)
     {
         m_dirtyClasses |= m_instanceClasses[instance] | objectClass;
         m_instanceClasses[instance] = objectClass;
-        InvalidateGIHistory();
     }
     return valid;
 }
@@ -32,7 +31,6 @@ bool RenderScene::SetInstanceEnabled(uint32_t instance, bool enabled)
     {
         m_dirtyClasses |= m_instanceClasses[instance];
         m_instanceEnabled[instance] = enabled ? 1 : 0;
-        InvalidateGIHistory();
     }
     return valid;
 }
@@ -185,7 +183,6 @@ bool RenderScene::SetVoxelBounds(const sg::AABB& bounds)
     {
         m_voxelBounds = bounds;
         m_dirtyClasses |= GI_ALL;
-        InvalidateGIHistory();
     }
     return valid;
 }
@@ -270,22 +267,22 @@ bool RenderScene::CommitGeometryUpdates()
         if (valid)
         {
             RHIBuffer* nodes     = geometryChanged ?
-                m_pRenderDevice->CreateStorageBuffer(
+                    m_pRenderDevice->CreateStorageBuffer(
                     static_cast<uint32_t>(nodeBytes),
                     reinterpret_cast<const uint8_t*>(m_nodesData.data()),
                     "scene_nodes_generation") :
-                m_pNodeSSBO;
+                    m_pNodeSSBO;
             RHIBuffer* records   = !geometryChanged ? m_pVoxelTriangleBuffer :
-                triangles.empty()                   ? nullptr :
+                  triangles.empty()                 ? nullptr :
                                                       m_pRenderDevice->CreateStorageBuffer(
-                                                          static_cast<uint32_t>(triangleBytes),
-                                                          reinterpret_cast<const uint8_t*>(triangles.data()),
-                                                          "scene_triangles_generation");
+                                        static_cast<uint32_t>(triangleBytes),
+                                        reinterpret_cast<const uint8_t*>(triangles.data()),
+                                        "scene_triangles_generation");
             RHIBuffer* vertices  = m_verticesDirty ?
-                m_pRenderDevice->CreateVertexBuffer(
+                 m_pRenderDevice->CreateVertexBuffer(
                     static_cast<uint32_t>(vertexBytes),
                     reinterpret_cast<const uint8_t*>(m_vertices.data())) :
-                m_pVertexBuffer;
+                 m_pVertexBuffer;
             RHIBuffer* materials = m_materialsDirty ?
                 m_pRenderDevice->CreateStorageBuffer(
                     static_cast<uint32_t>(materialBytes),
@@ -304,7 +301,6 @@ bool RenderScene::CommitGeometryUpdates()
                 if (m_materialsDirty)
                 {
                     m_pRenderDevice->DestroyBuffer(m_pMaterialSSBO);
-                    InvalidateGIHistory();
                 }
                 if (m_verticesDirty)
                 {

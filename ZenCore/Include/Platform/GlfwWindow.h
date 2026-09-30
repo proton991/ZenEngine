@@ -21,7 +21,8 @@ public:
 
     HeapVector<const char*> GetInstanceExtensions() override;
 
-    void Update();
+    // UI applications route shortcuts after their UI frame has resolved capture.
+    void Update(bool processInputShortcuts = true);
 
     [[nodiscard]] bool ShouldClose() const
     {

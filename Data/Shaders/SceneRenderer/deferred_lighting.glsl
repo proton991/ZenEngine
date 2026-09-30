@@ -15,9 +15,6 @@ layout (location = 0) out vec4 outFragColor;
 #ifdef LIGHTING_CAPTURE
 #include "Graphics/Shared/LightingCapture.h"
 layout(set=4,binding=2,std430) buffer LightingCapture { vec4 components[]; };
-#ifdef DYNAMIC_VOXEL_GI
-layout(set=4,binding=3,std430) buffer SurfaceCapture { vec4 surfaceComponents[]; };
-#endif
 layout(push_constant) uniform CaptureConstants { uvec2 extent; } capture;
 #endif
 
@@ -25,12 +22,6 @@ layout(push_constant) uniform CaptureConstants { uvec2 extent; } capture;
 #ifdef VOXEL_GI
 #include "../VoxelGI/cone_trace.glsl"
 #include "../ShadowMapping/scene_shadows.glsl"
-#endif
-#ifdef DYNAMIC_VOXEL_GI
-#include "../VoxelGI/Dynamic/static_composition.glsl"
-layout(set=1,binding=12) uniform usampler2D receiverMap;
-layout(set=1,binding=13) uniform sampler2D geometricNormalMap;
-#include "surface_lookup.glsl"
 #endif
 const float PI = 3.14159265359;
 
@@ -68,22 +59,13 @@ vec3 SamplePrefiltered(vec3 R, float roughness) {
 
 // ---------- Main ----------
 void main() {
-#ifdef DYNAMIC_VOXEL_GI
-    ivec2 surfaceTexel=SurfaceTexel(uvec2(gl_FragCoord.xy),surfaceExtent.xy,textureSize(positionMap,0));
-#define SURFACE_SAMPLE(map) texelFetch(map,surfaceTexel,0)
-    if(!ValidSurface(SURFACE_SAMPLE(depthMap).r,SURFACE_SAMPLE(receiverMap).rg,
-                      SURFACE_SAMPLE(positionMap),SURFACE_SAMPLE(normalMap),SURFACE_SAMPLE(geometricNormalMap))) discard;
-#else
 #define SURFACE_SAMPLE(map) texture(map,inUV)
-#endif
 	float depth = SURFACE_SAMPLE(depthMap).r;
 	if (depth >= 0.9999) discard;
 
 	vec3 worldPos = SURFACE_SAMPLE(positionMap).rgb;
 	vec3 N = normalize(SURFACE_SAMPLE(normalMap).rgb);
-#ifdef DYNAMIC_VOXEL_GI
-    vec3 surfaceNormal=normalize(SURFACE_SAMPLE(geometricNormalMap).xyz);
-#elif defined(VOXEL_GI)
+#if defined(VOXEL_GI)
     vec3 surfaceNormal=cross(dFdx(worldPos),dFdy(worldPos));
     float normalLength=length(surfaceNormal);
     surfaceNormal=normalLength>1e-8 ? surfaceNormal/normalLength : N;
@@ -145,16 +127,7 @@ void main() {
 	vec3 F = FresnelSchlick(NdotV, F0);
 	vec3 kS = F;
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
-#ifdef DYNAMIC_VOXEL_GI
-    vec3 diffuseIrradiance=vec3(0);
-    bool directionalReady=giStatus.z==0u &&
-        DirectionalDiffuseIrradiance(worldPos,N,SURFACE_SAMPLE(receiverMap).g,diffuseIrradiance);
-    vec3 diffuseLighting=directionalReady ? diffuseIrradiance/PI : DiffuseVoxelLighting(worldPos,N);
-#ifdef LIGHTING_CAPTURE
-    if(directionalReady) { captureDiffuseEscaped=vec3(0); captureDiffuseBounced=diffuseLighting; }
-#endif
-    vec3 diffuseIBL=diffuseLighting*albedo;
-#elif defined(VOXEL_GI)
+#if defined(VOXEL_GI)
     vec3 diffuseIBL = DiffuseVoxelLighting(worldPos,N) * albedo;
 #else
     vec3 diffuseIBL = irradiance * albedo;
@@ -168,15 +141,6 @@ void main() {
     if(all(lessThan(pixel,capture.extent)))
     {
         uint index=(pixel.x+capture.extent.x*pixel.y)*ZEN_LIGHTING_CAPTURE_COMPONENTS;
-#ifdef DYNAMIC_VOXEL_GI
-        uint surfaceIndex=(pixel.x+capture.extent.x*pixel.y)*ZEN_SURFACE_CAPTURE_COMPONENTS;
-        surfaceComponents[surfaceIndex]=SURFACE_SAMPLE(positionMap);
-        surfaceComponents[surfaceIndex+1u]=vec4(N,1);
-        surfaceComponents[surfaceIndex+2u]=SURFACE_SAMPLE(geometricNormalMap);
-        surfaceComponents[surfaceIndex+3u]=uintBitsToFloat(uvec4(SURFACE_SAMPLE(receiverMap).rg,uvec2(surfaceTexel)));
-        surfaceComponents[surfaceIndex+4u]=vec4(albedo,metallic);
-        surfaceComponents[surfaceIndex+5u]=vec4(ao,roughness,directionalReady ? 1 : 0,0);
-#endif
         components[index+0]=vec4(color,1);
         components[index+1]=vec4(Lo,1);
         components[index+2]=vec4(kD*diffuseIBL*ao,1);

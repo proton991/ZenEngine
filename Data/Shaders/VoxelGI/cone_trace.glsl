@@ -32,7 +32,7 @@ vec3 TraceDiffuseCone(vec3 origin,vec3 direction)
     captureConeBounced=incoming;
     captureConeEscaped=vec3(0);
 #endif
-    if(!InsideVoxelVolume(uv) && sceneUbo.environment.z>0 && transmittance>0.01)
+    if(!InsideVoxelVolume(uv) && sceneUbo.environment.z>0 && gi.lighting.y>0 && transmittance>0.01)
     {
         float visibility=VoxelEnvironmentVisibility(voxelOpacity,origin,direction,1e20);
         vec3 escaped=transmittance*visibility*textureLod(skyboxMap,EnvironmentSourceDirection(direction),0).rgb*

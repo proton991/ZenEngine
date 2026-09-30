@@ -20,7 +20,7 @@ struct SceneShadowUniformData
 static_assert(sizeof(SceneShadowUniformData) ==
               MaxSceneShadowFaces * 64 + MaxSceneLights * 16 + 16);
 
-// Mesh visibility shared by direct lighting and directional-GI sender lighting.
+// Mesh visibility shared by direct lighting and voxel radiance injection.
 class SceneShadowRenderer
 {
 public:

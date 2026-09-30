@@ -206,72 +206,15 @@ class ProfileTests(unittest.TestCase):
                     with self.assertRaises(AssertionError):
                         profile.validate(prefix)
 
-    def write_gi_capture(self, folder):
-        prefix, frames, manifest = self.write_frame_capture(folder, ('available',) * 3)
-        manifest.update(schema_version=3, gi_diagnostics_scope='completed GPU status snapshots')
-        manifest['dropped']['gi_frames'] = 0
-        for i, frame in enumerate(frames):
-            frame.update(gi_method='dynamic_voxel', gi_status='available', gi_cache_epoch='1',
-                         gi_visibility_revision='1', gi_occupied_static='3', gi_occupied_dynamic='0',
-                         gi_cache_capacity='4', gi_cache_ready_receivers='2' if i == 0 else '3',
-                         gi_cache_batch_receivers=str((2, 1, 0)[i]), gi_selected_static='3',
-                         gi_selected_dynamic='0', gi_fallback_flags='8' if i == 0 else '0',
-                         gi_effective_method='cone' if i == 0 else 'dynamic_voxel',
-                         frame_start_ms=str(i * 10), frame_end_ms=str(i * 10 + 9))
-        self.write_rows(prefix, '.frames.csv', frames)
-        self.write_manifest(prefix, manifest)
-        return prefix, frames, manifest
-
-    def test_gi_readiness_distinguishes_initialization_and_steady_frames(self):
+    def test_cone_frame_intervals_and_method(self):
         with tempfile.TemporaryDirectory() as directory:
-            prefix, _, _ = self.write_gi_capture(Path(directory))
-            result = profile.validate(prefix, require_ready_gi=True)['gi']
-            self.assertEqual(result['effective_methods'], dict(cone=1, dynamic_voxel=2))
-            self.assertEqual(result['epochs'][0]['first_ready_frame'], 13)
-            self.assertEqual(result['epochs'][0]['initialization_wall_ms'], 19)
-            self.assertEqual(result['ready_measured_frames'], 2)
-
-    def test_gi_verifier_rejects_stale_incomplete_and_mislabeled_readbacks(self):
-        with tempfile.TemporaryDirectory() as directory:
-            prefix, frames, _ = self.write_gi_capture(Path(directory))
-            mutations = [('gi_status', status) for status in ('pending', 'dropped', 'error', 'disabled')]
-            mutations += [('gi_effective_method', 'dynamic_voxel'), ('gi_fallback_flags', '0'),
-                          ('gi_cache_ready_receivers', '5'), ('gi_cache_batch_receivers', '4'),
-                          ('gi_cache_epoch', '0'), ('gi_selected_static', '4')]
-            for field, value in mutations:
-                with self.subTest(field=field, value=value):
-                    changed = [dict(frames[0], **{field: value}), *frames[1:]]
-                    self.write_rows(prefix, '.frames.csv', changed)
-                    with self.assertRaises(AssertionError):
-                        profile.validate(prefix)
-
-    def test_gi_rebuild_starts_another_initialization_interval(self):
-        with tempfile.TemporaryDirectory() as directory:
-            prefix, frames, _ = self.write_gi_capture(Path(directory))
-            frames[2].update(gi_cache_epoch='2', gi_cache_ready_receivers='1',
-                             gi_cache_batch_receivers='1', gi_fallback_flags='8',
-                             gi_effective_method='cone')
+            prefix, frames, manifest = self.write_frame_capture(Path(directory), ('available',) * 3)
+            manifest['schema_version'] = 4
+            for i, frame in enumerate(frames):
+                frame.update(gi_method='cone', frame_start_ms=str(i * 10), frame_end_ms=str(i * 10 + 9))
             self.write_rows(prefix, '.frames.csv', frames)
-            result = profile.validate(prefix)['gi']
-            self.assertEqual(len(result['epochs']), 2)
-            self.assertIsNone(result['epochs'][1]['first_ready_frame'])
-            with self.assertRaisesRegex(AssertionError, 'Measured interval includes GI fallback'):
-                profile.validate(prefix, require_ready_gi=True)
-
-    def test_gi_overflow_is_explicit_fallback(self):
-        with tempfile.TemporaryDirectory() as directory:
-            prefix, frames, _ = self.write_gi_capture(Path(directory))
-            for frame in frames:
-                frame.update(gi_occupied_static='8', gi_cache_ready_receivers='4',
-                             gi_fallback_flags='1', gi_effective_method='cone')
-            self.write_rows(prefix, '.frames.csv', frames)
-            self.assertEqual(profile.validate(prefix)['gi']['effective_methods'], dict(cone=3))
-            with self.assertRaises(AssertionError):
-                profile.validate(prefix, require_ready_gi=True)
-
-    def test_gi_requires_monotonic_frame_wall_intervals(self):
-        with tempfile.TemporaryDirectory() as directory:
-            prefix, frames, _ = self.write_gi_capture(Path(directory))
+            self.write_manifest(prefix, manifest)
+            self.assertTrue(profile.validate(prefix)['verified'])
             frames[1]['frame_start_ms'] = '8'
             self.write_rows(prefix, '.frames.csv', frames)
             with self.assertRaisesRegex(AssertionError, 'frame wall intervals'):

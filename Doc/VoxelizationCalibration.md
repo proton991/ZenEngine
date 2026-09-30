@@ -1,6 +1,6 @@
 # Voxelization calibration — V0 implementation record
 
-Date: 2026-09-23. **V0 passed for the calibrated contract and device below.** This is the V0-stage record; subsequent progress is tracked in the [implementation plan](DynamicVoxelGIImplementationPlan.md). No DDA provider or RHI ray-tracing support was added by V0. This report certifies boundary voxelization and the explicitly limited material sampling rule, not triangle-accurate visibility or exact alpha-footprint coverage.
+Date: 2026-09-23. **V0 passed for the calibrated contract and device below.** This is the V0-stage record; subsequent research is archived in the [retired directional GI plan](DynamicVoxelGIImplementationPlan.md). The calibrated voxelization remains in use by Cone. No DDA provider or RHI ray-tracing support was added by V0. This report certifies boundary voxelization and the explicitly limited material sampling rule, not triangle-accurate visibility or exact alpha-footprint coverage.
 
 ## Corrections
 

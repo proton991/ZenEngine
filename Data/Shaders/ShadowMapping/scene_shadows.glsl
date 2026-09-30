@@ -39,6 +39,16 @@ float SceneLightVisibility(int lightIndex,vec3 position,vec3 normal)
         vec3 up=cross(right,forward);
         vec4 clip=shadows.viewProjection[layer]*vec4(receiver,1);
         vec3 ndc=clip.xyz/max(clip.w,1e-8);
+        // Normal bias can move a lit receiver outside the spotlight's finite
+        // projection. Retry at the surface instead of treating that edge as lit;
+        // the per-tap depth bias below still prevents self-shadowing.
+        if(!directional && info.y==1 &&
+           (clip.w<=0 || any(greaterThan(abs(ndc.xy),vec2(1)))))
+        {
+            receiver=position;
+            clip=shadows.viewProjection[layer]*vec4(receiver,1);
+            ndc=clip.xyz/max(clip.w,1e-8);
+        }
         if(clip.w>0 && all(lessThanEqual(abs(ndc.xy),vec2(1))) && ndc.z>=0 && ndc.z<=1)
         {
             float receiverDepth=directional ? ndc.z : length(receiver-light.positionRange.xyz)*info.z;

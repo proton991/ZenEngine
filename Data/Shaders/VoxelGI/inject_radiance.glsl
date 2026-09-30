@@ -1,6 +1,12 @@
 #include "../Common/bindless_heap.glsl"
 #include "gi_common.glsl"
 #include "Graphics/Shared/VoxelGI.h"
+#ifdef VOXEL_MESH_SHADOWS
+#define VOXEL_GEOMETRY_SET 5
+#include "voxel_geometry.glsl"
+#include "../ShadowMapping/scene_shadows.glsl"
+layout(set=1,binding=6,r32ui) uniform readonly uimage3D voxelOwner;
+#endif
 layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
        local_size_y=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_y_id=ZEN_VOXEL_VOLUME_GROUP_Y_ID,
        local_size_z=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_z_id=ZEN_VOXEL_VOLUME_GROUP_Z_ID) in;
@@ -24,15 +30,43 @@ void main()
         vec3 normal=normalize(normalMetal.rgb*2.0-1.0);
         vec3 position=gi.gridMinVoxelSize.xyz+(vec3(p)+0.5)*gi.gridMinVoxelSize.w;
         vec3 origin=TraceOrigin(position,normal);
+        vec3 geometricNormal=normal;
+#ifdef VOXEL_MESH_SHADOWS
+        // Evaluate incident light and its visibility at the same owner surface point.
+        // A voxel center may lie inside the wall represented by this cell.
+        uint owner=imageLoad(voxelOwner,p).r;
+        bool surfaceValid=false;
+        if(gi.lighting.x>0 && owner<triangles.length())
+        {
+            Vertex a,b,c;
+            vec3 pa,pb,pc;
+            TriangleVertices(owner,a,b,c,pa,pb,pc);
+            vec3 surfaceNormal=cross(pb-pa,pc-pa);
+            if(dot(surfaceNormal,surfaceNormal)>1e-20)
+            {
+                geometricNormal=normalize(surfaceNormal);
+                vec3 reference=mat3(nodesData[triangles[owner].y].normalMatrix)*a.normal.xyz;
+                if(dot(geometricNormal,reference)<0) geometricNormal=-geometricNormal;
+                vec3 weights=TriangleBarycentrics(pa,pb,pc,position);
+                position=pa*weights.x+pb*weights.y+pc*weights.z;
+                surfaceValid=true;
+            }
+        }
+#endif
         vec3 irradiance=texelFetch(skyIrradiance,p,0).rgb;
-        for(int i=0;i<int(sceneUbo.lightInfo.x);++i)
+        for(int i=0;i<int(sceneUbo.lightInfo.x)*int(gi.lighting.x);++i)
         {
             vec3 direction; float distanceToLight;
             vec3 incoming=EvaluateLight(sceneUbo.lights[i],position,direction,distanceToLight);
             float cosine=max(dot(normal,direction),0.0);
             if(cosine>0 && any(greaterThan(incoming,vec3(0))))
             {
+#ifdef VOXEL_MESH_SHADOWS
+                float visibility=surfaceValid ? SceneLightVisibility(i,position,geometricNormal) :
+                    VoxelLightVisibility(voxelAlbedo,sceneUbo.lights[i],origin);
+#else
                 float visibility=VoxelLightVisibility(voxelAlbedo,sceneUbo.lights[i],origin);
+#endif
                 irradiance+=incoming*cosine*visibility;
             }
         }
@@ -41,7 +75,7 @@ void main()
 #else
         vec3 diffuseReflectance=albedo.rgb*(1.0-normalMetal.a)*0.96;
 #endif
-        radiance=vec4(texelFetch(voxelEmissive,p,0).rgb+diffuseReflectance*irradiance/3.14159265359,1);
+        radiance=vec4(texelFetch(voxelEmissive,p,0).rgb*gi.lighting.z+diffuseReflectance*irradiance/3.14159265359,1);
     }
     imageStore(voxelRadiance,p,radiance);
 }

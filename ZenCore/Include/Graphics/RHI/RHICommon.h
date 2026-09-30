@@ -53,6 +53,9 @@ struct RHIGPUInfo
     uint32_t maxStorageBufferRange{128u * 1024u * 1024u};
     uint32_t maxColorAttachments{4};
 
+    // Largest device-local memory heap; zero means the backend did not report it.
+    uint64_t deviceLocalMemoryBytes{0};
+
     bool IsDispatchWithinLimits(uint32_t x, uint32_t y, uint32_t z) const
     {
         return x <= maxComputeWorkGroupCount[0] && y <= maxComputeWorkGroupCount[1] &&

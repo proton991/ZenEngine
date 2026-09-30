@@ -233,7 +233,8 @@ def region(image, x0, y0, x1, y1):
     return result
 
 
-def main(overrides=None):
+def main(overrides=None, executable=None):
+    executable = executable or ROOT / "build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe"
     OUT.mkdir(parents=True, exist_ok=True)
     make_fixture()
     make_surface_contract_fixtures()
@@ -254,7 +255,7 @@ def main(overrides=None):
         config.write_bytes(last)
         log, capture = OUT / f"{tag}.log", OUT / f"{tag}.ppm"
         with log.open("w") as output:
-            completed = subprocess.run([str(ROOT / "build/x64-windows-msvc-debug/bin/scene_renderer_demo.exe"), *arguments,
+            completed = subprocess.run([str(executable), *arguments,
                                         f"--capture={capture}"], cwd=ROOT, env=env,
                                        stdout=output, stderr=subprocess.STDOUT, timeout=180)
         text = log.read_text(errors="replace")
@@ -359,17 +360,27 @@ def main(overrides=None):
             for light_type in ("point", "spot"):
                 shadow_settings = settings | {"light.0.type": light_type, "light.0.position": "0,0,-0.455",
                     "light.0.direction": "0,0,-1", "voxel_gi_indirect_intensity": "0",
-                    "voxel_gi_normal_bias_voxels": "1.5", "voxel_gi_shadow_enabled": "true"}
+                    "light.0.inner_angle_degrees": "20", "light.0.outer_angle_degrees": "35",
+                    "light.0.color": "1,1,1", "light.0.enabled": "true", "light.0.casts_shadows": "true",
+                    "voxel_gi_normal_bias_voxels": "1.5", "voxel_gi_shadow_enabled": "true",
+                    "shadow_map_resolution": "1024"}
                 center_regions = {}
-                for name in ("room", "shadow-behind", "shadow-before"):
+                for name in ("room", "shadow-behind", "shadow-before", "shadow-disabled"):
+                    model = "shadow-before" if name == "shadow-disabled" else name
                     capture, _ = run(f"endpoint-{backend}-{light_type}-{name}",
-                        shadow_settings | {"default_model_path": (OUT / f"{name}.gltf").as_posix()},
-                        ["--frames=3", "--mode=3"])
-                    center_regions[name] = region(capture, .49, .49, .51, .51)
+                        shadow_settings | {"default_model_path": (OUT / f"{model}.gltf").as_posix(),
+                            "light.0.casts_shadows": str(name != "shadow-disabled").lower()},
+                        ["--frames=3", "--mode=3", "--width=1280", "--height=720", "--no-ui"])
+                    # Include all four spotlight edges. At this extent the normal
+                    # bias moves lit edge pixels outside the shadow projection;
+                    # they must still test the blocker, not default to visibility 1.
+                    center_regions[name] = region(capture, .485, .475, .515, .525)
                 assert sum(center_regions["room"]) > 1000, "Shadow reference receiver is not lit"
                 assert center_regions["room"] == center_regions["shadow-behind"], \
                     "Blocker beyond the light casts a shadow"
                 assert max(center_regions["shadow-before"]) == 0, "Blocker before the light failed to cast a shadow"
+                assert center_regions["room"] == center_regions["shadow-disabled"], \
+                    "Unblocked receiver self-shadows or per-light shadow disable is incorrect"
             # Direct mesh shadows must retain the slanted edge independently of voxel
             # resolution/backend, respect cutoff alpha, and honor per-light shadow disable.
             for light_type in ("point", "spot", "directional"):

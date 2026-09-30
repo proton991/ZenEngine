@@ -700,6 +700,19 @@ void VulkanRHI::Init()
 
         m_gpuInfo.driverVersionRaw = properties.driverVersion;
 
+        VkPhysicalDeviceMemoryProperties memory{};
+
+        vkGetPhysicalDeviceMemoryProperties(m_pDevice->GetPhysicalDeviceHandle(), &memory);
+
+        for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
+        {
+            if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
+            {
+                m_gpuInfo.deviceLocalMemoryBytes =
+                    std::max(m_gpuInfo.deviceLocalMemoryBytes, memory.memoryHeaps[heap].size);
+            }
+        }
+
         m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
 
         m_gpuInfo.supportFragmentStoresAndAtomics =

@@ -876,6 +876,12 @@ const RHIGPUInfo& RHICommandListExecutor::QueryGPUInfo() const
     return m_mode == RHIExecutionMode::eInline ? m_backend->QueryGPUInfo() : m_gpuInfo;
 }
 
+RHIGPUMemoryStats RHICommandListExecutor::GetGPUMemoryStats() const
+{
+    // This backend API explicitly permits concurrent reads; do not enqueue an RHI wait.
+    return m_backend->GetGPUMemoryStats();
+}
+
 RHIQueueCopyCapabilities RHICommandListExecutor::GetQueueCopyCapabilities(
     RHICommandContextType type) const
 {

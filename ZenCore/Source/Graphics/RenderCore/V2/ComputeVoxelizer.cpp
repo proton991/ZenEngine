@@ -122,7 +122,6 @@ void ComputeVoxelizer::BuildVoxelizationGraph()
             }
         }
         ResolveSurface(RDGQueuePreference::ePreferAsyncCompute);
-        BuildCompaction(RDGQueuePreference::ePreferAsyncCompute);
     }
 }
 

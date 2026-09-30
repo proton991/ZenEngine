@@ -1,5 +1,6 @@
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
+#include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/RenderConfig.h"
@@ -35,11 +36,15 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
     if (valid)
     {
         if (settings.coneCount != m_settings.coneCount ||
-            settings.normalBiasVoxels != m_settings.normalBiasVoxels)
+            settings.normalBiasVoxels != m_settings.normalBiasVoxels ||
+            settings.environmentLighting != m_settings.environmentLighting)
         {
             m_environmentRevision = 0;
         }
-        if (settings.shadows != m_settings.shadows)
+        if (settings.shadows != m_settings.shadows ||
+            settings.analyticLighting != m_settings.analyticLighting ||
+            settings.emissiveLighting != m_settings.emissiveLighting ||
+            settings.normalBiasVoxels != m_settings.normalBiasVoxels)
         {
             m_lightingRevision = 0;
         }
@@ -61,6 +66,9 @@ bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& 
     valid &= config.ReadNumber("voxel_gi_cone_count", settings.coneCount);
     valid &= config.ReadNumber("voxel_gi_max_steps", settings.maxSteps);
     valid &= config.ReadBool("voxel_gi_shadow_enabled", settings.shadows);
+    valid &= config.ReadBool("voxel_gi_analytic_lighting", settings.analyticLighting);
+    valid &= config.ReadBool("voxel_gi_environment_lighting", settings.environmentLighting);
+    valid &= config.ReadBool("voxel_gi_emissive_lighting", settings.emissiveLighting);
 
     valid = valid && ValidateVoxelGISettings(settings);
 
@@ -171,7 +179,7 @@ void VoxelGIRenderer::BuildMipChain(const HeapVector<RHITextureView*>& views,
     }
 }
 
-void VoxelGIRenderer::BuildRenderGraph()
+void VoxelGIRenderer::BuildRenderGraph(SceneShadowRenderer* shadows)
 {
     if (IsInitialized() && m_scene != nullptr)
     {
@@ -186,6 +194,10 @@ void VoxelGIRenderer::BuildRenderGraph()
         m_uniforms.limits =
             Vec4(static_cast<float>(m_settings.coneCount), static_cast<float>(m_settings.maxSteps),
                  m_settings.shadows ? 1.0f : 0.0f, 0.0f);
+        m_uniforms.lighting = Vec4(m_settings.analyticLighting ? 1.0f : 0.0f,
+                                   m_settings.environmentLighting ? 1.0f : 0.0f,
+                                   m_settings.emissiveLighting ? 1.0f : 0.0f, 0.0f);
+
         m_recordedGeometry         = m_voxelizer->GetRecordedGeometryRevision();
         m_recordedLighting         = m_scene->GetLights().GetRevision();
         m_recordedEnvironment      = m_scene->GetEnvironmentRevision();
@@ -222,15 +234,34 @@ void VoxelGIRenderer::BuildRenderGraph()
         if (skyChanged || m_lightingRevision != m_recordedLighting)
         {
             RDGComputePassDesc inject;
-            inject.SetShaderProgramName(m_voxelizer->UsesAveragedReflectance() ?
-                                            "VoxelInjectRadianceAveragedSP" :
-                                            "VoxelInjectRadianceSP");
+            const bool meshShadows = shadows != nullptr && m_scene->GetVoxelTriangleCount() != 0;
+
+            inject.SetShaderProgramName(meshShadows ? (m_voxelizer->UsesAveragedReflectance() ?
+                                                           "VoxelInjectMeshRadianceAveragedSP" :
+                                                           "VoxelInjectMeshRadianceSP") :
+                                            m_voxelizer->UsesAveragedReflectance() ?
+                                                      "VoxelInjectRadianceAveragedSP" :
+                                                      "VoxelInjectRadianceSP");
             inject.SetPassTag("VoxelInjectRadiance");
             inject.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
             BindFrameData(inject);
             inject.BindSampledTexture("voxelAlbedo", sampler, textures.pAlbedoView);
             inject.BindSampledTexture("voxelNormal", sampler, textures.pNormalView);
             inject.BindSampledTexture("voxelEmissive", sampler, textures.pEmissiveView);
+            if (meshShadows)
+            {
+                shadows->BindLightingInputs(inject);
+
+                inject.BindStorageImage("voxelOwner", textures.pOwner->GetDefaultView());
+
+                inject.BindStorageBuffer("VertexBuffer", m_scene->GetVertexBuffer());
+
+                inject.BindStorageBuffer("IndexBuffer", m_scene->GetIndexBuffer());
+
+                inject.BindStorageBuffer("NodeBuffer", m_scene->GetNodesDataSSBO());
+
+                inject.BindStorageBuffer("TriangleRecords", m_scene->GetVoxelTriangleBuffer());
+            }
             if (m_voxelizer->UsesAveragedReflectance())
             {
                 inject.BindSampledTexture("voxelReflectance", sampler,

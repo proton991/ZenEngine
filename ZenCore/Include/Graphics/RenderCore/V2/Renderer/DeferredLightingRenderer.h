@@ -19,7 +19,6 @@ class RenderScene;
 class RenderDevice;
 class SkyboxRenderer;
 class VoxelGIRenderer;
-class DynamicVoxelGIRenderer;
 class SceneShadowRenderer;
 
 class DeferredLightingRenderer
@@ -36,23 +35,31 @@ public:
 
     void BuildRenderGraph(VoxelGIRenderer* voxelGI     = nullptr,
                           SceneShadowRenderer* shadows = nullptr);
-    void BuildGBufferGraph(bool dynamicGI = false);
-    void BuildCompositionGraph(VoxelGIRenderer* voxelGI          = nullptr,
-                               SceneShadowRenderer* shadows      = nullptr,
-                               DynamicVoxelGIRenderer* dynamicGI = nullptr);
+    void BuildGBufferGraph();
+    void BuildCompositionGraph(VoxelGIRenderer* voxelGI     = nullptr,
+                               SceneShadowRenderer* shadows = nullptr);
 
     void Destroy();
 
-    // Opt-in diagnostic buffers owned by the caller through GPU completion.
-    void SetLightingCapture(RHIBuffer* output,
-                            RHIBuffer* readback,
-                            RHIBuffer* surfaceOutput   = nullptr,
-                            RHIBuffer* surfaceReadback = nullptr)
+    bool SetLightMarkers(bool enabled, float size);
+
+    bool GetLightMarkersEnabled() const
     {
-        m_surfaceOutput   = surfaceOutput;
-        m_surfaceReadback = surfaceReadback;
-        m_captureOutput   = output;
+        return m_lightMarkersEnabled;
+    }
+
+    float GetLightMarkerSize() const
+    {
+        return m_lightMarkerSize;
+    }
+
+    // Opt-in diagnostic buffers owned by the caller through GPU completion.
+    void SetLightingCapture(RHIBuffer* output, RHIBuffer* readback)
+    {
+        m_captureOutput = output;
+
         m_captureReadback = readback;
+
         m_captureRecorded = false;
     }
 
@@ -71,7 +78,8 @@ private:
     void BuildLightMarkers();
     bool BuildLightingCaptureClear();
 
-    float m_lightMarkerSize{0.0f};
+    float m_lightMarkerSize{0.02f};
+    bool m_lightMarkersEnabled{false};
 
     RenderDevice* m_pRenderDevice{nullptr};
 
@@ -84,7 +92,5 @@ private:
     RHIBuffer* m_captureOutput{nullptr};
     RHIBuffer* m_captureReadback{nullptr};
     bool m_captureRecorded{false};
-    RHIBuffer* m_surfaceOutput{nullptr};
-    RHIBuffer* m_surfaceReadback{nullptr};
 };
 } // namespace zen::rc
