@@ -18,16 +18,20 @@ RendererServer::RendererServer(RenderDevice* pRenderDevice, RHIViewport* pViewpo
 
 void RendererServer::Init()
 {
-    DynamicVoxelGISettings settings;
+    VoxelGIRuntimeSettings settings;
 
-    if (!LoadDynamicVoxelGISettings(platform::ConfigLoader::GetInstance(), settings))
+    if (!LoadVoxelGIRuntimeSettings(platform::ConfigLoader::GetInstance(), settings))
     {
-        LOGW("Using legacy cone defaults after rejected dynamic voxel GI settings");
+        LOGW("Using GI defaults after rejected configuration");
+
+        settings.dynamic.resolution = platform::ConfigLoader::GetInstance().GetVoxelResolution();
     }
 
-    m_giSelection = ResolveVoxelGISelection(settings);
+    m_giSelection = ResolveVoxelGISelection(settings.dynamic);
 
-    m_dynamicSettings = settings;
+    m_giSettings = settings;
+
+    m_giSettings.asyncCompute = m_pRenderDevice->GetAsyncComputeMode();
 
     LOGI("Selected voxel GI method: cone; query backend: {}; {}", m_giSelection.backend,
          m_giSelection.reason);
@@ -40,8 +44,7 @@ void RendererServer::Init()
 
     m_pSkyboxRenderer->Init();
 
-    const platform::VoxelizerMode requestedMode =
-        platform::ConfigLoader::GetInstance().GetVoxelizerMode();
+    const platform::VoxelizerMode requestedMode = m_giSettings.voxelizer;
 
     const platform::VoxelizerMode selectedMode =
         ResolveVoxelizerMode(requestedMode, m_pRenderDevice->GetGPUInfo());
@@ -61,17 +64,16 @@ void RendererServer::Init()
 
     m_pVoxelGI = ZEN_NEW() VoxelGIRenderer(m_pRenderDevice, m_pVoxelizer);
 
+    m_pVoxelGI->SetSettings(m_giSettings.cone);
+
     m_pSceneShadows = ZEN_NEW() SceneShadowRenderer(m_pRenderDevice);
+
+    m_pSceneShadows->SetResolution(m_giSettings.shadowMapResolution);
 }
 
 void RendererServer::Destroy()
 {
-    if (m_pDynamicVoxelGI != nullptr)
-    {
-        m_pDynamicVoxelGI->Destroy();
-
-        ZEN_DELETE(m_pDynamicVoxelGI);
-    }
+    DestroyVoxelGIResources();
 
     m_pSceneShadows->Destroy();
 
@@ -84,20 +86,6 @@ void RendererServer::Destroy()
     m_pSkyboxRenderer->Destroy();
 
     ZEN_DELETE(m_pSkyboxRenderer);
-
-    m_pVoxelGI->Destroy();
-
-    ZEN_DELETE(m_pVoxelGI);
-
-    for (VoxelizerBase* voxelizer : {m_pVoxelizer, m_pStaticVoxels, m_pDynamicVoxels})
-    {
-        if (voxelizer != nullptr)
-        {
-            voxelizer->Destroy();
-
-            ZEN_DELETE(voxelizer);
-        }
-    }
 }
 
 bool RendererServer::DispatchRenderWorkloads()
@@ -283,11 +271,11 @@ bool RendererServer::SetVoxelGIMethod(VoxelGIMethod method)
     const bool valid = method == VoxelGIMethod::eAuto || method == VoxelGIMethod::eCone ||
         method == VoxelGIMethod::eDynamicVoxel;
 
-    if (valid && m_dynamicSettings.method != method)
+    if (valid && m_giSettings.dynamic.method != method)
     {
-        m_dynamicSettings.method = method;
+        m_giSettings.dynamic.method = method;
 
-        m_giSelection = ResolveVoxelGISelection(m_dynamicSettings);
+        m_giSelection = ResolveVoxelGISelection(m_giSettings.dynamic);
 
         if (m_pScene != nullptr)
         {
@@ -302,10 +290,9 @@ bool RendererServer::PrepareVoxelGI()
 {
     bool enabled = false;
 
-    VoxelGISelection selected = ResolveVoxelGISelection(m_dynamicSettings);
+    VoxelGISelection selected = ResolveVoxelGISelection(m_giSettings.dynamic);
 
-    const bool averaged = platform::ConfigLoader::GetInstance().GetString(
-                              "voxel_reflectance_policy", "owner") == "averaged";
+    const bool averaged = m_giSettings.averagedReflectance;
 
     const RHIGPUInfo& gpu = m_pRenderDevice->GetGPUInfo();
 
@@ -319,8 +306,8 @@ bool RendererServer::PrepareVoxelGI()
     }
     else
     {
-        if (m_dynamicSettings.method == VoxelGIMethod::eDynamicVoxel &&
-            m_dynamicSettings.backend != VoxelGIQueryBackend::eHardwareRT)
+        if (m_giSettings.dynamic.method == VoxelGIMethod::eDynamicVoxel &&
+            m_giSettings.dynamic.backend != VoxelGIQueryBackend::eHardwareRT)
         {
             selected.reason =
                 "Dynamic voxel GI requires seven G-buffer color attachments; using cone";
@@ -336,25 +323,25 @@ bool RendererServer::PrepareVoxelGI()
 
                 uint64_t peak = 0;
 
-                enabled =
-                    PlanStaticVoxelGIResources(
-                        m_dynamicSettings.resolution, averaged, m_dynamicSettings.memoryBudgetBytes,
-                        gpu, capacity, peak, surfaces, 0, m_dynamicSettings.compactCache,
-                        m_dynamicSettings.raysPerFace) == GIResourceStatus::eSuccess;
+                enabled = PlanStaticVoxelGIResources(
+                              m_giSettings.dynamic.resolution, averaged,
+                              m_giSettings.dynamic.memoryBudgetBytes, gpu, capacity, peak, surfaces,
+                              0, m_giSettings.dynamic.compactCache,
+                              m_giSettings.dynamic.raysPerFace) == GIResourceStatus::eSuccess;
 
                 selected.reason = "Dynamic voxel GI memory preflight rejected; using cone";
 
                 if (enabled)
                 {
-                    enabled = EnableClassVoxelization(m_dynamicSettings.memoryBudgetBytes);
+                    enabled = EnableClassVoxelization(m_giSettings.dynamic.memoryBudgetBytes);
 
                     if (enabled && m_pDynamicVoxelGI == nullptr)
                     {
                         m_pDynamicVoxelGI = ZEN_NEW() DynamicVoxelGIRenderer(m_pRenderDevice);
                     }
 
-                    enabled =
-                        enabled && m_pDynamicVoxelGI->Init(m_dynamicSettings, averaged, surfaces);
+                    enabled = enabled &&
+                        m_pDynamicVoxelGI->Init(m_giSettings.dynamic, averaged, surfaces);
                 }
 
                 if (enabled)
@@ -366,8 +353,8 @@ bool RendererServer::PrepareVoxelGI()
             }
         }
 
-        const bool budgeted = m_dynamicSettings.memoryBudgetBytes != 0 ||
-            m_dynamicSettings.method == VoxelGIMethod::eDynamicVoxel;
+        const bool budgeted = m_giSettings.dynamic.memoryBudgetBytes != 0 ||
+            m_giSettings.dynamic.method == VoxelGIMethod::eDynamicVoxel;
 
         if (!enabled && budgeted)
         {
@@ -380,20 +367,21 @@ bool RendererServer::PrepareVoxelGI()
                 // Its checked reserve already includes retained classes, cone and attachments.
                 peak = m_pDynamicVoxelGI->GetResourceBytes();
 
-                status = peak <= m_dynamicSettings.memoryBudgetBytes ? GIResourceStatus::eSuccess :
-                                                                       GIResourceStatus::eBudget;
+                status = peak <= m_giSettings.dynamic.memoryBudgetBytes ?
+                    GIResourceStatus::eSuccess :
+                    GIResourceStatus::eBudget;
             }
             else if (m_pStaticVoxels != nullptr || m_pDynamicVoxels != nullptr)
             {
-                status =
-                    ValidateVoxelClassResources(m_dynamicSettings.resolution, averaged,
-                                                m_dynamicSettings.memoryBudgetBytes, 0, gpu, peak);
+                status = ValidateVoxelClassResources(m_giSettings.dynamic.resolution, averaged,
+                                                     m_giSettings.dynamic.memoryBudgetBytes, 0, gpu,
+                                                     peak);
             }
             else
             {
-                status =
-                    ValidateVoxelConeResources(m_dynamicSettings.resolution, averaged,
-                                               m_dynamicSettings.memoryBudgetBytes, 0, gpu, peak);
+                status = ValidateVoxelConeResources(m_giSettings.dynamic.resolution, averaged,
+                                                    m_giSettings.dynamic.memoryBudgetBytes, 0, gpu,
+                                                    peak);
             }
 
             if (status != GIResourceStatus::eSuccess)
@@ -439,6 +427,9 @@ VoxelizerBase* RendererServer::CreateVoxelizer(RHIViewport* viewport, uint32_t c
     if (voxelizer->ConfigureClass(classMask))
     {
         voxelizer->Init();
+
+        voxelizer->Configure(m_giSettings.dynamic.resolution, m_giSettings.averagedReflectance,
+                             m_giSettings.reflectanceBudgetBytes);
     }
 
     return voxelizer;
@@ -446,8 +437,7 @@ VoxelizerBase* RendererServer::CreateVoxelizer(RHIViewport* viewport, uint32_t c
 
 bool RendererServer::EnableClassVoxelization(uint64_t budgetBytes)
 {
-    const bool averaged = platform::ConfigLoader::GetInstance().GetString(
-                              "voxel_reflectance_policy", "owner") == "averaged";
+    const bool averaged = m_giSettings.averagedReflectance;
 
     uint64_t peakBytes = 0;
 

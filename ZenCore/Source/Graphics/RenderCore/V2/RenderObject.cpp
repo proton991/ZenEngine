@@ -29,4 +29,12 @@ RenderObject::RenderObject(RenderDevice* pRenderDevice, const std::string& model
     m_pIndexBuffer = m_pRenderDevice->CreateIndexBuffer(
         indices.size() * sizeof(uint32_t), reinterpret_cast<const uint8_t*>(indices.data()));
 }
+RenderObject::~RenderObject()
+{
+    m_pRenderDevice->DestroyBuffer(m_pNodeSSBO);
+
+    m_pRenderDevice->DestroyBuffer(m_pVertexBuffer);
+
+    m_pRenderDevice->DestroyBuffer(m_pIndexBuffer);
+}
 } // namespace zen::rc

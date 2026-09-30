@@ -2,6 +2,9 @@
 #include "Graphics/RenderCore/V2/Renderer/DynamicVoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/SceneShadowRenderer.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
+#include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/Shared/LightingCapture.h"
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
@@ -13,6 +16,17 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+
+namespace zen::rc
+{
+struct VoxelGIRuntimeTestAccess
+{
+    static bool Prepare(RendererServer& server)
+    {
+        return server.PrepareVoxelGI();
+    }
+};
+} // namespace zen::rc
 
 namespace
 {
@@ -453,6 +467,7 @@ TEST_P(DynamicVoxelGIIntegrationTest, QueriesMatchIndependentBoxesAndProviderSub
 #include "DynamicVoxelGIFilterTests.inl"
 #include "DynamicVoxelGILightingTests.inl"
 #include "DynamicVoxelGIAcceptanceTests.inl"
+#include "DynamicVoxelGIRuntimeTests.inl"
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes,
                          DynamicVoxelGIIntegrationTest,

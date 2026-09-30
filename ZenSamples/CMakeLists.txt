@@ -62,6 +62,7 @@ add_executable(RenderCoreTest
     RenderCoreTest/RHIGPUTimingTests.cpp
     RenderCoreTest/RHIGPUFrameTimingTests.cpp
     RenderCoreTest/DynamicVoxelGIPlanningTests.cpp
+    RenderCoreTest/VoxelGISettingsTests.cpp
     ../ZenCore/Source/Memory/Memory.cpp
     ../ZenCore/Source/Graphics/RHI/RHICommandList.cpp
     ../ZenCore/Source/Graphics/RHI/RHIResource.cpp
@@ -79,6 +80,7 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneLighting.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DynamicVoxelGIRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/GIVisibilityProvider.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/VoxelizerBase.cpp

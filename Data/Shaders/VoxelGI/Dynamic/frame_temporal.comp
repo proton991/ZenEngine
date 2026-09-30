@@ -18,8 +18,12 @@ void main() {
         if(value.a>0 && giFilter.control.x!=0u && giFilter.control.z==0u && previous.w!=0u &&
            previous.x==imageLoad(owner,p).r && dt>=0 && dt<=giFilter.timing.y) {
             vec4 old=imageLoad(history,p);
-            float alpha=giFilter.control.x==1u ? giFilter.timing.z :
-                1.0-pow(1.0-giFilter.timing.z,giFilter.timing.w*dt);
+            float alpha=giFilter.timing.z;
+            if(giFilter.control.x==2u) {
+                // alpha=1 and dt=0 must not evaluate the undefined pow(0,0) case.
+                alpha=dt==0.0 ? 0.0 : (alpha==1.0 ? 1.0 :
+                    1.0-pow(1.0-alpha,giFilter.timing.w*dt));
+            }
             if(old.a>0) value.rgb=mix(old.rgb,value.rgb,alpha);
         }
         // One invocation owns each history cell; only spatial filtering reads neighbors.

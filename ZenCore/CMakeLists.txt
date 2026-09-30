@@ -194,6 +194,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/RDGResourceManager.cpp
     Source/Graphics/RenderCore/V2/SceneLighting.cpp
     Source/Graphics/RenderCore/V2/DynamicVoxelGIPlanning.cpp
+    Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
+    Source/Graphics/RenderCore/V2/RendererServerSettings.cpp
     Source/Graphics/RenderCore/V2/DynamicVoxelGIRenderer.cpp
     Source/Graphics/RenderCore/V2/GIVisibilityProvider.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp

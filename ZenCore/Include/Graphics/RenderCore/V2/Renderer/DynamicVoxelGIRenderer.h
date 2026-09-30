@@ -65,6 +65,12 @@ public:
 
     void SetLighting(bool analytic, bool environment, bool emissive);
 
+    bool SetTemporalParameters(float alpha, float historyGapSeconds, float referenceHz);
+
+    bool SetCacheBatchSize(uint32_t receivers);
+
+    DynamicVoxelGISettings GetSettings() const;
+
     void Destroy();
 
     uint32_t GetCapacity() const
@@ -186,6 +192,8 @@ public:
     }
 
 private:
+    DynamicVoxelGISettings m_settings;
+
     struct LightMaskState
     {
         GIVisibilityInfo visibility{};

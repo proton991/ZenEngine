@@ -353,7 +353,7 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
                 result                   = m_rdgExecutor.ExecutePrepared(
                     plan, commands,
                     std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                    std::ref(*commands), viewport, &pending),
+                                                      std::ref(*commands), viewport, &pending),
                     true);
                 m_graphicsCmdListPool.Release(commands);
             }
@@ -459,6 +459,70 @@ void RenderDevice::FlushRHIThread()
         m_pRHIExecutor->FlushRHIThread();
         PollFrameSubmissions(true);
     }
+}
+
+bool RenderDevice::CanReconfigureResources() const
+{
+    const RDGExecutionState state =
+        m_frameRDG.Get() != nullptr ? m_frameRDG->GetExecutionState() : RDGExecutionState::eIdle;
+
+    return !AreSubmissionsBlocked() && state != RDGExecutionState::eBuilding &&
+        state != RDGExecutionState::eRecorded && state != RDGExecutionState::eExecuting;
+}
+
+bool RenderDevice::PrepareForResourceReconfiguration()
+{
+    bool valid = CanReconfigureResources();
+
+    if (valid)
+    {
+        if (m_pUploadQueue != nullptr)
+        {
+            m_pUploadQueue->Flush();
+        }
+
+        WaitForPreviousFrames();
+
+        valid = !AreSubmissionsBlocked();
+
+        if (valid && m_frameRDG.Get() != nullptr)
+        {
+            valid = m_frameRDG->Reset();
+
+            m_rdgPassCompiler.SetRenderGraph(nullptr);
+        }
+
+        if (valid)
+        {
+            CollectCompletedResources();
+        }
+    }
+
+    return valid;
+}
+
+bool RenderDevice::SetAsyncComputeMode(AsyncComputeMode mode)
+{
+    bool valid = CanReconfigureResources() &&
+        (mode == AsyncComputeMode::eDisabled || mode == AsyncComputeMode::eAuto);
+
+    if (valid && mode != m_asyncComputeMode)
+    {
+        valid = PrepareForResourceReconfiguration();
+
+        if (valid)
+        {
+            m_asyncComputeMode = mode;
+
+            m_asyncComputeStatus = ResolveAsyncComputeStatus(mode, m_queueCapabilities);
+
+            m_loggedAsyncComputeSubmission = false;
+
+            LOGI("Runtime async compute: {}", GetAsyncComputeStatusReason(m_asyncComputeStatus));
+        }
+    }
+
+    return valid;
 }
 
 RHIThreadMetrics RenderDevice::GetRHIThreadMetrics() const

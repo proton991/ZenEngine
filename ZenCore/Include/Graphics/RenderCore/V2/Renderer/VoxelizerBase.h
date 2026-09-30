@@ -29,6 +29,10 @@ public:
     virtual ~VoxelizerBase() = default;
 
     virtual void Init() = 0;
+
+    // Configure a newly initialized producer before allocating any volume resources.
+    bool Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes);
+
     bool ConfigureClass(uint32_t mask);
     uint32_t GetClassMask() const
     {
@@ -168,6 +172,7 @@ protected:
     bool m_visibilityChanged{false};
     RHIBuffer* m_pReflectanceSums{nullptr};
     bool m_requestAveragedReflectance{false};
+    bool m_explicitConfiguration{false};
     bool m_useAveragedReflectance{false};
     uint64_t m_reflectanceBudgetBytes{0};
     uint32_t m_classMask{GI_ALL};

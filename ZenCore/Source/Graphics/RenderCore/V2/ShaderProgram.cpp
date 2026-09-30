@@ -344,8 +344,8 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
         StoreProgram(pShaderProgram);
     }
 
-    if (ResolveVoxelizerMode(platform::ConfigLoader::GetInstance().GetVoxelizerMode(),
-                             pRenderDevice->GetGPUInfo()) == platform::VoxelizerMode::eGeometry)
+    // Both supported producers must be available for runtime voxelizer changes.
+    if (pRenderDevice->GetGPUInfo().supportGeometryShader)
     {
         {
             StoreProgram(ZEN_NEW() VoxelizationSP(pRenderDevice, true));

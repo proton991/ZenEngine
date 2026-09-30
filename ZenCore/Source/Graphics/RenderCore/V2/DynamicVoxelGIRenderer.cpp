@@ -116,9 +116,7 @@ bool DynamicVoxelGIRenderer::Init(const DynamicVoxelGISettings& settings,
                                        m_device->GetGPUInfo(), capacity, peak, receiverSurfaceBytes,
                                        retiringBytes, settings.compactCache, settings.raysPerFace);
 
-        valid = (settings.raysPerFace == 32 || settings.raysPerFace == 64 ||
-                 settings.raysPerFace == 128) &&
-            static_cast<uint32_t>(settings.temporal) <= 2 &&
+        valid = ValidateDynamicVoxelGISettings(settings) &&
             settings.backend != VoxelGIQueryBackend::eHardwareRT &&
             status == GIResourceStatus::eSuccess &&
             (settings.neighborRadius == 1 || settings.neighborRadius == 2) &&
@@ -127,6 +125,8 @@ bool DynamicVoxelGIRenderer::Init(const DynamicVoxelGISettings& settings,
 
         if (valid)
         {
+            m_settings = settings;
+
             m_resourceBytes = peak;
 
             SetFiltering(settings.temporal, settings.spatialFilter);
@@ -327,6 +327,10 @@ void DynamicVoxelGIRenderer::BindFrameInputs(RDGPassDescBase& pass) const
 
 void DynamicVoxelGIRenderer::SetFiltering(GITemporalMode temporal, bool spatial)
 {
+    m_settings.temporal = temporal;
+
+    m_settings.spatialFilter = spatial;
+
     const glm::uvec2 settings(static_cast<uint32_t>(temporal), spatial ? 1 : 0);
 
     if (glm::uvec2(m_filter.control) != settings)
@@ -341,6 +345,12 @@ void DynamicVoxelGIRenderer::SetFiltering(GITemporalMode temporal, bool spatial)
 
 void DynamicVoxelGIRenderer::SetLighting(bool analytic, bool environment, bool emissive)
 {
+    m_settings.analyticLighting = analytic;
+
+    m_settings.environmentLighting = environment;
+
+    m_settings.emissiveLighting = emissive;
+
     const glm::uvec3 enabled(analytic ? 1 : 0, environment ? 1 : 0, emissive ? 1 : 0);
 
     if (glm::uvec3(m_lighting.enabled) != enabled)
@@ -351,6 +361,48 @@ void DynamicVoxelGIRenderer::SetLighting(bool analytic, bool environment, bool e
 
         m_environmentValid = false;
     }
+}
+
+bool DynamicVoxelGIRenderer::SetTemporalParameters(float alpha,
+                                                   float historyGapSeconds,
+                                                   float referenceHz)
+{
+    const bool valid = std::isfinite(alpha) && alpha > 0 && alpha <= 1 &&
+        std::isfinite(historyGapSeconds) && historyGapSeconds > 0 && std::isfinite(referenceHz) &&
+        referenceHz > 0;
+
+    if (valid &&
+        (m_settings.temporalAlpha != alpha || m_settings.historyGapSeconds != historyGapSeconds ||
+         m_settings.temporalReferenceHz != referenceHz))
+    {
+        m_settings.temporalAlpha = alpha;
+
+        m_settings.historyGapSeconds = historyGapSeconds;
+
+        m_settings.temporalReferenceHz = referenceHz;
+
+        m_historyValid = false;
+    }
+
+    return valid;
+}
+
+bool DynamicVoxelGIRenderer::SetCacheBatchSize(uint32_t receivers)
+{
+    // Preserve the existing upper bound on work per frame/watchdog exposure.
+    const bool valid = receivers > 0 && receivers <= GI_CACHE_BATCH;
+
+    if (valid)
+    {
+        m_settings.cacheBatchSize = receivers;
+    }
+
+    return valid;
+}
+
+DynamicVoxelGISettings DynamicVoxelGIRenderer::GetSettings() const
+{
+    return m_settings;
 }
 
 void DynamicVoxelGIRenderer::PrepareLightMasks(const StaticVoxelGIInputs& inputs,
@@ -803,15 +855,16 @@ bool DynamicVoxelGIRenderer::BuildRenderGraph(const StaticVoxelGIInputs& inputs,
             m_staticQuerySettings != querySettings;
 
         const bool resetHistory = changed || !m_historyValid || time < m_lastTime ||
-            time - m_lastTime > 0.3 || inputs.historyRevision != m_historyRevision ||
-            m_uniform.lighting.x != indirectGain ||
+            time - m_lastTime > m_settings.historyGapSeconds ||
+            inputs.historyRevision != m_historyRevision || m_uniform.lighting.x != indirectGain ||
             m_uniform.lighting.y != (shadows ? 1.0f : 0.0f) ||
             m_uniform.volume.w != static_cast<uint32_t>(scene.lightInfo.x) ||
             m_environmentRevision != inputs.environmentRevision ||
             m_environmentResource != environmentResource ||
             m_environmentSettings != Vec3(scene.environment);
 
-        m_filter.timing = Vec4(static_cast<float>(time), 0.3f, 0.03f, 60.0f);
+        m_filter.timing = Vec4(static_cast<float>(time), m_settings.historyGapSeconds,
+                               m_settings.temporalAlpha, m_settings.temporalReferenceHz);
 
         m_filter.control.z = resetHistory ? 1 : 0;
 
@@ -825,7 +878,7 @@ bool DynamicVoxelGIRenderer::BuildRenderGraph(const StaticVoxelGIInputs& inputs,
 
         const uint32_t start = changed ? 0 : m_cacheEnd;
 
-        const uint32_t end = std::min(m_uniform.volume.y, start + GI_CACHE_BATCH);
+        const uint32_t end = std::min(m_uniform.volume.y, start + m_settings.cacheBatchSize);
 
         HeapVector<ComputeDispatchChunk> rays;
 

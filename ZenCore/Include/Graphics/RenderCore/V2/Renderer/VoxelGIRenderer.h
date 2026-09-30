@@ -2,6 +2,11 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RenderGraph.h"
 #include "Math/Math.h"
 
+namespace zen::platform
+{
+class ConfigLoader;
+}
+
 namespace zen::rc
 {
 class RenderDevice;
@@ -19,6 +24,10 @@ struct VoxelGISettings
     uint32_t maxSteps{128};
     bool shadows{true};
 };
+
+bool ValidateVoxelGISettings(const VoxelGISettings& settings);
+
+bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& output);
 
 struct VoxelGIUniformData
 {

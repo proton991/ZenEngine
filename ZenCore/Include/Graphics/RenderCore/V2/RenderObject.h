@@ -23,6 +23,8 @@ class RenderObject
 public:
     RenderObject(RenderDevice* pRenderDevice, const std::string& modelPath);
 
+    ~RenderObject();
+
     const std::vector<sg::Node*>& GetRenderableNodes() const
     {
         return m_scene->GetRenderableNodes();

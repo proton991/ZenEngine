@@ -35,9 +35,20 @@ void ComputeVoxelizer::Init()
 void ComputeVoxelizer::Destroy()
 {
     VoxelizerBase::Destroy();
+
+    m_pRenderDevice->DestroyBuffer(m_buffers.pInstancePositionBuffer);
+
+    m_pRenderDevice->DestroyBuffer(m_buffers.pInstanceColorBuffer);
+
+    m_pRenderDevice->DestroyBuffer(m_buffers.pDrawIndirectBuffer);
+
+    m_buffers = {};
+
     if (m_pCube != nullptr)
     {
         ZEN_DELETE(m_pCube);
+
+        m_pCube = nullptr;
     }
 }
 

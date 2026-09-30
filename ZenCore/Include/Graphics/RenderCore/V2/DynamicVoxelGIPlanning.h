@@ -40,7 +40,13 @@ struct DynamicVoxelGISettings
     bool compactCache{false}; // DDA only; decoded cache also supports the reference provider.
     // No guessed shipping budget: an explicit cap is required by the preflight.
     uint64_t memoryBudgetBytes{0};
+    float temporalAlpha{0.03f};
+    float historyGapSeconds{0.3f};
+    float temporalReferenceHz{60.0f};
+    uint32_t cacheBatchSize{4096};
 };
+
+bool ValidateDynamicVoxelGISettings(const DynamicVoxelGISettings& settings);
 
 bool LoadDynamicVoxelGISettings(const platform::ConfigLoader& config,
                                 DynamicVoxelGISettings& output);

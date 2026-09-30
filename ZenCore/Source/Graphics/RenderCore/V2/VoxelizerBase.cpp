@@ -19,6 +19,30 @@ bool VoxelizerBase::IsReady() const
         m_pVoxelSampler != nullptr && m_pColorSampler != nullptr;
 }
 
+bool VoxelizerBase::Configure(uint32_t resolution,
+                              bool averagedReflectance,
+                              uint64_t reflectanceBudgetBytes)
+{
+    const bool valid = !m_textureInitializationAttempted && m_voxelTextures.pOwner == nullptr &&
+        (resolution == 64 || resolution == 128 || resolution == 256) &&
+        (!averagedReflectance || reflectanceBudgetBytes != 0);
+
+    if (valid)
+    {
+        m_voxelTexResolution = resolution;
+
+        m_voxelCount = resolution * resolution * resolution;
+
+        m_requestAveragedReflectance = averagedReflectance;
+
+        m_reflectanceBudgetBytes = reflectanceBudgetBytes;
+
+        m_explicitConfiguration = true;
+    }
+
+    return valid;
+}
+
 bool VoxelizerBase::EnsureReady()
 {
     if (!IsReady() && !m_textureInitializationAttempted)
@@ -60,11 +84,11 @@ bool VoxelizerBase::BeginVoxelization(RenderGraph& graph, RDGQueuePreference que
             .RecordPassCommands([groups](RDGPassCmdEncoder& encoder) {
                 encoder.Dispatch(groups.x, groups.y, groups.z);
             });
-        m_voxelizationPending = true;
-        m_pendingSceneRevision = sceneRevision;
+        m_voxelizationPending    = true;
+        m_pendingSceneRevision   = sceneRevision;
         m_pendingSurfaceRevision = surfaceRevision;
-        m_needVoxelization    = false;
-        result                = true;
+        m_needVoxelization       = false;
+        result                   = true;
     }
     return result;
 }
@@ -80,7 +104,7 @@ void VoxelizerBase::OnRenderGraphExecuted(bool succeeded)
             {
                 ++m_visibilityRevision;
             }
-            m_sceneRevision = m_pendingSceneRevision;
+            m_sceneRevision   = m_pendingSceneRevision;
             m_surfaceRevision = m_pendingSurfaceRevision;
         }
         else
@@ -105,19 +129,23 @@ RHITexture* VoxelizerBase::CreateVolume(DataFormat format, NameID name, uint32_t
 
 void VoxelizerBase::PrepareTextures()
 {
-    const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
-    const std::string policy             = config.GetString("voxel_reflectance_policy", "owner");
-    uint64_t budgetMiB                   = 0;
-    const bool valid = config.ReadNumber("voxel_reflectance_budget_mb", budgetMiB) &&
-        budgetMiB <= std::numeric_limits<uint64_t>::max() / (1024 * 1024);
-    m_requestAveragedReflectance = policy == "averaged" && valid && budgetMiB != 0;
-    m_reflectanceBudgetBytes     = valid ? budgetMiB * 1024 * 1024 : 0;
-    if ((policy != "owner" && policy != "averaged") ||
-        (policy == "averaged" && !m_requestAveragedReflectance))
+    if (!m_explicitConfiguration)
     {
-        LOGW(
-            "Rejected voxel reflectance configuration: averaged requires a positive voxel_reflectance_budget_mb; using owner");
+        const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
+        const std::string policy = config.GetString("voxel_reflectance_policy", "owner");
+        uint64_t budgetMiB       = 0;
+        const bool valid         = config.ReadNumber("voxel_reflectance_budget_mb", budgetMiB) &&
+            budgetMiB <= std::numeric_limits<uint64_t>::max() / (1024 * 1024);
+        m_requestAveragedReflectance = policy == "averaged" && valid && budgetMiB != 0;
+        m_reflectanceBudgetBytes     = valid ? budgetMiB * 1024 * 1024 : 0;
+        if ((policy != "owner" && policy != "averaged") ||
+            (policy == "averaged" && !m_requestAveragedReflectance))
+        {
+            LOGW(
+                "Rejected voxel reflectance configuration: averaged requires a positive voxel_reflectance_budget_mb; using owner");
+        }
     }
+
     RHISamplerCreateInfo voxelSampler{};
     voxelSampler.minFilter = RHISamplerFilter::eLinear;
     voxelSampler.magFilter = RHISamplerFilter::eLinear;
@@ -128,7 +156,7 @@ void VoxelizerBase::PrepareTextures()
     voxelSampler.repeatW   = RHISamplerRepeatMode::eClampToEdge;
     m_pVoxelSampler        = m_pRenderDevice->CreateSampler(voxelSampler);
     m_pColorSampler = m_pRenderDevice->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
-    m_voxelTextures.pOwner  = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
+    m_voxelTextures.pOwner = CreateVolume(DataFormat::eR32UInt, "voxel_owner");
     m_voxelTextures.pAlbedo =
         CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_albedo",
                      m_classMask == GI_ALL ? std::bit_width(m_voxelTexResolution) : 1);
@@ -278,8 +306,8 @@ void VoxelizerBase::ResolveSurface(RDGQueuePreference queuePreference)
 void VoxelizerBase::SetRenderScene(RenderScene* pScene)
 {
     RequestVoxelization();
-    m_pScene = pScene;
-    m_sceneRevision = 0;
+    m_pScene          = pScene;
+    m_sceneRevision   = 0;
     m_surfaceRevision = 0;
 }
 
@@ -325,8 +353,8 @@ void VoxelizerBase::Destroy()
     m_pRenderDevice->DestroyBuffer(m_gridToList);
     m_pRenderDevice->DestroyBuffer(m_occupiedCount);
     m_occupiedList = m_gridToList = m_occupiedCount = nullptr;
-    m_pReflectanceSums       = nullptr;
-    m_useAveragedReflectance = false;
-    m_voxelTextures = {};
+    m_pReflectanceSums                              = nullptr;
+    m_useAveragedReflectance                        = false;
+    m_voxelTextures                                 = {};
 }
 } // namespace zen::rc

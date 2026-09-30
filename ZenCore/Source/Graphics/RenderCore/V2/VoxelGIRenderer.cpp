@@ -14,18 +14,24 @@ VoxelGIRenderer::VoxelGIRenderer(RenderDevice* device, VoxelizerBase* voxelizer)
     LoadSettings();
 }
 
-bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
+bool ValidateVoxelGISettings(const VoxelGISettings& settings)
 {
-    const bool valid = std::isfinite(settings.indirectIntensity) &&
-        settings.indirectIntensity >= 0 && settings.indirectIntensity <= 10 &&
-        std::isfinite(settings.coneAngleDegrees) && settings.coneAngleDegrees >= 10 &&
-        settings.coneAngleDegrees <= 90 && std::isfinite(settings.stepScale) &&
-        settings.stepScale >= 0.25f && settings.stepScale <= 2 &&
-        std::isfinite(settings.normalBiasVoxels) && settings.normalBiasVoxels >= 0.5f &&
-        settings.normalBiasVoxels <= 4 && std::isfinite(settings.maxDistanceGridLengths) &&
-        settings.maxDistanceGridLengths > 0 && settings.maxDistanceGridLengths <= 2 &&
+    return std::isfinite(settings.indirectIntensity) && settings.indirectIntensity >= 0 &&
+        settings.indirectIntensity <= 10 && std::isfinite(settings.coneAngleDegrees) &&
+        settings.coneAngleDegrees >= 10 && settings.coneAngleDegrees <= 90 &&
+        std::isfinite(settings.stepScale) && settings.stepScale >= 0.25f &&
+        settings.stepScale <= 2 && std::isfinite(settings.normalBiasVoxels) &&
+        settings.normalBiasVoxels >= 0.5f && settings.normalBiasVoxels <= 4 &&
+        std::isfinite(settings.maxDistanceGridLengths) && settings.maxDistanceGridLengths > 0 &&
+        settings.maxDistanceGridLengths <= 2 &&
         (settings.coneCount == 4 || settings.coneCount == 6) && settings.maxSteps >= 8 &&
         settings.maxSteps <= 512;
+}
+
+bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
+{
+    const bool valid = ValidateVoxelGISettings(settings);
+
     if (valid)
     {
         if (settings.coneCount != m_settings.coneCount ||
@@ -42,10 +48,10 @@ bool VoxelGIRenderer::SetSettings(const VoxelGISettings& settings)
     return valid;
 }
 
-void VoxelGIRenderer::LoadSettings()
+bool LoadVoxelGISettings(const platform::ConfigLoader& config, VoxelGISettings& output)
 {
-    const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
     VoxelGISettings settings;
+
     bool valid = config.ReadNumber("voxel_gi_indirect_intensity", settings.indirectIntensity);
     valid &= config.ReadNumber("voxel_gi_cone_angle_degrees", settings.coneAngleDegrees);
     valid &= config.ReadNumber("voxel_gi_step_scale", settings.stepScale);
@@ -55,7 +61,20 @@ void VoxelGIRenderer::LoadSettings()
     valid &= config.ReadNumber("voxel_gi_cone_count", settings.coneCount);
     valid &= config.ReadNumber("voxel_gi_max_steps", settings.maxSteps);
     valid &= config.ReadBool("voxel_gi_shadow_enabled", settings.shadows);
-    if (!valid || !SetSettings(settings))
+
+    valid = valid && ValidateVoxelGISettings(settings);
+
+    if (valid)
+    {
+        output = settings;
+    }
+
+    return valid;
+}
+
+void VoxelGIRenderer::LoadSettings()
+{
+    if (!LoadVoxelGISettings(platform::ConfigLoader::GetInstance(), m_settings))
     {
         LOGW("Invalid voxel_gi settings; using defaults");
     }

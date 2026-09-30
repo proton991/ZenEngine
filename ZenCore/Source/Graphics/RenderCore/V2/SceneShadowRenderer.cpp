@@ -22,6 +22,21 @@ SceneShadowRenderer::SceneShadowRenderer(RenderDevice* device) : m_device(device
     }
 }
 
+bool SceneShadowRenderer::SetResolution(uint32_t resolution)
+{
+    const bool valid =
+        m_device->CanReconfigureResources() && resolution >= 128 && resolution <= 2048;
+
+    if (valid && resolution != m_resolution)
+    {
+        Destroy();
+
+        m_resolution = resolution;
+    }
+
+    return valid;
+}
+
 void SceneShadowRenderer::PrepareLight(const GPULight& light,
                                        uint32_t index,
                                        const sg::AABB& bounds)
@@ -37,8 +52,8 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light,
     const uint32_t firstFace = static_cast<uint32_t>(m_faces.size());
     const uint32_t faceCount = type == SceneLightType::ePoint ? 6 : 1;
     const float halfAngle    = type == SceneLightType::eSpot ?
-        std::max(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f) :
-        glm::radians(45.0f);
+           std::max(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f) :
+           glm::radians(45.0f);
     const float depthRange   = type == SceneLightType::eDirectional ? radius * 2.0f : farPlane;
     const float texelWidth   = 2.0f *
         (type == SceneLightType::eDirectional ? radius : std::tan(halfAngle)) /
@@ -52,11 +67,11 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light,
         const Vec3 forward = type == SceneLightType::ePoint ? cubeDirections[face] : direction;
         const Vec3 up      = std::abs(forward.y) < 0.99f ? Vec3(0, 1, 0) : Vec3(0, 0, 1);
         const Vec3 eye     = type == SceneLightType::eDirectional ?
-            bounds.GetCenter() - direction * (radius + nearPlane) :
-            position;
+                bounds.GetCenter() - direction * (radius + nearPlane) :
+                position;
         Mat4 projection    = type == SceneLightType::eDirectional ?
-            glm::ortho(-radius, radius, -radius, radius, nearPlane, nearPlane + depthRange) :
-            glm::perspective(2.0f * halfAngle, 1.0f, nearPlane, farPlane);
+               glm::ortho(-radius, radius, -radius, radius, nearPlane, nearPlane + depthRange) :
+               glm::perspective(2.0f * halfAngle, 1.0f, nearPlane, farPlane);
         projection[1][1] *= -1.0f;
         FaceData data;
         data.viewProjection = projection * glm::lookAt(eye, eye + forward, up);

@@ -6,6 +6,23 @@
 
 namespace zen::rc
 {
+bool ValidateDynamicVoxelGISettings(const DynamicVoxelGISettings& settings)
+{
+    return (settings.method == VoxelGIMethod::eAuto || settings.method == VoxelGIMethod::eCone ||
+            settings.method == VoxelGIMethod::eDynamicVoxel) &&
+        (settings.backend == VoxelGIQueryBackend::eAuto ||
+         settings.backend == VoxelGIQueryBackend::eVoxelDDA ||
+         settings.backend == VoxelGIQueryBackend::eHardwareRT) &&
+        (settings.resolution == 64 || settings.resolution == 128 || settings.resolution == 256) &&
+        (settings.raysPerFace == 32 || settings.raysPerFace == 64 || settings.raysPerFace == 128) &&
+        (settings.neighborRadius == 1 || settings.neighborRadius == 2) &&
+        static_cast<uint32_t>(settings.temporal) <= 2 && std::isfinite(settings.temporalAlpha) &&
+        settings.temporalAlpha > 0 && settings.temporalAlpha <= 1 &&
+        std::isfinite(settings.historyGapSeconds) && settings.historyGapSeconds > 0 &&
+        std::isfinite(settings.temporalReferenceHz) && settings.temporalReferenceHz > 0 &&
+        settings.cacheBatchSize > 0 && settings.cacheBatchSize <= 4096;
+}
+
 bool LoadDynamicVoxelGISettings(const platform::ConfigLoader& config,
                                 DynamicVoxelGISettings& output)
 {
@@ -58,12 +75,13 @@ bool LoadDynamicVoxelGISettings(const platform::ConfigLoader& config,
     valid = valid && config.ReadNumber("voxel_resolution", settings.resolution) &&
         config.ReadNumber("dynamic_voxel_gi_rays_per_face", settings.raysPerFace) &&
         config.ReadNumber("dynamic_voxel_gi_neighbor_radius", settings.neighborRadius) &&
-        config.ReadNumber("dynamic_voxel_gi_memory_budget_mb", budgetMiB);
+        config.ReadNumber("dynamic_voxel_gi_memory_budget_mb", budgetMiB) &&
+        config.ReadNumber("dynamic_voxel_gi_temporal_alpha", settings.temporalAlpha) &&
+        config.ReadNumber("dynamic_voxel_gi_history_gap_seconds", settings.historyGapSeconds) &&
+        config.ReadNumber("dynamic_voxel_gi_temporal_reference_hz", settings.temporalReferenceHz) &&
+        config.ReadNumber("dynamic_voxel_gi_cache_batch_size", settings.cacheBatchSize);
 
-    valid = valid &&
-        (settings.resolution == 64 || settings.resolution == 128 || settings.resolution == 256) &&
-        (settings.raysPerFace == 32 || settings.raysPerFace == 64 || settings.raysPerFace == 128) &&
-        (settings.neighborRadius == 1 || settings.neighborRadius == 2) &&
+    valid = valid && ValidateDynamicVoxelGISettings(settings) &&
         budgetMiB <= std::numeric_limits<uint64_t>::max() / (1024 * 1024) &&
         (!config.HasKey("dynamic_voxel_gi_memory_budget_mb") || budgetMiB > 0);
 

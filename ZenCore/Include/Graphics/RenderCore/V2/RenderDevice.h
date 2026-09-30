@@ -104,6 +104,19 @@ public:
         return m_asyncComputeStatus;
     }
 
+    AsyncComputeMode GetAsyncComputeMode() const
+    {
+        return m_asyncComputeMode;
+    }
+
+    // Render/main thread only, between frame recordings.
+    bool SetAsyncComputeMode(AsyncComputeMode mode);
+
+    bool CanReconfigureResources() const;
+
+    // Drain submissions and release the previous frame graph's borrowed resources.
+    bool PrepareForResourceReconfiguration();
+
     RDGAsyncComputeEligibility ResolveAsyncComputeEligibility(const RenderGraph& graph,
                                                               const RDGPassNode& node) const;
 
@@ -442,7 +455,7 @@ private:
     const RHIAPIType m_APIType;
     const uint32_t m_numFrames;
     const RHIExecutionMode m_executionMode;
-    const AsyncComputeMode m_asyncComputeMode;
+    AsyncComputeMode m_asyncComputeMode;
     RHIQueueCapabilities m_queueCapabilities;
     AsyncComputeStatus m_asyncComputeStatus{AsyncComputeStatus::eDisabled};
     RHICommandListExecutor* m_pRHIExecutor{nullptr};

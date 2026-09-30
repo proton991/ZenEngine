@@ -8,6 +8,121 @@ The source PDF is `E:\Dev\DynamicVoxel‐Based-Global-Illumination.pdf`. Page nu
 
 This plan extends, rather than rewrites, the historical [VoxelGIImplementationPlan.md](VoxelGIImplementationPlan.md) and [VoxelGIVerification.md](VoxelGIVerification.md). Their successful tests describe the existing cone-tracing implementation, not the new method.
 
+## Runtime settings API (2026-09-30)
+
+`RendererServer::GetVoxelGISettings()` returns the active requested settings, including direct
+cone/filter/lighting setter edits. `ApplyVoxelGISettings()` accepts a `VoxelGIRuntimeSettings`
+snapshot on the main/render thread between frame recordings. There is no demo UI, reload
+hotkey, or automatic configuration watching. `LoadVoxelGIRuntimeSettings(config, output)` parses
+an application's fresh `ConfigLoader` transactionally; failed parsing leaves output untouched.
+
+```cpp
+zen::rc::VoxelGIRuntimeSettings settings = server->GetVoxelGISettings();
+
+settings.dynamic.resolution = 128;
+settings.dynamic.raysPerFace = 128;
+settings.dynamic.compactCache = true;
+settings.dynamic.method = zen::rc::VoxelGIMethod::eDynamicVoxel;
+settings.dynamic.memoryBudgetBytes = 6144ull * 1024 * 1024; // Example cap, not a universal preset.
+
+const bool accepted = server->ApplyVoxelGISettings(settings);
+```
+
+Resolution, voxelizer, reflectance policy/budget, query backend, ray count, cache format,
+neighborhood radius and method memory budget are now runtime settings. Structural edits drain
+submitted work, reset the previous frame graph, retire the old GI/class/voxel resources, and
+create replacement owners before lazy allocation on the next GI frame. This deliberate stall
+avoids charging old and new cache generations against the cap simultaneously. Cached visibility
+and filter histories rebuild; reacquire pointers obtained through `RequestVoxelizer()`,
+`RequestVoxelGI()` and `RequestDynamicVoxelGI()` after a structural edit. Scene/camera/materials
+and explicit voxel bounds survive. Independent diagnostic graphs must release their imported
+GI resources before reconfiguration; callers must not retain old resource references across it.
+
+Cone parameters and dynamic filtering/lighting edits retain resource allocations. Method
+switching retains compatible caches. Shadow-map resolution replaces only shadow maps.
+`RenderDevice::SetAsyncComputeMode()` changes queue policy after draining work, subject to the
+existing device's queue capabilities. It does not create queues or add device features.
+
+Invalid enum/range/nonfinite input, or application during frame construction, is rejected.
+Acceptance means the request was applied, not that the hardware/budget supports the requested
+method: inspect `GetVoxelGISelection()` after rendering. `auto` still selects cone; hardware RT
+still falls back; over-budget GI falls back to cone/PBR. Native allocation-failure recovery and
+256-cubed directional quality remain outside the existing acceptance guarantees.
+
+The following previously fixed values also have runtime setters and config keys:
+
+| Config key | Default | Runtime API / constraint |
+| --- | --- | --- |
+| `dynamic_voxel_gi_temporal_alpha` | `0.03` | `SetTemporalParameters`; finite, `(0, 1]` |
+| `dynamic_voxel_gi_history_gap_seconds` | `0.3` | Same API; finite, positive |
+| `dynamic_voxel_gi_temporal_reference_hz` | `60` | Same API; finite, positive |
+| `dynamic_voxel_gi_cache_batch_size` | `4096` | `SetCacheBatchSize`; 1..4096 receivers per frame |
+
+Temporal parameter changes reset histories without discarding visibility intersections.
+The bounded batch size changes readiness latency, not the completed estimator. These settings
+are also fields of `settings.dynamic`. The M7/M8 startup-only statements below and in historical
+verification reports describe those earlier milestones; this API supersedes that limitation.
+
+Validation: Debug builds of `scene_renderer_demo`, `ConfigLoaderTest`, `RenderCoreTest` and
+`DynamicVoxelGIIntegrationTest` passed. All 522 RenderCore tests and 21 configuration tests
+passed; 32 targeted native Vulkan tests passed across inline/threaded recording and async
+off/auto. These include in-flight volume replacement, cache/ray/radius/reflectance changes,
+retained method-switch caches, reduced-budget and unavailable-backend fallback, and filter
+history reset. After guarding elapsed alpha=1 at zero elapsed time, all 12 affected native
+temporal/filter tests passed again. Native runs reported no validation errors or memory leaks.
+
+### Full-suite validation and RTSS presentation failure
+
+The subsequent full Debug run on 2026-09-30 covered all nine CTest executables, the standalone
+`DynamicVoxelGIIntegrationTest` target, the thread-pool smoke executable, and
+the Python tests. Results were:
+
+| Test group | Result |
+| --- | --- |
+| Eight unit-test executables | 673 passed; seven explicitly disabled RenderCore benchmarks were not enabled |
+| Python tests in the existing GI virtual environment | 45 passed |
+| Thread-pool smoke test | Passed |
+| Dynamic voxel GI integration | 160 passed; four planar irradiance tolerance failures reproduced in isolation |
+| Vulkan integration with RTSS hooking excluded | 285 passed; six capability skips; zero failures |
+
+The original Vulkan run and a full-suite rerun failed
+`TimelineAndFence/VulkanPresentationSubmissionTest.RejectedCopyAfterSuccessfulFramesRetainsAcquisition/0`
+with `VUID-vkCreateCommandPool-queueFamilyIndex-01937`: a command pool was created with
+`VK_QUEUE_FAMILY_IGNORED`, followed by access violation `0xc0000005`. Both presentation variants
+passed ten isolated repetitions, so isolation alone did not establish a clean result.
+
+A diagnostic executable linked from the same engine/test objects captured the same error
+during the adjacent `PreparedCopyIgnoresEarlierSubmissionOnReusedContext/0` test. The stack
+passed through `VulkanViewport::Present`, `VulkanSwapchain::Present`, and the test's forwarding
+`WSIDriver::Present`, then entered the injected RivaTuner Statistics Server
+`RTSSHooks64.dll` before Vulkan loader/validation/driver code. The invalid command-pool call
+originated inside the overlay's presentation hook; the engine's command-pool creation path
+was not on that stack.
+
+An identical copy of `VulkanRHIIntegrationTest.exe`, verified by SHA-256, passed the complete
+Vulkan suite when launched under the name `7zFM.exe` in an isolated build directory. That name
+uses an existing RTSS application exclusion: the installed `ProfileTemplates/7zFM.exe.cfg`
+sets `[Hooking] EnableHooking=0`, and the RTSS SDK reported `AppDetectionLevel=0`, versus `1`
+for the normal test executable. Vulkan validation remained enabled. No engine or test-source
+changes were needed for that successful run, and the comparison left RTSS settings unchanged.
+This attributes the observed presentation failure to external overlay interference in the
+test environment; the precise internal RTSS state error was not determined.
+
+For native Vulkan test runs, exclude the test executable from RTSS hooking using its
+application profile (Application detection level: None), or run with RTSS closed. Merely
+setting `DISABLE_RTSS_LAYER=1` did not prevent hook injection or eliminate the failure on this
+machine. DLL presence alone is also insufficient to check exclusion: its bootstrap can load
+`RTSSHooks64.dll` even when application hooking is disabled. Confirm with the complete suite.
+The original executable remains subject to RTSS interference until its environment is changed.
+
+Local diagnostic artifacts are under
+`build/runtime-gi-full-suite-20260930/presentation-diagnosis/`: `diagnostic-full.log`,
+`rtss-excluded-full.log`, `rtss-excluded-full.xml`, and `identical-binary-hashes.txt`.
+These generated files are not committed. The four
+`TranslatedPlanarReceiversKeepConstantIrradiance` failures are separate: measured irradiance
+`3.13943386` differs from expected `3.14159274` by `0.00215888`, exceeding the unchanged
+`0.002` tolerance. The RTSS exclusion does not establish that those GI failures are resolved.
+
 ## 1. Target behavior and scope
 
 Mode 3 should produce one-bounce indirect diffuse lighting with color bleeding and indirect shadows, supporting static and moving geometry, the existing multiple analytic lights, environment lighting, and emissive materials. It should preserve mesh-based direct shadows and light markers. Both geometry and compute voxelization must remain usable.

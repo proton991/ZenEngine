@@ -25,6 +25,15 @@ class SceneShadowRenderer
 {
 public:
     explicit SceneShadowRenderer(RenderDevice* device);
+
+    // Call between frames; old maps retire through RenderDevice.
+    bool SetResolution(uint32_t resolution);
+
+    uint32_t GetResolution() const
+    {
+        return m_resolution;
+    }
+
     bool Prepare(const RenderScene& scene, bool enabled, bool includeInactiveLights = false);
     void BuildRenderGraph(const RenderScene& scene, uint64_t geometryRevision);
     void BindLightingInputs(RDGPassDescBase& pass) const;

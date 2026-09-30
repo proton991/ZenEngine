@@ -2,6 +2,7 @@
 #include "Graphics/RenderCore/V2/RenderCoreDefs.h"
 #include "Graphics/RenderCore/V2/DynamicVoxelGIPlanning.h"
 #include "Graphics/RenderCore/V2/GIVisibilityProvider.h"
+#include "Graphics/RenderCore/V2/VoxelGISettings.h"
 
 namespace zen
 {
@@ -92,8 +93,16 @@ public:
         return m_giSelection;
     }
 
-    // Select between retained methods between frame recordings; resolution is fixed at startup.
+    // Select between retained methods between frame recordings.
     bool SetVoxelGIMethod(VoxelGIMethod method);
+
+    VoxelGIRuntimeSettings GetVoxelGISettings() const;
+
+    // Main/render thread between frames. Invalid inputs leave the current settings intact.
+    // Structural changes synchronously retire the old resources, then rebuild lazily.
+    // Success accepts settings; GetVoxelGISelection after rendering reports actual fallback.
+    // Pointers returned by RequestVoxelizer/RequestVoxelGI/RequestDynamicVoxelGI may change.
+    bool ApplyVoxelGISettings(const VoxelGIRuntimeSettings& settings);
 
     DynamicVoxelGIRenderer* RequestDynamicVoxelGI() const
     {
@@ -113,6 +122,10 @@ public:
     }
 
 private:
+    friend struct VoxelGIRuntimeTestAccess;
+
+    void DestroyVoxelGIResources();
+
     VoxelizerBase* CreateVoxelizer(RHIViewport* viewport, uint32_t classMask);
 
     bool BuildClassVoxelization();
@@ -136,7 +149,7 @@ private:
     RenderOption m_renderOption{RenderOption::eVoxelize};
     RenderOption m_frameRenderOption{RenderOption::eVoxelize};
     VoxelGISelection m_giSelection;
-    DynamicVoxelGISettings m_dynamicSettings;
+    VoxelGIRuntimeSettings m_giSettings;
     RHIBuffer* m_giDiagnosticsReadback{nullptr};
     bool m_recordedGIDiagnostics{false};
 };
