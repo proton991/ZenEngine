@@ -21,7 +21,7 @@ public:
 
     void SetTexelFormat(DataFormat format) override;
 
-    uint32_t GetOffset() const
+    uint64_t GetOffset() const
     {
         return m_memAlloc.info.offset;
     }

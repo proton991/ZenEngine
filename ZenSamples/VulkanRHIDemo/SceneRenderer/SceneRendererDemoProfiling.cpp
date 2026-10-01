@@ -284,6 +284,14 @@ struct SceneRendererProfiling::State
 
         double cpuUs{0};
 
+        uint64_t rhiStartUs{0};
+
+        uint64_t rhiCPUUs{0};
+
+        RHIExecutionCounters counterStart;
+
+        RHIExecutionCounters counters;
+
         bool succeeded{false};
 
         uint32_t width{0}, height{0}, requestedMode{0}, resolvedMode{0};
@@ -508,7 +516,7 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
                                                    ProfileFrameSummary& summary) const
 {
     output
-        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms\n";
+        << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures\n";
 
     for (const State::Frame& frame : frames)
     {
@@ -535,7 +543,12 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
         }
 
         output << ',' << frame.gpuIntervals << ',' << frame.gpuExcludedIntervals << ','
-               << frame.startUs / 1000 << ',' << frame.endUs / 1000;
+               << frame.startUs / 1000 << ',' << frame.endUs / 1000 << ','
+               << frame.rhiCPUUs / 1000.0 << ',' << frame.counters.draws << ','
+               << frame.counters.dispatches << ',' << frame.counters.submissions << ','
+               << frame.counters.descriptorHits << ',' << frame.counters.descriptorMisses << ','
+               << frame.counters.descriptorInserts << ',' << frame.counters.descriptorRetirements
+               << ',' << frame.counters.bindlessCaptures;
 
         output << '\n';
 
@@ -898,6 +911,12 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         state.current = {};
 
+        const RHIThreadMetrics metrics = device.GetRHIThreadMetrics();
+
+        state.current.rhiStartUs = metrics.executionCPUUs;
+
+        state.current.counterStart = metrics.native;
+
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
         if (state.frames.empty())
@@ -953,6 +972,31 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device,
         frame.endUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() -
                                                                 state.frameOrigin)
                           .count();
+
+        const RHIThreadMetrics metrics = device.GetRHIThreadMetrics();
+
+        frame.rhiCPUUs = metrics.executionCPUUs - frame.rhiStartUs;
+
+        frame.counters.draws = metrics.native.draws - frame.counterStart.draws;
+
+        frame.counters.dispatches = metrics.native.dispatches - frame.counterStart.dispatches;
+
+        frame.counters.submissions = metrics.native.submissions - frame.counterStart.submissions;
+
+        frame.counters.descriptorHits =
+            metrics.native.descriptorHits - frame.counterStart.descriptorHits;
+
+        frame.counters.descriptorMisses =
+            metrics.native.descriptorMisses - frame.counterStart.descriptorMisses;
+
+        frame.counters.descriptorInserts =
+            metrics.native.descriptorInserts - frame.counterStart.descriptorInserts;
+
+        frame.counters.descriptorRetirements =
+            metrics.native.descriptorRetirements - frame.counterStart.descriptorRetirements;
+
+        frame.counters.bindlessCaptures =
+            metrics.native.bindlessCaptures - frame.counterStart.bindlessCaptures;
 
         frame.succeeded = succeeded && !device.AreSubmissionsBlocked();
 

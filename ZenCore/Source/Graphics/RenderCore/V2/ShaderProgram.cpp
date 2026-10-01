@@ -55,7 +55,8 @@ bool ShaderProgram::Init()
     return Init({});
 }
 
-bool ShaderProgram::Init(const HashMap<uint32_t, int>& specializationConstants)
+bool ShaderProgram::Init(
+    const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants)
 {
     bool result{};
 
@@ -183,7 +184,7 @@ void ShaderProgramManager::Destroy()
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 {
     const glm::uvec3 volumeGroupSize = ResolveVoxelVolumeWorkgroupSize(pRenderDevice->GetGPUInfo());
-    const HashMap<uint32_t, int> volumeConstants{
+    const HashMap<uint32_t, RHIShaderSpecializationValue> volumeConstants{
         {ZEN_VOXEL_VOLUME_GROUP_X_ID, static_cast<int>(volumeGroupSize.x)},
         {ZEN_VOXEL_VOLUME_GROUP_Y_ID, static_cast<int>(volumeGroupSize.y)},
         {ZEN_VOXEL_VOLUME_GROUP_Z_ID, static_cast<int>(volumeGroupSize.z)}};

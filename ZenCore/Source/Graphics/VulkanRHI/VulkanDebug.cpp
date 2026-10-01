@@ -1,3 +1,4 @@
+#include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"

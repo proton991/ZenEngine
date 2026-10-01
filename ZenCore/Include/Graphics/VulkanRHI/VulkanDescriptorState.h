@@ -13,8 +13,7 @@ class VulkanDescriptorSetState
 public:
     void SetPipeline(VulkanPipeline* pPipeline);
 
-    void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             uint64_t recordedEpoch = 0);
+    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
 
     void FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
                                       HeapVector<VkDescriptorSet>& outDescriptorSets,
@@ -102,12 +101,11 @@ private:
 
     HeapVector<RHIShaderResourceBinding> m_updateSrbScratch;
 
-    struct DynamicOffsetEntry
-    {
-        uint32_t bindingIdx{0};
-        uint32_t offset{0};
-    };
-
-    HeapVector<DynamicOffsetEntry> m_dynamicOffsetScratch;
+    FVulkanCommandListContext* m_lastContext{nullptr};
+    uint64_t m_lastWorkloadGeneration{0};
+    uint64_t m_lastCacheRevision{0};
+    HeapVector<VkDescriptorSet> m_resolvedSets;
+    HeapVector<uint32_t> m_resolvedOffsets;
+    uint32_t m_resolvedFirstSet{0};
 };
 } // namespace zen

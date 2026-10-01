@@ -1,7 +1,3 @@
-if (ZEN_BUILD_LEGACY)
-    add_executable(ZenCoreTest ZenCoreTest/main.cpp)
-    target_link_libraries(ZenCoreTest ZenCore)
-endif ()
 if (BUILD_TESTING)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
 add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
@@ -40,7 +36,7 @@ foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag
         descriptor_storage.comp descriptor_array.comp descriptor_bindings.comp
         descriptor_uniform.comp descriptor_uniform_large.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
-        binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
+        binding_sampler.comp binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
         recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp)
     set(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/CommonTest/Shaders/${SHADER}")
     set(OUTPUT "${RDG_REFLECTION_TEST_PATH}${SHADER}.spv")
@@ -138,56 +134,6 @@ add_executable(GLTFCorpusImport CommonTest/GLTFCorpusImport.cpp)
 target_link_libraries(GLTFCorpusImport PRIVATE ZenCore)
 endif ()
 
-# Historical demos still use the retired RHI interfaces.
-if (ZEN_BUILD_LEGACY)
-add_executable(hello_triangle
-    VulkanRHIDemo/HelloTriangle/HelloTriangle.cpp
-    VulkanRHIDemo/HelloTriangle/HelloTriangle.h
-    VulkanRHIDemo/Application.h
-    VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(hello_triangle ZenCore)
-
-add_executable(gears
-        VulkanRHIDemo/Gears/Gears.cpp
-        VulkanRHIDemo/Gears/Gears.h
-        VulkanRHIDemo/Application.h
-        VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(gears ZenCore)
-
-add_executable(push_constants
-    VulkanRHIDemo/PushConstants/PushConstants.cpp
-    VulkanRHIDemo/PushConstants/PushConstants.h
-    VulkanRHIDemo/Application.h
-    VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(push_constants ZenCore)
-
-add_executable(specialization_constants
-    VulkanRHIDemo/SpecializationConstants/SpecializationConstants.cpp
-    VulkanRHIDemo/SpecializationConstants/SpecializationConstants.h
-    VulkanRHIDemo/Application.h
-    VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(specialization_constants ZenCore)
-
-add_executable(offscreen
-        VulkanRHIDemo/Offscreen/Offscreen.cpp
-        VulkanRHIDemo/Offscreen/Offscreen.h
-        VulkanRHIDemo/Application.h
-        VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(offscreen ZenCore)
-
-add_executable(shadowmapping
-    VulkanRHIDemo/ShadowMapping/ShadowMapping.cpp
-    VulkanRHIDemo/ShadowMapping/ShadowMapping.h
-    VulkanRHIDemo/Application.h
-    VulkanRHIDemo/Application.cpp
-)
-target_link_libraries(shadowmapping ZenCore)
-endif ()
 
 add_executable(scene_renderer_demo
         VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
@@ -211,31 +157,6 @@ endif ()
 
 
 # Applications
-if (ZEN_BUILD_LEGACY)
-add_executable(HelloTriangle
-    Applications/Application.h
-    Applications/HelloTriangle/HelloTriangle.cpp
-    Applications/HelloTriangle/HelloTriangle.h
-    Applications/HelloTriangle/Entry.cpp
-)
-add_executable(GLTFViewer
-    Applications/Application.h
-    Applications/GLTFViewer/GLTFViewer.cpp
-    Applications/GLTFViewer/GLTFViewer.h
-    Applications/GLTFViewer/Entry.cpp
-)
-
-add_executable(SceneGraphDemo
-    Applications/Application.h
-    Applications/SceneGraphDemo/SceneGraphDemo.cpp
-    Applications/SceneGraphDemo/SceneGraphDemo.h
-    Applications/SceneGraphDemo/Entry.cpp
-)
-
-target_link_libraries(HelloTriangle ZenCore)
-target_link_libraries(GLTFViewer ZenCore)
-target_link_libraries(SceneGraphDemo ZenCore)
-endif ()
 
 if (BUILD_TESTING)
     foreach(TEST_TARGET CommonTest SmartPtrTest FlatHashMapTest LRUCacheTest

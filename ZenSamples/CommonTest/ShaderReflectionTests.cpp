@@ -263,7 +263,7 @@ void ExpectAccess(const RHIShaderGroupInfo& info, NameID name, bool readable, bo
 
 TEST(ShaderReflectionTests, SharedSpecializationIdsMergeStagesAndKeepNewConstants)
 {
-    auto spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
+    RefCountPtr<RHIShaderGroupSPIRV> spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
     spirv->SetStageSPIRV(RHIShaderStage::eVertex, LoadReflectionFixture("pipeline.vert.spv"));
     spirv->SetStageSPIRV(RHIShaderStage::eFragment, LoadReflectionFixture("pipeline.frag.spv"));
     RHIShaderGroupInfo info{};
@@ -274,17 +274,17 @@ TEST(ShaderReflectionTests, SharedSpecializationIdsMergeStagesAndKeepNewConstant
                       &RHIShaderSpecializationConstant::constantId);
     for (uint32_t id = 0; id < 3; ++id)
     {
-        const auto& constant = info.specializationConstants[id];
+        const RHIShaderSpecializationConstant& constant = info.specializationConstants[id];
         EXPECT_EQ(constant.constantId, id);
         EXPECT_TRUE(constant.stages.HasFlag(RHIShaderStageFlagBits::eFragment));
         EXPECT_EQ(constant.stages.HasFlag(RHIShaderStageFlagBits::eVertex), id < 2);
     }
     EXPECT_EQ(info.specializationConstants[0].type, RHIShaderSpecializationConstantType::eBool);
-    EXPECT_TRUE(info.specializationConstants[0].boolValue);
+    EXPECT_TRUE(info.specializationConstants[0].bits);
     EXPECT_EQ(info.specializationConstants[1].type, RHIShaderSpecializationConstantType::eInt);
-    EXPECT_EQ(info.specializationConstants[1].intValue, static_cast<uint32_t>(-7));
+    EXPECT_EQ(info.specializationConstants[1].bits, static_cast<uint32_t>(-7));
     EXPECT_EQ(info.specializationConstants[2].type, RHIShaderSpecializationConstantType::eFloat);
-    EXPECT_FLOAT_EQ(info.specializationConstants[2].floatValue, 1.25f);
+    EXPECT_FLOAT_EQ(std::bit_cast<float>(info.specializationConstants[2].bits), 1.25f);
 }
 
 TEST(ShaderReflectionTests, StorageQualifiersAndMemberAccessAreReflectedFromSPIRV)
@@ -505,7 +505,7 @@ TEST(ShaderReflectionTests, VoxelVolumeWorkgroupsExposeSpecializationAndSafeDefa
             EXPECT_FALSE(seen[constant.constantId]);
             seen[constant.constantId] = true;
             EXPECT_EQ(constant.type, RHIShaderSpecializationConstantType::eInt);
-            EXPECT_EQ(constant.intValue, ZEN_VOXEL_VOLUME_GROUP_SIZE);
+            EXPECT_EQ(constant.bits, ZEN_VOXEL_VOLUME_GROUP_SIZE);
         }
         EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_X_ID]);
         EXPECT_TRUE(seen[ZEN_VOXEL_VOLUME_GROUP_Y_ID]);

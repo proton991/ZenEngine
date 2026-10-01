@@ -188,7 +188,6 @@ protected:
         barrier.subresourceRange = texture->GetVkSubresourceRange();
         vkCmdPipelineBarrier(Commands(), srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
                              &barrier);
-        session->rhi.UpdateImageLayout(texture->GetVkImage(), after);
     }
 
     void Initialize(VulkanTexture* texture, bool green = false)
@@ -338,6 +337,62 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, UnflushedRetirementReleasesViewA
     session->rhi.GetBindlessDescriptorPoolManager()->Flush();
     EXPECT_TRUE(session->rhi.UnregisterBindlessResource(next));
     EXPECT_EQ(replacement->GetRefCount(), 1u);
+}
+
+TEST_F(VulkanBindlessRetirementIntegrationTest, ListCapturesOnceAndRollbackPreservesEarlierEpoch)
+{
+    RHISampler* sampler = Sampler();
+
+    const RHIBindlessHandle handle = session->rhi.RegisterBindlessResource(sampler, 0);
+
+    ASSERT_TRUE(handle.IsValid());
+
+    commandList = RHICommandList::Create(context);
+
+    const uint64_t before = session->rhi.GetExecutionCounters().bindlessCaptures;
+
+    for (uint32_t draw = 0; draw < 100; ++draw)
+    {
+        commandList->Draw(3, 1, 0, 0);
+    }
+
+    EXPECT_EQ(session->rhi.GetExecutionCounters().bindlessCaptures - before, 1u);
+
+    const RHICommandListBase::CommandCheckpoint checkpoint = commandList->GetCommandCheckpoint();
+
+    const uint64_t earlierEpoch = context->RHIGetCurrentBindlessEpoch();
+
+    ASSERT_TRUE(session->rhi.UnregisterBindlessResource(handle));
+
+    commandList->Dispatch(1, 1, 1);
+
+    const uint64_t laterEpoch = context->RHIGetCurrentBindlessEpoch();
+
+    EXPECT_NE(earlierEpoch, laterEpoch);
+
+    commandList->RollbackCommands(checkpoint);
+
+    EXPECT_TRUE(session->rhi.GetLifetimeTracker().HasRecordings(earlierEpoch));
+
+    EXPECT_FALSE(session->rhi.GetLifetimeTracker().HasRecordings(laterEpoch));
+
+    EXPECT_FALSE(session->rhi.ResetBindlessResources());
+
+    RHICommandListPtr detached = commandList->DetachCommands();
+
+    commandList->Reset();
+
+    session->rhi.CollectRetiredBindlessResources();
+
+    EXPECT_EQ(sampler->GetRefCount(), 2u);
+
+    detached->Reset();
+
+    session->rhi.CollectRetiredBindlessResources();
+
+    EXPECT_EQ(sampler->GetRefCount(), 1u);
+
+    EXPECT_TRUE(session->rhi.ResetBindlessResources());
 }
 
 TEST_F(VulkanBindlessRetirementIntegrationTest, AllRecordedDrawAndDispatchFormsPinUntilRollback)

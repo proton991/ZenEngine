@@ -1,4 +1,6 @@
 #pragma once
+#include <bit>
+#include <compare>
 #include "Graphics/Common/Format.h"
 #include "Graphics/Common/Color.h"
 #include "Graphics/Shared/Bindless.h"
@@ -11,15 +13,10 @@
 #include <array>
 
 #define MAX_NUM_COLOR_ATTACHMENTS 8
-#define MAX_NUM_SUBPASSES         8
 
 #define MAX_NUM_DESCRIPTOR_SETS 8
 
 #define ZEN_BUFFER_WHOLE_SIZE (~0ULL)
-
-#define ALLOCA(m_size)                (assert((m_size) != 0), alloca(m_size))
-#define ALLOCA_ARRAY(m_type, m_count) ((m_type*)ALLOCA(sizeof(m_type) * (m_count)))
-#define ALLOCA_SINGLE(m_type)         ALLOCA_ARRAY(m_type, 1)
 
 namespace zen
 {
@@ -43,6 +40,21 @@ struct RHIGPUInfo
     uint32_t apiVersion{0};
     uint32_t driverVersionRaw{0};
     bool supportGeometryShader{false};
+    bool supportIndependentBlend{false};
+    bool supportVertexPipelineStoresAndAtomics{false};
+    bool supportSamplerAnisotropy{false};
+    bool supportFillModeNonSolid{false};
+    bool supportDepthClamp{false};
+    bool supportDepthBiasClamp{false};
+    bool supportWideLines{false};
+    bool supportSampleRateShading{false};
+    bool supportAlphaToOne{false};
+    bool supportDepthBounds{false};
+    bool supportLogicOp{false};
+    bool supportMultiDrawIndirect{false};
+    bool supportDrawIndirectFirstInstance{false};
+    bool supportTessellationShader{false};
+
     bool supportFragmentStoresAndAtomics{false};
     size_t uniformBufferAlignment{0};
     size_t storageBufferAlignment{0};
@@ -98,11 +110,6 @@ template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noex
 /*******************/
 /**** Shaders ****/
 /*******************/
-enum class RHIShaderLanguage : uint32_t
-{
-    eGLSL = 0,
-    eMax  = 1
-};
 
 enum class RHIShaderStage : uint32_t
 {
@@ -126,37 +133,15 @@ enum class RHIShaderStageFlagBits : uint32_t
     eMax                   = 1 << 6
 };
 
-// enum class RHIShaderStage : uint32_t
-// {
-//     eVertex                = 0,
-//     eTesselationControl    = 1,
-//     eTesselationEvaluation = 2,
-//     eGeometry              = 3,
-//     eFragment              = 4,
-//     eCompute               = 5,
-//     eMax                   = 6
-// };
-//
-// enum class RHIShaderStageFlagBits : uint32_t
-// {
-//     eVertex                = 1 << 0,
-//     eTesselationControl    = 1 << 1,
-//     eTesselationEvaluation = 1 << 2,
-//     eGeometry              = 1 << 3,
-//     eFragment              = 1 << 4,
-//     eCompute               = 1 << 5,
-//     eMax                   = 1 << 6
-// };
-
-static std::string RHIShaderStageToString(RHIShaderStage stage)
+inline std::string RHIShaderStageToString(RHIShaderStage stage)
 {
     static const char* SHADER_STAGE_NAMES[ToUnderlying(RHIShaderStage::eMax)] = {
-        "Vertex", "Fragment", "TesselationControl", "TesselationEvaluation", "Geometry", "Compute",
+        "Vertex", "TesselationControl", "TesselationEvaluation", "Geometry", "Fragment", "Compute",
     };
     return SHADER_STAGE_NAMES[ToUnderlying(stage)];
 }
 
-static std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> stageFlags)
+inline std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> stageFlags)
 {
     std::string str;
 
@@ -185,12 +170,20 @@ static std::string RHIShaderStageFlagToString(BitField<RHIShaderStageFlagBits> s
         str += "Compute ";
     }
 
-    str.pop_back();
+    if (stageFlags.HasFlag(RHIShaderStageFlagBits::eGeometry))
+    {
+        str += "Geometry ";
+    }
+
+    if (!str.empty())
+    {
+        str.pop_back();
+    }
 
     return str;
 }
 
-static RHIShaderStageFlagBits RHIShaderStageToFlagBits(RHIShaderStage stage)
+inline RHIShaderStageFlagBits RHIShaderStageToFlagBits(RHIShaderStage stage)
 {
     return static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage));
 }
@@ -203,16 +196,37 @@ enum class RHIShaderSpecializationConstantType : uint32_t
     eMax   = 3
 };
 
-struct RHIShaderSpecializationConstant
+// Explicit scalar type plus its Vulkan-sized payload; floats retain fractional bits.
+struct RHIShaderSpecializationValue
 {
-    union
-    {
-        uint32_t intValue = 0;
-        float floatValue;
-        bool boolValue;
-    };
+    RHIShaderSpecializationValue() = default;
 
+    RHIShaderSpecializationValue(int value) :
+        bits(static_cast<uint32_t>(value)), type(RHIShaderSpecializationConstantType::eInt)
+    {}
+
+    RHIShaderSpecializationValue(uint32_t value) :
+        bits(value), type(RHIShaderSpecializationConstantType::eInt)
+    {}
+
+    RHIShaderSpecializationValue(float value) :
+        bits(std::bit_cast<uint32_t>(value)), type(RHIShaderSpecializationConstantType::eFloat)
+    {}
+
+    RHIShaderSpecializationValue(bool value) :
+        bits(value ? 1u : 0u), type(RHIShaderSpecializationConstantType::eBool)
+    {}
+
+    bool operator==(const RHIShaderSpecializationValue&) const = default;
+
+    std::strong_ordering operator<=>(const RHIShaderSpecializationValue&) const = default;
+
+    uint32_t bits{0};
     RHIShaderSpecializationConstantType type{RHIShaderSpecializationConstantType::eMax};
+};
+
+struct RHIShaderSpecializationConstant : RHIShaderSpecializationValue
+{
     uint32_t constantId{0};
     BitField<RHIShaderStageFlagBits> stages;
 };
@@ -335,7 +349,6 @@ struct RHIShaderGroupInfo
         BitField<RHIShaderStageFlagBits> stageFlags;
     };
 
-    // HashMap<RHIShaderStage, HeapVector<uint8_t>> sprivCode;
     ShaderPushConstants pushConstants{};
 
     // vertex input attribute
@@ -344,8 +357,6 @@ struct RHIShaderGroupInfo
     // vertex binding stride
     uint32_t vertexBindingStride{0};
 
-    // per set shader resources
-    // HeapVector<HeapVector<RHIShaderResourceDescriptor>> SRDs;
     RHIShaderResourceDescriptorTable SRDTable;
 
     // specialization constants
@@ -554,10 +565,6 @@ struct RHIGfxPipelineColorBlendState
         RHIBlendFactor dstAlphaBlendFactor{RHIBlendFactor::eZero};
         RHIBlendOp alphaBlendOp{RHIBlendOp::eAdd};
 
-        // bool writeR{true};
-        // bool writeG{true};
-        // bool writeB{true};
-        // bool writeA{true};
         BitField<RHIColorComponent> colorWriteMask;
     };
 
@@ -580,7 +587,7 @@ struct RHIGfxPipelineColorBlendState
     // adds multiple color attachment states
     RHIGfxPipelineColorBlendState& AddAttachments(uint32_t count)
     {
-        ASSERT(attachmentIdx + count < MAX_NUM_COLOR_ATTACHMENTS);
+        ASSERT(attachmentIdx + count <= MAX_NUM_COLOR_ATTACHMENTS);
 
         for (uint32_t i = 0; i < count; i++)
         {
@@ -607,48 +614,6 @@ struct RHIGfxPipelineColorBlendState
 
         return *this;
     }
-
-    // static RHIGfxPipelineColorBlendState CreateColorWriteDisabled(int count = 1)
-    // {
-    //     RHIGfxPipelineColorBlendState bs;
-    //     for (int i = 0; i < count; i++)
-    //     {
-    //         Attachment attachment{};
-    //         attachment.writeR = false;
-    //         attachment.writeG = false;
-    //         attachment.writeB = false;
-    //         attachment.writeA = false;
-    //         bs.attachments[].emplace_back(attachment);
-    //     }
-    //     return bs;
-    // }
-
-    // static RHIGfxPipelineColorBlendState CreateDisabled(int count = 1)
-    // {
-    //     RHIGfxPipelineColorBlendState bs;
-    //     for (int i = 0; i < count; i++)
-    //     {
-    //         bs.attachments.emplace_back();
-    //     }
-    //     return bs;
-    // }
-
-    // static RHIGfxPipelineColorBlendState CreateBlend(int count = 1)
-    // {
-    //     RHIGfxPipelineColorBlendState bs;
-    //     for (int i = 0; i < count; i++)
-    //     {
-    //         Attachment ba;
-    //         ba.enableBlend         = true;
-    //         ba.srcColorBlendFactor = RHIBlendFactor::eSrcAlpha;
-    //         ba.dstColorBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
-    //         ba.srcAlphaBlendFactor = RHIBlendFactor::eSrcAlpha;
-    //         ba.dstAlphaBlendFactor = RHIBlendFactor::eOneMinusSrcAlpha;
-    //
-    //         bs.attachments.emplace_back(ba);
-    //     }
-    //     return bs;
-    // }
 
     uint32_t attachmentIdx{0};
     BitMask<MAX_NUM_COLOR_ATTACHMENTS> attachmentsMask;
@@ -738,11 +703,12 @@ struct RHIBufferCopySource
 
 enum class RHIBufferAllocateType : uint32_t
 {
-    eNone     = 0,
-    eCPUWrite = 1,
-    eCPURead  = 2,
-    eGPU      = 3,
-    eMax      = 4
+    eNone            = 0,
+    eCPUWrite        = 1,
+    eCPUWriteGPURead = 4,
+    eCPURead         = 2,
+    eGPU             = 3,
+    eMax             = 4
 };
 
 /*****************************/
@@ -1084,130 +1050,6 @@ struct RHIRenderTarget
     RHIRenderTargetClearValue clearValue;
 };
 
-union RHIRenderPassClearValue
-{
-    Color color = {};
-
-    struct
-    {
-        float depth;
-        uint32_t stencil;
-    };
-
-    RHIRenderPassClearValue() {}
-};
-
-class RHIRenderPassLayout
-{
-public:
-    RHIRenderPassLayout() = default;
-
-    ~RHIRenderPassLayout()
-    {
-        // m_rtHandles.clear();
-        m_colorRTs.clear();
-        // m_rtSubResRanges.clear();
-    }
-
-    void AddColorRenderTarget(DataFormat format,
-                              RHITexture* pTexture,
-                              const RHITextureSubResourceRange& subResourceRange,
-                              RHIRenderTargetLoadOp loadOp,
-                              RHIRenderTargetStoreOp storeOp,
-                              SampleCount numSamples = SampleCount::e1)
-    {
-        RHIRenderTarget colorRT;
-        colorRT.format   = format;
-        colorRT.pTexture = pTexture;
-        // colorRT.subresourceRange = subResourceRange;
-
-        colorRT.numSamples = numSamples;
-        colorRT.loadOp     = loadOp;
-        colorRT.storeOp    = storeOp;
-
-        m_colorRTs.emplace_back(colorRT);
-        m_numColorRT++;
-        // m_rtHandles.push_back(handle);
-        // m_rtSubResRanges.emplace_back(subResourceRange);
-    }
-
-    void SetDepthStencilRenderTarget(DataFormat format,
-                                     RHITexture* pTexture,
-                                     RHITextureSubResourceRange subResourceRange,
-                                     RHIRenderTargetLoadOp loadOp,
-                                     RHIRenderTargetStoreOp storeOp)
-    {
-        if (!m_hasDepthStencilRT)
-        {
-            m_depthStencilRT.format   = format;
-            m_depthStencilRT.pTexture = pTexture;
-            // m_depthStencilRT.subresourceRange = subResourceRange;
-            m_depthStencilRT.loadOp  = loadOp;
-            m_depthStencilRT.storeOp = storeOp;
-            // m_depthStencilRT.usage  = RHITextureUsage::eDepthStencilAttachment;
-            m_hasDepthStencilRT = true;
-            // m_rtHandles.push_back(handle);
-            // m_rtSubResRanges.emplace_back(subResourceRange);
-        }
-    }
-
-    uint32_t GetNumColorRenderTargets() const
-    {
-        return m_numColorRT;
-    }
-
-    bool HasDepthStencilRenderTarget() const
-    {
-        return m_hasDepthStencilRT;
-    }
-
-    bool HasColorRenderTarget() const
-    {
-        return m_numColorRT > 0;
-    }
-
-    const HeapVector<RHIRenderTarget>& GetColorRenderTargets() const
-    {
-        return m_colorRTs;
-    }
-
-    const RHIRenderTarget& GetDepthStencilRenderTarget() const
-    {
-        return m_depthStencilRT;
-    }
-
-    void ClearRenderTargetInfo()
-    {
-        // m_rtHandles.clear();
-        m_colorRTs.clear();
-        m_hasDepthStencilRT = false;
-        m_numColorRT        = 0;
-    }
-
-private:
-    uint32_t m_numColorRT{0};
-    HeapVector<RHIRenderTarget> m_colorRTs;
-    RHIRenderTarget m_depthStencilRT;
-
-    // SampleCount m_numSamples{SampleCount::e1};
-    // RHIRenderTargetLoadOp m_colorRToadOp{RHIRenderTargetLoadOp::eNone};
-    // RHIRenderTargetStoreOp m_colorRTStoreOp{RHIRenderTargetStoreOp::eNone};
-    // RHIRenderTargetLoadOp m_depthStencilRTLoadOp{RHIRenderTargetLoadOp::eNone};
-    // RHIRenderTargetStoreOp m_depthStencilRTStoreOp{RHIRenderTargetStoreOp::eNone};
-    // HeapVector<TextureHandle> m_rtHandles;
-    // HeapVector<RHITextureSubResourceRange> m_rtSubResRanges;
-    bool m_hasDepthStencilRT{false};
-};
-
-struct RHIFramebufferInfo
-{
-    uint32_t numRenderTarget{0};
-    RHITexture** pRenderTargets{nullptr};
-    uint32_t width{0};
-    uint32_t height{0};
-    uint32_t depth{1};
-};
-
 enum class RHIPipelineType : uint32_t
 {
     eNone     = 0,
@@ -1471,11 +1313,11 @@ struct RHIMemoryTransition
 
 struct RHITextureTransition
 {
-    RHIAccessMode oldAccessMode;
-    RHIAccessMode newAccessMode;
+    RHIAccessMode oldAccessMode{RHIAccessMode::eNone};
+    RHIAccessMode newAccessMode{RHIAccessMode::eNone};
     RHITexture* pTexture{nullptr};
-    RHITextureUsage oldUsage;
-    RHITextureUsage newUsage;
+    RHITextureUsage oldUsage{RHITextureUsage::eNone};
+    RHITextureUsage newUsage{RHITextureUsage::eNone};
     RHITextureSubResourceRange subResourceRange;
 
     // Earlier writes may need visibility even when oldUsage describes a later reader/layout.
@@ -1498,11 +1340,11 @@ struct RHITextureTransition
 
 struct RHIBufferTransition
 {
-    RHIAccessMode oldAccessMode;
-    RHIAccessMode newAccessMode;
+    RHIAccessMode oldAccessMode{RHIAccessMode::eNone};
+    RHIAccessMode newAccessMode{RHIAccessMode::eNone};
     RHIBuffer* pBuffer{nullptr};
-    RHIBufferUsage oldUsage;
-    RHIBufferUsage newUsage;
+    RHIBufferUsage oldUsage{RHIBufferUsage::eNone};
+    RHIBufferUsage newUsage{RHIBufferUsage::eNone};
     uint64_t offset{0};
     uint64_t size{ZEN_BUFFER_WHOLE_SIZE};
     BitField<RHIAccessFlagBits> additionalSrcAccess;

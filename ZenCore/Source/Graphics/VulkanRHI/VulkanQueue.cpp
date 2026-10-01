@@ -130,40 +130,39 @@ void VulkanQueue::DiscardWorkload(VulkanWorkload* pWorkload)
         buffer->Discard();
     }
     ReleaseWorkload(pWorkload);
+
+    GVulkanRHI->GetLifetimeTracker().Collect();
 }
 
 void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
 {
-    if (pWorkload == nullptr)
+    if (pWorkload != nullptr)
     {
-        return;
+        VERIFY_EXPR(pWorkload->m_pQueue == this);
+
+        if (pWorkload->m_pFence != nullptr)
+        {
+            pWorkload->m_pFence->GetOwner()->ReleaseFence(pWorkload->m_pFence);
+            pWorkload->m_pFence = nullptr;
+        }
+
+        pWorkload->m_commandBuffers.clear();
+        GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(pWorkload->m_lifetimeIds);
+        pWorkload->m_lifetimeIds.clear();
+        pWorkload->m_submissionSerial = 0;
+        pWorkload->m_pMergedInto      = nullptr;
+        pWorkload->m_waitSemaphoreInfos.clear();
+        pWorkload->m_signalSemaphoreInfos.clear();
+
+        for (VulkanWorkload* pWorkload : pWorkload->m_mergedWorkloads)
+        {
+            ReleaseWorkload(pWorkload);
+        }
+
+        pWorkload->m_mergedWorkloads.clear();
+
+        m_workloadPool.push_back(pWorkload);
     }
-
-    VERIFY_EXPR(pWorkload->m_pQueue == this);
-
-    if (pWorkload->m_pFence != nullptr)
-    {
-        pWorkload->m_pFence->GetOwner()->ReleaseFence(pWorkload->m_pFence);
-        pWorkload->m_pFence = nullptr;
-    }
-
-    pWorkload->m_commandBuffers.clear();
-    GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(pWorkload->m_lifetimeIds);
-    pWorkload->m_lifetimeIds.clear();
-    pWorkload->m_submissionSerial = 0;
-    pWorkload->m_pMergedInto      = nullptr;
-    pWorkload->m_waitSemaphoreInfos.clear();
-    pWorkload->m_signalSemaphoreInfos.clear();
-
-    for (VulkanWorkload* pWorkload : pWorkload->m_mergedWorkloads)
-    {
-        ReleaseWorkload(pWorkload);
-    }
-
-    pWorkload->m_mergedWorkloads.clear();
-
-    GVulkanRHI->GetLifetimeTracker().Collect();
-    m_workloadPool.push_back(pWorkload);
 }
 
 void VulkanQueue::DestroyWorkload(VulkanWorkload* pWorkload)
@@ -227,9 +226,16 @@ void VulkanQueue::DiscardPendingWorkloads(bool uncertain)
         }
         else
         {
-            DiscardWorkload(workload);
+            for (FVulkanCommandBuffer* buffer : workload->m_commandBuffers)
+            {
+                buffer->Discard();
+            }
+
+            ReleaseWorkload(workload);
         }
     }
+
+    GVulkanRHI->GetLifetimeTracker().Collect();
 }
 
 RHISubmissionResult VulkanQueue::SubmitWorkloadsWithFences(uint64_t& lastSubmissionSerial)
@@ -286,6 +292,9 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithFences(uint64_t& lastSubmiss
 
         VkFence submitFence =
             pWorkload->m_pFence != nullptr ? pWorkload->m_pFence->GetVkHandle() : VK_NULL_HANDLE;
+
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().submissions);
 
         const VkResult result = vkQueueSubmit(m_handle, 1, &submitInfo, submitFence);
 
@@ -410,8 +419,8 @@ void VulkanQueue::AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
     submitInfo.waitSemaphoreCount =
         static_cast<uint32_t>(outSubmitBatch.waitSemaphores.size() - firstWaitSemaphoreIndex);
     submitInfo.pWaitSemaphores   = submitInfo.waitSemaphoreCount > 0 ?
-        outSubmitBatch.waitSemaphores.data() + firstWaitSemaphoreIndex :
-        nullptr;
+          outSubmitBatch.waitSemaphores.data() + firstWaitSemaphoreIndex :
+          nullptr;
     submitInfo.pWaitDstStageMask = submitInfo.waitSemaphoreCount > 0 ?
         outSubmitBatch.waitStageMasks.data() + firstWaitSemaphoreIndex :
         nullptr;
@@ -476,6 +485,9 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithTimelineSemaphore(
 
         TimelineSubmitBatch submitBatch;
         BuildTimelineSubmitBatch(mergeResult, submitBatch);
+
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().submissions);
 
         const VkResult result =
             vkQueueSubmit(m_handle, static_cast<uint32_t>(submitBatch.submitInfos.size()),
@@ -554,6 +566,9 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
                                                           std::chrono::steady_clock::time_point{};
     HeapVector<FVulkanCommandBufferPool*> cmdBufferPoolsToTrim;
 
+    uint64_t completedValue = 0;
+    bool timelineQueried    = false;
+
     while (!GVulkanRHI->AreSubmissionsBlocked())
     {
         if (m_workloadsPendingProcess.Empty())
@@ -583,8 +598,14 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
 
         if (m_pDevice->SupportsTimelineSemaphore())
         {
-            uint64_t completedValue = 0;
-            result                  = m_pTimelineSemaphore->GetCounterValue(completedValue);
+            result = VK_SUCCESS;
+
+            if (!timelineQueried)
+            {
+                result = m_pTimelineSemaphore->GetCounterValue(completedValue);
+
+                timelineQueried = true;
+            }
             if (result == VK_SUCCESS && completedValue < pWorkload->m_submissionSerial)
             {
                 result = remainingNS == 0 ?

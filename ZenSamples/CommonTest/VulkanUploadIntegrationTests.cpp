@@ -163,6 +163,22 @@ protected:
     static inline HeapVector<uint64_t> waitValues;
 };
 
+TEST_P(VulkanUploadIntegrationTest, TransferContextsCanBeDestroyedAndRecreated)
+{
+    for (uint32_t iteration = 0; iteration < 2; ++iteration)
+    {
+        RHICommandListPtr upload(RHICommandList::Create(executor->GetTransferCommandContext()));
+
+        upload->CopyBuffer(source, destination, {0, 0, bytes.size()});
+
+        ASSERT_EQ(SubmitCommands(*upload), RHISubmissionResult::eSuccess);
+
+        ASSERT_TRUE(executor->WaitForCompletion(
+            RHICommandContextType::eTransfer,
+            executor->GetLastSubmittedSerial(RHICommandContextType::eTransfer)));
+    }
+}
+
 TEST_P(VulkanUploadIntegrationTest, TransferFeedsGraphicsThroughSubmissionDependency)
 {
     RHICommandListPtr upload(RHICommandList::Create(executor->GetTransferCommandContext()));

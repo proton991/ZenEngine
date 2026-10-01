@@ -354,7 +354,7 @@ Separate caches address static/dynamic mixing, but do not guarantee zero leakage
 
 ## 4. Engine ownership and graph integration
 
-Use the current V2 renderer, not the older `Graphics/Val` API.
+Use the current V2 renderer; the historical wrapper API has been removed.
 
 - `RenderScene` owns instance classification, stable IDs, geometry/material/light revisions, and immutable frame snapshots.
 - Extend voxelizer input/output handling to accept static/dynamic subsets and separate output sets without duplicating coverage/material shaders. Mode 1 can visualize their union or either class.

@@ -51,8 +51,6 @@ RHIPipeline* VulkanRHI::CreatePipeline(const RHIGfxPipelineCreateInfo& createInf
 void VulkanRHI::DestroyPipeline(RHIPipeline* pPipeline)
 {
     pPipeline->ReleaseReference();
-    // vkDestroyPipeline(GetVkDevice(), pipeline->pipeline, nullptr);
-    // VersatileResource::Free(m_resourceAllocator, pipeline);
 }
 
 RHIShader* VulkanRHI::CreateShader(const RHIShaderCreateInfo& createInfo)
@@ -84,22 +82,6 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     return pShader;
 }
-
-// RHIDescriptorSet* VulkanShader::CreateDescriptorSet(uint32_t setIndex)
-// {
-//     VulkanDescriptorSet* pDescriptorSet = nullptr;
-//     const bool validSet =
-//         setIndex < GetNumDescriptorSetLayouts() && !(setIndex == 0 && HasGlobalBindlessSet());
-//     VERIFY_EXPR(validSet);
-//     if (validSet)
-//     {
-//         pDescriptorSet =
-//             VersatileResource::AllocMem<VulkanDescriptorSet>(GVulkanRHI->GetResourceAllocator());
-//         new (pDescriptorSet) VulkanDescriptorSet(this, setIndex);
-//         pDescriptorSet->Init();
-//     }
-//     return pDescriptorSet;
-// }
 
 bool VulkanShader::LoadSpirvFiles()
 {
@@ -153,21 +135,7 @@ void VulkanShader::Init()
                 continue;
             }
 
-            switch (spc.type)
-            {
-                case RHIShaderSpecializationConstantType::eBool:
-                    spc.boolValue = static_cast<bool>(m_specializationConstants.at(spc.constantId));
-                    break;
-                case RHIShaderSpecializationConstantType::eInt:
-                    spc.intValue = m_specializationConstants.at(spc.constantId);
-                    break;
-                case RHIShaderSpecializationConstantType::eFloat:
-                    spc.floatValue =
-                        static_cast<float>(m_specializationConstants.at(spc.constantId));
-                    break;
-
-                default: break;
-            }
+            spc.bits = m_specializationConstants.at(spc.constantId).bits;
         }
     }
 
@@ -188,31 +156,10 @@ void VulkanShader::Init()
             entry.offset     = i * sizeof(uint32_t);
             entry.size       = sizeof(uint32_t);
 
-            switch (specConstants[i].type)
-            {
-                case RHIShaderSpecializationConstantType::eBool:
-                {
-                    m_specializationData[i] = specConstants[i].boolValue ? VK_TRUE : VK_FALSE;
-                }
-                break;
-
-                case RHIShaderSpecializationConstantType::eInt:
-                {
-                    static_assert(sizeof(specConstants[i].intValue) == sizeof(uint32_t));
-                    memcpy(&m_specializationData[i], &specConstants[i].intValue, sizeof(uint32_t));
-                }
-                break;
-
-                case RHIShaderSpecializationConstantType::eFloat:
-                {
-                    static_assert(sizeof(specConstants[i].floatValue) == sizeof(uint32_t));
-                    memcpy(&m_specializationData[i], &specConstants[i].floatValue,
-                           sizeof(uint32_t));
-                }
-                break;
-
-                default: break;
-            }
+            m_specializationData[i] =
+                specConstants[i].type == RHIShaderSpecializationConstantType::eBool ?
+                (specConstants[i].bits != 0 ? VK_TRUE : VK_FALSE) :
+                specConstants[i].bits;
         }
     }
 
@@ -252,9 +199,6 @@ void VulkanShader::Init()
         }
     }
 
-    // Create descriptor pool key while createing descriptor set layouts
-    // VulkanDescriptorPoolKey descriptorPoolKey{};
-    // Create descriptorSetLayouts
     const size_t setCount = m_SRDTable.size();
     HeapVector<HeapVector<VkDescriptorSetLayoutBinding>> dsBindings(setCount);
     m_descriptorSetInfos.resize(setCount);
@@ -407,13 +351,31 @@ void VulkanShader::Init()
     vkCreatePipelineLayout(GVulkanRHI->GetVkDevice(), &pipelineLayoutCI, nullptr,
                            &m_pipelineLayout);
 
-    // descriptorPoolKey = descriptorPoolKey;
     m_pushConstantsStageFlags =
         ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
 
     const NameID debugName(fmt::format("{}_PipelineLayout", sgInfo.name.CStr()));
     GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
                                            reinterpret_cast<uint64_t>(m_pipelineLayout), debugName);
+    for (uint32_t set = 0; set < m_SRDTable.size(); ++set)
+    {
+        SmallVector<DynamicOffsetSlot>& slots = m_dynamicOffsetSlots[set];
+
+        for (const RHIShaderResourceDescriptor& descriptor : m_SRDTable[set])
+        {
+            if (descriptor.type == RHIShaderResourceType::eUniformBuffer)
+            {
+                slots.push_back({descriptor.binding,
+                                 descriptor.bindless ? GetDescriptorSetVariableCount(set) :
+                                                       descriptor.arraySize});
+            }
+        }
+
+        std::sort(slots.begin(), slots.end(),
+                  [](const DynamicOffsetSlot& left, const DynamicOffsetSlot& right) {
+                      return left.binding < right.binding;
+                  });
+    }
 }
 
 void VulkanShader::Destroy()
@@ -448,38 +410,36 @@ VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& cre
     {
         LOG_ERROR_AND_THROW("Graphics pipeline requires a valid rendering layout");
     }
-    if (RHIOptions::GetInstance().UseDynamicRendering())
+    // Pipeline layouts may describe formats without owning concrete textures/views.
+    const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
+    for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
     {
-        // Pipeline layouts may describe formats without owning concrete textures/views.
-        const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
-        for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
+        const RHIRenderTarget& target = layout->colorRenderTargets[i];
+        if (target.numSamples != samples || FormatIsDepthOnly(target.format) ||
+            FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format))
         {
-            const RHIRenderTarget& target = layout->colorRenderTargets[i];
-            if (target.numSamples != samples || FormatIsDepthOnly(target.format) ||
-                FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format))
-            {
-                LOG_ERROR_AND_THROW(
-                    "Pipeline color attachment format or sample count is incompatible");
-            }
-        }
-        if (layout->hasDepthStencilRT)
-        {
-            const RHIRenderTarget& target = layout->depthStencilRenderTarget;
-            if (target.numSamples != samples ||
-                !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
-                  FormatIsDepthStencil(target.format)))
-            {
-                LOG_ERROR_AND_THROW(
-                    "Pipeline depth/stencil attachment format or sample count is incompatible");
-            }
+            LOG_ERROR_AND_THROW("Pipeline color attachment format or sample count is incompatible");
         }
     }
+    if (layout->hasDepthStencilRT)
+    {
+        const RHIRenderTarget& target = layout->depthStencilRenderTarget;
+        if (target.numSamples != samples ||
+            !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
+              FormatIsDepthStencil(target.format)))
+        {
+            LOG_ERROR_AND_THROW(
+                "Pipeline depth/stencil attachment format or sample count is incompatible");
+        }
+    }
+
     VulkanPipeline* pGfxPipeline =
         VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
 
     new (pGfxPipeline) VulkanPipeline(createInfo);
 
-    pGfxPipeline->Init();
+    pGfxPipeline->InitGraphics(*createInfo.pRenderingLayout);
+    pGfxPipeline->m_bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
     return pGfxPipeline;
 }
@@ -498,16 +458,8 @@ VulkanPipeline* VulkanPipeline::CreateObject(const RHIComputePipelineCreateInfo&
 
 void VulkanPipeline::Init()
 {
-    if (m_type == RHIPipelineType::eCompute)
-    {
-        InitCompute();
-        m_bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-    }
-    else if (m_type == RHIPipelineType::eGraphics)
-    {
-        InitGraphics();
-        m_bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    }
+    InitCompute();
+    m_bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
 }
 
 void VulkanPipeline::Destroy()
@@ -517,7 +469,7 @@ void VulkanPipeline::Destroy()
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
-void VulkanPipeline::InitGraphics()
+void VulkanPipeline::InitGraphics(const RHIRenderingLayout& layout)
 {
     // Input Assembly
     VkPipelineInputAssemblyStateCreateInfo IAStateCI;
@@ -530,7 +482,7 @@ void VulkanPipeline::InitGraphics()
     InitVkStruct(VPStateCI, VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO);
     VPStateCI.scissorCount       = 1;
     VPStateCI.viewportCount      = 1;
-    const Rect2<int>& renderArea = m_pRenderingLayout->renderArea;
+    const Rect2<int>& renderArea = layout.renderArea;
     const VkViewport viewport{static_cast<float>(renderArea.minX),
                               static_cast<float>(renderArea.minY),
                               static_cast<float>(renderArea.Width()),
@@ -607,7 +559,7 @@ void VulkanPipeline::InitGraphics()
     const RHIGfxPipelineColorBlendState& colorBlendState = m_gfxStates.colorBlendState;
     HeapVector<VkPipelineColorBlendAttachmentState> vkCBAttStates;
     // Attachment indices are render-target locations; unmasked targets disable color writes.
-    vkCBAttStates.resize(m_pRenderingLayout->numColorRenderTargets);
+    vkCBAttStates.resize(layout.numColorRenderTargets);
 
     for (uint32_t i : colorBlendState.attachmentsMask)
     {
@@ -626,26 +578,6 @@ void VulkanPipeline::InitGraphics()
             ToVkBlendFactor(colorBlendState.attachments[i].dstAlphaBlendFactor);
         vkCBAttStates[i].alphaBlendOp   = ToVkBlendOp(colorBlendState.attachments[i].alphaBlendOp);
         vkCBAttStates[i].colorWriteMask = colorBlendState.attachments[i].colorWriteMask;
-
-        // vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-        //     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
-        // if (colorBlendState.attachments[i].writeR)
-        // {
-        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_R_BIT;
-        // }
-        // if (colorBlendState.attachments[i].writeG)
-        // {
-        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_G_BIT;
-        // }
-        // if (colorBlendState.attachments[i].writeB)
-        // {
-        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_B_BIT;
-        // }
-        // if (colorBlendState.attachments[i].writeA)
-        // {
-        //     vkCBAttStates[i].colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
-        // }
     }
 
     VkPipelineColorBlendStateCreateInfo CBStateCI;
@@ -690,48 +622,40 @@ void VulkanPipeline::InitGraphics()
     pipelineCI.pColorBlendState    = &CBStateCI;
     pipelineCI.pDynamicState       = &dynamicStateCI;
     pipelineCI.layout              = pShader->GetVkPipelineLayout();
-    pipelineCI.subpass             = m_subpassIdx;
+    pipelineCI.subpass             = 0;
 
     HeapVector<VkFormat> colorAttachmentFormats;
     VkPipelineRenderingCreateInfoKHR renderingCI;
 
-    if (!RHIOptions::GetInstance().UseDynamicRendering())
+    pipelineCI.renderPass = VK_NULL_HANDLE;
+    colorAttachmentFormats.reserve(layout.numColorRenderTargets);
+
+    for (uint32_t i = 0; i < layout.numColorRenderTargets; i++)
     {
-        // build render pass here
-        pipelineCI.renderPass = GVulkanRHI->GetOrCreateRenderPass(m_pRenderingLayout);
+        VkFormat colorFormat = ToVkFormat(layout.colorRenderTargets[i].format);
+        colorAttachmentFormats.emplace_back(colorFormat);
     }
-    else
+
+    InitVkStruct(renderingCI, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
+    renderingCI.colorAttachmentCount    = layout.numColorRenderTargets;
+    renderingCI.pColorAttachmentFormats = colorAttachmentFormats.data();
+
+    if (layout.hasDepthStencilRT)
     {
-        pipelineCI.renderPass = VK_NULL_HANDLE;
-        colorAttachmentFormats.reserve(m_pRenderingLayout->numColorRenderTargets);
-
-        for (uint32_t i = 0; i < m_pRenderingLayout->numColorRenderTargets; i++)
+        const DataFormat format = layout.depthStencilRenderTarget.format;
+        const BitField<RHITextureAspectFlagBits> aspects =
+            layout.depthStencilRenderTarget.GetAspects();
+        if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
         {
-            VkFormat colorFormat = ToVkFormat(m_pRenderingLayout->colorRenderTargets[i].format);
-            colorAttachmentFormats.emplace_back(colorFormat);
+            renderingCI.depthAttachmentFormat = ToVkFormat(format);
         }
-
-        InitVkStruct(renderingCI, VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR);
-        renderingCI.colorAttachmentCount    = m_pRenderingLayout->numColorRenderTargets;
-        renderingCI.pColorAttachmentFormats = colorAttachmentFormats.data();
-
-        if (m_pRenderingLayout->hasDepthStencilRT)
+        if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
         {
-            const DataFormat format = m_pRenderingLayout->depthStencilRenderTarget.format;
-            const BitField<RHITextureAspectFlagBits> aspects =
-                m_pRenderingLayout->depthStencilRenderTarget.GetAspects();
-            if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
-            {
-                renderingCI.depthAttachmentFormat = ToVkFormat(format);
-            }
-            if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
-            {
-                renderingCI.stencilAttachmentFormat = ToVkFormat(format);
-            }
+            renderingCI.stencilAttachmentFormat = ToVkFormat(format);
         }
-
-        pipelineCI.pNext = &renderingCI;
     }
+
+    pipelineCI.pNext = &renderingCI;
 
     VKCHECK(vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(),
                                       GVulkanRHI->GetDevice()->GetPipelineCache(), 1, &pipelineCI,
@@ -754,29 +678,5 @@ void VulkanPipeline::InitCompute()
                                      nullptr, &m_vkPipeline));
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
-
-// RHIPipeline* VulkanRHI::CreateComputePipeline(RHIShader* shaderHandle)
-// {
-//     VulkanShader* shader = TO_VK_SHADER(shaderHandle);
-//
-//     VkComputePipelineCreateInfo pipelineCI{};
-//     pipelineCI.sType  = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-//     pipelineCI.stage  = shader->GetStageCreateInfoData()[0];
-//     pipelineCI.layout = shader->GetVkPipelineLayout();
-//
-//     VkPipeline computePipeline{VK_NULL_HANDLE};
-//     VKCHECK(vkCreateComputePipelines(GetVkDevice(), nullptr, 1, &pipelineCI, nullptr,
-//                                      &computePipeline));
-//
-//     VulkanPipeline* pipeline = VersatileResource::Alloc<VulkanPipeline>(m_resourceAllocator);
-//     pipeline->pipeline       = computePipeline;
-//     pipeline->pipelineLayout = shader->GetVkPipelineLayout();
-//     // pipeline->descriptorSetCount = shader->GetNumDescriptorSetLayouts();
-//     pipeline->pushConstantsStageFlags = shader->GetPushConstantsStageFlags();
-//
-//     // m_shaderPipelines[shaderHandle] = pipeline;
-//
-//     return RHIPipeline * (pipeline);
-// }
 
 } // namespace zen

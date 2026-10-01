@@ -17,33 +17,6 @@ public:
         return instance;
     }
 
-    void LoadDefault()
-    {
-        m_VkRHIOptions.useDynamicRendering      = true;
-        m_VkRHIOptions.uploadCmdBufferSemaphore = false;
-        m_VkRHIOptions.maxDescriptorSetPerPool  = 64;
-    }
-
-    bool UseDynamicRendering() const
-    {
-        return m_VkRHIOptions.useDynamicRendering;
-    }
-
-    bool VKUploadCmdBufferSemaphore() const
-    {
-        return m_VkRHIOptions.uploadCmdBufferSemaphore;
-    }
-
-    bool WaitForFrameCompletion() const
-    {
-        return true;
-    }
-
-    uint32_t MaxDescriptorSetPerPool() const
-    {
-        return m_VkRHIOptions.maxDescriptorSetPerPool;
-    }
-
     // Startup capability switch used by non-RT conformance runs. Set before device creation.
     void SetRayTracingEnabled(bool enabled)
     {
@@ -79,22 +52,44 @@ public:
         return m_validationEnabled;
     }
 
+    void SetDebugPrintfEnabled(bool enabled)
+    {
+        m_debugPrintfEnabled = enabled;
+    }
+
+    bool DebugPrintfEnabled() const
+    {
+        return m_debugPrintfEnabled;
+    }
+
+    void SetExecutionCountersEnabled(bool enabled)
+    {
+        m_executionCountersEnabled = enabled;
+    }
+
+    bool ExecutionCountersEnabled() const
+    {
+        return m_executionCountersEnabled;
+    }
+
+    void SetRobustBufferAccessEnabled(bool enabled)
+    {
+        m_robustBufferAccessEnabled = enabled;
+    }
+
+    bool RobustBufferAccessEnabled() const
+    {
+        return m_robustBufferAccessEnabled;
+    }
+
 private:
+    bool m_executionCountersEnabled{true};
+    bool m_debugPrintfEnabled{false};
+    bool m_robustBufferAccessEnabled{false};
     bool m_rayTracingEnabled{true};
     bool m_gpuProfilerMarkers{false};
     bool m_gpuMemoryStats{false};
     bool m_validationEnabled{true};
-    // Private constructor to prevent instantiation
-    RHIOptions()
-    {
-        LoadDefault();
-    }
-
-    struct VulkanRHIOptions
-    {
-        bool uploadCmdBufferSemaphore;
-        bool useDynamicRendering;
-        uint32_t maxDescriptorSetPerPool;
-    } m_VkRHIOptions;
+    RHIOptions() = default;
 };
 } // namespace zen

@@ -56,10 +56,59 @@ struct RHIShaderResourceParameter
     {}
 };
 
+// Borrowed parameter arrays; recorded commands copy them into their command arena.
+struct RHIShaderParameterView
+{
+    VectorView<const RHIShaderValueParameter> valueParameters;
+    VectorView<const uint8_t> valueBytes;
+    VectorView<const RHIShaderResourceParameter> resourceParameters;
+    VectorView<const RHIShaderResourceParameter> bindlessParameters;
+
+    VectorView<const RHIShaderValueParameter> GetValueParams() const
+    {
+        return valueParameters;
+    }
+
+    VectorView<const RHIShaderResourceParameter> GetResourceParams() const
+    {
+        return resourceParameters;
+    }
+
+    VectorView<const RHIShaderResourceParameter> GetBindlessParams() const
+    {
+        return bindlessParameters;
+    }
+
+    VectorView<const uint8_t> GetValueBytes(const RHIShaderValueParameter& parameter) const
+    {
+        VectorView<const uint8_t> result;
+
+        const uint64_t end = uint64_t(parameter.byteOffset) + parameter.byteSize;
+
+        if (parameter.byteSize != 0 && end <= valueBytes.size())
+        {
+            result =
+                MakeVecView(valueBytes.data() + parameter.byteOffset, size_t(parameter.byteSize));
+        }
+
+        return result;
+    }
+};
+
 class RHIBatchedShaderParameters
 {
 public:
     RHIBatchedShaderParameters() = default;
+
+    RHIShaderParameterView GetView() const
+    {
+        return {m_valueParameters, m_valueData, m_resourceParameters, m_bindlessParameters};
+    }
+
+    operator RHIShaderParameterView() const
+    {
+        return GetView();
+    }
 
     RHIBatchedShaderParameters(RHIBatchedShaderParameters&&) = default;
 

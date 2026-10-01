@@ -593,10 +593,10 @@ bool RDGResourceManager::DeclareExtractions()
                 const TextureFormat& format = extraction.resource->texFormat;
                 RHITextureSubResourceRange range{};
                 range            = FormatIsDepthStencil(format.format) ?
-                    RHITextureSubResourceRange::DepthStencil() :
-                    FormatIsDepthOnly(format.format)   ? RHITextureSubResourceRange::Depth() :
-                    FormatIsStencilOnly(format.format) ? RHITextureSubResourceRange::Stencil() :
-                                                         RHITextureSubResourceRange::Color();
+                               RHITextureSubResourceRange::DepthStencil() :
+                               FormatIsDepthOnly(format.format) ? RHITextureSubResourceRange::Depth() :
+                               FormatIsStencilOnly(format.format) ? RHITextureSubResourceRange::Stencil() :
+                                                                    RHITextureSubResourceRange::Color();
                 range.levelCount = format.mipmaps;
                 range.layerCount = format.arrayLayers;
 
@@ -985,27 +985,9 @@ uint64_t RDGResourceManager::EstimateBytes(const Allocation& resource)
     if (resource.type != RDGResourceType::eBuffer)
     {
         const TextureFormat& format = resource.texFormat;
-        uint64_t pixel              = GetTextureFormatPixelSize(format.format);
+        uint64_t pixel              = GetTextureFormatMemoryPixelSize(format.format);
 
-        switch (format.format)
-        {
-            case DataFormat::eR8UNORM:
-            case DataFormat::eR8UInt:
-            case DataFormat::eS8UInt: pixel = 1; break;
-            case DataFormat::eR8G8B8SRGB:
-            case DataFormat::eR8G8B8UNORM: pixel = 3; break;
-            case DataFormat::eR8G8B8A8UInt:
-            case DataFormat::eR8G8B8A8SRGB:
-            case DataFormat::eR8G8B8A8UNORM:
-            case DataFormat::eD32SFloat:
-            case DataFormat::eD24UNORMS8UInt: pixel = 4; break;
-            case DataFormat::eD16UNORM: pixel = 2; break;
-            case DataFormat::eD16UNORMS8UInt: pixel = 4; break;
-            case DataFormat::eD32SFloatS8UInt: pixel = 8; break;
-            default: break;
-        }
-
-        if (pixel == 0x7fffffff || uint32_t(format.sampleCount) >= uint32_t(SampleCount::eMax))
+        if (pixel == 0 || uint32_t(format.sampleCount) >= uint32_t(SampleCount::eMax))
         {
             estimatedBytes = UINT64_MAX; // Unknown formats cannot silently bypass the cache budget.
         }

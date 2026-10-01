@@ -335,6 +335,11 @@ public:
     bool ResetRegistrations();
     // CPU commands hold their epoch until reset; native recordings transfer their
     // count to queue serials only after submission succeeds. Zero is invalid.
+    uint64_t GetCurrentEpoch() const
+    {
+        return m_publishedEpoch.load(std::memory_order_acquire);
+    }
+
     uint64_t CaptureEpoch();
     void ReleaseEpoch(uint64_t epoch);
 
@@ -377,6 +382,8 @@ private:
     uint32_t m_heapAllocCount[ToUnderlying(RHIBindlessHeapType::eMax)]{};
 
     uint64_t m_epoch{0};
+    std::atomic<uint64_t> m_publishedEpoch{0};
+    std::atomic<bool> m_hasPendingWrites{false};
     HeapVector<uint64_t> m_epochs;
     HeapVector<RHIBindlessHandle> m_retiredSlots;
 

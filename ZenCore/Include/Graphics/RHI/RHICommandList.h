@@ -21,6 +21,7 @@ namespace zen
 {
 class RHIPipeline;
 class RHICommandList;
+struct RHICommand;
 
 struct RHICommandListDeleter
 {
@@ -218,9 +219,14 @@ public:
 
     virtual void RHIBindPipeline(RHIPipeline* pPipeline) = 0;
 
-    virtual void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) = 0;
+    virtual void RHISetShaderParameters(RHIShaderParameterView parameters) = 0;
 
     // Capture holds a recording epoch until the matching release. Zero is invalid.
+    virtual uint64_t RHIGetCurrentBindlessEpoch() const
+    {
+        return 0;
+    }
+
     virtual uint64_t RHICaptureBindlessEpoch()
     {
         return 0;
@@ -254,13 +260,13 @@ public:
                                         RHIBuffer* pIndexBuffer,
                                         DataFormat indexFormat,
                                         uint32_t indexBufferOffset,
-                                        uint32_t offset,
+                                        uint64_t offset,
                                         uint32_t drawCount,
                                         uint32_t stride) = 0;
 
     virtual void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
-    virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) = 0;
+    virtual void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) = 0;
 
     virtual void RHISetPushConstants(RHIPipeline* pPipeline,
                                      VectorView<const uint8_t> data,
@@ -272,9 +278,7 @@ public:
                                    VectorView<RHIBufferTransition> bufferTransitions,
                                    VectorView<RHITextureTransition> textureTransitions) = 0;
 
-    virtual void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) = 0;
-
-    virtual void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) = 0;
+    virtual void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) = 0;
 
     virtual void RHICopyBuffer(RHIBuffer* pSrcBuffer,
                                RHIBuffer* pDstBuffer,
@@ -326,19 +330,9 @@ public:
     RHICommandListBase(const RHICommandListBase&)            = delete;
     RHICommandListBase& operator=(const RHICommandListBase&) = delete;
 
-    void* AllocateCmd(uint32_t size, uint32_t alignment)
-    {
-        RHICommandBase* pCmd = static_cast<RHICommandBase*>(m_cmdAllocator.Alloc(size, alignment));
-        *m_ppCmdPtr          = pCmd;
-        m_ppCmdPtr           = &pCmd->pNextCmd;
-        ++m_numCommands;
-
-        return pCmd;
-    }
-
     template <typename T, typename... Args> T* AllocateCmdTyped(Args&&... args)
     {
-        static_assert(std::is_base_of_v<RHICommandBase, T>, "T must derive from RHICommandBase");
+        static_assert(std::is_base_of_v<RHICommand, T>, "T must derive from RHICommand");
         // Construct command metadata before linking it into the recorded command list.
         void* memory   = m_cmdAllocator.Alloc(sizeof(T), alignof(T));
         T* pCmd        = new (memory) T(std::forward<Args>(args)...);
@@ -364,6 +358,20 @@ public:
         return result;
     }
 
+    template <typename T> VectorView<const T> CopyCmdData(VectorView<const T> source)
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+
+        T* storage = AllocateCmdData<T>(source.size());
+
+        if (!source.empty())
+        {
+            std::memcpy(storage, source.data(), source.size() * sizeof(T));
+        }
+
+        return MakeVecView(static_cast<const T*>(storage), source.size());
+    }
+
     IRHICommandContext* GetContext() const
     {
         return m_pGraphicsContext != nullptr ? m_pGraphicsContext : m_pComputeContext;
@@ -376,6 +384,10 @@ public:
             GetRHIThread().Invoke(&IRHICommandContext::RHIWaitUntilCompleted, pContext);
         }
     }
+
+    uint64_t CaptureBindlessEpoch();
+
+    void ReleaseBindlessEpochs(size_t count);
 
     void Execute();
 
@@ -405,11 +417,13 @@ public:
         uint32_t count;
         size_t resourceCount;
         size_t dependencyCount;
+        size_t captureCount;
     };
 
     CommandCheckpoint GetCommandCheckpoint() const
     {
-        return {m_ppCmdPtr, m_numCommands, m_resources.GetCount(), m_submissionDependencies.size()};
+        return {m_ppCmdPtr, m_numCommands, m_resources.GetCount(), m_submissionDependencies.size(),
+                m_bindlessEpochs.size()};
     }
 
     uint32_t GetCommandCount() const
@@ -437,6 +451,7 @@ protected:
     RefCountPtr<IRHICommandContext> m_contextOwner;
     RHIResourceReferences m_resources;
     HeapVector<RHISubmissionDependency> m_submissionDependencies;
+    SmallVector<uint64_t, 4> m_bindlessEpochs;
 };
 
 struct RHICommand : public RHICommandBase
@@ -448,19 +463,7 @@ struct RHICommand : public RHICommandBase
 
 struct RHICommandWithBindlessEpoch : public RHICommand
 {
-    explicit RHICommandWithBindlessEpoch(IRHICommandContext* context) :
-        m_pRecordingContext(context),
-        m_bindlessEpoch(context != nullptr ? context->RHICaptureBindlessEpoch() : 0)
-    {}
-
-    ~RHICommandWithBindlessEpoch() override
-    {
-        // Command lists reset their commands before destroying the owning context.
-        if (m_bindlessEpoch != 0)
-        {
-            m_pRecordingContext->RHIReleaseBindlessEpoch(m_bindlessEpoch);
-        }
-    }
+    explicit RHICommandWithBindlessEpoch(uint64_t epoch) : m_bindlessEpoch(epoch) {}
 
     RHICommandWithBindlessEpoch(const RHICommandWithBindlessEpoch&)            = delete;
     RHICommandWithBindlessEpoch& operator=(const RHICommandWithBindlessEpoch&) = delete;
@@ -484,17 +487,16 @@ struct RHICommandWithBindlessEpoch : public RHICommand
     virtual void ExecuteCommand(RHICommandListBase& cmdList) = 0;
 
 private:
-    IRHICommandContext* m_pRecordingContext;
     uint64_t m_bindlessEpoch;
 };
 
 struct RHICommandClearBuffer : public RHICommand
 {
     RHIBuffer* pBuffer;
-    uint32_t offset;
-    uint32_t size;
+    uint64_t offset;
+    uint64_t size;
 
-    RHICommandClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) :
+    RHICommandClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) :
         pBuffer(pBuffer), offset(offset), size(size)
     {}
 
@@ -546,10 +548,6 @@ struct RHICommandCopyTexture : public RHICommand
     RHITexture* pDstTexture;
     VectorView<RHITextureCopyRegion> copyRegions;
 
-    //uint32_t numCopyRegions;
-
-    //PRIVATE_ARRAY_DEF(RHITextureCopyRegion, CopyRegions, &this[1])
-
     RHICommandCopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexture) :
         pSrcTexture(pSrcTexture), pDstTexture(pDstTexture)
     {}
@@ -584,10 +582,6 @@ struct RHICommandCopyBufferToTexture : public RHICommand
     RHIBuffer* pSrcBuffer;
     RHITexture* pDstTexture;
     VectorView<RHIBufferTextureCopyRegion> copyRegions;
-
-    //uint32_t numCopyRegions;
-
-    //PRIVATE_ARRAY_DEF(RHIBufferTextureCopyRegion, CopyRegions, &this[1])
 
     RHICommandCopyBufferToTexture(RHIBuffer* pSrcBuffer, RHITexture* pDstTexture) :
         pSrcBuffer(pSrcBuffer), pDstTexture(pDstTexture)
@@ -734,14 +728,20 @@ struct RHICommandBindPipeline final : public RHICommand
 
 struct RHICommandSetShaderParameters final : public RHICommandWithBindlessEpoch
 {
-    RHIBatchedShaderParameters parameters;
+    RHIShaderParameterView parameters;
 
-    explicit RHICommandSetShaderParameters(const RHIBatchedShaderParameters& inParameters,
-                                           IRHICommandContext* context = nullptr) :
-        RHICommandWithBindlessEpoch(inParameters.GetBindlessParams().empty() ? nullptr : context)
+    RHICommandSetShaderParameters(RHICommandListBase& list,
+                                  RHIShaderParameterView source,
+                                  uint64_t epoch = 0) :
+        RHICommandWithBindlessEpoch(epoch)
     {
-        // Recorded commands own their parameter bytes until the command list is reset.
-        parameters.CopyFrom(inParameters);
+        parameters.valueParameters = list.CopyCmdData(source.valueParameters);
+
+        parameters.valueBytes = list.CopyCmdData(source.valueBytes);
+
+        parameters.resourceParameters = list.CopyCmdData(source.resourceParameters);
+
+        parameters.bindlessParameters = list.CopyCmdData(source.bindlessParameters);
     }
 
     void ExecuteCommand(RHICommandListBase& cmdList) override
@@ -870,8 +870,8 @@ struct RHICommandDraw final : public RHICommandWithBindlessEpoch
                    uint32_t instanceCount,
                    uint32_t firstVertex,
                    uint32_t firstInstance,
-                   IRHICommandContext* context) :
-        RHICommandWithBindlessEpoch(context),
+                   uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch),
         vertexCount(vertexCount),
         instanceCount(instanceCount),
         firstVertex(firstVertex),
@@ -908,8 +908,8 @@ struct RHICommandDrawIndexed final : public RHICommandWithBindlessEpoch
     int32_t vertexOffset;
     uint32_t firstInstance;
 
-    explicit RHICommandDrawIndexed(const Param& param, IRHICommandContext* context) :
-        RHICommandWithBindlessEpoch(context),
+    explicit RHICommandDrawIndexed(const Param& param, uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch),
         pIndexBuffer(param.pIndexBuffer),
         indexFormat(param.indexFormat),
         indexBufferOffset(param.indexBufferOffset),
@@ -936,7 +936,7 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessEpoch
         RHIBuffer* pIndexBuffer;
         DataFormat indexFormat;
         uint32_t indexBufferOffset;
-        uint32_t offset;
+        uint64_t offset;
         uint32_t drawCount;
         uint32_t stride;
     };
@@ -945,12 +945,12 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessEpoch
     RHIBuffer* pIndexBuffer;
     DataFormat indexFormat;
     uint32_t indexBufferOffset;
-    uint32_t offset;
+    uint64_t offset;
     uint32_t drawCount;
     uint32_t stride;
 
-    explicit RHICommandDrawIndexedIndirect(const Param& param, IRHICommandContext* context) :
-        RHICommandWithBindlessEpoch(context),
+    explicit RHICommandDrawIndexedIndirect(const Param& param, uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch),
         pIndirectBuffer(param.pIndirectBuffer),
         pIndexBuffer(param.pIndexBuffer),
         indexFormat(param.indexFormat),
@@ -976,8 +976,8 @@ struct RHICommandDispatch final : public RHICommandWithBindlessEpoch
     RHICommandDispatch(uint32_t groupCountX,
                        uint32_t groupCountY,
                        uint32_t groupCountZ,
-                       IRHICommandContext* context) :
-        RHICommandWithBindlessEpoch(context),
+                       uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch),
         groupCountX(groupCountX),
         groupCountY(groupCountY),
         groupCountZ(groupCountZ)
@@ -992,12 +992,10 @@ struct RHICommandDispatch final : public RHICommandWithBindlessEpoch
 struct RHICommandDispatchIndirect final : public RHICommandWithBindlessEpoch
 {
     RHIBuffer* pIndirectBuffer;
-    uint32_t offset;
+    uint64_t offset;
 
-    RHICommandDispatchIndirect(RHIBuffer* pIndirectBuffer,
-                               uint32_t offset,
-                               IRHICommandContext* context) :
-        RHICommandWithBindlessEpoch(context), pIndirectBuffer(pIndirectBuffer), offset(offset)
+    RHICommandDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset, uint64_t epoch) :
+        RHICommandWithBindlessEpoch(epoch), pIndirectBuffer(pIndirectBuffer), offset(offset)
     {}
 
     void ExecuteCommand(RHICommandListBase& cmdList) override
@@ -1029,14 +1027,6 @@ struct RHICommandAddTransitions final : public RHICommand
     VectorView<RHIBufferTransition> bufferTransitions;
     VectorView<RHITextureTransition> textureTransitions;
 
-    //PRIVATE_ARRAY_DEF(RHIMemoryTransition, MemoryTransitions, &this[1])
-    //PRIVATE_ARRAY_DEF(RHIBufferTransition,
-    //                  BufferTransitions,
-    //                  &MemoryTransitions()[numMemoryTransitions])
-    //PRIVATE_ARRAY_DEF(RHITextureTransition,
-    //                  TextureTransitions,
-    //                  &BufferTransitions()[numBufferTransitions])
-
     RHICommandAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                              BitField<RHIPipelineStageFlagBits> dstStages) :
         srcStages(srcStages), dstStages(dstStages)
@@ -1046,22 +1036,6 @@ struct RHICommandAddTransitions final : public RHICommand
     {
         cmdList.GetContext()->RHIAddTransitions(srcStages, dstStages, memoryTransitions,
                                                 bufferTransitions, textureTransitions);
-    }
-};
-
-struct RHICommandAddTextureTransition : public RHICommand
-{
-    RHITexture* pTexture;
-
-    RHITextureLayout newLayout;
-
-    RHICommandAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) :
-        pTexture(pTexture), newLayout(newLayout)
-    {}
-
-    void Execute(RHICommandListBase& cmdList) override
-    {
-        cmdList.GetContext()->RHIAddTextureTransition(pTexture, newLayout);
     }
 };
 
@@ -1083,7 +1057,7 @@ public:
     // Called on RHI after retirement. Keep CPU storage, but release the producer's context.
     void ResetForReuse();
 
-    void ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size);
+    void ClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size);
 
     void CopyBuffer(RHIBuffer* pSrcBuffer,
                     RHIBuffer* pDstBuffer,
@@ -1160,7 +1134,7 @@ public:
 
     void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 
-    void DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset);
+    void DispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset);
 
     void SetPushConstants(RHIPipeline* pPipeline,
                           const uint8_t* pData,
@@ -1172,7 +1146,5 @@ public:
                         VectorView<RHIMemoryTransition> memoryTransitions,
                         VectorView<RHIBufferTransition> bufferTransitions,
                         VectorView<RHITextureTransition> textureTransitions);
-
-    void AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout);
 };
 } // namespace zen

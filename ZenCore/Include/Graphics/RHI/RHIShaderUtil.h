@@ -11,20 +11,9 @@ namespace zen
 class RHIShaderUtil
 {
 public:
-    static RHIShaderGroupSPIRVPtr CompileShaderSourceToSPIRV(
-        RHIShaderGroupSourcePtr shaderGroupSource);
-
     static void ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv,
                                        RHIShaderGroupInfo& shaderGroupInfo);
-
-    static void PrintShaderGroupInfo(const RHIShaderGroupInfo& shaderGroupInfo);
 };
-
-inline RHIShaderGroupSPIRVPtr RHIShaderUtil::CompileShaderSourceToSPIRV(
-    RHIShaderGroupSourcePtr shaderGroupSource)
-{
-    return MakeRefCountPtr<RHIShaderGroupSPIRV>();
-}
 
 static bool StartsWith(std::string_view str, std::string_view prefix)
 {
@@ -62,13 +51,6 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
                 return pLhs->location < pRhs->location;
             });
         shaderGroupInfo.vertexInputAttributes.resize(inputVarCount);
-        // packed vertex input data
-        //           Location 0     Location 1    Location 0     Location 1
-        // binding 0   xyz            uv            xyz            uv
-        // struct Vertex {
-        //     float   x, y, z;
-        //     uint8_t u, v;
-        // };
         uint32_t vertexAttributeOffset = 0;
 
         for (uint32_t i = 0; i < inputVarCount; i++)
@@ -119,7 +101,7 @@ static void ParseSpvPushConstants(RHIShaderStage stage,
     shaderGroupInfo.pushConstants.name = pconstants[0]->type_description->type_name;
 }
 
-static void ParseSpvSpecializationConstant(RHIShaderStage stage,
+inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
                                            const SpvReflectShaderModule* pModule,
                                            RHIShaderGroupInfo& shaderGroupInfo)
 {
@@ -146,7 +128,7 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
             SpvReflectSpecializationConstant* pSpvSpecConst = specConstants[j];
 
             specConst.constantId = pSpvSpecConst->constant_id;
-            specConst.intValue   = 0;
+            specConst.bits       = 0;
 
             if (pSpvSpecConst->type_description == nullptr ||
                 pSpvSpecConst->default_value == nullptr ||
@@ -166,22 +148,22 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
             {
                 case SpvOpTypeBool:
                 {
-                    specConst.type      = RHIShaderSpecializationConstantType::eBool;
-                    specConst.boolValue = defaultValue != 0;
+                    specConst.type = RHIShaderSpecializationConstantType::eBool;
+                    specConst.bits = defaultValue != 0;
                 }
                 break;
 
                 case SpvOpTypeInt:
                 {
-                    specConst.type     = RHIShaderSpecializationConstantType::eInt;
-                    specConst.intValue = defaultValue;
+                    specConst.type = RHIShaderSpecializationConstantType::eInt;
+                    specConst.bits = defaultValue;
                 }
                 break;
 
                 case SpvOpTypeFloat:
                 {
-                    specConst.type       = RHIShaderSpecializationConstantType::eFloat;
-                    specConst.floatValue = std::bit_cast<float>(defaultValue);
+                    specConst.type = RHIShaderSpecializationConstantType::eFloat;
+                    specConst.bits = defaultValue;
                     break;
                 }
 
@@ -205,7 +187,7 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
                             specConst.constantId);
                     }
 
-                    if (shaderGroupInfo.specializationConstants[k].intValue != specConst.intValue)
+                    if (shaderGroupInfo.specializationConstants[k].bits != specConst.bits)
                     {
                         LOGE(
                             "More than one specialization constant used for id={} with different value",
@@ -513,7 +495,6 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
 
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
-            // shaderGroupInfo.sprivCode[stage] = std::move(shaderGroupSpirv->GetStageSPIRV(stage));
             SpvReflectShaderModule module;
             const HeapVector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
             SpvReflectResult result =
@@ -531,15 +512,10 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
             result = spvReflectEnumerateDescriptorSets(&module, &setCount, sets.data());
             VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
 
-            // if (shaderGroupInfo.SRDs.size() < setCount) { shaderGroupInfo.SRDs.resize(setCount); }
-
             for (uint32_t setIndex = 0; setIndex < setCount; setIndex++)
             {
                 const SpvReflectDescriptorSet& reflSet = *(sets[setIndex]);
 
-                // std::vector<RHIShaderResourceDescriptor>& setResources =
-                //     shaderGroupInfo.SRDs[setIndex];
-                // setResources.resize(reflSet.binding_count);
                 if (shaderGroupInfo.SRDTable.size() <= reflSet.set)
                 {
                     shaderGroupInfo.SRDTable.resize(reflSet.set + 1);
@@ -571,32 +547,4 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
     }
 }
 
-inline void RHIShaderUtil::PrintShaderGroupInfo(const RHIShaderGroupInfo& sgInfo)
-{
-    LOGI("======= Begin Printing RHIShaderGroupInfo =======")
-    std::string stagesStr;
-    LOGI("Shader Stages: {}", stagesStr);
-    LOGI("PushConstant: name={} size={}", sgInfo.pushConstants.name.CStr(),
-         sgInfo.pushConstants.size);
-    LOGI("SRD Set Count={}", sgInfo.SRDTable.size());
-
-    for (SmallVector<RHIShaderResourceDescriptor> const& setSRD : sgInfo.SRDTable)
-    {
-        for (RHIShaderResourceDescriptor const& srd : setSRD)
-        {
-            LOGI("SRD stage={} name={} set={} binding={} arraySize={}",
-                 RHIShaderStageFlagToString(srd.stageFlags), srd.name.CStr(), srd.set, srd.binding,
-                 srd.arraySize);
-        }
-    }
-
-    for (RHIShaderGroupInfo::VertexInputAttribute const& va : sgInfo.vertexInputAttributes)
-    {
-        LOGI("Vertex Input Attr name={} binding={} location={} offset={}", va.name.CStr(),
-             va.binding, va.location, va.offset);
-    }
-
-    LOGI("Vertex Binding Stride={}", sgInfo.vertexBindingStride);
-    LOGI("======= End Printing RHIShaderGroupInfo =======")
-}
 } // namespace zen

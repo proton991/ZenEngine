@@ -109,6 +109,7 @@ TEST_P(AsyncComputeLifetimeTest, ComputeWithoutGraphicsConsumerProtectsPoolAndRe
         RHICommandContextType::eAsyncCompute,
         compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(resources->GetPoolStats().retiringBytes, 0u);
 }
@@ -136,6 +137,7 @@ TEST_P(AsyncComputeLifetimeTest, FailedComputeWaitPreventsFrameSlotReuseAndOwner
     device->FlushRHIThread();
     EXPECT_EQ(GRenderFrameState.GetFrameSlot(), slot);
     EXPECT_EQ(rhi->frameBegins, begins + 2);
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
 }
@@ -256,7 +258,9 @@ TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDesc
         RHICommandContextType::eAsyncCompute,
         compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(bufferId));
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(textureId));
     device->DestroyBuffer(source);
 }
@@ -294,6 +298,7 @@ TEST_P(AsyncComputeLifetimeTest, AllocationFailureRollsBackWithoutPublishingStat
         EXPECT_EQ(resources->GetPoolStats().assignedCount, 0u);
         EXPECT_FALSE(RDGSubmissionTestAccess::HasHistory(*device, rhi->lastBufferId));
         device->CollectCompletedResources();
+        GetRHIThread().Flush();
         EXPECT_TRUE(destroyed.contains(rhi->lastBufferId));
         rhi->failBufferCreationAt  = 0;
         rhi->failTextureCreationAt = 0;
@@ -361,6 +366,7 @@ TEST_P(SingleFrameComputeLifetimeTest, ComputeCompletionIsRequiredBeforeReusingT
     device->NextFrame();
     device->FlushRHIThread();
     EXPECT_EQ(rhi->frameBegins, 2u);
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(id));
     EXPECT_EQ(rhi->deviceIdleWaits, 0u);
 }
@@ -402,6 +408,7 @@ TEST_F(RHIExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement
         result.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     EXPECT_TRUE(retirement.IsCompleteAt(executor->QueryCompletedSerials()));
     EXPECT_EQ(destructions, 3u);
+    GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(id));
 }
 

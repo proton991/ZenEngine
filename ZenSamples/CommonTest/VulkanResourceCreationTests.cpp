@@ -1,3 +1,4 @@
+#include "Graphics/RHI/RHIResource.h"
 #include "Graphics/VulkanRHI/VulkanDescriptorState.h"
 #include "Graphics/VulkanRHI/VulkanPipeline.h"
 #include "Graphics/VulkanRHI/VulkanTypes.h"
@@ -184,4 +185,130 @@ TEST(VulkanDescriptorLayoutTest, CanonicalLayoutIdentityIncludesBindingFlagsAndS
     sampler = reinterpret_cast<VkSampler>(uintptr_t(101));
     EXPECT_NE(id(), immutable);
     manager.Destroy();
+}
+
+TEST(RHIFormatTests, AllDeclaredTexelFormatsHaveSizes)
+{
+    const DataFormat formats[] = {DataFormat::eR8UNORM,
+                                  DataFormat::eR8UInt,
+                                  DataFormat::eR8G8B8SRGB,
+                                  DataFormat::eR8G8B8UNORM,
+                                  DataFormat::eR8G8B8A8UInt,
+                                  DataFormat::eR8G8B8A8SRGB,
+                                  DataFormat::eR8G8B8A8UNORM,
+                                  DataFormat::eB8G8R8A8UNORM,
+                                  DataFormat::eB8G8R8A8SRGB,
+                                  DataFormat::eR16UInt,
+                                  DataFormat::eR16SInt,
+                                  DataFormat::eR16SFloat,
+                                  DataFormat::eR16G16UInt,
+                                  DataFormat::eR16G16SInt,
+                                  DataFormat::eR16G16SFloat,
+                                  DataFormat::eR16G16B16UInt,
+                                  DataFormat::eR16G16B16SInt,
+                                  DataFormat::eR16G16B16SFloat,
+                                  DataFormat::eR16G16B16A16UInt,
+                                  DataFormat::eR16G16B16A16SInt,
+                                  DataFormat::eR16G16B16A16SFloat,
+                                  DataFormat::eR32UInt,
+                                  DataFormat::eR32SInt,
+                                  DataFormat::eR32SFloat,
+                                  DataFormat::eR32G32UInt,
+                                  DataFormat::eR32G32SInt,
+                                  DataFormat::eR32G32SFloat,
+                                  DataFormat::eR32G32B32UInt,
+                                  DataFormat::eR32G32B32SInt,
+                                  DataFormat::eR32G32B32SFloat,
+                                  DataFormat::eR32G32B32A32UInt,
+                                  DataFormat::eR32G32B32A32SInt,
+                                  DataFormat::eR32G32B32A32SFloat,
+                                  DataFormat::eR64UInt,
+                                  DataFormat::eR64SInt,
+                                  DataFormat::eR64SFloat,
+                                  DataFormat::eR64G64UInt,
+                                  DataFormat::eR64G64SInt,
+                                  DataFormat::eR64G64SFloat,
+                                  DataFormat::eR64G64B64UInt,
+                                  DataFormat::eR64G64B64SInt,
+                                  DataFormat::eR64G64B64SFloat,
+                                  DataFormat::eR64G64B64A64UInt,
+                                  DataFormat::eR64G64B64A64SInt,
+                                  DataFormat::eR64G64B64A64SFloat,
+                                  DataFormat::eD16UNORM,
+                                  DataFormat::eD32SFloat,
+                                  DataFormat::eS8UInt,
+                                  DataFormat::eD16UNORMS8UInt,
+                                  DataFormat::eD24UNORMS8UInt,
+                                  DataFormat::eD32SFloatS8UInt};
+
+    for (DataFormat format : formats)
+    {
+        EXPECT_GT(GetTextureFormatPixelSize(format), 0u) << uint32_t(format);
+    }
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eUndefined), 0u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(static_cast<DataFormat>(UINT32_MAX)), 0u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eB8G8R8A8UNORM), 4u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eB8G8R8A8SRGB), 4u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eD16UNORM), 2u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eD24UNORMS8UInt), 4u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eD16UNORMS8UInt), 3u);
+
+    EXPECT_EQ(GetTextureFormatPixelSize(DataFormat::eD32SFloatS8UInt), 5u);
+
+    EXPECT_EQ(GetTextureFormatMemoryPixelSize(DataFormat::eD16UNORMS8UInt), 4u);
+
+    EXPECT_EQ(GetTextureFormatMemoryPixelSize(DataFormat::eD32SFloatS8UInt), 8u);
+
+    EXPECT_EQ(GetTextureFormatMemoryPixelSize(DataFormat::eD24UNORMS8UInt), 4u);
+
+    EXPECT_EQ(GetTextureFormatMemoryPixelSize(DataFormat::eR8G8B8A8UNORM), 4u);
+
+    EXPECT_EQ(uint32_t(DataFormat::eR8G8B8UNORM), uint32_t(VK_FORMAT_R8G8B8_UNORM));
+}
+
+TEST(RHIHeaderTests, StageNamesCountsAndDefaults)
+{
+    using namespace zen;
+
+    EXPECT_EQ(RHIShaderStageToString(RHIShaderStage::eFragment), "Fragment");
+
+    EXPECT_EQ(RHIShaderStageToString(RHIShaderStage::eGeometry), "Geometry");
+
+    EXPECT_TRUE(RHIShaderStageFlagToString({}).empty());
+
+    EXPECT_EQ(RHIShaderStageFlagToString(
+                  BitField<RHIShaderStageFlagBits>(RHIShaderStageFlagBits::eGeometry)),
+              "Geometry");
+
+    RHIShaderGroupSPIRV group;
+
+    group.SetStageSPIRV(RHIShaderStage::eVertex, {});
+
+    group.SetStageSPIRV(RHIShaderStage::eVertex, {});
+
+    EXPECT_EQ(group.GetStageCount(), 1u);
+
+    group.SetStageSPIRV(RHIShaderStage::eFragment, {});
+
+    EXPECT_EQ(group.GetStageCount(), 2u);
+
+    group.SetStageFlags(int64_t(RHIShaderStageFlagBits::eVertex) |
+                        int64_t(RHIShaderStageFlagBits::eFragment));
+    group.SetStageSPIRV(RHIShaderStage::eVertex, {});
+    EXPECT_EQ(group.GetStageCount(), 2u);
+
+    RHIGfxPipelineColorBlendState blend;
+
+    blend.AddAttachments(MAX_NUM_COLOR_ATTACHMENTS);
+
+    EXPECT_EQ(RHITextureTransition{}.oldUsage, RHITextureUsage::eNone);
+
+    EXPECT_EQ(RHIBufferTransition{}.newAccessMode, RHIAccessMode::eNone);
 }

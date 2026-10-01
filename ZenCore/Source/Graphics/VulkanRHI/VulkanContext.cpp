@@ -163,17 +163,6 @@ static uint64_t GetDeviceLocalMemoryBytes(VkPhysicalDevice physicalDevice)
     return deviceLocalMemoryBytes;
 }
 
-// static VulkanRequiredDeviceExtensionSupport QueryRequiredDeviceExtensionSupport(
-//     VkPhysicalDevice physicalDevice)
-// {
-//     VulkanRequiredDeviceExtensionSupport extensionSupport{};
-//     const HeapVector<VkExtensionProperties> supportedExtensions =
-//         VulkanDeviceExtension::GetSupportedExtensions(physicalDevice);
-//     extensionSupport.hasSwapchain =
-//         HasSupportedExtension(supportedExtensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-//     return extensionSupport;
-// }
-
 static VulkanPhysicalDeviceCandidateInfo EvaluatePhysicalDeviceCandidate(
     VkPhysicalDevice physicalDevice)
 {
@@ -345,20 +334,30 @@ DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeveri
         LOGE("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
              pCallbackData->pMessage)
     }
+    else if ((messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) &&
+             RHIOptions::GetInstance().DebugPrintfEnabled())
+    {
+        LOGI("{} - {}: {}", pCallbackData->messageIdNumber, pCallbackData->pMessageIdName,
+             pCallbackData->pMessage);
+    }
 
     return VK_FALSE;
 }
 
 void VulkanRHI::PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& dbgMessengerCI)
 {
-    constexpr VkDebugUtilsMessageSeverityFlagsEXT messageSeverity =
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+    VkDebugUtilsMessageSeverityFlagsEXT messageSeverity =
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     constexpr VkDebugUtilsMessageTypeFlagsEXT messageType =
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+
+    if (RHIOptions::GetInstance().DebugPrintfEnabled())
+    {
+        messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+    }
 
     InitVkStruct(dbgMessengerCI, VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT);
     dbgMessengerCI.pNext           = nullptr;
@@ -495,8 +494,9 @@ void VulkanRHI::CreateInstance()
         VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT};
 
     VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
-    validationFeatures.enabledValidationFeatureCount = 1;
-    validationFeatures.pEnabledValidationFeatures    = validationFeatureEnables.data();
+    validationFeatures.enabledValidationFeatureCount =
+        RHIOptions::GetInstance().DebugPrintfEnabled() ? 1 : 0;
+    validationFeatures.pEnabledValidationFeatures = validationFeatureEnables.data();
     validationFeatures.pNext = m_instanceExtensionFlags.hasDebugUtils ? &debugMessengerCI : nullptr;
 
     HeapVector<const char*> layerNames;
@@ -666,13 +666,7 @@ IRHICommandContext* VulkanRHI::GetCommandContext(RHICommandContextType contextTy
 
 IRHICommandContext* VulkanRHI::GetTransferCommandContext()
 {
-    if (m_pTransferContext == nullptr)
-    {
-        m_pTransferContext =
-            ZEN_NEW() FVulkanCommandListContext(RHICommandContextType::eTransfer, m_pDevice);
-    }
-
-    return m_pTransferContext;
+    return GetCommandContext(RHICommandContextType::eTransfer);
 }
 
 void VulkanRHI::Init()
@@ -715,6 +709,44 @@ void VulkanRHI::Init()
 
         m_gpuInfo.supportGeometryShader = m_pDevice->GetPhysicalDeviceFeatures().geometryShader;
 
+        m_gpuInfo.supportIndependentBlend =
+            m_pDevice->GetPhysicalDeviceFeatures().independentBlend != VK_FALSE;
+
+        m_gpuInfo.supportVertexPipelineStoresAndAtomics =
+            m_pDevice->GetPhysicalDeviceFeatures().vertexPipelineStoresAndAtomics != VK_FALSE;
+
+        m_gpuInfo.supportSamplerAnisotropy =
+            m_pDevice->GetPhysicalDeviceFeatures().samplerAnisotropy != VK_FALSE;
+
+        m_gpuInfo.supportFillModeNonSolid =
+            m_pDevice->GetPhysicalDeviceFeatures().fillModeNonSolid != VK_FALSE;
+
+        m_gpuInfo.supportDepthClamp = m_pDevice->GetPhysicalDeviceFeatures().depthClamp != VK_FALSE;
+
+        m_gpuInfo.supportDepthBiasClamp =
+            m_pDevice->GetPhysicalDeviceFeatures().depthBiasClamp != VK_FALSE;
+
+        m_gpuInfo.supportWideLines = m_pDevice->GetPhysicalDeviceFeatures().wideLines != VK_FALSE;
+
+        m_gpuInfo.supportSampleRateShading =
+            m_pDevice->GetPhysicalDeviceFeatures().sampleRateShading != VK_FALSE;
+
+        m_gpuInfo.supportAlphaToOne = m_pDevice->GetPhysicalDeviceFeatures().alphaToOne != VK_FALSE;
+
+        m_gpuInfo.supportDepthBounds =
+            m_pDevice->GetPhysicalDeviceFeatures().depthBounds != VK_FALSE;
+
+        m_gpuInfo.supportLogicOp = m_pDevice->GetPhysicalDeviceFeatures().logicOp != VK_FALSE;
+
+        m_gpuInfo.supportMultiDrawIndirect =
+            m_pDevice->GetPhysicalDeviceFeatures().multiDrawIndirect != VK_FALSE;
+
+        m_gpuInfo.supportDrawIndirectFirstInstance =
+            m_pDevice->GetPhysicalDeviceFeatures().drawIndirectFirstInstance != VK_FALSE;
+
+        m_gpuInfo.supportTessellationShader =
+            m_pDevice->GetPhysicalDeviceFeatures().tessellationShader != VK_FALSE;
+
         m_gpuInfo.supportFragmentStoresAndAtomics =
             m_pDevice->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics;
         m_gpuInfo.uniformBufferAlignment         = limits.minUniformBufferOffsetAlignment;
@@ -727,9 +759,6 @@ void VulkanRHI::Init()
             m_gpuInfo.maxComputeWorkGroupSize[axis]  = limits.maxComputeWorkGroupSize[axis];
             m_gpuInfo.maxComputeWorkGroupCount[axis] = limits.maxComputeWorkGroupCount[axis];
         }
-
-        // m_vkMemAllocator->Init(m_instance, m_device->GetPhysicalDeviceHandle(),
-        //                        m_device->GetVkHandle());
 
         GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(),
                               m_pDevice->GetVkHandle(),
@@ -898,16 +927,6 @@ void VulkanRHI::Destroy()
     WaitDeviceIdle();
     DestroyPlatformCommandListPool();
 
-    // delete m_vkMemAllocator;
-    // ZEN_DELETE(m_pLegacyImmediateContext);
-    // ZEN_DELETE(m_pLegacyImmediateCommandList);
-
-    // if (m_pTransferContext != nullptr)
-    // {
-    //     ZEN_DELETE(m_pTransferContext);
-    //     m_pTransferContext = nullptr;
-    // }
-
     if (m_pUniformBufferAllocator != nullptr)
     {
         m_pUniformBufferAllocator->Destroy();
@@ -932,16 +951,6 @@ void VulkanRHI::Destroy()
     m_lifetimeTracker.Destroy();
     ZEN_DELETE(GVkMemAllocator);
     GVkMemAllocator = nullptr;
-
-    for (const std::pair<const uint32_t, VkRenderPass>& kv : m_renderPassCache)
-    {
-        vkDestroyRenderPass(m_pDevice->GetVkHandle(), kv.second, nullptr);
-    }
-
-    for (const std::pair<const uint32_t, VkFramebuffer>& kv : m_framebufferCache)
-    {
-        vkDestroyFramebuffer(m_pDevice->GetVkHandle(), kv.second, nullptr);
-    }
 
     if (m_pDevice != nullptr)
     {

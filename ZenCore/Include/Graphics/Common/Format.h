@@ -7,10 +7,12 @@ enum class DataFormat : uint32_t
     eR8UNORM            = 9,   // VK_FORMAT_R8_UNORM
     eR8UInt             = 13,  // VK_FORMAT_R8_UINT
     eR8G8B8SRGB         = 29,  // VK_FORMAT_R8G8B8_SRGB
-    eR8G8B8UNORM        = 30,  // VK_FORMAT_B8G8R8_UNORM
+    eR8G8B8UNORM        = 23,  // VK_FORMAT_R8G8B8_UNORM
     eR8G8B8A8UInt       = 41,  // VK_FORMAT_R8G8B8A8_UINT
     eR8G8B8A8SRGB       = 43,  // VK_FORMAT_R8G8B8A8_SRGB
     eR8G8B8A8UNORM      = 37,  // VK_FORMAT_R8G8B8A8_UNORM,
+    eB8G8R8A8UNORM      = 44,  // VK_FORMAT_B8G8R8A8_UNORM
+    eB8G8R8A8SRGB       = 50,  // VK_FORMAT_B8G8R8A8_SRGB
     eR16UInt            = 74,  // = VK_FORMAT_R16_UINT
     eR16SInt            = 75,  // = VK_FORMAT_R16_SINT
     eR16SFloat          = 76,  // = VK_FORMAT_R16_SFLOAT
@@ -79,22 +81,41 @@ struct TextureFormat
     uint32_t mipmaps{1};
 };
 
+// Logical texel-block bytes; allocation padding comes from native image memory requirements.
 inline uint32_t GetTextureFormatPixelSize(DataFormat format)
 {
     uint32_t result{};
 
     switch (format)
     {
+        case DataFormat::eR8UNORM:
+        case DataFormat::eR8UInt:
+        case DataFormat::eS8UInt: result = 1; break;
+
+        case DataFormat::eR8G8B8SRGB:
+        case DataFormat::eR8G8B8UNORM:
+        case DataFormat::eD16UNORMS8UInt: result = 3; break;
+
+        case DataFormat::eD16UNORM:
         case DataFormat::eR16UInt:
         case DataFormat::eR16SInt:
         case DataFormat::eR16SFloat: result = 2; break;
 
+        case DataFormat::eR8G8B8A8UInt:
+        case DataFormat::eR8G8B8A8SRGB:
+        case DataFormat::eR8G8B8A8UNORM:
+        case DataFormat::eB8G8R8A8UNORM:
+        case DataFormat::eB8G8R8A8SRGB:
+        case DataFormat::eD32SFloat:
+        case DataFormat::eD24UNORMS8UInt:
         case DataFormat::eR16G16UInt:
         case DataFormat::eR16G16SInt:
         case DataFormat::eR16G16SFloat:
         case DataFormat::eR32UInt:
         case DataFormat::eR32SInt:
         case DataFormat::eR32SFloat: result = 4; break;
+
+        case DataFormat::eD32SFloatS8UInt: result = 5; break;
 
         case DataFormat::eR16G16B16UInt:
         case DataFormat::eR16G16B16SInt:
@@ -129,7 +150,25 @@ inline uint32_t GetTextureFormatPixelSize(DataFormat format)
         case DataFormat::eR64G64B64A64SInt:
         case DataFormat::eR64G64B64A64SFloat: result = 32; break;
 
-        default: result = 0x7fffffff; break;
+        default: result = 0; break;
+    }
+
+    return result;
+}
+
+// Per-texel bytes for memory budgets. Combined depth/stencil formats are counted at their
+// padded footprint because drivers commonly align or split the stencil plane.
+inline uint32_t GetTextureFormatMemoryPixelSize(DataFormat format)
+{
+    uint32_t result = GetTextureFormatPixelSize(format);
+
+    if (format == DataFormat::eD16UNORMS8UInt)
+    {
+        result = 4;
+    }
+    else if (format == DataFormat::eD32SFloatS8UInt)
+    {
+        result = 8;
     }
 
     return result;

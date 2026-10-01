@@ -66,7 +66,7 @@ void RHIResourceReferences::Swap(RHIResourceReferences& other)
 
 void IRHICommandContext::OnFinalRelease()
 {
-    GetRHIThread().Invoke([this] { ZEN_DELETE(this); });
+    GetRHIThread().Dispatch([this] { ZEN_DELETE(this); });
 }
 
 void RHICommandListDeleter::operator()(RHICommandList* commands) const
@@ -88,6 +88,8 @@ RHICommandListPtr RHICommandList::DetachCommands(RHICommandListPtr reusable)
     result->m_cmdAllocator.Swap(m_cmdAllocator);
     result->m_resources.Swap(m_resources);
     std::swap(result->m_submissionDependencies, m_submissionDependencies);
+
+    std::swap(result->m_bindlessEpochs, m_bindlessEpochs);
     result->m_pCmdHead    = m_pCmdHead;
     result->m_ppCmdPtr    = m_numCommands == 0 ? &result->m_pCmdHead : m_ppCmdPtr;
     result->m_numCommands = m_numCommands;
@@ -106,6 +108,40 @@ void RHICommandList::ResetForReuse()
     m_pComputeContext  = nullptr;
 }
 
+uint64_t RHICommandListBase::CaptureBindlessEpoch()
+{
+    IRHICommandContext* context = GetContext();
+    uint64_t epoch              = context != nullptr ? context->RHIGetCurrentBindlessEpoch() : 0;
+
+    if (epoch != 0 && (m_bindlessEpochs.empty() || m_bindlessEpochs.back() != epoch))
+    {
+        epoch = context->RHICaptureBindlessEpoch();
+
+        if (epoch != 0 && (m_bindlessEpochs.empty() || m_bindlessEpochs.back() != epoch))
+        {
+            m_bindlessEpochs.push_back(epoch);
+        }
+        else if (epoch != 0)
+        {
+            context->RHIReleaseBindlessEpoch(epoch);
+        }
+    }
+
+    return epoch;
+}
+
+void RHICommandListBase::ReleaseBindlessEpochs(size_t count)
+{
+    VERIFY_EXPR(count <= m_bindlessEpochs.size());
+
+    for (size_t index = count; index < m_bindlessEpochs.size(); ++index)
+    {
+        GetContext()->RHIReleaseBindlessEpoch(m_bindlessEpochs[index]);
+    }
+
+    m_bindlessEpochs.resize(count);
+}
+
 void RHICommandListBase::Execute()
 {
     GetRHIThread().CheckOwnership();
@@ -115,7 +151,7 @@ void RHICommandListBase::Execute()
     {
         RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
 
-        dynamic_cast<RHICommand*>(pCmd)->Execute(*this);
+        static_cast<RHICommand*>(pCmd)->Execute(*this);
 
         pCmd = pNext;
     }
@@ -145,6 +181,8 @@ void RHICommandListBase::Reset()
     m_ppCmdPtr    = &m_pCmdHead;
     m_numCommands = 0;
     m_cmdAllocator.Reset();
+    ReleaseBindlessEpochs(0);
+
     m_resources.Reset();
     m_submissionDependencies.clear();
 }
@@ -172,6 +210,8 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
     *checkpoint.tail = nullptr;
     m_ppCmdPtr       = checkpoint.tail;
     m_numCommands    = checkpoint.count;
+    ReleaseBindlessEpochs(checkpoint.captureCount);
+
     m_resources.Rollback(checkpoint.resourceCount);
     m_submissionDependencies.resize(checkpoint.dependencyCount);
 }
@@ -197,7 +237,7 @@ RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
     return pCmdList;
 }
 
-void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
+void RHICommandList::ClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size)
 {
     RetainResource(pBuffer);
     ALLOC_CMD(RHICommandClearBuffer)(pBuffer, offset, size);
@@ -236,11 +276,6 @@ void RHICommandList::CopyTexture(RHITexture* pSrcTexture,
     }
 
     pCmd->copyRegions = MakeVecView(pRegions, regions.size());
-    //RHITextureCopyRegion* pRegions = pCmd->copyRegions;
-    //for (uint32_t i = 0; i < regions.size(); i++)
-    //{
-    //    pRegions[i] = regions[i];
-    //}
 }
 
 void RHICommandList::BlitTexture(RHITexture* pSrcTexture,
@@ -301,11 +336,6 @@ void RHICommandList::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
     }
 
     pCmd->copyRegions = MakeVecView(pRegions, regions.size());
-    //RHIBufferTextureCopyRegion* pRegions = pCmd->CopyRegions();
-    //for (uint32_t i = 0; i < regions.size(); i++)
-    //{
-    //    pRegions[i] = regions[i];
-    //}
 }
 
 void RHICommandList::ResolveTexture(RHITexture* pSrcTexture,
@@ -408,7 +438,9 @@ void RHICommandList::SetShaderParameters(const RHIBatchedShaderParameters& param
         RetainResource(parameter.pResource);
         RetainResource(parameter.pAuxResource);
     }
-    ALLOC_CMD(RHICommandSetShaderParameters)(parameters, GetContext());
+    ALLOC_CMD(RHICommandSetShaderParameters)(
+        *this, parameters.GetView(),
+        parameters.GetBindlessParams().empty() ? 0 : CaptureBindlessEpoch());
 }
 
 void RHICommandList::BindVertexBuffers(VectorView<RHIBuffer*> vertexBuffers,
@@ -451,31 +483,32 @@ void RHICommandList::Draw(uint32_t vertexCount,
                           uint32_t firstVertex,
                           uint32_t firstInstance)
 {
-    ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance, GetContext());
+    ALLOC_CMD(RHICommandDraw)(vertexCount, instanceCount, firstVertex, firstInstance,
+                              CaptureBindlessEpoch());
 }
 
 void RHICommandList::DrawIndexed(const RHICommandDrawIndexed::Param& param)
 {
     RetainResource(param.pIndexBuffer);
-    ALLOC_CMD(RHICommandDrawIndexed)(param, GetContext());
+    ALLOC_CMD(RHICommandDrawIndexed)(param, CaptureBindlessEpoch());
 }
 
 void RHICommandList::DrawIndexedIndirect(const RHICommandDrawIndexedIndirect::Param& param)
 {
     RetainResource(param.pIndexBuffer);
     RetainResource(param.pIndirectBuffer);
-    ALLOC_CMD(RHICommandDrawIndexedIndirect)(param, GetContext());
+    ALLOC_CMD(RHICommandDrawIndexedIndirect)(param, CaptureBindlessEpoch());
 }
 
 void RHICommandList::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
-    ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ, GetContext());
+    ALLOC_CMD(RHICommandDispatch)(groupCountX, groupCountY, groupCountZ, CaptureBindlessEpoch());
 }
 
-void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
+void RHICommandList::DispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)
 {
     RetainResource(pIndirectBuffer);
-    ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset, GetContext());
+    ALLOC_CMD(RHICommandDispatchIndirect)(pIndirectBuffer, offset, CaptureBindlessEpoch());
 }
 
 void RHICommandList::SetPushConstants(RHIPipeline* pPipeline,
@@ -540,26 +573,6 @@ void RHICommandList::AddTransitions(BitField<RHIPipelineStageFlagBits> srcStages
     pCmd->memoryTransitions  = MakeVecView(pMemoryTransitions, memoryTransitions.size());
     pCmd->bufferTransitions  = MakeVecView(pBufferTransitions, bufferTransitions.size());
     pCmd->textureTransitions = MakeVecView(pTextureTransitions, textureTransitions.size());
-
-    //for (uint32_t i = 0; i < numMemoryTransitions; ++i)
-    //{
-    //    pMemoryTransitions[i] = memoryTransitions[i];
-    //}
-
-    //for (uint32_t i = 0; i < numBufferTransitions; ++i)
-    //{
-    //    pBufferTransitions[i] = bufferTransitions[i];
-    //}
-
-    //for (uint32_t i = 0; i < numTextureTransitions; ++i)
-    //{
-    //    pTextureTransitions[i] = textureTransitions[i];
-    //}
 }
 
-void RHICommandList::AddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout)
-{
-    RetainResource(pTexture);
-    ALLOC_CMD(RHICommandAddTextureTransition)(pTexture, newLayout);
-}
 } // namespace zen

@@ -65,7 +65,7 @@ public:
         if (newValue == 0)
         {
             std::atomic_thread_fence(std::memory_order_acquire);
-            GetRHIThread().Invoke([this] { Destroy(); });
+            GetRHIThread().Dispatch([this] { Destroy(); });
         }
 
         return newValue;
@@ -150,28 +150,6 @@ struct RHIResourceRefCountPolicy
 
 template <class T> using RHIResourcePtr = RefCountPtr<T, RHIResourceRefCountPolicy>;
 
-class RHIShaderGroupSource : public RefCounted
-{
-public:
-    RHIShaderGroupSource() = default;
-
-    void SetStageSource(RHIShaderStage stage, const std::string& source)
-    {
-        VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        m_source[ToUnderlying(stage)] = source;
-    }
-
-    const std::string& GetStageSource(RHIShaderStage stage) const
-    {
-        VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        return m_source[ToUnderlying(stage)];
-    }
-
-private:
-    RHIShaderLanguage m_shaderLanguage{RHIShaderLanguage::eGLSL};
-    std::string m_source[ToUnderlying(RHIShaderStage::eMax)];
-};
-
 class RHIShaderGroupSPIRV : public RefCounted
 {
 public:
@@ -182,12 +160,17 @@ public:
     void SetStageFlags(int64_t flags)
     {
         m_stageFlags = flags;
+        m_stageCount = std::popcount(static_cast<uint32_t>(flags));
     }
 
     void SetStageSPIRV(RHIShaderStage stage, HeapVector<uint8_t>&& source)
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        m_stageCount = HasShaderStage(stage) ? m_stageCount : m_stageCount++;
+        if (!HasShaderStage(stage))
+        {
+            ++m_stageCount;
+        }
+
         m_stageFlags.SetFlag(static_cast<RHIShaderStageFlagBits>(1 << ToUnderlying(stage)));
         m_spirv[static_cast<uint32_t>(stage)] = std::move(source);
     }
@@ -196,18 +179,6 @@ public:
     {
         VERIFY_EXPR(stage < RHIShaderStage::eMax);
         return m_spirv[ToUnderlying(stage)];
-    }
-
-    void SetStageCompileError(RHIShaderStage stage, const std::string& error)
-    {
-        VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        m_compileErrors[ToUnderlying(stage)] = error;
-    }
-
-    const std::string& GetStageCompileError(RHIShaderStage stage) const
-    {
-        VERIFY_EXPR(stage < RHIShaderStage::eMax);
-        return m_compileErrors[ToUnderlying(stage)];
     }
 
     bool HasShaderStage(RHIShaderStage stage) const
@@ -220,73 +191,20 @@ public:
         return m_stageCount;
     }
 
-    uint32_t GetHash32() const
-    {
-        uint32_t hash = 0;
-
-        // Hash SPIR-V bytecode for each stage
-        for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
-        {
-            if (!HasShaderStage(static_cast<RHIShaderStage>(i)))
-            {
-                continue;
-            }
-
-            const HeapVector<uint8_t>& code = m_spirv[i];
-
-            uint32_t spirvHash = 0;
-
-            for (uint8_t b : code)
-            {
-                spirvHash ^= b;
-                spirvHash *= 0x01000193u;
-            }
-
-            util::HashCombine32(hash, spirvHash);
-        }
-
-        return hash;
-    }
-
 private:
     // shader flags
     BitField<RHIShaderStageFlagBits> m_stageFlags;
     uint32_t m_stageCount{0};
 
-    // shader language
-    RHIShaderLanguage m_shaderLanguage{RHIShaderLanguage::eGLSL};
-
     // spirv code
     HeapVector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
-
-    // compile errors
-    std::string m_compileErrors[ToUnderlying(RHIShaderStage::eMax)];
 };
 
-using RHIShaderGroupSourcePtr = RefCountPtr<RHIShaderGroupSource>;
-using RHIShaderGroupSPIRVPtr  = RefCountPtr<RHIShaderGroupSPIRV>;
+using RHIShaderGroupSPIRVPtr = RefCountPtr<RHIShaderGroupSPIRV>;
 
 /*****************************/
 /********** Sampler **********/
 /*****************************/
-struct RHISamplerInfo
-{
-    RHISamplerFilter magFilter{RHISamplerFilter::eNearest};
-    RHISamplerFilter minFilter{RHISamplerFilter::eNearest};
-    RHISamplerFilter mipFilter{RHISamplerFilter::eNearest};
-    RHISamplerRepeatMode repeatU{RHISamplerRepeatMode::eClampToEdge};
-    RHISamplerRepeatMode repeatV{RHISamplerRepeatMode::eClampToEdge};
-    RHISamplerRepeatMode repeatW{RHISamplerRepeatMode::eClampToEdge};
-    float lodBias{0.0f};
-    bool useAnisotropy{false};
-    float maxAnisotropy{1.0f};
-    bool enableCompare{false};
-    RHIDepthCompareOperator compareOp{RHIDepthCompareOperator::eAlways};
-    float minLod{0.0f};
-    float maxLod{1e20}; // Something very large should do.
-    RHISamplerBorderColor borderColor{RHISamplerBorderColor::eFloatOpaqueBlack};
-    bool unnormalizedUVW{false};
-};
 
 /*****************************/
 /********* Textures **********/
@@ -296,13 +214,6 @@ class RHITexture;
 class RHIViewport : public RHIResource
 {
 public:
-    // static RHIViewport* Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync);
-
-    // RHIViewport() : RHIResource(RHIResourceType::eViewport)
-    // {
-    //     AddReference();
-    // }
-
     virtual ~RHIViewport() = default;
 
     virtual void PrepareForPresent(RHICommandList* pCmdList) = 0;
@@ -353,7 +264,7 @@ protected:
 
 struct RHIBufferCreateInfo
 {
-    uint32_t size{0};
+    uint64_t size{0};
     BitField<RHIBufferUsageFlagBits> usageFlags{0};
     RHIBufferAllocateType allocateType{RHIBufferAllocateType::eNone};
     NameID tag;
@@ -362,8 +273,6 @@ struct RHIBufferCreateInfo
 class RHIBuffer : public RHIResource
 {
 public:
-    // static RHIBuffer* Create(const RHIBufferCreateInfo& createInfo);
-
     ~RHIBuffer() {}
 
     virtual uint8_t* Map() = 0;
@@ -379,7 +288,7 @@ public:
         return m_usageFlags;
     }
 
-    uint32_t GetRequiredSize() const
+    uint64_t GetRequiredSize() const
     {
         return m_requiredSize;
     }
@@ -394,10 +303,9 @@ protected:
         m_resourceTag = createInfo.tag;
     }
 
-    uint32_t m_requiredSize{0};
+    uint64_t m_requiredSize{0};
     BitField<RHIBufferUsageFlagBits> m_usageFlags;
     RHIBufferAllocateType m_allocateType{RHIBufferAllocateType::eNone};
-    // BufferHandle m_handle;
 };
 
 struct RHITextureCreateInfo
@@ -489,12 +397,6 @@ public:
                                               RHITextureUsageFlagBits::eDepthStencilAttachment);
     }
 
-    // todo: impl Hash function
-    uint32_t GetHash32() const
-    {
-        return 0;
-    }
-
     static uint32_t CalculateTextureMipLevels(uint32_t dim)
     {
         return static_cast<uint32_t>(floor(log2(dim)) + 1);
@@ -524,8 +426,6 @@ protected:
     }
 
     void DestroyOwnedViews();
-
-    const RHITexture* m_pBaseTexture{nullptr};
 
     RHITextureCreateInfo m_baseInfo{};
 
@@ -575,8 +475,8 @@ private:
     void InitSubresourceRange()
     {
         m_subResourceRange.aspect         = m_viewInfo.aspect.IsEmpty() ?
-            GetTextureFormatAspects(m_viewInfo.format) :
-            m_viewInfo.aspect;
+                    GetTextureFormatAspects(m_viewInfo.format) :
+                    m_viewInfo.aspect;
         m_subResourceRange.layerCount     = m_viewInfo.arrayLayers;
         m_subResourceRange.levelCount     = m_viewInfo.mipLevels;
         m_subResourceRange.baseMipLevel   = m_viewInfo.baseMipLevel;
@@ -647,7 +547,6 @@ struct RHISamplerCreateInfo
 class RHISampler : public RHIResource
 {
 public:
-    // static RHISampler* Create(const RHISamplerCreateInfo& createInfo);
     ~RHISampler() {}
 
 protected:
@@ -664,7 +563,7 @@ struct RHIShaderCreateInfo
 {
     std::string spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> stageFlags;
-    HashMap<uint32_t, int> specializationConstants;
+    HashMap<uint32_t, RHIShaderSpecializationValue> specializationConstants;
     NameID name;
 };
 
@@ -719,30 +618,6 @@ public:
         return m_namedSRDLut.contains(glslName) ? m_namedSRDLut[glslName] : nullptr;
     }
 
-    uint32_t GetHash32() const
-    {
-        uint32_t hash = 0;
-
-        // Shader stage flags
-        util::HashCombine32(hash, m_shaderStageFlags);
-
-        // Hash the SPIR-V src
-        util::HashCombine32(hash, m_shaderGroupSPIRV->GetHash32());
-
-        // Hash specialization constants
-        for (const HashMap<uint32_t, int>::value_type& constant : m_specializationConstants)
-        {
-            uint32_t kv =
-                (constant.first << 16) ^ (static_cast<uint32_t>(constant.second) & 0xFFFFu);
-            util::HashCombine32(hash, kv);
-        }
-
-        // Hash shader name
-        util::HashCombine32T(hash, m_name);
-
-        return hash;
-    }
-
 protected:
     explicit RHIShader(const RHIShaderCreateInfo& createInfo) :
         RHIResource(RHIResourceType::eShader),
@@ -760,7 +635,7 @@ protected:
     RHIShaderGroupSPIRVPtr m_shaderGroupSPIRV{};
     std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
-    HashMap<uint32_t, int> m_specializationConstants;
+    HashMap<uint32_t, RHIShaderSpecializationValue> m_specializationConstants;
     RHIShaderResourceDescriptorTable m_SRDTable;
     SmallVector<uint32_t, ToUnderlying(RHIShaderResourceType::eMax)> m_SRDCount;
     HashMap<NameID, const RHIShaderResourceDescriptor*> m_namedSRDLut;
@@ -784,36 +659,6 @@ struct RHIRenderingLayout
     uint32_t GetTotalNumRenderTargets() const
     {
         return hasDepthStencilRT ? numColorRenderTargets + 1 : numColorRenderTargets;
-    }
-
-    void GetRHIRenderTargetClearValueData(RHIRenderTargetClearValue* pClearValues) const
-    {
-        uint32_t rtIdx = 0;
-
-        for (; rtIdx < numColorRenderTargets; rtIdx++)
-        {
-            pClearValues[rtIdx] = colorRenderTargets[rtIdx].clearValue;
-        }
-
-        if (hasDepthStencilRT)
-        {
-            pClearValues[rtIdx] = depthStencilRenderTarget.clearValue;
-        }
-    }
-
-    void GetRHITextureData(RHITexture** pTextures) const
-    {
-        uint32_t rtIdx = 0;
-
-        for (; rtIdx < numColorRenderTargets; rtIdx++)
-        {
-            pTextures[rtIdx] = colorRenderTargets[rtIdx].pTexture;
-        }
-
-        if (hasDepthStencilRT)
-        {
-            pTextures[rtIdx] = depthStencilRenderTarget.pTexture;
-        }
     }
 
     void SetRenderArea(int32_t offsetX, int32_t offsetY, uint32_t width, uint32_t height)
@@ -876,8 +721,8 @@ struct RHIRenderingLayout
         AddColorRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
         colorRenderTargets[numColorRenderTargets - 1].pTextureView = pView;
         numLayers                                                  = firstAttachment ?
-            pView->GetSubResourceRange().layerCount :
-            std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+                                                             pView->GetSubResourceRange().layerCount :
+                                                             std::min(previousLayers, pView->GetSubResourceRange().layerCount);
     }
 
     void AddDepthStencilRenderTarget(DataFormat format,
@@ -917,8 +762,8 @@ struct RHIRenderingLayout
                                         clearValue);
             depthStencilRenderTarget.pTextureView = pView;
             numLayers                             = firstAttachment ?
-                pView->GetSubResourceRange().layerCount :
-                std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+                                            pView->GetSubResourceRange().layerCount :
+                                            std::min(previousLayers, pView->GetSubResourceRange().layerCount);
         }
     }
 
@@ -929,36 +774,6 @@ struct RHIRenderingLayout
         hasDepthStencilRT        = false;
         numColorRenderTargets    = 0;
         numLayers                = 1;
-    }
-
-    uint32_t GetHash32() const
-    {
-        uint32_t seed = 0;
-        // Hash basic types
-        util::HashCombine32(seed, numColorRenderTargets);
-        util::HashCombine32(seed, hasDepthStencilRT);
-        util::HashCombine32(seed, renderArea.minX);
-        util::HashCombine32(seed, renderArea.minY);
-        util::HashCombine32(seed, renderArea.maxX);
-        util::HashCombine32(seed, renderArea.maxY);
-
-        for (uint32_t i = 0; i < numColorRenderTargets; ++i)
-        {
-            const RHIRenderTarget& rt = colorRenderTargets[i];
-            util::HashCombine32T(seed, rt.loadOp);
-            util::HashCombine32T(seed, rt.storeOp);
-            util::HashCombine32T(seed, rt.numSamples);
-            util::HashCombine32T(seed, rt.format);
-        }
-
-        if (hasDepthStencilRT)
-        {
-            util::HashCombine32T(seed, depthStencilRenderTarget.loadOp);
-            util::HashCombine32T(seed, depthStencilRenderTarget.storeOp);
-            util::HashCombine32T(seed, depthStencilRenderTarget.format);
-        }
-
-        return seed;
     }
 
 private:
@@ -981,25 +796,13 @@ struct RHIGfxPipelineCreateInfo
     RHIShader* pShader;
     RHIGfxPipelineStates states;
 
-    // RHIRenderPassLayout renderPassLayout;
     const RHIRenderingLayout* pRenderingLayout;
-
-    // RenderPassHandle renderPassHandle;
-    uint32_t subpassIdx;
 };
 
 struct RHIComputePipelineCreateInfo
 {
     RHIShader* pShader;
 };
-
-// enum class RHIPipelineType : uint32_t
-// {
-//     eNone     = 0,
-//     eGraphics = 1,
-//     eCompute  = 2,
-//     eMax      = 3
-// };
 
 class RHIPipeline : public RHIResource
 {
@@ -1022,10 +825,7 @@ protected:
         RHIResource(RHIResourceType::ePipeline),
         m_type(RHIPipelineType::eGraphics),
         m_pShader(createInfo.pShader),
-        m_gfxStates(createInfo.states),
-        // m_renderPassLayout(createInfo.renderPassLayout),
-        m_pRenderingLayout(createInfo.pRenderingLayout),
-        m_subpassIdx(createInfo.subpassIdx)
+        m_gfxStates(createInfo.states)
     {
         m_pShader->AddReference();
     }
@@ -1044,12 +844,6 @@ protected:
 
     // for graphics pipeline
     RHIGfxPipelineStates m_gfxStates;
-
-    // RHIRenderPassLayout m_renderPassLayout;
-    const RHIRenderingLayout* m_pRenderingLayout;
-
-    // RenderPassHandle m_renderPassHandle{0LLU};
-    uint32_t m_subpassIdx;
 };
 
 class RHIResourceFactory

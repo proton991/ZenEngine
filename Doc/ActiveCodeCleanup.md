@@ -39,9 +39,7 @@ are excluded.
 
 ## Build and formatting
 
-The default CMake build contains the active renderer and tests. Historical
-targets remain available through `-DZEN_BUILD_LEGACY=ON`; those targets still
-require migration to the current RHI APIs.
+The default CMake build contains the active renderer and tests. Historical renderer targets were removed by the RHI improvement cleanup and remain in Git history.
 
 From a Visual Studio developer shell:
 

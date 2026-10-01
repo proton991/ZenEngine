@@ -225,17 +225,11 @@ public:
     bool ResolveStagingFlushAction(StagingFlushAction action,
                                    StagingBufferManager* manager = nullptr);
 
-    // RenderPassHandle GetOrCreateRenderPass(const RHIRenderPassLayout& layout);
-
-    // RHIPipeline* GetOrCreateGfxPipeline(RHIGfxPipelineStates& PSO,
-    //                                     RHIShader* shader,
-    //                                     const RenderPassHandle& renderPass,
-    //                                     const HashMap<uint32_t, int>& specializationConstants);
-
-    RHIPipeline* GetOrCreateGfxPipeline(const RHIGfxPipelineStates& PSO,
-                                        RHIShader* pShader,
-                                        const RHIRenderingLayout* pRenderingLayout,
-                                        const HashMap<uint32_t, int>& specializationConstants);
+    RHIPipeline* GetOrCreateGfxPipeline(
+        const RHIGfxPipelineStates& PSO,
+        RHIShader* pShader,
+        const RHIRenderingLayout* pRenderingLayout,
+        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* pShader);
 
@@ -430,7 +424,7 @@ private:
 
         void AddStencil(const RHIStencilOpState& op);
 
-        void AddAttachment(const RHIRenderTarget& target, bool dynamicRendering);
+        void AddAttachment(const RHIRenderTarget& target);
 
         bool operator==(const PipelineKey& other) const
         {
@@ -447,22 +441,23 @@ private:
     };
     using PipelineCache = LRUCache<PipelineKey, RHIPipeline*, PipelineKeyHasher>;
 
-    static PipelineKey MakePipelineKey(RHIShader* shader,
-                                       const RHIGfxPipelineStates* states      = nullptr,
-                                       const RHIRenderingLayout* layout        = nullptr,
-                                       const HashMap<uint32_t, int>& constants = {},
-                                       bool dynamicRendering                   = false);
+    static PipelineKey MakePipelineKey(
+        RHIShader* shader,
+        const RHIGfxPipelineStates* states                               = nullptr,
+        const RHIRenderingLayout* layout                                 = nullptr,
+        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {});
 
     friend struct PipelineCacheTestAccess;
     friend struct RDGSubmissionTestAccess;
     friend struct RDGExecutionPlanTestAccess;
 
     // The compiler uses its own executor's timing option, including standalone executors.
-    RHIPipeline* GetOrCreateGfxPipeline(const RHIGfxPipelineStates& states,
-                                        RHIShader* shader,
-                                        const RHIRenderingLayout* layout,
-                                        const HashMap<uint32_t, int>& constants,
-                                        bool timed);
+    RHIPipeline* GetOrCreateGfxPipeline(
+        const RHIGfxPipelineStates& states,
+        RHIShader* shader,
+        const RHIRenderingLayout* layout,
+        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants,
+        bool timed);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* shader, bool timed);
 
@@ -514,7 +509,6 @@ private:
 
     DeletionQueue m_deletionQueue;
 
-    // HashMap<size_t, RenderPassHandle> m_renderPassCache;
     static constexpr size_t kPipelineCacheCapacity = 256;
     PipelineCache m_pipelineCache;
     PipelineCacheMetrics m_pipelineMetrics;

@@ -753,15 +753,25 @@ void RHICommandListExecutor::WaitDeviceIdle()
     GetRHIThread().Invoke(&RHICommandListExecutor::ExecuteWaitIdle, this);
 }
 
+bool RHICommandListExecutor::ExecuteWaitForCompletion(RHICommandContextType type,
+                                                      uint64_t serial,
+                                                      uint64_t timeoutNS)
+{
+    const bool completed = m_backend->WaitForCompletion(type, serial, timeoutNS);
+
+    PublishProgress();
+
+    CollectCompletedBatches(false);
+
+    return completed;
+}
+
 bool RHICommandListExecutor::WaitForCompletion(RHICommandContextType type,
                                                uint64_t serial,
                                                uint64_t timeoutNS)
 {
-    const bool completed =
-        GetRHIThread().Invoke(&DynamicRHI::WaitForCompletion, m_backend, type, serial, timeoutNS);
-    GetRHIThread().Invoke(&RHICommandListExecutor::PublishProgress, this);
-    GetRHIThread().Invoke(&RHICommandListExecutor::CollectCompletedBatches, this, false);
-    return completed;
+    return GetRHIThread().Invoke(&RHICommandListExecutor::ExecuteWaitForCompletion, this, type,
+                                 serial, timeoutNS);
 }
 
 uint64_t RHICommandListExecutor::GetLastSubmittedSerial(RHICommandContextType type) const
@@ -852,8 +862,10 @@ bool RHICommandListExecutor::AreSubmissionsBlocked() const
 
 RHIThreadMetrics RHICommandListExecutor::GetThreadMetrics() const
 {
-    return {m_submittedBatches.load(), m_completedBatches.load(), m_executionCPUUs.load(),
-            m_queueWaitUs.load(),      m_pendingBatches.load(),   m_peakPendingBatches.load()};
+    return {m_submittedBatches.load(),        m_completedBatches.load(),
+            m_executionCPUUs.load(),          m_queueWaitUs.load(),
+            m_pendingBatches.load(),          m_peakPendingBatches.load(),
+            m_backend->GetExecutionCounters()};
 }
 
 RHIAPIType RHICommandListExecutor::GetAPIType()
@@ -1005,7 +1017,7 @@ IRHICommandContext* RHICommandListExecutor::GetCommandContext(RHICommandContextT
 
 IRHICommandContext* RHICommandListExecutor::GetTransferCommandContext()
 {
-    return GetRHIThread().Invoke(&DynamicRHI::GetTransferCommandContext, m_backend);
+    return GetCommandContext(RHICommandContextType::eTransfer);
 }
 
 void RHICommandListExecutor::FinalizeCommandLists(VectorView<RHICommandList*> lists,
@@ -1022,6 +1034,6 @@ void RHICommandListExecutor::SubmitPlatformCommandLists(VectorView<RHIPlatformCo
 RHITextureCopyCapabilities RHICommandListExecutor::GetTextureCopyCapabilities(
     DataFormat format) const
 {
-    return GetRHIThread().Invoke(&DynamicRHI::GetTextureCopyCapabilities, m_backend, format);
+    return m_backend->GetTextureCopyCapabilities(format);
 }
 } // namespace zen

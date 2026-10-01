@@ -131,7 +131,6 @@ struct GraphicsPass
     uint32_t numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
 
-    // RHIRenderPassLayout renderPassLayout;
     RHIRenderingLayout* pRenderingLayout{nullptr};
 
     // setIndex as vector index, bindingIndex as inner map key

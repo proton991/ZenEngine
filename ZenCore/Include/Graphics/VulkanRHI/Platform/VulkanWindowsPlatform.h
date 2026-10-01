@@ -1,6 +1,5 @@
 #pragma once
 #if defined(ZEN_WIN32)
-#    include "Graphics/RHI/RHIDefs.h"
 #    include "VulkanPlatformCommon.h"
 #    include "Templates/HeapVector.h"
 #    include "Utils/UniquePtr.h"

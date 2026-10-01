@@ -5,7 +5,7 @@
 #include "Templates/HashMap.h"
 #include "Utils/Helpers.h"
 #include "Graphics/RHI/RHIResource.h"
-#include "VulkanTypes.h"
+#include "VulkanHeaders.h"
 
 namespace zen
 {
@@ -47,6 +47,17 @@ class VulkanShader : public RHIShader
 {
 public:
     static VulkanShader* CreateObject(const RHIShaderCreateInfo& createInfo);
+
+    struct DynamicOffsetSlot
+    {
+        uint32_t binding{0};
+        uint32_t count{0};
+    };
+
+    VectorView<const DynamicOffsetSlot> GetDynamicOffsetSlots(uint32_t set) const
+    {
+        return m_dynamicOffsetSlots[set];
+    }
 
     uint32_t GetNumShaderStages() const
     {
@@ -146,6 +157,8 @@ private:
 
     VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
     bool m_hasGlobalBindlessSet{false};
+
+    SmallVector<DynamicOffsetSlot> m_dynamicOffsetSlots[MAX_NUM_DESCRIPTOR_SETS];
 };
 
 class VulkanPipeline : public RHIPipeline
@@ -172,7 +185,7 @@ public:
 
     VkPipelineLayout GetVkPipelineLayout() const
     {
-        return TO_VK_SHADER(m_pShader)->GetVkPipelineLayout();
+        return static_cast<VulkanShader*>(m_pShader)->GetVkPipelineLayout();
     }
 
     VkShaderStageFlags GetPushConstantsStageFlags() const
@@ -190,7 +203,7 @@ private:
 
     VulkanPipeline(const RHIComputePipelineCreateInfo& createInfo) : RHIPipeline(createInfo) {}
 
-    void InitGraphics();
+    void InitGraphics(const RHIRenderingLayout& layout);
 
     void InitCompute();
 

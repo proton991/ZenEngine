@@ -176,7 +176,8 @@ public:
 
     ~TestViewport() override
     {
-        ReleaseReference();
+        // This fixture lives on the stack; finish its final release before it leaves scope.
+        GetRHIThread().Invoke([this] { ReleaseReference(); });
     }
 
     RHITexture* color{};
@@ -499,7 +500,7 @@ public:
 
     void RHIBindPipeline(RHIPipeline* pPipeline) override {}
 
-    void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) override
+    void RHISetShaderParameters(RHIShaderParameterView parameters) override
     {
         for (const RHIShaderValueParameter& value : parameters.GetValueParams())
         {
@@ -554,7 +555,7 @@ public:
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
                                 uint32_t indexBufferOffset,
-                                uint32_t offset,
+                                uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override
     {
@@ -567,7 +568,7 @@ public:
         ++dispatchCount;
     }
 
-    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override
+    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override
     {
         indirectDispatches.push_back(pIndirectBuffer);
     }
@@ -598,9 +599,14 @@ public:
                                   textureTransitionsView.end());
     }
 
-    void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) override {}
+    uint64_t clearOffset{0};
+    uint64_t clearSize{0};
 
-    void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) override {}
+    void RHIClearBuffer(RHIBuffer*, uint64_t offset, uint64_t size) override
+    {
+        clearOffset = offset;
+        clearSize   = size;
+    }
 
     void RHICopyBuffer(RHIBuffer* pSrcBuffer,
                        RHIBuffer* pDstBuffer,
@@ -723,9 +729,9 @@ public:
         return log.RHIBindPipeline(pPipeline);
     }
 
-    void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) override
+    void RHISetShaderParameters(RHIShaderParameterView parameters) override
     {
-        return log.RHISetShaderParameters(parameters);
+        log.RHISetShaderParameters(parameters);
     }
 
     void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
@@ -764,7 +770,7 @@ public:
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
                                 uint32_t indexBufferOffset,
-                                uint32_t offset,
+                                uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override
     {
@@ -777,7 +783,7 @@ public:
         return log.RHIDispatch(groupCountX, groupCountY, groupCountZ);
     }
 
-    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override
+    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override
     {
         return log.RHIDispatchIndirect(pIndirectBuffer, offset);
     }
@@ -799,12 +805,7 @@ public:
                                      textureTransitions);
     }
 
-    void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) override
-    {
-        return log.RHIAddTextureTransition(pTexture, newLayout);
-    }
-
-    void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) override
+    void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) override
     {
         return log.RHIClearBuffer(pBuffer, offset, size);
     }
@@ -953,7 +954,7 @@ public:
 
     IRHICommandContext* GetTransferCommandContext() override
     {
-        return ZEN_NEW() TestContextProxy(transfer);
+        return GetCommandContext(RHICommandContextType::eTransfer);
     }
 
     RHIAPIType GetAPIType() override
@@ -11346,10 +11347,12 @@ TEST_F(RenderCoreTest, ParameterSnapshotsPreserveOffsetsArrayMetadataAndBindless
     resource.bindless = true;
     resource.type     = RHIShaderResourceType::eStorageBuffer;
     source.AddResourceParam(resource, buffer, nullptr, 23);
-    RHICommandSetShaderParameters command(source);
+    RHICommandList storage;
+
+    RHICommandSetShaderParameters command(storage, source.GetView());
     source.Reset();
     source.AddValueParam(value, uint64_t(0)); // Reuse and overwrite the original byte storage.
-    const RHIBatchedShaderParameters& snapshot       = command.parameters;
+    const RHIShaderParameterView& snapshot           = command.parameters;
     VectorView<const RHIShaderValueParameter> values = snapshot.GetValueParams();
     ASSERT_EQ(values.size(), 2u);
     EXPECT_EQ(values[0].set, 2u);
@@ -11388,9 +11391,7 @@ TEST_F(RenderCoreTest, ParameterSnapshotsPreserveOffsetsArrayMetadataAndBindless
     EXPECT_EQ(bindless[0].pAuxResource, nullptr);
 
     source.Reset();
-    command.parameters.CopyFrom(source);
-
-    EXPECT_FALSE(command.parameters.HasAnyParameter());
+    storage.Reset();
 
     device->DestroyTexture(texture);
     device->DestroyBuffer(buffer);
@@ -11406,10 +11407,9 @@ struct PipelineCacheTestAccess
     static KeyType Key(RHIShader* shader,
                        const RHIGfxPipelineStates& states,
                        const RHIRenderingLayout& layout,
-                       bool dynamic                            = true,
-                       const HashMap<uint32_t, int>& constants = {})
+                       const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {})
     {
-        return RenderDevice::MakePipelineKey(shader, &states, &layout, constants, dynamic);
+        return RenderDevice::MakePipelineKey(shader, &states, &layout, constants);
     }
 
     static void CheckCollisions(RHIShader* shader, const RHIRenderingLayout& layout)
@@ -11498,9 +11498,6 @@ TEST_F(RenderCoreTest, PipelineCacheReusesDynamicAttachmentsAndKeepsLegacyKeysSe
     states.colorBlendState.AddAttachment();
 
     EXPECT_TRUE(Access::Key(shader, states, first) == Access::Key(shader, states, second));
-    EXPECT_FALSE(Access::Key(shader, states, first, false) ==
-                 Access::Key(shader, states, second, false));
-    EXPECT_FALSE(Access::Key(shader, states, first, false) == Access::Key(shader, states, first));
 
     RHIPipeline* pipeline = device->GetOrCreateGfxPipeline(states, shader, &first, {});
     ASSERT_NE(pipeline, nullptr);
@@ -11575,13 +11572,35 @@ TEST_F(RenderCoreTest,
     device->DestroyTexture(texture);
 }
 
+TEST_F(RenderCoreTest, RecordedBufferClearPreservesWideRangeAndWholeSize)
+{
+    TestContext& context = rhi->graphics;
+    RHICommandListPtr commands(
+        RHICommandList::Create(rhi->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHIBufferCreateInfo info{};
+    info.size             = 16;
+    TestBuffer* buffer    = ZEN_NEW() TestBuffer(info);
+    const uint64_t offset = (uint64_t(1) << 32) + 16;
+    const uint64_t size   = (uint64_t(1) << 32) + 64;
+    commands->ClearBuffer(buffer, offset, size);
+    commands->Execute();
+    EXPECT_EQ(context.clearOffset, offset);
+    EXPECT_EQ(context.clearSize, size);
+    commands->Reset();
+    commands->ClearBuffer(buffer, 0, ZEN_BUFFER_WHOLE_SIZE);
+    commands->Execute();
+    EXPECT_EQ(context.clearSize, UINT64_MAX);
+    commands->Reset();
+    buffer->ReleaseReference();
+}
+
 TEST_F(RenderCoreTest, PipelineCachePreservesLargeSpecializationsAndCanonicalOrder)
 {
     RHIShader* shader = CreateTestShaderProgram(device, "pipeline_constants")->GetShader();
 
     RHIGfxPipelineStates states;
     RHIRenderingLayout layout;
-    HashMap<uint32_t, int> forward, reverse;
+    HashMap<uint32_t, RHIShaderSpecializationValue> forward, reverse;
 
     for (uint32_t i = 0; i < 256; ++i)
     {
@@ -11599,7 +11618,15 @@ TEST_F(RenderCoreTest, PipelineCachePreservesLargeSpecializationsAndCanonicalOrd
     EXPECT_EQ(first->GetShader()->GetCreateInfo().specializationConstants, forward);
     EXPECT_TRUE(shader->GetCreateInfo().specializationConstants.empty());
 
-    reverse[0] += 65536;
+    reverse[0] = int(reverse[0].bits) + 65536;
+
+    HashMap<uint32_t, RHIShaderSpecializationValue> fractional{{1, 1.25f}};
+    RHIPipeline* floatPipeline =
+        device->GetOrCreateGfxPipeline(states, shader, &layout, fractional);
+    EXPECT_NE(floatPipeline, device->GetOrCreateGfxPipeline(states, shader, &layout, {{1, 1.5f}}));
+    EXPECT_NE(floatPipeline,
+              device->GetOrCreateGfxPipeline(states, shader, &layout,
+                                             {{1, std::bit_cast<uint32_t>(1.25f)}}));
 
     EXPECT_NE(first, device->GetOrCreateGfxPipeline(states, shader, &layout, reverse));
 }

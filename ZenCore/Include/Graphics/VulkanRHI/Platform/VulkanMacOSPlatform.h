@@ -1,6 +1,5 @@
 #pragma once
 #include "VulkanPlatformCommon.h"
-#include "Graphics/RHI/RHIDefs.h"
 #include "Templates/HeapVector.h"
 
 #if defined(ZEN_MACOS)

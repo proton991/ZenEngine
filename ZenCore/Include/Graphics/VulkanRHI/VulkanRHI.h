@@ -51,14 +51,21 @@ class VulkanRHI : public DynamicRHI
 public:
     VulkanRHI();
 
-    ~VulkanRHI() override
-    {
-        // delete m_resourceFactory;
-    }
+    ~VulkanRHI() override {}
 
     IRHICommandContext* GetCommandContext(RHICommandContextType contextType) override;
 
     IRHICommandContext* GetTransferCommandContext() override;
+
+    RHIExecutionCounterStorage& GetExecutionCounterStorage()
+    {
+        return m_executionCounters;
+    }
+
+    RHIExecutionCounters GetExecutionCounters() const override
+    {
+        return m_executionCounters.Read();
+    }
 
     bool PrepareSubmissionDependencies(
         IRHICommandContext* context,
@@ -121,40 +128,11 @@ public:
 
     RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) final;
 
-    // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                  const RHIGfxPipelineStates& states,
-    //                                  RenderPassHandle renderPassHandle,
-    //                                  uint32_t subpass) final;
-
-    // PipelineHandle CreateGfxPipeline(RHIShader* shaderHandle,
-    //                                  const RHIGfxPipelineStates& states,
-    //                                  const RHIRenderPassLayout& renderPassLayout,
-    //                                  uint32_t subpass) final;
-
-    // PipelineHandle CreateComputePipeline(RHIShader* shaderHandle) final;
-
     void DestroyPipeline(RHIPipeline* pPipeline) final;
 
-    // RenderPassHandle CreateRenderPass(const RHIRenderPassLayout& renderPassLayout) final;
-
-    // void DestroyRenderPass(RenderPassHandle renderPassHandle) final;
-
-    // FramebufferHandle CreateFramebuffer(RenderPassHandle renderPassHandle,
-    //                                     const RHIFramebufferInfo& fbInfo) final;
-
-    // void DestroyFramebuffer(FramebufferHandle framebufferHandle) final;
-
-    // SamplerHandle CreateSampler(const RHISamplerInfo& samplerInfo) final;
     RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) final;
 
     void DestroySampler(RHISampler* pSampler) final;
-
-    // TextureHandle CreateTexture(const TextureInfo& textureInfo) final;
-    //
-    // TextureHandle CreateTextureProxy(const TextureHandle& baseTexture,
-    //                                  const TextureProxyInfo& textureProxyInfo) final;
-    //
-    // void DestroyTexture(TextureHandle textureHandle) final;
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
@@ -163,34 +141,9 @@ public:
 
     void DestroyTexture(RHITexture* pTexture) final;
 
-    // DataFormat GetTextureFormat(TextureHandle textureHandle) final;
-    //
-    // RHITextureSubResourceRange GetTextureSubResourceRange(TextureHandle textureHandle) final;
-
-    // BufferHandle CreateBuffer(uint32_t size,
-    //                           BitField<RHIBufferUsageFlagBits> usageFlags,
-    //                           RHIBufferAllocateType allocateType) final;
-    //
-    // uint8_t* MapBuffer(BufferHandle bufferHandle) final;
-    //
-    // void UnmapBuffer(BufferHandle bufferHandle) final;
-    //
-    // void DestroyBuffer(BufferHandle bufferHandle) final;
-    //
-
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) final;
 
     void DestroyBuffer(RHIBuffer* pBuffer) final;
-
-    //
-    // void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) final;
-
-    // DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) final;
-
-    // void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) final;
-
-    // void UpdateDescriptorSet(DescriptorSetHandle descriptorSetHandle,
-    //                          const HeapVector<RHIShaderResourceBinding>& resourceBindings) final;
 
     void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
                               HeapVector<RHIPlatformCommandList*>& outCommandLists) final;
@@ -228,22 +181,6 @@ public:
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const final;
 
     RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const final;
-
-    void UpdateImageLayout(VkImage image, VkImageLayout newLayout);
-
-    void RemoveImageLayout(VkImage image);
-
-    VkImageLayout GetImageCurrentLayout(VkImage image);
-
-    VkRenderPass GetOrCreateRenderPass(const RHIRenderingLayout* pRenderingLayout);
-
-    VkFramebuffer GetOrCreateFramebuffer(const RHIRenderingLayout* pRenderingLayout,
-                                         VkRenderPass renderPass);
-
-    VulkanViewport* GetCurrentViewport() const
-    {
-        return m_pCurrentViewport;
-    }
 
     PagedAllocator<VersatileResource>& GetResourceAllocator()
     {
@@ -292,6 +229,8 @@ private:
 
     void SetupInstanceExtensions(VulkanInstanceExtensionArray& instanceExtensions);
 
+    RHIExecutionCounterStorage m_executionCounters;
+
     void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& dbgMessengerCI);
 
     void SelectGPU();
@@ -314,26 +253,11 @@ private:
 
     RHIGPUInfo m_gpuInfo{};
 
-    VulkanViewport* m_pCurrentViewport{nullptr};
-
     VulkanDescriptorPoolManager2* m_pDescriptorPoolManager2{nullptr};
     VulkanBindlessDescriptorPoolManager* m_pBindlessDescriptorPoolManager{nullptr};
     VulkanUniformBufferAllocator* m_pUniformBufferAllocator{nullptr};
 
-    // allocator for memory
-    // VulkanMemoryAllocator* m_vkMemAllocator{nullptr};
-    // allocators for resources
     PagedAllocator<VersatileResource> m_resourceAllocator;
-
-    // HashMap<RHIShader*, VulkanPipeline*> m_shaderPipelines;
-
-    // Debug-only mirror of layouts requested through explicit barriers. RDG/RenderDevice resource
-    // state is the authority for deciding whether a transition is needed.
-    HashMap<VkImage, VkImageLayout> m_imageLayoutCache;
-
-    HashMap<uint32_t, VkRenderPass> m_renderPassCache;
-
-    HashMap<uint32_t, VkFramebuffer> m_framebufferCache;
 
     ObjectPool<VulkanPlatformCommandList> m_platformCommandListPool;
 

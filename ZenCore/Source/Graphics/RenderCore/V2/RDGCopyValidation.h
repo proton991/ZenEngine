@@ -20,22 +20,11 @@ inline uint32_t CopyTexelBytes(DataFormat format, BitField<RHITextureAspectFlagB
     {
         switch (format)
         {
-            case DataFormat::eR8UNORM:
-            case DataFormat::eR8UInt: result = 1; break;
             case DataFormat::eD16UNORM:
             case DataFormat::eD16UNORMS8UInt: result = 2; break;
-            case DataFormat::eR8G8B8SRGB:
-            case DataFormat::eR8G8B8UNORM: result = 3; break;
-            case DataFormat::eR8G8B8A8UInt:
-            case DataFormat::eR8G8B8A8SRGB:
-            case DataFormat::eR8G8B8A8UNORM:
-            case DataFormat::eD32SFloat:
             case DataFormat::eD24UNORMS8UInt:
             case DataFormat::eD32SFloatS8UInt: result = 4; break;
-            default:
-                const uint32_t bytes = GetTextureFormatPixelSize(format);
-                result               = bytes == 0x7fffffff ? 0 : bytes;
-                break;
+            default: result = GetTextureFormatPixelSize(format); break;
         }
     }
 
@@ -85,10 +74,10 @@ inline bool ValidateTextureCopyBox(RDGResult& result,
         {
             const uint32_t extent = axis == 0 ? info.width : axis == 1 ? info.height : info.depth;
             const uint32_t mipExtent = std::max(1u, extent >> layers.mipmap);
-            valid = result.Check(offset[axis] >= 0 && size[axis] > 0 &&
-                                     uint64_t(offset[axis]) + size[axis] <= mipExtent,
-                                 RDGErrorCode::eRange,
-                                 "Copy box exceeds texture '" + name.ToString() + "'");
+            valid                    = result.Check(offset[axis] >= 0 && size[axis] > 0 &&
+                                                        uint64_t(offset[axis]) + size[axis] <= mipExtent,
+                                                    RDGErrorCode::eRange,
+                                                    "Copy box exceeds texture '" + name.ToString() + "'");
 
             if (!valid)
             {

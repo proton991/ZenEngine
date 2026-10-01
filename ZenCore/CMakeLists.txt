@@ -2,7 +2,6 @@ set(ZEN_CORE_HEADERS
     Include/ObjectBase.h
 
     Include/AssetLib/TextureLoader.h
-    Include/AssetLib/GLTFLoader.h
     Include/AssetLib/FastGLTFLoader.h
     Include/AssetLib/GLTFModelCatalog.h
     Include/AssetLib/Types.h
@@ -81,16 +80,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RenderCore/V2/RenderFrameState.h
     Include/Graphics/RenderCore/V2/StagingUploadQueue.h
 
-    Include/Graphics/RenderCore/RenderConfig.h
-    Include/Graphics/RenderCore/RenderGraphDefinitions.h
-    Include/Graphics/RenderCore/RenderGraph.h
-    Include/Graphics/RenderCore/RenderDevice.h
-    Include/Graphics/RenderCore/ResourceCache.h
-    Include/Graphics/RenderCore/RenderFrame.h
-    Include/Graphics/RenderCore/RenderContext.h
-    Include/Graphics/RenderCore/RenderBuffers.h
-    Include/Graphics/RenderCore/ShaderManager.h
-    Include/Graphics/RenderCore/TextureManager.h
 
     Include/SceneGraph/AABB.h
     Include/SceneGraph/Node.h
@@ -115,13 +104,13 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/RHI/RHIGPUTiming.h
     Include/Graphics/RHI/RHIGPUFrameTiming.h
     Include/Graphics/RHI/RHICommandListExecutor.h
+    Include/Graphics/RHI/RHIExecutionCounters.h
     Include/Graphics/RHI/RHIThread.h
     Include/Graphics/RHI/RHICommon.h
     Include/Graphics/RHI/RHIDebug.h
     Include/Graphics/RHI/RHIResource.h
     Include/Graphics/RHI/RHIShaderParameters.h
     Include/Graphics/RHI/RHIFrameState.h
-    Include/Graphics/RHI/RHIDefs.h
     Include/Graphics/RHI/RHIOptions.h
     Include/Graphics/RHI/RHIShaderUtil.h
 
@@ -141,9 +130,9 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanViewport.h
     Include/Graphics/VulkanRHI/VulkanCommandList.h
     Include/Graphics/VulkanRHI/VulkanPlatformCommandList.h
+    Include/Graphics/VulkanRHI/VulkanResourceCast.h
     Include/Graphics/VulkanRHI/VulkanTypes.h
     Include/Graphics/VulkanRHI/VulkanPipeline.h
-    Include/Graphics/VulkanRHI/VulkanRenderPass.h
     Include/Graphics/VulkanRHI/VulkanTexture.h
     Include/Graphics/VulkanRHI/VulkanBuffer.h
     Include/Graphics/VulkanRHI/VulkanMemory.h
@@ -152,30 +141,6 @@ set(ZEN_CORE_HEADERS
     Include/Graphics/VulkanRHI/VulkanDescriptorPool.h
     Include/Graphics/VulkanRHI/VulkanDescriptorState.h
 
-    Include/Graphics/Val/Buffer.h
-    Include/Graphics/Val/CommandBuffer.h
-    Include/Graphics/Val/CommandPool.h
-    Include/Graphics/Val/Descriptors.h
-    Include/Graphics/Val/DescriptorSetLayout.h
-    Include/Graphics/Val/Device.h
-    Include/Graphics/Val/Framebuffer.h
-    Include/Graphics/Val/GraphicsPipeline.h
-    Include/Graphics/Val/Image.h
-    Include/Graphics/Val/Instance.h
-    Include/Graphics/Val/PhysicalDevice.h
-    Include/Graphics/Val/PipelineLayout.h
-    Include/Graphics/Val/PipelineState.h
-    Include/Graphics/Val/Queue.h
-    Include/Graphics/Val/RenderPass.h
-    Include/Graphics/Val/Sampler.h
-    Include/Graphics/Val/Shader.h
-    Include/Graphics/Val/Swapchain.h
-    Include/Graphics/Val/SyncObjPool.h
-    Include/Graphics/Val/DeviceObject.h
-    Include/Graphics/Val/VulkanConfig.h
-    Include/Graphics/Val/VulkanDebug.h
-    Include/Graphics/Val/VulkanStrings.h
-    Include/Graphics/Val/ZenVal.h
 
     Include/Platform/FileSystem.h
     Include/Platform/GlfwWindow.h
@@ -187,7 +152,6 @@ set(ZEN_CORE_HEADERS
 
 set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
-    Source/AssetLib/GLTFLoader.cpp
     Source/AssetLib/FastGLTFLoader.cpp
     Source/AssetLib/GLTFModelCatalog.cpp
 
@@ -220,11 +184,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/ShadowMapRenderer.cpp
     Source/Graphics/RenderCore/V2/ShaderProgram.cpp
 
-    Source/Graphics/RenderCore/RenderGraph.cpp
-    Source/Graphics/RenderCore/RenderDevice.cpp
-    Source/Graphics/RenderCore/RenderFrame.cpp
-    Source/Graphics/RenderCore/RenderContext.cpp
-    Source/Graphics/RenderCore/TextureManager.cpp
 
     Source/SceneGraph/Scene.cpp
     Source/SceneGraph/SceneAnimation.cpp
@@ -254,7 +213,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanCommandList.cpp
     Source/Graphics/VulkanRHI/VulkanTypes.cpp
     Source/Graphics/VulkanRHI/VulkanPipeline.cpp
-    Source/Graphics/VulkanRHI/VulkanRenderPass.cpp
     Source/Graphics/VulkanRHI/VulkanTexture.cpp
     Source/Graphics/VulkanRHI/VulkanBuffer.cpp
     Source/Graphics/VulkanRHI/VulkanMemory.cpp
@@ -262,26 +220,6 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/VulkanRHI/VulkanDescriptorPool.cpp
     Source/Graphics/VulkanRHI/VulkanDescriptorSetState.cpp
 
-    Source/Graphics/Val/Buffer.cpp
-    Source/Graphics/Val/CommandBuffer.cpp
-    Source/Graphics/Val/CommandPool.cpp
-    Source/Graphics/Val/Descriptors.cpp
-    Source/Graphics/Val/DescriptorSetLayout.cpp
-    Source/Graphics/Val/Device.cpp
-    Source/Graphics/Val/Framebuffer.cpp
-    Source/Graphics/Val/GraphicsPipeline.cpp
-    Source/Graphics/Val/Image.cpp
-    Source/Graphics/Val/Instance.cpp
-    Source/Graphics/Val/PhysicalDevice.cpp
-    Source/Graphics/Val/PipelineLayout.cpp
-    Source/Graphics/Val/PipelineState.cpp
-    Source/Graphics/Val/Queue.cpp
-    Source/Graphics/Val/RenderPass.cpp
-    Source/Graphics/Val/Sampler.cpp
-    Source/Graphics/Val/Shader.cpp
-    Source/Graphics/Val/Swapchain.cpp
-    Source/Graphics/Val/SyncObjPool.cpp
-    Source/Graphics/Val/VulkanDebug.cpp
 
     Source/Memory/Memory.cpp
 
@@ -292,14 +230,6 @@ set(ZEN_CORE_SOURCES
     Source/vk_mem_alloc.cpp
 )
 
-if (NOT ZEN_BUILD_LEGACY)
-    list(REMOVE_ITEM ZEN_CORE_HEADERS Include/AssetLib/GLTFLoader.h)
-    list(REMOVE_ITEM ZEN_CORE_SOURCES Source/AssetLib/GLTFLoader.cpp)
-    list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/Val/")
-    list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/RenderCore/[^/]+[.]h$")
-    list(FILTER ZEN_CORE_SOURCES EXCLUDE REGEX "Source/Graphics/Val/")
-    list(FILTER ZEN_CORE_SOURCES EXCLUDE REGEX "Source/Graphics/RenderCore/[^/]+[.]cpp$")
-endif ()
 
 add_library(ZenCore)
 target_sources(ZenCore PRIVATE ${ZEN_CORE_HEADERS} ${ZEN_CORE_SOURCES})
@@ -322,9 +252,6 @@ target_link_libraries(ZenCore PUBLIC
     zen_gltf_decoders
 )
 
-if (ZEN_BUILD_LEGACY)
-    target_link_libraries(ZenCore PUBLIC spirv-cross-glsl tinygltf)
-endif ()
 
 ############################################################
 #                    Build Shaders                         #

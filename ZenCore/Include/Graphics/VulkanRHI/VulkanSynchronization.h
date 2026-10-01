@@ -1,5 +1,6 @@
 #pragma once
 #include <queue>
+#include "Templates/SmallVector.h"
 #include "VulkanCommon.h"
 #include "Graphics/RHI/RHIResource.h"
 
@@ -69,8 +70,6 @@ public:
     VkResult WaitForFence(VulkanFence* pFence, uint64_t timeNS);
 
     void ResetFence(VulkanFence* pFence);
-
-    void WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeNS);
 
 private:
     void DestroyFence(VulkanFence* pFence);
@@ -194,8 +193,8 @@ private:
     VkPipelineStageFlags m_srcStageFlags{0};
     VkPipelineStageFlags m_dstStageFlags{0};
 
-    HeapVector<VkImageMemoryBarrier> m_imageBarriers;
-    HeapVector<VkMemoryBarrier> m_memoryBarriers;
-    HeapVector<VkBufferMemoryBarrier> m_bufferBarriers;
+    SmallVector<VkImageMemoryBarrier> m_imageBarriers;
+    SmallVector<VkMemoryBarrier> m_memoryBarriers;
+    SmallVector<VkBufferMemoryBarrier> m_bufferBarriers;
 };
 } // namespace zen

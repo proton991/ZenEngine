@@ -804,6 +804,13 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
              GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer));
     }
     const RHIThreadMetrics metrics = m_renderDevice->GetRHIThreadMetrics();
+
+    LOGI(
+        "RHI counters: draws={} dispatches={} submissions={} descriptor_hits={} descriptor_misses={} descriptor_inserts={} descriptor_retirements={} bindless_captures={}",
+        metrics.native.draws, metrics.native.dispatches, metrics.native.submissions,
+        metrics.native.descriptorHits, metrics.native.descriptorMisses,
+        metrics.native.descriptorInserts, metrics.native.descriptorRetirements,
+        metrics.native.bindlessCaptures);
     LOGI(
         "Render threads: mode={} frames={} render_wall_us={} rhi_cpu_us={} queue_wait_us={} batches={} peak_pending={}",
         GetRHIThread().IsThreaded() ? "threaded" : "inline", frames, renderThreadUs,
@@ -844,6 +851,7 @@ struct DemoOptions
     bool smokeTest{false};
     bool disableRT{false};
     bool disableValidation{false};
+    bool validationPrintf{false};
     bool gpuMarkers{false};
     bool gpuMemoryStats{false};
     bool motionFixture{false};
@@ -957,6 +965,15 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             options.disableRT = true;
         }
+        else if (argument == "--rhi-counters=0" || argument == "--rhi-counters=1")
+        {
+            zen::RHIOptions::GetInstance().SetExecutionCountersEnabled(argument ==
+                                                                       "--rhi-counters=1");
+        }
+        else if (argument == "--validation-printf")
+        {
+            options.validationPrintf = true;
+        }
         else if (argument == "--disable-validation")
         {
             options.disableValidation = true;
@@ -1061,6 +1078,8 @@ int main(int argc, char** pArgv)
     {
         RHIOptions::GetInstance().SetRayTracingEnabled(!options.disableRT);
         RHIOptions::GetInstance().SetValidationEnabled(!options.disableValidation);
+
+        RHIOptions::GetInstance().SetDebugPrintfEnabled(options.validationPrintf);
         RHIOptions::GetInstance().SetGPUProfilerMarkers(options.gpuMarkers);
         RHIOptions::GetInstance().SetGPUMemoryStats(options.gpuMemoryStats);
         platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width,
@@ -1155,7 +1174,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
     }
 
     return result;

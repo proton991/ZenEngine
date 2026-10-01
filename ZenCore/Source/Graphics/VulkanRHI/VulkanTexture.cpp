@@ -10,57 +10,6 @@
 
 namespace zen
 {
-static uint32_t CalculateTextureSize(const RHITextureCreateInfo& info)
-{
-    // TODO: Support compressed texture format
-    const uint32_t pixelSize = GetTextureFormatPixelSize(info.format);
-
-    uint32_t w = info.width;
-    uint32_t h = info.height;
-    uint32_t d = info.depth;
-
-    uint32_t size = 0;
-
-    for (uint32_t i = 0; i < info.mipmaps; i++)
-    {
-        size += w * h * d * pixelSize;
-        w >>= 1;
-        h >>= 1;
-        d >>= 1;
-    }
-
-    return size * info.arrayLayers;
-}
-
-// SamplerHandle VulkanRHI::CreateSampler(const RHISamplerInfo& samplerInfo)
-// {
-//     VkSamplerCreateInfo samplerCI;
-//     InitVkStruct(samplerCI, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
-//     samplerCI.magFilter        = ToVkFilter(samplerInfo.magFilter);
-//     samplerCI.minFilter        = ToVkFilter(samplerInfo.minFilter);
-//     samplerCI.mipmapMode       = samplerInfo.mipFilter == RHISamplerFilter::eLinear ?
-//               VK_SAMPLER_MIPMAP_MODE_LINEAR :
-//               VK_SAMPLER_MIPMAP_MODE_NEAREST;
-//     samplerCI.addressModeU     = ToVkSamplerAddressMode(samplerInfo.repeatU);
-//     samplerCI.addressModeV     = ToVkSamplerAddressMode(samplerInfo.repeatV);
-//     samplerCI.addressModeW     = ToVkSamplerAddressMode(samplerInfo.repeatW);
-//     samplerCI.mipLodBias       = samplerInfo.lodBias;
-//     samplerCI.anisotropyEnable = samplerInfo.useAnisotropy &&
-//         (m_device->GetPhysicalDeviceFeatures().samplerAnisotropy == VK_TRUE);
-//     samplerCI.maxAnisotropy           = samplerInfo.maxAnisotropy;
-//     samplerCI.compareEnable           = samplerInfo.enableCompare;
-//     samplerCI.compareOp               = ToVkCompareOp(samplerInfo.compareOp);
-//     samplerCI.minLod                  = samplerInfo.minLod;
-//     samplerCI.maxLod                  = samplerInfo.maxLod;
-//     samplerCI.borderColor             = ToVkBorderColor(samplerInfo.borderColor);
-//     samplerCI.unnormalizedCoordinates = samplerInfo.unnormalizedUVW;
-//
-//     VkSampler sampler{VK_NULL_HANDLE};
-//     VKCHECK(vkCreateSampler(m_device->GetVkHandle(), &samplerCI, nullptr, &sampler));
-//
-//     return SamplerHandle(sampler);
-// }
-
 RHISampler* VulkanResourceFactory::CreateSampler(const RHISamplerCreateInfo& createInfo)
 {
     RHISampler* pSampler = VulkanSampler::CreateObject(createInfo);
@@ -77,14 +26,6 @@ void VulkanRHI::DestroySampler(RHISampler* pSampler)
 {
     pSampler->ReleaseReference();
 }
-
-// RHISampler* RHISampler::Create(const RHISamplerCreateInfo& createInfo)
-// {
-//     // RHISampler* pSampler = VulkanSampler::CreateObject(createInfo);
-//     //
-//     // return pSampler;
-//     return GVulkanRHI->GetResourceFactory()->CreateSampler(createInfo);
-// }
 
 VulkanSampler* VulkanSampler::CreateObject(const RHISamplerCreateInfo& createInfo)
 {
@@ -105,8 +46,8 @@ void VulkanSampler::Init()
     samplerCI.magFilter        = ToVkFilter(m_baseInfo.magFilter);
     samplerCI.minFilter        = ToVkFilter(m_baseInfo.minFilter);
     samplerCI.mipmapMode       = m_baseInfo.mipFilter == RHISamplerFilter::eLinear ?
-        VK_SAMPLER_MIPMAP_MODE_LINEAR :
-        VK_SAMPLER_MIPMAP_MODE_NEAREST;
+              VK_SAMPLER_MIPMAP_MODE_LINEAR :
+              VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerCI.addressModeU     = ToVkSamplerAddressMode(m_baseInfo.repeatU);
     samplerCI.addressModeV     = ToVkSamplerAddressMode(m_baseInfo.repeatV);
     samplerCI.addressModeW     = ToVkSamplerAddressMode(m_baseInfo.repeatW);
@@ -309,15 +250,14 @@ void VulkanTexture::Init()
     const uint32_t transferQueueFamily =
         GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
 
-    const uint32_t textureSize = CalculateTextureSize(m_baseInfo);
-    bool allocated             = false;
+    bool allocated = false;
 
     AllocateWithQueueSharing(
         imageCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
         (imageCI.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)) != 0,
-        [this, &imageCI, textureSize, &allocated] {
+        [this, &imageCI, &allocated] {
             allocated = GVkMemAllocator->AllocImage(&imageCI, m_baseInfo.cpuReadable, &m_vkImage,
-                                                    &m_memAlloc, textureSize);
+                                                    &m_memAlloc);
         });
     if (allocated)
     {
@@ -329,8 +269,7 @@ void VulkanTexture::Init()
                 VK_OBJECT_TYPE_IMAGE, reinterpret_cast<uint64_t>(m_vkImage), m_baseInfo.tag);
         }
 
-        // Only successfully allocated images enter layout tracking or acquire views.
-        GVulkanRHI->UpdateImageLayout(m_vkImage, VK_IMAGE_LAYOUT_UNDEFINED);
+        // Only successfully allocated images acquire views.
         m_vkAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 
         if (FormatIsDepthStencil(m_baseInfo.format))
@@ -367,7 +306,7 @@ void VulkanTexture::Destroy()
     DestroyOwnedViews();
     if (m_vkImage != VK_NULL_HANDLE)
     {
-        GVulkanRHI->RemoveImageLayout(m_vkImage);
+
         GVkMemAllocator->FreeImage(m_vkImage, m_memAlloc);
     }
     this->~VulkanTexture();
@@ -432,34 +371,6 @@ void VulkanTextureView::Destroy()
 
     this->~VulkanTextureView();
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
-}
-
-void VulkanRHI::UpdateImageLayout(VkImage image, VkImageLayout newLayout)
-{
-    // if (m_imageLayoutCache.contains(image))
-    // {
-    m_imageLayoutCache[image] = newLayout;
-    // }
-}
-
-void VulkanRHI::RemoveImageLayout(VkImage image)
-{
-    if (m_imageLayoutCache.contains(image))
-    {
-        m_imageLayoutCache.erase(image);
-    }
-}
-
-VkImageLayout VulkanRHI::GetImageCurrentLayout(VkImage image)
-{
-    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    if (m_imageLayoutCache.contains(image))
-    {
-        layout = m_imageLayoutCache[image];
-    }
-
-    return layout;
 }
 
 } // namespace zen

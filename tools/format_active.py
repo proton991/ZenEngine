@@ -12,14 +12,6 @@ def active_source(name):
     path = Path(name)
     if path.suffix not in {".h", ".hpp", ".cpp", ".inl"}:
         return False
-    if "/Graphics/Val/" in name or name.startswith(("ZenSamples/Applications/", "ZenSamples/ZenCoreTest/")):
-        return False
-    if "/Graphics/RenderCore/" in name and "/RenderCore/V2/" not in name:
-        return False
-    if name.startswith("ZenSamples/VulkanRHIDemo/"):
-        return "/SceneRenderer/" in name
-    if path.name in {"VoxelRenderer.h", "VoxelRenderer.cpp"}:
-        return False
     # This translation unit is a third-party implementation wrapper.
     return name != "ZenCore/Source/vk_mem_alloc.cpp"
 
@@ -33,7 +25,7 @@ def main():
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "ZenCore", "ZenSamples"],
         cwd=ROOT,
     ).decode().split("\0")
-    files = sorted({name for name in files if active_source(name)})
+    files = sorted({name for name in files if active_source(name) and (ROOT / name).is_file()})
     options = ["--dry-run", "--Werror"] if args.check else ["-i"]
     for start in range(0, len(files), 40):
         subprocess.run(

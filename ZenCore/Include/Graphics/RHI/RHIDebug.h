@@ -16,9 +16,6 @@ public:
     virtual void SetTextureDebugName(RHITexture* pTexture, NameID debugName) = 0;
 
 protected:
-    // explicit RHIDebug(DynamicRHI* RHI) : m_RHI(RHI) {}
     RHIDebug() {}
-
-    // DynamicRHI* m_RHI{nullptr};
 };
 } // namespace zen

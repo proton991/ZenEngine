@@ -186,7 +186,6 @@ protected:
                                 dstAccess);
         barrier.Execute(context->GetCommandBuffer()->GetVkHandle(),
                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dstStage);
-        session->rhi.UpdateImageLayout(texture->GetVkImage(), VK_IMAGE_LAYOUT_GENERAL);
     }
 
     bool Submit(FVulkanCommandListContext* context)

@@ -118,9 +118,9 @@ protected:
                 .generic_string();
     }
 
-    VulkanShader* Shader(bool compute                            = false,
-                         bool depthOnly                          = false,
-                         const HashMap<uint32_t, int>& constants = {})
+    VulkanShader* Shader(bool compute                                                     = false,
+                         bool depthOnly                                                   = false,
+                         const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {})
     {
         RHIShaderCreateInfo info{};
         info.specializationConstants = constants;
@@ -134,7 +134,7 @@ protected:
             Stage(info, RHIShaderStage::eFragment,
                   depthOnly ? "pipeline_depth.frag.spv" : "pipeline.frag.spv");
         }
-        auto* shader = static_cast<VulkanShader*>(session->rhi.CreateShader(info));
+        VulkanShader* shader = static_cast<VulkanShader*>(session->rhi.CreateShader(info));
         shaders.push_back(shader);
         return shader;
     }
@@ -203,7 +203,6 @@ protected:
         barrier.subresourceRange = texture->GetVkSubresourceRange();
         vkCmdPipelineBarrier(Commands(), srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
                              &barrier);
-        session->rhi.UpdateImageLayout(texture->GetVkImage(), after);
     }
 
     void Copy(VulkanTexture* texture,
@@ -244,25 +243,26 @@ TEST_F(VulkanPipelineIntegrationTest,
        SpecializationPayloadSurvivesShaderInitAndDispatchesTypedValues)
 {
     // Create several shaders before their pipelines so temporary reflection storage is reused.
-    auto* defaults   = Shader(true);
-    auto* overridden = Shader(true, false, {{0, 0}, {1, -19}, {2, 4}});
-    auto* enabled    = Shader(true, false, {{0, 1}, {1, 23}, {2, -2}});
+    VulkanShader* defaults   = Shader(true);
+    VulkanShader* overridden = Shader(true, false, {{0, false}, {1, -19}, {2, 4.5f}});
+    VulkanShader* enabled    = Shader(true, false, {{0, true}, {1, 23}, {2, -2.75f}});
     const std::array<VulkanShader*, 3> inputs{defaults, overridden, enabled};
     const std::array<std::array<uint32_t, 3>, 3> expected{
         {{1u, static_cast<uint32_t>(-7), std::bit_cast<uint32_t>(1.25f)},
-         {0u, static_cast<uint32_t>(-19), std::bit_cast<uint32_t>(4.0f)},
-         {1u, 23u, std::bit_cast<uint32_t>(-2.0f)}}};
+         {0u, static_cast<uint32_t>(-19), std::bit_cast<uint32_t>(4.5f)},
+         {1u, 23u, std::bit_cast<uint32_t>(-2.75f)}}};
     for (size_t i = 0; i < inputs.size(); ++i)
     {
         SCOPED_TRACE(i);
-        const auto* info = inputs[i]->GetStageCreateInfoData()[0].pSpecializationInfo;
+        const VkSpecializationInfo* info =
+            inputs[i]->GetStageCreateInfoData()[0].pSpecializationInfo;
         ASSERT_NE(info, nullptr);
         ASSERT_EQ(info->mapEntryCount, 3u);
         ASSERT_EQ(info->dataSize, 12u);
         std::array<bool, 3> seen{};
         for (uint32_t j = 0; j < info->mapEntryCount; ++j)
         {
-            const auto& entry = info->pMapEntries[j];
+            const VkSpecializationMapEntry& entry = info->pMapEntries[j];
             ASSERT_LT(entry.constantID, 3u);
             ASSERT_EQ(entry.size, sizeof(uint32_t));
             ASSERT_LE(entry.offset + entry.size, info->dataSize);
@@ -272,9 +272,10 @@ TEST_F(VulkanPipelineIntegrationTest,
             memcpy(&bits, static_cast<const uint8_t*>(info->pData) + entry.offset, entry.size);
             EXPECT_EQ(bits, expected[i][entry.constantID]);
         }
-        auto* pipeline = session->rhi.CreatePipeline(RHIComputePipelineCreateInfo{inputs[i]});
+        RHIPipeline* pipeline =
+            session->rhi.CreatePipeline(RHIComputePipelineCreateInfo{inputs[i]});
         pipelines.push_back(pipeline);
-        auto* buffer = Buffer();
+        RHIBuffer* buffer = Buffer();
         context->RHIBindPipeline(pipeline);
         RHIBatchedShaderParameters parameters;
         parameters.AddResourceParam(*inputs[i]->GetSRDByLocation(test::kLocalResourceSet, 0),
@@ -285,7 +286,7 @@ TEST_F(VulkanPipelineIntegrationTest,
     SubmitAndWait(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     for (size_t i = 0; i < inputs.size(); ++i)
     {
-        const auto* values = reinterpret_cast<const uint32_t*>(buffers[i]->Map());
+        const uint32_t* values = reinterpret_cast<const uint32_t*>(buffers[i]->Map());
         for (size_t j = 0; j < 3; ++j)
         {
             EXPECT_EQ(values[j], expected[i][j]);
@@ -304,6 +305,8 @@ TEST_F(VulkanPipelineIntegrationTest, SpecializedVoxelWorkgroupsClearAnEntireNon
     EXPECT_EQ(deviceInfo.supportFragmentStoresAndAtomics,
               session->rhi.GetDevice()->GetPhysicalDeviceFeatures().fragmentStoresAndAtomics !=
                   VK_FALSE);
+    EXPECT_EQ(deviceInfo.supportIndependentBlend,
+              session->rhi.GetDevice()->GetPhysicalDeviceFeatures().independentBlend != VK_FALSE);
     for (uint32_t axis = 0; axis < 3; ++axis)
     {
         EXPECT_EQ(deviceInfo.maxComputeWorkGroupSize[axis], limits.maxComputeWorkGroupSize[axis]);
@@ -415,8 +418,8 @@ TEST_F(VulkanPipelineIntegrationTest, AllDynamicStateMasksProduceValidPipelines)
     layout.SetRenderArea(2, 3, 17, 19);
     layout.numColorRenderTargets        = 1;
     layout.colorRenderTargets[0].format = DataFormat::eR8G8B8A8UNORM;
-    const VkDynamicState states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
-                                     VK_DYNAMIC_STATE_LINE_WIDTH, VK_DYNAMIC_STATE_DEPTH_BIAS};
+    const VkDynamicState states[]       = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
+                                           VK_DYNAMIC_STATE_LINE_WIDTH, VK_DYNAMIC_STATE_DEPTH_BIAS};
     for (uint32_t mask = 0; mask < 16; ++mask)
     {
         SCOPED_TRACE(mask);

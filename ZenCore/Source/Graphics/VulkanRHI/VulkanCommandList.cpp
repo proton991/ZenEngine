@@ -30,7 +30,6 @@ static const char* VulkanCommandBufferTypeToString(VulkanCommandBufferType type)
     switch (type)
     {
         case VulkanCommandBufferType::ePrimary: pName = "Primary"; break;
-        case VulkanCommandBufferType::eSecondary: pName = "Secondary"; break;
         default: break;
     }
 
@@ -56,6 +55,22 @@ void FVulkanCommandBuffer::InvalidateCachedState()
     m_validDynamicStates.Reset();
     m_boundVertexBuffers.clear();
     m_boundVertexOffsets.clear();
+
+    m_boundIndexBuffer = VK_NULL_HANDLE;
+}
+
+void FVulkanCommandBuffer::BindIndexBuffer(VkBuffer buffer, uint64_t offset, VkIndexType type)
+{
+    if (m_boundIndexBuffer != buffer || m_boundIndexOffset != offset || m_boundIndexType != type)
+    {
+        vkCmdBindIndexBuffer(m_vkHandle, buffer, offset, type);
+
+        m_boundIndexBuffer = buffer;
+
+        m_boundIndexOffset = offset;
+
+        m_boundIndexType = type;
+    }
 }
 
 void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
@@ -171,7 +186,7 @@ void FVulkanCommandBuffer::Begin()
 
     if (m_state == State::eNeedReset)
     {
-        vkResetCommandBuffer(m_vkHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        vkResetCommandBuffer(m_vkHandle, 0);
     }
     else
     {
@@ -223,18 +238,6 @@ void FVulkanCommandBuffer::BeginRendering(const VkRenderingInfo* pRenderingInfo)
 void FVulkanCommandBuffer::EndRendering()
 {
     vkCmdEndRenderingKHR(m_vkHandle);
-    m_state = State::eIsInsideBegin;
-}
-
-void FVulkanCommandBuffer::BeginRenderPass(const VkRenderPassBeginInfo* pBeginInfo)
-{
-    vkCmdBeginRenderPass(m_vkHandle, pBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-    m_state = State::eIsInsideRenderPass;
-}
-
-void FVulkanCommandBuffer::EndRenderPass()
-{
-    vkCmdEndRenderPass(m_vkHandle);
     m_state = State::eIsInsideBegin;
 }
 
@@ -306,7 +309,7 @@ void FVulkanCommandBuffer::AllocMemory()
     InitVkStruct(allocInfo, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO);
     allocInfo.commandPool        = m_pCmdBufferPool->GetVkHandle();
     allocInfo.commandBufferCount = 1;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // todo: support secondary commandbuffer
+    allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
     VKCHECK(vkAllocateCommandBuffers(GVulkanRHI->GetVkDevice(), &allocInfo, &m_vkHandle))
 
@@ -548,7 +551,6 @@ FVulkanCommandBufferPool::~FVulkanCommandBufferPool()
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersInUse[i];
         pCmdBuffer->~FVulkanCommandBuffer();
         ZEN_MEM_FREE(pCmdBuffer);
-        //ZEN_DELETE(pCmdBuffer);
     }
 
     for (uint32_t i = 0; i < m_cmdBuffersFree.size(); i++)
@@ -556,7 +558,6 @@ FVulkanCommandBufferPool::~FVulkanCommandBufferPool()
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersFree[i];
         pCmdBuffer->~FVulkanCommandBuffer();
         ZEN_MEM_FREE(pCmdBuffer);
-        //ZEN_DELETE(pCmdBuffer);
     }
 
     vkDestroyCommandPool(GVulkanRHI->GetVkDevice(), m_vkHandle, nullptr);
@@ -764,7 +765,7 @@ void VulkanCommandContextBase::RecordLifetime(uint64_t id)
     if (id != 0)
     {
         HeapVector<uint64_t>& ids = GetWorkload(WorkloadPhase::eExecute)->m_lifetimeIds;
-        if (std::find(ids.begin(), ids.end(), id) == ids.end())
+        if ((ids.empty() || ids.back() != id) && std::find(ids.begin(), ids.end(), id) == ids.end())
         {
             ids.push_back(id);
             GVulkanRHI->GetLifetimeTracker().RetainRecording(id);
@@ -858,6 +859,8 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 void VulkanCommandContextBase::StartWorkload()
 {
     VERIFY_EXPR(m_pCurrentWorkload == nullptr);
+    ++m_workloadGeneration;
+
     m_pCurrentWorkload     = m_pQueue->AcquireWorkload();
     m_currentWorkloadPhase = WorkloadPhase::eWait;
 }
@@ -868,24 +871,12 @@ void VulkanCommandContextBase::EndWorkload()
     {
         FVulkanCommandBuffer* pCommandBuffer = m_pCurrentWorkload->GetLastCommandBuffer();
 
-        if (pCommandBuffer != nullptr)
+        if (pCommandBuffer != nullptr && !pCommandBuffer->HasEnded())
         {
-            if (pCommandBuffer->HasEnded())
-            {
-                return;
-            }
-
             if (pCommandBuffer->IsInsideRenderPass() &&
                 pCommandBuffer->GetCommandBufferType() == VulkanCommandBufferType::ePrimary)
             {
-                if (RHIOptions::GetInstance().UseDynamicRendering())
-                {
-                    pCommandBuffer->EndRendering();
-                }
-                else
-                {
-                    pCommandBuffer->EndRenderPass();
-                }
+                pCommandBuffer->EndRendering();
             }
 
             pCommandBuffer->End();
@@ -967,8 +958,7 @@ void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-void VulkanGfxState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                                         uint64_t recordedEpoch)
+void VulkanGfxState::SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
     VERIFY_EXPR(m_pDescriptorSetState != nullptr);
@@ -1033,7 +1023,7 @@ void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-void VulkanComputeState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+void VulkanComputeState::SetShaderParameters(RHIShaderParameterView parameters,
                                              uint64_t recordedEpoch)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
@@ -1133,146 +1123,86 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* pRen
     {
         LOG_ERROR_AND_THROW("Invalid rendering layout or color attachment count");
     }
-    if (RHIOptions::GetInstance().UseDynamicRendering())
+    VkRenderingInfoKHR renderingInfo{};
+
+    const Rect2<int>& area = pRenderingLayout->renderArea;
+    const VkPhysicalDeviceLimits& limits =
+        GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+    if (area.minX < 0 || area.minY < 0 || area.maxX <= area.minX || area.maxY <= area.minY ||
+        uint32_t(area.maxX) > limits.maxFramebufferWidth ||
+        uint32_t(area.maxY) > limits.maxFramebufferHeight || pRenderingLayout->numLayers == 0 ||
+        pRenderingLayout->numLayers > limits.maxFramebufferLayers ||
+        pRenderingLayout->numColorRenderTargets > limits.maxColorAttachments)
     {
-        VkRenderingInfoKHR renderingInfo{};
-
-        const Rect2<int>& area = pRenderingLayout->renderArea;
-        const VkPhysicalDeviceLimits& limits =
-            GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
-        if (area.minX < 0 || area.minY < 0 || area.maxX <= area.minX || area.maxY <= area.minY ||
-            uint32_t(area.maxX) > limits.maxFramebufferWidth ||
-            uint32_t(area.maxY) > limits.maxFramebufferHeight || pRenderingLayout->numLayers == 0 ||
-            pRenderingLayout->numLayers > limits.maxFramebufferLayers ||
-            pRenderingLayout->numColorRenderTargets > limits.maxColorAttachments)
-        {
-            LOG_ERROR_AND_THROW(
-                "Rendering area, layer count or attachment count exceeds device limits");
-        }
-        SampleCount samples{};
-        bool hasSamples = false;
-
-        InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
-        renderingInfo.layerCount               = pRenderingLayout->numLayers;
-        renderingInfo.viewMask                 = 0;
-        renderingInfo.flags                    = 0;
-        renderingInfo.renderArea.offset.x      = area.minX;
-        renderingInfo.renderArea.offset.y      = area.minY;
-        renderingInfo.renderArea.extent.width  = area.Width();
-        renderingInfo.renderArea.extent.height = area.Height();
-
-        HeapVector<VkRenderingAttachmentInfoKHR> colorAttachments;
-        colorAttachments.reserve(pRenderingLayout->numColorRenderTargets);
-
-        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
-        {
-            const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
-            RHITextureView* view =
-                ResolveRenderingAttachment(colorRT, *pRenderingLayout, false, samples, hasSamples);
-            VkRenderingAttachmentInfoKHR colorAttachment{};
-            InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-            colorAttachment.imageView        = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
-            colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
-            colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
-            colorAttachment.clearValue.color = ToVkClearColor(colorRT.clearValue);
-            colorAttachments.emplace_back(colorAttachment);
-        }
-
-        renderingInfo.colorAttachmentCount = pRenderingLayout->numColorRenderTargets;
-        renderingInfo.pColorAttachments    = colorAttachments.data();
-
-        VkRenderingAttachmentInfoKHR depthStencilAttachment;
-        InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
-
-        if (pRenderingLayout->hasDepthStencilRT)
-        {
-            const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
-            RHITextureView* view = ResolveRenderingAttachment(depthStencilRT, *pRenderingLayout,
-                                                              true, samples, hasSamples);
-            depthStencilAttachment.imageView   = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
-            depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
-            depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
-            depthStencilAttachment.clearValue.depthStencil =
-                ToVkClearDepthStencil(depthStencilRT.clearValue);
-
-            // Vulkan ignores the view's aspectMask for rendering. Select the intended
-            // depth/stencil operations through these attachment pointers instead.
-            const BitField<RHITextureAspectFlagBits> aspects = depthStencilRT.GetAspects();
-            if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
-            {
-                renderingInfo.pDepthAttachment = &depthStencilAttachment;
-            }
-            if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
-            {
-                renderingInfo.pStencilAttachment = &depthStencilAttachment;
-            }
-        }
-
-        GetCommandBuffer()->BeginRendering(&renderingInfo);
+        LOG_ERROR_AND_THROW(
+            "Rendering area, layer count or attachment count exceeds device limits");
     }
-    else
+    SampleCount samples{};
+    bool hasSamples = false;
+
+    InitVkStruct(renderingInfo, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR);
+    renderingInfo.layerCount               = pRenderingLayout->numLayers;
+    renderingInfo.viewMask                 = 0;
+    renderingInfo.flags                    = 0;
+    renderingInfo.renderArea.offset.x      = area.minX;
+    renderingInfo.renderArea.offset.y      = area.minY;
+    renderingInfo.renderArea.extent.width  = area.Width();
+    renderingInfo.renderArea.extent.height = area.Height();
+
+    VkRenderingAttachmentInfoKHR colorAttachments[MAX_NUM_COLOR_ATTACHMENTS]{};
+
+    for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
     {
-        // Explicit attachment selection is implemented only by dynamic rendering.
-        if (pRenderingLayout->numLayers != 1 ||
-            (pRenderingLayout->hasDepthStencilRT &&
-             pRenderingLayout->depthStencilRenderTarget.pTextureView != nullptr))
-        {
-            LOG_ERROR_AND_THROW(
-                "Explicit attachment views and layered rendering require dynamic rendering");
-        }
-        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; ++i)
-        {
-            if (pRenderingLayout->colorRenderTargets[i].pTextureView != nullptr)
-            {
-                LOG_ERROR_AND_THROW("Explicit attachment views require dynamic rendering");
-            }
-        }
-        uint32_t numAttachments = pRenderingLayout->GetTotalNumRenderTargets();
-        HeapVector<VkClearValue> clearValues;
-        clearValues.resize(numAttachments);
-        HeapVector<RHIRenderTargetClearValue> clearValuesRHI;
-        clearValuesRHI.resize(numAttachments);
-        pRenderingLayout->GetRHIRenderTargetClearValueData(clearValuesRHI.data());
-
-        for (uint32_t i = 0; i < pRenderingLayout->numColorRenderTargets; i++)
-        {
-            clearValues[i].color = ToVkClearColor(clearValuesRHI[i]);
-        }
-
-        if (pRenderingLayout->hasDepthStencilRT)
-        {
-            clearValues[numAttachments - 1].depthStencil =
-                ToVkClearDepthStencil(clearValuesRHI[numAttachments - 1]);
-        }
-
-        VkRenderPassBeginInfo rpBeginInfo;
-        InitVkStruct(rpBeginInfo, VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO);
-        rpBeginInfo.renderPass = GVulkanRHI->GetOrCreateRenderPass(pRenderingLayout);
-        rpBeginInfo.framebuffer =
-            GVulkanRHI->GetOrCreateFramebuffer(pRenderingLayout, rpBeginInfo.renderPass);
-        rpBeginInfo.renderArea.offset.x      = pRenderingLayout->renderArea.minX;
-        rpBeginInfo.renderArea.offset.y      = pRenderingLayout->renderArea.minY;
-        rpBeginInfo.renderArea.extent.width  = pRenderingLayout->renderArea.Width();
-        rpBeginInfo.renderArea.extent.height = pRenderingLayout->renderArea.Height();
-        rpBeginInfo.clearValueCount          = numAttachments;
-        rpBeginInfo.pClearValues             = clearValues.data();
-
-        GetCommandBuffer()->BeginRenderPass(&rpBeginInfo);
+        const RHIRenderTarget& colorRT = pRenderingLayout->colorRenderTargets[i];
+        RHITextureView* view =
+            ResolveRenderingAttachment(colorRT, *pRenderingLayout, false, samples, hasSamples);
+        VkRenderingAttachmentInfoKHR colorAttachment{};
+        InitVkStruct(colorAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+        colorAttachment.imageView        = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
+        colorAttachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp           = ToVkAttachmentLoadOp(colorRT.loadOp);
+        colorAttachment.storeOp          = ToVkAttachmentStoreOp(colorRT.storeOp);
+        colorAttachment.clearValue.color = ToVkClearColor(colorRT.clearValue);
+        colorAttachments[i]              = colorAttachment;
     }
+
+    renderingInfo.colorAttachmentCount = pRenderingLayout->numColorRenderTargets;
+    renderingInfo.pColorAttachments    = colorAttachments;
+
+    VkRenderingAttachmentInfoKHR depthStencilAttachment;
+    InitVkStruct(depthStencilAttachment, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR);
+
+    if (pRenderingLayout->hasDepthStencilRT)
+    {
+        const RHIRenderTarget& depthStencilRT = pRenderingLayout->depthStencilRenderTarget;
+        RHITextureView* view = ResolveRenderingAttachment(depthStencilRT, *pRenderingLayout, true,
+                                                          samples, hasSamples);
+        depthStencilAttachment.imageView   = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
+        depthStencilAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthStencilAttachment.loadOp      = ToVkAttachmentLoadOp(depthStencilRT.loadOp);
+        depthStencilAttachment.storeOp     = ToVkAttachmentStoreOp(depthStencilRT.storeOp);
+        depthStencilAttachment.clearValue.depthStencil =
+            ToVkClearDepthStencil(depthStencilRT.clearValue);
+
+        // Vulkan ignores the view's aspectMask for rendering. Select the intended
+        // depth/stencil operations through these attachment pointers instead.
+        const BitField<RHITextureAspectFlagBits> aspects = depthStencilRT.GetAspects();
+        if (aspects.HasFlag(RHITextureAspectFlagBits::eDepth))
+        {
+            renderingInfo.pDepthAttachment = &depthStencilAttachment;
+        }
+        if (aspects.HasFlag(RHITextureAspectFlagBits::eStencil))
+        {
+            renderingInfo.pStencilAttachment = &depthStencilAttachment;
+        }
+    }
+
+    GetCommandBuffer()->BeginRendering(&renderingInfo);
 }
 
 void FVulkanCommandListContext::RHIEndRendering()
 {
-    if (RHIOptions::GetInstance().UseDynamicRendering())
-    {
-        GetCommandBuffer()->EndRendering();
-    }
-    else
-    {
-        GetCommandBuffer()->EndRenderPass();
-    }
+    GetCommandBuffer()->EndRendering();
 }
 
 void FVulkanCommandListContext::RHIBeginDebugLabel(NameID name)
@@ -1360,6 +1290,11 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
     }
 }
 
+uint64_t FVulkanCommandListContext::RHIGetCurrentBindlessEpoch() const
+{
+    return GVulkanRHI->GetBindlessDescriptorPoolManager()->GetCurrentEpoch();
+}
+
 uint64_t FVulkanCommandListContext::RHICaptureBindlessEpoch()
 {
     return GVulkanRHI->GetBindlessDescriptorPoolManager()->CaptureEpoch();
@@ -1384,7 +1319,7 @@ void FVulkanCommandListContext::RecordCurrentBindlessEpoch()
     }
 }
 
-void FVulkanCommandListContext::RHISetShaderParameters(const RHIBatchedShaderParameters& parameters)
+void FVulkanCommandListContext::RHISetShaderParameters(RHIShaderParameterView parameters)
 {
     VERIFY_EXPR(m_pCurrentPipeline != nullptr);
 
@@ -1416,6 +1351,9 @@ void FVulkanCommandListContext::RHIDraw(uint32_t vertexCount,
                                         uint32_t firstInstance)
 {
     m_pGfxState->PreDraw(this);
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().draws);
+
     vkCmdDraw(GetCommandBuffer()->GetVkHandle(), vertexCount, instanceCount, firstVertex,
               firstInstance);
 }
@@ -1436,8 +1374,10 @@ void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
     VkIndexType vkIndexType =
         indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), pVkBuffer->GetVkBuffer(), indexBufferOffset,
-                         vkIndexType);
+    pCmdBuffer->BindIndexBuffer(pVkBuffer->GetVkBuffer(), indexBufferOffset, vkIndexType);
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().draws);
+
     vkCmdDrawIndexed(pCmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex, vertexOffset,
                      firstInstance);
 }
@@ -1446,7 +1386,7 @@ void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffe
                                                        RHIBuffer* pIndexBuffer,
                                                        DataFormat indexFormat,
                                                        uint32_t indexBufferOffset,
-                                                       uint32_t offset,
+                                                       uint64_t offset,
                                                        uint32_t drawCount,
                                                        uint32_t stride)
 {
@@ -1456,8 +1396,11 @@ void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffe
     VkIndexType vkIndexType =
         indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-    vkCmdBindIndexBuffer(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(),
-                         indexBufferOffset, vkIndexType);
+    pCmdBuffer->BindIndexBuffer(TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(), indexBufferOffset,
+                                vkIndexType);
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().draws);
+
     vkCmdDrawIndexedIndirect(pCmdBuffer->GetVkHandle(),
                              TO_VK_BUFFER(pIndirectBuffer)->GetVkBuffer(), offset, drawCount,
                              stride);
@@ -1468,13 +1411,19 @@ void FVulkanCommandListContext::RHIDispatch(uint32_t groupCountX,
                                             uint32_t groupCountZ)
 {
     m_pComputeState->PreDispatch(this);
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().dispatches);
+
     vkCmdDispatch(GetCommandBuffer()->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
 }
 
-void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset)
+void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset)
 {
     m_pComputeState->PreDispatch(this);
     VulkanBuffer* pVkBuffer = TO_VK_BUFFER(pIndirectBuffer);
+
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().dispatches);
 
     vkCmdDispatchIndirect(GetCommandBuffer()->GetVkHandle(), pVkBuffer->GetVkBuffer(), offset);
 }
@@ -1531,15 +1480,9 @@ void FVulkanCommandListContext::RHIAddTransitions(
             ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
         VkImageSubresourceRange subresourceRange{};
         ToVkImageSubresourceRange(textureTransition.subResourceRange, &subresourceRange);
-        // subresourceRange.aspectMask = ToVkAspectFlags(textureTransition.subResourceRange.aspect);
-        // subresourceRange.layerCount = textureTransition.subResourceRange.layerCount;
-        // subresourceRange.levelCount = textureTransition.subResourceRange.levelCount;
-        // subresourceRange.baseArrayLayer = textureTransition.subResourceRange.baseArrayLayer;
-        // subresourceRange.baseMipLevel   = textureTransition.subResourceRange.baseMipLevel;
-
         barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout,
                                 subresourceRange, srcAccess, dstAccess);
-        GVulkanRHI->UpdateImageLayout(pVulkanTexture->GetVkImage(), newLayout);
+
         hasBarrier = true;
     }
 
@@ -1549,13 +1492,7 @@ void FVulkanCommandListContext::RHIAddTransitions(
     }
 }
 
-void FVulkanCommandListContext::RHIAddTextureTransition(RHITexture*, RHITextureLayout)
-{
-    LOGE("RHIAddTextureTransition is deprecated; use RDG/RHIAddTransitions with explicit old and "
-         "new usages");
-}
-
-void FVulkanCommandListContext::RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size)
+void FVulkanCommandListContext::RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size)
 {
     vkCmdFillBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pBuffer)->GetVkBuffer(), offset,
                     size, 0);

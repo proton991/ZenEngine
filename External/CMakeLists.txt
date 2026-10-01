@@ -164,29 +164,6 @@ if (BUILD_TESTING)
     FetchContent_MakeAvailable(googletest)
 endif ()
 
-if (ZEN_BUILD_LEGACY)
-    # spirv-cross: vulkan-sdk-1.4.363.0
-    zen_declare_dependency(spirv_cross spirv-cross
-        https://codeload.github.com/KhronosGroup/SPIRV-Cross/zip/refs/tags/vulkan-sdk-1.4.363.0
-        637ee99192da3cea88bb81c97bcb7177d7b0010f75d2afd6c97f8e7b7d2a0c90)
-    # Latest compatible C++ release; TinyGLTF 3 uses a different C API.
-    zen_declare_dependency(tinygltf tinygltf
-        https://codeload.github.com/syoyo/tinygltf/zip/refs/tags/v2.9.7
-        865ae4a220ff8bebc455f098e7c08bcb9e2701ef9eaef3519e9cc05ffd824dc9
-        SOURCE_SUBDIR zen-no-cmake)
-    set(SPIRV_CROSS_CLI OFF CACHE BOOL "Build SPIRV-Cross tools" FORCE)
-    set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "Build SPIRV-Cross tests" FORCE)
-    set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "Build SPIRV-Cross HLSL backend" FORCE)
-    set(SPIRV_CROSS_ENABLE_MSL OFF CACHE BOOL "Build SPIRV-Cross MSL backend" FORCE)
-    set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "Build SPIRV-Cross C++ backend" FORCE)
-    set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "Build SPIRV-Cross JSON reflection" FORCE)
-    set(SPIRV_CROSS_ENABLE_C_API OFF CACHE BOOL "Build SPIRV-Cross C API" FORCE)
-    set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "Build SPIRV-Cross utilities" FORCE)
-    FetchContent_MakeAvailable(spirv_cross tinygltf)
-    add_library(tinygltf INTERFACE)
-    target_include_directories(tinygltf INTERFACE "${tinygltf_SOURCE_DIR}")
-    target_link_libraries(tinygltf INTERFACE stb)
-endif ()
 
 if (ZEN_BUILD_RUNTIME_UI)
     # imgui: v1.92.9b-docking

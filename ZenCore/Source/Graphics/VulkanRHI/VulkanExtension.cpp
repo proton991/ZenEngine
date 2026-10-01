@@ -95,6 +95,23 @@ public:
     {
         if (IsEnabledAndSupported())
         {
+            VkPhysicalDeviceDescriptorIndexingFeatures enabled{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+
+            enabled.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+
+            enabled.runtimeDescriptorArray = VK_TRUE;
+
+            enabled.descriptorBindingPartiallyBound = VK_TRUE;
+
+            enabled.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+
+            enabled.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+
+            enabled.descriptorBindingVariableDescriptorCount = VK_TRUE;
+
+            m_descriptorIndexingFeatures = enabled;
+
             AddToPNext(DeviceCI, m_descriptorIndexingFeatures);
         }
     }
@@ -220,6 +237,13 @@ public:
     {
         if (IsEnabledAndSupported())
         {
+            VkPhysicalDeviceBufferDeviceAddressFeatures enabled{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
+
+            enabled.bufferDeviceAddress = VK_TRUE;
+
+            m_bufferDeviceAddressFeature = enabled;
+
             AddToPNext(DeviceCI, m_bufferDeviceAddressFeature);
         }
     }
@@ -262,6 +286,13 @@ public:
     {
         if (IsEnabledAndSupported())
         {
+            VkPhysicalDeviceAccelerationStructureFeaturesKHR enabled{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+
+            enabled.accelerationStructure = VK_TRUE;
+
+            m_accelerationStructureFeatures = enabled;
+
             AddToPNext(DeviceCI, m_accelerationStructureFeatures);
         }
     }
@@ -304,6 +335,13 @@ public:
     {
         if (IsEnabledAndSupported())
         {
+            VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabled{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+
+            enabled.rayTracingPipeline = VK_TRUE;
+
+            m_rayTracingPipelineFeatures = enabled;
+
             AddToPNext(DeviceCI, m_rayTracingPipelineFeatures);
         }
     }

@@ -5,6 +5,7 @@
 #include "RHIFrameState.h"
 #include "RHIGPUFrameTiming.h"
 #include "RHIGPUMemoryStats.h"
+#include "RHIExecutionCounters.h"
 
 namespace zen
 {
@@ -22,6 +23,11 @@ public:
     // Final buffer/texture destruction can occur on RHI after RenderCore releases
     // its owners. Raw backends do not consume RenderCore retirement bookkeeping.
     virtual void NotifyResourceDestroyed(uint64_t resourceId) {}
+
+    virtual RHIExecutionCounters GetExecutionCounters() const
+    {
+        return {};
+    }
 
     virtual void BeginFrame() = 0;
 
@@ -97,10 +103,6 @@ public:
 
     virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
 
-    // {
-    //     return m_resourceFactory->CreateSampler(samplerInfo);
-    // }
-
     virtual void DestroySampler(RHISampler* pSampler) = 0;
 
     virtual RHIBindlessHandle RegisterBindlessResource(
@@ -143,25 +145,6 @@ public:
 
     virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
 
-    //
-    // virtual uint8_t* MapBuffer(BufferHandle bufferHandle) = 0;
-    //
-    // virtual void UnmapBuffer(BufferHandle bufferHandle) = 0;
-    //
-    // virtual void DestroyBuffer(BufferHandle bufferHandle) = 0;
-    //
-    // virtual void SetBufferTexelFormat(BufferHandle bufferHandle, DataFormat format) = 0;
-
-    // virtual DescriptorSetHandle CreateDescriptorSet(RHIShader* shaderHandle, uint32_t setIndex) = 0;
-
-    // virtual void DestroyDescriptorSet(RHIDescriptorSet* pDescriptorSet) = 0;
-
-    // virtual void UpdateDescriptorSet(
-    //     DescriptorSetHandle descriptorSetHandle,
-    //     const std::vector<RHIShaderResourceBinding>& resourceBindings) = 0;
-
-    // Backends prepare dependencies for the entire batch before translating any commands.
-    // On failure, block submissions and leave all input lists unexecuted.
     bool PrepareCommandListDependencies(VectorView<RHICommandList*> lists)
     {
         bool result = true;
@@ -273,8 +256,6 @@ public:
 
 protected:
     RHIResourceFactory* m_pResourceFactory{nullptr};
-
-    IRHICommandContext* m_pTransferContext{nullptr};
 };
 
 // Global instance pointer

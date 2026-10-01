@@ -1,12 +1,9 @@
 #pragma once
 #include "Graphics/RHI/RHICommandList.h"
 #include "Templates/HeapVector.h"
-#include "Templates/HashMap.h"
 #include "Graphics/VulkanRHI/VulkanHeaders.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/RHI/RHIResource.h"
-// #define NUM_FRAMES 3
-
 namespace zen
 {
 class VulkanRHI;
@@ -14,7 +11,6 @@ class VulkanQueue;
 class VulkanDevice;
 class VulkanSemaphore;
 class VulkanCommandBuffer;
-class VulkanFramebuffer;
 struct VulkanTexture;
 struct FVulkanCommandListContext;
 
@@ -76,7 +72,12 @@ public:
     {
         RHITextureSubResourceRange range{};
         range.aspect.SetFlag(RHITextureAspectFlagBits::eDepth);
-        range.aspect.SetFlag(RHITextureAspectFlagBits::eStencil);
+
+        if (FormatIsDepthStencil(m_depthFormat))
+        {
+            range.aspect.SetFlag(RHITextureAspectFlagBits::eStencil);
+        }
+
         range.layerCount     = 1;
         range.levelCount     = 1;
         range.baseMipLevel   = 0;
@@ -84,11 +85,6 @@ public:
 
         return range;
     }
-
-    // FramebufferHandle GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-    //                                            const RHIFramebufferInfo* fbInfo) final;
-
-    VkFramebuffer GetCompatibleFramebufferForBackBuffer(VkRenderPass renderPass);
 
     void Resize(uint32_t width, uint32_t height) final;
 
@@ -117,10 +113,6 @@ private:
 
     VulkanDevice* m_pDevice{nullptr};
 
-    // void* m_windowPtr{nullptr};
-    // uint32_t m_width{0};
-    // uint32_t m_height{0};
-    // bool m_enableVSync{true};
     DataFormat m_depthFormat;
     VulkanSwapchain* m_pSwapchain{nullptr};
     int32_t m_acquiredImageIndex{-1};
@@ -128,14 +120,6 @@ private:
     HeapVector<VkImage> m_swapchainImages;
     VulkanTexture* m_pColorBackBuffer{nullptr};
     VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
-
-    struct
-    {
-        VkFramebuffer vkHandle{VK_NULL_HANDLE};
-        VkRenderPass vkRenderPass{VK_NULL_HANDLE};
-    } m_framebuffer;
-
-    // HashMap<RenderPassHandle, VulkanFramebuffer*> m_framebufferCache;
     uint64_t m_presentCount{0};
 
     uint64_t m_presentSignalGeneration{0};

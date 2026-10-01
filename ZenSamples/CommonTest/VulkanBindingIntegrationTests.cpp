@@ -285,7 +285,6 @@ protected:
         barrier.subresourceRange = texture->GetVkSubresourceRange();
         vkCmdPipelineBarrier(Commands(), srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1,
                              &barrier);
-        session->rhi.UpdateImageLayout(texture->GetVkImage(), after);
     }
 
     void InitializeRed(VulkanTexture* texture)
@@ -337,6 +336,32 @@ protected:
         context->RHISetShaderParameters(parameters);
     }
 };
+
+TEST_F(VulkanBindingIntegrationTest, TextureCannotFillSamplerBinding)
+{
+    RHIPipeline* pipeline = Compute("binding_sampler.comp.spv");
+
+    RHITexture* texture = Texture();
+
+    RHIBatchedShaderParameters parameters;
+
+    const RHIShaderResourceDescriptor& sampler =
+        *pipeline->GetShader()->GetSRDByLocation(test::kLocalResourceSet, 0);
+
+    parameters.AddResourceParam(sampler, texture, nullptr, 0);
+
+    context->RHISetShaderParameters(parameters.GetView());
+
+    VulkanDescriptorSetState state;
+    state.SetPipeline(static_cast<VulkanPipeline*>(pipeline));
+    state.SetShaderParameters(parameters.GetView());
+    context->GetCommandBuffer();
+    HeapVector<VkDescriptorSet> sets;
+    HeapVector<uint32_t> offsets;
+    uint32_t firstSet = 0;
+    state.FlushPendingDescriptorWrites(context, sets, firstSet, offsets);
+    EXPECT_TRUE(sets.empty());
+}
 
 TEST_F(VulkanBindingIntegrationTest, TexelViewsUseLogicalBufferRange)
 {

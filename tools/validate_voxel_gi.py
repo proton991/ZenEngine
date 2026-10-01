@@ -280,6 +280,7 @@ def main(overrides=None, executable=None):
 
             settings = {"default_model_path": (OUT / "room.gltf").as_posix(),
                         "camera_position": "0,0,1.2", "voxelizer": backend, "voxel_resolution": "64",
+                        "scene_lighting_override": "true",
                         "light_count": "1", "environment_lighting": "false", "skybox_visible": "false",
                         "light_markers.enabled": "false",
                         "dynamic_light.enabled": "false", "light.0.type": "point",
@@ -294,8 +295,8 @@ def main(overrides=None, executable=None):
                 "spot": {"light.0.type": "spot", "light.0.direction": "0,-1,0", "light.0.outer_angle_degrees": "45", "light.0.inner_angle_degrees": "25"},
             }
             images = {}
-            for name, overrides in cases.items():
-                images[name], _ = run(f"room-{backend}-{name}", settings | overrides,
+            for name, case_overrides in cases.items():
+                images[name], _ = run(f"room-{backend}-{name}", settings | case_overrides,
                                       ["--frames=3", "--mode=3"])
             assert max(region(images["dark"], .4, .35, .6, .7)) == 0
             assert max(region(images["missing-sky"], .4, .35, .6, .7)) == 0
@@ -345,10 +346,10 @@ def main(overrides=None, executable=None):
                 surfaces = {}
                 for name in ("padded", "no-normals", "default-explicit", "default-omitted", "default-only",
                              "texture-split", "texture-shared-image", "texture-shared-slot"):
-                    overrides = {"default_model_path": (OUT / f"surface-{name}.gltf").as_posix()}
+                    surface_overrides = {"default_model_path": (OUT / f"surface-{name}.gltf").as_posix()}
                     if name.startswith("default-"):
-                        overrides["light_count"] = "0"
-                    surfaces[name], _ = run(f"surface-{backend}-mode{mode}-{name}", settings | overrides,
+                        surface_overrides["light_count"] = "0"
+                    surfaces[name], _ = run(f"surface-{backend}-mode{mode}-{name}", settings | surface_overrides,
                                              ["--frames=3", f"--mode={mode}"])
                 assert surfaces["padded"] == reference, "Vertex attribute stride changes geometry"
                 assert surfaces["no-normals"] == reference, "Missing normals differ from flat normals"

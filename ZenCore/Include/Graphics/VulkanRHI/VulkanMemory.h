@@ -29,12 +29,11 @@ public:
     bool AllocImage(const VkImageCreateInfo* pImageCI,
                     bool cpuReadable,
                     VkImage* pImage,
-                    VulkanMemoryAllocation* pAllocation,
-                    uint32_t size);
+                    VulkanMemoryAllocation* pAllocation);
 
     void FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc);
 
-    void AllocBuffer(uint32_t size,
+    void AllocBuffer(uint64_t size,
                      const VkBufferCreateInfo* pBufferCI,
                      RHIBufferAllocateType allocType,
                      VkBuffer* pBuffer,
@@ -60,6 +59,10 @@ private:
     void TrackMemory(uint32_t memoryType, VkDeviceSize size, bool allocated);
 
     VmaPool GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex);
+
+    bool IsSmallImage(const VkImageCreateInfo& imageCI) const;
+
+    VkDevice m_device{VK_NULL_HANDLE};
 
     VmaAllocator m_vmaAllocator{VK_NULL_HANDLE};
     HashMap<MemoryTypeIndex, VmaPool> m_smallPools;

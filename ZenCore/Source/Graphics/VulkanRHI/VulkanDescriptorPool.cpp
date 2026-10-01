@@ -1,3 +1,4 @@
+#include "Graphics/VulkanRHI/VulkanTypes.h"
 #include "Graphics/VulkanRHI/VulkanDescriptorPool.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIResource.h"
@@ -439,6 +440,17 @@ VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key,
         }
     }
 
+    if (descriptorSet != VK_NULL_HANDLE)
+    {
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().descriptorHits);
+    }
+    else
+    {
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().descriptorMisses);
+    }
+
     return descriptorSet;
 }
 
@@ -449,6 +461,9 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
                                                  uint32_t variableCount,
                                                  VulkanDescriptorPoolSetContainer*& outContainer)
 {
+    GVulkanRHI->GetExecutionCounterStorage().Increment(
+        GVulkanRHI->GetExecutionCounterStorage().descriptorInserts);
+
     outContainer = nullptr;
     VERIFY_EXPR(layout != VK_NULL_HANDLE);
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
@@ -550,6 +565,9 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
         oldestSlot = {};
         --m_numLiveSlots;
         ++m_numSlotRetires;
+
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().descriptorRetirements);
 
         CompactEntries();
     }
@@ -847,16 +865,15 @@ VkDescriptorType GetBindlessDescriptorType(RHIBindlessHeapType heapType)
 
 const VulkanTextureView* GetBindlessTextureView(const RHIResource* pResource)
 {
-    const VulkanTextureView* pTextureView = dynamic_cast<const VulkanTextureView*>(pResource);
+    const VulkanTextureView* pTextureView = nullptr;
 
-    if (pTextureView == nullptr)
+    if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTextureView)
     {
-        const VulkanTexture* pTexture = dynamic_cast<const VulkanTexture*>(pResource);
-
-        if (pTexture != nullptr)
-        {
-            pTextureView = dynamic_cast<const VulkanTextureView*>(pTexture->GetDefaultView());
-        }
+        pTextureView = TO_VK_TEXTURE_VIEW(pResource);
+    }
+    else if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTexture)
+    {
+        pTextureView = TO_VK_TEXTURE_VIEW(TO_CVK_TEXTURE(pResource)->GetDefaultView());
     }
 
     return pTextureView;
@@ -904,7 +921,7 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
 
     if (heapType == RHIBindlessHeapType::eSampler)
     {
-        const VulkanSampler* pSampler = dynamic_cast<const VulkanSampler*>(pResource);
+        const VulkanSampler* pSampler = TryVulkanSampler(pResource);
         valid = pSampler != nullptr && pSampler->GetVkSampler() != VK_NULL_HANDLE;
     }
     else if (heapType == RHIBindlessHeapType::eTexture2D ||
@@ -957,6 +974,8 @@ void VulkanBindlessDescriptorPoolManager::Init()
         {
             m_epoch = GVulkanRHI->GetLifetimeTracker().Create();
             m_epochs.push_back(m_epoch);
+
+            m_publishedEpoch.store(m_epoch, std::memory_order_release);
             for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
             {
                 const RHIBindlessHeapType heapType = static_cast<RHIBindlessHeapType>(heapIdx);
@@ -975,6 +994,10 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     }
     m_epochs.clear();
     m_epoch = 0;
+
+    m_publishedEpoch.store(0, std::memory_order_release);
+
+    m_hasPendingWrites.store(false, std::memory_order_release);
     m_retiredSlots.clear();
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
@@ -1040,6 +1063,10 @@ bool VulkanBindlessDescriptorPoolManager::ResetRegistrations()
             m_epochs.push_back(epoch);
 
             m_epoch = epoch;
+
+            m_publishedEpoch.store(epoch, std::memory_order_release);
+
+            m_hasPendingWrites.store(false, std::memory_order_release);
 
             m_retiredSlots.clear();
 
@@ -1125,6 +1152,8 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
             {
                 static std::atomic<uint64_t> nextGeneration{1};
                 m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
+
+                m_hasPendingWrites.store(true, std::memory_order_release);
                 pResource->AddReference();
                 slot.pResource = pResource;
                 if (pResource->GetResourceType() == RHIResourceType::eTextureView)
@@ -1168,20 +1197,25 @@ bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindless
 {
     LockAuto lock(&m_mutex);
     BindlessSlotState* slot = FindRegistration(handle);
-    if (slot == nullptr || slot->retiredEpoch != 0 || m_epoch == UINT64_MAX)
+    bool retired            = false;
+    if (slot != nullptr && slot->retiredEpoch == 0 && m_epoch != UINT64_MAX)
     {
-        return false;
+        // Reserve before changing publication state. A failed allocation leaves it active.
+        m_retiredSlots.reserve(m_retiredSlots.size() + 1);
+        m_epochs.reserve(m_epochs.size() + 1);
+        const uint64_t nextEpoch = GVulkanRHI->GetLifetimeTracker().Create();
+        m_retiredSlots.push_back(handle);
+        slot->retiredEpoch = m_epoch;
+        m_epoch            = nextEpoch;
+        m_epochs.push_back(m_epoch);
+
+        m_publishedEpoch.store(m_epoch, std::memory_order_release);
+
+        CollectRetiredResourcesLocked();
+        retired = true;
     }
-    // Reserve before changing publication state. A failed allocation leaves it active.
-    m_retiredSlots.reserve(m_retiredSlots.size() + 1);
-    m_epochs.reserve(m_epochs.size() + 1);
-    const uint64_t nextEpoch = GVulkanRHI->GetLifetimeTracker().Create();
-    m_retiredSlots.push_back(handle);
-    slot->retiredEpoch = m_epoch;
-    m_epoch            = nextEpoch;
-    m_epochs.push_back(m_epoch);
-    CollectRetiredResourcesLocked();
-    return true;
+
+    return retired;
 }
 
 uint64_t VulkanBindlessDescriptorPoolManager::CaptureEpoch()
@@ -1193,6 +1227,9 @@ uint64_t VulkanBindlessDescriptorPoolManager::CaptureEpoch()
         // Recording is allowed on RenderCore. Collection can destroy native resources,
         // so leave it to the RHI thread's registration/retirement sweeps.
         epoch = m_epoch;
+
+        GVulkanRHI->GetExecutionCounterStorage().Increment(
+            GVulkanRHI->GetExecutionCounterStorage().bindlessCaptures);
         GVulkanRHI->GetLifetimeTracker().RetainRecording(epoch);
     }
     return epoch;
@@ -1262,18 +1299,16 @@ void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
 
 void VulkanBindlessDescriptorPoolManager::Flush()
 {
-    LockAuto lock(&m_mutex);
-
-    bool hasPendingWrites = false;
-
-    for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
+    if (m_hasPendingWrites.load(std::memory_order_acquire))
     {
-        hasPendingWrites = hasPendingWrites || !m_pendingWrites[heapIdx].empty();
-    }
+        LockAuto lock(&m_mutex);
 
-    if (m_vkSet != VK_NULL_HANDLE && hasPendingWrites)
-    {
-        WriteDescriptorSetBatch();
+        if (m_vkSet != VK_NULL_HANDLE && m_hasPendingWrites.load(std::memory_order_relaxed))
+        {
+            WriteDescriptorSetBatch();
+
+            m_hasPendingWrites.store(false, std::memory_order_release);
+        }
     }
 }
 
@@ -1392,8 +1427,7 @@ void VulkanBindlessDescriptorPoolManager::WriteDescriptorSetBatch()
 
             if (heapType == RHIBindlessHeapType::eSampler)
             {
-                imageInfo.sampler =
-                    dynamic_cast<VulkanSampler*>(pendingWrite.pResource)->GetVkSampler();
+                imageInfo.sampler = TO_VK_SAMPLER(pendingWrite.pResource)->GetVkSampler();
             }
             else
             {

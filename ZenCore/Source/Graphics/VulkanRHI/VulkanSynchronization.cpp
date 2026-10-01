@@ -113,18 +113,6 @@ void VulkanFenceManager::ResetFence(VulkanFence* pFence)
     }
 }
 
-void VulkanFenceManager::WaitAndReleaseFence(VulkanFence*& fence, uint64_t timeNS)
-{
-    if (!fence->IsSignaled())
-    {
-        WaitForFence(fence, timeNS);
-    }
-
-    ResetFence(fence);
-    ReleaseFence(fence);
-    fence = nullptr;
-}
-
 void VulkanFenceManager::DestroyFence(VulkanFence* pFence)
 {
     vkDestroyFence(m_pDevice->GetVkHandle(), pFence->GetVkHandle(), nullptr);

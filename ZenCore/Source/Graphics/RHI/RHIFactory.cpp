@@ -33,7 +33,6 @@ RHIDebug* RHIDebug::Create()
 {
     RHIDebug* result{};
 
-    // VERIFY_EXPR(RHI != nullptr);
     if (GDynamicRHI != nullptr && GDynamicRHI->GetAPIType() == RHIAPIType::eVulkan)
     {
         result = ZEN_NEW() VulkanDebug();

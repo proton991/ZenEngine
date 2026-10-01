@@ -144,6 +144,7 @@ struct RHIThreadMetrics
     uint64_t queueWaitUs{0};
     uint64_t pendingBatches{0};
     uint64_t peakPendingBatches{0};
+    RHIExecutionCounters native;
 };
 
 // DynamicRHI facade: RenderCore keeps its API, while mutable backend operations
@@ -257,6 +258,8 @@ private:
     void ExecuteBeginFrame();
 
     void ExecuteEndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded);
+
+    bool ExecuteWaitForCompletion(RHICommandContextType type, uint64_t serial, uint64_t timeoutNS);
 
     void ExecuteWaitIdle();
     void ExecuteDestroy();

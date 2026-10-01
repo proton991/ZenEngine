@@ -1191,21 +1191,23 @@ void RenderDevice::DeferDestroyPipeline(RHIPipeline* pipeline)
     }
 }
 
-RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates& states,
-                                                  RHIShader* shader,
-                                                  const RHIRenderingLayout* layout,
-                                                  const HashMap<uint32_t, int>& constants)
+RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
+    const RHIGfxPipelineStates& states,
+    RHIShader* shader,
+    const RHIRenderingLayout* layout,
+    const HashMap<uint32_t, RHIShaderSpecializationValue>& constants)
 {
     const RDGMetricsOptions& options = GetRDGMetrics().GetOptions();
     return GetOrCreateGfxPipeline(states, shader, layout, constants,
                                   options.logging.enabled && options.preparationTimings);
 }
 
-RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates& states,
-                                                  RHIShader* shader,
-                                                  const RHIRenderingLayout* layout,
-                                                  const HashMap<uint32_t, int>& constants,
-                                                  bool timed)
+RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
+    const RHIGfxPipelineStates& states,
+    RHIShader* shader,
+    const RHIRenderingLayout* layout,
+    const HashMap<uint32_t, RHIShaderSpecializationValue>& constants,
+    bool timed)
 {
     RHIPipeline* pipeline = nullptr;
 
@@ -1222,8 +1224,7 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates& st
             ++m_pipelineMetrics.requests;
             m_pipelineMetrics.timedRequests += timed;
             ScopedMetricsTimer keyTimer(timed, m_pipelineMetrics.keyCPUUs);
-            PipelineKey key = MakePipelineKey(shader, &states, layout, constants,
-                                              RHIOptions::GetInstance().UseDynamicRendering());
+            PipelineKey key = MakePipelineKey(shader, &states, layout, constants);
             keyTimer.Stop();
             ScopedMetricsTimer lookupTimer(timed, m_pipelineMetrics.lookupCPUUs);
             LRUCache<PipelineKey, RHIPipeline*, PipelineKeyHasher>::iterator it =
@@ -1248,7 +1249,8 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates& st
                 {
                     RHIShaderCreateInfo shaderInfo = shader->GetCreateInfo();
 
-                    for (const HashMap<uint32_t, int>::value_type& constant : constants)
+                    for (const HashMap<uint32_t, RHIShaderSpecializationValue>::value_type&
+                             constant : constants)
                     {
                         shaderInfo.specializationConstants[constant.first] = constant.second;
                     }
@@ -1273,7 +1275,6 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(const RHIGfxPipelineStates& st
 
                     info.states           = states;
                     info.pRenderingLayout = layout;
-                    info.subpassIdx       = 0;
                     pipeline              = GDynamicRHI->CreatePipeline(info);
 
                     if (pipeline != nullptr)
@@ -1843,29 +1844,18 @@ void RenderDevice::PipelineKey::AddStencil(const RHIStencilOpState& op)
     Add(op.reference);
 }
 
-void RenderDevice::PipelineKey::AddAttachment(const RHIRenderTarget& target, bool dynamicRendering)
+void RenderDevice::PipelineKey::AddAttachment(const RHIRenderTarget& target)
 {
     Add(target.format);
     Add(target.numSamples);
-    if (dynamicRendering)
-    {
-        Add(int64_t(target.GetAspects()));
-    }
-
-    // Dynamic pipeline creation consumes attachment formats, not per-pass load/store ops.
-    // Retain the conservative render-pass distinction for the legacy backend path.
-    if (!dynamicRendering)
-    {
-        Add(target.loadOp);
-        Add(target.storeOp);
-    }
+    Add(int64_t(target.GetAspects()));
 }
 
-RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader* shader,
-                                                        const RHIGfxPipelineStates* graphics,
-                                                        const RHIRenderingLayout* layout,
-                                                        const HashMap<uint32_t, int>& constants,
-                                                        bool dynamicRendering)
+RenderDevice::PipelineKey RenderDevice::MakePipelineKey(
+    RHIShader* shader,
+    const RHIGfxPipelineStates* graphics,
+    const RHIRenderingLayout* layout,
+    const HashMap<uint32_t, RHIShaderSpecializationValue>& constants)
 {
     PipelineKey key;
 
@@ -1943,24 +1933,23 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader* shader,
             key.Add(bool(states.dynamicStates.enabledStates.Test(i)));
         }
 
-        key.Add(dynamicRendering);
         key.Add(layout->numColorRenderTargets);
         key.Add(layout->hasDepthStencilRT);
 
         for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
         {
-            key.AddAttachment(layout->colorRenderTargets[i], dynamicRendering);
+            key.AddAttachment(layout->colorRenderTargets[i]);
         }
 
         if (layout->hasDepthStencilRT)
         {
-            key.AddAttachment(layout->depthStencilRenderTarget, dynamicRendering);
+            key.AddAttachment(layout->depthStencilRenderTarget);
         }
 
-        SmallVector<std::pair<uint32_t, int>, 8> sorted;
+        SmallVector<std::pair<uint32_t, RHIShaderSpecializationValue>, 8> sorted;
         sorted.reserve(constants.size());
 
-        for (const std::pair<const uint32_t, int>& item : constants)
+        for (const std::pair<const uint32_t, RHIShaderSpecializationValue>& item : constants)
         {
             sorted.emplace_back(item.first, item.second);
         }
@@ -1968,10 +1957,11 @@ RenderDevice::PipelineKey RenderDevice::MakePipelineKey(RHIShader* shader,
         std::sort(sorted.begin(), sorted.end());
         key.Add(uint64_t(sorted.size()));
 
-        for (const std::pair<uint32_t, int>& constant : sorted)
+        for (const std::pair<uint32_t, RHIShaderSpecializationValue>& constant : sorted)
         {
             key.Add(constant.first);
-            key.Add(constant.second);
+            key.Add(constant.second.bits);
+            key.Add(ToUnderlying(constant.second.type));
         }
     }
 

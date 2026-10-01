@@ -89,7 +89,7 @@ public:
     // Reinitialization replaces the RHI shader only after creation succeeds.
     bool Init();
 
-    bool Init(const HashMap<uint32_t, int>& specializationConstants);
+    bool Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants);
 
 protected:
     void ResolveShaderResources();
@@ -122,10 +122,11 @@ private:
 class ComputeFileSP : public ShaderProgram
 {
 public:
-    ComputeFileSP(RenderDevice* device,
-                  NameID name,
-                  const std::string& path,
-                  const HashMap<uint32_t, int>& specializationConstants = {}) :
+    ComputeFileSP(
+        RenderDevice* device,
+        NameID name,
+        const std::string& path,
+        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
         ShaderProgram(device, name)
     {
         AddShaderStage(RHIShaderStage::eCompute, path);
@@ -450,8 +451,9 @@ public:
 class VoxelPreDrawSP : public ShaderProgram
 {
 public:
-    explicit VoxelPreDrawSP(RenderDevice* pRenderDevice,
-                            const HashMap<uint32_t, int>& specializationConstants = {}) :
+    explicit VoxelPreDrawSP(
+        RenderDevice* pRenderDevice,
+        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
         ShaderProgram(pRenderDevice, "VoxelPreDrawSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");

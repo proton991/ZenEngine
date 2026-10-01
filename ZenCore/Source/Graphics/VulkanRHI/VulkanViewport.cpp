@@ -9,7 +9,6 @@
 #include "Graphics/VulkanRHI/VulkanDescriptorPool.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
-#include "Graphics/VulkanRHI/VulkanRenderPass.h"
 #include "Graphics/VulkanRHI/VulkanResourceAllocator.h"
 #include "Graphics/VulkanRHI/VulkanSynchronization.h"
 #include "Graphics/VulkanRHI/Platform/VulkanPlatformCommon.h"
@@ -39,21 +38,6 @@ VkSurfaceKHR CreateViewportSurface(void* window, uint32_t width, uint32_t height
     return VulkanPlatform::CreateSurface(GVulkanRHI->GetInstance(), &windowData);
 }
 } // namespace
-// RHIViewport* RHIViewport::Create(void* pWindow, uint32_t width, uint32_t height, bool enableVSync)
-// {
-//     RHIViewport* pViewport = VulkanViewport::CreateObject(pWindow, width, height, enableVSync);
-//
-//     return pViewport;
-//     //     static_cast<RHIViewport*>(ZEN_MEM_ALLOC_ZEROED(sizeof(VulkanViewport)));
-//     //
-//     // new (pViewport)
-//     //     VulkanViewport(dynamic_cast<VulkanRHI*>(GDynamicRHI), pWindow, width, height, enableVSync);
-//     //
-//     // pViewport->Init();
-//     //
-//     // return pViewport;
-// }
-
 RHIViewport* VulkanRHI::CreateViewport(void* pWindow,
                                        uint32_t width,
                                        uint32_t height,
@@ -116,11 +100,6 @@ void VulkanViewport::Init()
 void VulkanViewport::Destroy()
 {
     DestroySwapchain(nullptr);
-
-    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
-    {
-        vkDestroyFramebuffer(GVulkanRHI->GetVkDevice(), m_framebuffer.vkHandle, nullptr);
-    }
 
     this->~VulkanViewport();
 
@@ -270,11 +249,6 @@ void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo)
     CreateSwapchain(recreateInfo);
     VERIFY_EXPR(recreateInfo->surface == VK_NULL_HANDLE);
     VERIFY_EXPR(recreateInfo->swapchain == VK_NULL_HANDLE);
-    if (m_framebuffer.vkHandle != VK_NULL_HANDLE)
-    {
-        vkDestroyFramebuffer(m_pDevice->GetVkHandle(), m_framebuffer.vkHandle, nullptr);
-        m_framebuffer.vkHandle = VK_NULL_HANDLE;
-    }
 }
 
 bool VulkanViewport::TryAcquireNextImage()
@@ -473,47 +447,6 @@ void VulkanViewport::Resize(uint32_t width, uint32_t height)
         GetRHIThread().Invoke(&VulkanViewport::FinishResize, this, &recreateInfo);
     }
 }
-
-VkFramebuffer VulkanViewport::GetCompatibleFramebufferForBackBuffer(VkRenderPass renderPass)
-{
-    if (m_framebuffer.vkHandle == VK_NULL_HANDLE)
-    {
-        const uint32_t numAttachments = 2;
-        VkImageView imageViews[numAttachments];
-
-        imageViews[0] = m_pColorBackBuffer->GetVkImageView();
-        imageViews[1] = m_pDepthStencilBackBuffer->GetVkImageView();
-
-        VkFramebufferCreateInfo framebufferCI;
-        InitVkStruct(framebufferCI, VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
-        framebufferCI.renderPass      = renderPass;
-        framebufferCI.width           = m_width;
-        framebufferCI.height          = m_height;
-        framebufferCI.layers          = 1;
-        framebufferCI.attachmentCount = numAttachments;
-        framebufferCI.pAttachments    = imageViews;
-        VKCHECK(vkCreateFramebuffer(GVulkanRHI->GetVkDevice(), &framebufferCI, nullptr,
-                                    &m_framebuffer.vkHandle));
-        m_framebuffer.vkRenderPass = renderPass;
-    }
-
-    return m_framebuffer.vkHandle;
-}
-
-// FramebufferHandle VulkanViewport::GetCompatibleFramebuffer(RenderPassHandle renderPassHandle,
-//                                                            const RHIFramebufferInfo* fbInfo)
-// {
-//     VkRenderPass renderPass = TO_VK_RENDER_PASS(renderPassHandle);
-//     if ((m_framebufferCache.contains(renderPassHandle) &&
-//          m_framebufferCache[renderPassHandle]->GetVkRenderPass() != renderPass) ||
-//         !m_framebufferCache.contains(renderPassHandle))
-//     {
-//         // save to cache
-//         m_framebufferCache[renderPassHandle] =
-//             new VulkanFramebuffer(GVulkanRHI, renderPass, *fbInfo);
-//     }
-//     return FramebufferHandle(m_framebufferCache[renderPassHandle]);
-// }
 
 RHITexture* VulkanViewport::GetColorBackBuffer()
 {

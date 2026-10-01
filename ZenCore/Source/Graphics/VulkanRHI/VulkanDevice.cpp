@@ -182,7 +182,7 @@ static std::string GetQueuePropString(const VkQueueFamilyProperties& queueProp)
 DataFormat VulkanRHI::GetSupportedDepthFormat()
 {
     VkFormat defaulFormat{VK_FORMAT_D16_UNORM};
-    const HeapVector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,
+    const HeapVector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT,
                                              VK_FORMAT_D24_UNORM_S8_UINT,
                                              VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM};
 
@@ -396,7 +396,49 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     deviceInfo.ppEnabledExtensionNames = extensionNames.empty() ? nullptr : extensionNames.data();
     deviceInfo.queueCreateInfoCount    = static_cast<uint32_t>(deviceQueueInfos.size());
     deviceInfo.pQueueCreateInfos       = deviceQueueInfos.data();
-    deviceInfo.pEnabledFeatures        = &m_physicalDeviceFeatures; // enable all features
+    VkPhysicalDeviceFeatures enabledFeatures{};
+
+    enabledFeatures.independentBlend = m_physicalDeviceFeatures.independentBlend;
+
+    enabledFeatures.geometryShader = m_physicalDeviceFeatures.geometryShader;
+
+    enabledFeatures.fragmentStoresAndAtomics = m_physicalDeviceFeatures.fragmentStoresAndAtomics;
+
+    enabledFeatures.vertexPipelineStoresAndAtomics =
+        m_physicalDeviceFeatures.vertexPipelineStoresAndAtomics;
+
+    enabledFeatures.samplerAnisotropy = m_physicalDeviceFeatures.samplerAnisotropy;
+
+    enabledFeatures.fillModeNonSolid = m_physicalDeviceFeatures.fillModeNonSolid;
+
+    enabledFeatures.depthClamp = m_physicalDeviceFeatures.depthClamp;
+
+    enabledFeatures.depthBiasClamp = m_physicalDeviceFeatures.depthBiasClamp;
+
+    enabledFeatures.wideLines = m_physicalDeviceFeatures.wideLines;
+
+    enabledFeatures.sampleRateShading = m_physicalDeviceFeatures.sampleRateShading;
+
+    enabledFeatures.alphaToOne = m_physicalDeviceFeatures.alphaToOne;
+
+    enabledFeatures.depthBounds = m_physicalDeviceFeatures.depthBounds;
+
+    enabledFeatures.logicOp = m_physicalDeviceFeatures.logicOp;
+
+    enabledFeatures.multiDrawIndirect = m_physicalDeviceFeatures.multiDrawIndirect;
+
+    enabledFeatures.drawIndirectFirstInstance = m_physicalDeviceFeatures.drawIndirectFirstInstance;
+
+    enabledFeatures.tessellationShader = m_physicalDeviceFeatures.tessellationShader;
+
+    enabledFeatures.robustBufferAccess = RHIOptions::GetInstance().RobustBufferAccessEnabled() ?
+        m_physicalDeviceFeatures.robustBufferAccess :
+        VK_FALSE;
+
+    // Capability queries describe features actually enabled on this logical device.
+    m_physicalDeviceFeatures = enabledFeatures;
+
+    deviceInfo.pEnabledFeatures = &m_physicalDeviceFeatures;
 
     const VkResult result = vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device);
     if (result != VK_SUCCESS)
@@ -469,7 +511,6 @@ void VulkanDevice::WaitForIdle()
         return;
     }
 
-    // GVulkanRHI->GetLegacyImmediateCmdContext()->GetCmdBufferManager()->RefreshFenceStatus();
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
     {
         if (VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i)))

@@ -15,8 +15,7 @@ namespace zen
 {
 enum class VulkanCommandBufferType
 {
-    ePrimary   = 0,
-    eSecondary = 1
+    ePrimary = 0
 };
 
 class VulkanDescriptorPoolSetContainer;
@@ -52,13 +51,11 @@ public:
 
     void EndRendering();
 
-    void BeginRenderPass(const VkRenderPassBeginInfo* pBeginInfo);
-
-    void EndRenderPass();
-
     // Call after external native commands change pipeline, descriptor, vertex or dynamic state.
     // Begin also invalidates all cached state, including when a native handle is recycled.
     void InvalidateCachedState();
+
+    void BindIndexBuffer(VkBuffer buffer, uint64_t offset, VkIndexType type);
 
     void BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
                                        const HeapVector<VkDescriptorSet>& sets,
@@ -190,6 +187,10 @@ private:
     float m_lineWidth{1.0f};
     HeapVector<VkBuffer> m_boundVertexBuffers;
     HeapVector<uint64_t> m_boundVertexOffsets;
+
+    VkBuffer m_boundIndexBuffer{VK_NULL_HANDLE};
+    uint64_t m_boundIndexOffset{0};
+    VkIndexType m_boundIndexType{VK_INDEX_TYPE_UINT16};
 };
 
 class FVulkanCommandBufferPool
@@ -390,6 +391,11 @@ public:
 
     void RecordLifetime(uint64_t id);
 
+    uint64_t GetWorkloadGeneration() const
+    {
+        return m_pCurrentWorkload != nullptr ? m_workloadGeneration : 0;
+    }
+
     void RecordUniformBufferBlock(uint64_t blockId);
 
     // Finalize the current workload, then append all staged workloads to the output array.
@@ -448,6 +454,7 @@ private:
     VulkanWorkload* m_pCurrentWorkload{nullptr};
     HeapVector<VulkanWorkload*> m_finalizedWorkloads;
     WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
+    uint64_t m_workloadGeneration{0};
     bool m_hasPendingFlushWorkload{false};
     uint64_t m_lastSubmittedSerial{0};
 };
@@ -477,8 +484,7 @@ public:
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             uint64_t recordedEpoch = 0);
+    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
 
     void PreDraw(FVulkanCommandListContext* pContext);
 
@@ -516,8 +522,7 @@ public:
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    void SetShaderParameters(const RHIBatchedShaderParameters& parameters,
-                             uint64_t recordedEpoch = 0);
+    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
 
     void PreDispatch(FVulkanCommandListContext* pContext);
 
@@ -563,7 +568,9 @@ public:
 
     void RHIBindPipeline(RHIPipeline* pPipeline) override;
 
-    void RHISetShaderParameters(const RHIBatchedShaderParameters& parameters) override;
+    void RHISetShaderParameters(RHIShaderParameterView parameters) override;
+
+    uint64_t RHIGetCurrentBindlessEpoch() const override;
 
     uint64_t RHICaptureBindlessEpoch() override;
     void RHIReleaseBindlessEpoch(uint64_t epoch) override;
@@ -596,13 +603,13 @@ public:
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
                                 uint32_t indexBufferOffset,
-                                uint32_t offset,
+                                uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override;
 
     void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
 
-    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint32_t offset) override;
+    void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override;
 
     void RHISetPushConstants(RHIPipeline* pPipeline,
                              VectorView<const uint8_t> data,
@@ -614,9 +621,7 @@ public:
                            VectorView<RHIBufferTransition> bufferTransitions,
                            VectorView<RHITextureTransition> textureTransitions) override;
 
-    void RHIAddTextureTransition(RHITexture* pTexture, RHITextureLayout newLayout) override;
-
-    void RHIClearBuffer(RHIBuffer* pBuffer, uint32_t offset, uint32_t size) override;
+    void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) override;
 
     void RHICopyBuffer(RHIBuffer* pSrcBuffer,
                        RHIBuffer* pDstBuffer,

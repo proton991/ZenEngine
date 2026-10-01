@@ -67,6 +67,15 @@ public:
     template <typename Function, typename... Args>
     std::invoke_result_t<Function, Args...> Invoke(Function&& function, Args&&... args)
     {
+        return IsCurrentThread() ?
+            std::invoke(std::forward<Function>(function), std::forward<Args>(args)...) :
+            InvokeQueued(std::forward<Function>(function), std::forward<Args>(args)...);
+    }
+
+private:
+    template <typename Function, typename... Args>
+    std::invoke_result_t<Function, Args...> InvokeQueued(Function&& function, Args&&... args)
+    {
         using Result = std::invoke_result_t<Function, Args...>;
         SharedPtr<std::packaged_task<Result()>, MultiThreadCounter> task =
             MakeShared<std::packaged_task<Result()>, MultiThreadCounter>(
@@ -81,7 +90,6 @@ public:
         return result.get();
     }
 
-private:
     void Run();
     static void Fence();
 

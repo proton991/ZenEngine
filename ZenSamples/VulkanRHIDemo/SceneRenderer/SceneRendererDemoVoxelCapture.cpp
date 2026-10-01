@@ -20,7 +20,7 @@ struct VoxelCaptureBuffer
     const char* suffix;
     RHIBuffer* source;
     RHIBuffer* readback{nullptr};
-    uint32_t size{0};
+    uint64_t size{0};
     RHIBuffer* copy{nullptr};
 };
 
@@ -174,7 +174,8 @@ bool SceneRendererDemo::CaptureVoxelOutput(const std::string& path, rc::Voxelize
                         copy.BindStorageBuffer("CaptureSource", buffer.source);
                         copy.BindStorageBuffer("CaptureCopy", buffer.copy,
                                                rc::RDGContentGuarantee::eFullWrite);
-                        const uint32_t count = std::min(65535u, (buffer.size / 4 + 63) / 64);
+                        const uint32_t count = static_cast<uint32_t>(
+                            std::min(uint64_t(65535), (buffer.size / 4 + 63) / 64));
                         graph.AddComputePass(std::move(copy))
                             .RecordPassCommands([count](rc::RDGPassCmdEncoder& encoder) {
                                 encoder.Dispatch(count, 1, 1);

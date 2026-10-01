@@ -8,6 +8,34 @@ namespace zen
 {
 static constexpr uint32_t SMALL_VK_ALLOCATION_SIZE = 4096;
 
+// Tightly packed texels bound an image's native memory requirement from below.
+// Formats without a known texel size report zero.
+static uint64_t GetPackedImageBytes(const VkImageCreateInfo& imageCI)
+{
+    const uint64_t texelBytes = GetTextureFormatPixelSize(static_cast<DataFormat>(imageCI.format));
+
+    uint64_t texels = 0;
+
+    uint64_t width = imageCI.extent.width;
+
+    uint64_t height = imageCI.extent.height;
+
+    uint64_t depth = imageCI.extent.depth;
+
+    for (uint32_t mip = 0; mip < imageCI.mipLevels; ++mip)
+    {
+        texels += width * height * depth;
+
+        width = std::max<uint64_t>(1, width / 2);
+
+        height = std::max<uint64_t>(1, height / 2);
+
+        depth = std::max<uint64_t>(1, depth / 2);
+    }
+
+    return texels * texelBytes * imageCI.arrayLayers * uint64_t(imageCI.samples);
+}
+
 static void AddMemory(std::atomic<uint64_t>& live, std::atomic<uint64_t>& peak, uint64_t bytes)
 {
     const uint64_t current = live.fetch_add(bytes, std::memory_order_relaxed) + bytes;
@@ -128,6 +156,8 @@ void VulkanMemoryAllocator::Init(VkInstance instance,
 
     vkGetPhysicalDeviceMemoryProperties(gpu, &m_memoryProperties);
 
+    m_device = device;
+
     allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
 
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
@@ -162,8 +192,7 @@ RHIGPUMemoryStats VulkanRHI::GetGPUMemoryStats() const
 bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
                                        bool cpuReadable,
                                        VkImage* pImage,
-                                       VulkanMemoryAllocation* pAllocation,
-                                       uint32_t size)
+                                       VulkanMemoryAllocation* pAllocation)
 {
     VmaAllocationCreateInfo vmaAllocationCI{};
     vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -173,7 +202,7 @@ bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
     bool ready            = true;
 
     // Small images share a pool, but a failed pool must never be published or used.
-    if (size <= SMALL_VK_ALLOCATION_SIZE)
+    if (IsSmallImage(*pImageCI))
     {
         uint32_t memTypeIndex = 0;
         const VkResult result = vmaFindMemoryTypeIndexForImageInfo(m_vmaAllocator, pImageCI,
@@ -210,7 +239,7 @@ void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocatio
     vmaDestroyImage(m_vmaAllocator, image, memAlloc.handle);
 }
 
-void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
+void VulkanMemoryAllocator::AllocBuffer(uint64_t size,
                                         const VkBufferCreateInfo* pBufferCI,
                                         RHIBufferAllocateType allocType,
                                         VkBuffer* pBuffer,
@@ -219,12 +248,17 @@ void VulkanMemoryAllocator::AllocBuffer(uint32_t size,
     VmaAllocationCreateInfo vmaAllocationCI{};
 
     if (allocType == RHIBufferAllocateType::eCPURead ||
-        allocType == RHIBufferAllocateType::eCPUWrite)
+        allocType == RHIBufferAllocateType::eCPUWrite ||
+        allocType == RHIBufferAllocateType::eCPUWriteGPURead)
     {
-        vmaAllocationCI.flags = allocType == RHIBufferAllocateType::eCPUWrite ?
+        vmaAllocationCI.flags = allocType != RHIBufferAllocateType::eCPURead ?
             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT :
             VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+        vmaAllocationCI.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        vmaAllocationCI.usage = allocType == RHIBufferAllocateType::eCPUWriteGPURead ?
+            VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE :
+            VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
         vmaAllocationCI.requiredFlags =
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     }
@@ -297,5 +331,30 @@ VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTyp
     }
 
     return result;
+}
+
+// Only images whose packed texels fit the small pool pay for a probe of the native requirement.
+// A failed probe leaves placement to the default pools, where the real allocation reports it.
+bool VulkanMemoryAllocator::IsSmallImage(const VkImageCreateInfo& imageCI) const
+{
+    bool smallImage = false;
+
+    if (GetPackedImageBytes(imageCI) <= SMALL_VK_ALLOCATION_SIZE)
+    {
+        VkImage probe{VK_NULL_HANDLE};
+
+        if (vkCreateImage(m_device, &imageCI, nullptr, &probe) == VK_SUCCESS)
+        {
+            VkMemoryRequirements requirements{};
+
+            vkGetImageMemoryRequirements(m_device, probe, &requirements);
+
+            vkDestroyImage(m_device, probe, nullptr);
+
+            smallImage = requirements.size <= SMALL_VK_ALLOCATION_SIZE;
+        }
+    }
+
+    return smallImage;
 }
 } // namespace zen

@@ -36,14 +36,15 @@ VkImageView GetImageView(RHIResource* pResource)
 {
     VkImageView imageView = VK_NULL_HANDLE;
 
-    if (VulkanTextureView* pView = dynamic_cast<VulkanTextureView*>(pResource))
+    if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTextureView)
     {
-        imageView = pView->GetVkImageView();
+        imageView = TO_VK_TEXTURE_VIEW(pResource)->GetVkImageView();
     }
-    else if (VulkanTexture* pTexture = dynamic_cast<VulkanTexture*>(pResource))
+    else if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTexture)
     {
         const VulkanTextureView* pDefaultView =
-            dynamic_cast<const VulkanTextureView*>(pTexture->GetDefaultView());
+            TO_VK_TEXTURE_VIEW(TO_VK_TEXTURE(pResource)->GetDefaultView());
+
         imageView = pDefaultView != nullptr ? pDefaultView->GetVkImageView() : VK_NULL_HANDLE;
     }
 
@@ -108,7 +109,7 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                 {
                     case RHIShaderResourceType::eSampler:
                     {
-                        VulkanSampler* pSampler          = TO_VK_SAMPLER(pResource);
+                        VulkanSampler* pSampler          = TryVulkanSampler(pResource);
                         VkDescriptorImageInfo& imageInfo = batch.imageInfos[batch.numImageInfos++];
                         imageInfo                        = {};
                         imageInfo.sampler =
@@ -131,17 +132,17 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         descriptorIsValid     = imageInfo.imageView != VK_NULL_HANDLE;
                         write.descriptorType  = binding.type == RHIShaderResourceType::eImage ?
-                            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE :
-                            binding.type == RHIShaderResourceType::eInputAttachment ?
-                            VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT :
-                            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+                             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE :
+                             binding.type == RHIShaderResourceType::eInputAttachment ?
+                             VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT :
+                             VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
                         write.pImageInfo      = &imageInfo;
                     }
                     break;
 
                     case RHIShaderResourceType::eSamplerWithTexture:
                     {
-                        VulkanSampler* pSampler          = TO_VK_SAMPLER(pResource);
+                        VulkanSampler* pSampler          = TryVulkanSampler(pResource);
                         VkDescriptorImageInfo& imageInfo = batch.imageInfos[batch.numImageInfos++];
                         imageInfo                        = {};
                         imageInfo.sampler =
@@ -163,11 +164,11 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
 
                         if (binding.type == RHIShaderResourceType::eSamplerWithTextureBuffer)
                         {
-                            descriptorIsValid = TO_VK_SAMPLER(pResource) != nullptr;
+                            descriptorIsValid = TryVulkanSampler(pResource) != nullptr;
                             pBufferResource   = pAuxResource;
                         }
 
-                        VulkanBuffer* pBuffer    = TO_VK_BUFFER(pBufferResource);
+                        VulkanBuffer* pBuffer    = TryVulkanBuffer(pBufferResource);
                         VkBufferView& bufferView = batch.bufferViews[batch.numBufferViews++];
                         bufferView =
                             pBuffer != nullptr ? pBuffer->GetVkBufferView() : VK_NULL_HANDLE;
@@ -182,7 +183,7 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                     case RHIShaderResourceType::eUniformBuffer:
                     case RHIShaderResourceType::eStorageBuffer:
                     {
-                        VulkanBuffer* pBuffer = TO_VK_BUFFER(pResource);
+                        VulkanBuffer* pBuffer = TryVulkanBuffer(pResource);
                         VkDescriptorBufferInfo& bufferInfo =
                             batch.bufferInfos[batch.numBufferInfos++];
                         bufferInfo = {};
@@ -229,10 +230,12 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
         m_packedValueBuffers.clear();
         m_cacheRevision = 0;
         m_pPipeline     = pPipeline;
+
+        m_lastWorkloadGeneration = 0;
     }
 }
 
-void VulkanDescriptorSetState::SetShaderParameters(const RHIBatchedShaderParameters& parameters,
+void VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parameters,
                                                    uint64_t recordedEpoch)
 {
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
@@ -269,24 +272,76 @@ void VulkanDescriptorSetState::FlushPendingDescriptorWrites(
     uint32_t& outFirstSet,
     HeapVector<uint32_t>& outDynamicOffsets)
 {
-    outDescriptorSets.clear();
-    outDynamicOffsets.clear();
-    outFirstSet = 0;
-
     VERIFY_EXPR(pContext != nullptr);
+
     VERIFY_EXPR(m_pPipeline != nullptr);
 
-    VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
+    VulkanShader* shader = TO_VK_SHADER(m_pPipeline->GetShader());
 
-    if (pShader != nullptr && pShader->HasGlobalBindlessSet())
+    if (shader != nullptr && shader->HasGlobalBindlessSet())
     {
         pContext->RecordCurrentBindlessEpoch();
+
         GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
     }
 
-    FlushPackedValueBuffers();
+    const VulkanDescriptorSetCache* cache =
+        GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
 
-    BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
+    bool reuse = m_lastContext == pContext && m_lastWorkloadGeneration != 0 &&
+        m_lastWorkloadGeneration == pContext->GetWorkloadGeneration() &&
+        m_lastCacheRevision == cache->GetRevision();
+
+    const VulkanUniformBufferAllocator* allocator = GVulkanRHI->GetUniformBufferAllocator();
+
+    for (const SetState& set : m_setStates)
+    {
+        reuse &= !set.dirty;
+
+        for (const BindingState& binding : set.bindings)
+        {
+            reuse &= binding.uniformBlockId == 0 ||
+                allocator->GetBlockGeneration(binding.uniformBlockId) == binding.uniformGeneration;
+        }
+    }
+
+    for (const PackedValueBufferState& value : m_packedValueBuffers)
+    {
+        reuse &= !value.dirty;
+    }
+
+    if (reuse)
+    {
+        outDescriptorSets = m_resolvedSets;
+
+        outDynamicOffsets = m_resolvedOffsets;
+
+        outFirstSet = m_resolvedFirstSet;
+    }
+    else
+    {
+        outDescriptorSets.clear();
+
+        outDynamicOffsets.clear();
+
+        outFirstSet = 0;
+
+        FlushPackedValueBuffers();
+
+        BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
+
+        m_resolvedSets = outDescriptorSets;
+
+        m_resolvedOffsets = outDynamicOffsets;
+
+        m_resolvedFirstSet = outFirstSet;
+
+        m_lastContext = pContext;
+
+        m_lastWorkloadGeneration = pContext->GetWorkloadGeneration();
+
+        m_lastCacheRevision = cache->GetRevision();
+    }
 }
 
 void VulkanDescriptorSetState::Reset()
@@ -294,9 +349,14 @@ void VulkanDescriptorSetState::Reset()
     ClearAllSetStates();
     m_packedValueBuffers.clear();
     m_updateSrbScratch.clear();
-    m_dynamicOffsetScratch.clear();
     m_cacheRevision = 0;
     m_pPipeline     = nullptr;
+
+    m_lastWorkloadGeneration = 0;
+
+    m_resolvedSets.clear();
+
+    m_resolvedOffsets.clear();
 }
 
 VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
@@ -587,7 +647,7 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
             switch (binding.type)
             {
                 case RHIShaderResourceType::eSampler:
-                    valid &= TO_VK_SAMPLER(resource) != nullptr;
+                    valid &= TryVulkanSampler(resource) != nullptr;
                     break;
                 case RHIShaderResourceType::eTexture:
                 case RHIShaderResourceType::eImage:
@@ -595,7 +655,7 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
                     valid &= GetImageView(resource) != VK_NULL_HANDLE;
                     break;
                 case RHIShaderResourceType::eSamplerWithTexture:
-                    valid &= TO_VK_SAMPLER(resource) != nullptr &&
+                    valid &= TryVulkanSampler(resource) != nullptr &&
                         GetImageView(auxiliary) != VK_NULL_HANDLE;
                     break;
 
@@ -603,12 +663,12 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
                 case RHIShaderResourceType::eImageBuffer:
                 case RHIShaderResourceType::eSamplerWithTextureBuffer:
                 {
-                    VulkanBuffer* buffer = TO_VK_BUFFER(stride == 2 ? auxiliary : resource);
+                    VulkanBuffer* buffer = TryVulkanBuffer(stride == 2 ? auxiliary : resource);
                     valid &= buffer != nullptr && buffer->GetVkBufferView() != VK_NULL_HANDLE;
 
                     if (stride == 2)
                     {
-                        valid &= TO_VK_SAMPLER(resource) != nullptr;
+                        valid &= TryVulkanSampler(resource) != nullptr;
                     }
 
                     break;
@@ -617,7 +677,7 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
                 case RHIShaderResourceType::eUniformBuffer:
                 case RHIShaderResourceType::eStorageBuffer:
                 {
-                    VulkanBuffer* buffer = TO_VK_BUFFER(resource);
+                    VulkanBuffer* buffer = TryVulkanBuffer(resource);
 
                     if (buffer == nullptr)
                     {
@@ -813,51 +873,31 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
 void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx,
                                                           HeapVector<uint32_t>& outDynamicOffsets)
 {
-    m_dynamicOffsetScratch.clear();
-    VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
+    const VulkanShader* shader = TO_CVK_SHADER(m_pPipeline->GetShader());
 
-    if (setIdx < MAX_NUM_DESCRIPTOR_SETS && pShader != nullptr)
+    if (setIdx < MAX_NUM_DESCRIPTOR_SETS && shader != nullptr)
     {
-        const RHIShaderResourceDescriptorTable* pSRDTable = pShader->GetSRDTable();
-
-        for (const RHIShaderResourceDescriptor& srd : (*pSRDTable)[setIdx])
+        for (const VulkanShader::DynamicOffsetSlot& slot : shader->GetDynamicOffsetSlots(setIdx))
         {
-            if (srd.type != RHIShaderResourceType::eUniformBuffer)
-            {
-                continue;
-            }
-
             const BindingState* binding = nullptr;
-            for (const BindingState& bindingState : m_setStates[setIdx].bindings)
+
+            for (const BindingState& state : m_setStates[setIdx].bindings)
             {
-                if (bindingState.srb.binding == srd.binding)
+                if (state.srb.binding == slot.binding)
                 {
-                    binding = &bindingState;
+                    binding = &state;
+
                     break;
                 }
             }
 
-            // Vulkan consumes an offset for every descriptor, including unused array slots.
-            const uint32_t count =
-                srd.bindless ? pShader->GetDescriptorSetVariableCount(setIdx) : srd.arraySize;
-            for (uint32_t element = 0; element < count; ++element)
+            for (uint32_t element = 0; element < slot.count; ++element)
             {
-                const uint32_t offset =
-                    binding != nullptr && element < binding->dynamicOffsets.size() ?
-                    binding->dynamicOffsets[element] :
-                    0;
-                m_dynamicOffsetScratch.push_back({srd.binding, offset});
+                outDynamicOffsets.push_back(binding != nullptr &&
+                                                    element < binding->dynamicOffsets.size() ?
+                                                binding->dynamicOffsets[element] :
+                                                0);
             }
-        }
-
-        std::stable_sort(m_dynamicOffsetScratch.begin(), m_dynamicOffsetScratch.end(),
-                         [](const DynamicOffsetEntry& lhs, const DynamicOffsetEntry& rhs) {
-                             return lhs.bindingIdx < rhs.bindingIdx;
-                         });
-
-        for (const DynamicOffsetEntry& dynamicOffset : m_dynamicOffsetScratch)
-        {
-            outDynamicOffsets.push_back(dynamicOffset.offset);
         }
     }
 }
