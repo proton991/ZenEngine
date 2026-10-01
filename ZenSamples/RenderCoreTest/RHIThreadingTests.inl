@@ -452,6 +452,31 @@ private:
     std::shared_future<void> m_release;
     bool m_opened{false};
 };
+
+// Runs on RHI while the window thread waits, past the point where Windows ghosts hung windows.
+bool IsHungAfterTimeout(HWND window)
+{
+    UINT timeoutMs = 5000;
+    SystemParametersInfoW(SPI_GETHUNGAPPTIMEOUT, 0, &timeoutMs, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs + 500));
+    return IsHungAppWindow(window) != FALSE;
+}
+
+void SleepDuringWait()
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+}
+
+uint64_t GetCurrentThreadCPUTime100ns()
+{
+    FILETIME creation{};
+    FILETIME exit{};
+    FILETIME kernel{};
+    FILETIME user{};
+    GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user);
+    return ((uint64_t(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
+        ((uint64_t(user.dwHighDateTime) << 32) | user.dwLowDateTime);
+}
 } // namespace
 
 TEST(RHIThreadTest, WindowsInvokeServicesSentMessagesAndPreservesPostedMessages)
@@ -511,6 +536,37 @@ TEST(RHIThreadTest, WindowsStopServicesSentMessagesWhileDrainingActiveAndQueuedW
     gate.Open();
     thread.Stop();
     EXPECT_EQ(window.deliveredCount, 2u) << "Win32 error " << window.lastError;
+}
+
+TEST(RHIThreadTest, WindowsLongWaitDoesNotMarkWindowThreadHung)
+{
+    // Sent-message-only waits let Windows report the window thread as hung, even while
+    // it services sent messages; switching back to the app then ghosts its window.
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded);
+    const bool hung = thread.Invoke(&IsHungAfterTimeout, window.handle);
+    thread.Stop();
+    EXPECT_FALSE(hung);
+}
+
+TEST(RHIThreadTest, WindowsWaitDoesNotSpinOnQueuedPostedMessages)
+{
+    RHIMessageWindow window;
+    ASSERT_NE(window.handle, nullptr);
+    const UINT postedMessage = WM_APP + 32;
+    ASSERT_TRUE(PostMessageW(window.handle, postedMessage, 0, 0));
+    RHIThread thread;
+    thread.Start(RHIExecutionMode::eThreaded);
+    const uint64_t before = GetCurrentThreadCPUTime100ns();
+    thread.Invoke(&SleepDuringWait);
+    const uint64_t spent = GetCurrentThreadCPUTime100ns() - before;
+    thread.Stop();
+    // The wait leaves posted messages queued; waking for them again would busy-wait.
+    EXPECT_LT(spent, 1000000u) << "CPU time in 100 ns units during a 500 ms wait";
+    MSG message{};
+    EXPECT_TRUE(PeekMessageW(&message, window.handle, postedMessage, postedMessage, PM_REMOVE));
 }
 
 TEST_F(ThreadedRenderCoreTest, WindowsFrameTicketWaitServicesSentMessages)

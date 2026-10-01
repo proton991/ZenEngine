@@ -204,8 +204,9 @@ presentation and shutdown; see the
 [Vulkan Win32 surface requirements](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateWin32SurfaceKHR.html).
 
 `RHIThreadEvent` now uses a manual-reset Windows event and
-`MsgWaitForMultipleObjectsEx` with `QS_SENDMESSAGE`. `PeekMessageW` services sent messages
-without removing posted messages, input or `WM_QUIT`. Synchronous calls and frame tickets
+`MsgWaitForMultipleObjectsEx`. An unfiltered `PeekMessageW(PM_NOREMOVE)` services sent
+messages without removing posted messages, input or `WM_QUIT`; see
+[Window hang detection](#window-hang-detection) for the wake mask. Synchronous calls and frame tickets
 signal their own completion events; full-queue waits use a capacity event, and shutdown
 waits for the native thread handle before joining. Queue locks are released before a
 wait can enter a window procedure. Other platforms use condition-variable event waits.
@@ -235,6 +236,44 @@ Validation date: 2026-09-13, MSVC Debug, with the native validation setup above.
 | Threaded and inline scene smoke | 64 frames each, exit 0, no validation errors | `build/rhi-deadlock-fix/smoke-1.log`, `smoke-0.log` |
 
 All test and smoke processes reported no tracked memory leaks. `git diff --check` passed.
+
+### Window hang detection
+
+The first message-wait implementation waited on `QS_SENDMESSAGE` with
+`MWMO_INPUTAVAILABLE` and peeked with `PM_QS_SENDMESSAGE`. Windows reports a thread that
+uses such sent-message-only waits or peeks as hung (`IsHungAppWindow`) after its hung-app
+timeout, five seconds by default, even when the same thread also pumps every message
+through `glfwPollEvents()` each frame. Activating the window then lets DWM replace it
+with a "Not Responding" ghost window that receives the user's input. The demo kept
+rendering behind the ghost, so after switching to another application and back, it
+appeared frozen and ignored the keyboard.
+
+Isolated probes on a hidden window showed that a full `PM_REMOVE` pump every 100 ms is
+never reported hung. Adding a `QS_SENDMESSAGE` wait or a `PM_QS_SENDMESSAGE` peek to that
+loop makes the window hung after 5.0 s. A `QS_ALLINPUT` wait with an unfiltered
+`PM_NOREMOVE` peek is never reported hung, even in a single 9 s wait that removes no
+messages.
+
+The wait now uses `QS_ALLINPUT` without `MWMO_INPUTAVAILABLE` and an unfiltered
+`PM_NOREMOVE` peek. It peeks once before waiting, because this wait wakes only for messages
+that arrive after the queue was last examined. Posted messages left in the queue therefore
+do not wake it again. The behavior contract is unchanged: sent messages are dispatched;
+posted messages, input and `WM_QUIT` stay queued for the application.
+
+`RHIThreadTest.WindowsLongWaitDoesNotMarkWindowThreadHung` holds a synchronous RHI call
+past the hung-app timeout and checks the waiting thread's window. It fails with the
+previous wait. `RHIThreadTest.WindowsWaitDoesNotSpinOnQueuedPostedMessages` checks that a
+queued posted message neither busy-wakes the wait nor is removed by it.
+
+Validation date: 2026-10-01, MSVC Debug, AMD Vulkan driver.
+
+| Check | Result |
+| --- | --- |
+| RenderCore | 528 passed, 7 existing disabled tests; new hang test fails before the fix |
+| Native Vulkan integration (unhooked `7zFM.exe` copy) | 292 passed, 6 capability skips; no validation errors |
+| `scene_renderer_demo --background-test-seconds=6`, polled every 250 ms | Previous wait: hung in 6 of 141 samples, ghost window in 4. Fixed wait: 0 of 140, no ghost; all three cycles completed with no engine errors |
+
+All test and demo processes reported no tracked memory leaks.
 
 ## Native GPU progress failures
 

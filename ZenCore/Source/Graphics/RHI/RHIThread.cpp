@@ -11,23 +11,38 @@ namespace zen
 #if defined(ZEN_WIN32)
 namespace
 {
+void ServiceSentMessages()
+{
+    // PeekMessage dispatches sent messages itself. Never remove or dispatch posted
+    // messages here, including WM_QUIT, input and application events. Keep the peek
+    // unfiltered: PM_QS_SENDMESSAGE-only peeks make Windows report the thread as hung.
+    MSG message{};
+
+    PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE);
+}
+
 void WaitForRHIObject(HANDLE handle)
 {
+    // The wait wakes only for messages that arrive after the queue was last examined.
+    ServiceSentMessages();
+
     bool completed = false;
+
     while (!completed)
     {
-        const DWORD result =
-            MsgWaitForMultipleObjectsEx(1, &handle, INFINITE, QS_SENDMESSAGE, MWMO_INPUTAVAILABLE);
+        // Waiting on QS_SENDMESSAGE alone makes Windows report the thread as hung after
+        // five seconds, even if it pumps elsewhere; DWM then ghosts its windows and
+        // takes their input. Without MWMO_INPUTAVAILABLE, posted messages left queued
+        // above do not wake this wait again.
+        const DWORD result = MsgWaitForMultipleObjectsEx(1, &handle, INFINITE, QS_ALLINPUT, 0);
+
         if (result == WAIT_OBJECT_0)
         {
             completed = true;
         }
         else if (result == WAIT_OBJECT_0 + 1)
         {
-            // PeekMessage dispatches sent messages itself. Never remove or dispatch
-            // posted messages here, including WM_QUIT, input and application events.
-            MSG message{};
-            PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+            ServiceSentMessages();
         }
         else
         {
