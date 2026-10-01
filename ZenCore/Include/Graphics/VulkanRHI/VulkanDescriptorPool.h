@@ -302,7 +302,7 @@ private:
 inline constexpr uint32_t kBindlessHeapCapacity[ToUnderlying(RHIBindlessHeapType::eMax)] = {
     2048, // eTexture2D
     64,   // eTextureCube
-    16    // eSampler
+    128   // eSampler: 108 distinct glTF filter/wrap combinations plus engine samplers.
 };
 
 inline constexpr uint32_t GetBindlessHeapCapacity(RHIBindlessHeapType heapType)
@@ -329,6 +329,10 @@ public:
     bool UnregisterBindlessResource(RHIBindlessHandle handle);
     bool IsRegistered(RHIBindlessHandle handle);
     void CollectRetiredResources();
+
+    // Ordinary registrations remain immutable. A complete, drained heap can be replaced
+    // explicitly without recreating its descriptor set/layout or allowing stale handles.
+    bool ResetRegistrations();
     // CPU commands hold their epoch until reset; native recordings transfer their
     // count to queue serials only after submission succeeds. Zero is invalid.
     uint64_t CaptureEpoch();

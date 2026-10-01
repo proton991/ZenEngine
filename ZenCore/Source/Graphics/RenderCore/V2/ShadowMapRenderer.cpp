@@ -101,7 +101,9 @@ void ShadowMapRenderer::BuildRenderGraph()
 
     desc.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
     desc.BindStorageBuffer("MaterialBuffer", m_pScene->GetMaterialsDataSSBO());
-    BindSceneTextureArray(desc, m_pColorSampler, m_pScene->GetSceneTextures());
+    desc.BindStorageBuffer("UVBuffer", m_pScene->GetUVBuffer());
+    BindSceneTextureArray(desc, m_pColorSampler, m_pScene->GetSceneTextures(),
+                          m_pScene->GetSceneSamplers());
 
     const sg::CameraUniformData* camera =
         reinterpret_cast<const sg::CameraUniformData*>(m_pScene->GetCameraUniformData());
@@ -110,7 +112,7 @@ void ShadowMapRenderer::BuildRenderGraph()
     desc.BindIndexBuffer(m_pScene->GetIndexBuffer());
 
     pRDG->AddGraphicsPass(std::move(desc))
-        .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene),
+        .RecordPassCommands([draws     = SnapshotSceneDraws(*m_pScene, GI_ALL, true, false),
                              exponents = m_config.exponents](RDGPassCmdEncoder& encoder) {
             ShadowMapRenderSP::PushConstantsData constants{};
             constants.alphaCutoff = 0.01f;

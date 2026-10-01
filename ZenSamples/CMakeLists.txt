@@ -2,6 +2,7 @@ if (ZEN_BUILD_LEGACY)
     add_executable(ZenCoreTest ZenCoreTest/main.cpp)
     target_link_libraries(ZenCoreTest ZenCore)
 endif ()
+if (BUILD_TESTING)
 add_executable(ThreadPoolTest ThreadPoolTest/main.cpp)
 add_executable(FlatHashMapTest FlatHashMapTest/FlatHashMapTests.cpp)
 add_executable(VulkanRHITest
@@ -86,15 +87,15 @@ add_executable(RenderCoreTest
     ../ZenCore/Source/Graphics/RenderCore/V2/SceneShadowRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/DeferredLightingRenderer.cpp
     ../ZenCore/Source/Graphics/RenderCore/V2/SkyboxRenderer.cpp
+    ../ZenCore/Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
 )
 target_include_directories(RenderCoreTest PRIVATE
     ${PROJECT_SOURCE_DIR}/ZenCore/Include
-    ${PROJECT_SOURCE_DIR}/External/gli
 )
 target_compile_definitions(RenderCoreTest PRIVATE
     $<TARGET_PROPERTY:ZenCore,INTERFACE_COMPILE_DEFINITIONS>
 )
-target_link_libraries(RenderCoreTest PRIVATE gtest_main spdlog::spdlog glm spriv-reflect)
+target_link_libraries(RenderCoreTest PRIVATE gtest_main spdlog::spdlog gli glm spirv-reflect)
 # The shared fake-backend test translation unit exceeds the standard COFF section limit.
 set_source_files_properties(RenderCoreTest/RenderCoreTests.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/bigobj>")
@@ -108,6 +109,16 @@ add_executable(ConfigLoaderTest CommonTest/ConfigLoaderTests.cpp)
 target_link_libraries(ConfigLoaderTest PRIVATE ZenCore gtest_main)
 
 add_executable(CommonTest
+    CommonTest/CameraInputTests.cpp
+    CommonTest/GLTFModelCatalogTests.cpp
+    CommonTest/SceneImportTests.cpp
+    CommonTest/SceneAnimationTests.cpp
+    CommonTest/SceneImportCompatibilityTests.cpp
+    CommonTest/SceneImportStressTests.cpp
+    CommonTest/SceneImportMorphAttributeTests.cpp
+    CommonTest/ScenePhysicalUnitsTests.cpp
+    CommonTest/SceneImportPaddingTests.cpp
+    CommonTest/SceneAnimationPointerTests.cpp
     CommonTest/CleanupRegressionTests.cpp
     CommonTest/SmallVectorTests.cpp
     CommonTest/MemoryTests.cpp
@@ -122,6 +133,10 @@ add_executable(SmartPtrTest
     SmartPtrTest/IntrusivePtrTests.cpp
     SmartPtrTest/RefCountPtrTests.cpp
 )
+add_executable(GLTFCorpusImport CommonTest/GLTFCorpusImport.cpp)
+
+target_link_libraries(GLTFCorpusImport PRIVATE ZenCore)
+endif ()
 
 # Historical demos still use the retired RHI interfaces.
 if (ZEN_BUILD_LEGACY)
@@ -183,6 +198,7 @@ add_executable(scene_renderer_demo
 target_link_libraries(scene_renderer_demo ZenCore)
 
 # Native Cone visibility regression, isolated from suite-global Vulkan fixtures.
+if (BUILD_TESTING)
 add_executable(ConeVoxelGIIntegrationTest CommonTest/ConeVoxelGIIntegrationTests.cpp)
 target_link_libraries(ConeVoxelGIIntegrationTest PRIVATE ZenCore gtest_main)
 add_dependencies(ConeVoxelGIIntegrationTest SpvShaders)
@@ -191,6 +207,7 @@ target_link_libraries(ThreadPoolTest ZenCore)
 target_link_libraries(FlatHashMapTest ZenCore gtest_main)
 target_link_libraries(SmartPtrTest ZenCore gtest_main)
 target_link_libraries(CommonTest ZenCore gtest_main)
+endif ()
 
 
 # Applications

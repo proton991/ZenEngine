@@ -44,15 +44,16 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light,
     const SceneLightType type = static_cast<SceneLightType>(light.directionType.w);
     const Vec3 position(light.positionRange);
     const Vec3 direction(light.directionType);
-    const float radius    = std::max(glm::length(bounds.GetMax() - bounds.GetMin()) * 0.5f, 0.001f);
-    const float nearPlane = std::min(radius * 0.001f, light.positionRange.w * 0.01f);
-    const float farPlane  = std::max(
-        nearPlane * 2.0f,
-        std::min(light.positionRange.w, glm::length(position - bounds.GetCenter()) + radius));
+    const float radius = std::max(glm::length(bounds.GetMax() - bounds.GetMin()) * 0.5f, 0.001f);
+    const float sceneDistance = glm::length(position - bounds.GetCenter()) + radius;
+    const float range        = light.positionRange.w > 0.0f ? light.positionRange.w : sceneDistance;
+    const float nearPlane    = std::max(std::min(radius * 0.001f, range * 0.01f), 1e-6f);
+    const float farPlane     = std::max(nearPlane * 2.0f, std::min(range, sceneDistance));
     const uint32_t firstFace = static_cast<uint32_t>(m_faces.size());
     const uint32_t faceCount = type == SceneLightType::ePoint ? 6 : 1;
     const float halfAngle    = type == SceneLightType::eSpot ?
-           std::max(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f) :
+           std::clamp(std::acos(std::clamp(light.coneShadow.y, 0.0f, 1.0f)), 0.001f,
+                      glm::radians(89.9f)) :
            glm::radians(45.0f);
     const float depthRange   = type == SceneLightType::eDirectional ? radius * 2.0f : farPlane;
     const float texelWidth   = 2.0f *
@@ -76,7 +77,8 @@ void SceneShadowRenderer::PrepareLight(const GPULight& light,
         FaceData data;
         data.viewProjection = projection * glm::lookAt(eye, eye + forward, up);
         data.lightPositionInvRange =
-            Vec4(position, type == SceneLightType::eDirectional ? 0.0f : 1.0f / farPlane);
+            Vec4(type == SceneLightType::eDirectional ? -direction : position,
+                 type == SceneLightType::eDirectional ? 0.0f : 1.0f / farPlane);
         m_uniforms.viewProjection[firstFace + face] = data.viewProjection;
         m_faces.push_back(data);
     }
@@ -163,11 +165,13 @@ void SceneShadowRenderer::BuildFace(const RenderScene& scene, uint32_t layer, bo
     pass.BindValue("uShadowFace", face);
     pass.BindStorageBuffer("NodeBuffer", scene.GetNodesDataSSBO());
     pass.BindStorageBuffer("MaterialBuffer", scene.GetMaterialsDataSSBO());
-    BindSceneTextureArray(pass, m_materialSampler, scene.GetSceneTextures());
+    pass.BindStorageBuffer("UVBuffer", scene.GetUVBuffer());
+    BindSceneTextureArray(pass, m_materialSampler, scene.GetSceneTextures(),
+                          scene.GetSceneSamplers());
     pass.BindVertexBuffer(scene.GetVertexBuffer());
     pass.BindIndexBuffer(scene.GetIndexBuffer());
     HeapVector<SceneMeshDraw> draws =
-        drawGeometry ? SnapshotSceneDraws(scene) : HeapVector<SceneMeshDraw>{};
+        drawGeometry ? SnapshotSceneDraws(scene, GI_ALL, true, false) : HeapVector<SceneMeshDraw>{};
     graph->AddGraphicsPass(std::move(pass))
         .RecordPassCommands([draws = std::move(draws)](RDGPassCmdEncoder& encoder) {
             for (const SceneMeshDraw& draw : draws)

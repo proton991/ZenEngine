@@ -1,4 +1,5 @@
 #include "../Common/bindless_heap.glsl"
+#include "../Common/hdr_storage.glsl"
 #include "gi_common.glsl"
 #include "Graphics/Shared/VoxelGI.h"
 #ifdef VOXEL_MESH_SHADOWS
@@ -26,8 +27,8 @@ void main()
     vec4 radiance=vec4(0);
     if(albedo.a>0.5)
     {
-        vec4 normalMetal=texelFetch(voxelNormal,p,0);
-        vec3 normal=normalize(normalMetal.rgb*2.0-1.0);
+        vec4 normalDiffuse=texelFetch(voxelNormal,p,0);
+        vec3 normal=normalize(normalDiffuse.rgb*2.0-1.0);
         vec3 position=gi.gridMinVoxelSize.xyz+(vec3(p)+0.5)*gi.gridMinVoxelSize.w;
         vec3 origin=TraceOrigin(position,normal);
         vec3 geometricNormal=normal;
@@ -73,9 +74,9 @@ void main()
         #ifdef AVERAGED_REFLECTANCE
         vec3 diffuseReflectance=texelFetch(voxelReflectance,p,0).rgb;
 #else
-        vec3 diffuseReflectance=albedo.rgb*(1.0-normalMetal.a)*0.96;
+        vec3 diffuseReflectance=albedo.rgb*normalDiffuse.a;
 #endif
         radiance=vec4(texelFetch(voxelEmissive,p,0).rgb*gi.lighting.z+diffuseReflectance*irradiance/3.14159265359,1);
     }
-    imageStore(voxelRadiance,p,radiance);
+    imageStore(voxelRadiance,p,vec4(ClampHDRStorage(radiance.rgb),radiance.a));
 }

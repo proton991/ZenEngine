@@ -117,6 +117,9 @@ public:
     // Drain submissions and release the previous frame graph's borrowed resources.
     bool PrepareForResourceReconfiguration();
 
+    // Drain scene users and make the fixed texture/sampler heap slots reusable.
+    bool PrepareForSceneReplacement();
+
     RDGAsyncComputeEligibility ResolveAsyncComputeEligibility(const RenderGraph& graph,
                                                               const RDGPassNode& node) const;
 
@@ -273,6 +276,12 @@ public:
     void LoadSceneTextures(const sg::Scene* pScene, HeapVector<RHITexture*>& outTextures);
 
     void LoadTextureEnv(const std::string& file, EnvTexture* pTexture);
+
+    void LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment);
+
+    bool ReleaseSceneTexture(RHITexture* texture);
+
+    void ReleaseSceneEnvironment(EnvTexture* environment);
 
     RHISampler* CreateSampler(const RHISamplerCreateInfo& samplerInfo);
 

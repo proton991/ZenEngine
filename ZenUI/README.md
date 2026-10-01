@@ -34,9 +34,15 @@ The panel has **GI**, **Scene**, and **Config reference** tabs. The reference li
 all supported `engine.cfg` keys, including optional properties for all 32 light
 slots, with startup values and control locations. Live controls cover every GI
 setting, camera position, environment illumination and skybox visibility, light
-count and properties, light markers, and orbit animation. Model paths and the
-environment texture are listed as **restart required**, since changing those assets
-requires a scene reload. The application implements `RuntimeSceneControls`; scene
+count and properties, light markers, and orbit animation. Above the tabs, the
+**Model** selector recursively lists `.gltf` and `.glb` files beneath the configured
+`model_base_path`. Search filters the relative paths, including model variants;
+**Refresh models** rescans the directory. Selecting a model loads it for the current
+session without restarting or rewriting `engine.cfg`. Each file is imported when
+selected; a failed import reports its error and keeps the current scene. Successful
+switches use the new model's camera or fit its bounds, reset scene lighting and
+animation controls, and release the previous model's GPU resources. The environment
+texture still requires a restart. The application implements `RuntimeSceneControls`; scene
 and animation ownership remain outside the shared UI renderer.
 
 Cone tracing is the only voxel GI method. The GI tab contains cone parameters,
@@ -68,9 +74,11 @@ neither voxel GI nor these mesh shadows; the panel reports the last rendered vie
 ## Dependency contract
 
 Dear ImGui core and the official GLFW backend are fetched together from
-[`v1.92.5-docking`](https://github.com/ocornut/imgui/tree/v1.92.5-docking).
+[`v1.92.9b-docking`](https://github.com/ocornut/imgui/tree/v1.92.9b-docking)
+in `External/imgui`, using the checked FetchContent archive declared in
+`External/CMakeLists.txt`.
 Archive SHA-256:
-`c893a95aa68e8e7380ca7868adfb2b19c45b9c6e6777a3bdd945c945972c2264`.
+`0434445157a575f452ff0f2d1681fdd90ea8939e0c6983e6f8e47c51fba1bccd`.
 The upstream MIT license is retained in the fetched source as `LICENSE.txt`;
 distributions must include it. CMake's `FETCHCONTENT_SOURCE_DIR_ZEN_IMGUI` can point
 to an offline checkout of this exact revision. Engine configuration lives in
@@ -143,6 +151,15 @@ changes during an active edit, automatic budget clamping and manual caps, manual
 apply mode, and validation/retry of scene changes against a native render device.
 It also checks that switching from the default Cone grid through the UI or server
 API applies the automatic profile to both the settings and the voxelizer.
+Model selector checks cover filtering, loading feedback, rejected requests,
+and resetting drafts after a switch. `GLTFModelCatalog` tests cover recursive variant
+discovery, extension matching, Unicode paths, and missing directories.
+`SceneModelSwitchTest` loads and renders several models through the demo in inline
+and threaded RHI modes, checks
+orthographic/infinite camera transitions, and verifies that a failed import retains
+the current scene. Resource lifetime tests cover scene retirement and partial loads.
+The native bindless reset regression also verifies replacement pixels and rejects
+heap resets while earlier command recordings remain live.
 `VoxelGIRuntimeSettings` planning tests cover automatic floors, device constraints,
 20/8/4 GiB memory limits, transactional failure, unknown memory, and overflow.
 Existing native runtime GI tests retain strict manual budgets.

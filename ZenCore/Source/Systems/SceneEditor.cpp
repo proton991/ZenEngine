@@ -1,35 +1,97 @@
 #include "Systems/SceneEditor.h"
 #include "SceneGraph/Scene.h"
+#include <cmath>
 
 namespace zen::sys
 {
 void SceneEditor::CenterAndNormalizeScene(sg::Scene* pScene)
 {
-    // Edit renderable nodes, center and scale model
-    Vec3 center(0.0f);
-    Vec3 extents = pScene->GetAABB().GetMax() - pScene->GetAABB().GetMin();
-    Vec3 scaleFactors(1.0f);
-    scaleFactors.x = glm::abs(extents.x) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.x;
-    scaleFactors.y = glm::abs(extents.y) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.y;
-    scaleFactors.z = glm::abs(extents.z) < glm::epsilon<float>() ? 1.0f : 1.0f / extents.z;
+    const float extent = pScene->GetAABB().GetMaxExtent();
 
-    const float scaleFactorMax = std::max(scaleFactors.x, std::max(scaleFactors.y, scaleFactors.z));
-    Mat4 scaleMat              = glm::scale(Mat4(1.0f), Vec3(scaleFactorMax));
-    Mat4 translateMat          = glm::translate(Mat4(1.0f), center - pScene->GetAABB().GetCenter());
-    Mat4 transformMat          = scaleMat * translateMat;
+    const Vec3 center = pScene->GetAABB().GetCenter();
 
-    for (sg::Node* pSgNode : pScene->GetRenderableNodes())
+    if (std::isfinite(extent) && extent > 1e-6f && std::isfinite(center.x) &&
+        std::isfinite(center.y) && std::isfinite(center.z))
     {
-        sg::NodeData nodeData = pSgNode->GetData();
-        nodeData.modelMatrix  = transformMat * nodeData.modelMatrix;
-        nodeData.normalMatrix = glm::transpose(glm::inverse(nodeData.modelMatrix));
-        pSgNode->SetData(nodeData);
-        for (sg::SubMesh* pSubMesh : pSgNode->GetComponent<sg::Mesh>()->GetSubMeshes())
-        {
-            pSubMesh->GetAABB().Transform(transformMat);
-        }
-    }
+        const float scale = 1.0f / extent;
 
-    pScene->GetAABB().Transform(transformMat);
+        pScene->GetAssetData().unitScale *= scale;
+
+        const Mat4 normalization =
+            glm::scale(Mat4(1.0f), Vec3(scale)) * glm::translate(Mat4(1.0f), -center);
+
+        // Apply once at every root so hierarchy queries and renderer matrices agree.
+        for (const UniquePtr<sg::Node>& node : pScene->GetNodes())
+        {
+            if (node->GetParent() == nullptr && node->HasComponent<sg::Transform>())
+            {
+                sg::Transform* transform = node->GetComponent<sg::Transform>();
+
+                transform->SetPrefixMatrix(normalization * transform->GetPrefixMatrix());
+            }
+        }
+
+        for (const UniquePtr<sg::Node>& node : pScene->GetNodes())
+        {
+            sg::NodeData data = node->GetData();
+
+            data.modelMatrix = normalization * data.modelMatrix;
+
+            node->SetData(node->GetRenderableIndex(), data.modelMatrix);
+        }
+
+        // Manually constructed scenes may only register renderable nodes.
+        if (pScene->GetNodes().empty())
+        {
+            for (sg::Node* node : pScene->GetRenderableNodes())
+            {
+                if (node->HasComponent<sg::Transform>())
+                {
+                    sg::Transform* transform = node->GetComponent<sg::Transform>();
+
+                    transform->SetPrefixMatrix(normalization * transform->GetPrefixMatrix());
+                }
+
+                sg::NodeData data = node->GetData();
+
+                data.modelMatrix = normalization * data.modelMatrix;
+
+                node->SetData(node->GetRenderableIndex(), data.modelMatrix);
+            }
+        }
+
+        for (sg::Light* light : pScene->GetComponents<sg::Light>())
+        {
+            light->unitScale *= scale;
+            sg::LightProperties properties = light->GetProperties();
+
+            properties.position = Vec3(normalization * Vec4(properties.position, 1.0f));
+
+            properties.range *= scale;
+
+            // Preserve inverse-square illumination when changing the engine's unit scale.
+            if (light->GetType() != sg::Directional)
+            {
+                properties.intensity *= scale * scale;
+            }
+            light->SetProperties(properties);
+        }
+
+        for (sg::SceneCamera* camera : pScene->GetComponents<sg::SceneCamera>())
+        {
+            camera->unitScale *= scale;
+            camera->worldMatrix = normalization * camera->worldMatrix;
+
+            camera->nearPlane *= scale;
+
+            camera->farPlane *= scale;
+
+            camera->xmag *= scale;
+
+            camera->ymag *= scale;
+        }
+
+        pScene->GetAABB().Transform(normalization);
+    }
 }
 } // namespace zen::sys

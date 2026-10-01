@@ -3,6 +3,20 @@
 
 namespace zen::ui
 {
+const RuntimeModelState& RuntimeSceneControls::GetRuntimeModelState() const
+{
+    static const RuntimeModelState empty;
+
+    return empty;
+}
+
+void RuntimeSceneControls::RefreshRuntimeModels() {}
+
+bool RuntimeSceneControls::RequestRuntimeModel(const std::string&)
+{
+    return false;
+}
+
 namespace
 {
 bool Finite(const Vec3& value)
@@ -16,7 +30,8 @@ bool ValidateRuntimeSceneSettings(const RuntimeSceneSettings& settings)
     bool valid = Finite(settings.cameraPosition) && Finite(settings.orbitCenter) &&
         std::isfinite(settings.environmentIntensity) && settings.environmentIntensity >= 0 &&
         std::isfinite(settings.environmentRotation) && std::isfinite(settings.markerSize) &&
-        settings.markerSize > 0 && settings.lightCount <= rc::MaxSceneLights &&
+        settings.markerSize > 0 && settings.modelLightCount <= rc::MaxSceneLights &&
+        settings.lightCount <= rc::MaxSceneLights - settings.modelLightCount &&
         settings.animatedLight < rc::MaxSceneLights && std::isfinite(settings.orbitRadius) &&
         settings.orbitRadius >= 0 && std::isfinite(settings.orbitSpeed) &&
         std::abs(settings.orbitSpeed) <= 3600;

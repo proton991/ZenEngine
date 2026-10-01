@@ -230,6 +230,12 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
                                          "VoxelGI/voxelization_averaged.comp.spv"));
 
     StoreProgram(ZEN_NEW() LightMarkerSP(pRenderDevice));
+    StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice));
+    StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice, true));
+    StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, false));
+    StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, true));
+    StoreProgram(ZEN_NEW() ForwardScatterSP(pRenderDevice));
+    StoreProgram(ZEN_NEW() ForwardScatterSP(pRenderDevice, true));
     StoreProgram(ZEN_NEW() SceneShadowSP(pRenderDevice));
     StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelFilterAlbedoSP",
                                          "VoxelGI/filter_albedo.comp.spv", volumeConstants));

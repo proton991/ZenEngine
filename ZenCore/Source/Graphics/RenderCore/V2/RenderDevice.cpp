@@ -478,12 +478,22 @@ bool RenderDevice::PrepareForResourceReconfiguration()
     {
         if (m_pUploadQueue != nullptr)
         {
-            m_pUploadQueue->Flush();
+            valid = m_pUploadQueue->Flush();
         }
 
-        WaitForPreviousFrames();
+        if (valid)
+        {
+            WaitForPreviousFrames();
+        }
 
-        valid = !AreSubmissionsBlocked();
+        valid = valid && !AreSubmissionsBlocked();
+
+        if (valid && m_pUploadQueue != nullptr)
+        {
+            // Completion removes the staging queue's borrowed references before scene owners
+            // and the upload graph's deferred imports are retired at this boundary.
+            m_pUploadQueue->ReclaimResources();
+        }
 
         if (valid && m_frameRDG.Get() != nullptr)
         {
@@ -499,6 +509,14 @@ bool RenderDevice::PrepareForResourceReconfiguration()
     }
 
     return valid;
+}
+
+bool RenderDevice::PrepareForSceneReplacement()
+{
+    const bool prepared =
+        PrepareForResourceReconfiguration() && GDynamicRHI->ResetBindlessResources();
+
+    return prepared;
 }
 
 bool RenderDevice::SetAsyncComputeMode(AsyncComputeMode mode)
@@ -1973,8 +1991,30 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
     RHIBuffer* pVertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-    UpdateBufferInternal(pVertexBuffer, 0, dataSize, pData);
-    m_buffers.push_back(pVertexBuffer);
+
+    bool registered = false;
+
+    try
+    {
+        m_buffers.push_back(pVertexBuffer);
+
+        registered = true;
+
+        UpdateBufferInternal(pVertexBuffer, 0, dataSize, pData);
+    }
+    catch (...)
+    {
+        if (registered)
+        {
+            DestroyBuffer(pVertexBuffer);
+        }
+        else if (pVertexBuffer != nullptr)
+        {
+            GDynamicRHI->DestroyBuffer(pVertexBuffer);
+        }
+
+        throw;
+    }
 
     return pVertexBuffer;
 }
@@ -1992,8 +2032,30 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
     RHIBuffer* pIndexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-    UpdateBufferInternal(pIndexBuffer, 0, dataSize, pData);
-    m_buffers.push_back(pIndexBuffer);
+
+    bool registered = false;
+
+    try
+    {
+        m_buffers.push_back(pIndexBuffer);
+
+        registered = true;
+
+        UpdateBufferInternal(pIndexBuffer, 0, dataSize, pData);
+    }
+    catch (...)
+    {
+        if (registered)
+        {
+            DestroyBuffer(pIndexBuffer);
+        }
+        else if (pIndexBuffer != nullptr)
+        {
+            GDynamicRHI->DestroyBuffer(pIndexBuffer);
+        }
+
+        throw;
+    }
 
     return pIndexBuffer;
 }
@@ -2044,12 +2106,32 @@ RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
 
     RHIBuffer* pStorageBuffer = GDynamicRHI->CreateBuffer(createInfo);
 
-    if (pData != nullptr)
-    {
-        InitializeBufferData(pStorageBuffer, dataSize, pData);
-    }
+    bool registered = false;
 
-    m_buffers.push_back(pStorageBuffer);
+    try
+    {
+        m_buffers.push_back(pStorageBuffer);
+
+        registered = true;
+
+        if (pData != nullptr)
+        {
+            InitializeBufferData(pStorageBuffer, dataSize, pData);
+        }
+    }
+    catch (...)
+    {
+        if (registered)
+        {
+            DestroyBuffer(pStorageBuffer);
+        }
+        else if (pStorageBuffer != nullptr)
+        {
+            GDynamicRHI->DestroyBuffer(pStorageBuffer);
+        }
+
+        throw;
+    }
 
     return pStorageBuffer;
 }
@@ -2119,6 +2201,27 @@ void RenderDevice::LoadTextureEnv(const std::string& file, EnvTexture* pTexture)
 {
     std::string fullPath = ZEN_TEXTURE_PATH + file;
     m_pTextureManager->LoadTextureEnv(fullPath, pTexture);
+}
+
+void RenderDevice::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment)
+{
+    m_pTextureManager->LoadSceneEnvironment(scene, environment);
+}
+
+bool RenderDevice::ReleaseSceneTexture(RHITexture* texture)
+{
+    const bool released =
+        m_pTextureManager != nullptr && m_pTextureManager->ReleaseSceneTexture(texture);
+
+    return released;
+}
+
+void RenderDevice::ReleaseSceneEnvironment(EnvTexture* environment)
+{
+    if (m_pTextureManager != nullptr)
+    {
+        m_pTextureManager->ReleaseSceneEnvironment(environment);
+    }
 }
 
 size_t RenderDevice::CalcSamplerHash(const RHISamplerCreateInfo& info)

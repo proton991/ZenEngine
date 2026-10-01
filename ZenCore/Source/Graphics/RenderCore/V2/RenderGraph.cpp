@@ -1944,16 +1944,38 @@ struct RenderGraph::PassBindingValidator
     bool ValidateSamplers()
     {
         bool allValid = true;
+        HeapVector<std::pair<NameID, uint32_t>> slots;
+
         for (const RDGSamplerBinding& binding : desc.samplerBindings)
         {
-            const RHIShaderResourceDescriptor* srd =
-                Descriptor(binding.glslName, RHIShaderResourceType::eSampler, 1);
+            bool firstBinding = true;
+            bool uniqueSlot   = true;
+            for (const std::pair<NameID, uint32_t>& slot : slots)
+            {
+                if (slot.first == binding.glslName)
+                {
+                    firstBinding = false;
+                    uniqueSlot &= slot.second != binding.arrayIndex;
+                }
+            }
+
+            const RHIShaderResourceDescriptor* srd = firstBinding ?
+                Descriptor(binding.glslName, RHIShaderResourceType::eSampler, 1) :
+                program->GetShaderResourceDescriptor(binding.glslName);
 
             allValid = srd != nullptr &&
+                Check(uniqueSlot, RDGErrorCode::eBinding,
+                      prefix + "Duplicate sampler slot in '" + binding.glslName.ToString() + "'") &&
+                Check(srd->bindless || binding.arrayIndex < srd->arraySize, RDGErrorCode::eBinding,
+                      prefix + "Invalid sampler array index") &&
                 Check(binding.pSampler != nullptr, RDGErrorCode::eBinding,
                       prefix + "Null sampler in '" + binding.glslName.ToString() + "'");
 
-            if (!allValid)
+            if (allValid)
+            {
+                slots.push_back({binding.glslName, binding.arrayIndex});
+            }
+            else
             {
                 break;
             }

@@ -254,7 +254,7 @@ def compare(prefix):
             normal_error = max(abs(((normal >> (8*i)) & 255)/255 - (normals[owner][i]*.5+.5))
                                for i in range(3)) if normals is not None else 0
             bad_material = (any(abs(color[i]-v) > 1 for i, v in enumerate((51,153,204,255))) or
-                abs(((normal >> 24) & 255)-64)>1 or
+                abs(((normal >> 24) & 255)-184)>1 or
                 max(abs(a-b) for a,b in zip((er,eg,eb),(4,2,1)))>.004)
             if material_oracle is not None:
                 bad_material = material_oracle.attribute_error(owner, cell, [x/255 for x in color],

@@ -4,9 +4,22 @@
 
 namespace zen::sg
 {
+enum class MeshTopology
+{
+    Points,
+    Lines,
+    Triangles
+};
+
 class SubMesh : public Component
 {
 public:
+    MeshTopology topology{MeshTopology::Triangles};
+
+    uint32_t assetMesh{UINT32_MAX};
+
+    uint32_t assetPrimitive{UINT32_MAX};
+
     SubMesh(std::string name) : Component(std::move(name)) {}
 
     SubMesh(std::string name, uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount) :
@@ -28,8 +41,18 @@ public:
 
     void SetMaterial(uint32_t materialIndex, Material* pMaterial)
     {
+        if (m_pDefaultMaterial == nullptr)
+        {
+            m_pDefaultMaterial = pMaterial;
+        }
+
         m_pMaterial     = pMaterial;
         m_materialIndex = materialIndex;
+    }
+
+    Material* GetDefaultMaterial() const
+    {
+        return m_pDefaultMaterial;
     }
 
     void SetFirstIndex(uint32_t firstIndex)
@@ -70,6 +93,11 @@ public:
         m_aabb.SetMax(max);
     }
 
+    void SetBounds(const AABB& bounds)
+    {
+        m_aabb = bounds;
+    }
+
     const AABB& GetAABB() const
     {
         return m_aabb;
@@ -99,6 +127,7 @@ private:
 
     uint32_t m_materialIndex{0};
     Material* m_pMaterial{nullptr};
+    Material* m_pDefaultMaterial{nullptr};
 
     bool m_hasIndices{false};
 };

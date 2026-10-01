@@ -175,6 +175,8 @@ bool RuntimeDebugUI::BuildRenderGraph(rc::RenderGraph& graph, RHIViewport& viewp
 
 void RuntimeDebugUI::BuildPanel()
 {
+    SynchronizeModelRevision();
+
     ImGui::SetNextWindowPos(ImVec2(16, 16), ImGuiCond_FirstUseEver);
 
     ImGui::SetNextWindowSize(ImVec2(600, 680), ImGuiCond_FirstUseEver);
@@ -189,6 +191,12 @@ void RuntimeDebugUI::BuildPanel()
                     1000.0f / ImGui::GetIO().Framerate);
 
         DrawGPUMemoryStats(m_device);
+
+        ImGui::Separator();
+
+        BuildModelSelector();
+
+        ImGui::Separator();
 
         int mode = static_cast<int>(server.GetRequestedRenderOption());
 

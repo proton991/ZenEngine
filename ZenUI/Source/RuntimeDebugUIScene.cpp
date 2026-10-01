@@ -1,6 +1,7 @@
 #include "UI/RuntimeDebugUI.h"
 #include "Platform/ConfigLoader.h"
 #include "imgui.h"
+#include <algorithm>
 #include <cstring>
 
 namespace zen::ui
@@ -15,9 +16,9 @@ struct ConfigReference
 };
 
 const ConfigReference References[] = {
-    {"model_base_path", "<unset>", "Restart required"},
-    {"default_model", "<unset>", "Restart required"},
-    {"default_model_path", "<uses default_model>", "Restart required"},
+    {"model_base_path", "<unset>", "Model selector / Catalog directory"},
+    {"default_model", "<unset>", "Model selector / Startup model"},
+    {"default_model_path", "<uses default_model>", "Model selector / Startup override"},
     {"skybox_model", "<unset>", "Legacy asset path; restart required"},
     {"camera_position", "<scene bounds>", "Scene / Camera"},
     {"voxelizer", "auto", "GI / Voxel resources"},
@@ -86,6 +87,66 @@ void ReferenceRow(const char* key, const char* fallback, const char* controls, c
         ImGui::TextWrapped("%s", controls);
     }
 }
+
+bool StepCount(const char* label, uint32_t& value, uint32_t maximum)
+{
+    bool changed = false;
+
+    ImGui::PushID(label);
+
+    ImGui::TextUnformatted(label);
+
+    ImGui::SameLine();
+
+    ImGui::BeginDisabled(value == 0);
+
+    if (ImGui::SmallButton("-"))
+    {
+        --value;
+
+        changed = true;
+    }
+
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+
+    ImGui::Text("%u", value);
+
+    ImGui::SameLine();
+
+    ImGui::BeginDisabled(value >= maximum);
+
+    if (ImGui::SmallButton("+"))
+    {
+        ++value;
+
+        changed = true;
+    }
+
+    ImGui::EndDisabled();
+
+    ImGui::PopID();
+
+    return changed;
+}
+
+bool StepFloat(const char* label,
+               float& value,
+               float step,
+               float minimum,
+               float maximum,
+               const char* format)
+{
+    const bool changed = ImGui::InputFloat(label, &value, step, step * 10.0f, format);
+
+    if (changed)
+    {
+        value = std::clamp(value, minimum, maximum);
+    }
+
+    return changed;
+}
 } // namespace
 
 void RuntimeDebugUI::BuildConfigReference()
@@ -151,18 +212,30 @@ void RuntimeDebugUI::BuildSceneSettings()
         MarkSceneEdit(ImGui::Checkbox("Skybox visible", &m_sceneDraft.skyboxVisible));
     }
 
-    if (ImGui::CollapsingHeader("Lights"))
+    if (ImGui::CollapsingHeader("Lights", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        const uint32_t minimum = 0;
+        if (m_sceneDraft.boundsPresetLights)
+        {
+            ImGui::TextUnformatted("Preset lights around AABB");
+        }
 
-        const uint32_t maximum = rc::MaxSceneLights;
+        if (m_sceneDraft.modelLightCount != 0)
+        {
+            ImGui::TextWrapped("The model supplies %u animated or authored lights.",
+                               m_sceneDraft.modelLightCount);
+        }
 
-        if (ImGui::SliderScalar("Light count", ImGuiDataType_U32, &m_sceneDraft.lightCount,
-                                &minimum, &maximum, "%u", ImGuiSliderFlags_AlwaysClamp))
+        const uint32_t maximum =
+            rc::MaxSceneLights - std::min(m_sceneDraft.modelLightCount, rc::MaxSceneLights);
+
+        if (StepCount("Light count", m_sceneDraft.lightCount, maximum))
         {
             if (m_sceneDraft.animatedLight >= m_sceneDraft.lightCount)
             {
                 m_sceneDraft.animationEnabled = false;
+
+                m_sceneDraft.animatedLight =
+                    m_sceneDraft.lightCount == 0 ? 0 : m_sceneDraft.lightCount - 1;
             }
 
             MarkSceneEdit(true);
@@ -170,14 +243,22 @@ void RuntimeDebugUI::BuildSceneSettings()
 
         MarkSceneEdit(ImGui::Checkbox("Light markers", &m_sceneDraft.markersEnabled));
 
-        MarkSceneEdit(ImGui::DragFloat("Marker size", &m_sceneDraft.markerSize, 0.001f, 0.001f, 10,
-                                       "%.3f", ImGuiSliderFlags_AlwaysClamp));
+        MarkSceneEdit(
+            StepFloat("Marker size", m_sceneDraft.markerSize, 0.001f, 0.001f, 10, "%.3f"));
 
         for (uint32_t index = 0; index < m_sceneDraft.lightCount; ++index)
         {
             ImGui::PushID(static_cast<int>(index));
 
-            if (ImGui::TreeNode("Light", "Light %u", index))
+            const char* presetFaces[] = {"-X", "+X", "-Y", "+Y", "-Z", "+Z"};
+
+            const bool preset = m_sceneDraft.boundsPresetLights && index < 6;
+
+            const bool open = preset ?
+                ImGui::TreeNode("Light", "Light %u (AABB %s)", index, presetFaces[index]) :
+                ImGui::TreeNode("Light", "Light %u", index);
+
+            if (open)
             {
                 rc::SceneLight& light = m_sceneDraft.lights[index];
 
@@ -221,19 +302,20 @@ void RuntimeDebugUI::BuildSceneSettings()
                     ImGui::ColorEdit3("Color (linear)", &light.color.x,
                                       ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR));
 
-                MarkSceneEdit(ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0, 100000,
-                                               "%.2f", ImGuiSliderFlags_AlwaysClamp));
+                MarkSceneEdit(StepFloat("Intensity", light.intensity, 0.1f, 0, 100000, "%.2f"));
 
-                MarkSceneEdit(ImGui::DragFloat("Range", &light.range, 0.05f, 0.001f, 100000, "%.3f",
-                                               ImGuiSliderFlags_AlwaysClamp));
+                MarkSceneEdit(StepFloat("Range", light.range, 0.1f, 0, 100000, "%.3f"));
 
-                MarkSceneEdit(ImGui::SliderFloat("Inner spot angle", &light.innerAngleDegrees, 0,
-                                                 light.outerAngleDegrees - 0.01f, "%.2f",
-                                                 ImGuiSliderFlags_AlwaysClamp));
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("0 means unlimited range.");
+                }
 
-                MarkSceneEdit(ImGui::SliderFloat("Outer spot angle", &light.outerAngleDegrees,
-                                                 light.innerAngleDegrees + 0.01f, 89.99f, "%.2f",
-                                                 ImGuiSliderFlags_AlwaysClamp));
+                MarkSceneEdit(StepFloat("Inner spot angle", light.innerAngleDegrees, 1, 0,
+                                        light.outerAngleDegrees - 0.01f, "%.2f"));
+
+                MarkSceneEdit(StepFloat("Outer spot angle", light.outerAngleDegrees, 1,
+                                        light.innerAngleDegrees + 0.01f, 89.99f, "%.2f"));
 
                 ImGui::TreePop();
             }
@@ -244,23 +326,22 @@ void RuntimeDebugUI::BuildSceneSettings()
 
     if (ImGui::CollapsingHeader("Light animation"))
     {
+        ImGui::BeginDisabled(m_sceneDraft.lightCount == 0);
+
         MarkSceneEdit(ImGui::Checkbox("Animate light", &m_sceneDraft.animationEnabled));
 
-        const uint32_t minimum = 0;
+        const uint32_t maximum = m_sceneDraft.lightCount == 0 ? 0 : m_sceneDraft.lightCount - 1;
 
-        const uint32_t maximum = rc::MaxSceneLights - 1;
+        MarkSceneEdit(StepCount("Light index", m_sceneDraft.animatedLight, maximum));
 
-        MarkSceneEdit(ImGui::SliderScalar("Light index", ImGuiDataType_U32,
-                                          &m_sceneDraft.animatedLight, &minimum, &maximum, "%u",
-                                          ImGuiSliderFlags_AlwaysClamp));
+        ImGui::EndDisabled();
 
         MarkSceneEdit(ImGui::DragFloat3("Orbit center", &m_sceneDraft.orbitCenter.x, 0.01f));
 
-        MarkSceneEdit(ImGui::DragFloat("Orbit radius", &m_sceneDraft.orbitRadius, 0.01f, 0, 10000,
-                                       "%.3f", ImGuiSliderFlags_AlwaysClamp));
+        MarkSceneEdit(StepFloat("Orbit radius", m_sceneDraft.orbitRadius, 0.1f, 0, 10000, "%.3f"));
 
-        MarkSceneEdit(ImGui::SliderFloat("Angular speed (deg/s)", &m_sceneDraft.orbitSpeed, -3600,
-                                         3600, "%.1f", ImGuiSliderFlags_AlwaysClamp));
+        MarkSceneEdit(
+            StepFloat("Angular speed (deg/s)", m_sceneDraft.orbitSpeed, 5, -3600, 3600, "%.1f"));
 
         ImGui::TextWrapped("Animation requires an existing point or spot light.");
     }

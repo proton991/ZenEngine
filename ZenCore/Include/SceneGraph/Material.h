@@ -2,6 +2,8 @@
 #include "Component.h"
 #include "Utils/Errors.h"
 #include "Texture.h"
+#include "MaterialFeatures.h"
+#include <cmath>
 
 namespace zen::sg
 {
@@ -28,8 +30,24 @@ struct MaterialData
     float roughnessFactor{1.0f};
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
-    // Alpha cutoff, alpha mode, normal scale, reserved.
+    // Alpha cutoff, alpha mode, normal scale, specular/glossiness workflow.
     Vec4 surfaceProperties{0.5f, 0.0f, 1.0f, 0.0f};
+    // Occlusion strength, unlit, double sided, advanced material shading.
+    Vec4 materialProperties{1.0f, 0.0f, 0.0f, 0.0f};
+    TextureTransformData textureTransforms[5]{};
+    Vec4 specularColorIor{1.0f, 1.0f, 1.0f, 1.5f};
+    Vec4 specularGlossiness{0.0f, 0.0f, 0.0f, 1.0f};
+    Vec4 diffuseFactor{1.0f};
+    // Clearcoat, clearcoat roughness, sheen roughness, specular strength.
+    Vec4 clearcoatSheenSpecular{0.0f, 0.0f, 0.0f, 1.0f};
+    Vec4 sheenColorTransmission{0.0f};
+    // Thickness, attenuation distance (zero denotes infinity), iridescence, iridescence IOR.
+    Vec4 volumeIridescence{0.0f, 0.0f, 0.0f, 1.3f};
+    Vec4 attenuationColorDispersion{1.0f, 1.0f, 1.0f, 0.0f};
+    Vec4 iridescenceAnisotropy{100.0f, 400.0f, 0.0f, 0.0f};
+    Vec4 diffuseTransmissionColorFactor{1.0f, 1.0f, 1.0f, 0.0f};
+    Vec4 volumeScatterColorRetroreflection{0.0f};
+    MaterialTextureData featureTextures[static_cast<uint32_t>(MaterialFeatureTexture::Count)]{};
 };
 
 class Material : public Component
@@ -73,15 +91,87 @@ public:
         data.emissiveFactor  = emissiveFactor * emissiveStrength;
         data.surfaceProperties =
             Vec4(alphaCutoff, static_cast<float>(alphaMode), normalScale, 0.0f);
+        data.materialProperties =
+            Vec4(occlusionStrength, unlit ? 1.0f : 0.0f, doubleSided ? 1.0f : 0.0f, 0.0f);
+
+        for (uint32_t index = 0; index < 5; ++index)
+        {
+            data.textureTransforms[index] = PublishTextureTransform(textureTransforms[index]);
+        }
+
+        data.surfaceProperties.w    = pbrWorkflows.specularGlossiness ? 1.0f : 0.0f;
+        data.specularColorIor       = Vec4(features.specularColor, features.ior);
+        data.specularGlossiness     = Vec4(extension.specularFactor, features.glossiness);
+        data.diffuseFactor          = extension.diffuseFactor;
+        data.clearcoatSheenSpecular = Vec4(features.clearcoat, features.clearcoatRoughness,
+                                           features.sheenRoughness, features.specular);
+        data.sheenColorTransmission = Vec4(features.sheenColor, features.transmission);
+        data.volumeIridescence =
+            Vec4(features.thickness,
+                 std::isfinite(features.attenuationDistance) ? features.attenuationDistance : 0.0f,
+                 features.iridescence, features.iridescenceIor);
+        data.attenuationColorDispersion = Vec4(features.attenuationColor, features.dispersion);
+        data.iridescenceAnisotropy =
+            Vec4(features.iridescenceThicknessMin, features.iridescenceThicknessMax,
+                 features.anisotropy, features.anisotropyRotation);
+        data.diffuseTransmissionColorFactor =
+            Vec4(features.diffuseTransmissionColor, features.diffuseTransmission);
+        data.volumeScatterColorRetroreflection =
+            Vec4(features.multiscatterColor, features.retroreflection);
+
+        const MaterialTextureBinding* bindings[] = {&features.specularTexture,
+                                                    &features.specularColorTexture,
+                                                    &features.diffuseTexture,
+                                                    &features.specularGlossinessTexture,
+                                                    &features.clearcoatTexture,
+                                                    &features.clearcoatRoughnessTexture,
+                                                    &features.clearcoatNormalTexture,
+                                                    &features.sheenColorTexture,
+                                                    &features.sheenRoughnessTexture,
+                                                    &features.transmissionTexture,
+                                                    &features.thicknessTexture,
+                                                    &features.iridescenceTexture,
+                                                    &features.iridescenceThicknessTexture,
+                                                    &features.anisotropyTexture,
+                                                    &features.diffuseTransmissionTexture,
+                                                    &features.diffuseTransmissionColorTexture,
+                                                    &features.retroreflectionTexture};
+
+        for (uint32_t index = 0; index < static_cast<uint32_t>(MaterialFeatureTexture::Count);
+             ++index)
+        {
+            const MaterialTextureBinding& binding = *bindings[index];
+
+            data.featureTextures[index].properties = Vec4(
+                binding.texture == nullptr ? -1.0f : static_cast<float>(binding.texture->index),
+                static_cast<float>(binding.texCoord), binding.scale, 0.0f);
+            data.featureTextures[index].transform = PublishTextureTransform(binding.transform);
+        }
+
+        data.materialProperties.w =
+            features == MaterialFeatures{} && !pbrWorkflows.specularGlossiness ? 0.0f : 1.0f;
+
+        if (pbrWorkflows.specularGlossiness)
+        {
+            data.baseColorFactor      = extension.diffuseFactor;
+            data.bcTexIndex           = features.diffuseTexture.texture == nullptr ?
+                          -1 :
+                          static_cast<int>(features.diffuseTexture.texture->index);
+            data.bcTexSet             = static_cast<int>(features.diffuseTexture.texCoord);
+            data.textureTransforms[0] = PublishTextureTransform(features.diffuseTexture.transform);
+        }
     }
 
     AlphaMode alphaMode{AlphaMode::Opaque};
     bool doubleSided{false};
     // material factors
-    float alphaCutoff{1.0f};
+    float alphaCutoff{0.5f};
     float metallicFactor{1.0f};
     float roughnessFactor{1.0f};
     float normalScale{1.0f};
+    float occlusionStrength{1.0f};
+    TextureTransform textureTransforms[5]{};
+    MaterialFeatures features;
     Vec4 baseColorFactor{1.0f};
     Vec4 emissiveFactor{0.0f};
     // textures
@@ -93,12 +183,12 @@ public:
 
     struct TexCoordSets
     {
-        uint8_t baseColor{0};
-        uint8_t metallicRoughness{0};
-        uint8_t specularGlossiness{0};
-        uint8_t normal{0};
-        uint8_t occlusion{0};
-        uint8_t emissive{0};
+        uint32_t baseColor{0};
+        uint32_t metallicRoughness{0};
+        uint32_t specularGlossiness{0};
+        uint32_t normal{0};
+        uint32_t occlusion{0};
+        uint32_t emissive{0};
     } texCoordSets;
     struct Extension
     {
@@ -129,8 +219,13 @@ inline bool operator==(const Material& lhs, const Material& rhs)
     return lhs.GetName() == rhs.GetName() && lhs.alphaMode == rhs.alphaMode &&
         lhs.doubleSided == rhs.doubleSided && lhs.alphaCutoff == rhs.alphaCutoff &&
         lhs.metallicFactor == rhs.metallicFactor && lhs.roughnessFactor == rhs.roughnessFactor &&
-        lhs.normalScale == rhs.normalScale && lhs.baseColorFactor == rhs.baseColorFactor &&
-        lhs.emissiveFactor == rhs.emissiveFactor &&
+        lhs.normalScale == rhs.normalScale && lhs.occlusionStrength == rhs.occlusionStrength &&
+        lhs.features == rhs.features && lhs.textureTransforms[0] == rhs.textureTransforms[0] &&
+        lhs.textureTransforms[1] == rhs.textureTransforms[1] &&
+        lhs.textureTransforms[2] == rhs.textureTransforms[2] &&
+        lhs.textureTransforms[3] == rhs.textureTransforms[3] &&
+        lhs.textureTransforms[4] == rhs.textureTransforms[4] &&
+        lhs.baseColorFactor == rhs.baseColorFactor && lhs.emissiveFactor == rhs.emissiveFactor &&
         EqualMaterialTexture(lhs.m_pBaseColorTexture, rhs.m_pBaseColorTexture) &&
         EqualMaterialTexture(lhs.m_pMetallicRoughnessTexture, rhs.m_pMetallicRoughnessTexture) &&
         EqualMaterialTexture(lhs.m_pNormalTexture, rhs.m_pNormalTexture) &&

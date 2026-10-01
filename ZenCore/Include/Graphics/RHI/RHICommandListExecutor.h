@@ -222,6 +222,8 @@ public:
     bool UnregisterBindlessResource(RHIBindlessHandle handle) override;
     bool IsBindlessResourceRegistered(RHIBindlessHandle handle) override;
     void CollectRetiredBindlessResources() override;
+
+    bool ResetBindlessResources() override;
     RHITexture* CreateTexture(const RHITextureCreateInfo& info) override;
     RHITextureView* CreateTextureView(RHITexture* texture,
                                       const RHITextureViewCreateInfo& info) override;

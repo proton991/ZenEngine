@@ -19,7 +19,7 @@ TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
 
     ASSERT_EQ(info.SRDTable.size(), 2u);
     ASSERT_EQ(info.SRDTable[0].size(), 2u);
-    ASSERT_EQ(info.SRDTable[1].size(), 3u);
+    ASSERT_EQ(info.SRDTable[1].size(), 4u);
 
     for (const RHIShaderResourceDescriptor& heap : info.SRDTable[0])
     {
@@ -41,11 +41,23 @@ TEST(ShaderReflectionTests, SceneShadersKeepEveryBindingInItsDescriptorSet)
         }
     }
 
-    for (uint32_t binding = 0; binding < 3; ++binding)
+    for (uint32_t binding = 0; binding < 4; ++binding)
     {
         EXPECT_EQ(info.SRDTable[1][binding].set, 1u);
         EXPECT_EQ(info.SRDTable[1][binding].binding, binding);
     }
+
+    const RHIShaderResourceDescriptor& uv = info.SRDTable[1][3];
+
+    EXPECT_EQ(uv.name, NameID("UVBuffer"));
+
+    EXPECT_EQ(uv.type, RHIShaderResourceType::eStorageBuffer);
+
+    EXPECT_FALSE(uv.writable);
+
+    EXPECT_TRUE(uv.stageFlags.HasFlag(RHIShaderStageFlagBits::eVertex));
+
+    EXPECT_FALSE(uv.stageFlags.HasFlag(RHIShaderStageFlagBits::eFragment));
 }
 
 TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
@@ -57,7 +69,7 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
     RHIShaderGroupInfo info{};
     RHIShaderUtil::ReflectShaderGroupInfo(spirv, info);
 
-    const uint32_t bindingCounts[] = {2, 1, 0, 5, 1};
+    const uint32_t bindingCounts[] = {2, 1, 0, 6, 1};
     ASSERT_EQ(info.SRDTable.size(), std::size(bindingCounts));
 
     for (uint32_t set = 0; set < std::size(bindingCounts); ++set)
@@ -70,6 +82,16 @@ TEST(ShaderReflectionTests, VoxelShaderInitializesAllDescriptorSets)
             EXPECT_TRUE(descriptor.stageFlags.HasFlag(RHIShaderStageFlagBits::eCompute));
         }
     }
+
+    const RHIShaderResourceDescriptor& uv = info.SRDTable[3][5];
+
+    EXPECT_EQ(uv.name, NameID("UVBuffer"));
+
+    EXPECT_EQ(uv.binding, 5u);
+
+    EXPECT_EQ(uv.type, RHIShaderResourceType::eStorageBuffer);
+
+    EXPECT_FALSE(uv.writable);
 }
 
 TEST(ShaderReflectionTests, SparseDescriptorSetsPreserveTheirShaderSetNumbers)

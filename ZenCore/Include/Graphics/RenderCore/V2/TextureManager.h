@@ -31,11 +31,24 @@ public:
 
     void LoadTextureEnv(const std::string& file, EnvTexture* pOutTexture);
 
+    void LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment);
+
+    // Scene instances are independent; cached file textures keep their shared owner.
+    bool ReleaseSceneTexture(RHITexture* texture);
+
+    void ReleaseSceneEnvironment(EnvTexture* environment);
+
     // RHITexture* GetBaseTextureForProxy(const RHITexture* handle) const;
     //
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
+    void UploadEnvironmentCube(uint32_t size,
+                               uint32_t mipLevels,
+                               const HeapVector<HeapVector<Vec4>>& faces,
+                               const char* name,
+                               RHITexture*& texture);
+
     void UpdateTexture(RHITexture* pTexture,
                        uint32_t dataSize,
                        const uint8_t* pData,
@@ -62,7 +75,9 @@ private:
 
     StagingUploadQueue* m_pUploadQueue{nullptr};
 
-    void OwnTexture(RHITexture* texture);
+    void OwnTexture(RHITexture*& texture);
+
+    void OwnEnvironmentTextures(EnvTexture* environment);
 
     HashMap<NameID, std::array<RHITexture*, 2>> m_textureCache;
     HashMap<uint64_t, RHITexture*> m_ownedTextures;

@@ -17,6 +17,7 @@
 #include <charconv>
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include <iterator>
 #include <string_view>
 
@@ -35,7 +36,8 @@ namespace zen
 {
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
                                      sg::CameraType type,
-                                     const DemoProfilingOptions& profiling)
+                                     const DemoProfilingOptions& profiling) :
+    m_cameraType(type)
 {
     m_pWindow = new platform::GlfwWindowImpl(windowConfig);
 
@@ -112,40 +114,27 @@ void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
 
 bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPercent)
 {
-    m_scene                                          = MakeUnique<sg::Scene>();
-    UniquePtr<zen::asset::FastGLTFLoader> gltfLoader = MakeUnique<asset::FastGLTFLoader>();
-    gltfLoader->LoadFromFile(platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath(),
-                             m_scene.Get());
-    float timeUsed = static_cast<float>(m_timer->Tick());
-    LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), timeUsed);
+    const std::string path = platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath();
 
-    rc::SceneData sceneData{};
-    sceneData.pCamera     = m_camera.Get();
-    sceneData.pScene      = m_scene.Get();
-    sceneData.pVertices   = gltfLoader->GetVertices().data();
-    sceneData.pIndices    = gltfLoader->GetIndices().data();
-    sceneData.numVertices = gltfLoader->GetVertices().size();
-    sceneData.numIndices  = gltfLoader->GetIndices().size();
-    sceneData.envTextureName =
-        platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
-    m_renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), sceneData);
-    m_renderScene->Init();
-    PrepareLighting();
+    bool prepared = LoadModel(path, true);
 
-    m_camera->SetupOnAABB(m_scene->GetAABB());
-    Vec3 cameraPosition = m_camera->GetPos();
-    if (platform::ConfigLoader::GetInstance().ReadVec3("camera_position", cameraPosition) &&
-        glm::length(cameraPosition - m_scene->GetAABB().GetCenter()) > 1e-4f)
+#if defined(ZEN_RUNTIME_UI)
+    if (prepared)
     {
-        m_camera->SetPosition(cameraPosition);
+        RefreshRuntimeModels();
+
+        const std::u8string current = std::filesystem::absolute(std::filesystem::u8path(path))
+                                          .lexically_normal()
+                                          .generic_u8string();
+
+        m_modelState.currentPath.assign(reinterpret_cast<const char*>(current.data()),
+                                        current.size());
+
+        ++m_modelState.revision;
     }
-    m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
+#endif
 
-    LOGI("Views: 1 = VoxelGI; 2 = voxelization; R = rebuild voxels");
-
-    //    m_sceneRenderer->SetRenderScene(m_renderScene.Get());
-    bool gridValid = true;
-    if (captureVoxels && calibrationGridPercent != 0)
+    if (prepared && captureVoxels && calibrationGridPercent != 0)
     {
         // Diagnostic only: normalization and camera setup above use the real bounds.
         // Inset by one voxel to cancel GetVoxelBounds' normal one-cell padding.
@@ -153,51 +142,245 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
             m_renderDevice->GetRendererServer()->RequestVoxelizer()->GetVoxelTexResolution();
         const float halfExtent = 0.005f * static_cast<float>(calibrationGridPercent) *
             static_cast<float>(resolution - 2) / static_cast<float>(resolution);
-        gridValid = m_renderScene->SetVoxelBounds(sg::AABB(Vec3(-halfExtent), Vec3(halfExtent)));
+        prepared = m_renderScene->SetVoxelBounds(sg::AABB(Vec3(-halfExtent), Vec3(halfExtent)));
     }
-    return gridValid &&
-        (!captureVoxels ||
-         m_renderDevice->GetRendererServer()->RequestVoxelizer()->EnableRadianceInputs());
+
+    if (prepared && captureVoxels)
+    {
+        prepared = m_renderDevice->GetRendererServer()->RequestVoxelizer()->EnableRadianceInputs();
+    }
+
+    return prepared;
 }
 
-void SceneRendererDemo::PrepareLighting()
+bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCameraPosition)
 {
-    const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
-    bool animate                         = false;
-    uint32_t animatedIndex               = 0;
-    bool valid                           = config.ReadBool("dynamic_light.enabled", animate);
+    bool loaded = false;
+
+    UniquePtr<sg::Scene> scene;
+
+    UniquePtr<sg::Camera> camera;
+
+    UniquePtr<rc::RenderScene> renderScene;
+
+    try
+    {
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+        scene = MakeUnique<sg::Scene>();
+
+        asset::FastGLTFLoader loader;
+
+        loader.LoadFromFile(path, scene.Get());
+
+        // A fresh camera prevents an authored orthographic/infinite projection from
+        // carrying over when the next model relies on automatic framing.
+        camera =
+            sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
+
+        if (m_renderDevice->PrepareForResourceReconfiguration())
+        {
+            rc::SceneData data{};
+
+            data.pCamera = camera.Get();
+
+            data.pScene = scene.Get();
+
+            data.pVertices = loader.GetVertices().data();
+
+            data.pIndices = loader.GetIndices().data();
+
+            data.numVertices = loader.GetVertices().size();
+
+            data.numIndices = loader.GetIndices().size();
+
+            data.envTextureName = platform::ConfigLoader::GetInstance().GetString(
+                "environment_texture", "papermill.ktx");
+
+            renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
+
+            renderScene->Init();
+
+            const std::vector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
+
+            if (!cameras.empty())
+            {
+                camera->SetupFromSceneCamera(*cameras.front(), m_pWindow->GetAspect());
+            }
+            else
+            {
+                camera->SetupOnAABB(scene->GetAABB());
+
+                Vec3 position = camera->GetPos();
+
+                if (configuredCameraPosition &&
+                    platform::ConfigLoader::GetInstance().ReadVec3("camera_position", position) &&
+                    glm::length(position - scene->GetAABB().GetCenter()) > 1e-4f)
+                {
+                    camera->SetPosition(position);
+                }
+            }
+
+            if (m_renderDevice->PrepareForSceneReplacement())
+            {
+                m_renderDevice->GetRendererServer()->SetRenderScene(renderScene.Get());
+
+                m_renderScene.Swap(renderScene);
+
+                m_scene.Swap(scene);
+
+                m_camera.Swap(camera);
+
+                loaded = true;
+
+                PrepareLighting(platform::ConfigLoader::GetInstance());
+
+                const double seconds =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+                LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), seconds);
+            }
+        }
+    }
+    catch (const std::exception& error)
+    {
+        LOGE("Could not load model '{}': {}", path, error.what());
+
+#if defined(ZEN_RUNTIME_UI)
+        m_modelState.error = error.what();
+#endif
+    }
+
+    if (renderScene)
+    {
+        m_renderDevice->PrepareForResourceReconfiguration();
+
+        renderScene->Destroy();
+    }
+
+    if (!loaded && m_renderScene)
+    {
+        m_renderDevice->GetRendererServer()->SetRenderScene(m_renderScene.Get());
+    }
+
+    return loaded;
+}
+
+void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
+{
+    m_dynamicLight = 0;
+
+    m_editableLightIds.fill(0);
+
+    m_editableLightCount = 0;
+
+    m_boundsPresetLights = false;
+
+    m_modelLightCount = 0;
+
+    m_orbitCenter = Vec3(0.0f, 1.0f, 0.0f);
+
+    m_orbitRadius = 1.0f;
+
+    m_orbitSpeedDegrees = 45.0f;
+
+    // Inactive slots retain a useful point-light seed for the current model.
+    const sg::AABB& bounds = m_scene->GetAABB();
+
+    const Vec3 center = bounds.GetCenter();
+
+    const float margin = std::max(bounds.GetMaxExtent() * 0.15f, 0.01f);
+
+    for (uint32_t index = 0; index < rc::MaxSceneLights; ++index)
+    {
+        rc::SceneLight light;
+
+        const uint32_t axis = (index / 2) % 3;
+
+        light.position = center;
+
+        light.position[axis] =
+            (index & 1) != 0 ? bounds.GetMax()[axis] + margin : bounds.GetMin()[axis] - margin;
+
+        light.direction = glm::normalize(center - light.position);
+
+        const float distance = glm::distance(center, light.position);
+
+        light.intensity = distance * distance * 3.0f;
+
+        light.range = 0.0f;
+
+        m_editableLightDefaults[index] = light;
+    }
+
+    m_lightAngle = 0;
+
+    bool animate           = false;
+    uint32_t animatedIndex = 0;
+    bool valid             = config.ReadBool("dynamic_light.enabled", animate);
     valid &= config.ReadNumber("dynamic_light.index", animatedIndex);
     valid &= config.ReadVec3("dynamic_light.orbit_center", m_orbitCenter);
     valid &= config.ReadNumber("dynamic_light.orbit_radius", m_orbitRadius);
     valid &= config.ReadNumber("dynamic_light.angular_speed_degrees", m_orbitSpeedDegrees);
     valid = valid && m_orbitRadius >= 0.0f && std::abs(m_orbitSpeedDegrees) <= 3600.0f;
-    const HeapVector<rc::ConfiguredLight> lights = rc::LoadSceneLights(config);
+    bool overrideLights = false;
+    config.ReadBool("scene_lighting_override", overrideLights);
+    const bool useConfiguredLights = overrideLights && !m_scene->HasComponent(typeid(sg::Light));
+    const HeapVector<rc::ConfiguredLight> lights =
+        useConfiguredLights ? rc::LoadSceneLights(config) : HeapVector<rc::ConfiguredLight>();
+    if (useConfiguredLights)
+    {
+        m_renderScene->GetLights() = rc::SceneLights();
+    }
 
     m_animatedLightIndex = std::min(animatedIndex, rc::MaxSceneLights - 1);
 
-    m_configLightCount = 4;
+    m_editableLightCount = useConfiguredLights ? 4 : 0;
 
-    if (!config.ReadNumber("light_count", m_configLightCount) ||
-        m_configLightCount > rc::MaxSceneLights)
+    if (useConfiguredLights &&
+        (!config.ReadNumber("light_count", m_editableLightCount) ||
+         m_editableLightCount > rc::MaxSceneLights))
     {
-        m_configLightCount = 0;
+        m_editableLightCount = 0;
     }
 
     for (const rc::ConfiguredLight& light : lights)
     {
         const rc::LightId id = m_renderScene->GetLights().Add(light.light);
 
-        m_configLightIds[light.configIndex] = id;
+        m_editableLightIds[light.configIndex] = id;
+
+        m_editableLightDefaults[light.configIndex] = light.light;
         if (valid && animate && light.configIndex == animatedIndex &&
             light.light.type != rc::SceneLightType::eDirectional)
         {
             m_dynamicLight = id;
         }
     }
-    if (!valid || (animate && m_dynamicLight == 0))
+    if (useConfiguredLights && (!valid || (animate && m_dynamicLight == 0)))
     {
         LOGW("Invalid dynamic_light configuration or missing point/spot light; animation disabled");
     }
+
+    if (!useConfiguredLights && !m_scene->HasComponent(typeid(sg::Light)))
+    {
+        m_boundsPresetLights = true;
+
+        // RenderScene already created the preset. Register its existing IDs so UI
+        // edits affect those lights rather than adding a second set.
+        for (const rc::LightEntry& entry : m_renderScene->GetLights().GetEntries())
+        {
+            m_editableLightIds[m_editableLightCount] = entry.id;
+
+            m_editableLightDefaults[m_editableLightCount++] = entry.light;
+        }
+    }
+    else if (m_scene->HasComponent(typeid(sg::Light)))
+    {
+        // Animated glTF lights remain owned by RenderScene's imported ID mapping.
+        m_modelLightCount = static_cast<uint32_t>(m_renderScene->GetLights().GetEntries().size());
+    }
+
     float intensity = 1.0f;
     float rotation  = 0.0f;
     bool enabled    = true;
@@ -366,6 +549,11 @@ bool SceneRendererDemo::Destroy(bool runSucceeded)
     m_runtimeUI.Reset();
 #endif
 
+    if (m_renderScene && m_renderDevice->PrepareForResourceReconfiguration())
+    {
+        m_renderScene->Destroy();
+    }
+
     rc::ShaderProgramManager::GetInstance().Destroy();
 
     m_renderDevice->Destroy();
@@ -524,6 +712,8 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         }
 
 #if defined(ZEN_RUNTIME_UI)
+        ProcessPendingModel();
+
         if (m_runtimeUI)
         {
             m_runtimeUI->Update(frameTime, *m_pViewport);
@@ -531,6 +721,9 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
 #endif
 
         m_camera->Update(frameTime);
+        succeeded &= m_renderScene->AdvanceAnimation(smokeTest     ? 1.0f / 30.0f :
+                                                         fixedStep ? 1.0f / 60.0f :
+                                                                     frameTime);
         UpdateDynamicLight(smokeTest ? 1.0f / 30.0f : fixedStep ? 1.0f / 60.0f : frameTime);
         if (motionFixture)
         {
@@ -858,6 +1051,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 }
 } // namespace
 
+#if !defined(ZEN_SCENE_MODEL_TEST)
 int main(int argc, char** pArgv)
 {
     using namespace zen;
@@ -901,12 +1095,12 @@ int main(int argc, char** pArgv)
 
         bool enableUI = options.runtimeUI == 1;
 
-#if defined(ZEN_RUNTIME_UI)
+#    if defined(ZEN_RUNTIME_UI)
         enableUI = enableUI ||
             (options.runtimeUI < 0 && options.frames == 0 && !options.smokeTest &&
              options.profilePath.empty() && options.capturePath.empty() &&
              options.voxelCapturePath.empty() && options.lightingCapturePath.empty());
-#endif
+#    endif
 
         if (prepared && enableUI)
         {
@@ -966,3 +1160,4 @@ int main(int argc, char** pArgv)
 
     return result;
 }
+#endif

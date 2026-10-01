@@ -12,6 +12,26 @@ public:
 
     Mat4 GetWorldMatrix();
 
+    const Vec3& GetTranslation() const
+    {
+        return m_translation;
+    }
+
+    const Vec3& GetScale() const
+    {
+        return m_scale;
+    }
+
+    const Quat& GetRotation() const
+    {
+        return m_rotation;
+    }
+
+    const Mat4& GetBaseMatrix() const
+    {
+        return m_localMatrix;
+    }
+
     void SetTranslation(const Vec3& translation)
     {
         m_translation = translation;
@@ -36,6 +56,16 @@ public:
         InvalidateWorldMatrix();
     }
 
+    void SetPrefixMatrix(const Mat4& matrix)
+    {
+        m_prefixMatrix = matrix;
+    }
+
+    const Mat4& GetPrefixMatrix() const
+    {
+        return m_prefixMatrix;
+    }
+
     void InvalidateWorldMatrix()
     {
         m_validLocalMatrix = false;
@@ -46,7 +76,7 @@ public:
         return typeid(Transform);
     };
 
-private:
+    // Authored local TRS/matrix composition, before normalization and parent transforms.
     Mat4 GetLocalMatrix()
     {
         if (!m_validLocalMatrix)
@@ -55,18 +85,23 @@ private:
                 glm::mat4_cast(m_rotation) * glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
             m_validLocalMatrix = true;
         }
+
         return m_cachedLocalMatrix;
     }
 
+private:
     void UpdateWorldMatrix();
     // binding node
     const Node& m_node;
     // transformations
     Vec3 m_translation{0.0f};
     Vec3 m_scale{1.0f};
-    Quat m_rotation{};
+    Quat m_rotation{1.0f, 0.0f, 0.0f, 0.0f};
     // node local matrix
     Mat4 m_localMatrix{1.0f};
+
+    // Scene normalization is independent of authored (and animated) local TRS.
+    Mat4 m_prefixMatrix{1.0f};
     Mat4 m_cachedLocalMatrix{1.0f};
     // combined transform matrix
     Mat4 m_worldMatrix{1.0f};

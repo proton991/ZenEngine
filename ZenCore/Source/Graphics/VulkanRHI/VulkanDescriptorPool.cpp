@@ -1015,6 +1015,63 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     m_pDevice  = nullptr;
 }
 
+bool VulkanBindlessDescriptorPoolManager::ResetRegistrations()
+{
+    LockAuto lock(&m_mutex);
+
+    bool reset = true;
+
+    if (m_vkSet != VK_NULL_HANDLE)
+    {
+        VulkanLifetimeTracker& tracker = GVulkanRHI->GetLifetimeTracker();
+
+        for (uint64_t epoch : m_epochs)
+        {
+            reset = reset && tracker.IsComplete(epoch);
+        }
+
+        if (reset)
+        {
+            // Reserve before publication; failure leaves the existing heap usable.
+            m_epochs.reserve(m_epochs.size() + 1);
+
+            const uint64_t epoch = tracker.Create();
+
+            m_epochs.push_back(epoch);
+
+            m_epoch = epoch;
+
+            m_retiredSlots.clear();
+
+            for (uint32_t heap = 0; heap < kBindlessHeapCount; ++heap)
+            {
+                m_pendingWrites[heap].clear();
+
+                for (BindlessSlotState& slot : m_slotStates[heap])
+                {
+                    if (slot.pResource != nullptr)
+                    {
+                        slot.pResource->ReleaseReference();
+                    }
+
+                    if (slot.pTextureOwner != nullptr)
+                    {
+                        slot.pTextureOwner->ReleaseReference();
+                    }
+
+                    slot = {};
+                }
+
+                m_heapAllocCount[heap] = 0;
+            }
+
+            // Earlier complete epochs retire during the next ordinary registration/collection.
+        }
+    }
+
+    return reset;
+}
+
 bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* pResource,
                                                                    uint32_t slotIdx,
                                                                    RHIBindlessHandle* pOutHandle,

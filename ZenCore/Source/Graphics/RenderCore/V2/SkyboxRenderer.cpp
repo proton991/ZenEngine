@@ -97,7 +97,8 @@ void SkyboxRenderer::BuildRenderGraph()
         pso.colorBlendState.AddAttachment();
         pso.dynamicStates.Enable(RHIDynamicState::eScissor, RHIDynamicState::eViewPort);
 
-        for (uint32_t target = 0; target <= PREFILTERED_MAP; ++target)
+        for (uint32_t target = 0; !pTexture->authoredCubemaps && target <= PREFILTERED_MAP;
+             ++target)
         {
             const bool irradiance = target == IRRADIANCE;
             RHITexture* pCubemap  = irradiance ? pTexture->pIrradiance : pTexture->pPrefiltered;
@@ -201,7 +202,7 @@ void SkyboxRenderer::BuildRenderGraph()
 
     pso.primitiveType               = RHIDrawPrimitiveType::eTriangleList;
     pso.rasterizationState          = {};
-    pso.rasterizationState.cullMode = RHIPolygonCullMode::eFront;
+    pso.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
     pso.depthStencilState =
         RHIGfxPipelineDepthStencilState::Create(true, false, RHIDepthCompareOperator::eLessOrEqual);
     pso.multiSampleState = {};
@@ -217,19 +218,14 @@ void SkyboxRenderer::BuildRenderGraph()
     desc.SetRenderArea(0, 0, m_pViewport->GetWidth(), m_pViewport->GetHeight());
     desc.SetPassTag("SkyboxDraw");
 
-    desc.BindVertexBuffer(m_pVertexBuffer);
-    desc.BindIndexBuffer(m_pIndexBuffer);
-
     const EnvTexture& env = m_pScene->GetEnvTexture();
     desc.BindSampledTexture("samplerEnv", env.pPrefilteredSampler, env.pSkybox->GetDefaultView());
     desc.BindValue("uCameraData", m_pScene->GetCameraUniformData(), sizeof(sg::CameraUniformData));
     desc.BindValue("uSceneData", m_pScene->GetSceneUniformData(), sizeof(SceneUniformData));
 
-    pRDG->AddGraphicsPass(std::move(desc))
-        .RecordPassCommands(
-            [count = static_cast<uint32_t>(cSkyboxIndices.size())](RDGPassCmdEncoder& encoder) {
-                encoder.DrawIndexed(count, 1, 0, 0, 0);
-            });
+    pRDG->AddGraphicsPass(std::move(desc)).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+        encoder.Draw(3, 1);
+    });
 }
 
 void SkyboxRenderer::OnRenderGraphExecuted(bool succeeded)
@@ -245,9 +241,25 @@ void SkyboxRenderer::OnRenderGraphExecuted(bool succeeded)
 void SkyboxRenderer::PreprocessEnvTexture(EnvTexture* pTexture)
 {
     VERIFY_EXPR(pTexture != nullptr);
-    PrepareEnvCubemaps(pTexture);
+    if (!pTexture->authoredCubemaps)
+    {
+        PrepareEnvCubemaps(pTexture);
+    }
     PrepareLutBRDF(pTexture);
     m_pPendingPreprocessEnvTexture = pTexture;
+}
+
+void SkyboxRenderer::CancelEnvironmentPreprocessing(const EnvTexture* environment)
+{
+    if (m_pPendingPreprocessEnvTexture == environment)
+    {
+        m_pPendingPreprocessEnvTexture = nullptr;
+    }
+
+    if (m_pRecordedPreprocessEnvTexture == environment)
+    {
+        m_pRecordedPreprocessEnvTexture = nullptr;
+    }
 }
 
 void SkyboxRenderer::PrepareEnvCubemaps(EnvTexture* pTexture)

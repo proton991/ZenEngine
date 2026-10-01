@@ -9,6 +9,11 @@ namespace zen::platform
 class ConfigLoader;
 }
 
+namespace zen::sg
+{
+class Scene;
+}
+
 namespace zen::rc
 {
 constexpr uint32_t MaxSceneLights = 32;
@@ -47,13 +52,15 @@ struct GPULight
 struct SceneUniformData
 {
     GPULight lights[MaxSceneLights]{};
-    Vec4 viewPos{};
-    Vec4 lightInfo{};                         // enabled count; remaining lanes reserved
+    Vec4 viewPos{};                           // eye position; w is zero for orthographic
+    Vec4 lightInfo{};                         // enabled count; world camera-backward direction
     Vec4 environment{1.0f, 0.0f, 1.0f, 1.0f}; // intensity, rotation radians, enabled, visible
+    Vec4 environmentOrientation{0.0f, 0.0f, 0.0f, 1.0f}; // inverse authored quaternion
+    Vec4 environmentProperties{};                        // x: authored glTF cubemap coordinates
 };
 static_assert(sizeof(GPULight) == 64);
 static_assert(offsetof(SceneUniformData, viewPos) == MaxSceneLights * 64);
-static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 48);
+static_assert(sizeof(SceneUniformData) == MaxSceneLights * 64 + 80);
 
 struct LightEntry
 {
@@ -65,18 +72,30 @@ class SceneLights
 {
 public:
     LightId Add(const SceneLight& light);
+
     bool Update(LightId id, const SceneLight& light);
+
     bool Remove(LightId id);
+
     const SceneLight* Find(LightId id) const;
+
     void WriteUniforms(SceneUniformData& uniforms) const;
+
+    const HeapVector<LightEntry>& GetEntries() const
+    {
+        return m_lights;
+    }
+
     uint64_t GetRevision() const
     {
         return m_revision;
     }
+
     uint64_t GetStructureRevision() const
     {
         return m_structureRevision;
     }
+
     static bool Validate(const SceneLight& light);
 
 private:
@@ -93,4 +112,6 @@ struct ConfiguredLight
     SceneLight light;
 };
 HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config);
+
+HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene);
 } // namespace zen::rc

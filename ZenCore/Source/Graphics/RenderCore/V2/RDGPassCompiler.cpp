@@ -448,7 +448,7 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
             if (pSRD != nullptr)
             {
-                parameters.AddResourceParam(*pSRD, binding.pSampler, nullptr, 0);
+                parameters.AddResourceParam(*pSRD, binding.pSampler, nullptr, binding.arrayIndex);
             }
             else
             {
@@ -1258,8 +1258,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(
             valid                                        = m_pRDG->DeclareBufferAccessForPass(
                 m_pNode, pDstResource, dstUsage, RHIAccessMode::eReadWrite, {},
                 region.dstOffset == 0 && region.size == pDstBuffer->GetRequiredSize() ?
-                    RDGContentEffect::eFullWrite :
-                    RDGContentEffect::eWrite);
+                                                           RDGContentEffect::eFullWrite :
+                                                           RDGContentEffect::eWrite);
         }
 
         if (valid)
@@ -1335,9 +1335,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
                     m_pNode, pDstResource, RHITextureUsage::eTransferDst,
                     CopyRange(region.textureSubresources), RHIAccessMode::eReadWrite, {},
                     CoversMip(pDstTexture, region.textureSubresources.mipmap, region.textureOffset,
-                              region.textureSize) ?
-                        RDGContentEffect::eFullWrite :
-                        RDGContentEffect::eWrite);
+                                                                     region.textureSize) ?
+                                                               RDGContentEffect::eFullWrite :
+                                                               RDGContentEffect::eWrite);
             }
 
             if (valid)
@@ -1509,9 +1509,9 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
                     m_pNode, dst, RHITextureUsage::eTransferDst,
                     CopyRange(region.textureSubresources), RHIAccessMode::eReadWrite, {},
                     CoversMip(info, region.textureSubresources.mipmap, region.textureOffset,
-                              region.textureSize) ?
-                        RDGContentEffect::eFullWrite :
-                        RDGContentEffect::eWrite,
+                                                                     region.textureSize) ?
+                                                               RDGContentEffect::eFullWrite :
+                                                               RDGContentEffect::eWrite,
                     true, false, destination);
             }
 
@@ -1608,8 +1608,8 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(
                 BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
                 RHIAccessMode::eReadWrite, {},
                 region.dstOffset == 0 && region.size == dst->bufferSize ?
-                    RDGContentEffect::eFullWrite :
-                    RDGContentEffect::eWrite,
+                                                           RDGContentEffect::eFullWrite :
+                                                           RDGContentEffect::eWrite,
                 true, false, destination);
         }
 
@@ -1683,7 +1683,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
                 {
                     const Vec3i extent = MipExtent3D(dstInfo, region.dstSubresources.mipmap);
                     const bool full    = region.dstOffset == Vec3i(0) && region.size == extent;
-                    valid = !((!m_pRDG->DeclareTextureAccessForPass(
+                    valid              = !((!m_pRDG->DeclareTextureAccessForPass(
                                    m_pNode, src, RHITextureUsage::eTransferSrc,
                                    CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},
                                    RDGContentEffect::eRead, true, false, source) ||

@@ -210,7 +210,8 @@ bool VoxelizerBase::EnableRadianceInputs()
 {
     if (EnsureReady() && !ProducesRadianceInputs())
     {
-        RHITexture* normal   = CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_normal_metallic");
+        RHITexture* normal =
+            CreateVolume(DataFormat::eR8G8B8A8UNORM, "voxel_normal_diffuse_weight");
         RHITexture* emissive = normal != nullptr ?
             CreateVolume(DataFormat::eR16G16B16A16SFloat, "voxel_emission") :
             nullptr;
@@ -237,11 +238,13 @@ void VoxelizerBase::BindVoxelScene(RDGPassDescBase& pass) const
     pass.BindStorageBuffer("IndexBuffer", m_pScene->GetIndexBuffer());
     pass.BindStorageBuffer("NodeBuffer", m_pScene->GetNodesDataSSBO());
     pass.BindStorageBuffer("MaterialBuffer", m_pScene->GetMaterialsDataSSBO());
+    pass.BindStorageBuffer("UVBuffer", m_pScene->GetUVBuffer());
     pass.BindStorageBuffer("TriangleRecords", m_pScene->GetVoxelTriangleBuffer());
     pass.BindValue(
         "uVoxelGrid",
         VoxelGridUniform{Vec4(GetSceneMinPoint(), GetVoxelSize()), glm::uvec4(GI_ALL, 0, 0, 0)});
-    BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextures());
+    BindSceneTextureArray(pass, m_pColorSampler, m_pScene->GetSceneTextures(),
+                          m_pScene->GetSceneSamplers());
 }
 
 void VoxelizerBase::ResolveSurface(RDGQueuePreference queuePreference)

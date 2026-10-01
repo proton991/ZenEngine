@@ -54,6 +54,7 @@ struct SceneInputs
     RHIBuffer* indices{};
     RHIBuffer* nodes{};
     RHIBuffer* materials{};
+    RHIBuffer* uv{};
     HeapVector<RHITexture*> textures;
     EnvTexture environment;
     sg::CameraUniformData camera{};
@@ -914,6 +915,7 @@ public:
     RHITexture* lastCreatedTexture{nullptr};
     uint32_t bufferCreations{0};
     uint32_t failBufferCreationAt{0};
+    uint32_t throwBufferCreationAt{0};
     RHIBufferCreateInfo lastBufferInfo;
     uint64_t lastBufferId{0};
     std::thread::id lastBufferCreationThread;
@@ -926,6 +928,7 @@ public:
     std::function<void()> beforeSubmission;
     std::vector<RHICommandList*> pendingCommandLists;
     uint32_t failTextureCreationAt{0};
+    uint32_t throwTextureCreationAt{0};
     uint32_t failPipelineCreationAt{0};
     const RHIRenderingLayout* lastPipelineLayout{nullptr};
     std::vector<RHIPipeline*> createdPipelines;
@@ -1068,6 +1071,11 @@ public:
         ++textureCreations;
         lastTextureCreationThread = std::this_thread::get_id();
 
+        if (textureCreations == throwTextureCreationAt)
+        {
+            throw std::runtime_error("test texture allocation failure");
+        }
+
         if (!(textureCreations == failTextureCreationAt))
         {
             result             = ZEN_NEW() TestTexture(info);
@@ -1100,6 +1108,12 @@ public:
         RHIBuffer* result = nullptr;
         ++bufferCreations;
         lastBufferCreationThread = std::this_thread::get_id();
+
+        if (bufferCreations == throwBufferCreationAt)
+        {
+            throw std::runtime_error("test buffer allocation failure");
+        }
+
         if (bufferCreations != failBufferCreationAt)
         {
             result         = ZEN_NEW() TestBuffer(info);
@@ -1396,6 +1410,7 @@ void RenderScene::PrepareBuffers()
     m_pIndexBuffer  = sceneInputs.indices;
     m_pNodeSSBO     = sceneInputs.nodes;
     m_pMaterialSSBO = sceneInputs.materials;
+    m_pUVBuffer     = sceneInputs.uv;
 }
 
 // The renderer facade above supplies synthetic node indices independently of assets.
@@ -3377,9 +3392,10 @@ void RenderCoreTest::AllocateRendererInputs(int epoch,
     sceneInputs.indices   = Buffer();
     sceneInputs.nodes     = Buffer();
     sceneInputs.materials = Buffer();
+    sceneInputs.uv        = Buffer();
 
-    for (RHIBuffer* buffer :
-         {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
+    for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes,
+                              sceneInputs.materials, sceneInputs.uv})
     {
         ownedBuffers.push_back(buffer);
     }
@@ -3543,7 +3559,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
                                      "SceneRenderer/offscreen.frag.spv"},
           {"DeferredLightingSP", "SceneRenderer/deferred.vert.spv",
            "SceneRenderer/deferred.frag.spv"},
-          {"SkyboxRenderSP", "Environment/skybox.vert.spv", "Environment/skybox.frag.spv"},
+          {"SkyboxRenderSP", "SceneRenderer/deferred.vert.spv", "Environment/skybox.frag.spv"},
           {"EnvMapIrradianceSP", "Environment/filtercube.vert.spv",
            "Environment/irradiancecube.frag.spv"},
           {"EnvMapPrefilteredSP", "Environment/filtercube.vert.spv",
@@ -3673,6 +3689,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
         rhi->graphics.values.clear();
         rhi->graphics.pushConstants.clear();
         rhi->graphics.indexedDraws.clear();
+        rhi->graphics.drawCount = 0;
 
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
 
@@ -3781,7 +3798,8 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         EXPECT_EQ(constants.nodeIndex, 20 + frame);
         EXPECT_EQ(constants.materialIndex, 10 + frame);
-        ASSERT_EQ(context.indexedDraws.size(), 2u + (frame < 2 ? 6 * (7 + 10) : 0));
+        EXPECT_EQ(context.drawCount, 2u + (frame < 2 ? 1u : 0u));
+        ASSERT_EQ(context.indexedDraws.size(), 1u + (frame < 2 ? 6 * (7 + 10) : 0));
         ASSERT_LT(drawIndex, context.indexedDraws.size());
         EXPECT_EQ(context.indexedDraws[drawIndex][0], frame * 3);
     }
@@ -3827,6 +3845,8 @@ TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
 
 #include "VoxelGIRendererTests.inl"
 #include "SceneShadowRendererTests.inl"
+#include "SceneTextureImportTests.inl"
+#include "SceneResourceLifetimeTests.inl"
 
 TEST_F(RenderCoreTest, StagingBlocksWaitForBothQueuesAndUnsubmittedAllocations)
 {

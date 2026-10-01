@@ -22,6 +22,8 @@ public:
 
     void PreprocessEnvTexture(EnvTexture* pTexture);
 
+    void CancelEnvironmentPreprocessing(const EnvTexture* environment);
+
     void SetRenderScene(RenderScene* pRenderScene)
     {
         m_pScene = pRenderScene;

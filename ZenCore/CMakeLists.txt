@@ -4,6 +4,7 @@ set(ZEN_CORE_HEADERS
     Include/AssetLib/TextureLoader.h
     Include/AssetLib/GLTFLoader.h
     Include/AssetLib/FastGLTFLoader.h
+    Include/AssetLib/GLTFModelCatalog.h
     Include/AssetLib/Types.h
 
     Include/Templates/ArrayView.h
@@ -99,6 +100,9 @@ set(ZEN_CORE_HEADERS
     Include/SceneGraph/Mesh.h
     Include/SceneGraph/Sampler.h
     Include/SceneGraph/Scene.h
+    Include/SceneGraph/SceneAsset.h
+    Include/SceneGraph/SceneAnimation.h
+    Include/SceneGraph/MaterialFeatures.h
     Include/SceneGraph/SubMesh.h
     Include/SceneGraph/Texture.h
     Include/SceneGraph/Transform.h
@@ -185,6 +189,7 @@ set(ZEN_CORE_SOURCES
     Source/AssetLib/TextureLoader.cpp
     Source/AssetLib/GLTFLoader.cpp
     Source/AssetLib/FastGLTFLoader.cpp
+    Source/AssetLib/GLTFModelCatalog.cpp
 
     Source/Graphics/RenderCore/V2/RendererServer.cpp
     Source/Graphics/RenderCore/V2/RenderGraph.cpp
@@ -196,6 +201,7 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/V2/VoxelGISettings.cpp
     Source/Graphics/RenderCore/V2/RendererServerSettings.cpp
     Source/Graphics/RenderCore/V2/RenderScene.cpp
+    Source/Graphics/RenderCore/V2/RenderSceneResources.cpp
     Source/Graphics/RenderCore/V2/RenderSceneGeometry.cpp
     Source/Graphics/RenderCore/V2/RenderObject.cpp
     Source/Graphics/RenderCore/V2/RenderResource.cpp
@@ -221,6 +227,8 @@ set(ZEN_CORE_SOURCES
     Source/Graphics/RenderCore/TextureManager.cpp
 
     Source/SceneGraph/Scene.cpp
+    Source/SceneGraph/SceneAnimation.cpp
+    Source/SceneGraph/SceneAnimationPointer.cpp
     Source/SceneGraph/Transform.cpp
     Source/SceneGraph/Camera.cpp
 
@@ -285,6 +293,8 @@ set(ZEN_CORE_SOURCES
 )
 
 if (NOT ZEN_BUILD_LEGACY)
+    list(REMOVE_ITEM ZEN_CORE_HEADERS Include/AssetLib/GLTFLoader.h)
+    list(REMOVE_ITEM ZEN_CORE_SOURCES Source/AssetLib/GLTFLoader.cpp)
     list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/Val/")
     list(FILTER ZEN_CORE_HEADERS EXCLUDE REGEX "Include/Graphics/RenderCore/[^/]+[.]h$")
     list(FILTER ZEN_CORE_SOURCES EXCLUDE REGEX "Source/Graphics/Val/")
@@ -305,14 +315,16 @@ target_link_libraries(ZenCore PUBLIC
     gli
     glm
     vma
-    spriv-reflect
-    spirv-cross-glsl
+    spirv-reflect
     volk
-    span
     stb
-    tinygltf
     fastgltf
+    zen_gltf_decoders
 )
+
+if (ZEN_BUILD_LEGACY)
+    target_link_libraries(ZenCore PUBLIC spirv-cross-glsl tinygltf)
+endif ()
 
 ############################################################
 #                    Build Shaders                         #

@@ -11,6 +11,38 @@ This is a personal project build by myself while learning Vulkan API. It mainly 
 
 ## Windows Release build and run
 
+Third-party sources are downloaded automatically by CMake FetchContent into
+`External/<dependency-name>`; the existing folder names are preserved. Git
+submodule setup is no longer needed. The first configure needs network access.
+Every archive has a pinned revision and SHA-256 checksum in
+[`External/CMakeLists.txt`](External/CMakeLists.txt). Downloaded source folders
+are ignored by Git; build and download state stays in the selected build tree.
+
+| Dependency | Pinned version | Used by |
+| --- | --- | --- |
+| GLFW | 3.5.1 | Window/input integration |
+| GLM | 1.0.3 | Engine math |
+| GLI | `3542f8830178061e0661f5df1e89d36ba7d7b0ab` | Texture loading; current upstream commit |
+| spdlog | 1.17.0 | Logging |
+| VulkanMemoryAllocator | 3.4.0 | Vulkan allocation |
+| volk | 1.4.350 | Vulkan function loading |
+| SPIRV-Reflect | Vulkan SDK 1.4.363.0 | Shader reflection |
+| stb | `2c980bb59875b0d32144a71867fbdebb2f77cd20` | Image loading |
+| fastgltf | 0.9.1 | glTF loading |
+| simdjson | 4.6.11 | fastgltf's supported JSON parser version |
+| GoogleTest | 1.18.0 | Only with `BUILD_TESTING=ON` |
+| Dear ImGui | 1.92.9b-docking | Only with `ZEN_BUILD_RUNTIME_UI=ON` |
+| SPIRV-Cross | Vulkan SDK 1.4.363.0 | Only with `ZEN_BUILD_LEGACY=ON` |
+| TinyGLTF | 2.9.7 | Latest compatible C++ release; only with `ZEN_BUILD_LEGACY=ON` |
+
+The standalone `span` dependency was replaced by C++20 `std::span` behind the
+existing `zen::ArrayView` alias. Upstream examples, tests, unused SPIRV-Cross
+backends, and GoogleMock are disabled. Use `-DBUILD_TESTING=OFF` to configure
+without engine test targets or GoogleTest, and `-DZEN_BUILD_RUNTIME_UI=OFF` to
+omit Dear ImGui. The legacy renderer still requires its existing API migration.
+TinyGLTF 3 introduces a different C API, so the legacy loader uses the current
+2.x C++ release. GLI already matched its current upstream commit and was retained.
+
 Use an **x64 Developer PowerShell for Visual Studio** with CMake, Ninja and the
 Vulkan SDK installed. From the repository root:
 

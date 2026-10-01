@@ -49,6 +49,7 @@ struct RDGSamplerBinding
 {
     NameID glslName;
     RHISampler* pSampler{nullptr};
+    uint32_t arrayIndex{0};
 };
 
 enum class RDGBindingType
@@ -234,11 +235,12 @@ struct RDGPassDescBase
         textureViewStorage.push_back(textureViews);
     }
 
-    void BindSampler(NameID glslName, RHISampler* pSampler)
+    void BindSampler(NameID glslName, RHISampler* pSampler, uint32_t arrayIndex = 0)
     {
         RDGSamplerBinding& binding = samplerBindings.emplace_back();
         binding.glslName           = glslName;
         binding.pSampler           = pSampler;
+        binding.arrayIndex         = arrayIndex;
     }
 
     void BindSampledTexture(NameID glslName, RHISampler* pSampler, RHITextureView* pTextureView)

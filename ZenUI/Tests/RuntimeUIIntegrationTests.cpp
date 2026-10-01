@@ -7,6 +7,7 @@
 #include "Platform/GlfwWindow.h"
 #include "imgui_internal.h"
 #include <gtest/gtest.h>
+#include <cstdio>
 
 namespace zen::ui
 {
@@ -54,6 +55,140 @@ struct RuntimeDebugUITestAccess
     static uint64_t ReflectanceBudget(const RuntimeDebugUI& ui)
     {
         return ui.m_draft.reflectanceBudgetBytes;
+    }
+
+    static void SetModelFilter(RuntimeDebugUI& ui, const char* filter)
+    {
+        std::snprintf(ui.m_modelFilter, sizeof(ui.m_modelFilter), "%s", filter);
+    }
+
+    static bool MatchesModel(const RuntimeDebugUI& ui, const asset::GLTFModelCatalogEntry& entry)
+    {
+        return ui.MatchesModelSearch(entry);
+    }
+
+    static bool SelectModel(RuntimeDebugUI& ui, const std::string& path)
+    {
+        return ui.RequestModel(path);
+    }
+
+    static void SynchronizeModel(RuntimeDebugUI& ui)
+    {
+        ui.SynchronizeModelRevision();
+    }
+
+    static bool HasPendingScene(const RuntimeDebugUI& ui)
+    {
+        return ui.m_sceneDirty;
+    }
+
+    static bool HasPendingGI(const RuntimeDebugUI& ui)
+    {
+        return ui.m_dirty;
+    }
+
+    static float SceneIntensity(const RuntimeDebugUI& ui)
+    {
+        return ui.m_sceneDraft.environmentIntensity;
+    }
+
+    static const RuntimeSceneSettings& SceneSettings(const RuntimeDebugUI& ui)
+    {
+        return ui.m_sceneDraft;
+    }
+
+    static ImRect DrawLightCount(RuntimeDebugUI& ui, const char* buttonLabel)
+    {
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+
+        ImGui::SetNextWindowSize(ImVec2(640, 480));
+
+        ImGui::Begin("Light count test");
+
+        ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+        window->StateStorage.SetBool(ImGui::GetID("Camera"), false);
+
+        window->StateStorage.SetBool(ImGui::GetID("Environment"), false);
+
+        window->StateStorage.SetBool(ImGui::GetID("Lights"), true);
+
+        window->StateStorage.SetBool(ImGui::GetID("Light animation"), false);
+
+        ImGui::PushID("Light count");
+
+        const ImGuiID button = ImGui::GetID(buttonLabel);
+
+        ImGui::PopID();
+
+        // ImGui updates this item's navigation rectangle even when it is disabled.
+        ImGui::SetNavWindow(window);
+
+        ImGui::SetNavID(button, ImGuiNavLayer_Main, ImGui::GetCurrentFocusScope(), ImRect());
+
+        ui.BuildSceneSettings();
+
+        const ImRect rectangle =
+            ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
+
+        ImGui::End();
+
+        ImGui::Render();
+
+        return rectangle;
+    }
+
+    static void ClickLightCount(RuntimeDebugUI& ui, const char* buttonLabel)
+    {
+        const ImRect rectangle = DrawLightCount(ui, buttonLabel);
+
+        const ImVec2 center = rectangle.GetCenter();
+
+        ImGuiIO& io = ImGui::GetIO();
+
+        io.AddMousePosEvent(center.x, center.y);
+
+        DrawLightCount(ui, buttonLabel);
+
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+
+        DrawLightCount(ui, buttonLabel);
+
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+
+        DrawLightCount(ui, buttonLabel);
+    }
+
+    static std::string CaptureModelSelector(RuntimeDebugUI& ui, bool openSelection = false)
+    {
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowSize(ImVec2(640, 480));
+
+        ImGui::Begin("Model selector test");
+
+        if (openSelection)
+        {
+            const ImGuiID combo = ImGui::GetID("##Model selection");
+
+            ImGui::OpenPopupEx(ImHashStr("##ComboPopup", 0, combo), ImGuiPopupFlags_None);
+        }
+
+        ImGui::LogToBuffer();
+
+        ui.BuildModelSelector();
+
+        const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
+
+        ImGui::LogFinish();
+
+        ImGui::End();
+
+        ImGui::Render();
+
+        return text;
     }
 };
 
@@ -131,6 +266,400 @@ public:
         return true;
     }
 };
+
+class ModelSceneControls : public SceneControls
+{
+public:
+    RuntimeModelState models;
+
+    uint32_t requested{0};
+
+    bool acceptRequest{true};
+
+    const RuntimeModelState& GetRuntimeModelState() const override
+    {
+        return models;
+    }
+
+    bool RequestRuntimeModel(const std::string& path) override
+    {
+        ++requested;
+
+        if (acceptRequest)
+        {
+            models.pendingPath = path;
+
+            models.error.clear();
+        }
+        else
+        {
+            models.error = "The selected model could not be queued.";
+        }
+
+        return acceptRequest;
+    }
+};
+
+TEST(RuntimeSceneControls, ModelSelectionDefaultsKeepExistingHostsCompatible)
+{
+    SceneControls controls;
+
+    EXPECT_TRUE(controls.GetRuntimeModelState().models.empty());
+
+    EXPECT_TRUE(controls.GetRuntimeModelState().pendingPath.empty());
+
+    EXPECT_FALSE(controls.RequestRuntimeModel("model.gltf"));
+
+    controls.RefreshRuntimeModels();
+
+    EXPECT_EQ(controls.GetRuntimeModelState().revision, 0u);
+}
+
+TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStaleSceneDrafts)
+{
+    platform::GlfwWindowImpl window({"Model selection tests", false, 64, 64});
+
+    glfwHideWindow(window.GetHandle());
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2);
+
+    RHIViewport* viewport = device.CreateViewport(&window, 64, 64, false);
+
+    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
+
+    device.Init(viewport);
+
+    ImGuiContext* context = ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    io.DisplaySize = ImVec2(640, 480);
+
+    io.DeltaTime = 1.0f / 60.0f;
+
+    io.IniFilename = nullptr;
+
+    unsigned char* pixels = nullptr;
+
+    int width = 0;
+
+    int height = 0;
+
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+    {
+        ModelSceneControls scene;
+
+        scene.models.basePath = "D:/Assets";
+
+        scene.models.models = {{"Box/glTF/Box.gltf", "D:/Assets/Box/glTF/Box.gltf"},
+                               {"Box/glTF-Binary/Box.glb", "D:/Assets/Box/glTF-Binary/Box.glb"}};
+
+        scene.models.currentPath = scene.models.models[0].path;
+
+        RuntimeDebugUI ui(device, window, scene);
+
+        RuntimeDebugUITestAccess::Reload(ui);
+
+        RuntimeDebugUITestAccess::SetModelFilter(ui, "BINARY/BOX.GLB");
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::MatchesModel(ui, scene.models.models[0]));
+
+        EXPECT_TRUE(RuntimeDebugUITestAccess::MatchesModel(ui, scene.models.models[1]));
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::SelectModel(ui, scene.models.currentPath));
+
+        EXPECT_EQ(scene.requested, 0u);
+
+        EXPECT_TRUE(RuntimeDebugUITestAccess::SelectModel(ui, scene.models.models[1].path));
+
+        EXPECT_EQ(scene.requested, 1u);
+
+        EXPECT_EQ(scene.models.pendingPath, scene.models.models[1].path);
+
+        EXPECT_EQ(scene.models.currentPath, scene.models.models[0].path);
+
+        EXPECT_EQ(scene.applied, 0u);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::SelectModel(ui, "D:/Assets/Other.gltf"));
+
+        EXPECT_EQ(scene.requested, 1u);
+
+        std::string text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
+
+        EXPECT_NE(text.find("Loading:"), std::string::npos);
+
+        EXPECT_NE(text.find("Box/glTF-Binary/Box.glb"), std::string::npos);
+
+        scene.models.pendingPath.clear();
+
+        scene.acceptRequest = false;
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::SelectModel(ui, scene.models.models[1].path));
+
+        text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
+
+        EXPECT_NE(text.find("Model load failed:"), std::string::npos);
+
+        EXPECT_NE(text.find("could not be queued"), std::string::npos);
+
+        RuntimeSceneSettings edit = scene.settings;
+
+        edit.environmentIntensity = 9;
+
+        RuntimeDebugUITestAccess::SetScene(ui, edit);
+
+        rc::VoxelGIRuntimeSettings giEdit = device.GetRendererServer()->GetVoxelGISettings();
+
+        giEdit.cone.indirectIntensity = 8;
+
+        RuntimeDebugUITestAccess::SetGI(ui, giEdit);
+
+        RuntimeDebugUITestAccess::SynchronizeModel(ui);
+
+        EXPECT_TRUE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        EXPECT_TRUE(RuntimeDebugUITestAccess::HasPendingGI(ui));
+
+        // Only a successful scene replacement advances the application revision.
+        scene.models.currentPath = scene.models.models[1].path;
+
+        scene.models.error.clear();
+
+        scene.settings.environmentIntensity = 3;
+
+        ++scene.models.revision;
+
+        RuntimeDebugUITestAccess::SynchronizeModel(ui);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::HasPendingGI(ui));
+
+        EXPECT_FLOAT_EQ(RuntimeDebugUITestAccess::SceneIntensity(ui), 3);
+
+        RuntimeDebugUITestAccess::Apply(ui, true);
+
+        EXPECT_EQ(scene.applied, 0u);
+
+        const std::string longLabel = std::string(300, 'x') + "/Model##With###Name.glb";
+
+        scene.models.models = {{longLabel, "D:/Assets/" + longLabel},
+                               {"Other/Model###Name.glb", "D:/Assets/Other/Model###Name.glb"}};
+
+        scene.models.currentPath = scene.models.models[0].path;
+
+        RuntimeDebugUITestAccess::SetModelFilter(ui, "");
+
+        text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
+
+        EXPECT_EQ(text.find("Current:"), std::string::npos);
+
+        EXPECT_EQ(text.find("Choose model"), std::string::npos);
+
+        EXPECT_NE(text.find("Model##With###Name"), std::string::npos);
+
+        EXPECT_NE(text.find(scene.models.currentPath), std::string::npos);
+
+        text = RuntimeDebugUITestAccess::CaptureModelSelector(ui, true);
+
+        EXPECT_NE(text.find("Model##With###Name.glb"), std::string::npos);
+
+        EXPECT_NE(text.find("Other/Model###Name.glb"), std::string::npos);
+
+        ImGui::ClosePopupToLevel(0, true);
+
+        scene.models.models.clear();
+
+        text = RuntimeDebugUITestAccess::CaptureModelSelector(ui);
+
+        EXPECT_NE(text.find("No .gltf or .glb models found"), std::string::npos);
+    }
+
+    ImGui::DestroyContext(context);
+
+    device.FlushRHIThread();
+
+    device.WaitForIdle();
+
+    rc::ShaderProgramManager::GetInstance().Destroy();
+
+    device.Destroy();
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+}
+
+TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits)
+{
+    platform::GlfwWindowImpl window({"Light count tests", false, 64, 64});
+
+    glfwHideWindow(window.GetHandle());
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(false);
+
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2);
+
+    RHIViewport* viewport = device.CreateViewport(&window, 64, 64, false);
+
+    rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(&device);
+
+    device.Init(viewport);
+
+    ImGuiContext* context = ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    io.DisplaySize = ImVec2(640, 480);
+
+    io.DeltaTime = 1.0f / 60.0f;
+
+    io.IniFilename = nullptr;
+
+    unsigned char* pixels = nullptr;
+
+    int width = 0;
+
+    int height = 0;
+
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+    {
+        SceneControls scene;
+
+        RuntimeDebugUI ui(device, window, scene);
+
+        RuntimeDebugUITestAccess::Reload(ui);
+
+        // Clicking the disabled lower bound must not underflow or create an edit.
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "-");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, 0u);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.applied, 0u);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "+");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, 1u);
+
+        EXPECT_TRUE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        EXPECT_TRUE(ValidateRuntimeSceneSettings(RuntimeDebugUITestAccess::SceneSettings(ui)));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.settings.lightCount, 1u);
+
+        EXPECT_EQ(scene.applied, 1u);
+
+        // Removing the animated light must also leave the animation configuration valid.
+        scene.settings.animationEnabled = true;
+
+        RuntimeDebugUITestAccess::Reload(ui);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "-");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, 0u);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::SceneSettings(ui).animationEnabled);
+
+        EXPECT_TRUE(ValidateRuntimeSceneSettings(RuntimeDebugUITestAccess::SceneSettings(ui)));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.settings.lightCount, 0u);
+
+        EXPECT_FALSE(scene.settings.animationEnabled);
+
+        EXPECT_EQ(scene.applied, 2u);
+
+        scene.settings.lightCount = rc::MaxSceneLights - 1;
+
+        RuntimeDebugUITestAccess::Reload(ui);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "+");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, rc::MaxSceneLights);
+
+        EXPECT_TRUE(ValidateRuntimeSceneSettings(RuntimeDebugUITestAccess::SceneSettings(ui)));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.settings.lightCount, rc::MaxSceneLights);
+
+        EXPECT_EQ(scene.applied, 3u);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "+");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, rc::MaxSceneLights);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.applied, 3u);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "-");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, rc::MaxSceneLights - 1);
+
+        EXPECT_TRUE(ValidateRuntimeSceneSettings(RuntimeDebugUITestAccess::SceneSettings(ui)));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.settings.lightCount, rc::MaxSceneLights - 1);
+
+        EXPECT_EQ(scene.applied, 4u);
+
+        // Read-only model lights occupy the same renderer capacity as editable lights.
+        scene.settings.lightCount = 0;
+
+        scene.settings.modelLightCount = rc::MaxSceneLights;
+
+        RuntimeDebugUITestAccess::Reload(ui);
+
+        RuntimeDebugUITestAccess::ClickLightCount(ui, "+");
+
+        EXPECT_EQ(RuntimeDebugUITestAccess::SceneSettings(ui).lightCount, 0u);
+
+        EXPECT_FALSE(RuntimeDebugUITestAccess::HasPendingScene(ui));
+
+        EXPECT_TRUE(ValidateRuntimeSceneSettings(RuntimeDebugUITestAccess::SceneSettings(ui)));
+
+        RuntimeDebugUITestAccess::Apply(ui);
+
+        EXPECT_EQ(scene.applied, 4u);
+
+        RuntimeSceneSettings overCapacity = scene.settings;
+
+        overCapacity.lightCount = 1;
+
+        EXPECT_FALSE(ValidateRuntimeSceneSettings(overCapacity));
+
+        overCapacity.lightCount = 0;
+
+        overCapacity.modelLightCount = rc::MaxSceneLights + 1;
+
+        EXPECT_FALSE(ValidateRuntimeSceneSettings(overCapacity));
+    }
+
+    ImGui::DestroyContext(context);
+
+    device.FlushRHIThread();
+
+    device.WaitForIdle();
+
+    rc::ShaderProgramManager::GetInstance().Destroy();
+
+    device.Destroy();
+
+    RHIOptions::GetInstance().SetRayTracingEnabled(true);
+}
 
 TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupportsManualMode)
 {

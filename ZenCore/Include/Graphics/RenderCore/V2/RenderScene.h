@@ -37,6 +37,8 @@ public:
 
     void Init();
 
+    // Explicit scene teardown while the device is live, after frame work has drained.
+    // Rebind renderers before retiring a scene. Repeated calls are harmless.
     void Destroy();
 
     void LoadSceneMaterials();
@@ -46,6 +48,22 @@ public:
     void PrepareBuffers();
 
     bool Update();
+
+    bool SetAnimation(uint32_t animation, bool loop = true);
+
+    bool AdvanceAnimation(float elapsedSeconds);
+
+    bool SetMaterialVariant(int32_t variant);
+
+    RHIBuffer* GetUVBuffer() const
+    {
+        return m_pUVBuffer;
+    }
+
+    const Mat4& GetInstanceTransform(uint32_t instance) const
+    {
+        return m_nodesData[instance].modelMatrix;
+    }
 
     // Call from the render/main thread between frame recordings. Setters stage one
     // generation; Update commits it before any raster, shadow, or voxel passes.
@@ -82,6 +100,11 @@ public:
     const HeapVector<asset::Vertex>& GetVertices() const
     {
         return m_vertices;
+    }
+
+    const HeapVector<uint32_t>& GetIndices() const
+    {
+        return m_indices;
     }
 
     uint64_t GetEnvironmentRevision() const
@@ -146,6 +169,11 @@ public:
         return m_sceneTextures;
     }
 
+    const HeapVector<RHISampler*>& GetSceneSamplers() const
+    {
+        return m_sceneSamplers;
+    }
+
     const std::vector<sg::Node*>& GetRenderableNodes() const
     {
         return m_pScene->GetRenderableNodes();
@@ -173,12 +201,31 @@ public:
     }
 
 private:
+    void UpdateAuthoredEnvironment();
+
     HeapVector<glm::uvec4> BuildTriangleRecords() const;
+
     bool ComputeGeometryBounds(sg::AABB& bounds, sg::AABB (&classBounds)[2]) const;
+
     HeapVector<asset::Vertex> m_vertices;
+
+    HeapVector<asset::Vertex> m_bindVertices;
+
+    HeapVector<Vec4> m_uvCoordinates;
+
+    RHIBuffer* m_pUVBuffer{nullptr};
+
+    int32_t m_animation{-1};
+
+    float m_animationTime{0.0f};
+
+    bool m_animationLoop{true};
+
+    HeapVector<LightId> m_importedLightIds;
     HeapVector<uint32_t> m_indices;
     HeapVector<uint32_t> m_instanceClasses;
     HeapVector<uint32_t> m_instanceEnabled;
+    HeapVector<uint32_t> m_authoredVisibility;
     uint32_t m_dirtyClasses{0};
     uint32_t m_dirtySurfaceClasses{0};
     bool m_materialsDirty{false};
@@ -205,6 +252,9 @@ private:
     SceneUniformData m_sceneUniformData{};
     SceneLights m_lights;
     uint64_t m_environmentRevision{1};
+    float m_authoredEnvironmentIntensity{1.0f};
+    float m_environmentIntensity{1.0f};
+    float m_sceneUnitScale{1.0f};
 
     RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};
@@ -215,6 +265,7 @@ private:
 
     // std::vector<TextureHandle> m_sceneTextures;
     HeapVector<RHITexture*> m_sceneTextures;
+    HeapVector<RHISampler*> m_sceneSamplers;
     std::string m_envTextureName;
     EnvTexture m_envTexture;
     RHITexture* m_pDefaultBaseColorTexture{nullptr};

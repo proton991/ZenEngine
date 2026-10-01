@@ -1,4 +1,5 @@
 #include "voxel_surface.glsl"
+#include "../Common/hdr_storage.glsl"
 #include "Graphics/Shared/VoxelGI.h"
 layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
        local_size_y=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_y_id=ZEN_VOXEL_VOLUME_GROUP_Y_ID,
@@ -18,7 +19,7 @@ void main()
     ivec3 p=ivec3(gl_GlobalInvocationID);
     if(any(greaterThanEqual(p,imageSize(voxelAlbedo)))) return;
     uint record=imageLoad(voxelOwner,p).r;
-    vec4 albedo=vec4(0), normalMetal=vec4(0), emission=vec4(0);
+    vec4 albedo=vec4(0), normalDiffuse=vec4(0), emission=vec4(0);
     if(record != 0xffffffffu && record < triangles.length())
     {
         Vertex a,b,c; vec3 pa,pb,pc;
@@ -28,7 +29,8 @@ void main()
         vec2 uv0=a.texcoord*w.x+b.texcoord*w.y+c.texcoord*w.z;
         vec2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
         Material material=materialData[triangles[record].z];
-        albedo=vec4(MaterialAlbedo(material,uv0,uv1,a.color*w.x+b.color*w.y+c.color*w.z).rgb,1);
+        PopulateVoxelBindingUV(record, w, material);
+        albedo=vec4(VoxelMaterialAlbedo(material,uv0,uv1,a.color*w.x+b.color*w.y+c.color*w.z).rgb,1);
         vec3 normal=mat3(nodesData[triangles[record].y].normalMatrix)*
             (a.normal.xyz*w.x+b.normal.xyz*w.y+c.normal.xyz*w.z);
         float normalLengthSquared=dot(normal,normal);
@@ -36,11 +38,10 @@ void main()
             normal=cross(pb-pa,pc-pa);
         normalLengthSquared=dot(normal,normal);
         normal=normalLengthSquared>1e-12 && !isinf(normalLengthSquared) ? normalize(normal) : vec3(0,1,0);
-        float metal=material.metallicFactor*MaterialTexture(material.mrTexIndex,
-            MaterialUV(material.mrTexSet,uv0,uv1)).b;
-        normalMetal=vec4(normal*0.5+0.5,clamp(metal,0,1));
-        emission=vec4(material.emissiveFactor.rgb*MaterialTexture(material.emissiveTexIndex,
-            MaterialUV(material.emissiveTexSet,uv0,uv1)).rgb,0);
+        // Alpha stores the workflow's diffuse weight, including dielectric/specular loss.
+        normalDiffuse=vec4(normal*0.5+0.5,VoxelDiffuseWeight(material,uv0,uv1));
+        emission=vec4(material.emissiveFactor.rgb*MaterialSlotTexture(material, 4, material.emissiveTexIndex,
+            MaterialTransformedUV(material, 4, material.emissiveTexSet,uv0,uv1)).rgb,0);
     }
     imageStore(voxelAlbedo,p,albedo);
 #ifdef AVERAGED_REFLECTANCE
@@ -54,7 +55,7 @@ void main()
     imageStore(voxelReflectance,p,mean);
 #endif
 #ifdef RADIANCE_INPUTS
-    imageStore(voxelNormal,p,normalMetal);
-    imageStore(voxelEmissive,p,emission);
+    imageStore(voxelNormal,p,normalDiffuse);
+    imageStore(voxelEmissive,p,vec4(ClampHDRStorage(emission.rgb),emission.a));
 #endif
 }

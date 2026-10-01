@@ -317,7 +317,7 @@ TEST(FastGLTFLoaderRegression, MissingTexturesPreserveMaterialFactorsIncludingEm
     sg::Scene scene;
     asset::FastGLTFLoader loader;
     loader.LoadFromFile(path.string(), &scene);
-    const sg::Scene::DefaultTextures defaults = sg::Scene::GetDefaultTextures();
+    const sg::Scene::DefaultTextures defaults = scene.GetDefaultTextures();
     for (const sg::Texture* texture :
          {defaults.pBaseColor, defaults.pMetallicRoughness, defaults.pEmissive})
     {
@@ -359,7 +359,7 @@ TEST(FastGLTFLoaderRegression, PreservesNormalMapScaleUVSetAndMirroredTangents)
     EXPECT_FLOAT_EQ(material->normalScale, 0.35f);
     EXPECT_FLOAT_EQ(material->data.surfaceProperties.z, 0.35f);
     EXPECT_EQ(material->data.normalTexSet, 1);
-    EXPECT_EQ(sizeof(sg::MaterialData), 96u);
+    EXPECT_EQ(sizeof(sg::MaterialData), 1248u);
 }
 
 TEST(FastGLTFLoaderRegression, PreservesRGBAndRGBAColorsAcrossComponentTypesAndStrides)
@@ -489,26 +489,31 @@ TEST(FastGLTFLoaderRegression, SeparatesLinearAndColorUsesOfSharedImagesAndTextu
     loader.LoadFromFile(path.string(), &scene);
     const std::vector<sg::Texture*> textures   = scene.GetComponents<sg::Texture>();
     const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
-    ASSERT_EQ(textures.size(), 8u); // Two authored textures, one linear copy, five defaults.
+    ASSERT_EQ(textures.size(), 7u); // One color interpretation, one linear, five defaults.
     ASSERT_EQ(materials.size(), 3u);
     for (uint32_t index = 0; index < textures.size(); ++index)
     {
         EXPECT_EQ(textures[index]->index, index);
     }
-    EXPECT_EQ(textures[0]->format, asset::Format::R8G8B8A8_SRGB);
-    EXPECT_EQ(textures[1]->format, asset::Format::R8G8B8A8_UNORM);
-    EXPECT_EQ(textures[2]->format, asset::Format::R8G8B8A8_UNORM);
-    EXPECT_EQ(textures[0]->bytesData, textures[1]->bytesData);
-    EXPECT_EQ(textures[0]->bytesData, textures[2]->bytesData);
+    const sg::Texture* color  = materials[0]->m_pBaseColorTexture;
+    const sg::Texture* linear = materials[0]->m_pMetallicRoughnessTexture;
+    ASSERT_NE(color, linear);
+    EXPECT_EQ(color->format, asset::Format::R8G8B8A8_SRGB);
+    EXPECT_EQ(linear->format, asset::Format::R8G8B8A8_UNORM);
+    EXPECT_EQ(color->bytesData, linear->bytesData);
     for (uint32_t materialIndex = 0; materialIndex < 2; ++materialIndex)
     {
         const sg::MaterialData& material = materials[materialIndex]->data;
-        const int linearIndex            = materialIndex == 0 ? 2 : 1;
-        EXPECT_EQ(material.bcTexIndex, 0);
-        EXPECT_EQ(material.mrTexIndex, linearIndex);
-        EXPECT_EQ(material.normalTexIndex, linearIndex);
-        EXPECT_EQ(material.occlusionTexIndex, linearIndex);
+        EXPECT_EQ(materials[materialIndex]->m_pBaseColorTexture, color);
+        EXPECT_EQ(materials[materialIndex]->m_pMetallicRoughnessTexture, linear);
+        EXPECT_EQ(materials[materialIndex]->m_pNormalTexture, linear);
+        EXPECT_EQ(materials[materialIndex]->m_pOcclusionTexture, linear);
+        EXPECT_EQ(material.bcTexIndex, color->index);
+        EXPECT_EQ(material.mrTexIndex, linear->index);
+        EXPECT_EQ(material.normalTexIndex, linear->index);
+        EXPECT_EQ(material.occlusionTexIndex, linear->index);
     }
-    EXPECT_EQ(materials[0]->data.emissiveTexIndex, 0);
-    EXPECT_EQ(materials.back()->data.bcTexIndex, 3);
+    EXPECT_EQ(materials[0]->data.emissiveTexIndex, color->index);
+    EXPECT_EQ(materials.back()->m_pBaseColorTexture, scene.GetDefaultTextures().pBaseColor);
+    EXPECT_EQ(materials.back()->data.bcTexIndex, scene.GetDefaultTextures().pBaseColor->index);
 }

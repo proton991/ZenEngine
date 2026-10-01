@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../Common/bindless_heap.glsl"
+#include "../Common/material.glsl"
 
 layout (location = 0) in vec4 inPos;
 layout (location = 1) in vec4 inNormal;
@@ -23,11 +24,14 @@ layout(set = 1, binding = 0) uniform uCameraData
 struct NodeData {
     mat4 modelMatrix;
     mat4 normalMatrix;
+    vec4 surfaceScale;
 };
 
 layout(std140, set = 1, binding = 1) readonly buffer NodeBuffer {
     NodeData nodesData[];
 };
+layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer { Material materialData[]; };
+layout(std430, set = 1, binding = 3) readonly buffer UVBuffer { vec4 uvValues[]; };
 
 layout (push_constant) uniform uNodePushConstant
 {
@@ -36,30 +40,42 @@ layout (push_constant) uniform uNodePushConstant
 };
 
 layout (location = 0) out vec3 outNormal;
-layout (location = 1) out vec2 outUV;
-layout (location = 2) out vec4 outColor;
-layout (location = 3) out vec3 outWorldPos;
-layout (location = 4) out vec2 outUV1;
-layout (location = 5) out vec4 outTangent;
+layout (location = 1) out vec4 outColor;
+layout (location = 2) out vec3 outWorldPos;
+layout (location = 3) out vec4 outTangent;
+layout (location = 4) flat out float outOrientation;
+layout (location = 5) out vec4 outPackedBindingUV[11];
+out gl_PerVertex { vec4 gl_Position; float gl_PointSize; };
 
 void main()
 {
     vec4 locPos = nodesData[uNodeIndex].modelMatrix * vec4(inPos.xyz, 1.0);
 
     gl_Position = uProjViewMatrix * vec4(locPos.xyz, 1.0);
-
-    outUV = inUV0;
-    outUV1 = inUV1;
+    gl_PointSize = 1.0;
 
     // Vertex position in world space
     outWorldPos = locPos.xyz / locPos.w;
 
     // Normal in world space
     mat3 mNormal = mat3(nodesData[uNodeIndex].normalMatrix);
-    outNormal = mNormal * normalize(inNormal.xyz);
+    outNormal = mNormal * inNormal.xyz;
     mat3 mModel = mat3(nodesData[uNodeIndex].modelMatrix);
     outTangent = vec4(mModel * inTangent.xyz, inTangent.w * sign(determinant(mModel)));
 
+    outOrientation = nodesData[uNodeIndex].surfaceScale.w;
+
     // Currently just vertex color
     outColor = inColor;
+    Material material = materialData[uMaterialIndex];
+    int sets[5] = int[5](material.bcTexSet, material.mrTexSet, material.normalTexSet,
+                        material.aoTexSet, material.emissiveTexSet);
+    uint stride = uint(uvValues[0].x);
+    for (int slot = 0; slot < 22; ++slot)
+    {
+        uint set = uint(max(slot < 5 ? sets[slot] : int(material.featureTextures[slot - 5].properties.y), 0));
+        vec2 coordinates = stride > set ? uvValues[1 + uint(gl_VertexIndex) * stride + set].xy : vec2(0.0);
+        if ((slot & 1) == 0) outPackedBindingUV[slot / 2].xy = coordinates;
+        else outPackedBindingUV[slot / 2].zw = coordinates;
+    }
 }

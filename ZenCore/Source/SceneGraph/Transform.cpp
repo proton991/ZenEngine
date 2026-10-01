@@ -11,16 +11,15 @@ Mat4 Transform::GetWorldMatrix()
 
 void Transform::UpdateWorldMatrix()
 {
-    m_worldMatrix = GetLocalMatrix();
+    m_worldMatrix = m_prefixMatrix * GetLocalMatrix();
     Node* parent  = m_node.GetParent();
     while (parent)
     {
         if (parent->HasComponent<Transform>())
         {
             Transform* pTransform = parent->GetComponent<Transform>();
-            m_worldMatrix         = pTransform->GetWorldMatrix() * m_worldMatrix;
-            // The parent's world matrix already includes every ancestor.
-            break;
+            m_worldMatrix =
+                pTransform->m_prefixMatrix * pTransform->GetLocalMatrix() * m_worldMatrix;
         }
         // Get parent node
         parent = parent->GetParent();

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <tcb/span.hpp>
+#include <span>
 #include <type_traits>
 namespace zen
 {
-template <typename T> using ArrayView = tcb::span<T, tcb::dynamic_extent>;
+template <typename T> using ArrayView = std::span<T>;
 
 template <typename T> using ArrayViewElement =
     std::conditional_t<std::is_const_v<std::remove_reference_t<T>>,

@@ -1,4 +1,5 @@
 #include "../Common/bindless_heap.glsl"
+#include "../Common/linear_to_srgb.glsl"
 
 layout (set = 1, binding = 0) uniform sampler2D positionMap;
 layout (set = 1, binding = 1) uniform sampler2D normalMap;
@@ -61,8 +62,9 @@ vec3 SamplePrefiltered(vec3 R, float roughness) {
 void main() {
 #define SURFACE_SAMPLE(map) texture(map,inUV)
 	float depth = SURFACE_SAMPLE(depthMap).r;
-	if (depth >= 0.9999) discard;
-
+	// Authored near/far ranges can place valid geometry arbitrarily close to
+	// depth one. Only the attachment's exact clear depth identifies background.
+	if (depth >= 1.0) discard;
 	vec3 worldPos = SURFACE_SAMPLE(positionMap).rgb;
 	vec3 N = normalize(SURFACE_SAMPLE(normalMap).rgb);
 #if defined(VOXEL_GI)
@@ -77,7 +79,7 @@ void main() {
 	// Preserve scene depth for forward-rendered light markers.
 	gl_FragDepth = depth;
 
-	vec2 mr = SURFACE_SAMPLE(metallicRoughnessMap).rg;
+	vec4 mr = SURFACE_SAMPLE(metallicRoughnessMap);
 	float metallic = clamp(mr.r, 0.0, 1.0);
 	float roughness = clamp(mr.g, 0.04, 1.0);
 
@@ -85,7 +87,8 @@ void main() {
 	vec3 emissive = emissiveOccl.rgb;
 	float ao = clamp(emissiveOccl.a, 0.0, 1.0);
 
-	vec3 V = normalize(sceneUbo.viewPosition.xyz - worldPos);
+	vec3 V = sceneUbo.viewPosition.w < 0.5 ? normalize(sceneUbo.lightInfo.yzw) :
+        normalize(sceneUbo.viewPosition.xyz - worldPos);
 	float NdotV = max(dot(N, V), 0.001);
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
@@ -135,7 +138,9 @@ void main() {
 	vec3 specularIBL = prefilteredColor * (F * brdf.x + brdf.y);
 	vec3 ambient = (kD * diffuseIBL * ao) + (specularIBL * ao);
 
-	vec3 color = Lo + ambient + emissive;
+	bool unlit = mr.b > 0.5;
+    if (unlit) { Lo=vec3(0); ambient=vec3(0); emissive=albedo; }
+    vec3 color = Lo + ambient + emissive;
 #ifdef LIGHTING_CAPTURE
     uvec2 pixel=uvec2(gl_FragCoord.xy);
     if(all(lessThan(pixel,capture.extent)))
@@ -157,8 +162,8 @@ void main() {
 #endif
 
 	// simple Reinhard tone mapping
-	color = color / (color + vec3(1.0));
-	color = pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
+	if (!unlit) color = color / (color + vec3(1.0));
+	color = LinearToSRGB(color);
 
 	outFragColor = vec4(color, 1.0);
 }

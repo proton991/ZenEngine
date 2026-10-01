@@ -959,6 +959,13 @@ bool RHICommandListExecutor::IsBindlessResourceRegistered(RHIBindlessHandle hand
     return GetRHIThread().Invoke(&DynamicRHI::IsBindlessResourceRegistered, m_backend, handle);
 }
 
+bool RHICommandListExecutor::ResetBindlessResources()
+{
+    const bool reset = GetRHIThread().Invoke(&DynamicRHI::ResetBindlessResources, m_backend);
+
+    return reset;
+}
+
 void RHICommandListExecutor::CollectRetiredBindlessResources()
 {
     GetRHIThread().Invoke(&RHICommandListExecutor::RefreshGPUProgress, this);

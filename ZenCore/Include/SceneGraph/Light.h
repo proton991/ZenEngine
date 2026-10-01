@@ -1,5 +1,6 @@
 #pragma once
 #include "Component.h"
+#include "Math/Math.h"
 
 
 
@@ -7,9 +8,14 @@ namespace zen::sg
 {
 struct LightProperties
 {
-    Vec3 position;
-    Vec4 color;
-    Vec4 direction;
+    Vec3 position{0.0f};
+    Vec4 color{1.0f};
+    Vec4 direction{0.0f, 0.0f, -1.0f, 0.0f};
+    float intensity{1.0f};
+    // Zero means unlimited range, as in a glTF light with no range property.
+    float range{0.0f};
+    float innerConeAngle{0.0f};
+    float outerConeAngle{glm::quarter_pi<float>()};
 };
 enum LightType
 {
@@ -23,6 +29,10 @@ enum LightType
 class Light : public Component
 {
 public:
+    uint32_t sourceIndex{UINT32_MAX};
+
+    float unitScale{1.0f};
+
     Light(std::string name) : Component(std::move(name)) {}
 
     TypeId GetTypeId() const override
@@ -61,13 +71,13 @@ public:
         return m_properties;
     }
 
-    const LightType GetType() const
+    LightType GetType() const
     {
         return m_type;
     }
 
 private:
     LightProperties m_properties;
-    LightType m_type;
+    LightType m_type{LightType::Point};
 };
 } // namespace zen::sg

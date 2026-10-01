@@ -1,10 +1,21 @@
 #pragma once
 
 #include "Graphics/RenderCore/V2/SceneLighting.h"
+#include "AssetLib/GLTFModelCatalog.h"
 #include <array>
 
 namespace zen::ui
 {
+struct RuntimeModelState
+{
+    std::string basePath;
+    HeapVector<asset::GLTFModelCatalogEntry> models;
+    std::string currentPath;
+    std::string pendingPath;
+    std::string error;
+    uint64_t revision{0};
+};
+
 struct RuntimeSceneSettings
 {
     Vec3 cameraPosition{0.0f};
@@ -15,6 +26,8 @@ struct RuntimeSceneSettings
     bool markersEnabled{false};
     float markerSize{0.02f};
     uint32_t lightCount{0};
+    bool boundsPresetLights{false};
+    uint32_t modelLightCount{0};
     std::array<rc::SceneLight, rc::MaxSceneLights> lights{};
     bool animationEnabled{false};
     uint32_t animatedLight{0};
@@ -40,5 +53,11 @@ public:
 
     virtual bool ApplyRuntimeSceneSettings(const RuntimeSceneSettings& previous,
                                            const RuntimeSceneSettings& next) = 0;
+
+    virtual const RuntimeModelState& GetRuntimeModelState() const;
+
+    virtual void RefreshRuntimeModels();
+
+    virtual bool RequestRuntimeModel(const std::string& path);
 };
 } // namespace zen::ui

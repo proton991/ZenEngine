@@ -267,6 +267,8 @@ public:
     bool IsBindlessResourceRegistered(RHIBindlessHandle handle) override;
     void CollectRetiredBindlessResources() override;
 
+    bool ResetBindlessResources() override;
+
     VulkanUniformBufferAllocator* GetUniformBufferAllocator() const
     {
         return m_pUniformBufferAllocator;

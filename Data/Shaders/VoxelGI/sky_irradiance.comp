@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "../Common/bindless_heap.glsl"
+#include "../Common/hdr_storage.glsl"
 #include "gi_common.glsl"
 #include "Graphics/Shared/VoxelGI.h"
 layout(local_size_x=ZEN_VOXEL_VOLUME_GROUP_SIZE, local_size_x_id=ZEN_VOXEL_VOLUME_GROUP_X_ID,
@@ -30,5 +31,5 @@ void main()
         }
         irradiance*=3.14159265359*sceneUbo.environment.x;
     }
-    imageStore(skyIrradiance,p,vec4(irradiance,0));
+    imageStore(skyIrradiance,p,vec4(ClampHDRStorage(irradiance),0));
 }

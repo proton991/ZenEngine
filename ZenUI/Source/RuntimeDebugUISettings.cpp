@@ -90,6 +90,8 @@ void RuntimeDebugUI::MarkSceneEdit(bool changed)
 
 void RuntimeDebugUI::ReloadSettings()
 {
+    m_modelRevision = m_sceneControls.GetRuntimeModelState().revision;
+
     m_draft = m_device.GetRendererServer()->GetVoxelGISettings();
 
     m_sceneDraft = m_sceneControls.GetRuntimeSceneSettings();

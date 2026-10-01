@@ -33,6 +33,7 @@ struct NodeData
 {
     mat4 modelMatrix;
     mat4 normalMatrix;
+    vec4 surfaceScale;
 };
 
 layout(std140, set = 3, binding = 2) readonly buffer NodeBuffer

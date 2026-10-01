@@ -271,7 +271,9 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
         {
             RHIGfxPipelineStates states;
             states.rasterizationState.cullMode = RHIPolygonCullMode::eDisabled;
-            states.depthStencilState           = RHIGfxPipelineDepthStencilState::Create(
+            // The calibration projection keeps +Y for direct XY cell correspondence.
+            states.rasterizationState.frontFace = RHIPolygonFrontFace::eClockWise;
+            states.depthStencilState            = RHIGfxPipelineDepthStencilState::Create(
                 false, false, RHIDepthCompareOperator::eNever);
             states.colorBlendState.AddAttachments(5);
             rc::RDGGraphicsPassDesc draw;
@@ -290,6 +292,7 @@ bool SceneRendererDemo::CaptureVoxelGBuffer(const std::string& path)
                                 "calibration_emission");
             draw.BindStorageBuffer("NodeBuffer", m_renderScene->GetNodesDataSSBO());
             draw.BindStorageBuffer("MaterialBuffer", m_renderScene->GetMaterialsDataSSBO());
+            draw.BindStorageBuffer("UVBuffer", m_renderScene->GetUVBuffer());
             rc::BindSceneTextureArray(draw, sampler, m_renderScene->GetSceneTextures());
             draw.BindValue("uCameraData", camera);
             draw.BindVertexBuffer(m_renderScene->GetVertexBuffer());

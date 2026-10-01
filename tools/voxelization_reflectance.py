@@ -56,11 +56,11 @@ def compare_reflectance(prefix, metadata, triangles):
             if not expanded:
                 continue
             value = material.surface(record,[x+.5 for x in cell]) if material else dict(
-                visible=True,alpha_ambiguous=False,color=[.2,.6,.8,1],metal=.25)
+                visible=True,alpha_ambiguous=False,color=[.2,.6,.8,1],diffuse_weight=.72)
             if value['alpha_ambiguous']:
                 ambiguous.add(cell)
             if value['visible'] and clip_cell(triangle,cell):
-                rho = [min(1,max(0,c*(1-min(1,max(0,value['metal'])))*.96)) for c in value['color'][:3]]
+                rho = [min(1,max(0,c*value['diffuse_weight'])) for c in value['color'][:3]]
                 contributions.setdefault(cell,[]).append(rho)
     data = Path(str(prefix)+'.reflectance.bin').read_bytes()
     owner_data = Path(str(prefix)+'.voxels.bin').read_bytes()

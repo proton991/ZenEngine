@@ -25,6 +25,7 @@ struct NodeData
 {
     mat4 modelMatrix;
     mat4 normalMatrix;
+    vec4 surfaceScale;
 };
 
 layout (set = 0, binding = 1) uniform uNodeData

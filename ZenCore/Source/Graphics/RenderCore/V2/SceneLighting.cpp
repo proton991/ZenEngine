@@ -18,11 +18,14 @@ bool RenderScene::SetEnvironmentLighting(float intensity,
                                          bool enabled,
                                          bool visible)
 {
-    const bool valid =
-        std::isfinite(intensity) && intensity >= 0.0f && std::isfinite(rotationDegrees);
+    const bool valid = std::isfinite(intensity) && intensity >= 0.0f &&
+        std::isfinite(rotationDegrees) && std::isfinite(intensity * m_authoredEnvironmentIntensity);
     if (valid)
     {
-        const Vec4 environment(intensity, glm::radians(rotationDegrees), enabled ? 1.0f : 0.0f,
+        m_environmentIntensity = intensity;
+
+        const Vec4 environment(intensity * m_authoredEnvironmentIntensity,
+                               glm::radians(rotationDegrees), enabled ? 1.0f : 0.0f,
                                visible ? 1.0f : 0.0f);
         // Background visibility does not change the irradiance seen by scene surfaces.
         if (Vec3(environment) != Vec3(m_sceneUniformData.environment))
@@ -41,10 +44,10 @@ bool SceneLights::Validate(const SceneLight& light)
         FiniteVector(light.direction) && FiniteVector(light.color) &&
         glm::all(glm::greaterThanEqual(light.color, Vec3(0.0f))) &&
         std::isfinite(light.intensity) && light.intensity >= 0.0f && std::isfinite(light.range) &&
-        light.range > 0.0f && glm::dot(direction, direction) > 1e-12 &&
+        light.range >= 0.0f && glm::dot(direction, direction) > 1e-12 &&
         std::isfinite(light.innerAngleDegrees) && std::isfinite(light.outerAngleDegrees) &&
         light.innerAngleDegrees >= 0.0f && light.innerAngleDegrees < light.outerAngleDegrees &&
-        light.outerAngleDegrees < 90.0f;
+        light.outerAngleDegrees <= 90.0f;
 }
 
 LightId SceneLights::Add(const SceneLight& light)
@@ -91,7 +94,8 @@ bool SceneLights::Update(LightId id, const SceneLight& light)
 bool SceneLights::Remove(LightId id)
 {
     bool removed = false;
-    for (auto entry = m_lights.begin(); entry != m_lights.end(); ++entry)
+    for (HeapVector<LightEntry>::iterator entry = m_lights.begin(); entry != m_lights.end();
+         ++entry)
     {
         if (entry->id == id)
         {
@@ -135,7 +139,7 @@ void SceneLights::WriteUniforms(SceneUniformData& uniforms) const
             gpu.colorIntensity = Vec4(light.color, light.intensity);
             gpu.coneShadow     = Vec4(std::cos(glm::radians(light.innerAngleDegrees)),
                                       std::cos(glm::radians(light.outerAngleDegrees)),
-                                      light.castsShadows ? 1.0f : 0.0f, 0.0f);
+                                  light.castsShadows ? 1.0f : 0.0f, 0.0f);
         }
     }
     for (uint32_t i = count; i < MaxSceneLights; ++i)
@@ -143,6 +147,74 @@ void SceneLights::WriteUniforms(SceneUniformData& uniforms) const
         uniforms.lights[i] = {};
     }
     uniforms.lightInfo = Vec4(static_cast<float>(count), 0.0f, 0.0f, 0.0f);
+}
+
+HeapVector<SceneLight> BuildSceneLights(const sg::Scene& scene)
+{
+    HeapVector<SceneLight> lights;
+    const std::vector<sg::Light*> imported = scene.GetComponents<sg::Light>();
+    if (!imported.empty())
+    {
+        HashMap<const sg::Light*, bool> visibility;
+
+        for (const UniquePtr<sg::Node>& node : scene.GetNodes())
+        {
+            if (node->HasComponent<sg::Light>())
+            {
+                visibility[node->GetComponent<sg::Light>()] = node->IsVisible();
+            }
+        }
+
+        for (const sg::Light* source : imported)
+        {
+            const sg::LightProperties& properties = source->GetProperties();
+
+            SceneLight light;
+
+            light.type              = static_cast<SceneLightType>(source->GetType());
+            light.position          = properties.position;
+            light.direction         = Vec3(properties.direction);
+            light.color             = Vec3(properties.color);
+            light.intensity         = properties.intensity;
+            light.range             = properties.range;
+            light.innerAngleDegrees = glm::degrees(properties.innerConeAngle);
+            light.outerAngleDegrees = glm::degrees(properties.outerConeAngle);
+
+            const HashMap<const sg::Light*, bool>::const_iterator owner = visibility.find(source);
+
+            light.enabled = owner == visibility.end() || owner->second;
+
+            lights.push_back(light);
+        }
+    }
+    else
+    {
+        const sg::AABB& bounds = scene.GetAABB();
+        const Vec3 min         = bounds.GetMin();
+        const Vec3 max         = bounds.GetMax();
+        if (FiniteVector(min) && FiniteVector(max) && glm::all(glm::lessThanEqual(min, max)))
+        {
+            const Vec3 center  = min * 0.5f + max * 0.5f;
+            const float span   = std::max(bounds.GetMaxExtent(), 0.01f);
+            const float margin = std::max(span * 0.15f, 0.01f);
+            for (uint32_t face = 0; face < 6; ++face)
+            {
+                const uint32_t axis = face / 2;
+                const bool positive = (face & 1) != 0;
+                SceneLight light;
+                light.position = center;
+                // Outside the complete world AABB guarantees no geometry contains the light.
+                light.position[axis] = positive ? max[axis] + margin : min[axis] - margin;
+                light.direction      = glm::normalize(center - light.position);
+                const float distance = glm::distance(center, light.position);
+                light.intensity      = distance * distance * 3.0f;
+                light.range          = 0.0f;
+                lights.push_back(light);
+            }
+        }
+    }
+
+    return lights;
 }
 
 HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config)
@@ -165,8 +237,8 @@ HeapVector<ConfiguredLight> LoadSceneLights(const platform::ConfigLoader& config
             const std::string type = config.GetString(key + "type", "point");
             valid                  = type == "point" || type == "directional" || type == "spot";
             light.type             = type == "directional" ?
-                SceneLightType::eDirectional :
-                (type == "spot" ? SceneLightType::eSpot : SceneLightType::ePoint);
+                            SceneLightType::eDirectional :
+                            (type == "spot" ? SceneLightType::eSpot : SceneLightType::ePoint);
             valid &= config.ReadVec3(key + "position", light.position);
             valid &= config.ReadVec3(key + "direction", light.direction);
             valid &= config.ReadVec3(key + "color", light.color);

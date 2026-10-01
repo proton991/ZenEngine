@@ -4,7 +4,24 @@
 
 namespace zen::sg
 {
-Scene::DefaultTextures Scene::sDefaultTextures = {};
+void Scene::Clear()
+{
+    m_renderableNodes.clear();
+
+    m_components.clear();
+
+    m_nodes.clear();
+
+    m_assetData = SceneAssetData();
+
+    m_aabb = AABB();
+
+    m_localAABB = AABB();
+
+    m_pRootNode = nullptr;
+
+    m_defaultTextures = {};
+}
 
 void Scene::UpdateAABB()
 {
@@ -12,14 +29,80 @@ void Scene::UpdateAABB()
     m_aabb      = AABB();
     for (Node* pNode : m_renderableNodes)
     {
+        if (!pNode->IsVisible())
+        {
+            continue;
+        }
         const AABB& meshAABB = pNode->GetComponent<Mesh>()->GetAABB();
         m_localAABB.SetMin(meshAABB.GetMin());
         m_localAABB.SetMax(meshAABB.GetMax());
-        AABB worldAABB = meshAABB;
-        worldAABB.Transform(pNode->GetComponent<Transform>()->GetWorldMatrix());
+        AABB worldAABB   = meshAABB;
+        const Mat4 world = pNode->deformationInWorldSpace ? pNode->GetData().modelMatrix :
+            pNode->HasComponent<Transform>() ? pNode->GetComponent<Transform>()->GetWorldMatrix() :
+                                               pNode->GetData().modelMatrix;
+
+        worldAABB.Transform(world);
         m_aabb.SetMin(worldAABB.GetMin());
         m_aabb.SetMax(worldAABB.GetMax());
     }
+
+    if (glm::any(glm::greaterThan(m_aabb.GetMin(), m_aabb.GetMax())))
+    {
+        m_aabb = AABB(Vec3(0), Vec3(0));
+
+        m_localAABB = m_aabb;
+    }
+}
+
+bool Scene::SetMaterialVariant(int32_t variant)
+{
+    bool valid = variant >= -1 &&
+        (variant == -1 || static_cast<size_t>(variant) < m_assetData.materialVariants.size());
+
+    const std::vector<Material*> materials = GetComponents<Material>();
+
+    const std::vector<SubMesh*> primitives = GetComponents<SubMesh>();
+
+    HeapVector<Material*> selected(primitives.size(), nullptr);
+
+    for (size_t index = 0; valid && index < primitives.size(); ++index)
+    {
+        SubMesh* primitive = primitives[index];
+
+        selected[index] = primitive->GetDefaultMaterial();
+
+        for (const MaterialVariantPrimitiveAsset& mapping : m_assetData.variantPrimitives)
+        {
+            if (variant >= 0 && mapping.mesh == primitive->assetMesh &&
+                mapping.primitive == primitive->assetPrimitive &&
+                static_cast<size_t>(variant) < mapping.materials.size())
+            {
+                const int32_t material = mapping.materials[variant];
+
+                if (material >= 0)
+                {
+                    valid &= static_cast<size_t>(material) < materials.size();
+
+                    if (valid)
+                    {
+                        selected[index] = materials[material];
+                    }
+                }
+            }
+        }
+
+        valid &= selected[index] != nullptr;
+    }
+
+    if (valid)
+    {
+        for (size_t index = 0; index < primitives.size(); ++index)
+        {
+            primitives[index]->SetMaterial(selected[index]->index, selected[index]);
+        }
+    }
+
+    return valid;
 }
 
 std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& eyePos,
@@ -45,7 +128,8 @@ std::vector<std::pair<Node*, SubMesh*>> Scene::GetSortedSubMeshes(const Vec3& ey
             }
         }
     }
-    for (auto nodeIt = tmp.begin(); nodeIt != tmp.end(); nodeIt++)
+    for (std::multimap<float, std::pair<Node*, SubMesh*>>::const_iterator nodeIt = tmp.begin();
+         nodeIt != tmp.end(); ++nodeIt)
     {
         result.push_back(nodeIt->second);
     }
@@ -67,20 +151,20 @@ static Texture* CreateDefaultTexture(const char* name,
 
 void Scene::LoadDefaultTextures(uint32_t startIndex)
 {
-    sDefaultTextures.pBaseColor =
+    m_defaultTextures.pBaseColor =
         CreateDefaultTexture("DefaultBaseColor", startIndex, {255, 255, 255, 255});
-    sDefaultTextures.pMetallicRoughness =
+    m_defaultTextures.pMetallicRoughness =
         CreateDefaultTexture("DefaultMetallicRoughness", startIndex + 1, {255, 255, 255, 255});
-    sDefaultTextures.pNormal =
+    m_defaultTextures.pNormal =
         CreateDefaultTexture("DefaultNormal", startIndex + 2, {127, 127, 255, 255});
-    sDefaultTextures.pEmissive =
+    m_defaultTextures.pEmissive =
         CreateDefaultTexture("DefaultEmissive", startIndex + 3, {255, 255, 255, 255});
-    sDefaultTextures.pOcclusion =
+    m_defaultTextures.pOcclusion =
         CreateDefaultTexture("DefaultOcclusion", startIndex + 4, {255, 0, 0, 255});
 }
 
-Scene::DefaultTextures Scene::GetDefaultTextures()
+Scene::DefaultTextures Scene::GetDefaultTextures() const
 {
-    return sDefaultTextures;
+    return m_defaultTextures;
 }
 } // namespace zen::sg

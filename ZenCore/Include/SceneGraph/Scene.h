@@ -5,6 +5,7 @@
 #include "Sampler.h"
 #include "Transform.h"
 #include "Light.h"
+#include "SceneAsset.h"
 
 namespace zen::sg
 {
@@ -21,6 +22,23 @@ public:
     };
 
     Scene() = default;
+
+    void Clear();
+
+    const std::vector<UniquePtr<Node>>& GetNodes() const
+    {
+        return m_nodes;
+    }
+
+    SceneAssetData& GetAssetData()
+    {
+        return m_assetData;
+    }
+
+    const SceneAssetData& GetAssetData() const
+    {
+        return m_assetData;
+    }
 
     std::vector<Node*>& GetRenderableNodes()
     {
@@ -80,7 +98,8 @@ public:
 
     bool HasComponent(const std::type_index& type_info) const
     {
-        auto component = m_components.find(type_info);
+        const HashMap<TypeId, HeapVector<UniquePtr<Component>>>::const_iterator component =
+            m_components.find(type_info);
         return (component != m_components.end() && !component->second.empty());
     }
 
@@ -90,6 +109,9 @@ public:
     }
 
     void UpdateAABB();
+
+    // -1 restores the authored default material on every primitive.
+    bool SetMaterialVariant(int32_t variant);
 
     float GetSize() const
     {
@@ -111,9 +133,9 @@ public:
         return m_localAABB;
     }
 
-    static void LoadDefaultTextures(uint32_t startIndex);
+    void LoadDefaultTextures(uint32_t startIndex);
 
-    static DefaultTextures GetDefaultTextures();
+    DefaultTextures GetDefaultTextures() const;
 
     void SetName(std::string name)
     {
@@ -126,6 +148,8 @@ public:
     }
 
 private:
+    SceneAssetData m_assetData;
+
     std::string m_name;
 
     // aabb without transformation
@@ -141,6 +165,6 @@ private:
 
     HashMap<TypeId, HeapVector<UniquePtr<Component>>> m_components;
 
-    static DefaultTextures sDefaultTextures;
+    DefaultTextures m_defaultTextures{};
 };
 } // namespace zen::sg

@@ -5,12 +5,14 @@ target_link_libraries(ZenUI PUBLIC ZenCore zen_imgui)
 
 # Runtime panels are independent of any future editor model or workspace.
 add_library(ZenRuntimeUI STATIC Source/RuntimeDebugUI.cpp Source/RuntimeDebugUISettings.cpp
-  Source/RuntimeDebugUIScene.cpp Source/RuntimeSceneControls.cpp)
+  Source/RuntimeDebugUIScene.cpp Source/RuntimeDebugUIModels.cpp Source/RuntimeSceneControls.cpp)
 target_link_libraries(ZenRuntimeUI PUBLIC ZenUI)
 target_link_libraries(scene_renderer_demo ZenRuntimeUI)
 target_compile_definitions(scene_renderer_demo PRIVATE ZEN_RUNTIME_UI=1)
 target_sources(scene_renderer_demo PRIVATE
   ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp)
+target_sources(scene_renderer_demo PRIVATE
+  ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp)
 
 if (BUILD_TESTING)
   add_executable(UIDrawPacketTest Tests/UIDrawPacketTests.cpp)
@@ -22,4 +24,19 @@ if (BUILD_TESTING)
   target_link_libraries(RuntimeUIIntegrationTest PRIVATE ZenRuntimeUI gtest_main)
   add_test(NAME RuntimeUIIntegrationTest COMMAND RuntimeUIIntegrationTest)
   set_tests_properties(RuntimeUIIntegrationTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
+
+  add_executable(SceneModelSwitchTest
+    Tests/SceneModelSwitchTests.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemo.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoModels.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoUI.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoProfiling.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoVoxelCapture.cpp
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer/SceneRendererDemoLightingCapture.cpp)
+  target_include_directories(SceneModelSwitchTest PRIVATE
+    ${PROJECT_SOURCE_DIR}/ZenSamples/VulkanRHIDemo/SceneRenderer)
+  target_compile_definitions(SceneModelSwitchTest PRIVATE ZEN_RUNTIME_UI=1 ZEN_SCENE_MODEL_TEST=1)
+  target_link_libraries(SceneModelSwitchTest PRIVATE ZenRuntimeUI gtest_main)
+  add_test(NAME SceneModelSwitchTest COMMAND SceneModelSwitchTest)
+  set_tests_properties(SceneModelSwitchTest PROPERTIES LABELS "vulkan;integration" TIMEOUT 120)
 endif ()

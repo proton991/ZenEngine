@@ -2,6 +2,7 @@
 #include "Utils/UniquePtr.h"
 #include "Graphics/Types/Frustum.h"
 #include "SceneGraph/AABB.h"
+#include "SceneGraph/SceneAsset.h"
 #include <functional>
 
 namespace zen::sg
@@ -19,7 +20,9 @@ constexpr Vec3 DEFAULT_UP{0.0f, 1.0f, 0.0f};
 struct CameraUniformData
 {
     Mat4 projViewMatrix{1.0f};
+
     Mat4 proj{1.0f};
+
     Mat4 view{1.0f};
 };
 
@@ -71,25 +74,37 @@ public:
     }
 
     Mat4 GetViewMatrix() const;
+
     Mat4 GetProjectionMatrix() const;
+
     Vec3 GetPos() const
     {
         return m_position;
     }
+
     void SetSpeed(float speed)
     {
         m_speed = speed;
     }
 
     void Update(float deltaTime);
+
     void UpdateAspect(float aspect);
 
+    float GetAspect() const
+    {
+        return m_aspect;
+    }
+
     void SetFarPlane(float far);
+
     void SetNearPlane(float near);
 
     void SetOrthoRect(const Vec4& rect);
 
     void SetupOnAABB(const AABB& aabb);
+
+    void SetupFromSceneCamera(const SceneCamera& camera, float viewportAspect);
 
     void SetOnUpdate(std::function<void()> updateFunc)
     {
@@ -108,9 +123,15 @@ public:
 
 private:
     void SetProjectionMatrix();
+
+    void SetViewDirection(const Vec3& direction);
+
     void UpdateBaseVectors();
+
     void UpdatePosition(float velocity);
-    void UpdateViewFirstPerson();
+
+    void UpdateViewFirstPerson(float velocity);
+
     void UpdateViewOrbit(const Vec3& rotation);
     // camera attributes
     CameraType m_type;
@@ -135,6 +156,9 @@ private:
 
     float m_yaw{0.0f};
     float m_pitch{0.0f};
+
+    // Preserve authored camera roll without tilting the world-up yaw axis.
+    float m_roll{0.0f};
     /// The camera's minimum pitch angle.
     /// Looking straight downwards is the maximum pitch angle.
     float m_pitchMin{-89.0f};
@@ -144,10 +168,13 @@ private:
 
     float m_near{0.001f};
     float m_far{100.0f};
+    bool m_infiniteFar{false};
+    bool m_fixedAspect{false};
 
-    Vec4 m_orthoRect;
+    Vec4 m_orthoRect{-1, 1, -1, 1};
 
     Mat4 m_projMatrix{1.f};
+
     Mat4 m_viewMatrix{1.f};
 
     float m_speed{1.f};

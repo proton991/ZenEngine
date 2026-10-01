@@ -13,11 +13,15 @@ struct SceneMeshDraw
     uint32_t indexCount;
     uint32_t firstIndex;
     uint32_t firstTriangle{0};
+
+    sg::MeshTopology topology{sg::MeshTopology::Triangles};
 };
 
 // Commands and resource declarations must describe the same scene snapshot.
 inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
-                                                    uint32_t classMask = GI_ALL)
+                                                    uint32_t classMask  = GI_ALL,
+                                                    bool trianglesOnly  = true,
+                                                    bool opaqueCoverage = true)
 {
     HeapVector<SceneMeshDraw> draws;
     uint32_t firstTriangle = 0;
@@ -26,12 +30,27 @@ inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
     {
         for (sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            if ((scene.GetInstanceMask(node->GetRenderableIndex()) & classMask) != 0)
+            const sg::MaterialData& material =
+                mesh->GetMaterial()->index < scene.GetMaterialsData().size() ?
+                scene.GetMaterialsData()[mesh->GetMaterial()->index] :
+                mesh->GetMaterial()->data;
+
+            const bool solidCoverage =
+                material.surfaceProperties.y != static_cast<float>(sg::AlphaMode::Blend) &&
+                material.sheenColorTransmission.w == 0.0f;
+
+            if ((scene.GetInstanceMask(node->GetRenderableIndex()) & classMask) != 0 &&
+                (!trianglesOnly ||
+                 (mesh->topology == sg::MeshTopology::Triangles &&
+                  (!opaqueCoverage || solidCoverage))))
             {
                 draws.push_back({node->GetRenderableIndex(), mesh->GetMaterial()->index,
-                                 mesh->GetIndexCount(), mesh->GetFirstIndex(), firstTriangle});
+                                 mesh->GetIndexCount(), mesh->GetFirstIndex(), firstTriangle,
+                                 mesh->topology});
             }
-            firstTriangle += mesh->GetIndexCount() / 3;
+            firstTriangle += mesh->topology == sg::MeshTopology::Triangles && solidCoverage ?
+                mesh->GetIndexCount() / 3 :
+                0;
         }
     }
 
@@ -55,7 +74,8 @@ inline void ClearPassResourceBindings(RDGPassDescBase& desc)
 
 inline void BindSceneTextureArray(RDGPassDescBase& desc,
                                   RHISampler* pSampler,
-                                  const HeapVector<RHITexture*>& textures)
+                                  const HeapVector<RHITexture*>& textures,
+                                  const HeapVector<RHISampler*>& samplers = {})
 {
     HeapVector<RHITextureView*> views;
     views.reserve(textures.size());
@@ -65,9 +85,14 @@ inline void BindSceneTextureArray(RDGPassDescBase& desc,
         views.push_back(pTexture->GetDefaultView());
     }
 
-    // Material texture indices address heap slots directly; scene sampling uses sampler slot 0.
+    // Slot zero is the fallback; glTF sampler indices begin at slot one.
     desc.BindSeparateTexture("uTexture2DHeap", views);
     desc.BindSampler("uSamplerHeap", pSampler);
+
+    for (uint32_t index = 0; index < samplers.size(); ++index)
+    {
+        desc.BindSampler("uSamplerHeap", samplers[index], index + 1);
+    }
 }
 
 } // namespace zen::rc

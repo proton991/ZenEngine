@@ -770,6 +770,15 @@ bool VulkanRHI::IsBindlessResourceRegistered(RHIBindlessHandle handle)
         m_pBindlessDescriptorPoolManager->IsRegistered(handle);
 }
 
+bool VulkanRHI::ResetBindlessResources()
+{
+    const bool reset = !AreSubmissionsBlocked() &&
+        (m_pBindlessDescriptorPoolManager == nullptr ||
+         m_pBindlessDescriptorPoolManager->ResetRegistrations());
+
+    return reset;
+}
+
 void VulkanRHI::CollectRetiredBindlessResources()
 {
     if (m_pDevice != nullptr && !AreSubmissionsBlocked())

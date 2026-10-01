@@ -92,6 +92,13 @@ public:
             GetConfiguredModelPath("default_model");
     }
 
+    std::string GetGLTFModelBasePath() const
+    {
+        const std::string path = ResolveModelPath(GetString("model_base_path", ""));
+
+        return path;
+    }
+
     std::string GetGLTFModelPath(const std::string& name) const
     {
         std::string path = "";
@@ -210,14 +217,17 @@ public:
 private:
     static std::string ResolveModelPath(const std::string& path)
     {
-        std::string resolved = path;
-        const std::filesystem::path modelPath(path);
+        std::string resolved                  = path;
+        const std::filesystem::path modelPath = std::filesystem::u8path(path);
         if (!path.empty() && modelPath.is_relative())
         {
             // Config-relative paths also preserve the former repository/bin asset layout.
-            resolved = (std::filesystem::path(ZEN_CONFIG_PATH).parent_path() / modelPath)
-                           .lexically_normal()
-                           .generic_string();
+            const std::u8string relative =
+                (std::filesystem::u8path(ZEN_CONFIG_PATH).parent_path() / modelPath)
+                    .lexically_normal()
+                    .generic_u8string();
+
+            resolved.assign(reinterpret_cast<const char*>(relative.data()), relative.size());
         }
         return resolved;
     }

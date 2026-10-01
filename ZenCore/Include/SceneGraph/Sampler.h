@@ -32,6 +32,8 @@ public:
 
     TextureFilter minFilter{TextureFilter::MaxEnum};
     TextureFilter magFilter{TextureFilter::MaxEnum};
+    TextureFilter mipFilter{TextureFilter::Linear};
+    bool useMipmaps{true};
 
     SamplerAddressMode wrapS{SamplerAddressMode::MaxEnum};
     SamplerAddressMode wrapT{SamplerAddressMode::MaxEnum};

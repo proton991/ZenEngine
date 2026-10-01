@@ -8,6 +8,8 @@
 
 #include <gli/gli.hpp>
 #include <filesystem>
+#include <cmath>
+#include <algorithm>
 
 namespace zen::rc
 {
@@ -24,11 +26,118 @@ void TextureManager::Destroy()
     m_ownedTextures.clear();
 }
 
-void TextureManager::OwnTexture(RHITexture* texture)
+void TextureManager::OwnTexture(RHITexture*& texture)
 {
     if (texture != nullptr)
     {
-        m_ownedTextures.try_emplace(texture->GetStableId(), texture);
+        try
+        {
+            m_ownedTextures.try_emplace(texture->GetStableId(), texture);
+        }
+        catch (...)
+        {
+            m_pRenderDevice->DestroyTexture(texture);
+
+            texture = nullptr;
+
+            throw;
+        }
+    }
+}
+
+bool TextureManager::ReleaseSceneTexture(RHITexture* texture)
+{
+    bool released = false;
+
+    if (texture != nullptr)
+    {
+        bool shared = false;
+
+        for (const HashMap<NameID, std::array<RHITexture*, 2>>::value_type& cached : m_textureCache)
+        {
+            shared |= cached.second[0] == texture || cached.second[1] == texture;
+        }
+
+        const HashMap<uint64_t, RHITexture*>::iterator owned =
+            m_ownedTextures.find(texture->GetStableId());
+
+        if (!shared && owned != m_ownedTextures.end())
+        {
+            m_ownedTextures.erase(owned);
+
+            m_pRenderDevice->DestroyTexture(texture);
+
+            released = true;
+        }
+    }
+
+    return released;
+}
+
+void TextureManager::OwnEnvironmentTextures(EnvTexture* environment)
+{
+    try
+    {
+        OwnTexture(environment->pSkybox);
+
+        OwnTexture(environment->pIrradiance);
+
+        OwnTexture(environment->pPrefiltered);
+
+        OwnTexture(environment->pLutBRDF);
+    }
+    catch (...)
+    {
+        // Preprocessing publishes outputs before registration. If ownership allocation fails,
+        // retire any later outputs too, while keeping registered handles available to Destroy.
+        RHITexture** slots[] = {&environment->pSkybox, &environment->pIrradiance,
+                                &environment->pPrefiltered, &environment->pLutBRDF};
+
+        for (RHITexture** slot : slots)
+        {
+            RHITexture* texture = *slot;
+
+            if (texture != nullptr && !m_ownedTextures.contains(texture->GetStableId()))
+            {
+                m_pRenderDevice->DestroyTexture(texture);
+
+                for (RHITexture** alias : slots)
+                {
+                    if (*alias == texture)
+                    {
+                        *alias = nullptr;
+                    }
+                }
+            }
+        }
+
+        throw;
+    }
+}
+
+void TextureManager::ReleaseSceneEnvironment(EnvTexture* environment)
+{
+    if (environment != nullptr)
+    {
+        RendererServer* server = m_pRenderDevice->GetRendererServer();
+
+        if (server != nullptr && server->RequestSkyboxRenderer() != nullptr)
+        {
+            server->RequestSkyboxRenderer()->CancelEnvironmentPreprocessing(environment);
+        }
+
+        RHITexture* textures[] = {environment->pSkybox, environment->pIrradiance,
+                                  environment->pPrefiltered, environment->pLutBRDF};
+
+        for (size_t index = 0; index < std::size(textures); ++index)
+        {
+            if (std::find(textures, textures + index, textures[index]) == textures + index)
+            {
+                ReleaseSceneTexture(textures[index]);
+            }
+        }
+
+        *environment = {};
     }
 }
 
@@ -70,8 +179,8 @@ RHITexture* TextureManager::LoadTexture2D(const std::string& file, bool requireM
             texFormat.depth       = 1;
             texFormat.arrayLayers = 1;
             texFormat.mipmaps     = requireMipmap ?
-                RHITexture::CalculateTextureMipLevels(rawTextureInfo.width, rawTextureInfo.height) :
-                1;
+                    RHITexture::CalculateTextureMipLevels(rawTextureInfo.width, rawTextureInfo.height) :
+                    1;
 
             RHITexture* pTexture =
                 m_pRenderDevice->CreateTextureSampled(texFormat, {.copyUsage = true}, file);
@@ -115,18 +224,69 @@ void TextureManager::LoadSceneTextures(const sg::Scene* pScene,
             texFormat.height      = pSgTexture->height;
             texFormat.depth       = 1;
             texFormat.arrayLayers = 1;
-            texFormat.mipmaps =
-                RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height);
+            texFormat.mipmaps     = pSgTexture->mipBytes.empty() ?
+                    RHITexture::CalculateTextureMipLevels(pSgTexture->width, pSgTexture->height) :
+                    static_cast<uint32_t>(pSgTexture->mipBytes.size());
 
             RHITexture* pTexture = m_pRenderDevice->CreateTextureSampled(
                 texFormat, {.copyUsage = true}, pSgTexture->GetName());
             if (pTexture != nullptr)
             {
                 OwnTexture(pTexture);
-                UpdateTexture(pTexture, pSgTexture->bytesData.size(), pSgTexture->bytesData.data(),
-                              texFormat.mipmaps > 1);
+
+                try
+                {
+                    outTextures.push_back(pTexture);
+                }
+                catch (...)
+                {
+                    ReleaseSceneTexture(pTexture);
+
+                    throw;
+                }
+
+                if (pSgTexture->mipBytes.empty())
+                {
+                    UpdateTexture(pTexture, pSgTexture->bytesData.size(),
+                                  pSgTexture->bytesData.data(), texFormat.mipmaps > 1);
+                }
+                else
+                {
+                    HeapVector<RHIBufferTextureCopyRegion> regions;
+
+                    HeapVector<uint8_t> pixels;
+
+                    for (uint32_t level = 0; level < texFormat.mipmaps; ++level)
+                    {
+                        RHIBufferTextureCopyRegion region{};
+
+                        region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+                        region.textureSubresources.mipmap = level;
+
+                        region.textureSubresources.layerCount = 1;
+
+                        region.textureSize = {std::max(1u, texFormat.width >> level),
+                                              std::max(1u, texFormat.height >> level), 1};
+
+                        region.bufferOffset = static_cast<uint32_t>(pixels.size());
+
+                        regions.push_back(region);
+
+                        for (uint8_t value : pSgTexture->mipBytes[level])
+                        {
+                            pixels.push_back(value);
+                        }
+                    }
+
+                    UpdateTextureCube(pTexture, regions, static_cast<uint32_t>(pixels.size()),
+                                      pixels.data());
+                }
             }
-            outTextures.push_back(pTexture);
+            else
+            {
+                outTextures.push_back(nullptr);
+            }
         }
     }
 }
@@ -175,7 +335,9 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
 
             if (pTexture != nullptr)
             {
-                OwnTexture(pTexture);
+                pOutTexture->pSkybox = pTexture;
+
+                OwnTexture(pOutTexture->pSkybox);
                 HeapVector<RHIBufferTextureCopyRegion> regions;
                 regions.reserve(6 * mipLevels);
                 uint32_t offset = 0;
@@ -201,8 +363,6 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
                 UpdateTextureCube(pTexture, regions, texCube.size(),
                                   static_cast<const uint8_t*>(texCube.data()));
 
-                pOutTexture->pSkybox = pTexture;
-
                 if (RHIDebug* debug = m_pRenderDevice->GetRHIDebug())
                 {
                     GetRHIThread().Invoke(&RHIDebug::SetTextureDebugName, debug,
@@ -211,14 +371,211 @@ void TextureManager::LoadTextureEnv(const std::string& file, EnvTexture* pOutTex
 
                 SkyboxRenderer* pSkyboxRenderer =
                     m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer();
-                pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
+                try
+                {
+                    pSkyboxRenderer->PreprocessEnvTexture(pOutTexture);
+                }
+                catch (...)
+                {
+                    OwnEnvironmentTextures(pOutTexture);
 
-                OwnTexture(pOutTexture->pIrradiance);
-                OwnTexture(pOutTexture->pPrefiltered);
-                OwnTexture(pOutTexture->pLutBRDF);
+                    throw;
+                }
+
+                OwnEnvironmentTextures(pOutTexture);
             }
         }
     }
+}
+
+void TextureManager::UploadEnvironmentCube(uint32_t size,
+                                           uint32_t mipLevels,
+                                           const HeapVector<HeapVector<Vec4>>& faces,
+                                           const char* name,
+                                           RHITexture*& texture)
+{
+    TextureFormat format{};
+
+    format.format = DataFormat::eR32G32B32A32SFloat;
+
+    format.dimension = TextureDimension::eCube;
+
+    format.width = size;
+
+    format.height = size;
+
+    format.depth = 1;
+
+    format.arrayLayers = 6;
+
+    format.mipmaps = mipLevels;
+
+    texture = m_pRenderDevice->CreateTextureSampled(format, {.copyUsage = true}, name);
+
+    if (texture != nullptr)
+    {
+        OwnTexture(texture);
+
+        HeapVector<RHIBufferTextureCopyRegion> regions;
+
+        HeapVector<Vec4> pixels;
+
+        size_t total = 0;
+
+        for (const HeapVector<Vec4>& face : faces)
+        {
+            total += face.size();
+        }
+
+        pixels.reserve(total);
+
+        for (uint32_t level = 0; level < mipLevels; ++level)
+        {
+            for (uint32_t face = 0; face < 6; ++face)
+            {
+                RHIBufferTextureCopyRegion region{};
+
+                region.textureSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
+                region.textureSubresources.mipmap = level;
+
+                region.textureSubresources.baseArrayLayer = face;
+
+                region.textureSubresources.layerCount = 1;
+
+                const uint32_t extent = std::max(1u, size >> level);
+
+                region.textureSize = {extent, extent, 1};
+
+                region.bufferOffset = static_cast<uint32_t>(pixels.size() * sizeof(Vec4));
+
+                regions.push_back(region);
+
+                for (const Vec4& value : faces[level * 6 + face])
+                {
+                    pixels.push_back(value);
+                }
+            }
+        }
+
+        UpdateTextureCube(texture, regions, static_cast<uint32_t>(pixels.size() * sizeof(Vec4)),
+                          reinterpret_cast<const uint8_t*>(pixels.data()));
+    }
+}
+
+static Vec3 CubeDirection(uint32_t face, float u, float v)
+{
+    Vec3 direction(0);
+
+    switch (face)
+    {
+        case 0: direction = Vec3(1, -v, -u); break;
+        case 1: direction = Vec3(-1, -v, u); break;
+        case 2: direction = Vec3(u, 1, v); break;
+        case 3: direction = Vec3(u, -1, -v); break;
+        case 4: direction = Vec3(u, -v, 1); break;
+        case 5: direction = Vec3(-u, -v, -1); break;
+        default: break;
+    }
+
+    return glm::normalize(direction);
+}
+
+static Vec3 EvaluateIrradiance(const HeapVector<Vec3>& coefficients, const Vec3& direction)
+{
+    const float x = direction.x;
+
+    const float y = direction.y;
+
+    const float z = direction.z;
+
+    const float basis[] = {0.2820947918f,
+                           -0.4886025119f * y,
+                           0.4886025119f * z,
+                           -0.4886025119f * x,
+                           1.0925484306f * x * y,
+                           -1.0925484306f * y * z,
+                           0.3153915653f * (3 * z * z - 1),
+                           -1.0925484306f * x * z,
+                           0.5462742153f * (x * x - y * y)};
+
+    Vec3 value(0);
+
+    for (uint32_t index = 0; index < 9 && index < coefficients.size(); ++index)
+    {
+        value += coefficients[index] * basis[index];
+    }
+
+    // The shading texture stores irradiance divided by pi (unit Lambertian response).
+    return glm::max(value / glm::pi<float>(), Vec3(0));
+}
+
+void TextureManager::LoadSceneEnvironment(const sg::Scene* scene, EnvTexture* environment)
+{
+    const sg::SceneAssetData& data = scene->GetAssetData();
+
+    const sg::ImageBasedLightAsset& light = data.imageBasedLights[data.imageBasedLight];
+
+    environment->authoredCubemaps = true;
+
+    UploadEnvironmentCube(light.size, light.mipLevels, light.specularMipFaces,
+                          "gltf_environment_specular", environment->pSkybox);
+
+    environment->pPrefiltered = environment->pSkybox;
+
+    constexpr uint32_t irradianceSize = 64;
+
+    HeapVector<HeapVector<Vec4>> irradiance(6);
+
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        irradiance[face].reserve(irradianceSize * irradianceSize);
+
+        for (uint32_t y = 0; y < irradianceSize; ++y)
+        {
+            for (uint32_t x = 0; x < irradianceSize; ++x)
+            {
+                const Vec3 direction = CubeDirection(face, 2 * (x + 0.5f) / irradianceSize - 1,
+                                                     2 * (y + 0.5f) / irradianceSize - 1);
+
+                irradiance[face].push_back(
+                    Vec4(EvaluateIrradiance(light.irradianceCoefficients, direction), 1));
+            }
+        }
+    }
+
+    UploadEnvironmentCube(irradianceSize, 1, irradiance, "gltf_environment_irradiance",
+                          environment->pIrradiance);
+
+    RHISamplerCreateInfo sampler = RHISamplerCreateInfo::CreateLinearRepeat();
+
+    sampler.repeatU = RHISamplerRepeatMode::eClampToEdge;
+
+    sampler.repeatV = RHISamplerRepeatMode::eClampToEdge;
+
+    sampler.repeatW = RHISamplerRepeatMode::eClampToEdge;
+
+    sampler.maxLod = static_cast<float>(light.mipLevels - 1);
+
+    environment->pPrefilteredSampler = m_pRenderDevice->CreateSampler(sampler);
+
+    sampler.maxLod = 0;
+
+    environment->pIrradianceSampler = m_pRenderDevice->CreateSampler(sampler);
+
+    try
+    {
+        m_pRenderDevice->GetRendererServer()->RequestSkyboxRenderer()->PreprocessEnvTexture(
+            environment);
+    }
+    catch (...)
+    {
+        OwnEnvironmentTextures(environment);
+
+        throw;
+    }
+
+    OwnEnvironmentTextures(environment);
 }
 
 void TextureManager::UpdateTexture(RHITexture* texture,

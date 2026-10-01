@@ -188,6 +188,8 @@ TEST(ConfigLoaderTests, ResolvesRelativeModelRootFromEngineConfigDirectory)
               (modelRoot / "Sponza/glTF/Sponza.gltf").generic_string());
     EXPECT_EQ(config.GetSkyboxModelPath(), (modelRoot / "Box/glTF/Box.gltf").generic_string());
     EXPECT_EQ(config.GetGLTFModelPath("Box"), (modelRoot / "Box/glTF/Box.gltf").generic_string());
+
+    EXPECT_EQ(config.GetGLTFModelBasePath(), modelRoot.generic_string());
 }
 
 TEST(ConfigLoaderTests, ResolvesRelativeModelOverrideFromEngineConfigDirectory)
@@ -220,6 +222,8 @@ TEST(ConfigLoaderTests, KeepsMissingAndEmptyModelPathsEmpty)
     EXPECT_TRUE(config.GetDefaultGLTFModelPath().empty());
     EXPECT_TRUE(config.GetSkyboxModelPath().empty());
     EXPECT_TRUE(config.GetGLTFModelPath("Box").empty());
+
+    EXPECT_TRUE(config.GetGLTFModelBasePath().empty());
 }
 
 TEST(ConfigLoaderTests, ValidatesVoxelizerChoiceAgainstGPUCapabilities)

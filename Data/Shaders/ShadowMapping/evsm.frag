@@ -2,10 +2,17 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../Common/bindless_heap.glsl"
+#define MATERIAL_FRAGMENT
+layout(location=4) in vec4 inPackedBindingUV[11];
+#include "../Common/material_binding_uv.glsl"
+#include "../Common/material.glsl"
+#include "../Common/material_shadow.glsl"
 
 layout(location = 0) in FS_IN {
-    vec4 position;
-    vec2 texCoord;
+    vec4 color;
+    vec3 worldPosition;
+    vec3 lightVector;
+    flat vec4 modelScaleOrientation;
 } fs_in;
 
 layout(location = 0) out vec4 outColor;
@@ -17,25 +24,6 @@ layout (push_constant) uniform uPushConstant
     uint materialIndex;
     float alphaCutoff;
 } pc;
-
-struct Material
-{
-    int bcTexIndex;
-    int mrTexIndex;
-    int normalTexIndex;
-    int occlusionTexIndex;
-    int emissiveTexIndex;
-    int bcTexSet;
-    int mrTexSet;
-    int normalTexSet;
-    int aoTexSet;
-    int emissiveTexSet;
-    float metallicFactor;
-    float roughnessFactor;
-    vec4 baseColorFactor;
-    vec4 emissiveFactor;
-    vec4 surfaceProperties;
-};
 
 layout(std140, set = 1, binding = 2) readonly buffer MaterialBuffer {
     Material materialData[];
@@ -62,9 +50,16 @@ vec4 ShadowDepthToEVSM(float depth)
 
 void main()
 {
-    vec4 diffuseColor = SamplerHeap2D(materialData[pc.materialIndex].bcTexIndex, 0, fs_in.texCoord);
+    Material material = materialData[pc.materialIndex];
+    vec2 uv0 = MaterialBindingUV(0);
+    vec2 uv1 = MaterialBindingUV(1);
+    vec4 diffuseColor = MaterialAlbedo(material, uv0, uv1, fs_in.color);
 
-    if (diffuseColor.a <= pc.alphaCutoff) { discard; }
+    float coverage = MaterialShadowCoverage(material, diffuseColor, uv0, uv1,
+        fs_in.worldPosition, fs_in.lightVector, fs_in.modelScaleOrientation.xyz);
+    if (!MaterialVisible(material, diffuseColor.a) || (material.volumeIridescence.x > 0.0 &&
+        !(gl_FrontFacing == (fs_in.modelScaleOrientation.w >= 0.0)))) discard;
+    if (coverage <= MaterialShadowNoise(pc.nodeIndex, pc.materialIndex)) discard;
 
     outColor = ShadowDepthToEVSM(gl_FragCoord.z);
 }

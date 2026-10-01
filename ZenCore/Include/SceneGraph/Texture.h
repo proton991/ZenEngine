@@ -2,6 +2,8 @@
 #include "Component.h"
 #include "AssetLib/Types.h"
 #include <vector>
+#include <algorithm>
+#include "Templates/HeapVector.h"
 
 namespace zen::sg
 {
@@ -53,13 +55,26 @@ public:
     asset::Format format{asset::Format::UNDEFINED};
     // byte data no mipmaps
     std::vector<uint8_t> bytesData;
+    // Authored image levels, including level zero; empty means generate from bytesData.
+    HeapVector<HeapVector<uint8_t>> mipBytes;
 };
 
 inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
-    return lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex &&
+    bool equal = lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex &&
         lhs.width == rhs.width && lhs.height == rhs.height && lhs.format == rhs.format &&
-        lhs.bytesData == rhs.bytesData;
+        lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size();
+
+    for (size_t level = 0; equal && level < lhs.mipBytes.size(); ++level)
+    {
+        const HeapVector<uint8_t>& left = lhs.mipBytes[level];
+
+        const HeapVector<uint8_t>& right = rhs.mipBytes[level];
+
+        equal = left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
+    }
+
+    return equal;
 }
 
 inline bool operator!=(const Texture& lhs, const Texture& rhs)

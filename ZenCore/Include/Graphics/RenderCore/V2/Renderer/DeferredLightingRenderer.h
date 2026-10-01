@@ -75,6 +75,11 @@ public:
 
 private:
     void PrepareSamplers();
+
+    bool UsesForwardMaterials() const;
+
+    void BuildForwardGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
+
     void BuildLightMarkers();
     bool BuildLightingCaptureClear();
 
@@ -89,6 +94,7 @@ private:
 
     RHISampler* m_pColorSampler;
     RHISampler* m_pDepthSampler;
+    RHISampler* m_pTransmissionSampler{nullptr};
     RHIBuffer* m_captureOutput{nullptr};
     RHIBuffer* m_captureReadback{nullptr};
     bool m_captureRecorded{false};

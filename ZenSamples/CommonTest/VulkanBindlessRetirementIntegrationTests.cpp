@@ -258,6 +258,8 @@ protected:
 };
 
 
+#include "VulkanBindlessSceneResetTests.inl"
+
 TEST_F(VulkanBindlessRetirementIntegrationTest, HandlesRejectStaleRetirementAfterSlotReuse)
 {
     RHISampler* first        = Sampler();

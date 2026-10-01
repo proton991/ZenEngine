@@ -8,8 +8,8 @@ option(ZEN_BUILD_LEGACY "Build the legacy renderer and samples (may require API 
 option(ZEN_BUILD_RUNTIME_UI "Build the optional runtime debug UI and shared UI integration" ON)
 include(CTest)
 
-set(VULKAN_INCLUDE_DIR $ENV{VULKAN_SDK}/Include)
 find_package(Vulkan REQUIRED)
+set(VULKAN_INCLUDE_DIR "${Vulkan_INCLUDE_DIR}")
 message(STATUS "${PROJECT_NAME} version: ${PROJECT_VERSION}")
 message(STATUS "Vulkan include directory: ${VULKAN_INCLUDE_DIR}")
 message(STATUS "Vulkan lib directory: ${Vulkan_LIBRARIES}")
@@ -23,9 +23,9 @@ endif ()
 ############################################################
 #                    Add Sub Directories                   #
 ############################################################
+add_subdirectory(External)
 add_subdirectory(ZenCore)
 add_subdirectory(ZenSamples)
-add_subdirectory(External)
 if (ZEN_BUILD_RUNTIME_UI)
   add_subdirectory(ZenUI)
 endif ()

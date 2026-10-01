@@ -28,11 +28,17 @@ ui::RuntimeSceneSettings SceneRendererDemo::GetRuntimeSceneSettings() const
 
     settings.markerSize = lighting.GetLightMarkerSize();
 
-    settings.lightCount = m_configLightCount;
+    settings.lightCount = m_editableLightCount;
+
+    settings.boundsPresetLights = m_boundsPresetLights;
+
+    settings.modelLightCount = m_modelLightCount;
+
+    settings.lights = m_editableLightDefaults;
 
     for (uint32_t index = 0; index < settings.lightCount; ++index)
     {
-        const rc::SceneLight* light = m_renderScene->GetLights().Find(m_configLightIds[index]);
+        const rc::SceneLight* light = m_renderScene->GetLights().Find(m_editableLightIds[index]);
 
         if (light != nullptr)
         {
@@ -62,23 +68,31 @@ bool SceneRendererDemo::ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings
 {
     bool applied = ui::ValidateRuntimeSceneSettings(next);
 
+    // The model's animated lights cannot be removed by the editable-light panel.
+    // Check real ownership before modifying anything, even if draft metadata changed.
+    applied = applied && next.lightCount <= rc::MaxSceneLights - m_modelLightCount;
+
     if (applied)
     {
         rc::SceneLights& lights = m_renderScene->GetLights();
 
-        for (uint32_t index = next.lightCount; index < m_configLightCount; ++index)
+        for (uint32_t index = next.lightCount; index < m_editableLightCount; ++index)
         {
-            if (lights.Find(m_configLightIds[index]) != nullptr)
+            const rc::SceneLight* current = lights.Find(m_editableLightIds[index]);
+
+            if (current != nullptr)
             {
-                lights.Remove(m_configLightIds[index]);
+                m_editableLightDefaults[index] = *current;
+
+                lights.Remove(m_editableLightIds[index]);
             }
 
-            m_configLightIds[index] = 0;
+            m_editableLightIds[index] = 0;
         }
 
         for (uint32_t index = 0; index < next.lightCount; ++index)
         {
-            const rc::SceneLight* current = lights.Find(m_configLightIds[index]);
+            const rc::SceneLight* current = lights.Find(m_editableLightIds[index]);
 
             rc::SceneLight light = next.lights[index];
 
@@ -97,22 +111,22 @@ bool SceneRendererDemo::ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings
 
                 if (changed)
                 {
-                    applied &= lights.Update(m_configLightIds[index], light);
+                    applied &= lights.Update(m_editableLightIds[index], light);
                 }
             }
             else
             {
-                m_configLightIds[index] = lights.Add(light);
+                m_editableLightIds[index] = lights.Add(light);
 
-                applied &= m_configLightIds[index] != 0;
+                applied &= m_editableLightIds[index] != 0;
             }
         }
 
-        m_configLightCount = next.lightCount;
+        m_editableLightCount = next.lightCount;
 
         m_animatedLightIndex = next.animatedLight;
 
-        m_dynamicLight = next.animationEnabled ? m_configLightIds[next.animatedLight] : 0;
+        m_dynamicLight = next.animationEnabled ? m_editableLightIds[next.animatedLight] : 0;
 
         m_orbitCenter = next.orbitCenter;
 

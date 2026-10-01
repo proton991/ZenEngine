@@ -122,7 +122,7 @@ Inspected masked-asset slices include [arches and gallery at z=57](../build/voxe
 | --- | --- |
 | 0 | `uint32` owner; `0xffffffff` empty |
 | 4 | Packed UNORM8 RGBA albedo |
-| 8 | Packed UNORM8 normal XYZ encoding and metallic |
+| 8 | Packed UNORM8 normal XYZ encoding and diffuse weight: `(1 - metallic) * 0.96` for metallic-roughness, `1 - max(specular)` for specular-glossiness |
 | 12 | `uint32` owner-derived binary occupancy |
 | 16 | Four `float32` emission values decoded from RGBA16F |
 

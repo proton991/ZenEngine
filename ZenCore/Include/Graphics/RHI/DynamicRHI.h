@@ -125,6 +125,13 @@ public:
     // Poll completion and release eligible retired registrations without waiting.
     virtual void CollectRetiredBindlessResources() {}
 
+    // Explicitly replace a complete heap at a drained resource boundary. Live CPU recordings
+    // or GPU submissions reject the reset; success invalidates all previous registrations.
+    virtual bool ResetBindlessResources()
+    {
+        return true;
+    }
+
     virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
 
     virtual RHITextureView* CreateTextureView(RHITexture* pBaseTexture,

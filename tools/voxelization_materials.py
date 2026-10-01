@@ -79,19 +79,28 @@ class MaterialOracle:
         color=self.sample(pbr.get('baseColorTexture'),attrs[:2],True)
         color=[a*b*c for a,b,c in zip(color,attrs[2],pbr.get('baseColorFactor',[1]*4))]
         metal=self.sample(pbr.get('metallicRoughnessTexture'),attrs[:2],False)[2]*pbr.get('metallicFactor',1)
+        diffuse_weight=(1-min(1,max(0,metal)))*.96
+        spec_gloss=material.get('extensions',{}).get('KHR_materials_pbrSpecularGlossiness')
+        if spec_gloss is not None:
+            color=self.sample(spec_gloss.get('diffuseTexture'),attrs[:2],True)
+            color=[a*b*c for a,b,c in zip(color,attrs[2],spec_gloss.get('diffuseFactor',[1]*4))]
+            specular=self.sample(spec_gloss.get('specularGlossinessTexture'),attrs[:2],True)
+            specular=[a*b for a,b in zip(specular[:3],spec_gloss.get('specularFactor',[1]*3))]
+            diffuse_weight=1-min(1,max(0,max(specular)))
         strength=material.get('extensions',{}).get('KHR_materials_emissive_strength',{}).get('emissiveStrength',1)
         emission_factor=[x*strength for x in material.get('emissiveFactor',[0,0,0])]
         emission=[a*b for a,b in zip(self.sample(material.get('emissiveTexture'),attrs[:2],True),emission_factor)]
+        emission=[min(65504,max(0,c)) for c in emission]
         cutoff=material.get('alphaCutoff',.5)
         masked=material.get('alphaMode','OPAQUE')!='OPAQUE'
-        return dict(color=color,metal=metal,emission=emission,emission_factor=emission_factor,
+        return dict(color=color,metal=metal,diffuse_weight=diffuse_weight,emission=emission,emission_factor=emission_factor,
                     visible=not masked or color[3]>=cutoff,
                     alpha_ambiguous=masked and abs(color[3]-cutoff)<=ALPHA_BAND,masked=masked)
 
-    def attribute_error(self,owner,cell,color,metal,emission):
+    def attribute_error(self,owner,cell,color,diffuse_weight,emission):
         value=self.surface(owner,[x+.5 for x in cell])
         return (max(abs(a-b) for a,b in zip(color[:3],value['color'][:3]))>COLOR_TOLERANCE or
-                color[3]!=1 or abs(metal-value['metal'])>COLOR_TOLERANCE or
+                color[3]!=1 or abs(diffuse_weight-value['diffuse_weight'])>COLOR_TOLERANCE or
                 any(abs(a-b)>max(.004,abs(factor)/128+abs(b)*.001)
                     for a,b,factor in zip(emission,value['emission'],value['emission_factor'])))
 
@@ -135,11 +144,11 @@ def compare_gbuffer(prefix,metadata,oracle,voxel_data,alpha_ambiguous):
             continue  # Conservative edge cell's representative differs from this raster surface.
         color_error=max(abs(((va>>(8*i))&255)-((albedo>>(8*i))&255)) for i in range(3))
         normal_error=max(abs(((vn>>(8*i))&255)-((normal>>(8*i))&255)) for i in range(3))
-        metallic_error=abs(((vn>>24)&255)-(metal&255))
+        diffuse_weight_error=abs(((vn>>24)&255)-(255-(metal&255))*.96)
         emission_error=max(abs(a-b) for a,b in zip((vr,vg,vb),(er,eg,eb)))
-        if color_error>3 or normal_error>2 or metallic_error>3 or emission_error>.016:
+        if color_error>3 or normal_error>2 or diffuse_weight_error>3 or emission_error>.016:
             errors.append(dict(cell=cell,color_bytes=color_error,normal_bytes=normal_error,
-                               metallic_bytes=metallic_error,emission=emission_error))
+                               diffuse_weight_bytes=diffuse_weight_error,emission=emission_error))
         matched+=1
         masked+=int(oracle.materials[material_id].get('alphaMode','OPAQUE')!='OPAQUE')
         black+=int((va&0xffffff)==0)

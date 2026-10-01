@@ -164,6 +164,48 @@ public:
     }
 };
 
+class ForwardMaterialSP : public ShaderProgram
+{
+public:
+    explicit ForwardMaterialSP(RenderDevice* device, bool voxelGI = false) :
+        ShaderProgram(device, voxelGI ? "ForwardMaterialVoxelGISP" : "ForwardMaterialSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       voxelGI ? "SceneRenderer/forward_material_voxel.frag.spv" :
+                                 "SceneRenderer/forward_material.frag.spv");
+        Init();
+    }
+};
+
+class ForwardFullscreenSP : public ShaderProgram
+{
+public:
+    explicit ForwardFullscreenSP(RenderDevice* device, bool toneMap) :
+        ShaderProgram(device, toneMap ? "ForwardToneMapSP" : "ForwardBackgroundSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       toneMap ? "SceneRenderer/forward_tonemap.frag.spv" :
+                                 "SceneRenderer/forward_background.frag.spv");
+        Init();
+    }
+};
+
+class ForwardScatterSP : public ShaderProgram
+{
+public:
+    explicit ForwardScatterSP(RenderDevice* device, bool voxelGI = false) :
+        ShaderProgram(device, voxelGI ? "ForwardScatterVoxelGISP" : "ForwardScatterSP")
+    {
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
+        AddShaderStage(RHIShaderStage::eFragment,
+                       voxelGI ? "SceneRenderer/forward_scatter_voxel.frag.spv" :
+                                 "SceneRenderer/forward_scatter.frag.spv");
+        Init();
+    }
+};
+
 class DeferredVoxelGISP : public ShaderProgram
 {
 public:
@@ -230,7 +272,7 @@ public:
     explicit SkyboxRenderSP(RenderDevice* pRenderDevice) :
         ShaderProgram(pRenderDevice, "SkyboxRenderSP")
     {
-        AddShaderStage(RHIShaderStage::eVertex, "Environment/skybox.vert.spv");
+        AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "Environment/skybox.frag.spv");
         Init();
     }

@@ -40,6 +40,14 @@ private:
 
     void BuildSceneSettings();
 
+    void BuildModelSelector();
+
+    void SynchronizeModelRevision();
+
+    bool MatchesModelSearch(const asset::GLTFModelCatalogEntry& entry) const;
+
+    bool RequestModel(const std::string& path);
+
     void BuildConfigReference();
 
     void MarkGIEdit(bool changed);
@@ -67,6 +75,9 @@ private:
     bool m_autoApply{true};
     bool m_applyFailed{false};
     char m_configFilter[128]{};
+    char m_modelFilter[256]{};
+    uint64_t m_modelRevision{0};
+    bool m_modelRequestRejected{false};
     const char* m_status{"Settings apply to this session only."};
 };
 } // namespace zen::ui

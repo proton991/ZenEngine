@@ -1,6 +1,7 @@
 bin/
 lib/
 .vs/
+.vscode/settings.json
 build/
 .idea/
 out/
@@ -10,3 +11,6 @@ Data/SpvShaders
 Data/engine.cfg
 .DS_Store
 __pycache__/
+
+# FetchContent sources; dependency declarations remain tracked.
+/External/*/

@@ -5,9 +5,38 @@
 
 namespace zen::rc
 {
+namespace
+{
+bool FiniteMaterialVector(const Vec4& value)
+{
+    bool finite = true;
+
+    for (uint32_t component = 0; component < 4; ++component)
+    {
+        finite &= std::isfinite(value[component]);
+    }
+
+    return finite;
+}
+
+bool UnitMaterialFactor(float value)
+{
+    return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+}
+
+bool ValidateMaterialTextureTransform(const sg::TextureTransformData& transform,
+                                      size_t samplerCount)
+{
+    return FiniteMaterialVector(transform.row0) && FiniteMaterialVector(transform.row1) &&
+        transform.row0.w >= 0 && transform.row0.w <= samplerCount &&
+        transform.row0.w == std::floor(transform.row0.w);
+}
+} // namespace
+
 uint32_t RenderScene::GetInstanceMask(uint32_t instance) const
 {
-    return instance < m_instanceClasses.size() && m_instanceEnabled[instance] != 0 ?
+    return instance < m_instanceClasses.size() && instance < m_authoredVisibility.size() &&
+            m_instanceEnabled[instance] != 0 && m_authoredVisibility[instance] != 0 ?
         m_instanceClasses[instance] :
         0;
 }
@@ -63,6 +92,18 @@ bool RenderScene::SetInstanceTransform(uint32_t instance, const Mat4& worldTrans
     if (valid)
     {
         m_nodesData[instance] = {worldTransform, normalMatrix};
+
+        for (uint32_t axis = 0; axis < 3; ++axis)
+        {
+            const double scale = glm::length(glm::dvec3(worldTransform[axis]));
+
+            m_nodesData[instance].surfaceScale[axis] = static_cast<float>(
+                std::min(scale, static_cast<double>(std::numeric_limits<float>::max())));
+        }
+
+        m_nodesData[instance].surfaceScale.w =
+            glm::determinant(glm::dmat3(worldTransform)) < 0.0 ? -1.0f : 1.0f;
+
         m_dirtyClasses |= m_instanceClasses[instance];
     }
     return valid;
@@ -106,29 +147,78 @@ bool RenderScene::UpdateVertices(uint32_t first, VectorView<const asset::Vertex>
             if (affected)
             {
                 m_dirtyClasses |= m_instanceClasses[node->GetRenderableIndex()];
+
+                m_dirtySurfaceClasses |= m_instanceClasses[node->GetRenderableIndex()];
             }
         }
     }
     return valid;
 }
 
-bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& data)
+bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& sourceData)
 {
-    bool valid = material < m_materialsData.size() && std::isfinite(data.metallicFactor) &&
-        data.metallicFactor >= 0 && data.metallicFactor <= 1 &&
-        std::isfinite(data.roughnessFactor) && data.roughnessFactor >= 0 &&
-        data.roughnessFactor <= 1 && data.surfaceProperties.x >= 0 &&
-        data.surfaceProperties.x <= 1 && data.surfaceProperties.y >= 0 &&
-        data.surfaceProperties.y <= 2 &&
+    sg::MaterialData data = sourceData;
+
+    const double attenuationDistance =
+        static_cast<double>(data.volumeIridescence.y) * m_sceneUnitScale;
+
+    data.volumeIridescence.y = attenuationDistance > std::numeric_limits<float>::max() ?
+        0.0f :
+        static_cast<float>(attenuationDistance);
+
+    bool valid = material < m_materialsData.size() && UnitMaterialFactor(data.metallicFactor) &&
+        UnitMaterialFactor(data.roughnessFactor) && data.surfaceProperties.x >= 0 &&
+        data.surfaceProperties.y >= 0 && data.surfaceProperties.y <= 2 &&
         data.surfaceProperties.y == std::floor(data.surfaceProperties.y) &&
-        data.surfaceProperties.z >= 0;
-    for (const Vec4& value : {data.baseColorFactor, data.emissiveFactor, data.surfaceProperties})
+        UnitMaterialFactor(data.surfaceProperties.w) &&
+        UnitMaterialFactor(data.materialProperties.x) &&
+        UnitMaterialFactor(data.materialProperties.y) &&
+        UnitMaterialFactor(data.materialProperties.z) &&
+        UnitMaterialFactor(data.materialProperties.w);
+
+    for (const Vec4& value :
+         {data.baseColorFactor, data.emissiveFactor, data.surfaceProperties,
+          data.materialProperties, data.specularColorIor, data.specularGlossiness,
+          data.diffuseFactor, data.clearcoatSheenSpecular, data.sheenColorTransmission,
+          data.volumeIridescence, data.attenuationColorDispersion, data.iridescenceAnisotropy,
+          data.diffuseTransmissionColorFactor, data.volumeScatterColorRetroreflection})
     {
-        for (uint32_t component = 0; component < 4; ++component)
-        {
-            valid = valid && std::isfinite(value[component]) && value[component] >= 0;
-        }
+        valid &= FiniteMaterialVector(value);
     }
+
+    for (uint32_t component = 0; component < 4; ++component)
+    {
+        valid &= UnitMaterialFactor(data.baseColorFactor[component]) &&
+            data.emissiveFactor[component] >= 0.0f &&
+            UnitMaterialFactor(data.diffuseFactor[component]) &&
+            UnitMaterialFactor(data.clearcoatSheenSpecular[component]) &&
+            UnitMaterialFactor(data.volumeScatterColorRetroreflection[component]);
+    }
+
+    for (uint32_t component = 0; component < 3; ++component)
+    {
+        valid &= data.specularColorIor[component] >= 0.0f &&
+            data.specularGlossiness[component] >= 0.0f &&
+            UnitMaterialFactor(data.sheenColorTransmission[component]) &&
+            UnitMaterialFactor(data.attenuationColorDispersion[component]) &&
+            UnitMaterialFactor(data.diffuseTransmissionColorFactor[component]);
+    }
+
+    valid &= (data.specularColorIor.w == 0.0f || data.specularColorIor.w >= 1.0f) &&
+        UnitMaterialFactor(data.specularGlossiness.w) &&
+        UnitMaterialFactor(data.sheenColorTransmission.w) && data.volumeIridescence.x >= 0.0f &&
+        data.volumeIridescence.y >= 0.0f && UnitMaterialFactor(data.volumeIridescence.z) &&
+        data.volumeIridescence.w >= 1.0f && data.attenuationColorDispersion.w >= 0.0f &&
+        data.iridescenceAnisotropy.x >= 0.0f &&
+        data.iridescenceAnisotropy.y >= data.iridescenceAnisotropy.x &&
+        UnitMaterialFactor(data.iridescenceAnisotropy.z) &&
+        UnitMaterialFactor(data.diffuseTransmissionColorFactor.w);
+
+    for (const sg::TextureTransformData& transform : data.textureTransforms)
+    {
+        valid &= ValidateMaterialTextureTransform(transform, m_sceneSamplers.size());
+    }
+
     for (int index : {data.bcTexIndex, data.mrTexIndex, data.normalTexIndex, data.occlusionTexIndex,
                       data.emissiveTexIndex})
     {
@@ -140,14 +230,40 @@ bool RenderScene::UpdateMaterial(uint32_t material, const sg::MaterialData& data
     for (int uv :
          {data.bcTexSet, data.mrTexSet, data.normalTexSet, data.aoTexSet, data.emissiveTexSet})
     {
-        valid = valid && uv >= -1 && uv <= 1;
+        valid = valid && uv >= -1 &&
+            (uv <= 1 || (!m_uvCoordinates.empty() && uv < m_uvCoordinates[0].x));
     }
+
+    for (const sg::MaterialTextureData& binding : data.featureTextures)
+    {
+        valid &= FiniteMaterialVector(binding.properties) &&
+            ValidateMaterialTextureTransform(binding.transform, m_sceneSamplers.size());
+
+        const float index = binding.properties.x;
+
+        valid &= index == std::floor(index) && index >= -1.0f &&
+            (index == -1.0f || index < m_sceneTextures.size());
+
+        if (index >= 0.0f && index < m_sceneTextures.size())
+        {
+            valid &= m_sceneTextures[static_cast<size_t>(index)] != nullptr;
+        }
+
+        const float uv = binding.properties.y;
+
+        valid &= uv >= 0.0f && uv == std::floor(uv) &&
+            (uv <= 1.0f || (!m_uvCoordinates.empty() && uv < m_uvCoordinates[0].x));
+    }
+
     if (valid && std::memcmp(&m_materialsData[material], &data, sizeof(data)) != 0)
     {
         const sg::MaterialData& previous = m_materialsData[material];
         const bool coverageChanged       = previous.baseColorFactor.a != data.baseColorFactor.a ||
             previous.bcTexIndex != data.bcTexIndex || previous.bcTexSet != data.bcTexSet ||
-            glm::vec2(previous.surfaceProperties) != glm::vec2(data.surfaceProperties);
+            previous.sheenColorTransmission.w != data.sheenColorTransmission.w ||
+            glm::vec2(previous.surfaceProperties) != glm::vec2(data.surfaceProperties) ||
+            previous.textureTransforms[0].row0 != data.textureTransforms[0].row0 ||
+            previous.textureTransforms[0].row1 != data.textureTransforms[0].row1;
         for (const sg::Node* node : m_pScene->GetRenderableNodes())
         {
             for (const sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
@@ -252,10 +368,36 @@ bool RenderScene::CommitGeometryUpdates()
         const bool geometryChanged             = m_dirtyClasses != 0 || m_verticesDirty;
         const HeapVector<glm::uvec4> triangles = BuildTriangleRecords();
         const RHIGPUInfo& gpu                  = m_pRenderDevice->GetGPUInfo();
-        uint64_t nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0;
+        uint64_t nodeBytes = 0, triangleBytes = 0, vertexBytes = 0, materialBytes = 0, uvBytes = 0;
+        bool validUVCoordinates = true;
+
+        if (m_verticesDirty)
+        {
+            const size_t stride = static_cast<size_t>(m_uvCoordinates[0].x);
+
+            for (size_t vertex = 0; vertex < m_vertices.size(); ++vertex)
+            {
+                if (vertex < m_pScene->GetAssetData().vertexTexCoords.size())
+                {
+                    const HeapVector<Vec2>& sets = m_pScene->GetAssetData().vertexTexCoords[vertex];
+
+                    for (size_t set = 2; set < std::min(stride, sets.size()); ++set)
+                    {
+                        validUVCoordinates &=
+                            std::isfinite(sets[set].x) && std::isfinite(sets[set].y);
+                        m_uvCoordinates[1 + vertex * stride + set] = Vec4(sets[set], 0, 0);
+                    }
+                }
+
+                m_uvCoordinates[1 + vertex * stride] = Vec4(m_vertices[vertex].uv0, 0, 0);
+
+                m_uvCoordinates[2 + vertex * stride] = Vec4(m_vertices[vertex].uv1, 0, 0);
+            }
+        }
+
         sg::AABB bounds;
         sg::AABB classBounds[2];
-        valid = ComputeGeometryBounds(bounds, classBounds) &&
+        valid = validUVCoordinates && ComputeGeometryBounds(bounds, classBounds) &&
             ValidateGIStorageBuffer(m_nodesData.size(), sizeof(sg::NodeData), gpu, nodeBytes) ==
                 GIResourceStatus::eSuccess &&
             ValidateGIStorageBuffer(triangles.size(), sizeof(glm::uvec4), gpu, triangleBytes) ==
@@ -263,34 +405,42 @@ bool RenderScene::CommitGeometryUpdates()
             ValidateGIStorageBuffer(m_vertices.size(), sizeof(asset::Vertex), gpu, vertexBytes) ==
                 GIResourceStatus::eSuccess &&
             ValidateGIStorageBuffer(m_materialsData.size(), sizeof(sg::MaterialData), gpu,
-                                    materialBytes) == GIResourceStatus::eSuccess;
+                                    materialBytes) == GIResourceStatus::eSuccess &&
+            ValidateGIStorageBuffer(m_uvCoordinates.size(), sizeof(Vec4), gpu, uvBytes) ==
+                GIResourceStatus::eSuccess;
         if (valid)
         {
-            RHIBuffer* nodes     = geometryChanged ?
-                    m_pRenderDevice->CreateStorageBuffer(
+            RHIBuffer* nodes         = geometryChanged ?
+                        m_pRenderDevice->CreateStorageBuffer(
                     static_cast<uint32_t>(nodeBytes),
                     reinterpret_cast<const uint8_t*>(m_nodesData.data()),
                     "scene_nodes_generation") :
-                    m_pNodeSSBO;
-            RHIBuffer* records   = !geometryChanged ? m_pVoxelTriangleBuffer :
-                  triangles.empty()                 ? nullptr :
-                                                      m_pRenderDevice->CreateStorageBuffer(
+                        m_pNodeSSBO;
+            RHIBuffer* records       = !geometryChanged ? m_pVoxelTriangleBuffer :
+                      triangles.empty()                 ? nullptr :
+                                                          m_pRenderDevice->CreateStorageBuffer(
                                         static_cast<uint32_t>(triangleBytes),
                                         reinterpret_cast<const uint8_t*>(triangles.data()),
                                         "scene_triangles_generation");
-            RHIBuffer* vertices  = m_verticesDirty ?
-                 m_pRenderDevice->CreateVertexBuffer(
+            RHIBuffer* vertices      = m_verticesDirty ?
+                     m_pRenderDevice->CreateVertexBuffer(
                     static_cast<uint32_t>(vertexBytes),
                     reinterpret_cast<const uint8_t*>(m_vertices.data())) :
-                 m_pVertexBuffer;
-            RHIBuffer* materials = m_materialsDirty ?
-                m_pRenderDevice->CreateStorageBuffer(
+                     m_pVertexBuffer;
+            RHIBuffer* materials     = m_materialsDirty ?
+                    m_pRenderDevice->CreateStorageBuffer(
                     static_cast<uint32_t>(materialBytes),
                     reinterpret_cast<const uint8_t*>(m_materialsData.data()),
                     "scene_materials_generation") :
-                m_pMaterialSSBO;
-            valid                = nodes != nullptr && (triangles.empty() || records != nullptr) &&
-                vertices != nullptr && materials != nullptr;
+                    m_pMaterialSSBO;
+            RHIBuffer* uvCoordinates = m_verticesDirty ?
+                m_pRenderDevice->CreateStorageBuffer(
+                    static_cast<uint32_t>(uvBytes),
+                    reinterpret_cast<const uint8_t*>(m_uvCoordinates.data()),
+                    "scene_uv_generation") :
+                m_pUVBuffer;
+            valid = nodes != nullptr && (triangles.empty() || records != nullptr) &&
+                vertices != nullptr && materials != nullptr && uvCoordinates != nullptr;
             if (valid)
             {
                 if (geometryChanged)
@@ -305,11 +455,14 @@ bool RenderScene::CommitGeometryUpdates()
                 if (m_verticesDirty)
                 {
                     m_pRenderDevice->DestroyBuffer(m_pVertexBuffer);
+
+                    m_pRenderDevice->DestroyBuffer(m_pUVBuffer);
                 }
                 m_pNodeSSBO            = nodes;
                 m_pVoxelTriangleBuffer = records;
                 m_pVertexBuffer        = vertices;
                 m_pMaterialSSBO        = materials;
+                m_pUVBuffer            = uvCoordinates;
                 m_voxelTriangleCount   = static_cast<uint32_t>(triangles.size());
                 m_pScene->GetAABB()    = bounds;
                 m_classBounds[0]       = classBounds[0];
@@ -330,7 +483,7 @@ bool RenderScene::CommitGeometryUpdates()
                 {
                     ++m_dynamicRevision;
                 }
-                if (m_materialsDirty)
+                if (m_materialsDirty || m_dirtySurfaceClasses != 0)
                 {
                     ++m_surfaceRevision;
                     if ((m_dirtySurfaceClasses & GI_STATIC) != 0)
@@ -361,6 +514,8 @@ bool RenderScene::CommitGeometryUpdates()
                 if (m_verticesDirty)
                 {
                     m_pRenderDevice->DestroyBuffer(vertices);
+
+                    m_pRenderDevice->DestroyBuffer(uvCoordinates);
                 }
             }
         }

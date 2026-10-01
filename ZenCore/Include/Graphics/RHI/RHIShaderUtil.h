@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <bit>
+#include <cstring>
 #include "RHIResource.h"
 #include "spirv_reflect.h"
 #include "Utils/Errors.h"
@@ -146,26 +148,46 @@ static void ParseSpvSpecializationConstant(RHIShaderStage stage,
             specConst.constantId = pSpvSpecConst->constant_id;
             specConst.intValue   = 0;
 
-            switch (pSpvSpecConst->constant_type)
+            if (pSpvSpecConst->type_description == nullptr ||
+                pSpvSpecConst->default_value == nullptr ||
+                pSpvSpecConst->default_value_size != sizeof(uint32_t) ||
+                (pSpvSpecConst->type_description->op != SpvOpTypeBool &&
+                 pSpvSpecConst->type_description->traits.numeric.scalar.width != 32))
             {
-                case SPV_REFLECT_SPECIALIZATION_CONSTANT_BOOL:
+                LOG_ERROR_AND_THROW(
+                    "Only Boolean and 32-bit specialization constants are supported");
+            }
+
+            uint32_t defaultValue = 0;
+
+            std::memcpy(&defaultValue, pSpvSpecConst->default_value, sizeof(defaultValue));
+
+            switch (pSpvSpecConst->type_description->op)
+            {
+                case SpvOpTypeBool:
                 {
                     specConst.type      = RHIShaderSpecializationConstantType::eBool;
-                    specConst.boolValue = pSpvSpecConst->default_value.int_bool_value != 0;
+                    specConst.boolValue = defaultValue != 0;
                 }
                 break;
 
-                case SPV_REFLECT_SPECIALIZATION_CONSTANT_INT:
+                case SpvOpTypeInt:
                 {
                     specConst.type     = RHIShaderSpecializationConstantType::eInt;
-                    specConst.intValue = pSpvSpecConst->default_value.int_bool_value;
+                    specConst.intValue = defaultValue;
                 }
                 break;
 
-                case SPV_REFLECT_SPECIALIZATION_CONSTANT_FLOAT:
+                case SpvOpTypeFloat:
                 {
                     specConst.type       = RHIShaderSpecializationConstantType::eFloat;
-                    specConst.floatValue = pSpvSpecConst->default_value.float_value;
+                    specConst.floatValue = std::bit_cast<float>(defaultValue);
+                    break;
+                }
+
+                default:
+                {
+                    LOG_ERROR_AND_THROW("Unsupported specialization constant type");
                     break;
                 }
             }

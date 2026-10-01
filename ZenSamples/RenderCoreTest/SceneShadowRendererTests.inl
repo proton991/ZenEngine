@@ -44,6 +44,7 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     sceneInputs.indices   = Buffer();
     sceneInputs.nodes     = Buffer(128);
     sceneInputs.materials = Buffer(96);
+    sceneInputs.uv        = Buffer();
     sceneInputs.textures.push_back(Texture());
     sg::Scene source;
     source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
@@ -98,10 +99,80 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
                   expectedFaces[frame]);
     }
     shadows.Destroy();
-    for (RHIBuffer* buffer :
-         {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
+    for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes,
+                              sceneInputs.materials, sceneInputs.uv})
     {
         device->DestroyBuffer(buffer);
     }
     device->DestroyTexture(sceneInputs.textures[0]);
+}
+
+TEST_F(RenderCoreTest, SceneSamplerBindingsPreserveAuthoredHeapSlots)
+{
+    CreateTestShaderProgram(device, "scene_sampler_slots");
+    RHISampler* nearest = device->CreateSampler({});
+    RHISampler* linear  = device->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
+    RenderGraph graph("scene_sampler_slots");
+    graph.Begin();
+
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName("scene_sampler_slots");
+    pass.BindSampler("uSamplerHeap", nearest, 0);
+    pass.BindSampler("uSamplerHeap", linear, 3);
+    graph.AddComputePass(std::move(pass));
+    ASSERT_TRUE(graph.End());
+
+    ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+    ASSERT_EQ(rhi->graphics.boundArrayIndices.size(), 2u);
+    EXPECT_EQ(rhi->graphics.boundArrayIndices[0], 0u);
+    EXPECT_EQ(rhi->graphics.boundArrayIndices[1], 3u);
+}
+
+TEST_F(RenderCoreTest, SceneSamplerBindingsRejectDuplicateSlots)
+{
+    CreateTestShaderProgram(device, "duplicate_sampler_slots");
+    RHISampler* sampler = device->CreateSampler({});
+    RenderGraph graph("duplicate_sampler_slots");
+    graph.Begin();
+
+    RDGComputePassDesc pass;
+    pass.SetShaderProgramName("duplicate_sampler_slots");
+    pass.BindSampler("uSamplerHeap", sampler, 3);
+    pass.BindSampler("uSamplerHeap", sampler, 3);
+    graph.AddComputePass(std::move(pass));
+    EXPECT_FALSE(graph.End());
+    EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eBinding);
+}
+
+TEST_F(RenderCoreTest, UnlimitedPointAndWideSpotShadowsUseFiniteSceneDepth)
+{
+    sg::Scene source;
+    source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
+    SceneData data{};
+    data.pScene = &source;
+    RenderScene scene(device, data);
+    SceneShadowRenderer shadows(device);
+    sceneInputs.uniforms.lightInfo.x = 1.0f;
+
+    for (float type : {1.0f, 2.0f})
+    {
+        sceneInputs.uniforms.lights[0] = {Vec4(0, 0, 2, 0), Vec4(0, 0, -1, type), Vec4(1),
+                                          Vec4(1, 0, 1, 0)};
+        ASSERT_TRUE(shadows.Prepare(scene, true));
+        RDGComputePassDesc lighting;
+        shadows.BindLightingInputs(lighting);
+        SceneShadowUniformData uniforms;
+        ASSERT_EQ(lighting.valueByteStorage.size(), sizeof(uniforms));
+        std::memcpy(&uniforms, lighting.valueByteStorage.data(), sizeof(uniforms));
+        EXPECT_GT(uniforms.lights[0].z, 0.0f);
+        for (uint32_t column = 0; column < 4; ++column)
+        {
+            for (uint32_t row = 0; row < 4; ++row)
+            {
+                EXPECT_TRUE(std::isfinite(uniforms.viewProjection[0][column][row]));
+            }
+        }
+    }
+
+    shadows.Destroy();
 }
