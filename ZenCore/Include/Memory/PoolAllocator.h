@@ -21,6 +21,7 @@ public:
     }
 
     PoolAllocator(const PoolAllocator&)            = delete;
+
     PoolAllocator& operator=(const PoolAllocator&) = delete;
 
     void Swap(PoolAllocator& other)
@@ -88,7 +89,7 @@ private:
 
 private:
     HeapVector<T*> m_allocators;
-    size_t m_currentIndex = 0;
-    size_t m_initialSize;
+    size_t         m_currentIndex = 0;
+    size_t         m_initialSize;
 };
 } // namespace zen

@@ -15,8 +15,7 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shad
 
 VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage);
 
-VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
-    BitField<RHIShaderStageFlagBits> stageFlags);
+VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(BitField<RHIShaderStageFlagBits> stageFlags);
 
 VkPrimitiveTopology ToVkPrimitiveTopology(RHIDrawPrimitiveType type);
 
@@ -42,9 +41,9 @@ VkImageType ToVkImageType(RHITextureType type);
 
 VkImageViewType ToVkImageViewType(RHITextureType type);
 
-VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType type,
-                                                DataFormat format,
-                                                VkImage image,
+VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                    type,
+                                                DataFormat                        format,
+                                                VkImage                           image,
                                                 const RHITextureSubResourceRange& range);
 
 VkImageUsageFlags ToVkImageUsageFlags(BitField<RHITextureUsageFlagBits> flags);
@@ -75,11 +74,9 @@ VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& 
 
 void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue);
 
-void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,
-                               VkImageSubresourceRange* pVkRange);
+void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range, VkImageSubresourceRange* pVkRange);
 
-void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
-                                VkImageSubresourceLayers* pVkLayers);
+void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers, VkImageSubresourceLayers* pVkLayers);
 
 void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy);
 

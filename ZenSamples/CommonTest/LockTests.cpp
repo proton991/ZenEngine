@@ -13,28 +13,31 @@ void IncrementCounter(int increments)
     for (int i = 0; i < increments; ++i)
     {
         spinLock.Lock();
+
         ++sharedCounter;
+
         spinLock.Unlock();
     }
 }
 
 TEST(spin_lock_test, basic)
 {
-
     const int numThreads          = 10;
+
     const int incrementsPerThread = 1000;
 
     std::vector<std::thread> threads;
 
     // Start multiple threads
     threads.reserve(numThreads);
+
     for (int i = 0; i < numThreads; ++i)
     {
         threads.emplace_back(IncrementCounter, incrementsPerThread);
     }
 
     // Join all threads
-    for (auto& t : threads)
+    for (std::thread& t : threads)
     {
         t.join();
     }

@@ -19,21 +19,21 @@ void RenderScene::Destroy()
             }
         }
 
-        m_pVertexBuffer = nullptr;
+        m_pVertexBuffer        = nullptr;
 
-        m_pIndexBuffer = nullptr;
+        m_pIndexBuffer         = nullptr;
 
-        m_pUVBuffer = nullptr;
+        m_pUVBuffer            = nullptr;
 
-        m_pNodeSSBO = nullptr;
+        m_pNodeSSBO            = nullptr;
 
-        m_pMaterialSSBO = nullptr;
+        m_pMaterialSSBO        = nullptr;
 
         m_pVoxelTriangleBuffer = nullptr;
 
-        m_voxelTriangleCount = 0;
+        m_voxelTriangleCount   = 0;
 
-        m_numIndices = 0;
+        m_numIndices           = 0;
 
         for (size_t index = 0; index < m_sceneTextures.size(); ++index)
         {

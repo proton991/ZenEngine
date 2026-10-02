@@ -8,22 +8,23 @@ namespace zen
 {
 static uint32_t CalcShiftFromPowerOf2(unsigned int num)
 {
-    for (uint32_t i = 0; i < 32; i++)
+    uint32_t result = UINT32_MAX;
+
+    for (uint32_t i = 0; i < 32 && result == UINT32_MAX; i++)
     {
         if (num == static_cast<uint32_t>(1 << i))
         {
-            return i;
+            result = i;
         }
     }
 
-    return -1;
+    return result;
 }
 
 template <class T> class PagedAllocator
 {
 public:
-    PagedAllocator(uint32_t pageSize, bool threadSafe) :
-        m_pageSize(pageSize), m_threadSafe(threadSafe)
+    PagedAllocator(uint32_t pageSize, bool threadSafe) : m_pageSize(pageSize), m_threadSafe(threadSafe)
     {
         m_pageSize = Pow2Pad(pageSize);
     }
@@ -68,10 +69,8 @@ public:
         {
             uint32_t pageIndex = m_numPagesAllocated;
             m_numPagesAllocated++;
-            m_pPagePool =
-                static_cast<T**>(ZEN_MEM_REALLOC(m_pPagePool, sizeof(T*) * m_numPagesAllocated));
-            m_pFreePages =
-                static_cast<T***>(ZEN_MEM_REALLOC(m_pFreePages, sizeof(T**) * m_numPagesAllocated));
+            m_pPagePool             = static_cast<T**>(ZEN_MEM_REALLOC(m_pPagePool, sizeof(T*) * m_numPagesAllocated));
+            m_pFreePages            = static_cast<T***>(ZEN_MEM_REALLOC(m_pFreePages, sizeof(T**) * m_numPagesAllocated));
 
             m_pPagePool[pageIndex]  = static_cast<T*>(ZEN_MEM_ALLOC(sizeof(T) * m_pageSize));
             m_pFreePages[pageIndex] = static_cast<T**>(ZEN_MEM_ALLOC(sizeof(T*) * m_pageSize));
@@ -161,7 +160,7 @@ private:
     // configurations
     uint32_t m_pageSize{ZEN_DEFAULT_PAGESIZE};
     // thread safe
-    bool m_threadSafe{false};
+    bool     m_threadSafe{false};
     SpinLock m_lock;
     // page pool 2d array
     // pageIndex slot0 slot1 slot2 ... slot_(m_pageSize-1)

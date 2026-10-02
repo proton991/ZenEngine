@@ -20,11 +20,7 @@ namespace zen
 /// Raw pointer values are non-owning. The optional callback runs before automatic
 /// eviction (including capacity reduction), but not on erase(), clear(), or destruction.
 /// Callbacks must not modify this cache. The cache is not thread-safe.
-template <typename Key,
-          typename Value,
-          typename Hasher   = std::hash<Key>,
-          typename KeyEqual = std::equal_to<Key>>
-class LRUCache
+template <typename Key, typename Value, typename Hasher = std::hash<Key>, typename KeyEqual = std::equal_to<Key>> class LRUCache
 {
 public:
     using key_type         = Key;
@@ -38,8 +34,8 @@ private:
     using Index     = std::unordered_map<Key, typename EntryList::iterator, Hasher, KeyEqual>;
 
 public:
-    using iterator       = typename EntryList::iterator;
-    using const_iterator = typename EntryList::const_iterator;
+    using iterator                              = typename EntryList::iterator;
+    using const_iterator                        = typename EntryList::const_iterator;
 
     static constexpr size_type kDefaultCapacity = 256;
 
@@ -77,8 +73,7 @@ public:
         return *this;
     }
 
-    LRUCache(LRUCache&& other) :
-        LRUCache(other.m_capacity, {}, other.m_index.hash_function(), other.m_index.key_eq())
+    LRUCache(LRUCache&& other) : LRUCache(other.m_capacity, {}, other.m_index.hash_function(), other.m_index.key_eq())
     {
         Swap(other);
     }
@@ -215,8 +210,7 @@ public:
     }
 
     /// Returns {end(), false} when capacity is zero. Existing values are not replaced.
-    template <typename... Args>
-    std::pair<iterator, bool> try_emplace(const Key& key, Args&&... args)
+    template <typename... Args> std::pair<iterator, bool> try_emplace(const Key& key, Args&&... args)
     {
         return TryEmplaceInternal(key, std::forward<Args>(args)...);
     }
@@ -226,14 +220,12 @@ public:
         return TryEmplaceInternal(std::move(key), std::forward<Args>(args)...);
     }
 
-    template <typename ValueArg>
-    std::pair<iterator, bool> insert_or_assign(const Key& key, ValueArg&& value)
+    template <typename ValueArg> std::pair<iterator, bool> insert_or_assign(const Key& key, ValueArg&& value)
     {
         return InsertOrAssignInternal(key, std::forward<ValueArg>(value));
     }
 
-    template <typename ValueArg>
-    std::pair<iterator, bool> insert_or_assign(Key&& key, ValueArg&& value)
+    template <typename ValueArg> std::pair<iterator, bool> insert_or_assign(Key&& key, ValueArg&& value)
     {
         return InsertOrAssignInternal(std::move(key), std::forward<ValueArg>(value));
     }
@@ -244,7 +236,7 @@ public:
 
         typename Index::iterator it = m_index.find(key);
 
-        if (!(it == m_index.end()))
+        if (it != m_index.end())
         {
             iterator entry = it->second;
             m_index.erase(it);
@@ -276,9 +268,9 @@ public:
     }
 
 private:
-    Index m_index;
-    EntryList m_entries;
-    size_type m_capacity;
+    Index            m_index;
+    EntryList        m_entries;
+    size_type        m_capacity;
     EvictionCallback m_onEviction;
 
     void Touch(iterator entry) noexcept
@@ -288,8 +280,8 @@ private:
 
     void EvictLeastRecent()
     {
-        iterator entry              = std::prev(m_entries.end());
-        typename Index::iterator it = m_index.find(entry->first);
+        iterator                 entry = std::prev(m_entries.end());
+        typename Index::iterator it    = m_index.find(entry->first);
 
         if (m_onEviction)
         {
@@ -333,8 +325,7 @@ private:
         return result;
     }
 
-    template <typename KeyArg, typename... Args>
-    std::pair<iterator, bool> TryEmplaceInternal(KeyArg&& key, Args&&... args)
+    template <typename KeyArg, typename... Args> std::pair<iterator, bool> TryEmplaceInternal(KeyArg&& key, Args&&... args)
     {
         std::pair<iterator, bool> result{};
 
@@ -351,10 +342,9 @@ private:
         else
         {
             // Construct before eviction so arguments may safely refer to cached entries.
-            m_entries.emplace_front(std::piecewise_construct,
-                                    std::forward_as_tuple(std::forward<KeyArg>(key)),
+            m_entries.emplace_front(std::piecewise_construct, std::forward_as_tuple(std::forward<KeyArg>(key)),
                                     std::forward_as_tuple(std::forward<Args>(args)...));
-            iterator entry = m_entries.begin();
+            iterator                 entry = m_entries.begin();
             typename Index::iterator indexEntry;
 
             try

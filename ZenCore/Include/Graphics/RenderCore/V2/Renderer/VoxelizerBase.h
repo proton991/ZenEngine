@@ -11,14 +11,14 @@ class RenderDevice;
 
 struct VoxelTextures
 {
-    RHITexture* pOwner{nullptr};
-    RHITexture* pAlbedo{nullptr};
+    RHITexture*     pOwner{nullptr};
+    RHITexture*     pAlbedo{nullptr};
     RHITextureView* pAlbedoView{nullptr};
-    RHITexture* pNormal{nullptr};
+    RHITexture*     pNormal{nullptr};
     RHITextureView* pNormalView{nullptr};
-    RHITexture* pEmissive{nullptr};
+    RHITexture*     pEmissive{nullptr};
     RHITextureView* pEmissiveView{nullptr};
-    RHITexture* pReflectance{nullptr};
+    RHITexture*     pReflectance{nullptr};
 };
 
 class VoxelizerBase
@@ -28,7 +28,7 @@ public:
 
     virtual ~VoxelizerBase() = default;
 
-    virtual void Init() = 0;
+    virtual void Init()      = 0;
 
     // Configure a newly initialized producer before allocating any volume resources.
     bool Configure(uint32_t resolution, bool averagedReflectance, uint64_t reflectanceBudgetBytes);
@@ -36,6 +36,7 @@ public:
     virtual void BuildRenderGraph();
 
     virtual void BuildVoxelizationGraph() {}
+
     virtual void BuildVisualizationGraph() {}
 
     uint64_t GetGeometryRevision() const
@@ -48,6 +49,7 @@ public:
     {
         return m_geometryRevision + (m_voxelizationPending ? 1 : 0);
     }
+
     virtual void OnRenderGraphExecuted(bool succeeded);
 
     sg::AABB GetVoxelBounds() const;
@@ -69,7 +71,9 @@ public:
     }
 
     bool EnableRadianceInputs();
+
     bool EnsureReady();
+
     bool IsReady() const;
 
     bool UsesAveragedReflectance() const
@@ -110,13 +114,16 @@ public:
 
 protected:
     // Start every initial/repeated voxelization from empty accumulation volumes.
-    bool BeginVoxelization(RenderGraph& graph,
-                           RDGQueuePreference queuePreference = RDGQueuePreference::eDefault);
+    bool BeginVoxelization(RenderGraph& graph, RDGQueuePreference queuePreference = RDGQueuePreference::eDefault);
 
     void BindVoxelScene(RDGPassDescBase& pass) const;
+
     void BindReflectanceSums(RDGPassDescBase& pass) const;
+
     void PrepareReflectance();
+
     void ResolveSurface(RDGQueuePreference queuePreference);
+
     RHITexture* CreateVolume(DataFormat format, NameID name, uint32_t mipCount = 1);
 
     virtual void PrepareTextures();
@@ -134,22 +141,22 @@ protected:
     RHISampler* m_pVoxelSampler{nullptr};
     RHISampler* m_pColorSampler{nullptr};
 
-    uint32_t m_voxelTexResolution;
-    uint32_t m_voxelCount;
+    uint32_t   m_voxelTexResolution;
+    uint32_t   m_voxelCount;
     DataFormat m_voxelTexFormat;
 
-    bool m_needVoxelization{true};
-    bool m_textureInitializationAttempted{false};
-    bool m_voxelizationPending{false};
-    uint64_t m_geometryRevision{0};
+    bool       m_needVoxelization{true};
+    bool       m_textureInitializationAttempted{false};
+    bool       m_voxelizationPending{false};
+    uint64_t   m_geometryRevision{0};
     RHIBuffer* m_pReflectanceSums{nullptr};
-    bool m_requestAveragedReflectance{false};
-    bool m_explicitConfiguration{false};
-    bool m_useAveragedReflectance{false};
-    uint64_t m_reflectanceBudgetBytes{0};
-    uint64_t m_sceneRevision{0};
-    uint64_t m_pendingSceneRevision{0};
-    uint64_t m_surfaceRevision{0};
-    uint64_t m_pendingSurfaceRevision{0};
+    bool       m_requestAveragedReflectance{false};
+    bool       m_explicitConfiguration{false};
+    bool       m_useAveragedReflectance{false};
+    uint64_t   m_reflectanceBudgetBytes{0};
+    uint64_t   m_sceneRevision{0};
+    uint64_t   m_pendingSceneRevision{0};
+    uint64_t   m_surfaceRevision{0};
+    uint64_t   m_pendingSurfaceRevision{0};
 };
 } // namespace zen::rc

@@ -23,6 +23,7 @@ public:
     {
         InitializeConditionVariable(&m_osConVar);
     }
+
     ~ConditionVariable() {}
 #endif
 
@@ -33,14 +34,14 @@ public:
     {
         pthread_cond_init(&m_osConVar, NULL);
     }
+
     ~ConditionVariable()
     {
         pthread_cond_destroy(&m_osConVar);
     }
 #endif
 
-    template <class Predicate>
-    void Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds = INF_TIME);
+    template <class Predicate> void Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds = INF_TIME);
 
     void NotifyOne();
 
@@ -50,6 +51,7 @@ private:
     void Wait(Mutex* pMutex, uint32_t milliseconds = INF_TIME);
 
     ConditionVariableData m_osConVar;
+
     ZEN_NO_COPY(ConditionVariable)
 };
 
@@ -62,6 +64,7 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         SleepConditionVariableCS(&m_osConVar, pMutex->GetMutexData(), milliseconds);
     }
 }
+
 inline void ConditionVariable::NotifyOne()
 {
     WakeConditionVariable(&m_osConVar);
@@ -72,8 +75,7 @@ inline void ConditionVariable::NotifyAll()
     WakeAllConditionVariable(&m_osConVar);
 }
 
-template <class Predicate>
-void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
+template <class Predicate> void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
 {
     while (!predicate())
     {
@@ -93,18 +95,18 @@ inline void ConditionVariable::Wait(zen::Mutex* pMutex, uint32_t milliseconds)
         }
         else
         {
-            const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
-            const std::chrono::system_clock::time_point timeout =
-                now + std::chrono::milliseconds(milliseconds);
+            const std::chrono::system_clock::time_point now     = std::chrono::system_clock::now();
+            const std::chrono::system_clock::time_point timeout = now + std::chrono::milliseconds(milliseconds);
+
             timespec ts;
-            ts.tv_sec = std::chrono::duration_cast<std::chrono::seconds>(timeout.time_since_epoch())
-                            .count();
+            ts.tv_sec  = std::chrono::duration_cast<std::chrono::seconds>(timeout.time_since_epoch()).count();
             ts.tv_nsec = (timeout.time_since_epoch().count() % 1000000000) * 1000;
 
             pthread_cond_timedwait(&m_osConVar, pMutex->GetMutexData(), &ts);
         }
     }
 }
+
 inline void ConditionVariable::NotifyOne()
 {
     pthread_cond_signal(&m_osConVar);
@@ -115,8 +117,7 @@ inline void ConditionVariable::NotifyAll()
     pthread_cond_broadcast(&m_osConVar);
 }
 
-template <class Predicate>
-void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
+template <class Predicate> void ConditionVariable::Wait(Mutex* pMutex, Predicate predicate, uint32_t milliseconds)
 {
     while (!predicate())
     {

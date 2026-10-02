@@ -30,20 +30,36 @@ AlignConsecutiveMacros: true
 # #define bar(y, z)        (y + z)
 
 
-# If true, aligns consecutive assignments.
-AlignConsecutiveAssignments: true
-# true:
+# Align assignments, including compound assignments, across blank lines; comments start a new group.
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: false
+  AlignCompound: true
+  PadOperators: true
+# Example:
 # int aaaa = 12;
 # int b    = 23;
 # int ccc  = 23;
 
 
-# If true, aligns consecutive declarations.
-AlignConsecutiveDeclarations: false
-# true:
-# int         aaaa = 12;
-# float       b = 23;
-# std::string ccc = 23;
+# Align declaration groups; blank lines and comments start a new group.
+# Keep blank lines between functions, and before declarations that should align separately.
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignFunctionPointers: true
+# Example:
+# Index            m_index;
+# EntryList        m_entries;
+# size_type        m_capacity;
+# EvictionCallback m_onEviction;
+
+AlignConsecutiveBitFields:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: false
 
 
 AlignEscapedNewlines: Left
@@ -54,8 +70,9 @@ AlignEscapedNewlines: Left
 #   int dddddddddd;
 
 
-# If true, horizontally align operands of binary and ternary expressions.
-AlignOperands: false
+# Align operands of wrapped binary and ternary expressions.
+# Comparison operators are aligned within an expression, not across separate statements.
+AlignOperands: AlignAfterOperator
 
 
 # If true, aligns trailing comments.
@@ -245,8 +262,8 @@ BraceWrapping:
   #  If false, empty namespace body can be put on a single line.
   SplitEmptyNamespace: false
 
-# The way to wrap binary operators.
-BreakBeforeBinaryOperators: None
+# Put wrapped binary operators at the start of continuation lines, except assignments.
+BreakBeforeBinaryOperators: NonAssignment
 
 
 BreakBeforeInheritanceComma: false
@@ -260,11 +277,11 @@ BreakInheritanceList: AfterColon
 
 
 # If true, ternary operators will be placed after line breaks.
-BreakBeforeTernaryOperators: false
-# false:
-# veryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLongDescription ?
-#     firstValue :
-#     SecondValueVeryVeryVeryVeryLong;
+BreakBeforeTernaryOperators: true
+# true:
+# result = veryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLongDescription
+#              ? firstValue
+#              : SecondValueVeryVeryVeryVeryLong;
 
 BreakConstructorInitializersBeforeComma: false
 
@@ -280,7 +297,7 @@ BreakStringLiterals: false
 
 # A column limit of 0 means that there is no column limit. In this case, clang-format will
 # respect the input's line breaking decisions within statements unless they contradict other rules.
-ColumnLimit: 100
+ColumnLimit: 128
 
 # A regular expression that describes comments with special meaning, which should not be split into lines or otherwise changed.
 CommentPragmas: '^ IWYU pragma:'

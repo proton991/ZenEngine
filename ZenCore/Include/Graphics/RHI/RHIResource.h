@@ -46,8 +46,7 @@ public:
         AddReference();
     }
 
-    explicit RHIResource(RHIResourceType resourceType, NameID tag) :
-        m_resourceType(resourceType), m_resourceTag(tag)
+    explicit RHIResource(RHIResourceType resourceType, NameID tag) : m_resourceType(resourceType), m_resourceTag(tag)
     {
         AddReference();
     }
@@ -93,7 +92,7 @@ public:
     }
 
 protected:
-    virtual void Init() = 0;
+    virtual void Init()    = 0;
 
     virtual void Destroy() = 0;
 
@@ -131,8 +130,8 @@ private:
     };
 
     mutable AtomicCounter m_counter;
-    RHIResourceType m_resourceType{RHIResourceType::eMax};
-    uint64_t m_stableId{GenerateStableId()};
+    RHIResourceType       m_resourceType{RHIResourceType::eMax};
+    uint64_t              m_stableId{GenerateStableId()};
 };
 
 // Preserve RHIResource's existing counter and RHI-thread destruction protocol.
@@ -195,7 +194,7 @@ public:
 private:
     // shader flags
     BitField<RHIShaderStageFlagBits> m_stageFlags;
-    uint32_t m_stageCount{0};
+    uint32_t                         m_stageCount{0};
 
     // spirv code
     HeapVector<uint8_t> m_spirv[ToUnderlying(RHIShaderStage::eMax)];
@@ -215,25 +214,25 @@ class RHITexture;
 class RHIViewport : public RHIResource
 {
 public:
-    virtual ~RHIViewport() = default;
+    virtual ~RHIViewport()                                              = default;
 
-    virtual void PrepareForPresent(RHICommandList* pCmdList) = 0;
+    virtual void PrepareForPresent(RHICommandList* pCmdList)            = 0;
 
-    virtual bool Present() = 0;
+    virtual bool Present()                                              = 0;
 
-    virtual uint32_t GetWidth() const = 0;
+    virtual uint32_t GetWidth() const                                   = 0;
 
-    virtual uint32_t GetHeight() const = 0;
+    virtual uint32_t GetHeight() const                                  = 0;
 
-    virtual DataFormat GetSwapchainFormat() = 0;
+    virtual DataFormat GetSwapchainFormat()                             = 0;
 
-    virtual DataFormat GetDepthStencilFormat() = 0;
+    virtual DataFormat GetDepthStencilFormat()                          = 0;
 
-    virtual RHITexture* GetColorBackBuffer() = 0;
+    virtual RHITexture* GetColorBackBuffer()                            = 0;
 
-    virtual RHITextureSubResourceRange GetColorBackBufferRange() = 0;
+    virtual RHITextureSubResourceRange GetColorBackBufferRange()        = 0;
 
-    virtual RHITexture* GetDepthStencilBackBuffer() = 0;
+    virtual RHITexture* GetDepthStencilBackBuffer()                     = 0;
 
     virtual RHITextureSubResourceRange GetDepthStencilBackBufferRange() = 0;
 
@@ -257,18 +256,18 @@ protected:
         m_enableVSync(enableVSync)
     {}
 
-    void* m_pWindow{nullptr};
+    void*    m_pWindow{nullptr};
     uint32_t m_width{0};
     uint32_t m_height{0};
-    bool m_enableVSync{true};
+    bool     m_enableVSync{true};
 };
 
 struct RHIBufferCreateInfo
 {
-    uint64_t size{0};
+    uint64_t                         size{0};
     BitField<RHIBufferUsageFlagBits> usageFlags{0};
-    RHIBufferAllocateType allocateType{RHIBufferAllocateType::eNone};
-    NameID tag;
+    RHIBufferAllocateType            allocateType{RHIBufferAllocateType::eNone};
+    NameID                           tag;
 };
 
 class RHIBuffer : public RHIResource
@@ -278,7 +277,7 @@ public:
 
     virtual uint8_t* Map() = 0;
 
-    virtual void Unmap() = 0;
+    virtual void Unmap()   = 0;
 
     // Creates an immutable view of the logical buffer. Repeating its format is a
     // no-op; changing a successfully created view's format is rejected.
@@ -304,40 +303,40 @@ protected:
         m_resourceTag = createInfo.tag;
     }
 
-    uint64_t m_requiredSize{0};
+    uint64_t                         m_requiredSize{0};
     BitField<RHIBufferUsageFlagBits> m_usageFlags;
-    RHIBufferAllocateType m_allocateType{RHIBufferAllocateType::eNone};
+    RHIBufferAllocateType            m_allocateType{RHIBufferAllocateType::eNone};
 };
 
 struct RHITextureCreateInfo
 {
-    DataFormat format{DataFormat::eUndefined};
-    SampleCount samples{SampleCount::e1};
+    DataFormat                        format{DataFormat::eUndefined};
+    SampleCount                       samples{SampleCount::e1};
     BitField<RHITextureUsageFlagBits> usageFlags;
-    RHITextureType type{RHITextureType::e1D};
-    uint32_t width{1};
-    uint32_t height{1};
-    uint32_t depth{1};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
+    RHITextureType                    type{RHITextureType::e1D};
+    uint32_t                          width{1};
+    uint32_t                          height{1};
+    uint32_t                          depth{1};
+    uint32_t                          arrayLayers{1};
+    uint32_t                          mipmaps{1};
 
     // memory flags
-    bool cpuReadable{false};
-    bool mutableFormat{false};
+    bool   cpuReadable{false};
+    bool   mutableFormat{false};
     NameID tag;
 };
 
 struct RHITextureViewCreateInfo
 {
-    DataFormat format{DataFormat::eUndefined};
+    DataFormat     format{DataFormat::eUndefined};
     RHITextureType type{RHITextureType::e1D};
-    uint32_t arrayLayers{1};
-    uint32_t mipLevels{1};
-    uint32_t baseMipLevel{0};
-    uint32_t baseArrayLayer{0};
+    uint32_t       arrayLayers{1};
+    uint32_t       mipLevels{1};
+    uint32_t       baseMipLevel{0};
+    uint32_t       baseArrayLayer{0};
     // Empty selects the format's aspects; combined formats retain depth sampling by default.
     BitField<RHITextureAspectFlagBits> aspect;
-    NameID tag;
+    NameID                             tag;
 };
 
 class RHITextureView;
@@ -415,8 +414,7 @@ public:
     }
 
 protected:
-    explicit RHITexture(const RHITextureCreateInfo& createInfo) :
-        RHIResource(RHIResourceType::eTexture), m_baseInfo(createInfo)
+    explicit RHITexture(const RHITextureCreateInfo& createInfo) : RHIResource(RHIResourceType::eTexture), m_baseInfo(createInfo)
     {
         m_resourceTag = createInfo.tag;
     }
@@ -430,7 +428,7 @@ protected:
 
     RHITextureCreateInfo m_baseInfo{};
 
-    RHITextureView* m_pDefaultView{nullptr};
+    RHITextureView*                 m_pDefaultView{nullptr};
     SmallVector<RHITextureView*, 4> m_ownedViews;
 };
 
@@ -459,9 +457,7 @@ public:
 
 protected:
     RHITextureView(RHITexture* pTexture, RHITextureViewCreateInfo createInfo) :
-        RHIResource(RHIResourceType::eTextureView, createInfo.tag),
-        m_pTexture(pTexture),
-        m_viewInfo(std::move(createInfo))
+        RHIResource(RHIResourceType::eTextureView, createInfo.tag), m_pTexture(pTexture), m_viewInfo(std::move(createInfo))
     {
         InitSubresourceRange();
     }
@@ -475,9 +471,8 @@ protected:
 private:
     void InitSubresourceRange()
     {
-        m_subResourceRange.aspect         = m_viewInfo.aspect.IsEmpty() ?
-                    GetTextureFormatAspects(m_viewInfo.format) :
-                    m_viewInfo.aspect;
+        m_subResourceRange.aspect =
+            m_viewInfo.aspect.IsEmpty() ? GetTextureFormatAspects(m_viewInfo.format) : m_viewInfo.aspect;
         m_subResourceRange.layerCount     = m_viewInfo.arrayLayers;
         m_subResourceRange.levelCount     = m_viewInfo.mipLevels;
         m_subResourceRange.baseMipLevel   = m_viewInfo.baseMipLevel;
@@ -487,11 +482,18 @@ private:
 
 inline BitField<RHITextureAspectFlagBits> RHIRenderTarget::GetAspects() const
 {
+    BitField<RHITextureAspectFlagBits> returnValue{};
+
     if (pTextureView != nullptr)
     {
-        return pTextureView->GetSubResourceRange().aspect;
+        returnValue = pTextureView->GetSubResourceRange().aspect;
     }
-    return GetTextureFormatAspects(format);
+    else
+    {
+        returnValue = GetTextureFormatAspects(format);
+    }
+
+    return returnValue;
 }
 
 inline void RHITexture::DestroyOwnedViews()
@@ -528,21 +530,21 @@ struct RHISamplerCreateInfo
         return info;
     }
 
-    RHISamplerFilter magFilter{RHISamplerFilter::eNearest};
-    RHISamplerFilter minFilter{RHISamplerFilter::eNearest};
-    RHISamplerFilter mipFilter{RHISamplerFilter::eNearest};
-    RHISamplerRepeatMode repeatU{RHISamplerRepeatMode::eClampToEdge};
-    RHISamplerRepeatMode repeatV{RHISamplerRepeatMode::eClampToEdge};
-    RHISamplerRepeatMode repeatW{RHISamplerRepeatMode::eClampToEdge};
-    float lodBias{0.0f};
-    bool useAnisotropy{false};
-    float maxAnisotropy{1.0f};
-    bool enableCompare{false};
+    RHISamplerFilter        magFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter        minFilter{RHISamplerFilter::eNearest};
+    RHISamplerFilter        mipFilter{RHISamplerFilter::eNearest};
+    RHISamplerRepeatMode    repeatU{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode    repeatV{RHISamplerRepeatMode::eClampToEdge};
+    RHISamplerRepeatMode    repeatW{RHISamplerRepeatMode::eClampToEdge};
+    float                   lodBias{0.0f};
+    bool                    useAnisotropy{false};
+    float                   maxAnisotropy{1.0f};
+    bool                    enableCompare{false};
     RHIDepthCompareOperator compareOp{RHIDepthCompareOperator::eAlways};
-    float minLod{0.0f};
-    float maxLod{1e20}; // Something very large should do.
-    RHISamplerBorderColor borderColor{RHISamplerBorderColor::eFloatOpaqueBlack};
-    bool unnormalizedUVW{false};
+    float                   minLod{0.0f};
+    float                   maxLod{1e20}; // Something very large should do.
+    RHISamplerBorderColor   borderColor{RHISamplerBorderColor::eFloatOpaqueBlack};
+    bool                    unnormalizedUVW{false};
 };
 
 class RHISampler : public RHIResource
@@ -551,8 +553,7 @@ public:
     ~RHISampler() {}
 
 protected:
-    explicit RHISampler(const RHISamplerCreateInfo& createInfo) :
-        RHIResource(RHIResourceType::eSampler), m_baseInfo(createInfo)
+    explicit RHISampler(const RHISamplerCreateInfo& createInfo) : RHIResource(RHIResourceType::eSampler), m_baseInfo(createInfo)
     {}
 
     RHISamplerCreateInfo m_baseInfo{};
@@ -562,10 +563,10 @@ class RHIShader;
 
 struct RHIShaderCreateInfo
 {
-    std::string spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
-    BitField<RHIShaderStageFlagBits> stageFlags;
+    std::string                                     spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
+    BitField<RHIShaderStageFlagBits>                stageFlags;
     HashMap<uint32_t, RHIShaderSpecializationValue> specializationConstants;
-    NameID name;
+    NameID                                          name;
 };
 
 // Includes all stages used
@@ -633,22 +634,22 @@ protected:
         m_shaderGroupSPIRV->SetStageFlags(m_shaderStageFlags);
     }
 
-    RHIShaderGroupSPIRVPtr m_shaderGroupSPIRV{};
-    std::string m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
-    BitField<RHIShaderStageFlagBits> m_shaderStageFlags;
-    HashMap<uint32_t, RHIShaderSpecializationValue> m_specializationConstants;
-    RHIShaderResourceDescriptorTable m_SRDTable;
+    RHIShaderGroupSPIRVPtr                                           m_shaderGroupSPIRV{};
+    std::string                                                      m_spirvFileName[ToUnderlying(RHIShaderStage::eMax)];
+    BitField<RHIShaderStageFlagBits>                                 m_shaderStageFlags;
+    HashMap<uint32_t, RHIShaderSpecializationValue>                  m_specializationConstants;
+    RHIShaderResourceDescriptorTable                                 m_SRDTable;
     SmallVector<uint32_t, ToUnderlying(RHIShaderResourceType::eMax)> m_SRDCount;
-    HashMap<NameID, const RHIShaderResourceDescriptor*> m_namedSRDLut;
-    NameID m_name;
+    HashMap<NameID, const RHIShaderResourceDescriptor*>              m_namedSRDLut;
+    NameID                                                           m_name;
 };
 
 struct RHIRenderingLayout
 {
-    Rect2<int> renderArea;
-    uint32_t numLayers{1};
-    uint32_t numColorRenderTargets{0};
-    bool hasDepthStencilRT{false};
+    Rect2<int>      renderArea;
+    uint32_t        numLayers{1};
+    uint32_t        numColorRenderTargets{0};
+    bool            hasDepthStencilRT{false};
     RHIRenderTarget colorRenderTargets[MAX_NUM_COLOR_ATTACHMENTS];
     RHIRenderTarget depthStencilRenderTarget;
 
@@ -674,12 +675,12 @@ struct RHIRenderingLayout
         renderArea.maxY = static_cast<int32_t>(int64_t(offsetY) + height);
     }
 
-    void AddColorRenderTarget(DataFormat format,
-                              RHITexture* pTexture,
-                              RHIRenderTargetLoadOp loadOp,
-                              RHIRenderTargetStoreOp storeOp,
+    void AddColorRenderTarget(DataFormat                format,
+                              RHITexture*               pTexture,
+                              RHIRenderTargetLoadOp     loadOp,
+                              RHIRenderTargetStoreOp    storeOp,
                               RHIRenderTargetClearValue clearValue,
-                              SampleCount numSamples)
+                              SampleCount               numSamples)
     {
         if (numColorRenderTargets >= MAX_NUM_COLOR_ATTACHMENTS)
         {
@@ -697,47 +698,44 @@ struct RHIRenderingLayout
         colorRenderTargets[numColorRenderTargets++] = colorRT;
     }
 
-    void AddColorRenderTarget(DataFormat format,
-                              RHITexture* pTexture,
-                              RHIRenderTargetLoadOp loadOp,
-                              RHIRenderTargetStoreOp storeOp,
+    void AddColorRenderTarget(DataFormat                format,
+                              RHITexture*               pTexture,
+                              RHIRenderTargetLoadOp     loadOp,
+                              RHIRenderTargetStoreOp    storeOp,
                               RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE)
     {
         AddColorRenderTarget(format, pTexture, loadOp, storeOp, clearValue,
-                             pTexture != nullptr ? pTexture->GetBaseInfo().samples :
-                                                   SampleCount::e1);
+                             pTexture != nullptr ? pTexture->GetBaseInfo().samples : SampleCount::e1);
     }
 
-    void AddColorRenderTarget(RHITextureView* pView,
-                              RHIRenderTargetLoadOp loadOp,
-                              RHIRenderTargetStoreOp storeOp,
+    void AddColorRenderTarget(RHITextureView*           pView,
+                              RHIRenderTargetLoadOp     loadOp,
+                              RHIRenderTargetStoreOp    storeOp,
                               RHIRenderTargetClearValue clearValue = DEFAULT_COLOR_CLEAR_VALUE)
     {
         if (pView == nullptr)
         {
             LOG_ERROR_AND_THROW("Color attachment view is null");
         }
-        const uint32_t previousLayers = numLayers;
-        const bool firstAttachment    = GetTotalNumRenderTargets() == 0;
+        const uint32_t previousLayers  = numLayers;
+        const bool     firstAttachment = GetTotalNumRenderTargets() == 0;
         AddColorRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
         colorRenderTargets[numColorRenderTargets - 1].pTextureView = pView;
-        numLayers                                                  = firstAttachment ?
-                                                             pView->GetSubResourceRange().layerCount :
-                                                             std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+        numLayers                                                  = firstAttachment ? pView->GetSubResourceRange().layerCount
+                                                                                     : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
     }
 
-    void AddDepthStencilRenderTarget(DataFormat format,
-                                     RHITexture* pTexture,
-                                     RHIRenderTargetLoadOp loadOp,
-                                     RHIRenderTargetStoreOp storeOp,
+    void AddDepthStencilRenderTarget(DataFormat                format,
+                                     RHITexture*               pTexture,
+                                     RHIRenderTargetLoadOp     loadOp,
+                                     RHIRenderTargetStoreOp    storeOp,
                                      RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
     {
         if (!hasDepthStencilRT)
         {
-            depthStencilRenderTarget.format   = format;
-            depthStencilRenderTarget.pTexture = pTexture;
-            depthStencilRenderTarget.numSamples =
-                pTexture != nullptr ? pTexture->GetBaseInfo().samples : SampleCount::e1;
+            depthStencilRenderTarget.format     = format;
+            depthStencilRenderTarget.pTexture   = pTexture;
+            depthStencilRenderTarget.numSamples = pTexture != nullptr ? pTexture->GetBaseInfo().samples : SampleCount::e1;
             depthStencilRenderTarget.loadOp     = loadOp;
             depthStencilRenderTarget.storeOp    = storeOp;
             depthStencilRenderTarget.clearValue = clearValue;
@@ -746,9 +744,9 @@ struct RHIRenderingLayout
         }
     }
 
-    void AddDepthStencilRenderTarget(RHITextureView* pView,
-                                     RHIRenderTargetLoadOp loadOp,
-                                     RHIRenderTargetStoreOp storeOp,
+    void AddDepthStencilRenderTarget(RHITextureView*           pView,
+                                     RHIRenderTargetLoadOp     loadOp,
+                                     RHIRenderTargetStoreOp    storeOp,
                                      RHIRenderTargetClearValue clearValue = DEFAULT_DS_CLEAR_VALUE)
     {
         if (pView == nullptr)
@@ -757,14 +755,12 @@ struct RHIRenderingLayout
         }
         if (!hasDepthStencilRT)
         {
-            const uint32_t previousLayers = numLayers;
-            const bool firstAttachment    = GetTotalNumRenderTargets() == 0;
-            AddDepthStencilRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp,
-                                        clearValue);
+            const uint32_t previousLayers  = numLayers;
+            const bool     firstAttachment = GetTotalNumRenderTargets() == 0;
+            AddDepthStencilRenderTarget(pView->GetFormat(), pView->GetTexture(), loadOp, storeOp, clearValue);
             depthStencilRenderTarget.pTextureView = pView;
-            numLayers                             = firstAttachment ?
-                                            pView->GetSubResourceRange().layerCount :
-                                            std::min(previousLayers, pView->GetSubResourceRange().layerCount);
+            numLayers                             = firstAttachment ? pView->GetSubResourceRange().layerCount
+                                                                    : std::min(previousLayers, pView->GetSubResourceRange().layerCount);
         }
     }
 
@@ -787,14 +783,14 @@ private:
 struct RHIGeometryBuffer
 {
     HeapVector<RHIBuffer*> vertexBuffers;
-    RHIBuffer* pIndexBuffer{nullptr};
-    DataFormat indexBufferFormat{DataFormat::eR32UInt};
-    uint64_t indexBufferOffset{0};
+    RHIBuffer*             pIndexBuffer{nullptr};
+    DataFormat             indexBufferFormat{DataFormat::eR32UInt};
+    uint64_t               indexBufferOffset{0};
 };
 
 struct RHIGfxPipelineCreateInfo
 {
-    RHIShader* pShader;
+    RHIShader*           pShader;
     RHIGfxPipelineStates states;
 
     const RHIRenderingLayout* pRenderingLayout;
@@ -832,9 +828,7 @@ protected:
     }
 
     RHIPipeline(const RHIComputePipelineCreateInfo& createInfo) :
-        RHIResource(RHIResourceType::ePipeline),
-        m_type(RHIPipelineType::eCompute),
-        m_pShader(createInfo.pShader)
+        RHIResource(RHIResourceType::ePipeline), m_type(RHIPipelineType::eCompute), m_pShader(createInfo.pShader)
     {
         m_pShader->AddReference();
     }
@@ -850,18 +844,18 @@ protected:
 class RHIResourceFactory
 {
 public:
-    virtual ~RHIResourceFactory() = default;
+    virtual ~RHIResourceFactory()                                                       = default;
 
-    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
+    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo)              = 0;
 
-    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
+    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo)           = 0;
 
-    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo)           = 0;
 
-    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
+    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo)              = 0;
 
     virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
 
-    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)     = 0;
 };
 } // namespace zen

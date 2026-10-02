@@ -54,6 +54,7 @@ class RHIOptions
 public:
     // Deleted to prevent copying and assignment
     RHIOptions(const RHIOptions&)            = delete;
+
     RHIOptions& operator=(const RHIOptions&) = delete;
 
     // Static method to get the single instance of the class
@@ -68,6 +69,7 @@ public:
     {
         m_rayTracingEnabled = enabled;
     }
+
     bool RayTracingEnabled() const
     {
         return m_rayTracingEnabled;
@@ -77,6 +79,7 @@ public:
     {
         m_gpuProfilerMarkers = enabled;
     }
+
     bool GPUProfilerMarkers() const
     {
         return m_gpuProfilerMarkers;
@@ -91,18 +94,22 @@ public:
     {
         return m_deviceLossDiagnostics;
     }
+
     void SetGPUMemoryStats(bool enabled)
     {
         m_gpuMemoryStats = enabled;
     }
+
     bool GPUMemoryStats() const
     {
         return m_gpuMemoryStats;
     }
+
     void SetValidationEnabled(bool enabled)
     {
         m_validationEnabled = enabled;
     }
+
     bool ValidationEnabled() const
     {
         return m_validationEnabled;

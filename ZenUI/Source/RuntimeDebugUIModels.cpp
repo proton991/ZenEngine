@@ -12,7 +12,7 @@ bool ContainsIgnoringCase(const std::string& value, const char* filter)
 {
     const size_t length = std::strlen(filter);
 
-    bool found = length == 0;
+    bool found          = length == 0;
 
     for (size_t start = 0; !found && start + length <= value.size(); ++start)
     {
@@ -20,11 +20,11 @@ bool ContainsIgnoringCase(const std::string& value, const char* filter)
 
         for (size_t offset = 0; matches && offset < length; ++offset)
         {
-            const unsigned char left = static_cast<unsigned char>(value[start + offset]);
+            const unsigned char left  = static_cast<unsigned char>(value[start + offset]);
 
             const unsigned char right = static_cast<unsigned char>(filter[offset]);
 
-            matches = std::tolower(left) == std::tolower(right);
+            matches                   = std::tolower(left) == std::tolower(right);
         }
 
         found = matches;
@@ -52,12 +52,11 @@ std::string ModelName(const std::string& path)
 {
     const size_t separator = path.find_last_of("/\\");
 
-    const size_t start = separator == std::string::npos ? 0 : separator + 1;
+    const size_t start     = separator == std::string::npos ? 0 : separator + 1;
 
     const size_t extension = path.find_last_of('.');
 
-    const size_t end =
-        extension != std::string::npos && extension > start ? extension : path.size();
+    const size_t end       = extension != std::string::npos && extension > start ? extension : path.size();
 
     return path.substr(start, end - start);
 }
@@ -71,25 +70,24 @@ void RuntimeDebugUI::SynchronizeModelRevision()
 
         m_modelRequestRejected = false;
 
-        m_status = "Model loaded. Scene controls refreshed.";
+        m_status               = "Model loaded. Scene controls refreshed.";
     }
 }
 
 bool RuntimeDebugUI::MatchesModelSearch(const asset::GLTFModelCatalogEntry& entry) const
 {
-    return ContainsIgnoringCase(entry.label, m_modelFilter) ||
-        ContainsIgnoringCase(entry.path, m_modelFilter);
+    return ContainsIgnoringCase(entry.label, m_modelFilter) || ContainsIgnoringCase(entry.path, m_modelFilter);
 }
 
 bool RuntimeDebugUI::RequestModel(const std::string& path)
 {
     const RuntimeModelState& state = m_sceneControls.GetRuntimeModelState();
 
-    bool requested = false;
+    bool requested                 = false;
 
     if (state.pendingPath.empty() && !path.empty() && path != state.currentPath)
     {
-        requested = m_sceneControls.RequestRuntimeModel(path);
+        requested              = m_sceneControls.RequestRuntimeModel(path);
 
         m_modelRequestRejected = !requested;
     }
@@ -101,7 +99,7 @@ void RuntimeDebugUI::BuildModelSelector()
 {
     const RuntimeModelState& state = m_sceneControls.GetRuntimeModelState();
 
-    const bool loading = !state.pendingPath.empty();
+    const bool loading             = !state.pendingPath.empty();
 
     ImGui::BeginDisabled(loading);
 
@@ -127,8 +125,7 @@ void RuntimeDebugUI::BuildModelSelector()
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
 
-    ImGui::InputTextWithHint("##Model search", "Search model or variant path", m_modelFilter,
-                             sizeof(m_modelFilter));
+    ImGui::InputTextWithHint("##Model search", "Search model or variant path", m_modelFilter, sizeof(m_modelFilter));
 
     size_t matching = 0;
 
@@ -141,22 +138,20 @@ void RuntimeDebugUI::BuildModelSelector()
 
     const ImGuiStyle& style = ImGui::GetStyle();
 
-    const ImVec2 padding = style.FramePadding;
+    const ImVec2 padding    = style.FramePadding;
 
-    const float width = ImGui::GetContentRegionAvail().x;
+    const float width       = ImGui::GetContentRegionAvail().x;
 
-    const float textWidth = ImMax(1.0f, width - padding.x * 3.0f - ImGui::GetFontSize());
+    const float textWidth   = ImMax(1.0f, width - padding.x * 3.0f - ImGui::GetFontSize());
 
-    const std::string name =
-        state.currentPath.empty() ? "No model loaded" : ModelName(state.currentPath);
+    const std::string name  = state.currentPath.empty() ? "No model loaded" : ModelName(state.currentPath);
 
-    const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str(), nullptr, false, textWidth);
+    const ImVec2 nameSize   = ImGui::CalcTextSize(name.c_str(), nullptr, false, textWidth);
 
-    const float pathHeight = state.currentPath.empty() ?
-        0.0f :
-        ImGui::CalcTextSize(state.currentPath.c_str(), nullptr, false, textWidth).y;
+    const float pathHeight =
+        state.currentPath.empty() ? 0.0f : ImGui::CalcTextSize(state.currentPath.c_str(), nullptr, false, textWidth).y;
 
-    const float pathSpacing = state.currentPath.empty() ? 0.0f : style.ItemSpacing.y;
+    const float pathSpacing   = state.currentPath.empty() ? 0.0f : style.ItemSpacing.y;
 
     const float previewHeight = nameSize.y + pathSpacing + pathHeight + padding.y * 2.0f;
 
@@ -164,13 +159,11 @@ void RuntimeDebugUI::BuildModelSelector()
 
     // Size the frame for both lines while keeping normal text padding and a small arrow.
     // The custom preview renders paths literally, including ImGui's ##/### syntax.
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(padding.x, (previewHeight - ImGui::GetFontSize()) * 0.5f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding.x, (previewHeight - ImGui::GetFontSize()) * 0.5f));
 
     const bool open =
         ImGui::BeginCombo("##Model selection", nullptr,
-                          ImGuiComboFlags_HeightLarge | ImGuiComboFlags_NoArrowButton |
-                              ImGuiComboFlags_CustomPreview);
+                          ImGuiComboFlags_HeightLarge | ImGuiComboFlags_NoArrowButton | ImGuiComboFlags_CustomPreview);
 
     ImGui::PopStyleVar();
 
@@ -190,8 +183,8 @@ void RuntimeDebugUI::BuildModelSelector()
 
                 const ImVec2 textPosition = ImGui::GetCursorPos();
 
-                const ImVec2 textSize = ImGui::CalcTextSize(entry.label.c_str(), nullptr, false,
-                                                            ImGui::GetContentRegionAvail().x);
+                const ImVec2 textSize =
+                    ImGui::CalcTextSize(entry.label.c_str(), nullptr, false, ImGui::GetContentRegionAvail().x);
 
                 if (ImGui::Selectable("##Model entry", selected, 0, ImVec2(0, textSize.y)))
                 {
@@ -246,8 +239,7 @@ void RuntimeDebugUI::BuildModelSelector()
 
         const ImRect& preview = ImGui::GetCurrentContext()->ComboPreviewData.PreviewRect;
 
-        ImGui::RenderArrow(ImGui::GetWindowDrawList(),
-                           ImVec2(preview.Max.x - padding.x - ImGui::GetFontSize(), position.y),
+        ImGui::RenderArrow(ImGui::GetWindowDrawList(), ImVec2(preview.Max.x - padding.x - ImGui::GetFontSize(), position.y),
                            ImGui::GetColorU32(ImGuiCol_Text), ImGuiDir_Down);
 
         ImGui::EndComboPreview();
@@ -263,8 +255,7 @@ void RuntimeDebugUI::BuildModelSelector()
     }
     else if (state.models.empty())
     {
-        ImGui::TextWrapped(
-            "No .gltf or .glb models found. Check the directory and Refresh models.");
+        ImGui::TextWrapped("No .gltf or .glb models found. Check the directory and Refresh models.");
     }
     else
     {

@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdlib>
+#include "Memory/Memory.h"
 #include <exception>
 #include <initializer_list>
 #include <utility>
@@ -93,7 +93,7 @@ public:
 
         if (this->m_pData != m_alignedBuffer.data())
         {
-            free(this->m_pData);
+            ZEN_MEM_FREE(this->m_pData);
         }
     }
 
@@ -121,7 +121,7 @@ public:
             // Pilfer allocated pointer.
             if (this->m_pData != m_alignedBuffer.data())
             {
-                free(this->m_pData);
+                ZEN_MEM_FREE(this->m_pData);
             }
 
             this->m_pData    = other.m_pData;
@@ -269,9 +269,8 @@ public:
                 targetCapacity <<= 1u;
             }
 
-            T* pNewBuffer = targetCapacity > N ?
-                static_cast<T*>(malloc(targetCapacity * sizeof(T))) :
-                m_alignedBuffer.data();
+            T* pNewBuffer = targetCapacity > N ? static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(targetCapacity * sizeof(T), alignof(T)))
+                                               : m_alignedBuffer.data();
 
             if (!pNewBuffer)
             {
@@ -290,7 +289,7 @@ public:
             if (this->m_pData != m_alignedBuffer.data())
             {
                 // reset array ptr
-                free(this->m_pData);
+                ZEN_MEM_FREE(this->m_pData);
             }
 
             this->m_pData = pNewBuffer;
@@ -335,9 +334,9 @@ public:
                     targetCapacity <<= 1u;
                 }
 
-                T* pNewBuffer = targetCapacity > N ?
-                    static_cast<T*>(malloc(targetCapacity * sizeof(T))) :
-                    m_alignedBuffer.data();
+                T* pNewBuffer = targetCapacity > N
+                                  ? static_cast<T*>(ZEN_MEM_ALLOC_ALIGNED(targetCapacity * sizeof(T), alignof(T)))
+                                  : m_alignedBuffer.data();
 
                 if (!pNewBuffer)
                 {
@@ -360,8 +359,7 @@ public:
                 }
 
                 // copy construct new elements
-                for (const T* pSourceIter = pInsertBegin; pSourceIter != pInsertEnd;
-                     ++pSourceIter, ++pTargetIter)
+                for (const T* pSourceIter = pInsertBegin; pSourceIter != pInsertEnd; ++pSourceIter, ++pTargetIter)
                 {
                     new (pTargetIter) T(*pSourceIter);
                 }
@@ -381,7 +379,7 @@ public:
                 if (this->m_pData != m_alignedBuffer.data())
                 {
                     // reset array ptr
-                    free(this->m_pData);
+                    ZEN_MEM_FREE(this->m_pData);
                 }
 
                 this->m_pData = pNewBuffer;
@@ -479,9 +477,9 @@ public:
     }
 
 private:
-    T* m_pData{nullptr};
-    size_t m_size{0};
-    size_t m_capacity{0};
+    T*                  m_pData{nullptr};
+    size_t              m_size{0};
+    size_t              m_capacity{0};
     AlignedBuffer<T, N> m_alignedBuffer;
 };
 

@@ -14,11 +14,15 @@ public:
         static KeyboardMouseInput input;
         return input;
     }
-    KeyboardMouseInput(const KeyboardMouseInput&) = delete;
-    KeyboardMouseInput(KeyboardMouseInput&&)      = delete;
-    ~KeyboardMouseInput()                         = default;
+
+    KeyboardMouseInput(const KeyboardMouseInput&)            = delete;
+
+    KeyboardMouseInput(KeyboardMouseInput&&)                 = delete;
+
+    ~KeyboardMouseInput()                                    = default;
 
     KeyboardMouseInput& operator=(const KeyboardMouseInput&) = delete;
+
     KeyboardMouseInput& operator=(KeyboardMouseInput&&)      = delete;
 
     /// @brief Change the key's state to pressed.
@@ -109,20 +113,20 @@ public:
 
 private:
     KeyboardMouseInput() = default;
-    std::array<std::int64_t, 2> m_previousCursorPos{0, 0}; // [x, y]
-    std::array<std::int64_t, 2> m_currentCursorPos{0, 0};  // [x, y]
-    std::array<bool, GLFW_KEY_LAST + 1> m_keyPressed{};
-    std::array<bool, GLFW_KEY_LAST + 1> m_pendingKeyPresses{};
-    std::array<bool, GLFW_KEY_LAST + 1> m_suppressedKeys{};
+    std::array<std::int64_t, 2>                  m_previousCursorPos{0, 0}; // [x, y]
+    std::array<std::int64_t, 2>                  m_currentCursorPos{0, 0};  // [x, y]
+    std::array<bool, GLFW_KEY_LAST + 1>          m_keyPressed{};
+    std::array<bool, GLFW_KEY_LAST + 1>          m_pendingKeyPresses{};
+    std::array<bool, GLFW_KEY_LAST + 1>          m_suppressedKeys{};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST + 1> m_mouseButtonPressed{};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST + 1> m_mouseButtonReleased{};
     std::array<bool, GLFW_MOUSE_BUTTON_LAST + 1> m_suppressedButtons{};
-    bool m_captureMouse{false};
-    bool m_captureKeyboard{false};
-    bool m_mouseButtonsUpdated{false};
-    bool m_firstMouse{true};
-    mutable std::shared_mutex m_inputMutex;
-    bool m_mousePaused{false};
-    bool m_dirty{false};
+    bool                                         m_captureMouse{false};
+    bool                                         m_captureKeyboard{false};
+    bool                                         m_mouseButtonsUpdated{false};
+    bool                                         m_firstMouse{true};
+    mutable std::shared_mutex                    m_inputMutex;
+    bool                                         m_mousePaused{false};
+    bool                                         m_dirty{false};
 };
 } // namespace zen::platform

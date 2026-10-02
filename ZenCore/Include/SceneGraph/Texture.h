@@ -16,9 +16,9 @@ public:
 
     Texture(std::string name,
             // props
-            uint32_t index,
-            uint32_t width,
-            uint32_t height,
+            uint32_t      index,
+            uint32_t      width,
+            uint32_t      height,
             asset::Format format,
             // moved
             std::vector<uint8_t> data,
@@ -48,10 +48,10 @@ public:
         return typeid(Texture);
     }
 
-    uint32_t index{0};
-    int samplerIndex{-1};
-    uint32_t width{0};
-    uint32_t height{0};
+    uint32_t      index{0};
+    int           samplerIndex{-1};
+    uint32_t      width{0};
+    uint32_t      height{0};
     asset::Format format{asset::Format::UNDEFINED};
     // byte data no mipmaps
     std::vector<uint8_t> bytesData;
@@ -61,17 +61,17 @@ public:
 
 inline bool operator==(const Texture& lhs, const Texture& rhs)
 {
-    bool equal = lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex &&
-        lhs.width == rhs.width && lhs.height == rhs.height && lhs.format == rhs.format &&
-        lhs.bytesData == rhs.bytesData && lhs.mipBytes.size() == rhs.mipBytes.size();
+    bool equal = lhs.index == rhs.index && lhs.samplerIndex == rhs.samplerIndex && lhs.width == rhs.width
+              && lhs.height == rhs.height && lhs.format == rhs.format && lhs.bytesData == rhs.bytesData
+              && lhs.mipBytes.size() == rhs.mipBytes.size();
 
     for (size_t level = 0; equal && level < lhs.mipBytes.size(); ++level)
     {
-        const HeapVector<uint8_t>& left = lhs.mipBytes[level];
+        const HeapVector<uint8_t>& left  = lhs.mipBytes[level];
 
         const HeapVector<uint8_t>& right = rhs.mipBytes[level];
 
-        equal = left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
+        equal                            = left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
     }
 
     return equal;

@@ -89,11 +89,11 @@ public:
     }
 
     // Copying a view copies only its pointer and element count.
-    VectorView(const VectorView&) = default;
+    VectorView(const VectorView&)            = default;
 
     VectorView& operator=(const VectorView&) = default;
 
-    VectorView() = default;
+    VectorView()                             = default;
 
     VectorView(T& element) : m_pData(&element), m_size(1) {}
 
@@ -105,15 +105,13 @@ public:
     {}
 
     template <typename Container>
-        requires(std::is_lvalue_reference_v<Container &&> &&
-                 VectorViewCompatibleContainer<std::remove_reference_t<Container>> &&
-                 std::is_convertible_v<decltype(std::data(std::declval<Container&>())), T*>)
-    VectorView(Container&& container) :
-        m_pData(std::data(container)), m_size(static_cast<size_t>(std::size(container)))
+        requires(std::is_lvalue_reference_v<Container &&> && VectorViewCompatibleContainer<std::remove_reference_t<Container>>
+                 && std::is_convertible_v<decltype(std::data(std::declval<Container&>())), T*>)
+    VectorView(Container&& container) : m_pData(std::data(container)), m_size(static_cast<size_t>(std::size(container)))
     {}
 
 private:
-    T* m_pData{nullptr};
+    T*     m_pData{nullptr};
     size_t m_size{0};
 };
 
@@ -133,8 +131,7 @@ template <typename T> VectorView<const T> MakeVecView(const T* pPtr, size_t size
 template <VectorViewCompatibleContainer Container> using VectorViewElement =
     std::remove_pointer_t<decltype(std::data(std::declval<Container&>()))>;
 
-template <VectorViewCompatibleContainer Container>
-VectorView<VectorViewElement<Container>> MakeVecView(Container& container)
+template <VectorViewCompatibleContainer Container> VectorView<VectorViewElement<Container>> MakeVecView(Container& container)
 {
     return VectorView<VectorViewElement<Container>>(container);
 }

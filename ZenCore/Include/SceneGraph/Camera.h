@@ -43,22 +43,21 @@ class Camera
 public:
     static UniquePtr<Camera> CreateUniqueOnAABB(const Vec3& minPos,
                                                 const Vec3& maxPos,
-                                                float aspect,
-                                                CameraType type = CameraType::eFirstPerson);
+                                                float       aspect,
+                                                CameraType  type = CameraType::eFirstPerson);
 
     static UniquePtr<Camera> CreateOrthoOnAABB(const sg::AABB& aabb);
 
-    static UniquePtr<Camera> CreateUnique(
-        const Vec3& eye,
-        const Vec3& target,
-        float aspect,
-        CameraType type                     = CameraType::eFirstPerson,
-        CameraProjectionType projectionType = CameraProjectionType::ePerspective);
+    static UniquePtr<Camera> CreateUnique(const Vec3& eye,
+                                          const Vec3& target,
+                                          float       aspect,
+                                          CameraType  type                    = CameraType::eFirstPerson,
+                                          CameraProjectionType projectionType = CameraProjectionType::ePerspective);
 
     Camera(const Vec3& eye,
            const Vec3& target,
-           float aspect,
-           float fov       = 70.0f,
+           float       aspect,
+           float       fov = 70.0f,
            float near      = 0.001f,
            float far       = 100.0f,
            float speed     = 2.0f,
@@ -134,10 +133,10 @@ private:
 
     void UpdateViewOrbit(const Vec3& rotation);
     // camera attributes
-    CameraType m_type;
+    CameraType           m_type;
     CameraProjectionType m_projectionType{CameraProjectionType::ePerspective};
 
-    Vec3 m_rotation{0.0f, 0.0f, 0.0f};
+    Vec3  m_rotation{0.0f, 0.0f, 0.0f};
     float m_rotationSpeed{1.0f};
 
     Vec3 m_position{0.0f, 0.0f, 0.0f};
@@ -168,8 +167,8 @@ private:
 
     float m_near{0.001f};
     float m_far{100.0f};
-    bool m_infiniteFar{false};
-    bool m_fixedAspect{false};
+    bool  m_infiniteFar{false};
+    bool  m_fixedAspect{false};
 
     Vec4 m_orthoRect{-1, 1, -1, 1};
 
@@ -180,7 +179,7 @@ private:
     float m_speed{1.f};
     float m_sensitivity{0.2f};
 
-    CameraUniformData m_cameraData;
+    CameraUniformData     m_cameraData;
     std::function<void()> m_onUpdate;
 
     Frustum m_frustum;

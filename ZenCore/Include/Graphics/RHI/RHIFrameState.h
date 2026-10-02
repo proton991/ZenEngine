@@ -25,14 +25,14 @@ constexpr uint64_t ToValue(RHIFrameNumber frameNumber)
 
 template <> struct FrameTimelineTraits<FrameTimelineId::RHI>
 {
-    using Number = RHIFrameNumber;
-    using Slot   = RHIFrameSlot;
+    using Number                                     = RHIFrameNumber;
+    using Slot                                       = RHIFrameSlot;
 
-    static constexpr uint32_t kMaxFramesInFlight = 4u;
+    static constexpr uint32_t kMaxFramesInFlight     = 4u;
 
     static constexpr uint32_t kDefaultFramesInFlight = 3u;
 
-    static constexpr const char* kName = "RHIFrameState";
+    static constexpr const char* kName               = "RHIFrameState";
 };
 
 using RHIFrameState = TFrameTimeline<FrameTimelineId::RHI>;

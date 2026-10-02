@@ -6,7 +6,9 @@ TEST(VerificationTest, SuccessfulChecksEvaluateTheirExpressionOnce)
     int evaluations = 0;
 
     VERIFY_EXPR(++evaluations == 1);
+
     VERIFY_EXPR_MSG(++evaluations == 2, "unused message");
+
     VERIFY_EXPR_MSG_F(++evaluations == 3, "unused value {}", evaluations);
 
     EXPECT_EQ(evaluations, 3);
@@ -17,6 +19,7 @@ TEST(VerificationTest, SuccessfulChecksDoNotEvaluateDiagnosticArguments)
     int evaluations = 0;
 
     VERIFY_EXPR_MSG(true, (++evaluations, "unused message"));
+
     VERIFY_EXPR_MSG_F(true, "unused value {}", ++evaluations);
 
     EXPECT_EQ(evaluations, 0);

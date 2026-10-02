@@ -16,9 +16,9 @@ struct PipelineCacheMetrics
     uint64_t invalidations{0};
     uint64_t invalidatedEntries{0};
     uint64_t timedRequests{0};
-    double keyCPUUs{0};
-    double lookupCPUUs{0};
-    double creationCPUUs{0};
+    double   keyCPUUs{0};
+    double   lookupCPUUs{0};
+    double   creationCPUUs{0};
 
     PipelineCacheMetrics Since(const PipelineCacheMetrics& previous) const
     {
@@ -38,18 +38,18 @@ struct PipelineCacheMetrics
 
     void Accumulate(const PipelineCacheMetrics& other)
     {
-        requests += other.requests;
-        hits += other.hits;
-        misses += other.misses;
-        creations += other.creations;
-        failures += other.failures;
-        evictions += other.evictions;
-        invalidations += other.invalidations;
+        requests           += other.requests;
+        hits               += other.hits;
+        misses             += other.misses;
+        creations          += other.creations;
+        failures           += other.failures;
+        evictions          += other.evictions;
+        invalidations      += other.invalidations;
         invalidatedEntries += other.invalidatedEntries;
-        timedRequests += other.timedRequests;
-        keyCPUUs += other.keyCPUUs;
-        lookupCPUUs += other.lookupCPUUs;
-        creationCPUUs += other.creationCPUUs;
+        timedRequests      += other.timedRequests;
+        keyCPUUs           += other.keyCPUUs;
+        lookupCPUUs        += other.lookupCPUUs;
+        creationCPUUs      += other.creationCPUUs;
     }
 };
 } // namespace zen::rc

@@ -20,13 +20,13 @@ struct SceneRendererModelTestAccess
 
         if (started)
         {
-            demo.m_modelState.basePath = root;
+            demo.m_modelState.basePath    = root;
 
-            demo.m_modelState.models = asset::DiscoverGLTFModels(root);
+            demo.m_modelState.models      = asset::DiscoverGLTFModels(root);
 
             demo.m_modelState.currentPath = path;
 
-            demo.m_modelState.revision = 1;
+            demo.m_modelState.revision    = 1;
         }
 
         return started;
@@ -73,8 +73,7 @@ public:
     {
         const int64_t stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_root =
-            std::filesystem::temp_directory_path() / ("zen_model_switch_" + std::to_string(stamp));
+        m_root              = std::filesystem::temp_directory_path() / ("zen_model_switch_" + std::to_string(stamp));
 
         std::filesystem::create_directories(m_root);
 
@@ -91,30 +90,26 @@ public:
             R"({"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"}],)"
             R"("meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1}}]}],)";
 
-        Write("plain.gltf",
-              geometry + R"("nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0})");
+        Write("plain.gltf", geometry + R"("nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0})");
 
-        Write(
-            "ortho.gltf",
-            geometry +
-                R"("nodes":[{"mesh":0},{"camera":0,"translation":[0.5,0.5,2]}],)"
-                R"("cameras":[{"type":"orthographic","orthographic":{"xmag":1,"ymag":1,"znear":0.1,"zfar":10}}],)"
-                R"("scenes":[{"nodes":[0,1]}],"scene":0})");
+        Write("ortho.gltf",
+              geometry
+                  + R"("nodes":[{"mesh":0},{"camera":0,"translation":[0.5,0.5,2]}],)"
+                    R"("cameras":[{"type":"orthographic","orthographic":{"xmag":1,"ymag":1,"znear":0.1,"zfar":10}}],)"
+                    R"("scenes":[{"nodes":[0,1]}],"scene":0})");
 
-        Write(
-            "infinite.gltf",
-            geometry +
-                R"("nodes":[{"mesh":0},{"camera":0,"translation":[0.5,0.5,2]}],)"
-                R"("cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":0.8,"znear":0.1}}],)"
-                R"("scenes":[{"nodes":[0,1]}],"scene":0})");
+        Write("infinite.gltf",
+              geometry
+                  + R"("nodes":[{"mesh":0},{"camera":0,"translation":[0.5,0.5,2]}],)"
+                    R"("cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":0.8,"znear":0.1}}],)"
+                    R"("scenes":[{"nodes":[0,1]}],"scene":0})");
 
-        Write(
-            "authored-light.gltf",
-            geometry +
-                R"("extensionsUsed":["KHR_lights_punctual"],)"
-                R"("extensions":{"KHR_lights_punctual":{"lights":[{"type":"point","intensity":2}]}},)"
-                R"("nodes":[{"mesh":0},{"translation":[0,0,2],"extensions":{"KHR_lights_punctual":{"light":0}}}],)"
-                R"("scenes":[{"nodes":[0,1]}],"scene":0})");
+        Write("authored-light.gltf",
+              geometry
+                  + R"("extensionsUsed":["KHR_lights_punctual"],)"
+                    R"("extensions":{"KHR_lights_punctual":{"lights":[{"type":"point","intensity":2}]}},)"
+                    R"("nodes":[{"mesh":0},{"translation":[0,0,2],"extensions":{"KHR_lights_punctual":{"light":0}}}],)"
+                    R"("scenes":[{"nodes":[0,1]}],"scene":0})");
 
         Write("broken.gltf", "invalid glTF");
     }
@@ -156,8 +151,7 @@ class SceneModelSwitchTest : public testing::TestWithParam<zen::RHIExecutionMode
 
 static bool OutsideBounds(const zen::Vec3& position, const zen::sg::AABB& bounds)
 {
-    return glm::any(glm::lessThan(position, bounds.GetMin())) ||
-        glm::any(glm::greaterThan(position, bounds.GetMax()));
+    return glm::any(glm::lessThan(position, bounds.GetMin())) || glm::any(glm::greaterThan(position, bounds.GetMax()));
 }
 
 TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheActiveScene)
@@ -166,21 +160,19 @@ TEST_P(SceneModelSwitchTest, QueuedSwitchesResetCamerasAndFailedImportsKeepTheAc
 
     const ModelFixtures models;
 
-    rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+    rc::RenderConfig& config            = rc::RenderConfig::GetInstance();
 
     const RHIExecutionMode previousMode = config.rhiExecutionMode;
 
-    config.rhiExecutionMode = GetParam();
+    config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
-    SceneRendererDemo demo({"Model switch integration", false, 160, 120},
-                           sg::CameraType::eFirstPerson);
+    SceneRendererDemo demo({"Model switch integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
-    const bool started =
-        SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("ortho.gltf"));
+    const bool started = SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("ortho.gltf"));
 
     EXPECT_TRUE(started);
 
@@ -254,21 +246,19 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
     const ModelFixtures models;
 
-    rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+    rc::RenderConfig& config            = rc::RenderConfig::GetInstance();
 
     const RHIExecutionMode previousMode = config.rhiExecutionMode;
 
-    config.rhiExecutionMode = GetParam();
+    config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
-    SceneRendererDemo demo({"Preset light integration", false, 160, 120},
-                           sg::CameraType::eFirstPerson);
+    SceneRendererDemo demo({"Preset light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
-    const bool started =
-        SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("plain.gltf"));
+    const bool started = SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("plain.gltf"));
 
     EXPECT_TRUE(started);
 
@@ -280,9 +270,9 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         SceneRendererModelTestAccess::ConfigureLighting(demo, lightingConfig);
 
-        rc::SceneLights& lights = SceneRendererModelTestAccess::Scene(demo)->GetLights();
+        rc::SceneLights& lights           = SceneRendererModelTestAccess::Scene(demo)->GetLights();
 
-        const sg::AABB& bounds = SceneRendererModelTestAccess::Bounds(demo);
+        const sg::AABB& bounds            = SceneRendererModelTestAccess::Bounds(demo);
 
         ui::RuntimeSceneSettings previous = demo.GetRuntimeSceneSettings();
 
@@ -300,7 +290,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
         {
             SCOPED_TRACE(index);
 
-            const rc::LightId id = SceneRendererModelTestAccess::EditableLightId(demo, index);
+            const rc::LightId id        = SceneRendererModelTestAccess::EditableLightId(demo, index);
 
             const rc::SceneLight* light = lights.Find(id);
 
@@ -314,20 +304,20 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
                 const uint32_t axis = index / 2;
 
-                EXPECT_TRUE((index & 1) != 0 ? light->position[axis] > bounds.GetMax()[axis] :
-                                               light->position[axis] < bounds.GetMin()[axis]);
+                EXPECT_TRUE((index & 1) != 0 ? light->position[axis] > bounds.GetMax()[axis]
+                                             : light->position[axis] < bounds.GetMin()[axis]);
             }
         }
 
-        const rc::LightId firstId = SceneRendererModelTestAccess::EditableLightId(demo, 0);
+        const rc::LightId firstId      = SceneRendererModelTestAccess::EditableLightId(demo, 0);
 
-        const float firstIntensity = previous.lights[0].intensity;
+        const float firstIntensity     = previous.lights[0].intensity;
 
-        ui::RuntimeSceneSettings next = previous;
+        ui::RuntimeSceneSettings next  = previous;
 
-        next.lights[0].intensity += 2.0f;
+        next.lights[0].intensity      += 2.0f;
 
-        next.lights[0].color = Vec3(0.2f, 0.4f, 0.8f);
+        next.lights[0].color           = Vec3(0.2f, 0.4f, 0.8f);
 
         EXPECT_TRUE(demo.ApplyRuntimeSceneSettings(previous, next));
 
@@ -346,15 +336,15 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
             EXPECT_EQ(edited->color, next.lights[0].color);
         }
 
-        previous = demo.GetRuntimeSceneSettings();
+        previous                    = demo.GetRuntimeSceneSettings();
 
         const rc::LightId removedId = SceneRendererModelTestAccess::EditableLightId(demo, 5);
 
-        const Vec3 removedPosition = previous.lights[5].position;
+        const Vec3 removedPosition  = previous.lights[5].position;
 
-        next = previous;
+        next                        = previous;
 
-        next.lightCount = 5;
+        next.lightCount             = 5;
 
         EXPECT_TRUE(demo.ApplyRuntimeSceneSettings(previous, next));
 
@@ -366,7 +356,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         EXPECT_EQ(previous.lights[5].position, removedPosition);
 
-        next = previous;
+        next            = previous;
 
         next.lightCount = 6;
 
@@ -382,7 +372,7 @@ TEST_P(SceneModelSwitchTest, PresetLightsExposeTheirActualIdsAndRetainSeedsWhenR
 
         EXPECT_TRUE(OutsideBounds(previous.lights[6].position, bounds));
 
-        next = previous;
+        next            = previous;
 
         next.lightCount = 7;
 
@@ -432,38 +422,35 @@ TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnothe
 
     const ModelFixtures models;
 
-    rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+    rc::RenderConfig& config            = rc::RenderConfig::GetInstance();
 
     const RHIExecutionMode previousMode = config.rhiExecutionMode;
 
-    config.rhiExecutionMode = GetParam();
+    config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
-    SceneRendererDemo demo({"Configured light integration", false, 160, 120},
-                           sg::CameraType::eFirstPerson);
+    SceneRendererDemo demo({"Configured light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
-    const bool started =
-        SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("plain.gltf"));
+    const bool started = SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("plain.gltf"));
 
     EXPECT_TRUE(started);
 
     if (started)
     {
-        std::istringstream configured(
-            "scene_lighting_override=true\nlight_count=3\nlight.0.position=-2,1,0\n"
-            "light.1.position=2,1,0\nlight.2.position=1,2,3\n"
-            "dynamic_light.enabled=true\ndynamic_light.index=2\n"
-            "dynamic_light.orbit_center=0,1,0\ndynamic_light.orbit_radius=0.5\n"
-            "dynamic_light.angular_speed_degrees=45\n");
+        std::istringstream configured("scene_lighting_override=true\nlight_count=3\nlight.0.position=-2,1,0\n"
+                                      "light.1.position=2,1,0\nlight.2.position=1,2,3\n"
+                                      "dynamic_light.enabled=true\ndynamic_light.index=2\n"
+                                      "dynamic_light.orbit_center=0,1,0\ndynamic_light.orbit_radius=0.5\n"
+                                      "dynamic_light.angular_speed_degrees=45\n");
 
         const platform::ConfigLoader lightingConfig(configured);
 
         SceneRendererModelTestAccess::ConfigureLighting(demo, lightingConfig);
 
-        rc::SceneLights& lights = SceneRendererModelTestAccess::Scene(demo)->GetLights();
+        rc::SceneLights& lights                 = SceneRendererModelTestAccess::Scene(demo)->GetLights();
 
         const ui::RuntimeSceneSettings previous = demo.GetRuntimeSceneSettings();
 
@@ -485,7 +472,7 @@ TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnothe
 
         EXPECT_EQ(previous.lights[2].position, Vec3(1, 2, 3));
 
-        const rc::LightId firstId = SceneRendererModelTestAccess::EditableLightId(demo, 0);
+        const rc::LightId firstId    = SceneRendererModelTestAccess::EditableLightId(demo, 0);
 
         const rc::LightId animatedId = SceneRendererModelTestAccess::EditableLightId(demo, 2);
 
@@ -495,9 +482,9 @@ TEST_P(SceneModelSwitchTest, ConfiguredLightSlotsRetainIdsAndAnimationWhenAnothe
 
         EXPECT_NE(animatedPosition, previous.lights[2].position);
 
-        ui::RuntimeSceneSettings next = previous;
+        ui::RuntimeSceneSettings next  = previous;
 
-        next.lights[0].intensity += 1.0f;
+        next.lights[0].intensity      += 1.0f;
 
         EXPECT_TRUE(demo.ApplyRuntimeSceneSettings(previous, next));
 
@@ -533,27 +520,25 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
     const ModelFixtures models;
 
-    rc::RenderConfig& config = rc::RenderConfig::GetInstance();
+    rc::RenderConfig& config            = rc::RenderConfig::GetInstance();
 
     const RHIExecutionMode previousMode = config.rhiExecutionMode;
 
-    config.rhiExecutionMode = GetParam();
+    config.rhiExecutionMode             = GetParam();
 
-    const bool previousRayTracing = RHIOptions::GetInstance().RayTracingEnabled();
+    const bool previousRayTracing       = RHIOptions::GetInstance().RayTracingEnabled();
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
-    SceneRendererDemo demo({"Authored light integration", false, 160, 120},
-                           sg::CameraType::eFirstPerson);
+    SceneRendererDemo demo({"Authored light integration", false, 160, 120}, sg::CameraType::eFirstPerson);
 
-    const bool started = SceneRendererModelTestAccess::Start(demo, models.Root(),
-                                                             models.Path("authored-light.gltf"));
+    const bool started = SceneRendererModelTestAccess::Start(demo, models.Root(), models.Path("authored-light.gltf"));
 
     EXPECT_TRUE(started);
 
     if (started)
     {
-        rc::SceneLights& lights = SceneRendererModelTestAccess::Scene(demo)->GetLights();
+        rc::SceneLights& lights                 = SceneRendererModelTestAccess::Scene(demo)->GetLights();
 
         const ui::RuntimeSceneSettings previous = demo.GetRuntimeSceneSettings();
 
@@ -567,13 +552,13 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
         if (!lights.GetEntries().empty())
         {
-            const rc::LightId authoredId = lights.GetEntries()[0].id;
+            const rc::LightId authoredId  = lights.GetEntries()[0].id;
 
-            const Vec3 authoredPosition = lights.GetEntries()[0].light.position;
+            const Vec3 authoredPosition   = lights.GetEntries()[0].light.position;
 
             ui::RuntimeSceneSettings next = previous;
 
-            next.lightCount = rc::MaxSceneLights;
+            next.lightCount               = rc::MaxSceneLights;
 
             // Actual ownership still limits capacity if a stale draft omits metadata.
             next.modelLightCount = 0;
@@ -584,7 +569,7 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
             EXPECT_EQ(demo.GetRuntimeSceneSettings().lightCount, 0u);
 
-            next = previous;
+            next            = previous;
 
             next.lightCount = 1;
 
@@ -603,9 +588,9 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
             const ui::RuntimeSceneSettings current = demo.GetRuntimeSceneSettings();
 
-            next = current;
+            next                                   = current;
 
-            next.lightCount = 0;
+            next.lightCount                        = 0;
 
             EXPECT_TRUE(demo.ApplyRuntimeSceneSettings(current, next));
 
@@ -626,6 +611,5 @@ TEST_P(SceneModelSwitchTest, AuthoredModelLightIdsRemainOwnedByTheModelAndReduce
 
 INSTANTIATE_TEST_SUITE_P(SubmissionModes,
                          SceneModelSwitchTest,
-                         testing::Values(zen::RHIExecutionMode::eInline,
-                                         zen::RHIExecutionMode::eThreaded));
+                         testing::Values(zen::RHIExecutionMode::eInline, zen::RHIExecutionMode::eThreaded));
 } // namespace

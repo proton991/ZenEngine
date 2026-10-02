@@ -34,7 +34,7 @@ public:
 
             submitThread = std::this_thread::get_id();
 
-            interval = active->AddInterval();
+            interval     = active->AddInterval();
         }
 
         const RHISubmissionResult result = TestRHI::FlushAllGPUCommands();
@@ -60,7 +60,7 @@ public:
     {
         events.push_back(Event::eEnd);
 
-        endThread = std::this_thread::get_id();
+        endThread    = std::this_thread::get_id();
 
         endSucceeded = succeeded;
 
@@ -74,13 +74,13 @@ public:
         active.Reset();
     }
 
-    HeapVector<Event> events;
-    std::thread::id beginThread;
-    std::thread::id submitThread;
-    std::thread::id endThread;
+    HeapVector<Event>    events;
+    std::thread::id      beginThread;
+    std::thread::id      submitThread;
+    std::thread::id      endThread;
     RHIGPUFrameTimingPtr active;
-    uint64_t recordings{0};
-    bool endSucceeded{false};
+    uint64_t             recordings{0};
+    bool                 endSucceeded{false};
 };
 
 class RHIGPUFrameExecutorTest : public RHIExecutorTest
@@ -92,25 +92,24 @@ protected:
 
         GRHIFrameState.Init(3);
 
-        timingRHI = ZEN_NEW() FrameTimingTestRHI();
+        timingRHI   = ZEN_NEW() FrameTimingTestRHI();
 
-        rhi = timingRHI;
+        rhi         = timingRHI;
 
-        executor = ZEN_NEW() RHICommandListExecutor(rhi, RHIExecutionMode::eThreaded);
+        executor    = ZEN_NEW() RHICommandListExecutor(rhi, RHIExecutionMode::eThreaded);
 
         GDynamicRHI = executor;
     }
 
     void VerifySubmissionFailure(RHISubmissionResult failure, bool partial)
     {
-        RHICommandListPtr commands(
-            RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+        RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
 
         commands->Draw(3, 1, 0, 0);
 
-        rhi->failSubmissionAt = 1;
+        rhi->failSubmissionAt    = 1;
 
-        rhi->submissionFailure = failure;
+        rhi->submissionFailure   = failure;
 
         rhi->submitBeforeFailure = partial;
 
@@ -162,8 +161,7 @@ protected:
 
 TEST_F(RHIGPUFrameExecutorTest, FrameMarkersQueueInOrderWithoutWaitingForTheWorker)
 {
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
 
     commands->Draw(3, 1, 0, 0);
 
@@ -233,8 +231,7 @@ TEST_F(RHIGPUFrameExecutorTest, PartialFatalSubmissionCannotReportACompleteFrame
 
 TEST_F(RHIGPUFrameExecutorTest, CallerFailureInvalidatesOtherwiseSuccessfulNativeWork)
 {
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
 
     commands->Draw(3, 1, 0, 0);
 
@@ -272,8 +269,7 @@ TEST(RHIGPUFrameExecutor, ReplayUsesFreshCapturesInInlineAndThreadedModes)
 
             GDynamicRHI = &executor;
 
-            RHICommandListPtr commands(RHICommandList::Create(
-                executor.GetCommandContext(RHICommandContextType::eGraphics)));
+            RHICommandListPtr commands(RHICommandList::Create(executor.GetCommandContext(RHICommandContextType::eGraphics)));
 
             commands->Draw(3, 1, 0, 0);
 
@@ -287,8 +283,7 @@ TEST(RHIGPUFrameExecutor, ReplayUsesFreshCapturesInInlineAndThreadedModes)
 
                 executor.BeginGPUFrameTiming(timing);
 
-                EXPECT_EQ(executor.SubmitBatch(MakeVecView(&replay, 1)),
-                          RHISubmissionResult::eSuccess);
+                EXPECT_EQ(executor.SubmitBatch(MakeVecView(&replay, 1)), RHISubmissionResult::eSuccess);
 
                 executor.EndGPUFrameTiming(timing, true);
 
@@ -309,8 +304,7 @@ TEST(RHIGPUFrameExecutor, ReplayUsesFreshCapturesInInlineAndThreadedModes)
 
             EXPECT_EQ(backend->graphics.drawCount, 2u);
 
-            EXPECT_EQ(backend->beginThread == std::this_thread::get_id(),
-                      mode == RHIExecutionMode::eInline);
+            EXPECT_EQ(backend->beginThread == std::this_thread::get_id(), mode == RHIExecutionMode::eInline);
 
             EXPECT_EQ(backend->beginThread, backend->endThread);
 

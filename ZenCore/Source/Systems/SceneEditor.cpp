@@ -8,17 +8,16 @@ void SceneEditor::CenterAndNormalizeScene(sg::Scene* pScene)
 {
     const float extent = pScene->GetAABB().GetMaxExtent();
 
-    const Vec3 center = pScene->GetAABB().GetCenter();
+    const Vec3 center  = pScene->GetAABB().GetCenter();
 
-    if (std::isfinite(extent) && extent > 1e-6f && std::isfinite(center.x) &&
-        std::isfinite(center.y) && std::isfinite(center.z))
+    if (std::isfinite(extent) && extent > 1e-6f && std::isfinite(center.x) && std::isfinite(center.y)
+        && std::isfinite(center.z))
     {
-        const float scale = 1.0f / extent;
+        const float scale                 = 1.0f / extent;
 
         pScene->GetAssetData().unitScale *= scale;
 
-        const Mat4 normalization =
-            glm::scale(Mat4(1.0f), Vec3(scale)) * glm::translate(Mat4(1.0f), -center);
+        const Mat4 normalization          = glm::scale(Mat4(1.0f), Vec3(scale)) * glm::translate(Mat4(1.0f), -center);
 
         // Apply once at every root so hierarchy queries and renderer matrices agree.
         for (const UniquePtr<sg::Node>& node : pScene->GetNodes())
@@ -35,7 +34,7 @@ void SceneEditor::CenterAndNormalizeScene(sg::Scene* pScene)
         {
             sg::NodeData data = node->GetData();
 
-            data.modelMatrix = normalization * data.modelMatrix;
+            data.modelMatrix  = normalization * data.modelMatrix;
 
             node->SetData(node->GetRenderableIndex(), data.modelMatrix);
         }
@@ -54,7 +53,7 @@ void SceneEditor::CenterAndNormalizeScene(sg::Scene* pScene)
 
                 sg::NodeData data = node->GetData();
 
-                data.modelMatrix = normalization * data.modelMatrix;
+                data.modelMatrix  = normalization * data.modelMatrix;
 
                 node->SetData(node->GetRenderableIndex(), data.modelMatrix);
             }
@@ -62,33 +61,36 @@ void SceneEditor::CenterAndNormalizeScene(sg::Scene* pScene)
 
         for (sg::Light* light : pScene->GetComponents<sg::Light>())
         {
-            light->unitScale *= scale;
-            sg::LightProperties properties = light->GetProperties();
+            light->unitScale               *= scale;
 
-            properties.position = Vec3(normalization * Vec4(properties.position, 1.0f));
+            sg::LightProperties properties  = light->GetProperties();
 
-            properties.range *= scale;
+            properties.position             = Vec3(normalization * Vec4(properties.position, 1.0f));
+
+            properties.range               *= scale;
 
             // Preserve inverse-square illumination when changing the engine's unit scale.
             if (light->GetType() != sg::Directional)
             {
                 properties.intensity *= scale * scale;
             }
+
             light->SetProperties(properties);
         }
 
         for (sg::SceneCamera* camera : pScene->GetComponents<sg::SceneCamera>())
         {
-            camera->unitScale *= scale;
-            camera->worldMatrix = normalization * camera->worldMatrix;
+            camera->unitScale   *= scale;
 
-            camera->nearPlane *= scale;
+            camera->worldMatrix  = normalization * camera->worldMatrix;
 
-            camera->farPlane *= scale;
+            camera->nearPlane   *= scale;
 
-            camera->xmag *= scale;
+            camera->farPlane    *= scale;
 
-            camera->ymag *= scale;
+            camera->xmag        *= scale;
+
+            camera->ymag        *= scale;
         }
 
         pScene->GetAABB().Transform(normalization);

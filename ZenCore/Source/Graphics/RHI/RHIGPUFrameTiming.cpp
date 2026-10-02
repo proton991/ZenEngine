@@ -5,20 +5,15 @@ namespace zen
 {
 namespace
 {
-bool UnwrapTimestamp(uint64_t ticks,
-                     uint64_t anchor,
-                     uint64_t mask,
-                     uint64_t halfRange,
-                     int64_t& offset)
+bool UnwrapTimestamp(uint64_t ticks, uint64_t anchor, uint64_t mask, uint64_t halfRange, int64_t& offset)
 {
     const uint64_t delta = (ticks - anchor) & mask;
 
-    const bool valid = delta != halfRange;
+    const bool valid     = delta != halfRange;
 
     if (valid)
     {
-        offset = delta < halfRange ? static_cast<int64_t>(delta) :
-                                     -static_cast<int64_t>((anchor - ticks) & mask);
+        offset = delta < halfRange ? static_cast<int64_t>(delta) : -static_cast<int64_t>((anchor - ticks) & mask);
     }
 
     return valid;
@@ -60,8 +55,7 @@ void RHIGPUFrameTiming::Seal(RHIGPUTimingStatus status)
     {
         if (status != RHIGPUTimingStatus::eAvailable)
         {
-            m_recordingStatus =
-                status == RHIGPUTimingStatus::ePending ? RHIGPUTimingStatus::eError : status;
+            m_recordingStatus = status == RHIGPUTimingStatus::ePending ? RHIGPUTimingStatus::eError : status;
         }
 
         m_sealed.store(true, std::memory_order_release);
@@ -72,7 +66,7 @@ RHIGPUTimingStatus RHIGPUFrameTiming::Evaluate(double& microseconds) const
 {
     RHIGPUTimingStatus status = RHIGPUTimingStatus::ePending;
 
-    microseconds = 0;
+    microseconds              = 0;
 
     if (m_sealed.load(std::memory_order_acquire))
     {
@@ -84,13 +78,12 @@ RHIGPUTimingStatus RHIGPUFrameTiming::Evaluate(double& microseconds) const
 
             for (const RHIGPUTimingPtr& interval : m_intervals)
             {
-                const RHIGPUTimingStatus intervalStatus = interval->GetStatus();
+                const RHIGPUTimingStatus intervalStatus  = interval->GetStatus();
 
-                pending |= intervalStatus == RHIGPUTimingStatus::ePending;
+                pending                                 |= intervalStatus == RHIGPUTimingStatus::ePending;
 
-                if (status == RHIGPUTimingStatus::eAvailable &&
-                    intervalStatus != RHIGPUTimingStatus::eAvailable &&
-                    intervalStatus != RHIGPUTimingStatus::ePending)
+                if (status == RHIGPUTimingStatus::eAvailable && intervalStatus != RHIGPUTimingStatus::eAvailable
+                    && intervalStatus != RHIGPUTimingStatus::ePending)
                 {
                     status = intervalStatus;
                 }
@@ -118,21 +111,19 @@ bool RHIGPUFrameTiming::CalculateEnvelope(double& microseconds) const
 {
     const RHIGPUTimestampInterval first = m_intervals.front()->GetTimestamps();
 
-    uint32_t validBits = first.validBits;
+    uint32_t validBits                  = first.validBits;
 
-    RHIGPUTimestampInterval anchor = first;
+    RHIGPUTimestampInterval anchor      = first;
 
-    bool valid = validBits > 0 && validBits <= 64 && std::isfinite(first.periodNanoseconds) &&
-        first.periodNanoseconds > 0;
+    bool valid = validBits > 0 && validBits <= 64 && std::isfinite(first.periodNanoseconds) && first.periodNanoseconds > 0;
 
     for (const RHIGPUTimingPtr& interval : m_intervals)
     {
         const RHIGPUTimestampInterval ticks = interval->GetTimestamps();
 
-        valid &= ticks.validBits > 0 && ticks.validBits <= 64 &&
-            ticks.periodNanoseconds == first.periodNanoseconds;
+        valid     &= ticks.validBits > 0 && ticks.validBits <= 64 && ticks.periodNanoseconds == first.periodNanoseconds;
 
-        validBits = std::min(validBits, ticks.validBits);
+        validBits  = std::min(validBits, ticks.validBits);
 
         if (ticks.validBits > anchor.validBits)
         {
@@ -144,45 +135,42 @@ bool RHIGPUFrameTiming::CalculateEnvelope(double& microseconds) const
     {
         const uint64_t halfRange = uint64_t(1) << (validBits - 1);
 
-        int64_t earliest = 0;
+        int64_t earliest         = 0;
 
-        int64_t latest = 0;
+        int64_t latest           = 0;
 
         for (const RHIGPUTimingPtr& interval : m_intervals)
         {
             const RHIGPUTimestampInterval ticks = interval->GetTimestamps();
 
-            const uint64_t nativeMask =
-                ticks.validBits == 64 ? UINT64_MAX : (uint64_t(1) << ticks.validBits) - 1;
+            const uint64_t nativeMask           = ticks.validBits == 64 ? UINT64_MAX : (uint64_t(1) << ticks.validBits) - 1;
 
-            const uint64_t duration = (ticks.end - ticks.begin) & nativeMask;
+            const uint64_t duration             = (ticks.end - ticks.begin) & nativeMask;
 
-            const uint64_t nativeHalfRange = uint64_t(1) << (ticks.validBits - 1);
+            const uint64_t nativeHalfRange      = uint64_t(1) << (ticks.validBits - 1);
 
-            int64_t begin = 0;
+            int64_t begin                       = 0;
 
-            int64_t end = 0;
+            int64_t end                         = 0;
 
-            valid &= duration < halfRange &&
-                UnwrapTimestamp(ticks.begin, anchor.begin, nativeMask, nativeHalfRange, begin) &&
-                UnwrapTimestamp(ticks.end, anchor.begin, nativeMask, nativeHalfRange, end) &&
-                end >= begin;
+            valid &= duration < halfRange && UnwrapTimestamp(ticks.begin, anchor.begin, nativeMask, nativeHalfRange, begin)
+                  && UnwrapTimestamp(ticks.end, anchor.begin, nativeMask, nativeHalfRange, end) && end >= begin;
 
             earliest = std::min(earliest, begin);
 
-            latest = std::max(latest, end);
+            latest   = std::max(latest, end);
         }
 
         // Unsigned subtraction preserves the exact positive span even across signed zero.
-        const uint64_t span = static_cast<uint64_t>(latest) - static_cast<uint64_t>(earliest);
+        const uint64_t span  = static_cast<uint64_t>(latest) - static_cast<uint64_t>(earliest);
 
-        valid &= span < halfRange;
+        valid               &= span < halfRange;
 
         if (valid)
         {
             microseconds = static_cast<double>(span) * first.periodNanoseconds / 1000.0;
 
-            valid = std::isfinite(microseconds);
+            valid        = std::isfinite(microseconds);
         }
     }
 
@@ -198,7 +186,7 @@ RHIGPUTimingStatus RHIGPUFrameTiming::GetStatus() const
 
 double RHIGPUFrameTiming::GetMicroseconds() const
 {
-    double microseconds = 0;
+    double microseconds             = 0;
 
     const RHIGPUTimingStatus status = Evaluate(microseconds);
 

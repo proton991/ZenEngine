@@ -24,12 +24,12 @@ private:
     struct ContextWorkloadRange
     {
         FVulkanCommandListContext* pContext{nullptr};
-        uint32_t firstWorkloadIndex{0};
-        uint32_t workloadCount{0};
+        uint32_t                   firstWorkloadIndex{0};
+        uint32_t                   workloadCount{0};
     };
 
-    HeapVector<VulkanWorkload*> m_workloads;
+    HeapVector<VulkanWorkload*>      m_workloads;
     HeapVector<ContextWorkloadRange> m_contextWorkloadRanges;
-    HeapVector<uint64_t> m_transactions;
+    HeapVector<uint64_t>             m_transactions;
 };
 } // namespace zen

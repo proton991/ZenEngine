@@ -16,7 +16,7 @@ void CheckDispatchCoverage(uint32_t count, const RHIGPUInfo& gpu)
 
     uint32_t first = 0;
 
-    bool valid = true;
+    bool valid     = true;
 
     do
     {
@@ -38,8 +38,7 @@ void CheckDispatchCoverage(uint32_t count, const RHIGPUInfo& gpu)
                     {
                         for (uint32_t lane = 0; lane < 4; ++lane)
                         {
-                            const uint32_t local =
-                                (x + chunk.groups.x * (y + chunk.groups.y * z)) * 4 + lane;
+                            const uint32_t local = (x + chunk.groups.x * (y + chunk.groups.y * z)) * 4 + lane;
 
                             if (local < chunk.itemCount)
                             {
@@ -49,11 +48,12 @@ void CheckDispatchCoverage(uint32_t count, const RHIGPUInfo& gpu)
                     }
                 }
             }
+
             EXPECT_TRUE(chunk.itemCount > 0 || count == 0);
 
             first += chunk.itemCount;
 
-            valid = valid && (chunk.itemCount > 0 || count == 0);
+            valid  = valid && (chunk.itemCount > 0 || count == 0);
         }
     } while (valid && first < count);
 
@@ -67,57 +67,45 @@ TEST(VoxelReflectancePlanning, ChecksCountRangeBudgetAndRetirementBeforeAllocati
 {
     RHIGPUInfo gpu;
 
-    gpu.maxStorageBufferRange = std::numeric_limits<uint32_t>::max();
+    gpu.maxStorageBufferRange   = std::numeric_limits<uint32_t>::max();
 
-    uint64_t peak = 0;
+    uint64_t peak               = 0;
 
-    constexpr uint64_t maxCount =
-        std::numeric_limits<uint32_t>::max() / ZEN_VOXEL_REFLECTANCE_SCALE;
+    constexpr uint64_t maxCount = std::numeric_limits<uint32_t>::max() / ZEN_VOXEL_REFLECTANCE_SCALE;
 
     constexpr uint64_t required = 64ull * 64 * 64 * 20;
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, maxCount, required, 0, gpu, peak),
-              GIResourceStatus::eSuccess);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, maxCount, required, 0, gpu, peak), GIResourceStatus::eSuccess);
 
     EXPECT_EQ(peak, required);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, maxCount + 1, required, 0, gpu, peak),
-              GIResourceStatus::eOverflow);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, maxCount + 1, required, 0, gpu, peak), GIResourceStatus::eOverflow);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required - 1, 0, gpu, peak),
-              GIResourceStatus::eBudget);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required - 1, 0, gpu, peak), GIResourceStatus::eBudget);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required + 37, 37, gpu, peak),
-              GIResourceStatus::eSuccess);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required + 37, 37, gpu, peak), GIResourceStatus::eSuccess);
 
     EXPECT_EQ(peak, required + 37);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required + 36, 37, gpu, peak),
-              GIResourceStatus::eBudget);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required + 36, 37, gpu, peak), GIResourceStatus::eBudget);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, UINT64_MAX, gpu, peak),
-              GIResourceStatus::eOverflow);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, UINT64_MAX, gpu, peak), GIResourceStatus::eOverflow);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, 0, 0, gpu, peak),
-              GIResourceStatus::eInvalidInput);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, 0, 0, gpu, peak), GIResourceStatus::eInvalidInput);
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(UINT32_MAX, 0, UINT64_MAX, 0, gpu, peak),
-              GIResourceStatus::eInvalidInput);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(UINT32_MAX, 0, UINT64_MAX, 0, gpu, peak), GIResourceStatus::eInvalidInput);
 
     gpu.maxStorageBufferRange = 64u * 64 * 64 * 16;
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, 0, gpu, peak),
-              GIResourceStatus::eSuccess);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, 0, gpu, peak), GIResourceStatus::eSuccess);
 
     --gpu.maxStorageBufferRange;
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, 0, gpu, peak),
-              GIResourceStatus::eDescriptorRange);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(64, 0, required, 0, gpu, peak), GIResourceStatus::eDescriptorRange);
 
     gpu.maxStorageBufferRange = 128u * 1024 * 1024;
 
-    EXPECT_EQ(ValidateVoxelReflectanceResources(256, 0, UINT64_MAX, 0, gpu, peak),
-              GIResourceStatus::eDescriptorRange);
+    EXPECT_EQ(ValidateVoxelReflectanceResources(256, 0, UINT64_MAX, 0, gpu, peak), GIResourceStatus::eDescriptorRange);
 }
 
 TEST(VoxelReflectancePlanning, ReportsMinimumAtEverySupportedResolution)
@@ -157,8 +145,7 @@ TEST(ComputeDispatchPlanning, RejectsOverflowAndBoundsPaddedShaderIndices)
 
     EXPECT_FALSE(BuildComputeDispatchChunk(0, 1, 0, gpu, chunk));
 
-    EXPECT_FALSE(
-        BuildComputeDispatchChunk(0, 1, gpu.maxComputeWorkGroupInvocations + 1, gpu, chunk));
+    EXPECT_FALSE(BuildComputeDispatchChunk(0, 1, gpu.maxComputeWorkGroupInvocations + 1, gpu, chunk));
 
     EXPECT_TRUE(BuildComputeDispatchChunk(0, UINT32_MAX, 64, gpu, chunk));
 
@@ -170,7 +157,7 @@ TEST(ComputeDispatchPlanning, RejectsOverflowAndBoundsPaddedShaderIndices)
 
     EXPECT_FALSE(BuildComputeDispatchChunk(0, 1, 64, gpu, chunk));
 
-    gpu.maxComputeWorkGroupSize[0] = 128;
+    gpu.maxComputeWorkGroupSize[0]  = 128;
 
     gpu.maxComputeWorkGroupCount[1] = 0;
 

@@ -2,12 +2,11 @@ namespace
 {
 struct TestOwnedSchedule
 {
-    HeapVector<RHICommandListPtr> lists;
-    HeapVector<RHISubmissionGroup> groups;
+    HeapVector<RHICommandListPtr>   lists;
+    HeapVector<RHISubmissionGroup>  groups;
     RefCountPtr<RHISubmissionState> state;
 
-    TestOwnedSchedule(RHICommandListExecutor& executor,
-                      VectorView<const RHICommandContextType> queues)
+    TestOwnedSchedule(RHICommandListExecutor& executor, VectorView<const RHICommandContextType> queues)
     {
         state = MakeRefCountPtr<RHISubmissionState>(queues);
         for (RHICommandContextType queue : queues)
@@ -19,8 +18,7 @@ struct TestOwnedSchedule
 
     void Depends(uint32_t consumer, uint32_t producer)
     {
-        groups[consumer].predecessors.push_back(
-            {lists[producer]->GetContext()->GetContextType(), 0, state, producer});
+        groups[consumer].predecessors.push_back({lists[producer]->GetContext()->GetContextType(), 0, state, producer});
     }
 };
 
@@ -34,7 +32,7 @@ protected:
         rhi                                                          = ZEN_NEW() TestRHI();
         rhi->submissionQueueCapabilities.asyncSubmissionDependencies = true;
         rhi->submissionQueueCapabilities                             = DistinctComputeQueues();
-        rhi->submissionQueueCapabilities.queueIds[2] = std::get<1>(GetParam()) ? 1 : 2;
+        rhi->submissionQueueCapabilities.queueIds[2]                 = std::get<1>(GetParam()) ? 1 : 2;
         executor    = ZEN_NEW() RHICommandListExecutor(rhi, std::get<0>(GetParam()));
         GDynamicRHI = executor;
     }
@@ -53,20 +51,19 @@ protected:
         return RHIResourcePtr<RHIBuffer>(executor->CreateBuffer(info), false);
     }
 
-    TestRHI* rhi{nullptr};
+    TestRHI*                rhi{nullptr};
     RHICommandListExecutor* executor{nullptr};
-    TestViewport viewport;
+    TestViewport            viewport;
 };
 
 TEST_P(RHIScheduledSubmissionTest, ReadyGroupsSubmitInOrderAndRetainExactLogicalSerials)
 {
-    const SmallVector<RHICommandContextType, 4> queues{
-        RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute,
-        RHICommandContextType::eGraphics, RHICommandContextType::eTransfer};
-    TestOwnedSchedule schedule(*executor, queues);
-    RHIResourcePtr<RHIBuffer> prefix = Buffer(), source = Buffer(), produced = Buffer(),
-                              graphics = Buffer(), transfer = Buffer();
-    TestBuffer* input = static_cast<TestBuffer*>(source.Get());
+    const SmallVector<RHICommandContextType, 4> queues{RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute,
+                                                       RHICommandContextType::eGraphics, RHICommandContextType::eTransfer};
+    TestOwnedSchedule                           schedule(*executor, queues);
+    RHIResourcePtr<RHIBuffer>                   prefix = Buffer(), source = Buffer(), produced = Buffer(), graphics = Buffer(),
+                              transfer = Buffer();
+    TestBuffer* input                  = static_cast<TestBuffer*>(source.Get());
     for (size_t i = 0; i < input->bytes.size(); ++i)
     {
         input->bytes[i] = uint8_t(i + 7);
@@ -77,8 +74,7 @@ TEST_P(RHIScheduledSubmissionTest, ReadyGroupsSubmitInOrderAndRetainExactLogical
     schedule.lists[3]->CopyBuffer(produced.Get(), transfer.Get(), {0, 0, 64});
     schedule.Depends(2, 1);
     schedule.Depends(3, 1);
-    const RHIBatchResult result =
-        executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
+    const RHIBatchResult result = executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
     ASSERT_EQ(result.submission, RHISubmissionResult::eSuccess);
     ASSERT_EQ(result.groups.size(), 4u);
     EXPECT_EQ(result.groups[0].accepted.serial, 1u);
@@ -102,9 +98,8 @@ TEST_P(RHIScheduledSubmissionTest, ReadyGroupsSubmitInOrderAndRetainExactLogical
 
 TEST_P(RHIScheduledSubmissionTest, InvalidScheduleDoesNotDetachAnyCommands)
 {
-    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eGraphics,
-                                                       RHICommandContextType::eAsyncCompute};
-    TestOwnedSchedule schedule(*executor, queues);
+    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute};
+    TestOwnedSchedule                           schedule(*executor, queues);
     schedule.lists[0]->Dispatch(1, 1, 1);
     schedule.lists[1]->Dispatch(1, 1, 1);
     schedule.Depends(0, 1);
@@ -120,19 +115,17 @@ TEST_P(RHIScheduledSubmissionTest, InvalidScheduleDoesNotDetachAnyCommands)
 
 TEST_P(RHIScheduledSubmissionTest, AcceptedPrefixFailureStopsRemainingGroupsAndPresentation)
 {
-    const SmallVector<RHICommandContextType, 3> queues{RHICommandContextType::eAsyncCompute,
-                                                       RHICommandContextType::eGraphics,
+    const SmallVector<RHICommandContextType, 3> queues{RHICommandContextType::eAsyncCompute, RHICommandContextType::eGraphics,
                                                        RHICommandContextType::eTransfer};
-    TestOwnedSchedule schedule(*executor, queues);
+    TestOwnedSchedule                           schedule(*executor, queues);
     for (RHICommandListPtr& list : schedule.lists)
     {
         list->Dispatch(1, 1, 1);
     }
     schedule.Depends(1, 0);
     schedule.Depends(2, 1);
-    rhi->failSubmissionAt = 2;
-    const RHIBatchResult result =
-        executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
+    rhi->failSubmissionAt       = 2;
+    const RHIBatchResult result = executor->SubmitFrame(schedule.groups, &viewport, schedule.state).Wait();
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
     ASSERT_EQ(result.groups.size(), 3u);
     EXPECT_EQ(result.groups[0].submission, RHISubmissionResult::eSuccess);
@@ -149,36 +142,31 @@ TEST_P(RHIScheduledSubmissionTest, AcceptedPrefixFailureStopsRemainingGroupsAndP
 
 TEST_P(RHIScheduledSubmissionTest, StandaloneRejectionCanRetryWithoutAdvancingFrame)
 {
-    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eAsyncCompute,
-                                                       RHICommandContextType::eGraphics};
-    TestOwnedSchedule rejected(*executor, queues);
+    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eAsyncCompute, RHICommandContextType::eGraphics};
+    TestOwnedSchedule                           rejected(*executor, queues);
     rejected.lists[0]->Dispatch(1, 1, 1);
     rejected.lists[1]->Dispatch(1, 1, 1);
     rejected.Depends(1, 0);
     rhi->failSubmissionAt = 1;
-    EXPECT_EQ(executor->SubmitGroups(rejected.groups, rejected.state).submission,
-              RHISubmissionResult::eRejected);
+    EXPECT_EQ(executor->SubmitGroups(rejected.groups, rejected.state).submission, RHISubmissionResult::eRejected);
     EXPECT_FALSE(executor->AreSubmissionsBlocked());
     TestOwnedSchedule retry(*executor, queues);
     retry.lists[0]->Dispatch(1, 1, 1);
     retry.lists[1]->Dispatch(1, 1, 1);
     retry.Depends(1, 0);
-    EXPECT_EQ(executor->SubmitGroups(retry.groups, retry.state).submission,
-              RHISubmissionResult::eSuccess);
+    EXPECT_EQ(executor->SubmitGroups(retry.groups, retry.state).submission, RHISubmissionResult::eSuccess);
     EXPECT_EQ(ToValue(GetRHIThread().Invoke(&RHIFrameState::GetFrameNumber, &GRHIFrameState)), 0u);
 }
 
 TEST_P(RHIScheduledSubmissionTest, ComputeWithoutGraphicsJoinProtectsRetirementAndRecycling)
 {
-    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eGraphics,
-                                                       RHICommandContextType::eAsyncCompute};
-    RHIResourcePtr<RHIBuffer> resource = Buffer();
-    const uint64_t id                  = resource->GetStableId();
-    TestOwnedSchedule first(*executor, queues);
+    const SmallVector<RHICommandContextType, 2> queues{RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute};
+    RHIResourcePtr<RHIBuffer>                   resource = Buffer();
+    const uint64_t                              id       = resource->GetStableId();
+    TestOwnedSchedule                           first(*executor, queues);
     first.lists[0]->Dispatch(1, 1, 1);
     first.lists[1]->ClearBuffer(resource.Get(), 0, 64);
-    const RHIBatchResult submitted =
-        executor->SubmitFrame(first.groups, nullptr, first.state).Wait();
+    const RHIBatchResult submitted = executor->SubmitFrame(first.groups, nullptr, first.state).Wait();
     ASSERT_EQ(submitted.submission, RHISubmissionResult::eSuccess);
     resource.Reset();
     GetRHIThread().Invoke([this] { rhi->completed[0] = rhi->submitted[0]; });
@@ -188,9 +176,8 @@ TEST_P(RHIScheduledSubmissionTest, ComputeWithoutGraphicsJoinProtectsRetirementA
     GetRHIThread().Invoke([this] { rhi->completed[1] = rhi->submitted[1]; });
     executor->FlushRHIThread();
     EXPECT_TRUE(destroyed.contains(id));
-    const SmallVector<RHICommandContextType, 3> reordered{RHICommandContextType::eTransfer,
-                                                          RHICommandContextType::eAsyncCompute,
-                                                          RHICommandContextType::eGraphics};
+    const SmallVector<RHICommandContextType, 3> reordered{
+        RHICommandContextType::eTransfer, RHICommandContextType::eAsyncCompute, RHICommandContextType::eGraphics};
     TestOwnedSchedule next(*executor, reordered);
     for (RHICommandListPtr& list : next.lists)
     {
@@ -208,8 +195,7 @@ TEST_P(RHIScheduledSubmissionTest, ComputeWithoutGraphicsJoinProtectsRetirementA
 
 INSTANTIATE_TEST_SUITE_P(InlineThreadedAndAliases,
                          RHIScheduledSubmissionTest,
-                         testing::Combine(testing::Values(RHIExecutionMode::eInline,
-                                                          RHIExecutionMode::eThreaded),
+                         testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Bool()));
 
 class RDGScheduledSubmissionTest : public RDGQueuePreferenceTest
@@ -226,8 +212,7 @@ TEST_P(RDGScheduledSubmissionTest, FrameSubmitsIndependentPrefixComputeAndConsum
     RDGComputePassDesc compute = IntentPass("producer");
     compute.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     compute.BindStorageBuffer("write_buffer", output, RDGContentGuarantee::eFullWrite);
-    graph.AddComputePass(compute).RecordPassCommands(
-        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph.AddComputePass(compute).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     AddScheduledBufferPass(graph, "consumer", RHICommandContextType::eGraphics, output);
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
@@ -246,8 +231,9 @@ TEST_P(RDGScheduledSubmissionTest, FrameSubmitsIndependentPrefixComputeAndConsum
     EXPECT_TRUE(rhi->submissionWaits.empty());
     device->NextFrame();
     ASSERT_TRUE(graph.Begin());
-    graph.AddComputePass(IntentPass("cached_graphics"))
-        .RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph.AddComputePass(IntentPass("cached_graphics")).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
+        encoder.Dispatch(1, 1, 1);
+    });
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();
@@ -260,17 +246,15 @@ TEST_P(RDGScheduledSubmissionTest, LaterRecordingFailurePublishesNoGroupsOrExtra
 {
     RenderGraph graph("recording_rollback");
     ASSERT_TRUE(graph.Begin());
-    const RDGBuffer output      = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
+    const RDGBuffer    output   = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
     RDGComputePassDesc producer = IntentPass();
     producer.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     producer.BindStorageBuffer("write_buffer", output, RDGContentGuarantee::eFullWrite);
-    graph.AddComputePass(producer).RecordPassCommands(
-        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph.AddComputePass(producer).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     RDGComputePassDesc failed = IntentPass();
     failed.BindStorageBuffer("read_buffer", output);
-    graph.AddComputePass(failed).RecordPassCommands([](RDGPassCmdEncoder& encoder) {
-        encoder.Fail(RDGErrorCode::eCallback, "later group failed");
-    });
+    graph.AddComputePass(failed).RecordPassCommands(
+        [](RDGPassCmdEncoder& encoder) { encoder.Fail(RDGErrorCode::eCallback, "later group failed"); });
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
     EXPECT_FALSE(device->ExecuteRenderGraph(graph));
@@ -288,23 +272,21 @@ class ThreadedScheduledGraphTest : public ThreadedRenderCoreTest
 protected:
     void SetUp() override
     {
-        InitializeDevice(&viewport, 3, RHIExecutionMode::eThreaded, AsyncComputeMode::eAuto,
-                         DistinctComputeQueues());
+        InitializeDevice(&viewport, 3, RHIExecutionMode::eThreaded, AsyncComputeMode::eAuto, DistinctComputeQueues());
         CreateTestShaderProgram(device, "intent");
     }
 };
 
 TEST_F(ThreadedScheduledGraphTest, NextFrameRecordsAfterGraphResetWhileOwnedProducerIsPending)
 {
-    TestBuffer* buffer = Buffer();
-    RenderGraph& graph = *device->GetCurrentFrameRDG();
+    TestBuffer*  buffer = Buffer();
+    RenderGraph& graph  = *device->GetCurrentFrameRDG();
     ASSERT_TRUE(graph.Begin());
-    const RDGBuffer output      = graph.GetResourceManager()->ImportBuffer(buffer);
+    const RDGBuffer    output   = graph.GetResourceManager()->ImportBuffer(buffer);
     RDGComputePassDesc producer = IntentPass();
     producer.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     producer.BindStorageBuffer("write_buffer", output, RDGContentGuarantee::eFullWrite);
-    graph.AddComputePass(producer).RecordPassCommands(
-        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph.AddComputePass(producer).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     RDGExtractedBuffer extracted = graph.GetResourceManager()->QueueBufferExtraction(output);
     ASSERT_TRUE(graph.End());
     ArmGate();
@@ -317,15 +299,14 @@ TEST_F(ThreadedScheduledGraphTest, NextFrameRecordsAfterGraphResetWhileOwnedProd
     producer = IntentPass();
     producer.BindStorageBuffer("write_buffer", buffer, RDGContentGuarantee::eFullWrite);
     const std::thread::id renderThread = std::this_thread::get_id();
-    bool recorded                      = false;
-    graph.AddComputePass(producer).RecordPassCommands(
-        [this, &recorded, renderThread](RDGPassCmdEncoder& encoder) {
-            EXPECT_EQ(std::this_thread::get_id(), renderThread);
-            EXPECT_FALSE(gate.releasedInTime);
-            recorded = true;
-            encoder.Dispatch(1, 1, 1);
-            gate.Open();
-        });
+    bool                  recorded     = false;
+    graph.AddComputePass(producer).RecordPassCommands([this, &recorded, renderThread](RDGPassCmdEncoder& encoder) {
+        EXPECT_EQ(std::this_thread::get_id(), renderThread);
+        EXPECT_FALSE(gate.releasedInTime);
+        recorded = true;
+        encoder.Dispatch(1, 1, 1);
+        gate.Open();
+    });
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();

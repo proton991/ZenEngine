@@ -12,18 +12,26 @@ TextureInfo TextureLoader::LoadTexture2DFromFile(const std::string& filename)
     int width = 0, height = 0, channels = 0;
 
     stbi_set_flip_vertically_on_load(true);
+
     uint8_t* pData = stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+
     stbi_set_flip_vertically_on_load(false);
 
     TextureInfo result;
+
     if (pData != nullptr && width > 0 && height > 0)
     {
         result.width  = static_cast<uint32_t>(width);
+
         result.height = static_cast<uint32_t>(height);
+
         result.format = Format::R8G8B8A8_UNORM;
+
         result.data.assign(pData, pData + size_t(width) * size_t(height) * STBI_rgb_alpha);
     }
+
     stbi_image_free(pData);
+
     return result;
 }
 

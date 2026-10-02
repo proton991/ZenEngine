@@ -20,17 +20,17 @@ bool UIContext::Init(GLFWwindow* window)
 
         m_previous = ImGui::GetCurrentContext();
 
-        m_context = ImGui::CreateContext();
+        m_context  = ImGui::CreateContext();
 
         ImGui::SetCurrentContext(m_context);
 
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO& io             = ImGui::GetIO();
 
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags         |= ImGuiConfigFlags_NavEnableKeyboard;
 
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+        io.BackendFlags        |= ImGuiBackendFlags_RendererHasVtxOffset;
 
-        io.BackendRendererName = "ZenRHI_StaticAtlas";
+        io.BackendRendererName  = "ZenRHI_StaticAtlas";
 
         // Runtime settings are session-only. An editor can opt into its own layout persistence.
         io.IniFilename = nullptr;
@@ -41,9 +41,9 @@ bool UIContext::Init(GLFWwindow* window)
 
         ImGui::GetStyle().WindowRounding = 5.0f;
 
-        m_platformReady = ImGui_ImplGlfw_InitForOther(window, true);
+        m_platformReady                  = ImGui_ImplGlfw_InitForOther(window, true);
 
-        valid = m_platformReady;
+        valid                            = m_platformReady;
 
         if (!valid)
         {
@@ -74,11 +74,11 @@ void UIContext::Destroy()
 
         ImGui::SetCurrentContext(m_previous);
 
-        m_context = nullptr;
+        m_context       = nullptr;
 
         m_platformReady = false;
 
-        m_frameActive = false;
+        m_frameActive   = false;
     }
 }
 
@@ -88,15 +88,14 @@ void UIContext::BeginFrame(float deltaSeconds, unsigned int targetWidth, unsigne
 
     ImGui_ImplGlfw_NewFrame();
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io  = ImGui::GetIO();
 
     io.DeltaTime = std::isfinite(deltaSeconds) && deltaSeconds > 0 ? deltaSeconds : 1.0f / 60.0f;
 
     // Draw into the actual engine target, including framebuffer/logical size differences.
     if (io.DisplaySize.x > 0 && io.DisplaySize.y > 0)
     {
-        io.DisplayFramebufferScale =
-            ImVec2(float(targetWidth) / io.DisplaySize.x, float(targetHeight) / io.DisplaySize.y);
+        io.DisplayFramebufferScale = ImVec2(float(targetWidth) / io.DisplaySize.x, float(targetHeight) / io.DisplaySize.y);
     }
 
     ImGui::NewFrame();

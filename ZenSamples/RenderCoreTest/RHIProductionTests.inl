@@ -11,15 +11,9 @@ TEST_F(RenderCoreTest, BufferHelpersRejectAllocationFailuresAndRetry)
         {
             case 0: failed = device->CreateVertexBuffer(sizeof(data), data); break;
             case 1: failed = device->CreateIndexBuffer(sizeof(data), data); break;
-            case 2:
-                failed = device->CreateUniformBuffer(sizeof(data), data, "failed_uniform");
-                break;
-            case 3:
-                failed = device->CreateStorageBuffer(sizeof(data), data, "failed_storage");
-                break;
-            case 4:
-                failed = device->CreateIndirectBuffer(sizeof(data), data, "failed_indirect");
-                break;
+            case 2: failed = device->CreateUniformBuffer(sizeof(data), data, "failed_uniform"); break;
+            case 3: failed = device->CreateStorageBuffer(sizeof(data), data, "failed_storage"); break;
+            case 4: failed = device->CreateIndirectBuffer(sizeof(data), data, "failed_indirect"); break;
         }
 
         EXPECT_EQ(failed, nullptr);
@@ -34,7 +28,7 @@ TEST_F(RenderCoreTest, BufferHelpersRejectAllocationFailuresAndRetry)
 TEST_F(RenderCoreTest, StagingAllocationFailureDoesNotPublishAnInvalidBlock)
 {
     StagingBufferManager manager(64, 128);
-    StagingAllocation allocation;
+    StagingAllocation    allocation;
     rhi->failBufferCreationAt = rhi->bufferCreations + 1;
 
     EXPECT_EQ(manager.Allocate(16, 4, &allocation), StagingFlushAction::eFailed);
@@ -64,7 +58,7 @@ TEST(RHIGPUMemoryBudgetTest, PressureUsesDeviceLocalBudgetAndHandlesUnavailableT
 
 TEST(RHIIndexOffsetTest, CommandsAndGraphDescriptorsPreserveOffsetsBeyondFourGiB)
 {
-    constexpr uint64_t offset = (uint64_t(1) << 32) + 256;
+    constexpr uint64_t           offset = (uint64_t(1) << 32) + 256;
     RHICommandDrawIndexed::Param direct{};
     direct.indexBufferOffset = offset;
     RHICommandDrawIndexed directCommand(direct, 0);
@@ -89,8 +83,7 @@ TEST(RHIThreadProductionTest, TaskExceptionsCancelNormalWorkAndPreserveCleanup)
         uint32_t cancellations = 0;
         uint32_t cleanups      = 0;
         uint32_t normal        = 0;
-        thread.Dispatch([] { throw std::runtime_error("injected task failure"); },
-                        [&cancellations] { ++cancellations; });
+        thread.Dispatch([] { throw std::runtime_error("injected task failure"); }, [&cancellations] { ++cancellations; });
         thread.Dispatch([&normal] { ++normal; }, [&cancellations] { ++cancellations; });
         EXPECT_TRUE(thread.DispatchCleanup([&cleanups] { ++cleanups; }));
         thread.Stop([&cleanups] { ++cleanups; });
@@ -103,9 +96,9 @@ TEST(RHIThreadProductionTest, TaskExceptionsCancelNormalWorkAndPreserveCleanup)
 
 TEST(RHIThreadProductionTest, ShutdownDrainsLateCleanupBeforeTheFinalizer)
 {
-    RHIThread thread;
-    RHIThreadEvent entered;
-    RHIThreadEvent release;
+    RHIThread            thread;
+    RHIThreadEvent       entered;
+    RHIThreadEvent       release;
     HeapVector<uint32_t> order;
     thread.Start(RHIExecutionMode::eThreaded);
     thread.Dispatch([&entered, &release] {
@@ -137,7 +130,7 @@ TEST(RHIThreadProductionTest, FailedWorkerCompletesQueuedFrameTiming)
     for (RHIExecutionMode mode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
     {
         RHICommandListExecutor executor(ZEN_NEW() TestRHI(), mode);
-        RHIGPUFrameTimingPtr timing = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
+        RHIGPUFrameTimingPtr   timing = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
         GetRHIThread().Dispatch([] { throw std::runtime_error("injected timing task failure"); });
         executor.BeginGPUFrameTiming(timing);
@@ -151,10 +144,9 @@ TEST(RHIThreadProductionTest, FailedWorkerCompletesQueuedFrameTiming)
 
 TEST_F(RHIExecutorTest, CancelledQueuedBatchCompletesItsTicketAfterTaskFailure)
 {
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
-    RHIThreadEvent entered;
-    RHIThreadEvent release;
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHIThreadEvent    entered;
+    RHIThreadEvent    release;
 
     GetRHIThread().Dispatch([&entered, &release] {
         entered.Signal();
@@ -184,10 +176,9 @@ TEST_F(RHIExecutorTest, MissingPresentationListRejectsTheFrameWithoutBlocking)
     rejected.lists[0]->Draw(3, 1, 0, 0);
 
     // The executor creates its first presentation list on demand; that creation fails.
-    rhi->failContextCreation = true;
+    rhi->failContextCreation    = true;
 
-    const RHIBatchResult result =
-        executor->SubmitGroups(rejected.groups, rejected.state, &viewport);
+    const RHIBatchResult result = executor->SubmitGroups(rejected.groups, rejected.state, &viewport);
 
     EXPECT_EQ(result.submission, RHISubmissionResult::eRejected);
 
@@ -204,8 +195,7 @@ TEST_F(RHIExecutorTest, MissingPresentationListRejectsTheFrameWithoutBlocking)
 
     retry.lists[0]->Draw(3, 1, 0, 0);
 
-    EXPECT_EQ(executor->SubmitGroups(retry.groups, retry.state, &viewport).submission,
-              RHISubmissionResult::eSuccess);
+    EXPECT_EQ(executor->SubmitGroups(retry.groups, retry.state, &viewport).submission, RHISubmissionResult::eSuccess);
 
     EXPECT_EQ(viewport.presents, 1u);
 

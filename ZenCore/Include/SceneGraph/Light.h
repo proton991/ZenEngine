@@ -2,15 +2,13 @@
 #include "Component.h"
 #include "Math/Math.h"
 
-
-
 namespace zen::sg
 {
 struct LightProperties
 {
-    Vec3 position{0.0f};
-    Vec4 color{1.0f};
-    Vec4 direction{0.0f, 0.0f, -1.0f, 0.0f};
+    Vec3  position{0.0f};
+    Vec4  color{1.0f};
+    Vec4  direction{0.0f, 0.0f, -1.0f, 0.0f};
     float intensity{1.0f};
     // Zero means unlimited range, as in a glTF light with no range property.
     float range{0.0f};
@@ -78,6 +76,6 @@ public:
 
 private:
     LightProperties m_properties;
-    LightType m_type{LightType::Point};
+    LightType       m_type{LightType::Point};
 };
 } // namespace zen::sg

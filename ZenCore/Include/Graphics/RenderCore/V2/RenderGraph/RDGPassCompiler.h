@@ -32,24 +32,24 @@ struct RDGBindingSlice
 
 struct RDGBufferBinding
 {
-    NameID glslName;
-    RDGBindingSlice buffers;
+    NameID              glslName;
+    RDGBindingSlice     buffers;
     RDGContentGuarantee contents{RDGContentGuarantee::eNone};
 };
 
 struct RDGTextureBinding
 {
-    NameID glslName;
-    RHISampler* pSampler{nullptr};
-    RDGBindingSlice views;
+    NameID              glslName;
+    RHISampler*         pSampler{nullptr};
+    RDGBindingSlice     views;
     RDGContentGuarantee contents{RDGContentGuarantee::eNone};
 };
 
 struct RDGSamplerBinding
 {
-    NameID glslName;
+    NameID      glslName;
     RHISampler* pSampler{nullptr};
-    uint32_t arrayIndex{0};
+    uint32_t    arrayIndex{0};
 };
 
 enum class RDGBindingType
@@ -64,31 +64,30 @@ enum class RDGBindingType
 
 struct RDGBoundResource
 {
-    RDGResource resource;
+    RDGResource        resource;
     RDGTextureViewDesc view;
 };
 
 struct RDGResourceBinding
 {
-    RDGBindingType resourceType{RDGBindingType::eNone};
-    NameID glslName;
-    NameID
-        producerOutputTag; // Transitional preceding-output adapter; removed with caller migration.
-    RHISampler* pSampler{nullptr};
-    RDGBindingSlice resources;
+    RDGBindingType      resourceType{RDGBindingType::eNone};
+    NameID              glslName;
+    NameID              producerOutputTag; // Transitional preceding-output adapter; removed with caller migration.
+    RHISampler*         pSampler{nullptr};
+    RDGBindingSlice     resources;
     RDGContentGuarantee contents{RDGContentGuarantee::eNone};
 };
 
 struct RDGValueBinding
 {
-    NameID glslName;
+    NameID          glslName;
     RDGBindingSlice bytes;
 };
 
 struct RDGPassDescBase
 {
     RDGResult validationResult;
-    uint64_t shaderIdentity{0}; // Set by AddPass; detects replacement before compile/replay.
+    uint64_t  shaderIdentity{0}; // Set by AddPass; detects replacement before compile/replay.
 
     // Opt in only when multiple dispatches in this pass have no inter-dispatch dependencies.
     bool independentDispatches{false};
@@ -106,21 +105,21 @@ struct RDGPassDescBase
     }
 
     // external bindings
-    HeapVector<RDGBufferBinding> UAVBufferBindings;
+    HeapVector<RDGBufferBinding>  UAVBufferBindings;
     HeapVector<RDGTextureBinding> sampledTexBindings;
     HeapVector<RDGTextureBinding> separateTexBindings;
     HeapVector<RDGSamplerBinding> samplerBindings;
     HeapVector<RDGTextureBinding> UAVTexBindings;
-    HeapVector<RDGValueBinding> valueBindings;
+    HeapVector<RDGValueBinding>   valueBindings;
 
     HeapVector<RDGResourceBinding> resourceBindings;
-    HeapVector<RDGBoundResource> resourceStorage;
+    HeapVector<RDGBoundResource>   resourceStorage;
 
-    HeapVector<RHIBuffer*> bufferStorage;
+    HeapVector<RHIBuffer*>      bufferStorage;
     HeapVector<RHITextureView*> textureViewStorage;
-    HeapVector<uint8_t> valueByteStorage;
-    HeapVector<RHIBuffer*> indirectBuffers; // Transitional raw adapter.
-    HeapVector<RDGBuffer> logicalIndirectBuffers;
+    HeapVector<uint8_t>         valueByteStorage;
+    HeapVector<RHIBuffer*>      indirectBuffers; // Transitional raw adapter.
+    HeapVector<RDGBuffer>       logicalIndirectBuffers;
 
     NameID shaderProgramName;
     NameID passTag;
@@ -200,9 +199,7 @@ struct RDGPassDescBase
         indirectBuffers.push_back(pBuffer);
     }
 
-    void BindStorageBuffer(NameID glslName,
-                           RHIBuffer* pBuffer,
-                           RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+    void BindStorageBuffer(NameID glslName, RHIBuffer* pBuffer, RDGContentGuarantee contents = RDGContentGuarantee::eNone)
     {
         RDGBufferBinding& binding = UAVBufferBindings.emplace_back();
         binding.contents          = contents;
@@ -212,9 +209,9 @@ struct RDGPassDescBase
         bufferStorage.push_back(pBuffer);
     }
 
-    void BindStorageBuffer(NameID glslName,
+    void BindStorageBuffer(NameID                 glslName,
                            VectorView<RHIBuffer*> buffers,
-                           RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+                           RDGContentGuarantee    contents = RDGContentGuarantee::eNone)
     {
         RDGBufferBinding& binding = UAVBufferBindings.emplace_back();
         binding.contents          = contents;
@@ -254,9 +251,7 @@ struct RDGPassDescBase
         textureViewStorage.push_back(pTextureView);
     }
 
-    void BindSampledTexture(NameID glslName,
-                            RHISampler* pSampler,
-                            VectorView<RHITextureView*> textureViews)
+    void BindSampledTexture(NameID glslName, RHISampler* pSampler, VectorView<RHITextureView*> textureViews)
     {
         RDGTextureBinding& binding = sampledTexBindings.emplace_back();
         binding.glslName           = glslName;
@@ -278,52 +273,46 @@ struct RDGPassDescBase
         resourceStorage.emplace_back();
     }
 
-    void BindSampledTexture(NameID name,
-                            RHISampler* sampler,
-                            RDGTexture texture,
-                            const RDGTextureViewDesc& view = {})
+    void BindSampledTexture(NameID name, RHISampler* sampler, RDGTexture texture, const RDGTextureViewDesc& view = {})
     {
         RDGTextureViewDesc selectedView = view;
-        BindResources(name, RDGBindingType::eSampledTexture, MakeVecView(&texture, 1),
-                      RDGContentGuarantee::eNone, sampler, MakeVecView(&selectedView, 1));
+        BindResources(name, RDGBindingType::eSampledTexture, MakeVecView(&texture, 1), RDGContentGuarantee::eNone, sampler,
+                      MakeVecView(&selectedView, 1));
     }
 
-    void BindSampledTexture(NameID name,
-                            RHISampler* sampler,
-                            VectorView<const RDGTexture> textures,
+    void BindSampledTexture(NameID                               name,
+                            RHISampler*                          sampler,
+                            VectorView<const RDGTexture>         textures,
                             VectorView<const RDGTextureViewDesc> views = {})
     {
-        BindResources(name, RDGBindingType::eSampledTexture, textures, RDGContentGuarantee::eNone,
-                      sampler, views);
+        BindResources(name, RDGBindingType::eSampledTexture, textures, RDGContentGuarantee::eNone, sampler, views);
     }
 
-    void BindStorageImage(NameID name,
-                          RDGTexture texture,
-                          RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+    void BindStorageImage(NameID name, RDGTexture texture, RDGContentGuarantee contents = RDGContentGuarantee::eNone)
     {
         BindResources(name, RDGBindingType::eStorageImage, MakeVecView(&texture, 1), contents);
     }
 
-    void BindStorageImage(NameID name,
-                          RDGTexture texture,
+    void BindStorageImage(NameID                    name,
+                          RDGTexture                texture,
                           const RDGTextureViewDesc& view,
-                          RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+                          RDGContentGuarantee       contents = RDGContentGuarantee::eNone)
     {
         RDGTextureViewDesc selectedView = view;
-        BindResources(name, RDGBindingType::eStorageImage, MakeVecView(&texture, 1), contents,
-                      nullptr, MakeVecView(&selectedView, 1));
+        BindResources(name, RDGBindingType::eStorageImage, MakeVecView(&texture, 1), contents, nullptr,
+                      MakeVecView(&selectedView, 1));
     }
 
-    void BindStorageImage(NameID name,
+    void BindStorageImage(NameID                       name,
                           VectorView<const RDGTexture> textures,
-                          RDGContentGuarantee contents               = RDGContentGuarantee::eNone,
+                          RDGContentGuarantee          contents      = RDGContentGuarantee::eNone,
                           VectorView<const RDGTextureViewDesc> views = {})
     {
         BindResources(name, RDGBindingType::eStorageImage, textures, contents, nullptr, views);
     }
 
-    void BindStorageImage(NameID glslName,
-                          RHITextureView* pTextureView,
+    void BindStorageImage(NameID              glslName,
+                          RHITextureView*     pTextureView,
                           RDGContentGuarantee contents = RDGContentGuarantee::eNone)
     {
         RDGTextureBinding& binding = UAVTexBindings.emplace_back();
@@ -335,9 +324,9 @@ struct RDGPassDescBase
         textureViewStorage.push_back(pTextureView);
     }
 
-    void BindStorageImage(NameID glslName,
+    void BindStorageImage(NameID                      glslName,
                           VectorView<RHITextureView*> textureViews,
-                          RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+                          RDGContentGuarantee         contents = RDGContentGuarantee::eNone)
     {
         RDGTextureBinding& binding = UAVTexBindings.emplace_back();
         binding.contents           = contents;
@@ -348,9 +337,7 @@ struct RDGPassDescBase
         textureViewStorage.push_back(textureViews);
     }
 
-    void BindStorageImage(NameID glslName,
-                          NameID producerOutputTag,
-                          RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+    void BindStorageImage(NameID glslName, NameID producerOutputTag, RDGContentGuarantee contents = RDGContentGuarantee::eNone)
     {
         RDGResourceBinding& binding = resourceBindings.emplace_back();
         binding.resourceType        = RDGBindingType::eStorageImage;
@@ -361,16 +348,14 @@ struct RDGPassDescBase
         resourceStorage.emplace_back();
     }
 
-    void BindStorageBuffer(NameID name,
-                           RDGBuffer buffer,
-                           RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+    void BindStorageBuffer(NameID name, RDGBuffer buffer, RDGContentGuarantee contents = RDGContentGuarantee::eNone)
     {
         BindResources(name, RDGBindingType::eStorageBuffer, MakeVecView(&buffer, 1), contents);
     }
 
-    void BindStorageBuffer(NameID name,
+    void BindStorageBuffer(NameID                      name,
                            VectorView<const RDGBuffer> buffers,
-                           RDGContentGuarantee contents = RDGContentGuarantee::eNone)
+                           RDGContentGuarantee         contents = RDGContentGuarantee::eNone)
     {
         BindResources(name, RDGBindingType::eStorageBuffer, buffers, contents);
     }
@@ -386,93 +371,90 @@ struct RDGPassDescBase
     }
 
 private:
-    template <typename Resource>
-    void BindResources(NameID name,
-                       RDGBindingType type,
-                       VectorView<Resource> resources,
-                       RDGContentGuarantee contents               = RDGContentGuarantee::eNone,
-                       RHISampler* sampler                        = nullptr,
-                       VectorView<const RDGTextureViewDesc> views = {})
+    template <typename Resource> void BindResources(NameID               name,
+                                                    RDGBindingType       type,
+                                                    VectorView<Resource> resources,
+                                                    RDGContentGuarantee  contents              = RDGContentGuarantee::eNone,
+                                                    RHISampler* sampler                        = nullptr,
+                                                    VectorView<const RDGTextureViewDesc> views = {})
     {
-        if (resources.empty() || resources.data() == nullptr ||
-            resourceStorage.size() > UINT32_MAX ||
-            resources.size() > UINT32_MAX - resourceStorage.size() ||
-            (!views.empty() && (views.data() == nullptr || views.size() != resources.size())))
+        if (resources.empty() || resources.data() == nullptr || resourceStorage.size() > UINT32_MAX
+            || resources.size() > UINT32_MAX - resourceStorage.size()
+            || (!views.empty() && (views.data() == nullptr || views.size() != resources.size())))
         {
             Reject(RDGErrorCode::eBinding, "Invalid logical resource or view array");
-            return;
         }
-
-        bool valid = true;
-
-        for (const Resource& resource : resources)
+        else
         {
-            if (!resource)
-            {
-                Reject(RDGErrorCode::eBinding, "Empty logical resource in binding");
-                valid = false;
-                break;
-            }
-        }
+            bool valid = true;
 
-        if (valid)
-        {
-            const RDGBindingSlice slice{uint32_t(resourceStorage.size()),
-                                        uint32_t(resources.size())};
-
-            for (uint32_t i = 0; i < resources.size(); ++i)
+            for (const Resource& resource : resources)
             {
-                resourceStorage.push_back(
-                    {resources[i], views.empty() ? RDGTextureViewDesc{} : views[i]});
+                if (!resource)
+                {
+                    Reject(RDGErrorCode::eBinding, "Empty logical resource in binding");
+                    valid = false;
+                    break;
+                }
             }
 
-            resourceBindings.push_back({type, name, {}, sampler, slice, contents});
+            if (valid)
+            {
+                const RDGBindingSlice slice{uint32_t(resourceStorage.size()), uint32_t(resources.size())};
+
+                for (uint32_t i = 0; i < resources.size(); ++i)
+                {
+                    resourceStorage.push_back({resources[i], views.empty() ? RDGTextureViewDesc{} : views[i]});
+                }
+
+                resourceBindings.push_back({type, name, {}, sampler, slice, contents});
+            }
         }
     }
 };
 
 struct RDGColorOutputDesc
 {
-    uint32_t slot{0};
-    RHIRenderTargetLoadOp loadOp{RHIRenderTargetLoadOp::eClear};
+    uint32_t               slot{0};
+    RHIRenderTargetLoadOp  loadOp{RHIRenderTargetLoadOp::eClear};
     RHIRenderTargetStoreOp storeOp{RHIRenderTargetStoreOp::eStore};
-    RHITexture* pTexture{nullptr};
-    DataFormat format{DataFormat::eUndefined};
-    uint32_t width{0};
-    uint32_t height{0};
-    SampleCount samples{SampleCount::e1};
-    NameID tag;
-    RDGTexture texture;
-    bool fullWrite{false}; // Assert full render-area coverage when Load=None.
+    RHITexture*            pTexture{nullptr};
+    DataFormat             format{DataFormat::eUndefined};
+    uint32_t               width{0};
+    uint32_t               height{0};
+    SampleCount            samples{SampleCount::e1};
+    NameID                 tag;
+    RDGTexture             texture;
+    bool                   fullWrite{false}; // Assert full render-area coverage when Load=None.
 };
 
 struct RDGDepthStencilOutputDesc
 {
-    RHIRenderTargetLoadOp loadOp{RHIRenderTargetLoadOp::eClear};
+    RHIRenderTargetLoadOp  loadOp{RHIRenderTargetLoadOp::eClear};
     RHIRenderTargetStoreOp storeOp{RHIRenderTargetStoreOp::eStore};
-    RHITexture* pTexture{nullptr};
-    DataFormat format{DataFormat::eUndefined};
-    uint32_t width{0};
-    uint32_t height{0};
-    NameID tag;
-    RDGTexture texture;
-    bool fullWrite{false}; // Assert full render-area coverage when Load=None.
+    RHITexture*            pTexture{nullptr};
+    DataFormat             format{DataFormat::eUndefined};
+    uint32_t               width{0};
+    uint32_t               height{0};
+    NameID                 tag;
+    RDGTexture             texture;
+    bool                   fullWrite{false}; // Assert full render-area coverage when Load=None.
 };
 
 struct RDGGraphicsPassDesc : RDGPassDescBase
 {
-    RHIGeometryBuffer geometryBuffer; // Transitional raw adapter.
+    RHIGeometryBuffer     geometryBuffer; // Transitional raw adapter.
     HeapVector<RDGBuffer> vertexBuffers;
-    RDGBuffer indexBuffer;
-    DataFormat indexBufferFormat{DataFormat::eR32UInt};
-    uint64_t indexBufferOffset{0};
-    RHIGfxPipelineStates pipelineStates;
+    RDGBuffer             indexBuffer;
+    DataFormat            indexBufferFormat{DataFormat::eR32UInt};
+    uint64_t              indexBufferOffset{0};
+    RHIGfxPipelineStates  pipelineStates;
 
     Rect2<int> renderArea;
 
-    RDGColorOutputDesc colorOutputs[MAX_NUM_COLOR_ATTACHMENTS];
-    RDGDepthStencilOutputDesc depthStencilOutput;
-    uint32_t colorOutputCount{0};
+    RDGColorOutputDesc                     colorOutputs[MAX_NUM_COLOR_ATTACHMENTS];
+    RDGDepthStencilOutputDesc              depthStencilOutput;
+    uint32_t                               colorOutputCount{0};
     BitMask<MAX_NUM_COLOR_ATTACHMENTS + 1> outputMask; // last bit for depth stencils
 
     void SetPipelineStates(const RHIGfxPipelineStates& pso)
@@ -500,9 +482,7 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void BindIndexBuffer(RDGBuffer buffer,
-                         DataFormat format = DataFormat::eR32UInt,
-                         uint64_t offset   = 0)
+    void BindIndexBuffer(RDGBuffer buffer, DataFormat format = DataFormat::eR32UInt, uint64_t offset = 0)
     {
         if (!buffer)
         {
@@ -521,43 +501,42 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         geometryBuffer.vertexBuffers.push_back(pBuffer);
     }
 
-    void BindIndexBuffer(RHIBuffer* pBuffer,
-                         DataFormat format = DataFormat::eR32UInt,
-                         uint64_t offset   = 0)
+    void BindIndexBuffer(RHIBuffer* pBuffer, DataFormat format = DataFormat::eR32UInt, uint64_t offset = 0)
     {
         geometryBuffer.pIndexBuffer      = pBuffer;
         geometryBuffer.indexBufferFormat = format;
         geometryBuffer.indexBufferOffset = offset;
     }
 
-    void AddColorOutput(DataFormat format,
-                        uint32_t width,
-                        uint32_t height,
-                        NameID tag,
+    void AddColorOutput(DataFormat            format,
+                        uint32_t              width,
+                        uint32_t              height,
+                        NameID                tag,
                         RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                         RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         if (colorOutputCount >= MAX_NUM_COLOR_ATTACHMENTS)
         {
             Reject(RDGErrorCode::eAttachment, "Too many color attachments");
-            return;
         }
+        else
+        {
+            RDGColorOutputDesc colorOutput{};
+            colorOutput.slot               = colorOutputCount;
+            colorOutput.loadOp             = loadOp;
+            colorOutput.storeOp            = storeOp;
+            colorOutput.format             = format;
+            colorOutput.width              = width;
+            colorOutput.height             = height;
+            colorOutput.tag                = tag;
 
-        RDGColorOutputDesc colorOutput{};
-        colorOutput.slot    = colorOutputCount;
-        colorOutput.loadOp  = loadOp;
-        colorOutput.storeOp = storeOp;
-        colorOutput.format  = format;
-        colorOutput.width   = width;
-        colorOutput.height  = height;
-        colorOutput.tag     = tag;
-
-        colorOutputs[colorOutputCount] = std::move(colorOutput);
-        outputMask.Set(colorOutputCount);
-        colorOutputCount++;
+            colorOutputs[colorOutputCount] = std::move(colorOutput);
+            outputMask.Set(colorOutputCount);
+            colorOutputCount++;
+        }
     }
 
-    void AddColorOutput(RHITexture* pTexture,
+    void AddColorOutput(RHITexture*           pTexture,
                         RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                         RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
@@ -572,14 +551,14 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         else
         {
             RDGColorOutputDesc colorOutput{};
-            colorOutput.pTexture = pTexture;
-            colorOutput.slot     = colorOutputCount;
-            colorOutput.loadOp   = loadOp;
-            colorOutput.storeOp  = storeOp;
-            colorOutput.format   = pTexture->GetFormat();
-            colorOutput.width    = pTexture->GetWidth();
-            colorOutput.height   = pTexture->GetHeight();
-            colorOutput.tag      = pTexture->GetResourceTag();
+            colorOutput.pTexture           = pTexture;
+            colorOutput.slot               = colorOutputCount;
+            colorOutput.loadOp             = loadOp;
+            colorOutput.storeOp            = storeOp;
+            colorOutput.format             = pTexture->GetFormat();
+            colorOutput.width              = pTexture->GetWidth();
+            colorOutput.height             = pTexture->GetHeight();
+            colorOutput.tag                = pTexture->GetResourceTag();
 
             colorOutputs[colorOutputCount] = std::move(colorOutput);
             outputMask.Set(colorOutputCount);
@@ -587,10 +566,10 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         }
     }
 
-    void AddDepthStencilOutput(DataFormat format,
-                               uint32_t width,
-                               uint32_t height,
-                               NameID tag,
+    void AddDepthStencilOutput(DataFormat            format,
+                               uint32_t              width,
+                               uint32_t              height,
+                               NameID                tag,
                                RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                                RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
@@ -604,28 +583,29 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
     }
 
-    void AddDepthStencilOutput(RHITexture* pTexture,
+    void AddDepthStencilOutput(RHITexture*           pTexture,
                                RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                                RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore)
     {
         if (pTexture == nullptr)
         {
             Reject(RDGErrorCode::eAttachment, "Null depth attachment");
-            return;
         }
+        else
+        {
+            depthStencilOutput.pTexture = pTexture;
+            depthStencilOutput.format   = pTexture->GetFormat();
+            depthStencilOutput.loadOp   = loadOp;
+            depthStencilOutput.storeOp  = storeOp;
+            depthStencilOutput.width    = pTexture->GetWidth();
+            depthStencilOutput.height   = pTexture->GetHeight();
+            depthStencilOutput.tag      = pTexture->GetResourceTag();
 
-        depthStencilOutput.pTexture = pTexture;
-        depthStencilOutput.format   = pTexture->GetFormat();
-        depthStencilOutput.loadOp   = loadOp;
-        depthStencilOutput.storeOp  = storeOp;
-        depthStencilOutput.width    = pTexture->GetWidth();
-        depthStencilOutput.height   = pTexture->GetHeight();
-        depthStencilOutput.tag      = pTexture->GetResourceTag();
-
-        outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
+            outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
+        }
     }
 
-    void AddColorOutput(RDGTexture texture,
+    void AddColorOutput(RDGTexture            texture,
                         RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                         RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore,
                         bool fullWrite                 = false)
@@ -633,19 +613,20 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         if (!texture || colorOutputCount >= MAX_NUM_COLOR_ATTACHMENTS)
         {
             Reject(RDGErrorCode::eAttachment, "Invalid logical color attachment");
-            return;
         }
-
-        RDGColorOutputDesc& output = colorOutputs[colorOutputCount];
-        output.texture             = texture;
-        output.slot                = colorOutputCount;
-        output.loadOp              = loadOp;
-        output.storeOp             = storeOp;
-        output.fullWrite           = fullWrite;
-        outputMask.Set(colorOutputCount++);
+        else
+        {
+            RDGColorOutputDesc& output = colorOutputs[colorOutputCount];
+            output.texture             = texture;
+            output.slot                = colorOutputCount;
+            output.loadOp              = loadOp;
+            output.storeOp             = storeOp;
+            output.fullWrite           = fullWrite;
+            outputMask.Set(colorOutputCount++);
+        }
     }
 
-    void AddDepthStencilOutput(RDGTexture texture,
+    void AddDepthStencilOutput(RDGTexture            texture,
                                RHIRenderTargetLoadOp loadOp   = RHIRenderTargetLoadOp::eClear,
                                RHIRenderTargetStoreOp storeOp = RHIRenderTargetStoreOp::eStore,
                                bool fullWrite                 = false)
@@ -653,14 +634,15 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
         if (!texture)
         {
             Reject(RDGErrorCode::eAttachment, "Empty depth handle");
-            return;
         }
-
-        depthStencilOutput.texture   = texture;
-        depthStencilOutput.loadOp    = loadOp;
-        depthStencilOutput.storeOp   = storeOp;
-        depthStencilOutput.fullWrite = fullWrite;
-        outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
+        else
+        {
+            depthStencilOutput.texture   = texture;
+            depthStencilOutput.loadOp    = loadOp;
+            depthStencilOutput.storeOp   = storeOp;
+            depthStencilOutput.fullWrite = fullWrite;
+            outputMask.Set(MAX_NUM_COLOR_ATTACHMENTS);
+        }
     }
 
     bool HasColorOutput(uint32_t attachmentIdx) const
@@ -693,7 +675,7 @@ private:
 
 struct RDGTransferPassDesc
 {
-    NameID passTag;
+    NameID             passTag;
     RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
 };
 
@@ -713,41 +695,39 @@ struct RDGCompiledPass
     RDGCompiledPass(RDGCompiledPassType t) : type(t) {}
 
     RDGCompiledPassType type{RDGCompiledPassType::eNone};
-    NameID passTag;
-    RDGQueuePreference queuePreference{RDGQueuePreference::eDefault};
+    NameID              passTag;
+    RDGQueuePreference  queuePreference{RDGQueuePreference::eDefault};
 };
 
 struct RDGShaderPass : RDGCompiledPass
 {
     RDGShaderPass(RDGCompiledPassType type) : RDGCompiledPass(type) {}
 
-    RHIPipeline* pPipeline{nullptr};
+    RHIPipeline*               pPipeline{nullptr};
     RHIBatchedShaderParameters shaderParameters{};
     struct IndirectBinding
     {
-        RDGBuffer resource;
+        RDGBuffer  resource;
         RHIBuffer* buffer;
     };
     HeapVector<IndirectBinding> indirectBindings;
 
     size_t GetDynamicStorageBytes() const
     {
-        return shaderParameters.GetStorageBytes() +
-            indirectBindings.capacity() * sizeof(IndirectBinding);
+        return shaderParameters.GetStorageBytes() + indirectBindings.capacity() * sizeof(IndirectBinding);
     }
 };
 
 struct RDGGraphicsPass : RDGShaderPass
 {
     RHIRenderingLayout* pRenderingLayout{nullptr};
-    RHIGeometryBuffer geometryBuffer;
+    RHIGeometryBuffer   geometryBuffer;
 
     RDGGraphicsPass() : RDGShaderPass(RDGCompiledPassType::eGraphics) {}
 
     size_t GetStorageBytes() const
     {
-        return sizeof(*this) + GetDynamicStorageBytes() +
-            geometryBuffer.vertexBuffers.capacity() * sizeof(RHIBuffer*);
+        return sizeof(*this) + GetDynamicStorageBytes() + geometryBuffer.vertexBuffers.capacity() * sizeof(RHIBuffer*);
     }
 };
 
@@ -773,9 +753,7 @@ struct RDGTransferPass : RDGCompiledPass
 class RDGPassCompiler
 {
 public:
-    explicit RDGPassCompiler(RenderDevice* pRenderDevice, RenderGraph* pRDG) :
-        m_pRenderDevice(pRenderDevice), m_pRDG(pRDG)
-    {}
+    explicit RDGPassCompiler(RenderDevice* pRenderDevice, RenderGraph* pRDG) : m_pRenderDevice(pRenderDevice), m_pRDG(pRDG) {}
 
     RDGGraphicsPass* CompileGraphicsPass(const RDGGraphicsPassDesc& desc);
 
@@ -793,19 +771,19 @@ private:
 
     struct ShaderParameterBuilder;
 
-    bool BuildShaderParameters(ShaderProgram* pShaderProgram,
-                               const RDGPassDescBase* pDesc,
+    bool BuildShaderParameters(ShaderProgram*              pShaderProgram,
+                               const RDGPassDescBase*      pDesc,
                                RHIBatchedShaderParameters& parameters);
 
     RenderDevice* m_pRenderDevice{nullptr};
-    RenderGraph* m_pRDG{nullptr};
+    RenderGraph*  m_pRDG{nullptr};
 };
 
 class RDGPassCmdEncoder
 {
 public:
     RDGPassCmdEncoder(RHICommandList* pCmdList,
-                      RDGShaderPass* pPass,
+                      RDGShaderPass*  pPass,
                       RDGNodeMetrics* pMetrics            = nullptr,
                       const RDGPassDescBase* pDescription = nullptr);
 
@@ -821,10 +799,7 @@ public:
         return m_result.Fail(code, message);
     }
 
-    void Draw(uint32_t vertexCount,
-              uint32_t instanceCount,
-              uint32_t firstVertex   = 0,
-              uint32_t firstInstance = 0);
+    void Draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex = 0, uint32_t firstInstance = 0);
 
     void DrawIndexed(uint32_t indexCount,
                      uint32_t instanceCount,
@@ -832,17 +807,11 @@ public:
                      uint32_t vertexOffset,
                      uint32_t firstInstance);
 
-    void DrawIndexedIndirect(RDGBuffer indirectBuffer,
-                             uint32_t offset,
-                             uint32_t drawCount,
-                             uint32_t stride);
+    void DrawIndexedIndirect(RDGBuffer indirectBuffer, uint32_t offset, uint32_t drawCount, uint32_t stride);
 
     void DispatchIndirect(RDGBuffer indirectBuffer, uint32_t offset);
 
-    void DrawIndexedIndirect(RHIBuffer* indirectBuffer,
-                             uint32_t offset,
-                             uint32_t drawCount,
-                             uint32_t stride);
+    void DrawIndexedIndirect(RHIBuffer* indirectBuffer, uint32_t offset, uint32_t drawCount, uint32_t stride);
 
     void Dispatch(uint32_t groupCountX, int32_t groupCountY, int32_t groupCountZ);
 
@@ -868,29 +837,21 @@ public:
 
     void GenerateMipmaps(RHITexture* pTexture);
 
-    void CopyTexture(RHITexture* pSrcTexture,
-                     RHITexture* pDstTexure,
-                     VectorView<const RHITextureCopyRegion> regions);
+    void CopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexure, VectorView<const RHITextureCopyRegion> regions);
 
-    void CopyBuffer(RHIBuffer* pSrcBuffer,
-                    RHIBuffer* pDstBuffer,
-                    const RHIBufferCopyRegion& region);
+    void CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region);
 
-    void CopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                             RHITexture* pDstTexure,
-                             const RHIBufferTextureCopyRegion& region);
+    void CopyBufferToTexture(RHIBuffer* pSrcBuffer, RHITexture* pDstTexure, const RHIBufferTextureCopyRegion& region);
 
-    void ClearTexture(RHITexture* pTexture,
-                      const Color& clearColor,
-                      const RHITextureSubResourceRange& range);
+    void ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubResourceRange& range);
 
 private:
-    void EmitTextureTransition(RHITexture* pTexture,
+    void EmitTextureTransition(RHITexture*                       pTexture,
                                const RHITextureSubResourceRange& range,
-                               RHIAccessMode oldAccess,
-                               RHIAccessMode newAccess,
-                               RHITextureUsage oldUsage,
-                               RHITextureUsage newUsage);
+                               RHIAccessMode                     oldAccess,
+                               RHIAccessMode                     newAccess,
+                               RHITextureUsage                   oldUsage,
+                               RHITextureUsage                   newUsage);
 
     bool RequirePass(RDGCompiledPassType type, const char* command);
 
@@ -899,7 +860,7 @@ private:
     bool RequireIndirect(RHIBuffer* buffer, uint64_t offset, uint64_t size, const char* command);
 
     const RDGPassDescBase* m_pDescription{nullptr};
-    uint32_t m_dispatchCount{0};
+    uint32_t               m_dispatchCount{0};
 
     bool ValidateDispatch();
 
@@ -911,7 +872,7 @@ private:
     }
 
     RHICommandList* m_pCmdList{nullptr};
-    RDGShaderPass* m_pPass{nullptr};
+    RDGShaderPass*  m_pPass{nullptr};
     RDGNodeMetrics* m_pMetrics{nullptr};
     friend class RDGTransferPassCmdRecorder;
 };
@@ -926,7 +887,7 @@ public:
 private:
     RenderGraph* m_pRDG{nullptr};
     RDGPassNode* m_pNode{nullptr};
-    uint64_t m_generation{0};
+    uint64_t     m_generation{0};
 };
 
 class RDGTransferPassCmdRecorder
@@ -936,7 +897,7 @@ public:
 
     ~RDGTransferPassCmdRecorder();
 
-    RDGTransferPassCmdRecorder(const RDGTransferPassCmdRecorder&) = delete;
+    RDGTransferPassCmdRecorder(const RDGTransferPassCmdRecorder&)            = delete;
 
     RDGTransferPassCmdRecorder& operator=(const RDGTransferPassCmdRecorder&) = delete;
 
@@ -946,40 +907,42 @@ public:
 
     RDGTransferPassCmdRecorder& SetQueuePreference(RDGQueuePreference preference);
 
-    RDGTransferPassCmdRecorder& CopyTexture(RHITexture* pSrcTexture,
-                                            RHITexture* pDstTexture,
+    RDGTransferPassCmdRecorder& CopyTexture(RHITexture*                      pSrcTexture,
+                                            RHITexture*                      pDstTexture,
                                             VectorView<RHITextureCopyRegion> regions);
 
-    RDGTransferPassCmdRecorder& CopyBuffer(RHIBuffer* pSrcBuffer,
-                                           RHIBuffer* pDstBuffer,
-                                           const RHIBufferCopyRegion& region);
+    RDGTransferPassCmdRecorder& CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region);
 
-    RDGTransferPassCmdRecorder& CopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                                    RHITexture* pDstTexture,
+    RDGTransferPassCmdRecorder& CopyBufferToTexture(RHIBuffer*                        pSrcBuffer,
+                                                    RHITexture*                       pDstTexture,
                                                     const RHIBufferTextureCopyRegion& region);
 
     RDGTransferPassCmdRecorder& ClearTexture(RHITexture* pTexture, const Color& color);
 
     RDGTransferPassCmdRecorder& GenerateMipmaps(RDGTexture output);
-    RDGTransferPassCmdRecorder& CopyBufferToTexture(RDGBuffer source,
-                                                    RDGTexture destination,
+
+    RDGTransferPassCmdRecorder& CopyBufferToTexture(RDGBuffer                         source,
+                                                    RDGTexture                        destination,
                                                     const RHIBufferTextureCopyRegion& region);
+
     RDGTransferPassCmdRecorder& ClearTexture(RDGTexture texture, const Color& color);
-    RDGTransferPassCmdRecorder& CopyTexture(RDGTexture source,
-                                            RDGTexture destination,
+
+    RDGTransferPassCmdRecorder& CopyTexture(RDGTexture                       source,
+                                            RDGTexture                       destination,
                                             VectorView<RHITextureCopyRegion> regions);
-    RDGTransferPassCmdRecorder& CopyBuffer(RDGBuffer source,
-                                           RDGBuffer destination,
-                                           const RHIBufferCopyRegion& region);
+
+    RDGTransferPassCmdRecorder& CopyBuffer(RDGBuffer source, RDGBuffer destination, const RHIBufferCopyRegion& region);
 
 private:
     bool Check(bool condition, RDGErrorCode code, const std::string& message);
 
-    RenderGraph* m_pRDG{nullptr};
-    RDGPassNode* m_pNode{nullptr};
-    uint64_t m_generation{0};
+    RenderGraph*                                        m_pRDG{nullptr};
+    RDGPassNode*                                        m_pNode{nullptr};
+    uint64_t                                            m_generation{0};
     HeapVector<std::function<void(RDGPassCmdEncoder&)>> m_ops;
 
     void RestrictTransferQueues(bool graphicsOnly);
+
+    static void ExecuteOperations(VectorView<const std::function<void(RDGPassCmdEncoder&)>> ops, RDGPassCmdEncoder& encoder);
 };
 } // namespace zen::rc

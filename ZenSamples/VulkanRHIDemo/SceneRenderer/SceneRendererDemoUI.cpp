@@ -8,33 +8,31 @@ ui::RuntimeSceneSettings SceneRendererDemo::GetRuntimeSceneSettings() const
 {
     ui::RuntimeSceneSettings settings;
 
-    settings.cameraPosition = m_camera->GetPos();
+    settings.cameraPosition              = m_camera->GetPos();
 
-    const rc::SceneUniformData& uniforms =
-        *reinterpret_cast<const rc::SceneUniformData*>(m_renderScene->GetSceneUniformData());
+    const rc::SceneUniformData& uniforms = *reinterpret_cast<const rc::SceneUniformData*>(m_renderScene->GetSceneUniformData());
 
-    settings.environmentIntensity = uniforms.environment.x;
+    settings.environmentIntensity        = uniforms.environment.x;
 
-    settings.environmentRotation = glm::degrees(uniforms.environment.y);
+    settings.environmentRotation         = glm::degrees(uniforms.environment.y);
 
-    settings.environmentEnabled = uniforms.environment.z != 0;
+    settings.environmentEnabled          = uniforms.environment.z != 0;
 
-    settings.skyboxVisible = uniforms.environment.w != 0;
+    settings.skyboxVisible               = uniforms.environment.w != 0;
 
-    const rc::DeferredLightingRenderer& lighting =
-        *m_renderDevice->GetRendererServer()->RequestDeferredLightingRenderer();
+    const rc::DeferredLightingRenderer& lighting = *m_renderDevice->GetRendererServer()->RequestDeferredLightingRenderer();
 
-    settings.markersEnabled = lighting.GetLightMarkersEnabled();
+    settings.markersEnabled                      = lighting.GetLightMarkersEnabled();
 
-    settings.markerSize = lighting.GetLightMarkerSize();
+    settings.markerSize                          = lighting.GetLightMarkerSize();
 
-    settings.lightCount = m_editableLightCount;
+    settings.lightCount                          = m_editableLightCount;
 
-    settings.boundsPresetLights = m_boundsPresetLights;
+    settings.boundsPresetLights                  = m_boundsPresetLights;
 
-    settings.modelLightCount = m_modelLightCount;
+    settings.modelLightCount                     = m_modelLightCount;
 
-    settings.lights = m_editableLightDefaults;
+    settings.lights                              = m_editableLightDefaults;
 
     for (uint32_t index = 0; index < settings.lightCount; ++index)
     {
@@ -52,13 +50,13 @@ ui::RuntimeSceneSettings SceneRendererDemo::GetRuntimeSceneSettings() const
 
     settings.animationEnabled = m_dynamicLight != 0;
 
-    settings.animatedLight = m_animatedLightIndex;
+    settings.animatedLight    = m_animatedLightIndex;
 
-    settings.orbitCenter = m_orbitCenter;
+    settings.orbitCenter      = m_orbitCenter;
 
-    settings.orbitRadius = m_orbitRadius;
+    settings.orbitRadius      = m_orbitRadius;
 
-    settings.orbitSpeed = m_orbitSpeedDegrees;
+    settings.orbitSpeed       = m_orbitSpeedDegrees;
 
     return settings;
 }
@@ -94,20 +92,18 @@ bool SceneRendererDemo::ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings
         {
             const rc::SceneLight* current = lights.Find(m_editableLightIds[index]);
 
-            rc::SceneLight light = next.lights[index];
+            rc::SceneLight light          = next.lights[index];
 
             if (current != nullptr)
             {
-                light = ui::MergeRuntimeLightEdit(*current, previous.lights[index], light);
+                light              = ui::MergeRuntimeLightEdit(*current, previous.lights[index], light);
 
-                const bool changed = light.type != current->type ||
-                    light.position != current->position || light.direction != current->direction ||
-                    light.color != current->color || light.intensity != current->intensity ||
-                    light.range != current->range ||
-                    light.innerAngleDegrees != current->innerAngleDegrees ||
-                    light.outerAngleDegrees != current->outerAngleDegrees ||
-                    light.enabled != current->enabled ||
-                    light.castsShadows != current->castsShadows;
+                const bool changed = light.type != current->type || light.position != current->position
+                                  || light.direction != current->direction || light.color != current->color
+                                  || light.intensity != current->intensity || light.range != current->range
+                                  || light.innerAngleDegrees != current->innerAngleDegrees
+                                  || light.outerAngleDegrees != current->outerAngleDegrees || light.enabled != current->enabled
+                                  || light.castsShadows != current->castsShadows;
 
                 if (changed)
                 {
@@ -116,9 +112,9 @@ bool SceneRendererDemo::ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings
             }
             else
             {
-                m_editableLightIds[index] = lights.Add(light);
+                m_editableLightIds[index]  = lights.Add(light);
 
-                applied &= m_editableLightIds[index] != 0;
+                applied                   &= m_editableLightIds[index] != 0;
             }
         }
 
@@ -126,26 +122,24 @@ bool SceneRendererDemo::ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings
 
         m_animatedLightIndex = next.animatedLight;
 
-        m_dynamicLight = next.animationEnabled ? m_editableLightIds[next.animatedLight] : 0;
+        m_dynamicLight       = next.animationEnabled ? m_editableLightIds[next.animatedLight] : 0;
 
-        m_orbitCenter = next.orbitCenter;
+        m_orbitCenter        = next.orbitCenter;
 
-        m_orbitRadius = next.orbitRadius;
+        m_orbitRadius        = next.orbitRadius;
 
-        m_orbitSpeedDegrees = next.orbitSpeed;
+        m_orbitSpeedDegrees  = next.orbitSpeed;
 
         if (previous.cameraPosition != next.cameraPosition)
         {
             m_camera->SetPosition(next.cameraPosition);
         }
 
-        applied &= m_renderScene->SetEnvironmentLighting(
-            next.environmentIntensity, next.environmentRotation, next.environmentEnabled,
-            next.skyboxVisible);
+        applied &= m_renderScene->SetEnvironmentLighting(next.environmentIntensity, next.environmentRotation,
+                                                         next.environmentEnabled, next.skyboxVisible);
 
-        applied &=
-            m_renderDevice->GetRendererServer()->RequestDeferredLightingRenderer()->SetLightMarkers(
-                next.markersEnabled, next.markerSize);
+        applied &= m_renderDevice->GetRendererServer()->RequestDeferredLightingRenderer()->SetLightMarkers(next.markersEnabled,
+                                                                                                           next.markerSize);
     }
 
     return applied;

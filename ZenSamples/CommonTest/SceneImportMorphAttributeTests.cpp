@@ -20,8 +20,7 @@ public:
     {
         const int64_t identifier = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_directory = std::filesystem::temp_directory_path() /
-            ("ZenGLTFMorphAttributeTests_" + std::to_string(identifier));
+        m_directory = std::filesystem::temp_directory_path() / ("ZenGLTFMorphAttributeTests_" + std::to_string(identifier));
 
         if (!std::filesystem::create_directory(m_directory))
         {
@@ -37,12 +36,12 @@ public:
     }
 
     template <class T> uint32_t AddAccessor(std::initializer_list<T> values,
-                                            uint32_t componentType,
-                                            uint32_t count,
-                                            const char* type,
-                                            const char* bounds = "")
+                                            uint32_t                 componentType,
+                                            uint32_t                 count,
+                                            const char*              type,
+                                            const char*              bounds = "")
     {
-        const size_t offset = m_bytes.size();
+        const size_t offset     = m_bytes.size();
 
         const size_t byteLength = values.size() * sizeof(T);
 
@@ -52,24 +51,19 @@ public:
 
         const uint32_t result = static_cast<uint32_t>(m_accessors.size());
 
-        m_views.push_back("{\"buffer\":0,\"byteOffset\":" + std::to_string(offset) +
-                          ",\"byteLength\":" + std::to_string(byteLength) + "}");
+        m_views.push_back("{\"buffer\":0,\"byteOffset\":" + std::to_string(offset)
+                          + ",\"byteLength\":" + std::to_string(byteLength) + "}");
 
-        m_accessors.push_back("{\"bufferView\":" + std::to_string(result) +
-                              ",\"componentType\":" + std::to_string(componentType) +
-                              ",\"count\":" + std::to_string(count) + ",\"type\":\"" + type + "\"" +
-                              bounds + "}");
+        m_accessors.push_back("{\"bufferView\":" + std::to_string(result)
+                              + ",\"componentType\":" + std::to_string(componentType) + ",\"count\":" + std::to_string(count)
+                              + ",\"type\":\"" + type + "\"" + bounds + "}");
 
         return result;
     }
 
-    std::string Write(bool colorHasAlpha,
-                      bool gpuInstancing    = false,
-                      bool instancedSkin    = false,
-                      bool customAttributes = false)
+    std::string Write(bool colorHasAlpha, bool gpuInstancing = false, bool instancedSkin = false, bool customAttributes = false)
     {
-        AddAccessor<float>({0, 0, 0, 1, 0, 0, 0, 1, 0}, 5126, 3, "VEC3",
-                           ",\"min\":[0,0,0],\"max\":[1,1,0]");
+        AddAccessor<float>({0, 0, 0, 1, 0, 0, 0, 1, 0}, 5126, 3, "VEC3", ",\"min\":[0,0,0],\"max\":[1,1,0]");
 
         AddAccessor<float>({0, 0, 1, 0, 0, 1}, 5126, 3, "VEC2");
 
@@ -83,8 +77,7 @@ public:
 
         AddAccessor<float>({1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0}, 5126, 3, "VEC4");
 
-        AddAccessor<float>({0, 0, 1, 0, 0, 1, 0, 0, 1}, 5126, 3, "VEC3",
-                           ",\"min\":[0,0,1],\"max\":[0,0,1]");
+        AddAccessor<float>({0, 0, 1, 0, 0, 1, 0, 0, 1}, 5126, 3, "VEC3", ",\"min\":[0,0,1],\"max\":[0,0,1]");
 
         AddAccessor<float>({0.2f, -0.4f, 0.2f, -0.4f, 0.2f, -0.4f}, 5126, 3, "VEC2");
 
@@ -92,19 +85,14 @@ public:
 
         if (colorHasAlpha)
         {
-            AddAccessor<float>(
-                {0.8f, -0.8f, 0.8f, -0.4f, 0.8f, -0.8f, 0.8f, -0.4f, 0.8f, -0.8f, 0.8f, -0.4f},
-                5126, 3, "VEC4");
+            AddAccessor<float>({0.8f, -0.8f, 0.8f, -0.4f, 0.8f, -0.8f, 0.8f, -0.4f, 0.8f, -0.8f, 0.8f, -0.4f}, 5126, 3, "VEC4");
         }
         else
         {
-            AddAccessor<float>({0.8f, -0.8f, 0.8f, 0.8f, -0.8f, 0.8f, 0.8f, -0.8f, 0.8f}, 5126, 3,
-                               "VEC3");
+            AddAccessor<float>({0.8f, -0.8f, 0.8f, 0.8f, -0.8f, 0.8f, 0.8f, -0.8f, 0.8f}, 5126, 3, "VEC3");
         }
 
-        AddAccessor<float>(
-            {0.1f, 0.2f, 0.3f, -0.4f, 0.1f, 0.2f, 0.3f, -0.4f, 0.1f, 0.2f, 0.3f, -0.4f}, 5126, 3,
-            "VEC4");
+        AddAccessor<float>({0.1f, 0.2f, 0.3f, -0.4f, 0.1f, 0.2f, 0.3f, -0.4f, 0.1f, 0.2f, 0.3f, -0.4f}, 5126, 3, "VEC4");
 
         AddAccessor<float>({1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, 5126, 1, "MAT4");
 
@@ -131,52 +119,50 @@ public:
             }
         }
 
-        const std::string extensions = gpuInstancing ?
-            "\"extensionsUsed\":[\"EXT_mesh_gpu_instancing\"],"
-            "\"extensionsRequired\":[\"EXT_mesh_gpu_instancing\"]," :
-            "";
+        const std::string extensions   = gpuInstancing ? "\"extensionsUsed\":[\"EXT_mesh_gpu_instancing\"],"
+                                                         "\"extensionsRequired\":[\"EXT_mesh_gpu_instancing\"],"
+                                                       : "";
 
-        const std::string instanceSkin =
-            instancedSkin ? "\"skin\":0,\"translation\":[10,0,0]," : "";
+        const std::string instanceSkin = instancedSkin ? "\"skin\":0,\"translation\":[10,0,0]," : "";
 
-        const std::string instanceNode = gpuInstancing ? ",{\"mesh\":0," + instanceSkin +
-                "\"extensions\":{\"EXT_mesh_gpu_instancing\":{"
-                "\"attributes\":{\"TRANSLATION\":15}}}}" :
-                                                         "";
+        const std::string instanceNode = gpuInstancing ? ",{\"mesh\":0," + instanceSkin
+                                                             + "\"extensions\":{\"EXT_mesh_gpu_instancing\":{"
+                                                               "\"attributes\":{\"TRANSLATION\":15}}}}"
+                                                       : "";
 
         const std::string instanceChannel =
             gpuInstancing ? ",{\"sampler\":0,\"target\":{\"node\":3,\"path\":\"weights\"}}" : "";
 
-        const std::string customBase = customAttributes ? ",\"_TEMPERATURE\":15" : "";
+        const std::string customBase   = customAttributes ? ",\"_TEMPERATURE\":15" : "";
 
         const std::string customTarget = customAttributes ? ",\"_TEMPERATURE\":16" : "";
 
-        std::string json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0," + extensions +
-            "\"scenes\":[{\"nodes\":[0,1,2" + (gpuInstancing ? ",3" : "") +
-            "]}],"
-            "\"nodes\":[{\"mesh\":0},{\"mesh\":0,\"skin\":0,\"weights\":[0.25]},"
-            "{\"translation\":[2,0,0]}" +
-            instanceNode +
-            "],"
-            "\"meshes\":[{" +
-            (gpuInstancing ? "" : "\"weights\":[0.5],") +
-            "\"primitives\":[{\"attributes\":{"
-            "\"POSITION\":0,\"TEXCOORD_0\":1,\"TEXCOORD_1\":2,\"TEXCOORD_2\":3,"
-            "\"COLOR_0\":4,\"COLOR_1\":4,\"JOINTS_0\":5,\"WEIGHTS_0\":6" +
-            customBase +
-            "},"
-            "\"targets\":[{\"POSITION\":7,\"TEXCOORD_0\":8,\"TEXCOORD_2\":9,"
-            "\"COLOR_0\":10,\"COLOR_1\":11" +
-            customTarget +
-            "}]}]}],"
-            "\"skins\":[{\"joints\":[2],\"inverseBindMatrices\":12}],"
-            "\"animations\":[{\"samplers\":[{\"input\":13,\"output\":14}],"
-            "\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"weights\"}}" +
-            instanceChannel +
-            "]}],"
-            "\"buffers\":[{\"uri\":\"attributes.bin\",\"byteLength\":" +
-            std::to_string(m_bytes.size()) + "}],\"bufferViews\":" + JsonArray(m_views) +
-            ",\"accessors\":" + JsonArray(m_accessors) + "}";
+        std::string json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0," + extensions + "\"scenes\":[{\"nodes\":[0,1,2"
+                         + (gpuInstancing ? ",3" : "")
+                         + "]}],"
+                           "\"nodes\":[{\"mesh\":0},{\"mesh\":0,\"skin\":0,\"weights\":[0.25]},"
+                           "{\"translation\":[2,0,0]}"
+                         + instanceNode
+                         + "],"
+                           "\"meshes\":[{"
+                         + (gpuInstancing ? "" : "\"weights\":[0.5],")
+                         + "\"primitives\":[{\"attributes\":{"
+                           "\"POSITION\":0,\"TEXCOORD_0\":1,\"TEXCOORD_1\":2,\"TEXCOORD_2\":3,"
+                           "\"COLOR_0\":4,\"COLOR_1\":4,\"JOINTS_0\":5,\"WEIGHTS_0\":6"
+                         + customBase
+                         + "},"
+                           "\"targets\":[{\"POSITION\":7,\"TEXCOORD_0\":8,\"TEXCOORD_2\":9,"
+                           "\"COLOR_0\":10,\"COLOR_1\":11"
+                         + customTarget
+                         + "}]}]}],"
+                           "\"skins\":[{\"joints\":[2],\"inverseBindMatrices\":12}],"
+                           "\"animations\":[{\"samplers\":[{\"input\":13,\"output\":14}],"
+                           "\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"weights\"}}"
+                         + instanceChannel
+                         + "]}],"
+                           "\"buffers\":[{\"uri\":\"attributes.bin\",\"byteLength\":"
+                         + std::to_string(m_bytes.size()) + "}],\"bufferViews\":" + JsonArray(m_views)
+                         + ",\"accessors\":" + JsonArray(m_accessors) + "}";
 
         const std::filesystem::path file = m_directory / "attributes.gltf";
 
@@ -270,7 +256,7 @@ void ExpectMorphAttributeImport(bool colorHasAlpha)
 
     ExpectVec4(target.extraColors[0].values[0], Vec4(0.1f, 0.2f, 0.3f, -0.4f));
 
-    const uint32_t first = data.deformations[0].firstVertex;
+    const uint32_t first   = data.deformations[0].firstVertex;
 
     const uint32_t skinned = data.deformations[1].firstVertex;
 
@@ -292,8 +278,7 @@ void ExpectMorphAttributeImport(bool colorHasAlpha)
 
     ExpectVec2(data.bindVertexTexCoords[first][2], Vec2(0.2f, 0.3f));
 
-    ExpectVec4(loader.GetVertices()[first].color,
-               Vec4(0.8f, 0.0f, 1.0f, colorHasAlpha ? 0.8f : 1.0f));
+    ExpectVec4(loader.GetVertices()[first].color, Vec4(0.8f, 0.0f, 1.0f, colorHasAlpha ? 0.8f : 1.0f));
 
     ASSERT_TRUE(sg::EvaluateSceneAnimation(scene, 0, 0.75f, false));
 
@@ -429,8 +414,7 @@ TEST(SceneImportMorphAttributes, SkinnedInstancesSeparateAndFollowSourceWeightAn
 
         // Joint translation is two; the skin source's authored translation ten is
         // ignored. The second virtual instance adds two in the source frame.
-        EXPECT_FLOAT_EQ(loader.GetVertices()[first].pos.x,
-                        2.0f + 2.0f * static_cast<float>(instance - 2));
+        EXPECT_FLOAT_EQ(loader.GetVertices()[first].pos.x, 2.0f + 2.0f * static_cast<float>(instance - 2));
 
         EXPECT_FLOAT_EQ(loader.GetVertices()[first].pos.z, 0.0f);
     }
@@ -490,7 +474,7 @@ TEST(SceneImportMorphAttributes, CustomScalarTargetRetainsDecodedValuesAndItsTar
 
     ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write(false, false, false, true), &scene));
 
-    const sg::VertexAttributeAsset* base = nullptr;
+    const sg::VertexAttributeAsset* base   = nullptr;
 
     const sg::VertexAttributeAsset* target = nullptr;
 

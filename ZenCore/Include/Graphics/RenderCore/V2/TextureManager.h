@@ -43,21 +43,18 @@ public:
     // bool IsProxyTexture(const RHITexture* textureHandle) const;
 
 private:
-    void UploadEnvironmentCube(uint32_t size,
-                               uint32_t mipLevels,
+    void UploadEnvironmentCube(uint32_t                            size,
+                               uint32_t                            mipLevels,
                                const HeapVector<HeapVector<Vec4>>& faces,
-                               const char* name,
-                               RHITexture*& texture);
+                               const char*                         name,
+                               RHITexture*&                        texture);
 
-    void UpdateTexture(RHITexture* pTexture,
-                       uint32_t dataSize,
-                       const uint8_t* pData,
-                       bool generateMipmaps = false);
+    void UpdateTexture(RHITexture* pTexture, uint32_t dataSize, const uint8_t* pData, bool generateMipmaps = false);
 
-    void UpdateTextureCube(RHITexture* pTexture,
+    void UpdateTextureCube(RHITexture*                                   pTexture,
                            const HeapVector<RHIBufferTextureCopyRegion>& regions,
-                           uint32_t dataSize,
-                           const uint8_t* pData);
+                           uint32_t                                      dataSize,
+                           const uint8_t*                                pData);
 
     // void UpdateTexture(const RHITexture* textureHandle,
     //                    const Vec3i& textureSize,
@@ -80,7 +77,7 @@ private:
     void OwnEnvironmentTextures(EnvTexture* environment);
 
     HashMap<NameID, std::array<RHITexture*, 2>> m_textureCache;
-    HashMap<uint64_t, RHITexture*> m_ownedTextures;
+    HashMap<uint64_t, RHITexture*>              m_ownedTextures;
 
     HashMap<RHITexture*, RHITexture*> m_textureProxyMap; // proxy tex -> base tex
 };

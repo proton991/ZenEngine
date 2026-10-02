@@ -11,9 +11,7 @@ namespace zen
 class SceneRendererWindowTest
 {
 public:
-    SceneRendererWindowTest(GLFWwindow* window, uint32_t seconds) :
-        m_window(window), m_seconds(seconds)
-    {}
+    SceneRendererWindowTest(GLFWwindow* window, uint32_t seconds) : m_window(window), m_seconds(seconds) {}
 
     ~SceneRendererWindowTest()
     {
@@ -44,10 +42,9 @@ public:
         {
             const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
-            const double elapsed = std::chrono::duration<double>(now - m_started).count();
+            const double elapsed                            = std::chrono::duration<double>(now - m_started).count();
 
-            if (m_phase == Phase::eForeground && m_cycles == 1 &&
-                (frame == m_phaseFrame + 2 || frame == m_phaseFrame + 3))
+            if (m_phase == Phase::eForeground && m_cycles == 1 && (frame == m_phaseFrame + 2 || frame == m_phaseFrame + 3))
             {
                 // Exercise focus loss from captured-camera mode through the installed
                 // engine/ImGui key callback chain, without coupling this probe to ZenUI.
@@ -57,8 +54,7 @@ public:
 
                 if (keyCallback != nullptr)
                 {
-                    keyCallback(m_window, GLFW_KEY_F1, 0,
-                                frame == m_phaseFrame + 2 ? GLFW_PRESS : GLFW_RELEASE, 0);
+                    keyCallback(m_window, GLFW_KEY_F1, 0, frame == m_phaseFrame + 2 ? GLFW_PRESS : GLFW_RELEASE, 0);
                 }
             }
 
@@ -74,8 +70,7 @@ public:
                 glfwGetWindowPos(m_window, &x, &y);
 
                 m_cover =
-                    glfwCreateWindow(width + 80, height + 80,
-                                     "Background rendering test - covering demo", nullptr, nullptr);
+                    glfwCreateWindow(width + 80, height + 80, "Background rendering test - covering demo", nullptr, nullptr);
 
                 if (m_cover == nullptr)
                 {
@@ -127,9 +122,8 @@ public:
 
             if (now - m_lastProgress >= std::chrono::seconds(5))
             {
-                LOGI("Window test progress: phase={} frame={} focused={} iconified={}",
-                     PhaseName(m_phase), frame, glfwGetWindowAttrib(m_window, GLFW_FOCUSED),
-                     glfwGetWindowAttrib(m_window, GLFW_ICONIFIED));
+                LOGI("Window test progress: phase={} frame={} focused={} iconified={}", PhaseName(m_phase), frame,
+                     glfwGetWindowAttrib(m_window, GLFW_FOCUSED), glfwGetWindowAttrib(m_window, GLFW_ICONIFIED));
 
                 m_lastProgress = now;
             }
@@ -166,8 +160,8 @@ private:
 
     bool VerifyForeground(uint32_t frame, std::chrono::steady_clock::time_point now)
     {
-        m_succeeded = glfwGetWindowAttrib(m_window, GLFW_FOCUSED) == GLFW_TRUE &&
-            glfwGetWindowAttrib(m_window, GLFW_ICONIFIED) == GLFW_FALSE;
+        m_succeeded = glfwGetWindowAttrib(m_window, GLFW_FOCUSED) == GLFW_TRUE
+                   && glfwGetWindowAttrib(m_window, GLFW_ICONIFIED) == GLFW_FALSE;
 
         if (!m_succeeded)
         {
@@ -181,23 +175,22 @@ private:
 
     void StartPhase(Phase phase, uint32_t frame, std::chrono::steady_clock::time_point now)
     {
-        m_phase = phase;
+        m_phase      = phase;
 
         m_phaseFrame = frame;
 
-        m_started = now;
+        m_started    = now;
 
-        LOGI("Window test transition: phase={} cycle={} frame={}", PhaseName(phase), m_cycles,
-             frame);
+        LOGI("Window test transition: phase={} cycle={} frame={}", PhaseName(phase), m_cycles, frame);
     }
 
-    GLFWwindow* m_window;
-    GLFWwindow* m_cover{nullptr};
-    uint32_t m_seconds;
-    uint32_t m_phaseFrame{0};
-    uint32_t m_cycles{0};
-    bool m_succeeded{true};
-    Phase m_phase{Phase::eForeground};
+    GLFWwindow*                           m_window;
+    GLFWwindow*                           m_cover{nullptr};
+    uint32_t                              m_seconds;
+    uint32_t                              m_phaseFrame{0};
+    uint32_t                              m_cycles{0};
+    bool                                  m_succeeded{true};
+    Phase                                 m_phase{Phase::eForeground};
     std::chrono::steady_clock::time_point m_started{std::chrono::steady_clock::now()};
     std::chrono::steady_clock::time_point m_lastProgress{m_started};
 };

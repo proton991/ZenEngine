@@ -22,7 +22,7 @@ namespace zen::rc
 {
 struct VoxelGridUniform
 {
-    Vec4 minimumSize;
+    Vec4       minimumSize;
     glm::uvec4 selection; // Static/dynamic/all class mask; other words reserved.
 };
 } // namespace zen::rc

@@ -69,16 +69,20 @@ public:
 
     void BindIndexBuffer(VkBuffer buffer, uint64_t offset, VkIndexType type);
 
-    void BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
+    void BindPipelineAndDescriptorSets(VulkanPipeline*                    pipeline,
                                        const HeapVector<VkDescriptorSet>& sets,
-                                       uint32_t firstSet,
-                                       const HeapVector<uint32_t>& offsets);
+                                       uint32_t                           firstSet,
+                                       const HeapVector<uint32_t>&        offsets);
+
     void SetViewport(const VkViewport& viewport);
+
     void SetScissor(const VkRect2D& scissor);
+
     void SetDepthBias(float constantFactor, float clamp, float slopeFactor);
+
     void SetLineWidth(float width);
-    void BindVertexBuffers(const HeapVector<VkBuffer>& buffers,
-                           const HeapVector<uint64_t>& offsets);
+
+    void BindVertexBuffers(const HeapVector<VkBuffer>& buffers, const HeapVector<uint64_t>& offsets);
 
     void SetSubmitted();
 
@@ -167,12 +171,12 @@ private:
 
     State m_state{State::eNotAllocated};
 
-    RHIError m_error{};
+    RHIError                  m_error{};
     static constexpr uint32_t kMaxBreadcrumbs = 1024;
-    VkBuffer m_breadcrumbBuffer{VK_NULL_HANDLE};
-    VulkanMemoryAllocation m_breadcrumbAllocation;
-    HeapVector<NameID> m_breadcrumbNames;
-    HeapVector<uint32_t> m_openBreadcrumbs;
+    VkBuffer                  m_breadcrumbBuffer{VK_NULL_HANDLE};
+    VulkanMemoryAllocation    m_breadcrumbAllocation;
+    HeapVector<NameID>        m_breadcrumbNames;
+    HeapVector<uint32_t>      m_openBreadcrumbs;
 
     double m_submitTime{0.0f};
 
@@ -181,36 +185,36 @@ private:
     struct GPUTimingScope
     {
         RHIGPUTimingPtr result;
-        bool ended{false};
+        bool            ended{false};
     };
-    VkQueryPool m_timestampPool{VK_NULL_HANDLE};
+    VkQueryPool                m_timestampPool{VK_NULL_HANDLE};
     HeapVector<GPUTimingScope> m_timingScopes;
-    uint32_t m_timestampValidBits{0};
-    double m_timestampPeriod{0};
-    bool m_timestampsReset{false};
-    RHIGPUTimingPtr m_frameTimingInterval;
-    bool m_nativeTimingRecording{false};
+    uint32_t                   m_timestampValidBits{0};
+    double                     m_timestampPeriod{0};
+    bool                       m_timestampsReset{false};
+    RHIGPUTimingPtr            m_frameTimingInterval;
+    bool                       m_nativeTimingRecording{false};
 
     struct BoundPipelineState
     {
-        VkPipeline pipeline{VK_NULL_HANDLE};
-        VkPipelineLayout descriptorLayout{VK_NULL_HANDLE};
-        uint32_t firstSet{0};
+        VkPipeline                  pipeline{VK_NULL_HANDLE};
+        VkPipelineLayout            descriptorLayout{VK_NULL_HANDLE};
+        uint32_t                    firstSet{0};
         HeapVector<VkDescriptorSet> descriptorSets;
-        HeapVector<uint32_t> dynamicOffsets;
+        HeapVector<uint32_t>        dynamicOffsets;
     };
     // Graphics and compute bind points have independent state.
-    BoundPipelineState m_boundStates[2];
+    BoundPipelineState           m_boundStates[2];
     EnumBitMask<RHIDynamicState> m_validDynamicStates;
-    VkViewport m_viewport{};
-    VkRect2D m_scissor{};
-    float m_depthBias[3]{};
-    float m_lineWidth{1.0f};
-    HeapVector<VkBuffer> m_boundVertexBuffers;
-    HeapVector<uint64_t> m_boundVertexOffsets;
+    VkViewport                   m_viewport{};
+    VkRect2D                     m_scissor{};
+    float                        m_depthBias[3]{};
+    float                        m_lineWidth{1.0f};
+    HeapVector<VkBuffer>         m_boundVertexBuffers;
+    HeapVector<uint64_t>         m_boundVertexOffsets;
 
-    VkBuffer m_boundIndexBuffer{VK_NULL_HANDLE};
-    uint64_t m_boundIndexOffset{0};
+    VkBuffer    m_boundIndexBuffer{VK_NULL_HANDLE};
+    uint64_t    m_boundIndexOffset{0};
     VkIndexType m_boundIndexType{VK_INDEX_TYPE_UINT16};
 };
 
@@ -283,14 +287,14 @@ public:
     struct WaitSemaphoreInfo
     {
         VkPipelineStageFlags waitFlags{0};
-        VulkanSemaphore* pSemaphore{nullptr};
-        uint64_t value{0};
+        VulkanSemaphore*     pSemaphore{nullptr};
+        uint64_t             value{0};
     };
 
     struct SignalSemaphoreInfo
     {
         VulkanSemaphore* pSemaphore{nullptr};
-        uint64_t value{0};
+        uint64_t         value{0};
     };
 
 private:
@@ -305,16 +309,16 @@ private:
 
     void Merge(VulkanWorkload* pOtherWorkload);
 
-    VulkanQueue* m_pQueue{nullptr};
+    VulkanQueue*                      m_pQueue{nullptr};
     HeapVector<FVulkanCommandBuffer*> m_commandBuffers;
-    uint64_t m_submissionSerial{0};
-    VulkanWorkload* m_pMergedInto{nullptr};
-    HeapVector<VulkanWorkload*> m_mergedWorkloads;
-    HeapVector<uint64_t> m_lifetimeIds;
-    RHIResourceReferences m_resources;
+    uint64_t                          m_submissionSerial{0};
+    VulkanWorkload*                   m_pMergedInto{nullptr};
+    HeapVector<VulkanWorkload*>       m_mergedWorkloads;
+    HeapVector<uint64_t>              m_lifetimeIds;
+    RHIResourceReferences             m_resources;
 
     // DO NOT own the semaphores, only hold reference
-    HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
+    HeapVector<WaitSemaphoreInfo>   m_waitSemaphoreInfos;
     HeapVector<SignalSemaphoreInfo> m_signalSemaphoreInfos;
 
     VulkanFence* m_pFence{nullptr}; // Used at vkQueueSubmit
@@ -370,21 +374,19 @@ public:
         AddWaitSemaphore(waitFlags, pWaitSemaphore, 0);
     }
 
-    void AddWaitSemaphore(VkPipelineStageFlags waitFlags,
-                          VulkanSemaphore* pWaitSemaphore,
-                          uint64_t value)
+    void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pWaitSemaphore, uint64_t value)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
-        bool merged                      = false;
+        bool            merged           = false;
         if (value != 0)
         {
             for (VulkanWorkload::WaitSemaphoreInfo& wait : pCurrentWorkload->m_waitSemaphoreInfos)
             {
                 if (wait.pSemaphore == pWaitSemaphore)
                 {
-                    wait.value = std::max(wait.value, value);
+                    wait.value      = std::max(wait.value, value);
                     wait.waitFlags |= waitFlags;
-                    merged = true;
+                    merged          = true;
                     break;
                 }
             }
@@ -396,8 +398,7 @@ public:
         }
     }
 
-    void AddWaitSemaphores(VkPipelineStageFlags waitFlags,
-                           VectorView<VulkanSemaphore*> waitSemaphores)
+    void AddWaitSemaphores(VkPipelineStageFlags waitFlags, VectorView<VulkanSemaphore*> waitSemaphores)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eWait);
 
@@ -416,8 +417,7 @@ public:
     void AddSignalSemaphore(VulkanSemaphore* pSignalSemaphore, uint64_t value)
     {
         VulkanWorkload* pCurrentWorkload = GetWorkload(WorkloadPhase::eSignal);
-        pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
-            VulkanWorkload::SignalSemaphoreInfo{pSignalSemaphore, value});
+        pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(VulkanWorkload::SignalSemaphoreInfo{pSignalSemaphore, value});
     }
 
     void AddSignalSemaphores(VectorView<VulkanSemaphore*> signalSemaphores)
@@ -426,8 +426,7 @@ public:
 
         for (uint32_t i = 0; i < signalSemaphores.size(); i++)
         {
-            pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(
-                VulkanWorkload::SignalSemaphoreInfo{signalSemaphores[i], 0});
+            pCurrentWorkload->m_signalSemaphoreInfos.emplace_back(VulkanWorkload::SignalSemaphoreInfo{signalSemaphores[i], 0});
         }
     }
 
@@ -498,12 +497,12 @@ private:
 
     FVulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
 
-    VulkanWorkload* m_pCurrentWorkload{nullptr};
+    VulkanWorkload*             m_pCurrentWorkload{nullptr};
     HeapVector<VulkanWorkload*> m_finalizedWorkloads;
-    WorkloadPhase m_currentWorkloadPhase{WorkloadPhase::eWait};
-    uint64_t m_workloadGeneration{0};
-    bool m_hasPendingFlushWorkload{false};
-    uint64_t m_lastSubmittedSerial{0};
+    WorkloadPhase               m_currentWorkloadPhase{WorkloadPhase::eWait};
+    uint64_t                    m_workloadGeneration{0};
+    bool                        m_hasPendingFlushWorkload{false};
+    uint64_t                    m_lastSubmittedSerial{0};
 
     RHIError m_recordingError{};
 
@@ -525,30 +524,24 @@ public:
 
     void SetLineWidth(float lineWidth);
 
-    void SetDepthBias(float depthBiasConstantFactor,
-                      float depthBiasClamp,
-                      float depthBiasSlopeFactor);
+    void SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor);
 
-    void SetVertexBuffers(uint32_t numVertexBuffers,
-                          RHIBuffer* const* ppVertexBuffers,
-                          const uint64_t* pOffsets);
+    void SetVertexBuffers(uint32_t numVertexBuffers, RHIBuffer* const* ppVertexBuffers, const uint64_t* pOffsets);
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    bool SetShaderParameters(RHIShaderParameterView parameters,
-                             uint64_t recordedEpoch = 0,
-                             uint64_t transaction   = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0, uint64_t transaction = 0);
 
     bool PreDraw(FVulkanCommandListContext* pContext);
 
 private:
     HeapVector<VkViewport> m_viewports;
-    HeapVector<VkRect2D> m_scissors;
+    HeapVector<VkRect2D>   m_scissors;
 
-    VulkanPipeline* m_pCurrentPipeline{nullptr};
+    VulkanPipeline*             m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
-    HeapVector<uint32_t> m_dynamicOffsets;
-    VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
+    HeapVector<uint32_t>        m_dynamicOffsets;
+    VulkanDescriptorSetState*   m_pDescriptorSetState{nullptr};
 
     HeapVector<VkBuffer> m_vertexBuffers;
     HeapVector<uint64_t> m_vertexBufferOffsets;
@@ -575,18 +568,16 @@ public:
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    bool SetShaderParameters(RHIShaderParameterView parameters,
-                             uint64_t recordedEpoch = 0,
-                             uint64_t transaction   = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0, uint64_t transaction = 0);
 
     bool PreDispatch(FVulkanCommandListContext* pContext);
 
 private:
-    VulkanPipeline* m_pCurrentPipeline{nullptr};
+    VulkanPipeline*             m_pCurrentPipeline{nullptr};
     HeapVector<VkDescriptorSet> m_descriptorSets;
-    HeapVector<uint32_t> m_dynamicOffsets;
-    VulkanDescriptorSetState* m_pDescriptorSetState{nullptr};
-    bool m_useAutomaticDescriptorSets{false};
+    HeapVector<uint32_t>        m_dynamicOffsets;
+    VulkanDescriptorSetState*   m_pDescriptorSetState{nullptr};
+    bool                        m_useAutomaticDescriptorSets{false};
 };
 
 class FVulkanCommandListContext : public IRHICommandContext, public VulkanCommandContextBase
@@ -615,6 +606,7 @@ public:
     void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) override;
 
     void RHIEndRendering() override;
+
     void RHIBeginDebugLabel(NameID name) override;
 
     void RHIEndDebugLabel() override;
@@ -627,9 +619,7 @@ public:
 
     void RHISetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY) override;
 
-    void RHISetDepthBias(float depthBiasConstantFactor,
-                         float depthBiasClamp,
-                         float depthBiasSlopeFactor) override;
+    void RHISetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor) override;
 
     void RHISetLineWidth(float lineWidth) override;
 
@@ -642,87 +632,78 @@ public:
     uint64_t RHIGetCurrentBindlessEpoch() const override;
 
     uint64_t RHICaptureBindlessEpoch() override;
+
     void RHIReleaseBindlessEpoch(uint64_t epoch) override;
+
     void RHISetRecordedBindlessEpoch(uint64_t epoch) override
     {
         m_recordedBindlessEpoch = epoch;
     }
+
     void RecordCurrentBindlessEpoch();
 
-    void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
-                              VectorView<uint64_t> offsets) override;
+    void RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers, VectorView<uint64_t> offsets) override;
 
     void RHIBindVertexBuffer(RHIBuffer* pBuffer, uint64_t offset) override;
 
-    void RHIDraw(uint32_t vertexCount,
-                 uint32_t instanceCount,
-                 uint32_t firstVertex,
-                 uint32_t firstInstance) override;
+    void RHIDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
 
     void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                         DataFormat indexFormat,
-                        uint64_t indexBufferOffset,
-                        uint32_t indexCount,
-                        uint32_t instanceCount,
-                        uint32_t firstIndex,
-                        int32_t vertexOffset,
-                        uint32_t firstInstance) override;
+                        uint64_t   indexBufferOffset,
+                        uint32_t   indexCount,
+                        uint32_t   instanceCount,
+                        uint32_t   firstIndex,
+                        int32_t    vertexOffset,
+                        uint32_t   firstInstance) override;
 
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
-                                uint64_t indexBufferOffset,
-                                uint64_t offset,
-                                uint32_t drawCount,
-                                uint32_t stride) override;
+                                uint64_t   indexBufferOffset,
+                                uint64_t   offset,
+                                uint32_t   drawCount,
+                                uint32_t   stride) override;
 
     void RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
 
     void RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, uint64_t offset) override;
 
-    void RHISetPushConstants(RHIPipeline* pPipeline,
-                             VectorView<const uint8_t> data,
-                             uint32_t offset = 0) override;
+    void RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset = 0) override;
 
     void RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
                            BitField<RHIPipelineStageFlagBits> dstStages,
-                           VectorView<RHIMemoryTransition> memoryTransitions,
-                           VectorView<RHIBufferTransition> bufferTransitions,
-                           VectorView<RHITextureTransition> textureTransitions) override;
+                           VectorView<RHIMemoryTransition>    memoryTransitions,
+                           VectorView<RHIBufferTransition>    bufferTransitions,
+                           VectorView<RHITextureTransition>   textureTransitions) override;
 
     void RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offset, uint64_t size) override;
 
-    void RHICopyBuffer(RHIBuffer* pSrcBuffer,
-                       RHIBuffer* pDstBuffer,
-                       const RHIBufferCopyRegion& region) override;
+    void RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region) override;
 
-    void RHIClearTexture(RHITexture* pTexture,
-                         const Color& color,
-                         const RHITextureSubResourceRange& range) override;
+    void RHIClearTexture(RHITexture* pTexture, const Color& color, const RHITextureSubResourceRange& range) override;
 
-    void RHICopyTexture(RHITexture* pSrcTexture,
-                        RHITexture* pDstTexture,
-                        VectorView<RHITextureCopyRegion> regions) override;
+    void RHICopyTexture(RHITexture* pSrcTexture, RHITexture* pDstTexture, VectorView<RHITextureCopyRegion> regions) override;
 
-    void RHIBlitTexture(RHITexture* pSrcTexture,
-                        RHITexture* pDstTexture,
+    void RHIBlitTexture(RHITexture*                      pSrcTexture,
+                        RHITexture*                      pDstTexture,
                         VectorView<RHITextureBlitRegion> regions,
-                        RHISamplerFilter filter) override;
+                        RHISamplerFilter                 filter) override;
 
-    void RHICopyTextureToBuffer(RHITexture* pSrcTex,
-                                RHIBuffer* pDstBuffer,
+    void RHICopyTextureToBuffer(RHITexture*                            pSrcTex,
+                                RHIBuffer*                             pDstBuffer,
                                 VectorView<RHIBufferTextureCopyRegion> regions) override;
 
-    void RHICopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                RHITexture* pDstTexture,
+    void RHICopyBufferToTexture(RHIBuffer*                             pSrcBuffer,
+                                RHITexture*                            pDstTexture,
                                 VectorView<RHIBufferTextureCopyRegion> regions) override;
 
     void RHIResolveTexture(RHITexture* pSrcTexture,
                            RHITexture* pDstTexture,
-                           uint32_t srcLayer,
-                           uint32_t srcMipmap,
-                           uint32_t dstLayer,
-                           uint32_t dstMipmap) override;
+                           uint32_t    srcLayer,
+                           uint32_t    srcMipmap,
+                           uint32_t    dstLayer,
+                           uint32_t    dstMipmap) override;
 
     void RHIWaitUntilCompleted() override;
 
@@ -736,7 +717,7 @@ private:
 
     uint64_t m_recordedBindlessEpoch{0};
 
-    VulkanGfxState* m_pGfxState{nullptr};
+    VulkanGfxState*     m_pGfxState{nullptr};
     VulkanComputeState* m_pComputeState{nullptr};
 };
 

@@ -16,13 +16,12 @@ StagingBufferManager::StagingBufferManager(uint32_t blockSize, uint64_t poolSize
     VERIFY_EXPR_MSG(blockSize > 0, "Staging block size must be positive");
 }
 
-StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
-                                                  uint32_t alignment,
-                                                  StagingAllocation* pAllocation)
+StagingFlushAction StagingBufferManager::Allocate(uint32_t size, uint32_t alignment, StagingAllocation* pAllocation)
 {
-    VERIFY_EXPR_MSG(pAllocation != nullptr && size > 0 && alignment > 0,
-                    "Invalid staging allocation request");
+    VERIFY_EXPR_MSG(pAllocation != nullptr && size > 0 && alignment > 0, "Invalid staging allocation request");
+
     *pAllocation              = {};
+
     StagingFlushAction action = StagingFlushAction::eFlush;
 
     if (m_pRenderDevice == nullptr || !m_pRenderDevice->AreSubmissionsBlocked())
@@ -31,15 +30,18 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
 
         for (Block& block : m_blocks)
         {
-            const uint64_t offset =
-                (uint64_t(block.occupiedSize) + alignment - 1) / alignment * alignment;
+            const uint64_t offset = (uint64_t(block.occupiedSize) + alignment - 1) / alignment * alignment;
 
             if (offset + size <= block.capacity)
             {
                 block.occupiedSize = static_cast<uint32_t>(offset + size);
+
                 ++block.outstandingAllocCount;
+
                 *pAllocation = {block.pBuffer, static_cast<uint32_t>(offset), size};
+
                 action       = StagingFlushAction::eNone;
+
                 break;
             }
         }
@@ -47,6 +49,7 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
         if (action != StagingFlushAction::eNone)
         {
             const uint32_t capacity = std::max(size, m_blockSize);
+
             // An individual texture may exceed the normal pool budget. Only one such block
             // is admitted, after all other blocks have drained.
             const uint64_t budget = std::max<uint64_t>(m_poolSize, capacity);
@@ -56,7 +59,9 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
                 if (m_blocks[i].occupiedSize == 0)
                 {
                     m_allocatedSize -= m_blocks[i].capacity;
+
                     DestroyBuffer(m_blocks[i].pBuffer);
+
                     m_blocks.erase(m_blocks.begin() + i);
                 }
                 else
@@ -68,19 +73,26 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
             if (m_allocatedSize + capacity <= budget)
             {
                 RHIBufferCreateInfo info{};
+
                 info.size = capacity;
+
                 info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+
                 info.allocateType  = RHIBufferAllocateType::eCPUWrite;
+
                 info.tag           = "staging_upload";
+
                 RHIBuffer* pBuffer = GDynamicRHI->CreateBuffer(info);
+
                 if (pBuffer != nullptr)
                 {
                     m_blocks.push_back({pBuffer, capacity, size, 1, {}});
 
                     m_allocatedSize += capacity;
 
-                    *pAllocation = {pBuffer, 0, size};
-                    action       = StagingFlushAction::eNone;
+                    *pAllocation     = {pBuffer, 0, size};
+
+                    action           = StagingFlushAction::eNone;
                 }
                 else
                 {
@@ -95,19 +107,22 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
     return action;
 }
 
-void StagingBufferManager::Release(const StagingAllocation& allocation,
-                                   const RHICompletionSet& requiredSerials)
+void StagingBufferManager::Release(const StagingAllocation& allocation, const RHICompletionSet& requiredSerials)
 {
     bool found = false;
+
     for (Block& block : m_blocks)
     {
         if (block.pBuffer == allocation.pBuffer)
         {
             found = true;
+
             VERIFY_EXPR_MSG(block.outstandingAllocCount > 0, "Staging allocation released twice");
+
             if (block.outstandingAllocCount > 0)
             {
                 --block.outstandingAllocCount;
+
                 block.requiredSerials.Extend(requiredSerials);
             }
 
@@ -127,6 +142,7 @@ void StagingBufferManager::Reclaim()
         if (block.outstandingAllocCount == 0 && block.requiredSerials.IsCompleteAt(completed))
         {
             block.occupiedSize    = 0;
+
             block.requiredSerials = {};
         }
     }
@@ -149,11 +165,13 @@ bool StagingBufferManager::WaitForSubmittedAllocations()
     for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
     {
         const RHICommandContextType queue = static_cast<RHICommandContextType>(i);
+
         const uint64_t serial             = required.Get(queue);
-        if (GDynamicRHI->QueryLastCompletedSerial(queue) < serial &&
-            !GDynamicRHI->WaitForCompletion(queue, serial))
+
+        if (GDynamicRHI->QueryLastCompletedSerial(queue) < serial && !GDynamicRHI->WaitForCompletion(queue, serial))
         {
             LOGE("Staging: cannot reclaim queue {} serial {}", uint32_t(queue), serial);
+
             valid = false;
         }
 
@@ -181,10 +199,12 @@ void StagingBufferManager::Destroy()
     for (const Block& block : m_blocks)
     {
         VERIFY_EXPR_MSG(block.outstandingAllocCount == 0, "Unsubmitted staging allocations remain");
+
         DestroyBuffer(block.pBuffer);
     }
 
     m_blocks.clear();
+
     m_allocatedSize = 0;
 }
 
@@ -198,26 +218,22 @@ void StagingBufferManager::DestroyBuffer(RHIBuffer* buffer)
     GDynamicRHI->DestroyBuffer(buffer);
 }
 
-StagingUploadQueue::StagingUploadQueue(RenderDevice* pRenderDevice,
-                                       StagingBufferManager* pStagingMgr) :
+StagingUploadQueue::StagingUploadQueue(RenderDevice* pRenderDevice, StagingBufferManager* pStagingMgr) :
     m_pRenderDevice(pRenderDevice), m_pStagingMgr(pStagingMgr), m_uploadRDG("staging_upload")
 {
-    VERIFY_EXPR_MSG(pRenderDevice != nullptr && pStagingMgr != nullptr,
-                    "Invalid upload queue dependencies");
-    VERIFY_EXPR_MSG(pStagingMgr->m_pRenderDevice == nullptr ||
-                        pStagingMgr->m_pRenderDevice == pRenderDevice,
+    VERIFY_EXPR_MSG(pRenderDevice != nullptr && pStagingMgr != nullptr, "Invalid upload queue dependencies");
+
+    VERIFY_EXPR_MSG(pStagingMgr->m_pRenderDevice == nullptr || pStagingMgr->m_pRenderDevice == pRenderDevice,
                     "A staging manager cannot be shared by different render devices");
+
     pStagingMgr->m_pRenderDevice = pRenderDevice;
 }
 
-bool StagingUploadQueue::StageBytes(uint32_t size,
-                                    uint32_t alignment,
-                                    const uint8_t* pData,
-                                    StagingAllocation* pOutAlloc)
+bool StagingUploadQueue::StageBytes(uint32_t size, uint32_t alignment, const uint8_t* pData, StagingAllocation* pOutAlloc)
 {
     bool valid = true;
 
-    valid = !(size == 0 || pData == nullptr || pOutAlloc == nullptr);
+    valid      = !(size == 0 || pData == nullptr || pOutAlloc == nullptr);
 
     if (valid)
     {
@@ -227,6 +243,7 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
         {
             // This queue may be used independently of the device's main upload queue.
             Flush();
+
             valid = m_pRenderDevice->ResolveStagingFlushAction(action, m_pStagingMgr);
 
             if (valid)
@@ -240,6 +257,7 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
             if (action != StagingFlushAction::eNone)
             {
                 LOGE("Staging pool still has outstanding allocations after flushing");
+
                 valid = false;
             }
         }
@@ -251,13 +269,16 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
             if (pMapped == nullptr)
             {
                 m_pStagingMgr->Release(*pOutAlloc, {});
+
                 *pOutAlloc = {};
+
                 valid      = false;
             }
 
             if (valid)
             {
                 std::memcpy(pMapped + pOutAlloc->offset, pData, size);
+
                 pOutAlloc->pBuffer->Unmap();
             }
         }
@@ -266,23 +287,22 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
     return valid;
 }
 
-bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer,
-                                       uint32_t dstOffset,
-                                       uint32_t dataSize,
-                                       const uint8_t* pData)
+bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer, uint32_t dstOffset, uint32_t dataSize, const uint8_t* pData)
 {
     bool stagedAll = true;
 
     if (dataSize > 0 && pData != nullptr)
     {
         VERIFY_EXPR_MSG(pDstBuffer != nullptr, "Null upload destination buffer");
-        VERIFY_EXPR_MSG(uint64_t(dstOffset) + dataSize <= pDstBuffer->GetRequiredSize(),
-                        "Buffer upload is out of bounds");
+
+        VERIFY_EXPR_MSG(uint64_t(dstOffset) + dataSize <= pDstBuffer->GetRequiredSize(), "Buffer upload is out of bounds");
 
         for (uint32_t copied = 0; copied < dataSize;)
         {
             const uint32_t size = std::min(dataSize - copied, m_pStagingMgr->GetBlockSize());
+
             PendingUpload upload{};
+
             const bool staged = StageBytes(size, 4, pData + copied, &upload.stagingAlloc);
 
             if (!staged)
@@ -290,14 +310,18 @@ bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer,
                 stagedAll = false;
 
                 LOGE("Failed to stage buffer upload");
+
                 break;
             }
 
             upload.pDstBuffer       = pDstBuffer;
-            upload.bufferCopyRegion = {upload.stagingAlloc.offset, uint64_t(dstOffset) + copied,
-                                       size};
+
+            upload.bufferCopyRegion = {upload.stagingAlloc.offset, uint64_t(dstOffset) + copied, size};
+
             pDstBuffer->AddReference();
+
             m_pendingUploads.push_back(std::move(upload));
+
             copied += size;
         }
     }
@@ -305,87 +329,89 @@ bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer,
     return stagedAll;
 }
 
-void StagingUploadQueue::EnqueueTexture(RHITexture* pTexture,
+void StagingUploadQueue::EnqueueTexture(RHITexture*                            pTexture,
                                         VectorView<RHIBufferTextureCopyRegion> regions,
-                                        uint32_t dataSize,
-                                        const uint8_t* pData,
-                                        bool generateMipmaps)
+                                        uint32_t                               dataSize,
+                                        const uint8_t*                         pData,
+                                        bool                                   generateMipmaps)
 {
-    if (dataSize == 0 || pData == nullptr || regions.empty())
+    if (((dataSize != 0) && (pData != nullptr)) && (!regions.empty()))
     {
-        return;
-    }
-
-    if (pTexture == nullptr || regions.data() == nullptr)
-    {
-        LOGE("Texture upload [{}]: Null destination texture or copy regions",
-             uint32_t(RDGErrorCode::eRange));
-    }
-    else
-    {
-        // Validate the entire request before StageBytes can allocate or flush earlier uploads.
-        // RDG later sees the whole staging buffer; only this boundary knows the payload's size.
-        RDGResult result;
-        const RHITextureCreateInfo& info = pTexture->GetBaseInfo();
-        RDGTransferQueueCapabilities queues;
-        uint32_t alignment = 16;
-
-        if (!result.Check(info.usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferDst) &&
-                              (!generateMipmaps ||
-                               info.usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc)),
-                          RDGErrorCode::eBinding,
-                          "Texture upload lacks required transfer creation usage") ||
-            (generateMipmaps && !ValidateMipmapCapabilities(result, info)))
+        if (pTexture == nullptr || regions.data() == nullptr)
         {
-            LOGE("Texture upload '{}' [{}]: {}", pTexture->GetResourceTag().CStr(),
-                 uint32_t(result.code), result.message);
+            LOGE("Texture upload [{}]: Null destination texture or copy regions", uint32_t(RDGErrorCode::eRange));
         }
         else
         {
-            for (size_t i = 0; i < regions.size(); ++i)
+            // Validate the entire request before StageBytes can allocate or flush earlier uploads.
+            // RDG later sees the whole staging buffer; only this boundary knows the payload's size.
+            RDGResult result;
+
+            const RHITextureCreateInfo& info = pTexture->GetBaseInfo();
+
+            RDGTransferQueueCapabilities queues;
+
+            uint32_t alignment = 16;
+
+            if (!result.Check(info.usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferDst)
+                                  && (!generateMipmaps || info.usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc)),
+                              RDGErrorCode::eBinding, "Texture upload lacks required transfer creation usage")
+                || (generateMipmaps && !ValidateMipmapCapabilities(result, info)))
             {
-                RHIBufferTextureCopyRegion const& region = regions[i];
-
-                if (!ValidateTextureCopyBox(result, pTexture->GetBaseInfo(),
-                                            pTexture->GetResourceTag(), region.textureSubresources,
-                                            region.textureOffset, region.textureSize) ||
-                    !ValidateBufferTextureFootprint(result, dataSize, info, region) ||
-                    !ValidateBufferTextureCopyCapabilities(result, info, region, queues))
-                {
-                    LOGE("Texture upload '{}' region {} [{}]: {} (payload bytes: {})",
-                         pTexture->GetResourceTag().CStr(), i, uint32_t(result.code),
-                         result.message, dataSize);
-                    break;
-                }
-
-                alignment = std::lcm(alignment, BufferTextureCopyAlignment(info, region));
+                LOGE("Texture upload '{}' [{}]: {}", pTexture->GetResourceTag().CStr(), uint32_t(result.code), result.message);
             }
-
-            if (result)
+            else
             {
-                PendingUpload upload{};
-                // Rebasing must preserve texel alignment, including non-power-of-two RGB formats.
-                const bool staged = StageBytes(dataSize, alignment, pData, &upload.stagingAlloc);
-
-                if (!staged)
+                for (size_t i = 0; i < regions.size(); ++i)
                 {
-                    LOGE("Failed to stage texture upload");
-                }
-                else
-                {
-                    upload.pDstTexture         = pTexture;
-                    upload.generateMipmaps     = generateMipmaps;
-                    upload.textureRegionOffset = static_cast<uint32_t>(m_textureRegions.size());
-                    upload.textureRegionCount  = static_cast<uint32_t>(regions.size());
+                    RHIBufferTextureCopyRegion const& region = regions[i];
 
-                    for (RHIBufferTextureCopyRegion region : regions)
+                    if (!ValidateTextureCopyBox(result, pTexture->GetBaseInfo(), pTexture->GetResourceTag(),
+                                                region.textureSubresources, region.textureOffset, region.textureSize)
+                        || !ValidateBufferTextureFootprint(result, dataSize, info, region)
+                        || !ValidateBufferTextureCopyCapabilities(result, info, region, queues))
                     {
-                        region.bufferOffset += upload.stagingAlloc.offset;
-                        m_textureRegions.push_back(region);
+                        LOGE("Texture upload '{}' region {} [{}]: {} (payload bytes: {})", pTexture->GetResourceTag().CStr(), i,
+                             uint32_t(result.code), result.message, dataSize);
+
+                        break;
                     }
 
-                    pTexture->AddReference();
-                    m_pendingUploads.push_back(std::move(upload));
+                    alignment = std::lcm(alignment, BufferTextureCopyAlignment(info, region));
+                }
+
+                if (result)
+                {
+                    PendingUpload upload{};
+
+                    // Rebasing must preserve texel alignment, including non-power-of-two RGB formats.
+                    const bool staged = StageBytes(dataSize, alignment, pData, &upload.stagingAlloc);
+
+                    if (!staged)
+                    {
+                        LOGE("Failed to stage texture upload");
+                    }
+                    else
+                    {
+                        upload.pDstTexture         = pTexture;
+
+                        upload.generateMipmaps     = generateMipmaps;
+
+                        upload.textureRegionOffset = static_cast<uint32_t>(m_textureRegions.size());
+
+                        upload.textureRegionCount  = static_cast<uint32_t>(regions.size());
+
+                        for (RHIBufferTextureCopyRegion region : regions)
+                        {
+                            region.bufferOffset += upload.stagingAlloc.offset;
+
+                            m_textureRegions.push_back(region);
+                        }
+
+                        pTexture->AddReference();
+
+                        m_pendingUploads.push_back(std::move(upload));
+                    }
                 }
             }
         }
@@ -428,32 +454,28 @@ bool StagingUploadQueue::Flush()
             {
                 // StageBytes filled every copied range in coherent CPU-write memory. Submission
                 // makes those writes visible; the staging manager protects in-flight allocations.
-                m_uploadRDG.GetResourceManager()->ImportHostWrittenBuffer(
-                    upload.stagingAlloc.pBuffer);
+                m_uploadRDG.GetResourceManager()->ImportHostWrittenBuffer(upload.stagingAlloc.pBuffer);
 
                 {
                     RDGTransferPassCmdRecorder pass = m_uploadRDG.AddTransferPass("upload_copy");
 
                     if (upload.pDstBuffer != nullptr)
                     {
-                        pass.CopyBuffer(upload.stagingAlloc.pBuffer, upload.pDstBuffer,
-                                        upload.bufferCopyRegion);
+                        pass.CopyBuffer(upload.stagingAlloc.pBuffer, upload.pDstBuffer, upload.bufferCopyRegion);
                     }
                     else
                     {
                         for (uint32_t i = 0; i < upload.textureRegionCount; ++i)
                         {
-                            pass.CopyBufferToTexture(
-                                upload.stagingAlloc.pBuffer, upload.pDstTexture,
-                                m_textureRegions[upload.textureRegionOffset + i]);
+                            pass.CopyBufferToTexture(upload.stagingAlloc.pBuffer, upload.pDstTexture,
+                                                     m_textureRegions[upload.textureRegionOffset + i]);
                         }
                     }
                 }
 
                 if (upload.generateMipmaps)
                 {
-                    m_uploadRDG.AddTransferPass("upload_mipmaps")
-                        .GenerateMipmaps(upload.pDstTexture);
+                    m_uploadRDG.AddTransferPass("upload_mipmaps").GenerateMipmaps(upload.pDstTexture);
                 }
             }
 
@@ -462,9 +484,13 @@ bool StagingUploadQueue::Flush()
             // Drain older CPU frames before taking the baseline, so their submissions
             // cannot be mistaken for accesses made by this upload.
             m_pRenderDevice->PollFrameSubmissions(true);
+
             const RHICompletionSet submittedBefore = m_pRenderDevice->GetSubmittedSerials();
-            const bool uploadSubmitted       = m_pRenderDevice->ExecuteRenderGraph(m_uploadRDG);
-            RHICompletionSet requiredSerials = m_pRenderDevice->GetSubmittedSerials();
+
+            const bool uploadSubmitted             = m_pRenderDevice->ExecuteRenderGraph(m_uploadRDG);
+
+            RHICompletionSet requiredSerials       = m_pRenderDevice->GetSubmittedSerials();
+
             // Keep only queues advanced by this attempt. Unrelated earlier submissions
             // must not pin staging memory; partial failure can still add accepted work.
             for (size_t i = 0; i < RHICompletionSet::kQueueCount; ++i)
@@ -485,6 +511,7 @@ bool StagingUploadQueue::Flush()
                 }
 
                 m_flushing = false;
+
                 result     = false;
             }
             else
@@ -492,20 +519,28 @@ bool StagingUploadQueue::Flush()
                 for (const PendingUpload& upload : m_pendingUploads)
                 {
                     RHICompletionSet required = upload.attemptedSerials;
+
                     required.Extend(requiredSerials);
+
                     m_pStagingMgr->Release(upload.stagingAlloc, required);
-                    RHIResource* pResource = upload.pDstBuffer != nullptr ?
-                        static_cast<RHIResource*>(upload.pDstBuffer) :
-                        upload.pDstTexture;
+
+                    RHIResource* pResource =
+                        upload.pDstBuffer != nullptr ? static_cast<RHIResource*>(upload.pDstBuffer) : upload.pDstTexture;
+
                     m_retainedResources.push_back({pResource, required});
                 }
 
                 m_pendingUploads.clear();
+
                 m_textureRegions.clear();
+
                 // Upload graphs are single-use; retire their import references after submission.
                 m_uploadRDG.Reset();
+
                 m_flushing = false;
+
                 ReclaimResources();
+
                 result = true;
             }
         }
@@ -523,6 +558,7 @@ void StagingUploadQueue::ReclaimResources()
         if (m_retainedResources[i].requiredSerials.IsCompleteAt(completed))
         {
             m_retainedResources[i].pResource->ReleaseReference();
+
             m_retainedResources.erase(m_retainedResources.begin() + i);
         }
         else
@@ -538,8 +574,7 @@ void StagingUploadQueue::Destroy()
 {
     if (m_flushing)
     {
-        LOGE("Staging [{}]: Cannot destroy an upload queue while it is flushing",
-             uint32_t(RDGErrorCode::eLifecycle));
+        LOGE("Staging [{}]: Cannot destroy an upload queue while it is flushing", uint32_t(RDGErrorCode::eLifecycle));
     }
     else
     {
@@ -552,22 +587,26 @@ void StagingUploadQueue::Destroy()
             {
                 // Release only this allocation; a shared block may still have submitted or pending users.
                 m_pStagingMgr->Release(upload.stagingAlloc, upload.attemptedSerials);
-                RHIResource* resource = upload.pDstBuffer != nullptr ?
-                    static_cast<RHIResource*>(upload.pDstBuffer) :
-                    upload.pDstTexture;
+
+                RHIResource* resource =
+                    upload.pDstBuffer != nullptr ? static_cast<RHIResource*>(upload.pDstBuffer) : upload.pDstTexture;
+
                 m_pRenderDevice->DeferReleaseResource(resource);
             }
 
             m_pendingUploads.clear();
+
             m_textureRegions.clear();
 
             if (!m_retainedResources.empty())
             {
                 GDynamicRHI->WaitDeviceIdle();
+
                 ReclaimResources();
             }
 
             VERIFY_EXPR(m_retainedResources.empty());
+
             m_pStagingMgr->Reclaim();
         }
     }

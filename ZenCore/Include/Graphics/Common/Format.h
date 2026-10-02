@@ -50,12 +50,12 @@ enum class DataFormat : uint32_t
     eR64G64B64A64SInt   = 120, // = VK_FORMAT_R64G64B64A64_SINT
     eR64G64B64A64SFloat = 121, // = VK_FORMAT_R64G64B64A64_SFLOAT
 
-    eD16UNORM        = 124, // VK_FORMAT_D16_UNORM
-    eD32SFloat       = 126, // VK_FORMAT_D32_SFLOAT
-    eS8UInt          = 127, // VK_FORMAT_S8_UINT
-    eD16UNORMS8UInt  = 128, // VK_FORMAT_D16_UNORM_S8_UINT
-    eD24UNORMS8UInt  = 129, //VK_FORMAT_D24_UNORM_S8_UINT
-    eD32SFloatS8UInt = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
+    eD16UNORM           = 124, // VK_FORMAT_D16_UNORM
+    eD32SFloat          = 126, // VK_FORMAT_D32_SFLOAT
+    eS8UInt             = 127, // VK_FORMAT_S8_UINT
+    eD16UNORMS8UInt     = 128, // VK_FORMAT_D16_UNORM_S8_UINT
+    eD24UNORMS8UInt     = 129, //VK_FORMAT_D24_UNORM_S8_UINT
+    eD32SFloatS8UInt    = 130, //VK_FORMAT_D32_SFLOAT_S8_UINT
 };
 
 enum class SampleCount : uint32_t
@@ -72,13 +72,13 @@ enum class SampleCount : uint32_t
 
 struct TextureFormat
 {
-    DataFormat internalFormat{DataFormat::eUndefined};
+    DataFormat  internalFormat{DataFormat::eUndefined};
     SampleCount samples{SampleCount::e1};
-    uint32_t width{1};
-    uint32_t height{1};
-    uint32_t depth{1};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
+    uint32_t    width{1};
+    uint32_t    height{1};
+    uint32_t    depth{1};
+    uint32_t    arrayLayers{1};
+    uint32_t    mipmaps{1};
 };
 
 // Logical texel-block bytes; allocation padding comes from native image memory requirements.
@@ -178,8 +178,8 @@ inline bool FormatIsDepthStencil(DataFormat format)
 {
     bool result = false;
 
-    if (format == DataFormat::eD16UNORMS8UInt || format == DataFormat::eD24UNORMS8UInt ||
-        format == DataFormat::eD32SFloatS8UInt)
+    if (format == DataFormat::eD16UNORMS8UInt || format == DataFormat::eD24UNORMS8UInt
+        || format == DataFormat::eD32SFloatS8UInt)
     {
         result = true;
     }

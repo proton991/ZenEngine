@@ -11,8 +11,7 @@ namespace zen
 class RHIShaderUtil
 {
 public:
-    static void ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv,
-                                       RHIShaderGroupInfo& shaderGroupInfo);
+    static void ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv, RHIShaderGroupInfo& shaderGroupInfo);
 };
 
 static bool StartsWith(std::string_view str, std::string_view prefix)
@@ -20,10 +19,9 @@ static bool StartsWith(std::string_view str, std::string_view prefix)
     return str.size() >= prefix.size() && str.substr(0, prefix.size()) == prefix;
 }
 
-static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
-                                RHIShaderGroupInfo& shaderGroupInfo)
+static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule, RHIShaderGroupInfo& shaderGroupInfo)
 {
-    uint32_t inputVarCount{0};
+    uint32_t         inputVarCount{0};
     SpvReflectResult result = spvReflectEnumerateInputVariables(pModule, &inputVarCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     HeapVector<SpvReflectInterfaceVariable*> inputVars;
@@ -45,74 +43,67 @@ static void ParseSpvVertexInput(const SpvReflectShaderModule* pModule,
     if (inputVarCount > 0)
     {
         VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
-        std::sort(
-            inputVars.begin(), inputVars.end(),
-            [](const SpvReflectInterfaceVariable* pLhs, const SpvReflectInterfaceVariable* pRhs) {
-                return pLhs->location < pRhs->location;
-            });
+        std::sort(inputVars.begin(), inputVars.end(),
+                  [](const SpvReflectInterfaceVariable* pLhs, const SpvReflectInterfaceVariable* pRhs) {
+                      return pLhs->location < pRhs->location;
+                  });
         shaderGroupInfo.vertexInputAttributes.resize(inputVarCount);
         uint32_t vertexAttributeOffset = 0;
 
         for (uint32_t i = 0; i < inputVarCount; i++)
         {
-            RHIShaderGroupInfo::VertexInputAttribute& vertexAttribute =
-                shaderGroupInfo.vertexInputAttributes[i];
-            SpvReflectInterfaceVariable* const& inputVar = inputVars[i];
+            RHIShaderGroupInfo::VertexInputAttribute& vertexAttribute = shaderGroupInfo.vertexInputAttributes[i];
+            SpvReflectInterfaceVariable* const&       inputVar        = inputVars[i];
             // SPIRV-Reflect leaves vector.component_count at zero for scalar inputs.
-            const uint32_t inputVarSize = (inputVar->numeric.scalar.width / 8) *
-                std::max(1u, inputVar->numeric.vector.component_count);
-            vertexAttribute.name     = inputVar->name;
-            vertexAttribute.location = inputVar->location;
-            vertexAttribute.binding  = 0;
-            vertexAttribute.offset   = vertexAttributeOffset;
-            vertexAttribute.format   = static_cast<DataFormat>(inputVar->format);
+            const uint32_t inputVarSize =
+                (inputVar->numeric.scalar.width / 8) * std::max(1u, inputVar->numeric.vector.component_count);
+            vertexAttribute.name      = inputVar->name;
+            vertexAttribute.location  = inputVar->location;
+            vertexAttribute.binding   = 0;
+            vertexAttribute.offset    = vertexAttributeOffset;
+            vertexAttribute.format    = static_cast<DataFormat>(inputVar->format);
 
-            vertexAttributeOffset += inputVarSize;
+            vertexAttributeOffset    += inputVarSize;
         }
 
         shaderGroupInfo.vertexBindingStride = vertexAttributeOffset;
     }
 }
 
-static void ParseSpvPushConstants(RHIShaderStage stage,
+static void ParseSpvPushConstants(RHIShaderStage                stage,
                                   const SpvReflectShaderModule* pModule,
-                                  RHIShaderGroupInfo& shaderGroupInfo)
+                                  RHIShaderGroupInfo&           shaderGroupInfo)
 {
-    uint32_t pcCount{0};
+    uint32_t         pcCount{0};
     SpvReflectResult result = spvReflectEnumeratePushConstantBlocks(pModule, &pcCount, nullptr);
     VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
     HeapVector<SpvReflectBlockVariable*> pconstants;
 
     if (pcCount > 1)
     {
-        LOG_ERROR_AND_THROW(
-            "Only one push constant is supported, which should be the same across shader stages.");
+        LOG_ERROR_AND_THROW("Only one push constant is supported, which should be the same across shader stages.");
     }
-    else if (pcCount == 0)
+    else if (pcCount != 0)
     {
-        return;
+        pconstants.resize(pcCount);
+        result = spvReflectEnumeratePushConstantBlocks(pModule, &pcCount, pconstants.data());
+        VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
+        shaderGroupInfo.pushConstants.size = pconstants[0]->size;
+        shaderGroupInfo.pushConstants.stageFlags.SetFlag(RHIShaderStageToFlagBits(stage));
+        shaderGroupInfo.pushConstants.name = pconstants[0]->type_description->type_name;
     }
-
-    pconstants.resize(pcCount);
-    result = spvReflectEnumeratePushConstantBlocks(pModule, &pcCount, pconstants.data());
-    VERIFY_EXPR(result == SPV_REFLECT_RESULT_SUCCESS);
-    shaderGroupInfo.pushConstants.size = pconstants[0]->size;
-    shaderGroupInfo.pushConstants.stageFlags.SetFlag(RHIShaderStageToFlagBits(stage));
-    shaderGroupInfo.pushConstants.name = pconstants[0]->type_description->type_name;
 }
 
-inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
+inline void ParseSpvSpecializationConstant(RHIShaderStage                stage,
                                            const SpvReflectShaderModule* pModule,
-                                           RHIShaderGroupInfo& shaderGroupInfo)
+                                           RHIShaderGroupInfo&           shaderGroupInfo)
 {
-    uint32_t scCount{0};
-    SpvReflectResult result =
-        spvReflectEnumerateSpecializationConstants(pModule, &scCount, nullptr);
+    uint32_t         scCount{0};
+    SpvReflectResult result = spvReflectEnumerateSpecializationConstants(pModule, &scCount, nullptr);
 
     if (result != SPV_REFLECT_RESULT_SUCCESS)
     {
-        LOGE("Reflection of SPIR-V shader stage {} specialization constant failed",
-             RHIShaderStageToString(stage));
+        LOGE("Reflection of SPIR-V shader stage {} specialization constant failed", RHIShaderStageToString(stage));
     }
 
     if (scCount > 0)
@@ -123,21 +114,19 @@ inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
 
         for (uint32_t j = 0; j < scCount; j++)
         {
-            int existed = -1;
-            RHIShaderSpecializationConstant specConst;
+            int                               existed = -1;
+            RHIShaderSpecializationConstant   specConst;
             SpvReflectSpecializationConstant* pSpvSpecConst = specConstants[j];
 
-            specConst.constantId = pSpvSpecConst->constant_id;
-            specConst.bits       = 0;
+            specConst.constantId                            = pSpvSpecConst->constant_id;
+            specConst.bits                                  = 0;
 
-            if (pSpvSpecConst->type_description == nullptr ||
-                pSpvSpecConst->default_value == nullptr ||
-                pSpvSpecConst->default_value_size != sizeof(uint32_t) ||
-                (pSpvSpecConst->type_description->op != SpvOpTypeBool &&
-                 pSpvSpecConst->type_description->traits.numeric.scalar.width != 32))
+            if (pSpvSpecConst->type_description == nullptr || pSpvSpecConst->default_value == nullptr
+                || pSpvSpecConst->default_value_size != sizeof(uint32_t)
+                || (pSpvSpecConst->type_description->op != SpvOpTypeBool
+                    && pSpvSpecConst->type_description->traits.numeric.scalar.width != 32))
             {
-                LOG_ERROR_AND_THROW(
-                    "Only Boolean and 32-bit specialization constants are supported");
+                LOG_ERROR_AND_THROW("Only Boolean and 32-bit specialization constants are supported");
             }
 
             uint32_t defaultValue = 0;
@@ -182,16 +171,12 @@ inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
                 {
                     if (shaderGroupInfo.specializationConstants[k].type != specConst.type)
                     {
-                        LOGE(
-                            "More than one specialization constant used for id={} with different type",
-                            specConst.constantId);
+                        LOGE("More than one specialization constant used for id={} with different type", specConst.constantId);
                     }
 
                     if (shaderGroupInfo.specializationConstants[k].bits != specConst.bits)
                     {
-                        LOGE(
-                            "More than one specialization constant used for id={} with different value",
-                            specConst.constantId);
+                        LOGE("More than one specialization constant used for id={} with different value", specConst.constantId);
                     }
 
                     existed = k;
@@ -201,8 +186,7 @@ inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
 
             if (existed >= 0)
             {
-                shaderGroupInfo.specializationConstants[existed].stages.SetFlag(
-                    RHIShaderStageToFlagBits(stage));
+                shaderGroupInfo.specializationConstants[existed].stages.SetFlag(RHIShaderStageToFlagBits(stage));
             }
             else
             {
@@ -215,13 +199,10 @@ inline void ParseSpvSpecializationConstant(RHIShaderStage stage,
 // Member flags describe that member, including a containing struct/array. The bundled
 // reflector synthesizes NonWritable on a block when ANY member is readonly, so that
 // root block flag cannot classify the whole binding. Union member capabilities instead.
-static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member,
-                                    uint32_t forbiddenDecoration,
-                                    uint32_t depth)
+static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member, uint32_t forbiddenDecoration, uint32_t depth)
 {
-    const uint32_t typeFlags =
-        member.type_description ? member.type_description->decoration_flags : 0;
-    bool allowed = false;
+    const uint32_t typeFlags = member.type_description ? member.type_description->decoration_flags : 0;
+    bool           allowed   = false;
 
     if (((member.decoration_flags | typeFlags) & forbiddenDecoration) == 0)
     {
@@ -237,12 +218,10 @@ static bool BlockMemberAllowsAccess(const SpvReflectBlockVariable& member,
     return allowed;
 }
 
-static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& binding,
-                                          uint32_t forbiddenDecoration)
+static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& binding, uint32_t forbiddenDecoration)
 {
-    const uint32_t typeFlags =
-        binding.type_description ? binding.type_description->decoration_flags : 0;
-    bool allowed = false;
+    const uint32_t typeFlags = binding.type_description ? binding.type_description->decoration_flags : 0;
+    bool           allowed   = false;
 
     if (((binding.decoration_flags | typeFlags) & forbiddenDecoration) == 0)
     {
@@ -264,16 +243,14 @@ static bool DescriptorBindingAllowsAccess(const SpvReflectDescriptorBinding& bin
     return allowed;
 }
 
-static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding,
-                                             RHIShaderResourceDescriptor& srd)
+static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& reflBinding, RHIShaderResourceDescriptor& srd)
 {
     bool needArrayDims = false;
     bool needBlockSize = false;
     bool writable      = false;
     bool readable      = true;
 
-    if (reflBinding.type_description != nullptr &&
-        reflBinding.type_description->type_name != nullptr)
+    if (reflBinding.type_description != nullptr && reflBinding.type_description->type_name != nullptr)
     {
         srd.name = reflBinding.type_description->type_name;
     }
@@ -313,10 +290,8 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         {
             srd.type      = RHIShaderResourceType::eImage;
             needArrayDims = true;
-            writable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
-            readable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
+            writable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
 
@@ -331,10 +306,8 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
         {
             srd.type      = RHIShaderResourceType::eImageBuffer;
             needArrayDims = true;
-            writable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
-            readable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
+            writable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
 
@@ -351,10 +324,8 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
             srd.type      = RHIShaderResourceType::eStorageBuffer;
             needBlockSize = true;
             needArrayDims = true;
-            writable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
-            readable =
-                DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
+            writable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_WRITABLE);
+            readable      = DescriptorBindingAllowsAccess(reflBinding, SPV_REFLECT_DECORATION_NON_READABLE);
         }
         break;
 
@@ -416,13 +387,11 @@ static void ParseSpvReflectDescriptorBinding(const SpvReflectDescriptorBinding& 
     }
 }
 
-static void MergeOrAddSRDs(RHIShaderStage stage,
-                           RHIShaderResourceDescriptor& srd,
-                           RHIShaderGroupInfo& shaderGroupInfo)
+static void MergeOrAddSRDs(RHIShaderStage stage, RHIShaderResourceDescriptor& srd, RHIShaderGroupInfo& shaderGroupInfo)
 {
-    const RHIShaderStageFlagBits stageFlag = RHIShaderStageToFlagBits(stage);
-    const uint32_t setIndex                = srd.set;
-    bool existed                           = false;
+    const RHIShaderStageFlagBits stageFlag    = RHIShaderStageToFlagBits(stage);
+    const uint32_t               setIndex     = srd.set;
+    bool                         existed      = false;
 
     RHIShaderResourceDescriptorTable& allSRDs = shaderGroupInfo.SRDTable;
 
@@ -436,9 +405,8 @@ static void MergeOrAddSRDs(RHIShaderStage stage,
             {
                 if (existSRD.type != srd.type)
                 {
-                    LOGE(
-                        "On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different srd type",
-                        RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
+                    LOGE("On shader stage {} , srd {} trying to reuse location for set={}, binding={} with different srd type",
+                         RHIShaderStageToString(stage), srd.name.CStr(), setIndex, srd.binding);
                 }
 
                 if (existSRD.arraySize != srd.arraySize)
@@ -486,8 +454,7 @@ static void MergeOrAddSRDs(RHIShaderStage stage,
     }
 }
 
-inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv,
-                                                  RHIShaderGroupInfo& shaderGroupInfo)
+inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderGroupSpirv, RHIShaderGroupInfo& shaderGroupInfo)
 {
     for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
     {
@@ -495,10 +462,9 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
 
         if (shaderGroupSpirv->HasShaderStage(stage))
         {
-            SpvReflectShaderModule module;
+            SpvReflectShaderModule     module;
             const HeapVector<uint8_t>& spirvCode = shaderGroupSpirv->GetStageSPIRV(stage);
-            SpvReflectResult result =
-                spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
+            SpvReflectResult           result    = spvReflectCreateShaderModule(spirvCode.size(), spirvCode.data(), &module);
 
             if (result != SPV_REFLECT_RESULT_SUCCESS)
             {
@@ -526,7 +492,7 @@ inline void RHIShaderUtil::ReflectShaderGroupInfo(RHIShaderGroupSPIRVPtr shaderG
                 for (uint32_t binding = 0; binding < reflSet.binding_count; binding++)
                 {
                     const SpvReflectDescriptorBinding& reflBinding = *(reflSet.bindings[binding]);
-                    RHIShaderResourceDescriptor srd{};
+                    RHIShaderResourceDescriptor        srd{};
                     ParseSpvReflectDescriptorBinding(reflBinding, srd);
                     MergeOrAddSRDs(stage, srd, shaderGroupInfo);
                 }

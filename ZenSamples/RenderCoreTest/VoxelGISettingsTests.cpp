@@ -46,11 +46,10 @@ TEST(VoxelGIRuntimeSettings, ReloadRejectsInvalidValuesWithoutPartiallyApplying)
 
 TEST(VoxelGIRuntimeSettings, LoadsResourceAndLiveSettingsTogether)
 {
-    std::istringstream stream(
-        "voxelizer=comp\nasync_compute=auto\nvoxel_resolution=128\n"
-        "voxel_reflectance_policy=averaged\nvoxel_reflectance_budget_mb=128\n"
-        "shadow_map_resolution=512\nvoxel_gi_analytic_lighting=false\n"
-        "voxel_gi_environment_lighting=false\nvoxel_gi_emissive_lighting=false\n");
+    std::istringstream stream("voxelizer=comp\nasync_compute=auto\nvoxel_resolution=128\n"
+                              "voxel_reflectance_policy=averaged\nvoxel_reflectance_budget_mb=128\n"
+                              "shadow_map_resolution=512\nvoxel_gi_analytic_lighting=false\n"
+                              "voxel_gi_environment_lighting=false\nvoxel_gi_emissive_lighting=false\n");
 
     platform::ConfigLoader config(stream);
 
@@ -85,13 +84,13 @@ TEST(VoxelGIRuntimeSettings, RejectsInvalidEnumsAndNonFiniteAPIValues)
 
     EXPECT_FALSE(ValidateVoxelGIRuntimeSettings(settings));
 
-    settings = {};
+    settings              = {};
 
     settings.asyncCompute = static_cast<platform::AsyncComputeMode>(99);
 
     EXPECT_FALSE(ValidateVoxelGIRuntimeSettings(settings));
 
-    settings = {};
+    settings                        = {};
 
     settings.cone.indirectIntensity = std::numeric_limits<float>::infinity();
 
@@ -102,13 +101,13 @@ TEST(VoxelGIRuntimeSettings, ContributionChangesAreLiveAndResolutionRequiresRebu
 {
     VoxelGIRuntimeSettings previous;
 
-    VoxelGIRuntimeSettings next = previous;
+    VoxelGIRuntimeSettings next   = previous;
 
-    next.cone.analyticLighting = false;
+    next.cone.analyticLighting    = false;
 
     next.cone.environmentLighting = false;
 
-    next.cone.emissiveLighting = false;
+    next.cone.emissiveLighting    = false;
 
     EXPECT_FALSE(RequiresVoxelGIRebuild(previous, next));
 
@@ -131,7 +130,7 @@ TEST(VoxelGIRuntimeSettings, InactiveReflectanceBudgetChangesDoNotRebuild)
 
     EXPECT_TRUE(RequiresVoxelGIRebuild(previous, next));
 
-    previous = next;
+    previous                     = next;
 
     next.reflectanceBudgetBytes *= 2;
 

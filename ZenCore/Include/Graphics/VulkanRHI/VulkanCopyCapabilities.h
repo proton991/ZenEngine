@@ -9,10 +9,8 @@ inline RHITextureCopyCapabilities MakeTextureCopyCapabilities(const VkFormatProp
 {
     const VkFormatFeatureFlags flags = properties.optimalTilingFeatures;
 
-    return {bool(flags & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT),
-            bool(flags & VK_FORMAT_FEATURE_TRANSFER_DST_BIT),
-            bool(flags & VK_FORMAT_FEATURE_BLIT_SRC_BIT),
-            bool(flags & VK_FORMAT_FEATURE_BLIT_DST_BIT),
+    return {bool(flags & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT), bool(flags & VK_FORMAT_FEATURE_TRANSFER_DST_BIT),
+            bool(flags & VK_FORMAT_FEATURE_BLIT_SRC_BIT), bool(flags & VK_FORMAT_FEATURE_BLIT_DST_BIT),
             bool(flags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)};
 }
 
@@ -24,8 +22,7 @@ inline RHIQueueCopyCapabilities MakeQueueCopyCapabilities(const VkQueueFamilyPro
     return {bool(flags & VK_QUEUE_GRAPHICS_BIT),
             bool(flags & VK_QUEUE_COMPUTE_BIT),
             bool(flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT)),
-            {properties.minImageTransferGranularity.width,
-             properties.minImageTransferGranularity.height,
+            {properties.minImageTransferGranularity.width, properties.minImageTransferGranularity.height,
              properties.minImageTransferGranularity.depth}};
 }
 } // namespace zen

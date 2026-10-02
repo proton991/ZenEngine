@@ -1,20 +1,18 @@
-TEST_F(VulkanBindlessRetirementIntegrationTest,
-       SceneHeapResetRequiresDrainedRecordingsAndPublishesReplacementPixels)
+TEST_F(VulkanBindlessRetirementIntegrationTest, SceneHeapResetRequiresDrainedRecordingsAndPublishesReplacementPixels)
 {
-    RHIPipeline* pipeline = Compute("binding_bindless.comp.spv");
+    RHIPipeline* pipeline    = Compute("binding_bindless.comp.spv");
 
-    VulkanTexture* first = Texture();
+    VulkanTexture* first     = Texture();
 
     RHISampler* firstSampler = Sampler();
 
-    VulkanBuffer* output = Buffer();
+    VulkanBuffer* output     = Buffer();
 
     Initialize(first);
 
     SubmitAndWait(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
-    const RHIBindlessHandle image =
-        session->rhi.RegisterBindlessResource(first->GetDefaultView(), 0);
+    const RHIBindlessHandle image   = session->rhi.RegisterBindlessResource(first->GetDefaultView(), 0);
 
     const RHIBindlessHandle sampler = session->rhi.RegisterBindlessResource(firstSampler, 0);
 
@@ -22,10 +20,9 @@ TEST_F(VulkanBindlessRetirementIntegrationTest,
 
     ASSERT_TRUE(sampler.IsValid());
 
-    const VkDescriptorSet set =
-        session->rhi.GetBindlessDescriptorPoolManager()->GetGlobalBindlessSet();
+    const VkDescriptorSet set = session->rhi.GetBindlessDescriptorPoolManager()->GetGlobalBindlessSet();
 
-    const uint64_t recording = context->RHICaptureBindlessEpoch();
+    const uint64_t recording  = context->RHICaptureBindlessEpoch();
 
     EXPECT_FALSE(session->rhi.ResetBindlessResources());
 
@@ -70,17 +67,15 @@ TEST_F(VulkanBindlessRetirementIntegrationTest,
 
     session->rhi.DestroySampler(firstSampler);
 
-    samplers.back() = nullptr;
+    samplers.back()                     = nullptr;
 
-    VulkanTexture* replacement = Texture();
+    VulkanTexture* replacement          = Texture();
 
-    RHISampler* replacementSampler = Sampler();
+    RHISampler* replacementSampler      = Sampler();
 
-    const RHIBindlessHandle nextImage =
-        session->rhi.RegisterBindlessResource(replacement->GetDefaultView(), 0);
+    const RHIBindlessHandle nextImage   = session->rhi.RegisterBindlessResource(replacement->GetDefaultView(), 0);
 
-    const RHIBindlessHandle nextSampler =
-        session->rhi.RegisterBindlessResource(replacementSampler, 0);
+    const RHIBindlessHandle nextSampler = session->rhi.RegisterBindlessResource(replacementSampler, 0);
 
     ASSERT_TRUE(nextImage.IsValid());
 

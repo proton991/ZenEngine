@@ -10,10 +10,9 @@ namespace zen
 // This helps using a single paged allocator for many resource types.
 template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
 {
-    static constexpr size_t RESOURCE_SIZES[] = {sizeof(RESOURCE_TYPES)...};
-    static constexpr size_t MAX_RESOURCE_SIZE =
-        std::max_element(RESOURCE_SIZES, RESOURCE_SIZES + sizeof...(RESOURCE_TYPES))[0];
-    uint8_t data[MAX_RESOURCE_SIZE];
+    static constexpr size_t RESOURCE_SIZES[]  = {sizeof(RESOURCE_TYPES)...};
+    static constexpr size_t MAX_RESOURCE_SIZE = std::max_element(RESOURCE_SIZES, RESOURCE_SIZES + sizeof...(RESOURCE_TYPES))[0];
+    uint8_t                 data[MAX_RESOURCE_SIZE];
 
     template <typename T> static T* Alloc(PagedAllocator<VersatileResourceTemplate>& allocator)
     {
@@ -28,8 +27,7 @@ template <typename... RESOURCE_TYPES> struct VersatileResourceTemplate
         return pMem;
     }
 
-    template <typename T>
-    static void Free(PagedAllocator<VersatileResourceTemplate>& p_allocator, T* pMem)
+    template <typename T> static void Free(PagedAllocator<VersatileResourceTemplate>& p_allocator, T* pMem)
     {
         p_allocator.Free((VersatileResourceTemplate*)pMem);
     }

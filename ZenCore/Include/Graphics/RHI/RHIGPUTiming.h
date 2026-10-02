@@ -40,24 +40,23 @@ struct RHIGPUTimestampInterval
     uint64_t begin{0};
     uint64_t end{0};
     uint32_t validBits{0};
-    double periodNanoseconds{0};
+    double   periodNanoseconds{0};
 };
 
 // A scope must finish within one wrap of the queue's timestamp counter.
 inline bool ConvertGPUTimestampsToMicroseconds(uint64_t begin,
                                                uint64_t end,
                                                uint32_t validBits,
-                                               double periodNanoseconds,
-                                               double& microseconds)
+                                               double   periodNanoseconds,
+                                               double&  microseconds)
 {
-    const bool valid = validBits > 0 && validBits <= 64 && std::isfinite(periodNanoseconds) &&
-        periodNanoseconds > 0;
+    const bool valid = validBits > 0 && validBits <= 64 && std::isfinite(periodNanoseconds) && periodNanoseconds > 0;
 
     if (valid)
     {
         const uint64_t mask = validBits == 64 ? UINT64_MAX : (uint64_t(1) << validBits) - 1;
 
-        microseconds = static_cast<double>((end - begin) & mask) * periodNanoseconds / 1000.0;
+        microseconds        = static_cast<double>((end - begin) & mask) * periodNanoseconds / 1000.0;
     }
 
     return valid && std::isfinite(microseconds);
@@ -77,12 +76,10 @@ public:
     {
         double microseconds = 0;
 
-        const bool valid =
-            ConvertGPUTimestampsToMicroseconds(interval.begin, interval.end, interval.validBits,
-                                               interval.periodNanoseconds, microseconds);
+        const bool valid    = ConvertGPUTimestampsToMicroseconds(interval.begin, interval.end, interval.validBits,
+                                                                 interval.periodNanoseconds, microseconds);
 
-        return PublishValue(valid ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eError,
-                            microseconds, interval);
+        return PublishValue(valid ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eError, microseconds, interval);
     }
 
     RHIGPUTimingStatus GetStatus() const
@@ -97,30 +94,24 @@ public:
 
     RHIGPUTimestampInterval GetTimestamps() const
     {
-        return GetStatus() == RHIGPUTimingStatus::eAvailable ? m_interval :
-                                                               RHIGPUTimestampInterval{};
+        return GetStatus() == RHIGPUTimingStatus::eAvailable ? m_interval : RHIGPUTimestampInterval{};
     }
 
 private:
-    bool PublishValue(RHIGPUTimingStatus status,
-                      double microseconds,
-                      const RHIGPUTimestampInterval& interval)
+    bool PublishValue(RHIGPUTimingStatus status, double microseconds, const RHIGPUTimestampInterval& interval)
     {
-        const bool publish = status != RHIGPUTimingStatus::ePending &&
-            !m_published.test_and_set(std::memory_order_acq_rel);
+        const bool publish = status != RHIGPUTimingStatus::ePending && !m_published.test_and_set(std::memory_order_acq_rel);
 
         if (publish)
         {
-            if (status == RHIGPUTimingStatus::eAvailable &&
-                (!std::isfinite(microseconds) || microseconds < 0))
+            if (status == RHIGPUTimingStatus::eAvailable && (!std::isfinite(microseconds) || microseconds < 0))
             {
                 status = RHIGPUTimingStatus::eError;
             }
 
             m_microseconds = status == RHIGPUTimingStatus::eAvailable ? microseconds : 0;
 
-            m_interval =
-                status == RHIGPUTimingStatus::eAvailable ? interval : RHIGPUTimestampInterval{};
+            m_interval     = status == RHIGPUTimingStatus::eAvailable ? interval : RHIGPUTimestampInterval{};
 
             m_status.store(status, std::memory_order_release);
         }
@@ -128,10 +119,10 @@ private:
         return publish;
     }
 
-    std::atomic_flag m_published = ATOMIC_FLAG_INIT;
+    std::atomic_flag                m_published = ATOMIC_FLAG_INIT;
     std::atomic<RHIGPUTimingStatus> m_status{RHIGPUTimingStatus::ePending};
-    double m_microseconds{0};
-    RHIGPUTimestampInterval m_interval;
+    double                          m_microseconds{0};
+    RHIGPUTimestampInterval         m_interval;
 };
 
 // Separate owners are released on both the recording and RHI completion threads.

@@ -8,8 +8,7 @@ protected:
 
     void SetUp() override
     {
-        InitializeDevice(nullptr, 3, GetParam(), AsyncComputeMode::eDisabled,
-                         {false, true, {0, 1, 2}});
+        InitializeDevice(nullptr, 3, GetParam(), AsyncComputeMode::eDisabled, {false, true, {0, 1, 2}});
         CreateTestShaderProgram(device, "intent");
     }
 
@@ -26,10 +25,10 @@ protected:
 
 TEST_P(AsyncUploadTest, UploadStaysInFlightAndOnlyItsConsumerWaits)
 {
-    TestBuffer* uploaded  = Buffer();
-    TestBuffer* unrelated = Buffer();
-    StagingBufferManager staging(64, 128);
-    StagingUploadQueue uploads(device, &staging);
+    TestBuffer*                   uploaded  = Buffer();
+    TestBuffer*                   unrelated = Buffer();
+    StagingBufferManager          staging(64, 128);
+    StagingUploadQueue            uploads(device, &staging);
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(uploaded, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
@@ -83,7 +82,7 @@ TEST_P(AsyncUploadTest, GraphicsCopyToTransferWaitsForPriorGraphicsUse)
 
 TEST_P(AsyncUploadTest, RejectedConsumerPreservesUploadDependencyForRetry)
 {
-    TestBuffer* buffer = Buffer();
+    TestBuffer*                   buffer = Buffer();
     const std::array<uint8_t, 64> bytes{};
     device->UpdateBuffer(buffer, bytes.size(), bytes.data());
     RenderGraph uploadFlush("flush_upload");
@@ -104,17 +103,16 @@ TEST_P(AsyncUploadTest, RejectedConsumerPreservesUploadDependencyForRetry)
 
 TEST_P(AsyncUploadTest, StagingAllocationCannotBeReusedBeforeTransferCompletion)
 {
-    TestBuffer* buffer = Buffer();
-    StagingBufferManager staging(64, 64);
-    StagingUploadQueue uploads(device, &staging);
+    TestBuffer*                   buffer = Buffer();
+    StagingBufferManager          staging(64, 64);
+    StagingUploadQueue            uploads(device, &staging);
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(buffer, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
     uploads.ReclaimResources();
     StagingAllocation allocation;
     EXPECT_NE(staging.Allocate(64, 4, &allocation), StagingFlushAction::eNone);
-    ASSERT_TRUE(
-        GDynamicRHI->WaitForCompletion(RHICommandContextType::eTransfer, rhi->submitted[2]));
+    ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eTransfer, rhi->submitted[2]));
     uploads.ReclaimResources();
     ASSERT_EQ(staging.Allocate(64, 4, &allocation), StagingFlushAction::eNone);
     staging.Release(allocation, {});
@@ -130,13 +128,12 @@ TEST_P(AsyncUploadTest, MipmapUploadKeepsGraphicsFallbackWithoutCompletionWait)
     input.data.resize(16, 81);
     textureFiles["async_mips.png"] = input;
     StagingBufferManager staging(1024, 4096);
-    StagingUploadQueue uploads(device, &staging);
-    TextureManager textures(device, &uploads);
-    RHITexture* texture = textures.LoadTexture2D("async_mips.png", true);
+    StagingUploadQueue   uploads(device, &staging);
+    TextureManager       textures(device, &uploads);
+    RHITexture*          texture = textures.LoadTexture2D("async_mips.png", true);
     ASSERT_NE(texture, nullptr);
     ASSERT_TRUE(uploads.Flush());
-    EXPECT_EQ(RDGSubmissionTestAccess::Submission(*device, texture).queue,
-              RHICommandContextType::eGraphics);
+    EXPECT_EQ(RDGSubmissionTestAccess::Submission(*device, texture).queue, RHICommandContextType::eGraphics);
     EXPECT_EQ(rhi->submitted[2], 0u);
     EXPECT_GT(rhi->submitted[0], 0u);
     EXPECT_EQ(rhi->completed[0], 0u);
@@ -148,8 +145,7 @@ TEST_P(AsyncUploadTest, MipmapUploadKeepsGraphicsFallbackWithoutCompletionWait)
 
 TEST_P(AsyncUploadTest, RecordedDependenciesSurviveDetachAndRollback)
 {
-    RHICommandListPtr commands(
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr commands(RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->AddSubmissionDependency({RHICommandContextType::eTransfer, 2});
     const RHICommandListBase::CommandCheckpoint checkpoint = commands->GetCommandCheckpoint();
     commands->AddSubmissionDependency({RHICommandContextType::eTransfer, 5});
@@ -164,14 +160,14 @@ TEST_P(AsyncUploadTest, RecordedDependenciesSurviveDetachAndRollback)
 
 TEST_P(AsyncUploadTest, RecordingGraphLeavesSubmissionDependenciesToRenderDevice)
 {
-    TestBuffer* uploaded = Buffer();
-    StagingBufferManager staging(64, 128);
-    StagingUploadQueue uploads(device, &staging);
+    TestBuffer*                   uploaded = Buffer();
+    StagingBufferManager          staging(64, 128);
+    StagingUploadQueue            uploads(device, &staging);
     const std::array<uint8_t, 64> bytes{};
     uploads.EnqueueBuffer(uploaded, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
     const RHISubmissionDependency producer = RDGSubmissionTestAccess::Submission(*device, uploaded);
-    const uint32_t attempts                = rhi->submissionAttempts;
+    const uint32_t                attempts = rhi->submissionAttempts;
 
     RenderGraph graph("record_upload_consumer");
     ASSERT_TRUE(graph.Begin());
@@ -181,8 +177,7 @@ TEST_P(AsyncUploadTest, RecordingGraphLeavesSubmissionDependenciesToRenderDevice
     ASSERT_TRUE(graph.End());
     RDGExecutor recorder(device);
     recorder.GetResourceStateTracker() = RDGSubmissionTestAccess::Tracker(*device);
-    RHICommandListPtr commands(
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr commands(RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
     ASSERT_TRUE(recorder.Execute(&graph, commands.get()));
     EXPECT_TRUE(commands->GetSubmissionDependencies().empty());
     EXPECT_EQ(rhi->submissionAttempts, attempts);
@@ -201,9 +196,9 @@ TEST_P(AsyncUploadTest, RecordingGraphLeavesSubmissionDependenciesToRenderDevice
 
 TEST_P(AsyncUploadTest, FrameSubmissionKeepsUploadWaitAndOrdersLaterTransfer)
 {
-    TestBuffer* source       = Buffer();
-    TestBuffer* intermediate = Buffer();
-    TestBuffer* output       = Buffer();
+    TestBuffer*                   source       = Buffer();
+    TestBuffer*                   intermediate = Buffer();
+    TestBuffer*                   output       = Buffer();
     const std::array<uint8_t, 64> bytes{};
     device->UpdateBuffer(source, bytes.size(), bytes.data());
     RenderGraph* frame = device->GetCurrentFrameRDG();

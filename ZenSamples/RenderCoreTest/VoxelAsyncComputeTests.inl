@@ -1,15 +1,12 @@
 namespace
 {
-class VoxelAsyncResetTest :
-    public RenderCoreTest,
-    public testing::WithParamInterface<std::tuple<RHIExecutionMode, bool>>
+class VoxelAsyncResetTest : public RenderCoreTest, public testing::WithParamInterface<std::tuple<RHIExecutionMode, bool>>
 {
 protected:
     void SetUp() override
     {
         const RHIQueueCopyCapabilities compute{false, std::get<1>(GetParam()), true, {1, 1, 1}};
-        InitializeDevice(nullptr, 2, std::get<0>(GetParam()), AsyncComputeMode::eAuto,
-                         DistinctComputeQueues(), compute);
+        InitializeDevice(nullptr, 2, std::get<0>(GetParam()), AsyncComputeMode::eAuto, DistinctComputeQueues(), compute);
         CaptureVersionGraph(device);
         RDGMetricsOptions options    = device->GetRDGMetrics().GetOptions();
         options.includeTransferNodes = true;
@@ -21,8 +18,7 @@ TEST_P(VoxelAsyncResetTest, OwnerResetRespectsComputeQueueSupport)
 {
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
     volumes.Init();
-    for (RDGQueuePreference preference :
-         {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
+    for (RDGQueuePreference preference : {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
     {
         RenderGraph graph("voxel_reset_preference");
         ASSERT_TRUE(graph.Begin());
@@ -32,15 +28,13 @@ TEST_P(VoxelAsyncResetTest, OwnerResetRespectsComputeQueueSupport)
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
         volumes.OnRenderGraphExecuted(true);
-        const bool compute =
-            preference == RDGQueuePreference::ePreferAsyncCompute && std::get<1>(GetParam());
+        const bool                compute = preference == RDGQueuePreference::ePreferAsyncCompute && std::get<1>(GetParam());
         const RDGMetricsSnapshot& capture = device->GetRDGMetrics().GetLastSnapshot();
         ASSERT_EQ(capture.nodes.size(), 1u);
         EXPECT_EQ(capture.nodes[0].name, NameID("ResetVoxelOwners"));
         EXPECT_EQ(capture.nodes[0].queuePreference, preference);
         EXPECT_EQ(capture.nodes[0].plannedQueue,
-                  compute ? RHICommandContextType::eAsyncCompute :
-                            RHICommandContextType::eGraphics);
+                  compute ? RHICommandContextType::eAsyncCompute : RHICommandContextType::eGraphics);
         EXPECT_EQ(RDGSubmissionTestAccess::LoggedAsyncCompute(*device), compute);
     }
     EXPECT_TRUE(rhi->compute.textureClears.empty());
@@ -50,15 +44,14 @@ TEST_P(VoxelAsyncResetTest, OwnerResetRespectsComputeQueueSupport)
 
 INSTANTIATE_TEST_SUITE_P(InlineThreadedAndComputeSupport,
                          VoxelAsyncResetTest,
-                         testing::Combine(testing::Values(RHIExecutionMode::eInline,
-                                                          RHIExecutionMode::eThreaded),
+                         testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Bool()));
 
 TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDependencies)
 {
-    TestBuffer* buffer       = Buffer();
-    RenderGraph& graph       = *device->GetCurrentFrameRDG();
-    RDGExtractedBuffer first = BuildFailureGraph(graph, buffer);
+    TestBuffer*        buffer = Buffer();
+    RenderGraph&       graph  = *device->GetCurrentFrameRDG();
+    RDGExtractedBuffer first  = BuildFailureGraph(graph, buffer);
     EXPECT_FALSE(RDGSubmissionTestAccess::LoggedAsyncCompute(*device));
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();
@@ -71,8 +64,7 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     ASSERT_EQ(initial.submissions[1].dependencies.size(), 1u);
     EXPECT_EQ(initial.submissions[1].dependencies[0].producer, 0u);
     EXPECT_TRUE(initial.submissions[1].dependencies[0].semaphore);
-    EXPECT_EQ(initial.submissions[1].dependencies[0].producerQueue,
-              RHICommandContextType::eAsyncCompute);
+    EXPECT_EQ(initial.submissions[1].dependencies[0].producerQueue, RHICommandContextType::eAsyncCompute);
     EXPECT_FALSE(initial.submissions[1].dependencies[0].external);
     EXPECT_EQ(initial.submissions[1].waitStages, int64_t(RHIPipelineStageFlagBits::eAllCommands));
     device->NextFrame();
@@ -80,12 +72,12 @@ TEST_P(RDGScheduledSubmissionTest, CapturesAcceptedComputeAndExactCrossFrameDepe
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();
     ASSERT_TRUE(second);
-    const RDGMetricsSnapshot& repeated = device->GetRDGMetrics().GetLastSnapshot();
-    bool foundExternalSemaphore        = false;
+    const RDGMetricsSnapshot& repeated               = device->GetRDGMetrics().GetLastSnapshot();
+    bool                      foundExternalSemaphore = false;
     for (const RDGSubmissionDependencyMetrics& dependency : repeated.submissions[0].dependencies)
     {
-        foundExternalSemaphore |= dependency.external && dependency.semaphore &&
-            dependency.producerQueue == RHICommandContextType::eGraphics;
+        foundExternalSemaphore |=
+            dependency.external && dependency.semaphore && dependency.producerQueue == RHICommandContextType::eGraphics;
     }
     EXPECT_TRUE(foundExternalSemaphore);
     EXPECT_GE(repeated.submissionCPUUs, 0.0);
@@ -104,8 +96,8 @@ TEST_P(RDGScheduledSubmissionTest, CaptureLimitsDoNotChangeSubmissionDependencie
     options.maxSubmissionDetails = 1;
     options.maxDependencyDetails = 0;
     device->GetRDGMetrics().Configure(options);
-    TestBuffer* buffer        = Buffer();
-    RenderGraph& graph        = *device->GetCurrentFrameRDG();
+    TestBuffer*        buffer = Buffer();
+    RenderGraph&       graph  = *device->GetCurrentFrameRDG();
     RDGExtractedBuffer output = BuildFailureGraph(graph, buffer);
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();
@@ -123,7 +115,7 @@ TEST_P(RDGScheduledSubmissionTest, CaptureLimitsDoNotChangeSubmissionDependencie
 
 TEST_P(RDGScheduledSubmissionTest, FailedComputeFrameDoesNotReportFirstUse)
 {
-    TestBuffer* buffer        = Buffer();
+    TestBuffer*        buffer = Buffer();
     RDGExtractedBuffer output = BuildFailureGraph(*device->GetCurrentFrameRDG(), buffer);
     rhi->failSubmissionAt     = 2;
     device->ExecuteRenderGraph(&viewport);

@@ -12,7 +12,7 @@ namespace detail
 class NameRegistry
 {
 public:
-    NameRegistry(const NameRegistry&) = delete;
+    NameRegistry(const NameRegistry&)            = delete;
 
     NameRegistry& operator=(const NameRegistry&) = delete;
 
@@ -34,8 +34,8 @@ public:
 
             // Distinct names can share a 32-bit hash. Probe successive keys from the name's
             // hash; entries are never removed, so every name keeps one stable probe position.
-            uint32_t key  = hash;
-            bool resolved = false;
+            uint32_t key      = hash;
+            bool     resolved = false;
 
             while (!resolved)
             {
@@ -111,12 +111,11 @@ private:
         uint32_t used{0};
     };
 
-    static constexpr uint32_t kOffsetBits = 16;
-    static constexpr uint32_t kOffsetMask = (1u << kOffsetBits) - 1;
-    static constexpr uint32_t kBlockSize  = 1u << kOffsetBits;
-    static constexpr uint32_t kMaxBlocks  = 1u << (32 - kOffsetBits);
-    static constexpr uint32_t kMaxStringLen =
-        kBlockSize - static_cast<uint32_t>(sizeof(RecordHeader)) - 1;
+    static constexpr uint32_t kOffsetBits   = 16;
+    static constexpr uint32_t kOffsetMask   = (1u << kOffsetBits) - 1;
+    static constexpr uint32_t kBlockSize    = 1u << kOffsetBits;
+    static constexpr uint32_t kMaxBlocks    = 1u << (32 - kOffsetBits);
+    static constexpr uint32_t kMaxStringLen = kBlockSize - static_cast<uint32_t>(sizeof(RecordHeader)) - 1;
 
     static_assert(sizeof(RecordHeader) == 8, "RecordHeader size does not equal to 8");
 
@@ -190,7 +189,7 @@ private:
     {
         const uint32_t recordSize = static_cast<uint32_t>(sizeof(RecordHeader)) + len + 1;
 
-        RecordBlock* pBlock = &m_blocks.back();
+        RecordBlock* pBlock       = &m_blocks.back();
 
         if (pBlock->used + recordSize > kBlockSize)
         {
@@ -200,20 +199,20 @@ private:
 
         const uint32_t blockIdx = static_cast<uint32_t>(m_blocks.size() - 1);
         const uint32_t offset   = pBlock->used;
-        uint8_t* rec            = pBlock->pData + offset;
+        uint8_t*       rec      = pBlock->pData + offset;
 
         const RecordHeader header{hash, len};
         std::memcpy(rec, &header, sizeof(header));
         std::memcpy(rec + sizeof(header), pStr, len);
-        rec[sizeof(header) + len] = '\0';
+        rec[sizeof(header) + len]  = '\0';
 
-        pBlock->used += recordSize;
+        pBlock->used              += recordSize;
 
         return MakeId(blockIdx, offset);
     }
 
-    mutable Mutex m_mutex;
-    HeapVector<RecordBlock> m_blocks;
+    mutable Mutex               m_mutex;
+    HeapVector<RecordBlock>     m_blocks;
     HashMap<uint32_t, uint32_t> m_lut; /// probed hash -> nameId look up table
 };
 } // namespace detail
@@ -225,8 +224,7 @@ public:
 
     NameID(const char* pName)
     {
-        m_id = detail::NameRegistry::GetInstance().GenerateId(
-            pName, static_cast<uint32_t>(std::strlen(pName)));
+        m_id = detail::NameRegistry::GetInstance().GenerateId(pName, static_cast<uint32_t>(std::strlen(pName)));
     }
 
     NameID(const char* pName, uint32_t len)
@@ -236,8 +234,7 @@ public:
 
     NameID(const std::string& str)
     {
-        m_id = detail::NameRegistry::GetInstance().GenerateId(str.data(),
-                                                              static_cast<uint32_t>(str.size()));
+        m_id = detail::NameRegistry::GetInstance().GenerateId(str.data(), static_cast<uint32_t>(str.size()));
     }
 
     bool IsNone() const

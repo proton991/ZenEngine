@@ -22,11 +22,11 @@ enum class RHIErrorCode : uint8_t
 struct RHIError
 {
     RHIErrorCode code{RHIErrorCode::eNone};
-    int64_t nativeCode{0};
-    const char* operation{nullptr};
-    const char* source{nullptr};
-    uint32_t line{0};
-    uint64_t resourceId{0};
+    int64_t      nativeCode{0};
+    const char*  operation{nullptr};
+    const char*  source{nullptr};
+    uint32_t     line{0};
+    uint64_t     resourceId{0};
 
     bool IsFailure() const
     {
@@ -73,6 +73,6 @@ public:
 
 private:
     std::optional<T> m_value;
-    RHIError m_error{};
+    RHIError         m_error{};
 };
 } // namespace zen

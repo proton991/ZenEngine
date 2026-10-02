@@ -4,7 +4,7 @@ static void AddLifetimeTexture(sg::Scene& scene)
 
     texture->width = texture->height = 2;
 
-    texture->format = asset::Format::R8G8B8A8_UNORM;
+    texture->format                  = asset::Format::R8G8B8A8_UNORM;
 
     texture->bytesData.resize(16, 127);
 
@@ -15,9 +15,9 @@ static void AddLifetimeEnvironment(sg::Scene& scene)
 {
     sg::ImageBasedLightAsset light;
 
-    light.size = 1;
+    light.size                   = 1;
 
-    light.mipLevels = 1;
+    light.mipLevels              = 1;
 
     light.irradianceCoefficients = HeapVector<Vec3>(9, Vec3(0));
 
@@ -34,21 +34,18 @@ static void AddLifetimeEnvironment(sg::Scene& scene)
 static void PrepareLifetimeSkybox(RenderDevice* device)
 {
     for (const std::array<const char*, 3>& shader :
-         {std::array<const char*, 3>{"SkyboxRenderSP", "SceneRenderer/deferred.vert.spv",
-                                     "Environment/skybox.frag.spv"},
-          {"EnvMapBRDFLutGenSP", "Environment/genbrdflut.vert.spv",
-           "Environment/genbrdflut.frag.spv"}})
+         {std::array<const char*, 3>{"SkyboxRenderSP", "SceneRenderer/deferred.vert.spv", "Environment/skybox.frag.spv"},
+          {"EnvMapBRDFLutGenSP", "Environment/genbrdflut.vert.spv", "Environment/genbrdflut.frag.spv"}})
     {
         RHIShaderCreateInfo info{};
 
-        info.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex,
-                                 RHIShaderStageFlagBits::eFragment);
+        info.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
 
-        info.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)] = shader[1];
+        info.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = shader[1];
 
         info.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = shader[2];
 
-        reflectedShaderInfos[shader[0]] = info;
+        reflectedShaderInfos[shader[0]]                             = info;
 
         CreateTestShaderProgram(device, shader[0]);
     }
@@ -94,7 +91,7 @@ TEST_F(RenderCoreTest, SceneTextureReleaseKeepsCachedAssetsAndOtherScenesAlive)
 
     const uint64_t cachedId = cached->GetStableId();
 
-    const uint64_t firstId = first[0]->GetStableId();
+    const uint64_t firstId  = first[0]->GetStableId();
 
     const uint64_t secondId = second[0]->GetStableId();
 
@@ -147,7 +144,7 @@ TEST_F(RenderCoreTest, PartialSceneTextureAllocationPublishesCleanupHandles)
 
     HeapVector<RHITexture*> outputs;
 
-    const size_t before = rhi->createdTextureIds.size();
+    const size_t before         = rhi->createdTextureIds.size();
 
     rhi->throwTextureCreationAt = rhi->textureCreations + 2;
 
@@ -177,19 +174,12 @@ TEST_F(RenderCoreTest, InitialBufferUploadAllocationFailureRetiresUnpublishedDes
 
         switch (kind)
         {
-            case 0:
-                EXPECT_THROW(device->CreateVertexBuffer(payload.size(), payload.data()),
-                             std::runtime_error);
-                break;
+            case 0: EXPECT_THROW(device->CreateVertexBuffer(payload.size(), payload.data()), std::runtime_error); break;
 
-            case 1:
-                EXPECT_THROW(device->CreateIndexBuffer(payload.size(), payload.data()),
-                             std::runtime_error);
-                break;
+            case 1: EXPECT_THROW(device->CreateIndexBuffer(payload.size(), payload.data()), std::runtime_error); break;
 
             case 2:
-                EXPECT_THROW(device->CreateStorageBuffer(payload.size(), payload.data(),
-                                                         "failed_scene_upload"),
+                EXPECT_THROW(device->CreateStorageBuffer(payload.size(), payload.data(), "failed_scene_upload"),
                              std::runtime_error);
                 break;
 
@@ -212,7 +202,7 @@ TEST_F(RenderCoreEnvironmentTest, PartialEnvironmentAllocationRetiresPublishedCu
 
     EnvTexture environment;
 
-    const size_t before = rhi->createdTextureIds.size();
+    const size_t before         = rhi->createdTextureIds.size();
 
     rhi->throwTextureCreationAt = rhi->textureCreations + 3;
 
@@ -228,7 +218,7 @@ TEST_F(RenderCoreEnvironmentTest, PartialEnvironmentAllocationRetiresPublishedCu
 
     ASSERT_EQ(rhi->createdTextureIds.size(), before + 2);
 
-    const uint64_t specularId = environment.pSkybox->GetStableId();
+    const uint64_t specularId   = environment.pSkybox->GetStableId();
 
     const uint64_t irradianceId = environment.pIrradiance->GetStableId();
 
@@ -257,8 +247,8 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     AddLifetimeEnvironment(source);
 
-    RHIBuffer** slots[] = {&sceneInputs.vertices, &sceneInputs.indices, &sceneInputs.uv,
-                           &sceneInputs.nodes, &sceneInputs.materials};
+    RHIBuffer** slots[] = {&sceneInputs.vertices, &sceneInputs.indices, &sceneInputs.uv, &sceneInputs.nodes,
+                           &sceneInputs.materials};
 
     HeapVector<uint64_t> ids;
 
@@ -279,14 +269,12 @@ TEST_F(RenderCoreEnvironmentTest, ProductionSceneDestroyRetiresBuffersAndAliased
 
     device->LoadSceneEnvironment(&source, &sceneInputs.environment);
 
-    device->GetRendererServer()->RequestSkyboxRenderer()->CancelEnvironmentPreprocessing(
-        &sceneInputs.environment);
+    device->GetRendererServer()->RequestSkyboxRenderer()->CancelEnvironmentPreprocessing(&sceneInputs.environment);
 
     ASSERT_EQ(sceneInputs.environment.pSkybox, sceneInputs.environment.pPrefiltered);
 
     for (RHITexture* texture :
-         {sceneInputs.environment.pSkybox, sceneInputs.environment.pIrradiance,
-          sceneInputs.environment.pLutBRDF})
+         {sceneInputs.environment.pSkybox, sceneInputs.environment.pIrradiance, sceneInputs.environment.pLutBRDF})
     {
         ASSERT_NE(texture, nullptr);
 
@@ -381,9 +369,9 @@ TEST_F(RenderCoreEnvironmentTest, EnvironmentCancellationPreservesNewSceneAndCle
 
     depth.width = depth.height = 8;
 
-    depth.depth = 1;
+    depth.depth                = 1;
 
-    viewport.depth = device->CreateTextureDepthStencilRT(depth, {}, "scene_lifetime_depth");
+    viewport.depth             = device->CreateTextureDepthStencilRT(depth, {}, "scene_lifetime_depth");
 
     sg::Scene source;
 

@@ -4,10 +4,7 @@
 
 namespace zen::rc
 {
-GIResourceStatus ValidateGIStorageBuffer(uint64_t elements,
-                                         uint32_t stride,
-                                         const RHIGPUInfo& gpu,
-                                         uint64_t& bytes)
+GIResourceStatus ValidateGIStorageBuffer(uint64_t elements, uint32_t stride, const RHIGPUInfo& gpu, uint64_t& bytes)
 {
     GIResourceStatus status = GIResourceStatus::eSuccess;
 
@@ -43,31 +40,31 @@ uint64_t GetVoxelReflectanceRequiredBytes(uint32_t resolution)
     return valid ? uint64_t(resolution) * resolution * resolution * 20 : 0;
 }
 
-GIResourceStatus ValidateVoxelReflectanceResources(uint32_t resolution,
-                                                   uint64_t triangles,
-                                                   uint64_t budgetBytes,
-                                                   uint64_t retiringBytes,
+GIResourceStatus ValidateVoxelReflectanceResources(uint32_t          resolution,
+                                                   uint64_t          triangles,
+                                                   uint64_t          budgetBytes,
+                                                   uint64_t          retiringBytes,
                                                    const RHIGPUInfo& gpu,
-                                                   uint64_t& peakBytes)
+                                                   uint64_t&         peakBytes)
 {
     GIResourceStatus status = GIResourceStatus::eInvalidInput;
 
-    peakBytes = 0;
+    peakBytes               = 0;
 
     if ((resolution == 64 || resolution == 128 || resolution == 256) && budgetBytes != 0)
     {
-        const uint64_t cells = uint64_t(resolution) * resolution * resolution;
+        const uint64_t cells  = uint64_t(resolution) * resolution * resolution;
 
         uint64_t scratchBytes = 0;
 
-        status = ValidateGIStorageBuffer(cells, 16, gpu, scratchBytes);
+        status                = ValidateGIStorageBuffer(cells, 16, gpu, scratchBytes);
 
         if (status == GIResourceStatus::eSuccess)
         {
             const uint64_t currentBytes = GetVoxelReflectanceRequiredBytes(resolution);
 
-            if (triangles > std::numeric_limits<uint32_t>::max() / ZEN_VOXEL_REFLECTANCE_SCALE ||
-                retiringBytes > std::numeric_limits<uint64_t>::max() - currentBytes)
+            if (triangles > std::numeric_limits<uint32_t>::max() / ZEN_VOXEL_REFLECTANCE_SCALE
+                || retiringBytes > std::numeric_limits<uint64_t>::max() - currentBytes)
             {
                 status = GIResourceStatus::eOverflow;
             }
@@ -75,8 +72,7 @@ GIResourceStatus ValidateVoxelReflectanceResources(uint32_t resolution,
             {
                 peakBytes = currentBytes + retiringBytes;
 
-                status = peakBytes <= budgetBytes ? GIResourceStatus::eSuccess :
-                                                    GIResourceStatus::eBudget;
+                status    = peakBytes <= budgetBytes ? GIResourceStatus::eSuccess : GIResourceStatus::eBudget;
             }
         }
     }

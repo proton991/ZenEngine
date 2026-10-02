@@ -10,19 +10,18 @@ namespace
 {
 bool UIntSlider(const char* label, uint32_t& value, uint32_t minimum, uint32_t maximum)
 {
-    return ImGui::SliderScalar(label, ImGuiDataType_U32, &value, &minimum, &maximum, "%u",
-                               ImGuiSliderFlags_AlwaysClamp);
+    return ImGui::SliderScalar(label, ImGuiDataType_U32, &value, &minimum, &maximum, "%u", ImGuiSliderFlags_AlwaysClamp);
 }
 
 bool BudgetInput(const char* label, uint64_t& bytes)
 {
     const uint64_t bytesPerMiB = 1024 * 1024;
 
-    const uint64_t step = 64;
+    const uint64_t step        = 64;
 
-    uint64_t mib = bytes / bytesPerMiB;
+    uint64_t mib               = bytes / bytesPerMiB;
 
-    const bool changed = ImGui::InputScalar(label, ImGuiDataType_U64, &mib, &step);
+    const bool changed         = ImGui::InputScalar(label, ImGuiDataType_U64, &mib, &step);
 
     if (changed)
     {
@@ -39,17 +38,14 @@ const char* ResourceValidationMessage(rc::GIResourceStatus status)
     switch (status)
     {
         case rc::GIResourceStatus::eBudget:
-            message =
-                "Reflectance budget is below the required minimum. Current settings are unchanged.";
+            message = "Reflectance budget is below the required minimum. Current settings are unchanged.";
             break;
         case rc::GIResourceStatus::eDescriptorRange:
         case rc::GIResourceStatus::eBufferSize:
-            message =
-                "Averaged reflectance exceeds the GPU buffer limit. Use a lower voxel resolution.";
+            message = "Averaged reflectance exceeds the GPU buffer limit. Use a lower voxel resolution.";
             break;
         case rc::GIResourceStatus::eOverflow:
-            message =
-                "Averaged reflectance exceeds its supported scene size. Use owner reflectance.";
+            message = "Averaged reflectance exceeds its supported scene size. Use owner reflectance.";
             break;
         default: break;
     }
@@ -63,8 +59,7 @@ void RuntimeDebugUI::EnsureReflectanceBudget()
     if (m_draft.averagedReflectance)
     {
         m_draft.reflectanceBudgetBytes =
-            std::max(m_draft.reflectanceBudgetBytes,
-                     rc::GetVoxelReflectanceRequiredBytes(m_draft.resolution));
+            std::max(m_draft.reflectanceBudgetBytes, rc::GetVoxelReflectanceRequiredBytes(m_draft.resolution));
     }
 }
 
@@ -72,7 +67,7 @@ void RuntimeDebugUI::MarkGIEdit(bool changed)
 {
     if (changed)
     {
-        m_dirty = true;
+        m_dirty       = true;
 
         m_applyFailed = false;
     }
@@ -82,7 +77,7 @@ void RuntimeDebugUI::MarkSceneEdit(bool changed)
 {
     if (changed)
     {
-        m_sceneDirty = true;
+        m_sceneDirty  = true;
 
         m_applyFailed = false;
     }
@@ -92,49 +87,47 @@ void RuntimeDebugUI::ReloadSettings()
 {
     m_modelRevision = m_sceneControls.GetRuntimeModelState().revision;
 
-    m_draft = m_device.GetRendererServer()->GetVoxelGISettings();
+    m_draft         = m_device.GetRendererServer()->GetVoxelGISettings();
 
-    m_sceneDraft = m_sceneControls.GetRuntimeSceneSettings();
+    m_sceneDraft    = m_sceneControls.GetRuntimeSceneSettings();
 
     m_sceneBaseline = m_sceneDraft;
 
-    m_dirty = false;
+    m_dirty         = false;
 
-    m_sceneDirty = false;
+    m_sceneDirty    = false;
 
-    m_applyFailed = false;
+    m_applyFailed   = false;
 
-    m_status = "Settings apply to this session only.";
+    m_status        = "Settings apply to this session only.";
 }
 
 void RuntimeDebugUI::ApplyPendingSettings(bool manual)
 {
-    rc::RendererServer& server = *m_device.GetRendererServer();
+    rc::RendererServer& server               = *m_device.GetRendererServer();
 
-    rc::VoxelGIRuntimeSettings next = m_draft;
+    rc::VoxelGIRuntimeSettings next          = m_draft;
 
     const rc::VoxelGIRuntimeSettings current = server.GetVoxelGISettings();
 
-    const bool resourceChange = rc::RequiresVoxelGIRebuild(current, next) ||
-        current.shadowMapResolution != next.shadowMapResolution ||
-        m_sceneDraft.lightCount != m_sceneBaseline.lightCount;
+    const bool resourceChange                = rc::RequiresVoxelGIRebuild(current, next)
+                             || current.shadowMapResolution != next.shadowMapResolution
+                             || m_sceneDraft.lightCount != m_sceneBaseline.lightCount;
 
     const bool pending = m_dirty || m_sceneDirty;
 
-    const bool shouldApply = pending &&
-        (manual ||
-         (m_autoApply && !m_applyFailed && (!resourceChange || !ImGui::IsAnyItemActive())));
+    const bool shouldApply =
+        pending && (manual || (m_autoApply && !m_applyFailed && (!resourceChange || !ImGui::IsAnyItemActive())));
 
     if (shouldApply)
     {
-        uint64_t reflectanceBytes = 0;
+        uint64_t reflectanceBytes                 = 0;
 
-        const rc::GIResourceStatus resourceStatus =
-            server.ValidateVoxelGIResources(next, reflectanceBytes);
+        const rc::GIResourceStatus resourceStatus = server.ValidateVoxelGIResources(next, reflectanceBytes);
 
-        const bool validGI = !m_dirty || resourceStatus == rc::GIResourceStatus::eSuccess;
+        const bool validGI                        = !m_dirty || resourceStatus == rc::GIResourceStatus::eSuccess;
 
-        const bool validScene = !m_sceneDirty || ValidateRuntimeSceneSettings(m_sceneDraft);
+        const bool validScene                     = !m_sceneDirty || ValidateRuntimeSceneSettings(m_sceneDraft);
 
         if (validGI && validScene)
         {
@@ -146,8 +139,7 @@ void RuntimeDebugUI::ApplyPendingSettings(bool manual)
 
                 m_dirty = false;
 
-                applied = !m_sceneDirty ||
-                    m_sceneControls.ApplyRuntimeSceneSettings(m_sceneBaseline, m_sceneDraft);
+                applied = !m_sceneDirty || m_sceneControls.ApplyRuntimeSceneSettings(m_sceneBaseline, m_sceneDraft);
             }
 
             if (applied)
@@ -160,28 +152,25 @@ void RuntimeDebugUI::ApplyPendingSettings(bool manual)
             {
                 m_applyFailed = true;
 
-                m_status =
-                    "Could not apply all changes. Edit a value or use Apply pending to retry.";
+                m_status      = "Could not apply all changes. Edit a value or use Apply pending to retry.";
             }
         }
         else
         {
-            m_status = validGI ?
-                "Invalid scene values. Check light direction, spot angles, and animation target." :
-                ResourceValidationMessage(resourceStatus);
+            m_status = validGI ? "Invalid scene values. Check light direction, spot angles, and animation target."
+                               : ResourceValidationMessage(resourceStatus);
         }
     }
     else if (pending && !m_applyFailed)
     {
-        m_status = m_autoApply ? "Pending resource changes: finish editing to apply." :
-                                 "Unapplied changes. Use Apply pending.";
+        m_status = m_autoApply ? "Pending resource changes: finish editing to apply." : "Unapplied changes. Use Apply pending.";
     }
 }
 
 void RuntimeDebugUI::BuildSettings()
 {
-    MarkGIEdit(ImGui::SliderFloat("Indirect intensity", &m_draft.cone.indirectIntensity, 0, 10,
-                                  "%.2f", ImGuiSliderFlags_AlwaysClamp));
+    MarkGIEdit(
+        ImGui::SliderFloat("Indirect intensity", &m_draft.cone.indirectIntensity, 0, 10, "%.2f", ImGuiSliderFlags_AlwaysClamp));
 
     MarkGIEdit(ImGui::Checkbox("Shadows", &m_draft.cone.shadows));
 
@@ -220,8 +209,7 @@ void RuntimeDebugUI::BuildSettings()
         {
             const uint64_t required = rc::GetVoxelReflectanceRequiredBytes(m_draft.resolution);
 
-            ImGui::Text("Minimum extra memory: %llu MiB",
-                        static_cast<unsigned long long>(required / (1024 * 1024)));
+            ImGui::Text("Minimum extra memory: %llu MiB", static_cast<unsigned long long>(required / (1024 * 1024)));
 
             if (m_draft.reflectanceBudgetBytes < required)
             {
@@ -240,8 +228,7 @@ void RuntimeDebugUI::BuildSettings()
 
         if (voxelizerState != nullptr && voxelizerState->GetGeometryRevision() != 0)
         {
-            ImGui::Text("Active reflectance: %s",
-                        voxelizerState->UsesAveragedReflectance() ? "averaged" : "owner");
+            ImGui::Text("Active reflectance: %s", voxelizerState->UsesAveragedReflectance() ? "averaged" : "owner");
         }
 
         MarkGIEdit(UIntSlider("Shadow resolution", m_draft.shadowMapResolution, 128, 2048));
@@ -250,8 +237,7 @@ void RuntimeDebugUI::BuildSettings()
 
         if (ImGui::Checkbox("Async compute", &async))
         {
-            m_draft.asyncCompute =
-                async ? platform::AsyncComputeMode::eAuto : platform::AsyncComputeMode::eDisabled;
+            m_draft.asyncCompute = async ? platform::AsyncComputeMode::eAuto : platform::AsyncComputeMode::eDisabled;
 
             MarkGIEdit(true);
         }
@@ -268,17 +254,15 @@ void RuntimeDebugUI::BuildSettings()
             MarkGIEdit(true);
         }
 
-        MarkGIEdit(ImGui::SliderFloat("Cone angle", &m_draft.cone.coneAngleDegrees, 10, 90, "%.1f",
+        MarkGIEdit(
+            ImGui::SliderFloat("Cone angle", &m_draft.cone.coneAngleDegrees, 10, 90, "%.1f", ImGuiSliderFlags_AlwaysClamp));
+
+        MarkGIEdit(ImGui::SliderFloat("Step scale", &m_draft.cone.stepScale, 0.25f, 2, "%.2f", ImGuiSliderFlags_AlwaysClamp));
+
+        MarkGIEdit(ImGui::SliderFloat("Normal bias (voxels)", &m_draft.cone.normalBiasVoxels, 0.5f, 4, "%.2f",
                                       ImGuiSliderFlags_AlwaysClamp));
 
-        MarkGIEdit(ImGui::SliderFloat("Step scale", &m_draft.cone.stepScale, 0.25f, 2, "%.2f",
-                                      ImGuiSliderFlags_AlwaysClamp));
-
-        MarkGIEdit(ImGui::SliderFloat("Normal bias (voxels)", &m_draft.cone.normalBiasVoxels, 0.5f,
-                                      4, "%.2f", ImGuiSliderFlags_AlwaysClamp));
-
-        MarkGIEdit(ImGui::SliderFloat("Max distance (grid lengths)",
-                                      &m_draft.cone.maxDistanceGridLengths, 0.01f, 2, "%.3f",
+        MarkGIEdit(ImGui::SliderFloat("Max distance (grid lengths)", &m_draft.cone.maxDistanceGridLengths, 0.01f, 2, "%.3f",
                                       ImGuiSliderFlags_AlwaysClamp));
 
         MarkGIEdit(UIntSlider("Cone steps", m_draft.cone.maxSteps, 8, 512));

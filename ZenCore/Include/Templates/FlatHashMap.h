@@ -21,15 +21,11 @@ namespace zen
 /// Collision resolution uses linear probing. Erased slots become tombstones and are
 /// compacted on a later rehash. References and iterators are invalidated whenever the
 /// map rehashes; erasing an element invalidates only iterators to that element.
-template <typename Key,
-          typename Value,
-          typename Hasher   = std::hash<Key>,
-          typename KeyEqual = std::equal_to<Key>>
+template <typename Key, typename Value, typename Hasher = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
 class FlatHashMap
 {
 public:
-    static_assert(std::is_copy_constructible_v<Key>,
-                  "FlatHashMap keys must be copy constructible for rehashing");
+    static_assert(std::is_copy_constructible_v<Key>, "FlatHashMap keys must be copy constructible for rehashing");
 
     using key_type        = Key;
     using mapped_type     = Value;
@@ -49,7 +45,7 @@ private:
 
     struct Slot
     {
-        size_t hash{0};
+        size_t    hash{0};
         SlotState state{SlotState::eEmpty};
         alignas(value_type) std::byte storage[sizeof(value_type)];
 
@@ -86,27 +82,26 @@ private:
         {
             if (m_pMap != nullptr)
             {
-                while (m_index < m_pMap->m_capacity &&
-                       m_pMap->m_pSlots[m_index].state != SlotState::eOccupied)
+                while (m_index < m_pMap->m_capacity && m_pMap->m_pSlots[m_index].state != SlotState::eOccupied)
                 {
                     ++m_index;
                 }
             }
         }
 
-        MapType* m_pMap{nullptr};
+        MapType*  m_pMap{nullptr};
         size_type m_index{0};
 
     public:
-        using iterator_category = std::forward_iterator_tag;
-        using value_type        = FlatHashMap::value_type;
-        using difference_type   = FlatHashMap::difference_type;
-        using pointer           = std::conditional_t<IsConst, const value_type*, value_type*>;
-        using reference         = std::conditional_t<IsConst, const value_type&, value_type&>;
+        using iterator_category                      = std::forward_iterator_tag;
+        using value_type                             = FlatHashMap::value_type;
+        using difference_type                        = FlatHashMap::difference_type;
+        using pointer                                = std::conditional_t<IsConst, const value_type*, value_type*>;
+        using reference                              = std::conditional_t<IsConst, const value_type&, value_type&>;
 
-        IteratorBase() = default;
+        IteratorBase()                               = default;
 
-        IteratorBase(const IteratorBase&) = default;
+        IteratorBase(const IteratorBase&)            = default;
 
         IteratorBase& operator=(const IteratorBase&) = default;
 
@@ -158,19 +153,15 @@ public:
     using iterator       = IteratorBase<false>;
     using const_iterator = IteratorBase<true>;
 
-    FlatHashMap() = default;
+    FlatHashMap()        = default;
 
-    explicit FlatHashMap(size_type reserveCount,
-                         const Hasher& hash    = Hasher(),
-                         const KeyEqual& equal = KeyEqual()) :
+    explicit FlatHashMap(size_type reserveCount, const Hasher& hash = Hasher(), const KeyEqual& equal = KeyEqual()) :
         m_hasher(hash), m_keyEqual(equal)
     {
         reserve(reserveCount);
     }
 
-    FlatHashMap(std::initializer_list<value_type> values,
-                const Hasher& hash    = Hasher(),
-                const KeyEqual& equal = KeyEqual()) :
+    FlatHashMap(std::initializer_list<value_type> values, const Hasher& hash = Hasher(), const KeyEqual& equal = KeyEqual()) :
         m_hasher(hash), m_keyEqual(equal)
     {
         reserve(values.size());
@@ -225,13 +216,13 @@ public:
         {
             ReleaseStorage();
 
-            m_pAllocation  = other.m_pAllocation;
-            m_pSlots       = other.m_pSlots;
-            m_size         = other.m_size;
-            m_deletedCount = other.m_deletedCount;
-            m_capacity     = other.m_capacity;
-            m_hasher       = std::move(other.m_hasher);
-            m_keyEqual     = std::move(other.m_keyEqual);
+            m_pAllocation        = other.m_pAllocation;
+            m_pSlots             = other.m_pSlots;
+            m_size               = other.m_size;
+            m_deletedCount       = other.m_deletedCount;
+            m_capacity           = other.m_capacity;
+            m_hasher             = std::move(other.m_hasher);
+            m_keyEqual           = std::move(other.m_keyEqual);
 
             other.m_pAllocation  = nullptr;
             other.m_pSlots       = nullptr;
@@ -376,8 +367,7 @@ public:
         }
     }
 
-    template <typename... Args>
-    std::pair<iterator, bool> try_emplace(const Key& key, Args&&... args)
+    template <typename... Args> std::pair<iterator, bool> try_emplace(const Key& key, Args&&... args)
     {
         return TryEmplaceInternal(key, std::forward<Args>(args)...);
     }
@@ -441,7 +431,7 @@ public:
 
         const size_type index = FindIndex(key, MixedHash(key));
 
-        if (!(index == cInvalidIndex))
+        if (index != cInvalidIndex)
         {
             EraseSlot(index);
             result = 1;
@@ -506,8 +496,7 @@ public:
     {
         const size_type minimumCapacity   = CapacityForElements(m_size);
         const size_type requestedCapacity = bucketCount == 0 ? 0 : NextPowerOfTwo(bucketCount);
-        const size_type targetCapacity =
-            requestedCapacity > minimumCapacity ? requestedCapacity : minimumCapacity;
+        const size_type targetCapacity    = requestedCapacity > minimumCapacity ? requestedCapacity : minimumCapacity;
 
         if (targetCapacity == 0)
         {
@@ -540,16 +529,16 @@ private:
     struct ProbeResult
     {
         size_type index{cInvalidIndex};
-        bool found{false};
+        bool      found{false};
     };
 
-    void* m_pAllocation{nullptr};
-    Slot* m_pSlots{nullptr};
+    void*     m_pAllocation{nullptr};
+    Slot*     m_pSlots{nullptr};
     size_type m_size{0};
     size_type m_deletedCount{0};
     size_type m_capacity{0};
-    Hasher m_hasher{};
-    KeyEqual m_keyEqual{};
+    Hasher    m_hasher{};
+    KeyEqual  m_keyEqual{};
 
     size_type MixedHash(const Key& key) const
     {
@@ -581,8 +570,8 @@ private:
 
         if (m_capacity != 0)
         {
-            const size_type mask = m_capacity - 1;
-            size_type index      = hash & mask;
+            const size_type mask  = m_capacity - 1;
+            size_type       index = hash & mask;
 
             for (size_type probeCount = 0; probeCount < m_capacity; ++probeCount)
             {
@@ -593,8 +582,7 @@ private:
                     break;
                 }
 
-                if (slot.state == SlotState::eOccupied && slot.hash == hash &&
-                    m_keyEqual(slot.GetValue()->first, key))
+                if (slot.state == SlotState::eOccupied && slot.hash == hash && m_keyEqual(slot.GetValue()->first, key))
                 {
                     foundIndex = index;
                     break;
@@ -610,10 +598,10 @@ private:
     ProbeResult FindInsertionSlot(const Key& key, size_type hash) const
     {
         ASSERT(m_capacity != 0);
-        const size_type mask        = m_capacity - 1;
-        size_type index             = hash & mask;
-        size_type firstDeletedIndex = cInvalidIndex;
-        ProbeResult result{cInvalidIndex, false};
+        const size_type mask              = m_capacity - 1;
+        size_type       index             = hash & mask;
+        size_type       firstDeletedIndex = cInvalidIndex;
+        ProbeResult     result{cInvalidIndex, false};
 
         for (size_type probeCount = 0; probeCount < m_capacity; ++probeCount)
         {
@@ -650,8 +638,7 @@ private:
         return result;
     }
 
-    template <typename KeyArg, typename... Args>
-    std::pair<iterator, bool> TryEmplaceInternal(KeyArg&& key, Args&&... args)
+    template <typename KeyArg, typename... Args> std::pair<iterator, bool> TryEmplaceInternal(KeyArg&& key, Args&&... args)
     {
         std::pair<iterator, bool> result{};
 
@@ -669,11 +656,10 @@ private:
             const ProbeResult probe = FindInsertionSlot(key, hash);
             ASSERT(!probe.found && probe.index != cInvalidIndex);
 
-            Slot& slot                   = m_pSlots[probe.index];
+            Slot&      slot              = m_pSlots[probe.index];
             const bool reusedDeletedSlot = slot.state == SlotState::eDeleted;
 
-            std::construct_at(slot.GetStorage(), std::piecewise_construct,
-                              std::forward_as_tuple(std::forward<KeyArg>(key)),
+            std::construct_at(slot.GetStorage(), std::piecewise_construct, std::forward_as_tuple(std::forward<KeyArg>(key)),
                               std::forward_as_tuple(std::forward<Args>(args)...));
             slot.hash  = hash;
             slot.state = SlotState::eOccupied;
@@ -695,21 +681,22 @@ private:
         if (m_capacity == 0)
         {
             RehashInternal(cMinimumCapacity);
-            return;
         }
-
-        const size_type maxOccupied = MaxOccupiedForCapacity(m_capacity);
-
-        if (m_size + m_deletedCount + 1 > maxOccupied)
+        else
         {
-            if (m_size + 1 > maxOccupied)
+            const size_type maxOccupied = MaxOccupiedForCapacity(m_capacity);
+
+            if (m_size + m_deletedCount + 1 > maxOccupied)
             {
-                ASSERT(m_capacity <= std::numeric_limits<size_type>::max() / 2);
-                RehashInternal(m_capacity * 2);
-            }
-            else
-            {
-                RehashInternal(m_capacity);
+                if (m_size + 1 > maxOccupied)
+                {
+                    ASSERT(m_capacity <= std::numeric_limits<size_type>::max() / 2);
+                    RehashInternal(m_capacity * 2);
+                }
+                else
+                {
+                    RehashInternal(m_capacity);
+                }
             }
         }
     }
@@ -733,23 +720,20 @@ private:
 
     static size_type MaxOccupiedForCapacity(size_type capacity)
     {
-        return (capacity / cMaxLoadDenominator) * cMaxLoadNumerator +
-            ((capacity % cMaxLoadDenominator) * cMaxLoadNumerator) / cMaxLoadDenominator;
+        return (capacity / cMaxLoadDenominator) * cMaxLoadNumerator
+             + ((capacity % cMaxLoadDenominator) * cMaxLoadNumerator) / cMaxLoadDenominator;
     }
 
     static size_type CapacityForElements(size_type elementCount)
     {
         size_type result{};
 
-        if (!(elementCount == 0))
+        if (elementCount != 0)
         {
-            ASSERT(elementCount <=
-                   (std::numeric_limits<size_type>::max() - (cMaxLoadNumerator - 1)) /
-                       cMaxLoadDenominator);
+            ASSERT(elementCount <= (std::numeric_limits<size_type>::max() - (cMaxLoadNumerator - 1)) / cMaxLoadDenominator);
 
-            const size_type requiredBuckets =
-                (elementCount * cMaxLoadDenominator + cMaxLoadNumerator - 1) / cMaxLoadNumerator;
-            result = NextPowerOfTwo(requiredBuckets);
+            const size_type requiredBuckets = (elementCount * cMaxLoadDenominator + cMaxLoadNumerator - 1) / cMaxLoadNumerator;
+            result                          = NextPowerOfTwo(requiredBuckets);
         }
 
         return result;
@@ -771,17 +755,15 @@ private:
     static Slot* AllocateSlots(size_type capacity, void*& pAllocation)
     {
         ASSERT(IsPowerOfTwo(capacity));
-        ASSERT(capacity <=
-               (std::numeric_limits<size_type>::max() - (alignof(Slot) - 1)) / sizeof(Slot));
+        ASSERT(capacity <= (std::numeric_limits<size_type>::max() - (alignof(Slot) - 1)) / sizeof(Slot));
 
         const size_type allocationSize = sizeof(Slot) * capacity + alignof(Slot) - 1;
         pAllocation                    = ZEN_MEM_ALLOC(allocationSize);
         ASSERT(pAllocation != nullptr);
 
-        const uintptr_t address = reinterpret_cast<uintptr_t>(pAllocation);
-        const uintptr_t alignedAddress =
-            (address + alignof(Slot) - 1) & ~(static_cast<uintptr_t>(alignof(Slot)) - 1);
-        Slot* pSlots = reinterpret_cast<Slot*>(alignedAddress);
+        const uintptr_t address        = reinterpret_cast<uintptr_t>(pAllocation);
+        const uintptr_t alignedAddress = (address + alignof(Slot) - 1) & ~(static_cast<uintptr_t>(alignof(Slot)) - 1);
+        Slot*           pSlots         = reinterpret_cast<Slot*>(alignedAddress);
 
         for (size_type i = 0; i < capacity; ++i)
         {
@@ -793,8 +775,8 @@ private:
 
     static size_type FindEmptySlot(Slot* pSlots, size_type capacity, size_type hash)
     {
-        const size_type mask = capacity - 1;
-        size_type index      = hash & mask;
+        const size_type mask  = capacity - 1;
+        size_type       index = hash & mask;
 
         while (pSlots[index].state == SlotState::eOccupied)
         {
@@ -821,12 +803,11 @@ private:
                 continue;
             }
 
-            value_type* pOldValue    = oldSlot.GetValue();
-            const size_type newIndex = FindEmptySlot(pNewSlots, newCapacity, oldSlot.hash);
-            Slot& newSlot            = pNewSlots[newIndex];
+            value_type*     pOldValue = oldSlot.GetValue();
+            const size_type newIndex  = FindEmptySlot(pNewSlots, newCapacity, oldSlot.hash);
+            Slot&           newSlot   = pNewSlots[newIndex];
 
-            std::construct_at(newSlot.GetStorage(), std::piecewise_construct,
-                              std::forward_as_tuple(pOldValue->first),
+            std::construct_at(newSlot.GetStorage(), std::piecewise_construct, std::forward_as_tuple(pOldValue->first),
                               std::forward_as_tuple(std::move_if_noexcept(pOldValue->second)));
             newSlot.hash  = oldSlot.hash;
             newSlot.state = SlotState::eOccupied;
@@ -876,8 +857,7 @@ private:
 };
 
 template <typename Key, typename Value, typename Hasher, typename KeyEqual>
-void swap(FlatHashMap<Key, Value, Hasher, KeyEqual>& lhs,
-          FlatHashMap<Key, Value, Hasher, KeyEqual>& rhs)
+void swap(FlatHashMap<Key, Value, Hasher, KeyEqual>& lhs, FlatHashMap<Key, Value, Hasher, KeyEqual>& rhs)
 {
     lhs.Swap(rhs);
 }

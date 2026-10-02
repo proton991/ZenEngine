@@ -27,14 +27,12 @@ bool Finite(const Vec3& value)
 
 bool ValidateRuntimeSceneSettings(const RuntimeSceneSettings& settings)
 {
-    bool valid = Finite(settings.cameraPosition) && Finite(settings.orbitCenter) &&
-        std::isfinite(settings.environmentIntensity) && settings.environmentIntensity >= 0 &&
-        std::isfinite(settings.environmentRotation) && std::isfinite(settings.markerSize) &&
-        settings.markerSize > 0 && settings.modelLightCount <= rc::MaxSceneLights &&
-        settings.lightCount <= rc::MaxSceneLights - settings.modelLightCount &&
-        settings.animatedLight < rc::MaxSceneLights && std::isfinite(settings.orbitRadius) &&
-        settings.orbitRadius >= 0 && std::isfinite(settings.orbitSpeed) &&
-        std::abs(settings.orbitSpeed) <= 3600;
+    bool valid = Finite(settings.cameraPosition) && Finite(settings.orbitCenter) && std::isfinite(settings.environmentIntensity)
+              && settings.environmentIntensity >= 0 && std::isfinite(settings.environmentRotation)
+              && std::isfinite(settings.markerSize) && settings.markerSize > 0 && settings.modelLightCount <= rc::MaxSceneLights
+              && settings.lightCount <= rc::MaxSceneLights - settings.modelLightCount
+              && settings.animatedLight < rc::MaxSceneLights && std::isfinite(settings.orbitRadius) && settings.orbitRadius >= 0
+              && std::isfinite(settings.orbitSpeed) && std::abs(settings.orbitSpeed) <= 3600;
 
     for (uint32_t index = 0; valid && index < settings.lightCount; ++index)
     {
@@ -43,8 +41,8 @@ bool ValidateRuntimeSceneSettings(const RuntimeSceneSettings& settings)
 
     if (valid && settings.animationEnabled)
     {
-        valid = settings.animatedLight < settings.lightCount &&
-            settings.lights[settings.animatedLight].type != rc::SceneLightType::eDirectional;
+        valid = settings.animatedLight < settings.lightCount
+             && settings.lights[settings.animatedLight].type != rc::SceneLightType::eDirectional;
     }
 
     return valid;

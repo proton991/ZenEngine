@@ -39,9 +39,8 @@ inline constexpr bool IsPowerOfTwo(uint64_t value)
 /// alignments are supported by this function.
 ///
 /// returns Aligned value.
-template <typename T>
-inline constexpr T Pow2Align(T value,            ///< Value to align.
-                             uint64_t alignment) ///< Desired alignment (must be a power of 2).
+template <typename T> inline constexpr T Pow2Align(T        value,     ///< Value to align.
+                                                   uint64_t alignment) ///< Desired alignment (must be a power of 2).
 {
     return ((value + static_cast<T>(alignment) - 1) & ~(static_cast<T>(alignment) - 1));
 }
@@ -84,11 +83,7 @@ public:
 
     static void Free(void* pMemory, const char* pFileName, uint32_t lineNumm);
 
-    static void* Realloc(void* pMem,
-                         size_t newSize,
-                         size_t alignment,
-                         const char* pFileName,
-                         uint32_t lineNumm);
+    static void* Realloc(void* pMem, size_t newSize, size_t alignment, const char* pFileName, uint32_t lineNumm);
 
     static void ReportMemUsage();
 
@@ -99,32 +94,26 @@ public:
 private:
     static void TrackMemAlloc(size_t s, const char* pFileName, uint32_t lineNum);
 
-    static void TrackMemReAlloc(size_t oldSize,
-                                size_t newSize,
-                                const char* pFileName,
-                                uint32_t lineNum);
+    static void TrackMemReAlloc(size_t oldSize, size_t newSize, const char* pFileName, uint32_t lineNum);
 
     static void TrackMemFree(size_t s, const char* pFileName, uint32_t lineNum);
 
     struct AllocationSiteStats
     {
         const char* pFileName{nullptr};
-        uint32_t lineNumber{0};
-        size_t totalAllocated{0};
-        size_t totalFreed{0};
-        size_t currentUsage{0};
-        size_t peakUsage{0};
-        size_t allocationCount{0};
-        size_t freeCount{0};
-        size_t reallocCount{0};
+        uint32_t    lineNumber{0};
+        size_t      totalAllocated{0};
+        size_t      totalFreed{0};
+        size_t      currentUsage{0};
+        size_t      peakUsage{0};
+        size_t      allocationCount{0};
+        size_t      freeCount{0};
+        size_t      reallocCount{0};
     };
 
     static constexpr uint32_t cMaxTrackedAllocationSites = 4096;
 
-    void TrackAllocationSiteAlloc(size_t size,
-                                  const char* pFileName,
-                                  uint32_t lineNum,
-                                  bool isRealloc);
+    void TrackAllocationSiteAlloc(size_t size, const char* pFileName, uint32_t lineNum, bool isRealloc);
 
     void TrackAllocationSiteFree(size_t size, const char* pFileName, uint32_t lineNum);
 
@@ -144,18 +133,19 @@ private:
 
     struct AllocationHeader
     {
-        size_t size_;
+        void*       pAllocation;
+        size_t      size_;
         const char* pFileName;
-        uint32_t lineNumber;
+        uint32_t    lineNumber;
     };
 
     std::atomic<size_t> m_totalAllocated{0};
     std::atomic<size_t> m_totalFreed{0};
     std::atomic<size_t> m_currentUsage{0};
     std::atomic<size_t> m_peakUsage{0};
-    std::atomic_flag m_allocationSiteStatsLock = ATOMIC_FLAG_INIT;
+    std::atomic_flag    m_allocationSiteStatsLock = ATOMIC_FLAG_INIT;
     AllocationSiteStats m_allocationSiteStats[cMaxTrackedAllocationSites]{};
-    bool m_allocationSiteStatsOverflow{false};
+    bool                m_allocationSiteStatsOverflow{false};
 };
 
 // template <typename T, typename... Args> T* MemNew(Args&&... args)
@@ -192,12 +182,9 @@ template <class T> inline void ZenDelete(T* pObj, const char* pFileName, uint32_
 #define ZEN_MEM_REALLOC(MEM, SIZE) zen::DefaultAllocator::Realloc(MEM, SIZE, 1, __FILE__, __LINE__)
 #define ZEN_MEM_FREE(MEM)          zen::DefaultAllocator::Free(MEM, __FILE__, __LINE__)
 
-#define ZEN_MEM_ALLOC_ALIGNED(SIZE, ALIGN) \
-    zen::DefaultAllocator::Alloc(SIZE, ALIGN, __FILE__, __LINE__)
-#define ZEN_MEM_CALLOC_ALIGNED(SIZE, ALIGN) \
-    zen::DefaultAllocator::Calloc(SIZE, ALIGN, __FILE__, __LINE__)
-#define ZEN_MEM_REALLOC_ALIGNED(MEM, SIZE, ALIGN) \
-    zen::DefaultAllocator::Realloc(MEM, SIZE, ALIGN, __FILE__, __LINE__)
+#define ZEN_MEM_ALLOC_ALIGNED(SIZE, ALIGN)        zen::DefaultAllocator::Alloc(SIZE, ALIGN, __FILE__, __LINE__)
+#define ZEN_MEM_CALLOC_ALIGNED(SIZE, ALIGN)       zen::DefaultAllocator::Calloc(SIZE, ALIGN, __FILE__, __LINE__)
+#define ZEN_MEM_REALLOC_ALIGNED(MEM, SIZE, ALIGN) zen::DefaultAllocator::Realloc(MEM, SIZE, ALIGN, __FILE__, __LINE__)
 
 #define ZEN_NEW() new (__FILE__, __LINE__)
 

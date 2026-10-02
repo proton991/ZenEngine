@@ -35,17 +35,15 @@ void DrawGPUMemoryStats(const rc::RenderDevice& device)
     {
         constexpr double bytesPerMiB = 1024.0 * 1024.0;
 
-        ImGui::Text("GPU memory (engine): %.0f MiB  |  peak %.0f MiB",
-                    memory.deviceLocalBytes / bytesPerMiB,
+        ImGui::Text("GPU memory (engine): %.0f MiB  |  peak %.0f MiB", memory.deviceLocalBytes / bytesPerMiB,
                     memory.peakDeviceLocalBytes / bytesPerMiB);
 
         if (ImGui::IsItemHovered())
         {
-            ImGui::SetTooltip(
-                "Memory reserved for engine buffers and textures, including reusable pools.\n"
-                "Excludes driver, swapchain and other applications.\n"
-                "All engine memory heaps: %.0f MiB (peak %.0f MiB).",
-                memory.committedBytes / bytesPerMiB, memory.peakCommittedBytes / bytesPerMiB);
+            ImGui::SetTooltip("Memory reserved for engine buffers and textures, including reusable pools.\n"
+                              "Excludes driver, swapchain and other applications.\n"
+                              "All engine memory heaps: %.0f MiB (peak %.0f MiB).",
+                              memory.committedBytes / bytesPerMiB, memory.peakCommittedBytes / bytesPerMiB);
         }
 
         const uint64_t capacity = device.GetGPUInfo().deviceLocalMemoryBytes;
@@ -54,11 +52,10 @@ void DrawGPUMemoryStats(const rc::RenderDevice& device)
         {
             char label[80]{};
 
-            std::snprintf(label, sizeof(label), "%.0f / %.0f MiB GPU capacity",
-                          memory.deviceLocalBytes / bytesPerMiB, capacity / bytesPerMiB);
+            std::snprintf(label, sizeof(label), "%.0f / %.0f MiB GPU capacity", memory.deviceLocalBytes / bytesPerMiB,
+                          capacity / bytesPerMiB);
 
-            const float fraction =
-                std::clamp(float(double(memory.deviceLocalBytes) / double(capacity)), 0.0f, 1.0f);
+            const float fraction = std::clamp(float(double(memory.deviceLocalBytes) / double(capacity)), 0.0f, 1.0f);
 
             ImGui::ProgressBar(fraction, ImVec2(-1, 0), label);
         }
@@ -70,9 +67,9 @@ void DrawGPUMemoryStats(const rc::RenderDevice& device)
 }
 } // namespace
 
-RuntimeDebugUI::RuntimeDebugUI(rc::RenderDevice& device,
+RuntimeDebugUI::RuntimeDebugUI(rc::RenderDevice&         device,
                                platform::GlfwWindowImpl& window,
-                               RuntimeSceneControls& sceneControls) :
+                               RuntimeSceneControls&     sceneControls) :
     m_device(device), m_window(window), m_sceneControls(sceneControls), m_renderer(device)
 {}
 
@@ -108,7 +105,7 @@ bool RuntimeDebugUI::Init()
 
 void RuntimeDebugUI::SetVisible(bool visible)
 {
-    m_visible = visible;
+    m_visible                           = visible;
 
     platform::KeyboardMouseInput& input = platform::KeyboardMouseInput::GetInstance();
 
@@ -153,12 +150,10 @@ void RuntimeDebugUI::Update(float deltaSeconds, RHIViewport& viewport)
 
     // F1 explicitly switches between debug interaction and captured camera control.
     // All input still reaches the chained platform callbacks, including releases.
-    platform::KeyboardMouseInput::GetInstance().SetUICapture(
-        !focused || m_visible || io.WantCaptureMouse,
-        !focused || m_visible || io.WantCaptureKeyboard);
+    platform::KeyboardMouseInput::GetInstance().SetUICapture(!focused || m_visible || io.WantCaptureMouse,
+                                                             !focused || m_visible || io.WantCaptureKeyboard);
 
-    if (!m_visible &&
-        platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_ESCAPE))
+    if (!m_visible && platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_ESCAPE))
     {
         glfwSetWindowShouldClose(m_window.GetHandle(), GLFW_TRUE);
     }
@@ -187,8 +182,7 @@ void RuntimeDebugUI::BuildPanel()
 
         ImGui::TextUnformatted("F1: debug controls / camera");
 
-        ImGui::Text("%.1f FPS  |  %.2f ms", ImGui::GetIO().Framerate,
-                    1000.0f / ImGui::GetIO().Framerate);
+        ImGui::Text("%.1f FPS  |  %.2f ms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 
         DrawGPUMemoryStats(m_device);
 
@@ -213,8 +207,7 @@ void RuntimeDebugUI::BuildPanel()
 
             if (server.GetRenderOption() == rc::RenderOption::ePBR)
             {
-                ImGui::TextWrapped(
-                    "PBR fallback is active: voxel GI and direct mesh shadows are inactive.");
+                ImGui::TextWrapped("PBR fallback is active: voxel GI and direct mesh shadows are inactive.");
             }
         }
         else
@@ -226,12 +219,11 @@ void RuntimeDebugUI::BuildPanel()
 
         ImGui::Checkbox("Apply changes automatically", &m_autoApply);
 
-        ImGui::TextWrapped(
-            "Live controls update while dragging. Resource changes apply when the edit ends.");
+        ImGui::TextWrapped("Live controls update while dragging. Resource changes apply when the edit ends.");
 
         if (!m_sceneDirty)
         {
-            m_sceneDraft = m_sceneControls.GetRuntimeSceneSettings();
+            m_sceneDraft    = m_sceneControls.GetRuntimeSceneSettings();
 
             m_sceneBaseline = m_sceneDraft;
         }
@@ -309,8 +301,7 @@ void RuntimeDebugUI::BuildPanel()
 
         const RHIThreadMetrics rhi = m_device.GetRHIThreadMetrics();
 
-        ImGui::Text("RHI completed batches: %llu",
-                    static_cast<unsigned long long>(rhi.completedBatches));
+        ImGui::Text("RHI completed batches: %llu", static_cast<unsigned long long>(rhi.completedBatches));
     }
 
     ImGui::End();

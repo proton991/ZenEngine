@@ -67,38 +67,34 @@ private:
     struct WorkloadMergeResult
     {
         HeapVector<VulkanWorkload*> workloadsToSubmit;
-        size_t totalWaitSemaphoreCount{0};
-        size_t totalSignalSemaphoreCount{0};
-        size_t totalCommandBufferCount{0};
+        size_t                      totalWaitSemaphoreCount{0};
+        size_t                      totalSignalSemaphoreCount{0};
+        size_t                      totalCommandBufferCount{0};
     };
 
     struct TimelineSubmitBatch
     {
-        HeapVector<VkSubmitInfo> submitInfos;
+        HeapVector<VkSubmitInfo>                  submitInfos;
         HeapVector<VkTimelineSemaphoreSubmitInfo> timelineSubmitInfos;
-        HeapVector<VkCommandBuffer> commandBuffers;
-        HeapVector<VkSemaphore> waitSemaphores;
-        HeapVector<VkSemaphore> signalSemaphores;
-        HeapVector<VkPipelineStageFlags> waitStageMasks;
-        HeapVector<uint64_t> waitSemaphoreValues;
-        HeapVector<uint64_t> signalSemaphoreValues;
+        HeapVector<VkCommandBuffer>               commandBuffers;
+        HeapVector<VkSemaphore>                   waitSemaphores;
+        HeapVector<VkSemaphore>                   signalSemaphores;
+        HeapVector<VkPipelineStageFlags>          waitStageMasks;
+        HeapVector<uint64_t>                      waitSemaphoreValues;
+        HeapVector<uint64_t>                      signalSemaphoreValues;
     };
 
-    static bool CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
-                                  const VulkanWorkload* pCurrentWorkload);
+    static bool CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload, const VulkanWorkload* pCurrentWorkload);
 
     RHISubmissionResult SubmitWorkloadsWithFences(uint64_t& serial);
 
     RHISubmissionResult SubmitWorkloadsWithTimelineSemaphore(uint64_t& serial);
 
-    void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit,
-                        WorkloadMergeResult& outMergeResult);
+    void MergeWorkloads(const HeapVector<VulkanWorkload*>& workloadsToSubmit, WorkloadMergeResult& outMergeResult);
 
-    void BuildTimelineSubmitBatch(const WorkloadMergeResult& mergeResult,
-                                  TimelineSubmitBatch& outSubmitBatch);
+    void BuildTimelineSubmitBatch(const WorkloadMergeResult& mergeResult, TimelineSubmitBatch& outSubmitBatch);
 
-    void AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload,
-                                      TimelineSubmitBatch& outSubmitBatch);
+    void AppendTimelineSubmitWorkload(VulkanWorkload* pWorkload, TimelineSubmitBatch& outSubmitBatch);
 
     void QueueSubmittedWorkload(VulkanWorkload* pWorkload, uint64_t submissionSerial);
 
@@ -112,22 +108,21 @@ private:
     void DestroyWorkload(VulkanWorkload* pWorkload);
 
     VulkanDevice* m_pDevice{nullptr};
-    VkQueue m_handle{VK_NULL_HANDLE};
-    uint32_t m_familyIndex;
-    uint32_t m_queueIndex;
+    VkQueue       m_handle{VK_NULL_HANDLE};
+    uint32_t      m_familyIndex;
+    uint32_t      m_queueIndex;
 
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
-    uint32_t m_acquiredCommandBufferPools{0};
-    HeapVector<VulkanWorkload*> m_workloadPool;
-    HeapVector<VulkanWorkload*>
-        m_abandonedWorkloads; // Uncertain submission; keep until device teardown.
+    uint32_t                              m_acquiredCommandBufferPools{0};
+    HeapVector<VulkanWorkload*>           m_workloadPool;
+    HeapVector<VulkanWorkload*>           m_abandonedWorkloads; // Uncertain submission; keep until device teardown.
 
     Queue<VulkanWorkload*> m_workloadsPendingSubmit;  // queued workloads, need to submit
     Queue<VulkanWorkload*> m_workloadsPendingProcess; // submitted workloads, need to wait
-    uint64_t m_lastSubmittedSerial{0};
+    uint64_t               m_lastSubmittedSerial{0};
     // Lifetime queries can read completion while the submission thread polls the queue.
     std::atomic<uint64_t> m_lastCompletedSerial{0};
-    VulkanSemaphore* m_pTimelineSemaphore{nullptr};
+    VulkanSemaphore*      m_pTimelineSemaphore{nullptr};
 
     friend class VulkanRHI;
     friend class VulkanCommandContextBase;

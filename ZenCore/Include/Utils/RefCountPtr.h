@@ -15,7 +15,9 @@ class RefCounted
 {
 public:
     RefCounted()                             = default;
+
     RefCounted(const RefCounted&)            = delete;
+
     RefCounted& operator=(const RefCounted&) = delete;
 
     virtual ~RefCounted()
@@ -75,6 +77,7 @@ template <class T, class RefCountPolicy = DefaultRefCountPolicy> class RefCountP
 {
 public:
     RefCountPtr() noexcept = default;
+
     RefCountPtr(std::nullptr_t) noexcept {}
 
     // addRef=false adopts one reference already held by the caller.
@@ -203,8 +206,7 @@ bool operator==(const RefCountPtr<T, Policy>& left, const RefCountPtr<U, Policy>
     return left.Get() == right.Get();
 }
 
-template <class T, class Policy>
-bool operator==(const RefCountPtr<T, Policy>& pointer, std::nullptr_t) noexcept
+template <class T, class Policy> bool operator==(const RefCountPtr<T, Policy>& pointer, std::nullptr_t) noexcept
 {
     return pointer.Get() == nullptr;
 }

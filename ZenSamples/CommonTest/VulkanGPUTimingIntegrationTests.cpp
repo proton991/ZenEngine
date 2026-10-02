@@ -27,13 +27,13 @@ struct TimingReadObserver
 
     static inline bool fail{false};
 
-    static VKAPI_ATTR VkResult VKAPI_CALL Read(VkDevice device,
-                                               VkQueryPool pool,
-                                               uint32_t first,
-                                               uint32_t count,
-                                               size_t size,
-                                               void* data,
-                                               VkDeviceSize stride,
+    static VKAPI_ATTR VkResult VKAPI_CALL Read(VkDevice           device,
+                                               VkQueryPool        pool,
+                                               uint32_t           first,
+                                               uint32_t           count,
+                                               size_t             size,
+                                               void*              data,
+                                               VkDeviceSize       stride,
                                                VkQueryResultFlags flags)
     {
         ++calls;
@@ -44,8 +44,7 @@ struct TimingReadObserver
 
         EXPECT_NE(flags & VK_QUERY_RESULT_WITH_AVAILABILITY_BIT, 0u);
 
-        return fail ? VK_ERROR_OUT_OF_HOST_MEMORY :
-                      original(device, pool, first, count, size, data, stride, flags);
+        return fail ? VK_ERROR_OUT_OF_HOST_MEMORY : original(device, pool, first, count, size, data, stride, flags);
     }
 };
 
@@ -56,11 +55,10 @@ protected:
 
     VkDebugUtilsMessengerEXT messenger{};
 
-    static VKAPI_ATTR VkBool32 VKAPI_CALL
-    Validation(VkDebugUtilsMessageSeverityFlagBitsEXT,
-               VkDebugUtilsMessageTypeFlagsEXT,
-               const VkDebugUtilsMessengerCallbackDataEXT* data,
-               void*)
+    static VKAPI_ATTR VkBool32 VKAPI_CALL Validation(VkDebugUtilsMessageSeverityFlagBitsEXT,
+                                                     VkDebugUtilsMessageTypeFlagsEXT,
+                                                     const VkDebugUtilsMessengerCallbackDataEXT* data,
+                                                     void*)
     {
         ADD_FAILURE() << data->pMessage;
 
@@ -71,24 +69,21 @@ protected:
     {
         session = MakeUnique<test::VulkanSession>();
 
-        VkDebugUtilsMessengerCreateInfoEXT info{
-            VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+        VkDebugUtilsMessengerCreateInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
         info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 
-        info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+        info.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
 
         info.pfnUserCallback = Validation;
 
-        ASSERT_EQ(
-            vkCreateDebugUtilsMessengerEXT(session->rhi.GetInstance(), &info, nullptr, &messenger),
-            VK_SUCCESS);
+        ASSERT_EQ(vkCreateDebugUtilsMessengerEXT(session->rhi.GetInstance(), &info, nullptr, &messenger), VK_SUCCESS);
 
         TimingReadObserver::original = vkGetQueryPoolResults;
 
-        TimingReadObserver::calls = 0;
+        TimingReadObserver::calls    = 0;
 
-        TimingReadObserver::fail = false;
+        TimingReadObserver::fail     = false;
     }
 
     void TearDown() override
@@ -102,19 +97,17 @@ protected:
 
     bool SupportsTiming(FVulkanCommandListContext& context)
     {
-        const VkQueueFamilyProperties& family = session->rhi.GetDevice()->GetQueueFamilyProperties(
-            context.GetQueue()->GetFamilyIndex());
+        const VkQueueFamilyProperties& family =
+            session->rhi.GetDevice()->GetQueueFamilyProperties(context.GetQueue()->GetFamilyIndex());
 
-        return family.timestampValidBits != 0 &&
-            (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0;
+        return family.timestampValidBits != 0 && (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0;
     }
 
     void SubmitAndComplete(FVulkanCommandListContext& context)
     {
         ASSERT_EQ(context.SubmitRecordedWorkloads(), RHISubmissionResult::eSuccess);
 
-        ASSERT_TRUE(
-            context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(), UINT64_MAX));
+        ASSERT_TRUE(context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(), UINT64_MAX));
     }
 };
 
@@ -125,8 +118,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, SupportedQueuesResolveFiniteDurationsWith
     uint32_t supportedQueues = 0;
 
     for (RHICommandContextType queue :
-         {RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute,
-          RHICommandContextType::eTransfer})
+         {RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute, RHICommandContextType::eTransfer})
     {
         SCOPED_TRACE(RHIQueueName(queue));
 
@@ -138,12 +130,11 @@ TEST_F(VulkanGPUTimingIntegrationTest, SupportedQueuesResolveFiniteDurationsWith
 
         context.RHIEndGPUTiming(result);
 
-        const bool supported = SupportsTiming(context);
+        const bool supported  = SupportsTiming(context);
 
-        supportedQueues += supported ? 1u : 0u;
+        supportedQueues      += supported ? 1u : 0u;
 
-        EXPECT_EQ(result->GetStatus(),
-                  supported ? RHIGPUTimingStatus::ePending : RHIGPUTimingStatus::eUnsupported);
+        EXPECT_EQ(result->GetStatus(), supported ? RHIGPUTimingStatus::ePending : RHIGPUTimingStatus::eUnsupported);
 
         SubmitAndComplete(context);
 
@@ -186,7 +177,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, CompletedBufferReuseDoesNotOverwritePubli
 
     ASSERT_EQ(first->GetStatus(), RHIGPUTimingStatus::eAvailable);
 
-    const double previous = first->GetMicroseconds();
+    const double previous  = first->GetMicroseconds();
 
     RHIGPUTimingPtr second = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
@@ -212,8 +203,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, AbandonedScopesAndCapacityOverflowHaveExp
     RHIGPUTimingPtr overflow = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
     {
-        FVulkanCommandListContext context(RHICommandContextType::eGraphics,
-                                          session->rhi.GetDevice());
+        FVulkanCommandListContext context(RHICommandContextType::eGraphics, session->rhi.GetDevice());
 
         if (!SupportsTiming(context))
         {
@@ -386,29 +376,25 @@ TEST_F(VulkanGPUTimingIntegrationTest, FrameEnvelopeCollectsNativeQueuesWithoutR
 
         uint32_t excluded = 0;
 
-        bool supported = true;
+        bool supported    = true;
 
         for (RHICommandContextType queue :
-             {RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute,
-              RHICommandContextType::eTransfer})
+             {RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute, RHICommandContextType::eTransfer})
         {
-            contexts.push_back(
-                MakeUnique<FVulkanCommandListContext>(queue, session->rhi.GetDevice()));
+            contexts.push_back(MakeUnique<FVulkanCommandListContext>(queue, session->rhi.GetDevice()));
 
             FVulkanCommandListContext& context = *contexts.back();
 
             const VkQueueFamilyProperties& family =
-                session->rhi.GetDevice()->GetQueueFamilyProperties(
-                    context.GetQueue()->GetFamilyIndex());
+                session->rhi.GetDevice()->GetQueueFamilyProperties(context.GetQueue()->GetFamilyIndex());
 
-            const bool timingQueue =
-                (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0;
+            const bool timingQueue  = (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0;
 
-            included += timingQueue ? 1u : 0u;
+            included               += timingQueue ? 1u : 0u;
 
-            excluded += timingQueue ? 0u : 1u;
+            excluded               += timingQueue ? 0u : 1u;
 
-            supported &= !timingQueue || SupportsTiming(context);
+            supported              &= !timingQueue || SupportsTiming(context);
 
             context.GetCommandBuffer();
 
@@ -423,8 +409,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, FrameEnvelopeCollectsNativeQueuesWithoutR
 
         EXPECT_EQ(frame->GetExcludedIntervalCount(), excluded);
 
-        EXPECT_EQ(frame->GetStatus(),
-                  supported ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eUnsupported);
+        EXPECT_EQ(frame->GetStatus(), supported ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eUnsupported);
 
         EXPECT_TRUE(std::isfinite(frame->GetMicroseconds()));
 
@@ -442,8 +427,7 @@ TEST_F(VulkanGPUTimingIntegrationTest, FrameEnvelopeFollowsNativeBufferSplitsAnd
 {
     FVulkanCommandListContext context(RHICommandContextType::eGraphics, session->rhi.GetDevice());
 
-    if (SupportsTiming(context) &&
-        session->rhi.GetDevice()->GetExtensionFlags().hasCalibratedTimestamps)
+    if (SupportsTiming(context) && session->rhi.GetDevice()->GetExtensionFlags().hasCalibratedTimestamps)
     {
         VulkanSemaphore signal(session->rhi.GetDevice());
 
@@ -461,14 +445,13 @@ TEST_F(VulkanGPUTimingIntegrationTest, FrameEnvelopeFollowsNativeBufferSplitsAnd
 
         session->rhi.EndGPUFrameTiming(first, true);
 
-        EXPECT_TRUE(
-            context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(), UINT64_MAX));
+        EXPECT_TRUE(context.GetQueue()->WaitForCompletion(context.GetLastSubmittedSerial(), UINT64_MAX));
 
         EXPECT_EQ(first->GetStatus(), RHIGPUTimingStatus::eAvailable);
 
         EXPECT_EQ(first->GetIntervalCount(), 2u);
 
-        const double previous = first->GetMicroseconds();
+        const double previous       = first->GetMicroseconds();
 
         RHIGPUFrameTimingPtr second = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
@@ -558,11 +541,11 @@ TEST_F(VulkanGPUTimingIntegrationTest, UnsubmittedNativeBuffersInvalidateFrameBo
 
 TEST_F(VulkanGPUTimingIntegrationTest, MissingCommonDomainKeepsPerPassTimingAvailable)
 {
-    RHIGPUFrameTimingPtr frame = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
+    RHIGPUFrameTimingPtr frame    = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
-    DeviceExtensionFlags& flags = session->rhi.GetDevice()->GetExtensionFlags();
+    DeviceExtensionFlags& flags   = session->rhi.GetDevice()->GetExtensionFlags();
 
-    const uint32_t saved = flags.hasCalibratedTimestamps;
+    const uint32_t saved          = flags.hasCalibratedTimestamps;
 
     flags.hasCalibratedTimestamps = 0;
 
@@ -586,25 +569,21 @@ TEST_F(VulkanGPUTimingIntegrationTest, MissingCommonDomainKeepsPerPassTimingAvai
 
     EXPECT_EQ(frame->GetIntervalCount(), 0u);
 
-    EXPECT_EQ(pass->GetStatus(),
-              SupportsTiming(context) ? RHIGPUTimingStatus::eAvailable :
-                                        RHIGPUTimingStatus::eUnsupported);
+    EXPECT_EQ(pass->GetStatus(), SupportsTiming(context) ? RHIGPUTimingStatus::eAvailable : RHIGPUTimingStatus::eUnsupported);
 }
 
 TEST_F(VulkanGPUTimingIntegrationTest, DiscardedAndFailedFramesCannotPublishPartialDurations)
 {
     FVulkanCommandListContext context(RHICommandContextType::eGraphics, session->rhi.GetDevice());
 
-    if (SupportsTiming(context) &&
-        session->rhi.GetDevice()->GetExtensionFlags().hasCalibratedTimestamps)
+    if (SupportsTiming(context) && session->rhi.GetDevice()->GetExtensionFlags().hasCalibratedTimestamps)
     {
         RHIGPUFrameTimingPtr discarded = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
         session->rhi.BeginGPUFrameTiming(discarded);
 
         {
-            FVulkanCommandListContext recording(RHICommandContextType::eGraphics,
-                                                session->rhi.GetDevice());
+            FVulkanCommandListContext recording(RHICommandContextType::eGraphics, session->rhi.GetDevice());
 
             recording.GetCommandBuffer();
         }

@@ -11,7 +11,7 @@ class UIRenderer
 public:
     explicit UIRenderer(rc::RenderDevice& device);
 
-    UIRenderer(const UIRenderer&) = delete;
+    UIRenderer(const UIRenderer&)            = delete;
 
     UIRenderer& operator=(const UIRenderer&) = delete;
 
@@ -26,19 +26,16 @@ private:
     {
         RHIBuffer* vertices{nullptr};
         RHIBuffer* indices{nullptr};
-        uint32_t vertexCapacity{0};
-        uint32_t indexCapacity{0};
+        uint32_t   vertexCapacity{0};
+        uint32_t   indexCapacity{0};
     };
 
-    bool GrowBuffer(RHIBuffer*& buffer,
-                    uint32_t& capacity,
-                    uint32_t required,
-                    RHIBufferUsageFlagBits usage);
+    bool GrowBuffer(RHIBuffer*& buffer, uint32_t& capacity, uint32_t required, RHIBufferUsageFlagBits usage);
 
-    rc::RenderDevice& m_device;
-    RHITexture* m_fontTexture{nullptr};
-    RHISampler* m_sampler{nullptr};
+    rc::RenderDevice&        m_device;
+    RHITexture*              m_fontTexture{nullptr};
+    RHISampler*              m_sampler{nullptr};
     HeapVector<FrameBuffers> m_frames;
-    ImTextureID m_fontId{ImTextureID_Invalid};
+    ImTextureID              m_fontId{ImTextureID_Invalid};
 };
 } // namespace zen::ui

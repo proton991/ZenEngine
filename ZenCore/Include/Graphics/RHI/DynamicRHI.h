@@ -14,9 +14,9 @@ class DynamicRHI
 public:
     static DynamicRHI* Create(RHIAPIType type);
 
-    virtual ~DynamicRHI() = default;
+    virtual ~DynamicRHI()  = default;
 
-    virtual void Init() = 0;
+    virtual void Init()    = 0;
 
     virtual void Destroy() = 0;
 
@@ -74,40 +74,35 @@ public:
 
     virtual IRHICommandContext* GetCommandContext(RHICommandContextType contextType) = 0;
 
-    virtual IRHICommandContext* GetTransferCommandContext() = 0;
+    virtual IRHICommandContext* GetTransferCommandContext()                          = 0;
 
-    virtual RHIAPIType GetAPIType() = 0;
+    virtual RHIAPIType GetAPIType()                                                  = 0;
 
-    virtual NameID GetName() = 0;
+    virtual NameID GetName()                                                         = 0;
 
-    virtual DataFormat GetSupportedDepthFormat() = 0;
+    virtual DataFormat GetSupportedDepthFormat()                                     = 0;
 
     // Called on the window-owning thread. Backends prepare the native surface here
     // and dispatch swapchain/backbuffer initialization to RHI.
-    virtual RHIViewport* CreateViewport(void* pWindow,
-                                        uint32_t width,
-                                        uint32_t height,
-                                        bool enableVSync) = 0;
+    virtual RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) = 0;
 
-    virtual void DestroyViewport(RHIViewport* pViewport) = 0;
+    virtual void DestroyViewport(RHIViewport* pViewport)                                                  = 0;
 
-    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo) = 0;
+    virtual RHIShader* CreateShader(const RHIShaderCreateInfo& createInfo)                                = 0;
 
-    virtual void DestroyShader(RHIShader* pShader) = 0;
+    virtual void DestroyShader(RHIShader* pShader)                                                        = 0;
 
-    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo) = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIComputePipelineCreateInfo& createInfo)                   = 0;
 
-    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo) = 0;
+    virtual RHIPipeline* CreatePipeline(const RHIGfxPipelineCreateInfo& createInfo)                       = 0;
 
-    virtual void DestroyPipeline(RHIPipeline* pPipeline) = 0;
+    virtual void DestroyPipeline(RHIPipeline* pPipeline)                                                  = 0;
 
-    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo) = 0;
+    virtual RHISampler* CreateSampler(const RHISamplerCreateInfo& createInfo)                             = 0;
 
-    virtual void DestroySampler(RHISampler* pSampler) = 0;
+    virtual void DestroySampler(RHISampler* pSampler)                                                     = 0;
 
-    virtual RHIBindlessHandle RegisterBindlessResource(
-        RHIResource* pResource,
-        uint32_t slotIndex = kInvalidBindlessSlotIndex)
+    virtual RHIBindlessHandle RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex = kInvalidBindlessSlotIndex)
     {
         return {};
     }
@@ -134,16 +129,15 @@ public:
         return true;
     }
 
-    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) = 0;
+    virtual RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo)                                       = 0;
 
-    virtual RHITextureView* CreateTextureView(RHITexture* pBaseTexture,
-                                              const RHITextureViewCreateInfo& createInfo) = 0;
+    virtual RHITextureView* CreateTextureView(RHITexture* pBaseTexture, const RHITextureViewCreateInfo& createInfo) = 0;
 
-    virtual void DestroyTexture(RHITexture* pTexture) = 0;
+    virtual void DestroyTexture(RHITexture* pTexture)                                                               = 0;
 
-    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo) = 0;
+    virtual RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& createInfo)                                          = 0;
 
-    virtual void DestroyBuffer(RHIBuffer* pBuffer) = 0;
+    virtual void DestroyBuffer(RHIBuffer* pBuffer)                                                                  = 0;
 
     bool PrepareCommandListDependencies(VectorView<RHICommandList*> lists)
     {
@@ -152,19 +146,17 @@ public:
         {
             if (result)
             {
-                result = list != nullptr &&
-                    PrepareSubmissionDependencies(list->GetContext(),
-                                                  list->GetSubmissionDependencies());
+                result =
+                    list != nullptr && PrepareSubmissionDependencies(list->GetContext(), list->GetSubmissionDependencies());
             }
         }
         return result;
     }
 
-    virtual RHIStatus FinalizeCommandLists(
-        VectorView<RHICommandList*> cmdLists,
-        HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
+    virtual RHIStatus FinalizeCommandLists(VectorView<RHICommandList*>          cmdLists,
+                                           HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
 
-    virtual void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) = 0;
+    virtual void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists)    = 0;
 
     // Consumes all queued platform lists, including rejected work. Never retries them implicitly.
     virtual RHISubmissionResult FlushAllGPUCommands() = 0;
@@ -178,8 +170,7 @@ public:
 
     bool IsTransferQueueSharedWithGraphics() const
     {
-        return GetQueueCapabilities().AreQueuesShared(RHICommandContextType::eTransfer,
-                                                      RHICommandContextType::eGraphics);
+        return GetQueueCapabilities().AreQueuesShared(RHICommandContextType::eTransfer, RHICommandContextType::eGraphics);
     }
 
     virtual RHIQueueCapabilities GetQueueCapabilities() const
@@ -195,26 +186,21 @@ public:
     // Attach dependencies before recording/finalizing the consumer context. Producers must
     // already be submitted; kLatestSubmitted resolves here, never to future submissions.
     // Backends without GPU waits retain a completion-wait fallback. Failure blocks the batch.
-    virtual bool PrepareSubmissionDependencies(
-        IRHICommandContext* context,
-        VectorView<const RHISubmissionDependency> dependencies)
+    virtual bool PrepareSubmissionDependencies(IRHICommandContext*                       context,
+                                               VectorView<const RHISubmissionDependency> dependencies)
     {
         bool result = context != nullptr;
         for (const RHISubmissionDependency& dependency : dependencies)
         {
             if (result)
             {
-                const bool validQueue = dependency.queue < RHICommandContextType::eMax;
-                const uint64_t submitted =
-                    validQueue ? GetLastSubmittedSerial(dependency.queue) : 0;
+                const bool     validQueue = dependency.queue < RHICommandContextType::eMax;
+                const uint64_t submitted  = validQueue ? GetLastSubmittedSerial(dependency.queue) : 0;
                 const uint64_t serial =
-                    dependency.serial == RHISubmissionDependency::kLatestSubmitted ?
-                    submitted :
-                    dependency.serial;
+                    dependency.serial == RHISubmissionDependency::kLatestSubmitted ? submitted : dependency.serial;
                 result                               = validQueue && serial <= submitted;
                 const RHICommandContextType consumer = context->GetContextType();
-                const bool shared =
-                    GetQueueCapabilities().AreQueuesShared(dependency.queue, consumer);
+                const bool                  shared   = GetQueueCapabilities().AreQueuesShared(dependency.queue, consumer);
                 if (result && !shared && QueryLastCompletedSerial(dependency.queue) < serial)
                 {
                     result = WaitForCompletion(dependency.queue, serial);
@@ -232,12 +218,12 @@ public:
     // Wait only for an already-submitted queue serial. Zero is already complete; zero timeout
     // polls. False means timeout/failure and must never be treated as permission to reuse work.
     virtual bool WaitForCompletion(RHICommandContextType contextType,
-                                   uint64_t submissionSerial,
-                                   uint64_t timeoutNS = UINT64_MAX) = 0;
+                                   uint64_t              submissionSerial,
+                                   uint64_t              timeoutNS = UINT64_MAX) = 0;
 
-    virtual void WaitDeviceIdle() = 0;
+    virtual void WaitDeviceIdle()                                   = 0;
 
-    virtual const RHIGPUInfo& QueryGPUInfo() const = 0;
+    virtual const RHIGPUInfo& QueryGPUInfo() const                  = 0;
 
     // Safe to read while the initialized backend is alive, including from the render
     // thread. Reads published counters only; never waits for RHI/GPU work or polls a driver.
@@ -246,7 +232,7 @@ public:
         return {};
     }
 
-    virtual RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const = 0;
+    virtual RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const      = 0;
 
     virtual RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType type) const = 0;
 

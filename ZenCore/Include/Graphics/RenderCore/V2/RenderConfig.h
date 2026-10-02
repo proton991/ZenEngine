@@ -19,8 +19,7 @@ enum class AsyncComputeStatus
     eDependenciesUnavailable
 };
 
-inline AsyncComputeStatus ResolveAsyncComputeStatus(AsyncComputeMode mode,
-                                                    const RHIQueueCapabilities& capabilities)
+inline AsyncComputeStatus ResolveAsyncComputeStatus(AsyncComputeMode mode, const RHIQueueCapabilities& capabilities)
 {
     AsyncComputeStatus status = AsyncComputeStatus::eAvailable;
     if (mode == AsyncComputeMode::eDisabled)
@@ -31,8 +30,7 @@ inline AsyncComputeStatus ResolveAsyncComputeStatus(AsyncComputeMode mode,
     {
         status = AsyncComputeStatus::eComputeUnavailable;
     }
-    else if (capabilities.AreQueuesShared(RHICommandContextType::eGraphics,
-                                          RHICommandContextType::eAsyncCompute))
+    else if (capabilities.AreQueuesShared(RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute))
     {
         status = AsyncComputeStatus::eSharedGraphicsQueue;
     }
@@ -51,12 +49,8 @@ inline const char* GetAsyncComputeStatusReason(AsyncComputeStatus status)
         case AsyncComputeStatus::eAvailable: reason = "available"; break;
         case AsyncComputeStatus::eDisabled: reason = "disabled by configuration"; break;
         case AsyncComputeStatus::eComputeUnavailable: reason = "compute queue unavailable"; break;
-        case AsyncComputeStatus::eSharedGraphicsQueue:
-            reason = "compute shares graphics queue";
-            break;
-        case AsyncComputeStatus::eDependenciesUnavailable:
-            reason = "timeline dependencies unavailable";
-            break;
+        case AsyncComputeStatus::eSharedGraphicsQueue: reason = "compute shares graphics queue"; break;
+        case AsyncComputeStatus::eDependenciesUnavailable: reason = "timeline dependencies unavailable"; break;
     }
     return reason;
 }
@@ -71,27 +65,32 @@ inline bool ParseAsyncComputeOverride(std::string_view argument, AsyncComputeMod
     return valid;
 }
 
-inline platform::VoxelizerMode ResolveVoxelizerMode(platform::VoxelizerMode requestedMode,
-                                                    const RHIGPUInfo& gpuInfo)
+inline platform::VoxelizerMode ResolveVoxelizerMode(platform::VoxelizerMode requestedMode, const RHIGPUInfo& gpuInfo)
 {
+    platform::VoxelizerMode returnValue{};
+
     if (requestedMode != platform::VoxelizerMode::eCompute && gpuInfo.supportGeometryShader)
     {
-        return platform::VoxelizerMode::eGeometry;
+        returnValue = platform::VoxelizerMode::eGeometry;
     }
-    return platform::VoxelizerMode::eCompute;
+    else
+    {
+        returnValue = platform::VoxelizerMode::eCompute;
+    }
+
+    return returnValue;
 }
 
 inline glm::uvec3 ResolveVoxelVolumeWorkgroupSize(const RHIGPUInfo& gpuInfo)
 {
     // A bounded capability-based default, not a substitute for per-pass GPU profiling.
-    glm::uvec3 size(ZEN_VOXEL_VOLUME_GROUP_SIZE);
+    glm::uvec3       size(ZEN_VOXEL_VOLUME_GROUP_SIZE);
     const glm::uvec3 candidates[] = {{8, 8, 8}, {8, 8, 4}, {8, 4, 4}};
     for (const glm::uvec3& candidate : candidates)
     {
-        if (candidate.x <= gpuInfo.maxComputeWorkGroupSize[0] &&
-            candidate.y <= gpuInfo.maxComputeWorkGroupSize[1] &&
-            candidate.z <= gpuInfo.maxComputeWorkGroupSize[2] &&
-            candidate.x * candidate.y * candidate.z <= gpuInfo.maxComputeWorkGroupInvocations)
+        if (candidate.x <= gpuInfo.maxComputeWorkGroupSize[0] && candidate.y <= gpuInfo.maxComputeWorkGroupSize[1]
+            && candidate.z <= gpuInfo.maxComputeWorkGroupSize[2]
+            && candidate.x * candidate.y * candidate.z <= gpuInfo.maxComputeWorkGroupInvocations)
         {
             size = candidate;
             break;
@@ -119,11 +118,11 @@ struct RenderConfig
     // Slope depth bias factor, applied depending on polygon's slope
     float depthBiasSlope = 1.75f;
     // Size of shadow map
-    uint32_t shadowMapSize = 2048;
+    uint32_t shadowMapSize   = 2048;
 
     uint32_t offScreenFbSize = 2048;
 
-    uint32_t numFrames = 3;
+    uint32_t numFrames       = 3;
 
     RHIExecutionMode rhiExecutionMode{RHIExecutionMode::eThreaded};
 

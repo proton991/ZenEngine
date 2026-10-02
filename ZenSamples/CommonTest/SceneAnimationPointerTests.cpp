@@ -12,21 +12,21 @@ sg::Material* AddPointerMaterial(sg::Scene& scene)
 {
     scene.LoadDefaultTextures(0);
 
-    UniquePtr<sg::Material> material = MakeUnique<sg::Material>("PointerMaterial");
+    UniquePtr<sg::Material> material          = MakeUnique<sg::Material>("PointerMaterial");
 
     const sg::Scene::DefaultTextures textures = scene.GetDefaultTextures();
 
-    material->m_pBaseColorTexture = textures.pBaseColor;
+    material->m_pBaseColorTexture             = textures.pBaseColor;
 
-    material->m_pMetallicRoughnessTexture = textures.pMetallicRoughness;
+    material->m_pMetallicRoughnessTexture     = textures.pMetallicRoughness;
 
-    material->m_pNormalTexture = textures.pNormal;
+    material->m_pNormalTexture                = textures.pNormal;
 
-    material->m_pOcclusionTexture = textures.pOcclusion;
+    material->m_pOcclusionTexture             = textures.pOcclusion;
 
-    material->m_pEmissiveTexture = textures.pEmissive;
+    material->m_pEmissiveTexture              = textures.pEmissive;
 
-    sg::Material* result = material.Get();
+    sg::Material* result                      = material.Get();
 
     scene.AddComponent(std::move(material));
 
@@ -40,7 +40,7 @@ TEST(SceneAnimationPointer, ValidatesWithoutMutationAndRejectsInvalidShapesAndPa
 
     sg::Material* material = AddPointerMaterial(scene);
 
-    const float color[] = {0.2f, 0.4f, 0.6f, 0.8f};
+    const float color[]    = {0.2f, 0.4f, 0.6f, 0.8f};
 
     const std::string path = "/materials/0/pbrMetallicRoughness/baseColorFactor";
 
@@ -68,8 +68,7 @@ TEST(SceneAnimationPointer, ValidatesWithoutMutationAndRejectsInvalidShapesAndPa
 
     EXPECT_FALSE(sg::ApplyAnimationPointer(scene, "/materials/0/unknown", component));
 
-    EXPECT_FALSE(sg::ApplyAnimationPointer(
-        scene, "/materials/0/pbrMetallicRoughness~1baseColorFactor", color));
+    EXPECT_FALSE(sg::ApplyAnimationPointer(scene, "/materials/0/pbrMetallicRoughness~1baseColorFactor", color));
 
     const float invalid[] = {std::numeric_limits<float>::quiet_NaN()};
 
@@ -82,17 +81,17 @@ TEST(SceneAnimationPointer, AnimatedTextureTransformsRetainOtherAuthoredTermsAnd
 {
     sg::Scene scene;
 
-    sg::Material* material = AddPointerMaterial(scene);
+    sg::Material* material          = AddPointerMaterial(scene);
 
     sg::TextureTransform& transform = material->features.specularColorTexture.transform;
 
-    transform.uvScale = Vec2(2, 3);
+    transform.uvScale               = Vec2(2, 3);
 
-    transform.uvRotation = glm::half_pi<float>();
+    transform.uvRotation            = glm::half_pi<float>();
 
-    transform.row0.w = 7;
+    transform.row0.w                = 7;
 
-    const float offset[] = {0.2f, 0.3f};
+    const float offset[]            = {0.2f, 0.3f};
 
     const std::string prefix =
         "/materials/0/extensions/KHR_materials_specular/specularColorTexture/extensions/KHR_texture_transform/";
@@ -126,8 +125,7 @@ TEST(SceneAnimationPointer, AnimatedTextureTransformsRetainOtherAuthoredTermsAnd
     EXPECT_EQ(transform.row1, Vec4(0, 3, 0.3f, 0));
 
     const sg::MaterialTextureData& gpu =
-        material->data
-            .featureTextures[static_cast<uint32_t>(sg::MaterialFeatureTexture::SpecularColor)];
+        material->data.featureTextures[static_cast<uint32_t>(sg::MaterialFeatureTexture::SpecularColor)];
 
     EXPECT_EQ(gpu.transform, sg::PublishTextureTransform(transform));
 }
@@ -142,7 +140,7 @@ TEST(SceneAnimationPointer, ZeroAuthoredIorRemainsPermanentAndAnimatedIorMustBeA
 
     const std::string path = "/materials/0/extensions/KHR_materials_ior/ior";
 
-    const float allowed[] = {1.7f};
+    const float allowed[]  = {1.7f};
 
     EXPECT_TRUE(sg::ApplyAnimationPointer(scene, path, allowed));
 
@@ -169,32 +167,30 @@ TEST(SceneAnimationPointer, SharedLightAndCameraInstancesKeepTheirNormalizedUnit
     {
         UniquePtr<sg::Light> light = MakeUnique<sg::Light>("SharedLight");
 
-        light->sourceIndex = 3;
+        light->sourceIndex         = 3;
 
-        light->unitScale = instance == 0 ? 0.5f : 0.25f;
+        light->unitScale           = instance == 0 ? 0.5f : 0.25f;
 
         scene.AddComponent(std::move(light));
 
         UniquePtr<sg::SceneCamera> camera = MakeUnique<sg::SceneCamera>("SharedCamera");
 
-        camera->sourceIndex = 4;
+        camera->sourceIndex               = 4;
 
-        camera->unitScale = instance == 0 ? 0.5f : 0.25f;
+        camera->unitScale                 = instance == 0 ? 0.5f : 0.25f;
 
-        camera->infiniteFar = true;
+        camera->infiniteFar               = true;
 
         scene.AddComponent(std::move(camera));
     }
 
     const float intensity[] = {80};
 
-    EXPECT_TRUE(sg::ValidateAnimationPointer(
-        scene, "/extensions/KHR_lights_punctual/lights/3/intensity", intensity));
+    EXPECT_TRUE(sg::ValidateAnimationPointer(scene, "/extensions/KHR_lights_punctual/lights/3/intensity", intensity));
 
     EXPECT_FLOAT_EQ(scene.GetComponents<sg::Light>()[0]->GetProperties().intensity, 1.0f);
 
-    EXPECT_TRUE(sg::ApplyAnimationPointer(
-        scene, "/extensions/KHR_lights_punctual/lights/3/intensity", intensity));
+    EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/extensions/KHR_lights_punctual/lights/3/intensity", intensity));
 
     EXPECT_FLOAT_EQ(scene.GetComponents<sg::Light>()[0]->GetProperties().intensity, 20.0f);
 
@@ -210,8 +206,7 @@ TEST(SceneAnimationPointer, SharedLightAndCameraInstancesKeepTheirNormalizedUnit
 
     EXPECT_FALSE(scene.GetComponents<sg::SceneCamera>()[0]->infiniteFar);
 
-    EXPECT_FALSE(sg::ApplyAnimationPointer(
-        scene, "/extensions/KHR_lights_punctual/lights/not-an-index/intensity", intensity));
+    EXPECT_FALSE(sg::ApplyAnimationPointer(scene, "/extensions/KHR_lights_punctual/lights/not-an-index/intensity", intensity));
 
     EXPECT_FLOAT_EQ(scene.GetComponents<sg::Light>()[0]->GetProperties().intensity, 20.0f);
 }
@@ -220,7 +215,7 @@ TEST(SceneAnimationPointer, NodeComponentsAndVisibilityUpdateWithoutResettingOth
 {
     sg::Scene scene;
 
-    UniquePtr<sg::Node> node = MakeUnique<sg::Node>(7, "PointerNode");
+    UniquePtr<sg::Node> node           = MakeUnique<sg::Node>(7, "PointerNode");
 
     UniquePtr<sg::Transform> transform = MakeUnique<sg::Transform>(*node);
 
@@ -232,7 +227,7 @@ TEST(SceneAnimationPointer, NodeComponentsAndVisibilityUpdateWithoutResettingOth
 
     scene.AddComponent(std::move(transform));
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     nodes.push_back(std::move(node));
 
@@ -252,8 +247,7 @@ TEST(SceneAnimationPointer, NodeComponentsAndVisibilityUpdateWithoutResettingOth
 
     const float visible[] = {0};
 
-    EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/nodes/7/extensions/KHR_node_visibility/visible",
-                                          visible));
+    EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/nodes/7/extensions/KHR_node_visibility/visible", visible));
 
     EXPECT_FALSE(scene.GetNodes()[0]->IsVisible());
 
@@ -268,13 +262,13 @@ TEST(SceneAnimationPointer, MatrixTranslationReplacesAuthoredValuesAndMorphEleme
 {
     sg::Scene scene;
 
-    UniquePtr<sg::Node> node = MakeUnique<sg::Node>(0, "MatrixNode");
+    UniquePtr<sg::Node> node           = MakeUnique<sg::Node>(0, "MatrixNode");
 
     UniquePtr<sg::Transform> transform = MakeUnique<sg::Transform>(*node);
 
-    Mat4 authored = glm::scale(Mat4(1), Vec3(2));
+    Mat4 authored                      = glm::scale(Mat4(1), Vec3(2));
 
-    authored[3] = Vec4(5, 6, 7, 1);
+    authored[3]                        = Vec4(5, 6, 7, 1);
 
     transform->SetLocalMatrix(authored);
 
@@ -282,21 +276,19 @@ TEST(SceneAnimationPointer, MatrixTranslationReplacesAuthoredValuesAndMorphEleme
 
     scene.AddComponent(std::move(transform));
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     nodes.push_back(std::move(node));
 
     scene.SetNodes(std::move(nodes));
 
-    scene.GetAssetData().sourceDocument =
-        R"({"nodes":[{"matrix":[2,0,0,0,0,2,0,0,0,0,2,0,5,6,7,1]}]})";
+    scene.GetAssetData().sourceDocument = R"({"nodes":[{"matrix":[2,0,0,0,0,2,0,0,0,0,2,0,5,6,7,1]}]})";
 
-    const float position[] = {1, 2, 3};
+    const float position[]              = {1, 2, 3};
 
     EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/nodes/0/translation", position));
 
-    EXPECT_EQ(Vec3(scene.GetNodes()[0]->GetComponent<sg::Transform>()->GetWorldMatrix()[3]),
-              Vec3(1, 2, 3));
+    EXPECT_EQ(Vec3(scene.GetNodes()[0]->GetComponent<sg::Transform>()->GetWorldMatrix()[3]), Vec3(1, 2, 3));
 
     const float scale[] = {3, 4, 5};
 
@@ -312,7 +304,7 @@ TEST(SceneAnimationPointer, MatrixTranslationReplacesAuthoredValuesAndMorphEleme
 
     sg::DeformationPrimitiveAsset deformation;
 
-    deformation.node = 0;
+    deformation.node           = 0;
 
     deformation.morphPrimitive = 0;
 
@@ -335,17 +327,17 @@ TEST(SceneAnimationPointer, InstancedSourceWeightsUseTargetCountWithoutAuthoredD
 {
     sg::Scene scene;
 
-    UniquePtr<sg::Node> source = MakeUnique<sg::Node>(0, "InstancedSource");
+    UniquePtr<sg::Node> source       = MakeUnique<sg::Node>(0, "InstancedSource");
 
-    UniquePtr<sg::Node> instance = MakeUnique<sg::Node>(1, "VirtualInstance");
+    UniquePtr<sg::Node> instance     = MakeUnique<sg::Node>(1, "VirtualInstance");
 
     instance->morphWeightsSourceNode = 0;
 
-    UniquePtr<sg::Mesh> mesh = MakeUnique<sg::Mesh>("SourceMesh");
+    UniquePtr<sg::Mesh> mesh         = MakeUnique<sg::Mesh>("SourceMesh");
 
     UniquePtr<sg::SubMesh> primitive = MakeUnique<sg::SubMesh>("SourcePrimitive");
 
-    primitive->assetMesh = 3;
+    primitive->assetMesh             = 3;
 
     mesh->AddSubMesh(primitive.Get());
 
@@ -355,7 +347,7 @@ TEST(SceneAnimationPointer, InstancedSourceWeightsUseTargetCountWithoutAuthoredD
 
     scene.AddComponent(std::move(mesh));
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     nodes.push_back(std::move(source));
 
@@ -373,7 +365,7 @@ TEST(SceneAnimationPointer, InstancedSourceWeightsUseTargetCountWithoutAuthoredD
 
     sg::DeformationPrimitiveAsset deformation;
 
-    deformation.node = 1;
+    deformation.node           = 1;
 
     deformation.morphPrimitive = 0;
 
@@ -402,11 +394,11 @@ TEST(SceneAnimationPointer, UpdatesImageBasedLightIntensityAndWholeQuaternionWit
 
     sg::ImageBasedLightAsset light;
 
-    light.intensity = 2.0f;
+    light.intensity        = 2.0f;
 
-    light.size = 1;
+    light.size             = 1;
 
-    light.mipLevels = 1;
+    light.mipLevels        = 1;
 
     light.specularMipFaces = HeapVector<HeapVector<Vec4>>(6, HeapVector<Vec4>{Vec4(1, 2, 3, 4)});
 
@@ -416,9 +408,9 @@ TEST(SceneAnimationPointer, UpdatesImageBasedLightIntensityAndWholeQuaternionWit
 
     scene.GetAssetData().imageBasedLight = 0;
 
-    const std::string prefix = "/extensions/EXT_lights_image_based/lights/0/";
+    const std::string prefix             = "/extensions/EXT_lights_image_based/lights/0/";
 
-    const float intensity[] = {7.0f};
+    const float intensity[]              = {7.0f};
 
     EXPECT_TRUE(sg::ValidateAnimationPointer(scene, prefix + "intensity", intensity));
 
@@ -452,19 +444,16 @@ TEST(SceneAnimationPointer, UpdatesImageBasedLightIntensityAndWholeQuaternionWit
 
     EXPECT_FALSE(sg::ApplyAnimationPointer(scene, prefix + "intensity", nonFinite));
 
-    EXPECT_FALSE(sg::ApplyAnimationPointer(
-        scene, "/extensions/EXT_lights_image_based/lights/2/intensity", intensity));
+    EXPECT_FALSE(sg::ApplyAnimationPointer(scene, "/extensions/EXT_lights_image_based/lights/2/intensity", intensity));
 
-    EXPECT_TRUE(sg::ApplyAnimationPointer(
-        scene, "/extensions/EXT_lights_image_based/lights/1/intensity", intensity));
+    EXPECT_TRUE(sg::ApplyAnimationPointer(scene, "/extensions/EXT_lights_image_based/lights/1/intensity", intensity));
 
     EXPECT_EQ(scene.GetAssetData().imageBasedLight, 0);
 
     EXPECT_EQ(scene.GetAssetData().imageBasedLights[0].specularMipFaces[5][0], Vec4(1, 2, 3, 4));
 }
 
-TEST(SceneAnimationPointer,
-     ImageBasedLightRotationUsesShortestQuaternionInterpolationAndAtomicValidation)
+TEST(SceneAnimationPointer, ImageBasedLightRotationUsesShortestQuaternionInterpolationAndAtomicValidation)
 {
     sg::Scene scene;
 
@@ -474,17 +463,17 @@ TEST(SceneAnimationPointer,
 
     rotation.components = 4;
 
-    rotation.times = {0, 1};
+    rotation.times      = {0, 1};
 
-    rotation.values = {0, 0, 0, 1, 0, 0, 0, -1};
+    rotation.values     = {0, 0, 0, 1, 0, 0, 0, -1};
 
     sg::AnimationSampler intensity;
 
     intensity.components = 1;
 
-    intensity.times = {0, 1};
+    intensity.times      = {0, 1};
 
-    intensity.values = {2, 6};
+    intensity.values     = {2, 6};
 
     sg::AnimationAsset animation;
 
@@ -494,7 +483,7 @@ TEST(SceneAnimationPointer,
 
     sg::AnimationChannel rotationChannel;
 
-    rotationChannel.path = sg::AnimationPath::Pointer;
+    rotationChannel.path    = sg::AnimationPath::Pointer;
 
     rotationChannel.pointer = "/extensions/EXT_lights_image_based/lights/0/rotation";
 
@@ -504,7 +493,7 @@ TEST(SceneAnimationPointer,
 
     intensityChannel.sampler = 1;
 
-    intensityChannel.path = sg::AnimationPath::Pointer;
+    intensityChannel.path    = sg::AnimationPath::Pointer;
 
     intensityChannel.pointer = "/extensions/EXT_lights_image_based/lights/0/intensity";
 
@@ -518,7 +507,7 @@ TEST(SceneAnimationPointer,
 
     EXPECT_EQ(glm::mat4_cast(scene.GetAssetData().imageBasedLights[0].rotation), Mat4(1));
 
-    const Quat previous = scene.GetAssetData().imageBasedLights[0].rotation;
+    const Quat previous                                   = scene.GetAssetData().imageBasedLights[0].rotation;
 
     scene.GetAssetData().animations[0].samplers[1].values = {-2, -6};
 

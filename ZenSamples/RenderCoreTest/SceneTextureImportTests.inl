@@ -6,20 +6,19 @@ TEST_F(RenderCoreTest, AuthoredSceneMipChainsUploadEveryLevelWithoutBlitting)
     {
         UniquePtr<sg::Texture> texture = MakeUnique<sg::Texture>("authored_mips");
 
-        texture->width = 8;
+        texture->width                 = 8;
 
-        texture->height = 4;
+        texture->height                = 4;
 
-        texture->format = index == 0 ? asset::Format::R8G8B8A8_SRGB : asset::Format::R8G8B8A8_UNORM;
+        texture->format                = index == 0 ? asset::Format::R8G8B8A8_SRGB : asset::Format::R8G8B8A8_UNORM;
 
         for (uint32_t level = 0; level < 4; ++level)
         {
-            const uint32_t width = std::max(1u, texture->width >> level);
+            const uint32_t width  = std::max(1u, texture->width >> level);
 
             const uint32_t height = std::max(1u, texture->height >> level);
 
-            texture->mipBytes.emplace_back(width * height * 4,
-                                           static_cast<uint8_t>(index * 64 + level + 1));
+            texture->mipBytes.emplace_back(width * height * 4, static_cast<uint8_t>(index * 64 + level + 1));
         }
 
         texture->bytesData.assign(texture->mipBytes[0].begin(), texture->mipBytes[0].end());
@@ -72,9 +71,9 @@ TEST_F(RenderCoreTest, AuthoredSceneMipChainsUploadEveryLevelWithoutBlitting)
         {
             const RHIBufferTextureCopyRegion& region = copies[index * 4 + level];
 
-            const uint32_t width = std::max(1u, 8u >> level);
+            const uint32_t width                     = std::max(1u, 8u >> level);
 
-            const uint32_t height = std::max(1u, 4u >> level);
+            const uint32_t height                    = std::max(1u, 4u >> level);
 
             EXPECT_EQ(region.textureSubresources.mipmap, level);
 
@@ -105,21 +104,18 @@ TEST_F(RenderCoreTest, AuthoredSceneMipChainsUploadEveryLevelWithoutBlitting)
 TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGeneratesBRDFLut)
 {
     for (const std::array<const char*, 3>& shader :
-         {std::array<const char*, 3>{"SkyboxRenderSP", "SceneRenderer/deferred.vert.spv",
-                                     "Environment/skybox.frag.spv"},
-          {"EnvMapBRDFLutGenSP", "Environment/genbrdflut.vert.spv",
-           "Environment/genbrdflut.frag.spv"}})
+         {std::array<const char*, 3>{"SkyboxRenderSP", "SceneRenderer/deferred.vert.spv", "Environment/skybox.frag.spv"},
+          {"EnvMapBRDFLutGenSP", "Environment/genbrdflut.vert.spv", "Environment/genbrdflut.frag.spv"}})
     {
         RHIShaderCreateInfo info{};
 
-        info.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex,
-                                 RHIShaderStageFlagBits::eFragment);
+        info.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
 
-        info.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)] = shader[1];
+        info.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = shader[1];
 
         info.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = shader[2];
 
-        reflectedShaderInfos[shader[0]] = info;
+        reflectedShaderInfos[shader[0]]                             = info;
 
         CreateTestShaderProgram(device, shader[0]);
     }
@@ -136,19 +132,19 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
 
     depth.width = depth.height = 8;
 
-    depth.depth = 1;
+    depth.depth                = 1;
 
-    viewport.depth = device->CreateTextureDepthStencilRT(depth, {}, "authored_environment_depth");
+    viewport.depth             = device->CreateTextureDepthStencilRT(depth, {}, "authored_environment_depth");
 
     sg::Scene source;
 
     sg::ImageBasedLightAsset light;
 
-    light.size = 4;
+    light.size                      = 4;
 
-    light.mipLevels = 3;
+    light.mipLevels                 = 3;
 
-    light.irradianceCoefficients = HeapVector<Vec3>(9, Vec3(0));
+    light.irradianceCoefficients    = HeapVector<Vec3>(9, Vec3(0));
 
     light.irradianceCoefficients[0] = Vec3(2.0f);
 
@@ -158,8 +154,7 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
 
         for (uint32_t face = 0; face < 6; ++face)
         {
-            light.specularMipFaces.emplace_back(size * size,
-                                                Vec4(level * 6 + face + 1, 0.25f, 0.5f, 1.0f));
+            light.specularMipFaces.emplace_back(size * size, Vec4(level * 6 + face + 1, 0.25f, 0.5f, 1.0f));
         }
     }
 
@@ -209,7 +204,7 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
 
     EXPECT_EQ(rhi->textureCreations - beforeLoad, 3u);
 
-    const uint64_t specularId = environment.pPrefiltered->GetStableId();
+    const uint64_t specularId   = environment.pPrefiltered->GetStableId();
 
     const uint64_t irradianceId = environment.pIrradiance->GetStableId();
 
@@ -248,9 +243,7 @@ TEST_F(RenderCoreEnvironmentTest, AuthoredEnvironmentKeepsRoughnessMipsAndOnlyGe
             {
                 Vec4 value;
 
-                std::memcpy(&value,
-                            payload->bytes.data() + region.bufferOffset + pixel * sizeof(Vec4),
-                            sizeof(value));
+                std::memcpy(&value, payload->bytes.data() + region.bufferOffset + pixel * sizeof(Vec4), sizeof(value));
 
                 EXPECT_EQ(value, Vec4(level * 6 + face + 1, 0.25f, 0.5f, 1.0f));
             }

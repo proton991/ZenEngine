@@ -14,16 +14,16 @@ struct RHIGPUMemoryStats
         uint64_t sizeBytes{0};
         uint64_t usageBytes{0};
         uint64_t budgetBytes{0};
-        bool deviceLocal{false};
+        bool     deviceLocal{false};
     };
 
-    bool available{false};
-    uint64_t committedBytes{0};
-    uint64_t peakCommittedBytes{0};
-    uint64_t deviceLocalBytes{0};
-    uint64_t peakDeviceLocalBytes{0};
-    bool budgetAvailable{false};
-    uint32_t heapCount{0};
+    bool                 available{false};
+    uint64_t             committedBytes{0};
+    uint64_t             peakCommittedBytes{0};
+    uint64_t             deviceLocalBytes{0};
+    uint64_t             peakDeviceLocalBytes{0};
+    bool                 budgetAvailable{false};
+    uint32_t             heapCount{0};
     std::array<Heap, 16> heaps{};
 
     bool IsUnderPressure() const
@@ -34,8 +34,8 @@ struct RHIGPUMemoryStats
         {
             const Heap& heap = heaps[i];
 
-            pressure |= heap.deviceLocal && heap.budgetBytes != 0 &&
-                heap.usageBytes >= heap.budgetBytes - heap.budgetBytes / 10;
+            pressure |=
+                heap.deviceLocal && heap.budgetBytes != 0 && heap.usageBytes >= heap.budgetBytes - heap.budgetBytes / 10;
         }
 
         return pressure;

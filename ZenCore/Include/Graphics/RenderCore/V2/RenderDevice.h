@@ -57,12 +57,12 @@ template <RHICommandContextType Context> struct CommandListPoolPolicy
 
 struct RenderFrame
 {
-    HeapVector<RHIBuffer*> buffersPendingFree;
-    HeapVector<RHITexture*> texturesPendingFree;
+    HeapVector<RHIBuffer*>   buffersPendingFree;
+    HeapVector<RHITexture*>  texturesPendingFree;
     HeapVector<RHIPipeline*> pipelinesPendingFree;
     HeapVector<RHIResource*> resourcesPendingRelease;
-    ResourceRetirement retirement;
-    RHISubmissionTicket submission;
+    ResourceRetirement       retirement;
+    RHISubmissionTicket      submission;
 };
 
 struct RenderDeviceFeatures
@@ -74,11 +74,10 @@ struct RenderDeviceFeatures
 class RenderDevice
 {
 public:
-    explicit RenderDevice(
-        RHIAPIType APIType,
-        uint32_t numFrames,
-        RHIExecutionMode executionMode    = RenderConfig::GetInstance().rhiExecutionMode,
-        AsyncComputeMode asyncComputeMode = RenderConfig::GetInstance().asyncComputeMode);
+    explicit RenderDevice(RHIAPIType       APIType,
+                          uint32_t         numFrames,
+                          RHIExecutionMode executionMode    = RenderConfig::GetInstance().rhiExecutionMode,
+                          AsyncComputeMode asyncComputeMode = RenderConfig::GetInstance().asyncComputeMode);
 
     void Init(RHIViewport* pMainViewport);
 
@@ -120,29 +119,33 @@ public:
     // Drain scene users and make the fixed texture/sampler heap slots reusable.
     bool PrepareForSceneReplacement();
 
-    RDGAsyncComputeEligibility ResolveAsyncComputeEligibility(const RenderGraph& graph,
-                                                              const RDGPassNode& node) const;
+    RDGAsyncComputeEligibility ResolveAsyncComputeEligibility(const RenderGraph& graph, const RDGPassNode& node) const;
 
     bool ExecuteRenderGraph(RenderGraph& rdg);
 
     // The caller owns the initial resource reference; no persistent device owner.
     RHIBuffer* CreateBuffer(const RHIBufferCreateInfo& info);
+
     RHITexture* CreateTexture(const RHITextureCreateInfo& info);
+
     RHICompletionSet GetSubmittedSerials() const;
+
     // Published completion only; collection and frame boundaries request progress polling.
     RHICompletionSet GetCachedCompletedSerials() const;
+
     ResourceRetirement CaptureResourceRetirement();
+
     bool IsResourceRetired(const ResourceRetirement& requirement) const;
 
     // Copy declarations precede graph compilation/device binding. Use the active
     // RenderDevice's RHI facade for capability validation at declaration time.
     static RHIQueueCopyCapabilities GetQueueCopyCapabilities(RHICommandContextType queue);
+
     static RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format);
 
     bool AreSubmissionsBlocked() const
     {
-        return m_submissionBlocked ||
-            (m_pRHIExecutor != nullptr && m_pRHIExecutor->AreSubmissionsBlocked());
+        return m_submissionBlocked || (m_pRHIExecutor != nullptr && m_pRHIExecutor->AreSubmissionsBlocked());
     }
 
     void InvalidateRDGPassCompilerForResize();
@@ -162,39 +165,27 @@ public:
 
     void DestroyRenderingLayout(RHIRenderingLayout* pLayout);
 
-    RHITexture* CreateTextureColorRT(const TextureFormat& texFormat,
-                                     TextureUsageHint usageHint,
-                                     NameID texName);
+    RHITexture* CreateTextureColorRT(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
-    RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat,
-                                            TextureUsageHint usageHint,
-                                            NameID texName);
+    RHITexture* CreateTextureDepthStencilRT(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
-    RHITexture* CreateTextureStorage(const TextureFormat& texFormat,
-                                     TextureUsageHint usageHint,
-                                     NameID texName);
+    RHITexture* CreateTextureStorage(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
-    RHITexture* CreateTextureSampled(const TextureFormat& texFormat,
-                                     TextureUsageHint usageHint,
-                                     NameID texName);
+    RHITexture* CreateTextureSampled(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
-    RHITexture* CreateTextureDummy(const TextureFormat& texFormat,
-                                   TextureUsageHint usageHint,
-                                   NameID texName);
+    RHITexture* CreateTextureDummy(const TextureFormat& texFormat, TextureUsageHint usageHint, NameID texName);
 
-    RHITextureView* CreateTextureView(RHITexture* pTexture,
-                                      const TextureViewFormat& viewFormat,
-                                      NameID texViewName);
+    RHITextureView* CreateTextureView(RHITexture* pTexture, const TextureViewFormat& viewFormat, NameID texViewName);
 
     // RHITexture* GetTextureRDFromHandle(const RHITexture* handle);
 
     void DestroyTexture(RHITexture* pTexture);
 
     // Copies the payload into the engine staging queue; graph execution submits it.
-    void UpdateTexture(RHITexture* texture,
+    void UpdateTexture(RHITexture*                            texture,
                        VectorView<RHIBufferTextureCopyRegion> regions,
-                       uint32_t dataSize,
-                       const uint8_t* data);
+                       uint32_t                               dataSize,
+                       const uint8_t*                         data);
 
     // RHITexture* CreateTexture(const TextureInfo& textureInfo);
     //
@@ -215,21 +206,16 @@ public:
 
     RHIBuffer* CreateIndirectBuffer(uint32_t dataSize, const uint8_t* pData, NameID bufferName);
 
-    void UpdateBuffer(RHIBuffer* pBufferHandle,
-                      uint32_t dataSize,
-                      const uint8_t* pData,
-                      uint32_t offset = 0);
+    void UpdateBuffer(RHIBuffer* pBufferHandle, uint32_t dataSize, const uint8_t* pData, uint32_t offset = 0);
 
     void DestroyBuffer(RHIBuffer* pBufferHandle);
 
-    bool ResolveStagingFlushAction(StagingFlushAction action,
-                                   StagingBufferManager* manager = nullptr);
+    bool ResolveStagingFlushAction(StagingFlushAction action, StagingBufferManager* manager = nullptr);
 
-    RHIPipeline* GetOrCreateGfxPipeline(
-        const RHIGfxPipelineStates& PSO,
-        RHIShader* pShader,
-        const RHIRenderingLayout* pRenderingLayout,
-        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants);
+    RHIPipeline* GetOrCreateGfxPipeline(const RHIGfxPipelineStates&                            PSO,
+                                        RHIShader*                                             pShader,
+                                        const RHIRenderingLayout*                              pRenderingLayout,
+                                        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* pShader);
 
@@ -256,10 +242,7 @@ public:
     // Nonblocking retirement sweep, also usable when no new frame is being started.
     void CollectCompletedResources();
 
-    RHIViewport* CreateViewport(void* pWindow,
-                                uint32_t width,
-                                uint32_t height,
-                                bool enableVSync = true);
+    RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync = true);
 
     void ResizeViewport(RHIViewport* pViewport, uint32_t width, uint32_t height);
 
@@ -327,11 +310,11 @@ private:
     {
         RHISubmissionTicket ticket;
         // Selected from GRenderFrameState at dispatch; this frame storage never moves.
-        RenderFrame* frame{nullptr};
-        RHIViewport* viewport{nullptr};
+        RenderFrame*                      frame{nullptr};
+        RHIViewport*                      viewport{nullptr};
         HeapVector<RDGDeferredExtraction> extractions;
-        NameID graphName;
-        uint32_t computePassCount{0};
+        NameID                            graphName;
+        uint32_t                          computePassCount{0};
     };
 
     // Executes the frame RDG here, with native submission deferred to the RHI thread.
@@ -339,40 +322,39 @@ private:
 
     // Without a pending frame, a viewport is presented synchronously and pPresented, when
     // supplied, receives the outcome.
-    RHISubmissionResult SubmitRecordedGraph(RenderGraph& graph,
+    RHISubmissionResult SubmitRecordedGraph(RenderGraph&    graph,
                                             RHICommandList& commands,
-                                            RHIViewport* viewport,
-                                            PendingFrame* pending,
-                                            bool* pPresented);
+                                            RHIViewport*    viewport,
+                                            PendingFrame*   pending,
+                                            bool*           pPresented);
+
     bool ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
-                               RHIViewport* viewport = nullptr,
-                               PendingFrame* pending = nullptr);
-    RHISubmissionResult SubmitRecordedGroups(RenderGraph& graph,
-                                             const RDGSchedule& schedule,
-                                             RenderSubmissionUpdate& update,
+                               RHIViewport*                viewport = nullptr,
+                               PendingFrame* pending                = nullptr);
+
+    RHISubmissionResult SubmitRecordedGroups(RenderGraph&                graph,
+                                             const RDGSchedule&          schedule,
+                                             RenderSubmissionUpdate&     update,
                                              VectorView<RHICommandList*> lists,
-                                             RHIViewport* viewport,
-                                             PendingFrame* pending,
-                                             bool* pPresented);
+                                             RHIViewport*                viewport,
+                                             PendingFrame*               pending,
+                                             bool*                       pPresented);
 
-    bool PrepareGraphSubmission(const RenderGraph& graph,
-                                RHICommandList& commands,
-                                RenderSubmissionUpdate& update);
+    bool PrepareGraphSubmission(const RenderGraph& graph, RHICommandList& commands, RenderSubmissionUpdate& update);
 
-    bool PrepareScheduledSubmissionHistory(const RenderGraph& graph,
-                                           const RDGSchedule& schedule,
+    bool PrepareScheduledSubmissionHistory(const RenderGraph&      graph,
+                                           const RDGSchedule&      schedule,
                                            RenderSubmissionUpdate& update,
-                                           bool serializeReads = false);
+                                           bool                    serializeReads = false);
 
-    void LogTransferSubmission(const RenderGraph& graph,
-                               RHICommandContextType queue,
-                               uint64_t serial);
-    void LogAsyncComputeSubmission(NameID graphName,
-                                   uint32_t computePassCount,
-                                   const RHIBatchResult& result);
+    void LogTransferSubmission(const RenderGraph& graph, RHICommandContextType queue, uint64_t serial);
+
+    void LogAsyncComputeSubmission(NameID graphName, uint32_t computePassCount, const RHIBatchResult& result);
 
     void CompleteFrame(PendingFrame& pending, const RHIBatchResult& result);
+
     void CollectDestroyedResourceHistory();
+
     void ProcessDeferredViewportResize();
 
     uint32_t GetCurrentFrameSlot() const
@@ -385,6 +367,7 @@ private:
     void EndFrame();
 
     void AcquireScheduledCmdLists(const RDGSchedule& schedule, HeapVector<RHICommandList*>& lists);
+
     void ReleaseScheduledCmdLists(VectorView<RHICommandList*> lists);
 
     void ProcessPendingFreeResources(RenderFrameSlot frameSlot, bool ignoreCompletionGate = false);
@@ -393,17 +376,11 @@ private:
 
     bool IsViewportResource(const RHIResource* resource) const;
 
-    RHIBuffer* CreateInitializedBuffer(const RHIBufferCreateInfo& info,
-                                       uint32_t dataSize,
-                                       const uint8_t* data,
-                                       bool padData);
+    RHIBuffer* CreateInitializedBuffer(const RHIBufferCreateInfo& info, uint32_t dataSize, const uint8_t* data, bool padData);
 
     bool InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data);
 
-    bool UpdateBufferInternal(RHIBuffer* pBufferHandle,
-                              uint32_t offset,
-                              uint32_t dataSize,
-                              const uint8_t* pData);
+    bool UpdateBufferInternal(RHIBuffer* pBufferHandle, uint32_t offset, uint32_t dataSize, const uint8_t* pData);
 
     // void UpdateTextureOneTime(RHITexture* pTextureHandle,
     //                           const Vec3i& textureSize,
@@ -421,7 +398,7 @@ private:
     struct PipelineKey
     {
         SmallVector<uint32_t, 64 + 20 * MAX_NUM_COLOR_ATTACHMENTS> words;
-        size_t hash{0};
+        size_t                                                     hash{0};
 
         void AddWord(uint32_t value);
 
@@ -433,8 +410,7 @@ private:
 
         bool operator==(const PipelineKey& other) const
         {
-            return words.size() == other.words.size() &&
-                std::equal(words.begin(), words.end(), other.words.begin());
+            return words.size() == other.words.size() && std::equal(words.begin(), words.end(), other.words.begin());
         }
     };
     struct PipelineKeyHasher
@@ -459,23 +435,21 @@ private:
 
     void RecordPipelineFailure(const PipelineKey& key);
 
-    static PipelineKey MakePipelineKey(
-        RHIShader* shader,
-        const RHIGfxPipelineStates* states                               = nullptr,
-        const RHIRenderingLayout* layout                                 = nullptr,
-        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {});
+    static PipelineKey MakePipelineKey(RHIShader*                  shader,
+                                       const RHIGfxPipelineStates* states                               = nullptr,
+                                       const RHIRenderingLayout* layout                                 = nullptr,
+                                       const HashMap<uint32_t, RHIShaderSpecializationValue>& constants = {});
 
     friend struct PipelineCacheTestAccess;
     friend struct RDGSubmissionTestAccess;
     friend struct RDGExecutionPlanTestAccess;
 
     // The compiler uses its own executor's timing option, including standalone executors.
-    RHIPipeline* GetOrCreateGfxPipeline(
-        const RHIGfxPipelineStates& states,
-        RHIShader* shader,
-        const RHIRenderingLayout* layout,
-        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants,
-        bool timed);
+    RHIPipeline* GetOrCreateGfxPipeline(const RHIGfxPipelineStates&                            states,
+                                        RHIShader*                                             shader,
+                                        const RHIRenderingLayout*                              layout,
+                                        const HashMap<uint32_t, RHIShaderSpecializationValue>& constants,
+                                        bool                                                   timed);
 
     RHIPipeline* GetOrCreateComputePipeline(RHIShader* shader, bool timed);
 
@@ -485,41 +459,38 @@ private:
 
     size_t PadStorageBufferSize(size_t originalSize);
 
-    const RHIAPIType m_APIType;
-    const uint32_t m_numFrames;
-    const RHIExecutionMode m_executionMode;
-    AsyncComputeMode m_asyncComputeMode;
-    RHIQueueCapabilities m_queueCapabilities;
-    AsyncComputeStatus m_asyncComputeStatus{AsyncComputeStatus::eDisabled};
-    RHICommandListExecutor* m_pRHIExecutor{nullptr};
+    const RHIAPIType         m_APIType;
+    const uint32_t           m_numFrames;
+    const RHIExecutionMode   m_executionMode;
+    AsyncComputeMode         m_asyncComputeMode;
+    RHIQueueCapabilities     m_queueCapabilities;
+    AsyncComputeStatus       m_asyncComputeStatus{AsyncComputeStatus::eDisabled};
+    RHICommandListExecutor*  m_pRHIExecutor{nullptr};
     HeapVector<PendingFrame> m_pendingFrames;
     // Render-thread submission history; the graph never queries backend queue progress.
     RenderSubmissionHistory m_submissionHistory;
-    HeapVector<uint64_t> m_destroyedResourceIds;
-    RHIViewport* m_pRecreateViewport{nullptr};
+    HeapVector<uint64_t>    m_destroyedResourceIds;
+    RHIViewport*            m_pRecreateViewport{nullptr};
 
     HeapVector<RenderFrame> m_frames;
 
     // DynamicRHI* GDynamicRHI{nullptr};
     RHIDebug* m_pRHIDebug{nullptr};
 
-    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eGraphics>>
-        m_graphicsCmdListPool;
-    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eAsyncCompute>>
-        m_computeCmdListPool;
-    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eTransfer>>
-        m_transferCmdListPool;
+    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eGraphics>>     m_graphicsCmdListPool;
+    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eAsyncCompute>> m_computeCmdListPool;
+    ObjectPool<RHICommandList, CommandListPoolPolicy<RHICommandContextType::eTransfer>>     m_transferCmdListPool;
     RHICommandList* m_pImmediateTransferCmdList{nullptr};
-    bool m_loggedTransferSubmission{false};
-    bool m_loggedGraphicsTransferSubmission{false};
-    bool m_loggedAsyncComputeSubmission{false};
+    bool            m_loggedTransferSubmission{false};
+    bool            m_loggedGraphicsTransferSubmission{false};
+    bool            m_loggedAsyncComputeSubmission{false};
 
     StagingBufferManager m_stagingBufferManager;
 
     StagingUploadQueue* m_pUploadQueue{nullptr};
 
-    RDGExecutor m_rdgExecutor;
-    RDGPassCompiler m_rdgPassCompiler;
+    RDGExecutor            m_rdgExecutor;
+    RDGPassCompiler        m_rdgPassCompiler;
     UniquePtr<RenderGraph> m_frameRDG;
 
     RendererServer* m_pRendererServer{nullptr};
@@ -528,12 +499,12 @@ private:
     DeletionQueue m_deletionQueue;
 
     static constexpr size_t kPipelineCacheCapacity = 256;
-    PipelineCache m_pipelineCache;
-    PipelineCacheMetrics m_pipelineMetrics;
+    PipelineCache           m_pipelineCache;
+    PipelineCacheMetrics    m_pipelineMetrics;
 
-    static constexpr size_t kFailedPipelineCapacity  = 64;
-    static constexpr uint32_t kMaxPipelineRetryShift = 8;
-    PipelineFailureCache m_failedPipelines{kFailedPipelineCapacity};
+    static constexpr size_t   kFailedPipelineCapacity = 64;
+    static constexpr uint32_t kMaxPipelineRetryShift  = 8;
+    PipelineFailureCache      m_failedPipelines{kFailedPipelineCapacity};
 
     HashMap<size_t, RHISampler*> m_samplerCache;
 
@@ -541,10 +512,10 @@ private:
     HeapVector<RHIBuffer*> m_buffers;
 
     HeapVector<RHIViewport*> m_viewports;
-    RHIViewport* m_pMainViewport{nullptr};
+    RHIViewport*             m_pMainViewport{nullptr};
 
     HeapVector<RHIRenderingLayout*> m_renderingLayoutPool;
-    HeapVector<GraphicsPass*> m_gfxPassPool;
+    HeapVector<GraphicsPass*>       m_gfxPassPool;
 
     bool m_resolvingStagingFlush{false};
     bool m_frameActive{false};

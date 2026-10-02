@@ -8,6 +8,7 @@ void foo(int threadId)
 {
     LOGI("foo()! Thread ID: " + std::to_string(threadId));
 }
+
 void foo(const string& threadId)
 {
     LOGI("foo()! Thread ID: " + threadId);
@@ -17,23 +18,33 @@ void foo(const string& threadId)
 int main(int argc, char** pArgv)
 {
     std::atomic<int> value = 0;
+
     ThreadPool<void, int> threadPool;
+
     threadPool.Resize(POOL_SIZE);
+
     // enqueue and store future
     std::vector<std::future<void>> futures;
+
     for (int i = 0; i < POOL_SIZE; i++)
     {
-        auto fut = threadPool.Push([&value](int threadId) {
+        std::future<void> fut = threadPool.Push([&value](int threadId) {
             foo(threadId);
+
             value++;
         });
+
         futures.push_back(std::move(fut));
     }
-    for (auto& fut : futures)
+
+    for (std::future<void>& fut : futures)
     {
         fut.get();
     }
 
     LOGI("value is now equal to {}", value.load());
+
     LOGI("futures' size: {}", futures.size());
+
+    return 0;
 }

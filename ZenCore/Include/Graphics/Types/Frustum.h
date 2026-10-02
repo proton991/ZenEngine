@@ -22,8 +22,7 @@ public:
     {
         // extract frustum planes from the modelView matrix
         // planes are in format: normal(xyz), offset(w)
-        const glm::vec4 mRow[4]{glm::row(modelView, 0), glm::row(modelView, 1),
-                                glm::row(modelView, 2), glm::row(modelView, 3)};
+        const glm::vec4 mRow[4]{glm::row(modelView, 0), glm::row(modelView, 1), glm::row(modelView, 2), glm::row(modelView, 3)};
         m_planes[Left]   = mRow[3] + mRow[0];
         m_planes[Right]  = mRow[3] - mRow[0];
         m_planes[Bottom] = mRow[3] + mRow[1];
@@ -31,15 +30,13 @@ public:
         m_planes[Near]   = mRow[3] + mRow[2];
         m_planes[Far]    = mRow[3] - mRow[2];
 
-        if (!normalize)
+        if (normalize)
         {
-            return;
-        }
-
-        // normalize them
-        for (auto& p : m_planes)
-        {
-            p = glm::normalize(p);
+            // normalize them
+            for (Vec4& p : m_planes)
+            {
+                p = glm::normalize(p);
+            }
         }
     }
 

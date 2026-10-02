@@ -23,8 +23,7 @@ uint32_t GetResourceStride(RHIShaderResourceType type)
 {
     uint32_t stride = 1;
 
-    if (type == RHIShaderResourceType::eSamplerWithTexture ||
-        type == RHIShaderResourceType::eSamplerWithTextureBuffer)
+    if (type == RHIShaderResourceType::eSamplerWithTexture || type == RHIShaderResourceType::eSamplerWithTextureBuffer)
     {
         stride = 2;
     }
@@ -42,10 +41,9 @@ VkImageView GetImageView(RHIResource* pResource)
     }
     else if (pResource != nullptr && pResource->GetResourceType() == RHIResourceType::eTexture)
     {
-        const VulkanTextureView* pDefaultView =
-            TO_VK_TEXTURE_VIEW(TO_VK_TEXTURE(pResource)->GetDefaultView());
+        const VulkanTextureView* pDefaultView = TO_VK_TEXTURE_VIEW(TO_VK_TEXTURE(pResource)->GetDefaultView());
 
-        imageView = pDefaultView != nullptr ? pDefaultView->GetVkImageView() : VK_NULL_HANDLE;
+        imageView                             = pDefaultView != nullptr ? pDefaultView->GetVkImageView() : VK_NULL_HANDLE;
     }
 
     return imageView;
@@ -60,48 +58,58 @@ struct DescriptorWriteBatch
         bufferViews(maxDescriptorCount)
     {}
 
-    HeapVector<VkWriteDescriptorSet> writes;
-    HeapVector<VkDescriptorImageInfo> imageInfos;
+    HeapVector<VkWriteDescriptorSet>   writes;
+    HeapVector<VkDescriptorImageInfo>  imageInfos;
     HeapVector<VkDescriptorBufferInfo> bufferInfos;
-    HeapVector<VkBufferView> bufferViews;
-    uint32_t numWrites{0};
-    uint32_t numImageInfos{0};
-    uint32_t numBufferInfos{0};
-    uint32_t numBufferViews{0};
+    HeapVector<VkBufferView>           bufferViews;
+    uint32_t                           numWrites{0};
+    uint32_t                           numImageInfos{0};
+    uint32_t                           numBufferInfos{0};
+    uint32_t                           numBufferViews{0};
 };
 
-bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
+bool AppendDescriptorBindingWrites(VkDescriptorSet                 descriptorSet,
                                    const RHIShaderResourceBinding& binding,
-                                   uint32_t valueRange,
-                                   DescriptorWriteBatch& batch)
+                                   uint32_t                        valueRange,
+                                   DescriptorWriteBatch&           batch)
 {
     bool valid = descriptorSet != VK_NULL_HANDLE && !binding.resources.empty();
 
     if (valid)
     {
-        const uint32_t resourceStride = GetResourceStride(binding.type);
-        const uint32_t descriptorCount =
-            static_cast<uint32_t>(binding.resources.size()) / resourceStride;
-        valid = descriptorCount > 0 && binding.resources.size() % resourceStride == 0;
+        const uint32_t resourceStride  = GetResourceStride(binding.type);
+
+        const uint32_t descriptorCount = static_cast<uint32_t>(binding.resources.size()) / resourceStride;
+
+        valid                          = descriptorCount > 0 && binding.resources.size() % resourceStride == 0;
 
         for (uint32_t descriptorIdx = 0; descriptorIdx < descriptorCount; ++descriptorIdx)
         {
-            const uint32_t resourceIdx = descriptorIdx * resourceStride;
-            RHIResource* pResource     = binding.resources[resourceIdx];
-            RHIResource* pAuxResource =
-                resourceStride == 2 ? binding.resources[resourceIdx + 1] : nullptr;
+            const uint32_t resourceIdx       = descriptorIdx * resourceStride;
+
+            RHIResource* pResource           = binding.resources[resourceIdx];
+
+            RHIResource* pAuxResource        = resourceStride == 2 ? binding.resources[resourceIdx + 1] : nullptr;
+
             const bool descriptorIsPopulated = pResource != nullptr || pAuxResource != nullptr;
 
             if (descriptorIsPopulated)
             {
                 VERIFY_EXPR(batch.numWrites < batch.writes.size());
+
                 VkWriteDescriptorSet& write = batch.writes[batch.numWrites];
+
                 write                       = {};
+
                 InitVkStruct(write, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
-                write.dstSet          = descriptorSet;
-                write.dstBinding      = binding.binding;
-                write.dstArrayElement = descriptorIdx;
-                write.descriptorCount = 1;
+
+                write.dstSet           = descriptorSet;
+
+                write.dstBinding       = binding.binding;
+
+                write.dstArrayElement  = descriptorIdx;
+
+                write.descriptorCount  = 1;
 
                 bool descriptorIsValid = true;
 
@@ -110,13 +118,18 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                     case RHIShaderResourceType::eSampler:
                     {
                         VulkanSampler* pSampler          = TryVulkanSampler(pResource);
+
                         VkDescriptorImageInfo& imageInfo = batch.imageInfos[batch.numImageInfos++];
+
                         imageInfo                        = {};
-                        imageInfo.sampler =
-                            pSampler != nullptr ? pSampler->GetVkSampler() : VK_NULL_HANDLE;
-                        descriptorIsValid    = imageInfo.sampler != VK_NULL_HANDLE;
-                        write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                        write.pImageInfo     = &imageInfo;
+
+                        imageInfo.sampler                = pSampler != nullptr ? pSampler->GetVkSampler() : VK_NULL_HANDLE;
+
+                        descriptorIsValid                = imageInfo.sampler != VK_NULL_HANDLE;
+
+                        write.descriptorType             = VK_DESCRIPTOR_TYPE_SAMPLER;
+
+                        write.pImageInfo                 = &imageInfo;
                     }
                     break;
 
@@ -125,33 +138,44 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                     case RHIShaderResourceType::eInputAttachment:
                     {
                         VkDescriptorImageInfo& imageInfo = batch.imageInfos[batch.numImageInfos++];
+
                         imageInfo                        = {};
+
                         imageInfo.imageView              = GetImageView(pResource);
-                        imageInfo.imageLayout = binding.type == RHIShaderResourceType::eImage ?
-                            VK_IMAGE_LAYOUT_GENERAL :
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        descriptorIsValid     = imageInfo.imageView != VK_NULL_HANDLE;
-                        write.descriptorType  = binding.type == RHIShaderResourceType::eImage ?
-                             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE :
-                             binding.type == RHIShaderResourceType::eInputAttachment ?
-                             VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT :
-                             VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                        write.pImageInfo      = &imageInfo;
+
+                        imageInfo.imageLayout            = binding.type == RHIShaderResourceType::eImage
+                                                             ? VK_IMAGE_LAYOUT_GENERAL
+                                                             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                        descriptorIsValid                = imageInfo.imageView != VK_NULL_HANDLE;
+
+                        write.descriptorType = binding.type == RHIShaderResourceType::eImage ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                             : binding.type == RHIShaderResourceType::eInputAttachment
+                                                 ? VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+                                                 : VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+
+                        write.pImageInfo     = &imageInfo;
                     }
                     break;
 
                     case RHIShaderResourceType::eSamplerWithTexture:
                     {
                         VulkanSampler* pSampler          = TryVulkanSampler(pResource);
+
                         VkDescriptorImageInfo& imageInfo = batch.imageInfos[batch.numImageInfos++];
+
                         imageInfo                        = {};
-                        imageInfo.sampler =
-                            pSampler != nullptr ? pSampler->GetVkSampler() : VK_NULL_HANDLE;
-                        imageInfo.imageView   = GetImageView(pAuxResource);
-                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                        descriptorIsValid     = imageInfo.sampler != VK_NULL_HANDLE &&
-                            imageInfo.imageView != VK_NULL_HANDLE;
+
+                        imageInfo.sampler                = pSampler != nullptr ? pSampler->GetVkSampler() : VK_NULL_HANDLE;
+
+                        imageInfo.imageView              = GetImageView(pAuxResource);
+
+                        imageInfo.imageLayout            = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                        descriptorIsValid    = imageInfo.sampler != VK_NULL_HANDLE && imageInfo.imageView != VK_NULL_HANDLE;
+
                         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+
                         write.pImageInfo     = &imageInfo;
                     }
                     break;
@@ -165,43 +189,49 @@ bool AppendDescriptorBindingWrites(VkDescriptorSet descriptorSet,
                         if (binding.type == RHIShaderResourceType::eSamplerWithTextureBuffer)
                         {
                             descriptorIsValid = TryVulkanSampler(pResource) != nullptr;
+
                             pBufferResource   = pAuxResource;
                         }
 
                         VulkanBuffer* pBuffer    = TryVulkanBuffer(pBufferResource);
+
                         VkBufferView& bufferView = batch.bufferViews[batch.numBufferViews++];
-                        bufferView =
-                            pBuffer != nullptr ? pBuffer->GetVkBufferView() : VK_NULL_HANDLE;
-                        descriptorIsValid    = descriptorIsValid && bufferView != VK_NULL_HANDLE;
-                        write.descriptorType = binding.type == RHIShaderResourceType::eImageBuffer ?
-                            VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER :
-                            VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-                        write.pTexelBufferView = &bufferView;
+
+                        bufferView               = pBuffer != nullptr ? pBuffer->GetVkBufferView() : VK_NULL_HANDLE;
+
+                        descriptorIsValid        = descriptorIsValid && bufferView != VK_NULL_HANDLE;
+
+                        write.descriptorType     = binding.type == RHIShaderResourceType::eImageBuffer
+                                                     ? VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+                                                     : VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+
+                        write.pTexelBufferView   = &bufferView;
                     }
                     break;
 
                     case RHIShaderResourceType::eUniformBuffer:
                     case RHIShaderResourceType::eStorageBuffer:
                     {
-                        VulkanBuffer* pBuffer = TryVulkanBuffer(pResource);
-                        VkDescriptorBufferInfo& bufferInfo =
-                            batch.bufferInfos[batch.numBufferInfos++];
-                        bufferInfo = {};
+                        VulkanBuffer* pBuffer              = TryVulkanBuffer(pResource);
+
+                        VkDescriptorBufferInfo& bufferInfo = batch.bufferInfos[batch.numBufferInfos++];
+
+                        bufferInfo                         = {};
 
                         if (pBuffer != nullptr)
                         {
                             bufferInfo.buffer = pBuffer->GetVkBuffer();
-                            bufferInfo.range =
-                                valueRange > 0 ? valueRange : pBuffer->GetRequiredSize();
+
+                            bufferInfo.range  = valueRange > 0 ? valueRange : pBuffer->GetRequiredSize();
                         }
 
-                        descriptorIsValid = pBuffer != nullptr &&
-                            bufferInfo.buffer != VK_NULL_HANDLE && bufferInfo.range > 0;
-                        write.descriptorType =
-                            binding.type == RHIShaderResourceType::eUniformBuffer ?
-                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC :
-                            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                        write.pBufferInfo = &bufferInfo;
+                        descriptorIsValid = pBuffer != nullptr && bufferInfo.buffer != VK_NULL_HANDLE && bufferInfo.range > 0;
+
+                        write.descriptorType = binding.type == RHIShaderResourceType::eUniformBuffer
+                                                 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                                                 : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+
+                        write.pBufferInfo    = &bufferInfo;
                     }
                     break;
 
@@ -227,20 +257,25 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     if (m_pPipeline != pPipeline)
     {
         ClearAllSetStates();
+
         m_packedValueBuffers.clear();
-        m_cacheRevision   = 0;
-        m_pPipeline       = pPipeline;
-        m_parametersValid = true;
+
+        m_cacheRevision          = 0;
+
+        m_pPipeline              = pPipeline;
+
+        m_parametersValid        = true;
 
         m_lastWorkloadGeneration = 0;
     }
 }
 
 bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parameters,
-                                                   uint64_t recordedEpoch,
-                                                   uint64_t transaction)
+                                                   uint64_t               recordedEpoch,
+                                                   uint64_t               transaction)
 {
     VulkanBindlessDescriptorPoolManager* manager = GVulkanRHI->GetBindlessDescriptorPoolManager();
+
     bool valid                                   = m_parametersValid && m_pPipeline != nullptr;
 
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
@@ -250,9 +285,8 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
     for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
     {
-        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS &&
-            (parameter.bufferOffset == 0 ||
-             parameter.resourceType == RHIShaderResourceType::eUniformBuffer);
+        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS
+              && (parameter.bufferOffset == 0 || parameter.resourceType == RHIShaderResourceType::eUniformBuffer);
     }
 
     const VectorView<const RHIShaderResourceParameter> bindless = parameters.GetBindlessParams();
@@ -275,8 +309,7 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
             if (!bytes.empty())
             {
-                SetPackedValueParameter(parameter.set, parameter.binding, parameter.byteSize,
-                                        bytes.data());
+                SetPackedValueParameter(parameter.set, parameter.binding, parameter.byteSize, bytes.data());
             }
         }
 
@@ -287,8 +320,8 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
 
         for (const RHIShaderResourceParameter& parameter : bindless)
         {
-            valid &= manager->RegisterBindlessResource(parameter.pResource, parameter.arrayIndex,
-                                                       nullptr, recordedEpoch, transaction);
+            valid &= manager->RegisterBindlessResource(parameter.pResource, parameter.arrayIndex, nullptr, recordedEpoch,
+                                                       transaction);
         }
     }
 
@@ -297,20 +330,15 @@ bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parame
     return m_parametersValid;
 }
 
-
-
-bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
-    FVulkanCommandListContext* pContext,
-    HeapVector<VkDescriptorSet>& outDescriptorSets,
-    uint32_t& outFirstSet,
-    HeapVector<uint32_t>& outDynamicOffsets)
+bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
+                                                            HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                                            uint32_t&                    outFirstSet,
+                                                            HeapVector<uint32_t>&        outDynamicOffsets)
 {
     bool valid = m_parametersValid && pContext != nullptr && m_pPipeline != nullptr;
 
     if (valid)
     {
-
-
         VulkanShader* shader = TO_VK_SHADER(m_pPipeline->GetShader());
 
         if (shader != nullptr && shader->HasGlobalBindlessSet())
@@ -320,12 +348,11 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
             GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
         }
 
-        const VulkanDescriptorSetCache* cache =
-            GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+        const VulkanDescriptorSetCache* cache = GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
 
-        bool reuse = m_lastContext == pContext && m_lastWorkloadGeneration != 0 &&
-            m_lastWorkloadGeneration == pContext->GetWorkloadGeneration() &&
-            m_lastCacheRevision == cache->GetRevision();
+        bool reuse                            = m_lastContext == pContext && m_lastWorkloadGeneration != 0
+                  && m_lastWorkloadGeneration == pContext->GetWorkloadGeneration()
+                  && m_lastCacheRevision == cache->GetRevision();
 
         const VulkanUniformBufferAllocator* allocator = GVulkanRHI->GetUniformBufferAllocator();
 
@@ -335,9 +362,8 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 
             for (const BindingState& binding : set.bindings)
             {
-                reuse &= binding.uniformBlockId == 0 ||
-                    allocator->GetBlockGeneration(binding.uniformBlockId) ==
-                        binding.uniformGeneration;
+                reuse &= binding.uniformBlockId == 0
+                      || allocator->GetBlockGeneration(binding.uniformBlockId) == binding.uniformGeneration;
             }
         }
 
@@ -352,7 +378,7 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 
             outDynamicOffsets = m_resolvedOffsets;
 
-            outFirstSet = m_resolvedFirstSet;
+            outFirstSet       = m_resolvedFirstSet;
         }
         else
         {
@@ -362,33 +388,35 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 
             outFirstSet = 0;
 
-            valid = FlushPackedValueBuffers();
+            valid       = FlushPackedValueBuffers();
 
             if (valid)
             {
-                valid = BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet,
-                                               outDynamicOffsets);
+                valid = BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
             }
 
-            m_resolvedSets = outDescriptorSets;
+            m_resolvedSets           = outDescriptorSets;
 
-            m_resolvedOffsets = outDynamicOffsets;
+            m_resolvedOffsets        = outDynamicOffsets;
 
-            m_resolvedFirstSet = outFirstSet;
+            m_resolvedFirstSet       = outFirstSet;
 
-            m_lastContext = pContext;
+            m_lastContext            = pContext;
 
             m_lastWorkloadGeneration = pContext->GetWorkloadGeneration();
 
-            m_lastCacheRevision = cache->GetRevision();
+            m_lastCacheRevision      = cache->GetRevision();
         }
     }
 
     if (!valid)
     {
         outDescriptorSets.clear();
+
         outDynamicOffsets.clear();
+
         outFirstSet              = 0;
+
         m_lastWorkloadGeneration = 0;
     }
 
@@ -398,11 +426,16 @@ bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
 void VulkanDescriptorSetState::Reset()
 {
     m_parametersValid = true;
+
     ClearAllSetStates();
+
     m_packedValueBuffers.clear();
+
     m_updateSrbScratch.clear();
-    m_cacheRevision = 0;
-    m_pPipeline     = nullptr;
+
+    m_cacheRevision          = 0;
+
+    m_pPipeline              = nullptr;
 
     m_lastWorkloadGeneration = 0;
 
@@ -411,31 +444,35 @@ void VulkanDescriptorSetState::Reset()
     m_resolvedOffsets.clear();
 }
 
-VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
+VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t                   setIdx,
                                                            FVulkanCommandListContext* pContext,
-                                                           bool& outNeedsWrite)
+                                                           bool&                      outNeedsWrite)
 {
     VkDescriptorSet descriptorSet  = VK_NULL_HANDLE;
+
     outNeedsWrite                  = false;
+
     m_setStates[setIdx].pContainer = nullptr;
 
     if (m_pPipeline != nullptr)
     {
         VulkanShader* pShader      = TO_VK_SHADER(m_pPipeline->GetShader());
+
         uint32_t variableCount     = pShader->GetDescriptorSetVariableCount(setIdx);
+
         const bool updateAfterBind = variableCount > 0;
 
         if (setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet())
         {
             outNeedsWrite = false;
+
             descriptorSet = GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessSet();
         }
         else
         {
             VulkanDescriptorSetCache::ContentKey contentKey{};
 
-            VulkanDescriptorSetCache* pCache =
-                GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+            VulkanDescriptorSetCache* pCache = GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
 
             if (pCache != nullptr && BuildContentKey(setIdx, contentKey))
             {
@@ -447,10 +484,9 @@ VkDescriptorSet VulkanDescriptorSetState::AcquireSetHandle(uint32_t setIdx,
                 }
                 else
                 {
-                    descriptorSet = pCache->Insert(
-                        contentKey, pShader->GetDescriptorPoolKey(setIdx),
-                        pShader->GetDescriptorSetLayoutHandle(setIdx), updateAfterBind,
-                        variableCount, m_setStates[setIdx].pContainer);
+                    descriptorSet = pCache->Insert(contentKey, pShader->GetDescriptorPoolKey(setIdx),
+                                                   pShader->GetDescriptorSetLayoutHandle(setIdx), updateAfterBind,
+                                                   variableCount, m_setStates[setIdx].pContainer);
 
                     outNeedsWrite = true;
                 }
@@ -472,17 +508,18 @@ bool VulkanDescriptorSetState::ResolveSet(uint32_t setIdx, FVulkanCommandListCon
         if (setState.dirty || setState.vkSet == VK_NULL_HANDLE)
         {
             bool needsWrite = false;
+
             setState.vkSet  = AcquireSetHandle(setIdx, pContext, needsWrite);
 
             if (setState.vkSet != VK_NULL_HANDLE && needsWrite)
             {
                 BuildSetUpdates(setIdx, m_updateSrbScratch);
+
                 uint32_t maxDescriptorWrites = 0;
 
                 for (const RHIShaderResourceBinding& update : m_updateSrbScratch)
                 {
-                    maxDescriptorWrites += static_cast<uint32_t>(update.resources.size()) /
-                        GetResourceStride(update.type);
+                    maxDescriptorWrites += static_cast<uint32_t>(update.resources.size()) / GetResourceStride(update.type);
                 }
 
                 DescriptorWriteBatch writeBatch(maxDescriptorWrites);
@@ -504,23 +541,24 @@ bool VulkanDescriptorSetState::ResolveSet(uint32_t setIdx, FVulkanCommandListCon
 
                 if (writeBatch.numWrites > 0)
                 {
-                    vkUpdateDescriptorSets(GVulkanRHI->GetVkDevice(), writeBatch.numWrites,
-                                           writeBatch.writes.data(), 0, nullptr);
+                    vkUpdateDescriptorSets(GVulkanRHI->GetVkDevice(), writeBatch.numWrites, writeBatch.writes.data(), 0,
+                                           nullptr);
                 }
             }
         }
 
         resolved       = setState.vkSet != VK_NULL_HANDLE;
+
         setState.dirty = false;
     }
 
     return resolved;
 }
 
-bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx,
-                                               VulkanDescriptorSetCache::ContentKey& outKey)
+bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx, VulkanDescriptorSetCache::ContentKey& outKey)
 {
     bool complete = false;
+
     outKey        = {};
 
     if (m_pPipeline != nullptr && setIdx < MAX_NUM_DESCRIPTOR_SETS)
@@ -530,24 +568,31 @@ bool VulkanDescriptorSetState::BuildContentKey(uint32_t setIdx,
         if (pShader != nullptr && setIdx < pShader->GetNumDescriptorSetLayouts())
         {
             complete        = true;
+
             outKey.layoutId = pShader->GetDescriptorSetLayoutId(setIdx);
+
             HeapVector<const BindingState*> bindingOrder;
+
             for (const BindingState& binding : m_setStates[setIdx].bindings)
             {
                 bindingOrder.push_back(&binding);
             }
+
             std::sort(bindingOrder.begin(), bindingOrder.end(),
-                      [](const BindingState* a, const BindingState* b) {
-                          return a->srb.binding < b->srb.binding;
-                      });
+                      [](const BindingState* a, const BindingState* b) { return a->srb.binding < b->srb.binding; });
 
             outKey.bindings.push_back(bindingOrder.size());
+
             for (const BindingState* binding : bindingOrder)
             {
                 outKey.bindings.push_back(binding->srb.binding);
+
                 outKey.bindings.push_back(ToUnderlying(binding->srb.type));
+
                 outKey.bindings.push_back(binding->valueRange);
+
                 outKey.bindings.push_back(binding->srb.resources.size());
+
                 // Dynamic offsets are bind-time state, not descriptor contents.
                 for (const RHIResource* resource : binding->srb.resources)
                 {
@@ -565,8 +610,11 @@ void VulkanDescriptorSetState::ClearAllSetStates()
     for (SetState& setState : m_setStates)
     {
         setState.vkSet      = VK_NULL_HANDLE;
+
         setState.pContainer = nullptr;
+
         setState.bindings.clear();
+
         setState.dirty = false;
     }
 
@@ -578,14 +626,14 @@ void VulkanDescriptorSetState::InvalidateResolvedCaches()
     for (SetState& setState : m_setStates)
     {
         setState.vkSet      = VK_NULL_HANDLE;
+
         setState.pContainer = nullptr;
     }
 }
 
-VulkanDescriptorSetState::BindingState& VulkanDescriptorSetState::FindOrAddBinding(
-    SetState& setState,
-    uint32_t bindingIdx,
-    RHIShaderResourceType type)
+VulkanDescriptorSetState::BindingState& VulkanDescriptorSetState::FindOrAddBinding(SetState&             setState,
+                                                                                   uint32_t              bindingIdx,
+                                                                                   RHIShaderResourceType type)
 {
     BindingState* pBindingState = nullptr;
 
@@ -600,9 +648,12 @@ VulkanDescriptorSetState::BindingState& VulkanDescriptorSetState::FindOrAddBindi
     if (pBindingState == nullptr)
     {
         BindingState& bindingState = setState.bindings.emplace_back();
+
         // todo: maintain order (0, 1, 2, 4...) while adding bindings
         bindingState.srb.binding = bindingIdx;
+
         bindingState.srb.type    = type;
+
         pBindingState            = &bindingState;
     }
     else
@@ -616,6 +667,7 @@ VulkanDescriptorSetState::BindingState& VulkanDescriptorSetState::FindOrAddBindi
 void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourceParameter& param)
 {
     VERIFY_EXPR(m_pPipeline != nullptr);
+
     VERIFY_EXPR(param.set < MAX_NUM_DESCRIPTOR_SETS);
 
     if (m_pPipeline != nullptr && param.set < MAX_NUM_DESCRIPTOR_SETS)
@@ -623,9 +675,12 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
         if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
         {
             m_parametersValid = false;
+
             LOGE("Only uniform-buffer parameters accept a buffer offset");
         }
+
         SetState& setState         = m_setStates[param.set];
+
         BindingState& bindingState = FindOrAddBinding(setState, param.binding, param.resourceType);
 
         if (param.resourceType == RHIShaderResourceType::eUniformBuffer)
@@ -636,12 +691,16 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
             {
                 bindingState.dynamicOffsets.resize(param.arrayIndex + 1);
             }
+
             bindingState.dynamicOffsets[param.arrayIndex] = param.bufferOffset;
+
             bindingState.uniformBlockId                   = 0;
+
             bindingState.uniformGeneration                = 0;
-            const RHIShaderResourceDescriptor* srd =
-                m_pPipeline->GetShader()->GetSRDByLocation(param.set, param.binding);
-            bindingState.valueRange = srd != nullptr ? srd->blockSize : 0;
+
+            const RHIShaderResourceDescriptor* srd = m_pPipeline->GetShader()->GetSRDByLocation(param.set, param.binding);
+
+            bindingState.valueRange                = srd != nullptr ? srd->blockSize : 0;
 
             for (VulkanDescriptorSetState::PackedValueBufferState& packed : m_packedValueBuffers)
             {
@@ -653,7 +712,9 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
         }
 
         const uint32_t resourceStride = GetResourceStride(param.resourceType);
+
         const uint32_t baseIndex      = param.arrayIndex * resourceStride;
+
         const uint32_t resourceCount  = baseIndex + resourceStride;
 
         if (bindingState.srb.resources.size() < resourceCount)
@@ -666,6 +727,7 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
             // Batched parameters carry the texture/buffer first; descriptor bindings store
             // combined resources as sampler, texture/buffer pairs.
             bindingState.srb.resources[baseIndex]     = param.pAuxResource;
+
             bindingState.srb.resources[baseIndex + 1] = param.pResource;
         }
         else
@@ -680,15 +742,18 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
 bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingState)
 {
     const RHIShaderResourceBinding& binding = bindingState.srb;
+
     const uint32_t stride                   = GetResourceStride(binding.type);
-    bool valid = binding.type < RHIShaderResourceType::eMax && !binding.resources.empty() &&
-        binding.resources.size() % stride == 0;
+
+    bool valid =
+        binding.type < RHIShaderResourceType::eMax && !binding.resources.empty() && binding.resources.size() % stride == 0;
 
     if (valid)
     {
         for (size_t i = 0; i < binding.resources.size(); i += stride)
         {
             RHIResource* resource  = binding.resources[i];
+
             RHIResource* auxiliary = stride == 2 ? binding.resources[i + 1] : nullptr;
 
             // Array layouts permit unpopulated elements, but never half of a sampler/image pair.
@@ -699,25 +764,21 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
 
             switch (binding.type)
             {
-                case RHIShaderResourceType::eSampler:
-                    valid &= TryVulkanSampler(resource) != nullptr;
-                    break;
+                case RHIShaderResourceType::eSampler: valid &= TryVulkanSampler(resource) != nullptr; break;
                 case RHIShaderResourceType::eTexture:
                 case RHIShaderResourceType::eImage:
-                case RHIShaderResourceType::eInputAttachment:
-                    valid &= GetImageView(resource) != VK_NULL_HANDLE;
-                    break;
+                case RHIShaderResourceType::eInputAttachment: valid &= GetImageView(resource) != VK_NULL_HANDLE; break;
                 case RHIShaderResourceType::eSamplerWithTexture:
-                    valid &= TryVulkanSampler(resource) != nullptr &&
-                        GetImageView(auxiliary) != VK_NULL_HANDLE;
+                    valid &= TryVulkanSampler(resource) != nullptr && GetImageView(auxiliary) != VK_NULL_HANDLE;
                     break;
 
                 case RHIShaderResourceType::eTextureBuffer:
                 case RHIShaderResourceType::eImageBuffer:
                 case RHIShaderResourceType::eSamplerWithTextureBuffer:
                 {
-                    VulkanBuffer* buffer = TryVulkanBuffer(stride == 2 ? auxiliary : resource);
-                    valid &= buffer != nullptr && buffer->GetVkBufferView() != VK_NULL_HANDLE;
+                    VulkanBuffer* buffer  = TryVulkanBuffer(stride == 2 ? auxiliary : resource);
+
+                    valid                &= buffer != nullptr && buffer->GetVkBufferView() != VK_NULL_HANDLE;
 
                     if (stride == 2)
                     {
@@ -735,22 +796,25 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
                     if (buffer == nullptr)
                     {
                         valid = false;
+
                         break;
                     }
 
-                    const uint64_t range = bindingState.valueRange > 0 ? bindingState.valueRange :
-                                                                         buffer->GetRequiredSize();
-                    const uint32_t offset =
-                        i < bindingState.dynamicOffsets.size() ? bindingState.dynamicOffsets[i] : 0;
-                    valid &= buffer->GetVkBuffer() != VK_NULL_HANDLE && range > 0 &&
-                        uint64_t(offset) + range <= buffer->GetRequiredSize();
+                    const uint64_t range   = bindingState.valueRange > 0 ? bindingState.valueRange : buffer->GetRequiredSize();
+
+                    const uint32_t offset  = i < bindingState.dynamicOffsets.size() ? bindingState.dynamicOffsets[i] : 0;
+
+                    valid                 &= buffer->GetVkBuffer() != VK_NULL_HANDLE && range > 0
+                          && uint64_t(offset) + range <= buffer->GetRequiredSize();
+
                     if (offset != 0)
                     {
-                        const VkDeviceSize alignment = GVulkanRHI->GetDevice()
-                                                           ->GetPhysicalDeviceProperties()
-                                                           .limits.minUniformBufferOffsetAlignment;
+                        const VkDeviceSize alignment =
+                            GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits.minUniformBufferOffsetAlignment;
+
                         valid &= offset % alignment == 0;
                     }
+
                     break;
                 }
 
@@ -769,24 +833,22 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
 
 bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
 {
-    VulkanShader* shader =
-        m_pPipeline != nullptr ? TO_VK_SHADER(m_pPipeline->GetShader()) : nullptr;
-    bool valid = shader != nullptr && setIdx < MAX_NUM_DESCRIPTOR_SETS &&
-        setIdx < shader->GetNumDescriptorSetLayouts();
+    VulkanShader* shader = m_pPipeline != nullptr ? TO_VK_SHADER(m_pPipeline->GetShader()) : nullptr;
+
+    bool valid = shader != nullptr && setIdx < MAX_NUM_DESCRIPTOR_SETS && setIdx < shader->GetNumDescriptorSetLayouts();
 
     if (valid && !(setIdx == kGlobalBindlessHeapIndex && shader->HasGlobalBindlessSet()))
     {
-        const HeapVector<VulkanDescriptorSetState::BindingState>& bindings =
-            m_setStates[setIdx].bindings;
+        const HeapVector<VulkanDescriptorSetState::BindingState>& bindings = m_setStates[setIdx].bindings;
 
         for (const VulkanDescriptorSetState::BindingState& binding : bindings)
         {
-            const RHIShaderResourceDescriptor* descriptor =
-                shader->GetSRDByLocation(setIdx, binding.srb.binding);
-            valid &= descriptor != nullptr && descriptor->type == binding.srb.type &&
-                binding.srb.resources.size() / GetResourceStride(binding.srb.type) <=
-                    (descriptor->bindless ? shader->GetDescriptorSetVariableCount(setIdx) :
-                                            descriptor->arraySize);
+            const RHIShaderResourceDescriptor* descriptor  = shader->GetSRDByLocation(setIdx, binding.srb.binding);
+
+            valid                                         &= descriptor != nullptr && descriptor->type == binding.srb.type
+                  && binding.srb.resources.size() / GetResourceStride(binding.srb.type)
+                         <= (descriptor->bindless ? shader->GetDescriptorSetVariableCount(setIdx) : descriptor->arraySize);
+
             valid &= ValidateBindingState(binding);
         }
 
@@ -794,11 +856,10 @@ bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
         {
             if (!descriptor.bindless && descriptor.arraySize == 1)
             {
-                valid &=
-                    std::any_of(bindings.begin(), bindings.end(),
-                                [bindingIndex = descriptor.binding](const BindingState& binding) {
-                                    return binding.srb.binding == bindingIndex;
-                                });
+                valid &= std::any_of(bindings.begin(), bindings.end(),
+                                     [bindingIndex = descriptor.binding](const BindingState& binding) {
+                                         return binding.srb.binding == bindingIndex;
+                                     });
             }
         }
     }
@@ -811,8 +872,7 @@ bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
     return valid;
 }
 
-void VulkanDescriptorSetState::BuildSetUpdates(uint32_t setIndex,
-                                               HeapVector<RHIShaderResourceBinding>& outUpdates)
+void VulkanDescriptorSetState::BuildSetUpdates(uint32_t setIndex, HeapVector<RHIShaderResourceBinding>& outUpdates)
 {
     outUpdates.clear();
 
@@ -826,10 +886,9 @@ void VulkanDescriptorSetState::BuildSetUpdates(uint32_t setIndex,
             }
         }
 
-        std::sort(outUpdates.begin(), outUpdates.end(),
-                  [](const RHIShaderResourceBinding& lhs, const RHIShaderResourceBinding& rhs) {
-                      return lhs.binding < rhs.binding;
-                  });
+        std::sort(
+            outUpdates.begin(), outUpdates.end(),
+            [](const RHIShaderResourceBinding& lhs, const RHIShaderResourceBinding& rhs) { return lhs.binding < rhs.binding; });
     }
 }
 
@@ -838,68 +897,78 @@ void VulkanDescriptorSetState::SyncCacheRevision(const VulkanDescriptorSetCache&
     if (m_cacheRevision != cache.GetRevision())
     {
         InvalidateResolvedCaches();
+
         m_cacheRevision = cache.GetRevision();
     }
 }
 
-bool VulkanDescriptorSetState::BuildDescriptorSetList(
-    FVulkanCommandListContext* pContext,
-    HeapVector<VkDescriptorSet>& outDescriptorSets,
-    uint32_t& outFirstSet,
-    HeapVector<uint32_t>& outDynamicOffsets)
+bool VulkanDescriptorSetState::BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
+                                                      HeapVector<VkDescriptorSet>& outDescriptorSets,
+                                                      uint32_t&                    outFirstSet,
+                                                      HeapVector<uint32_t>&        outDynamicOffsets)
 {
     VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
 
-    bool allSetsResolved = pShader != nullptr;
+    bool allSetsResolved  = pShader != nullptr;
 
     if (pShader != nullptr)
     {
-        const VulkanDescriptorSetCache* cache =
-            GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+        const VulkanDescriptorSetCache* cache = GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+
         VERIFY_EXPR(cache != nullptr);
+
         SyncCacheRevision(*cache);
+
         const uint32_t numSets = pShader->GetNumDescriptorSetLayouts();
 
-        uint32_t firstUsed = MAX_NUM_DESCRIPTOR_SETS;
-        uint32_t lastUsed  = 0;
-        bool anyUsed       = false;
+        uint32_t firstUsed     = MAX_NUM_DESCRIPTOR_SETS;
+
+        uint32_t lastUsed      = 0;
+
+        bool anyUsed           = false;
 
         for (uint32_t setIdx = 0; setIdx < numSets; setIdx++)
         {
-            const SetState& setState = m_setStates[setIdx];
+            const SetState& setState  = m_setStates[setIdx];
 
-            const bool globalBindless =
-                setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet();
+            const bool globalBindless = setIdx == kGlobalBindlessHeapIndex && pShader->HasGlobalBindlessSet();
+
             if (!globalBindless && setState.vkSet == VK_NULL_HANDLE && setState.bindings.empty())
             {
                 continue;
             }
 
             firstUsed = std::min(firstUsed, setIdx);
+
             lastUsed  = setIdx;
+
             anyUsed   = true;
         }
 
         if (anyUsed)
         {
-            outFirstSet = firstUsed;
+            outFirstSet                       = firstUsed;
 
             const uint32_t descriptorSetCount = lastUsed - firstUsed + 1;
-            outDescriptorSets.resize(descriptorSetCount);
 
+            outDescriptorSets.resize(descriptorSetCount);
 
             for (uint32_t i = firstUsed; i <= lastUsed; i++)
             {
                 // Resolving an earlier set can rotate the cache. Check again before
                 // dereferencing a resolved handle/container from a previous draw.
                 SyncCacheRevision(*cache);
+
                 SetState& setState     = m_setStates[i];
+
                 const bool needResolve = setState.dirty || setState.vkSet == VK_NULL_HANDLE;
 
                 if (needResolve && !ResolveSet(i, pContext))
                 {
                     LOGE("[VulkanRHI][VulkanDescriptorSetState]: ResolveSet failed!");
+
                     allSetsResolved = false;
+
                     break;
                 }
 
@@ -911,11 +980,14 @@ bool VulkanDescriptorSetState::BuildDescriptorSetList(
                         // workload. Queue retirement releases this ownership.
                         pContext->RecordDescriptorPool(setState.pContainer);
                     }
+
                     for (const BindingState& binding : setState.bindings)
                     {
                         pContext->RecordUniformBufferBlock(binding.uniformBlockId);
                     }
+
                     outDescriptorSets[i - firstUsed] = setState.vkSet;
+
                     AppendDynamicOffsetsForSet(i, outDynamicOffsets);
                 }
             }
@@ -923,16 +995,18 @@ bool VulkanDescriptorSetState::BuildDescriptorSetList(
             if (!allSetsResolved)
             {
                 outDescriptorSets.clear();
+
                 outDynamicOffsets.clear();
+
                 outFirstSet = 0;
             }
         }
     }
+
     return allSetsResolved;
 }
 
-void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx,
-                                                          HeapVector<uint32_t>& outDynamicOffsets)
+void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx, HeapVector<uint32_t>& outDynamicOffsets)
 {
     const VulkanShader* shader = TO_CVK_SHADER(m_pPipeline->GetShader());
 
@@ -954,18 +1028,16 @@ void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx,
 
             for (uint32_t element = 0; element < slot.count; ++element)
             {
-                outDynamicOffsets.push_back(binding != nullptr &&
-                                                    element < binding->dynamicOffsets.size() ?
-                                                binding->dynamicOffsets[element] :
-                                                0);
+                outDynamicOffsets.push_back(
+                    binding != nullptr && element < binding->dynamicOffsets.size() ? binding->dynamicOffsets[element] : 0);
             }
         }
     }
 }
 
-void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t setIdx,
-                                                       uint32_t bindingIdx,
-                                                       uint32_t byteSize,
+void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t       setIdx,
+                                                       uint32_t       bindingIdx,
+                                                       uint32_t       byteSize,
                                                        const uint8_t* pData)
 {
     VERIFY_EXPR(pData != nullptr);
@@ -982,6 +1054,7 @@ void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t setIdx,
             }
 
             std::memcpy(pBufferState->bytes.data(), pData, byteSize);
+
             pBufferState->dirty = true;
         }
     }
@@ -990,35 +1063,44 @@ void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t setIdx,
 bool VulkanDescriptorSetState::FlushPackedValueBuffers()
 {
     VulkanUniformBufferAllocator* pAllocator = GVulkanRHI->GetUniformBufferAllocator();
+
     bool valid                               = pAllocator != nullptr;
 
     if (pAllocator != nullptr)
     {
         for (PackedValueBufferState& bufferState : m_packedValueBuffers)
         {
-            SetState& setState         = m_setStates[bufferState.setIdx];
-            BindingState& bindingState = FindOrAddBinding(setState, bufferState.bindingIdx,
-                                                          RHIShaderResourceType::eUniformBuffer);
+            SetState& setState = m_setStates[bufferState.setIdx];
+
+            BindingState& bindingState =
+                FindOrAddBinding(setState, bufferState.bindingIdx, RHIShaderResourceType::eUniformBuffer);
+
             // Cached values retain CPU bytes, not transient buffer ownership. Refresh
             // before resolving descriptors if the slot was reused or its tail was trimmed.
-            if (bindingState.uniformBlockId != 0 &&
-                pAllocator->GetBlockGeneration(bindingState.uniformBlockId) !=
-                    bindingState.uniformGeneration)
+            if (bindingState.uniformBlockId != 0
+                && pAllocator->GetBlockGeneration(bindingState.uniformBlockId) != bindingState.uniformGeneration)
             {
                 bufferState.dirty = true;
+
                 // The old native buffer may already have been destroyed. Do not leave
                 // a dangling resource in descriptor resolution if the upload must retry.
                 bindingState.srb.resources.clear();
+
                 bindingState.uniformBlockId    = 0;
+
                 bindingState.uniformGeneration = 0;
+
                 setState.dirty                 = true;
             }
+
             if (bufferState.dirty && bufferState.blockSize > 0)
             {
                 VulkanUniformBufferBlock block = pAllocator->Alloc(bufferState.blockSize);
+
                 if (!block.IsValid())
                 {
                     valid = false;
+
                     break;
                 }
 
@@ -1026,28 +1108,38 @@ bool VulkanDescriptorSetState::FlushPackedValueBuffers()
                 {
                     std::memcpy(block.pMapped, bufferState.bytes.data(), bufferState.blockSize);
 
-                    const bool bufferChanged = bindingState.srb.resources.size() != 1 ||
-                        bindingState.srb.resources[0] != block.pBuffer ||
-                        bindingState.uniformGeneration != block.generation ||
-                        bindingState.valueRange != bufferState.blockSize;
+                    const bool bufferChanged = bindingState.srb.resources.size() != 1
+                                            || bindingState.srb.resources[0] != block.pBuffer
+                                            || bindingState.uniformGeneration != block.generation
+                                            || bindingState.valueRange != bufferState.blockSize;
+
                     bindingState.srb.resources.clear();
+
                     bindingState.srb.resources.push_back(block.pBuffer);
+
                     bindingState.dynamicOffsets.resize(1);
-                    bindingState.dynamicOffsets[0] = block.offset;
-                    bindingState.valueRange        = bufferState.blockSize;
-                    bindingState.uniformBlockId    = block.blockId;
-                    bindingState.uniformGeneration = block.generation;
-                    setState.dirty |= bufferChanged;
-                    bufferState.dirty = false;
+
+                    bindingState.dynamicOffsets[0]  = block.offset;
+
+                    bindingState.valueRange         = bufferState.blockSize;
+
+                    bindingState.uniformBlockId     = block.blockId;
+
+                    bindingState.uniformGeneration  = block.generation;
+
+                    setState.dirty                 |= bufferChanged;
+
+                    bufferState.dirty               = false;
                 }
             }
         }
     }
+
     return valid;
 }
 
-VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::
-    FindOrAddPackedValueBuffer(uint32_t setIdx, uint32_t bindingIdx)
+VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::FindOrAddPackedValueBuffer(uint32_t setIdx,
+                                                                                                       uint32_t bindingIdx)
 {
     PackedValueBufferState* pBufferState = nullptr;
 
@@ -1056,26 +1148,31 @@ VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::
         if (bufferState.setIdx == setIdx && bufferState.bindingIdx == bindingIdx)
         {
             pBufferState = &bufferState;
+
             break;
         }
     }
 
     if (pBufferState == nullptr)
     {
-        const RHIShaderResourceDescriptor* pSRD =
-            m_pPipeline->GetShader()->GetSRDByLocation(setIdx, bindingIdx);
-        if (pSRD == nullptr || pSRD->type != RHIShaderResourceType::eUniformBuffer ||
-            pSRD->arraySize != 1 || pSRD->bindless)
+        const RHIShaderResourceDescriptor* pSRD = m_pPipeline->GetShader()->GetSRDByLocation(setIdx, bindingIdx);
+
+        if (pSRD == nullptr || pSRD->type != RHIShaderResourceType::eUniformBuffer || pSRD->arraySize != 1 || pSRD->bindless)
         {
             m_parametersValid = false;
+
             LOGE("Packed uniform values require a single uniform-buffer descriptor");
         }
         else
         {
             PackedValueBufferState& bufferState = m_packedValueBuffers.emplace_back();
+
             bufferState.setIdx                  = setIdx;
+
             bufferState.bindingIdx              = bindingIdx;
+
             bufferState.blockSize               = pSRD->blockSize;
+
             bufferState.bytes.resize(pSRD->blockSize);
 
             pBufferState = &bufferState;

@@ -10,7 +10,7 @@ VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
 {
     VoxelGIRuntimeSettings settings = m_giSettings;
 
-    settings.asyncCompute = m_pRenderDevice->GetAsyncComputeMode();
+    settings.asyncCompute           = m_pRenderDevice->GetAsyncComputeMode();
 
     if (m_pVoxelGI != nullptr)
     {
@@ -21,21 +21,18 @@ VoxelGIRuntimeSettings RendererServer::GetVoxelGISettings() const
 }
 
 GIResourceStatus RendererServer::ValidateVoxelGIResources(const VoxelGIRuntimeSettings& settings,
-                                                          uint64_t& reflectanceBytes) const
+                                                          uint64_t&                     reflectanceBytes) const
 {
-    reflectanceBytes =
-        settings.averagedReflectance ? GetVoxelReflectanceRequiredBytes(settings.resolution) : 0;
+    reflectanceBytes = settings.averagedReflectance ? GetVoxelReflectanceRequiredBytes(settings.resolution) : 0;
 
-    GIResourceStatus status = ValidateVoxelGIRuntimeSettings(settings) ?
-        GIResourceStatus::eSuccess :
-        GIResourceStatus::eInvalidInput;
+    GIResourceStatus status =
+        ValidateVoxelGIRuntimeSettings(settings) ? GIResourceStatus::eSuccess : GIResourceStatus::eInvalidInput;
 
     if (status == GIResourceStatus::eSuccess && settings.averagedReflectance)
     {
         const uint64_t triangles = m_pScene != nullptr ? m_pScene->GetVoxelTriangleCount() : 0;
 
-        status = ValidateVoxelReflectanceResources(settings.resolution, triangles,
-                                                   settings.reflectanceBudgetBytes, 0,
+        status = ValidateVoxelReflectanceResources(settings.resolution, triangles, settings.reflectanceBudgetBytes, 0,
                                                    m_pRenderDevice->GetGPUInfo(), reflectanceBytes);
     }
 
@@ -44,7 +41,6 @@ GIResourceStatus RendererServer::ValidateVoxelGIResources(const VoxelGIRuntimeSe
 
 void RendererServer::DestroyVoxelGIResources()
 {
-
     if (m_pVoxelGI != nullptr)
     {
         m_pVoxelGI->Destroy();
@@ -68,21 +64,20 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 {
     VoxelGIRuntimeSettings settings = requested;
 
-    uint64_t reflectanceBytes = 0;
+    uint64_t reflectanceBytes       = 0;
 
-    bool valid =
-        ValidateVoxelGIResources(settings, reflectanceBytes) == GIResourceStatus::eSuccess &&
-        m_pVoxelGI != nullptr && m_pRenderDevice->CanReconfigureResources();
+    bool valid = ValidateVoxelGIResources(settings, reflectanceBytes) == GIResourceStatus::eSuccess && m_pVoxelGI != nullptr
+              && m_pRenderDevice->CanReconfigureResources();
 
     if (valid)
     {
         const VoxelGIRuntimeSettings previous = GetVoxelGISettings();
 
-        const bool rebuild = RequiresVoxelGIRebuild(previous, settings);
+        const bool rebuild                    = RequiresVoxelGIRebuild(previous, settings);
 
-        const bool resizeShadows = previous.shadowMapResolution != settings.shadowMapResolution;
+        const bool resizeShadows              = previous.shadowMapResolution != settings.shadowMapResolution;
 
-        valid = m_pRenderDevice->SetAsyncComputeMode(settings.asyncCompute);
+        valid                                 = m_pRenderDevice->SetAsyncComputeMode(settings.asyncCompute);
 
         if (valid && (rebuild || resizeShadows))
         {
@@ -103,10 +98,9 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
                 m_pRenderDevice->CollectCompletedResources();
             }
 
-            m_giSettings = settings;
+            m_giSettings    = settings;
 
-            m_voxelizerMode =
-                ResolveVoxelizerMode(settings.voxelizer, m_pRenderDevice->GetGPUInfo());
+            m_voxelizerMode = ResolveVoxelizerMode(settings.voxelizer, m_pRenderDevice->GetGPUInfo());
 
             if (rebuild)
             {
@@ -130,10 +124,8 @@ bool RendererServer::ApplyVoxelGISettings(const VoxelGIRuntimeSettings& requeste
 
             m_pRenderDevice->CollectCompletedResources();
 
-            LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}",
-                 settings.resolution,
-                 m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp",
-                 rebuild ? "recreated" : "retained");
+            LOGI("Applied runtime GI settings: grid={}, voxelizer={}, resources={}", settings.resolution,
+                 m_voxelizerMode == platform::VoxelizerMode::eGeometry ? "geom" : "comp", rebuild ? "recreated" : "retained");
         }
     }
 

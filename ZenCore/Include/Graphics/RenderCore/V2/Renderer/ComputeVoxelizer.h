@@ -16,14 +16,14 @@ class RenderObject;
 class ComputeVoxelizer : public VoxelizerBase
 {
 public:
-    ComputeVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-        VoxelizerBase(pRenderDevice, pViewport)
-    {}
+    ComputeVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) : VoxelizerBase(pRenderDevice, pViewport) {}
 
     void Init() final;
 
     void BuildVoxelizationGraph() final;
+
     void BuildVisualizationGraph() final;
+
     void OnRenderGraphExecuted(bool succeeded) final;
 
     void Destroy() final;
@@ -47,6 +47,6 @@ protected:
     } m_buffers{};
 
     RenderObject* m_pCube{nullptr};
-    uint64_t m_visualizationRevision{0};
+    uint64_t      m_visualizationRevision{0};
 };
 } // namespace zen::rc

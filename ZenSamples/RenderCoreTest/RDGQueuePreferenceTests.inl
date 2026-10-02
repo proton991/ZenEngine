@@ -6,17 +6,14 @@ RHIQueueCapabilities DistinctComputeQueues()
     return {true, true, {0, 1, 2}};
 }
 
-class RDGQueuePreferenceTest :
-    public RenderCoreTest,
-    public testing::WithParamInterface<RHIExecutionMode>
+class RDGQueuePreferenceTest : public RenderCoreTest, public testing::WithParamInterface<RHIExecutionMode>
 {
 protected:
     TestViewport viewport;
 
     void SetUp() override
     {
-        InitializeDevice(&viewport, 2, GetParam(), AsyncComputeMode::eAuto,
-                         DistinctComputeQueues());
+        InitializeDevice(&viewport, 2, GetParam(), AsyncComputeMode::eAuto, DistinctComputeQueues());
         CreateTestShaderProgram(device, "intent");
         CaptureVersionGraph(device);
     }
@@ -53,8 +50,7 @@ TEST_P(RDGQueuePreferenceTest, DescriptorCopiesCompiledDataAndMetricsPreserveHin
     const RDGPassNode& recorded = RDGExecutionPlanTestAccess::RecordedNode(graph, 1);
     EXPECT_EQ(recorded.queuePreference, RDGQueuePreference::ePreferAsyncCompute);
     EXPECT_EQ(recorded.pCompiledPass->queuePreference, recorded.queuePreference);
-    EXPECT_NE(RDGMetrics::Format(metrics).find(
-                  "queue_preference=prefer_async_compute async_eligibility=eligible"),
+    EXPECT_NE(RDGMetrics::Format(metrics).find("queue_preference=prefer_async_compute async_eligibility=eligible"),
               std::string::npos);
     // Step 7 now submits eligible passes on the selected native compute queue.
     EXPECT_EQ(rhi->submitted[size_t(RHICommandContextType::eAsyncCompute)], 1u);
@@ -69,10 +65,8 @@ TEST_P(RDGQueuePreferenceTest, ClearSupportsComputeButMipBlitsAccumulateGraphics
         {
             RenderGraph graph("transfer_requirements");
             ASSERT_TRUE(graph.Begin());
-            RHITexture* physical     = logical ? nullptr : Texture(3);
-            const RDGTexture texture = logical ?
-                graph.GetResourceManager()->CreateTexture(LogicalTexture(3)) :
-                RDGTexture{};
+            RHITexture*      physical = logical ? nullptr : Texture(3);
+            const RDGTexture texture  = logical ? graph.GetResourceManager()->CreateTexture(LogicalTexture(3)) : RDGTexture{};
             {
                 RDGTransferPassCmdRecorder recorder = graph.AddTransferPass("reset_volumes");
                 recorder.NeverCull().SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
@@ -96,18 +90,15 @@ TEST_P(RDGQueuePreferenceTest, ClearSupportsComputeButMipBlitsAccumulateGraphics
                 recorder.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
             }
             ASSERT_TRUE(graph.End());
-            RDGExecutor executor(device);
+            RDGExecutor                      executor(device);
             RDGExecutionPlanTestAccess::Plan plan;
             ASSERT_TRUE(RDGExecutionPlanTestAccess::Prepare(executor, graph, plan));
             EXPECT_FALSE(plan.transfer);
             const RDGCompiledNode& compiled = RDGExecutionPlanTestAccess::CompiledNode(graph);
             EXPECT_EQ(compiled.queuePreference, RDGQueuePreference::ePreferAsyncCompute);
             EXPECT_EQ(compiled.asyncComputeEligibility,
-                      mipmaps ? RDGAsyncComputeEligibility::eUnsupportedCommands :
-                                RDGAsyncComputeEligibility::eEligible);
-            EXPECT_EQ(
-                RDGExecutionPlanTestAccess::RecordedNode(graph).pCompiledPass->queuePreference,
-                compiled.queuePreference);
+                      mipmaps ? RDGAsyncComputeEligibility::eUnsupportedCommands : RDGAsyncComputeEligibility::eEligible);
+            EXPECT_EQ(RDGExecutionPlanTestAccess::RecordedNode(graph).pCompiledPass->queuePreference, compiled.queuePreference);
             if (physical != nullptr)
             {
                 device->DestroyTexture(physical);
@@ -121,24 +112,20 @@ TEST_P(RDGQueuePreferenceTest, DefaultBufferCopyKeepsTransferRoutingAndPreferred
     TestBuffer* source = Buffer();
     TestBuffer* output = Buffer();
     std::fill(source->bytes.begin(), source->bytes.end(), uint8_t(31));
-    for (RDGQueuePreference preference :
-         {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
+    for (RDGQueuePreference preference : {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
     {
         RenderGraph graph("copy_preference");
         ASSERT_TRUE(graph.Begin());
         RDGBuffer input  = graph.GetResourceManager()->ImportHostWrittenBuffer(source);
         RDGBuffer target = graph.GetResourceManager()->ImportBuffer(output);
-        graph.AddTransferPass("copy")
-            .SetQueuePreference(preference)
-            .CopyBuffer(input, target, {0, 0, 64});
+        graph.AddTransferPass("copy").SetQueuePreference(preference).CopyBuffer(input, target, {0, 0, 64});
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
         const RDGNodeMetrics& metrics = device->GetRDGMetrics().GetLastSnapshot().nodes[0];
         EXPECT_EQ(metrics.queuePreference, preference);
-        EXPECT_EQ(metrics.asyncComputeEligibility,
-                  preference == RDGQueuePreference::eDefault ?
-                      RDGAsyncComputeEligibility::eNotRequested :
-                      RDGAsyncComputeEligibility::eEligible);
+        EXPECT_EQ(metrics.asyncComputeEligibility, preference == RDGQueuePreference::eDefault
+                                                       ? RDGAsyncComputeEligibility::eNotRequested
+                                                       : RDGAsyncComputeEligibility::eEligible);
         EXPECT_EQ(output->bytes, source->bytes);
     }
     EXPECT_EQ(rhi->submitted[size_t(RHICommandContextType::eAsyncCompute)], 1u);
@@ -158,9 +145,8 @@ TEST_P(RDGQueuePreferenceTest, ImportedResourceContractsAndViewportProduceExplic
         texture->asyncComputeAccessible = scenario != 1;
         viewport.color                  = scenario == 3 ? texture : nullptr;
         RDGResourceManager* resources   = graph.GetResourceManager();
-        RDGTexture imported             = scenario == 2 ?
-            resources->ImportTexture(texture, RDGTextureImportState{}) :
-            resources->ImportTexture(texture);
+        RDGTexture          imported =
+            scenario == 2 ? resources->ImportTexture(texture, RDGTextureImportState{}) : resources->ImportTexture(texture);
         graph.AddTransferPass("clear")
             .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
             .ClearTexture(imported, Color(0.f));
@@ -168,10 +154,8 @@ TEST_P(RDGQueuePreferenceTest, ImportedResourceContractsAndViewportProduceExplic
         ASSERT_TRUE(device->ExecuteRenderGraph(graph));
         const RDGAsyncComputeEligibility expected[] = {
             RDGAsyncComputeEligibility::eEligible, RDGAsyncComputeEligibility::eResourceUnavailable,
-            RDGAsyncComputeEligibility::eExternalState,
-            RDGAsyncComputeEligibility::eViewportResource};
-        EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().nodes[0].asyncComputeEligibility,
-                  expected[scenario]);
+            RDGAsyncComputeEligibility::eExternalState, RDGAsyncComputeEligibility::eViewportResource};
+        EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().nodes[0].asyncComputeEligibility, expected[scenario]);
         viewport.color = nullptr;
         device->DestroyTexture(texture);
     }
@@ -185,8 +169,7 @@ TEST_P(RDGQueuePreferenceTest, ImportedBufferContractAppliesToComputeBindings)
     ASSERT_TRUE(graph.Begin());
     RDGComputePassDesc pass = IntentPass();
     pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
-    pass.BindStorageBuffer("write_buffer", graph.GetResourceManager()->ImportBuffer(buffer),
-                           RDGContentGuarantee::eFullWrite);
+    pass.BindStorageBuffer("write_buffer", graph.GetResourceManager()->ImportBuffer(buffer), RDGContentGuarantee::eFullWrite);
     graph.AddComputePass(pass);
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(device->ExecuteRenderGraph(graph));
@@ -203,15 +186,14 @@ TEST_P(RDGQueuePreferenceTest, RebuildInvalidatesPlansAndResetsReusedPassPrefere
     ASSERT_TRUE(graph.Begin());
     graph.AddComputePass(IntentPass().SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute));
     ASSERT_TRUE(graph.End());
-    Access::Plan old;
+    Access::Plan   old;
     const uint64_t progressQueries = rhi->progressQueries;
     ASSERT_TRUE(Access::Prepare(executor, graph, old));
     RDGComputePass* storage = Access::Compute(graph);
     ASSERT_TRUE(other.Prepare(&graph));
     ASSERT_TRUE(Access::Refresh(executor, old));
     EXPECT_EQ(old.preparationPasses, 2u);
-    EXPECT_EQ(Access::CompiledNode(graph).asyncComputeEligibility,
-              RDGAsyncComputeEligibility::eEligible);
+    EXPECT_EQ(Access::CompiledNode(graph).asyncComputeEligibility, RDGAsyncComputeEligibility::eEligible);
     EXPECT_EQ(Access::CompiledNode(graph).queuePreference, RDGQueuePreference::ePreferAsyncCompute);
     EXPECT_EQ(rhi->progressQueries, progressQueries);
     ASSERT_TRUE(graph.Begin());
@@ -222,8 +204,7 @@ TEST_P(RDGQueuePreferenceTest, RebuildInvalidatesPlansAndResetsReusedPassPrefere
     ASSERT_TRUE(Access::Prepare(executor, graph, current));
     EXPECT_EQ(Access::Compute(graph), storage);
     EXPECT_EQ(storage->queuePreference, RDGQueuePreference::eDefault);
-    EXPECT_EQ(Access::CompiledNode(graph).asyncComputeEligibility,
-              RDGAsyncComputeEligibility::eNotRequested);
+    EXPECT_EQ(Access::CompiledNode(graph).asyncComputeEligibility, RDGAsyncComputeEligibility::eNotRequested);
     RHICommandList commands;
     EXPECT_FALSE(Access::Execute(executor, old, commands));
     EXPECT_EQ(commands.GetCommandCount(), 0u);
@@ -256,8 +237,7 @@ TEST_P(RDGQueuePreferenceTest, InvalidPreferencesAndStaleRecordersAreRejected)
     graph.AddTransferPass("new");
     recorder.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eLifecycle);
-    EXPECT_EQ(RDGExecutionPlanTestAccess::RecordedNode(graph).queuePreference,
-              RDGQueuePreference::eDefault);
+    EXPECT_EQ(RDGExecutionPlanTestAccess::RecordedNode(graph).queuePreference, RDGQueuePreference::eDefault);
 }
 
 TEST_P(RDGQueuePreferenceTest, PreferenceDoesNotKeepDeadPassesOrResourcesAlive)
@@ -290,7 +270,7 @@ class RDGQueuePreferenceCapabilityTest :
 protected:
     void SetUp() override
     {
-        const int scenario                 = std::get<1>(GetParam());
+        const int            scenario      = std::get<1>(GetParam());
         RHIQueueCapabilities queues        = DistinctComputeQueues();
         queues.computeSupported            = scenario != 2;
         queues.asyncSubmissionDependencies = scenario != 4;
@@ -304,8 +284,7 @@ protected:
             compute.minImageTransferGranularity.fill(4);
         }
         InitializeDevice(nullptr, 2, std::get<0>(GetParam()),
-                         scenario == 1 ? AsyncComputeMode::eDisabled : AsyncComputeMode::eAuto,
-                         queues, compute);
+                         scenario == 1 ? AsyncComputeMode::eDisabled : AsyncComputeMode::eAuto, queues, compute);
         CaptureVersionGraph(device);
         CreateTestShaderProgram(device, "intent");
     }
@@ -313,21 +292,20 @@ protected:
 
 TEST_P(RDGQueuePreferenceCapabilityTest, PolicyAndCommandCapabilitiesResolveBeforeMaterialization)
 {
-    const int scenario                          = std::get<1>(GetParam());
-    const RDGAsyncComputeEligibility expected[] = {
-        RDGAsyncComputeEligibility::eEligible,
-        RDGAsyncComputeEligibility::ePolicyDisabled,
-        RDGAsyncComputeEligibility::eComputeUnavailable,
-        RDGAsyncComputeEligibility::eSharedGraphicsQueue,
-        RDGAsyncComputeEligibility::eDependenciesUnavailable,
-        RDGAsyncComputeEligibility::eEligible,
-        RDGAsyncComputeEligibility::eUnsupportedCommands,
-        RDGAsyncComputeEligibility::eUnsupportedCommands};
-    RenderGraph graph("capability_fallback");
+    const int                        scenario   = std::get<1>(GetParam());
+    const RDGAsyncComputeEligibility expected[] = {RDGAsyncComputeEligibility::eEligible,
+                                                   RDGAsyncComputeEligibility::ePolicyDisabled,
+                                                   RDGAsyncComputeEligibility::eComputeUnavailable,
+                                                   RDGAsyncComputeEligibility::eSharedGraphicsQueue,
+                                                   RDGAsyncComputeEligibility::eDependenciesUnavailable,
+                                                   RDGAsyncComputeEligibility::eEligible,
+                                                   RDGAsyncComputeEligibility::eUnsupportedCommands,
+                                                   RDGAsyncComputeEligibility::eUnsupportedCommands};
+    RenderGraph                      graph("capability_fallback");
     ASSERT_TRUE(graph.Begin());
-    TestBuffer* source            = Buffer(256);
+    TestBuffer*         source    = Buffer(256);
     RDGResourceManager* resources = graph.GetResourceManager();
-    RDGTexture texture            = resources->CreateTexture(LogicalTexture(3));
+    RDGTexture          texture   = resources->CreateTexture(LogicalTexture(3));
     {
         RDGTransferPassCmdRecorder recorder = graph.AddTransferPass("preferred_transfer");
         recorder.NeverCull().SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
@@ -343,8 +321,7 @@ TEST_P(RDGQueuePreferenceCapabilityTest, PolicyAndCommandCapabilitiesResolveBefo
             region.textureSubresources.layerCount = 1;
             region.textureOffset                  = {1, 0, 0};
             region.textureSize                    = {1, 1, 1};
-            recorder.CopyBufferToTexture(resources->ImportHostWrittenBuffer(source), texture,
-                                         region);
+            recorder.CopyBufferToTexture(resources->ImportHostWrittenBuffer(source), texture, region);
         }
     }
     ASSERT_TRUE(graph.End());
@@ -352,9 +329,9 @@ TEST_P(RDGQueuePreferenceCapabilityTest, PolicyAndCommandCapabilitiesResolveBefo
     const RDGNodeMetrics& metrics = device->GetRDGMetrics().GetLastSnapshot().nodes[0];
     EXPECT_EQ(metrics.queuePreference, RDGQueuePreference::ePreferAsyncCompute);
     EXPECT_EQ(metrics.asyncComputeEligibility, expected[scenario]);
-    EXPECT_NE(RDGMetrics::Format(device->GetRDGMetrics().GetLastSnapshot())
-                  .find(AsyncComputeEligibilityName(expected[scenario])),
-              std::string::npos);
+    EXPECT_NE(
+        RDGMetrics::Format(device->GetRDGMetrics().GetLastSnapshot()).find(AsyncComputeEligibilityName(expected[scenario])),
+        std::string::npos);
     EXPECT_EQ(rhi->submitted[size_t(RHICommandContextType::eAsyncCompute)],
               expected[scenario] == RDGAsyncComputeEligibility::eEligible ? 1u : 0u);
     device->DestroyBuffer(source);
@@ -362,7 +339,6 @@ TEST_P(RDGQueuePreferenceCapabilityTest, PolicyAndCommandCapabilitiesResolveBefo
 
 INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
                          RDGQueuePreferenceCapabilityTest,
-                         testing::Combine(testing::Values(RHIExecutionMode::eInline,
-                                                          RHIExecutionMode::eThreaded),
+                         testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Range(0, 8)));
 } // namespace

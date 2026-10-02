@@ -30,6 +30,7 @@ public:
     }
 
     ArenaVector(const ArenaVector&)            = delete;
+
     ArenaVector& operator=(const ArenaVector&) = delete;
 
     ArenaVector(ArenaVector&& other) noexcept
@@ -52,10 +53,12 @@ public:
     {
         return m_size;
     }
+
     size_t capacity() const
     {
         return m_capacity;
     }
+
     bool empty() const
     {
         return m_size == 0;
@@ -67,6 +70,7 @@ public:
         assert(i < m_size);
         return m_pData[i];
     }
+
     const T& operator[](size_t i) const
     {
         assert(i < m_size);
@@ -78,6 +82,7 @@ public:
         assert(m_size > 0);
         return m_pData[m_size - 1];
     }
+
     const T& back() const
     {
         assert(m_size > 0);
@@ -89,14 +94,17 @@ public:
     {
         return m_pData;
     }
+
     const_iterator begin() const
     {
         return m_pData;
     }
+
     iterator end()
     {
         return m_pData + m_size;
     }
+
     const_iterator end() const
     {
         return m_pData + m_size;
@@ -143,9 +151,9 @@ public:
 private:
     Allocator* m_pAllocator = nullptr;
 
-    T* m_pData        = nullptr;
-    size_t m_size     = 0;
-    size_t m_capacity = 0;
+    T*     m_pData          = nullptr;
+    size_t m_size           = 0;
+    size_t m_capacity       = 0;
 
 private:
     // Allocate capacity from arena (PoolAllocator will grow pages automatically)
@@ -187,10 +195,10 @@ private:
 
     void MoveFrom(ArenaVector& other)
     {
-        m_pAllocator = other.m_pAllocator;
-        m_pData      = other.m_pData;
-        m_size       = other.m_size;
-        m_capacity   = other.m_capacity;
+        m_pAllocator     = other.m_pAllocator;
+        m_pData          = other.m_pData;
+        m_size           = other.m_size;
+        m_capacity       = other.m_capacity;
 
         other.m_pData    = nullptr;
         other.m_size     = 0;

@@ -11,20 +11,20 @@ namespace
 class VoxelCalibrationReferenceSP : public ShaderProgram
 {
 public:
-    explicit VoxelCalibrationReferenceSP(RenderDevice* device) :
-        ShaderProgram(device, "VoxelCalibrationReferenceSP")
+    explicit VoxelCalibrationReferenceSP(RenderDevice* device) : ShaderProgram(device, "VoxelCalibrationReferenceSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
+
         AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/Calibration/reference.geom.spv");
+
         AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/Calibration/reference.frag.spv");
+
         Init();
     }
 };
 } // namespace
 
-ShaderProgram::ShaderProgram(RenderDevice* pRenderDevice, NameID name) :
-    m_pRenderDevice(pRenderDevice), m_name(name)
-{}
+ShaderProgram::ShaderProgram(RenderDevice* pRenderDevice, NameID name) : m_pRenderDevice(pRenderDevice), m_name(name) {}
 
 ShaderProgram::~ShaderProgram()
 {
@@ -45,8 +45,7 @@ void ShaderProgram::UpdateUniformBuffer(NameID name, const uint8_t* pData, uint3
 {
     if (m_uniformBufferMap.contains(name))
     {
-        m_pRenderDevice->UpdateBuffer(m_uniformBufferMap[name], m_namedSRDLut[name]->blockSize,
-                                      pData, offset);
+        m_pRenderDevice->UpdateBuffer(m_uniformBufferMap[name], m_namedSRDLut[name]->blockSize, pData, offset);
     }
 }
 
@@ -55,8 +54,7 @@ bool ShaderProgram::Init()
     return Init({});
 }
 
-bool ShaderProgram::Init(
-    const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants)
+bool ShaderProgram::Init(const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants)
 {
     bool result{};
 
@@ -69,10 +67,15 @@ bool ShaderProgram::Init(
     else
     {
         RHIShaderCreateInfo info{};
+
         std::ranges::copy(m_stageSources, info.spirvFileName);
+
         info.stageFlags              = m_stageFlags;
+
         info.name                    = m_name;
+
         info.specializationConstants = specializationConstants;
+
         RHIShader* shader            = GDynamicRHI->CreateShader(info);
 
         if (shader == nullptr)
@@ -84,7 +87,9 @@ bool ShaderProgram::Init(
         else
         {
             RHIShader* previous = m_pShader;
+
             m_pShader           = shader;
+
             ResolveShaderResources();
 
             if (previous != nullptr)
@@ -109,40 +114,41 @@ bool ShaderProgram::Init(
 void ShaderProgram::ResolveShaderResources()
 {
     m_namedSRDLut.clear();
+
     m_storageBuffers.clear();
+
     m_sampledTextures.clear();
+
     m_storageImages.clear();
 
-    if (m_pShader == nullptr)
+    if (m_pShader != nullptr)
     {
-        return;
-    }
+        m_storageBuffers.reserve(m_pShader->GetSRDCountByType(RHIShaderResourceType::eStorageBuffer));
 
-    m_storageBuffers.reserve(m_pShader->GetSRDCountByType(RHIShaderResourceType::eStorageBuffer));
-    m_sampledTextures.reserve(
-        m_pShader->GetSRDCountByType(RHIShaderResourceType::eSamplerWithTexture));
-    m_storageImages.reserve(m_pShader->GetSRDCountByType(RHIShaderResourceType::eImage));
+        m_sampledTextures.reserve(m_pShader->GetSRDCountByType(RHIShaderResourceType::eSamplerWithTexture));
 
-    const RHIShaderResourceDescriptorTable* SRDTable = m_pShader->GetSRDTable();
+        m_storageImages.reserve(m_pShader->GetSRDCountByType(RHIShaderResourceType::eImage));
 
-    for (SmallVector<RHIShaderResourceDescriptor> const& setSRD : *SRDTable)
-    {
-        for (RHIShaderResourceDescriptor const& srd : setSRD)
+        const RHIShaderResourceDescriptorTable* SRDTable = m_pShader->GetSRDTable();
+
+        for (SmallVector<RHIShaderResourceDescriptor> const& setSRD : *SRDTable)
         {
-            m_namedSRDLut[srd.name] = &srd;
+            for (RHIShaderResourceDescriptor const& srd : setSRD)
+            {
+                m_namedSRDLut[srd.name] = &srd;
 
-            if (srd.type == RHIShaderResourceType::eStorageBuffer)
-            {
-                m_storageBuffers.emplace_back(srd);
-            }
-            else if (srd.type == RHIShaderResourceType::eImage)
-            {
-                m_storageImages.emplace_back(srd);
-            }
-            else if (srd.type == RHIShaderResourceType::eTexture ||
-                     srd.type == RHIShaderResourceType::eSamplerWithTexture)
-            {
-                m_sampledTextures.emplace_back(srd);
+                if (srd.type == RHIShaderResourceType::eStorageBuffer)
+                {
+                    m_storageBuffers.emplace_back(srd);
+                }
+                else if (srd.type == RHIShaderResourceType::eImage)
+                {
+                    m_storageImages.emplace_back(srd);
+                }
+                else if (srd.type == RHIShaderResourceType::eTexture || srd.type == RHIShaderResourceType::eSamplerWithTexture)
+                {
+                    m_sampledTextures.emplace_back(srd);
+                }
             }
         }
     }
@@ -151,6 +157,7 @@ void ShaderProgram::ResolveShaderResources()
 ShaderProgram* ShaderProgramManager::CreateShaderProgram(RenderDevice* pRenderDevice, NameID name)
 {
     ShaderProgram* pShaderProgram = ZEN_NEW() ShaderProgram(pRenderDevice, name);
+
     StoreProgram(pShaderProgram);
 
     return pShaderProgram;
@@ -160,13 +167,17 @@ void ShaderProgramManager::StoreProgram(ShaderProgram* program)
 {
     const std::pair<HashMap<NameID, ShaderProgram*>::iterator, bool> itResult =
         m_programCache.try_emplace(program->GetName(), program);
+
     HashMap<NameID, ShaderProgram*>::iterator it = itResult.first;
+
     bool inserted                                = itResult.second;
 
     if (!inserted && it->second != program)
     {
         ShaderProgram* previous = it->second;
+
         it->second              = program;
+
         ZEN_DELETE(previous);
     }
 }
@@ -184,105 +195,133 @@ void ShaderProgramManager::Destroy()
 void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
 {
     const glm::uvec3 volumeGroupSize = ResolveVoxelVolumeWorkgroupSize(pRenderDevice->GetGPUInfo());
+
     const HashMap<uint32_t, RHIShaderSpecializationValue> volumeConstants{
         {ZEN_VOXEL_VOLUME_GROUP_X_ID, static_cast<int>(volumeGroupSize.x)},
         {ZEN_VOXEL_VOLUME_GROUP_Y_ID, static_cast<int>(volumeGroupSize.y)},
         {ZEN_VOXEL_VOLUME_GROUP_Z_ID, static_cast<int>(volumeGroupSize.z)}};
-    LOGI("Voxel volume workgroup: {}x{}x{} (device invocation limit {})", volumeGroupSize.x,
-         volumeGroupSize.y, volumeGroupSize.z,
-         pRenderDevice->GetGPUInfo().maxComputeWorkGroupInvocations);
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureFrameSP",
-                                         "SceneRenderer/capture_frame.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelVolumeSP",
-                                         "VoxelGI/capture_volume.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelBufferSP",
-                                         "VoxelGI/capture_buffer.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelCaptureOwnersSP",
-                                         "VoxelGI/Calibration/capture_owners.comp.spv"));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelCaptureGBufferSP",
-                                         "VoxelGI/Calibration/capture_gbuffer.comp.spv"));
 
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelVisibilityCheckSP",
-                                         "VoxelGI/Calibration/visibility_check.comp.spv"));
+    LOGI("Voxel volume workgroup: {}x{}x{} (device invocation limit {})", volumeGroupSize.x, volumeGroupSize.y,
+         volumeGroupSize.z, pRenderDevice->GetGPUInfo().maxComputeWorkGroupInvocations);
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureFrameSP", "SceneRenderer/capture_frame.comp.spv"));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "CaptureVoxelVolumeSP", "VoxelGI/capture_volume.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelBufferSP", "VoxelGI/capture_buffer.comp.spv"));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelCaptureOwnersSP", "VoxelGI/Calibration/capture_owners.comp.spv"));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelCaptureGBufferSP", "VoxelGI/Calibration/capture_gbuffer.comp.spv"));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelVisibilityCheckSP", "VoxelGI/Calibration/visibility_check.comp.spv"));
 
     StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice));
+
     if (pRenderDevice->GetGPUInfo().supportFragmentStoresAndAtomics)
     {
         StoreProgram(ZEN_NEW() DeferredLightingSP(pRenderDevice, true));
+
         StoreProgram(ZEN_NEW() DeferredVoxelGISP(pRenderDevice, true));
-        StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "ClearLightingCaptureSP",
-                                             "SceneRenderer/clear_lighting_capture.comp.spv"));
+
+        StoreProgram(
+            ZEN_NEW() ComputeFileSP(pRenderDevice, "ClearLightingCaptureSP", "SceneRenderer/clear_lighting_capture.comp.spv"));
     }
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelReflectanceSP",
-                                         "VoxelGI/capture_reflectance.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "CaptureVoxelReflectanceSP", "VoxelGI/capture_reflectance.comp.spv",
+                                         volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelClearOwnersAveragedSP", "VoxelGI/clear_owners_averaged.comp.spv",
+                                         volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveAlbedoAveragedSP",
+                                         "VoxelGI/resolve_albedo_averaged.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveSurfaceAveragedSP",
+                                         "VoxelGI/resolve_surface_averaged.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectRadianceAveragedSP",
+                                         "VoxelGI/inject_radiance_averaged.comp.spv", volumeConstants));
+
     StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "VoxelClearOwnersAveragedSP",
-                                   "VoxelGI/clear_owners_averaged.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "VoxelResolveAlbedoAveragedSP",
-                                   "VoxelGI/resolve_albedo_averaged.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "VoxelResolveSurfaceAveragedSP",
-                                   "VoxelGI/resolve_surface_averaged.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW()
-                     ComputeFileSP(pRenderDevice, "VoxelInjectRadianceAveragedSP",
-                                   "VoxelGI/inject_radiance_averaged.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelizationCompAveragedSP",
-                                         "VoxelGI/voxelization_averaged.comp.spv"));
+                     ComputeFileSP(pRenderDevice, "VoxelizationCompAveragedSP", "VoxelGI/voxelization_averaged.comp.spv"));
 
     StoreProgram(ZEN_NEW() LightMarkerSP(pRenderDevice));
+
     StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice));
+
     StoreProgram(ZEN_NEW() ForwardMaterialSP(pRenderDevice, true));
+
     StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, false));
+
     StoreProgram(ZEN_NEW() ForwardFullscreenSP(pRenderDevice, true));
+
     StoreProgram(ZEN_NEW() ForwardScatterSP(pRenderDevice));
+
     StoreProgram(ZEN_NEW() ForwardScatterSP(pRenderDevice, true));
+
     StoreProgram(ZEN_NEW() SceneShadowSP(pRenderDevice));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelFilterAlbedoSP",
-                                         "VoxelGI/filter_albedo.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelFilterRadianceSP",
-                                         "VoxelGI/filter_radiance.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectMeshRadianceSP",
-                                         "VoxelGI/inject_mesh_radiance.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectMeshRadianceAveragedSP",
-                                         "VoxelGI/inject_mesh_radiance_averaged.comp.spv",
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelFilterAlbedoSP", "VoxelGI/filter_albedo.comp.spv", volumeConstants));
+
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelFilterRadianceSP", "VoxelGI/filter_radiance.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectMeshRadianceSP", "VoxelGI/inject_mesh_radiance.comp.spv",
                                          volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceSP",
-                                         "VoxelGI/sky_irradiance.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelClearOwnersSP",
-                                         "VoxelGI/clear_owners.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveAlbedoSP",
-                                         "VoxelGI/resolve_albedo.comp.spv", volumeConstants));
-    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveSurfaceSP",
-                                         "VoxelGI/resolve_surface.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectMeshRadianceAveragedSP",
+                                         "VoxelGI/inject_mesh_radiance_averaged.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelSkyIrradianceSP", "VoxelGI/sky_irradiance.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelClearOwnersSP", "VoxelGI/clear_owners.comp.spv", volumeConstants));
+
+    StoreProgram(ZEN_NEW()
+                     ComputeFileSP(pRenderDevice, "VoxelResolveAlbedoSP", "VoxelGI/resolve_albedo.comp.spv", volumeConstants));
+
+    StoreProgram(
+        ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelResolveSurfaceSP", "VoxelGI/resolve_surface.comp.spv", volumeConstants));
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() GBufferSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() DeferredLightingSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() EnvMapIrradianceSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() EnvMapPrefilteredSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() SkyboxRenderSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() EnvMapBRDFLutGenSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
@@ -291,66 +330,77 @@ void ShaderProgramManager::BuildShaderPrograms(RenderDevice* pRenderDevice)
     {
         {
             StoreProgram(ZEN_NEW() VoxelizationSP(pRenderDevice, true));
+
             ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationSP(pRenderDevice);
+
             StoreProgram(pShaderProgram);
         }
 
         {
             ShaderProgram* pShaderProgram = ZEN_NEW() VoxelDrawSP(pRenderDevice);
+
             StoreProgram(pShaderProgram);
         }
     }
 
-    if (ResolveVoxelizerMode(platform::VoxelizerMode::eGeometry, pRenderDevice->GetGPUInfo()) ==
-        platform::VoxelizerMode::eGeometry)
+    if (ResolveVoxelizerMode(platform::VoxelizerMode::eGeometry, pRenderDevice->GetGPUInfo())
+        == platform::VoxelizerMode::eGeometry)
     {
         StoreProgram(ZEN_NEW() VoxelCalibrationReferenceSP(pRenderDevice));
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ResetComputeIndirectSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ResetDrawIndirectSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ResetVoxelTextureSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationCompSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelizationLargeTriangleCompSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelPreDrawSP(pRenderDevice, volumeConstants);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() VoxelDrawSP2(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
         ShaderProgram* pShaderProgram = ZEN_NEW() ShadowMapRenderSP(pRenderDevice);
+
         StoreProgram(pShaderProgram);
     }
 
     {
-        ShaderProgram* pShaderProgram =
-            ZEN_NEW() ComputeFileSP(pRenderDevice, "VoxelInjectRadianceSP",
-                                    "VoxelGI/inject_radiance.comp.spv", volumeConstants);
+        ShaderProgram* pShaderProgram = ZEN_NEW()
+            ComputeFileSP(pRenderDevice, "VoxelInjectRadianceSP", "VoxelGI/inject_radiance.comp.spv", volumeConstants);
+
         StoreProgram(pShaderProgram);
     }
 }

@@ -11,11 +11,11 @@ namespace zen::rc
 {
 struct RenderObjectData
 {
-    sg::Scene* pScene;
+    sg::Scene*           pScene;
     const asset::Vertex* pVertices;
-    const uint32_t* pIndices;
-    uint32_t numVertices;
-    uint32_t numIndices;
+    const uint32_t*      pIndices;
+    uint32_t             numVertices;
+    uint32_t             numIndices;
 };
 
 class RenderObject
@@ -25,7 +25,7 @@ public:
 
     ~RenderObject();
 
-    const std::vector<sg::Node*>& GetRenderableNodes() const
+    const zen::HeapVector<sg::Node*>& GetRenderableNodes() const
     {
         return m_scene->GetRenderableNodes();
     }
@@ -46,14 +46,14 @@ public:
     }
 
 private:
-    RenderDevice* m_pRenderDevice{nullptr};
+    RenderDevice*        m_pRenderDevice{nullptr};
     UniquePtr<sg::Scene> m_scene;
 
     HeapVector<sg::MaterialData> m_materialsData;
-    RHIBuffer* m_pMaterialSSBO{nullptr};
+    RHIBuffer*                   m_pMaterialSSBO{nullptr};
 
     HeapVector<sg::NodeData> m_nodesData;
-    RHIBuffer* m_pNodeSSBO{nullptr};
+    RHIBuffer*               m_pNodeSSBO{nullptr};
 
     RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};

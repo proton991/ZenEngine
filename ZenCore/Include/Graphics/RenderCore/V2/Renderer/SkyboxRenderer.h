@@ -69,19 +69,19 @@ private:
     struct PushConstantIrradiance
     {
         glm::mat4 mvp;
-        float deltaPhi   = 2.0f * glm::pi<float>() / 180.0f;
-        float deltaTheta = 0.5f * glm::pi<float>() / 64.0f;
+        float     deltaPhi   = 2.0f * glm::pi<float>() / 180.0f;
+        float     deltaTheta = 0.5f * glm::pi<float>() / 64.0f;
     };
 
     struct PushConstantPrefilterEnv
     {
         glm::mat4 mvp;
-        float roughness;
-        uint32_t numSamples = 32u;
+        float     roughness;
+        uint32_t  numSamples = 32u;
     };
 
-    const DataFormat cIrradianceFormat  = DataFormat::eR32G32B32A32SFloat;
-    const DataFormat cPrefilteredFormat = DataFormat::eR16G16B16A16SFloat;
+    const DataFormat cIrradianceFormat             = DataFormat::eR32G32B32A32SFloat;
+    const DataFormat cPrefilteredFormat            = DataFormat::eR16G16B16A16SFloat;
 
     const HeapVector<SkyboxVertex> cSkyboxVertices = {
         {Vec3(-1.0f, 1.0f, -1.0f)}, // Front face

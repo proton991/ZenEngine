@@ -14,7 +14,7 @@ class RenderGraph;
 class RenderOverlay
 {
 public:
-    virtual ~RenderOverlay() = default;
+    virtual ~RenderOverlay()                                                 = default;
 
     virtual bool BuildRenderGraph(RenderGraph& graph, RHIViewport& viewport) = 0;
 };

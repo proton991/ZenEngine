@@ -17,10 +17,10 @@ template <FrameTimelineId Id> class TFrameTimeline
     using Traits = FrameTimelineTraits<Id>;
 
 public:
-    using Number = typename Traits::Number;
-    using Slot   = typename Traits::Slot;
+    using Number                                     = typename Traits::Number;
+    using Slot                                       = typename Traits::Slot;
 
-    static constexpr uint32_t kMaxFramesInFlight = Traits::kMaxFramesInFlight;
+    static constexpr uint32_t kMaxFramesInFlight     = Traits::kMaxFramesInFlight;
 
     static constexpr uint32_t kDefaultFramesInFlight = Traits::kDefaultFramesInFlight;
 

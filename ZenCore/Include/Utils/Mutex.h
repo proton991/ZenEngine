@@ -24,6 +24,7 @@ public:
     {
         InitializeCriticalSection(&m_osMutex);
     }
+
     ~Mutex()
     {
         DeleteCriticalSection(&m_osMutex);
@@ -36,12 +37,12 @@ public:
     {
         pthread_mutex_init(&m_osMutex, nullptr);
     }
+
     ~Mutex()
     {
         pthread_mutex_destroy(&m_osMutex);
     }
 #endif
-
 
     void Lock();
 
@@ -57,6 +58,7 @@ public:
 
 private:
     MutexData m_osMutex;
+
     ZEN_NO_COPY(Mutex)
 };
 
@@ -78,6 +80,7 @@ public:
 
 private:
     Mutex* m_pMutex;
+
     ZEN_NO_COPY(LockAuto)
 };
 

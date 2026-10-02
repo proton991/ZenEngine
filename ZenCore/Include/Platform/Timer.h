@@ -50,19 +50,24 @@ public:
 	 */
     template <typename T = DefaultResolution> double Stop()
     {
+        double returnValue{};
+
         if (!m_running)
         {
-            return 0;
+            returnValue = 0;
+        }
+        else
+        {
+            m_running                                       = false;
+            m_lapping                                       = false;
+            const std::chrono::duration<double, T> duration = std::chrono::duration<double, T>(Clock::now() - m_startTime);
+            m_startTime                                     = Clock::now();
+            m_lapTime                                       = Clock::now();
+
+            returnValue                                     = duration.count();
         }
 
-        m_running = false;
-        m_lapping = false;
-        const std::chrono::duration<double, T> duration =
-            std::chrono::duration<double, T>(Clock::now() - m_startTime);
-        m_startTime = Clock::now();
-        m_lapTime   = Clock::now();
-
-        return duration.count();
+        return returnValue;
     }
 
     /**
@@ -72,19 +77,25 @@ public:
 	 */
     template <typename T = DefaultResolution> double Elapsed()
     {
+        double returnValue{};
+
         if (!m_running)
         {
-            return 0;
+            returnValue = 0;
         }
-
-        Clock::time_point start = m_startTime;
-
-        if (m_lapping)
+        else
         {
-            start = m_lapTime;
+            Clock::time_point start = m_startTime;
+
+            if (m_lapping)
+            {
+                start = m_lapTime;
+            }
+
+            returnValue = std::chrono::duration<double, T>(Clock::now() - start).count();
         }
 
-        return std::chrono::duration<double, T>(Clock::now() - start).count();
+        return returnValue;
     }
 
     /**
@@ -93,10 +104,9 @@ public:
 	 */
     template <typename T = DefaultResolution> double Tick()
     {
-        const Clock::time_point now = Clock::now();
-        const std::chrono::duration<double, T> duration =
-            std::chrono::duration<double, T>(now - m_previousTick);
-        m_previousTick = now;
+        const Clock::time_point                now      = Clock::now();
+        const std::chrono::duration<double, T> duration = std::chrono::duration<double, T>(now - m_previousTick);
+        m_previousTick                                  = now;
         return duration.count();
     }
 

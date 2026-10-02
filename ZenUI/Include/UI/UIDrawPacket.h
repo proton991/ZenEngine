@@ -21,16 +21,12 @@ struct UIDrawPacket
 {
     HeapVector<uint8_t> vertices;
     // Padded to four bytes for RHI staging copies; draw counts exclude padding.
-    HeapVector<uint8_t> indices;
+    HeapVector<uint8_t>       indices;
     HeapVector<UIDrawCommand> commands;
-    float projection[4]{};
+    float                     projection[4]{};
 };
 
 // Static-font backend contract: reject unsupported textures/custom callbacks.
 // ResetRenderState is accepted because each draw restores all mutable UI state.
-bool BuildUIDrawPacket(const ImDrawData& data,
-                       ImTextureID fontTexture,
-                       uint32_t width,
-                       uint32_t height,
-                       UIDrawPacket& output);
+bool BuildUIDrawPacket(const ImDrawData& data, ImTextureID fontTexture, uint32_t width, uint32_t height, UIDrawPacket& output);
 } // namespace zen::ui

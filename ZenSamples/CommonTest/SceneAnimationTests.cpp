@@ -5,8 +5,7 @@
 
 using namespace zen;
 
-static void ExpectFloatValues(const HeapVector<float>& values,
-                              std::initializer_list<float> expected)
+static void ExpectFloatValues(const HeapVector<float>& values, std::initializer_list<float> expected)
 {
     ASSERT_EQ(values.size(), expected.size());
 
@@ -24,7 +23,7 @@ TEST(SceneAnimation, SamplersClampAndUseStepAndLinearInterpolation)
 {
     sg::AnimationSampler sampler;
 
-    sampler.times = {10.0f, 12.0f};
+    sampler.times  = {10.0f, 12.0f};
 
     sampler.values = {1, 2, 3, 5, 6, 7};
 
@@ -59,7 +58,7 @@ TEST(SceneAnimation, CubicTangentsUseKeyframeDurationAndScalarWeightGroups)
 
     sampler.interpolation = sg::AnimationInterpolation::CubicSpline;
 
-    sampler.times = {0, 2};
+    sampler.times         = {0, 2};
 
     // Two scalar weights: in tangents, values, out tangents for each key.
     sampler.values = {0, 0, 0, 1, 4, 0, 0, 0, 2, 3, 0, 0};
@@ -74,7 +73,7 @@ TEST(SceneAnimation, CubicTangentsUseKeyframeDurationAndScalarWeightGroups)
 
     sampler.times[1] = 0;
 
-    sampled = {42};
+    sampled          = {42};
 
     EXPECT_FALSE(sg::SampleAnimationSampler(sampler, 1, 2, false, sampled));
 
@@ -85,7 +84,7 @@ TEST(SceneAnimation, RotationUsesShortestSphericalPathAndNormalizedCubicValues)
 {
     sg::AnimationSampler sampler;
 
-    sampler.times = {0, 1};
+    sampler.times  = {0, 1};
 
     sampler.values = {0, 0, 0, 1, 0, 0, 0, -1};
 
@@ -97,7 +96,7 @@ TEST(SceneAnimation, RotationUsesShortestSphericalPathAndNormalizedCubicValues)
 
     sampler.interpolation = sg::AnimationInterpolation::CubicSpline;
 
-    sampler.values = {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+    sampler.values        = {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
 
     ASSERT_TRUE(sg::SampleAnimationSampler(sampler, 0.5f, 4, true, sampled));
 
@@ -106,12 +105,12 @@ TEST(SceneAnimation, RotationUsesShortestSphericalPathAndNormalizedCubicValues)
     EXPECT_NEAR(sampled[3], std::sqrt(0.5f), 1e-6f);
 }
 
-static sg::Node* AddAnimationNode(sg::Scene& scene,
-                                  std::vector<UniquePtr<sg::Node>>& nodes,
-                                  uint32_t index,
-                                  const Vec3& translation)
+static sg::Node* AddAnimationNode(sg::Scene&                            scene,
+                                  zen::HeapVector<UniquePtr<sg::Node>>& nodes,
+                                  uint32_t                              index,
+                                  const Vec3&                           translation)
 {
-    UniquePtr<sg::Node> node = MakeUnique<sg::Node>(index, "animation node");
+    UniquePtr<sg::Node> node           = MakeUnique<sg::Node>(index, "animation node");
 
     UniquePtr<sg::Transform> transform = MakeUnique<sg::Transform>(*node);
 
@@ -134,7 +133,7 @@ TEST(SceneAnimation, AuthoredRootAnimationPreservesSceneNormalization)
 {
     sg::Scene scene;
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     sg::Node* root = AddAnimationNode(scene, nodes, 0, Vec3(10, 0, 0));
 
@@ -146,7 +145,7 @@ TEST(SceneAnimation, AuthoredRootAnimationPreservesSceneNormalization)
 
     sg::AnimationSampler sampler;
 
-    sampler.times = {0, 2};
+    sampler.times  = {0, 2};
 
     sampler.values = {10, 0, 0, 14, 0, 0};
 
@@ -169,7 +168,7 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 {
     sg::Scene scene;
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     sg::Node* skinned = AddAnimationNode(scene, nodes, 0, Vec3(100, 0, 0));
 
@@ -179,15 +178,15 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 
     scene.SetNodes(std::move(nodes));
 
-    skinned->skinIndex = 0;
+    skinned->skinIndex    = 0;
 
     skinned->morphWeights = {0.5f};
 
-    other->morphWeights = {1.0f};
+    other->morphWeights   = {1.0f};
 
     sg::SkinAsset skin;
 
-    skin.joints = {1};
+    skin.joints              = {1};
 
     skin.inverseBindMatrices = {Mat4(1)};
 
@@ -205,11 +204,11 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 
     sg::DeformationPrimitiveAsset first;
 
-    first.node = 0;
+    first.node           = 0;
 
-    first.firstVertex = 0;
+    first.firstVertex    = 0;
 
-    first.vertexCount = 1;
+    first.vertexCount    = 1;
 
     first.morphPrimitive = 0;
 
@@ -219,11 +218,11 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 
     sg::DeformationPrimitiveAsset second;
 
-    second.node = 2;
+    second.node           = 2;
 
-    second.firstVertex = 1;
+    second.firstVertex    = 1;
 
-    second.vertexCount = 1;
+    second.vertexCount    = 1;
 
     second.morphPrimitive = 0;
 
@@ -231,9 +230,9 @@ TEST(SceneAnimation, MorphPrecedesSkinAndInstancesUseIndependentWeights)
 
     asset::Vertex rest{};
 
-    rest.pos = Vec4(1, 0, 0, 1);
+    rest.pos                       = Vec4(1, 0, 0, 1);
 
-    rest.normal = Vec4(0, 1, 0, 0);
+    rest.normal                    = Vec4(0, 1, 0, 0);
 
     HeapVector<asset::Vertex> bind = {rest, rest};
 

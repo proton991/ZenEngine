@@ -67,9 +67,8 @@ public:
         return m_executionCounters.Read();
     }
 
-    bool PrepareSubmissionDependencies(
-        IRHICommandContext* context,
-        VectorView<const RHISubmissionDependency> dependencies) override;
+    bool PrepareSubmissionDependencies(IRHICommandContext*                       context,
+                                       VectorView<const RHISubmissionDependency> dependencies) override;
 
     void Init() override;
 
@@ -113,10 +112,7 @@ public:
 
     VkDevice GetVkDevice() const;
 
-    RHIViewport* CreateViewport(void* pWindow,
-                                uint32_t width,
-                                uint32_t height,
-                                bool enableVSync) final;
+    RHIViewport* CreateViewport(void* pWindow, uint32_t width, uint32_t height, bool enableVSync) final;
 
     void DestroyViewport(RHIViewport* pViewport) final;
 
@@ -136,8 +132,7 @@ public:
 
     RHITexture* CreateTexture(const RHITextureCreateInfo& createInfo) final;
 
-    RHITextureView* CreateTextureView(RHITexture* pBaseTexture,
-                                      const RHITextureViewCreateInfo& createInfo) final;
+    RHITextureView* CreateTextureView(RHITexture* pBaseTexture, const RHITextureViewCreateInfo& createInfo) final;
 
     void DestroyTexture(RHITexture* pTexture) final;
 
@@ -145,7 +140,7 @@ public:
 
     void DestroyBuffer(RHIBuffer* pBuffer) final;
 
-    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*>          cmdLists,
                                    HeapVector<RHIPlatformCommandList*>& outCommandLists) final;
 
     void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) final;
@@ -168,9 +163,7 @@ public:
 
     uint64_t QueryLastCompletedSerial(RHICommandContextType contextType) final;
 
-    bool WaitForCompletion(RHICommandContextType contextType,
-                           uint64_t submissionSerial,
-                           uint64_t timeoutNS = UINT64_MAX) final;
+    bool WaitForCompletion(RHICommandContextType contextType, uint64_t submissionSerial, uint64_t timeoutNS = UINT64_MAX) final;
 
     void WaitDeviceIdle() final;
 
@@ -197,11 +190,12 @@ public:
         return m_pBindlessDescriptorPoolManager;
     }
 
-    RHIBindlessHandle RegisterBindlessResource(
-        RHIResource* pResource,
-        uint32_t slotIndex = kInvalidBindlessSlotIndex) override;
+    RHIBindlessHandle RegisterBindlessResource(RHIResource* pResource, uint32_t slotIndex = kInvalidBindlessSlotIndex) override;
+
     bool UnregisterBindlessResource(RHIBindlessHandle handle) override;
+
     bool IsBindlessResourceRegistered(RHIBindlessHandle handle) override;
+
     void CollectRetiredBindlessResources() override;
 
     bool ResetBindlessResources() override;
@@ -241,7 +235,7 @@ private:
 
     void DestroyPlatformCommandListPool();
 
-    VkInstance m_instance{VK_NULL_HANDLE};
+    VkInstance               m_instance{VK_NULL_HANDLE};
     VkDebugUtilsMessengerEXT m_messenger{VK_NULL_HANDLE};
 
     HeapVector<NameID> m_instanceLayers;
@@ -253,19 +247,19 @@ private:
 
     RHIGPUInfo m_gpuInfo{};
 
-    VulkanDescriptorPoolManager2* m_pDescriptorPoolManager2{nullptr};
+    VulkanDescriptorPoolManager2*        m_pDescriptorPoolManager2{nullptr};
     VulkanBindlessDescriptorPoolManager* m_pBindlessDescriptorPoolManager{nullptr};
-    VulkanUniformBufferAllocator* m_pUniformBufferAllocator{nullptr};
+    VulkanUniformBufferAllocator*        m_pUniformBufferAllocator{nullptr};
 
     PagedAllocator<VersatileResource> m_resourceAllocator;
 
     ObjectPool<VulkanPlatformCommandList> m_platformCommandListPool;
 
     HeapVector<VulkanPlatformCommandList*> m_pendingPlatformCmdLists;
-    bool m_submissionBlocked{false};
-    RHIGPUFrameTimingPtr m_gpuFrameTiming;
-    uint32_t m_pendingNativeRecordings{0};
-    VulkanLifetimeTracker m_lifetimeTracker;
+    bool                                   m_submissionBlocked{false};
+    RHIGPUFrameTimingPtr                   m_gpuFrameTiming;
+    uint32_t                               m_pendingNativeRecordings{0};
+    VulkanLifetimeTracker                  m_lifetimeTracker;
 };
 
 class VulkanResourceFactory : public RHIResourceFactory
@@ -285,5 +279,5 @@ public:
 };
 
 extern VulkanMemoryAllocator* GVkMemAllocator;
-extern VulkanRHI* GVulkanRHI;
+extern VulkanRHI*             GVulkanRHI;
 } // namespace zen

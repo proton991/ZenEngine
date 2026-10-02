@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--clang-format", default="clang-format")
     args = parser.parse_args()
     files = subprocess.check_output(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "ZenCore", "ZenSamples"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "ZenCore", "ZenSamples", "ZenUI"],
         cwd=ROOT,
     ).decode().split("\0")
     files = sorted({name for name in files if active_source(name) and (ROOT / name).is_file()})

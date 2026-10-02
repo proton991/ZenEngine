@@ -19,8 +19,11 @@ public:
 
     // Rule of Zero/Five: Disable copy and move operations    // as this class owns the underlying memory buffer.
     LinearAllocator(const LinearAllocator&)            = delete;
+
     LinearAllocator& operator=(const LinearAllocator&) = delete;
+
     LinearAllocator(LinearAllocator&&)                 = delete;
+
     LinearAllocator& operator=(LinearAllocator&&)      = delete;
 
     ~LinearAllocator()
@@ -34,18 +37,19 @@ public:
 
     void* Alloc(size_t size, size_t alignment = alignof(std::max_align_t))
     {
+        void*     result  = nullptr;
         uintptr_t base    = reinterpret_cast<uintptr_t>(m_pBuffer);
         uintptr_t cur     = base + m_offset;
         uintptr_t aligned = AlignUp(cur, alignment);
 
-        size_t newOffset = (aligned - base) + size;
-        if (newOffset > m_capacity)
+        size_t newOffset  = (aligned - base) + size;
+        if (newOffset <= m_capacity)
         {
-            return nullptr; // out of memory
+            m_offset = newOffset;
+            result   = reinterpret_cast<void*>(aligned);
         }
 
-        m_offset = newOffset;
-        return reinterpret_cast<void*>(aligned);
+        return result;
     }
 
     void Reset()
@@ -57,6 +61,7 @@ public:
     {
         return m_offset;
     }
+
     size_t Capacity() const
     {
         return m_capacity;
@@ -69,9 +74,8 @@ private:
         return (ptr + (align - 1)) & ~(align - 1);
     }
 
-
-    uint8_t* m_pBuffer = nullptr;
-    size_t m_capacity  = 0;
-    size_t m_offset    = 0;
+    uint8_t* m_pBuffer  = nullptr;
+    size_t   m_capacity = 0;
+    size_t   m_offset   = 0;
 };
 } // namespace zen

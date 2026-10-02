@@ -8,7 +8,7 @@ using TypeId = std::type_index;
 class Component
 {
 public:
-    Component() = default;
+    Component()          = default;
 
     virtual ~Component() = default;
 

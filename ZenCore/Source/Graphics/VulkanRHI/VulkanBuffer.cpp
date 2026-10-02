@@ -52,24 +52,25 @@ VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 void VulkanBuffer::Init()
 {
     VkBufferCreateInfo bufferCI;
+
     InitVkStruct(bufferCI, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
-    bufferCI.size        = static_cast<VkDeviceSize>(m_requiredSize);
-    bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferCI.usage       = ToVkBufferUsageFlags(m_usageFlags);
+
+    bufferCI.size                      = static_cast<VkDeviceSize>(m_requiredSize);
+
+    bufferCI.sharingMode               = VK_SHARING_MODE_EXCLUSIVE;
+
+    bufferCI.usage                     = ToVkBufferUsageFlags(m_usageFlags);
 
     const uint32_t graphicsQueueFamily = GVulkanRHI->GetDevice()->GetGfxQueue()->GetFamilyIndex();
-    const uint32_t computeQueueFamily =
-        GVulkanRHI->GetDevice()->GetComputeQueue()->GetFamilyIndex();
-    const uint32_t transferQueueFamily =
-        GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
+
+    const uint32_t computeQueueFamily  = GVulkanRHI->GetDevice()->GetComputeQueue()->GetFamilyIndex();
+
+    const uint32_t transferQueueFamily = GVulkanRHI->GetDevice()->GetTransferQueue()->GetFamilyIndex();
 
     AllocateWithQueueSharing(
         bufferCI, graphicsQueueFamily, computeQueueFamily, transferQueueFamily,
-        (bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) !=
-            0,
-        [this, &bufferCI] {
-            GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer,
-                                         &m_memAlloc);
+        (bufferCI.usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT)) != 0, [this, &bufferCI] {
+            GVkMemAllocator->AllocBuffer(m_requiredSize, &bufferCI, m_allocateType, &m_vkBuffer, &m_memAlloc);
         });
 }
 
@@ -84,6 +85,7 @@ void VulkanBuffer::Destroy()
     {
         GVkMemAllocator->FreeBuffer(m_vkBuffer, m_memAlloc);
     }
+
     this->~VulkanBuffer();
 
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
@@ -111,18 +113,25 @@ bool VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
     if (m_bufferView == VK_NULL_HANDLE)
     {
         VkBufferViewCreateInfo bufferViewCI;
+
         InitVkStruct(bufferViewCI, VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO);
+
         bufferViewCI.buffer = m_vkBuffer;
+
         bufferViewCI.format = ToVkFormat(format);
+
         bufferViewCI.range  = m_requiredSize;
+
         bufferViewCI.offset = 0;
 
         VkBufferView bufferView{VK_NULL_HANDLE};
-        const VkResult result =
-            vkCreateBufferView(GVulkanRHI->GetVkDevice(), &bufferViewCI, nullptr, &bufferView);
+
+        const VkResult result = vkCreateBufferView(GVulkanRHI->GetVkDevice(), &bufferViewCI, nullptr, &bufferView);
+
         if (result != VK_SUCCESS)
         {
             LOGE("vkCreateBufferView failed: {}", GetResultString(result));
+
             ready = false;
         }
 
@@ -131,45 +140,48 @@ bool VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
         if (ready)
         {
             m_bufferView  = bufferView;
+
             m_texelFormat = format;
         }
     }
     else if (format != m_texelFormat)
     {
         LOGE("Cannot change an existing buffer's texel format");
+
         ready = false;
     }
 
     return ready;
 }
 
-void VulkanUniformBufferAllocator::Init(uint32_t numSlots,
-                                        uint32_t blockSize,
-                                        uint32_t reservedBlocksPerSlot)
+void VulkanUniformBufferAllocator::Init(uint32_t numSlots, uint32_t blockSize, uint32_t reservedBlocksPerSlot)
 {
     VERIFY_EXPR(numSlots > 0);
+
     VERIFY_EXPR(blockSize > 0);
+
     VERIFY_EXPR(reservedBlocksPerSlot > 0);
 
-    if (numSlots == 0 || blockSize == 0 || reservedBlocksPerSlot == 0)
+    if (((numSlots != 0) && (blockSize != 0)) && (reservedBlocksPerSlot != 0))
     {
-        return;
-    }
+        const size_t uniformBufferAlignment = GVulkanRHI->QueryGPUInfo().uniformBufferAlignment;
 
-    const size_t uniformBufferAlignment = GVulkanRHI->QueryGPUInfo().uniformBufferAlignment;
-    VERIFY_EXPR(uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX);
+        VERIFY_EXPR(uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX);
 
-    m_blockSize      = blockSize;
-    m_alignment      = uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX ?
-             static_cast<uint32_t>(uniformBufferAlignment) :
-             1;
-    m_currentSlotIdx = 0;
+        m_blockSize      = blockSize;
 
-    m_slots.resize(numSlots);
+        m_alignment      = uniformBufferAlignment > 0 && uniformBufferAlignment <= UINT32_MAX
+                             ? static_cast<uint32_t>(uniformBufferAlignment)
+                             : 1;
 
-    for (Slot& slot : m_slots)
-    {
-        slot.blocks.reserve(reservedBlocksPerSlot);
+        m_currentSlotIdx = 0;
+
+        m_slots.resize(numSlots);
+
+        for (Slot& slot : m_slots)
+        {
+            slot.blocks.reserve(reservedBlocksPerSlot);
+        }
     }
 }
 
@@ -183,78 +195,91 @@ void VulkanUniformBufferAllocator::Destroy()
         }
 
         slot.blocks.clear();
+
         slot.currentBlockIdx = 0;
     }
 
     m_slots.clear();
+
     m_blockSize      = 0;
+
     m_currentSlotIdx = 0;
+
     m_alignment      = 1;
 }
 
 void VulkanUniformBufferAllocator::BeginFrame(uint32_t frameNum)
 {
-    if (m_slots.empty())
+    if (!m_slots.empty())
     {
-        return;
-    }
+        m_currentSlotIdx = frameNum % static_cast<uint32_t>(m_slots.size());
 
-    m_currentSlotIdx = frameNum % static_cast<uint32_t>(m_slots.size());
+        Slot& slot       = m_slots[m_currentSlotIdx];
 
-    Slot& slot = m_slots[m_currentSlotIdx];
-    ++slot.reuseCount;
+        ++slot.reuseCount;
 
-    for (uint32_t i = 0; i < slot.blocks.size(); ++i)
-    {
-        Block& block = slot.blocks[i];
-        // Keep recent demand plus one spare. Age each slot only when it is reused.
-        if (i <= slot.usedBlocks)
+        for (uint32_t i = 0; i < slot.blocks.size(); ++i)
         {
-            block.lastNeededReuseCount = slot.reuseCount;
-        }
-        // Invalidate borrowed cached values before any block can be reset by Alloc.
-        // Recorded commands remain protected by pending counts / queue serials.
-        block.memory.generation = ++m_nextGeneration;
-        block.resetPending      = true;
-    }
+            Block& block = slot.blocks[i];
 
-    while (!slot.blocks.empty())
-    {
-        Block& block = slot.blocks.back();
-        if (slot.reuseCount - block.lastNeededReuseCount < kTrimDelay || !block.CanReuse())
+            // Keep recent demand plus one spare. Age each slot only when it is reused.
+            if (i <= slot.usedBlocks)
+            {
+                block.lastNeededReuseCount = slot.reuseCount;
+            }
+
+            // Invalidate borrowed cached values before any block can be reset by Alloc.
+            // Recorded commands remain protected by pending counts / queue serials.
+            block.memory.generation = ++m_nextGeneration;
+
+            block.resetPending      = true;
+        }
+
+        while (!slot.blocks.empty())
         {
-            break;
-        }
-        DestroyBlock(block);
-        slot.blocks.pop_back();
-    }
+            Block& block = slot.blocks.back();
 
-    slot.currentBlockIdx = 0;
-    slot.usedBlocks      = 0;
+            if (slot.reuseCount - block.lastNeededReuseCount < kTrimDelay || !block.CanReuse())
+            {
+                break;
+            }
+
+            DestroyBlock(block);
+
+            slot.blocks.pop_back();
+        }
+
+        slot.currentBlockIdx = 0;
+
+        slot.usedBlocks      = 0;
+    }
 }
 
 bool VulkanUniformBufferAllocator::Block::CanReuse() const
 {
-    return memory.pBuffer->GetRefCount() == 1 &&
-        GVulkanRHI->GetLifetimeTracker().IsComplete(lifetimeId);
+    return memory.pBuffer->GetRefCount() == 1 && GVulkanRHI->GetLifetimeTracker().IsComplete(lifetimeId);
 }
 
 uint64_t VulkanUniformBufferAllocator::GetBlockGeneration(uint64_t blockId) const
 {
     const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
+
     const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
-    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size() ?
-        m_slots[slotIndex].blocks[blockIndex].memory.generation :
-        0;
+
+    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size()
+             ? m_slots[slotIndex].blocks[blockIndex].memory.generation
+             : 0;
 }
 
 uint64_t VulkanUniformBufferAllocator::GetBlockLifetime(uint64_t blockId) const
 {
     const uint32_t slotIndex  = static_cast<uint32_t>(blockId >> 32);
+
     const uint32_t blockIndex = static_cast<uint32_t>(blockId) - 1;
-    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size() ?
-        m_slots[slotIndex].blocks[blockIndex].lifetimeId :
-        0;
+
+    return slotIndex < m_slots.size() && blockIndex < m_slots[slotIndex].blocks.size()
+             ? m_slots[slotIndex].blocks[blockIndex].lifetimeId
+             : 0;
 }
 
 uint32_t VulkanUniformBufferAllocator::GetAllocatedBlockCount(uint32_t slotIndex) const
@@ -265,8 +290,11 @@ uint32_t VulkanUniformBufferAllocator::GetAllocatedBlockCount(uint32_t slotIndex
 VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
 {
     VERIFY_EXPR(size > 0);
+
     VERIFY_EXPR(!m_slots.empty());
+
     VERIFY_EXPR(size <= m_blockSize);
+
     VulkanUniformBufferBlock allocation{};
 
     if (size > 0 && !m_slots.empty() && size <= m_blockSize)
@@ -284,44 +312,61 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
                     break;
                 }
 
-                block.blockId = (static_cast<uint64_t>(m_currentSlotIdx) << 32) |
-                    (static_cast<uint64_t>(slot.currentBlockIdx) + 1);
+                block.blockId =
+                    (static_cast<uint64_t>(m_currentSlotIdx) << 32) | (static_cast<uint64_t>(slot.currentBlockIdx) + 1);
+
                 block.generation             = ++m_nextGeneration;
+
                 Block& storage               = slot.blocks.emplace_back();
+
                 storage.memory               = block;
+
                 storage.lifetimeId           = GVulkanRHI->GetLifetimeTracker().Create();
+
                 storage.lastNeededReuseCount = slot.reuseCount;
             }
 
             Block& storage = slot.blocks[slot.currentBlockIdx];
+
             if (storage.resetPending)
             {
                 // Unsubmitted and unfinished GPU work can outlive a slot reuse.
                 if (!storage.CanReuse())
                 {
                     ++slot.currentBlockIdx;
+
                     continue;
                 }
+
                 storage.memory.offset = 0;
+
                 storage.resetPending  = false;
             }
+
             VulkanUniformBufferBlock& block = storage.memory;
+
             const uint64_t alignedOffset =
-                ((static_cast<uint64_t>(block.offset) + m_alignment - 1) / m_alignment) *
-                m_alignment;
+                ((static_cast<uint64_t>(block.offset) + m_alignment - 1) / m_alignment) * m_alignment;
+
             const uint64_t allocationEnd = alignedOffset + size;
 
             if (allocationEnd <= block.size)
             {
                 allocation.pBuffer    = block.pBuffer;
+
                 allocation.offset     = static_cast<uint32_t>(alignedOffset);
+
                 allocation.size       = size;
+
                 allocation.pMapped    = block.pMapped + alignedOffset;
+
                 allocation.blockId    = block.blockId;
+
                 allocation.generation = block.generation;
 
-                block.offset    = static_cast<uint32_t>(allocationEnd);
-                slot.usedBlocks = slot.currentBlockIdx + 1;
+                block.offset          = static_cast<uint32_t>(allocationEnd);
+
+                slot.usedBlocks       = slot.currentBlockIdx + 1;
 
                 break;
             }
@@ -336,22 +381,29 @@ VulkanUniformBufferBlock VulkanUniformBufferAllocator::Alloc(uint32_t size)
 VulkanUniformBufferBlock VulkanUniformBufferAllocator::CreateBlock() const
 {
     RHIBufferCreateInfo createInfo{};
+
     createInfo.size         = m_blockSize;
+
     createInfo.allocateType = RHIBufferAllocateType::eCPUWriteGPURead;
+
     createInfo.usageFlags.SetFlag(RHIBufferUsageFlagBits::eUniformBuffer);
+
     createInfo.tag = "VulkanUniformBufferAllocator";
 
     VulkanUniformBufferBlock block{};
+
     block.pBuffer = GVulkanRHI->CreateBuffer(createInfo);
 
     if (block.pBuffer != nullptr)
     {
         block.size    = m_blockSize;
+
         block.pMapped = block.pBuffer->Map();
 
         if (block.pMapped == nullptr)
         {
             GVulkanRHI->DestroyBuffer(block.pBuffer);
+
             block = {};
         }
     }
@@ -363,13 +415,15 @@ void VulkanUniformBufferAllocator::DestroyBlock(Block& block) const
 {
     if (block.memory.pBuffer != nullptr)
     {
-        GVulkanRHI->GetLifetimeTracker().Retire(
-            block.lifetimeId, block.memory.pBuffer, [](void* resource) {
-                RHIBuffer* buffer = static_cast<RHIBuffer*>(resource);
-                buffer->Unmap();
-                GVulkanRHI->DestroyBuffer(buffer);
-            });
+        GVulkanRHI->GetLifetimeTracker().Retire(block.lifetimeId, block.memory.pBuffer, [](void* resource) {
+            RHIBuffer* buffer = static_cast<RHIBuffer*>(resource);
+
+            buffer->Unmap();
+
+            GVulkanRHI->DestroyBuffer(buffer);
+        });
     }
+
     block = {};
 }
 

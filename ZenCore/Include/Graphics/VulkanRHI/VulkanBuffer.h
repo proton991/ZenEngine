@@ -46,9 +46,9 @@ private:
 
     bool SetTexelFormatOnRHIThread(DataFormat format);
 
-    VkBuffer m_vkBuffer{VK_NULL_HANDLE};
-    VkBufferView m_bufferView{VK_NULL_HANDLE};
-    DataFormat m_texelFormat{DataFormat::eUndefined};
+    VkBuffer               m_vkBuffer{VK_NULL_HANDLE};
+    VkBufferView           m_bufferView{VK_NULL_HANDLE};
+    DataFormat             m_texelFormat{DataFormat::eUndefined};
     VulkanMemoryAllocation m_memAlloc{};
 };
 
@@ -56,11 +56,11 @@ private:
 struct VulkanUniformBufferBlock
 {
     RHIBuffer* pBuffer{nullptr};
-    uint32_t offset{0};
-    uint32_t size{0};
-    uint8_t* pMapped{nullptr};
-    uint64_t blockId{0};
-    uint64_t generation{0};
+    uint32_t   offset{0};
+    uint32_t   size{0};
+    uint8_t*   pMapped{nullptr};
+    uint64_t   blockId{0};
+    uint64_t   generation{0};
 
     bool IsValid() const
     {
@@ -89,15 +89,16 @@ public:
     // Allocation views are borrowed. Native workloads register each referenced block
     // once, then transfer that recording to an accepted queue serial or discard it.
     uint64_t GetBlockGeneration(uint64_t blockId) const;
+
     uint64_t GetBlockLifetime(uint64_t blockId) const;
 
 private:
     struct Block
     {
         VulkanUniformBufferBlock memory;
-        uint64_t lifetimeId{0};
-        uint64_t lastNeededReuseCount{0};
-        bool resetPending{false};
+        uint64_t                 lifetimeId{0};
+        uint64_t                 lastNeededReuseCount{0};
+        bool                     resetPending{false};
 
         bool CanReuse() const;
     };
@@ -105,9 +106,9 @@ private:
     struct Slot
     {
         HeapVector<Block> blocks;
-        uint32_t currentBlockIdx{0};
-        uint32_t usedBlocks{0};
-        uint64_t reuseCount{0};
+        uint32_t          currentBlockIdx{0};
+        uint32_t          usedBlocks{0};
+        uint64_t          reuseCount{0};
     };
 
     VulkanUniformBufferBlock CreateBlock() const;

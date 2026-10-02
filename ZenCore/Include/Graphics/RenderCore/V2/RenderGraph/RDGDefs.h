@@ -121,7 +121,7 @@ enum class RDGErrorCode : uint8_t
 struct RDGResult
 {
     RDGErrorCode code{RDGErrorCode::eNone};
-    std::string message;
+    std::string  message;
 
     bool Fail(RDGErrorCode error, const std::string& detail)
     {
@@ -170,15 +170,13 @@ private:
     friend class RDGResourceManager;
     friend class RenderGraph;
 
-    RDGResource(uint64_t owner, uint64_t generation, uint32_t index) :
-        m_owner(owner), m_generation(generation), m_index(index)
+    RDGResource(uint64_t owner, uint64_t generation, uint32_t index) : m_owner(owner), m_generation(generation), m_index(index)
     {}
 
     uint64_t m_owner{0};
     uint64_t m_generation{0};
     uint32_t m_index{0};
-    int32_t m_version{
-        -1}; // -1 requests automatic version selection during declaration finalization.
+    int32_t  m_version{-1}; // -1 requests automatic version selection during declaration finalization.
 };
 
 // Resource values select logical contents; allocation metadata stays in the manager.
@@ -293,18 +291,18 @@ enum class RDGContentEffect : uint8_t
 
 struct RDGContentAccess
 {
-    RDG_ID resourceId;
-    RDGContentEffect intent{RDGContentEffect::eRead};
+    RDG_ID                     resourceId;
+    RDGContentEffect           intent{RDGContentEffect::eRead};
     RHITextureSubResourceRange range;
-    bool fullCoverage{true};
-    bool discardAfter{false};
-    bool requiresPriorContents{false}; // Reflected reads survive full-write/discard guarantees.
-    RDG_ID sourceResourceId{-1};
+    bool                       fullCoverage{true};
+    bool                       discardAfter{false};
+    bool                       requiresPriorContents{false}; // Reflected reads survive full-write/discard guarantees.
+    RDG_ID                     sourceResourceId{-1};
     RHITextureSubResourceRange sourceRange;
-    uint64_t bufferOffset{0};
-    uint64_t bufferSize{0}; // Zero means the full buffer.
-    uint64_t sourceBufferOffset{0};
-    uint64_t sourceBufferSize{0};
+    uint64_t                   bufferOffset{0};
+    uint64_t                   bufferSize{0}; // Zero means the full buffer.
+    uint64_t                   sourceBufferOffset{0};
+    uint64_t                   sourceBufferSize{0};
 };
 
 enum class RDGNodeType : uint32_t
@@ -340,14 +338,12 @@ enum class RDGAsyncComputeEligibility : uint8_t
 
 inline bool IsValidQueuePreference(RDGQueuePreference preference)
 {
-    return preference == RDGQueuePreference::eDefault ||
-        preference == RDGQueuePreference::ePreferAsyncCompute;
+    return preference == RDGQueuePreference::eDefault || preference == RDGQueuePreference::ePreferAsyncCompute;
 }
 
 inline const char* QueuePreferenceName(RDGQueuePreference preference)
 {
-    return preference == RDGQueuePreference::ePreferAsyncCompute ? "prefer_async_compute" :
-                                                                   "default";
+    return preference == RDGQueuePreference::ePreferAsyncCompute ? "prefer_async_compute" : "default";
 }
 
 inline const char* AsyncComputeEligibilityName(RDGAsyncComputeEligibility eligibility)
@@ -360,16 +356,10 @@ inline const char* AsyncComputeEligibilityName(RDGAsyncComputeEligibility eligib
         case RDGAsyncComputeEligibility::eGraphicsPass: name = "graphics_pass"; break;
         case RDGAsyncComputeEligibility::ePolicyDisabled: name = "policy_disabled"; break;
         case RDGAsyncComputeEligibility::eComputeUnavailable: name = "compute_unavailable"; break;
-        case RDGAsyncComputeEligibility::eSharedGraphicsQueue:
-            name = "shares_graphics_queue";
-            break;
-        case RDGAsyncComputeEligibility::eDependenciesUnavailable:
-            name = "dependencies_unavailable";
-            break;
+        case RDGAsyncComputeEligibility::eSharedGraphicsQueue: name = "shares_graphics_queue"; break;
+        case RDGAsyncComputeEligibility::eDependenciesUnavailable: name = "dependencies_unavailable"; break;
         case RDGAsyncComputeEligibility::eUnsupportedCommands: name = "unsupported_commands"; break;
-        case RDGAsyncComputeEligibility::eResourceUnavailable:
-            name = "resource_queue_unsupported";
-            break;
+        case RDGAsyncComputeEligibility::eResourceUnavailable: name = "resource_queue_unsupported"; break;
         case RDGAsyncComputeEligibility::eExternalState: name = "external_state_contract"; break;
         case RDGAsyncComputeEligibility::eViewportResource: name = "viewport_resource"; break;
     }
@@ -386,9 +376,9 @@ struct RDGTransferQueueCapabilities
 // requires existing data. A separate read binding consumes the named version itself.
 struct RDGVersionAccess
 {
-    RDG_ID resourceId{-1};
+    RDG_ID  resourceId{-1};
     int32_t version{-1};
-    bool writes{false};
+    bool    writes{false};
 };
 
 enum class RDGDependencyReason : uint8_t
@@ -401,15 +391,15 @@ enum class RDGDependencyReason : uint8_t
 
 struct RDGDependency
 {
-    RDG_ID source{-1};
-    RDG_ID destination{-1};
-    RDG_ID resourceId{-1};
-    int32_t version{-1}; // Absent for layout requirements.
+    RDG_ID              source{-1};
+    RDG_ID              destination{-1};
+    RDG_ID              resourceId{-1};
+    int32_t             version{-1}; // Absent for layout requirements.
     RDGDependencyReason reason{};
 
     // Whole allocation scope until range-aware dependencies land in Phase 4.
     RHITextureSubResourceRange textureRange;
-    uint64_t bufferSize{0};
+    uint64_t                   bufferSize{0};
 };
 
 struct RDGAccess
@@ -417,15 +407,15 @@ struct RDGAccess
     RHIAccessMode accessMode{};
 
     // Declaration metadata only; End resolves automatic accesses into versionAccesses.
-    bool explicitVersion{false};
-    RDG_ID nodeId{-1};
-    RDG_ID resourceId{-1};
+    bool                             explicitVersion{false};
+    RDG_ID                           nodeId{-1};
+    RDG_ID                           resourceId{-1};
     BitField<RHIBufferUsageFlagBits> bufferUsage{};
-    RHITextureUsage textureUsage{RHITextureUsage::eMax};
-    BitField<RHIAccessFlagBits> accessFlags;
+    RHITextureUsage                  textureUsage{RHITextureUsage::eMax};
+    BitField<RHIAccessFlagBits>      accessFlags;
 
     // Resource-specific execution stages used by synchronization and diagnostics.
     BitField<RHIPipelineStageFlagBits> pipelineStages;
-    RHITextureSubResourceRange textureSubResourceRange;
+    RHITextureSubResourceRange         textureSubResourceRange;
 };
 } // namespace zen::rc

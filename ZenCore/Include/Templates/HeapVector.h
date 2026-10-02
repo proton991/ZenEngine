@@ -197,8 +197,7 @@ public:
             // Move tail
             if constexpr (std::is_trivially_copyable_v<T>)
             {
-                std::memmove(m_pData + firstIndex, m_pData + lastIndex,
-                             sizeof(T) * (m_size - lastIndex));
+                std::memmove(m_pData + firstIndex, m_pData + lastIndex, sizeof(T) * (m_size - lastIndex));
             }
             else
             {
@@ -210,7 +209,7 @@ public:
             }
 
             m_size -= count;
-            result = m_pData + firstIndex;
+            result  = m_pData + firstIndex;
         }
 
         return result;
@@ -394,7 +393,7 @@ public:
     }
 
 private:
-    T* m_pData           = nullptr;
+    T*        m_pData    = nullptr;
     size_type m_size     = 0;
     size_type m_capacity = 0;
 
@@ -499,9 +498,9 @@ private:
 
     void move_from(HeapVector& other)
     {
-        m_pData    = other.m_pData;
-        m_size     = other.m_size;
-        m_capacity = other.m_capacity;
+        m_pData          = other.m_pData;
+        m_size           = other.m_size;
+        m_capacity       = other.m_capacity;
 
         other.m_pData    = nullptr;
         other.m_size     = 0;

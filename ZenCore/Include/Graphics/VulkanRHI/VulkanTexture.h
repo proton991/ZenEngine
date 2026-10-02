@@ -65,12 +65,11 @@ public:
         return range;
     }
 
-    static VkImageSubresourceRange GetVkSubresourceRange(
-        VkImageAspectFlags aspect,
-        uint32_t baseMipLevel   = 0,
-        uint32_t levelCount     = VK_REMAINING_MIP_LEVELS,
-        uint32_t baseArrayLayer = 0,
-        uint32_t layerCount     = VK_REMAINING_ARRAY_LAYERS)
+    static VkImageSubresourceRange GetVkSubresourceRange(VkImageAspectFlags aspect,
+                                                         uint32_t           baseMipLevel = 0,
+                                                         uint32_t levelCount             = VK_REMAINING_MIP_LEVELS,
+                                                         uint32_t baseArrayLayer         = 0,
+                                                         uint32_t layerCount             = VK_REMAINING_ARRAY_LAYERS)
     {
         VkImageSubresourceRange range{};
         range.aspectMask     = aspect;
@@ -117,19 +116,18 @@ private:
 
     RHITextureView* CreateViewOnRHIThread(const RHITextureViewCreateInfo& createInfo);
 
-    VkImage m_vkImage{VK_NULL_HANDLE};
-    VkImageCreateInfo m_vkImageCI{};
+    VkImage                m_vkImage{VK_NULL_HANDLE};
+    VkImageCreateInfo      m_vkImageCI{};
     VulkanMemoryAllocation m_memAlloc{};
 
     VkImageAspectFlags m_vkAspectFlags{};
-    RHITextureView* m_pAttachmentView{nullptr};
+    RHITextureView*    m_pAttachmentView{nullptr};
 };
 
 class VulkanTextureView : public RHITextureView
 {
 public:
-    static VulkanTextureView* CreateObject(VulkanTexture* pTexture,
-                                           const RHITextureViewCreateInfo& createInfo);
+    static VulkanTextureView* CreateObject(VulkanTexture* pTexture, const RHITextureViewCreateInfo& createInfo);
 
     VkImageView GetVkImageView() const
     {

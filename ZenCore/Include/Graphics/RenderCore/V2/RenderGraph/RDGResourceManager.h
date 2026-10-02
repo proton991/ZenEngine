@@ -31,15 +31,15 @@ enum class RDGResourceLifeCycle : uint8_t
 
 struct RDGTextureDesc
 {
-    NameID name;
-    TextureFormat texFormat{};
+    NameID                            name;
+    TextureFormat                     texFormat{};
     BitField<RHITextureUsageFlagBits> usageFlags{0};
 };
 
 struct RDGBufferDesc
 {
-    NameID name;
-    uint64_t size{0};
+    NameID                           name;
+    uint64_t                         size{0};
     BitField<RHIBufferUsageFlagBits> usageFlags{0};
 };
 
@@ -67,37 +67,36 @@ struct RDGPoolStats
 struct RDGPoolBucketStats
 {
     RDGResourceType type{RDGResourceType::eNone};
-    TextureFormat textureFormat{};
-    uint64_t bufferSize{0};
-    int64_t usageFlags{0};
-    uint32_t availableCount{0};
-    uint64_t availableBytes{0};
+    TextureFormat   textureFormat{};
+    uint64_t        bufferSize{0};
+    int64_t         usageFlags{0};
+    uint32_t        availableCount{0};
+    uint64_t        availableBytes{0};
 };
 
 struct RDGTextureImportState
 {
-    RDGImportContents contents{RDGImportContents::eUnknown};
-    RHIAccessMode accessMode{RHIAccessMode::eNone};
-    RHITextureUsage usage{RHITextureUsage::eNone};
+    RDGImportContents                  contents{RDGImportContents::eUnknown};
+    RHIAccessMode                      accessMode{RHIAccessMode::eNone};
+    RHITextureUsage                    usage{RHITextureUsage::eNone};
     BitField<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
 };
 struct RDGBufferImportState
 {
-    RDGImportContents contents{RDGImportContents::eUnknown};
-    RHIAccessMode accessMode{RHIAccessMode::eNone};
-    BitField<RHIBufferUsageFlagBits> usage;
+    RDGImportContents                  contents{RDGImportContents::eUnknown};
+    RHIAccessMode                      accessMode{RHIAccessMode::eNone};
+    BitField<RHIBufferUsageFlagBits>   usage;
     BitField<RHIPipelineStageFlagBits> stages{RHIPipelineStageFlagBits::eTopOfPipe};
 };
 
 // A copied description of the selected resource; never exposes manager-owned storage.
 struct RDGResourceInfo
 {
-    NameID name;
-    RDGResourceType type{RDGResourceType::eNone};
+    NameID               name;
+    RDGResourceType      type{RDGResourceType::eNone};
     RDGResourceLifeCycle lifeCycle{RDGResourceLifeCycle::eTransient};
-    int32_t version{-1}; // Transitional automatic selection; otherwise the explicit version number.
-    uint64_t physicalStableId{
-        0}; // Zero until materialized; diagnostic identity, not a native pointer.
+    int32_t              version{-1};         // Transitional automatic selection; otherwise the explicit version number.
+    uint64_t             physicalStableId{0}; // Zero until materialized; diagnostic identity, not a native pointer.
 };
 
 // The shared request keeps pending publication safe if the caller moves or discards its ticket.
@@ -106,27 +105,27 @@ struct RDGExtractionState : RefCounted
 {
     ~RDGExtractionState() override;
 
-    RHIResource* resource{nullptr};
+    RHIResource*  resource{nullptr};
     RenderDevice* device{nullptr};
 };
 
 struct RDGDeferredExtraction
 {
     RefCountPtr<RDGExtractionState> state;
-    RHIResourcePtr<RHIResource> resource;
+    RHIResourcePtr<RHIResource>     resource;
 };
 template <typename Resource> class RDGExtractedResource
 {
 public:
-    RDGExtractedResource() = default;
+    RDGExtractedResource()                                           = default;
 
-    RDGExtractedResource(RDGExtractedResource&&) noexcept = default;
+    RDGExtractedResource(RDGExtractedResource&&) noexcept            = default;
 
     RDGExtractedResource& operator=(RDGExtractedResource&&) noexcept = default;
 
-    RDGExtractedResource(const RDGExtractedResource&) = delete;
+    RDGExtractedResource(const RDGExtractedResource&)                = delete;
 
-    RDGExtractedResource& operator=(const RDGExtractedResource&) = delete;
+    RDGExtractedResource& operator=(const RDGExtractedResource&)     = delete;
 
     Resource* Get() const
     {
@@ -146,8 +145,7 @@ public:
 private:
     friend class RDGResourceManager;
 
-    explicit RDGExtractedResource(RefCountPtr<RDGExtractionState> state) : m_state(std::move(state))
-    {}
+    explicit RDGExtractedResource(RefCountPtr<RDGExtractionState> state) : m_state(std::move(state)) {}
 
     RefCountPtr<RDGExtractionState> m_state;
 };
@@ -160,7 +158,7 @@ class RDGResourceManager
 public:
     RDGResourceManager();
 
-    RDGResourceManager(const RDGResourceManager&) = delete;
+    RDGResourceManager(const RDGResourceManager&)            = delete;
 
     RDGResourceManager& operator=(const RDGResourceManager&) = delete;
 
@@ -200,11 +198,9 @@ public:
     RDGBuffer CreateVersion(RDGBuffer previous);
 
     // imported resources
-    RDGTexture ImportTexture(RHITexture* pTexture,
-                             RDGImportContents contents = RDGImportContents::ePreserve);
+    RDGTexture ImportTexture(RHITexture* pTexture, RDGImportContents contents = RDGImportContents::ePreserve);
 
-    RDGBuffer ImportBuffer(RHIBuffer* pBuffer,
-                           RDGImportContents contents = RDGImportContents::ePreserve);
+    RDGBuffer ImportBuffer(RHIBuffer* pBuffer, RDGImportContents contents = RDGImportContents::ePreserve);
 
     // External work: the caller supplies the actual state before every execution and arranges
     // queue completion/visibility before submission. These assertions do not insert queue waits.
@@ -219,14 +215,11 @@ public:
 
     // Publication occurs only after successful recording. Keep the device alive until owners die.
     // Final read usage is emitted as a terminal graph access; contents must be completely defined.
-    RDGExtractedTexture QueueTextureExtraction(
-        RDGTexture texture,
-        RHITextureUsage finalUsage = RHITextureUsage::eSampled);
+    RDGExtractedTexture QueueTextureExtraction(RDGTexture texture, RHITextureUsage finalUsage = RHITextureUsage::eSampled);
 
     RDGExtractedBuffer QueueBufferExtraction(
-        RDGBuffer buffer,
-        BitField<RHIBufferUsageFlagBits> finalUsage =
-            BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer));
+        RDGBuffer                        buffer,
+        BitField<RHIBufferUsageFlagBits> finalUsage = BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer));
 
     // Queries validate against this live manager and copy metadata. Values survive calls/replay
     // within one recorded build, never Reset/Begin. Failed queries leave the output unchanged.
@@ -269,28 +262,28 @@ private:
     friend class RDGTransferPassCmdRecorder;
     struct Allocation
     {
-        RDG_ID id{-1};
-        NameID name;
-        RDGResourceType type{RDGResourceType::eNone};
-        uint32_t accessCount{0};
-        uint32_t liveAccessCount{0};
-        uint32_t firstUse{UINT32_MAX};
-        uint32_t lastUse{0};
-        bool ownsPhysical{false}; // One graph reference per unique physical allocation.
-        int32_t initialVersion{-1};
-        bool imported{false};
-        bool exported{false};
-        bool hasInitialState{false};
+        RDG_ID                id{-1};
+        NameID                name;
+        RDGResourceType       type{RDGResourceType::eNone};
+        uint32_t              accessCount{0};
+        uint32_t              liveAccessCount{0};
+        uint32_t              firstUse{UINT32_MAX};
+        uint32_t              lastUse{0};
+        bool                  ownsPhysical{false}; // One graph reference per unique physical allocation.
+        int32_t               initialVersion{-1};
+        bool                  imported{false};
+        bool                  exported{false};
+        bool                  hasInitialState{false};
         RDGTextureImportState initialTextureState;
-        RDGBufferImportState initialBufferState;
-        RDGImportContents initialContents{RDGImportContents::ePreserve};
-        bool hostWritten{false}; // Explicit buffer initialization contract for this graph.
-        TextureFormat texFormat{};
-        uint64_t bufferSize{0};
-        BitField<uint32_t> usageFlags{0u};
+        RDGBufferImportState  initialBufferState;
+        RDGImportContents     initialContents{RDGImportContents::ePreserve};
+        bool                  hostWritten{false}; // Explicit buffer initialization contract for this graph.
+        TextureFormat         texFormat{};
+        uint64_t              bufferSize{0};
+        BitField<uint32_t>    usageFlags{0u};
 
         RHITexture* pTexture{nullptr};
-        RHIBuffer* pBuffer{nullptr};
+        RHIBuffer*  pBuffer{nullptr};
 
         RDGResourceLifeCycle GetLifeCycle() const
         {
@@ -317,8 +310,7 @@ private:
 
     const Allocation* ResolveView(RDGResource texture, const RDGTextureViewDesc& view);
 
-    static RHITextureSubResourceRange ViewRange(const Allocation& texture,
-                                                const RDGTextureViewDesc& view);
+    static RHITextureSubResourceRange ViewRange(const Allocation& texture, const RDGTextureViewDesc& view);
 
     const Allocation* FindResourceByIdx(int32_t id) const;
 
@@ -328,18 +320,18 @@ private:
 
     struct Extraction
     {
-        Allocation* resource;
-        RDGResource value;
-        RHITextureUsage textureUsage{RHITextureUsage::eNone};
+        Allocation*                      resource;
+        RDGResource                      value;
+        RHITextureUsage                  textureUsage{RHITextureUsage::eNone};
         BitField<RHIBufferUsageFlagBits> bufferUsage;
-        RefCountPtr<RDGExtractionState> state;
+        RefCountPtr<RDGExtractionState>  state;
     };
     HeapVector<Extraction> m_extractions;
     struct ResourceVersion
     {
-        RDG_ID resourceId{-1};
-        int32_t previous{-1};
-        int32_t next{-1};
+        RDG_ID   resourceId{-1};
+        int32_t  previous{-1};
+        int32_t  next{-1};
         uint32_t number{0};
     };
     HeapVector<ResourceVersion> m_versions;
@@ -350,15 +342,15 @@ private:
 
     struct CachedView
     {
-        uint64_t textureId;
+        uint64_t                   textureId;
         RHITextureSubResourceRange range;
-        RHITextureView* view;
+        RHITextureView*            view;
     };
     HeapVector<CachedView> m_viewCache;
 
-    RefCountPtr<RDGExtractionState> QueueExtraction(RDGResource resource,
-                                                    RDGResourceType type,
-                                                    RHITextureUsage textureUsage,
+    RefCountPtr<RDGExtractionState> QueueExtraction(RDGResource                      resource,
+                                                    RDGResourceType                  type,
+                                                    RHITextureUsage                  textureUsage,
                                                     BitField<RHIBufferUsageFlagBits> bufferUsage);
 
     bool DeclareExtractions();
@@ -383,32 +375,28 @@ private:
 
     void ReleaseRetainedResources(RenderDevice* device);
 
-    uint64_t m_identity;
-    uint64_t m_generation{1};
+    uint64_t                            m_identity;
+    uint64_t                            m_generation{1};
     FlatHashMap<uint64_t, RHIResource*> m_retainedResources;
     struct RDGTexturePoolKey
     {
         TextureFormat texFormat{};
-        int64_t usageFlags{0};
+        int64_t       usageFlags{0};
 
         bool operator==(const RDGTexturePoolKey& other) const
         {
-            return texFormat.format == other.texFormat.format &&
-                texFormat.sampleCount == other.texFormat.sampleCount &&
-                texFormat.dimension == other.texFormat.dimension &&
-                texFormat.mutableFormat == other.texFormat.mutableFormat &&
-                texFormat.width == other.texFormat.width &&
-                texFormat.height == other.texFormat.height &&
-                texFormat.depth == other.texFormat.depth &&
-                texFormat.arrayLayers == other.texFormat.arrayLayers &&
-                texFormat.mipmaps == other.texFormat.mipmaps && usageFlags == other.usageFlags;
+            return texFormat.format == other.texFormat.format && texFormat.sampleCount == other.texFormat.sampleCount
+                && texFormat.dimension == other.texFormat.dimension && texFormat.mutableFormat == other.texFormat.mutableFormat
+                && texFormat.width == other.texFormat.width && texFormat.height == other.texFormat.height
+                && texFormat.depth == other.texFormat.depth && texFormat.arrayLayers == other.texFormat.arrayLayers
+                && texFormat.mipmaps == other.texFormat.mipmaps && usageFlags == other.usageFlags;
         }
     };
 
     struct RDGBufferPoolKey
     {
         uint64_t size{0};
-        int64_t usageFlags{0};
+        int64_t  usageFlags{0};
 
         bool operator==(const RDGBufferPoolKey& other) const
         {
@@ -452,21 +440,23 @@ private:
 
     struct PoolEntry
     {
-        RHIResource* resource{nullptr};
-        uint64_t bytes{0};
-        uint64_t lastUsedBuild{0};
+        RHIResource*       resource{nullptr};
+        uint64_t           bytes{0};
+        uint64_t           lastUsedBuild{0};
         ResourceRetirement retirement;
     };
     struct RetiredPoolBytes
     {
-        uint64_t bytes;
+        uint64_t           bytes;
         ResourceRetirement retirement;
     };
 
     static uint64_t EstimateBytes(const Allocation& resource);
 
     bool InFlight(const ResourceRetirement& requirement) const;
+
     ResourceRetirement CaptureRetirement() const;
+
     RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries);
 
     void RetirePoolEntry(const PoolEntry& entry);
@@ -474,12 +464,11 @@ private:
     bool RetirePoolEntries(bool allAvailable, bool unusedByNewestBuild);
 
     RDGPoolConfig m_poolConfig;
-    uint64_t m_poolHits{0}, m_poolMisses{0}, m_poolEvictions{0};
+    uint64_t      m_poolHits{0}, m_poolMisses{0}, m_poolEvictions{0};
 
     template <typename Pool> void CountPoolStats(const Pool& pool, RDGPoolStats& stats) const;
 
-    template <typename Pool>
-    static void CollectPoolEntries(Pool& pool, HeapVector<PoolEntry*>& candidates);
+    template <typename Pool> static void CollectPoolEntries(Pool& pool, HeapVector<PoolEntry*>& candidates);
 
     template <typename Pool> static void CompactPool(Pool& pool);
 
@@ -495,9 +484,8 @@ private:
     FlatHashMap<uint64_t, int32_t> m_resourceTable;
 
     /// Compatible descriptor -> available transient textures. Resource names are intentionally excluded.
-    using TexturePool =
-        FlatHashMap<RDGTexturePoolKey, HeapVector<PoolEntry>, RDGTexturePoolKeyHasher>;
-    using BufferPool = FlatHashMap<RDGBufferPoolKey, HeapVector<PoolEntry>, RDGBufferPoolKeyHasher>;
+    using TexturePool = FlatHashMap<RDGTexturePoolKey, HeapVector<PoolEntry>, RDGTexturePoolKeyHasher>;
+    using BufferPool  = FlatHashMap<RDGBufferPoolKey, HeapVector<PoolEntry>, RDGBufferPoolKeyHasher>;
     TexturePool m_texturePool;
 
     /// Compatible descriptor -> available transient buffers. Resource names are intentionally excluded.

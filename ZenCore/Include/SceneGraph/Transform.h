@@ -81,8 +81,8 @@ public:
     {
         if (!m_validLocalMatrix)
         {
-            m_cachedLocalMatrix = glm::translate(Mat4(1.0f), m_translation) *
-                glm::mat4_cast(m_rotation) * glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
+            m_cachedLocalMatrix = glm::translate(Mat4(1.0f), m_translation) * glm::mat4_cast(m_rotation)
+                                * glm::scale(Mat4(1.0f), m_scale) * m_localMatrix;
             m_validLocalMatrix = true;
         }
 

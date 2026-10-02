@@ -82,7 +82,7 @@ public:
 
     bool IsVisible() const
     {
-        bool result = true;
+        bool result      = true;
 
         const Node* node = this;
 
@@ -90,7 +90,7 @@ public:
         {
             result &= node->visible;
 
-            node = node->GetParent();
+            node    = node->GetParent();
         }
 
         return result;
@@ -122,17 +122,17 @@ public:
         // pre-calculate normal transform matrix
         const float determinant = glm::determinant(m_data.modelMatrix);
 
-        m_data.normalMatrix = std::isfinite(determinant) && std::abs(determinant) > 1e-20f ?
-            glm::transpose(glm::inverse(m_data.modelMatrix)) :
-            Mat4(1.0f);
-        m_renderableIndex   = renderableIndex;
+        m_data.normalMatrix     = std::isfinite(determinant) && std::abs(determinant) > 1e-20f
+                                    ? glm::transpose(glm::inverse(m_data.modelMatrix))
+                                    : Mat4(1.0f);
+        m_renderableIndex       = renderableIndex;
 
         SetSurfaceScale(modelMatrix);
 
         // Facing follows the render transform, including identity for world-space skinning.
         const double orientation = glm::determinant(glm::dmat3(modelMatrix));
 
-        m_data.surfaceScale.w = orientation < 0.0 ? -1.0f : 1.0f;
+        m_data.surfaceScale.w    = orientation < 0.0 ? -1.0f : 1.0f;
     }
 
     void SetSurfaceScale(const Mat4& matrix)
@@ -141,8 +141,8 @@ public:
         {
             const double scale = glm::length(glm::dvec3(matrix[axis]));
 
-            m_data.surfaceScale[axis] = static_cast<float>(
-                std::min(scale, static_cast<double>(std::numeric_limits<float>::max())));
+            m_data.surfaceScale[axis] =
+                static_cast<float>(std::min(scale, static_cast<double>(std::numeric_limits<float>::max())));
         }
     }
 

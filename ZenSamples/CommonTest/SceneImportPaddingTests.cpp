@@ -21,8 +21,7 @@ public:
     {
         const int64_t identifier = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_directory = std::filesystem::temp_directory_path() /
-            ("ZenGLTFPaddingTests_" + std::to_string(identifier));
+        m_directory = std::filesystem::temp_directory_path() / ("ZenGLTFPaddingTests_" + std::to_string(identifier));
 
         if (!std::filesystem::create_directory(m_directory))
         {
@@ -61,21 +60,20 @@ private:
 
 std::string PaddedTriangleJson(size_t byteLength, bool embeddedBuffer)
 {
-    const std::string buffer = embeddedBuffer ?
-        "{\"byteLength\":36}" :
-        "{\"byteLength\":36,\"uri\":\"data:application/octet-stream;base64,"
-        "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA\"}";
+    const std::string buffer = embeddedBuffer ? "{\"byteLength\":36}"
+                                              : "{\"byteLength\":36,\"uri\":\"data:application/octet-stream;base64,"
+                                                "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA\"}";
 
-    std::string result = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,"
-                         "\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
-                         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
-                         "\"buffers\":[" +
-        buffer +
-        "],"
-        "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
-        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
-        "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}],"
-        "\"extras\":{\"padding\":\"";
+    std::string result       = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,"
+                               "\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
+                               "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
+                               "\"buffers\":["
+                       + buffer
+                       + "],"
+                         "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36}],"
+                         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                         "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]}],"
+                         "\"extras\":{\"padding\":\"";
 
     const std::string suffix = "\"}}";
 
@@ -100,8 +98,7 @@ std::string TriangleGlbFromJson(std::string json, bool embeddedBuffer)
 
     const uint32_t byteLength = static_cast<uint32_t>(20 + json.size() + (embeddedBuffer ? 44 : 0));
 
-    const uint32_t header[]{0x46546C67, 2, byteLength, static_cast<uint32_t>(json.size()),
-                            0x4E4F534A};
+    const uint32_t header[]{0x46546C67, 2, byteLength, static_cast<uint32_t>(json.size()), 0x4E4F534A};
 
     std::string result(byteLength, '\0');
 
@@ -127,8 +124,7 @@ std::string TriangleGlbFromJson(std::string json, bool embeddedBuffer)
 
 std::string TriangleGlb(size_t jsonLength, bool embeddedBuffer)
 {
-    const std::string result =
-        TriangleGlbFromJson(PaddedTriangleJson(jsonLength, embeddedBuffer), embeddedBuffer);
+    const std::string result = TriangleGlbFromJson(PaddedTriangleJson(jsonLength, embeddedBuffer), embeddedBuffer);
 
     return result;
 }
@@ -222,7 +218,7 @@ TEST(SceneImportPadding, GlbJsonAtFilePageBoundaryHasSafeParserPadding)
     {
         SCOPED_TRACE(fileLength);
 
-        const size_t jsonLength = fileLength - 20;
+        const size_t jsonLength    = fileLength - 20;
 
         const std::string contents = TriangleGlb(jsonLength, false);
 
@@ -244,7 +240,7 @@ TEST(SceneImportPadding, GlbJsonAndEmbeddedBinaryCrossMappedPageBoundaries)
 
         const std::string contents = TriangleGlb(jsonLength, true);
 
-        const std::string file = fixture.Write("triangle.glb", contents);
+        const std::string file     = fixture.Write("triangle.glb", contents);
 
         ExpectTriangleImport(file, jsonLength);
     }
@@ -284,8 +280,7 @@ TEST(SceneImportNumbers, GlbIntegerNormalizationPreservesTheEmbeddedBinaryOffset
 
     asset::FastGLTFLoader loader;
 
-    ASSERT_NO_THROW(
-        loader.LoadFromFile(fixture.Write("numbers.glb", TriangleGlbFromJson(json, true)), &scene));
+    ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("numbers.glb", TriangleGlbFromJson(json, true)), &scene));
 
     ASSERT_EQ(loader.GetVertices().size(), 3u);
 
@@ -312,8 +307,7 @@ TEST(SceneImportNumbers, InvalidAndFractionalIntegerTokensAreNotRoundedIntoValid
 
         asset::FastGLTFLoader loader;
 
-        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid.gltf", json), &scene),
-                     std::exception);
+        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid.gltf", json), &scene), std::exception);
     }
 }
 
@@ -342,27 +336,25 @@ TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalizatio
 
     const float values[]{0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1};
 
-    fixture.Write("numbers.bin",
-                  std::string(reinterpret_cast<const char*>(values), sizeof(values)));
+    fixture.Write("numbers.bin", std::string(reinterpret_cast<const char*>(values), sizeof(values)));
 
-    const std::string json =
-        "{\"asset\":{\"version\":\"2.0\"},\"scene\":0.0,"
-        "\"extensionsUsed\":[\"KHR_materials_retroreflection\",\"KHR_texture_transform\"],"
-        "\"extensionsRequired\" : [\"KHR_materials_retroreflection\"],"
-        "\"scenes\":[{\"nodes\":[0.0]}],\"nodes\":[{\"mesh\":0.0}],"
-        "\"meshes\":[{\"primitives\":[{\"material\":0.0,\"attributes\":{\"POSITION\":0.0,"
-        "\"TEXCOORD_0\":1.0,\"TEXCOORD_1\":1e0}}]}],"
-        "\"materials\":[{\"extensions\":{\"KHR_materials_retroreflection\":{"
-        "\"retroreflectionFactor\":0.5,\"retroreflectionTexture\":{\"index\":0.0,"
-        "\"extensions\":{\"KHR_texture_transform\":{\"texCoord\":1.0}}}}}}],"
-        "\"textures\":[{\"source\":0.0}],\"images\":[{\"uri\":\"data:image/png;base64,"
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6LwsAAAAASUVORK5CYII=\"}],"
-        "\"buffers\":[{\"uri\":\"numbers.bin\",\"byteLength\":6e1}],"
-        "\"bufferViews\":[{\"buffer\":0.0,\"byteLength\":3.6e1},"
-        "{\"buffer\":0.0,\"byteOffset\":3.6e1,\"byteLength\":2.4e1}],"
-        "\"accessors\":[{\"bufferView\":0.0,\"componentType\":5.126e3,\"count\":3.0,"
-        "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]},"
-        "{\"bufferView\":1.0,\"componentType\":5.126e3,\"count\":3.0,\"type\":\"VEC2\"}]}";
+    const std::string json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0.0,"
+                             "\"extensionsUsed\":[\"KHR_materials_retroreflection\",\"KHR_texture_transform\"],"
+                             "\"extensionsRequired\" : [\"KHR_materials_retroreflection\"],"
+                             "\"scenes\":[{\"nodes\":[0.0]}],\"nodes\":[{\"mesh\":0.0}],"
+                             "\"meshes\":[{\"primitives\":[{\"material\":0.0,\"attributes\":{\"POSITION\":0.0,"
+                             "\"TEXCOORD_0\":1.0,\"TEXCOORD_1\":1e0}}]}],"
+                             "\"materials\":[{\"extensions\":{\"KHR_materials_retroreflection\":{"
+                             "\"retroreflectionFactor\":0.5,\"retroreflectionTexture\":{\"index\":0.0,"
+                             "\"extensions\":{\"KHR_texture_transform\":{\"texCoord\":1.0}}}}}}],"
+                             "\"textures\":[{\"source\":0.0}],\"images\":[{\"uri\":\"data:image/png;base64,"
+                             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6LwsAAAAASUVORK5CYII=\"}],"
+                             "\"buffers\":[{\"uri\":\"numbers.bin\",\"byteLength\":6e1}],"
+                             "\"bufferViews\":[{\"buffer\":0.0,\"byteLength\":3.6e1},"
+                             "{\"buffer\":0.0,\"byteOffset\":3.6e1,\"byteLength\":2.4e1}],"
+                             "\"accessors\":[{\"bufferView\":0.0,\"componentType\":5.126e3,\"count\":3.0,"
+                             "\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,0]},"
+                             "{\"bufferView\":1.0,\"componentType\":5.126e3,\"count\":3.0,\"type\":\"VEC2\"}]}";
 
     sg::Scene scene;
 
@@ -370,7 +362,7 @@ TEST(SceneImportNumbers, ManuallyImportedExtensionIntegersUseTheSameNormalizatio
 
     ASSERT_NO_THROW(loader.LoadFromFile(fixture.Write("extension.gltf", json), &scene));
 
-    const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
+    const zen::HeapVector<sg::Material*> materials = scene.GetComponents<sg::Material>();
 
     ASSERT_EQ(materials.size(), 2u);
 
@@ -393,24 +385,19 @@ TEST(SceneImportExtensions, RequiredExtensionRewriteOnlyReplacesTheRootProperty)
 
         json += '}';
 
-        json.insert(
-            1,
-            "\"extras\":{\"extensionsRequired\":[\"nested ] \\\" marker\"],"
-            "\"escaped\\\"key\":true},"
-            "\"extensionsUsed\":[\"KHR_node_visibility\",\"KHR_mesh_quantization\"],"
-            "\"extensionsRequired\" : [\"KHR_node_visibility\",\"KHR_mesh_quantization\"],");
+        json.insert(1, "\"extras\":{\"extensionsRequired\":[\"nested ] \\\" marker\"],"
+                       "\"escaped\\\"key\":true},"
+                       "\"extensionsUsed\":[\"KHR_node_visibility\",\"KHR_mesh_quantization\"],"
+                       "\"extensionsRequired\" : [\"KHR_node_visibility\",\"KHR_mesh_quantization\"],");
 
-        ReplaceJsonToken(
-            json, "\"mesh\":0.000",
-            "\"mesh\":0.000,\"extensions\":{\"KHR_node_visibility\":{\"visible\":false}}");
+        ReplaceJsonToken(json, "\"mesh\":0.000", "\"mesh\":0.000,\"extensions\":{\"KHR_node_visibility\":{\"visible\":false}}");
 
         sg::Scene scene;
 
         asset::FastGLTFLoader loader;
 
-        const std::string file = binary ?
-            fixture.Write("nested.glb", TriangleGlbFromJson(json, true)) :
-            fixture.Write("nested.gltf", json);
+        const std::string file =
+            binary ? fixture.Write("nested.glb", TriangleGlbFromJson(json, true)) : fixture.Write("nested.gltf", json);
 
         ASSERT_NO_THROW(loader.LoadFromFile(file, &scene));
 
@@ -431,8 +418,8 @@ TEST(SceneImportExtensions, FileUrisComposeWithRequiredExtensionsAndNumberNormal
 
     const float positions[]{0, 0, 0, 1, 0, 0, 0, 1, 0};
 
-    const std::string buffer = fixture.Write(
-        "triangle.bin", std::string(reinterpret_cast<const char*>(positions), sizeof(positions)));
+    const std::string buffer =
+        fixture.Write("triangle.bin", std::string(reinterpret_cast<const char*>(positions), sizeof(positions)));
 
     const std::string uri = "file:///" + std::filesystem::path(buffer).generic_string();
 
@@ -445,17 +432,15 @@ TEST(SceneImportExtensions, FileUrisComposeWithRequiredExtensionsAndNumberNormal
                          "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA",
                          uri);
 
-        json.insert(1,
-                    "\"extensionsUsed\":[\"KHR_node_visibility\"],"
-                    "\"extensionsRequired\":[\"KHR_node_visibility\"],");
+        json.insert(1, "\"extensionsUsed\":[\"KHR_node_visibility\"],"
+                       "\"extensionsRequired\":[\"KHR_node_visibility\"],");
 
         sg::Scene scene;
 
         asset::FastGLTFLoader loader;
 
-        const std::string file = binary ?
-            fixture.Write("uri.glb", TriangleGlbFromJson(json, false)) :
-            fixture.Write("uri.gltf", json);
+        const std::string file =
+            binary ? fixture.Write("uri.glb", TriangleGlbFromJson(json, false)) : fixture.Write("uri.gltf", json);
 
         ASSERT_NO_THROW(loader.LoadFromFile(file, &scene));
 
@@ -474,13 +459,11 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
     builder.Start(1);
 
-    const int attribute =
-        builder.AddAttribute(draco::GeometryAttribute::POSITION, 3, draco::DT_FLOAT32);
+    const int attribute = builder.AddAttribute(draco::GeometryAttribute::POSITION, 3, draco::DT_FLOAT32);
 
     const float positions[3][3]{{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
 
-    builder.SetAttributeValuesForFace(attribute, draco::FaceIndex(0), positions[0], positions[1],
-                                      positions[2]);
+    builder.SetAttributeValuesForFace(attribute, draco::FaceIndex(0), positions[0], positions[1], positions[2]);
 
     builder.SetAttributeUniqueId(attribute, 0);
 
@@ -496,20 +479,18 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
     fixture.Write("triangle.drc", std::string(encoded.data(), encoded.size()));
 
-    const std::string json =
-        "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
-        "\"nodes\":[{\"mesh\":0}],\"extensionsUsed\":[\"KHR_draco_mesh_compression\"],"
-        "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
-        "\"extensions\":{\"KHR_draco_mesh_compression\":{\"bufferView\":0,"
-        "\"attributes\":{\"POSITION\":0}}}}]}],"
-        "\"accessors\":[{\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
-        "\"min\":[0,0,0],\"max\":[1,1,0]},"
-        "{\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
-        "\"buffers\":[{\"uri\":\"triangle.drc\",\"byteLength\":" +
-        std::to_string(encoded.size()) +
-        "}],\"bufferViews\":[{\"buffer\":0,\"byteLength\":" + std::to_string(encoded.size()) +
-        "}]}";
+    const std::string json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+                             "\"nodes\":[{\"mesh\":0}],\"extensionsUsed\":[\"KHR_draco_mesh_compression\"],"
+                             "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
+                             "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+                             "\"extensions\":{\"KHR_draco_mesh_compression\":{\"bufferView\":0,"
+                             "\"attributes\":{\"POSITION\":0}}}}]}],"
+                             "\"accessors\":[{\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
+                             "\"min\":[0,0,0],\"max\":[1,1,0]},"
+                             "{\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                             "\"buffers\":[{\"uri\":\"triangle.drc\",\"byteLength\":"
+                           + std::to_string(encoded.size())
+                           + "}],\"bufferViews\":[{\"buffer\":0,\"byteLength\":" + std::to_string(encoded.size()) + "}]}";
 
     sg::Scene scene;
 
@@ -531,8 +512,7 @@ TEST(SceneImportExtensions, DracoReferencesAreCheckedBeforeDecodingAndPreserveTh
 
         ReplaceJsonToken(invalid, tokens[0], tokens[1]);
 
-        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid-draco.gltf", invalid), &scene),
-                     std::exception);
+        EXPECT_THROW(loader.LoadFromFile(fixture.Write("invalid-draco.gltf", invalid), &scene), std::exception);
 
         EXPECT_EQ(loader.GetVertices().size(), 3u);
 

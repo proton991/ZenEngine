@@ -36,9 +36,8 @@ void VulkanDevice::RegisterDiagnosticBuffer(FVulkanCommandBuffer* buffer)
 
 void VulkanDevice::UnregisterDiagnosticBuffer(FVulkanCommandBuffer* buffer)
 {
-    m_diagnosticBuffers.erase(
-        std::remove(m_diagnosticBuffers.begin(), m_diagnosticBuffers.end(), buffer),
-        m_diagnosticBuffers.end());
+    m_diagnosticBuffers.erase(std::remove(m_diagnosticBuffers.begin(), m_diagnosticBuffers.end(), buffer),
+                              m_diagnosticBuffers.end());
 }
 
 void VulkanDevice::ReportDeviceLoss(const char* operation)
@@ -46,31 +45,39 @@ void VulkanDevice::ReportDeviceLoss(const char* operation)
     if (!m_faultReported)
     {
         m_faultReported = true;
-        std::fprintf(stderr, "RHI device lost: operation=%s gpu=%s vendor=%u device=%u driver=%u\n",
-                     operation, m_gpuProps.deviceName, m_gpuProps.vendorID, m_gpuProps.deviceID,
-                     m_gpuProps.driverVersion);
+
+        std::fprintf(stderr, "RHI device lost: operation=%s gpu=%s vendor=%u device=%u driver=%u\n", operation,
+                     m_gpuProps.deviceName, m_gpuProps.vendorID, m_gpuProps.deviceID, m_gpuProps.driverVersion);
 
         for (const FVulkanCommandBuffer* buffer : m_diagnosticBuffers)
         {
             buffer->ReportBreadcrumbs();
         }
 
-        if (m_extensionFlags.hasDeviceFault && vkGetDeviceFaultInfoEXT != nullptr &&
-            RHIOptions::GetInstance().DeviceLossDiagnostics())
+        if (m_extensionFlags.hasDeviceFault && vkGetDeviceFaultInfoEXT != nullptr
+            && RHIOptions::GetInstance().DeviceLossDiagnostics())
         {
             // Fixed storage remains usable after allocation failure. VK_INCOMPLETE
             // explicitly reports a truncated report rather than allocating during loss.
             VkDeviceFaultAddressInfoEXT addresses[64]{};
+
             VkDeviceFaultVendorInfoEXT vendors[16]{};
+
             VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+
             counts.addressInfoCount = 64;
+
             counts.vendorInfoCount  = 16;
+
             VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+
             info.pAddressInfos    = addresses;
+
             info.pVendorInfos     = vendors;
+
             const VkResult result = vkGetDeviceFaultInfoEXT(m_device, &counts, &info);
-            std::fprintf(stderr, "RHI device fault result=%d description=%s\n", int(result),
-                         info.description);
+
+            std::fprintf(stderr, "RHI device fault result=%d description=%s\n", int(result), info.description);
 
             for (uint32_t i = 0; i < std::min(counts.addressInfoCount, 64u); ++i)
             {
@@ -82,8 +89,7 @@ void VulkanDevice::ReportDeviceLoss(const char* operation)
 
             for (uint32_t i = 0; i < std::min(counts.vendorInfoCount, 16u); ++i)
             {
-                std::fprintf(stderr, "vendor fault=%s code=%llu data=%llu\n",
-                             vendors[i].description,
+                std::fprintf(stderr, "vendor fault=%s code=%llu data=%llu\n", vendors[i].description,
                              static_cast<unsigned long long>(vendors[i].vendorFaultCode),
                              static_cast<unsigned long long>(vendors[i].vendorFaultData));
             }
@@ -101,88 +107,107 @@ VulkanDevice::VulkanDevice(VkPhysicalDevice gpu) : m_device(VK_NULL_HANDLE), m_g
 std::string VulkanDevice::GetUnsupportedReason(VkPhysicalDevice gpu)
 {
     std::string reason;
+
     VkPhysicalDeviceProperties properties{};
+
     vkGetPhysicalDeviceProperties(gpu, &properties);
+
     if (properties.apiVersion < VK_API_VERSION_1_2)
     {
         reason = "Vulkan 1.2 is required";
     }
+
     if (reason.empty())
     {
-        const HeapVector<VkExtensionProperties> extensions =
-            VulkanDeviceExtension::GetSupportedExtensions(gpu);
-        for (const char* required :
-             {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME})
+        const HeapVector<VkExtensionProperties> extensions = VulkanDeviceExtension::GetSupportedExtensions(gpu);
+
+        for (const char* required : {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME})
         {
-            if (std::none_of(extensions.begin(), extensions.end(),
-                             [required](const VkExtensionProperties& extension) {
-                                 return strcmp(required, extension.extensionName) == 0;
-                             }))
+            if (std::none_of(extensions.begin(), extensions.end(), [required](const VkExtensionProperties& extension) {
+                    return strcmp(required, extension.extensionName) == 0;
+                }))
             {
                 reason = std::string("Required extension is missing: ") + required;
+
                 break;
             }
         }
     }
+
     if (reason.empty())
     {
         uint32_t count = 0;
+
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
+
         HeapVector<VkQueueFamilyProperties> queues(count);
+
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, queues.data());
+
         if (std::none_of(queues.begin(), queues.end(), [](const VkQueueFamilyProperties& queue) {
-                return queue.queueCount != 0 &&
-                    (queue.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
-                    (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
+                return queue.queueCount != 0
+                    && (queue.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))
+                           == (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
             }))
         {
             reason = "A graphics queue with compute support is required";
         }
     }
+
     if (reason.empty())
     {
         VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-        VkPhysicalDeviceDynamicRenderingFeatures dynamic{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
-        VkPhysicalDeviceDescriptorIndexingFeatures indexing{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+
+        VkPhysicalDeviceDynamicRenderingFeatures dynamic{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
+
+        VkPhysicalDeviceDescriptorIndexingFeatures indexing{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+
         features.pNext = &dynamic;
+
         dynamic.pNext  = &indexing;
+
         vkGetPhysicalDeviceFeatures2(gpu, &features);
+
         if (!dynamic.dynamicRendering)
         {
             reason = "The dynamicRendering feature is required";
         }
-        else if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound ||
-                 !indexing.descriptorBindingUpdateUnusedWhilePending ||
-                 !indexing.descriptorBindingSampledImageUpdateAfterBind ||
-                 !indexing.descriptorBindingVariableDescriptorCount ||
-                 !indexing.shaderSampledImageArrayNonUniformIndexing)
+        else if (!indexing.runtimeDescriptorArray || !indexing.descriptorBindingPartiallyBound
+                 || !indexing.descriptorBindingUpdateUnusedWhilePending
+                 || !indexing.descriptorBindingSampledImageUpdateAfterBind || !indexing.descriptorBindingVariableDescriptorCount
+                 || !indexing.shaderSampledImageArrayNonUniformIndexing)
         {
             reason =
                 "Descriptor indexing with partially bound, variable, update-after-bind sampled images and nonuniform indexing is required";
         }
     }
+
     if (reason.empty())
     {
-        VkPhysicalDeviceDescriptorIndexingProperties limits{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+        VkPhysicalDeviceDescriptorIndexingProperties limits{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+
         VkPhysicalDeviceProperties2 properties2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+
         properties2.pNext = &limits;
+
         vkGetPhysicalDeviceProperties2(gpu, &properties2);
-        const uint32_t images = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
-            GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+
+        const uint32_t images = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D)
+                              + GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+
         const uint32_t samplers = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
-        if (limits.maxDescriptorSetUpdateAfterBindSampledImages < images ||
-            limits.maxPerStageDescriptorUpdateAfterBindSampledImages < images ||
-            limits.maxDescriptorSetUpdateAfterBindSamplers < samplers ||
-            limits.maxPerStageDescriptorUpdateAfterBindSamplers < samplers ||
-            limits.maxPerStageUpdateAfterBindResources < images + samplers ||
-            limits.maxUpdateAfterBindDescriptorsInAllPools < images + samplers)
+
+        if (limits.maxDescriptorSetUpdateAfterBindSampledImages < images
+            || limits.maxPerStageDescriptorUpdateAfterBindSampledImages < images
+            || limits.maxDescriptorSetUpdateAfterBindSamplers < samplers
+            || limits.maxPerStageDescriptorUpdateAfterBindSamplers < samplers
+            || limits.maxPerStageUpdateAfterBindResources < images + samplers
+            || limits.maxUpdateAfterBindDescriptorsInAllPools < images + samplers)
         {
             reason = "Descriptor indexing limits cannot accommodate the global bindless heaps";
         }
     }
+
     return reason;
 }
 
@@ -192,13 +217,10 @@ uint32_t VulkanDevice::GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType des
 
     switch (descriptorType)
     {
-        case VK_DESCRIPTOR_TYPE_SAMPLER:
-            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers;
-            break;
+        case VK_DESCRIPTOR_TYPE_SAMPLER: limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers; break;
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            limit = std::min(
-                m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers,
-                m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSampledImages);
+            limit = std::min(m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSamplers,
+                             m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindSampledImages);
             break;
 
         case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
@@ -213,8 +235,7 @@ uint32_t VulkanDevice::GetDescriptorSetUpdateAfterBindLimit(VkDescriptorType des
             limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindUniformBuffers;
             break;
         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-            limit =
-                m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindUniformBuffersDynamic;
+            limit = m_descriptorIndexingProperties.maxDescriptorSetUpdateAfterBindUniformBuffersDynamic;
             break;
 
         case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
@@ -259,19 +280,20 @@ static std::string GetQueuePropString(const VkQueueFamilyProperties& queueProp)
 DataFormat VulkanRHI::GetSupportedDepthFormat()
 {
     VkFormat defaulFormat{VK_FORMAT_D16_UNORM};
-    const HeapVector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT,
-                                             VK_FORMAT_D24_UNORM_S8_UINT,
+
+    const HeapVector<VkFormat> formatList = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT,
                                              VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM};
 
     for (const VkFormat& format : formatList)
     {
         VkFormatProperties formatProps;
-        vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), format,
-                                            &formatProps);
+
+        vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), format, &formatProps);
 
         if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
         {
             defaulFormat = format;
+
             break;
         }
     }
@@ -287,8 +309,8 @@ const RHIGPUInfo& VulkanRHI::QueryGPUInfo() const
 RHITextureCopyCapabilities VulkanRHI::GetTextureCopyCapabilities(DataFormat format) const
 {
     VkFormatProperties properties{};
-    vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(),
-                                        static_cast<VkFormat>(format), &properties);
+
+    vkGetPhysicalDeviceFormatProperties(m_pDevice->GetPhysicalDeviceHandle(), static_cast<VkFormat>(format), &properties);
 
     return MakeTextureCopyCapabilities(properties);
 }
@@ -296,6 +318,7 @@ RHITextureCopyCapabilities VulkanRHI::GetTextureCopyCapabilities(DataFormat form
 RHIQueueCopyCapabilities VulkanRHI::GetQueueCopyCapabilities(RHICommandContextType type) const
 {
     const VulkanQueue* queue = m_pDevice->GetQueue(type);
+
     return MakeQueueCopyCapabilities(m_pDevice->GetQueueFamilyProperties(queue->GetFamilyIndex()));
 }
 
@@ -305,20 +328,27 @@ RHIQueueCopyCapabilities VulkanRHI::GetQueueCopyCapabilities(RHICommandContextTy
 void VulkanDevice::Init()
 {
     const std::string unsupportedReason = GetUnsupportedReason(m_gpu);
+
     if (!unsupportedReason.empty())
     {
-        LOG_ERROR_AND_THROW("Cannot initialize Vulkan device '{}': {}", m_gpuProps.deviceName,
-                            unsupportedReason);
+        LOG_ERROR_AND_THROW("Cannot initialize Vulkan device '{}': {}", m_gpuProps.deviceName, unsupportedReason);
     }
+
     // query base features
     vkGetPhysicalDeviceFeatures(m_gpu, &m_physicalDeviceFeatures);
+
     // query gpu properties
     vkGetPhysicalDeviceProperties(m_gpu, &m_physicalDeviceProperties);
+
     // query queue properties
     uint32_t count = 0;
+
     vkGetPhysicalDeviceQueueFamilyProperties(m_gpu, &count, nullptr);
+
     VERIFY_EXPR(count > 0);
+
     m_queueFamilyProps.resize(count);
+
     vkGetPhysicalDeviceQueueFamilyProperties(m_gpu, &count, m_queueFamilyProps.data());
 
     VulkanDeviceExtensionArray extensionArray = VulkanDeviceExtension::GetEnabledExtensions(this);
@@ -326,6 +356,7 @@ void VulkanDevice::Init()
     if (GVulkanRHI->GetInstanceExtensionFlags().hasGetPhysicalDeviceProperties)
     {
         VkPhysicalDeviceFeatures2 physicalDeviceFeatures2;
+
         InitVkStruct(physicalDeviceFeatures2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
 
         for (UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
@@ -347,9 +378,10 @@ void VulkanDevice::Init()
         }
 
         VkPhysicalDeviceProperties2 physicalDeviceProperties2;
+
         InitVkStruct(physicalDeviceProperties2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
-        InitVkStruct(m_descriptorIndexingProperties,
-                     VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES);
+
+        InitVkStruct(m_descriptorIndexingProperties, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES);
 
         for (UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
         {
@@ -360,6 +392,7 @@ void VulkanDevice::Init()
         }
 
         physicalDeviceProperties2.pNext = &m_descriptorIndexingProperties;
+
         vkGetPhysicalDeviceProperties2(m_gpu, &physicalDeviceProperties2);
 
         for (UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
@@ -373,31 +406,37 @@ void VulkanDevice::Init()
 
     // Optional ray-tracing features require the complete enabled dependency chain.
     m_extensionFlags.hasAccelerationStructure &= RHIOptions::GetInstance().RayTracingEnabled();
+
     m_extensionFlags.hasAccelerationStructure &=
         m_extensionFlags.hasBufferDeviceAddress && m_extensionFlags.hasDeferredHostOperation;
+
     m_extensionFlags.hasRaytracingPipeline &= m_extensionFlags.hasAccelerationStructure;
-    m_extensionFlags.hasRayQuery &= m_extensionFlags.hasAccelerationStructure;
+
+    m_extensionFlags.hasRayQuery           &= m_extensionFlags.hasAccelerationStructure;
+
     for (const UniquePtr<VulkanDeviceExtension>& extension : extensionArray)
     {
         const NameID name = extension->GetName();
-        if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
-             !m_extensionFlags.hasAccelerationStructure) ||
-            (name == NameID(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) &&
-             !m_extensionFlags.hasRaytracingPipeline) ||
-            (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery))
+
+        if ((name == NameID(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) && !m_extensionFlags.hasAccelerationStructure)
+            || (name == NameID(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) && !m_extensionFlags.hasRaytracingPipeline)
+            || (name == NameID(VK_KHR_RAY_QUERY_EXTENSION_NAME) && !m_extensionFlags.hasRayQuery))
         {
             extension->SetSupport(false);
         }
     }
+
     SetupDevice(extensionArray);
 
     m_pFenceManager    = ZEN_NEW() VulkanFenceManager(this);
+
     m_pSemaphoreManger = ZEN_NEW() VulkanSemaphoreManager(this);
 }
 
 void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& extensions)
 {
     VkDeviceCreateInfo deviceInfo;
+
     InitVkStruct(deviceInfo, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
 
     for (UniquePtr<VulkanDeviceExtension>& extension : extensions)
@@ -408,6 +447,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
             {
                 m_extensions.emplace_back(extension->GetName());
             }
+
             extension->BeforeCreateDevice(deviceInfo);
         }
     }
@@ -416,45 +456,59 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     HeapVector<VkDeviceQueueCreateInfo> deviceQueueInfos;
 
     const VulkanQueueSelection queues = SelectVulkanQueues(m_queueFamilyProps);
+
     // Init's supported-device check requires a nonempty graphics/compute family.
     ASSERT(queues.IsValid());
+
     LOGI("Found {} Vulkan Queue Families", m_queueFamilyProps.size());
+
     uint32_t numPriorities = 0;
 
-    for (int32_t queueFamilyIndex = 0; queueFamilyIndex < m_queueFamilyProps.size();
-         queueFamilyIndex++)
+    for (int32_t queueFamilyIndex = 0; queueFamilyIndex < m_queueFamilyProps.size(); queueFamilyIndex++)
     {
         VkQueueFamilyProperties const& queueFamilyProp = m_queueFamilyProps[queueFamilyIndex];
+
         if (queueFamilyProp.queueCount == 0)
         {
             continue;
         }
+
         const uint32_t requestedCount = queues.GetRequestedQueueCount(queueFamilyIndex);
+
         if (requestedCount == 0)
         {
-            LOGI("Skipping unused queue family at index: {} ({})", queueFamilyIndex,
-                 GetQueuePropString(queueFamilyProp));
+            LOGI("Skipping unused queue family at index: {} ({})", queueFamilyIndex, GetQueuePropString(queueFamilyProp));
+
             continue;
         }
 
         VkDeviceQueueCreateInfo queueInfo;
+
         InitVkStruct(queueInfo, VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
+
         queueInfo.queueFamilyIndex = queueFamilyIndex;
+
         queueInfo.queueCount       = requestedCount;
+
         deviceQueueInfos.emplace_back(queueInfo);
+
         numPriorities += requestedCount;
-        LOGI("Initializing Queue Family at index {} ({})", queueFamilyIndex,
-             GetQueuePropString(queueFamilyProp));
+
+        LOGI("Initializing Queue Family at index {} ({})", queueFamilyIndex, GetQueuePropString(queueFamilyProp));
     }
 
     HeapVector<float> queuePriorities;
+
     queuePriorities.resize(numPriorities);
+
     float* pCurrentPriority = queuePriorities.data();
 
     for (int i = 0; i < deviceQueueInfos.size(); i++)
     {
         VkDeviceQueueCreateInfo& queueInfo = deviceQueueInfos[i];
+
         queueInfo.pQueuePriorities         = pCurrentPriority;
+
         for (uint32_t queueIndex = 0; queueIndex < queueInfo.queueCount; queueIndex++)
         {
             *pCurrentPriority++ = 1.0f;
@@ -462,6 +516,7 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     }
 
     HeapVector<const char*> extensionNames;
+
     extensionNames.reserve(m_extensions.size());
 
     for (NameID extension : m_extensions)
@@ -470,58 +525,62 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
     }
 
     deviceInfo.enabledExtensionCount   = static_cast<uint32_t>(extensionNames.size());
+
     deviceInfo.ppEnabledExtensionNames = extensionNames.empty() ? nullptr : extensionNames.data();
+
     deviceInfo.queueCreateInfoCount    = static_cast<uint32_t>(deviceQueueInfos.size());
+
     deviceInfo.pQueueCreateInfos       = deviceQueueInfos.data();
+
     VkPhysicalDeviceFeatures enabledFeatures{};
 
-    enabledFeatures.independentBlend = m_physicalDeviceFeatures.independentBlend;
+    enabledFeatures.independentBlend               = m_physicalDeviceFeatures.independentBlend;
 
-    enabledFeatures.geometryShader = m_physicalDeviceFeatures.geometryShader;
+    enabledFeatures.geometryShader                 = m_physicalDeviceFeatures.geometryShader;
 
-    enabledFeatures.fragmentStoresAndAtomics = m_physicalDeviceFeatures.fragmentStoresAndAtomics;
+    enabledFeatures.fragmentStoresAndAtomics       = m_physicalDeviceFeatures.fragmentStoresAndAtomics;
 
-    enabledFeatures.vertexPipelineStoresAndAtomics =
-        m_physicalDeviceFeatures.vertexPipelineStoresAndAtomics;
+    enabledFeatures.vertexPipelineStoresAndAtomics = m_physicalDeviceFeatures.vertexPipelineStoresAndAtomics;
 
-    enabledFeatures.samplerAnisotropy = m_physicalDeviceFeatures.samplerAnisotropy;
+    enabledFeatures.samplerAnisotropy              = m_physicalDeviceFeatures.samplerAnisotropy;
 
-    enabledFeatures.fillModeNonSolid = m_physicalDeviceFeatures.fillModeNonSolid;
+    enabledFeatures.fillModeNonSolid               = m_physicalDeviceFeatures.fillModeNonSolid;
 
-    enabledFeatures.depthClamp = m_physicalDeviceFeatures.depthClamp;
+    enabledFeatures.depthClamp                     = m_physicalDeviceFeatures.depthClamp;
 
-    enabledFeatures.depthBiasClamp = m_physicalDeviceFeatures.depthBiasClamp;
+    enabledFeatures.depthBiasClamp                 = m_physicalDeviceFeatures.depthBiasClamp;
 
-    enabledFeatures.wideLines = m_physicalDeviceFeatures.wideLines;
+    enabledFeatures.wideLines                      = m_physicalDeviceFeatures.wideLines;
 
-    enabledFeatures.sampleRateShading = m_physicalDeviceFeatures.sampleRateShading;
+    enabledFeatures.sampleRateShading              = m_physicalDeviceFeatures.sampleRateShading;
 
-    enabledFeatures.alphaToOne = m_physicalDeviceFeatures.alphaToOne;
+    enabledFeatures.alphaToOne                     = m_physicalDeviceFeatures.alphaToOne;
 
-    enabledFeatures.depthBounds = m_physicalDeviceFeatures.depthBounds;
+    enabledFeatures.depthBounds                    = m_physicalDeviceFeatures.depthBounds;
 
-    enabledFeatures.logicOp = m_physicalDeviceFeatures.logicOp;
+    enabledFeatures.logicOp                        = m_physicalDeviceFeatures.logicOp;
 
-    enabledFeatures.multiDrawIndirect = m_physicalDeviceFeatures.multiDrawIndirect;
+    enabledFeatures.multiDrawIndirect              = m_physicalDeviceFeatures.multiDrawIndirect;
 
-    enabledFeatures.drawIndirectFirstInstance = m_physicalDeviceFeatures.drawIndirectFirstInstance;
+    enabledFeatures.drawIndirectFirstInstance      = m_physicalDeviceFeatures.drawIndirectFirstInstance;
 
-    enabledFeatures.tessellationShader = m_physicalDeviceFeatures.tessellationShader;
+    enabledFeatures.tessellationShader             = m_physicalDeviceFeatures.tessellationShader;
 
-    enabledFeatures.robustBufferAccess = RHIOptions::GetInstance().RobustBufferAccessEnabled() ?
-        m_physicalDeviceFeatures.robustBufferAccess :
-        VK_FALSE;
+    enabledFeatures.robustBufferAccess =
+        RHIOptions::GetInstance().RobustBufferAccessEnabled() ? m_physicalDeviceFeatures.robustBufferAccess : VK_FALSE;
 
     // Capability queries describe features actually enabled on this logical device.
-    m_physicalDeviceFeatures = enabledFeatures;
+    m_physicalDeviceFeatures    = enabledFeatures;
 
     deviceInfo.pEnabledFeatures = &m_physicalDeviceFeatures;
 
-    const VkResult result = vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device);
+    const VkResult result       = vkCreateDevice(m_gpu, &deviceInfo, nullptr, &m_device);
+
     if (result != VK_SUCCESS)
     {
         LOG_ERROR_AND_THROW("vkCreateDevice failed: {}", int32_t(result));
     }
+
     LOGI("Vulkan Device Created");
 
     // display extension info
@@ -532,38 +591,45 @@ void VulkanDevice::SetupDevice(HeapVector<UniquePtr<VulkanDeviceExtension>>& ext
 
     // load device func
     volkLoadDevice(m_device);
+
     // Keep native compilation data for pipeline recreation during this device's lifetime.
     // Flags stay zero so the driver synchronizes concurrent pipeline creation internally.
     VkPipelineCacheCreateInfo pipelineCacheInfo{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-    const VkResult cacheResult =
-        vkCreatePipelineCache(m_device, &pipelineCacheInfo, nullptr, &m_pipelineCache);
+
+    const VkResult cacheResult = vkCreatePipelineCache(m_device, &pipelineCacheInfo, nullptr, &m_pipelineCache);
+
     if (cacheResult != VK_SUCCESS)
     {
         m_pipelineCache = VK_NULL_HANDLE;
-        LOGW("Vulkan pipeline cache unavailable ({}); creating pipelines without a cache",
-             int32_t(cacheResult));
+
+        LOGW("Vulkan pipeline cache unavailable ({}); creating pipelines without a cache", int32_t(cacheResult));
     }
+
     // setup queues
-    m_pGfxQueue =
-        ZEN_NEW() VulkanQueue(this, queues.graphics.familyIndex, queues.graphics.queueIndex);
-    m_pComputeQueue =
-        ZEN_NEW() VulkanQueue(this, queues.compute.familyIndex, queues.compute.queueIndex);
-    m_pTransferQueue =
-        ZEN_NEW() VulkanQueue(this, queues.transfer.familyIndex, queues.transfer.queueIndex);
-    LOGI("Vulkan queues: graphics={}:{}; compute={}:{}; transfer={}:{}",
-         queues.graphics.familyIndex, queues.graphics.queueIndex, queues.compute.familyIndex,
-         queues.compute.queueIndex, queues.transfer.familyIndex, queues.transfer.queueIndex);
+    m_pGfxQueue      = ZEN_NEW() VulkanQueue(this, queues.graphics.familyIndex, queues.graphics.queueIndex);
+
+    m_pComputeQueue  = ZEN_NEW() VulkanQueue(this, queues.compute.familyIndex, queues.compute.queueIndex);
+
+    m_pTransferQueue = ZEN_NEW() VulkanQueue(this, queues.transfer.familyIndex, queues.transfer.queueIndex);
+
+    LOGI("Vulkan queues: graphics={}:{}; compute={}:{}; transfer={}:{}", queues.graphics.familyIndex,
+         queues.graphics.queueIndex, queues.compute.familyIndex, queues.compute.queueIndex, queues.transfer.familyIndex,
+         queues.transfer.queueIndex);
 }
 
 void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, NameID name)
 {
     VkDebugUtilsObjectNameInfoEXT info;
+
     InitVkStruct(info, VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT);
+
     info.objectType   = type;
+
     info.objectHandle = handle;
+
     info.pObjectName  = name.IsNone() ? nullptr : name.CStr();
-    if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
-        vkSetDebugUtilsObjectNameEXT != nullptr)
+
+    if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils && vkSetDebugUtilsObjectNameEXT != nullptr)
     {
         vkSetDebugUtilsObjectNameEXT(m_device, &info);
     }
@@ -604,7 +670,7 @@ VkResult VulkanDevice::AcquireGPUTimingPool(VkQueryPool& pool)
 {
     LockAuto lock(&m_timingPoolMutex);
 
-    pool = VK_NULL_HANDLE;
+    pool            = VK_NULL_HANDLE;
 
     VkResult result = VK_SUCCESS;
 
@@ -618,11 +684,11 @@ VkResult VulkanDevice::AcquireGPUTimingPool(VkQueryPool& pool)
     {
         VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
 
-        info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        info.queryType  = VK_QUERY_TYPE_TIMESTAMP;
 
         info.queryCount = 2 * FVulkanCommandBuffer::kMaxGPUTimingScopes;
 
-        result = vkCreateQueryPool(m_device, &info, nullptr, &pool);
+        result          = vkCreateQueryPool(m_device, &info, nullptr, &pool);
 
         if (result == VK_SUCCESS)
         {
@@ -647,12 +713,15 @@ void VulkanDevice::ReleaseGPUTimingPool(VkQueryPool pool)
 void VulkanDevice::DestroyQueues()
 {
     ZEN_DELETE(m_pGfxQueue);
+
     m_pGfxQueue = nullptr;
 
     ZEN_DELETE(m_pComputeQueue);
+
     m_pComputeQueue = nullptr;
 
     ZEN_DELETE(m_pTransferQueue);
+
     m_pTransferQueue = nullptr;
 }
 
@@ -663,12 +732,14 @@ void VulkanDevice::Destroy()
     if (m_pSemaphoreManger != nullptr)
     {
         m_pSemaphoreManger->Destroy();
+
         ZEN_DELETE(m_pSemaphoreManger);
     }
 
     if (m_pFenceManager != nullptr)
     {
         m_pFenceManager->Destroy();
+
         ZEN_DELETE(m_pFenceManager);
     }
 
@@ -686,8 +757,10 @@ void VulkanDevice::Destroy()
         if (m_pipelineCache != VK_NULL_HANDLE)
         {
             vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
+
             m_pipelineCache = VK_NULL_HANDLE;
         }
+
         vkDestroyDevice(m_device, nullptr);
     }
 }
@@ -700,59 +773,68 @@ RHIQueueCapabilities VulkanRHI::GetQueueCapabilities() const
 RHIQueueCapabilities VulkanDevice::GetQueueCapabilities() const
 {
     RHIQueueCapabilities capabilities;
+
     if (m_device != VK_NULL_HANDLE)
     {
-        const VulkanQueue* compute    = GetComputeQueue();
-        capabilities.computeSupported = compute != nullptr &&
-            (GetQueueFamilyProperties(compute->GetFamilyIndex()).queueFlags &
-             VK_QUEUE_COMPUTE_BIT) != 0;
+        const VulkanQueue* compute = GetComputeQueue();
+
+        capabilities.computeSupported =
+            compute != nullptr && (GetQueueFamilyProperties(compute->GetFamilyIndex()).queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+
         capabilities.asyncSubmissionDependencies = SupportsTimelineSemaphore();
+
         for (uint32_t i = 0; i < capabilities.queueIds.size(); ++i)
         {
             const VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i));
+
             capabilities.queueIds[i] = i;
+
             for (uint32_t j = 0; j < i; ++j)
             {
                 const VulkanQueue* previous = GetQueue(static_cast<RHICommandContextType>(j));
-                if (queue != nullptr && previous != nullptr &&
-                    queue->GetVkHandle() == previous->GetVkHandle())
+
+                if (queue != nullptr && previous != nullptr && queue->GetVkHandle() == previous->GetVkHandle())
                 {
                     capabilities.queueIds[i] = capabilities.queueIds[j];
+
                     break;
                 }
             }
         }
     }
+
     return capabilities;
 }
 
-bool VulkanRHI::PrepareSubmissionDependencies(
-    IRHICommandContext* context,
-    VectorView<const RHISubmissionDependency> dependencies)
+bool VulkanRHI::PrepareSubmissionDependencies(IRHICommandContext*                       context,
+                                              VectorView<const RHISubmissionDependency> dependencies)
 {
     GetRHIThread().CheckOwnership();
+
     bool result                         = context != nullptr && !m_submissionBlocked;
+
     FVulkanCommandListContext* consumer = static_cast<FVulkanCommandListContext*>(context);
+
     for (const RHISubmissionDependency& dependency : dependencies)
     {
         if (result)
         {
-            VulkanQueue* producer    = dependency.queue < RHICommandContextType::eMax ?
-                   m_pDevice->GetQueue(dependency.queue) :
-                   nullptr;
+            VulkanQueue* producer =
+                dependency.queue < RHICommandContextType::eMax ? m_pDevice->GetQueue(dependency.queue) : nullptr;
+
             const uint64_t submitted = producer != nullptr ? producer->GetLastSubmittedSerial() : 0;
-            const uint64_t serial = dependency.serial == RHISubmissionDependency::kLatestSubmitted ?
-                submitted :
-                dependency.serial;
-            result                = producer != nullptr && serial <= submitted;
-            if (result && serial != 0 &&
-                producer->GetVkHandle() != consumer->GetQueue()->GetVkHandle())
+
+            const uint64_t serial =
+                dependency.serial == RHISubmissionDependency::kLatestSubmitted ? submitted : dependency.serial;
+
+            result = producer != nullptr && serial <= submitted;
+
+            if (result && serial != 0 && producer->GetVkHandle() != consumer->GetQueue()->GetVkHandle())
             {
                 if (SupportsAsyncSubmissionDependencies())
                 {
-                    consumer->AddWaitSemaphore(
-                        VkPipelineStageFlags(RHISubmissionDependency::kWaitStage),
-                        producer->m_pTimelineSemaphore, serial);
+                    consumer->AddWaitSemaphore(VkPipelineStageFlags(RHISubmissionDependency::kWaitStage),
+                                               producer->m_pTimelineSemaphore, serial);
                 }
                 else
                 {
@@ -761,11 +843,14 @@ bool VulkanRHI::PrepareSubmissionDependencies(
             }
         }
     }
+
     if (!result)
     {
         LOGE("Vulkan submission dependency is invalid or failed");
+
         BlockSubmissions();
     }
+
     return result;
 }
 
@@ -788,20 +873,18 @@ uint64_t VulkanRHI::QueryLastCompletedSerial(RHICommandContextType contextType)
     return pQueue != nullptr ? pQueue->GetLastCompletedSerial() : 0;
 }
 
-bool VulkanRHI::WaitForCompletion(RHICommandContextType contextType,
-                                  uint64_t submissionSerial,
-                                  uint64_t timeoutNS)
+bool VulkanRHI::WaitForCompletion(RHICommandContextType contextType, uint64_t submissionSerial, uint64_t timeoutNS)
 {
     VulkanQueue* pQueue = m_pDevice->GetQueue(contextType);
+
     return pQueue != nullptr && pQueue->WaitForCompletion(submissionSerial, timeoutNS);
 }
 
 void VulkanRHI::WaitDeviceIdle()
 {
-    if (m_pDevice == nullptr || m_pDevice->GetVkHandle() == VK_NULL_HANDLE)
+    if ((m_pDevice != nullptr) && (m_pDevice->GetVkHandle() != VK_NULL_HANDLE))
     {
-        return;
+        m_pDevice->WaitForIdle();
     }
-    m_pDevice->WaitForIdle();
 }
 } // namespace zen

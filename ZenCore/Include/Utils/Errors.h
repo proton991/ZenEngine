@@ -25,7 +25,7 @@ namespace zen
 // of logger configuration and diagnostic formatting, including during teardown.
 [[noreturn]] inline void VerificationFailure(const char* expression,
                                              const char* file,
-                                             int line,
+                                             int         line,
                                              const char* message = nullptr) noexcept
 {
     std::fprintf(stderr, "ZenEngine: verification failed: %s (%s:%d)\n", expression, file, line);
@@ -40,12 +40,11 @@ namespace zen
     std::abort();
 }
 
-template <typename... Args>
-[[noreturn]] inline void VerificationFailureFormatted(const char* expression,
-                                                      const char* file,
-                                                      int line,
-                                                      fmt::format_string<Args...> format,
-                                                      Args&&... args) noexcept
+template <typename... Args> [[noreturn]] inline void VerificationFailureFormatted(const char*                 expression,
+                                                                                  const char*                 file,
+                                                                                  int                         line,
+                                                                                  fmt::format_string<Args...> format,
+                                                                                  Args&&... args) noexcept
 {
     char message[1024]{};
 
@@ -72,11 +71,8 @@ template <> inline void ThrowIf<true>(std::string&& msg)
     throw std::runtime_error(msg);
 }
 
-template <bool bThrowException, typename... ArgsType> void LogError(bool isCritical,
-                                                                    const char* pFunction,
-                                                                    const char* pFullFilePath,
-                                                                    int line,
-                                                                    const ArgsType&... args)
+template <bool bThrowException, typename... ArgsType>
+void LogError(bool isCritical, const char* pFunction, const char* pFullFilePath, int line, const ArgsType&... args)
 {
     std::string fileName(pFullFilePath);
 
@@ -88,14 +84,12 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
     std::string message;
     if (isCritical)
     {
-        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", pFunction, fileName,
-                              line, args...);
+        message = fmt::format("ZenEngine: fatal error in {} ({}, {}): {}", pFunction, fileName, line, args...);
         spdlog::critical(message);
     }
     else
     {
-        message =
-            fmt::format("ZenEngine: error in {} ({}, {}): {}", pFunction, fileName, line, args...);
+        message = fmt::format("ZenEngine: error in {} ({}, {}): {}", pFunction, fileName, line, args...);
         spdlog::error(message);
     }
     ThrowIf<bThrowException>(std::move(message));
@@ -138,7 +132,6 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
         LogError<false>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (false)
 
-
 #define LOG_FATAL_ERROR(...)                                                                \
     do                                                                                      \
     {                                                                                       \
@@ -155,7 +148,6 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
             IsFirstTime = false;        \
         }                               \
     } while (false)
-
 
 #define LOG_ERROR_AND_THROW(...)                                                            \
     do                                                                                      \
@@ -181,9 +173,8 @@ template <bool bThrowException, typename... ArgsType> void LogError(bool isCriti
             LogError<true>(/*IsFatal=*/false, __FUNCTION__, __FILE__, __LINE__, __VA_ARGS__); \
     }
 
-#define ASSERT_SIZEOF(Struct, Size, ...)  \
-    static_assert(sizeof(Struct) == Size, \
-                  "sizeof(" #Struct ") is expected to be " #Size ". " __VA_ARGS__)
+#define ASSERT_SIZEOF(Struct, Size, ...) \
+    static_assert(sizeof(Struct) == Size, "sizeof(" #Struct ") is expected to be " #Size ". " __VA_ARGS__)
 
 #if UINTPTR_MAX == UINT64_MAX
 #    define ASSERT_SIZEOF64 ASSERT_SIZEOF

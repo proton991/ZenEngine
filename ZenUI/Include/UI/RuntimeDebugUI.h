@@ -17,9 +17,7 @@ namespace zen::ui
 class RuntimeDebugUI : public rc::RenderOverlay
 {
 public:
-    RuntimeDebugUI(rc::RenderDevice& device,
-                   platform::GlfwWindowImpl& window,
-                   RuntimeSceneControls& sceneControls);
+    RuntimeDebugUI(rc::RenderDevice& device, platform::GlfwWindowImpl& window, RuntimeSceneControls& sceneControls);
 
     ~RuntimeDebugUI() override;
 
@@ -60,24 +58,24 @@ private:
 
     void ReloadSettings();
 
-    rc::RenderDevice& m_device;
-    platform::GlfwWindowImpl& m_window;
-    RuntimeSceneControls& m_sceneControls;
-    UIContext m_context;
-    UIRenderer m_renderer;
+    rc::RenderDevice&          m_device;
+    platform::GlfwWindowImpl&  m_window;
+    RuntimeSceneControls&      m_sceneControls;
+    UIContext                  m_context;
+    UIRenderer                 m_renderer;
     rc::VoxelGIRuntimeSettings m_draft;
-    RuntimeSceneSettings m_sceneDraft;
-    RuntimeSceneSettings m_sceneBaseline;
-    bool m_initialized{false};
-    bool m_visible{true};
-    bool m_dirty{false};
-    bool m_sceneDirty{false};
-    bool m_autoApply{true};
-    bool m_applyFailed{false};
-    char m_configFilter[128]{};
-    char m_modelFilter[256]{};
-    uint64_t m_modelRevision{0};
-    bool m_modelRequestRejected{false};
-    const char* m_status{"Settings apply to this session only."};
+    RuntimeSceneSettings       m_sceneDraft;
+    RuntimeSceneSettings       m_sceneBaseline;
+    bool                       m_initialized{false};
+    bool                       m_visible{true};
+    bool                       m_dirty{false};
+    bool                       m_sceneDirty{false};
+    bool                       m_autoApply{true};
+    bool                       m_applyFailed{false};
+    char                       m_configFilter[128]{};
+    char                       m_modelFilter[256]{};
+    uint64_t                   m_modelRevision{0};
+    bool                       m_modelRequestRejected{false};
+    const char*                m_status{"Settings apply to this session only."};
 };
 } // namespace zen::ui

@@ -17,8 +17,7 @@ struct SceneShadowUniformData
     Vec4 lights[MaxSceneLights]{};
     Vec4 settings{}; // Minimum world-space bias, resolution, reserved, reserved.
 };
-static_assert(sizeof(SceneShadowUniformData) ==
-              MaxSceneShadowFaces * 64 + MaxSceneLights * 16 + 16);
+static_assert(sizeof(SceneShadowUniformData) == MaxSceneShadowFaces * 64 + MaxSceneLights * 16 + 16);
 
 // Mesh visibility shared by direct lighting and voxel radiance injection.
 class SceneShadowRenderer
@@ -35,9 +34,13 @@ public:
     }
 
     bool Prepare(const RenderScene& scene, bool enabled, bool includeInactiveLights = false);
+
     void BuildRenderGraph(const RenderScene& scene, uint64_t geometryRevision);
+
     void BindLightingInputs(RDGPassDescBase& pass) const;
+
     void OnRenderGraphExecuted(bool succeeded);
+
     void Destroy();
 
 private:
@@ -48,19 +51,20 @@ private:
     };
 
     void PrepareLight(const GPULight& light, uint32_t index, const sg::AABB& bounds);
+
     void BuildFace(const RenderScene& scene, uint32_t layer, bool drawGeometry);
 
-    RenderDevice* m_device;
-    RHITexture* m_depth{nullptr};
-    RHITexture* m_maps{nullptr};
-    RHISampler* m_depthSampler{nullptr};
-    RHISampler* m_materialSampler{nullptr};
-    uint32_t m_resolution{1024};
-    HeapVector<FaceData> m_faces;
-    HeapVector<FaceData> m_committedFaces;
+    RenderDevice*          m_device;
+    RHITexture*            m_depth{nullptr};
+    RHITexture*            m_maps{nullptr};
+    RHISampler*            m_depthSampler{nullptr};
+    RHISampler*            m_materialSampler{nullptr};
+    uint32_t               m_resolution{1024};
+    HeapVector<FaceData>   m_faces;
+    HeapVector<FaceData>   m_committedFaces;
     SceneShadowUniformData m_uniforms{};
-    uint64_t m_geometryRevision{0};
-    uint64_t m_recordedGeometry{0};
-    bool m_validContents{false};
+    uint64_t               m_geometryRevision{0};
+    uint64_t               m_recordedGeometry{0};
+    bool                   m_validContents{false};
 };
 } // namespace zen::rc

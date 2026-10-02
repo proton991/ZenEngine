@@ -14,16 +14,15 @@ namespace detail
 template <typename Policy, typename T, typename = void> struct HasObjectPoolPolicy : std::false_type
 {};
 
-template <typename Policy, typename T>
-struct HasObjectPoolPolicy<Policy,
-                           T,
-                           std::void_t<decltype(Policy::Create()),
-                                       decltype(Policy::Reset(std::declval<T*>())),
-                                       decltype(Policy::Destroy(std::declval<T*>()))>> :
+template <typename Policy, typename T> struct HasObjectPoolPolicy<Policy,
+                                                                  T,
+                                                                  std::void_t<decltype(Policy::Create()),
+                                                                              decltype(Policy::Reset(std::declval<T*>())),
+                                                                              decltype(Policy::Destroy(std::declval<T*>()))>> :
     std::integral_constant<bool,
-                           std::is_convertible_v<decltype(Policy::Create()), T*> &&
-                               std::is_same_v<decltype(Policy::Reset(std::declval<T*>())), void> &&
-                               std::is_same_v<decltype(Policy::Destroy(std::declval<T*>())), void>>
+                           std::is_convertible_v<decltype(Policy::Create()), T*>
+                               && std::is_same_v<decltype(Policy::Reset(std::declval<T*>())), void>
+                               && std::is_same_v<decltype(Policy::Destroy(std::declval<T*>())), void>>
 {};
 } // namespace detail
 
@@ -60,10 +59,12 @@ public:
     }
 
     ObjectPool(const ObjectPool&)            = delete;
+
     ObjectPool& operator=(const ObjectPool&) = delete;
 
-    ObjectPool(ObjectPool&&)            = delete;
-    ObjectPool& operator=(ObjectPool&&) = delete;
+    ObjectPool(ObjectPool&&)                 = delete;
+
+    ObjectPool& operator=(ObjectPool&&)      = delete;
 
     T* Acquire()
     {
@@ -92,13 +93,11 @@ public:
 
     void Release(T* pObject)
     {
-        if (pObject == nullptr)
+        if (pObject != nullptr)
         {
-            return;
+            Policy::Reset(pObject);
+            m_freeObjects.push_back(pObject);
         }
-
-        Policy::Reset(pObject);
-        m_freeObjects.push_back(pObject);
     }
 
     template <typename Func> void ForEachObject(Func&& func) const

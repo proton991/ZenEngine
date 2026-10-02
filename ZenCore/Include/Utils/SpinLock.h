@@ -36,6 +36,7 @@ public:
             // Continue.
         }
     }
+
     void Unlock() const
     {
         m_locked.clear(std::memory_order_release);

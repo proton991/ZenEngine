@@ -9,7 +9,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 {
     sg::Scene scene;
 
-    UniquePtr<sg::Node> skinned = MakeUnique<sg::Node>(0, "Scaled volume skin");
+    UniquePtr<sg::Node> skinned      = MakeUnique<sg::Node>(0, "Scaled volume skin");
 
     UniquePtr<sg::Transform> surface = MakeUnique<sg::Transform>(*skinned);
 
@@ -33,7 +33,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     scene.AddRenderableNode(skinned.Get());
 
-    UniquePtr<sg::Node> joint = MakeUnique<sg::Node>(1, "Skin joint");
+    UniquePtr<sg::Node> joint               = MakeUnique<sg::Node>(1, "Skin joint");
 
     UniquePtr<sg::Transform> jointTransform = MakeUnique<sg::Transform>(*joint);
 
@@ -45,7 +45,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     scene.AddComponent(std::move(jointTransform));
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     nodes.push_back(std::move(skinned));
 
@@ -55,7 +55,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     sg::SkinAsset skin;
 
-    skin.joints = {1};
+    skin.joints              = {1};
 
     skin.inverseBindMatrices = {Mat4(1)};
 
@@ -63,7 +63,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     sg::DeformationPrimitiveAsset deformation;
 
-    deformation.node = 0;
+    deformation.node        = 0;
 
     deformation.vertexCount = 3;
 
@@ -78,13 +78,13 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     for (asset::Vertex& vertex : bind)
     {
-        vertex.pos = Vec4(0, 0, 0, 1);
+        vertex.pos     = Vec4(0, 0, 0, 1);
 
-        vertex.normal = Vec4(0, 0, 1, 0);
+        vertex.normal  = Vec4(0, 0, 1, 0);
 
         vertex.tangent = Vec4(1, 0, 0, 1);
 
-        vertex.color = Vec4(1);
+        vertex.color   = Vec4(1);
     }
 
     bind[1].pos.x = 4;
@@ -93,23 +93,23 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
 
     scene.LoadDefaultTextures(0);
 
-    UniquePtr<sg::Material> material = MakeUnique<sg::Material>("Authored volume distances");
+    UniquePtr<sg::Material> material          = MakeUnique<sg::Material>("Authored volume distances");
 
     const sg::Scene::DefaultTextures defaults = scene.GetDefaultTextures();
 
-    material->m_pBaseColorTexture = defaults.pBaseColor;
+    material->m_pBaseColorTexture             = defaults.pBaseColor;
 
-    material->m_pMetallicRoughnessTexture = defaults.pMetallicRoughness;
+    material->m_pMetallicRoughnessTexture     = defaults.pMetallicRoughness;
 
-    material->m_pNormalTexture = defaults.pNormal;
+    material->m_pNormalTexture                = defaults.pNormal;
 
-    material->m_pOcclusionTexture = defaults.pOcclusion;
+    material->m_pOcclusionTexture             = defaults.pOcclusion;
 
-    material->m_pEmissiveTexture = defaults.pEmissive;
+    material->m_pEmissiveTexture              = defaults.pEmissive;
 
-    material->features.thickness = 0.9f;
+    material->features.thickness              = 0.9f;
 
-    material->features.attenuationDistance = 10;
+    material->features.attenuationDistance    = 10;
 
     material->SetData();
 
@@ -146,8 +146,7 @@ TEST(ScenePhysicalUnits, NormalizedSkinningRetainsAuthoredSurfaceScaleAndMateria
     EXPECT_FLOAT_EQ(authored->features.thickness, 0.9f);
 
     // The mesh transform is ignored by skinning: the posed triangle still faces +Z.
-    const Vec3 face =
-        glm::cross(Vec3(posed[1].pos - posed[0].pos), Vec3(posed[2].pos - posed[0].pos));
+    const Vec3 face = glm::cross(Vec3(posed[1].pos - posed[0].pos), Vec3(posed[2].pos - posed[0].pos));
 
     EXPECT_GT(face.z, 0.0f);
 

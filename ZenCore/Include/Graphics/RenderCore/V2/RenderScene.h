@@ -20,13 +20,13 @@ namespace zen::rc
 {
 struct SceneData
 {
-    sg::Scene* pScene;
+    sg::Scene*           pScene;
     const asset::Vertex* pVertices;
-    const uint32_t* pIndices;
-    uint32_t numVertices;
-    uint32_t numIndices;
-    sg::Camera* pCamera;
-    std::string envTextureName;
+    const uint32_t*      pIndices;
+    uint32_t             numVertices;
+    uint32_t             numIndices;
+    sg::Camera*          pCamera;
+    std::string          envTextureName;
     // other scene data
 };
 
@@ -69,34 +69,41 @@ public:
     // generation; Update commits it before any raster, shadow, or voxel passes.
     // IDs are renderable slots assigned at load; disabling/promoting never compacts them.
     bool SetInstanceClass(uint32_t instance, uint32_t objectClass);
+
     bool SetInstanceEnabled(uint32_t instance, bool enabled);
+
     bool SetInstanceTransform(uint32_t instance, const Mat4& worldTransform);
+
     bool UpdateVertices(uint32_t first, VectorView<const asset::Vertex> vertices);
+
     // Update factors/UV selection or refer to an already loaded scene texture.
     bool UpdateMaterial(uint32_t material, const sg::MaterialData& data);
+
     // Explicit renderer-world bounds; voxelizers make this box cubic and add one cell of padding.
     bool SetVoxelBounds(const sg::AABB& bounds);
+
     const sg::AABB& GetVoxelSceneBounds() const
     {
         return m_voxelBounds;
     }
+
     uint32_t GetVoxelCoverageMask(const sg::AABB& gridBounds) const;
     // Use for discontinuous transforms/deformation; ordinary animation keeps GI history.
 
     bool CommitGeometryUpdates();
+
     uint32_t GetInstanceMask(uint32_t instance) const;
+
     uint64_t GetGeometryRevision(uint32_t mask = GI_ALL) const
     {
-        return mask == GI_STATIC ? m_staticRevision :
-            mask == GI_DYNAMIC   ? m_dynamicRevision :
-                                   m_geometryRevision;
+        return mask == GI_STATIC ? m_staticRevision : mask == GI_DYNAMIC ? m_dynamicRevision : m_geometryRevision;
     }
+
     uint64_t GetSurfaceRevision(uint32_t mask = GI_ALL) const
     {
-        return mask == GI_STATIC ? m_staticSurfaceRevision :
-            mask == GI_DYNAMIC   ? m_dynamicSurfaceRevision :
-                                   m_surfaceRevision;
+        return mask == GI_STATIC ? m_staticSurfaceRevision : mask == GI_DYNAMIC ? m_dynamicSurfaceRevision : m_surfaceRevision;
     }
+
     const HeapVector<asset::Vertex>& GetVertices() const
     {
         return m_vertices;
@@ -174,7 +181,7 @@ public:
         return m_sceneSamplers;
     }
 
-    const std::vector<sg::Node*>& GetRenderableNodes() const
+    const zen::HeapVector<sg::Node*>& GetRenderableNodes() const
     {
         return m_pScene->GetRenderableNodes();
     }
@@ -221,54 +228,54 @@ private:
 
     bool m_animationLoop{true};
 
-    HeapVector<LightId> m_importedLightIds;
+    HeapVector<LightId>  m_importedLightIds;
     HeapVector<uint32_t> m_indices;
     HeapVector<uint32_t> m_instanceClasses;
     HeapVector<uint32_t> m_instanceEnabled;
     HeapVector<uint32_t> m_authoredVisibility;
-    uint32_t m_dirtyClasses{0};
-    uint32_t m_dirtySurfaceClasses{0};
-    bool m_materialsDirty{false};
-    bool m_verticesDirty{false};
-    bool m_geometryReady{true};
-    uint64_t m_geometryRevision{1};
-    uint64_t m_staticRevision{1};
-    uint64_t m_dynamicRevision{1};
-    uint64_t m_surfaceRevision{1};
-    uint64_t m_staticSurfaceRevision{1};
-    uint64_t m_dynamicSurfaceRevision{1};
-    sg::AABB m_voxelBounds;
-    sg::AABB m_classBounds[2];
-    RenderDevice* m_pRenderDevice{nullptr};
-    sg::Scene* m_pScene{nullptr};
-    sg::Camera* m_pCamera{nullptr};
+    uint32_t             m_dirtyClasses{0};
+    uint32_t             m_dirtySurfaceClasses{0};
+    bool                 m_materialsDirty{false};
+    bool                 m_verticesDirty{false};
+    bool                 m_geometryReady{true};
+    uint64_t             m_geometryRevision{1};
+    uint64_t             m_staticRevision{1};
+    uint64_t             m_dynamicRevision{1};
+    uint64_t             m_surfaceRevision{1};
+    uint64_t             m_staticSurfaceRevision{1};
+    uint64_t             m_dynamicSurfaceRevision{1};
+    sg::AABB             m_voxelBounds;
+    sg::AABB             m_classBounds[2];
+    RenderDevice*        m_pRenderDevice{nullptr};
+    sg::Scene*           m_pScene{nullptr};
+    sg::Camera*          m_pCamera{nullptr};
 
     HeapVector<sg::NodeData> m_nodesData;
-    RHIBuffer* m_pNodeSSBO{nullptr};
+    RHIBuffer*               m_pNodeSSBO{nullptr};
 
     HeapVector<sg::MaterialData> m_materialsData;
-    RHIBuffer* m_pMaterialSSBO{nullptr};
+    RHIBuffer*                   m_pMaterialSSBO{nullptr};
 
     SceneUniformData m_sceneUniformData{};
-    SceneLights m_lights;
-    uint64_t m_environmentRevision{1};
-    float m_authoredEnvironmentIntensity{1.0f};
-    float m_environmentIntensity{1.0f};
-    float m_sceneUnitScale{1.0f};
+    SceneLights      m_lights;
+    uint64_t         m_environmentRevision{1};
+    float            m_authoredEnvironmentIntensity{1.0f};
+    float            m_environmentIntensity{1.0f};
+    float            m_sceneUnitScale{1.0f};
 
     RHIBuffer* m_pVertexBuffer{nullptr};
     RHIBuffer* m_pIndexBuffer{nullptr};
 
-    uint32_t m_numIndices{0};
+    uint32_t   m_numIndices{0};
     RHIBuffer* m_pVoxelTriangleBuffer{nullptr};
-    uint32_t m_voxelTriangleCount{0};
+    uint32_t   m_voxelTriangleCount{0};
 
     // std::vector<TextureHandle> m_sceneTextures;
     HeapVector<RHITexture*> m_sceneTextures;
     HeapVector<RHISampler*> m_sceneSamplers;
-    std::string m_envTextureName;
-    EnvTexture m_envTexture;
-    RHITexture* m_pDefaultBaseColorTexture{nullptr};
+    std::string             m_envTextureName;
+    EnvTexture              m_envTexture;
+    RHITexture*             m_pDefaultBaseColorTexture{nullptr};
     // TextureHandle m_defaultBaseColorTexture;
 };
 } // namespace zen::rc

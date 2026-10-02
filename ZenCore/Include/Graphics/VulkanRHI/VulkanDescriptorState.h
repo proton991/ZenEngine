@@ -13,14 +13,12 @@ class VulkanDescriptorSetState
 public:
     void SetPipeline(VulkanPipeline* pPipeline);
 
-    bool SetShaderParameters(RHIShaderParameterView parameters,
-                             uint64_t recordedEpoch = 0,
-                             uint64_t transaction   = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0, uint64_t transaction = 0);
 
-    bool FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
+    bool FlushPendingDescriptorWrites(FVulkanCommandListContext*   pContext,
                                       HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                      uint32_t& outFirstSet,
-                                      HeapVector<uint32_t>& outDynamicOffsets);
+                                      uint32_t&                    outFirstSet,
+                                      HeapVector<uint32_t>&        outDynamicOffsets);
 
     void Reset();
 
@@ -28,23 +26,21 @@ private:
     struct BindingState
     {
         RHIShaderResourceBinding srb;
-        HeapVector<uint32_t> dynamicOffsets;
-        uint32_t valueRange{0};
-        uint64_t uniformBlockId{0};
-        uint64_t uniformGeneration{0};
+        HeapVector<uint32_t>     dynamicOffsets;
+        uint32_t                 valueRange{0};
+        uint64_t                 uniformBlockId{0};
+        uint64_t                 uniformGeneration{0};
     };
 
     struct SetState
     {
-        VkDescriptorSet vkSet{VK_NULL_HANDLE};
+        VkDescriptorSet                   vkSet{VK_NULL_HANDLE};
         VulkanDescriptorPoolSetContainer* pContainer{nullptr};
-        HeapVector<BindingState> bindings;
-        bool dirty{false};
+        HeapVector<BindingState>          bindings;
+        bool                              dirty{false};
     };
 
-    VkDescriptorSet AcquireSetHandle(uint32_t setIdx,
-                                     FVulkanCommandListContext* pContext,
-                                     bool& outNeedsWrite);
+    VkDescriptorSet AcquireSetHandle(uint32_t setIdx, FVulkanCommandListContext* pContext, bool& outNeedsWrite);
 
     bool ResolveSet(uint32_t setIdx, FVulkanCommandListContext* pContext);
 
@@ -54,9 +50,7 @@ private:
 
     void InvalidateResolvedCaches();
 
-    BindingState& FindOrAddBinding(SetState& setState,
-                                   uint32_t bindingIdx,
-                                   RHIShaderResourceType type);
+    BindingState& FindOrAddBinding(SetState& setState, uint32_t bindingIdx, RHIShaderResourceType type);
 
     void WriteResourceParameter(const RHIShaderResourceParameter& param);
 
@@ -68,26 +62,23 @@ private:
 
     void SyncCacheRevision(const VulkanDescriptorSetCache& cache);
 
-    bool BuildDescriptorSetList(FVulkanCommandListContext* pContext,
+    bool BuildDescriptorSetList(FVulkanCommandListContext*   pContext,
                                 HeapVector<VkDescriptorSet>& outDescriptorSets,
-                                uint32_t& outFirstSet,
-                                HeapVector<uint32_t>& outDynamicOffsets);
+                                uint32_t&                    outFirstSet,
+                                HeapVector<uint32_t>&        outDynamicOffsets);
 
     void AppendDynamicOffsetsForSet(uint32_t setIdx, HeapVector<uint32_t>& outDynamicOffsets);
 
     struct PackedValueBufferState
     {
-        uint32_t setIdx{0};
-        uint32_t bindingIdx{0};
-        uint32_t blockSize{0};
+        uint32_t            setIdx{0};
+        uint32_t            bindingIdx{0};
+        uint32_t            blockSize{0};
         HeapVector<uint8_t> bytes;
-        bool dirty{false};
+        bool                dirty{false};
     };
 
-    void SetPackedValueParameter(uint32_t setIdx,
-                                 uint32_t bindingIdx,
-                                 uint32_t byteSize,
-                                 const uint8_t* pData);
+    void SetPackedValueParameter(uint32_t setIdx, uint32_t bindingIdx, uint32_t byteSize, const uint8_t* pData);
 
     bool FlushPackedValueBuffers();
 
@@ -103,12 +94,12 @@ private:
 
     HeapVector<RHIShaderResourceBinding> m_updateSrbScratch;
 
-    FVulkanCommandListContext* m_lastContext{nullptr};
-    uint64_t m_lastWorkloadGeneration{0};
-    uint64_t m_lastCacheRevision{0};
+    FVulkanCommandListContext*  m_lastContext{nullptr};
+    uint64_t                    m_lastWorkloadGeneration{0};
+    uint64_t                    m_lastCacheRevision{0};
     HeapVector<VkDescriptorSet> m_resolvedSets;
-    HeapVector<uint32_t> m_resolvedOffsets;
-    uint32_t m_resolvedFirstSet{0};
+    HeapVector<uint32_t>        m_resolvedOffsets;
+    uint32_t                    m_resolvedFirstSet{0};
 
     bool m_parametersValid{true};
 };

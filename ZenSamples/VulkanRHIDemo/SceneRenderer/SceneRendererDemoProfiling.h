@@ -15,13 +15,13 @@ class RDGMetrics;
 
 struct DemoProfilingOptions
 {
-    std::string prefix;
+    std::string             prefix;
     HeapVector<std::string> arguments;
-    uint32_t frames{0};
-    uint32_t warmup{0};
-    uint32_t giStartFrame{0};
-    bool fixedStep{false};
-    bool vsync{true};
+    uint32_t                frames{0};
+    uint32_t                warmup{0};
+    uint32_t                giStartFrame{0};
+    bool                    fixedStep{false};
+    bool                    vsync{true};
 };
 
 // Owns bounded copies of deferred metrics. No file writes or GPU waits occur in RecordFrame.

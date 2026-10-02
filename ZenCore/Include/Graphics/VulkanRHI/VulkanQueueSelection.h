@@ -19,8 +19,7 @@ struct VulkanQueueSelection
 
     bool IsValid() const
     {
-        return graphics.familyIndex != UINT32_MAX && compute.familyIndex != UINT32_MAX &&
-            transfer.familyIndex != UINT32_MAX;
+        return graphics.familyIndex != UINT32_MAX && compute.familyIndex != UINT32_MAX && transfer.familyIndex != UINT32_MAX;
     }
 
     uint32_t GetRequestedQueueCount(uint32_t familyIndex) const
@@ -40,11 +39,10 @@ struct VulkanQueueSelection
 inline VulkanQueueSelection SelectVulkanQueues(VectorView<const VkQueueFamilyProperties> families)
 {
     VulkanQueueSelection selection;
-    const VkQueueFlags graphicsFlags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+    const VkQueueFlags   graphicsFlags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
     for (uint32_t i = 0; i < families.size(); ++i)
     {
-        if (families[i].queueCount != 0 &&
-            (families[i].queueFlags & graphicsFlags) == graphicsFlags)
+        if (families[i].queueCount != 0 && (families[i].queueFlags & graphicsFlags) == graphicsFlags)
         {
             selection.graphics = {i, 0};
             break;
@@ -58,16 +56,15 @@ inline VulkanQueueSelection SelectVulkanQueues(VectorView<const VkQueueFamilyPro
             const VkQueueFlags flags = families[i].queueFlags;
             if (families[i].queueCount != 0)
             {
-                if (i != selection.graphics.familyIndex && (flags & VK_QUEUE_COMPUTE_BIT) != 0 &&
-                    (selection.compute.familyIndex == UINT32_MAX ||
-                     ((families[selection.compute.familyIndex].queueFlags &
-                       VK_QUEUE_GRAPHICS_BIT) != 0 &&
-                      (flags & VK_QUEUE_GRAPHICS_BIT) == 0)))
+                if (i != selection.graphics.familyIndex && (flags & VK_QUEUE_COMPUTE_BIT) != 0
+                    && (selection.compute.familyIndex == UINT32_MAX
+                        || ((families[selection.compute.familyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0
+                            && (flags & VK_QUEUE_GRAPHICS_BIT) == 0)))
                 {
                     selection.compute = {i, 0};
                 }
-                if (selection.transfer.familyIndex == UINT32_MAX &&
-                    (flags & VK_QUEUE_TRANSFER_BIT) != 0 && (flags & graphicsFlags) == 0)
+                if (selection.transfer.familyIndex == UINT32_MAX && (flags & VK_QUEUE_TRANSFER_BIT) != 0
+                    && (flags & graphicsFlags) == 0)
                 {
                     selection.transfer = {i, 0};
                 }

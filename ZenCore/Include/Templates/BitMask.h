@@ -11,7 +11,7 @@ template <uint32_t BitCount, typename StorageTypte = uint32_t> class BitMask
     static_assert(BitCount <= sizeof(StorageTypte) * 8, "BitCount exceeds storage capacity");
 
 public:
-    using storage_type = StorageTypte;
+    using storage_type  = StorageTypte;
 
     constexpr BitMask() = default;
 
@@ -43,20 +43,20 @@ public:
 
     uint32_t Count() const
     {
-#if defined(_MSC_VER)
-        return static_cast<uint32_t>(__popcnt(mask_));
-#elif defined(__GNUC__) || defined(__clang__)
-        return static_cast<uint32_t>(__builtin_popcount(mask_));
-#else
         uint32_t count = 0;
+#if defined(_MSC_VER)
+        count = static_cast<uint32_t>(__popcnt(mask_));
+#elif defined(__GNUC__) || defined(__clang__)
+        count = static_cast<uint32_t>(__builtin_popcount(mask_));
+#else
         storage_type v = mask_;
         while (v)
         {
             v &= (v - 1); // Brian Kernighan
             ++count;
         }
-        return count;
 #endif
+        return count;
     }
 
     bool Any() const
@@ -114,7 +114,7 @@ public:
         }
 
         storage_type mask_;
-        uint32_t idx_;
+        uint32_t     idx_;
     };
 
     Iterator begin() const

@@ -11,20 +11,24 @@ public:
     {
         m_count.store(1, std::memory_order_relaxed);
     }
+
     inline void Add()
     {
         m_count.fetch_add(1, std::memory_order_relaxed);
     }
+
     inline void Dec()
     {
         m_count.fetch_sub(1, std::memory_order_relaxed);
     }
+
     inline bool Release()
     {
         // result is the value before fetch sub
         const unsigned int result = m_count.fetch_sub(1, std::memory_order_acq_rel);
         return result == 1;
     }
+
     inline uint32_t GetValue() const
     {
         return m_count.load();
@@ -41,14 +45,17 @@ public:
     {
         m_count++;
     }
+
     inline bool Release()
     {
         return --m_count == 0;
     }
+
     inline void Dec()
     {
         m_count--;
     }
+
     inline uint32_t GetValue() const
     {
         return m_count;

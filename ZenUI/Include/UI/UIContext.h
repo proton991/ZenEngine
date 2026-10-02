@@ -15,7 +15,7 @@ public:
 
     ~UIContext();
 
-    UIContext(const UIContext&) = delete;
+    UIContext(const UIContext&)            = delete;
 
     UIContext& operator=(const UIContext&) = delete;
 
@@ -34,7 +34,7 @@ public:
 private:
     ImGuiContext* m_context{nullptr};
     ImGuiContext* m_previous{nullptr};
-    bool m_platformReady{false};
-    bool m_frameActive{false};
+    bool          m_platformReady{false};
+    bool          m_frameActive{false};
 };
 } // namespace zen::ui

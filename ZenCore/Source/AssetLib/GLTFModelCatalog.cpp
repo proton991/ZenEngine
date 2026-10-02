@@ -18,9 +18,8 @@ static bool IsGLTFModelPath(const std::filesystem::path& path)
 {
     std::string extension = CatalogPathUtf8(path.extension());
 
-    std::transform(
-        extension.begin(), extension.end(), extension.begin(),
-        [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 
     const bool result = extension == ".gltf" || extension == ".glb";
 
@@ -56,13 +55,11 @@ HeapVector<GLTFModelCatalogEntry> DiscoverGLTFModels(const std::string& basePath
                     iterator.disable_recursion_pending();
                 }
 
-                if (entry.is_regular_file(entryError) && !entryError &&
-                    IsGLTFModelPath(entry.path()))
+                if (entry.is_regular_file(entryError) && !entryError && IsGLTFModelPath(entry.path()))
                 {
                     const std::filesystem::path path = entry.path().lexically_normal();
 
-                    result.push_back(
-                        {CatalogPathUtf8(path.lexically_relative(root)), CatalogPathUtf8(path)});
+                    result.push_back({CatalogPathUtf8(path.lexically_relative(root)), CatalogPathUtf8(path)});
                 }
 
                 iterator.increment(error);
@@ -72,11 +69,9 @@ HeapVector<GLTFModelCatalogEntry> DiscoverGLTFModels(const std::string& basePath
 
     if (result.size() > 1)
     {
-        std::sort(result.begin(), result.end(),
-                  [](const GLTFModelCatalogEntry& left, const GLTFModelCatalogEntry& right) {
-                      return left.label == right.label ? left.path < right.path :
-                                                         left.label < right.label;
-                  });
+        std::sort(result.begin(), result.end(), [](const GLTFModelCatalogEntry& left, const GLTFModelCatalogEntry& right) {
+            return left.label == right.label ? left.path < right.path : left.label < right.label;
+        });
     }
 
     return result;

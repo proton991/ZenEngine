@@ -325,25 +325,22 @@ struct Vertex
 struct TextureInfo
 {
     TextureInfo() = default;
+
     TextureInfo(uint32_t weight_,
                 uint32_t height_,
-                Format format_,
+                Format   format_,
                 // moved
                 std::vector<uint8_t> data_,
-                int samplerIndex_ = -1) :
-        samplerIndex(samplerIndex_),
-        width(weight_),
-        height(height_),
-        format(format_),
-        data(std::move(data_))
+                int                  samplerIndex_ = -1) :
+        samplerIndex(samplerIndex_), width(weight_), height(height_), format(format_), data(std::move(data_))
     {}
 
-    int samplerIndex{-1};
-    uint32_t width{0};
-    uint32_t height{0};
-    Format format{Format::UNDEFINED};
-    std::vector<uint8_t> data; // byte data no mipmaps
-    bool hasMipmap{false};     // for now do not support mipmap
+    int                  samplerIndex{-1};
+    uint32_t             width{0};
+    uint32_t             height{0};
+    Format               format{Format::UNDEFINED};
+    std::vector<uint8_t> data;             // byte data no mipmaps
+    bool                 hasMipmap{false}; // for now do not support mipmap
     std::vector<uint8_t> otherLeveData;
 };
 
@@ -365,8 +362,8 @@ enum class SamplerRepeatMode : uint32_t
 
 struct SamplerInfo
 {
-    SamplerFilter minFilter{SamplerFilter::eNearest};
-    SamplerFilter magFilter{SamplerFilter::eNearest};
+    SamplerFilter     minFilter{SamplerFilter::eNearest};
+    SamplerFilter     magFilter{SamplerFilter::eNearest};
     SamplerRepeatMode wrapS{SamplerRepeatMode::eRepeat};
     SamplerRepeatMode wrapT{SamplerRepeatMode::eRepeat};
 };

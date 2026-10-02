@@ -9,15 +9,18 @@ public:
     {
         slot = replacement;
     }
+
     ~ScopedVulkanCall()
     {
         slot = previous;
     }
+
     ScopedVulkanCall(const ScopedVulkanCall&)            = delete;
+
     ScopedVulkanCall& operator=(const ScopedVulkanCall&) = delete;
 
 private:
     T& slot;
-    T previous;
+    T  previous;
 };
 } // namespace zen::test

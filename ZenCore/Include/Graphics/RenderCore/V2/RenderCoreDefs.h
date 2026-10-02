@@ -49,24 +49,24 @@ struct TextureUsageHint
 
 struct TextureFormat
 {
-    DataFormat format{DataFormat::eUndefined};
+    DataFormat       format{DataFormat::eUndefined};
     TextureDimension dimension{TextureDimension::e2D};
-    SampleCount sampleCount{SampleCount::e1};
-    uint32_t width{0};
-    uint32_t height{0};
-    uint32_t depth{0};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
-    bool mutableFormat{false};
+    SampleCount      sampleCount{SampleCount::e1};
+    uint32_t         width{0};
+    uint32_t         height{0};
+    uint32_t         depth{0};
+    uint32_t         arrayLayers{1};
+    uint32_t         mipmaps{1};
+    bool             mutableFormat{false};
 };
 
 struct TextureViewFormat
 {
-    DataFormat format{DataFormat::eUndefined};
+    DataFormat       format{DataFormat::eUndefined};
     TextureDimension dimension{TextureDimension::e1D};
-    uint32_t arrayLayers{1};
-    uint32_t mipmaps{1};
-    uint32_t baseMipLevel{0};
+    uint32_t         arrayLayers{1};
+    uint32_t         mipmaps{1};
+    uint32_t         baseMipLevel{0};
 };
 
 struct TextureSlice
@@ -94,7 +94,7 @@ struct DrawIndexedIndirectCommand
     uint32_t indexCount;
     uint32_t instanceCount;
     uint32_t firstIndex;
-    int vertexOffset;
+    int      vertexOffset;
     uint32_t firstInstance;
 };
 
@@ -107,16 +107,16 @@ enum class PassResourceType
 
 struct PassResourceTracker
 {
-    NameID name;
+    NameID                  name;
     HeapVector<RHITexture*> textures;
 
     // TextureHandle textureHandle;
-    RHIBuffer* pBuffer;
-    PassResourceType resourceType{PassResourceType::eMax};
-    RHIAccessMode accessMode{RHIAccessMode::eNone};
+    RHIBuffer*                  pBuffer;
+    PassResourceType            resourceType{PassResourceType::eMax};
+    RHIAccessMode               accessMode{RHIAccessMode::eNone};
     BitField<RHIAccessFlagBits> accessFlags;
-    RHIBufferUsage bufferUsage{RHIBufferUsage::eNone};
-    RHITextureUsage textureUsage{RHITextureUsage::eNone};
+    RHIBufferUsage              bufferUsage{RHIBufferUsage::eNone};
+    RHITextureUsage             textureUsage{RHITextureUsage::eNone};
     // RHITextureSubResourceRange textureSubResRange;
 };
 
@@ -128,7 +128,7 @@ struct GraphicsPass
 
     // todo: move ownership of descriptorsets to elsewhere
     // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
-    uint32_t numDescriptorSets{0};
+    uint32_t       numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
 
     RHIRenderingLayout* pRenderingLayout{nullptr};
@@ -151,7 +151,7 @@ struct ComputePass
     RHIPipeline* pPipeline;
 
     // RHIDescriptorSet* pDescriptorSets[MAX_NUM_DESCRIPTOR_SETS];
-    uint32_t numDescriptorSets{0};
+    uint32_t       numDescriptorSets{0};
     ShaderProgram* pShaderProgram;
 
     // setIndex as vector index, bindingIndex as inner map key
@@ -169,7 +169,7 @@ enum class GfxPassShaderMode : uint32_t
 
 struct EnvTexture
 {
-    bool authoredCubemaps{false};
+    bool        authoredCubemaps{false};
     RHITexture* pSkybox{nullptr};
     RHITexture* pIrradiance{nullptr};
     RHITexture* pPrefiltered{nullptr};
@@ -177,6 +177,6 @@ struct EnvTexture
     RHISampler* pIrradianceSampler{nullptr};
     RHISampler* pPrefilteredSampler{nullptr};
     RHISampler* pLutBRDFSampler{nullptr};
-    NameID tag;
+    NameID      tag;
 };
 } // namespace zen::rc

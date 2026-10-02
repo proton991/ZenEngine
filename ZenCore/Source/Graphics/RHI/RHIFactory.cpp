@@ -4,7 +4,7 @@
 #include "Utils/Errors.h"
 #include "Graphics/VulkanRHI/VulkanDebug.h"
 
-zen::DynamicRHI* GDynamicRHI = nullptr;
+zen::DynamicRHI*   GDynamicRHI = nullptr;
 zen::RHIFrameState GRHIFrameState;
 
 namespace zen

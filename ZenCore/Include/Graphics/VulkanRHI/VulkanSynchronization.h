@@ -42,9 +42,9 @@ private:
         eInitial,
         eSignaled
     };
-    VkFence m_fence{VK_NULL_HANDLE};
+    VkFence             m_fence{VK_NULL_HANDLE};
     VulkanFenceManager* m_pOwner{nullptr};
-    State m_state{State::eInitial};
+    State               m_state{State::eInitial};
 
     friend class VulkanFenceManager;
 };
@@ -74,7 +74,7 @@ public:
 private:
     void DestroyFence(VulkanFence* pFence);
 
-    VulkanDevice* m_pDevice{nullptr};
+    VulkanDevice*            m_pDevice{nullptr};
     HeapVector<VulkanFence*> m_usedFences;
     std::queue<VulkanFence*> m_freeFences;
 };
@@ -82,7 +82,7 @@ private:
 class VulkanSemaphore
 {
 public:
-    explicit VulkanSemaphore(VulkanDevice* pDevice,
+    explicit VulkanSemaphore(VulkanDevice*   pDevice,
                              VkSemaphoreType semaphoreType = VK_SEMAPHORE_TYPE_BINARY,
                              uint64_t initialValue         = 0);
 
@@ -113,21 +113,19 @@ public:
 
     uint64_t GetSignalSubmissionSerial(const VulkanQueue* pQueue, uint64_t previousGeneration) const
     {
-        return m_pSignalQueue == pQueue && m_signalGeneration != previousGeneration ?
-            m_signalSubmissionSerial :
-            0;
+        return m_pSignalQueue == pQueue && m_signalGeneration != previousGeneration ? m_signalSubmissionSerial : 0;
     }
 
 private:
     friend class VulkanQueue;
     friend class VulkanSemaphoreManager;
 
-    VulkanDevice* m_pDevice{nullptr};
-    VkSemaphore m_semaphore{VK_NULL_HANDLE};
-    VkSemaphoreType m_type{VK_SEMAPHORE_TYPE_BINARY};
+    VulkanDevice*      m_pDevice{nullptr};
+    VkSemaphore        m_semaphore{VK_NULL_HANDLE};
+    VkSemaphoreType    m_type{VK_SEMAPHORE_TYPE_BINARY};
     const VulkanQueue* m_pSignalQueue{nullptr};
-    uint64_t m_signalSubmissionSerial{0};
-    uint64_t m_signalGeneration{0};
+    uint64_t           m_signalSubmissionSerial{0};
+    uint64_t           m_signalGeneration{0};
 };
 
 class VulkanSemaphoreManager
@@ -146,7 +144,7 @@ public:
     void DestroySemaphore(VulkanSemaphore*& sem);
 
 private:
-    VulkanDevice* m_pDevice{nullptr};
+    VulkanDevice*                m_pDevice{nullptr};
     HeapVector<VulkanSemaphore*> m_usedSemaphores;
     std::queue<VulkanSemaphore*> m_freeSemaphores;
 #if defined(ZEN_DEBUG)
@@ -158,32 +156,23 @@ class VulkanPipelineBarrier
 {
 public:
     // for Image-only transitions
-    void AddImageBarrier(VkImage image,
-                         VkImageLayout srcLayout,
-                         VkImageLayout dstLayout,
-                         const VkImageSubresourceRange& range);
+    void AddImageBarrier(VkImage image, VkImageLayout srcLayout, VkImageLayout dstLayout, const VkImageSubresourceRange& range);
 
-    void AddImageBarrier(VkImage image,
-                         VkImageLayout srcLayout,
-                         VkImageLayout dstLayout,
+    void AddImageBarrier(VkImage                        image,
+                         VkImageLayout                  srcLayout,
+                         VkImageLayout                  dstLayout,
                          const VkImageSubresourceRange& range,
-                         VkAccessFlags srcAccess,
-                         VkAccessFlags dstAccess);
+                         VkAccessFlags                  srcAccess,
+                         VkAccessFlags                  dstAccess);
 
-    void AddBufferBarrier(VkBuffer buffer,
-                          uint64_t offset,
-                          uint64_t size,
-                          VkAccessFlags srcAccess,
-                          VkAccessFlags dstAccess);
+    void AddBufferBarrier(VkBuffer buffer, uint64_t offset, uint64_t size, VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
     void AddMemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess);
 
     // for Image-only transitions
     void ExecuteImageBarriersOnly(VkCommandBuffer cmdBuffer);
 
-    void Execute(VkCommandBuffer cmdBuffer,
-                 VkPipelineStageFlags srcStageFlags,
-                 VkPipelineStageFlags dstStageFlags);
+    void Execute(VkCommandBuffer cmdBuffer, VkPipelineStageFlags srcStageFlags, VkPipelineStageFlags dstStageFlags);
 
 private:
     static VkPipelineStageFlags VkLayoutToPipelineStageFlags(VkImageLayout layout);
@@ -193,8 +182,8 @@ private:
     VkPipelineStageFlags m_srcStageFlags{0};
     VkPipelineStageFlags m_dstStageFlags{0};
 
-    SmallVector<VkImageMemoryBarrier> m_imageBarriers;
-    SmallVector<VkMemoryBarrier> m_memoryBarriers;
+    SmallVector<VkImageMemoryBarrier>  m_imageBarriers;
+    SmallVector<VkMemoryBarrier>       m_memoryBarriers;
     SmallVector<VkBufferMemoryBarrier> m_bufferBarriers;
 };
 } // namespace zen

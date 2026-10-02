@@ -19,21 +19,15 @@ VkDescriptorType ShaderResourceTypeToVkDescriptorType(RHIShaderResourceType shad
             type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             break;
 
-        case RHIShaderResourceType::eSamplerWithTexture:
-            type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            break;
+        case RHIShaderResourceType::eSamplerWithTexture: type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; break;
         case RHIShaderResourceType::eImage:
             //
             type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             break;
 
         case RHIShaderResourceType::eTextureBuffer:
-        case RHIShaderResourceType::eSamplerWithTextureBuffer:
-            type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
-            break;
-        case RHIShaderResourceType::eImageBuffer:
-            type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-            break;
+        case RHIShaderResourceType::eSamplerWithTextureBuffer: type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER; break;
+        case RHIShaderResourceType::eImageBuffer: type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER; break;
         case RHIShaderResourceType::eUniformBuffer:
             // use dynamic uniform buffer by default
             type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -62,12 +56,8 @@ VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage)
     switch (stage)
     {
         case RHIShaderStage::eVertex: result = VK_SHADER_STAGE_VERTEX_BIT; break;
-        case RHIShaderStage::eTesselationControl:
-            result = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-            break;
-        case RHIShaderStage::eTesselationEvaluation:
-            result = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-            break;
+        case RHIShaderStage::eTesselationControl: result = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT; break;
+        case RHIShaderStage::eTesselationEvaluation: result = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT; break;
         case RHIShaderStage::eGeometry: result = VK_SHADER_STAGE_GEOMETRY_BIT; break;
         case RHIShaderStage::eFragment: result = VK_SHADER_STAGE_FRAGMENT_BIT; break;
         case RHIShaderStage::eCompute: result = VK_SHADER_STAGE_COMPUTE_BIT; break;
@@ -77,8 +67,7 @@ VkShaderStageFlagBits ShaderStageToVkShaderStageFlagBits(RHIShaderStage stage)
     return result;
 }
 
-VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(
-    BitField<RHIShaderStageFlagBits> stageFlags)
+VkShaderStageFlags ShaderStageFlagsBitsToVkShaderStageFlags(BitField<RHIShaderStageFlagBits> stageFlags)
 {
     VkShaderStageFlags flags{};
 
@@ -181,14 +170,17 @@ VkImageViewType ToVkImageViewType(RHITextureType type)
     return result;
 }
 
-VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType type,
-                                                DataFormat format,
-                                                VkImage image,
+VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType                    type,
+                                                DataFormat                        format,
+                                                VkImage                           image,
                                                 const RHITextureSubResourceRange& range)
 {
     VkImageViewCreateInfo info{};
+
     info.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+
     info.image    = image;
+
     info.viewType = ToVkImageViewType(type);
 
     if (type == RHITextureType::e1D && range.layerCount > 1)
@@ -207,6 +199,7 @@ VkImageViewCreateInfo MakeVkImageViewCreateInfo(RHITextureType type,
     }
 
     info.format = ToVkFormat(format);
+
     ToVkImageSubresourceRange(range, &info.subresourceRange);
 
     return info;
@@ -334,15 +327,9 @@ VkImageLayout ToVkImageLayout(RHITextureLayout layout)
     {
         case RHITextureLayout::eUndefined: result = VK_IMAGE_LAYOUT_UNDEFINED; break;
         case RHITextureLayout::eGeneral: result = VK_IMAGE_LAYOUT_GENERAL; break;
-        case RHITextureLayout::eColorTarget:
-            result = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            break;
-        case RHITextureLayout::eDepthStencilTarget:
-            result = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            break;
-        case RHITextureLayout::eShaderReadOnly:
-            result = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            break;
+        case RHITextureLayout::eColorTarget: result = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; break;
+        case RHITextureLayout::eDepthStencilTarget: result = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; break;
+        case RHITextureLayout::eShaderReadOnly: result = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; break;
         case RHITextureLayout::eTransferSrc: result = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; break;
         case RHITextureLayout::eTransferDst: result = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; break;
         default: result = VK_IMAGE_LAYOUT_UNDEFINED; break;
@@ -379,9 +366,13 @@ VkBorderColor ToVkBorderColor(RHISamplerBorderColor color)
 VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue)
 {
     VkClearColorValue colorValue{};
+
     colorValue.float32[0] = clearValue.color.r;
+
     colorValue.float32[1] = clearValue.color.g;
+
     colorValue.float32[2] = clearValue.color.b;
+
     colorValue.float32[3] = clearValue.color.a;
 
     return colorValue;
@@ -390,7 +381,9 @@ VkClearColorValue ToVkClearColor(const RHIRenderTargetClearValue& clearValue)
 VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& clearValue)
 {
     VkClearDepthStencilValue depthStencilValue{};
+
     depthStencilValue.depth   = clearValue.depth;
+
     depthStencilValue.stencil = clearValue.stencil;
 
     return depthStencilValue;
@@ -399,78 +392,122 @@ VkClearDepthStencilValue ToVkClearDepthStencil(const RHIRenderTargetClearValue& 
 void ToVkClearColor(const Color& color, VkClearColorValue* pColorValue)
 {
     *pColorValue            = {};
+
     pColorValue->float32[0] = color.r;
+
     pColorValue->float32[1] = color.g;
+
     pColorValue->float32[2] = color.b;
+
     pColorValue->float32[3] = color.a;
 }
 
-void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range,
-                               VkImageSubresourceRange* pVkRange)
+void ToVkImageSubresourceRange(const RHITextureSubResourceRange& range, VkImageSubresourceRange* pVkRange)
 {
     *pVkRange                = {};
+
     pVkRange->aspectMask     = ToVkAspectFlags(range.aspect);
+
     pVkRange->layerCount     = range.layerCount;
+
     pVkRange->levelCount     = range.levelCount;
+
     pVkRange->baseArrayLayer = range.baseArrayLayer;
+
     pVkRange->baseMipLevel   = range.baseMipLevel;
 }
 
-void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers,
-                                VkImageSubresourceLayers* pVkLayers)
+void ToVkImageSubresourceLayers(const RHITextureSubresourceLayers& layers, VkImageSubresourceLayers* pVkLayers)
 {
     *pVkLayers                = {};
+
     pVkLayers->aspectMask     = ToVkAspectFlags(layers.aspect);
+
     pVkLayers->layerCount     = layers.layerCount;
+
     pVkLayers->mipLevel       = layers.mipmap;
+
     pVkLayers->baseArrayLayer = layers.baseArrayLayer;
 }
 
 void ToVkImageCopy(const RHITextureCopyRegion& region, VkImageCopy* pCopy)
 {
     *pCopy = {};
+
     ToVkImageSubresourceLayers(region.srcSubresources, &pCopy->srcSubresource);
+
     ToVkImageSubresourceLayers(region.dstSubresources, &pCopy->dstSubresource);
+
     pCopy->srcOffset.x   = region.srcOffset.x;
+
     pCopy->srcOffset.y   = region.srcOffset.y;
+
     pCopy->srcOffset.z   = region.srcOffset.z;
+
     pCopy->dstOffset.x   = region.dstOffset.x;
+
     pCopy->dstOffset.y   = region.dstOffset.y;
+
     pCopy->dstOffset.z   = region.dstOffset.z;
+
     pCopy->extent.width  = region.size.x;
+
     pCopy->extent.height = region.size.y;
+
     pCopy->extent.depth  = region.size.z;
 }
 
 void ToVkImageBlit(const RHITextureBlitRegion& region, VkImageBlit* pBlit)
 {
     *pBlit = {};
+
     ToVkImageSubresourceLayers(region.srcSubresources, &pBlit->srcSubresource);
+
     ToVkImageSubresourceLayers(region.dstSubresources, &pBlit->dstSubresource);
+
     pBlit->srcOffsets[0].x = region.srcOffset0.x;
+
     pBlit->srcOffsets[0].y = region.srcOffset0.y;
+
     pBlit->srcOffsets[0].z = region.srcOffset0.z;
+
     pBlit->srcOffsets[1].x = region.srcOffset1.x;
+
     pBlit->srcOffsets[1].y = region.srcOffset1.y;
+
     pBlit->srcOffsets[1].z = region.srcOffset1.z;
+
     pBlit->dstOffsets[0].x = region.dstOffset0.x;
+
     pBlit->dstOffsets[0].y = region.dstOffset0.y;
+
     pBlit->dstOffsets[0].z = region.dstOffset0.z;
+
     pBlit->dstOffsets[1].x = region.dstOffset1.x;
+
     pBlit->dstOffsets[1].y = region.dstOffset1.y;
+
     pBlit->dstOffsets[1].z = region.dstOffset1.z;
 }
 
 void ToVkBufferImageCopy(const RHIBufferTextureCopyRegion& region, VkBufferImageCopy* pCopy)
 {
     *pCopy = {};
+
     ToVkImageSubresourceLayers(region.textureSubresources, &pCopy->imageSubresource);
+
     pCopy->bufferOffset       = region.bufferOffset;
+
     pCopy->imageOffset.x      = region.textureOffset.x;
+
     pCopy->imageOffset.y      = region.textureOffset.y;
+
     pCopy->imageOffset.z      = region.textureOffset.z;
+
     pCopy->imageExtent.width  = region.textureSize.x;
+
     pCopy->imageExtent.height = region.textureSize.y;
+
     pCopy->imageExtent.depth  = region.textureSize.z;
 }
 } // namespace zen

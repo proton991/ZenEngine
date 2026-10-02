@@ -28,14 +28,14 @@ namespace zen
 {
 template <> struct FrameTimelineTraits<FrameTimelineId::Render>
 {
-    using Number = rc::RenderFrameNumber;
-    using Slot   = rc::RenderFrameSlot;
+    using Number                                     = rc::RenderFrameNumber;
+    using Slot                                       = rc::RenderFrameSlot;
 
-    static constexpr uint32_t kMaxFramesInFlight = 4u;
+    static constexpr uint32_t kMaxFramesInFlight     = 4u;
 
     static constexpr uint32_t kDefaultFramesInFlight = 3u;
 
-    static constexpr const char* kName = "RenderFrameState";
+    static constexpr const char* kName               = "RenderFrameState";
 };
 } // namespace zen
 

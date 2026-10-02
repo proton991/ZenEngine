@@ -23,84 +23,91 @@ static void FillRenderingLayout(RHIRenderingLayout* pLayout, const RDGGraphicsPa
     while (attachmentIdx < MAX_NUM_COLOR_ATTACHMENTS && desc.HasColorOutput(attachmentIdx))
     {
         const RDGColorOutputDesc& co = desc.colorOutputs[attachmentIdx];
-        pLayout->AddColorRenderTarget(co.format, co.pTexture, co.loadOp, co.storeOp,
-                                      DEFAULT_COLOR_CLEAR_VALUE,
+
+        pLayout->AddColorRenderTarget(co.format, co.pTexture, co.loadOp, co.storeOp, DEFAULT_COLOR_CLEAR_VALUE,
                                       co.pTexture->GetBaseInfo().samples);
+
         attachmentIdx++;
     }
 
     if (desc.HasDepthStencilOutput())
     {
         const RDGDepthStencilOutputDesc& ds = desc.depthStencilOutput;
+
         pLayout->AddDepthStencilRenderTarget(ds.format, ds.pTexture, ds.loadOp, ds.storeOp);
     }
 
     pLayout->numLayers = 1;
-    pLayout->SetRenderArea(desc.renderArea.minX, desc.renderArea.minY, desc.renderArea.maxX,
-                           desc.renderArea.maxY);
+
+    pLayout->SetRenderArea(desc.renderArea.minX, desc.renderArea.minY, desc.renderArea.maxX, desc.renderArea.maxY);
 }
 
-static bool ValidateTextureCopyBox(RDGResult& result,
-                                   RHITexture* texture,
+static bool ValidateTextureCopyBox(RDGResult&                         result,
+                                   RHITexture*                        texture,
                                    const RHITextureSubresourceLayers& layers,
-                                   const Vec3i& offset,
-                                   const Vec3i& size)
+                                   const Vec3i&                       offset,
+                                   const Vec3i&                       size)
 {
-    return result.Check(texture != nullptr, RDGErrorCode::eRange, "Null texture in copy") &&
-        ValidateTextureCopyBox(result, texture->GetBaseInfo(), texture->GetResourceTag(), layers,
-                               offset, size);
+    return result.Check(texture != nullptr, RDGErrorCode::eRange, "Null texture in copy")
+        && ValidateTextureCopyBox(result, texture->GetBaseInfo(), texture->GetResourceTag(), layers, offset, size);
 }
 
-template <typename Allocation>
-static RHITextureCreateInfo LogicalTextureInfo(const Allocation* resource)
+template <typename Allocation> static RHITextureCreateInfo LogicalTextureInfo(const Allocation* resource)
 {
     RHITextureCreateInfo info{};
+
     const TextureFormat& format = resource->texFormat;
+
     info.format                 = format.format;
+
     info.type                   = static_cast<RHITextureType>(format.dimension);
+
     info.width                  = format.width;
+
     info.height                 = format.height;
+
     info.depth                  = format.depth;
+
     info.mipmaps                = format.mipmaps;
+
     info.arrayLayers            = format.arrayLayers;
+
     info.samples                = format.sampleCount;
 
     return info;
 }
 
-static bool ValidateBufferTextureFootprint(RDGResult& result,
-                                           RHIBuffer* buffer,
-                                           RHITexture* texture,
+static bool ValidateBufferTextureFootprint(RDGResult&                        result,
+                                           RHIBuffer*                        buffer,
+                                           RHITexture*                       texture,
                                            const RHIBufferTextureCopyRegion& region,
-                                           uint64_t* footprint = nullptr)
+                                           uint64_t*                         footprint = nullptr)
 {
-    return result.Check(buffer != nullptr && texture != nullptr, RDGErrorCode::eRange,
-                        "Null buffer-to-texture resource") &&
-        ValidateBufferTextureFootprint(result, buffer->GetRequiredSize(), texture->GetBaseInfo(),
-                                       region, footprint);
+    return result.Check(buffer != nullptr && texture != nullptr, RDGErrorCode::eRange, "Null buffer-to-texture resource")
+        && ValidateBufferTextureFootprint(result, buffer->GetRequiredSize(), texture->GetBaseInfo(), region, footprint);
 }
 
 static RHITextureSubResourceRange CopyRange(const RHITextureSubresourceLayers& layers)
 {
     RHITextureSubResourceRange range{};
+
     range.aspect         = layers.aspect;
+
     range.baseMipLevel   = layers.mipmap;
+
     range.levelCount     = 1;
+
     range.baseArrayLayer = layers.baseArrayLayer;
+
     range.layerCount     = layers.layerCount;
 
     return range;
 }
 
-static bool CoversMip(const RHITextureCreateInfo& texture,
-                      uint32_t mip,
-                      const Vec3i& offset,
-                      const Vec3i& size)
+static bool CoversMip(const RHITextureCreateInfo& texture, uint32_t mip, const Vec3i& offset, const Vec3i& size)
 {
-    return offset.x == 0 && offset.y == 0 && offset.z == 0 &&
-        size.x == int32_t(std::max(1u, texture.width >> mip)) &&
-        size.y == int32_t(std::max(1u, texture.height >> mip)) &&
-        size.z == int32_t(std::max(1u, texture.depth >> mip));
+    return offset.x == 0 && offset.y == 0 && offset.z == 0 && size.x == int32_t(std::max(1u, texture.width >> mip))
+        && size.y == int32_t(std::max(1u, texture.height >> mip)) && size.z == int32_t(std::max(1u, texture.depth >> mip));
 }
 
 static bool CoversMip(RHITexture* texture, uint32_t mip, const Vec3i& offset, const Vec3i& size)
@@ -115,8 +122,7 @@ static uint32_t MipExtent(uint32_t extent, uint32_t mipLevel)
 
 static Vec3i MipExtent3D(const RHITextureCreateInfo& info, uint32_t mipLevel)
 {
-    return Vec3i{static_cast<int32_t>(MipExtent(info.width, mipLevel)),
-                 static_cast<int32_t>(MipExtent(info.height, mipLevel)),
+    return Vec3i{static_cast<int32_t>(MipExtent(info.width, mipLevel)), static_cast<int32_t>(MipExtent(info.height, mipLevel)),
                  static_cast<int32_t>(MipExtent(info.depth, mipLevel))};
 }
 
@@ -141,35 +147,39 @@ bool RDGPassCompiler::Check(bool condition, RDGErrorCode code, const std::string
 RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc& desc)
 {
     RDGGraphicsPass* pResult = nullptr;
+
     bool valid               = true;
 
-    valid = Check(m_pRenderDevice != nullptr && m_pRDG != nullptr, RDGErrorCode::eLifecycle,
-                  "Pass compilation requires a graph and device");
+    valid                    = Check(m_pRenderDevice != nullptr && m_pRDG != nullptr, RDGErrorCode::eLifecycle,
+                                     "Pass compilation requires a graph and device");
 
     if (valid)
     {
         RDGPassCompileTimings& timings = m_pRDG->m_passCompileTimings;
-        ScopedMetricsTimer setupTimer(timings.enabled, timings.totalCPUUs);
-        ShaderProgram* pSP =
-            ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
 
-        valid = Check(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader,
-                      "Invalid shader program '" + desc.shaderProgramName.ToString() + "'");
+        ScopedMetricsTimer setupTimer(timings.enabled, timings.totalCPUUs);
+
+        ShaderProgram* pSP = ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
+
+        valid              = Check(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader,
+                                   "Invalid shader program '" + desc.shaderProgramName.ToString() + "'");
 
         if (valid)
         {
             RDGGraphicsPass* pGfxPass = m_pRDG->AcquireGraphicsPass();
+
             m_pRDG->m_compiledGfxPasses.push_back(pGfxPass);
+
             pGfxPass->passTag = desc.passTag;
 
-            valid = BuildShaderParameters(pSP, &desc, pGfxPass->shaderParameters);
+            valid             = BuildShaderParameters(pSP, &desc, pGfxPass->shaderParameters);
 
             if (valid)
             {
                 pGfxPass->pRenderingLayout = m_pRenderDevice->AcquireRenderingLayout();
-                valid = Check(pGfxPass->pRenderingLayout != nullptr, RDGErrorCode::eAllocation,
-                              "Failed to acquire rendering layout for '" + desc.passTag.ToString() +
-                                  "'");
+
+                valid                      = Check(pGfxPass->pRenderingLayout != nullptr, RDGErrorCode::eAllocation,
+                                                   "Failed to acquire rendering layout for '" + desc.passTag.ToString() + "'");
             }
 
             if (valid)
@@ -178,22 +188,22 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
 
                 {
                     ScopedMetricsTimer pipelineTimer(timings.enabled, timings.pipelineCPUUs);
+
                     pGfxPass->pPipeline = m_pRenderDevice->GetOrCreateGfxPipeline(
-                        desc.pipelineStates, pSP->GetShader(), pGfxPass->pRenderingLayout, {},
-                        timings.enabled);
+                        desc.pipelineStates, pSP->GetShader(), pGfxPass->pRenderingLayout, {}, timings.enabled);
                 }
 
                 valid = Check(pGfxPass->pPipeline != nullptr, RDGErrorCode::eAllocation,
-                              "Failed to create graphics pipeline for '" + desc.passTag.ToString() +
-                                  "'");
+                              "Failed to create graphics pipeline for '" + desc.passTag.ToString() + "'");
             }
 
             if (valid)
             {
                 pGfxPass->pPipeline->AddReference();
+
                 RHIGeometryBuffer& geometry = pGfxPass->geometryBuffer;
-                geometry.vertexBuffers.reserve(desc.geometryBuffer.vertexBuffers.size() +
-                                               desc.vertexBuffers.size());
+
+                geometry.vertexBuffers.reserve(desc.geometryBuffer.vertexBuffers.size() + desc.vertexBuffers.size());
 
                 for (RHIBuffer* buffer : desc.geometryBuffer.vertexBuffers)
                 {
@@ -201,15 +211,17 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
                 }
 
                 geometry.pIndexBuffer      = desc.geometryBuffer.pIndexBuffer;
+
                 geometry.indexBufferFormat = desc.geometryBuffer.indexBufferFormat;
+
                 geometry.indexBufferOffset = desc.geometryBuffer.indexBufferOffset;
 
                 for (RDGBuffer const buffer : desc.vertexBuffers)
                 {
-                    const RDGResourceManager::Allocation* allocation =
-                        m_pRDG->m_resourceManager.Resolve(buffer);
-                    valid = Check(allocation != nullptr && allocation->pBuffer != nullptr,
-                                  RDGErrorCode::eAllocation, "Missing logical vertex buffer");
+                    const RDGResourceManager::Allocation* allocation = m_pRDG->m_resourceManager.Resolve(buffer);
+
+                    valid = Check(allocation != nullptr && allocation->pBuffer != nullptr, RDGErrorCode::eAllocation,
+                                  "Missing logical vertex buffer");
 
                     if (valid)
                     {
@@ -226,15 +238,17 @@ RDGGraphicsPass* RDGPassCompiler::CompileGraphicsPass(const RDGGraphicsPassDesc&
                 {
                     if (desc.indexBuffer)
                     {
-                        const RDGResourceManager::Allocation* allocation =
-                            m_pRDG->m_resourceManager.Resolve(desc.indexBuffer);
-                        valid = Check(allocation != nullptr && allocation->pBuffer != nullptr,
-                                      RDGErrorCode::eAllocation, "Missing logical index buffer");
+                        const RDGResourceManager::Allocation* allocation = m_pRDG->m_resourceManager.Resolve(desc.indexBuffer);
+
+                        valid = Check(allocation != nullptr && allocation->pBuffer != nullptr, RDGErrorCode::eAllocation,
+                                      "Missing logical index buffer");
 
                         if (valid)
                         {
                             pGfxPass->geometryBuffer.pIndexBuffer      = allocation->pBuffer;
+
                             pGfxPass->geometryBuffer.indexBufferFormat = desc.indexBufferFormat;
+
                             pGfxPass->geometryBuffer.indexBufferOffset = desc.indexBufferOffset;
                         }
                     }
@@ -261,29 +275,32 @@ RDGComputePass* RDGPassCompiler::CompileComputePass(const RDGComputePassDesc& de
               "Pass compilation requires a graph and device"))
     {
         RDGPassCompileTimings& timings = m_pRDG->m_passCompileTimings;
+
         ScopedMetricsTimer setupTimer(timings.enabled, timings.totalCPUUs);
-        ShaderProgram* pSP =
-            ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
+
+        ShaderProgram* pSP = ShaderProgramManager::GetInstance().RequestShaderProgram(desc.shaderProgramName);
 
         if (Check(pSP != nullptr && pSP->GetShader() != nullptr, RDGErrorCode::eShader,
                   "Invalid shader program '" + desc.shaderProgramName.ToString() + "'"))
         {
             RDGComputePass* pComputePass = m_pRDG->AcquireComputePass();
+
             m_pRDG->m_compiledComputePasses.push_back(pComputePass);
+
             pComputePass->passTag         = desc.passTag;
+
             pComputePass->queuePreference = desc.GetQueuePreference();
 
             if (BuildShaderParameters(pSP, &desc, pComputePass->shaderParameters))
             {
                 {
                     ScopedMetricsTimer pipelineTimer(timings.enabled, timings.pipelineCPUUs);
-                    pComputePass->pPipeline = m_pRenderDevice->GetOrCreateComputePipeline(
-                        pSP->GetShader(), timings.enabled);
+
+                    pComputePass->pPipeline = m_pRenderDevice->GetOrCreateComputePipeline(pSP->GetShader(), timings.enabled);
                 }
 
                 if (Check(pComputePass->pPipeline != nullptr, RDGErrorCode::eAllocation,
-                          "Failed to create compute pipeline for '" + desc.passTag.ToString() +
-                              "'"))
+                          "Failed to create compute pipeline for '" + desc.passTag.ToString() + "'"))
                 {
                     pComputePass->pPipeline->AddReference();
 
@@ -305,10 +322,10 @@ bool RDGPassCompiler::BuildIndirectBindings(const RDGPassDescBase& desc, RDGShad
 
     for (RDGBuffer const resource : desc.logicalIndirectBuffers)
     {
-        const RDGResourceManager::Allocation* allocation =
-            m_pRDG->m_resourceManager.Resolve(resource);
-        valid = Check(allocation != nullptr && allocation->pBuffer != nullptr,
-                      RDGErrorCode::eAllocation, "Missing logical indirect buffer");
+        const RDGResourceManager::Allocation* allocation = m_pRDG->m_resourceManager.Resolve(resource);
+
+        valid = Check(allocation != nullptr && allocation->pBuffer != nullptr, RDGErrorCode::eAllocation,
+                      "Missing logical indirect buffer");
 
         if (valid)
         {
@@ -326,10 +343,10 @@ bool RDGPassCompiler::BuildIndirectBindings(const RDGPassDescBase& desc, RDGShad
 
 struct RDGPassCompiler::ShaderParameterBuilder
 {
-    RDGPassCompiler& compiler;
-    RenderGraph* m_pRDG;
-    ShaderProgram* pShaderProgram;
-    const RDGPassDescBase* pDesc;
+    RDGPassCompiler&            compiler;
+    RenderGraph*                m_pRDG;
+    ShaderProgram*              pShaderProgram;
+    const RDGPassDescBase*      pDesc;
     RHIBatchedShaderParameters& parameters;
 
     bool Check(bool condition, RDGErrorCode code, const std::string& message)
@@ -344,6 +361,7 @@ struct RDGPassCompiler::ShaderParameterBuilder
         if (pSRD == nullptr || pSRD->type != type)
         {
             m_pRDG->Fail(RDGErrorCode::eBinding, "Invalid binding '" + name.ToString() + "'");
+
             pSRD = nullptr;
         }
 
@@ -356,14 +374,11 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
         for (const RDGValueBinding& binding : pDesc->valueBindings)
         {
-            const RHIShaderResourceDescriptor* pSRD =
-                Descriptor(binding.glslName, RHIShaderResourceType::eUniformBuffer);
+            const RHIShaderResourceDescriptor* pSRD = Descriptor(binding.glslName, RHIShaderResourceType::eUniformBuffer);
 
             if (pSRD != nullptr && binding.bytes.count != 0)
             {
-                parameters.AddValueParam(*pSRD,
-                                         pDesc->valueByteStorage.data() + binding.bytes.offset,
-                                         binding.bytes.count);
+                parameters.AddValueParam(*pSRD, pDesc->valueByteStorage.data() + binding.bytes.offset, binding.bytes.count);
             }
 
             allValid = pSRD != nullptr;
@@ -383,15 +398,13 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
         for (const RDGBufferBinding& binding : pDesc->UAVBufferBindings)
         {
-            const RHIShaderResourceDescriptor* pSRD =
-                Descriptor(binding.glslName, RHIShaderResourceType::eStorageBuffer);
+            const RHIShaderResourceDescriptor* pSRD = Descriptor(binding.glslName, RHIShaderResourceType::eStorageBuffer);
 
             if (pSRD != nullptr)
             {
                 for (uint32_t i = 0; i < binding.buffers.count; ++i)
                 {
-                    parameters.AddResourceParam(
-                        *pSRD, pDesc->bufferStorage[binding.buffers.offset + i], nullptr, i);
+                    parameters.AddResourceParam(*pSRD, pDesc->bufferStorage[binding.buffers.offset + i], nullptr, i);
                 }
             }
 
@@ -416,13 +429,11 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
             if (pSRD != nullptr)
             {
-                RHISampler* pSampler =
-                    type == RHIShaderResourceType::eSamplerWithTexture ? binding.pSampler : nullptr;
+                RHISampler* pSampler = type == RHIShaderResourceType::eSamplerWithTexture ? binding.pSampler : nullptr;
 
                 for (uint32_t i = 0; i < binding.views.count; ++i)
                 {
-                    parameters.AddResourceParam(
-                        *pSRD, pDesc->textureViewStorage[binding.views.offset + i], pSampler, i);
+                    parameters.AddResourceParam(*pSRD, pDesc->textureViewStorage[binding.views.offset + i], pSampler, i);
                 }
             }
 
@@ -443,8 +454,7 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
         for (const RDGSamplerBinding& binding : pDesc->samplerBindings)
         {
-            const RHIShaderResourceDescriptor* pSRD =
-                Descriptor(binding.glslName, RHIShaderResourceType::eSampler);
+            const RHIShaderResourceDescriptor* pSRD = Descriptor(binding.glslName, RHIShaderResourceType::eSampler);
 
             if (pSRD != nullptr)
             {
@@ -453,6 +463,7 @@ struct RDGPassCompiler::ShaderParameterBuilder
             else
             {
                 allValid = false;
+
                 break;
             }
         }
@@ -466,24 +477,23 @@ struct RDGPassCompiler::ShaderParameterBuilder
 
         for (const RDGResourceBinding& binding : pDesc->resourceBindings)
         {
-            const RHIShaderResourceDescriptor* pSRD =
-                pShaderProgram->GetShaderResourceDescriptor(binding.glslName);
-            bool bound = Check(pSRD != nullptr, RDGErrorCode::eBinding, "Unknown logical binding");
+            const RHIShaderResourceDescriptor* pSRD = pShaderProgram->GetShaderResourceDescriptor(binding.glslName);
+
+            bool bound                              = Check(pSRD != nullptr, RDGErrorCode::eBinding, "Unknown logical binding");
 
             for (uint32_t i = 0; bound && i < binding.resources.count; ++i)
             {
-                RDGBoundResource const& element =
-                    pDesc->resourceStorage[binding.resources.offset + i];
-                const RDGResourceManager::Allocation* resource =
-                    m_pRDG->m_resourceManager.Resolve(element.resource);
-                bound = resource != nullptr;
+                RDGBoundResource const& element                = pDesc->resourceStorage[binding.resources.offset + i];
+
+                const RDGResourceManager::Allocation* resource = m_pRDG->m_resourceManager.Resolve(element.resource);
+
+                bound                                          = resource != nullptr;
 
                 if (bound)
                 {
                     if (resource->type == RDGResourceType::eBuffer)
                     {
-                        bound = Check(resource->pBuffer != nullptr, RDGErrorCode::eAllocation,
-                                      "Missing logical buffer");
+                        bound = Check(resource->pBuffer != nullptr, RDGErrorCode::eAllocation, "Missing logical buffer");
 
                         if (bound)
                         {
@@ -492,10 +502,9 @@ struct RDGPassCompiler::ShaderParameterBuilder
                     }
                     else
                     {
-                        RHITextureView* view = m_pRDG->m_resourceManager.MaterializeView(
-                            element.resource, element.view);
-                        bound = Check(view != nullptr, RDGErrorCode::eAllocation,
-                                      "Failed to materialize texture view");
+                        RHITextureView* view = m_pRDG->m_resourceManager.MaterializeView(element.resource, element.view);
+
+                        bound = Check(view != nullptr, RDGErrorCode::eAllocation, "Failed to materialize texture view");
 
                         if (bound)
                         {
@@ -517,46 +526,45 @@ struct RDGPassCompiler::ShaderParameterBuilder
     }
 };
 
-bool RDGPassCompiler::BuildShaderParameters(ShaderProgram* pShaderProgram,
-                                            const RDGPassDescBase* pDesc,
+bool RDGPassCompiler::BuildShaderParameters(ShaderProgram*              pShaderProgram,
+                                            const RDGPassDescBase*      pDesc,
                                             RHIBatchedShaderParameters& parameters)
 {
-    bool valid = Check(pShaderProgram != nullptr && pShaderProgram->GetShader() != nullptr &&
-                           pDesc != nullptr,
+    bool valid = Check(pShaderProgram != nullptr && pShaderProgram->GetShader() != nullptr && pDesc != nullptr,
                        RDGErrorCode::eShader, "Shader parameters require a shader and description");
 
     if (valid)
     {
         RDGPassCompileTimings& timings = m_pRDG->m_passCompileTimings;
+
         ScopedMetricsTimer bindingTimer(timings.enabled, timings.bindingCPUUs);
+
         ShaderParameterBuilder builder{*this, m_pRDG, pShaderProgram, pDesc, parameters};
-        valid = builder.BindValues() && builder.BindBuffers() &&
-            builder.BindTextures(pDesc->sampledTexBindings,
-                                 RHIShaderResourceType::eSamplerWithTexture) &&
-            builder.BindTextures(pDesc->UAVTexBindings, RHIShaderResourceType::eImage) &&
-            builder.BindTextures(pDesc->separateTexBindings, RHIShaderResourceType::eTexture) &&
-            builder.BindSamplers() && builder.BindResources();
+
+        valid = builder.BindValues() && builder.BindBuffers()
+             && builder.BindTextures(pDesc->sampledTexBindings, RHIShaderResourceType::eSamplerWithTexture)
+             && builder.BindTextures(pDesc->UAVTexBindings, RHIShaderResourceType::eImage)
+             && builder.BindTextures(pDesc->separateTexBindings, RHIShaderResourceType::eTexture) && builder.BindSamplers()
+             && builder.BindResources();
     }
 
     return valid;
 }
 
-RDGPassCmdEncoder::RDGPassCmdEncoder(RHICommandList* pCmdList,
-                                     RDGShaderPass* pPass,
-                                     RDGNodeMetrics* pMetrics,
+RDGPassCmdEncoder::RDGPassCmdEncoder(RHICommandList*        pCmdList,
+                                     RDGShaderPass*         pPass,
+                                     RDGNodeMetrics*        pMetrics,
                                      const RDGPassDescBase* pDescription) :
     m_pDescription(pDescription), m_pCmdList(pCmdList), m_pPass(pPass), m_pMetrics(pMetrics)
 {
-    Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-          "Command encoder requires a command list");
+    Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list");
 }
 
 bool RDGPassCmdEncoder::RequirePass(RDGCompiledPassType type, const char* command)
 {
     bool result{};
 
-    const RDGCompiledPassType actual =
-        m_pPass != nullptr ? m_pPass->type : RDGCompiledPassType::eTransfer;
+    const RDGCompiledPassType actual = m_pPass != nullptr ? m_pPass->type : RDGCompiledPassType::eTransfer;
 
     if (Check(m_pCmdList != nullptr && actual == type, RDGErrorCode::eUnsupportedCommand,
               std::string(command) + " is not supported in this pass"))
@@ -582,7 +590,9 @@ RHIBuffer* RDGPassCmdEncoder::ResolveIndirectBuffer(RDGBuffer resource)
                 if (binding.resource == resource)
                 {
                     pBuffer = binding.buffer;
+
                     found   = true;
+
                     break;
                 }
             }
@@ -590,53 +600,42 @@ RHIBuffer* RDGPassCmdEncoder::ResolveIndirectBuffer(RDGBuffer resource)
 
         if (!found)
         {
-            Fail(RDGErrorCode::eBinding,
-                 "Indirect command requires UseIndirectBuffer for this exact resource version");
+            Fail(RDGErrorCode::eBinding, "Indirect command requires UseIndirectBuffer for this exact resource version");
         }
     }
 
     return pBuffer;
 }
 
-void RDGPassCmdEncoder::DrawIndexedIndirect(RDGBuffer resource,
-                                            uint32_t offset,
-                                            uint32_t drawCount,
-                                            uint32_t stride)
+void RDGPassCmdEncoder::DrawIndexedIndirect(RDGBuffer resource, uint32_t offset, uint32_t drawCount, uint32_t stride)
 {
-    if (!RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexedIndirect"))
+    if (RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexedIndirect"))
     {
-        return;
-    }
-
-    if (RHIBuffer* buffer = ResolveIndirectBuffer(resource))
-    {
-        DrawIndexedIndirect(buffer, offset, drawCount, stride);
+        if (RHIBuffer* buffer = ResolveIndirectBuffer(resource))
+        {
+            DrawIndexedIndirect(buffer, offset, drawCount, stride);
+        }
     }
 }
 
 void RDGPassCmdEncoder::DispatchIndirect(RDGBuffer resource, uint32_t offset)
 {
-    if (!RequirePass(RDGCompiledPassType::eCompute, "DispatchIndirect"))
+    if (RequirePass(RDGCompiledPassType::eCompute, "DispatchIndirect"))
     {
-        return;
-    }
-
-    if (RHIBuffer* buffer = ResolveIndirectBuffer(resource))
-    {
-        DispatchIndirect(buffer, offset);
+        if (RHIBuffer* buffer = ResolveIndirectBuffer(resource))
+        {
+            DispatchIndirect(buffer, offset);
+        }
     }
 }
 
-bool RDGPassCmdEncoder::RequireIndirect(RHIBuffer* buffer,
-                                        uint64_t offset,
-                                        uint64_t size,
-                                        const char* command)
+bool RDGPassCmdEncoder::RequireIndirect(RHIBuffer* buffer, uint64_t offset, uint64_t size, const char* command)
 {
     bool result{};
 
-    bool declared = m_pDescription != nullptr &&
-        std::find(m_pDescription->indirectBuffers.begin(), m_pDescription->indirectBuffers.end(),
-                  buffer) != m_pDescription->indirectBuffers.end();
+    bool declared = m_pDescription != nullptr
+                 && std::find(m_pDescription->indirectBuffers.begin(), m_pDescription->indirectBuffers.end(), buffer)
+                        != m_pDescription->indirectBuffers.end();
 
     if (m_pPass != nullptr)
     {
@@ -647,11 +646,9 @@ bool RDGPassCmdEncoder::RequireIndirect(RHIBuffer* buffer,
     }
 
     if (((Check(buffer != nullptr && declared, RDGErrorCode::eBinding,
-                std::string(command) + " requires UseIndirectBuffer for its argument buffer"))) &&
-        ((Check(offset % 4 == 0 && offset <= buffer->GetRequiredSize() &&
-                    size <= buffer->GetRequiredSize() - offset,
-                RDGErrorCode::eRange,
-                std::string(command) + " argument range is out of bounds or misaligned"))))
+                std::string(command) + " requires UseIndirectBuffer for its argument buffer")))
+        && ((Check(offset % 4 == 0 && offset <= buffer->GetRequiredSize() && size <= buffer->GetRequiredSize() - offset,
+                   RDGErrorCode::eRange, std::string(command) + " argument range is out of bounds or misaligned"))))
     {
         result = true;
     }
@@ -663,28 +660,23 @@ bool RDGPassCmdEncoder::ValidateDispatch()
 {
     bool result{};
 
-    if (((RequirePass(RDGCompiledPassType::eCompute, "Dispatch"))) &&
-        ((Check(
-            m_dispatchCount == 0 ||
-                (m_pDescription != nullptr && m_pDescription->independentDispatches),
-            RDGErrorCode::eUnsupportedCommand,
-            "Dependent dispatches require separate passes; assert independentDispatches only for independent work"))))
+    if (((RequirePass(RDGCompiledPassType::eCompute, "Dispatch")))
+        && ((Check(m_dispatchCount == 0 || (m_pDescription != nullptr && m_pDescription->independentDispatches),
+                   RDGErrorCode::eUnsupportedCommand,
+                   "Dependent dispatches require separate passes; assert independentDispatches only for independent work"))))
     {
         ++m_dispatchCount;
+
         result = true;
     }
 
     return result;
 }
 
-void RDGPassCmdEncoder::Draw(uint32_t vertexCount,
-                             uint32_t instanceCount,
-                             uint32_t firstVertex,
-                             uint32_t firstInstance)
+void RDGPassCmdEncoder::Draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
 {
-    if (((RequirePass(RDGCompiledPassType::eGraphics, "Draw"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eGraphics, "Draw")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->Draw(vertexCount, instanceCount, firstVertex, firstInstance);
     }
@@ -696,53 +688,62 @@ void RDGPassCmdEncoder::DrawIndexed(uint32_t indexCount,
                                     uint32_t vertexOffset,
                                     uint32_t firstInstance)
 {
-    if (((RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexed"))) &&
-        (((Check(static_cast<RDGGraphicsPass*>(m_pPass)->geometryBuffer.pIndexBuffer != nullptr,
-                 RDGErrorCode::eBinding, "DrawIndexed requires an index buffer"))) &&
-         ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                 "Command encoder requires a command list")))))
+    if (((RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexed")))
+        && (((Check(static_cast<RDGGraphicsPass*>(m_pPass)->geometryBuffer.pIndexBuffer != nullptr, RDGErrorCode::eBinding,
+                    "DrawIndexed requires an index buffer")))
+            && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list")))))
     {
         RDGGraphicsPass* pGfxPass = static_cast<RDGGraphicsPass*>(m_pPass);
 
         RHICommandDrawIndexed::Param params{};
+
         params.pIndexBuffer      = pGfxPass->geometryBuffer.pIndexBuffer;
+
         params.indexFormat       = pGfxPass->geometryBuffer.indexBufferFormat;
+
         params.indexBufferOffset = pGfxPass->geometryBuffer.indexBufferOffset;
+
         params.indexCount        = indexCount;
+
         params.instanceCount     = instanceCount;
+
         params.firstIndex        = firstIndex;
+
         params.vertexOffset      = vertexOffset;
+
         params.firstInstance     = firstInstance;
 
         m_pCmdList->DrawIndexed(params);
     }
 }
 
-void RDGPassCmdEncoder::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
-                                            uint32_t offset,
-                                            uint32_t drawCount,
-                                            uint32_t stride)
+void RDGPassCmdEncoder::DrawIndexedIndirect(RHIBuffer* indirectBuffer, uint32_t offset, uint32_t drawCount, uint32_t stride)
 {
-    if (((RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexedIndirect"))) &&
-        (((Check(static_cast<RDGGraphicsPass*>(m_pPass)->geometryBuffer.pIndexBuffer != nullptr,
-                 RDGErrorCode::eBinding, "DrawIndexedIndirect requires an index buffer"))) &&
-         (((Check(drawCount <= 1 || (stride >= 20 && stride % 4 == 0), RDGErrorCode::eRange,
-                  "Invalid indexed indirect command stride"))) &&
-          (((RequireIndirect(indirectBuffer, offset,
-                             drawCount == 0 ? 0 : uint64_t(drawCount - 1) * stride + 20,
-                             "DrawIndexedIndirect"))) &&
-           ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                   "Command encoder requires a command list")))))))
+    if (((RequirePass(RDGCompiledPassType::eGraphics, "DrawIndexedIndirect")))
+        && (((Check(static_cast<RDGGraphicsPass*>(m_pPass)->geometryBuffer.pIndexBuffer != nullptr, RDGErrorCode::eBinding,
+                    "DrawIndexedIndirect requires an index buffer")))
+            && (((Check(drawCount <= 1 || (stride >= 20 && stride % 4 == 0), RDGErrorCode::eRange,
+                        "Invalid indexed indirect command stride")))
+                && (((RequireIndirect(indirectBuffer, offset, drawCount == 0 ? 0 : uint64_t(drawCount - 1) * stride + 20,
+                                      "DrawIndexedIndirect")))
+                    && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list")))))))
     {
         RDGGraphicsPass* pGfxPass = static_cast<RDGGraphicsPass*>(m_pPass);
 
         RHICommandDrawIndexedIndirect::Param params{};
+
         params.pIndexBuffer      = pGfxPass->geometryBuffer.pIndexBuffer;
+
         params.indexFormat       = pGfxPass->geometryBuffer.indexBufferFormat;
+
         params.indexBufferOffset = pGfxPass->geometryBuffer.indexBufferOffset;
+
         params.offset            = offset;
+
         params.pIndirectBuffer   = indirectBuffer;
+
         params.drawCount         = drawCount;
+
         params.stride            = stride;
 
         m_pCmdList->DrawIndexedIndirect(params);
@@ -751,15 +752,12 @@ void RDGPassCmdEncoder::DrawIndexedIndirect(RHIBuffer* indirectBuffer,
 
 void RDGPassCmdEncoder::Dispatch(uint32_t groupCountX, int32_t groupCountY, int32_t groupCountZ)
 {
-    if (ValidateDispatch() &&
-        Check(groupCountY >= 0 && groupCountZ >= 0, RDGErrorCode::eRange,
-              "Negative dispatch group count") &&
-        Check(m_pCmdList != nullptr && GDynamicRHI != nullptr, RDGErrorCode::eLifecycle,
-              "Command encoder requires a command list and RHI") &&
-        Check(GDynamicRHI->QueryGPUInfo().IsDispatchWithinLimits(
-                  groupCountX, static_cast<uint32_t>(groupCountY),
-                  static_cast<uint32_t>(groupCountZ)),
-              RDGErrorCode::eRange, "Dispatch group count exceeds device axis limits"))
+    if (ValidateDispatch() && Check(groupCountY >= 0 && groupCountZ >= 0, RDGErrorCode::eRange, "Negative dispatch group count")
+        && Check(m_pCmdList != nullptr && GDynamicRHI != nullptr, RDGErrorCode::eLifecycle,
+                 "Command encoder requires a command list and RHI")
+        && Check(GDynamicRHI->QueryGPUInfo().IsDispatchWithinLimits(groupCountX, static_cast<uint32_t>(groupCountY),
+                                                                    static_cast<uint32_t>(groupCountZ)),
+                 RDGErrorCode::eRange, "Dispatch group count exceeds device axis limits"))
     {
         m_pCmdList->Dispatch(groupCountX, groupCountY, groupCountZ);
     }
@@ -767,10 +765,9 @@ void RDGPassCmdEncoder::Dispatch(uint32_t groupCountX, int32_t groupCountY, int3
 
 void RDGPassCmdEncoder::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t offset)
 {
-    if (((ValidateDispatch())) &&
-        (((RequireIndirect(indirectBuffer, offset, 12, "DispatchIndirect"))) &&
-         ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                 "Command encoder requires a command list")))))
+    if (((ValidateDispatch()))
+        && (((RequireIndirect(indirectBuffer, offset, 12, "DispatchIndirect")))
+            && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list")))))
     {
         m_pCmdList->DispatchIndirect(indirectBuffer, offset);
     }
@@ -778,9 +775,8 @@ void RDGPassCmdEncoder::DispatchIndirect(RHIBuffer* indirectBuffer, uint32_t off
 
 void RDGPassCmdEncoder::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
-    if (((RequirePass(RDGCompiledPassType::eGraphics, "SetViewport"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eGraphics, "SetViewport")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->SetViewport(minX, minY, maxX, maxY);
     }
@@ -788,9 +784,8 @@ void RDGPassCmdEncoder::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX,
 
 void RDGPassCmdEncoder::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
-    if (((RequirePass(RDGCompiledPassType::eGraphics, "SetScissor"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eGraphics, "SetScissor")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->SetScissor(minX, minY, maxX, maxY);
     }
@@ -798,37 +793,34 @@ void RDGPassCmdEncoder::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, 
 
 void RDGPassCmdEncoder::SetPushConstants(const void* pData, uint32_t dataSize, uint32_t offset)
 {
-    if (!Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr &&
-                   dataSize > 0 && dataSize % 4 == 0 && offset == 0,
-               RDGErrorCode::eBinding,
-               "Invalid push constant data; nonzero offsets are not supported by this RHI path"))
+    if (Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0 && dataSize % 4 == 0
+                  && offset == 0,
+              RDGErrorCode::eBinding, "Invalid push constant data; nonzero offsets are not supported by this RHI path"))
     {
-        return;
-    }
-
-    if (m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0)
-    {
-        m_pCmdList->SetPushConstants(m_pPass->pPipeline, static_cast<const uint8_t*>(pData),
-                                     dataSize, offset);
+        if (m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0)
+        {
+            m_pCmdList->SetPushConstants(m_pPass->pPipeline, static_cast<const uint8_t*>(pData), dataSize, offset);
+        }
     }
 }
 
 void RDGPassCmdEncoder::SetShaderValue(NameID glslName, const void* pData, uint32_t dataSize)
 {
-    if (Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr &&
-                  dataSize > 0,
-              RDGErrorCode::eBinding, "Invalid shader value command"))
+    if (Check(m_pPass != nullptr && m_pPass->pPipeline != nullptr && pData != nullptr && dataSize > 0, RDGErrorCode::eBinding,
+              "Invalid shader value command"))
     {
         RHIShader* pShader                      = m_pPass->pPipeline->GetShader();
+
         const RHIShaderResourceDescriptor* pSRD = pShader->GetSRDByName(glslName);
 
-        if (Check(pSRD != nullptr && pSRD->type == RHIShaderResourceType::eUniformBuffer &&
-                      (pSRD->blockSize == 0 || dataSize <= pSRD->blockSize),
-                  RDGErrorCode::eBinding,
-                  "Invalid shader value binding '" + glslName.ToString() + "'"))
+        if (Check(pSRD != nullptr && pSRD->type == RHIShaderResourceType::eUniformBuffer
+                      && (pSRD->blockSize == 0 || dataSize <= pSRD->blockSize),
+                  RDGErrorCode::eBinding, "Invalid shader value binding '" + glslName.ToString() + "'"))
         {
             RHIBatchedShaderParameters params;
+
             params.AddValueParam(*pSRD, pData, dataSize);
+
             m_pCmdList->SetShaderParameters(params);
         }
     }
@@ -836,104 +828,104 @@ void RDGPassCmdEncoder::SetShaderValue(NameID glslName, const void* pData, uint3
 
 void RDGPassCmdEncoder::GenerateMipmaps(RHITexture* pTexture)
 {
-    if (!RequirePass(RDGCompiledPassType::eTransfer, "GenerateMipmaps"))
+    if (RequirePass(RDGCompiledPassType::eTransfer, "GenerateMipmaps"))
     {
-        return;
-    }
-
-    if (pTexture != nullptr)
-    {
-        const RHITextureCreateInfo& info        = pTexture->GetBaseInfo();
-        const RHITextureSubResourceRange& range = pTexture->GetSubResourceRange();
-
-        EmitTextureTransition(pTexture, range.GetMipRange(0), RHIAccessMode::eReadWrite,
-                              RHIAccessMode::eRead, RHITextureUsage::eTransferDst,
-                              RHITextureUsage::eTransferSrc);
-
-        for (uint32_t mipLevel = 1; mipLevel < info.mipmaps; mipLevel++)
+        if (pTexture != nullptr)
         {
-            RHITextureBlitRegion region{};
-            region.srcOffset0 = {0, 0, 0};
-            region.srcOffset1 = MipExtent3D(info, mipLevel - 1);
-            region.dstOffset0 = {0, 0, 0};
-            region.dstOffset1 = MipExtent3D(info, mipLevel);
-            region.srcSubresources =
-                RHITextureSubresourceLayers::MakeMipLayers(range, mipLevel - 1);
-            region.dstSubresources = RHITextureSubresourceLayers::MakeMipLayers(range, mipLevel);
+            const RHITextureCreateInfo& info        = pTexture->GetBaseInfo();
 
-            m_pCmdList->BlitTexture(pTexture, pTexture, region, RHISamplerFilter::eLinear);
+            const RHITextureSubResourceRange& range = pTexture->GetSubResourceRange();
 
-            EmitTextureTransition(pTexture, range.GetMipRange(mipLevel), RHIAccessMode::eReadWrite,
-                                  RHIAccessMode::eRead, RHITextureUsage::eTransferDst,
-                                  RHITextureUsage::eTransferSrc);
+            EmitTextureTransition(pTexture, range.GetMipRange(0), RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
+                                  RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
+
+            for (uint32_t mipLevel = 1; mipLevel < info.mipmaps; mipLevel++)
+            {
+                RHITextureBlitRegion region{};
+
+                region.srcOffset0      = {0, 0, 0};
+
+                region.srcOffset1      = MipExtent3D(info, mipLevel - 1);
+
+                region.dstOffset0      = {0, 0, 0};
+
+                region.dstOffset1      = MipExtent3D(info, mipLevel);
+
+                region.srcSubresources = RHITextureSubresourceLayers::MakeMipLayers(range, mipLevel - 1);
+
+                region.dstSubresources = RHITextureSubresourceLayers::MakeMipLayers(range, mipLevel);
+
+                m_pCmdList->BlitTexture(pTexture, pTexture, region, RHISamplerFilter::eLinear);
+
+                EmitTextureTransition(pTexture, range.GetMipRange(mipLevel), RHIAccessMode::eReadWrite, RHIAccessMode::eRead,
+                                      RHITextureUsage::eTransferDst, RHITextureUsage::eTransferSrc);
+            }
+
+            EmitTextureTransition(pTexture, range, RHIAccessMode::eRead, RHIAccessMode::eReadWrite,
+                                  RHITextureUsage::eTransferSrc, RHITextureUsage::eTransferDst);
         }
-
-        EmitTextureTransition(pTexture, range, RHIAccessMode::eRead, RHIAccessMode::eReadWrite,
-                              RHITextureUsage::eTransferSrc, RHITextureUsage::eTransferDst);
     }
 }
 
-void RDGPassCmdEncoder::CopyTexture(RHITexture* pSrcTexture,
-                                    RHITexture* pDstTexture,
+void RDGPassCmdEncoder::CopyTexture(RHITexture*                            pSrcTexture,
+                                    RHITexture*                            pDstTexture,
                                     VectorView<const RHITextureCopyRegion> regions)
 {
-    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyTexture"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyTexture")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->CopyTexture(pSrcTexture, pDstTexture, regions);
     }
 }
 
-void RDGPassCmdEncoder::CopyBuffer(RHIBuffer* pSrcBuffer,
-                                   RHIBuffer* pDstBuffer,
-                                   const RHIBufferCopyRegion& region)
+void RDGPassCmdEncoder::CopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)
 {
-    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBuffer"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBuffer")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->CopyBuffer(pSrcBuffer, pDstBuffer, region);
     }
 }
 
-void RDGPassCmdEncoder::CopyBufferToTexture(RHIBuffer* pSrcBuffer,
-                                            RHITexture* pDstTexture,
+void RDGPassCmdEncoder::CopyBufferToTexture(RHIBuffer*                        pSrcBuffer,
+                                            RHITexture*                       pDstTexture,
                                             const RHIBufferTextureCopyRegion& region)
 {
-    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBufferToTexture"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eTransfer, "CopyBufferToTexture")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->CopyBufferToTexture(pSrcBuffer, pDstTexture, region);
     }
 }
 
-void RDGPassCmdEncoder::ClearTexture(RHITexture* pTexture,
-                                     const Color& clearColor,
-                                     const RHITextureSubResourceRange& range)
+void RDGPassCmdEncoder::ClearTexture(RHITexture* pTexture, const Color& clearColor, const RHITextureSubResourceRange& range)
 {
-    if (((RequirePass(RDGCompiledPassType::eTransfer, "ClearTexture"))) &&
-        ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle,
-                "Command encoder requires a command list"))))
+    if (((RequirePass(RDGCompiledPassType::eTransfer, "ClearTexture")))
+        && ((Check(m_pCmdList != nullptr, RDGErrorCode::eLifecycle, "Command encoder requires a command list"))))
     {
         m_pCmdList->ClearTexture(pTexture, clearColor, range);
     }
 }
 
-void RDGPassCmdEncoder::EmitTextureTransition(RHITexture* pTexture,
+void RDGPassCmdEncoder::EmitTextureTransition(RHITexture*                       pTexture,
                                               const RHITextureSubResourceRange& range,
-                                              RHIAccessMode oldAccess,
-                                              RHIAccessMode newAccess,
-                                              RHITextureUsage oldUsage,
-                                              RHITextureUsage newUsage)
+                                              RHIAccessMode                     oldAccess,
+                                              RHIAccessMode                     newAccess,
+                                              RHITextureUsage                   oldUsage,
+                                              RHITextureUsage                   newUsage)
 {
     RHITextureTransition transition{};
+
     transition.pTexture         = pTexture;
+
     transition.oldAccessMode    = oldAccess;
+
     transition.newAccessMode    = newAccess;
+
     transition.oldUsage         = oldUsage;
+
     transition.newUsage         = newUsage;
+
     transition.subResourceRange = range;
 
     BitField<RHIPipelineStageFlagBits> stage(RHIPipelineStageFlagBits::eTransfer);
@@ -943,6 +935,7 @@ void RDGPassCmdEncoder::EmitTextureTransition(RHITexture* pTexture,
     if (m_pMetrics != nullptr)
     {
         ++m_pMetrics->barrierCalls;
+
         ++m_pMetrics->internalTextureTransitions;
     }
 }
@@ -966,8 +959,7 @@ void RDGShaderPassCmdRecorder::RecordPassCommands(std::function<void(RDGPassCmdE
     {
         if (!lambda || m_pNode->cmdLambdaIdx >= 0)
         {
-            m_pRDG->Fail(RDGErrorCode::eBinding,
-                         "A pass requires at most one nonempty command callback");
+            m_pRDG->Fail(RDGErrorCode::eBinding, "A pass requires at most one nonempty command callback");
         }
         else
         {
@@ -986,17 +978,18 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::NeverCull()
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::SetQueuePreference(
-    RDGQueuePreference preference)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::SetQueuePreference(RDGQueuePreference preference)
 {
-    if (m_pRDG->CheckRecorder(m_pNode, m_generation) &&
-        Check(IsValidQueuePreference(preference), RDGErrorCode::eBinding,
-              "Invalid transfer queue preference"))
+    if (m_pRDG->CheckRecorder(m_pNode, m_generation)
+        && Check(IsValidQueuePreference(preference), RDGErrorCode::eBinding, "Invalid transfer queue preference"))
     {
         m_pNode->queuePreference                                                 = preference;
+
         m_pNode->pCompiledPass->queuePreference                                  = preference;
+
         m_pRDG->m_pendingTransferPassDescs[m_pNode->passDescIdx].queuePreference = preference;
     }
+
     return *this;
 }
 
@@ -1009,70 +1002,71 @@ RDGTransferPassCmdRecorder::~RDGTransferPassCmdRecorder()
 
     if (!m_ops.empty() && m_pRDG->CheckRecorder(m_pNode, m_generation))
     {
-        m_pNode->cmdLambdaIdx =
-            m_pRDG->AddPassCmdLambda([ops = std::move(m_ops)](RDGPassCmdEncoder& encoder) {
-                for (size_t i = 0; i < ops.size(); ++i)
-                {
-                    if (!encoder.GetResult())
-                    {
-                        return;
-                    }
-
-                    // A pass can contain dependent copies (including overlapping writes).
-                    if (i != 0)
-                    {
-                        RHIMemoryTransition barrier{};
-                        barrier.srcAccess.SetFlags(RHIAccessFlagBits::eTransferRead,
-                                                   RHIAccessFlagBits::eTransferWrite);
-                        barrier.dstAccess = barrier.srcAccess;
-                        const BitField<RHIPipelineStageFlagBits> stages(
-                            RHIPipelineStageFlagBits::eTransfer);
-                        encoder.m_pCmdList->AddTransitions(stages, stages, MakeVecView(&barrier, 1),
-                                                           {}, {});
-
-                        if (encoder.m_pMetrics != nullptr)
-                        {
-                            ++encoder.m_pMetrics->barrierCalls;
-                            ++encoder.m_pMetrics->internalMemoryTransitions;
-                        }
-                    }
-
-                    ops[i](encoder);
-                }
-            });
+        m_pNode->cmdLambdaIdx = m_pRDG->AddPassCmdLambda(
+            [ops = std::move(m_ops)](RDGPassCmdEncoder& encoder) { ExecuteOperations(MakeVecView(ops), encoder); });
     }
 }
 
-bool RDGTransferPassCmdRecorder::Check(bool condition,
-                                       RDGErrorCode code,
-                                       const std::string& message)
+void RDGTransferPassCmdRecorder::ExecuteOperations(VectorView<const std::function<void(RDGPassCmdEncoder&)>> ops,
+                                                   RDGPassCmdEncoder&                                        encoder)
+{
+    for (size_t i = 0; i < ops.size() && encoder.GetResult(); ++i)
+    {
+        // A pass can contain dependent copies (including overlapping writes).
+        if (i != 0)
+        {
+            RHIMemoryTransition barrier{};
+
+            barrier.srcAccess.SetFlags(RHIAccessFlagBits::eTransferRead, RHIAccessFlagBits::eTransferWrite);
+
+            barrier.dstAccess = barrier.srcAccess;
+
+            const BitField<RHIPipelineStageFlagBits> stages(RHIPipelineStageFlagBits::eTransfer);
+
+            encoder.m_pCmdList->AddTransitions(stages, stages, MakeVecView(&barrier, 1), {}, {});
+
+            if (encoder.m_pMetrics != nullptr)
+            {
+                ++encoder.m_pMetrics->barrierCalls;
+
+                ++encoder.m_pMetrics->internalMemoryTransitions;
+            }
+        }
+
+        ops[i](encoder);
+    }
+}
+
+bool RDGTransferPassCmdRecorder::Check(bool condition, RDGErrorCode code, const std::string& message)
 {
     return m_pRDG->Check(condition, code, "Pass '" + m_pNode->tag.ToString() + "': " + message);
 }
 
 void RDGTransferPassCmdRecorder::RestrictTransferQueues(bool graphicsOnly)
 {
-    RDGTransferQueueCapabilities& queues =
-        static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities;
-    const RHIQueueCopyCapabilities compute =
-        RenderDevice::GetQueueCopyCapabilities(RHICommandContextType::eAsyncCompute);
+    RDGTransferQueueCapabilities& queues   = static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities;
+
+    const RHIQueueCopyCapabilities compute = RenderDevice::GetQueueCopyCapabilities(RHICommandContextType::eAsyncCompute);
+
     // Preserve default transfer routing while allowing legal clears on compute.
-    queues.transfer = false;
-    queues.compute &= compute.graphics || (!graphicsOnly && compute.compute);
+    queues.transfer  = false;
+
+    queues.compute  &= compute.graphics || (!graphicsOnly && compute.compute);
 }
 
 RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITexture* pTexture)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
-    valid = valid &&
-        (Check(pTexture != nullptr && pTexture->GetNumMipmaps() > 0 &&
-                   pTexture->GetNumMipmaps() <= 32,
-               RDGErrorCode::eRange, "Invalid mipmap texture"));
-    valid = valid &&
-        (Check(pTexture->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc),
-               RDGErrorCode::eBinding, "Mipmap texture lacks transfer-source creation usage"));
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
+
+    valid      = valid
+         && (Check(pTexture != nullptr && pTexture->GetNumMipmaps() > 0 && pTexture->GetNumMipmaps() <= 32,
+                   RDGErrorCode::eRange, "Invalid mipmap texture"));
+
+    valid = valid
+         && (Check(pTexture->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eTransferSrc), RDGErrorCode::eBinding,
+                   "Mipmap texture lacks transfer-source creation usage"));
 
     if (valid)
     {
@@ -1081,6 +1075,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
         if (!ValidateMipmapCapabilities(result, pTexture->GetBaseInfo()))
         {
             m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
             valid = false;
         }
 
@@ -1088,24 +1083,27 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
         {
             // Image blits require graphics capability even though they execute at transfer stage.
             RestrictTransferQueues(true);
-            const RDGResourceManager::Allocation* pResource =
-                m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
-            RHITextureSubResourceRange baseRange = pTexture->GetSubResourceRange();
-            baseRange.levelCount                 = 1;
-            valid = m_pRDG->DeclareContentAccess(m_pNode, pResource, RDGContentEffect::eRead,
-                                                 baseRange);
-            valid = valid &&
-                (m_pRDG->DeclareTextureAccessForPass(
-                    m_pNode, pResource, RHITextureUsage::eTransferDst,
-                    pTexture->GetSubResourceRange(), RHIAccessMode::eReadWrite, {},
-                    RDGContentEffect::eFullWrite));
+
+            const RDGResourceManager::Allocation* pResource = m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
+
+            RHITextureSubResourceRange baseRange            = pTexture->GetSubResourceRange();
+
+            baseRange.levelCount                            = 1;
+
+            valid = m_pRDG->DeclareContentAccess(m_pNode, pResource, RDGContentEffect::eRead, baseRange);
+
+            valid = valid
+                 && (m_pRDG->DeclareTextureAccessForPass(m_pNode, pResource, RHITextureUsage::eTransferDst,
+                                                         pTexture->GetSubResourceRange(), RHIAccessMode::eReadWrite, {},
+                                                         RDGContentEffect::eFullWrite));
 
             if (valid)
             {
                 m_pNode->contentAccesses.back().sourceResourceId = pResource->id;
+
                 m_pNode->contentAccesses.back().sourceRange      = baseRange;
-                m_ops.push_back(
-                    [pTexture](RDGPassCmdEncoder& encoder) { encoder.GenerateMipmaps(pTexture); });
+
+                m_ops.push_back([pTexture](RDGPassCmdEncoder& encoder) { encoder.GenerateMipmaps(pTexture); });
             }
         }
     }
@@ -1113,51 +1111,47 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RHITextu
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
-    RHITexture* pSrcTexture,
-    RHITexture* pDstTexture,
-    VectorView<RHITextureCopyRegion> regions)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(RHITexture*                      pSrcTexture,
+                                                                    RHITexture*                      pDstTexture,
+                                                                    VectorView<RHITextureCopyRegion> regions)
 {
     bool valid = true;
 
     RDGResult result;
+
     valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
-    valid = valid &&
-        (Check(pSrcTexture != nullptr && pDstTexture != nullptr && !regions.empty() &&
-                   regions.data() != nullptr,
-               RDGErrorCode::eRange, "Texture copy requires two textures and regions"));
+
+    valid = valid
+         && (Check(pSrcTexture != nullptr && pDstTexture != nullptr && !regions.empty() && regions.data() != nullptr,
+                   RDGErrorCode::eRange, "Texture copy requires two textures and regions"));
 
     if (valid)
     {
         for (RHITextureCopyRegion const& region : regions)
         {
-            if (!ValidateTextureCopyBox(result, pSrcTexture, region.srcSubresources,
-                                        region.srcOffset, region.size))
+            if (!ValidateTextureCopyBox(result, pSrcTexture, region.srcSubresources, region.srcOffset, region.size))
             {
-                m_pRDG->Fail(result.code,
-                             "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+                m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
                 valid = false;
             }
 
             if (valid)
             {
-                if (!ValidateTextureCopyBox(result, pDstTexture, region.dstSubresources,
-                                            region.dstOffset, region.size) ||
-                    !ValidateTextureCopyCapabilities(
+                if (!ValidateTextureCopyBox(result, pDstTexture, region.dstSubresources, region.dstOffset, region.size)
+                    || !ValidateTextureCopyCapabilities(
                         result, pSrcTexture->GetBaseInfo(), pDstTexture->GetBaseInfo(), region,
                         static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
                 {
-                    m_pRDG->Fail(result.code,
-                                 "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+                    m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
                     valid = false;
                 }
 
-                valid = valid &&
-                    (Check(region.srcSubresources.layerCount == region.dstSubresources.layerCount &&
-                               int64_t(region.srcSubresources.aspect) ==
-                                   int64_t(region.dstSubresources.aspect),
-                           RDGErrorCode::eRange,
-                           "Copy source and destination subresources do not match"));
+                valid = valid
+                     && (Check(region.srcSubresources.layerCount == region.dstSubresources.layerCount
+                                   && int64_t(region.srcSubresources.aspect) == int64_t(region.dstSubresources.aspect),
+                               RDGErrorCode::eRange, "Copy source and destination subresources do not match"));
             }
 
             if (!valid)
@@ -1170,29 +1164,28 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
         {
             const RDGResourceManager::Allocation* pSrcResource =
                 m_pRDG->GetResourceManager()->ImportTextureAllocation(pSrcTexture);
+
             const RDGResourceManager::Allocation* pDstResource =
                 m_pRDG->GetResourceManager()->ImportTextureAllocation(pDstTexture);
 
             for (RHITextureCopyRegion const& region : regions)
             {
-                valid = m_pRDG->DeclareTextureAccessForPass(
-                    m_pNode, pSrcResource, RHITextureUsage::eTransferSrc,
-                    CopyRange(region.srcSubresources), RHIAccessMode::eRead);
+                valid = m_pRDG->DeclareTextureAccessForPass(m_pNode, pSrcResource, RHITextureUsage::eTransferSrc,
+                                                            CopyRange(region.srcSubresources), RHIAccessMode::eRead);
 
                 if (valid)
                 {
-                    const bool full = CoversMip(pDstTexture, region.dstSubresources.mipmap,
-                                                region.dstOffset, region.size);
+                    const bool full = CoversMip(pDstTexture, region.dstSubresources.mipmap, region.dstOffset, region.size);
+
                     valid           = m_pRDG->DeclareTextureAccessForPass(
-                        m_pNode, pDstResource, RHITextureUsage::eTransferDst,
-                        CopyRange(region.dstSubresources), RHIAccessMode::eReadWrite, {},
-                        full ? RDGContentEffect::eFullWrite : RDGContentEffect::eWrite);
+                        m_pNode, pDstResource, RHITextureUsage::eTransferDst, CopyRange(region.dstSubresources),
+                        RHIAccessMode::eReadWrite, {}, full ? RDGContentEffect::eFullWrite : RDGContentEffect::eWrite);
 
                     if (valid)
                     {
                         m_pNode->contentAccesses.back().sourceResourceId = pSrcResource->id;
-                        m_pNode->contentAccesses.back().sourceRange =
-                            CopyRange(region.srcSubresources);
+
+                        m_pNode->contentAccesses.back().sourceRange      = CopyRange(region.srcSubresources);
                     }
                 }
 
@@ -1205,10 +1198,10 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
             if (valid)
             {
                 HeapVector<RHITextureCopyRegion> copy(regions);
-                m_ops.push_back(
-                    [pSrcTexture, pDstTexture, copy = std::move(copy)](RDGPassCmdEncoder& encoder) {
-                        encoder.CopyTexture(pSrcTexture, pDstTexture, copy);
-                    });
+
+                m_ops.push_back([pSrcTexture, pDstTexture, copy = std::move(copy)](RDGPassCmdEncoder& encoder) {
+                    encoder.CopyTexture(pSrcTexture, pDstTexture, copy);
+                });
             }
         }
     }
@@ -1216,60 +1209,68 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(
-    RHIBuffer* pSrcBuffer,
-    RHIBuffer* pDstBuffer,
-    const RHIBufferCopyRegion& region)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RHIBuffer*                 pSrcBuffer,
+                                                                   RHIBuffer*                 pDstBuffer,
+                                                                   const RHIBufferCopyRegion& region)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
-    valid = valid &&
-        (Check(pSrcBuffer != nullptr && pDstBuffer != nullptr && region.size > 0,
-               RDGErrorCode::eRange, "Buffer copy requires two buffers and a nonempty region"));
-    valid = valid &&
-        (Check(region.srcOffset <= pSrcBuffer->GetRequiredSize() &&
-                   region.size <= pSrcBuffer->GetRequiredSize() - region.srcOffset &&
-                   region.dstOffset <= pDstBuffer->GetRequiredSize() &&
-                   region.size <= pDstBuffer->GetRequiredSize() - region.dstOffset,
-               RDGErrorCode::eRange, "Buffer copy region is out of bounds"));
-    valid = valid &&
-        (Check(pSrcBuffer != pDstBuffer || region.srcOffset + region.size <= region.dstOffset ||
-                   region.dstOffset + region.size <= region.srcOffset,
-               RDGErrorCode::eRange, "Overlapping regions in a buffer copy"));
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
+
+    valid      = valid
+         && (Check(pSrcBuffer != nullptr && pDstBuffer != nullptr && region.size > 0, RDGErrorCode::eRange,
+                   "Buffer copy requires two buffers and a nonempty region"));
+
+    valid = valid
+         && (Check(region.srcOffset <= pSrcBuffer->GetRequiredSize()
+                       && region.size <= pSrcBuffer->GetRequiredSize() - region.srcOffset
+                       && region.dstOffset <= pDstBuffer->GetRequiredSize()
+                       && region.size <= pDstBuffer->GetRequiredSize() - region.dstOffset,
+                   RDGErrorCode::eRange, "Buffer copy region is out of bounds"));
+
+    valid = valid
+         && (Check(pSrcBuffer != pDstBuffer || region.srcOffset + region.size <= region.dstOffset
+                       || region.dstOffset + region.size <= region.srcOffset,
+                   RDGErrorCode::eRange, "Overlapping regions in a buffer copy"));
 
     if ((valid) && (pSrcBuffer != nullptr && pDstBuffer != nullptr))
     {
-        const RDGResourceManager::Allocation* pSrcResource =
-            m_pRDG->GetResourceManager()->ImportBufferAllocation(pSrcBuffer);
-        const RDGResourceManager::Allocation* pDstResource =
-            m_pRDG->GetResourceManager()->ImportBufferAllocation(pDstBuffer);
+        const RDGResourceManager::Allocation* pSrcResource = m_pRDG->GetResourceManager()->ImportBufferAllocation(pSrcBuffer);
+
+        const RDGResourceManager::Allocation* pDstResource = m_pRDG->GetResourceManager()->ImportBufferAllocation(pDstBuffer);
 
         BitField<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
+
         BitField<RHIBufferUsageFlagBits> dstUsage(RHIBufferUsageFlagBits::eTransferDstBuffer);
 
-        valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage,
-                                                   RHIAccessMode::eRead);
+        valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage, RHIAccessMode::eRead);
 
         if (valid)
         {
             m_pNode->contentAccesses.back().bufferOffset = region.srcOffset;
+
             m_pNode->contentAccesses.back().bufferSize   = region.size;
-            valid                                        = m_pRDG->DeclareBufferAccessForPass(
-                m_pNode, pDstResource, dstUsage, RHIAccessMode::eReadWrite, {},
-                region.dstOffset == 0 && region.size == pDstBuffer->GetRequiredSize() ?
-                                                           RDGContentEffect::eFullWrite :
-                                                           RDGContentEffect::eWrite);
+
+            valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pDstResource, dstUsage, RHIAccessMode::eReadWrite, {},
+                                                       region.dstOffset == 0 && region.size == pDstBuffer->GetRequiredSize()
+                                                           ? RDGContentEffect::eFullWrite
+                                                           : RDGContentEffect::eWrite);
         }
 
         if (valid)
         {
             RDGContentAccess& destinationAccess  = m_pNode->contentAccesses.back();
+
             destinationAccess.sourceResourceId   = pSrcResource->id;
+
             destinationAccess.bufferOffset       = region.dstOffset;
+
             destinationAccess.bufferSize         = region.size;
+
             destinationAccess.sourceBufferOffset = region.srcOffset;
+
             destinationAccess.sourceBufferSize   = region.size;
+
             m_ops.push_back([pSrcBuffer, pDstBuffer, region](RDGPassCmdEncoder& encoder) {
                 encoder.CopyBuffer(pSrcBuffer, pDstBuffer, region);
             });
@@ -1279,26 +1280,26 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
-    RHIBuffer* pSrcBuffer,
-    RHITexture* pDstTexture,
-    const RHIBufferTextureCopyRegion& region)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RHIBuffer*                        pSrcBuffer,
+                                                                            RHITexture*                       pDstTexture,
+                                                                            const RHIBufferTextureCopyRegion& region)
 {
     bool valid = true;
 
     RDGResult result;
+
     valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
-    valid = valid &&
-        (Check(pSrcBuffer != nullptr && pDstTexture != nullptr &&
-                   region.bufferOffset < pSrcBuffer->GetRequiredSize(),
-               RDGErrorCode::eRange, "Invalid buffer-to-texture source offset"));
+
+    valid = valid
+         && (Check(pSrcBuffer != nullptr && pDstTexture != nullptr && region.bufferOffset < pSrcBuffer->GetRequiredSize(),
+                   RDGErrorCode::eRange, "Invalid buffer-to-texture source offset"));
 
     if (valid)
     {
-        if (!ValidateTextureCopyBox(result, pDstTexture, region.textureSubresources,
-                                    region.textureOffset, region.textureSize))
+        if (!ValidateTextureCopyBox(result, pDstTexture, region.textureSubresources, region.textureOffset, region.textureSize))
         {
             m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
             valid = false;
         }
     }
@@ -1307,12 +1308,12 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
     {
         uint64_t footprint = 0;
 
-        if (!ValidateBufferTextureFootprint(result, pSrcBuffer, pDstTexture, region, &footprint) ||
-            !ValidateBufferTextureCopyCapabilities(
-                result, pDstTexture->GetBaseInfo(), region,
-                static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
+        if (!ValidateBufferTextureFootprint(result, pSrcBuffer, pDstTexture, region, &footprint)
+            || !ValidateBufferTextureCopyCapabilities(result, pDstTexture->GetBaseInfo(), region,
+                                                      static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
         {
             m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
             valid = false;
         }
 
@@ -1320,31 +1321,36 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
         {
             const RDGResourceManager::Allocation* pSrcResource =
                 m_pRDG->GetResourceManager()->ImportBufferAllocation(pSrcBuffer);
+
             const RDGResourceManager::Allocation* pDstResource =
                 m_pRDG->GetResourceManager()->ImportTextureAllocation(pDstTexture);
 
             BitField<RHIBufferUsageFlagBits> srcUsage(RHIBufferUsageFlagBits::eTransferSrcBuffer);
-            valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage,
-                                                       RHIAccessMode::eRead);
+
+            valid = m_pRDG->DeclareBufferAccessForPass(m_pNode, pSrcResource, srcUsage, RHIAccessMode::eRead);
 
             if (valid)
             {
                 m_pNode->contentAccesses.back().bufferOffset = region.bufferOffset;
+
                 m_pNode->contentAccesses.back().bufferSize   = footprint;
+
                 valid                                        = m_pRDG->DeclareTextureAccessForPass(
-                    m_pNode, pDstResource, RHITextureUsage::eTransferDst,
-                    CopyRange(region.textureSubresources), RHIAccessMode::eReadWrite, {},
-                    CoversMip(pDstTexture, region.textureSubresources.mipmap, region.textureOffset,
-                                                                     region.textureSize) ?
-                                                               RDGContentEffect::eFullWrite :
-                                                               RDGContentEffect::eWrite);
+                    m_pNode, pDstResource, RHITextureUsage::eTransferDst, CopyRange(region.textureSubresources),
+                    RHIAccessMode::eReadWrite, {},
+                    CoversMip(pDstTexture, region.textureSubresources.mipmap, region.textureOffset, region.textureSize)
+                                                               ? RDGContentEffect::eFullWrite
+                                                               : RDGContentEffect::eWrite);
             }
 
             if (valid)
             {
                 m_pNode->contentAccesses.back().sourceResourceId   = pSrcResource->id;
+
                 m_pNode->contentAccesses.back().sourceBufferOffset = region.bufferOffset;
+
                 m_pNode->contentAccesses.back().sourceBufferSize   = footprint;
+
                 m_ops.push_back([pSrcBuffer, pDstTexture, region](RDGPassCmdEncoder& encoder) {
                     encoder.CopyBufferToTexture(pSrcBuffer, pDstTexture, region);
                 });
@@ -1355,33 +1361,32 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RHITexture* pTexture,
-                                                                     const Color& color)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RHITexture* pTexture, const Color& color)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
-    valid = valid &&
-        (Check(pTexture != nullptr &&
-                   pTexture->GetSubResourceRange().aspect.HasFlag(RHITextureAspectFlagBits::eColor),
-               RDGErrorCode::eRange, "ClearTexture requires a color texture"));
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
+
+    valid      = valid
+         && (Check(pTexture != nullptr && pTexture->GetSubResourceRange().aspect.HasFlag(RHITextureAspectFlagBits::eColor),
+                   RDGErrorCode::eRange, "ClearTexture requires a color texture"));
 
     if ((valid) && (pTexture != nullptr))
     {
         // vkCmdClearColorImage requires graphics or compute capability, not a transfer-only queue.
         RestrictTransferQueues(false);
-        const RHITextureSubResourceRange range = pTexture->GetSubResourceRange();
-        const RDGResourceManager::Allocation* pResource =
-            m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
-        valid = m_pRDG->DeclareTextureAccessForPass(
-            m_pNode, pResource, RHITextureUsage::eTransferDst, range, RHIAccessMode::eReadWrite, {},
-            RDGContentEffect::eFullWrite);
+
+        const RHITextureSubResourceRange range          = pTexture->GetSubResourceRange();
+
+        const RDGResourceManager::Allocation* pResource = m_pRDG->GetResourceManager()->ImportTextureAllocation(pTexture);
+
+        valid = m_pRDG->DeclareTextureAccessForPass(m_pNode, pResource, RHITextureUsage::eTransferDst, range,
+                                                    RHIAccessMode::eReadWrite, {}, RDGContentEffect::eFullWrite);
 
         if (valid)
         {
-            m_ops.push_back([pTexture, color, range](RDGPassCmdEncoder& encoder) {
-                encoder.ClearTexture(pTexture, color, range);
-            });
+            m_ops.push_back(
+                [pTexture, color, range](RDGPassCmdEncoder& encoder) { encoder.ClearTexture(pTexture, color, range); });
         }
     }
 
@@ -1392,15 +1397,17 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     if (valid)
     {
         const RDGResourceManager::Allocation* resource = m_pRDG->m_resourceManager.Resolve(output);
+
         valid                                          = (resource != nullptr);
-        valid                                          = valid &&
-            (Check(resource->texFormat.mipmaps > 0 && resource->texFormat.mipmaps <= 32,
-                   RDGErrorCode::eRange, "Invalid logical mipmap texture"));
+
+        valid                                          = valid
+             && (Check(resource->texFormat.mipmaps > 0 && resource->texFormat.mipmaps <= 32, RDGErrorCode::eRange,
+                       "Invalid logical mipmap texture"));
 
         if (valid)
         {
@@ -1408,17 +1415,16 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
 
             if (!ValidateMipmapCapabilities(result, LogicalTextureInfo(resource)))
             {
-                m_pRDG->Fail(result.code,
-                             "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+                m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
                 valid = false;
             }
 
             if (valid)
             {
-                const uint32_t transferSrc =
-                    static_cast<uint32_t>(RHITextureUsageFlagBits::eTransferSrc);
-                valid = Check(!resource->imported || resource->usageFlags.HasFlag(transferSrc),
-                              RDGErrorCode::eBinding,
+                const uint32_t transferSrc = static_cast<uint32_t>(RHITextureUsageFlagBits::eTransferSrc);
+
+                valid = Check(!resource->imported || resource->usageFlags.HasFlag(transferSrc), RDGErrorCode::eBinding,
                               "Mipmap texture lacks transfer-source creation usage");
 
                 // Blits transition individual mips internally; require the capability without adding
@@ -1427,31 +1433,32 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
                 {
                     if (!resource->imported)
                     {
-                        const_cast<RDGResourceManager::Allocation*>(resource)->usageFlags.SetFlag(
-                            transferSrc);
+                        const_cast<RDGResourceManager::Allocation*>(resource)->usageFlags.SetFlag(transferSrc);
                     }
 
-                    const RHITextureSubResourceRange range =
-                        m_pRDG->m_resourceManager.ViewRange(*resource, {});
-                    RHITextureSubResourceRange base = range;
-                    base.levelCount                 = 1;
+                    const RHITextureSubResourceRange range = m_pRDG->m_resourceManager.ViewRange(*resource, {});
+
+                    RHITextureSubResourceRange base        = range;
+
+                    base.levelCount                        = 1;
+
                     // This fixed-function operation reads the predecessor's base mip and defines the output
                     // version, including that preserved base. It never declares a separate read of its output.
-                    valid = !(!m_pRDG->DeclareContentAccess(m_pNode, resource,
-                                                            RDGContentEffect::eRead, base) ||
-                              !m_pRDG->DeclareTextureAccessForPass(
-                                  m_pNode, resource, RHITextureUsage::eTransferDst, range,
-                                  RHIAccessMode::eReadWrite, {}, RDGContentEffect::eFullWrite, true,
-                                  false, output));
+                    valid = !(!m_pRDG->DeclareContentAccess(m_pNode, resource, RDGContentEffect::eRead, base)
+                              || !m_pRDG->DeclareTextureAccessForPass(m_pNode, resource, RHITextureUsage::eTransferDst, range,
+                                                                      RHIAccessMode::eReadWrite, {},
+                                                                      RDGContentEffect::eFullWrite, true, false, output));
 
                     if (valid)
                     {
                         m_pNode->contentAccesses.back().sourceResourceId = resource->id;
+
                         m_pNode->contentAccesses.back().sourceRange      = base;
+
                         RestrictTransferQueues(true);
-                        m_ops.push_back([resource](RDGPassCmdEncoder& encoder) {
-                            encoder.GenerateMipmaps(resource->pTexture);
-                        });
+
+                        m_ops.push_back(
+                            [resource](RDGPassCmdEncoder& encoder) { encoder.GenerateMipmaps(resource->pTexture); });
                     }
                 }
             }
@@ -1461,66 +1468,71 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::GenerateMipmaps(RDGTextu
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
-    RDGBuffer source,
-    RDGTexture destination,
-    const RHIBufferTextureCopyRegion& region)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(RDGBuffer                         source,
+                                                                            RDGTexture                        destination,
+                                                                            const RHIBufferTextureCopyRegion& region)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     if (valid)
     {
         const RDGResourceManager::Allocation* src = m_pRDG->m_resourceManager.Resolve(source);
+
         const RDGResourceManager::Allocation* dst = m_pRDG->m_resourceManager.Resolve(destination);
+
         valid                                     = !(src == nullptr || dst == nullptr);
 
         if (valid)
         {
             const RHITextureCreateInfo info = LogicalTextureInfo(dst);
+
             RDGResult result;
+
             uint64_t footprint = 0;
 
-            if (!ValidateTextureCopyBox(result, info, dst->name, region.textureSubresources,
-                                        region.textureOffset, region.textureSize) ||
-                !ValidateBufferTextureFootprint(result, src->bufferSize, info, region,
-                                                &footprint) ||
-                !ValidateBufferTextureCopyCapabilities(
-                    result, info, region,
-                    static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
+            if (!ValidateTextureCopyBox(result, info, dst->name, region.textureSubresources, region.textureOffset,
+                                        region.textureSize)
+                || !ValidateBufferTextureFootprint(result, src->bufferSize, info, region, &footprint)
+                || !ValidateBufferTextureCopyCapabilities(
+                    result, info, region, static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
             {
-                m_pRDG->Fail(result.code,
-                             "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+                m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
                 valid = false;
             }
 
-            valid = valid &&
-                (m_pRDG->DeclareBufferAccessForPass(
-                    m_pNode, src,
-                    BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
-                    RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
+            valid = valid
+                 && (m_pRDG->DeclareBufferAccessForPass(
+                     m_pNode, src, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
+                     RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
 
             if (valid)
             {
                 m_pNode->contentAccesses.back().bufferOffset = region.bufferOffset;
+
                 m_pNode->contentAccesses.back().bufferSize   = footprint;
+
                 valid                                        = m_pRDG->DeclareTextureAccessForPass(
-                    m_pNode, dst, RHITextureUsage::eTransferDst,
-                    CopyRange(region.textureSubresources), RHIAccessMode::eReadWrite, {},
-                    CoversMip(info, region.textureSubresources.mipmap, region.textureOffset,
-                                                                     region.textureSize) ?
-                                                               RDGContentEffect::eFullWrite :
-                                                               RDGContentEffect::eWrite,
+                    m_pNode, dst, RHITextureUsage::eTransferDst, CopyRange(region.textureSubresources),
+                    RHIAccessMode::eReadWrite, {},
+                    CoversMip(info, region.textureSubresources.mipmap, region.textureOffset, region.textureSize)
+                                                               ? RDGContentEffect::eFullWrite
+                                                               : RDGContentEffect::eWrite,
                     true, false, destination);
             }
 
             if (valid)
             {
                 RDGContentAccess& access  = m_pNode->contentAccesses.back();
+
                 access.sourceResourceId   = src->id;
+
                 access.sourceBufferOffset = region.bufferOffset;
+
                 access.sourceBufferSize   = footprint;
+
                 m_ops.push_back([src, dst, region](RDGPassCmdEncoder& encoder) {
                     encoder.CopyBufferToTexture(src->pBuffer, dst->pTexture, region);
                 });
@@ -1531,36 +1543,41 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBufferToTexture(
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture texture,
-                                                                     const Color& color)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture texture, const Color& color)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     if (valid)
     {
         const RDGResourceManager::Allocation* resource = m_pRDG->m_resourceManager.Resolve(texture);
+
         valid                                          = (resource != nullptr);
-        valid                                          = valid &&
-            (Check(!FormatIsDepthOnly(resource->texFormat.format) &&
-                       !FormatIsDepthStencil(resource->texFormat.format) &&
-                       !FormatIsStencilOnly(resource->texFormat.format),
-                   RDGErrorCode::eRange, "ClearTexture requires a color texture"));
+
+        valid                                          = valid
+             && (Check(!FormatIsDepthOnly(resource->texFormat.format) && !FormatIsDepthStencil(resource->texFormat.format)
+                           && !FormatIsStencilOnly(resource->texFormat.format),
+                       RDGErrorCode::eRange, "ClearTexture requires a color texture"));
 
         if (valid)
         {
             RHITextureSubResourceRange range{};
+
             range.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
             range.levelCount = resource->texFormat.mipmaps;
+
             range.layerCount = resource->texFormat.arrayLayers;
-            valid            = m_pRDG->DeclareTextureAccessForPass(
-                m_pNode, resource, RHITextureUsage::eTransferDst, range, RHIAccessMode::eReadWrite,
-                {}, RDGContentEffect::eFullWrite, true, false, texture);
+
+            valid            = m_pRDG->DeclareTextureAccessForPass(m_pNode, resource, RHITextureUsage::eTransferDst, range,
+                                                                   RHIAccessMode::eReadWrite, {}, RDGContentEffect::eFullWrite, true,
+                                                                   false, texture);
 
             if (valid)
             {
                 RestrictTransferQueues(false);
+
                 m_ops.push_back([resource, color, range](RDGPassCmdEncoder& encoder) {
                     encoder.ClearTexture(resource->pTexture, color, range);
                 });
@@ -1571,133 +1588,138 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::ClearTexture(RDGTexture 
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(
-    RDGBuffer source,
-    RDGBuffer destination,
-    const RHIBufferCopyRegion& region)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyBuffer(RDGBuffer                  source,
+                                                                   RDGBuffer                  destination,
+                                                                   const RHIBufferCopyRegion& region)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     if (valid)
     {
         const RDGResourceManager::Allocation* src = m_pRDG->m_resourceManager.Resolve(source);
+
         const RDGResourceManager::Allocation* dst = m_pRDG->m_resourceManager.Resolve(destination);
+
         valid                                     = !(src == nullptr || dst == nullptr);
-        valid                                     = valid &&
-            (Check(region.size > 0 && region.srcOffset <= src->bufferSize &&
-                       region.size <= src->bufferSize - region.srcOffset &&
-                       region.dstOffset <= dst->bufferSize &&
-                       region.size <= dst->bufferSize - region.dstOffset &&
-                       (src != dst || region.srcOffset + region.size <= region.dstOffset ||
-                        region.dstOffset + region.size <= region.srcOffset),
-                   RDGErrorCode::eRange, "Invalid logical buffer copy range"));
-        valid = valid &&
-            (m_pRDG->DeclareBufferAccessForPass(
-                m_pNode, src,
-                BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
-                RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
+
+        valid                                     = valid
+             && (Check(region.size > 0 && region.srcOffset <= src->bufferSize
+                           && region.size <= src->bufferSize - region.srcOffset && region.dstOffset <= dst->bufferSize
+                           && region.size <= dst->bufferSize - region.dstOffset
+                           && (src != dst || region.srcOffset + region.size <= region.dstOffset
+                               || region.dstOffset + region.size <= region.srcOffset),
+                       RDGErrorCode::eRange, "Invalid logical buffer copy range"));
+
+        valid = valid
+             && (m_pRDG->DeclareBufferAccessForPass(
+                 m_pNode, src, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferSrcBuffer),
+                 RHIAccessMode::eRead, {}, RDGContentEffect::eRead, true, false, source));
 
         if (valid)
         {
             m_pNode->contentAccesses.back().bufferOffset = region.srcOffset;
+
             m_pNode->contentAccesses.back().bufferSize   = region.size;
+
             valid                                        = m_pRDG->DeclareBufferAccessForPass(
-                m_pNode, dst,
-                BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
+                m_pNode, dst, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
                 RHIAccessMode::eReadWrite, {},
-                region.dstOffset == 0 && region.size == dst->bufferSize ?
-                                                           RDGContentEffect::eFullWrite :
-                                                           RDGContentEffect::eWrite,
+                region.dstOffset == 0 && region.size == dst->bufferSize ? RDGContentEffect::eFullWrite
+                                                                                                               : RDGContentEffect::eWrite,
                 true, false, destination);
         }
 
         if (valid)
         {
             RDGContentAccess& destinationAccess  = m_pNode->contentAccesses.back();
+
             destinationAccess.sourceResourceId   = src->id;
+
             destinationAccess.bufferOffset       = region.dstOffset;
+
             destinationAccess.bufferSize         = region.size;
+
             destinationAccess.sourceBufferOffset = region.srcOffset;
+
             destinationAccess.sourceBufferSize   = region.size;
-            m_ops.push_back([src, dst, region](RDGPassCmdEncoder& encoder) {
-                encoder.CopyBuffer(src->pBuffer, dst->pBuffer, region);
-            });
+
+            m_ops.push_back(
+                [src, dst, region](RDGPassCmdEncoder& encoder) { encoder.CopyBuffer(src->pBuffer, dst->pBuffer, region); });
         }
     }
 
     return *this;
 }
 
-RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
-    RDGTexture source,
-    RDGTexture destination,
-    VectorView<RHITextureCopyRegion> regions)
+RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(RDGTexture                       source,
+                                                                    RDGTexture                       destination,
+                                                                    VectorView<RHITextureCopyRegion> regions)
 {
     bool valid = true;
 
-    valid = m_pRDG->CheckRecorder(m_pNode, m_generation);
+    valid      = m_pRDG->CheckRecorder(m_pNode, m_generation);
 
     if (valid)
     {
         const RDGResourceManager::Allocation* src = m_pRDG->m_resourceManager.Resolve(source);
+
         const RDGResourceManager::Allocation* dst = m_pRDG->m_resourceManager.Resolve(destination);
+
         valid                                     = !(src == nullptr || dst == nullptr);
-        valid                                     = valid &&
-            (Check(!regions.empty() && regions.data() != nullptr &&
-                       src->texFormat.format == dst->texFormat.format &&
-                       src->texFormat.sampleCount == dst->texFormat.sampleCount,
-                   RDGErrorCode::eRange,
-                   "Logical texture copy requires matching formats/samples and regions"));
+
+        valid                                     = valid
+             && (Check(!regions.empty() && regions.data() != nullptr && src->texFormat.format == dst->texFormat.format
+                           && src->texFormat.sampleCount == dst->texFormat.sampleCount,
+                       RDGErrorCode::eRange, "Logical texture copy requires matching formats/samples and regions"));
 
         if (valid)
         {
             RDGResult result;
+
             const RHITextureCreateInfo srcInfo = LogicalTextureInfo(src);
+
             const RHITextureCreateInfo dstInfo = LogicalTextureInfo(dst);
 
             for (RHITextureCopyRegion const& region : regions)
             {
-                if (!ValidateTextureCopyBox(result, srcInfo, src->name, region.srcSubresources,
-                                            region.srcOffset, region.size) ||
-                    !ValidateTextureCopyBox(result, dstInfo, dst->name, region.dstSubresources,
-                                            region.dstOffset, region.size) ||
-                    !ValidateTextureCopyCapabilities(
+                if (!ValidateTextureCopyBox(result, srcInfo, src->name, region.srcSubresources, region.srcOffset, region.size)
+                    || !ValidateTextureCopyBox(result, dstInfo, dst->name, region.dstSubresources, region.dstOffset,
+                                               region.size)
+                    || !ValidateTextureCopyCapabilities(
                         result, srcInfo, dstInfo, region,
                         static_cast<RDGTransferPass*>(m_pNode->pCompiledPass)->queueCapabilities))
                 {
-                    m_pRDG->Fail(result.code,
-                                 "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+                    m_pRDG->Fail(result.code, "Pass '" + m_pNode->tag.ToString() + "': " + result.message);
+
                     valid = false;
                 }
 
-                valid = valid &&
-                    (Check(region.srcSubresources.layerCount == region.dstSubresources.layerCount &&
-                               int64_t(region.srcSubresources.aspect) ==
-                                   int64_t(region.dstSubresources.aspect),
-                           RDGErrorCode::eRange,
-                           "Copy source and destination subresources do not match"));
+                valid = valid
+                     && (Check(region.srcSubresources.layerCount == region.dstSubresources.layerCount
+                                   && int64_t(region.srcSubresources.aspect) == int64_t(region.dstSubresources.aspect),
+                               RDGErrorCode::eRange, "Copy source and destination subresources do not match"));
 
                 if (valid)
                 {
                     const Vec3i extent = MipExtent3D(dstInfo, region.dstSubresources.mipmap);
+
                     const bool full    = region.dstOffset == Vec3i(0) && region.size == extent;
-                    valid              = !((!m_pRDG->DeclareTextureAccessForPass(
-                                   m_pNode, src, RHITextureUsage::eTransferSrc,
-                                   CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},
-                                   RDGContentEffect::eRead, true, false, source) ||
-                               !m_pRDG->DeclareTextureAccessForPass(
-                                   m_pNode, dst, RHITextureUsage::eTransferDst,
-                                   CopyRange(region.dstSubresources), RHIAccessMode::eReadWrite, {},
-                                   full ? RDGContentEffect::eFullWrite : RDGContentEffect::eWrite,
-                                   true, false, destination)));
+
+                    valid              = !((!m_pRDG->DeclareTextureAccessForPass(m_pNode, src, RHITextureUsage::eTransferSrc,
+                                                                                 CopyRange(region.srcSubresources), RHIAccessMode::eRead, {},
+                                                                                 RDGContentEffect::eRead, true, false, source)
+                               || !m_pRDG->DeclareTextureAccessForPass(
+                                   m_pNode, dst, RHITextureUsage::eTransferDst, CopyRange(region.dstSubresources),
+                                   RHIAccessMode::eReadWrite, {},
+                                   full ? RDGContentEffect::eFullWrite : RDGContentEffect::eWrite, true, false, destination)));
 
                     if (valid)
                     {
                         m_pNode->contentAccesses.back().sourceResourceId = src->id;
-                        m_pNode->contentAccesses.back().sourceRange =
-                            CopyRange(region.srcSubresources);
+
+                        m_pNode->contentAccesses.back().sourceRange      = CopyRange(region.srcSubresources);
                     }
                 }
 
@@ -1710,6 +1732,7 @@ RDGTransferPassCmdRecorder& RDGTransferPassCmdRecorder::CopyTexture(
             if (valid)
             {
                 HeapVector<RHITextureCopyRegion> copy(regions);
+
                 m_ops.push_back([src, dst, copy = std::move(copy)](RDGPassCmdEncoder& encoder) {
                     encoder.CopyTexture(src->pTexture, dst->pTexture, copy);
                 });

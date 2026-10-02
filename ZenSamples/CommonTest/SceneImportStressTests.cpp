@@ -21,8 +21,7 @@ public:
     {
         const int64_t stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_path = std::filesystem::temp_directory_path() /
-            ("zen_scene_stress_" + std::to_string(stamp) + ".gltf");
+        m_path              = std::filesystem::temp_directory_path() / ("zen_scene_stress_" + std::to_string(stamp) + ".gltf");
 
         std::ofstream file(m_path, std::ios::binary);
 
@@ -90,8 +89,7 @@ TEST(SceneImportStress, EmptySceneHasFiniteBoundsAndCanNormalizeAndDeform)
 
     HeapVector<asset::Vertex> deformed;
 
-    EXPECT_TRUE(sg::ApplySceneDeformations(
-        scene, VectorView<const asset::Vertex>(loader.GetVertices()), deformed));
+    EXPECT_TRUE(sg::ApplySceneDeformations(scene, VectorView<const asset::Vertex>(loader.GetVertices()), deformed));
 
     EXPECT_TRUE(deformed.empty());
 
@@ -195,9 +193,9 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 {
     sg::Scene scene;
 
-    UniquePtr<sg::Node> parent = MakeUnique<sg::Node>(0, "LightParent");
+    UniquePtr<sg::Node> parent      = MakeUnique<sg::Node>(0, "LightParent");
 
-    UniquePtr<sg::Node> child = MakeUnique<sg::Node>(1, "InheritedLight");
+    UniquePtr<sg::Node> child       = MakeUnique<sg::Node>(1, "InheritedLight");
 
     UniquePtr<sg::Node> independent = MakeUnique<sg::Node>(2, "IndependentLight");
 
@@ -207,19 +205,19 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 
     sg::LightProperties inheritedProperties;
 
-    inheritedProperties.position = Vec3(1, 0, 0);
+    inheritedProperties.position   = Vec3(1, 0, 0);
 
-    inheritedProperties.intensity = 7.0f;
+    inheritedProperties.intensity  = 7.0f;
 
     UniquePtr<sg::Light> inherited = sg::Light::CreatePointLight("Inherited", inheritedProperties);
 
     sg::LightProperties independentProperties;
 
-    independentProperties.position = Vec3(2, 0, 0);
+    independentProperties.position  = Vec3(2, 0, 0);
 
     independentProperties.intensity = 13.0f;
 
-    UniquePtr<sg::Light> other = sg::Light::CreatePointLight("Independent", independentProperties);
+    UniquePtr<sg::Light> other      = sg::Light::CreatePointLight("Independent", independentProperties);
 
     child->AddComponent(inherited.Get());
 
@@ -229,7 +227,7 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 
     scene.AddComponent(std::move(other));
 
-    std::vector<UniquePtr<sg::Node>> nodes;
+    zen::HeapVector<UniquePtr<sg::Node>> nodes;
 
     nodes.push_back(std::move(parent));
 
@@ -249,7 +247,7 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 
     scene.GetNodes()[0]->visible = false;
 
-    lights = rc::BuildSceneLights(scene);
+    lights                       = rc::BuildSceneLights(scene);
 
     ASSERT_EQ(lights.size(), 2u);
 
@@ -267,7 +265,7 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 
     scene.GetNodes()[2]->visible = false;
 
-    lights = rc::BuildSceneLights(scene);
+    lights                       = rc::BuildSceneLights(scene);
 
     ASSERT_EQ(lights.size(), 2u);
 
@@ -292,7 +290,7 @@ TEST(SceneImportStress, LightVisibilityUsesOwnersAndAncestorsWithoutAddingFallba
 
     scene.GetNodes()[1]->visible = true;
 
-    lights = rc::BuildSceneLights(scene);
+    lights                       = rc::BuildSceneLights(scene);
 
     ASSERT_EQ(lights.size(), 2u);
 

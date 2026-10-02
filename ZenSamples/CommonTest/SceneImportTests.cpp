@@ -34,7 +34,7 @@ TEST(SceneImport, ImportsOnlyActiveLightInstancesAndCameraNodesInGLTFAndGLB)
 
         loader.LoadFromFile(SceneFixture(file), &scene);
 
-        const std::vector<sg::Light*> lights = scene.GetComponents<sg::Light>();
+        const zen::HeapVector<sg::Light*> lights = scene.GetComponents<sg::Light>();
 
         ASSERT_EQ(lights.size(), 2u);
 
@@ -48,7 +48,7 @@ TEST(SceneImport, ImportsOnlyActiveLightInstancesAndCameraNodesInGLTFAndGLB)
 
         ExpectVectorNear(Vec3(lights[1]->GetProperties().direction), Vec3(-1, 0, 0));
 
-        const std::vector<sg::SceneCamera*> cameras = scene.GetComponents<sg::SceneCamera>();
+        const zen::HeapVector<sg::SceneCamera*> cameras = scene.GetComponents<sg::SceneCamera>();
 
         ASSERT_EQ(cameras.size(), 2u);
 
@@ -86,7 +86,7 @@ TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
 
     ExpectVectorNear(scene.GetAABB().GetMax(), Vec3(0.5f, 0.5f, 0));
 
-    const std::vector<sg::Light*> lights = scene.GetComponents<sg::Light>();
+    const zen::HeapVector<sg::Light*> lights = scene.GetComponents<sg::Light>();
 
     ExpectVectorNear(lights[0]->GetProperties().position, Vec3(0, 0.5f, 0.875f));
 
@@ -101,8 +101,7 @@ TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
     EXPECT_TRUE(mesh->deformationInWorldSpace);
 
     // Skinning already applied the joint world matrix; normalization now maps those vertices.
-    EXPECT_EQ(mesh->GetData().modelMatrix,
-              glm::scale(Mat4(1), Vec3(0.25f)) * glm::translate(Mat4(1), Vec3(-10, 0, -0.5f)));
+    EXPECT_EQ(mesh->GetData().modelMatrix, glm::scale(Mat4(1), Vec3(0.25f)) * glm::translate(Mat4(1), Vec3(-10, 0, -0.5f)));
 
     const sg::SceneCamera* camera = scene.GetComponents<sg::SceneCamera>().front();
 
@@ -124,12 +123,11 @@ TEST(SceneImport, NormalizationKeepsMeshesLightsAndCamerasTogether)
 TEST(SceneImport, FallbackLightsCoverSixFacesAndStayOutsideWorldGeometryBounds)
 {
     for (const sg::AABB& bounds :
-         {sg::AABB(Vec3(-3, -1, -7), Vec3(8, 5, 2)), sg::AABB(Vec3(0), Vec3(0)),
-          sg::AABB(Vec3(-2, 0, -2), Vec3(2, 0, 2))})
+         {sg::AABB(Vec3(-3, -1, -7), Vec3(8, 5, 2)), sg::AABB(Vec3(0), Vec3(0)), sg::AABB(Vec3(-2, 0, -2), Vec3(2, 0, 2))})
     {
         sg::Scene scene;
 
-        scene.GetAABB() = bounds;
+        scene.GetAABB()                         = bounds;
 
         const HeapVector<rc::SceneLight> lights = rc::BuildSceneLights(scene);
 
@@ -139,12 +137,12 @@ TEST(SceneImport, FallbackLightsCoverSixFacesAndStayOutsideWorldGeometryBounds)
         {
             const rc::SceneLight& light = lights[face];
 
-            const uint32_t axis = face / 2;
+            const uint32_t axis         = face / 2;
 
             EXPECT_TRUE(rc::SceneLights::Validate(light));
 
-            EXPECT_TRUE(glm::any(glm::lessThan(light.position, bounds.GetMin())) ||
-                        glm::any(glm::greaterThan(light.position, bounds.GetMax())));
+            EXPECT_TRUE(glm::any(glm::lessThan(light.position, bounds.GetMin()))
+                        || glm::any(glm::greaterThan(light.position, bounds.GetMax())));
 
             EXPECT_GT(glm::dot(light.direction, bounds.GetCenter() - light.position), 0);
 
@@ -202,7 +200,7 @@ TEST(SceneImport, RetainsRichMaterialBindingsTransformsAndColorSpaces)
 
     const sg::Material& material = *scene.GetComponents<sg::Material>().front();
 
-    const sg::Sampler* sampler = scene.GetComponents<sg::Sampler>().front();
+    const sg::Sampler* sampler   = scene.GetComponents<sg::Sampler>().front();
 
     EXPECT_EQ(sampler->minFilter, sg::TextureFilter::Nearest);
 
@@ -262,8 +260,7 @@ TEST(SceneImport, RetainsRichMaterialBindingsTransformsAndColorSpaces)
 
     EXPECT_EQ(material.features.clearcoatTexture.texture->format, asset::Format::R8G8B8A8_UNORM);
 
-    EXPECT_NE(material.features.specularColorTexture.texture,
-              material.features.clearcoatTexture.texture);
+    EXPECT_NE(material.features.specularColorTexture.texture, material.features.clearcoatTexture.texture);
 }
 
 TEST(SceneImport, SceneOwnsSkinAnimationAndMorphPayloadAfterLoaderDestruction)
@@ -275,6 +272,7 @@ TEST(SceneImport, SceneOwnsSkinAnimationAndMorphPayloadAfterLoaderDestruction)
 
         loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
     }
+
     const sg::SceneAssetData& data = scene.GetAssetData();
 
     ASSERT_EQ(data.skins.size(), 1u);
@@ -312,9 +310,9 @@ TEST(SceneImport, PerspectiveAndOrthographicCamerasPublishAuthoredMatrices)
 
     loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
 
-    const std::vector<sg::SceneCamera*> cameras = scene.GetComponents<sg::SceneCamera>();
+    const zen::HeapVector<sg::SceneCamera*> cameras = scene.GetComponents<sg::SceneCamera>();
 
-    UniquePtr<sg::Camera> camera = sg::Camera::CreateUnique(Vec3(0, 0, 1), Vec3(0), 1.0f);
+    UniquePtr<sg::Camera> camera                    = sg::Camera::CreateUnique(Vec3(0, 0, 1), Vec3(0), 1.0f);
 
     camera->SetupFromSceneCamera(*cameras[0], 2.0f);
 
@@ -336,8 +334,7 @@ TEST(SceneImport, PerspectiveAndOrthographicCamerasPublishAuthoredMatrices)
 
     EXPECT_FLOAT_EQ(camera->GetProjectionMatrix()[1][1], -1.0f / 3.0f);
 
-    const sg::CameraUniformData* uniforms =
-        reinterpret_cast<const sg::CameraUniformData*>(camera->GetUniformData());
+    const sg::CameraUniformData* uniforms = reinterpret_cast<const sg::CameraUniformData*>(camera->GetUniformData());
 
     EXPECT_EQ(uniforms->projViewMatrix, uniforms->proj * uniforms->view);
 }
@@ -427,19 +424,17 @@ TEST(SceneImport, FailedImportsDoNotPublishPartialScenesOrTraverseCycles)
 
     loader.LoadFromFile(SceneFixture("complete_scene.gltf"), &scene);
 
-    const sg::Node* previous = scene.GetRenderableNodes().front();
+    const sg::Node* previous                  = scene.GetRenderableNodes().front();
 
     const std::vector<asset::Vertex> vertices = loader.GetVertices();
 
-    const sg::Texture* defaultTexture = scene.GetDefaultTextures().pBaseColor;
+    const sg::Texture* defaultTexture         = scene.GetDefaultTextures().pBaseColor;
 
-    EXPECT_THROW(loader.LoadFromFile(SceneFixture("cyclic_scene.gltf"), &scene),
-                 std::runtime_error);
+    EXPECT_THROW(loader.LoadFromFile(SceneFixture("cyclic_scene.gltf"), &scene), std::runtime_error);
 
     EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
 
-    EXPECT_THROW(loader.LoadFromFile(SceneFixture("unsupported_uv_scene.gltf"), &scene),
-                 std::runtime_error);
+    EXPECT_THROW(loader.LoadFromFile(SceneFixture("unsupported_uv_scene.gltf"), &scene), std::runtime_error);
 
     EXPECT_EQ(scene.GetRenderableNodes().front(), previous);
 
@@ -461,14 +456,13 @@ TEST(SceneImport, FailedImportsDoNotPublishPartialScenesOrTraverseCycles)
 
 TEST(SceneImport, AutomaticCameraFramesFlatAndPointSizedModelsFromOutside)
 {
-    for (const sg::AABB& bounds :
-         {sg::AABB(Vec3(-1, -1, 0), Vec3(1, 1, 0)), sg::AABB(Vec3(0), Vec3(0))})
+    for (const sg::AABB& bounds : {sg::AABB(Vec3(-1, -1, 0), Vec3(1, 1, 0)), sg::AABB(Vec3(0), Vec3(0))})
     {
         UniquePtr<sg::Camera> camera = sg::Camera::CreateUnique(Vec3(0, 0, 1), Vec3(0), 1.0f);
 
         camera->SetupOnAABB(bounds);
 
-        EXPECT_GT(camera->GetPos().z, bounds.GetMax().z);
+        EXPECT_GT(camera->GetPos().y, bounds.GetMax().y);
 
         for (uint32_t column = 0; column < 4; ++column)
         {

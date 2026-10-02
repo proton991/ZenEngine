@@ -130,8 +130,7 @@ struct RuntimeDebugUITestAccess
 
         ui.BuildSceneSettings();
 
-        const ImRect rectangle =
-            ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
+        const ImRect rectangle = ImGui::WindowRectRelToAbs(window, window->NavRectRel[ImGuiNavLayer_Main]);
 
         ImGui::End();
 
@@ -144,9 +143,9 @@ struct RuntimeDebugUITestAccess
     {
         const ImRect rectangle = DrawLightCount(ui, buttonLabel);
 
-        const ImVec2 center = rectangle.GetCenter();
+        const ImVec2 center    = rectangle.GetCenter();
 
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO& io            = ImGui::GetIO();
 
         io.AddMousePosEvent(center.x, center.y);
 
@@ -198,15 +197,15 @@ TEST(RuntimeSceneControls, PendingLightEditsPreserveOrbitUnlessPositionWasEdited
 {
     rc::SceneLight previous;
 
-    rc::SceneLight current = previous;
+    rc::SceneLight current   = previous;
 
-    current.position = Vec3(1, 2, 3);
+    current.position         = Vec3(1, 2, 3);
 
     rc::SceneLight requested = previous;
 
-    requested.intensity = 10;
+    requested.intensity      = 10;
 
-    rc::SceneLight merged = MergeRuntimeLightEdit(current, previous, requested);
+    rc::SceneLight merged    = MergeRuntimeLightEdit(current, previous, requested);
 
     EXPECT_EQ(merged.position, current.position);
 
@@ -214,7 +213,7 @@ TEST(RuntimeSceneControls, PendingLightEditsPreserveOrbitUnlessPositionWasEdited
 
     requested.position = Vec3(4, 5, 6);
 
-    merged = MergeRuntimeLightEdit(current, previous, requested);
+    merged             = MergeRuntimeLightEdit(current, previous, requested);
 
     EXPECT_EQ(merged.position, requested.position);
 }
@@ -256,8 +255,7 @@ public:
         return settings;
     }
 
-    bool ApplyRuntimeSceneSettings(const RuntimeSceneSettings&,
-                                   const RuntimeSceneSettings& next) override
+    bool ApplyRuntimeSceneSettings(const RuntimeSceneSettings&, const RuntimeSceneSettings& next) override
     {
         settings = next;
 
@@ -333,29 +331,29 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
     ImGuiContext* context = ImGui::CreateContext();
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io           = ImGui::GetIO();
 
-    io.DisplaySize = ImVec2(640, 480);
+    io.DisplaySize        = ImVec2(640, 480);
 
-    io.DeltaTime = 1.0f / 60.0f;
+    io.DeltaTime          = 1.0f / 60.0f;
 
-    io.IniFilename = nullptr;
+    io.IniFilename        = nullptr;
 
     unsigned char* pixels = nullptr;
 
-    int width = 0;
+    int width             = 0;
 
-    int height = 0;
+    int height            = 0;
 
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
     {
         ModelSceneControls scene;
 
-        scene.models.basePath = "D:/Assets";
+        scene.models.basePath    = "D:/Assets";
 
-        scene.models.models = {{"Box/glTF/Box.gltf", "D:/Assets/Box/glTF/Box.gltf"},
-                               {"Box/glTF-Binary/Box.glb", "D:/Assets/Box/glTF-Binary/Box.glb"}};
+        scene.models.models      = {{"Box/glTF/Box.gltf", "D:/Assets/Box/glTF/Box.gltf"},
+                                    {"Box/glTF-Binary/Box.glb", "D:/Assets/Box/glTF-Binary/Box.glb"}};
 
         scene.models.currentPath = scene.models.models[0].path;
 
@@ -413,7 +411,7 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
         rc::VoxelGIRuntimeSettings giEdit = device.GetRendererServer()->GetVoxelGISettings();
 
-        giEdit.cone.indirectIntensity = 8;
+        giEdit.cone.indirectIntensity     = 8;
 
         RuntimeDebugUITestAccess::SetGI(ui, giEdit);
 
@@ -446,10 +444,10 @@ TEST(RuntimeUIIntegration, ModelSelectionSearchQueuesOnceAndRevisionsDiscardStal
 
         const std::string longLabel = std::string(300, 'x') + "/Model##With###Name.glb";
 
-        scene.models.models = {{longLabel, "D:/Assets/" + longLabel},
-                               {"Other/Model###Name.glb", "D:/Assets/Other/Model###Name.glb"}};
+        scene.models.models         = {{longLabel, "D:/Assets/" + longLabel},
+                                       {"Other/Model###Name.glb", "D:/Assets/Other/Model###Name.glb"}};
 
-        scene.models.currentPath = scene.models.models[0].path;
+        scene.models.currentPath    = scene.models.models[0].path;
 
         RuntimeDebugUITestAccess::SetModelFilter(ui, "");
 
@@ -509,19 +507,19 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
 
     ImGuiContext* context = ImGui::CreateContext();
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io           = ImGui::GetIO();
 
-    io.DisplaySize = ImVec2(640, 480);
+    io.DisplaySize        = ImVec2(640, 480);
 
-    io.DeltaTime = 1.0f / 60.0f;
+    io.DeltaTime          = 1.0f / 60.0f;
 
-    io.IniFilename = nullptr;
+    io.IniFilename        = nullptr;
 
     unsigned char* pixels = nullptr;
 
-    int width = 0;
+    int width             = 0;
 
-    int height = 0;
+    int height            = 0;
 
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
@@ -617,7 +615,7 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
         EXPECT_EQ(scene.applied, 4u);
 
         // Read-only model lights occupy the same renderer capacity as editable lights.
-        scene.settings.lightCount = 0;
+        scene.settings.lightCount      = 0;
 
         scene.settings.modelLightCount = rc::MaxSceneLights;
 
@@ -637,11 +635,11 @@ TEST(RuntimeUIIntegration, LightCountButtonsRespectBoundsAndApplyValidSceneEdits
 
         RuntimeSceneSettings overCapacity = scene.settings;
 
-        overCapacity.lightCount = 1;
+        overCapacity.lightCount           = 1;
 
         EXPECT_FALSE(ValidateRuntimeSceneSettings(overCapacity));
 
-        overCapacity.lightCount = 0;
+        overCapacity.lightCount      = 0;
 
         overCapacity.modelLightCount = rc::MaxSceneLights + 1;
 
@@ -701,11 +699,11 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
         RuntimeDebugUITestAccess::Reload(ui);
 
-        rc::RendererServer& server = *device.GetRendererServer();
+        rc::RendererServer& server         = *device.GetRendererServer();
 
         rc::VoxelGIRuntimeSettings initial = server.GetVoxelGISettings();
 
-        initial.resolution = 64;
+        initial.resolution                 = 64;
 
         EXPECT_TRUE(server.ApplyVoxelGISettings(initial));
 
@@ -719,30 +717,28 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
         ASSERT_TRUE(owner->EnsureReady());
 
-        RHITexture* ownerTexture = owner->GetVoxelTextures().pOwner;
+        RHITexture* ownerTexture                = owner->GetVoxelTextures().pOwner;
 
         rc::VoxelGIRuntimeSettings insufficient = next;
 
-        insufficient.resolution = 256;
+        insufficient.resolution                 = 256;
 
-        insufficient.averagedReflectance = true;
+        insufficient.averagedReflectance        = true;
 
-        insufficient.reflectanceBudgetBytes = 64ull * 1024 * 1024;
+        insufficient.reflectanceBudgetBytes     = 64ull * 1024 * 1024;
 
-        insufficient.asyncCompute = next.asyncCompute == platform::AsyncComputeMode::eAuto ?
-            platform::AsyncComputeMode::eDisabled :
-            platform::AsyncComputeMode::eAuto;
+        insufficient.asyncCompute               = next.asyncCompute == platform::AsyncComputeMode::eAuto
+                                                    ? platform::AsyncComputeMode::eDisabled
+                                                    : platform::AsyncComputeMode::eAuto;
 
-        insufficient.shadowMapResolution = 512;
+        insufficient.shadowMapResolution        = 512;
 
-        uint64_t required = 0;
+        uint64_t required                       = 0;
 
-        const bool supportsLargeBuffer =
-            device.GetGPUInfo().maxStorageBufferRange >= 256ull * 1024 * 1024;
+        const bool supportsLargeBuffer          = device.GetGPUInfo().maxStorageBufferRange >= 256ull * 1024 * 1024;
 
         EXPECT_EQ(server.ValidateVoxelGIResources(insufficient, required),
-                  supportsLargeBuffer ? rc::GIResourceStatus::eBudget :
-                                        rc::GIResourceStatus::eDescriptorRange);
+                  supportsLargeBuffer ? rc::GIResourceStatus::eBudget : rc::GIResourceStatus::eDescriptorRange);
 
         EXPECT_EQ(required, supportsLargeBuffer ? 320ull * 1024 * 1024 : 0);
 
@@ -766,11 +762,9 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
         EXPECT_EQ(server.RequestVoxelizer(), owner);
 
-        EXPECT_STREQ(
-            RuntimeDebugUITestAccess::Status(ui),
-            supportsLargeBuffer ?
-                "Reflectance budget is below the required minimum. Current settings are unchanged." :
-                "Averaged reflectance exceeds the GPU buffer limit. Use a lower voxel resolution.");
+        EXPECT_STREQ(RuntimeDebugUITestAccess::Status(ui),
+                     supportsLargeBuffer ? "Reflectance budget is below the required minimum. Current settings are unchanged."
+                                         : "Averaged reflectance exceeds the GPU buffer limit. Use a lower voxel resolution.");
 
         RuntimeDebugUITestAccess::EnsureReflectanceBudget(ui);
 
@@ -819,11 +813,11 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
         EXPECT_EQ(server.GetVoxelGISettings().resolution, 128u);
 
-        next.cone.analyticLighting = false;
+        next.cone.analyticLighting    = false;
 
         next.cone.environmentLighting = false;
 
-        next.cone.emissiveLighting = false;
+        next.cone.emissiveLighting    = false;
 
         RuntimeDebugUITestAccess::SetGI(ui, next);
 
@@ -869,7 +863,7 @@ TEST(RuntimeUIIntegration, AutoApplyDefersResourcesButUpdatesLiveControlsAndSupp
 
         RuntimeDebugUITestAccess::SetAutomatic(ui, true);
 
-        sceneEdit.lightCount = 1;
+        sceneEdit.lightCount          = 1;
 
         sceneEdit.lights[0].direction = Vec3(0);
 
@@ -905,9 +899,9 @@ bool ExecuteVoxelGeneration(rc::RenderDevice& device, rc::RendererServer& server
 {
     rc::VoxelizerBase* voxelizer = server.RequestVoxelizer();
 
-    rc::RenderGraph& graph = *device.GetCurrentFrameRDG();
+    rc::RenderGraph& graph       = *device.GetCurrentFrameRDG();
 
-    bool succeeded = graph.Begin();
+    bool succeeded               = graph.Begin();
 
     if (succeeded)
     {
@@ -936,9 +930,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
     RHIOptions::GetInstance().SetRayTracingEnabled(false);
 
-    rc::RenderDevice device(RHIAPIType::eVulkan, 2,
-                            (GetParam() & 1) ? RHIExecutionMode::eThreaded :
-                                               RHIExecutionMode::eInline,
+    rc::RenderDevice device(RHIAPIType::eVulkan, 2, (GetParam() & 1) ? RHIExecutionMode::eThreaded : RHIExecutionMode::eInline,
                             platform::AsyncComputeMode::eAuto);
 
     RHIViewport* viewport = device.CreateViewport(&window, 64, 64, false);
@@ -957,15 +949,15 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
     rc::SceneData data{};
 
-    data.pScene = &source;
+    data.pScene      = &source;
 
-    data.pVertices = &vertex;
+    data.pVertices   = &vertex;
 
-    data.pIndices = &index;
+    data.pIndices    = &index;
 
     data.numVertices = 1;
 
-    data.numIndices = 1;
+    data.numIndices  = 1;
 
     rc::RenderScene renderScene(&device, data);
 
@@ -986,12 +978,11 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
             rc::VoxelGIRuntimeSettings settings = server.GetVoxelGISettings();
 
-            settings.resolution = resolution;
+            settings.resolution                 = resolution;
 
-            settings.voxelizer = (GetParam() & 2) ? platform::VoxelizerMode::eGeometry :
-                                                    platform::VoxelizerMode::eCompute;
+            settings.voxelizer = (GetParam() & 2) ? platform::VoxelizerMode::eGeometry : platform::VoxelizerMode::eCompute;
 
-            settings.averagedReflectance = false;
+            settings.averagedReflectance    = false;
 
             settings.reflectanceBudgetBytes = 0;
 
@@ -999,11 +990,11 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
             ASSERT_TRUE(ExecuteVoxelGeneration(device, server));
 
-            rc::VoxelizerBase* owner = server.RequestVoxelizer();
+            rc::VoxelizerBase* owner        = server.RequestVoxelizer();
 
-            RHITexture* ownerTexture = owner->GetVoxelTextures().pOwner;
+            RHITexture* ownerTexture        = owner->GetVoxelTextures().pOwner;
 
-            settings.averagedReflectance = true;
+            settings.averagedReflectance    = true;
 
             settings.reflectanceBudgetBytes = rc::GetVoxelReflectanceRequiredBytes(resolution) - 1;
 
@@ -1025,8 +1016,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
 
             RuntimeDebugUITestAccess::Apply(ui);
 
-            if (device.GetGPUInfo().maxStorageBufferRange >=
-                uint64_t(resolution) * resolution * resolution * 16)
+            if (device.GetGPUInfo().maxStorageBufferRange >= uint64_t(resolution) * resolution * resolution * 16)
             {
                 EXPECT_TRUE(server.GetVoxelGISettings().averagedReflectance);
 
@@ -1043,7 +1033,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
                 EXPECT_FALSE(server.GetVoxelGISettings().averagedReflectance);
             }
 
-            settings = server.GetVoxelGISettings();
+            settings                     = server.GetVoxelGISettings();
 
             settings.averagedReflectance = false;
 
@@ -1072,9 +1062,7 @@ TEST_P(ReflectanceRuntimeIntegration, RejectsSmallBudgetThenAppliesAndRendersBot
     RHIOptions::GetInstance().SetRayTracingEnabled(true);
 }
 
-INSTANTIATE_TEST_SUITE_P(SubmissionModes,
-                         ReflectanceRuntimeIntegration,
-                         testing::Values(0u, 1u, 2u, 3u));
+INSTANTIATE_TEST_SUITE_P(SubmissionModes, ReflectanceRuntimeIntegration, testing::Values(0u, 1u, 2u, 3u));
 
 } // namespace
 } // namespace zen::ui

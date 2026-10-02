@@ -26,18 +26,16 @@ enum class EnableMode : uint32_t
 struct InstanceExtensionFlags
 {
     uint32_t hasGetPhysicalDeviceProperties : 1;
-    uint32_t hasDebugUtils : 1;
-    uint32_t hasSurfaceMaintenanceKHR : 1;
-    uint32_t hasSurfaceMaintenanceEXT : 1;
+    uint32_t hasDebugUtils                  : 1;
+    uint32_t hasSurfaceMaintenanceKHR       : 1;
+    uint32_t hasSurfaceMaintenanceEXT       : 1;
 };
 
 class VulkanExtension
 {
 public:
     VulkanExtension(NameID extensionName, EnableMode enableMode = EnableMode::eAuto) :
-        m_extensionName(extensionName),
-        m_supported(false),
-        m_enabled(enableMode == EnableMode::eAuto)
+        m_extensionName(extensionName), m_supported(false), m_enabled(enableMode == EnableMode::eAuto)
     {}
 
     NameID GetName() const
@@ -85,15 +83,13 @@ using VulkanInstanceExtensionArray = HeapVector<UniquePtr<VulkanInstanceExtensio
 class VulkanInstanceExtension : public VulkanExtension
 {
 public:
-    explicit VulkanInstanceExtension(NameID extensionName,
-                                     EnableMode enableMode = EnableMode::eAuto) :
+    explicit VulkanInstanceExtension(NameID extensionName, EnableMode enableMode = EnableMode::eAuto) :
         VulkanExtension(extensionName, enableMode)
     {}
 
     static HeapVector<VkExtensionProperties> GetSupportedInstanceExtensions(NameID layerName = {});
 
-    static VulkanInstanceExtensionArray GetEnabledInstanceExtensions(
-        InstanceExtensionFlags& extensionFlags);
+    static VulkanInstanceExtensionArray GetEnabledInstanceExtensions(InstanceExtensionFlags& extensionFlags);
 };
 
 class VulkanDeviceExtension;
@@ -102,9 +98,7 @@ using VulkanDeviceExtensionArray = HeapVector<UniquePtr<VulkanDeviceExtension>>;
 class VulkanDeviceExtension : public VulkanExtension
 {
 public:
-    explicit VulkanDeviceExtension(VulkanDevice* pDevice,
-                                   NameID extensionName,
-                                   EnableMode enableMode = EnableMode::eAuto) :
+    explicit VulkanDeviceExtension(VulkanDevice* pDevice, NameID extensionName, EnableMode enableMode = EnableMode::eAuto) :
         VulkanExtension(extensionName, enableMode), m_pDevice(pDevice)
     {}
 
@@ -115,15 +109,11 @@ public:
     static VulkanDeviceExtensionArray GetEnabledExtensions(VulkanDevice* pDevice);
 
 #ifdef VK_KHR_get_physical_device_properties2
-    virtual void BeforePhysicalDeviceProperties(
-        VkPhysicalDeviceProperties2& PhysicalDeviceProperties2)
-    {}
+    virtual void BeforePhysicalDeviceProperties(VkPhysicalDeviceProperties2& PhysicalDeviceProperties2) {}
 
     virtual void AfterPhysicalDeviceProperties() {}
 
-    virtual void BeforePhysicalDeviceFeatures(
-        VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr)
-    {}
+    virtual void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& physicalDeviceFeatures2Khr) {}
 
     virtual void AfterPhysicalDeviceFeatures() {}
 

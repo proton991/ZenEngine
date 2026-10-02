@@ -47,13 +47,20 @@ void FVulkanCommandBuffer::InvalidateCachedState()
     for (BoundPipelineState& state : m_boundStates)
     {
         state.pipeline         = VK_NULL_HANDLE;
+
         state.descriptorLayout = VK_NULL_HANDLE;
+
         state.firstSet         = 0;
+
         state.descriptorSets.clear();
+
         state.dynamicOffsets.clear();
     }
+
     m_validDynamicStates.Reset();
+
     m_boundVertexBuffers.clear();
+
     m_boundVertexOffsets.clear();
 
     m_boundIndexBuffer = VK_NULL_HANDLE;
@@ -69,14 +76,14 @@ void FVulkanCommandBuffer::BindIndexBuffer(VkBuffer buffer, uint64_t offset, VkI
 
         m_boundIndexOffset = offset;
 
-        m_boundIndexType = type;
+        m_boundIndexType   = type;
     }
 }
 
-void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipeline,
+void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline*                    pipeline,
                                                          const HeapVector<VkDescriptorSet>& sets,
-                                                         uint32_t firstSet,
-                                                         const HeapVector<uint32_t>& offsets)
+                                                         uint32_t                           firstSet,
+                                                         const HeapVector<uint32_t>&        offsets)
 {
     if (pipeline == nullptr)
     {
@@ -85,12 +92,15 @@ void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipelin
     else if (!m_error.IsFailure())
     {
         const VkPipelineBindPoint bindPoint = pipeline->GetVkPipelineBindPoint();
-        BoundPipelineState& state =
-            m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
+
+        BoundPipelineState& state           = m_boundStates[bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? 0 : 1];
+
         if (state.pipeline != pipeline->GetVkPipeline())
         {
             vkCmdBindPipeline(m_vkHandle, bindPoint, pipeline->GetVkPipeline());
+
             state.pipeline = pipeline->GetVkPipeline();
+
             if (bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
             {
                 // A static pipeline can invalidate dynamic values. Conservatively re-emit
@@ -98,18 +108,22 @@ void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipelin
                 m_validDynamicStates.Reset();
             }
         }
+
         const VkPipelineLayout layout = pipeline->GetVkPipelineLayout();
-        if (!sets.empty() &&
-            (state.descriptorLayout != layout || state.firstSet != firstSet ||
-             !SameValues(state.descriptorSets, sets) || !SameValues(state.dynamicOffsets, offsets)))
+
+        if (!sets.empty()
+            && (state.descriptorLayout != layout || state.firstSet != firstSet || !SameValues(state.descriptorSets, sets)
+                || !SameValues(state.dynamicOffsets, offsets)))
         {
-            vkCmdBindDescriptorSets(m_vkHandle, bindPoint, layout, firstSet,
-                                    static_cast<uint32_t>(sets.size()), sets.data(),
-                                    static_cast<uint32_t>(offsets.size()),
-                                    offsets.empty() ? nullptr : offsets.data());
+            vkCmdBindDescriptorSets(m_vkHandle, bindPoint, layout, firstSet, static_cast<uint32_t>(sets.size()), sets.data(),
+                                    static_cast<uint32_t>(offsets.size()), offsets.empty() ? nullptr : offsets.data());
+
             state.descriptorLayout = layout;
+
             state.firstSet         = firstSet;
+
             state.descriptorSets   = sets;
+
             state.dynamicOffsets   = offsets;
         }
     }
@@ -118,13 +132,15 @@ void FVulkanCommandBuffer::BindPipelineAndDescriptorSets(VulkanPipeline* pipelin
 void FVulkanCommandBuffer::SetViewport(const VkViewport& viewport)
 {
     const uint32_t bit = ToUnderlying(RHIDynamicState::eViewPort);
-    if (!m_validDynamicStates.Test(bit) || m_viewport.x != viewport.x ||
-        m_viewport.y != viewport.y || m_viewport.width != viewport.width ||
-        m_viewport.height != viewport.height || m_viewport.minDepth != viewport.minDepth ||
-        m_viewport.maxDepth != viewport.maxDepth)
+
+    if (!m_validDynamicStates.Test(bit) || m_viewport.x != viewport.x || m_viewport.y != viewport.y
+        || m_viewport.width != viewport.width || m_viewport.height != viewport.height
+        || m_viewport.minDepth != viewport.minDepth || m_viewport.maxDepth != viewport.maxDepth)
     {
         vkCmdSetViewport(m_vkHandle, 0, 1, &viewport);
+
         m_viewport = viewport;
+
         m_validDynamicStates.Set(bit);
     }
 }
@@ -132,12 +148,14 @@ void FVulkanCommandBuffer::SetViewport(const VkViewport& viewport)
 void FVulkanCommandBuffer::SetScissor(const VkRect2D& scissor)
 {
     const uint32_t bit = ToUnderlying(RHIDynamicState::eScissor);
-    if (!m_validDynamicStates.Test(bit) || m_scissor.offset.x != scissor.offset.x ||
-        m_scissor.offset.y != scissor.offset.y || m_scissor.extent.width != scissor.extent.width ||
-        m_scissor.extent.height != scissor.extent.height)
+
+    if (!m_validDynamicStates.Test(bit) || m_scissor.offset.x != scissor.offset.x || m_scissor.offset.y != scissor.offset.y
+        || m_scissor.extent.width != scissor.extent.width || m_scissor.extent.height != scissor.extent.height)
     {
         vkCmdSetScissor(m_vkHandle, 0, 1, &scissor);
+
         m_scissor = scissor;
+
         m_validDynamicStates.Set(bit);
     }
 }
@@ -145,13 +163,18 @@ void FVulkanCommandBuffer::SetScissor(const VkRect2D& scissor)
 void FVulkanCommandBuffer::SetDepthBias(float constantFactor, float clamp, float slopeFactor)
 {
     const uint32_t bit = ToUnderlying(RHIDynamicState::eDepthBias);
-    if (!m_validDynamicStates.Test(bit) || m_depthBias[0] != constantFactor ||
-        m_depthBias[1] != clamp || m_depthBias[2] != slopeFactor)
+
+    if (!m_validDynamicStates.Test(bit) || m_depthBias[0] != constantFactor || m_depthBias[1] != clamp
+        || m_depthBias[2] != slopeFactor)
     {
         vkCmdSetDepthBias(m_vkHandle, constantFactor, clamp, slopeFactor);
+
         m_depthBias[0] = constantFactor;
+
         m_depthBias[1] = clamp;
+
         m_depthBias[2] = slopeFactor;
+
         m_validDynamicStates.Set(bit);
     }
 }
@@ -159,23 +182,25 @@ void FVulkanCommandBuffer::SetDepthBias(float constantFactor, float clamp, float
 void FVulkanCommandBuffer::SetLineWidth(float width)
 {
     const uint32_t bit = ToUnderlying(RHIDynamicState::eLineWidth);
+
     if (!m_validDynamicStates.Test(bit) || m_lineWidth != width)
     {
         vkCmdSetLineWidth(m_vkHandle, width);
+
         m_lineWidth = width;
+
         m_validDynamicStates.Set(bit);
     }
 }
 
-void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers,
-                                             const HeapVector<uint64_t>& offsets)
+void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers, const HeapVector<uint64_t>& offsets)
 {
-    if (!buffers.empty() &&
-        (!SameValues(m_boundVertexBuffers, buffers) || !SameValues(m_boundVertexOffsets, offsets)))
+    if (!buffers.empty() && (!SameValues(m_boundVertexBuffers, buffers) || !SameValues(m_boundVertexOffsets, offsets)))
     {
-        vkCmdBindVertexBuffers(m_vkHandle, 0, static_cast<uint32_t>(buffers.size()), buffers.data(),
-                               offsets.data());
+        vkCmdBindVertexBuffers(m_vkHandle, 0, static_cast<uint32_t>(buffers.size()), buffers.data(), offsets.data());
+
         m_boundVertexBuffers = buffers;
+
         m_boundVertexOffsets = offsets;
     }
 }
@@ -183,15 +208,18 @@ void FVulkanCommandBuffer::BindVertexBuffers(const HeapVector<VkBuffer>& buffers
 bool FVulkanCommandBuffer::Begin()
 {
     DiscardGPUTimings();
+
     m_timestampsReset = false;
+
     InvalidateCachedState();
+
     m_breadcrumbNames.clear();
+
     m_openBreadcrumbs.clear();
 
     if (m_breadcrumbBuffer != VK_NULL_HANDLE)
     {
-        std::memset(m_breadcrumbAllocation.info.pMappedData, 0,
-                    kMaxBreadcrumbs * 2 * sizeof(uint32_t));
+        std::memset(m_breadcrumbAllocation.info.pMappedData, 0, kMaxBreadcrumbs * 2 * sizeof(uint32_t));
     }
 
     VkResult result = VK_SUCCESS;
@@ -213,18 +241,23 @@ bool FVulkanCommandBuffer::Begin()
     if (!m_error.IsFailure() && m_state == State::eReadyForBegin)
     {
         VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
         result          = vkBeginCommandBuffer(m_vkHandle, &beginInfo);
 
         if (result == VK_SUCCESS)
         {
             m_state = State::eIsInsideBegin;
+
             const VkQueueFamilyProperties& family =
-                GVulkanRHI->GetDevice()->GetQueueFamilyProperties(
-                    m_pCmdBufferPool->GetQueue()->GetFamilyIndex());
+                GVulkanRHI->GetDevice()->GetQueueFamilyProperties(m_pCmdBufferPool->GetQueue()->GetFamilyIndex());
+
             m_frameTimingInterval = GVulkanRHI->RegisterNativeGPUFrameRecording(
                 (family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0);
+
             m_nativeTimingRecording = true;
+
             BeginGPUTiming(m_frameTimingInterval);
         }
         else
@@ -241,16 +274,19 @@ bool FVulkanCommandBuffer::End()
     if (!m_error.IsFailure() && IsOutsideRenderPass())
     {
         EndGPUTiming(m_frameTimingInterval);
+
         m_frameTimingInterval.Reset();
 
         if (m_breadcrumbBuffer != VK_NULL_HANDLE)
         {
             VkMemoryBarrier visibility{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+
             visibility.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
             visibility.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-            vkCmdPipelineBarrier(m_vkHandle, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                 VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &visibility, 0, nullptr, 0,
-                                 nullptr);
+
+            vkCmdPipelineBarrier(m_vkHandle, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &visibility,
+                                 0, nullptr, 0, nullptr);
         }
 
         const VkResult result = vkEndCommandBuffer(m_vkHandle);
@@ -271,13 +307,16 @@ bool FVulkanCommandBuffer::End()
 void FVulkanCommandBuffer::BeginRendering(const VkRenderingInfo* pRenderingInfo)
 {
     vkCmdBeginRenderingKHR(m_vkHandle, pRenderingInfo);
+
     m_state              = State::eIsInsideRenderPass;
+
     m_lastRenderingFlags = pRenderingInfo->flags;
 }
 
 void FVulkanCommandBuffer::EndRendering()
 {
     vkCmdEndRenderingKHR(m_vkHandle);
+
     m_state = State::eIsInsideBegin;
 }
 
@@ -293,7 +332,7 @@ void FVulkanCommandBuffer::SetSubmitted()
         m_nativeTimingRecording = false;
     }
 
-    m_state = State::eSubmitted;
+    m_state      = State::eSubmitted;
 
     m_submitTime = platform::Timer::Now<>();
 }
@@ -313,8 +352,11 @@ void FVulkanCommandBuffer::SetCompleted()
 void FVulkanCommandBuffer::Discard()
 {
     LockAuto lock(m_pCmdBufferPool->GetMutex());
+
     VERIFY_EXPR_MSG(m_state != State::eSubmitted, "Cannot discard a submitted command buffer");
+
     DiscardGPUTimings();
+
     InvalidateCachedState();
 
     if (m_vkHandle != VK_NULL_HANDLE)
@@ -330,8 +372,7 @@ VulkanCommandBufferType FVulkanCommandBuffer::GetCommandBufferType() const
     return m_pCmdBufferPool->GetCommandBufferType();
 }
 
-FVulkanCommandBuffer::FVulkanCommandBuffer(FVulkanCommandBufferPool* pPool) :
-    m_pCmdBufferPool(pPool)
+FVulkanCommandBuffer::FVulkanCommandBuffer(FVulkanCommandBufferPool* pPool) : m_pCmdBufferPool(pPool)
 {
     AllocMemory();
 }
@@ -341,6 +382,7 @@ FVulkanCommandBuffer::~FVulkanCommandBuffer()
     if (m_breadcrumbBuffer != VK_NULL_HANDLE)
     {
         GVulkanRHI->GetDevice()->UnregisterDiagnosticBuffer(this);
+
         GVkMemAllocator->FreeBuffer(m_breadcrumbBuffer, m_breadcrumbAllocation);
     }
 
@@ -361,13 +403,16 @@ void FVulkanCommandBuffer::BeginBreadcrumb(NameID name)
             if (m_breadcrumbBuffer == VK_NULL_HANDLE)
             {
                 VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+
                 info.size  = kMaxBreadcrumbs * 2 * sizeof(uint32_t);
+
                 info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-                if (GVkMemAllocator->AllocBuffer(info.size, &info, RHIBufferAllocateType::eCPURead,
-                                                 &m_breadcrumbBuffer, &m_breadcrumbAllocation))
+                if (GVkMemAllocator->AllocBuffer(info.size, &info, RHIBufferAllocateType::eCPURead, &m_breadcrumbBuffer,
+                                                 &m_breadcrumbAllocation))
                 {
                     std::memset(m_breadcrumbAllocation.info.pMappedData, 0, size_t(info.size));
+
                     GVulkanRHI->GetDevice()->RegisterDiagnosticBuffer(this);
                 }
             }
@@ -375,7 +420,9 @@ void FVulkanCommandBuffer::BeginBreadcrumb(NameID name)
             if (m_breadcrumbBuffer != VK_NULL_HANDLE)
             {
                 index = static_cast<uint32_t>(m_breadcrumbNames.size());
+
                 m_breadcrumbNames.push_back(name);
+
                 WriteBreadcrumb(index, 1);
             }
         }
@@ -389,6 +436,7 @@ void FVulkanCommandBuffer::EndBreadcrumb()
     if (!m_openBreadcrumbs.empty())
     {
         const uint32_t index = m_openBreadcrumbs.back();
+
         m_openBreadcrumbs.pop_back();
 
         if (index != UINT32_MAX && IsOutsideRenderPass())
@@ -400,13 +448,11 @@ void FVulkanCommandBuffer::EndBreadcrumb()
 
 void FVulkanCommandBuffer::WriteBreadcrumb(uint32_t index, uint32_t value)
 {
-    if (GVulkanRHI->GetDevice()->GetExtensionFlags().hasBufferMarker &&
-        vkCmdWriteBufferMarkerAMD != nullptr)
+    if (GVulkanRHI->GetDevice()->GetExtensionFlags().hasBufferMarker && vkCmdWriteBufferMarkerAMD != nullptr)
     {
-        vkCmdWriteBufferMarkerAMD(
-            m_vkHandle,
-            value == 1 ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            m_breadcrumbBuffer, (uint64_t(index) * 2 + value - 1) * sizeof(uint32_t), 1);
+        vkCmdWriteBufferMarkerAMD(m_vkHandle,
+                                  value == 1 ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                  m_breadcrumbBuffer, (uint64_t(index) * 2 + value - 1) * sizeof(uint32_t), 1);
     }
     else
     {
@@ -414,31 +460,42 @@ void FVulkanCommandBuffer::WriteBreadcrumb(uint32_t index, uint32_t value)
         // has finished. Later work does not wait for the fill: blocking it would serialize every
         // pass boundary. End() makes the fills visible to the host.
         VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+
         barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+
         barrier.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
         barrier.buffer              = m_breadcrumbBuffer;
+
         barrier.offset              = (uint64_t(index) * 2 + value - 1) * sizeof(uint32_t);
+
         barrier.size                = sizeof(uint32_t);
-        vkCmdPipelineBarrier(m_vkHandle, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1, &barrier, 0,
-                             nullptr);
+
+        vkCmdPipelineBarrier(m_vkHandle, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 1,
+                             &barrier, 0, nullptr);
+
         vkCmdFillBuffer(m_vkHandle, m_breadcrumbBuffer, barrier.offset, barrier.size, value);
     }
 }
 
 void FVulkanCommandBuffer::ReportBreadcrumbs() const
 {
-    const volatile uint32_t* values =
-        static_cast<const volatile uint32_t*>(m_breadcrumbAllocation.info.pMappedData);
-    const VulkanQueue* queue = m_pCmdBufferPool->GetQueue();
-    const char* started      = "none observed";
-    const char* completed    = "none observed";
+    const volatile uint32_t* values = static_cast<const volatile uint32_t*>(m_breadcrumbAllocation.info.pMappedData);
+
+    const VulkanQueue* queue        = m_pCmdBufferPool->GetQueue();
+
+    const char* started             = "none observed";
+
+    const char* completed           = "none observed";
 
     for (uint32_t i = 0; values != nullptr && i < m_breadcrumbNames.size(); ++i)
     {
         const uint32_t startedValue   = values[i * 2];
+
         const uint32_t completedValue = values[i * 2 + 1];
 
         if (startedValue != 0 || completedValue != 0)
@@ -452,27 +509,30 @@ void FVulkanCommandBuffer::ReportBreadcrumbs() const
         }
     }
 
-    std::fprintf(stderr,
-                 "RHI GPU breadcrumb queue=%u:%u buffer=%p last_started=%s last_completed=%s\n",
-                 queue->GetFamilyIndex(), queue->GetQueueIndex(),
-                 reinterpret_cast<void*>(m_vkHandle), started, completed);
+    std::fprintf(stderr, "RHI GPU breadcrumb queue=%u:%u buffer=%p last_started=%s last_completed=%s\n",
+                 queue->GetFamilyIndex(), queue->GetQueueIndex(), reinterpret_cast<void*>(m_vkHandle), started, completed);
 }
 
 void FVulkanCommandBuffer::AllocMemory()
 {
     VkCommandBufferAllocateInfo allocInfo;
+
     InitVkStruct(allocInfo, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO);
+
     allocInfo.commandPool        = m_pCmdBufferPool->GetVkHandle();
+
     allocInfo.commandBufferCount = 1;
+
     allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
-    const VkResult result = allocInfo.commandPool != VK_NULL_HANDLE ?
-        vkAllocateCommandBuffers(GVulkanRHI->GetVkDevice(), &allocInfo, &m_vkHandle) :
-        VK_ERROR_INITIALIZATION_FAILED;
+    const VkResult result        = allocInfo.commandPool != VK_NULL_HANDLE
+                                     ? vkAllocateCommandBuffers(GVulkanRHI->GetVkDevice(), &allocInfo, &m_vkHandle)
+                                     : VK_ERROR_INITIALIZATION_FAILED;
 
     if (result == VK_SUCCESS && m_vkHandle != VK_NULL_HANDLE)
     {
         m_state = State::eReadyForBegin;
+
         m_error = {};
     }
     else
@@ -487,9 +547,9 @@ void FVulkanCommandBuffer::FreeMemory()
 
     ReleaseGPUTimingPool();
 
-    vkFreeCommandBuffers(GVulkanRHI->GetVkDevice(), m_pCmdBufferPool->GetVkHandle(), 1,
-                         &m_vkHandle);
-    m_state = State::eNotAllocated;
+    vkFreeCommandBuffers(GVulkanRHI->GetVkDevice(), m_pCmdBufferPool->GetVkHandle(), 1, &m_vkHandle);
+
+    m_state    = State::eNotAllocated;
 
     m_vkHandle = VK_NULL_HANDLE;
 }
@@ -508,9 +568,8 @@ void FVulkanCommandBuffer::BeginGPUTiming(const RHIGPUTimingPtr& result)
         {
             status = RHIGPUTimingStatus::eDropped;
         }
-        else if (std::any_of(
-                     m_timingScopes.begin(), m_timingScopes.end(),
-                     [&result](const GPUTimingScope& scope) { return scope.result == result; }))
+        else if (std::any_of(m_timingScopes.begin(), m_timingScopes.end(),
+                             [&result](const GPUTimingScope& scope) { return scope.result == result; }))
         {
             status = RHIGPUTimingStatus::eError;
         }
@@ -532,8 +591,7 @@ void FVulkanCommandBuffer::BeginGPUTiming(const RHIGPUTimingPtr& result)
 
             m_timingScopes.push_back({result, false});
 
-            vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool,
-                                query);
+            vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, query);
         }
         else
         {
@@ -555,16 +613,14 @@ RHIGPUTimingStatus FVulkanCommandBuffer::PrepareGPUTimingPool()
 
         m_timestampValidBits = family.timestampValidBits;
 
-        m_timestampPeriod = device->GetPhysicalDeviceProperties().limits.timestampPeriod;
+        m_timestampPeriod    = device->GetPhysicalDeviceProperties().limits.timestampPeriod;
 
         // Command-buffer query resets require graphics or compute capability.
         // Dedicated transfer timing would need the optional hostQueryReset feature.
-        if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 ||
-            m_timestampValidBits == 0 || m_timestampValidBits > 64 ||
-            !std::isfinite(m_timestampPeriod) || m_timestampPeriod <= 0 ||
-            vkCreateQueryPool == nullptr || vkDestroyQueryPool == nullptr ||
-            vkCmdResetQueryPool == nullptr || vkCmdWriteTimestamp == nullptr ||
-            vkGetQueryPoolResults == nullptr)
+        if ((family.queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 || m_timestampValidBits == 0
+            || m_timestampValidBits > 64 || !std::isfinite(m_timestampPeriod) || m_timestampPeriod <= 0
+            || vkCreateQueryPool == nullptr || vkDestroyQueryPool == nullptr || vkCmdResetQueryPool == nullptr
+            || vkCmdWriteTimestamp == nullptr || vkGetQueryPoolResults == nullptr)
         {
             status = RHIGPUTimingStatus::eUnsupported;
         }
@@ -576,8 +632,7 @@ RHIGPUTimingStatus FVulkanCommandBuffer::PrepareGPUTimingPool()
             {
                 m_timestampPool = VK_NULL_HANDLE;
 
-                status = acquired == VK_ERROR_TOO_MANY_OBJECTS ? RHIGPUTimingStatus::eDropped :
-                                                                 RHIGPUTimingStatus::eError;
+                status = acquired == VK_ERROR_TOO_MANY_OBJECTS ? RHIGPUTimingStatus::eDropped : RHIGPUTimingStatus::eError;
             }
         }
     }
@@ -597,12 +652,12 @@ void FVulkanCommandBuffer::EndGPUTiming(const RHIGPUTimingPtr& result)
 
             if (scope.result == result && !scope.ended && IsOutsideRenderPass())
             {
-                vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                    m_timestampPool, static_cast<uint32_t>(index - 1) * 2 + 1);
+                vkCmdWriteTimestamp(m_vkHandle, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
+                                    static_cast<uint32_t>(index - 1) * 2 + 1);
 
                 scope.ended = true;
 
-                ended = true;
+                ended       = true;
             }
         }
 
@@ -629,29 +684,25 @@ void FVulkanCommandBuffer::ResolveGPUTimings()
         const uint32_t count = static_cast<uint32_t>(m_timingScopes.size()) * 2;
 
         // The queue's fence/timeline proves completion. Never wait for a profiler query.
-        const VkResult status = vkGetQueryPoolResults(
-            GVulkanRHI->GetVkDevice(), m_timestampPool, 0, count, count * sizeof(TimestampValue),
-            values.data(), sizeof(TimestampValue),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+        const VkResult status = vkGetQueryPoolResults(GVulkanRHI->GetVkDevice(), m_timestampPool, 0, count,
+                                                      count * sizeof(TimestampValue), values.data(), sizeof(TimestampValue),
+                                                      VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 
         for (uint32_t index = 0; index < m_timingScopes.size(); ++index)
         {
             GPUTimingScope& scope = m_timingScopes[index];
 
-            const bool available = scope.ended &&
-                (status == VK_SUCCESS || status == VK_NOT_READY) &&
-                values[2 * index].available != 0 && values[2 * index + 1].available != 0;
+            const bool available  = scope.ended && (status == VK_SUCCESS || status == VK_NOT_READY)
+                                && values[2 * index].available != 0 && values[2 * index + 1].available != 0;
 
             if (available)
             {
-                scope.result->PublishTimestamps({values[2 * index].ticks,
-                                                 values[2 * index + 1].ticks, m_timestampValidBits,
-                                                 m_timestampPeriod});
+                scope.result->PublishTimestamps(
+                    {values[2 * index].ticks, values[2 * index + 1].ticks, m_timestampValidBits, m_timestampPeriod});
             }
             else
             {
-                scope.result->Publish(scope.ended ? RHIGPUTimingStatus::eError :
-                                                    RHIGPUTimingStatus::eDiscarded);
+                scope.result->Publish(scope.ended ? RHIGPUTimingStatus::eError : RHIGPUTimingStatus::eDiscarded);
             }
         }
 
@@ -690,16 +741,18 @@ void FVulkanCommandBuffer::ReleaseGPUTimingPool()
     }
 }
 
-FVulkanCommandBufferPool::FVulkanCommandBufferPool(VulkanQueue* pQueue,
-                                                   VulkanCommandBufferType type) :
+FVulkanCommandBufferPool::FVulkanCommandBufferPool(VulkanQueue* pQueue, VulkanCommandBufferType type) :
     m_pQueue(pQueue), m_type(type)
 {
     VkCommandPoolCreateInfo cmdPoolCI;
+
     InitVkStruct(cmdPoolCI, VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
-    cmdPoolCI.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // reset cmd buffer
+
+    cmdPoolCI.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT; // reset cmd buffer
+
     cmdPoolCI.queueFamilyIndex = pQueue->GetFamilyIndex();
-    const VkResult result =
-        vkCreateCommandPool(GVulkanRHI->GetVkDevice(), &cmdPoolCI, nullptr, &m_vkHandle);
+
+    const VkResult result      = vkCreateCommandPool(GVulkanRHI->GetVkDevice(), &cmdPoolCI, nullptr, &m_vkHandle);
 
     if (result != VK_SUCCESS)
     {
@@ -712,22 +765,25 @@ FVulkanCommandBufferPool::~FVulkanCommandBufferPool()
 #if ZEN_VK_RHI_DEBUG
     LOGI("[VulkanCmdBufferPool] destroy type={} requests={} readyReuses={} freeReuses={} "
          "allocations={} inUse={} free={}",
-         VulkanCommandBufferTypeToString(m_type), m_numCmdBufferRequests, m_numReadyCmdBufferReuses,
-         m_numFreeCmdBufferReuses, m_numCmdBufferAllocations, m_cmdBuffersInUse.size(),
-         m_cmdBuffersFree.size());
+         VulkanCommandBufferTypeToString(m_type), m_numCmdBufferRequests, m_numReadyCmdBufferReuses, m_numFreeCmdBufferReuses,
+         m_numCmdBufferAllocations, m_cmdBuffersInUse.size(), m_cmdBuffersFree.size());
 #endif
 
     for (uint32_t i = 0; i < m_cmdBuffersInUse.size(); i++)
     {
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersInUse[i];
+
         pCmdBuffer->~FVulkanCommandBuffer();
+
         ZEN_MEM_FREE(pCmdBuffer);
     }
 
     for (uint32_t i = 0; i < m_cmdBuffersFree.size(); i++)
     {
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersFree[i];
+
         pCmdBuffer->~FVulkanCommandBuffer();
+
         ZEN_MEM_FREE(pCmdBuffer);
     }
 
@@ -738,21 +794,24 @@ void FVulkanCommandBufferPool::FreeUnusedCommandBuffers()
 {
     LockAuto lock(&m_mutex);
 
-    const double currentTime = platform::Timer::Now<>();
+    const double currentTime                       = platform::Timer::Now<>();
 
     HeapVector<FVulkanCommandBuffer*>::iterator it = m_cmdBuffersInUse.end();
 
     while (it != m_cmdBuffersInUse.begin())
     {
         --it;
+
         FVulkanCommandBuffer* pCmdBuffer = *it;
 
-        if ((pCmdBuffer->m_state == FVulkanCommandBuffer::State::eReadyForBegin ||
-             pCmdBuffer->m_state == FVulkanCommandBuffer::State::eNeedReset) &&
-            (currentTime - pCmdBuffer->m_submitTime) > 10.0f)
+        if ((pCmdBuffer->m_state == FVulkanCommandBuffer::State::eReadyForBegin
+             || pCmdBuffer->m_state == FVulkanCommandBuffer::State::eNeedReset)
+            && (currentTime - pCmdBuffer->m_submitTime) > 10.0f)
         {
             pCmdBuffer->FreeMemory();
+
             it = m_cmdBuffersInUse.erase(it);
+
             m_cmdBuffersFree.push_back(pCmdBuffer);
         }
     }
@@ -765,15 +824,18 @@ FVulkanCommandBuffer* FVulkanCommandBufferPool::CreateCmdBuffer()
     if (!m_cmdBuffersFree.empty())
     {
         FVulkanCommandBuffer* pCmdBuffer = m_cmdBuffersFree[0];
+
         m_cmdBuffersFree.remove(0);
+
         pCmdBuffer->AllocMemory();
+
         m_cmdBuffersInUse.emplace_back(pCmdBuffer);
+
         result = pCmdBuffer;
     }
     else
     {
-        FVulkanCommandBuffer* pCmdBuffer =
-            static_cast<FVulkanCommandBuffer*>(ZEN_MEM_ALLOC(sizeof(FVulkanCommandBuffer)));
+        FVulkanCommandBuffer* pCmdBuffer = static_cast<FVulkanCommandBuffer*>(ZEN_MEM_ALLOC(sizeof(FVulkanCommandBuffer)));
 
         new (pCmdBuffer) FVulkanCommandBuffer(this);
 
@@ -795,27 +857,35 @@ FVulkanCommandBuffer* VulkanWorkload::GetLastCommandBuffer() const
 void VulkanWorkload::AddCommandBuffer(FVulkanCommandBuffer* pCmdBuffer)
 {
     VERIFY_EXPR(pCmdBuffer != nullptr);
+
     m_commandBuffers.push_back(pCmdBuffer);
 }
 
 void VulkanWorkload::Merge(VulkanWorkload* pOtherWorkload)
 {
     VERIFY_EXPR(pOtherWorkload != nullptr);
+
     VERIFY_EXPR(pOtherWorkload->m_pQueue == m_pQueue);
+
     VERIFY_EXPR(m_signalSemaphoreInfos.empty());
+
     VERIFY_EXPR(pOtherWorkload->m_waitSemaphoreInfos.empty());
 
     m_commandBuffers.push_back(pOtherWorkload->m_commandBuffers);
+
     pOtherWorkload->m_commandBuffers.clear();
 
     m_signalSemaphoreInfos.push_back(pOtherWorkload->m_signalSemaphoreInfos);
+
     pOtherWorkload->m_signalSemaphoreInfos.clear();
 
     // Keep duplicate IDs: each source recording contributed its own pending count.
     m_lifetimeIds.push_back(pOtherWorkload->m_lifetimeIds);
+
     pOtherWorkload->m_lifetimeIds.clear();
 
     pOtherWorkload->m_pMergedInto = this;
+
     m_mergedWorkloads.push_back(pOtherWorkload);
 }
 
@@ -829,10 +899,10 @@ VulkanCommandContextBase::~VulkanCommandContextBase()
 
 bool VulkanCommandContextBase::HasWorkloadData(const VulkanWorkload* pWorkload) const
 {
-    return pWorkload != nullptr &&
-        (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty() ||
-         !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_lifetimeIds.empty() ||
-         pWorkload->m_resources.GetCount() != 0);
+    return pWorkload != nullptr
+        && (pWorkload->HasCommandBuffers() || !pWorkload->m_waitSemaphoreInfos.empty()
+            || !pWorkload->m_signalSemaphoreInfos.empty() || !pWorkload->m_lifetimeIds.empty()
+            || pWorkload->m_resources.GetCount() != 0);
 }
 
 VulkanWorkload* VulkanCommandContextBase::GetWorkload(WorkloadPhase phase)
@@ -859,45 +929,48 @@ void VulkanCommandContextBase::CollectWorkloads(HeapVector<VulkanWorkload*>& out
     if (!m_finalizedWorkloads.empty())
     {
         outWorkloads.push_back(m_finalizedWorkloads);
+
         m_finalizedWorkloads.clear();
     }
 }
 
 void VulkanCommandContextBase::FinalizePendingWorkload()
 {
-    if (m_pCurrentWorkload == nullptr)
+    if (m_pCurrentWorkload != nullptr)
     {
-        return;
-    }
+        VERIFY_EXPR(m_pCurrentWorkload->m_pQueue == m_pQueue);
 
-    VERIFY_EXPR(m_pCurrentWorkload->m_pQueue == m_pQueue);
+        if (HasWorkloadData(m_pCurrentWorkload))
+        {
+            EndWorkload();
 
-    if (HasWorkloadData(m_pCurrentWorkload))
-    {
-        EndWorkload();
-        m_finalizedWorkloads.push_back(m_pCurrentWorkload);
-    }
-    else
-    {
-        m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
-    }
+            m_finalizedWorkloads.push_back(m_pCurrentWorkload);
+        }
+        else
+        {
+            m_pQueue->ReleaseWorkload(m_pCurrentWorkload);
+        }
 
-    m_pCurrentWorkload     = nullptr;
-    m_currentWorkloadPhase = WorkloadPhase::eWait;
+        m_pCurrentWorkload     = nullptr;
+
+        m_currentWorkloadPhase = WorkloadPhase::eWait;
+    }
 }
 
 RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
 {
     RHISubmissionResult result = RHISubmissionResult::eSuccess;
+
     HeapVector<VulkanWorkload*> workloads;
+
     CollectWorkloads(workloads);
+
     const uint64_t transaction = DetachRecordingTransaction();
 
     if (m_recordingError.IsFailure())
     {
-        result = m_recordingError.code == RHIErrorCode::eDeviceLost ?
-            RHISubmissionResult::eFatal :
-            RHISubmissionResult::eRejected;
+        result =
+            m_recordingError.code == RHIErrorCode::eDeviceLost ? RHISubmissionResult::eFatal : RHISubmissionResult::eRejected;
 
         for (VulkanWorkload* workload : workloads)
         {
@@ -916,13 +989,16 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
         if (!workloads.empty())
         {
             uint64_t serial = 0;
-            result          = GVulkanRHI->AreSubmissionsBlocked() ? RHISubmissionResult::eFatal :
-                                                                    m_pQueue->SubmitPendingWorkloads(serial);
+
+            result =
+                GVulkanRHI->AreSubmissionsBlocked() ? RHISubmissionResult::eFatal : m_pQueue->SubmitPendingWorkloads(serial);
+
             SetLastSubmittedSerial(serial);
 
             if (result != RHISubmissionResult::eSuccess)
             {
                 m_pQueue->DiscardPendingWorkloads(result == RHISubmissionResult::eFatal);
+
                 GVulkanRHI->BlockSubmissions();
             }
             else
@@ -933,8 +1009,7 @@ RHISubmissionResult VulkanCommandContextBase::SubmitRecordedWorkloads()
     }
 
     GVulkanRHI->GetBindlessDescriptorPoolManager()->ResolveTransaction(
-        transaction,
-        result == RHISubmissionResult::eSuccess || result == RHISubmissionResult::eFatal);
+        transaction, result == RHISubmissionResult::eSuccess || result == RHISubmissionResult::eFatal);
 
     return result;
 }
@@ -944,9 +1019,11 @@ void VulkanCommandContextBase::RecordLifetime(uint64_t id)
     if (id != 0)
     {
         HeapVector<uint64_t>& ids = GetWorkload(WorkloadPhase::eExecute)->m_lifetimeIds;
+
         if ((ids.empty() || ids.back() != id) && std::find(ids.begin(), ids.end(), id) == ids.end())
         {
             ids.push_back(id);
+
             GVulkanRHI->GetLifetimeTracker().RetainRecording(id);
         }
     }
@@ -1006,12 +1083,12 @@ void VulkanCommandContextBase::DiscardRecording()
 
     m_finalizedWorkloads.clear();
 
-    GVulkanRHI->GetBindlessDescriptorPoolManager()->ResolveTransaction(m_recordingTransaction,
-                                                                       false);
+    GVulkanRHI->GetBindlessDescriptorPoolManager()->ResolveTransaction(m_recordingTransaction, false);
 
     m_recordingTransaction = 0;
 
     m_currentWorkloadPhase = WorkloadPhase::eWait;
+
     m_recordingError       = {};
 }
 
@@ -1028,6 +1105,7 @@ uint64_t VulkanCommandContextBase::GetRecordingTransaction()
 uint64_t VulkanCommandContextBase::DetachRecordingTransaction()
 {
     const uint64_t transaction = m_recordingTransaction;
+
     m_recordingTransaction     = 0;
 
     return transaction;
@@ -1084,14 +1162,15 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
     {
         FVulkanCommandBuffer* pCurrent = m_pCmdBufferPool->m_cmdBuffersInUse[i];
 
-        if (pCurrent->m_state == FVulkanCommandBuffer::State::eReadyForBegin ||
-            pCurrent->m_state == FVulkanCommandBuffer::State::eNeedReset)
+        if (pCurrent->m_state == FVulkanCommandBuffer::State::eReadyForBegin
+            || pCurrent->m_state == FVulkanCommandBuffer::State::eNeedReset)
         {
             pCmdBuffer = pCurrent;
         }
         else if (pCurrent->m_state == FVulkanCommandBuffer::State::eNotAllocated)
         {
             pCurrent->AllocMemory();
+
             pCmdBuffer = pCurrent;
         }
         else
@@ -1126,6 +1205,7 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 #endif
 
     m_pCurrentWorkload->AddCommandBuffer(pCmdBuffer);
+
     if (!pCmdBuffer->Begin())
     {
         LatchError(pCmdBuffer->GetError());
@@ -1135,9 +1215,11 @@ void VulkanCommandContextBase::SetupNewCommandBuffer()
 void VulkanCommandContextBase::StartWorkload()
 {
     VERIFY_EXPR(m_pCurrentWorkload == nullptr);
+
     ++m_workloadGeneration;
 
     m_pCurrentWorkload     = m_pQueue->AcquireWorkload();
+
     m_currentWorkloadPhase = WorkloadPhase::eWait;
 }
 
@@ -1149,8 +1231,8 @@ void VulkanCommandContextBase::EndWorkload()
 
         if (pCommandBuffer != nullptr && !pCommandBuffer->HasEnded())
         {
-            if (pCommandBuffer->IsInsideRenderPass() &&
-                pCommandBuffer->GetCommandBufferType() == VulkanCommandBufferType::ePrimary)
+            if (pCommandBuffer->IsInsideRenderPass()
+                && pCommandBuffer->GetCommandBufferType() == VulkanCommandBufferType::ePrimary)
             {
                 pCommandBuffer->EndRendering();
             }
@@ -1166,29 +1248,43 @@ void VulkanCommandContextBase::EndWorkload()
 void VulkanGfxState::SetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     m_viewports.resize(1);
+
     m_viewports[0]          = {};
+
     m_viewports[0].x        = minX;
+
     m_viewports[0].y        = minY;
+
     m_viewports[0].width    = maxX - minX;
+
     m_viewports[0].height   = maxY - minY;
+
     m_viewports[0].minDepth = 0.0f;
+
     m_viewports[0].maxDepth = 1.0f;
 }
 
 void VulkanGfxState::SetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     m_scissors.resize(1);
+
     m_scissors[0].offset.x      = minX;
+
     m_scissors[0].offset.y      = minY;
+
     m_scissors[0].extent.width  = maxX - minX;
+
     m_scissors[0].extent.height = maxY - minY;
 }
 
 void VulkanGfxState::SetBlendConstants(float r, float g, float b, float a)
 {
     m_blendConstants[0] = r;
+
     m_blendConstants[1] = g;
+
     m_blendConstants[2] = b;
+
     m_blendConstants[3] = a;
 }
 
@@ -1197,25 +1293,25 @@ void VulkanGfxState::SetLineWidth(float lineWidth)
     m_rasterizationState.lineWidth = lineWidth;
 }
 
-void VulkanGfxState::SetDepthBias(float depthBiasConstantFactor,
-                                  float depthBiasClamp,
-                                  float depthBiasSlopeFactor)
+void VulkanGfxState::SetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor)
 {
     m_rasterizationState.depthBiasConstantFactor = depthBiasConstantFactor;
+
     m_rasterizationState.depthBiasClamp          = depthBiasClamp;
+
     m_rasterizationState.depthBiasSlopeFactor    = depthBiasSlopeFactor;
 }
 
-void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers,
-                                      RHIBuffer* const* ppVertexBuffers,
-                                      const uint64_t* pOffsets)
+void VulkanGfxState::SetVertexBuffers(uint32_t numVertexBuffers, RHIBuffer* const* ppVertexBuffers, const uint64_t* pOffsets)
 {
     m_vertexBuffers.resize(numVertexBuffers);
+
     m_vertexBufferOffsets.resize(numVertexBuffers);
 
     for (uint32_t i = 0; i < numVertexBuffers; i++)
     {
         m_vertexBuffers[i]       = TO_VK_BUFFER(ppVertexBuffers[i])->GetVkBuffer();
+
         m_vertexBufferOffsets[i] = pOffsets[i];
     }
 }
@@ -1228,23 +1324,21 @@ VulkanGfxState::VulkanGfxState()
 VulkanGfxState::~VulkanGfxState()
 {
     ZEN_DELETE(m_pDescriptorSetState);
+
     m_pDescriptorSetState = nullptr;
 }
 
 void VulkanGfxState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
+
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-bool VulkanGfxState::SetShaderParameters(RHIShaderParameterView parameters,
-                                         uint64_t recordedEpoch,
-                                         uint64_t transaction)
+bool VulkanGfxState::SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch, uint64_t transaction)
 {
-    return m_pCurrentPipeline != nullptr &&
-        m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch, transaction);
+    return m_pCurrentPipeline != nullptr && m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch, transaction);
 }
-
 
 bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 {
@@ -1252,44 +1346,46 @@ bool VulkanGfxState::PreDraw(FVulkanCommandListContext* pContext)
 
     if (ready)
     {
-
         FVulkanCommandBuffer* commandBuffer = pContext->GetCommandBuffer();
+
         uint32_t firstSet                   = 0;
+
         // Always resolve/retain descriptor pools: cache eviction and a new workload can
         // require work even when the native binding commands themselves are unchanged.
-        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets,
-                                                                    firstSet, m_dynamicOffsets);
+        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
 
         if (ready)
         {
-            commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets,
-                                                         firstSet, m_dynamicOffsets);
+            commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets, firstSet, m_dynamicOffsets);
+
             // Dynamic commands must follow the last static pipeline that invalidated them.
             // Emit only states declared dynamic by the active pipeline.
-            if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eViewPort) &&
-                !m_viewports.empty())
+            if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eViewPort) && !m_viewports.empty())
             {
                 commandBuffer->SetViewport(m_viewports[0]);
             }
-            if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eScissor) &&
-                !m_scissors.empty())
+
+            if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eScissor) && !m_scissors.empty())
             {
                 commandBuffer->SetScissor(m_scissors[0]);
             }
+
             if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eDepthBias))
             {
-                commandBuffer->SetDepthBias(m_rasterizationState.depthBiasConstantFactor,
-                                            m_rasterizationState.depthBiasClamp,
+                commandBuffer->SetDepthBias(m_rasterizationState.depthBiasConstantFactor, m_rasterizationState.depthBiasClamp,
                                             m_rasterizationState.depthBiasSlopeFactor);
             }
+
             if (m_pCurrentPipeline->UsesDynamicState(RHIDynamicState::eLineWidth))
             {
                 commandBuffer->SetLineWidth(m_rasterizationState.lineWidth);
             }
+
             // Blend constants are static pipeline state in the current RHI dynamic-state enum.
             // Procedural draws declare no vertex inputs. Rebinding a previous draw's
             // cached handles would introduce an undeclared use after their owner retires.
             const VulkanShader* shader = TO_VK_SHADER(m_pCurrentPipeline->GetShader());
+
             if (shader->GetVertexInputStateCreateInfoData()->vertexBindingDescriptionCount != 0)
             {
                 commandBuffer->BindVertexBuffers(m_vertexBuffers, m_vertexBufferOffsets);
@@ -1313,23 +1409,21 @@ VulkanComputeState::VulkanComputeState()
 VulkanComputeState::~VulkanComputeState()
 {
     ZEN_DELETE(m_pDescriptorSetState);
+
     m_pDescriptorSetState = nullptr;
 }
 
 void VulkanComputeState::SetPipelineState(RHIPipeline* pPipeline)
 {
     m_pCurrentPipeline = TO_VK_PIPELINE(pPipeline);
+
     m_pDescriptorSetState->SetPipeline(m_pCurrentPipeline);
 }
 
-bool VulkanComputeState::SetShaderParameters(RHIShaderParameterView parameters,
-                                             uint64_t recordedEpoch,
-                                             uint64_t transaction)
+bool VulkanComputeState::SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch, uint64_t transaction)
 {
-    return m_pCurrentPipeline != nullptr &&
-        m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch, transaction);
+    return m_pCurrentPipeline != nullptr && m_pDescriptorSetState->SetShaderParameters(parameters, recordedEpoch, transaction);
 }
-
 
 bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 {
@@ -1337,16 +1431,15 @@ bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
 
     if (ready)
     {
-
         FVulkanCommandBuffer* commandBuffer = pContext->GetCommandBuffer();
+
         uint32_t firstSet                   = 0;
-        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets,
-                                                                    firstSet, m_dynamicOffsets);
+
+        ready = m_pDescriptorSetState->FlushPendingDescriptorWrites(pContext, m_descriptorSets, firstSet, m_dynamicOffsets);
 
         if (ready)
         {
-            commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets,
-                                                         firstSet, m_dynamicOffsets);
+            commandBuffer->BindPipelineAndDescriptorSets(m_pCurrentPipeline, m_descriptorSets, firstSet, m_dynamicOffsets);
         }
     }
 
@@ -1358,13 +1451,13 @@ bool VulkanComputeState::PreDispatch(FVulkanCommandListContext* pContext)
     return ready;
 }
 
-FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType,
-                                                     VulkanDevice* pDevice) :
+FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType contextType, VulkanDevice* pDevice) :
     VulkanCommandContextBase(pDevice->GetQueue(contextType), VulkanCommandBufferType::ePrimary),
     m_contextType(contextType),
     m_pDevice(pDevice)
 {
     m_pGfxState     = ZEN_NEW() VulkanGfxState();
+
     m_pComputeState = ZEN_NEW() VulkanComputeState();
 
     BindRecordingError(&GetRecordingError());
@@ -1373,9 +1466,11 @@ FVulkanCommandListContext::FVulkanCommandListContext(RHICommandContextType conte
 FVulkanCommandListContext::~FVulkanCommandListContext()
 {
     ZEN_DELETE(m_pComputeState);
+
     m_pComputeState = nullptr;
 
     ZEN_DELETE(m_pGfxState);
+
     m_pGfxState = nullptr;
 }
 
@@ -1389,7 +1484,9 @@ void FVulkanCommandListContext::DiscardRecording()
     VulkanCommandContextBase::DiscardRecording();
 
     m_pCurrentPipeline = nullptr;
+
     m_pGfxState->SetPipelineState(nullptr);
+
     m_pComputeState->SetPipelineState(nullptr);
 }
 
@@ -1398,43 +1495,48 @@ RHICommandContextType FVulkanCommandListContext::GetContextType()
     return m_contextType;
 }
 
-static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget& target,
+static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget&    target,
                                                   const RHIRenderingLayout& layout,
-                                                  bool depthStencil,
-                                                  SampleCount& samples,
-                                                  bool& hasSamples)
+                                                  bool                      depthStencil,
+                                                  SampleCount&              samples,
+                                                  bool&                     hasSamples)
 {
     RHITextureView* view = nullptr;
+
     bool valid           = target.pTexture != nullptr;
 
     if (valid)
     {
-        view                   = target.pTextureView != nullptr ? target.pTextureView :
-                                                                  TO_VK_TEXTURE(target.pTexture)->GetAttachmentView();
-        const bool depthFormat = FormatIsDepthOnly(target.format) ||
-            FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format);
-        const RHITextureUsageFlagBits usage = depthStencil ?
-            RHITextureUsageFlagBits::eDepthStencilAttachment :
-            RHITextureUsageFlagBits::eColorAttachment;
-        valid = view != nullptr && view->GetTexture() == target.pTexture &&
-            view->GetFormat() == target.format && depthStencil == depthFormat &&
-            target.pTexture->GetBaseInfo().usageFlags.HasFlag(usage);
+        view = target.pTextureView != nullptr ? target.pTextureView : TO_VK_TEXTURE(target.pTexture)->GetAttachmentView();
+
+        const bool depthFormat =
+            FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format);
+
+        const RHITextureUsageFlagBits usage =
+            depthStencil ? RHITextureUsageFlagBits::eDepthStencilAttachment : RHITextureUsageFlagBits::eColorAttachment;
+
+        valid = view != nullptr && view->GetTexture() == target.pTexture && view->GetFormat() == target.format
+             && depthStencil == depthFormat && target.pTexture->GetBaseInfo().usageFlags.HasFlag(usage);
 
         if (valid)
         {
             const RHITextureSubResourceRange& range = view->GetSubResourceRange();
-            const uint32_t width = std::max(1u, target.pTexture->GetWidth() >> range.baseMipLevel);
-            const uint32_t height =
-                std::max(1u, target.pTexture->GetHeight() >> range.baseMipLevel);
-            const SampleCount actualSamples = target.pTexture->GetBaseInfo().samples;
-            valid = view->GetTextureType() != RHITextureType::e3D && range.levelCount == 1 &&
-                layout.numLayers <= range.layerCount && uint32_t(layout.renderArea.maxX) <= width &&
-                uint32_t(layout.renderArea.maxY) <= height && target.numSamples == actualSamples &&
-                (!hasSamples || samples == actualSamples);
+
+            const uint32_t width                    = std::max(1u, target.pTexture->GetWidth() >> range.baseMipLevel);
+
+            const uint32_t height                   = std::max(1u, target.pTexture->GetHeight() >> range.baseMipLevel);
+
+            const SampleCount actualSamples         = target.pTexture->GetBaseInfo().samples;
+
+            valid                                   = view->GetTextureType() != RHITextureType::e3D && range.levelCount == 1
+                 && layout.numLayers <= range.layerCount && uint32_t(layout.renderArea.maxX) <= width
+                 && uint32_t(layout.renderArea.maxY) <= height && target.numSamples == actualSamples
+                 && (!hasSamples || samples == actualSamples);
 
             if (valid)
             {
                 samples    = actualSamples;
+
                 hasSamples = true;
             }
         }
@@ -1451,47 +1553,60 @@ static RHITextureView* ResolveRenderingAttachment(const RHIRenderTarget& target,
 void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* layout)
 {
     bool valid = !GetRecordingError().IsFailure() && layout != nullptr;
+
     VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+
     VkRenderingAttachmentInfo colors[MAX_NUM_COLOR_ATTACHMENTS]{};
+
     VkRenderingAttachmentInfo depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+
     SampleCount samples{};
+
     bool hasSamples = false;
 
     if (valid)
     {
-        const Rect2<int>& area = layout->renderArea;
-        const VkPhysicalDeviceLimits& limits =
-            GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
-        valid = area.minX >= 0 && area.minY >= 0 && area.maxX > area.minX &&
-            area.maxY > area.minY && uint32_t(area.maxX) <= limits.maxFramebufferWidth &&
-            uint32_t(area.maxY) <= limits.maxFramebufferHeight && layout->numLayers > 0 &&
-            layout->numLayers <= limits.maxFramebufferLayers &&
-            layout->numColorRenderTargets <=
-                std::min<uint32_t>(MAX_NUM_COLOR_ATTACHMENTS, limits.maxColorAttachments);
+        const Rect2<int>& area               = layout->renderArea;
+
+        const VkPhysicalDeviceLimits& limits = GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+
+        valid = area.minX >= 0 && area.minY >= 0 && area.maxX > area.minX && area.maxY > area.minY
+             && uint32_t(area.maxX) <= limits.maxFramebufferWidth && uint32_t(area.maxY) <= limits.maxFramebufferHeight
+             && layout->numLayers > 0 && layout->numLayers <= limits.maxFramebufferLayers
+             && layout->numColorRenderTargets <= std::min<uint32_t>(MAX_NUM_COLOR_ATTACHMENTS, limits.maxColorAttachments);
 
         if (valid)
         {
             rendering.layerCount           = layout->numLayers;
-            rendering.renderArea           = {{area.minX, area.minY},
-                                              {uint32_t(area.Width()), uint32_t(area.Height())}};
+
+            rendering.renderArea           = {{area.minX, area.minY}, {uint32_t(area.Width()), uint32_t(area.Height())}};
+
             rendering.colorAttachmentCount = layout->numColorRenderTargets;
+
             rendering.pColorAttachments    = colors;
 
             for (uint32_t i = 0; valid && i < layout->numColorRenderTargets; ++i)
             {
                 const RHIRenderTarget& target = layout->colorRenderTargets[i];
-                RHITextureView* view =
-                    ResolveRenderingAttachment(target, *layout, false, samples, hasSamples);
-                valid = view != nullptr;
+
+                RHITextureView* view          = ResolveRenderingAttachment(target, *layout, false, samples, hasSamples);
+
+                valid                         = view != nullptr;
 
                 if (valid)
                 {
                     colors[i]                  = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+
                     colors[i].imageView        = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
+
                     colors[i].imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
                     colors[i].loadOp           = ToVkAttachmentLoadOp(target.loadOp);
+
                     colors[i].storeOp          = ToVkAttachmentStoreOp(target.storeOp);
+
                     colors[i].clearValue.color = ToVkClearColor(target.clearValue);
+
                     RecordResource(view);
                 }
             }
@@ -1499,22 +1614,29 @@ void FVulkanCommandListContext::RHIBeginRendering(const RHIRenderingLayout* layo
             if (valid && layout->hasDepthStencilRT)
             {
                 const RHIRenderTarget& target = layout->depthStencilRenderTarget;
-                RHITextureView* view =
-                    ResolveRenderingAttachment(target, *layout, true, samples, hasSamples);
-                valid = view != nullptr;
+
+                RHITextureView* view          = ResolveRenderingAttachment(target, *layout, true, samples, hasSamples);
+
+                valid                         = view != nullptr;
 
                 if (valid)
                 {
-                    depth.imageView   = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
-                    depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                    depth.loadOp      = ToVkAttachmentLoadOp(target.loadOp);
-                    depth.storeOp     = ToVkAttachmentStoreOp(target.storeOp);
-                    depth.clearValue.depthStencil = ToVkClearDepthStencil(target.clearValue);
+                    depth.imageView                                  = TO_VK_TEXTURE_VIEW(view)->GetVkImageView();
+
+                    depth.imageLayout                                = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+                    depth.loadOp                                     = ToVkAttachmentLoadOp(target.loadOp);
+
+                    depth.storeOp                                    = ToVkAttachmentStoreOp(target.storeOp);
+
+                    depth.clearValue.depthStencil                    = ToVkClearDepthStencil(target.clearValue);
+
                     const BitField<RHITextureAspectFlagBits> aspects = target.GetAspects();
-                    rendering.pDepthAttachment =
-                        aspects.HasFlag(RHITextureAspectFlagBits::eDepth) ? &depth : nullptr;
-                    rendering.pStencilAttachment =
-                        aspects.HasFlag(RHITextureAspectFlagBits::eStencil) ? &depth : nullptr;
+
+                    rendering.pDepthAttachment   = aspects.HasFlag(RHITextureAspectFlagBits::eDepth) ? &depth : nullptr;
+
+                    rendering.pStencilAttachment = aspects.HasFlag(RHITextureAspectFlagBits::eStencil) ? &depth : nullptr;
+
                     RecordResource(view);
                 }
             }
@@ -1535,7 +1657,6 @@ void FVulkanCommandListContext::RHIEndRendering()
 {
     if (EnsureRecording())
     {
-
         GetCommandBuffer()->EndRendering();
     }
 }
@@ -1546,11 +1667,13 @@ void FVulkanCommandListContext::RHIBeginDebugLabel(NameID name)
     {
         GetCommandBuffer()->BeginBreadcrumb(name);
 
-        if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
-            vkCmdBeginDebugUtilsLabelEXT != nullptr && vkCmdEndDebugUtilsLabelEXT != nullptr)
+        if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils && vkCmdBeginDebugUtilsLabelEXT != nullptr
+            && vkCmdEndDebugUtilsLabelEXT != nullptr)
         {
             VkDebugUtilsLabelEXT label{VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+
             label.pLabelName = name.CStr();
+
             vkCmdBeginDebugUtilsLabelEXT(GetCommandBuffer()->GetVkHandle(), &label);
         }
     }
@@ -1562,8 +1685,8 @@ void FVulkanCommandListContext::RHIEndDebugLabel()
     {
         GetCommandBuffer()->EndBreadcrumb();
 
-        if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils &&
-            vkCmdBeginDebugUtilsLabelEXT != nullptr && vkCmdEndDebugUtilsLabelEXT != nullptr)
+        if (GVulkanRHI->GetInstanceExtensionFlags().hasDebugUtils && vkCmdBeginDebugUtilsLabelEXT != nullptr
+            && vkCmdEndDebugUtilsLabelEXT != nullptr)
         {
             vkCmdEndDebugUtilsLabelEXT(GetCommandBuffer()->GetVkHandle());
         }
@@ -1574,7 +1697,6 @@ void FVulkanCommandListContext::RHIBeginGPUTiming(const RHIGPUTimingPtr& result)
 {
     if (EnsureRecording())
     {
-
         if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
         {
             GetCommandBuffer()->BeginGPUTiming(result);
@@ -1586,7 +1708,6 @@ void FVulkanCommandListContext::RHIEndGPUTiming(const RHIGPUTimingPtr& result)
 {
     if (EnsureRecording())
     {
-
         if (result != nullptr && result->GetStatus() == RHIGPUTimingStatus::ePending)
         {
             GetCommandBuffer()->EndGPUTiming(result);
@@ -1594,25 +1715,17 @@ void FVulkanCommandListContext::RHIEndGPUTiming(const RHIGPUTimingPtr& result)
     }
 }
 
-void FVulkanCommandListContext::RHISetScissor(uint32_t minX,
-                                              uint32_t minY,
-                                              uint32_t maxX,
-                                              uint32_t maxY)
+void FVulkanCommandListContext::RHISetScissor(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     m_pGfxState->SetScissor(minX, minY, maxX, maxY);
 }
 
-void FVulkanCommandListContext::RHISetViewport(uint32_t minX,
-                                               uint32_t minY,
-                                               uint32_t maxX,
-                                               uint32_t maxY)
+void FVulkanCommandListContext::RHISetViewport(uint32_t minX, uint32_t minY, uint32_t maxX, uint32_t maxY)
 {
     m_pGfxState->SetViewport(minX, minY, maxX, maxY);
 }
 
-void FVulkanCommandListContext::RHISetDepthBias(float depthBiasConstantFactor,
-                                                float depthBiasClamp,
-                                                float depthBiasSlopeFactor)
+void FVulkanCommandListContext::RHISetDepthBias(float depthBiasConstantFactor, float depthBiasClamp, float depthBiasSlopeFactor)
 {
     m_pGfxState->SetDepthBias(depthBiasConstantFactor, depthBiasClamp, depthBiasSlopeFactor);
 }
@@ -1624,8 +1737,7 @@ void FVulkanCommandListContext::RHISetLineWidth(float lineWidth)
 
 void FVulkanCommandListContext::RHISetBlendConstants(const Color& blendConstants)
 {
-    m_pGfxState->SetBlendConstants(blendConstants.r, blendConstants.g, blendConstants.b,
-                                   blendConstants.a);
+    m_pGfxState->SetBlendConstants(blendConstants.r, blendConstants.g, blendConstants.b, blendConstants.a);
 }
 
 void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
@@ -1636,8 +1748,8 @@ void FVulkanCommandListContext::RHIBindPipeline(RHIPipeline* pPipeline)
     }
     else if (!GetRecordingError().IsFailure())
     {
-
         VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
+
         m_pCurrentPipeline          = pVkPipeline;
 
         if (pVkPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE)
@@ -1675,7 +1787,9 @@ void FVulkanCommandListContext::RecordCurrentBindlessEpoch()
     else
     {
         const uint64_t epoch = RHICaptureBindlessEpoch();
+
         RecordLifetime(epoch);
+
         RHIReleaseBindlessEpoch(epoch);
     }
 }
@@ -1687,9 +1801,10 @@ void FVulkanCommandListContext::RHISetShaderParameters(RHIShaderParameterView pa
     if (!GetRecordingError().IsFailure() && m_pCurrentPipeline != nullptr)
     {
         const uint64_t transaction = GetRecordingTransaction();
-        ready = m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE ?
-            m_pComputeState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction) :
-            m_pGfxState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
+
+        ready                      = m_pCurrentPipeline->GetVkPipelineBindPoint() == VK_PIPELINE_BIND_POINT_COMPUTE
+                                       ? m_pComputeState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction)
+                                       : m_pGfxState->SetShaderParameters(parameters, m_recordedBindlessEpoch, transaction);
     }
 
     if (!ready)
@@ -1698,8 +1813,7 @@ void FVulkanCommandListContext::RHISetShaderParameters(RHIShaderParameterView pa
     }
 }
 
-void FVulkanCommandListContext::RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers,
-                                                     VectorView<uint64_t> offsets)
+void FVulkanCommandListContext::RHIBindVertexBuffers(VectorView<RHIBuffer*> pBuffers, VectorView<uint64_t> offsets)
 {
     m_pGfxState->SetVertexBuffers(pBuffers.size(), pBuffers.data(), offsets.data());
 }
@@ -1716,74 +1830,65 @@ void FVulkanCommandListContext::RHIDraw(uint32_t vertexCount,
 {
     if (m_pGfxState->PreDraw(this))
     {
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().draws);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().draws);
 
-        vkCmdDraw(GetCommandBuffer()->GetVkHandle(), vertexCount, instanceCount, firstVertex,
-                  firstInstance);
+        vkCmdDraw(GetCommandBuffer()->GetVkHandle(), vertexCount, instanceCount, firstVertex, firstInstance);
     }
 }
 
 void FVulkanCommandListContext::RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                                DataFormat indexFormat,
-                                               uint64_t indexBufferOffset,
-                                               uint32_t indexCount,
-                                               uint32_t instanceCount,
-                                               uint32_t firstIndex,
-                                               int32_t vertexOffset,
-                                               uint32_t firstInstance)
+                                               uint64_t   indexBufferOffset,
+                                               uint32_t   indexCount,
+                                               uint32_t   instanceCount,
+                                               uint32_t   firstIndex,
+                                               int32_t    vertexOffset,
+                                               uint32_t   firstInstance)
 {
     if (m_pGfxState->PreDraw(this))
     {
-
         FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
+
         VulkanBuffer* pVkBuffer          = TO_VK_BUFFER(pIndexBuffer);
-        VkIndexType vkIndexType =
-            indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+
+        VkIndexType vkIndexType          = indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
         pCmdBuffer->BindIndexBuffer(pVkBuffer->GetVkBuffer(), indexBufferOffset, vkIndexType);
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().draws);
 
-        vkCmdDrawIndexed(pCmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex,
-                         vertexOffset, firstInstance);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().draws);
+
+        vkCmdDrawIndexed(pCmdBuffer->GetVkHandle(), indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 }
 
 void FVulkanCommandListContext::RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                                        RHIBuffer* pIndexBuffer,
                                                        DataFormat indexFormat,
-                                                       uint64_t indexBufferOffset,
-                                                       uint64_t offset,
-                                                       uint32_t drawCount,
-                                                       uint32_t stride)
+                                                       uint64_t   indexBufferOffset,
+                                                       uint64_t   offset,
+                                                       uint32_t   drawCount,
+                                                       uint32_t   stride)
 {
     if (m_pGfxState->PreDraw(this))
     {
-
         FVulkanCommandBuffer* pCmdBuffer = GetCommandBuffer();
-        VkIndexType vkIndexType =
-            indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-        pCmdBuffer->BindIndexBuffer(TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(), indexBufferOffset,
-                                    vkIndexType);
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().draws);
+        VkIndexType vkIndexType          = indexFormat == DataFormat::eR16UInt ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
 
-        vkCmdDrawIndexedIndirect(pCmdBuffer->GetVkHandle(),
-                                 TO_VK_BUFFER(pIndirectBuffer)->GetVkBuffer(), offset, drawCount,
+        pCmdBuffer->BindIndexBuffer(TO_VK_BUFFER(pIndexBuffer)->GetVkBuffer(), indexBufferOffset, vkIndexType);
+
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().draws);
+
+        vkCmdDrawIndexedIndirect(pCmdBuffer->GetVkHandle(), TO_VK_BUFFER(pIndirectBuffer)->GetVkBuffer(), offset, drawCount,
                                  stride);
     }
 }
 
-void FVulkanCommandListContext::RHIDispatch(uint32_t groupCountX,
-                                            uint32_t groupCountY,
-                                            uint32_t groupCountZ)
+void FVulkanCommandListContext::RHIDispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
     if (m_pComputeState->PreDispatch(this))
     {
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().dispatches);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().dispatches);
 
         vkCmdDispatch(GetCommandBuffer()->GetVkHandle(), groupCountX, groupCountY, groupCountZ);
     }
@@ -1795,57 +1900,55 @@ void FVulkanCommandListContext::RHIDispatchIndirect(RHIBuffer* pIndirectBuffer, 
     {
         VulkanBuffer* pVkBuffer = TO_VK_BUFFER(pIndirectBuffer);
 
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().dispatches);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().dispatches);
 
         vkCmdDispatchIndirect(GetCommandBuffer()->GetVkHandle(), pVkBuffer->GetVkBuffer(), offset);
     }
 }
 
-void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline,
-                                                    VectorView<const uint8_t> data,
-                                                    uint32_t offset)
+void FVulkanCommandListContext::RHISetPushConstants(RHIPipeline* pPipeline, VectorView<const uint8_t> data, uint32_t offset)
 {
     if (EnsureRecording())
     {
-
         VulkanPipeline* pVkPipeline = TO_VK_PIPELINE(pPipeline);
+
         vkCmdPushConstants(GetCommandBuffer()->GetVkHandle(), pVkPipeline->GetVkPipelineLayout(),
-                           pVkPipeline->GetPushConstantsStageFlags(), offset, data.size(),
-                           data.data());
+                           pVkPipeline->GetPushConstantsStageFlags(), offset, data.size(), data.data());
     }
 }
 
-void FVulkanCommandListContext::RHIAddTransitions(
-    BitField<RHIPipelineStageFlagBits> srcStages,
-    BitField<RHIPipelineStageFlagBits> dstStages,
-    VectorView<RHIMemoryTransition> memoryTransitions,
-    VectorView<RHIBufferTransition> bufferTransitions,
-    VectorView<RHITextureTransition> textureTransitions)
+void FVulkanCommandListContext::RHIAddTransitions(BitField<RHIPipelineStageFlagBits> srcStages,
+                                                  BitField<RHIPipelineStageFlagBits> dstStages,
+                                                  VectorView<RHIMemoryTransition>    memoryTransitions,
+                                                  VectorView<RHIBufferTransition>    bufferTransitions,
+                                                  VectorView<RHITextureTransition>   textureTransitions)
 {
     if (EnsureRecording())
     {
-
         VulkanPipelineBarrier barrier;
+
         bool hasBarrier = false;
 
         for (RHIMemoryTransition const& memoryTransition : memoryTransitions)
         {
-            barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess),
-                                     ToVkAccessFlags(memoryTransition.dstAccess));
+            barrier.AddMemoryBarrier(ToVkAccessFlags(memoryTransition.srcAccess), ToVkAccessFlags(memoryTransition.dstAccess));
+
             hasBarrier = true;
         }
 
         for (RHIBufferTransition const& bufferTransition : bufferTransitions)
         {
             VulkanBuffer* pVulkanBuffer = TO_VK_BUFFER(bufferTransition.pBuffer);
-            VkAccessFlags srcAccess     = RHIBufferUsageToAccessFlagBits(
-                bufferTransition.oldUsage, bufferTransition.oldAccessMode);
-            VkAccessFlags dstAccess = RHIBufferUsageToAccessFlagBits(
-                bufferTransition.newUsage, bufferTransition.newAccessMode);
+
+            VkAccessFlags srcAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.oldUsage, bufferTransition.oldAccessMode);
+
+            VkAccessFlags dstAccess = RHIBufferUsageToAccessFlagBits(bufferTransition.newUsage, bufferTransition.newAccessMode);
+
             srcAccess |= ToVkAccessFlags(bufferTransition.additionalSrcAccess);
-            barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset,
-                                     bufferTransition.size, srcAccess, dstAccess);
+
+            barrier.AddBufferBarrier(pVulkanBuffer->GetVkBuffer(), bufferTransition.offset, bufferTransition.size, srcAccess,
+                                     dstAccess);
+
             hasBarrier = true;
         }
 
@@ -1853,17 +1956,20 @@ void FVulkanCommandListContext::RHIAddTransitions(
         {
             VulkanTexture* pVulkanTexture = TO_VK_TEXTURE(textureTransition.pTexture);
 
-            VkAccessFlags srcAccess = ToVkAccessFlags(textureTransition.GetSourceAccess());
-            VkAccessFlags dstAccess = ToVkAccessFlags(RHITextureUsageToAccessFlagBits(
-                textureTransition.newUsage, textureTransition.newAccessMode));
-            VkImageLayout oldLayout =
-                ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
-            VkImageLayout newLayout =
-                ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
+            VkAccessFlags srcAccess       = ToVkAccessFlags(textureTransition.GetSourceAccess());
+
+            VkAccessFlags dstAccess =
+                ToVkAccessFlags(RHITextureUsageToAccessFlagBits(textureTransition.newUsage, textureTransition.newAccessMode));
+
+            VkImageLayout oldLayout = ToVkImageLayout(RHITextureUsageToLayout(textureTransition.oldUsage));
+
+            VkImageLayout newLayout = ToVkImageLayout(RHITextureUsageToLayout(textureTransition.newUsage));
+
             VkImageSubresourceRange subresourceRange{};
+
             ToVkImageSubresourceRange(textureTransition.subResourceRange, &subresourceRange);
-            barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout,
-                                    subresourceRange, srcAccess, dstAccess);
+
+            barrier.AddImageBarrier(pVulkanTexture->GetVkImage(), oldLayout, newLayout, subresourceRange, srcAccess, dstAccess);
 
             hasBarrier = true;
         }
@@ -1879,22 +1985,20 @@ void FVulkanCommandListContext::RHIClearBuffer(RHIBuffer* pBuffer, uint64_t offs
 {
     if (EnsureRecording())
     {
-
-        vkCmdFillBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pBuffer)->GetVkBuffer(),
-                        offset, size, 0);
+        vkCmdFillBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pBuffer)->GetVkBuffer(), offset, size, 0);
     }
 }
 
-void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer,
-                                              RHIBuffer* pDstBuffer,
-                                              const RHIBufferCopyRegion& region)
+void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer, RHIBuffer* pDstBuffer, const RHIBufferCopyRegion& region)
 {
     if (EnsureRecording())
     {
-
         VkBufferCopy bufferCopy;
+
         bufferCopy.srcOffset = region.srcOffset;
+
         bufferCopy.dstOffset = region.dstOffset;
+
         bufferCopy.size      = region.size;
 
         vkCmdCopyBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
@@ -1902,30 +2006,31 @@ void FVulkanCommandListContext::RHICopyBuffer(RHIBuffer* pSrcBuffer,
     }
 }
 
-void FVulkanCommandListContext::RHIClearTexture(RHITexture* pTexture,
-                                                const Color& color,
+void FVulkanCommandListContext::RHIClearTexture(RHITexture*                       pTexture,
+                                                const Color&                      color,
                                                 const RHITextureSubResourceRange& range)
 {
     if (EnsureRecording())
     {
-
         VkImageSubresourceRange vkRange;
+
         ToVkImageSubresourceRange(range, &vkRange);
+
         VkClearColorValue colorValue;
+
         ToVkClearColor(color, &colorValue);
-        vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(),
-                             TO_VK_TEXTURE(pTexture)->GetVkImage(),
+
+        vkCmdClearColorImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pTexture)->GetVkImage(),
                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &colorValue, 1, &vkRange);
     }
 }
 
-void FVulkanCommandListContext::RHICopyTexture(RHITexture* pSrcTexture,
-                                               RHITexture* pDstTexture,
+void FVulkanCommandListContext::RHICopyTexture(RHITexture*                      pSrcTexture,
+                                               RHITexture*                      pDstTexture,
                                                VectorView<RHITextureCopyRegion> regions)
 {
     if (EnsureRecording())
     {
-
         HeapVector<VkImageCopy> copies(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
@@ -1934,20 +2039,18 @@ void FVulkanCommandListContext::RHICopyTexture(RHITexture* pSrcTexture,
         }
 
         vkCmdCopyImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
-                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
     }
 }
 
-void FVulkanCommandListContext::RHIBlitTexture(RHITexture* pSrcTexture,
-                                               RHITexture* pDstTexture,
+void FVulkanCommandListContext::RHIBlitTexture(RHITexture*                      pSrcTexture,
+                                               RHITexture*                      pDstTexture,
                                                VectorView<RHITextureBlitRegion> regions,
-                                               RHISamplerFilter filter)
+                                               RHISamplerFilter                 filter)
 {
     if (EnsureRecording())
     {
-
         HeapVector<VkImageBlit> blits(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
@@ -1955,21 +2058,18 @@ void FVulkanCommandListContext::RHIBlitTexture(RHITexture* pSrcTexture,
             ToVkImageBlit(regions[i], &blits[i]);
         }
 
-        vkCmdBlitImage(
-            GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, blits.size(), blits.data(), ToVkFilter(filter));
+        vkCmdBlitImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
+                       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, blits.size(), blits.data(), ToVkFilter(filter));
     }
 }
 
-void FVulkanCommandListContext::RHICopyTextureToBuffer(
-    RHITexture* pSrcTex,
-    RHIBuffer* pDstBuffer,
-    VectorView<RHIBufferTextureCopyRegion> regions)
+void FVulkanCommandListContext::RHICopyTextureToBuffer(RHITexture*                            pSrcTex,
+                                                       RHIBuffer*                             pDstBuffer,
+                                                       VectorView<RHIBufferTextureCopyRegion> regions)
 {
     if (EnsureRecording())
     {
-
         HeapVector<VkBufferImageCopy> copies(regions.size());
 
         for (uint32_t i = 0; i < regions.size(); i++)
@@ -1977,21 +2077,18 @@ void FVulkanCommandListContext::RHICopyTextureToBuffer(
             ToVkBufferImageCopy(regions[i], &copies[i]);
         }
 
-        vkCmdCopyImageToBuffer(
-            GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTex)->GetVkImage(),
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(),
-            copies.size(), copies.data());
+        vkCmdCopyImageToBuffer(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTex)->GetVkImage(),
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_BUFFER(pDstBuffer)->GetVkBuffer(), copies.size(),
+                               copies.data());
     }
 }
 
-void FVulkanCommandListContext::RHICopyBufferToTexture(
-    RHIBuffer* pSrcBuffer,
-    RHITexture* pDstTexture,
-    VectorView<RHIBufferTextureCopyRegion> regions)
+void FVulkanCommandListContext::RHICopyBufferToTexture(RHIBuffer*                             pSrcBuffer,
+                                                       RHITexture*                            pDstTexture,
+                                                       VectorView<RHIBufferTextureCopyRegion> regions)
 {
     if (EnsureRecording())
     {
-
         HeapVector<VkBufferImageCopy> copies(regions.size());
 
         for (uint32_t i = 0; i < copies.size(); i++)
@@ -1999,39 +2096,48 @@ void FVulkanCommandListContext::RHICopyBufferToTexture(
             ToVkBufferImageCopy(regions[i], &copies[i]);
         }
 
-        vkCmdCopyBufferToImage(GetCommandBuffer()->GetVkHandle(),
-                               TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
-                               TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(), copies.data());
+        vkCmdCopyBufferToImage(GetCommandBuffer()->GetVkHandle(), TO_VK_BUFFER(pSrcBuffer)->GetVkBuffer(),
+                               TO_VK_TEXTURE(pDstTexture)->GetVkImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copies.size(),
+                               copies.data());
     }
 }
 
 void FVulkanCommandListContext::RHIResolveTexture(RHITexture* pSrcTexture,
                                                   RHITexture* pDstTexture,
-                                                  uint32_t srcLayer,
-                                                  uint32_t srcMipmap,
-                                                  uint32_t dstLayer,
-                                                  uint32_t dstMipmap)
+                                                  uint32_t    srcLayer,
+                                                  uint32_t    srcMipmap,
+                                                  uint32_t    dstLayer,
+                                                  uint32_t    dstMipmap)
 {
     if (EnsureRecording())
     {
-
         VkImageResolve region{};
+
         region.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+
         region.srcSubresource.mipLevel       = srcMipmap;
+
         region.srcSubresource.baseArrayLayer = srcLayer;
+
         region.srcSubresource.layerCount     = 1;
+
         region.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+
         region.dstSubresource.mipLevel       = dstMipmap;
+
         region.dstSubresource.baseArrayLayer = dstLayer;
+
         region.dstSubresource.layerCount     = 1;
-        region.extent.width  = std::max(1u, pSrcTexture->GetBaseInfo().width >> srcMipmap);
-        region.extent.height = std::max(1u, pSrcTexture->GetBaseInfo().height >> srcMipmap);
-        region.extent.depth  = std::max(1u, pSrcTexture->GetBaseInfo().depth >> srcMipmap);
-        vkCmdResolveImage(
-            GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        region.extent.width                  = std::max(1u, pSrcTexture->GetBaseInfo().width >> srcMipmap);
+
+        region.extent.height                 = std::max(1u, pSrcTexture->GetBaseInfo().height >> srcMipmap);
+
+        region.extent.depth                  = std::max(1u, pSrcTexture->GetBaseInfo().depth >> srcMipmap);
+
+        vkCmdResolveImage(GetCommandBuffer()->GetVkHandle(), TO_VK_TEXTURE(pSrcTexture)->GetVkImage(),
+                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TO_VK_TEXTURE(pDstTexture)->GetVkImage(),
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
 }
 
@@ -2055,17 +2161,21 @@ void VulkanRHI::DestroyPlatformCommandListPool()
     m_platformCommandListPool.Destroy();
 }
 
-RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*>          cmdLists,
                                           HeapVector<RHIPlatformCommandList*>& outCommandLists)
 {
     GetRHIThread().CheckOwnership();
+
     RHIStatus status;
+
     const size_t firstOutput   = outCommandLists.size();
+
     const uint64_t transaction = m_pBindlessDescriptorPoolManager->BeginTransaction();
 
     if (m_submissionBlocked || !PrepareCommandListDependencies(cmdLists))
     {
         status.error = {RHIErrorCode::eBackendFailure, 0, "Prepare command dependencies"};
+
         BlockSubmissions();
     }
 
@@ -2073,17 +2183,22 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
     {
         if (status)
         {
-            FVulkanCommandListContext* context =
-                static_cast<FVulkanCommandListContext*>(commands->GetContext());
+            FVulkanCommandListContext* context = static_cast<FVulkanCommandListContext*>(commands->GetContext());
+
             context->SetRecordingTransaction(transaction);
+
             VulkanPlatformCommandList* platform = AcquirePlatformCommandList();
 
             commands->Execute();
+
             context->CollectWorkloads(platform->m_workloads);
+
             status.error = context->GetRecordingError();
+
             platform->m_transactions.push_back(context->DetachRecordingTransaction());
-            platform->m_contextWorkloadRanges.push_back(
-                {context, 0, static_cast<uint32_t>(platform->m_workloads.size())});
+
+            platform->m_contextWorkloadRanges.push_back({context, 0, static_cast<uint32_t>(platform->m_workloads.size())});
+
             outCommandLists.push_back(platform);
         }
     }
@@ -2092,8 +2207,7 @@ RHIStatus VulkanRHI::FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
     {
         for (size_t i = firstOutput; i < outCommandLists.size(); ++i)
         {
-            VulkanPlatformCommandList* platform =
-                static_cast<VulkanPlatformCommandList*>(outCommandLists[i]);
+            VulkanPlatformCommandList* platform = static_cast<VulkanPlatformCommandList*>(outCommandLists[i]);
 
             for (VulkanWorkload* workload : platform->m_workloads)
             {
@@ -2126,8 +2240,7 @@ void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> c
 {
     for (RHIPlatformCommandList* pCommandList : commandLists)
     {
-        VulkanPlatformCommandList* pPlatformCmdList =
-            static_cast<VulkanPlatformCommandList*>(pCommandList);
+        VulkanPlatformCommandList* pPlatformCmdList = static_cast<VulkanPlatformCommandList*>(pCommandList);
 
         for (VulkanWorkload* pWorkload : pPlatformCmdList->m_workloads)
         {
@@ -2147,6 +2260,7 @@ void VulkanRHI::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> c
 RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 {
     GetRHIThread().CheckOwnership();
+
     HeapVector<VulkanQueue*> queues;
 
     for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); ++i)
@@ -2159,9 +2273,9 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
         }
     }
 
-    RHISubmissionResult result =
-        m_submissionBlocked ? RHISubmissionResult::eFatal : RHISubmissionResult::eSuccess;
-    bool submitted = false;
+    RHISubmissionResult result = m_submissionBlocked ? RHISubmissionResult::eFatal : RHISubmissionResult::eSuccess;
+
+    bool submitted             = false;
 
     for (VulkanQueue* queue : queues)
     {
@@ -2170,9 +2284,11 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
             break;
         }
 
-        uint64_t serial = 0;
-        result          = queue->SubmitPendingWorkloads(serial);
-        submitted |= serial != 0;
+        uint64_t serial  = 0;
+
+        result           = queue->SubmitPendingWorkloads(serial);
+
+        submitted       |= serial != 0;
 
         if (result == RHISubmissionResult::eRejected && submitted)
         {
@@ -2189,16 +2305,13 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
     // Shared physical queues must not be polled again before these references are consumed.
     for (VulkanPlatformCommandList* platform : m_pendingPlatformCmdLists)
     {
-        for (VulkanPlatformCommandList::ContextWorkloadRange const& range :
-             platform->m_contextWorkloadRanges)
+        for (VulkanPlatformCommandList::ContextWorkloadRange const& range : platform->m_contextWorkloadRanges)
         {
             uint64_t serial = 0;
 
             for (uint32_t i = 0; i < range.workloadCount; ++i)
             {
-                serial = std::max(
-                    serial,
-                    platform->m_workloads[range.firstWorkloadIndex + i]->m_submissionSerial);
+                serial = std::max(serial, platform->m_workloads[range.firstWorkloadIndex + i]->m_submissionSerial);
             }
 
             range.pContext->SetLastSubmittedSerial(serial);
@@ -2206,15 +2319,13 @@ RHISubmissionResult VulkanRHI::FlushAllGPUCommands()
 
         for (uint64_t owner : platform->m_transactions)
         {
-            m_pBindlessDescriptorPoolManager->ResolveTransaction(
-                owner,
-                result == RHISubmissionResult::eSuccess || result == RHISubmissionResult::eFatal);
+            m_pBindlessDescriptorPoolManager->ResolveTransaction(owner, result == RHISubmissionResult::eSuccess
+                                                                            || result == RHISubmissionResult::eFatal);
         }
 
         if (result == RHISubmissionResult::eRejected)
         {
-            for (const VulkanPlatformCommandList::ContextWorkloadRange& range :
-                 platform->m_contextWorkloadRanges)
+            for (const VulkanPlatformCommandList::ContextWorkloadRange& range : platform->m_contextWorkloadRanges)
             {
                 range.pContext->RHIDiscardRecording();
             }

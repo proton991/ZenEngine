@@ -19,38 +19,31 @@ struct SceneMeshDraw
 
 // Commands and resource declarations must describe the same scene snapshot.
 inline HeapVector<SceneMeshDraw> SnapshotSceneDraws(const RenderScene& scene,
-                                                    uint32_t classMask  = GI_ALL,
-                                                    bool trianglesOnly  = true,
-                                                    bool opaqueCoverage = true)
+                                                    uint32_t           classMask = GI_ALL,
+                                                    bool trianglesOnly           = true,
+                                                    bool opaqueCoverage          = true)
 {
     HeapVector<SceneMeshDraw> draws;
-    uint32_t firstTriangle = 0;
+    uint32_t                  firstTriangle = 0;
 
     for (sg::Node* node : scene.GetRenderableNodes())
     {
         for (sg::SubMesh* mesh : node->GetComponent<sg::Mesh>()->GetSubMeshes())
         {
-            const sg::MaterialData& material =
-                mesh->GetMaterial()->index < scene.GetMaterialsData().size() ?
-                scene.GetMaterialsData()[mesh->GetMaterial()->index] :
-                mesh->GetMaterial()->data;
+            const sg::MaterialData& material = mesh->GetMaterial()->index < scene.GetMaterialsData().size()
+                                                 ? scene.GetMaterialsData()[mesh->GetMaterial()->index]
+                                                 : mesh->GetMaterial()->data;
 
-            const bool solidCoverage =
-                material.surfaceProperties.y != static_cast<float>(sg::AlphaMode::Blend) &&
-                material.sheenColorTransmission.w == 0.0f;
+            const bool solidCoverage         = material.surfaceProperties.y != static_cast<float>(sg::AlphaMode::Blend)
+                                    && material.sheenColorTransmission.w == 0.0f;
 
-            if ((scene.GetInstanceMask(node->GetRenderableIndex()) & classMask) != 0 &&
-                (!trianglesOnly ||
-                 (mesh->topology == sg::MeshTopology::Triangles &&
-                  (!opaqueCoverage || solidCoverage))))
+            if ((scene.GetInstanceMask(node->GetRenderableIndex()) & classMask) != 0
+                && (!trianglesOnly || (mesh->topology == sg::MeshTopology::Triangles && (!opaqueCoverage || solidCoverage))))
             {
-                draws.push_back({node->GetRenderableIndex(), mesh->GetMaterial()->index,
-                                 mesh->GetIndexCount(), mesh->GetFirstIndex(), firstTriangle,
-                                 mesh->topology});
+                draws.push_back({node->GetRenderableIndex(), mesh->GetMaterial()->index, mesh->GetIndexCount(),
+                                 mesh->GetFirstIndex(), firstTriangle, mesh->topology});
             }
-            firstTriangle += mesh->topology == sg::MeshTopology::Triangles && solidCoverage ?
-                mesh->GetIndexCount() / 3 :
-                0;
+            firstTriangle += mesh->topology == sg::MeshTopology::Triangles && solidCoverage ? mesh->GetIndexCount() / 3 : 0;
         }
     }
 
@@ -72,8 +65,8 @@ inline void ClearPassResourceBindings(RDGPassDescBase& desc)
     desc.logicalIndirectBuffers.clear();
 }
 
-inline void BindSceneTextureArray(RDGPassDescBase& desc,
-                                  RHISampler* pSampler,
+inline void BindSceneTextureArray(RDGPassDescBase&               desc,
+                                  RHISampler*                    pSampler,
                                   const HeapVector<RHITexture*>& textures,
                                   const HeapVector<RHISampler*>& samplers = {})
 {

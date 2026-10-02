@@ -29,7 +29,7 @@ TEST_F(RenderCoreTest, VoxelOutputsAllocateLazily)
     EXPECT_FALSE(volumes.IsReady());
     EXPECT_EQ(volumes.GetVoxelTextures().pOwner, nullptr);
     ASSERT_TRUE(volumes.EnsureReady());
-    RHITexture* owner          = volumes.GetVoxelTextures().pOwner;
+    RHITexture*    owner       = volumes.GetVoxelTextures().pOwner;
     const uint32_t allocations = rhi->textureCreations;
     EXPECT_TRUE(volumes.EnsureReady());
     EXPECT_EQ(rhi->textureCreations, allocations);
@@ -71,7 +71,7 @@ TEST_F(RenderCoreTest, AveragedReflectanceClearsAndRetriesWithoutPublishingFaile
     source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
     SceneData data{};
     data.pScene = &source;
-    RenderScene scene(device, data);
+    RenderScene      scene(device, data);
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM, true, 64);
     volumes.Init();
     volumes.EnableAveragedReflectanceForTest();
@@ -80,7 +80,7 @@ TEST_F(RenderCoreTest, AveragedReflectanceClearsAndRetriesWithoutPublishingFaile
     ASSERT_TRUE(graph.Begin());
     ASSERT_TRUE(volumes.BeginVolumeUpdate(graph));
     ASSERT_TRUE(volumes.UsesAveragedReflectance());
-    RHIBuffer* sums    = volumes.GetReflectanceSums();
+    RHIBuffer*  sums   = volumes.GetReflectanceSums();
     RHITexture* output = volumes.GetVoxelTextures().pReflectance;
     ASSERT_NE(sums, nullptr);
     ASSERT_NE(output, nullptr);
@@ -109,10 +109,10 @@ TEST_F(RenderCoreTest, VoxelGIFailedAllocationsPreserveVisualizationAndAllowRetr
         SCOPED_TRACE(failure);
         TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
         volumes.Init();
-        RHITexture* albedo = volumes.GetVoxelTextures().pAlbedo;
+        RHITexture*     albedo = volumes.GetVoxelTextures().pAlbedo;
         VoxelGIRenderer gi(device, &volumes);
-        const size_t firstAllocation = rhi->createdTextureIds.size();
-        rhi->failTextureCreationAt   = rhi->textureCreations + failure;
+        const size_t    firstAllocation = rhi->createdTextureIds.size();
+        rhi->failTextureCreationAt      = rhi->textureCreations + failure;
         EXPECT_FALSE(gi.Init());
         EXPECT_FALSE(gi.IsInitialized());
         EXPECT_FALSE(volumes.ProducesRadianceInputs());
@@ -192,14 +192,13 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     environmentFormat.arrayLayers = 6;
     environmentFormat.width = environmentFormat.height = 8;
     environmentFormat.format                           = DataFormat::eR16G16B16A16SFloat;
-    sceneInputs.environment.pSkybox =
-        device->CreateTextureSampled(environmentFormat, {.copyUsage = true}, "sky");
+    sceneInputs.environment.pSkybox             = device->CreateTextureSampled(environmentFormat, {.copyUsage = true}, "sky");
     sceneInputs.environment.pPrefilteredSampler = device->CreateSampler({});
     sg::Scene source;
     source.GetAABB() = sg::AABB(Vec3(-1.0f), Vec3(1.0f));
     SceneData data{};
     data.pScene = &source;
-    RenderScene scene(device, data);
+    RenderScene      scene(device, data);
     TestVoxelVolumes volumes(device, DataFormat::eR8G8B8A8UNORM);
     volumes.Init();
     volumes.SetRenderScene(&scene);
@@ -210,12 +209,12 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
     ASSERT_TRUE(gi.SetSettings(settings));
     RDGMetrics& metrics = device->GetRDGMetrics();
     metrics.SetSink({});
-    RenderGraph* graph = device->GetCurrentFrameRDG();
+    RenderGraph* graph         = device->GetCurrentFrameRDG();
 
     float environmentIntensity = 1.0f;
     float environmentRotation  = 0.0f;
-    bool environmentEnabled    = true;
-    bool skyboxVisible         = true;
+    bool  environmentEnabled   = true;
+    bool  skyboxVisible        = true;
     for (uint32_t frame = 0; frame < 32; ++frame)
     {
         SCOPED_TRACE(frame);
@@ -247,15 +246,12 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
             case 20:
             {
                 const uint64_t revision = scene.GetEnvironmentRevision();
-                const Vec4 previous     = sceneInputs.uniforms.environment;
+                const Vec4     previous = sceneInputs.uniforms.environment;
                 EXPECT_FALSE(scene.SetEnvironmentLighting(-1, 0, true, true));
-                EXPECT_FALSE(scene.SetEnvironmentLighting(1, std::numeric_limits<float>::infinity(),
-                                                          true, true));
-                EXPECT_FALSE(scene.SetEnvironmentLighting(std::numeric_limits<float>::quiet_NaN(),
-                                                          0, true, true));
+                EXPECT_FALSE(scene.SetEnvironmentLighting(1, std::numeric_limits<float>::infinity(), true, true));
+                EXPECT_FALSE(scene.SetEnvironmentLighting(std::numeric_limits<float>::quiet_NaN(), 0, true, true));
                 EXPECT_EQ(scene.GetEnvironmentRevision(), revision);
-                const SceneUniformData* uniforms =
-                    reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
+                const SceneUniformData* uniforms = reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
                 EXPECT_EQ(uniforms->environment, previous);
                 break;
             }
@@ -270,16 +266,12 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         }
         EXPECT_TRUE(gi.SetSettings(settings)); // Also covers repeated unchanged settings.
         const uint64_t environmentRevision = scene.GetEnvironmentRevision();
-        EXPECT_TRUE(scene.SetEnvironmentLighting(environmentIntensity, environmentRotation,
-                                                 environmentEnabled, skyboxVisible));
+        EXPECT_TRUE(scene.SetEnvironmentLighting(environmentIntensity, environmentRotation, environmentEnabled, skyboxVisible));
         const bool environmentChanged = frame == 16 || frame == 17 || frame == 18 || frame == 21;
-        EXPECT_EQ(scene.GetEnvironmentRevision(),
-                  environmentRevision + (environmentChanged ? 1 : 0));
-        const SceneUniformData* uniforms =
-            reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
-        EXPECT_EQ(uniforms->environment,
-                  Vec4(environmentIntensity, glm::radians(environmentRotation),
-                       environmentEnabled ? 1.0f : 0.0f, skyboxVisible ? 1.0f : 0.0f));
+        EXPECT_EQ(scene.GetEnvironmentRevision(), environmentRevision + (environmentChanged ? 1 : 0));
+        const SceneUniformData* uniforms = reinterpret_cast<const SceneUniformData*>(scene.GetSceneUniformData());
+        EXPECT_EQ(uniforms->environment, Vec4(environmentIntensity, glm::radians(environmentRotation),
+                                              environmentEnabled ? 1.0f : 0.0f, skyboxVisible ? 1.0f : 0.0f));
         ASSERT_TRUE(graph->Begin());
         const bool geometryChanged = volumes.BeginVolumeUpdate(*graph);
         if (geometryChanged)
@@ -292,8 +284,7 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         }
         if (frame == 0)
         {
-            graph->AddTransferPass("InitializeSky")
-                .ClearTexture(sceneInputs.environment.pSkybox, Color(0));
+            graph->AddTransferPass("InitializeSky").ClearTexture(sceneInputs.environment.pSkybox, Color(0));
         }
         gi.BuildRenderGraph();
         graph->AddComputePass(IntentPass("keepalive"));
@@ -302,10 +293,9 @@ TEST_F(RenderCoreTest, VoxelGISettingsInvalidateOnlyDependentPasses)
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         gi.OnRenderGraphExecuted(true);
         volumes.OnRenderGraphExecuted(true);
-        const bool skyChanged = geometryChanged || environmentChanged || frame == 8 || frame == 9 ||
-            frame == 25 || frame == 29;
-        const bool radianceChanged = skyChanged || frame == 7 || frame == 11 || frame == 24 ||
-            frame == 26 || frame == 28 || frame == 30;
+        const bool skyChanged = geometryChanged || environmentChanged || frame == 8 || frame == 9 || frame == 25 || frame == 29;
+        const bool radianceChanged =
+            skyChanged || frame == 7 || frame == 11 || frame == 24 || frame == 26 || frame == 28 || frame == 30;
         const RDGMetricsSnapshot& snapshot = metrics.GetLastSnapshot();
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelOpacityMip"), geometryChanged ? 3u : 0u);
         EXPECT_EQ(CountGIPasses(snapshot, "VoxelSkyIrradiance"), skyChanged ? 1u : 0u);

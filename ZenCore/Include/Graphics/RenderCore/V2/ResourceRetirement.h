@@ -7,7 +7,7 @@ namespace zen::rc
 // native serials are known; the completion set still gates actual GPU retirement.
 struct ResourceRetirement
 {
-    RHICompletionSet requiredSerials;
+    RHICompletionSet    requiredSerials;
     RHISubmissionTicket pending;
 
     // Nonblocking: retain unresolved or fatal work, including uncertain native use.

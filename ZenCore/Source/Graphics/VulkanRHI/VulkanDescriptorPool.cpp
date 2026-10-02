@@ -24,17 +24,15 @@ constexpr uint32_t kBindlessHeapCount        = ToUnderlying(RHIBindlessHeapType:
 
 static_assert((kInitialSetsPerPool << kMaxPoolGrowthShift) == kMaxSetsPerPool);
 
-using DescriptorPoolSizes =
-    SmallVector<VkDescriptorPoolSize, ToUnderlying(RHIShaderResourceType::eMax)>;
+using DescriptorPoolSizes = SmallVector<VkDescriptorPoolSize, ToUnderlying(RHIShaderResourceType::eMax)>;
 
-void BuildDescriptorPoolSizes(VulkanDevice* pDevice,
+void BuildDescriptorPoolSizes(VulkanDevice*                  pDevice,
                               const VulkanDescriptorPoolKey& poolKey,
-                              uint32_t maxNumSets,
-                              bool updateAfterBind,
-                              DescriptorPoolSizes& poolSizes)
+                              uint32_t                       maxNumSets,
+                              bool                           updateAfterBind,
+                              DescriptorPoolSizes&           poolSizes)
 {
-    for (uint32_t resourceTypeIdx = 0; resourceTypeIdx < ToUnderlying(RHIShaderResourceType::eMax);
-         ++resourceTypeIdx)
+    for (uint32_t resourceTypeIdx = 0; resourceTypeIdx < ToUnderlying(RHIShaderResourceType::eMax); ++resourceTypeIdx)
     {
         uint32_t descriptorCount = poolKey.descriptorCount[resourceTypeIdx];
 
@@ -43,25 +41,26 @@ void BuildDescriptorPoolSizes(VulkanDevice* pDevice,
             continue;
         }
 
-        const RHIShaderResourceType resourceType =
-            static_cast<RHIShaderResourceType>(resourceTypeIdx);
-        const VkDescriptorType descriptorType =
-            resourceType == RHIShaderResourceType::eUniformBuffer ?
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC :
-            ShaderResourceTypeToVkDescriptorType(resourceType);
+        const RHIShaderResourceType resourceType = static_cast<RHIShaderResourceType>(resourceTypeIdx);
+
+        const VkDescriptorType descriptorType    = resourceType == RHIShaderResourceType::eUniformBuffer
+                                                     ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                                                     : ShaderResourceTypeToVkDescriptorType(resourceType);
 
         if (descriptorType == VK_DESCRIPTOR_TYPE_MAX_ENUM)
         {
             continue;
         }
 
-        const uint32_t poolSizeIdx =
-            resourceType == RHIShaderResourceType::eSamplerWithTextureBuffer ?
-            ToUnderlying(RHIShaderResourceType::eTextureBuffer) :
-            resourceTypeIdx;
-        VkDescriptorPoolSize& poolSize = poolSizes[poolSizeIdx];
-        poolSize.type                  = descriptorType;
-        poolSize.descriptorCount += descriptorCount;
+        const uint32_t poolSizeIdx      = resourceType == RHIShaderResourceType::eSamplerWithTextureBuffer
+                                            ? ToUnderlying(RHIShaderResourceType::eTextureBuffer)
+                                            : resourceTypeIdx;
+
+        VkDescriptorPoolSize& poolSize  = poolSizes[poolSizeIdx];
+
+        poolSize.type                   = descriptorType;
+
+        poolSize.descriptorCount       += descriptorCount;
     }
 
     uint32_t numPoolSizes = 0;
@@ -73,8 +72,7 @@ void BuildDescriptorPoolSizes(VulkanDevice* pDevice,
             if (updateAfterBind)
             {
                 poolSize.descriptorCount =
-                    std::min(poolSize.descriptorCount,
-                             pDevice->GetDescriptorSetUpdateAfterBindLimit(poolSize.type));
+                    std::min(poolSize.descriptorCount, pDevice->GetDescriptorSetUpdateAfterBindLimit(poolSize.type));
             }
 
             poolSize.descriptorCount *= maxNumSets;
@@ -89,29 +87,35 @@ void BuildDescriptorPoolSizes(VulkanDevice* pDevice,
     poolSizes.resize(numPoolSizes);
 }
 
-VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice* pDevice,
+VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice*                  pDevice,
                                            const VulkanDescriptorPoolKey& poolKey,
-                                           uint32_t maxNumSets,
-                                           bool updateAfterBind) :
+                                           uint32_t                       maxNumSets,
+                                           bool                           updateAfterBind) :
     m_pDevice(pDevice), m_maxNumSets(maxNumSets), m_updateAfterBind(updateAfterBind)
 {
     VERIFY_EXPR(m_pDevice != nullptr);
+
     VERIFY_EXPR(m_maxNumSets > 0);
 
     if (m_pDevice != nullptr && m_maxNumSets > 0)
     {
         DescriptorPoolSizes poolSizes(ToUnderlying(RHIShaderResourceType::eMax));
+
         BuildDescriptorPoolSizes(m_pDevice, poolKey, m_maxNumSets, m_updateAfterBind, poolSizes);
 
         VkDescriptorPoolCreateInfo poolCI{};
-        InitVkStruct(poolCI, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
-        poolCI.flags   = m_updateAfterBind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        poolCI.maxSets = m_maxNumSets;
-        poolCI.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-        poolCI.pPoolSizes    = poolSizes.empty() ? nullptr : poolSizes.data();
 
-        const VkResult result =
-            vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkHandle);
+        InitVkStruct(poolCI, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
+
+        poolCI.flags          = m_updateAfterBind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+
+        poolCI.maxSets        = m_maxNumSets;
+
+        poolCI.poolSizeCount  = static_cast<uint32_t>(poolSizes.size());
+
+        poolCI.pPoolSizes     = poolSizes.empty() ? nullptr : poolSizes.data();
+
+        const VkResult result = vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkHandle);
 
         if (result != VK_SUCCESS)
         {
@@ -127,6 +131,7 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
     if (m_vkHandle != VK_NULL_HANDLE)
     {
         vkDestroyDescriptorPool(m_pDevice->GetVkHandle(), m_vkHandle, nullptr);
+
         m_vkHandle = VK_NULL_HANDLE;
 
         // TODO: record pool destroy metrics somewhere
@@ -137,24 +142,29 @@ VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout, uin
 {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
-    if (m_vkHandle != VK_NULL_HANDLE && layout != VK_NULL_HANDLE &&
-        m_numAllocatedSets < m_maxNumSets)
+    if (m_vkHandle != VK_NULL_HANDLE && layout != VK_NULL_HANDLE && m_numAllocatedSets < m_maxNumSets)
     {
         VkDescriptorSetVariableDescriptorCountAllocateInfo variableCountInfo{};
-        InitVkStruct(variableCountInfo,
-                     VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
+
+        InitVkStruct(variableCountInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO);
+
         variableCountInfo.descriptorSetCount = 1;
+
         variableCountInfo.pDescriptorCounts  = &variableCount;
 
         VkDescriptorSetAllocateInfo allocateInfo{};
+
         InitVkStruct(allocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
+
         allocateInfo.pNext              = variableCount > 0 ? &variableCountInfo : nullptr;
+
         allocateInfo.descriptorPool     = m_vkHandle;
+
         allocateInfo.descriptorSetCount = 1;
+
         allocateInfo.pSetLayouts        = &layout;
 
-        const VkResult result =
-            vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &descriptorSet);
+        const VkResult result           = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &descriptorSet);
 
         if (result == VK_SUCCESS)
         {
@@ -224,6 +234,7 @@ VulkanDescriptorPoolSetContainer::VulkanDescriptorPoolSetContainer(VulkanDevice*
 VulkanDescriptorPoolSetContainer::~VulkanDescriptorPoolSetContainer()
 {
     DestroyChains(m_nonUABChainMap);
+
     DestroyChains(m_UABChainMap);
 }
 
@@ -234,17 +245,17 @@ bool VulkanDescriptorPoolSetContainer::CanReuse() const
 
 void VulkanDescriptorPoolSetContainer::Retire()
 {
-    GVulkanRHI->GetLifetimeTracker().Retire(m_lifetimeId, this, [](void* resource) {
-        ZEN_DELETE(static_cast<VulkanDescriptorPoolSetContainer*>(resource));
-    });
+    GVulkanRHI->GetLifetimeTracker().Retire(
+        m_lifetimeId, this, [](void* resource) { ZEN_DELETE(static_cast<VulkanDescriptorPoolSetContainer*>(resource)); });
 }
 
 VkDescriptorSet VulkanDescriptorPoolSetContainer::Allocate(const VulkanDescriptorPoolKey& poolKey,
-                                                           bool updateAfterBind,
-                                                           VkDescriptorSetLayout layout,
-                                                           uint32_t variableCount)
+                                                           bool                           updateAfterBind,
+                                                           VkDescriptorSetLayout          layout,
+                                                           uint32_t                       variableCount)
 {
     VERIFY_EXPR(layout != VK_NULL_HANDLE);
+
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
     if (layout != VK_NULL_HANDLE)
@@ -283,17 +294,21 @@ void VulkanDescriptorPoolSetContainer::ResetChains(PoolChainMap& chainMap)
 void VulkanDescriptorPoolSetContainer::Reset()
 {
     VERIFY_EXPR(CanReuse());
+
     ResetChains(m_nonUABChainMap);
+
     ResetChains(m_UABChainMap);
 }
 
 VulkanDescriptorPoolSetContainer::PoolChain* VulkanDescriptorPoolSetContainer::AcquireChain(
     const VulkanDescriptorPoolKey& poolKey,
-    bool updateAfterBind)
+    bool                           updateAfterBind)
 {
     PoolChainMap& chainMap = updateAfterBind ? m_UABChainMap : m_nonUABChainMap;
-    const FlatHashMap<VulkanDescriptorPoolKey, PoolChain*, VulkanDescriptorPoolKeyHasher>::iterator
-        chainIt       = chainMap.find(poolKey);
+
+    const FlatHashMap<VulkanDescriptorPoolKey, PoolChain*, VulkanDescriptorPoolKeyHasher>::iterator chainIt =
+        chainMap.find(poolKey);
+
     PoolChain* pChain = nullptr;
 
     if (chainIt != chainMap.end())
@@ -303,19 +318,23 @@ VulkanDescriptorPoolSetContainer::PoolChain* VulkanDescriptorPoolSetContainer::A
     else
     {
         pChain                  = ZEN_NEW() PoolChain();
+
         pChain->poolKey         = poolKey;
+
         pChain->updateAfterBind = updateAfterBind;
+
         chainMap.emplace(poolKey, pChain);
     }
 
     return pChain;
 }
 
-VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain* pChain,
+VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain*            pChain,
                                                                     VkDescriptorSetLayout layout,
-                                                                    uint32_t variableCount)
+                                                                    uint32_t              variableCount)
 {
     VERIFY_EXPR(pChain != nullptr);
+
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
     if (pChain != nullptr)
@@ -336,8 +355,7 @@ VkDescriptorSet VulkanDescriptorPoolSetContainer::AllocateFromChain(PoolChain* p
 
             if (pChain->activePoolIdx < pChain->pools.size())
             {
-                descriptorSet =
-                    pChain->pools[pChain->activePoolIdx]->Allocate(layout, variableCount);
+                descriptorSet = pChain->pools[pChain->activePoolIdx]->Allocate(layout, variableCount);
             }
         }
     }
@@ -352,15 +370,18 @@ void VulkanDescriptorPoolSetContainer::PushPoolToChain(PoolChain* pChain)
     if (pChain != nullptr)
     {
         const uint32_t growthShift = std::min(pChain->numPools, kMaxPoolGrowthShift);
+
         const uint32_t maxNumSets  = kInitialSetsPerPool << growthShift;
 
-        VulkanDescriptorPool* pPool = ZEN_NEW() VulkanDescriptorPool(
-            m_pVulkanDevice, pChain->poolKey, maxNumSets, pChain->updateAfterBind);
+        VulkanDescriptorPool* pPool =
+            ZEN_NEW() VulkanDescriptorPool(m_pVulkanDevice, pChain->poolKey, maxNumSets, pChain->updateAfterBind);
+
         if (pPool->IsValid())
         {
             pChain->pools.push_back(pPool);
 
             pChain->numPools      = static_cast<uint32_t>(pChain->pools.size());
+
             pChain->activePoolIdx = pChain->numPools - 1;
         }
         else
@@ -370,11 +391,11 @@ void VulkanDescriptorPoolSetContainer::PushPoolToChain(PoolChain* pChain)
     }
 }
 
-VulkanDescriptorSetCache::VulkanDescriptorSetCache(VulkanDescriptorPoolManager2* pPoolManager,
-                                                   VulkanDevice* pVulkanDevice) :
+VulkanDescriptorSetCache::VulkanDescriptorSetCache(VulkanDescriptorPoolManager2* pPoolManager, VulkanDevice* pVulkanDevice) :
     m_pPoolManager(pPoolManager), m_pDevice(pVulkanDevice)
 {
     VERIFY_EXPR(m_pPoolManager != nullptr);
+
     VERIFY_EXPR(m_pDevice != nullptr);
 }
 
@@ -408,34 +429,44 @@ void VulkanDescriptorSetCache::Destroy()
     }
 
     m_entries.clear();
+
     m_entryIndexMap.clear();
+
     m_entryHashChain.clear();
+
     m_numLiveSlots       = 0;
+
     m_nextSlotGeneration = 0;
+
     m_currentFrame       = 0;
+
     m_entryHighWaterMark = 0;
+
     m_numSlotRetires     = 0;
+
     m_pPoolManager       = nullptr;
+
     m_pDevice            = nullptr;
 }
 
-VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key,
-                                               VulkanDescriptorPoolSetContainer*& outContainer)
+VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key, VulkanDescriptorPoolSetContainer*& outContainer)
 {
     outContainer                  = nullptr;
+
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-    const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
-                      VulkanDescriptorSetCache::ContentKeyHasher>::iterator entryIndexIt =
-        m_entryIndexMap.find(key);
+
+    const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t, VulkanDescriptorSetCache::ContentKeyHasher>::iterator
+        entryIndexIt = m_entryIndexMap.find(key);
 
     if (entryIndexIt != m_entryIndexMap.end())
     {
         uint32_t entryIdx                 = entryIndexIt->second;
+
         uint32_t numVisitedEntries        = 0;
+
         const uint32_t numSearchableSlots = std::min(m_numLiveSlots, kMaxPoolLookups);
 
-        while (entryIdx != kInvalidEntryIndex && numVisitedEntries < m_entries.size() &&
-               descriptorSet == VK_NULL_HANDLE)
+        while (entryIdx != kInvalidEntryIndex && numVisitedEntries < m_entries.size() && descriptorSet == VK_NULL_HANDLE)
         {
             VERIFY_EXPR(entryIdx < m_entries.size() && entryIdx < m_entryHashChain.size());
 
@@ -443,15 +474,16 @@ VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key,
             {
                 const Entry& entry = m_entries[entryIdx];
 
-                for (uint32_t slotIdx = 0;
-                     slotIdx < numSearchableSlots && descriptorSet == VK_NULL_HANDLE; ++slotIdx)
+                for (uint32_t slotIdx = 0; slotIdx < numSearchableSlots && descriptorSet == VK_NULL_HANDLE; ++slotIdx)
                 {
                     RingSlot& slot = m_ringSlots[slotIdx];
 
                     if (entry.key == key && slot.generation == entry.slotGeneration)
                     {
                         descriptorSet      = entry.descriptorSet;
+
                         outContainer       = slot.pContainer;
+
                         slot.lastUsedFrame = m_currentFrame;
                     }
                 }
@@ -469,30 +501,29 @@ VkDescriptorSet VulkanDescriptorSetCache::Find(const ContentKey& key,
 
     if (descriptorSet != VK_NULL_HANDLE)
     {
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().descriptorHits);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorHits);
     }
     else
     {
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().descriptorMisses);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorMisses);
     }
 
     return descriptorSet;
 }
 
-VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
-                                                 const VulkanDescriptorPoolKey& poolKey,
-                                                 VkDescriptorSetLayout layout,
-                                                 bool updateAfterBind,
-                                                 uint32_t variableCount,
+VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey&                  key,
+                                                 const VulkanDescriptorPoolKey&     poolKey,
+                                                 VkDescriptorSetLayout              layout,
+                                                 bool                               updateAfterBind,
+                                                 uint32_t                           variableCount,
                                                  VulkanDescriptorPoolSetContainer*& outContainer)
 {
-    GVulkanRHI->GetExecutionCounterStorage().Increment(
-        GVulkanRHI->GetExecutionCounterStorage().descriptorInserts);
+    GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorInserts);
 
     outContainer = nullptr;
+
     VERIFY_EXPR(layout != VK_NULL_HANDLE);
+
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
     if (layout != VK_NULL_HANDLE)
@@ -505,21 +536,25 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
         if (m_numLiveSlots > 0 && m_ringSlots[0].pContainer != nullptr)
         {
             RingSlot& slot = m_ringSlots[0];
-            descriptorSet =
-                slot.pContainer->Allocate(poolKey, updateAfterBind, layout, variableCount);
+
+            descriptorSet  = slot.pContainer->Allocate(poolKey, updateAfterBind, layout, variableCount);
 
             if (descriptorSet != VK_NULL_HANDLE)
             {
                 outContainer              = slot.pContainer;
+
                 const uint32_t entryIdx   = static_cast<uint32_t>(m_entries.size());
+
                 uint32_t previousEntryIdx = kInvalidEntryIndex;
+
                 const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
-                                  VulkanDescriptorSetCache::ContentKeyHasher>::iterator
-                    previousEntryIt = m_entryIndexMap.find(key);
+                                  VulkanDescriptorSetCache::ContentKeyHasher>::iterator previousEntryIt =
+                    m_entryIndexMap.find(key);
 
                 if (previousEntryIt != m_entryIndexMap.end())
                 {
                     previousEntryIdx        = previousEntryIt->second;
+
                     previousEntryIt->second = entryIdx;
                 }
                 else
@@ -528,16 +563,22 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
                 }
 
                 Entry entry{};
+
                 entry.key            = key;
+
                 entry.descriptorSet  = descriptorSet;
+
                 entry.slotGeneration = slot.generation;
+
                 m_entries.push_back(entry);
+
                 m_entryHashChain.push_back(previousEntryIdx);
 
                 ++slot.numLiveEntries;
-                slot.lastUsedFrame = m_currentFrame;
-                m_entryHighWaterMark =
-                    std::max(m_entryHighWaterMark, static_cast<uint64_t>(m_entries.size()));
+
+                slot.lastUsedFrame   = m_currentFrame;
+
+                m_entryHighWaterMark = std::max(m_entryHighWaterMark, static_cast<uint64_t>(m_entries.size()));
             }
         }
     }
@@ -548,6 +589,7 @@ VkDescriptorSet VulkanDescriptorSetCache::Insert(const ContentKey& key,
 void VulkanDescriptorSetCache::RotateRing()
 {
     VERIFY_EXPR(m_pPoolManager != nullptr);
+
     VERIFY_EXPR(m_pDevice != nullptr);
 
     if (m_numLiveSlots == kRingSlots)
@@ -561,8 +603,11 @@ void VulkanDescriptorSetCache::RotateRing()
     }
 
     RingSlot& newSlot  = m_ringSlots[0];
+
     newSlot            = {};
+
     newSlot.pContainer = m_pPoolManager->AcquireDescriptorPoolSetContainer();
+
     newSlot.generation = ++m_nextSlotGeneration;
 
     if (newSlot.generation == 0)
@@ -571,6 +616,7 @@ void VulkanDescriptorSetCache::RotateRing()
     }
 
     newSlot.lastUsedFrame = m_currentFrame;
+
     ++m_numLiveSlots;
 }
 
@@ -590,11 +636,12 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
         }
 
         oldestSlot = {};
+
         --m_numLiveSlots;
+
         ++m_numSlotRetires;
 
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().descriptorRetirements);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().descriptorRetirements);
 
         CompactEntries();
     }
@@ -603,6 +650,7 @@ void VulkanDescriptorSetCache::RetireOldestSlot()
 void VulkanDescriptorSetCache::CompactEntries()
 {
     HeapVector<Entry> liveEntries;
+
     liveEntries.reserve(m_entries.size());
 
     for (const Entry& entry : m_entries)
@@ -614,6 +662,7 @@ void VulkanDescriptorSetCache::CompactEntries()
             if (m_ringSlots[slotIdx].generation == entry.slotGeneration)
             {
                 generationIsLive = true;
+
                 break;
             }
         }
@@ -625,8 +674,11 @@ void VulkanDescriptorSetCache::CompactEntries()
     }
 
     m_entries = std::move(liveEntries);
+
     m_entryIndexMap.clear();
+
     m_entryHashChain.clear();
+
     m_entryHashChain.resize(m_entries.size());
 
     for (uint32_t slotIdx = 0; slotIdx < m_numLiveSlots; ++slotIdx)
@@ -637,9 +689,10 @@ void VulkanDescriptorSetCache::CompactEntries()
     for (uint32_t entryIdx = 0; entryIdx < m_entries.size(); ++entryIdx)
     {
         Entry& entry               = m_entries[entryIdx];
+
         m_entryHashChain[entryIdx] = kInvalidEntryIndex;
-        const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t,
-                          VulkanDescriptorSetCache::ContentKeyHasher>::iterator
+
+        const FlatHashMap<VulkanDescriptorSetCache::ContentKey, uint32_t, VulkanDescriptorSetCache::ContentKeyHasher>::iterator
             existingEntryIndexIter = m_entryIndexMap.find(entry.key);
 
         if (existingEntryIndexIter == m_entryIndexMap.end())
@@ -649,6 +702,7 @@ void VulkanDescriptorSetCache::CompactEntries()
         else
         {
             m_entryHashChain[entryIdx]     = existingEntryIndexIter->second;
+
             existingEntryIndexIter->second = entryIdx;
         }
 
@@ -657,6 +711,7 @@ void VulkanDescriptorSetCache::CompactEntries()
             if (m_ringSlots[slotIdx].generation == entry.slotGeneration)
             {
                 ++m_ringSlots[slotIdx].numLiveEntries;
+
                 break;
             }
         }
@@ -668,8 +723,7 @@ void VulkanDescriptorSetCache::CompactEntries()
     }
 }
 
-VulkanDescriptorPoolManager2::VulkanDescriptorPoolManager2(VulkanDevice* pDevice) :
-    m_pDevice(pDevice), m_pContentCache(nullptr)
+VulkanDescriptorPoolManager2::VulkanDescriptorPoolManager2(VulkanDevice* pDevice) : m_pDevice(pDevice), m_pContentCache(nullptr)
 {
     VERIFY_EXPR(m_pDevice != nullptr);
 
@@ -687,6 +741,7 @@ void VulkanDescriptorPoolManager2::BeginFrame(uint32_t frameNumber)
     }
 
     ReclaimRetiredContainers();
+
     TickPoolSetContainers();
 }
 
@@ -695,22 +750,27 @@ void VulkanDescriptorPoolManager2::Destroy()
     if (m_pContentCache != nullptr)
     {
         ZEN_DELETE(m_pContentCache);
+
         m_pContentCache = nullptr;
     }
 
     DestroyContainers();
+
     m_layoutIdMap.clear();
+
     m_nextLayoutId = 1;
 }
 
 VulkanDescriptorPoolSetContainer* VulkanDescriptorPoolManager2::AcquireDescriptorPoolSetContainer()
 {
     ReclaimRetiredContainers();
+
     VulkanDescriptorPoolSetContainer* pContainer = nullptr;
 
     if (!m_freeContainers.empty())
     {
         pContainer = m_freeContainers[0].pContainer;
+
         m_freeContainers.pop_front();
     }
     else
@@ -734,7 +794,9 @@ void VulkanDescriptorPoolManager2::ReleaseContainer(VulkanDescriptorPoolSetConta
             if (m_usedContainers[i] == pContainer)
             {
                 m_usedContainers[i] = m_usedContainers.back();
+
                 m_usedContainers.pop_back();
+
                 containerWasUsed = true;
 
                 break;
@@ -748,6 +810,7 @@ void VulkanDescriptorPoolManager2::ReleaseContainer(VulkanDescriptorPoolSetConta
             // Eviction removes lookup ownership; the shared tracker protects
             // recording and GPU lifetimes until this container can be reset.
             m_retiredContainers.push_back(pContainer);
+
             ReclaimRetiredContainers();
         }
     }
@@ -773,32 +836,44 @@ void VulkanDescriptorPoolManager2::TickPoolSetContainers()
     }
 }
 
-uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(
-    const VkDescriptorSetLayoutCreateInfo& createInfo,
-    VectorView<const VkDescriptorBindingFlags> bindingFlags)
+uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(const VkDescriptorSetLayoutCreateInfo&     createInfo,
+                                                           VectorView<const VkDescriptorBindingFlags> bindingFlags)
 {
     VERIFY_EXPR(bindingFlags.size() == createInfo.bindingCount);
+
     HeapVector<uint32_t> bindingOrder(createInfo.bindingCount);
+
     for (uint32_t i = 0; i < createInfo.bindingCount; ++i)
     {
         bindingOrder[i] = i;
     }
+
     std::sort(bindingOrder.begin(), bindingOrder.end(), [&createInfo](uint32_t a, uint32_t b) {
         return createInfo.pBindings[a].binding < createInfo.pBindings[b].binding;
     });
 
     LayoutKey key;
+
     key.data.push_back(createInfo.flags);
+
     key.data.push_back(createInfo.bindingCount);
+
     for (uint32_t i : bindingOrder)
     {
         const VkDescriptorSetLayoutBinding& binding = createInfo.pBindings[i];
+
         key.data.push_back(binding.binding);
+
         key.data.push_back(binding.descriptorType);
+
         key.data.push_back(binding.descriptorCount);
+
         key.data.push_back(binding.stageFlags);
+
         key.data.push_back(bindingFlags[i]);
+
         key.data.push_back(binding.pImmutableSamplers != nullptr);
+
         if (binding.pImmutableSamplers != nullptr)
         {
             for (uint32_t j = 0; j < binding.descriptorCount; ++j)
@@ -808,8 +883,9 @@ uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(
         }
     }
 
-    const auto layoutIdIt = m_layoutIdMap.find(key);
-    uint32_t layoutId     = 0;
+    const FlatHashMap<LayoutKey, uint32_t, LayoutKeyHasher>::iterator layoutIdIt = m_layoutIdMap.find(key);
+
+    uint32_t layoutId                                                            = 0;
 
     if (layoutIdIt != m_layoutIdMap.end())
     {
@@ -822,6 +898,7 @@ uint32_t VulkanDescriptorPoolManager2::GetOrCreateLayoutId(
         if (m_nextLayoutId != 0)
         {
             layoutId = m_nextLayoutId++;
+
             m_layoutIdMap.emplace(std::move(key), layoutId);
         }
     }
@@ -851,6 +928,7 @@ void VulkanDescriptorPoolManager2::DestroyContainers()
     {
         pContainer->Retire();
     }
+
     m_retiredContainers.clear();
 }
 
@@ -863,10 +941,12 @@ void VulkanDescriptorPoolManager2::ReclaimRetiredContainers()
         if (!pContainer->CanReuse())
         {
             m_retiredContainers[writeIndex++] = pContainer;
+
             continue;
         }
 
         pContainer->Reset();
+
         m_freeContainers.push_back({pContainer, 0});
     }
 
@@ -880,9 +960,7 @@ VkDescriptorType GetBindlessDescriptorType(RHIBindlessHeapType heapType)
     switch (heapType)
     {
         case RHIBindlessHeapType::eTexture2D:
-        case RHIBindlessHeapType::eTextureCube:
-            descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            break;
+        case RHIBindlessHeapType::eTextureCube: descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; break;
         case RHIBindlessHeapType::eSampler: descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; break;
         case RHIBindlessHeapType::eMax: break;
     }
@@ -918,10 +996,12 @@ RHIBindlessHeapType GetBindlessHeapType(const RHIResource* pResource)
         case RHIResourceType::eTextureView:
         {
             const VulkanTextureView* view = GetBindlessTextureView(pResource);
+
             if (view == nullptr)
             {
                 break;
             }
+
             const RHITextureType texType = view->GetTextureType();
 
             if (texType == RHITextureType::e2D)
@@ -949,15 +1029,15 @@ bool IsValidBindlessResource(const RHIResource* pResource, RHIBindlessHeapType h
     if (heapType == RHIBindlessHeapType::eSampler)
     {
         const VulkanSampler* pSampler = TryVulkanSampler(pResource);
-        valid = pSampler != nullptr && pSampler->GetVkSampler() != VK_NULL_HANDLE;
+
+        valid                         = pSampler != nullptr && pSampler->GetVkSampler() != VK_NULL_HANDLE;
     }
-    else if (heapType == RHIBindlessHeapType::eTexture2D ||
-             heapType == RHIBindlessHeapType::eTextureCube)
+    else if (heapType == RHIBindlessHeapType::eTexture2D || heapType == RHIBindlessHeapType::eTextureCube)
     {
         const VulkanTextureView* pTextureView = GetBindlessTextureView(pResource);
-        valid = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE &&
-            pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(
-                RHITextureUsageFlagBits::eSampled);
+
+        valid                                 = pTextureView != nullptr && pTextureView->GetVkImageView() != VK_NULL_HANDLE
+             && pTextureView->GetTexture()->GetBaseInfo().usageFlags.HasFlag(RHITextureUsageFlagBits::eSampled);
     }
 
     return valid;
@@ -969,20 +1049,21 @@ bool SupportsBindlessDescriptorHeaps(VulkanDevice* pDevice)
 
     if (supported)
     {
-        const VkPhysicalDeviceDescriptorIndexingProperties& properties =
-            pDevice->GetDescriptorIndexingProperties();
-        const uint32_t sampledImageCount =
-            GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
-            GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+        const VkPhysicalDeviceDescriptorIndexingProperties& properties = pDevice->GetDescriptorIndexingProperties();
+
+        const uint32_t sampledImageCount = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D)
+                                         + GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube);
+
         const uint32_t samplerCount    = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
+
         const uint32_t descriptorCount = sampledImageCount + samplerCount;
 
-        supported = sampledImageCount <= properties.maxDescriptorSetUpdateAfterBindSampledImages &&
-            sampledImageCount <= properties.maxPerStageDescriptorUpdateAfterBindSampledImages &&
-            samplerCount <= properties.maxDescriptorSetUpdateAfterBindSamplers &&
-            samplerCount <= properties.maxPerStageDescriptorUpdateAfterBindSamplers &&
-            descriptorCount <= properties.maxPerStageUpdateAfterBindResources &&
-            descriptorCount <= properties.maxUpdateAfterBindDescriptorsInAllPools;
+        supported                      = sampledImageCount <= properties.maxDescriptorSetUpdateAfterBindSampledImages
+                 && sampledImageCount <= properties.maxPerStageDescriptorUpdateAfterBindSampledImages
+                 && samplerCount <= properties.maxDescriptorSetUpdateAfterBindSamplers
+                 && samplerCount <= properties.maxPerStageDescriptorUpdateAfterBindSamplers
+                 && descriptorCount <= properties.maxPerStageUpdateAfterBindResources
+                 && descriptorCount <= properties.maxUpdateAfterBindDescriptorsInAllPools;
     }
 
     return supported;
@@ -991,6 +1072,7 @@ bool SupportsBindlessDescriptorHeaps(VulkanDevice* pDevice)
 void VulkanBindlessDescriptorPoolManager::Init()
 {
     m_pDevice                    = GVulkanRHI->GetDevice();
+
     const bool bindlessSupported = SupportsBindlessDescriptorHeaps(m_pDevice);
 
     if (bindlessSupported)
@@ -1000,13 +1082,17 @@ void VulkanBindlessDescriptorPoolManager::Init()
         if (m_vkSet != VK_NULL_HANDLE)
         {
             m_epoch = GVulkanRHI->GetLifetimeTracker().Create();
+
             m_epochs.push_back(m_epoch);
 
             m_publishedEpoch.store(m_epoch, std::memory_order_release);
+
             for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
             {
                 const RHIBindlessHeapType heapType = static_cast<RHIBindlessHeapType>(heapIdx);
+
                 m_slotStates[heapIdx].resize(GetBindlessHeapCapacity(heapType));
+
                 m_heapAllocCount[heapIdx] = 0;
             }
         }
@@ -1019,28 +1105,36 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     {
         GVulkanRHI->GetLifetimeTracker().Retire(epoch);
     }
+
     m_epochs.clear();
+
     m_epoch = 0;
 
     m_publishedEpoch.store(0, std::memory_order_release);
 
     m_hasPendingWrites.store(false, std::memory_order_release);
+
     m_retiredSlots.clear();
+
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
         m_pendingWrites[heapIdx].clear();
+
         for (BindlessSlotState& slot : m_slotStates[heapIdx])
         {
             if (slot.pResource != nullptr)
             {
                 slot.pResource->ReleaseReference();
             }
+
             if (slot.pTextureOwner != nullptr)
             {
                 slot.pTextureOwner->ReleaseReference();
             }
         }
+
         m_slotStates[heapIdx].clear();
+
         m_heapAllocCount[heapIdx] = 0;
     }
 
@@ -1060,8 +1154,11 @@ void VulkanBindlessDescriptorPoolManager::Destroy()
     }
 
     m_vkSet    = VK_NULL_HANDLE;
+
     m_vkPool   = VK_NULL_HANDLE;
+
     m_vkLayout = VK_NULL_HANDLE;
+
     m_pDevice  = nullptr;
 }
 
@@ -1126,80 +1223,101 @@ bool VulkanBindlessDescriptorPoolManager::ResetRegistrations()
     return reset;
 }
 
-bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* pResource,
-                                                                   uint32_t slotIdx,
+bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource*       pResource,
+                                                                   uint32_t           slotIdx,
                                                                    RHIBindlessHandle* pOutHandle,
-                                                                   uint64_t recordedEpoch,
-                                                                   uint64_t transaction)
+                                                                   uint64_t           recordedEpoch,
+                                                                   uint64_t           transaction)
 {
     LockAuto lock(&m_mutex);
+
     if (pOutHandle != nullptr)
     {
         *pOutHandle = {};
     }
+
     CollectRetiredResourcesLocked();
+
     bool registered              = pResource != nullptr && m_vkSet != VK_NULL_HANDLE;
+
     RHIBindlessHeapType heapType = RHIBindlessHeapType::eMax;
+
     if (registered)
     {
-        heapType = GetBindlessHeapType(pResource);
-        registered =
-            heapType != RHIBindlessHeapType::eMax && IsValidBindlessResource(pResource, heapType);
+        heapType   = GetBindlessHeapType(pResource);
+
+        registered = heapType != RHIBindlessHeapType::eMax && IsValidBindlessResource(pResource, heapType);
     }
 
     if (registered)
     {
         const uint32_t heapIdx  = ToUnderlying(heapType);
+
         const uint32_t capacity = GetBindlessHeapCapacity(heapType);
+
         if (slotIdx == kInvalidBindlessSlotIndex)
         {
             for (uint32_t i = 0; i < capacity; ++i)
             {
                 const uint32_t candidate = (m_heapAllocCount[heapIdx] + i) % capacity;
+
                 if (m_slotStates[heapIdx][candidate].pResource == nullptr)
                 {
                     slotIdx = candidate;
+
                     break;
                 }
             }
         }
+
         registered = slotIdx < capacity;
+
         if (registered)
         {
             BindlessSlotState& slot = m_slotStates[heapIdx][slotIdx];
+
             if (slot.pResource != nullptr)
             {
-                const bool earlierRecording = recordedEpoch != 0 &&
-                    recordedEpoch <= slot.retiredEpoch &&
-                    std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch) &&
-                    GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
-                registered = (slot.retiredEpoch == 0 || earlierRecording) &&
-                    slot.resourceId == pResource->GetStableId() &&
-                    (slot.transaction == 0 || slot.transaction == transaction);
+                const bool earlierRecording = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch
+                                           && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
+                                           && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
+
+                registered = (slot.retiredEpoch == 0 || earlierRecording) && slot.resourceId == pResource->GetStableId()
+                          && (slot.transaction == 0 || slot.transaction == transaction);
             }
             else
             {
                 static std::atomic<uint64_t> nextGeneration{1};
+
                 // Reserve the journal and pending write before retaining or publishing.
                 if (transaction != 0)
                 {
                     HeapVector<RHIBindlessHandle>& journal = m_journals[transaction];
+
                     journal.reserve(journal.size() + 1);
                 }
 
                 m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
 
                 m_hasPendingWrites.store(true, std::memory_order_release);
+
                 pResource->AddReference();
+
                 slot.pResource = pResource;
+
                 if (pResource->GetResourceType() == RHIResourceType::eTextureView)
                 {
                     slot.pTextureOwner = static_cast<RHITextureView*>(pResource)->GetTexture();
+
                     slot.pTextureOwner->AddReference();
                 }
+
                 slot.resourceId           = pResource->GetStableId();
+
                 slot.generation           = nextGeneration.fetch_add(1, std::memory_order_relaxed);
+
                 slot.transaction          = transaction;
+
                 m_heapAllocCount[heapIdx] = (slotIdx + 1) % capacity;
 
                 if (transaction != 0)
@@ -1207,12 +1325,14 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
                     m_journals[transaction].push_back({heapType, slotIdx, slot.generation});
                 }
             }
+
             if (registered && pOutHandle != nullptr)
             {
                 *pOutHandle = {heapType, slotIdx, slot.generation};
             }
         }
     }
+
     return registered;
 }
 
@@ -1228,7 +1348,7 @@ namespace
 // One parameter's heap slot, encoded as heap << 32 | slot index.
 struct BindlessSlotClaim
 {
-    uint64_t slot{0};
+    uint64_t           slot{0};
     const RHIResource* resource{nullptr};
 };
 
@@ -1238,10 +1358,9 @@ bool IsEarlierSlot(const BindlessSlotClaim& lhs, const BindlessSlotClaim& rhs)
 }
 } // namespace
 
-bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(
-    VectorView<const RHIShaderResourceParameter> parameters,
-    uint64_t recordedEpoch,
-    uint64_t transaction)
+bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(VectorView<const RHIShaderResourceParameter> parameters,
+                                                                       uint64_t recordedEpoch,
+                                                                       uint64_t transaction)
 {
     SmallVector<BindlessSlotClaim, 16> claims;
 
@@ -1254,8 +1373,7 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(
         {
             const RHIShaderResourceParameter& parameter = parameters[i];
 
-            valid = CanRegisterLocked(parameter.pResource, parameter.arrayIndex, recordedEpoch,
-                                      transaction);
+            valid = CanRegisterLocked(parameter.pResource, parameter.arrayIndex, recordedEpoch, transaction);
 
             if (valid)
             {
@@ -1271,38 +1389,38 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(
 
     for (size_t i = 1; valid && i < claims.size(); ++i)
     {
-        valid =
-            claims[i].slot != claims[i - 1].slot || claims[i].resource == claims[i - 1].resource;
+        valid = claims[i].slot != claims[i - 1].slot || claims[i].resource == claims[i - 1].resource;
     }
 
     return valid;
 }
 
 bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(const RHIResource* resource,
-                                                            uint32_t slotIndex,
-                                                            uint64_t recordedEpoch,
-                                                            uint64_t transaction)
+                                                            uint32_t           slotIndex,
+                                                            uint64_t           recordedEpoch,
+                                                            uint64_t           transaction)
 {
     bool valid = resource != nullptr && m_vkSet != VK_NULL_HANDLE;
 
     if (valid)
     {
         const RHIBindlessHeapType heap = GetBindlessHeapType(resource);
+
         const uint32_t capacity        = GetBindlessHeapCapacity(heap);
-        valid = heap != RHIBindlessHeapType::eMax && IsValidBindlessResource(resource, heap) &&
-            slotIndex < capacity;
+
+        valid = heap != RHIBindlessHeapType::eMax && IsValidBindlessResource(resource, heap) && slotIndex < capacity;
 
         if (valid)
         {
             const BindlessSlotState& slot = m_slotStates[ToUnderlying(heap)][slotIndex];
-            const bool earlierRecording   = recordedEpoch != 0 &&
-                recordedEpoch <= slot.retiredEpoch &&
-                std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch) &&
-                GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
-            valid = slot.pResource == nullptr ||
-                (slot.resourceId == resource->GetStableId() &&
-                 (slot.retiredEpoch == 0 || earlierRecording) &&
-                 (slot.transaction == 0 || slot.transaction == transaction));
+
+            const bool earlierRecording   = recordedEpoch != 0 && recordedEpoch <= slot.retiredEpoch
+                                       && std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch)
+                                       && GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
+
+            valid = slot.pResource == nullptr
+                 || (slot.resourceId == resource->GetStableId() && (slot.retiredEpoch == 0 || earlierRecording)
+                     && (slot.transaction == 0 || slot.transaction == transaction));
         }
     }
 
@@ -1312,8 +1430,8 @@ bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(const RHIResource* r
 void VulkanBindlessDescriptorPoolManager::ResolveTransaction(uint64_t transaction, bool commit)
 {
     LockAuto lock(&m_mutex);
-    const FlatHashMap<uint64_t, HeapVector<RHIBindlessHandle>>::iterator journal =
-        m_journals.find(transaction);
+
+    const FlatHashMap<uint64_t, HeapVector<RHIBindlessHandle>>::iterator journal = m_journals.find(transaction);
 
     if (journal != m_journals.end())
     {
@@ -1329,17 +1447,19 @@ void VulkanBindlessDescriptorPoolManager::ResolveTransaction(uint64_t transactio
                 }
                 else
                 {
-                    HeapVector<BindlessDSWrite>& writes =
-                        m_pendingWrites[ToUnderlying(handle.heapType)];
-                    writes.erase(std::remove_if(writes.begin(), writes.end(),
-                                                [handle](const BindlessDSWrite& write) {
-                                                    return write.slotIdx == handle.slotIndex;
-                                                }),
-                                 writes.end());
+                    HeapVector<BindlessDSWrite>& writes = m_pendingWrites[ToUnderlying(handle.heapType)];
+
+                    writes.erase(
+                        std::remove_if(writes.begin(), writes.end(),
+                                       [handle](const BindlessDSWrite& write) { return write.slotIdx == handle.slotIndex; }),
+                        writes.end());
 
                     RHIResource* resource                           = slot->pResource;
+
                     RHITexture* texture                             = slot->pTextureOwner;
+
                     *slot                                           = {};
+
                     m_heapAllocCount[ToUnderlying(handle.heapType)] = handle.slotIndex;
 
                     resource->ReleaseReference();
@@ -1356,45 +1476,63 @@ void VulkanBindlessDescriptorPoolManager::ResolveTransaction(uint64_t transactio
     }
 }
 
-VulkanBindlessDescriptorPoolManager::BindlessSlotState* VulkanBindlessDescriptorPoolManager::
-    FindRegistration(RHIBindlessHandle handle)
+VulkanBindlessDescriptorPoolManager::BindlessSlotState* VulkanBindlessDescriptorPoolManager::FindRegistration(
+    RHIBindlessHandle handle)
 {
-    if (!handle.IsValid() || m_vkSet == VK_NULL_HANDLE ||
-        handle.slotIndex >= GetBindlessHeapCapacity(handle.heapType))
+    VulkanBindlessDescriptorPoolManager::BindlessSlotState* returnValue{};
+
+    if (!handle.IsValid() || m_vkSet == VK_NULL_HANDLE || handle.slotIndex >= GetBindlessHeapCapacity(handle.heapType))
     {
-        return nullptr;
+        returnValue = nullptr;
     }
-    BindlessSlotState& slot = m_slotStates[ToUnderlying(handle.heapType)][handle.slotIndex];
-    return slot.pResource != nullptr && slot.generation == handle.generation ? &slot : nullptr;
+    else
+    {
+        BindlessSlotState& slot = m_slotStates[ToUnderlying(handle.heapType)][handle.slotIndex];
+
+        returnValue             = slot.pResource != nullptr && slot.generation == handle.generation ? &slot : nullptr;
+    }
+
+    return returnValue;
 }
 
 bool VulkanBindlessDescriptorPoolManager::IsRegistered(RHIBindlessHandle handle)
 {
     LockAuto lock(&m_mutex);
+
     const BindlessSlotState* slot = FindRegistration(handle);
+
     return slot != nullptr && slot->retiredEpoch == 0 && slot->transaction == 0;
 }
 
 bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindlessHandle handle)
 {
     LockAuto lock(&m_mutex);
+
     BindlessSlotState* slot = FindRegistration(handle);
+
     bool retired            = false;
-    if (slot != nullptr && slot->retiredEpoch == 0 && slot->transaction == 0 &&
-        m_epoch != UINT64_MAX)
+
+    if (slot != nullptr && slot->retiredEpoch == 0 && slot->transaction == 0 && m_epoch != UINT64_MAX)
     {
         // Reserve before changing publication state. A failed allocation leaves it active.
         m_retiredSlots.reserve(m_retiredSlots.size() + 1);
+
         m_epochs.reserve(m_epochs.size() + 1);
+
         const uint64_t nextEpoch = GVulkanRHI->GetLifetimeTracker().Create();
+
         m_retiredSlots.push_back(handle);
+
         slot->retiredEpoch = m_epoch;
+
         m_epoch            = nextEpoch;
+
         m_epochs.push_back(m_epoch);
 
         m_publishedEpoch.store(m_epoch, std::memory_order_release);
 
         CollectRetiredResourcesLocked();
+
         retired = true;
     }
 
@@ -1404,17 +1542,20 @@ bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindless
 uint64_t VulkanBindlessDescriptorPoolManager::CaptureEpoch()
 {
     LockAuto lock(&m_mutex);
+
     uint64_t epoch = 0;
+
     if (m_vkSet != VK_NULL_HANDLE)
     {
         // Recording is allowed on RenderCore. Collection can destroy native resources,
         // so leave it to the RHI thread's registration/retirement sweeps.
         epoch = m_epoch;
 
-        GVulkanRHI->GetExecutionCounterStorage().Increment(
-            GVulkanRHI->GetExecutionCounterStorage().bindlessCaptures);
+        GVulkanRHI->GetExecutionCounterStorage().Increment(GVulkanRHI->GetExecutionCounterStorage().bindlessCaptures);
+
         GVulkanRHI->GetLifetimeTracker().RetainRecording(epoch);
     }
+
     return epoch;
 }
 
@@ -1426,17 +1567,22 @@ void VulkanBindlessDescriptorPoolManager::ReleaseEpoch(uint64_t epoch)
 void VulkanBindlessDescriptorPoolManager::CollectRetiredResources()
 {
     LockAuto lock(&m_mutex);
+
     CollectRetiredResourcesLocked();
 }
 
 void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
 {
     VulkanLifetimeTracker& tracker = GVulkanRHI->GetLifetimeTracker();
+
     uint64_t earliestEpoch         = UINT64_MAX;
+
     size_t retained                = 0;
+
     for (uint64_t epoch : m_epochs)
     {
         const bool completed = tracker.IsComplete(epoch);
+
         if (completed && epoch != m_epoch)
         {
             tracker.Retire(epoch);
@@ -1444,33 +1590,41 @@ void VulkanBindlessDescriptorPoolManager::CollectRetiredResourcesLocked()
         else
         {
             m_epochs[retained++] = epoch;
+
             if (!completed)
             {
                 earliestEpoch = std::min(earliestEpoch, epoch);
             }
         }
     }
+
     m_epochs.resize(retained);
-    for (auto it = m_retiredSlots.begin(); it != m_retiredSlots.end();)
+
+    for (HeapVector<RHIBindlessHandle>::iterator it = m_retiredSlots.begin(); it != m_retiredSlots.end();)
     {
         BindlessSlotState* slot = FindRegistration(*it);
+
         if (slot != nullptr && slot->retiredEpoch < earliestEpoch)
         {
             // Unflushed writes must not outlive their retained resources or later
             // overwrite a recycled slot. Live old recordings keep their writes intact.
             HeapVector<BindlessDSWrite>& writes = m_pendingWrites[ToUnderlying(it->heapType)];
+
             writes.erase(std::remove_if(writes.begin(), writes.end(),
-                                        [it](const BindlessDSWrite& write) {
-                                            return write.slotIdx == it->slotIndex;
-                                        }),
+                                        [it](const BindlessDSWrite& write) { return write.slotIdx == it->slotIndex; }),
                          writes.end());
+
             slot->pResource->ReleaseReference();
+
             if (slot->pTextureOwner != nullptr)
             {
                 slot->pTextureOwner->ReleaseReference();
             }
+
             m_heapAllocCount[ToUnderlying(it->heapType)] = it->slotIndex;
+
             *slot                                        = {};
+
             it                                           = m_retiredSlots.erase(it);
         }
         else
@@ -1508,34 +1662,47 @@ VkDescriptorSet VulkanBindlessDescriptorPoolManager::GetGlobalBindlessSet() cons
 void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
 {
     VkDescriptorSetLayoutBinding bindings[kBindlessHeapCount]{};
+
     VkDescriptorBindingFlags bindingFlags[kBindlessHeapCount]{};
 
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
     {
         const RHIBindlessHeapType heapType = static_cast<RHIBindlessHeapType>(heapIdx);
+
         bindings[heapIdx].binding          = heapIdx;
+
         bindings[heapIdx].descriptorType   = GetBindlessDescriptorType(heapType);
+
         bindings[heapIdx].descriptorCount  = GetBindlessHeapCapacity(heapType);
+
         bindings[heapIdx].stageFlags       = VK_SHADER_STAGE_ALL;
-        bindingFlags[heapIdx]              = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+        bindingFlags[heapIdx] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+                              | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
     }
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsCI{};
+
     InitVkStruct(bindingFlagsCI, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO);
+
     bindingFlagsCI.bindingCount  = kBindlessHeapCount;
+
     bindingFlagsCI.pBindingFlags = bindingFlags;
 
     VkDescriptorSetLayoutCreateInfo layoutCI{};
+
     InitVkStruct(layoutCI, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
+
     layoutCI.pNext        = &bindingFlagsCI;
+
     layoutCI.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+
     layoutCI.bindingCount = kBindlessHeapCount;
+
     layoutCI.pBindings    = bindings;
 
-    VkResult result =
-        vkCreateDescriptorSetLayout(m_pDevice->GetVkHandle(), &layoutCI, nullptr, &m_vkLayout);
+    VkResult result       = vkCreateDescriptorSetLayout(m_pDevice->GetVkHandle(), &layoutCI, nullptr, &m_vkLayout);
+
     if (result != VK_SUCCESS)
     {
         LOGE("Global bindless layout creation failed: {}", GetResultString(result));
@@ -1544,19 +1711,24 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
     if (result == VK_SUCCESS)
     {
         const VkDescriptorPoolSize poolSizes[] = {
-            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-             GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) +
-                 GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube)},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D)
+                                                   + GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube)},
             {VK_DESCRIPTOR_TYPE_SAMPLER, GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler)}};
 
         VkDescriptorPoolCreateInfo poolCI{};
+
         InitVkStruct(poolCI, VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
+
         poolCI.flags         = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+
         poolCI.maxSets       = 1;
+
         poolCI.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
+
         poolCI.pPoolSizes    = poolSizes;
 
-        result = vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkPool);
+        result               = vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkPool);
+
         if (result != VK_SUCCESS)
         {
             LOGE("Global bindless pool creation failed: {}", GetResultString(result));
@@ -1566,12 +1738,17 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
     if (result == VK_SUCCESS)
     {
         VkDescriptorSetAllocateInfo allocateInfo{};
+
         InitVkStruct(allocateInfo, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO);
+
         allocateInfo.descriptorPool     = m_vkPool;
+
         allocateInfo.descriptorSetCount = 1;
+
         allocateInfo.pSetLayouts        = &m_vkLayout;
 
-        result = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &m_vkSet);
+        result                          = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &m_vkSet);
+
         if (result != VK_SUCCESS)
         {
             LOGE("Global bindless set allocation failed: {}", GetResultString(result));
@@ -1591,7 +1768,9 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
         }
 
         m_vkSet    = VK_NULL_HANDLE;
+
         m_vkPool   = VK_NULL_HANDLE;
+
         m_vkLayout = VK_NULL_HANDLE;
     }
 }
@@ -1606,7 +1785,9 @@ void VulkanBindlessDescriptorPoolManager::WriteDescriptorSetBatch()
     }
 
     HeapVector<VkDescriptorImageInfo> imageInfos(numWrites);
+
     HeapVector<VkWriteDescriptorSet> descriptorWrites(numWrites);
+
     uint32_t writeIdx = 0;
 
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)
@@ -1623,27 +1804,34 @@ void VulkanBindlessDescriptorPoolManager::WriteDescriptorSetBatch()
             }
             else
             {
-                imageInfo.imageView =
-                    GetBindlessTextureView(pendingWrite.pResource)->GetVkImageView();
+                imageInfo.imageView   = GetBindlessTextureView(pendingWrite.pResource)->GetVkImageView();
+
                 imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             }
 
             VkWriteDescriptorSet& descriptorWrite = descriptorWrites[writeIdx];
+
             InitVkStruct(descriptorWrite, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
+
             descriptorWrite.dstSet          = m_vkSet;
+
             descriptorWrite.dstBinding      = heapIdx;
+
             descriptorWrite.dstArrayElement = pendingWrite.slotIdx;
+
             descriptorWrite.descriptorCount = 1;
+
             descriptorWrite.descriptorType  = GetBindlessDescriptorType(heapType);
+
             descriptorWrite.pImageInfo      = &imageInfo;
+
             ++writeIdx;
         }
     }
 
     if (numWrites > 0)
     {
-        vkUpdateDescriptorSets(m_pDevice->GetVkHandle(), numWrites, descriptorWrites.data(), 0,
-                               nullptr);
+        vkUpdateDescriptorSets(m_pDevice->GetVkHandle(), numWrites, descriptorWrites.data(), 0, nullptr);
     }
 
     for (uint32_t heapIdx = 0; heapIdx < kBindlessHeapCount; ++heapIdx)

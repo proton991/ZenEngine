@@ -57,6 +57,7 @@ RHIThreadEvent::RHIThreadEvent(bool signaled)
 {
 #if defined(ZEN_WIN32)
     m_handle = CreateEventW(nullptr, TRUE, signaled ? TRUE : FALSE, nullptr);
+
     if (m_handle == nullptr)
     {
         LOG_ERROR_AND_THROW("Cannot create RHI event: {}", GetLastError());
@@ -80,8 +81,10 @@ void RHIThreadEvent::Signal()
 #else
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+
         m_signaled = true;
     }
+
     m_available.notify_all();
 #endif
 }
@@ -92,6 +95,7 @@ void RHIThreadEvent::Reset()
     VERIFY_EXPR(ResetEvent(m_handle));
 #else
     std::lock_guard<std::mutex> lock(m_mutex);
+
     m_signaled = false;
 #endif
 }
@@ -102,6 +106,7 @@ void RHIThreadEvent::Wait() const
     WaitForRHIObject(m_handle);
 #else
     std::unique_lock<std::mutex> lock(m_mutex);
+
     while (!m_signaled)
     {
         m_available.wait(lock);
@@ -114,6 +119,7 @@ thread_local RHIThread* RHIThread::s_current = nullptr;
 RHIThread& GetRHIThread()
 {
     static RHIThread thread;
+
     return thread;
 }
 
@@ -127,10 +133,15 @@ void RHIThread::Start(RHIExecutionMode mode, size_t capacity)
     VERIFY_EXPR_MSG(!m_worker.joinable(), "The RHI thread is already running");
 
     m_capacity      = std::max(size_t(1), capacity);
+
     m_stopping      = false;
+
     m_cleanupClosed = false;
+
     m_taskFailed.store(false, std::memory_order_release);
+
     m_space.Signal();
+
     m_threaded.store(mode == RHIExecutionMode::eThreaded, std::memory_order_release);
 
     if (m_threaded.load(std::memory_order_acquire))
@@ -147,8 +158,11 @@ void RHIThread::Stop(std::function<void()> finalizer)
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+
             m_stopping  = true;
+
             m_finalizer = std::move(finalizer);
+
             m_space.Signal();
         }
 
@@ -161,6 +175,7 @@ void RHIThread::Stop(std::function<void()> finalizer)
     else if (finalizer)
     {
         Task task{std::move(finalizer), {}, true};
+
         ExecuteTask(task);
     }
 
@@ -191,6 +206,7 @@ bool RHIThread::Enqueue(Task task, bool waitForSpace)
     if (!m_threaded.load(std::memory_order_acquire) || s_current == this)
     {
         ExecuteTask(task);
+
         accepted = true;
     }
     else
@@ -200,7 +216,9 @@ bool RHIThread::Enqueue(Task task, bool waitForSpace)
         while (waitForSpace && !task.cleanup && !m_stopping && m_tasks.Size() >= m_capacity)
         {
             lock.unlock();
+
             m_space.Wait();
+
             lock.lock();
         }
 
@@ -227,6 +245,7 @@ bool RHIThread::Enqueue(Task task, bool waitForSpace)
         {
             // Admission rejection completes the caller's event without a queued job.
             Task cancellation{std::move(task.cancelled), {}, true};
+
             ExecuteTask(cancellation);
         }
     }
@@ -247,12 +266,14 @@ void RHIThread::ExecuteTask(Task& task) noexcept
         else if (task.cancelled)
         {
             cancelling = true;
+
             task.cancelled();
         }
     }
     catch (...)
     {
         m_taskFailed.store(true, std::memory_order_release);
+
         std::fprintf(stderr, "ZenEngine: exception contained at RHI task boundary\n");
 
         if (task.cleanup || cancelling)
@@ -308,27 +329,32 @@ void RHIThread::Run()
     SetThreadDescription(GetCurrentThread(), L"RHIThread");
 #endif
     bool finished = false;
+
     while (!finished)
     {
         Task task;
+
         {
             std::unique_lock<std::mutex> lock(m_mutex);
+
             while (m_tasks.Empty() && !m_stopping)
             {
                 m_available.wait(lock);
             }
+
             finished = m_stopping && m_tasks.Empty();
 
             if (finished)
             {
                 m_cleanupClosed = true;
+
                 task            = {std::move(m_finalizer), {}, true};
             }
             else
             {
                 std::optional<Task> pending = m_tasks.TryPop();
 
-                task = std::move(*pending);
+                task                        = std::move(*pending);
 
                 // Cleanup can exceed capacity. Wake producers only once a slot exists, or a
                 // waiting Dispatch would spin on a signaled event while the queue is full.
@@ -338,11 +364,13 @@ void RHIThread::Run()
                 }
             }
         }
+
         if (task.execute)
         {
             ExecuteTask(task);
         }
     }
+
     s_current = nullptr;
 }
 } // namespace zen

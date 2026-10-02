@@ -23,14 +23,13 @@ public:
     // a failed read from a successfully loaded empty text file.
     static std::string LoadTextFile(const std::string& path, FileLoadError* pError = nullptr);
 
-    template <typename T = uint8_t>
-    static HeapVector<T> LoadSpvFile(const std::string& name, FileLoadError* pError = nullptr)
+    template <typename T = uint8_t> static HeapVector<T> LoadSpvFile(const std::string& name, FileLoadError* pError = nullptr)
     {
         static_assert(std::is_trivially_copyable_v<T>);
         const std::string path = std::string(SPV_SHADER_PATH) + name;
-        std::ifstream file(path, std::ios::ate | std::ios::binary);
-        HeapVector<T> buffer;
-        FileLoadError error = FileLoadError::eNone;
+        std::ifstream     file(path, std::ios::ate | std::ios::binary);
+        HeapVector<T>     buffer;
+        FileLoadError     error = FileLoadError::eNone;
         if (!file.is_open())
         {
             LOGE("Failed to open shader file: {}", path);
@@ -58,8 +57,7 @@ public:
                     ASSERT(fileSize == buffer.size() * sizeof(T));
                     ASSERT(reinterpret_cast<uintptr_t>(buffer.data()) % alignof(uint32_t) == 0);
                     file.seekg(0);
-                    if (!file.read(reinterpret_cast<char*>(buffer.data()),
-                                   static_cast<std::streamsize>(fileSize)))
+                    if (!file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(fileSize)))
                     {
                         LOGE("Failed to read shader file: {}", path);
                         error = FileLoadError::eReadFailed;

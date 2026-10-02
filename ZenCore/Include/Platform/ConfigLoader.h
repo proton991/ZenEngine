@@ -40,8 +40,8 @@ public:
 
     VoxelizerMode GetVoxelizerMode() const
     {
-        VoxelizerMode mode                                   = VoxelizerMode::eAuto;
-        HashMap<std::string, std::string>::const_iterator it = m_configData.find("voxelizer");
+        VoxelizerMode                                     mode = VoxelizerMode::eAuto;
+        HashMap<std::string, std::string>::const_iterator it   = m_configData.find("voxelizer");
         if (it != m_configData.end() && it->second != "auto")
         {
             if (it->second == "comp")
@@ -54,8 +54,7 @@ public:
             }
             else
             {
-                LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.",
-                     it->second);
+                LOGW("Invalid voxelizer '{}'; expected auto, comp or geom. Using auto.", it->second);
             }
         }
         return mode;
@@ -63,9 +62,8 @@ public:
 
     AsyncComputeMode GetAsyncComputeMode() const
     {
-        AsyncComputeMode mode = AsyncComputeMode::eDisabled;
-        const HashMap<std::string, std::string>::const_iterator entry =
-            m_configData.find("async_compute");
+        AsyncComputeMode                                        mode  = AsyncComputeMode::eDisabled;
+        const HashMap<std::string, std::string>::const_iterator entry = m_configData.find("async_compute");
         if (entry != m_configData.end())
         {
             if (entry->second == "auto")
@@ -87,9 +85,8 @@ public:
 
     std::string GetDefaultGLTFModelPath() const
     {
-        return HasKey("default_model_path") ?
-            ResolveModelPath(GetString("default_model_path", "")) :
-            GetConfiguredModelPath("default_model");
+        return HasKey("default_model_path") ? ResolveModelPath(GetString("default_model_path", ""))
+                                            : GetConfiguredModelPath("default_model");
     }
 
     std::string GetGLTFModelBasePath() const
@@ -101,9 +98,8 @@ public:
 
     std::string GetGLTFModelPath(const std::string& name) const
     {
-        std::string path = "";
-        HashMap<std::string, std::string>::const_iterator basePathIt =
-            m_configData.find("model_base_path");
+        std::string                                       path       = "";
+        HashMap<std::string, std::string>::const_iterator basePathIt = m_configData.find("model_base_path");
 
         if (basePathIt != m_configData.end())
         {
@@ -118,13 +114,13 @@ public:
     }
 
     ConfigLoader(const ConfigLoader&)            = delete;
+
     ConfigLoader& operator=(const ConfigLoader&) = delete;
 
     uint32_t GetVoxelResolution() const
     {
         uint32_t resolution = 256;
-        if (!ReadNumber("voxel_resolution", resolution) ||
-            (resolution != 64 && resolution != 128 && resolution != 256))
+        if (!ReadNumber("voxel_resolution", resolution) || (resolution != 64 && resolution != 128 && resolution != 256))
         {
             LOGW("Invalid voxel_resolution; expected 64, 128 or 256. Using 256.");
             resolution = 256;
@@ -146,16 +142,15 @@ public:
     // Missing optional values preserve the caller's default. Invalid values do not modify it.
     template <typename T> bool ReadNumber(const std::string& key, T& value) const
     {
-        bool valid                                                    = true;
+        bool                                                    valid = true;
         const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
-            T parsed{};
-            const std::string& text = entry->second;
-            const std::from_chars_result result =
-                std::from_chars(text.data(), text.data() + text.size(), parsed);
-            valid = result.ec == std::errc{} && result.ptr == text.data() + text.size() &&
-                std::isfinite(static_cast<double>(parsed));
+            T                            parsed{};
+            const std::string&           text   = entry->second;
+            const std::from_chars_result result = std::from_chars(text.data(), text.data() + text.size(), parsed);
+            valid                               = result.ec == std::errc{} && result.ptr == text.data() + text.size()
+                 && std::isfinite(static_cast<double>(parsed));
             if (valid)
             {
                 value = parsed;
@@ -170,7 +165,7 @@ public:
 
     bool ReadBool(const std::string& key, bool& value) const
     {
-        bool valid                                                    = true;
+        bool                                                    valid = true;
         const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
@@ -189,19 +184,18 @@ public:
 
     bool ReadVec3(const std::string& key, Vec3& value) const
     {
-        bool valid                                                    = true;
+        bool                                                    valid = true;
         const HashMap<std::string, std::string>::const_iterator entry = m_configData.find(key);
         if (entry != m_configData.end())
         {
-            Vec3 parsed(0.0f);
+            Vec3               parsed(0.0f);
             std::istringstream input(entry->second);
-            char separator1 = 0;
-            char separator2 = 0;
-            valid = static_cast<bool>(input >> parsed.x >> separator1 >> parsed.y >> separator2 >>
-                                      parsed.z);
+            char               separator1 = 0;
+            char               separator2 = 0;
+            valid = static_cast<bool>(input >> parsed.x >> separator1 >> parsed.y >> separator2 >> parsed.z);
             input >> std::ws;
-            valid = valid && input.eof() && separator1 == ',' && separator2 == ',' &&
-                std::isfinite(parsed.x) && std::isfinite(parsed.y) && std::isfinite(parsed.z);
+            valid = valid && input.eof() && separator1 == ',' && separator2 == ',' && std::isfinite(parsed.x)
+                 && std::isfinite(parsed.y) && std::isfinite(parsed.z);
             if (valid)
             {
                 value = parsed;
@@ -217,15 +211,13 @@ public:
 private:
     static std::string ResolveModelPath(const std::string& path)
     {
-        std::string resolved                  = path;
+        std::string                 resolved  = path;
         const std::filesystem::path modelPath = std::filesystem::u8path(path);
         if (!path.empty() && modelPath.is_relative())
         {
             // Config-relative paths also preserve the former repository/bin asset layout.
             const std::u8string relative =
-                (std::filesystem::u8path(ZEN_CONFIG_PATH).parent_path() / modelPath)
-                    .lexically_normal()
-                    .generic_u8string();
+                (std::filesystem::u8path(ZEN_CONFIG_PATH).parent_path() / modelPath).lexically_normal().generic_u8string();
 
             resolved.assign(reinterpret_cast<const char*>(relative.data()), relative.size());
         }
@@ -234,7 +226,7 @@ private:
 
     std::string GetConfiguredModelPath(const char* key) const
     {
-        std::string path;
+        std::string                                       path;
         HashMap<std::string, std::string>::const_iterator model = m_configData.find(key);
         if (model != m_configData.end())
         {
@@ -263,12 +255,9 @@ private:
             std::ofstream outFile(configPath);
             outFile << "model_base_path=../../glTF-Sample-Assets/Models" << std::endl;
             outFile << "default_model=Suzanne" << std::endl;
-            outFile << "# Voxelizer: auto, comp or geom (falls back to comp if unsupported)."
-                    << std::endl;
+            outFile << "# Voxelizer: auto, comp or geom (falls back to comp if unsupported)." << std::endl;
             outFile << "voxelizer=auto" << std::endl;
-            outFile
-                << "# Async compute: off or auto (requires a separate queue and GPU dependencies)."
-                << std::endl;
+            outFile << "# Async compute: off or auto (requires a separate queue and GPU dependencies)." << std::endl;
             outFile << "async_compute=off" << std::endl;
             outFile.close();
             LOGI("Default config created at {}.", configPath);
@@ -284,7 +273,7 @@ private:
     static std::string Trim(const std::string& text)
     {
         const size_t first = text.find_first_not_of(" \t\r\n");
-        std::string trimmed;
+        std::string  trimmed;
         if (first != std::string::npos)
         {
             trimmed = text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);

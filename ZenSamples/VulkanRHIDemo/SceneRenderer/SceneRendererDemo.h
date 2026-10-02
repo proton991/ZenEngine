@@ -26,8 +26,8 @@ class SceneRendererDemo
 {
 public:
     SceneRendererDemo(const platform::WindowConfig& windowConfig,
-                      sg::CameraType type,
-                      const DemoProfilingOptions& profiling = {});
+                      sg::CameraType                type,
+                      const DemoProfilingOptions&   profiling = {});
 
     ~SceneRendererDemo();
 
@@ -38,8 +38,7 @@ public:
 #if defined(ZEN_RUNTIME_UI)
     ui::RuntimeSceneSettings GetRuntimeSceneSettings() const override;
 
-    bool ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings& previous,
-                                   const ui::RuntimeSceneSettings& next) override;
+    bool ApplyRuntimeSceneSettings(const ui::RuntimeSceneSettings& previous, const ui::RuntimeSceneSettings& next) override;
 
     const ui::RuntimeModelState& GetRuntimeModelState() const override;
 
@@ -59,11 +58,15 @@ public:
              uint32_t backgroundTestSeconds    = 0);
 
     bool CaptureFrame(const std::string& path);
+
     bool CaptureLighting(const std::string& path);
 
     bool CaptureVoxelVolume(const std::string& path);
+
     bool CaptureVoxelReference(const std::string& path);
+
     bool CaptureVoxelLifecycle(const std::string& path);
+
     bool CaptureVoxelGBuffer(const std::string& path);
 
     void StopProfiling();
@@ -80,6 +83,7 @@ private:
 #endif
 
     bool CaptureVoxelOutput(const std::string& path, rc::VoxelizerBase& output);
+
     void OnResize(uint32_t width, uint32_t height);
 
     void RunSmokeStep(uint32_t frame);
@@ -87,6 +91,7 @@ private:
     void PrepareLighting(const platform::ConfigLoader& config);
 
     void UpdateDynamicLight(float frameTime);
+
     bool GetGIMotionFixture(uint32_t& moving, Mat4& original) const;
 
     UniquePtr<sg::Camera> m_camera;
@@ -95,7 +100,7 @@ private:
 
     UniquePtr<rc::RenderDevice> m_renderDevice;
 
-    UniquePtr<sg::Scene> m_scene;
+    UniquePtr<sg::Scene>       m_scene;
     UniquePtr<rc::RenderScene> m_renderScene;
 
     platform::GlfwWindowImpl* m_pWindow{nullptr};
@@ -103,20 +108,20 @@ private:
     RHIViewport* m_pViewport{nullptr};
 
     UniquePtr<platform::Timer> m_timer;
-    rc::LightId m_dynamicLight{0};
+    rc::LightId                m_dynamicLight{0};
     // Config slots remain stable; without an override these IDs own the AABB preset.
-    std::array<rc::LightId, rc::MaxSceneLights> m_editableLightIds{};
-    uint32_t m_editableLightCount{0};
+    std::array<rc::LightId, rc::MaxSceneLights>    m_editableLightIds{};
+    uint32_t                                       m_editableLightCount{0};
     std::array<rc::SceneLight, rc::MaxSceneLights> m_editableLightDefaults{};
-    bool m_boundsPresetLights{false};
-    uint32_t m_modelLightCount{0};
-    uint32_t m_animatedLightIndex{0};
-    Vec3 m_orbitCenter{0.0f, 1.0f, 0.0f};
-    float m_orbitRadius{1.0f};
-    float m_orbitSpeedDegrees{45.0f};
-    double m_lightAngle{0.0};
-    uint64_t m_motionFrame{0};
-    UniquePtr<SceneRendererProfiling> m_profiling;
+    bool                                           m_boundsPresetLights{false};
+    uint32_t                                       m_modelLightCount{0};
+    uint32_t                                       m_animatedLightIndex{0};
+    Vec3                                           m_orbitCenter{0.0f, 1.0f, 0.0f};
+    float                                          m_orbitRadius{1.0f};
+    float                                          m_orbitSpeedDegrees{45.0f};
+    double                                         m_lightAngle{0.0};
+    uint64_t                                       m_motionFrame{0};
+    UniquePtr<SceneRendererProfiling>              m_profiling;
 
 #if defined(ZEN_RUNTIME_UI)
     UniquePtr<ui::RuntimeDebugUI> m_runtimeUI;

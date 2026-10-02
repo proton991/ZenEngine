@@ -23,8 +23,7 @@ template <class T> struct Rect2
 
     Rect2(T width, T height) : minX(0), maxX(width), minY(0), maxY(height) {}
 
-    Rect2(T _minX, T _maxX, T _minY, T _maxY) : minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY)
-    {}
+    Rect2(T _minX, T _maxX, T _minY, T _maxY) : minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY) {}
 
     bool operator==(const Rect2& b) const
     {
@@ -58,9 +57,7 @@ struct Rect3f
 
     Rect3f() : minX(0.f), maxX(0.f), minY(0.f), maxY(0.f), minZ(0.f), maxZ(1.f) {}
 
-    Rect3f(float width, float height) :
-        minX(0.f), maxX(width), minY(0.f), maxY(height), minZ(0.f), maxZ(1.f)
-    {}
+    Rect3f(float width, float height) : minX(0.f), maxX(width), minY(0.f), maxY(height), minZ(0.f), maxZ(1.f) {}
 
     Rect3f(float _minX, float _maxX, float _minY, float _maxY, float _minZ, float _maxZ) :
         minX(_minX), maxX(_maxX), minY(_minY), maxY(_maxY), minZ(_minZ), maxZ(_maxZ)
@@ -68,8 +65,7 @@ struct Rect3f
 
     bool operator==(const Rect3f& b) const
     {
-        return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX &&
-            maxY == b.maxY && maxZ == b.maxZ;
+        return minX == b.minX && minY == b.minY && minZ == b.minZ && maxX == b.maxX && maxY == b.maxY && maxZ == b.maxZ;
     }
 
     bool operator!=(const Rect3f& b) const

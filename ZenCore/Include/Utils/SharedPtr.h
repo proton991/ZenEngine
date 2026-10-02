@@ -22,8 +22,7 @@ template <class T> struct SharedPtrDelete
     }
 };
 
-template <class T, class Deleter, class RefCounterType> struct SharedPtrOwnedBlock final :
-    SharedPtrControlBlock<RefCounterType>
+template <class T, class Deleter, class RefCounterType> struct SharedPtrOwnedBlock final : SharedPtrControlBlock<RefCounterType>
 {
     SharedPtrOwnedBlock(T* object, Deleter deleter) : object(object), deleter(std::move(deleter)) {}
 
@@ -32,7 +31,7 @@ template <class T, class Deleter, class RefCounterType> struct SharedPtrOwnedBlo
         deleter(object);
     }
 
-    T* object;
+    T*      object;
     Deleter deleter;
 };
 
@@ -47,9 +46,9 @@ template <class T, class Deleter> struct SharedPtrPendingOwner
         }
     }
 
-    T* object;
+    T*       object;
     Deleter& deleter;
-    bool pending{true};
+    bool     pending{true};
 };
 } // namespace detail
 
@@ -58,9 +57,10 @@ template <class T, class Deleter> struct SharedPtrPendingOwner
 template <class T, class RefCounterType = SingleThreadCounter> class SharedPtr
 {
 public:
-    using ElementType = T;
+    using ElementType    = T;
 
     SharedPtr() noexcept = default;
+
     SharedPtr(std::nullptr_t) noexcept {}
 
     template <class U>
@@ -89,8 +89,7 @@ public:
 
     template <class U>
         requires std::is_convertible_v<U*, T*>
-    SharedPtr(const SharedPtr<U, RefCounterType>& other) noexcept :
-        m_pObj(other.m_pObj), m_control(other.m_control)
+    SharedPtr(const SharedPtr<U, RefCounterType>& other) noexcept : m_pObj(other.m_pObj), m_control(other.m_control)
     {
         AddReference();
     }
@@ -103,13 +102,11 @@ public:
     template <class U>
         requires std::is_convertible_v<U*, T*>
     SharedPtr(SharedPtr<U, RefCounterType>&& other) noexcept :
-        m_pObj(std::exchange(other.m_pObj, nullptr)),
-        m_control(std::exchange(other.m_control, nullptr))
+        m_pObj(std::exchange(other.m_pObj, nullptr)), m_control(std::exchange(other.m_control, nullptr))
     {}
 
     SharedPtr(SharedPtr&& other) noexcept :
-        m_pObj(std::exchange(other.m_pObj, nullptr)),
-        m_control(std::exchange(other.m_control, nullptr))
+        m_pObj(std::exchange(other.m_pObj, nullptr)), m_control(std::exchange(other.m_control, nullptr))
     {}
 
     SharedPtr& operator=(const SharedPtr& other) noexcept
@@ -201,8 +198,7 @@ private:
     {
         static_assert(std::is_nothrow_move_constructible_v<Deleter>);
         detail::SharedPtrPendingOwner<U, Deleter> owner{object, deleter};
-        m_control =
-            new detail::SharedPtrOwnedBlock<U, Deleter, RefCounterType>(object, std::move(deleter));
+        m_control     = new detail::SharedPtrOwnedBlock<U, Deleter, RefCounterType>(object, std::move(deleter));
         m_pObj        = object;
         owner.pending = false;
     }
@@ -223,47 +219,41 @@ private:
         }
     }
 
-    T* m_pObj{nullptr};
+    T*                                             m_pObj{nullptr};
     detail::SharedPtrControlBlock<RefCounterType>* m_control{nullptr};
 };
 
 template <class T, class U, class LeftCounter, class RightCounter>
-bool operator==(const SharedPtr<T, LeftCounter>& left,
-                const SharedPtr<U, RightCounter>& right) noexcept
+bool operator==(const SharedPtr<T, LeftCounter>& left, const SharedPtr<U, RightCounter>& right) noexcept
 {
     return left.Get() == right.Get();
 }
 
-template <class T, class Counter>
-bool operator==(const SharedPtr<T, Counter>& pointer, std::nullptr_t) noexcept
+template <class T, class Counter> bool operator==(const SharedPtr<T, Counter>& pointer, std::nullptr_t) noexcept
 {
     return pointer.Get() == nullptr;
 }
 
 template <class T, class U, class LeftCounter, class RightCounter>
-bool operator<(const SharedPtr<T, LeftCounter>& left,
-               const SharedPtr<U, RightCounter>& right) noexcept
+bool operator<(const SharedPtr<T, LeftCounter>& left, const SharedPtr<U, RightCounter>& right) noexcept
 {
     return left.Get() < right.Get();
 }
 
 template <class T, class U, class LeftCounter, class RightCounter>
-bool operator<=(const SharedPtr<T, LeftCounter>& left,
-                const SharedPtr<U, RightCounter>& right) noexcept
+bool operator<=(const SharedPtr<T, LeftCounter>& left, const SharedPtr<U, RightCounter>& right) noexcept
 {
     return left.Get() <= right.Get();
 }
 
 template <class T, class U, class LeftCounter, class RightCounter>
-bool operator>(const SharedPtr<T, LeftCounter>& left,
-               const SharedPtr<U, RightCounter>& right) noexcept
+bool operator>(const SharedPtr<T, LeftCounter>& left, const SharedPtr<U, RightCounter>& right) noexcept
 {
     return right < left;
 }
 
 template <class T, class U, class LeftCounter, class RightCounter>
-bool operator>=(const SharedPtr<T, LeftCounter>& left,
-                const SharedPtr<U, RightCounter>& right) noexcept
+bool operator>=(const SharedPtr<T, LeftCounter>& left, const SharedPtr<U, RightCounter>& right) noexcept
 {
     return right <= left;
 }
@@ -278,7 +268,7 @@ template <class T, class U, class Counter>
 SharedPtr<T, Counter> dynamic_pointer_cast(const SharedPtr<U, Counter>& pointer) noexcept
 {
     SharedPtr<T, Counter> result;
-    T* object = dynamic_cast<T*>(pointer.Get());
+    T*                    object = dynamic_cast<T*>(pointer.Get());
     if (object != nullptr)
     {
         result = SharedPtr<T, Counter>(pointer, object);

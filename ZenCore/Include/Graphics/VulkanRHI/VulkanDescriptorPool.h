@@ -34,14 +34,14 @@ struct VulkanDescriptorPoolKeyHasher
 class VulkanDescriptorPool
 {
 public:
-    VulkanDescriptorPool(VulkanDevice* pDevice,
+    VulkanDescriptorPool(VulkanDevice*                  pDevice,
                          const VulkanDescriptorPoolKey& poolKey,
-                         uint32_t maxNumSets,
-                         bool updateAfterBind);
+                         uint32_t                       maxNumSets,
+                         bool                           updateAfterBind);
 
     ~VulkanDescriptorPool();
 
-    VulkanDescriptorPool(const VulkanDescriptorPool&) = delete;
+    VulkanDescriptorPool(const VulkanDescriptorPool&)            = delete;
 
     VulkanDescriptorPool& operator=(const VulkanDescriptorPool&) = delete;
 
@@ -55,11 +55,11 @@ public:
     }
 
 private:
-    VulkanDevice* m_pDevice{nullptr};
+    VulkanDevice*    m_pDevice{nullptr};
     VkDescriptorPool m_vkHandle{VK_NULL_HANDLE};
-    uint32_t m_maxNumSets{0};
-    uint32_t m_numAllocatedSets{0};
-    bool m_updateAfterBind{false};
+    uint32_t         m_maxNumSets{0};
+    uint32_t         m_numAllocatedSets{0};
+    bool             m_updateAfterBind{false};
 };
 
 class VulkanDescriptorPoolSetContainer
@@ -69,14 +69,14 @@ public:
 
     ~VulkanDescriptorPoolSetContainer();
 
-    VulkanDescriptorPoolSetContainer(const VulkanDescriptorPoolSetContainer&) = delete;
+    VulkanDescriptorPoolSetContainer(const VulkanDescriptorPoolSetContainer&)            = delete;
 
     VulkanDescriptorPoolSetContainer& operator=(const VulkanDescriptorPoolSetContainer&) = delete;
 
     VkDescriptorSet Allocate(const VulkanDescriptorPoolKey& poolKey,
-                             bool updateAfterBind,
-                             VkDescriptorSetLayout layout,
-                             uint32_t variableCount);
+                             bool                           updateAfterBind,
+                             VkDescriptorSetLayout          layout,
+                             uint32_t                       variableCount);
 
     void Reset();
 
@@ -84,7 +84,9 @@ public:
     {
         return m_lifetimeId;
     }
+
     bool CanReuse() const;
+
     void Retire();
 
 private:
@@ -92,23 +94,20 @@ private:
     // Size grows at index, 32, 64, 128...
     struct PoolChain
     {
-        VulkanDescriptorPoolKey poolKey;
+        VulkanDescriptorPoolKey            poolKey;
         SmallVector<VulkanDescriptorPool*> pools;
-        uint32_t activePoolIdx{0};
-        uint32_t numPools{0};
-        bool updateAfterBind{false};
+        uint32_t                           activePoolIdx{0};
+        uint32_t                           numPools{0};
+        bool                               updateAfterBind{false};
     };
 
     PoolChain* AcquireChain(const VulkanDescriptorPoolKey& poolKey, bool updateAfterBind);
 
-    VkDescriptorSet AllocateFromChain(PoolChain* pChain,
-                                      VkDescriptorSetLayout layout,
-                                      uint32_t variableCount);
+    VkDescriptorSet AllocateFromChain(PoolChain* pChain, VkDescriptorSetLayout layout, uint32_t variableCount);
 
     void PushPoolToChain(PoolChain* pChain);
 
-    using PoolChainMap =
-        FlatHashMap<VulkanDescriptorPoolKey, PoolChain*, VulkanDescriptorPoolKeyHasher>;
+    using PoolChainMap = FlatHashMap<VulkanDescriptorPoolKey, PoolChain*, VulkanDescriptorPoolKeyHasher>;
 
     VulkanDevice* m_pVulkanDevice{nullptr};
 
@@ -125,12 +124,11 @@ private:
 class VulkanDescriptorSetCache
 {
 public:
-    VulkanDescriptorSetCache(VulkanDescriptorPoolManager2* pPoolManager,
-                             VulkanDevice* pVulkanDevice);
+    VulkanDescriptorSetCache(VulkanDescriptorPoolManager2* pPoolManager, VulkanDevice* pVulkanDevice);
 
     ~VulkanDescriptorSetCache();
 
-    VulkanDescriptorSetCache(const VulkanDescriptorSetCache&) = delete;
+    VulkanDescriptorSetCache(const VulkanDescriptorSetCache&)            = delete;
 
     VulkanDescriptorSetCache& operator=(const VulkanDescriptorSetCache&) = delete;
 
@@ -156,8 +154,8 @@ private:
 
         bool operator==(const ContentKey& other) const noexcept
         {
-            return layoutId == other.layoutId && bindings.size() == other.bindings.size() &&
-                std::equal(bindings.begin(), bindings.end(), other.bindings.begin());
+            return layoutId == other.layoutId && bindings.size() == other.bindings.size()
+                && std::equal(bindings.begin(), bindings.end(), other.bindings.begin());
         }
 
         bool operator!=(const ContentKey& other) const noexcept
@@ -182,26 +180,26 @@ private:
     };
     struct Entry
     {
-        ContentKey key;
+        ContentKey      key;
         VkDescriptorSet descriptorSet{VK_NULL_HANDLE};
-        uint64_t slotGeneration{0};
+        uint64_t        slotGeneration{0};
     };
 
     struct RingSlot
     {
         VulkanDescriptorPoolSetContainer* pContainer{nullptr};
-        uint64_t generation{0};
-        uint64_t lastUsedFrame{0};
-        uint32_t numLiveEntries{0};
+        uint64_t                          generation{0};
+        uint64_t                          lastUsedFrame{0};
+        uint32_t                          numLiveEntries{0};
     };
 
     VkDescriptorSet Find(const ContentKey& key, VulkanDescriptorPoolSetContainer*& outContainer);
 
-    VkDescriptorSet Insert(const ContentKey& key,
-                           const VulkanDescriptorPoolKey& poolKey,
-                           VkDescriptorSetLayout layout,
-                           bool updateAfterBind,
-                           uint32_t variableCount,
+    VkDescriptorSet Insert(const ContentKey&                  key,
+                           const VulkanDescriptorPoolKey&     poolKey,
+                           VkDescriptorSetLayout              layout,
+                           bool                               updateAfterBind,
+                           uint32_t                           variableCount,
                            VulkanDescriptorPoolSetContainer*& outContainer);
 
     void RotateRing();
@@ -211,7 +209,7 @@ private:
     void CompactEntries();
 
     VulkanDescriptorPoolManager2* m_pPoolManager{nullptr};
-    VulkanDevice* m_pDevice{nullptr};
+    VulkanDevice*                 m_pDevice{nullptr};
 
     HeapVector<Entry> m_entries;
 
@@ -253,7 +251,7 @@ public:
         return m_pContentCache;
     }
 
-    uint32_t GetOrCreateLayoutId(const VkDescriptorSetLayoutCreateInfo& createInfo,
+    uint32_t GetOrCreateLayoutId(const VkDescriptorSetLayoutCreateInfo&     createInfo,
                                  VectorView<const VkDescriptorBindingFlags> bindingFlags);
 
 private:
@@ -264,7 +262,7 @@ private:
     struct FreeContainerEntry
     {
         VulkanDescriptorPoolSetContainer* pContainer{nullptr};
-        uint32_t idleTicks{0};
+        uint32_t                          idleTicks{0};
     };
 
     struct LayoutKey
@@ -273,8 +271,7 @@ private:
 
         bool operator==(const LayoutKey& other) const
         {
-            return data.size() == other.data.size() &&
-                std::equal(data.begin(), data.end(), other.data.begin());
+            return data.size() == other.data.size() && std::equal(data.begin(), data.end(), other.data.begin());
         }
     };
 
@@ -302,7 +299,7 @@ private:
     VulkanDescriptorSetCache* m_pContentCache;
 
     FlatHashMap<LayoutKey, uint32_t, LayoutKeyHasher> m_layoutIdMap;
-    uint32_t m_nextLayoutId{1};
+    uint32_t                                          m_nextLayoutId{1};
 };
 
 inline constexpr uint32_t kBindlessHeapCapacity[ToUnderlying(RHIBindlessHeapType::eMax)] = {
@@ -330,8 +327,8 @@ public:
 
     // Published slots remain immutable until explicitly retired and all earlier
     // recordings and submissions finish. recordedEpoch permits playback of an old registration.
-    bool RegisterBindlessResource(RHIResource* pResource,
-                                  uint32_t slotIdx,
+    bool RegisterBindlessResource(RHIResource*       pResource,
+                                  uint32_t           slotIdx,
                                   RHIBindlessHandle* pOutHandle = nullptr,
                                   uint64_t recordedEpoch        = 0,
                                   uint64_t transaction          = 0);
@@ -342,17 +339,21 @@ public:
     // each slot must accept its resource for this transaction, and no slot may receive two
     // different resources.
     bool CanRegisterBindlessResources(VectorView<const RHIShaderResourceParameter> parameters,
-                                      uint64_t recordedEpoch,
-                                      uint64_t transaction);
+                                      uint64_t                                     recordedEpoch,
+                                      uint64_t                                     transaction);
 
     void ResolveTransaction(uint64_t transaction, bool commit);
+
     bool UnregisterBindlessResource(RHIBindlessHandle handle);
+
     bool IsRegistered(RHIBindlessHandle handle);
+
     void CollectRetiredResources();
 
     // Ordinary registrations remain immutable. A complete, drained heap can be replaced
     // explicitly without recreating its descriptor set/layout or allowing stale handles.
     bool ResetRegistrations();
+
     // CPU commands hold their epoch until reset; native recordings transfer their
     // count to queue serials only after submission succeeds. Zero is invalid.
     uint64_t GetCurrentEpoch() const
@@ -361,6 +362,7 @@ public:
     }
 
     uint64_t CaptureEpoch();
+
     void ReleaseEpoch(uint64_t epoch);
 
     // Write all registered bindless resources in batch, call WriteDescriptorSetBatch
@@ -373,27 +375,25 @@ public:
 private:
     struct BindlessDSWrite
     {
-        uint32_t slotIdx{0};
+        uint32_t     slotIdx{0};
         RHIResource* pResource{nullptr};
     };
 
     struct BindlessSlotState
     {
-        uint64_t resourceId{0};
+        uint64_t     resourceId{0};
         RHIResource* pResource{nullptr};
-        RHITexture* pTextureOwner{nullptr};
-        uint64_t generation{0};
-        uint64_t retiredEpoch{0};
-        uint64_t transaction{0};
+        RHITexture*  pTextureOwner{nullptr};
+        uint64_t     generation{0};
+        uint64_t     retiredEpoch{0};
+        uint64_t     transaction{0};
     };
 
     void CollectRetiredResourcesLocked();
+
     BindlessSlotState* FindRegistration(RHIBindlessHandle handle);
 
-    bool CanRegisterLocked(const RHIResource* resource,
-                           uint32_t slotIndex,
-                           uint64_t recordedEpoch,
-                           uint64_t transaction);
+    bool CanRegisterLocked(const RHIResource* resource, uint32_t slotIndex, uint64_t recordedEpoch, uint64_t transaction);
 
     void CreateGlobalBindlessDescriptorSet();
 
@@ -401,21 +401,21 @@ private:
 
     VulkanDevice* m_pDevice{nullptr};
 
-    VkDescriptorSet m_vkSet{VK_NULL_HANDLE};
-    VkDescriptorPool m_vkPool{VK_NULL_HANDLE};
+    VkDescriptorSet       m_vkSet{VK_NULL_HANDLE};
+    VkDescriptorPool      m_vkPool{VK_NULL_HANDLE};
     VkDescriptorSetLayout m_vkLayout{VK_NULL_HANDLE};
 
     uint32_t m_heapAllocCount[ToUnderlying(RHIBindlessHeapType::eMax)]{};
 
-    uint64_t m_epoch{0};
-    std::atomic<uint64_t> m_publishedEpoch{0};
-    std::atomic<bool> m_hasPendingWrites{false};
-    HeapVector<uint64_t> m_epochs;
+    uint64_t                      m_epoch{0};
+    std::atomic<uint64_t>         m_publishedEpoch{0};
+    std::atomic<bool>             m_hasPendingWrites{false};
+    HeapVector<uint64_t>          m_epochs;
     HeapVector<RHIBindlessHandle> m_retiredSlots;
 
     FlatHashMap<uint64_t, HeapVector<RHIBindlessHandle>> m_journals;
 
-    HeapVector<BindlessDSWrite> m_pendingWrites[ToUnderlying(RHIBindlessHeapType::eMax)];
+    HeapVector<BindlessDSWrite>   m_pendingWrites[ToUnderlying(RHIBindlessHeapType::eMax)];
     HeapVector<BindlessSlotState> m_slotStates[ToUnderlying(RHIBindlessHeapType::eMax)];
 
     Mutex m_mutex;

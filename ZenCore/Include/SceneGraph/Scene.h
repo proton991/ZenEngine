@@ -1,4 +1,5 @@
 #pragma once
+#include "Templates/HeapVector.h"
 #include "Utils/UniquePtr.h"
 #include "Node.h"
 #include "Mesh.h"
@@ -25,7 +26,7 @@ public:
 
     void Clear();
 
-    const std::vector<UniquePtr<Node>>& GetNodes() const
+    const HeapVector<UniquePtr<Node>>& GetNodes() const
     {
         return m_nodes;
     }
@@ -40,7 +41,7 @@ public:
         return m_assetData;
     }
 
-    std::vector<Node*>& GetRenderableNodes()
+    HeapVector<Node*>& GetRenderableNodes()
     {
         return m_renderableNodes;
     }
@@ -50,8 +51,7 @@ public:
         return m_renderableNodes.size();
     }
 
-    std::vector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos,
-                                                               const Mat4& transform);
+    HeapVector<std::pair<Node*, SubMesh*>> GetSortedSubMeshes(const Vec3& eyePos, const Mat4& transform);
 
     void AddRenderableNode(Node* pNode)
     {
@@ -65,10 +65,11 @@ public:
             m_components[component->GetTypeId()].emplace_back(std::move(component));
         }
     }
+
     /**
 	 * @brief Set list of components casted from the given template type
 	 */
-    template <class T> void SetComponents(std::vector<UniquePtr<T>>&& components)
+    template <class T> void SetComponents(HeapVector<UniquePtr<T>>&& components)
     {
         HeapVector<UniquePtr<Component>> result(components.size());
         for (size_t i = 0; i < components.size(); ++i)
@@ -81,9 +82,9 @@ public:
     /**
 	 * @return List of pointers to components casted to the given template type
 	 */
-    template <class T> std::vector<T*> GetComponents() const
+    template <class T> HeapVector<T*> GetComponents() const
     {
-        std::vector<T*> result;
+        HeapVector<T*> result;
         if (HasComponent(typeid(T)))
         {
             const HeapVector<UniquePtr<Component>>& sceneComponents = m_components.at(typeid(T));
@@ -98,12 +99,11 @@ public:
 
     bool HasComponent(const std::type_index& type_info) const
     {
-        const HashMap<TypeId, HeapVector<UniquePtr<Component>>>::const_iterator component =
-            m_components.find(type_info);
+        const HashMap<TypeId, HeapVector<UniquePtr<Component>>>::const_iterator component = m_components.find(type_info);
         return (component != m_components.end() && !component->second.empty());
     }
 
-    void SetNodes(std::vector<UniquePtr<Node>>&& nodes)
+    void SetNodes(HeapVector<UniquePtr<Node>>&& nodes)
     {
         m_nodes = std::move(nodes);
     }
@@ -157,9 +157,9 @@ private:
 
     AABB m_aabb;
 
-    std::vector<UniquePtr<Node>> m_nodes;
+    HeapVector<UniquePtr<Node>> m_nodes;
 
-    std::vector<Node*> m_renderableNodes;
+    HeapVector<Node*> m_renderableNodes;
 
     Node* m_pRootNode{nullptr};
 

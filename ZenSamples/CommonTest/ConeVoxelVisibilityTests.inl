@@ -19,15 +19,14 @@ uint32_t VisibilityRandom(uint32_t& state)
 HeapVector<ConeVisibilityRay> VisibilityRays(uint32_t side)
 {
     // The first rays have explicit, independent hit/miss expectations against the wall.
-    HeapVector<ConeVisibilityRay> rays = {
-        {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, 1e20f)},
-        {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(-1, 0, 0, 1e20f)},
-        {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, side / 2.0f - 0.5f)},
-        {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, side / 2.0f)},
-        {Vec4(-0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, 1e20f)},
-        {Vec4(side / 2.0f, 1.5f, 1.5f, 0), Vec4(-1, 0, 0, 1e20f)}};
+    HeapVector<ConeVisibilityRay> rays = {{Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, 1e20f)},
+                                          {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(-1, 0, 0, 1e20f)},
+                                          {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, side / 2.0f - 0.5f)},
+                                          {Vec4(0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, side / 2.0f)},
+                                          {Vec4(-0.5f, 1.5f, 1.5f, 0), Vec4(1, 0, 0, 1e20f)},
+                                          {Vec4(side / 2.0f, 1.5f, 1.5f, 0), Vec4(-1, 0, 0, 1e20f)}};
 
-    uint32_t random = 0x936baf21;
+    uint32_t random                    = 0x936baf21;
 
     for (uint32_t index = 0; index < 16384; ++index)
     {
@@ -37,7 +36,7 @@ HeapVector<ConeVisibilityRay> VisibilityRays(uint32_t side)
 
         for (uint32_t axis = 0; axis < 3; ++axis)
         {
-            origin[axis] = static_cast<float>(VisibilityRandom(random) % (side * 16 + 32)) / 16 - 1;
+            origin[axis]    = static_cast<float>(VisibilityRandom(random) % (side * 16 + 32)) / 16 - 1;
 
             direction[axis] = static_cast<float>(VisibilityRandom(random) % 2049) / 1024 - 1;
         }
@@ -63,9 +62,7 @@ HeapVector<ConeVisibilityRay> VisibilityRays(uint32_t side)
             direction.z = 1;
         }
 
-        const float distance = index % 3 == 0 ?
-            1e20f :
-            static_cast<float>(VisibilityRandom(random) % (side * 16)) / 16;
+        const float distance = index % 3 == 0 ? 1e20f : static_cast<float>(VisibilityRandom(random) % (side * 16)) / 16;
 
         rays.push_back({Vec4(origin, 0), Vec4(glm::normalize(direction), distance)});
     }
@@ -94,8 +91,7 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
                 for (uint32_t x = 0; x < side; ++x)
                 {
                     // Sparse black occluders and a one-cell wall; opacity is independent of RGB.
-                    const bool occupied =
-                        x == side / 2 || (y > 2 && VisibilityRandom(random) % 127 == 0);
+                    const bool occupied                  = x == side / 2 || (y > 2 && VisibilityRandom(random) % 127 == 0);
 
                     occupancy[x + side * (y + side * z)] = occupied ? 0xff000000u : 0;
                 }
@@ -104,14 +100,13 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
 
         RHITextureCreateInfo info;
 
-        info.type = RHITextureType::e3D;
+        info.type  = RHITextureType::e3D;
 
         info.width = info.height = info.depth = side;
 
-        info.format = DataFormat::eR8G8B8A8UNORM;
+        info.format                           = DataFormat::eR8G8B8A8UNORM;
 
-        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled,
-                                 RHITextureUsageFlagBits::eTransferDst);
+        info.usageFlags.SetFlags(RHITextureUsageFlagBits::eSampled, RHITextureUsageFlagBits::eTransferDst);
 
         RHITexture* opacity = device->CreateTexture(info);
 
@@ -119,17 +114,15 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
 
         const HeapVector<ConeVisibilityRay> rays = VisibilityRays(side);
 
-        const uint32_t count = static_cast<uint32_t>(rays.size());
+        const uint32_t count                     = static_cast<uint32_t>(rays.size());
 
-        const uint32_t bytes = count * sizeof(Vec2);
+        const uint32_t bytes                     = count * sizeof(Vec2);
 
-        RHIBuffer* upload = Buffer(side * side * side * sizeof(uint32_t),
-                                   RHIBufferAllocateType::eCPUWrite, occupancy.data());
+        RHIBuffer* upload   = Buffer(side * side * side * sizeof(uint32_t), RHIBufferAllocateType::eCPUWrite, occupancy.data());
 
-        RHIBuffer* input = Buffer(count * sizeof(ConeVisibilityRay),
-                                  RHIBufferAllocateType::eCPUWrite, rays.data());
+        RHIBuffer* input    = Buffer(count * sizeof(ConeVisibilityRay), RHIBufferAllocateType::eCPUWrite, rays.data());
 
-        RHIBuffer* output = Buffer(bytes, RHIBufferAllocateType::eGPU);
+        RHIBuffer* output   = Buffer(bytes, RHIBufferAllocateType::eGPU);
 
         RHIBuffer* readback = Buffer(bytes, RHIBufferAllocateType::eCPURead);
 
@@ -154,8 +147,7 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
         pass.BindSampledTexture("opacity", device->CreateSampler({}), opacity->GetDefaultView());
 
         pass.BindValue("uGISettings",
-                       VoxelGIUniformData{Vec4(0, 0, 0, 1), Vec4(side, 1.0f / side, 1, 1), Vec4(1),
-                                          Vec4(6, 128, 1, 0)});
+                       VoxelGIUniformData{Vec4(0, 0, 0, 1), Vec4(side, 1.0f / side, 1, 1), Vec4(1), Vec4(6, 128, 1, 0)});
 
         pass.BindValue("uSceneData", SceneUniformData{});
 
@@ -163,13 +155,11 @@ TEST_P(ConeVoxelGIIntegrationTest, ConeVisibilityPreservesScalarHitsAndFiniteSeg
 
         pass.BindStorageBuffer("VisibilityResults", output, RDGContentGuarantee::eFullWrite);
 
-        graph.AddComputePass(std::move(pass))
-            .RecordPassCommands(
-                [count](RDGPassCmdEncoder& encoder) { encoder.Dispatch((count + 63) / 64, 1, 1); });
+        graph.AddComputePass(std::move(pass)).RecordPassCommands([count](RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch((count + 63) / 64, 1, 1);
+        });
 
-        graph.AddTransferPass("ReadVisibility")
-            .CopyBuffer(output, readback, {0, 0, bytes})
-            .NeverCull();
+        graph.AddTransferPass("ReadVisibility").CopyBuffer(output, readback, {0, 0, bytes}).NeverCull();
 
         ASSERT_TRUE(graph.End());
 

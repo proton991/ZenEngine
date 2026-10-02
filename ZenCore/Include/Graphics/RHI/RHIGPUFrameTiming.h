@@ -32,9 +32,9 @@ private:
     bool CalculateEnvelope(double& microseconds) const;
 
     HeapVector<RHIGPUTimingPtr> m_intervals;
-    size_t m_excludedIntervals{0};
-    RHIGPUTimingStatus m_recordingStatus{RHIGPUTimingStatus::eAvailable};
-    std::atomic<bool> m_sealed{false};
+    size_t                      m_excludedIntervals{0};
+    RHIGPUTimingStatus          m_recordingStatus{RHIGPUTimingStatus::eAvailable};
+    std::atomic<bool>           m_sealed{false};
 };
 
 using RHIGPUFrameTimingPtr = SharedPtr<RHIGPUFrameTiming, MultiThreadCounter>;

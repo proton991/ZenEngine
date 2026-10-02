@@ -6,8 +6,7 @@ TEST_F(RenderCoreTest, SceneShadowsRetryFailedAllocationsAndExcludeDisabledLight
     data.pScene = &source;
     RenderScene scene(device, data);
     sceneInputs.uniforms.lightInfo.x = 1;
-    sceneInputs.uniforms.lights[0]   = {Vec4(0, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1),
-                                        Vec4(0, 0, 1, 0)};
+    sceneInputs.uniforms.lights[0]   = {Vec4(0, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1), Vec4(0, 0, 1, 0)};
     for (uint32_t failure = 1; failure <= 2; ++failure)
     {
         SceneShadowRenderer shadows(device);
@@ -33,11 +32,9 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
 {
     RHIShaderCreateInfo shader;
     shader.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
-    shader.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)] =
-        "ShadowMapping/scene_shadow.vert.spv";
-    shader.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] =
-        "ShadowMapping/scene_shadow.frag.spv";
-    reflectedShaderInfos["SceneShadowSP"] = shader;
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = "ShadowMapping/scene_shadow.vert.spv";
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = "ShadowMapping/scene_shadow.frag.spv";
+    reflectedShaderInfos["SceneShadowSP"]                         = shader;
     CreateTestShaderProgram(device, "SceneShadowSP");
     CreateTestShaderProgram(device, "intent");
     sceneInputs.vertices  = Buffer(128);
@@ -54,12 +51,11 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
     sceneInputs.uniforms.lightInfo.x = 2;
     for (uint32_t index = 0; index < 2; ++index)
     {
-        sceneInputs.uniforms.lights[index] = {Vec4(0, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1),
-                                              Vec4(0.9f, 0.8f, 1, 0)};
+        sceneInputs.uniforms.lights[index] = {Vec4(0, 0, 0, 4), Vec4(0, -1, 0, 1), Vec4(1), Vec4(0.9f, 0.8f, 1, 0)};
     }
     SceneShadowRenderer shadows(device);
-    RenderGraph* graph  = device->GetCurrentFrameRDG();
-    RDGMetrics& metrics = device->GetRDGMetrics();
+    RenderGraph*        graph   = device->GetCurrentFrameRDG();
+    RDGMetrics&         metrics = device->GetRDGMetrics();
     metrics.SetSink({});
     const uint32_t expectedFaces[] = {12, 0, 6, 0, 12, 12, 7, 6, 2, 6, 0, 0};
     for (uint32_t frame = 0; frame < std::size(expectedFaces); ++frame)
@@ -79,15 +75,13 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
         }
         ASSERT_TRUE(shadows.Prepare(scene, frame != 8, frame >= 10));
         ASSERT_TRUE(graph->Begin());
-        for (RHIBuffer* buffer :
-             {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
+        for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials})
         {
             graph->GetResourceManager()->ImportHostWrittenBuffer(buffer);
         }
         if (frame == 0)
         {
-            graph->AddTransferPass("InitializeMaterial")
-                .ClearTexture(sceneInputs.textures[0], Color(1));
+            graph->AddTransferPass("InitializeMaterial").ClearTexture(sceneInputs.textures[0], Color(1));
         }
         shadows.BuildRenderGraph(scene, frame >= 5 ? 2 : 1);
         graph->AddComputePass(IntentPass("keepalive"));
@@ -95,12 +89,11 @@ TEST_F(RenderCoreTest, SceneShadowsCacheStaticFacesAndInvalidateAfterLightGeomet
         ASSERT_TRUE(graph->End()) << graph->GetResult().message;
         ASSERT_TRUE(device->ExecuteRenderGraph(*graph)) << graph->GetResult().message;
         shadows.OnRenderGraphExecuted(frame != 3);
-        EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"),
-                  expectedFaces[frame]);
+        EXPECT_EQ(CountGIPasses(metrics.GetLastSnapshot(), "SceneShadowFace_"), expectedFaces[frame]);
     }
     shadows.Destroy();
-    for (RHIBuffer* buffer : {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes,
-                              sceneInputs.materials, sceneInputs.uv})
+    for (RHIBuffer* buffer :
+         {sceneInputs.vertices, sceneInputs.indices, sceneInputs.nodes, sceneInputs.materials, sceneInputs.uv})
     {
         device->DestroyBuffer(buffer);
     }
@@ -150,14 +143,13 @@ TEST_F(RenderCoreTest, UnlimitedPointAndWideSpotShadowsUseFiniteSceneDepth)
     source.GetAABB() = sg::AABB(Vec3(-1), Vec3(1));
     SceneData data{};
     data.pScene = &source;
-    RenderScene scene(device, data);
+    RenderScene         scene(device, data);
     SceneShadowRenderer shadows(device);
     sceneInputs.uniforms.lightInfo.x = 1.0f;
 
     for (float type : {1.0f, 2.0f})
     {
-        sceneInputs.uniforms.lights[0] = {Vec4(0, 0, 2, 0), Vec4(0, 0, -1, type), Vec4(1),
-                                          Vec4(1, 0, 1, 0)};
+        sceneInputs.uniforms.lights[0] = {Vec4(0, 0, 2, 0), Vec4(0, 0, -1, type), Vec4(1), Vec4(1, 0, 1, 0)};
         ASSERT_TRUE(shadows.Prepare(scene, true));
         RDGComputePassDesc lighting;
         shadows.BindLightingInputs(lighting);

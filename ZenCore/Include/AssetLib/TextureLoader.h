@@ -9,6 +9,7 @@ class TextureLoader
 {
 public:
     static TextureInfo LoadTexture2DFromFile(const std::string& filename);
+
     static void LoadTexture2DFromFile(const std::string& filename, TextureInfo* pOutTexInfo);
 };
 } // namespace zen::asset

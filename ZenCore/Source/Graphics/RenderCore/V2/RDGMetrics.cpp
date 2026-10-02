@@ -39,11 +39,10 @@ bool Covers(int64_t mask, int64_t required)
 
 int64_t WriteAccess(int64_t access)
 {
-    constexpr int64_t writes = int64_t(RHIAccessFlagBits::eShaderWrite) |
-        int64_t(RHIAccessFlagBits::eColorAttachmentWrite) |
-        int64_t(RHIAccessFlagBits::eDepthStencilAttachmentWrite) |
-        int64_t(RHIAccessFlagBits::eTransferWrite) | int64_t(RHIAccessFlagBits::eHostWrite) |
-        int64_t(RHIAccessFlagBits::eMemoryWrite);
+    constexpr int64_t writes = int64_t(RHIAccessFlagBits::eShaderWrite) | int64_t(RHIAccessFlagBits::eColorAttachmentWrite)
+                             | int64_t(RHIAccessFlagBits::eDepthStencilAttachmentWrite)
+                             | int64_t(RHIAccessFlagBits::eTransferWrite) | int64_t(RHIAccessFlagBits::eHostWrite)
+                             | int64_t(RHIAccessFlagBits::eMemoryWrite);
 
     return access & writes;
 }
@@ -63,10 +62,7 @@ int64_t ExpandAccess(int64_t access)
     return access;
 }
 
-static void IncludeAccessStages(int64_t access,
-                                int64_t accesses,
-                                int64_t supportedStages,
-                                int64_t& stages)
+static void IncludeAccessStages(int64_t access, int64_t accesses, int64_t supportedStages, int64_t& stages)
 {
     if (access & accesses)
     {
@@ -77,52 +73,51 @@ static void IncludeAccessStages(int64_t access,
 int64_t AccessStages(int64_t access, int64_t candidates)
 {
     using Stage               = RHIPipelineStageFlagBits;
+
     using Access              = RHIAccessFlagBits;
-    constexpr int64_t shaders = int64_t(Stage::eVertexShader) |
-        int64_t(Stage::eTessellationControlShader) | int64_t(Stage::eTessellationEvaluationShader) |
-        int64_t(Stage::eGeometryShader) | int64_t(Stage::eFragmentShader) |
-        int64_t(Stage::eComputeShader);
+
+    constexpr int64_t shaders = int64_t(Stage::eVertexShader) | int64_t(Stage::eTessellationControlShader)
+                              | int64_t(Stage::eTessellationEvaluationShader) | int64_t(Stage::eGeometryShader)
+                              | int64_t(Stage::eFragmentShader) | int64_t(Stage::eComputeShader);
+
     int64_t stages = 0;
 
-    IncludeAccessStages(access, int64_t(Access::eIndirectCommandRead),
-                        int64_t(Stage::eDrawIndirect), stages);
+    IncludeAccessStages(access, int64_t(Access::eIndirectCommandRead), int64_t(Stage::eDrawIndirect), stages);
+
     IncludeAccessStages(access, int64_t(Access::eIndexRead) | int64_t(Access::eVertexAttributeRead),
                         int64_t(Stage::eVertexInput), stages);
-    IncludeAccessStages(access,
-                        int64_t(Access::eUniformRead) | int64_t(Access::eShaderRead) |
-                            int64_t(Access::eShaderWrite),
+
+    IncludeAccessStages(access, int64_t(Access::eUniformRead) | int64_t(Access::eShaderRead) | int64_t(Access::eShaderWrite),
                         shaders, stages);
-    IncludeAccessStages(access, int64_t(Access::eInputAttachmentRead),
-                        int64_t(Stage::eFragmentShader), stages);
-    IncludeAccessStages(
-        access, int64_t(Access::eColorAttachmentRead) | int64_t(Access::eColorAttachmentWrite),
-        int64_t(Stage::eColorAttachmentOutput), stages);
-    IncludeAccessStages(access,
-                        int64_t(Access::eDepthStencilAttachmentRead) |
-                            int64_t(Access::eDepthStencilAttachmentWrite),
-                        int64_t(Stage::eEarlyFragmentTests) | int64_t(Stage::eLateFragmentTests),
+
+    IncludeAccessStages(access, int64_t(Access::eInputAttachmentRead), int64_t(Stage::eFragmentShader), stages);
+
+    IncludeAccessStages(access, int64_t(Access::eColorAttachmentRead) | int64_t(Access::eColorAttachmentWrite),
+                        int64_t(Stage::eColorAttachmentOutput), stages);
+
+    IncludeAccessStages(access, int64_t(Access::eDepthStencilAttachmentRead) | int64_t(Access::eDepthStencilAttachmentWrite),
+                        int64_t(Stage::eEarlyFragmentTests) | int64_t(Stage::eLateFragmentTests), stages);
+
+    IncludeAccessStages(access, int64_t(Access::eTransferRead) | int64_t(Access::eTransferWrite), int64_t(Stage::eTransfer),
                         stages);
-    IncludeAccessStages(access, int64_t(Access::eTransferRead) | int64_t(Access::eTransferWrite),
-                        int64_t(Stage::eTransfer), stages);
-    IncludeAccessStages(access, int64_t(Access::eHostRead) | int64_t(Access::eHostWrite),
-                        int64_t(Stage::eHost), stages);
-    IncludeAccessStages(access, int64_t(Access::eMemoryRead) | int64_t(Access::eMemoryWrite),
-                        ~int64_t(0), stages);
+
+    IncludeAccessStages(access, int64_t(Access::eHostRead) | int64_t(Access::eHostWrite), int64_t(Stage::eHost), stages);
+
+    IncludeAccessStages(access, int64_t(Access::eMemoryRead) | int64_t(Access::eMemoryWrite), ~int64_t(0), stages);
 
     return ExpandStages(candidates) & (access == 0 ? ~int64_t(0) : stages);
 }
 
-template <size_t N> static void ExpandExecutionStages(const RHIPipelineStageFlagBits (&pipeline)[N],
-                                                      bool source,
-                                                      int64_t stages,
-                                                      int64_t& result)
+template <size_t N>
+static void ExpandExecutionStages(const RHIPipelineStageFlagBits (&pipeline)[N], bool source, int64_t stages, int64_t& result)
 {
     int64_t accumulated = 0;
 
     for (size_t i = 0; i < std::size(pipeline); ++i)
     {
-        const int64_t stage = int64_t(pipeline[source ? i : std::size(pipeline) - 1 - i]);
-        accumulated |= stage;
+        const int64_t stage  = int64_t(pipeline[source ? i : std::size(pipeline) - 1 - i]);
+
+        accumulated         |= stage;
 
         if (stages & stage)
         {
@@ -135,8 +130,11 @@ int64_t ExecutionStages(int64_t stages, bool source)
 {
     // Logical stage order widens execution scopes only. Memory scopes always use ExpandStages.
     using Stage            = RHIPipelineStageFlagBits;
+
     stages                 = ExpandStages(stages);
+
     int64_t result         = stages;
+
     const Stage graphics[] = {Stage::eTopOfPipe,
                               Stage::eDrawIndirect,
                               Stage::eVertexInput,
@@ -149,12 +147,15 @@ int64_t ExecutionStages(int64_t stages, bool source)
                               Stage::eLateFragmentTests,
                               Stage::eColorAttachmentOutput,
                               Stage::eBottomOfPipe};
-    const Stage compute[]  = {Stage::eTopOfPipe, Stage::eDrawIndirect, Stage::eComputeShader,
-                              Stage::eBottomOfPipe};
+
+    const Stage compute[]  = {Stage::eTopOfPipe, Stage::eDrawIndirect, Stage::eComputeShader, Stage::eBottomOfPipe};
+
     const Stage transfer[] = {Stage::eTopOfPipe, Stage::eTransfer, Stage::eBottomOfPipe};
 
     ExpandExecutionStages(graphics, source, stages, result);
+
     ExpandExecutionStages(compute, source, stages, result);
+
     ExpandExecutionStages(transfer, source, stages, result);
 
     return result;
@@ -162,12 +163,10 @@ int64_t ExecutionStages(int64_t stages, bool source)
 
 bool Contains(const RHITextureSubResourceRange& outer, const RHITextureSubResourceRange& inner)
 {
-    return Covers(outer.aspect, inner.aspect) && outer.baseMipLevel <= inner.baseMipLevel &&
-        uint64_t(outer.baseMipLevel) + outer.levelCount >=
-        uint64_t(inner.baseMipLevel) + inner.levelCount &&
-        outer.baseArrayLayer <= inner.baseArrayLayer &&
-        uint64_t(outer.baseArrayLayer) + outer.layerCount >=
-        uint64_t(inner.baseArrayLayer) + inner.layerCount;
+    return Covers(outer.aspect, inner.aspect) && outer.baseMipLevel <= inner.baseMipLevel
+        && uint64_t(outer.baseMipLevel) + outer.levelCount >= uint64_t(inner.baseMipLevel) + inner.levelCount
+        && outer.baseArrayLayer <= inner.baseArrayLayer
+        && uint64_t(outer.baseArrayLayer) + outer.layerCount >= uint64_t(inner.baseArrayLayer) + inner.layerCount;
 }
 
 int64_t BufferAccess(BitField<RHIBufferUsageFlagBits> usage, RHIAccessMode mode)
@@ -187,8 +186,7 @@ int64_t BufferAccess(BitField<RHIBufferUsageFlagBits> usage, RHIAccessMode mode)
 
 template <typename Resource> uint64_t StableId(const Resource& resource)
 {
-    return resource.type == RDGResourceType::eTexture ? resource.pTexture->GetStableId() :
-                                                        resource.pBuffer->GetStableId();
+    return resource.type == RDGResourceType::eTexture ? resource.pTexture->GetStableId() : resource.pBuffer->GetStableId();
 }
 
 const char* IssueName(RDGMetricIssue issue)
@@ -205,8 +203,7 @@ const char* IssueName(RDGMetricIssue issue)
 
 bool IsOptimizationCandidate(RDGMetricIssue issue)
 {
-    return issue == RDGMetricIssue::eBroadTextureRange ||
-        issue == RDGMetricIssue::eRedundantBarrier;
+    return issue == RDGMetricIssue::eBroadTextureRange || issue == RDGMetricIssue::eRedundantBarrier;
 }
 
 const char* NodeTypeName(RDGNodeType type)
@@ -244,27 +241,39 @@ std::string Label(NameID name)
 void RDGBarrierValidator::Seed(const RDGMetricAccess& initial)
 {
     State state{};
+
     state.access               = initial;
+
     state.hasWriter            = initial.mode == RHIAccessMode::eReadWrite;
+
     state.writerAccess         = WriteAccess(initial.access);
+
     state.writerStages         = AccessStages(state.writerAccess, initial.stages);
+
     m_states[initial.resource] = state;
 }
 
-void RDGBarrierValidator::Check(int32_t node,
-                                const RDGMetricAccess& next,
+void RDGBarrierValidator::Check(int32_t                           node,
+                                const RDGMetricAccess&            next,
                                 std::span<const RDGMetricBarrier> barriers,
-                                const Reporter& report)
+                                const Reporter&                   report)
 {
     RDGBarrierValidator::State& state = m_states[next.resource];
+
     const RDGMetricAccess& prior      = state.access;
+
     const int64_t stages              = ExpandStages(next.stages);
+
     const bool reads                  = next.mode == RHIAccessMode::eRead;
+
     const bool layoutChange           = next.texture && prior.layout != next.layout;
-    const bool hazard =
-        prior.mode != RHIAccessMode::eNone && (prior.mode == RHIAccessMode::eReadWrite || !reads);
+
+    const bool hazard          = prior.mode != RHIAccessMode::eNone && (prior.mode == RHIAccessMode::eReadWrite || !reads);
+
     const bool required        = hazard || layoutChange;
+
     const int32_t previousNode = state.execution == m_execution ? state.node : -1;
+
     const int32_t writerNode   = state.writerExecution == m_execution ? state.writer : -1;
 
     if (prior.mode == RHIAccessMode::eNone && reads && !next.availableFromQueue)
@@ -282,10 +291,15 @@ void RDGBarrierValidator::Check(int32_t node,
     }
 
     bool found = false, layoutOK = false, rangeOK = false;
+
     std::array<int64_t, 17> executionCoverage{};
+
     std::array<std::array<int64_t, 17>, 17> sourceCoverage{};
+
     std::array<int64_t, 17> destinationCoverage{};
+
     std::array<std::array<int64_t, 17>, 17> writerCoverage{};
+
     const bool memoryHazard = prior.mode == RHIAccessMode::eReadWrite || layoutChange;
 
     for (const RDGMetricBarrier& barrier : barriers)
@@ -296,10 +310,13 @@ void RDGBarrierValidator::Check(int32_t node,
         }
 
         found             = true;
-        const bool layout = !next.texture ||
-            (barrier.oldLayout == prior.layout && barrier.newLayout == next.layout);
-        const bool range = next.texture ? Contains(barrier.range, next.range) : barrier.wholeBuffer;
+
+        const bool layout = !next.texture || (barrier.oldLayout == prior.layout && barrier.newLayout == next.layout);
+
+        const bool range  = next.texture ? Contains(barrier.range, next.range) : barrier.wholeBuffer;
+
         const int64_t sourceExecution      = ExecutionStages(barrier.srcStages, true);
+
         const int64_t destinationExecution = ExecutionStages(barrier.dstStages, false);
 
         for (uint32_t dst = 0; dst < executionCoverage.size(); ++dst)
@@ -311,12 +328,12 @@ void RDGBarrierValidator::Check(int32_t node,
         }
 
         layoutOK |= layout;
-        rangeOK |= range;
 
-        if (layout && range &&
-            (WriteAccess(prior.access) == 0 ||
-             Covers(ExpandStages(barrier.srcStages),
-                    AccessStages(WriteAccess(prior.access), prior.stages))))
+        rangeOK  |= range;
+
+        if (layout && range
+            && (WriteAccess(prior.access) == 0
+                || Covers(ExpandStages(barrier.srcStages), AccessStages(WriteAccess(prior.access), prior.stages))))
         {
             for (uint32_t bit = 0; bit < 17; ++bit)
             {
@@ -329,6 +346,7 @@ void RDGBarrierValidator::Check(int32_t node,
                         if (destinations & (int64_t(1) << dst))
                         {
                             sourceCoverage[dst][bit] |= ExpandAccess(barrier.srcAccess);
+
                             destinationCoverage[dst] |= int64_t(1) << bit;
                         }
                     }
@@ -342,8 +360,7 @@ void RDGBarrierValidator::Check(int32_t node,
         }
 
         // Retain visibility from the last writer across consecutive compatible readers.
-        if (state.hasWriter && layout && range &&
-            Covers(ExpandStages(barrier.srcStages), state.writerStages))
+        if (state.hasWriter && layout && range && Covers(ExpandStages(barrier.srcStages), state.writerStages))
         {
             const int64_t destinations = ExpandStages(barrier.dstStages);
 
@@ -353,9 +370,8 @@ void RDGBarrierValidator::Check(int32_t node,
                 {
                     for (uint32_t accessBit = 0; accessBit < sourceCoverage.size(); ++accessBit)
                     {
-                        if ((ExpandAccess(barrier.dstAccess) & (int64_t(1) << accessBit)) &&
-                            (AccessStages(int64_t(1) << accessBit, destinations) &
-                             (int64_t(1) << bit)))
+                        if ((ExpandAccess(barrier.dstAccess) & (int64_t(1) << accessBit))
+                            && (AccessStages(int64_t(1) << accessBit, destinations) & (int64_t(1) << bit)))
                         {
                             writerCoverage[bit][accessBit] |= ExpandAccess(barrier.srcAccess);
                         }
@@ -369,8 +385,7 @@ void RDGBarrierValidator::Check(int32_t node,
 
     for (uint32_t dst = 0; dst < executionCoverage.size(); ++dst)
     {
-        if ((stages & (int64_t(1) << dst)) &&
-            !Covers(executionCoverage[dst], ExpandStages(prior.stages)))
+        if ((stages & (int64_t(1) << dst)) && !Covers(executionCoverage[dst], ExpandStages(prior.stages)))
         {
             stageOK = false;
         }
@@ -382,16 +397,14 @@ void RDGBarrierValidator::Check(int32_t node,
         {
             const int64_t accessBit = int64_t(1) << bit;
 
-            if ((next.access & accessBit) &&
-                (AccessStages(accessBit, stages) & (int64_t(1) << stage)) &&
-                (!(destinationCoverage[stage] & accessBit) ||
-                 !Covers(sourceCoverage[stage][bit], WriteAccess(prior.access))))
+            if ((next.access & accessBit) && (AccessStages(accessBit, stages) & (int64_t(1) << stage))
+                && (!(destinationCoverage[stage] & accessBit)
+                    || !Covers(sourceCoverage[stage][bit], WriteAccess(prior.access))))
             {
                 accessOK = false;
             }
 
-            if (state.hasWriter && state.writerAccess != 0 &&
-                Covers(writerCoverage[stage][bit], state.writerAccess))
+            if (state.hasWriter && state.writerAccess != 0 && Covers(writerCoverage[stage][bit], state.writerAccess))
             {
                 state.visibleAccess[stage] |= int64_t(1) << bit;
             }
@@ -438,8 +451,8 @@ void RDGBarrierValidator::Check(int32_t node,
 
             for (uint32_t accessBit = 0; accessBit < 17; ++accessBit)
             {
-                if ((next.access & (int64_t(1) << accessBit)) &&
-                    (AccessStages(int64_t(1) << accessBit, stages) & (int64_t(1) << bit)))
+                if ((next.access & (int64_t(1) << accessBit))
+                    && (AccessStages(int64_t(1) << accessBit, stages) & (int64_t(1) << bit)))
                 {
                     requiredAccess |= int64_t(1) << accessBit;
                 }
@@ -453,8 +466,7 @@ void RDGBarrierValidator::Check(int32_t node,
 
         if (!visible && !required)
         {
-            report(found ? RDGMetricIssue::eAccessCoverage : RDGMetricIssue::eMissingBarrier,
-                   writerNode, next.resource);
+            report(found ? RDGMetricIssue::eAccessCoverage : RDGMetricIssue::eMissingBarrier, writerNode, next.resource);
         }
     }
 
@@ -469,27 +481,38 @@ void RDGBarrierValidator::Check(int32_t node,
     }
 
     int64_t combinedStages = next.stages;
+
     int64_t combinedAccess = next.access;
 
     if (reads && prior.mode == RHIAccessMode::eRead && !layoutChange)
     {
         combinedStages |= prior.stages;
+
         combinedAccess |= prior.access;
     }
 
     state.access        = next;
+
     state.access.stages = combinedStages;
+
     state.access.access = combinedAccess;
+
     state.node          = node;
+
     state.execution     = m_execution;
 
     if (!reads)
     {
         state.hasWriter       = true;
+
         state.writer          = node;
+
         state.writerAccess    = WriteAccess(next.access);
+
         state.writerStages    = AccessStages(state.writerAccess, stages);
+
         state.writerExecution = m_execution;
+
         state.visibleAccess.fill(0);
     }
 }
@@ -512,21 +535,25 @@ void RDGMetrics::Configure(const RDGMetricsOptions& options)
         m_validator.Reset();
     }
 
-    m_options = options;
+    m_options                       = options;
 
     m_options.maxPendingGPUCaptures = std::clamp(options.maxPendingGPUCaptures, 1u, 256u);
 
     m_logger.Configure(options.logging);
 
     m_transferLogger.Configure(options.logging);
+
     m_options.logging = m_logger.GetOptions();
+
     m_windowExecutions.fill(0);
+
     m_windowNodes.fill(0);
 }
 
 void RDGMetrics::SetSink(Sink sink)
 {
     m_logger.SetSink(sink);
+
     m_transferLogger.SetSink(std::move(sink));
 }
 
@@ -549,11 +576,11 @@ void RDGMetrics::PublishGPUCapture(PendingGPUCapture capture, bool abandonPendin
 {
     for (size_t i = 0; i < capture.snapshot.nodes.size(); ++i)
     {
-        RDGNodeMetrics& node = capture.snapshot.nodes[i];
+        RDGNodeMetrics& node          = capture.snapshot.nodes[i];
 
         const RHIGPUTimingPtr& timing = capture.timings[i];
 
-        node.gpuStatus = timing ? timing->GetStatus() : RHIGPUTimingStatus::eUnsupported;
+        node.gpuStatus                = timing ? timing->GetStatus() : RHIGPUTimingStatus::eUnsupported;
 
         if (node.gpuStatus == RHIGPUTimingStatus::ePending && abandonPending)
         {
@@ -562,8 +589,7 @@ void RDGMetrics::PublishGPUCapture(PendingGPUCapture capture, bool abandonPendin
             node.gpuStatus = RHIGPUTimingStatus::eDropped;
         }
 
-        node.gpuUs =
-            node.gpuStatus == RHIGPUTimingStatus::eAvailable ? timing->GetMicroseconds() : 0.0;
+        node.gpuUs = node.gpuStatus == RHIGPUTimingStatus::eAvailable ? timing->GetMicroseconds() : 0.0;
     }
 
     m_gpuState->last = std::move(capture.snapshot);
@@ -578,19 +604,17 @@ void RDGMetrics::CollectGPUResults(bool abandonPending)
 {
     // Vulkan publishes terminal results during its ordinary completion sweep. This
     // function only examines host-side results and never touches or waits for the GPU.
-    for (HeapVector<PendingGPUCapture>::iterator it = m_gpuState->pending.begin();
-         it != m_gpuState->pending.end();)
+    for (HeapVector<PendingGPUCapture>::iterator it = m_gpuState->pending.begin(); it != m_gpuState->pending.end();)
     {
-        const bool ready =
-            std::all_of(it->timings.begin(), it->timings.end(), [](const RHIGPUTimingPtr& timing) {
-                return !timing || timing->GetStatus() != RHIGPUTimingStatus::ePending;
-            });
+        const bool ready = std::all_of(it->timings.begin(), it->timings.end(), [](const RHIGPUTimingPtr& timing) {
+            return !timing || timing->GetStatus() != RHIGPUTimingStatus::ePending;
+        });
 
         if (ready || abandonPending)
         {
             PendingGPUCapture capture = std::move(*it);
 
-            it = m_gpuState->pending.erase(it);
+            it                        = m_gpuState->pending.erase(it);
 
             PublishGPUCapture(std::move(capture), abandonPending);
         }
@@ -620,15 +644,19 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
 
     if (m_options.logging.enabled)
     {
-        const bool transfer =
-            graph.m_pendingGfxPassDescs.empty() && graph.m_pendingComputePassDescs.empty();
-        const size_t stream = transfer ? 1 : 0;
-        ++m_executions[stream];
-        ++m_windowExecutions[stream];
-        m_windowNodes[stream] += graph.m_nodeCount;
-        m_capture = (transfer ? m_transferLogger : m_logger).TryBeginSample();
+        const bool transfer = graph.m_pendingGfxPassDescs.empty() && graph.m_pendingComputePassDescs.empty();
 
-        if (!(!m_capture && !m_options.validate))
+        const size_t stream = transfer ? 1 : 0;
+
+        ++m_executions[stream];
+
+        ++m_windowExecutions[stream];
+
+        m_windowNodes[stream] += graph.m_nodeCount;
+
+        m_capture              = (transfer ? m_transferLogger : m_logger).TryBeginSample();
+
+        if ((m_capture) || (m_options.validate))
         {
             m_graph = &graph;
 
@@ -646,33 +674,44 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
             {
                 // Preserve detail storage capacity between samples.
                 HeapVector<RDGNodeMetrics> nodes            = std::move(m_snapshot.nodes);
+
                 HeapVector<RDGMetricDiagnostic> diagnostics = std::move(m_snapshot.diagnostics);
+
                 m_snapshot                                  = {};
+
                 m_snapshot.nodes                            = std::move(nodes);
+
                 m_snapshot.diagnostics                      = std::move(diagnostics);
+
                 m_snapshot.nodes.clear();
+
                 m_snapshot.diagnostics.clear();
-                m_snapshot.graph        = graph.m_rdgTag;
-                m_snapshot.transferOnly = transfer;
 
-                m_snapshot.execution = m_executions[stream];
+                m_snapshot.graph            = graph.m_rdgTag;
 
-                m_snapshot.frameIndex = m_frameIndex;
+                m_snapshot.transferOnly     = transfer;
+
+                m_snapshot.execution        = m_executions[stream];
+
+                m_snapshot.frameIndex       = m_frameIndex;
 
                 m_snapshot.windowExecutions = m_windowExecutions[stream];
 
-                m_snapshot.windowNodes     = m_windowNodes[stream];
+                m_snapshot.windowNodes      = m_windowNodes[stream];
+
                 m_windowExecutions[stream] = m_windowNodes[stream] = 0;
+
                 m_snapshot.precompiled                             = precompiled;
+
                 m_snapshot.validated                               = m_options.validate;
 
-                m_snapshot.nodeTimingsEnabled = m_options.nodeTimings;
+                m_snapshot.nodeTimingsEnabled                      = m_options.nodeTimings;
 
-                m_snapshot.gpuTimingsEnabled = m_options.gpuTimings;
+                m_snapshot.gpuTimingsEnabled                       = m_options.gpuTimings;
 
-                m_node = {};
+                m_node                                             = {};
 
-                result = true;
+                result                                             = true;
             }
         }
     }
@@ -680,79 +719,113 @@ bool RDGMetrics::Begin(RenderGraph& graph, bool precompiled)
     return result;
 }
 
-void RDGMetrics::BeginGroups(const RenderGraph& graph,
-                             const ResourceStateTracker& tracker,
+void RDGMetrics::BeginGroups(const RenderGraph&                      graph,
+                             const ResourceStateTracker&             tracker,
                              VectorView<const RDGExternalQueueState> externalStates)
 {
     m_grouped = true;
+
     m_externalProducerQueues.clear();
+
     m_externalResources.clear();
+
     m_groupLayouts.clear();
+
     for (HashMap<uint64_t, RDGMetricAccess>& initial : m_groupInitialAccesses)
     {
         initial.clear();
     }
+
     for (const RDGExternalQueueState& state : externalStates)
     {
         m_externalResources[state.resourceId]        = true;
+
         m_externalProducerQueues[state.dependencyId] = state.queue;
     }
+
     for (RDGBarrierValidator& validator : m_groupValidators)
     {
         validator.Reset();
+
         validator.BeginGraph();
     }
+
     for (const RDGResourceManager::Allocation* resource : graph.m_resourceManager.m_resources)
     {
         if (resource->liveAccessCount != 0)
         {
             RDGMetricAccess initial;
+
             initial.resource = StableId(*resource);
+
             initial.texture  = resource->type == RDGResourceType::eTexture;
+
             if (initial.texture)
             {
                 const RDGTextureResourceState state = tracker.GetTextureState(resource->pTexture);
+
                 initial.mode                        = state.accessMode;
-                initial.access = RHITextureUsageToAccessFlagBits(state.usage, state.accessMode);
-                initial.stages = state.pipelineStages;
-                initial.layout = RHITextureUsageToLayout(state.usage);
-                m_groupLayouts[initial.resource] = initial.layout;
+
+                initial.access                      = RHITextureUsageToAccessFlagBits(state.usage, state.accessMode);
+
+                initial.stages                      = state.pipelineStages;
+
+                initial.layout                      = RHITextureUsageToLayout(state.usage);
+
+                m_groupLayouts[initial.resource]    = initial.layout;
             }
             else
             {
                 const RDGBufferResourceState state = tracker.GetBufferState(resource->pBuffer);
+
                 initial.mode                       = state.accessMode;
+
                 initial.access                     = BufferAccess(state.usage, state.accessMode);
+
                 initial.stages                     = state.pipelineStages;
             }
+
             bool supplied = false;
+
             for (const RDGExternalQueueState& external : externalStates)
             {
                 if (external.resourceId == initial.resource)
                 {
-                    supplied = true;
-                    const RHIQueueCapabilities& queues =
-                        graph.m_pRenderDevice->GetQueueCapabilities();
-                    const size_t queue     = queues.GetNativeQueueIndex(external.queue);
-                    RDGMetricAccess source = initial;
+                    supplied                           = true;
+
+                    const RHIQueueCapabilities& queues = graph.m_pRenderDevice->GetQueueCapabilities();
+
+                    const size_t queue                 = queues.GetNativeQueueIndex(external.queue);
+
+                    RDGMetricAccess source             = initial;
+
                     if (external.hasAccessState)
                     {
                         source.mode   = external.access.accessMode;
+
                         source.access = external.access.accessFlags;
+
                         source.stages = external.access.pipelineStages;
+
                         if (source.texture)
                         {
-                            source.layout = RHITextureUsageToLayout(external.access.textureUsage);
+                            source.layout                    = RHITextureUsageToLayout(external.access.textureUsage);
+
                             m_groupLayouts[initial.resource] = source.layout;
                         }
                     }
+
                     const std::pair<HashMap<uint64_t, RDGMetricAccess>::iterator, bool> saved =
                         m_groupInitialAccesses[queue].emplace(initial.resource, source);
+
                     if (!saved.second)
                     {
-                        RDGMetricAccess& merged = saved.first->second;
-                        merged.access |= source.access;
-                        merged.stages |= source.stages;
+                        RDGMetricAccess& merged  = saved.first->second;
+
+                        merged.access           |= source.access;
+
+                        merged.stages           |= source.stages;
+
                         if (source.mode == RHIAccessMode::eReadWrite)
                         {
                             merged.mode = source.mode;
@@ -760,6 +833,7 @@ void RDGMetrics::BeginGroups(const RenderGraph& graph,
                     }
                 }
             }
+
             if (!supplied && resource->hasInitialState)
             {
                 m_groupInitialAccesses[0][initial.resource] = initial;
@@ -768,43 +842,59 @@ void RDGMetrics::BeginGroups(const RenderGraph& graph,
     }
 }
 
-void RDGMetrics::Compiled(RenderGraph& graph,
-                          const RDGSchedule& schedule,
-                          double prepareCPUUs,
-                          uint32_t preparationPasses,
+void RDGMetrics::Compiled(RenderGraph&                 graph,
+                          const RDGSchedule&           schedule,
+                          double                       prepareCPUUs,
+                          uint32_t                     preparationPasses,
                           const RDGPassCompileTimings& passTimings)
 {
     if (m_capture)
     {
         m_snapshot.passCompileTimings    = passTimings;
+
         m_snapshot.compileCPUUs          = prepareCPUUs;
+
         m_snapshot.preparationPasses     = preparationPasses;
+
         m_snapshot.nodeCount             = uint32_t(graph.m_compiledNodes.size());
+
         m_snapshot.resources             = graph.m_compileStats.liveResourceCount;
+
         m_snapshot.dependencyEdges       = graph.m_compileStats.dependencyEdgeCount;
+
         m_snapshot.dependencyHazards     = graph.m_compileStats.dependencyBarrierCount;
+
         m_snapshot.culledPasses          = graph.m_compileStats.culledPassCount;
+
         m_snapshot.reusedAllocations     = graph.m_compileStats.reusedAllocationCount;
+
         m_snapshot.plannedGroups         = uint32_t(schedule.groups.size());
+
         m_snapshot.plannedMultipleQueues = schedule.usesMultipleQueues;
+
         m_snapshot.allowsAllocationReuse = schedule.allowsAllocationReuse;
+
         CaptureSchedule(schedule, graph.m_pRenderDevice->GetQueueCapabilities());
+
         const RDGPoolStats pool            = graph.m_resourceManager.GetPoolStats();
+
         m_snapshot.assignedTransientBytes  = pool.assignedBytes;
+
         m_snapshot.availableTransientBytes = pool.availableBytes;
+
         m_snapshot.retiringTransientBytes  = pool.retiringBytes;
 
         for (uint32_t i = 0; i < graph.m_resourceManager.m_resources.size(); ++i)
         {
-            const RDGResourceManager::Allocation* resource =
-                graph.m_resourceManager.FindResourceByIdx(i);
+            const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(i);
 
             if (resource->liveAccessCount == 0)
             {
                 continue;
             }
 
-            m_snapshot.importedResources += resource->imported;
+            m_snapshot.importedResources  += resource->imported;
+
             m_snapshot.transientResources += !resource->imported && !resource->exported;
         }
 
@@ -820,29 +910,36 @@ void RDGMetrics::Compiled(RenderGraph& graph,
 void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule, const RHIQueueCapabilities& queues)
 {
     uint32_t dependencyDetails = 0;
+
     for (const RDGSubmissionGroup& group : schedule.groups)
     {
         if (m_snapshot.submissions.size() < m_options.maxSubmissionDetails)
         {
             RDGSubmissionMetrics& detail = m_snapshot.submissions.emplace_back();
+
             detail.id                    = group.id;
+
             detail.queue                 = group.queue;
+
             detail.queueEquivalenceId    = group.queueEquivalenceId;
+
             detail.waitStages            = int64_t(RHISubmissionDependency::kWaitStage);
+
             for (bool external : {false, true})
             {
-                const HeapVector<uint32_t>& predecessors =
-                    external ? group.externalPredecessors : group.predecessors;
+                const HeapVector<uint32_t>& predecessors = external ? group.externalPredecessors : group.predecessors;
+
                 for (uint32_t producer : predecessors)
                 {
                     if (dependencyDetails < m_options.maxDependencyDetails)
                     {
-                        const RHICommandContextType producerQueue =
-                            GetProducerQueue(schedule, producer, external);
-                        const bool semaphore = producerQueue != RHICommandContextType::eMax &&
-                            !queues.AreQueuesShared(producerQueue, group.queue);
-                        detail.dependencies.push_back(
-                            {producer, external, semaphore, producerQueue});
+                        const RHICommandContextType producerQueue = GetProducerQueue(schedule, producer, external);
+
+                        const bool semaphore =
+                            producerQueue != RHICommandContextType::eMax && !queues.AreQueuesShared(producerQueue, group.queue);
+
+                        detail.dependencies.push_back({producer, external, semaphore, producerQueue});
+
                         ++dependencyDetails;
                     }
                     else
@@ -855,21 +952,20 @@ void RDGMetrics::CaptureSchedule(const RDGSchedule& schedule, const RHIQueueCapa
         else
         {
             ++m_snapshot.omittedSubmissionDetails;
-            m_snapshot.omittedDependencyDetails +=
-                uint32_t(group.predecessors.size() + group.externalPredecessors.size());
+
+            m_snapshot.omittedDependencyDetails += uint32_t(group.predecessors.size() + group.externalPredecessors.size());
         }
     }
 }
 
-RHICommandContextType RDGMetrics::GetProducerQueue(const RDGSchedule& schedule,
-                                                   uint32_t producer,
-                                                   bool external) const
+RHICommandContextType RDGMetrics::GetProducerQueue(const RDGSchedule& schedule, uint32_t producer, bool external) const
 {
     RHICommandContextType queue = RHICommandContextType::eMax;
+
     if (external)
     {
-        const HashMap<uint32_t, RHICommandContextType>::const_iterator found =
-            m_externalProducerQueues.find(producer);
+        const HashMap<uint32_t, RHICommandContextType>::const_iterator found = m_externalProducerQueues.find(producer);
+
         if (found != m_externalProducerQueues.end())
         {
             queue = found->second;
@@ -879,6 +975,7 @@ RHICommandContextType RDGMetrics::GetProducerQueue(const RDGSchedule& schedule,
     {
         queue = schedule.groups[producer].queue;
     }
+
     return queue;
 }
 
@@ -887,13 +984,16 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
     if (m_capture)
     {
         ++m_snapshot.issues[static_cast<size_t>(issue)];
+
         const bool optimization = IsOptimizationCandidate(issue);
+
         // Whole-image barriers retain their counts without consuming the default detail budget.
         bool record = !optimization || m_options.includeOptimizationDetails;
 
         if (record && m_snapshot.transferOnly && !m_options.includeTransferNodes)
         {
             ++m_snapshot.omittedDiagnostics;
+
             record = false;
         }
 
@@ -907,9 +1007,7 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
             {
                 replacement =
                     std::find_if(m_snapshot.diagnostics.begin(), m_snapshot.diagnostics.end(),
-                                 [](const RDGMetricDiagnostic& detail) {
-                                     return IsOptimizationCandidate(detail.issue);
-                                 });
+                                 [](const RDGMetricDiagnostic& detail) { return IsOptimizationCandidate(detail.issue); });
             }
 
             // Correctness findings take precedence over optimization details.
@@ -925,8 +1023,7 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
                 diagnostic.nodeName = m_graph->GetNodeBaseById(node)->tag;
             }
 
-            if (const RDGResourceManager::Allocation* rdgResource =
-                    m_graph->m_resourceManager.FindResourceByStableId(resource))
+            if (const RDGResourceManager::Allocation* rdgResource = m_graph->m_resourceManager.FindResourceByStableId(resource))
             {
                 diagnostic.resourceName = rdgResource->name;
             }
@@ -946,7 +1043,9 @@ void RDGMetrics::Report(RDGMetricIssue issue, int32_t node, int32_t previous, ui
 void RDGMetrics::ValidateOrder(RenderGraph& graph)
 {
     HeapVector<int32_t> order;
+
     HeapVector<RDGMetricOrderAccess> declarations;
+
     HeapVector<int32_t> dense(graph.m_nodeCount, -1), original;
 
     for (const RDGNodeBase* base : graph.m_nodes)
@@ -954,6 +1053,7 @@ void RDGMetrics::ValidateOrder(RenderGraph& graph)
         if (static_cast<const RDGPassNode*>(base)->live)
         {
             dense[base->id] = int32_t(original.size());
+
             original.push_back(base->id);
         }
     }
@@ -961,6 +1061,7 @@ void RDGMetrics::ValidateOrder(RenderGraph& graph)
     for (RDGCompiledNode const& compiled : graph.m_compiledNodes)
     {
         m_snapshot.reorderedNodes += dense[compiled.nodeId] != int32_t(order.size());
+
         order.push_back(dense[compiled.nodeId]);
     }
 
@@ -977,27 +1078,25 @@ void RDGMetrics::ValidateOrder(RenderGraph& graph)
         {
             // Different logical allocations may reuse one physical object. Their version
             // chains remain distinct; native hazards are checked separately by ObserveAccess.
-            declarations.push_back(
-                {dense[node->id], uint64_t(int32_t(access.resourceId)) + 1, access.writes,
-                 int32_t(graph.m_resourceManager.m_versions[access.version].number)});
+            declarations.push_back({dense[node->id], uint64_t(int32_t(access.resourceId)) + 1, access.writes,
+                                    int32_t(graph.m_resourceManager.m_versions[access.version].number)});
         }
     }
 
-    RDGBarrierValidator::CheckOrder(
-        uint32_t(original.size()), order, declarations,
-        [this, &graph, &original](RDGMetricIssue issue, int32_t node, int32_t prior, uint64_t id) {
-            const RDGResourceManager::Allocation* resource =
-                id ? graph.m_resourceManager.FindResourceByIdx(int32_t(id - 1)) : nullptr;
-            Report(issue, node < 0 ? node : original[node], prior < 0 ? prior : original[prior],
-                   resource ? StableId(*resource) : 0);
-        });
+    RDGBarrierValidator::CheckOrder(uint32_t(original.size()), order, declarations,
+                                    [this, &graph, &original](RDGMetricIssue issue, int32_t node, int32_t prior, uint64_t id) {
+                                        const RDGResourceManager::Allocation* resource =
+                                            id ? graph.m_resourceManager.FindResourceByIdx(int32_t(id - 1)) : nullptr;
+
+                                        Report(issue, node < 0 ? node : original[node], prior < 0 ? prior : original[prior],
+                                               resource ? StableId(*resource) : 0);
+                                    });
 }
 
-static void CheckAccessOrder(
-    const HeapVector<int32_t>& positions,
-    const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report,
-    int32_t previous,
-    const RDGMetricOrderAccess& access)
+static void CheckAccessOrder(const HeapVector<int32_t>&                                             positions,
+                             const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report,
+                             int32_t                                                                previous,
+                             const RDGMetricOrderAccess&                                            access)
 {
     if (previous >= 0 && previous != access.node && positions[previous] >= positions[access.node])
     {
@@ -1005,11 +1104,10 @@ static void CheckAccessOrder(
     }
 }
 
-void RDGBarrierValidator::CheckOrder(
-    uint32_t nodeCount,
-    std::span<const int32_t> executionOrder,
-    std::span<const RDGMetricOrderAccess> declarations,
-    const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report)
+void RDGBarrierValidator::CheckOrder(uint32_t                                                               nodeCount,
+                                     std::span<const int32_t>                                               executionOrder,
+                                     std::span<const RDGMetricOrderAccess>                                  declarations,
+                                     const std::function<void(RDGMetricIssue, int32_t, int32_t, uint64_t)>& report)
 {
     HeapVector<int32_t> positions(nodeCount, -1);
 
@@ -1020,6 +1118,7 @@ void RDGBarrierValidator::CheckOrder(
         if (id < 0 || size_t(id) >= positions.size() || positions[id] != -1)
         {
             report(RDGMetricIssue::eInvalidSchedule, id, -1, 0);
+
             continue;
         }
 
@@ -1038,7 +1137,7 @@ void RDGBarrierValidator::CheckOrder(
 
     struct VersionUsers
     {
-        const RDGMetricOrderAccess* writer{nullptr};
+        const RDGMetricOrderAccess*             writer{nullptr};
         HeapVector<const RDGMetricOrderAccess*> readers;
     };
 
@@ -1049,12 +1148,14 @@ void RDGBarrierValidator::CheckOrder(
         if (access.node < 0 || uint32_t(access.node) >= nodeCount)
         {
             report(RDGMetricIssue::eInvalidSchedule, access.node, -1, access.resource);
+
             continue;
         }
 
         if (access.version < 0)
         {
             report(RDGMetricIssue::eInvalidSchedule, access.node, -1, access.resource);
+
             continue;
         }
 
@@ -1075,16 +1176,14 @@ void RDGBarrierValidator::CheckOrder(
         }
     }
 
-    for (const std::unordered_map<uint64_t, std::map<int32_t, VersionUsers>>::value_type&
-             resourceVersions : versions)
+    for (const std::unordered_map<uint64_t, std::map<int32_t, VersionUsers>>::value_type& resourceVersions : versions)
     {
         for (const std::map<int32_t, VersionUsers>::value_type& version : resourceVersions.second)
         {
             if (version.first != 0 && version.second.writer == nullptr)
             {
                 report(RDGMetricIssue::eReadBeforeWrite,
-                       version.second.readers.empty() ? -1 : version.second.readers.front()->node,
-                       -1, resourceVersions.first);
+                       version.second.readers.empty() ? -1 : version.second.readers.front()->node, -1, resourceVersions.first);
             }
 
             for (const RDGMetricOrderAccess* reader : version.second.readers)
@@ -1096,8 +1195,7 @@ void RDGBarrierValidator::CheckOrder(
 
                 if (version.second.writer->node == reader->node)
                 {
-                    report(RDGMetricIssue::eInvalidSchedule, reader->node, reader->node,
-                           resourceVersions.first);
+                    report(RDGMetricIssue::eInvalidSchedule, reader->node, reader->node, resourceVersions.first);
                 }
                 else
                 {
@@ -1110,15 +1208,13 @@ void RDGBarrierValidator::CheckOrder(
                 continue;
             }
 
-            const std::map<int, VersionUsers>::const_iterator previous =
-                resourceVersions.second.find(version.first - 1);
+            const std::map<int, VersionUsers>::const_iterator previous = resourceVersions.second.find(version.first - 1);
 
             if (previous == resourceVersions.second.end())
             {
                 if (version.first > 1)
                 {
-                    report(RDGMetricIssue::eReadBeforeWrite, version.second.writer->node, -1,
-                           resourceVersions.first);
+                    report(RDGMetricIssue::eReadBeforeWrite, version.second.writer->node, -1, resourceVersions.first);
                 }
 
                 continue; // Version 0 need not be explicitly read.
@@ -1126,8 +1222,7 @@ void RDGBarrierValidator::CheckOrder(
 
             if (previous->second.writer)
             {
-                CheckAccessOrder(positions, report, previous->second.writer->node,
-                                 *version.second.writer);
+                CheckAccessOrder(positions, report, previous->second.writer->node, *version.second.writer);
             }
 
             for (const RDGMetricOrderAccess* reader : previous->second.readers)
@@ -1144,35 +1239,35 @@ void RDGMetrics::BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled)
 
     if (m_capture)
     {
-        const RDGNodeBase* node = graph.GetNodeBaseById(compiled.nodeId);
+        const RDGNodeBase* node        = graph.GetNodeBaseById(compiled.nodeId);
 
-        const uint32_t order = m_node.order;
+        const uint32_t order           = m_node.order;
 
-        m_node = {};
+        m_node                         = {};
 
-        m_node.id = compiled.nodeId;
+        m_node.id                      = compiled.nodeId;
 
-        m_node.order = order;
+        m_node.order                   = order;
 
-        m_node.type = node->type;
+        m_node.type                    = node->type;
 
-        m_node.queuePreference = compiled.queuePreference;
+        m_node.queuePreference         = compiled.queuePreference;
 
         m_node.asyncComputeEligibility = compiled.asyncComputeEligibility;
 
-        m_node.plannedQueue = compiled.plannedQueue;
+        m_node.plannedQueue            = compiled.plannedQueue;
 
-        m_node.submissionGroup = compiled.submissionGroup;
+        m_node.submissionGroup         = compiled.submissionGroup;
 
         // Only copy labels that will be retained in the bounded report.
-        if ((node->type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
-            m_snapshot.nodes.size() < m_options.maxNodeDetails)
+        if ((node->type != RDGNodeType::eTransferPass || m_options.includeTransferNodes)
+            && m_snapshot.nodes.size() < m_options.maxNodeDetails)
         {
             m_node.name = node->tag;
 
             if (m_options.gpuTimings)
             {
-                m_nodeGPUTiming = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+                m_nodeGPUTiming  = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
                 m_node.gpuStatus = RHIGPUTimingStatus::ePending;
             }
@@ -1182,11 +1277,11 @@ void RDGMetrics::BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled)
 
         for (uint32_t i = 0; i < node->accessCount; ++i)
         {
-            RDGAccess const& access = graph.m_accesses[node->accessOffset + i];
+            RDGAccess const& access  = graph.m_accesses[node->accessOffset + i];
 
-            m_node.reads += access.accessMode == RHIAccessMode::eRead;
+            m_node.reads            += access.accessMode == RHIAccessMode::eRead;
 
-            m_node.writes += access.accessMode == RHIAccessMode::eReadWrite;
+            m_node.writes           += access.accessMode == RHIAccessMode::eReadWrite;
         }
 
         if (m_options.nodeTimings)
@@ -1196,22 +1291,27 @@ void RDGMetrics::BeginNode(RenderGraph& graph, const RDGCompiledNode& compiled)
     }
 }
 
-void RDGMetrics::ObserveBarriers(RenderGraph& graph,
-                                 const RDGCompiledNode& compiled,
-                                 const ResourceStateTracker& tracker,
-                                 int64_t srcStages,
-                                 int64_t dstStages,
-                                 VectorView<RHIBufferTransition> buffers,
+void RDGMetrics::ObserveBarriers(RenderGraph&                     graph,
+                                 const RDGCompiledNode&           compiled,
+                                 const ResourceStateTracker&      tracker,
+                                 int64_t                          srcStages,
+                                 int64_t                          dstStages,
+                                 VectorView<RHIBufferTransition>  buffers,
                                  VectorView<RHITextureTransition> textures,
-                                 uint32_t initialResources)
+                                 uint32_t                         initialResources)
 {
     if (m_capture)
     {
         m_node.bufferTransitions  = static_cast<uint32_t>(buffers.size());
+
         m_node.textureTransitions = static_cast<uint32_t>(textures.size());
+
         m_node.initialResources   = initialResources;
+
         m_node.barrierCalls       = !buffers.empty() || !textures.empty();
+
         m_node.srcStages          = srcStages;
+
         m_node.dstStages          = dstStages;
     }
 
@@ -1222,53 +1322,78 @@ void RDGMetrics::ObserveBarriers(RenderGraph& graph,
         for (RHIBufferTransition const& buffer : buffers)
         {
             RDGMetricBarrier barrier{};
-            barrier.resource  = buffer.pBuffer->GetStableId();
-            barrier.srcStages = srcStages;
-            barrier.dstStages = dstStages;
-            barrier.srcAccess =
-                RHIBufferUsageToAccessFlagBits(buffer.oldUsage, buffer.oldAccessMode);
-            barrier.srcAccess |= int64_t(buffer.additionalSrcAccess);
-            barrier.dstAccess =
-                RHIBufferUsageToAccessFlagBits(buffer.newUsage, buffer.newAccessMode);
-            barrier.wholeBuffer = buffer.offset == 0 &&
-                (buffer.size == ZEN_BUFFER_WHOLE_SIZE ||
-                 buffer.size >= buffer.pBuffer->GetRequiredSize());
+
+            barrier.resource     = buffer.pBuffer->GetStableId();
+
+            barrier.srcStages    = srcStages;
+
+            barrier.dstStages    = dstStages;
+
+            barrier.srcAccess    = RHIBufferUsageToAccessFlagBits(buffer.oldUsage, buffer.oldAccessMode);
+
+            barrier.srcAccess   |= int64_t(buffer.additionalSrcAccess);
+
+            barrier.dstAccess    = RHIBufferUsageToAccessFlagBits(buffer.newUsage, buffer.newAccessMode);
+
+            barrier.wholeBuffer  = buffer.offset == 0
+                               && (buffer.size == ZEN_BUFFER_WHOLE_SIZE || buffer.size >= buffer.pBuffer->GetRequiredSize());
+
             m_barriers.push_back(barrier);
         }
 
         for (RHITextureTransition const& texture : textures)
         {
             RDGMetricBarrier barrier{};
+
             barrier.resource  = texture.pTexture->GetStableId();
+
             barrier.srcStages = srcStages;
+
             barrier.dstStages = dstStages;
+
             barrier.srcAccess = texture.GetSourceAccess();
-            barrier.dstAccess =
-                RHITextureUsageToAccessFlagBits(texture.newUsage, texture.newAccessMode);
+
+            barrier.dstAccess = RHITextureUsageToAccessFlagBits(texture.newUsage, texture.newAccessMode);
+
             barrier.oldLayout = RHITextureUsageToLayout(texture.oldUsage);
+
             barrier.newLayout = RHITextureUsageToLayout(texture.newUsage);
+
             barrier.range     = texture.subResourceRange;
+
             m_barriers.push_back(barrier);
         }
 
         const RDGNodeBase* node            = graph.GetNodeBaseById(compiled.nodeId);
+
         const RHIQueueCapabilities& queues = graph.m_pRenderDevice->GetQueueCapabilities();
+
         const size_t queue                 = queues.GetNativeQueueIndex(compiled.plannedQueue);
+
         RDGBarrierValidator& validator     = m_grouped ? m_groupValidators[queue] : m_validator;
 
         for (uint32_t i = 0; i < node->accessCount; ++i)
         {
-            RDGAccess const& access = graph.m_accesses[node->accessOffset + i];
-            const RDGResourceManager::Allocation* resource =
-                graph.m_resourceManager.FindResourceByIdx(access.resourceId);
+            RDGAccess const& access                        = graph.m_accesses[node->accessOffset + i];
+
+            const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(access.resourceId);
+
             RDGMetricAccess next{};
+
             next.resource    = StableId(*resource);
+
             next.mode        = access.accessMode;
+
             next.stages      = AccessStages(access.accessFlags, access.pipelineStages);
+
             next.access      = access.accessFlags;
+
             next.texture     = resource->type == RDGResourceType::eTexture;
+
             next.imported    = resource->imported;
+
             next.hostWritten = resource->hostWritten;
+
             next.range       = access.textureSubResourceRange;
 
             if (next.texture)
@@ -1282,33 +1407,41 @@ void RDGMetrics::ObserveBarriers(RenderGraph& graph,
 
                 if (next.texture)
                 {
-                    const RDGTextureResourceState previous =
-                        tracker.GetTextureState(resource->pTexture);
-                    initial.mode   = previous.accessMode;
-                    initial.stages = previous.pipelineStages;
-                    initial.access =
-                        RHITextureUsageToAccessFlagBits(previous.usage, previous.accessMode);
+                    const RDGTextureResourceState previous = tracker.GetTextureState(resource->pTexture);
+
+                    initial.mode                           = previous.accessMode;
+
+                    initial.stages                         = previous.pipelineStages;
+
+                    initial.access = RHITextureUsageToAccessFlagBits(previous.usage, previous.accessMode);
+
                     initial.layout = RHITextureUsageToLayout(previous.usage);
                 }
                 else
                 {
-                    const RDGBufferResourceState previous =
-                        tracker.GetBufferState(resource->pBuffer);
-                    initial.mode   = previous.accessMode;
-                    initial.stages = previous.pipelineStages;
-                    initial.access = BufferAccess(previous.usage, previous.accessMode);
+                    const RDGBufferResourceState previous = tracker.GetBufferState(resource->pBuffer);
+
+                    initial.mode                          = previous.accessMode;
+
+                    initial.stages                        = previous.pipelineStages;
+
+                    initial.access                        = BufferAccess(previous.usage, previous.accessMode);
                 }
 
                 if (m_grouped)
                 {
                     const HashMap<uint64_t, RDGMetricAccess>::const_iterator saved =
                         m_groupInitialAccesses[queue].find(next.resource);
+
                     if (saved == m_groupInitialAccesses[queue].end())
                     {
-                        next.availableFromQueue = initial.mode != RHIAccessMode::eNone ||
-                            m_externalResources.contains(next.resource);
+                        next.availableFromQueue =
+                            initial.mode != RHIAccessMode::eNone || m_externalResources.contains(next.resource);
+
                         initial.mode   = RHIAccessMode::eNone;
+
                         initial.access = initial.stages = 0;
+
                         if (next.texture)
                         {
                             initial.layout = m_groupLayouts[next.resource];
@@ -1317,23 +1450,30 @@ void RDGMetrics::ObserveBarriers(RenderGraph& graph,
                     else
                     {
                         initial.mode   = saved->second.mode;
+
                         initial.access = saved->second.access;
+
                         initial.stages = saved->second.stages;
+
                         initial.layout = saved->second.layout;
                     }
                 }
+
                 initial.stages = AccessStages(initial.access, initial.stages);
+
                 validator.Seed(initial);
             }
+
             if (m_grouped && next.texture)
             {
                 // Layouts are ordered globally; memory hazards remain local to the native queue.
                 validator.SetOrderedLayout(next.resource, m_groupLayouts[next.resource]);
             }
-            validator.Check(node->id, next, m_barriers,
-                            [this, node](RDGMetricIssue issue, int32_t previous, uint64_t id) {
-                                Report(issue, node->id, previous, id);
-                            });
+
+            validator.Check(node->id, next, m_barriers, [this, node](RDGMetricIssue issue, int32_t previous, uint64_t id) {
+                Report(issue, node->id, previous, id);
+            });
+
             if (m_grouped && next.texture)
             {
                 m_groupLayouts[next.resource] = next.layout;
@@ -1351,32 +1491,32 @@ void RDGMetrics::EndNode()
             m_node.recordCPUUs = Microseconds(m_nodeStart);
         }
 
-        RDGNodeMetrics& total = m_snapshot.totals;
+        RDGNodeMetrics& total             = m_snapshot.totals;
 
-        total.reads += m_node.reads;
+        total.reads                      += m_node.reads;
 
-        total.writes += m_node.writes;
+        total.writes                     += m_node.writes;
 
-        total.initialResources += m_node.initialResources;
+        total.initialResources           += m_node.initialResources;
 
-        total.bufferTransitions += m_node.bufferTransitions;
+        total.bufferTransitions          += m_node.bufferTransitions;
 
-        total.textureTransitions += m_node.textureTransitions;
+        total.textureTransitions         += m_node.textureTransitions;
 
-        total.internalMemoryTransitions += m_node.internalMemoryTransitions;
+        total.internalMemoryTransitions  += m_node.internalMemoryTransitions;
 
         total.internalTextureTransitions += m_node.internalTextureTransitions;
 
-        total.barrierCalls += m_node.barrierCalls;
+        total.barrierCalls               += m_node.barrierCalls;
 
-        total.srcStages |= m_node.srcStages;
+        total.srcStages                  |= m_node.srcStages;
 
-        total.dstStages |= m_node.dstStages;
+        total.dstStages                  |= m_node.dstStages;
 
-        total.recordCPUUs += m_node.recordCPUUs;
+        total.recordCPUUs                += m_node.recordCPUUs;
 
-        if ((m_node.type != RDGNodeType::eTransferPass || m_options.includeTransferNodes) &&
-            m_snapshot.nodes.size() < m_options.maxNodeDetails)
+        if ((m_node.type != RDGNodeType::eTransferPass || m_options.includeTransferNodes)
+            && m_snapshot.nodes.size() < m_options.maxNodeDetails)
         {
             m_snapshot.nodes.push_back(m_node);
 
@@ -1401,6 +1541,7 @@ void RDGMetrics::End(double submissionCPUUs)
     if (m_capture)
     {
         m_snapshot.executeCPUUs    = std::max(0.0, Microseconds(m_executeStart) - submissionCPUUs);
+
         m_snapshot.submissionCPUUs = submissionCPUUs;
 
         (m_snapshot.transferOnly ? m_transferLogger : m_logger).Publish(m_snapshot);
@@ -1424,42 +1565,44 @@ void RDGMetrics::End(double submissionCPUUs)
 std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
 {
     const RDGNodeMetrics& t = sample.totals;
+
     std::string text        = fmt::format(
         "[RDG metrics] graph=\"{}\" stream={} execution={} window(executions={},nodes={}) "
                "sample(nodes={},graphics={},compute={},transfer={},resources={},imported={},transient={},"
                "edges={},dependency_hazards={},reordered={}) "
                "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
                "accesses(read={},read_write={}) cpu_us(compile={:.1f},execute={:.1f}) precompiled={} validated={} preparation_passes={}",
-        Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution,
-        sample.windowExecutions, sample.windowNodes, sample.nodeCount, sample.passCounts[1],
-        sample.passCounts[2], sample.passCounts[3], sample.resources, sample.importedResources,
-        sample.transientResources, sample.dependencyEdges, sample.dependencyHazards,
-        sample.reorderedNodes, t.barrierCalls, t.bufferTransitions, t.textureTransitions,
-        t.initialResources, t.internalMemoryTransitions, t.internalTextureTransitions, t.reads,
-        t.writes, sample.compileCPUUs, sample.executeCPUUs, sample.precompiled, sample.validated,
-        sample.preparationPasses);
-    text +=
-        fmt::format(" liveness(culled={},reused_allocations={}) "
-                    "pool_estimated_bytes(assigned={},available={},retiring={})",
-                    sample.culledPasses, sample.reusedAllocations, sample.assignedTransientBytes,
-                    sample.availableTransientBytes, sample.retiringTransientBytes);
-    text += fmt::format(" schedule(groups={},multiple_queues={},allocation_reuse={})",
-                        sample.plannedGroups, sample.plannedMultipleQueues,
-                        sample.allowsAllocationReuse);
+        Label(sample.graph), sample.transferOnly ? "transfer" : "frame", sample.execution, sample.windowExecutions,
+        sample.windowNodes, sample.nodeCount, sample.passCounts[1], sample.passCounts[2], sample.passCounts[3],
+        sample.resources, sample.importedResources, sample.transientResources, sample.dependencyEdges, sample.dependencyHazards,
+        sample.reorderedNodes, t.barrierCalls, t.bufferTransitions, t.textureTransitions, t.initialResources,
+        t.internalMemoryTransitions, t.internalTextureTransitions, t.reads, t.writes, sample.compileCPUUs, sample.executeCPUUs,
+        sample.precompiled, sample.validated, sample.preparationPasses);
+
+    text += fmt::format(" liveness(culled={},reused_allocations={}) "
+                        "pool_estimated_bytes(assigned={},available={},retiring={})",
+                        sample.culledPasses, sample.reusedAllocations, sample.assignedTransientBytes,
+                        sample.availableTransientBytes, sample.retiringTransientBytes);
+
+    text += fmt::format(" schedule(groups={},multiple_queues={},allocation_reuse={})", sample.plannedGroups,
+                        sample.plannedMultipleQueues, sample.allowsAllocationReuse);
+
     text += fmt::format(" submission_cpu_us={:.1f}", sample.submissionCPUUs);
+
     const RDGPassCompileTimings& setup    = sample.passCompileTimings;
+
     const PipelineCacheMetrics& pipelines = setup.pipelines;
-    text += fmt::format(" pipeline_cache(hits={},misses={},created={},failed={},evicted={})",
-                        pipelines.hits, pipelines.misses, pipelines.creations, pipelines.failures,
-                        pipelines.evictions);
-    text += setup.enabled ?
-        fmt::format(" pipeline_cpu_us(key={:.1f},lookup={:.1f},create={:.1f})", pipelines.keyCPUUs,
-                    pipelines.lookupCPUUs, pipelines.creationCPUUs) :
-        " pipeline_cpu_us=disabled";
-    text += setup.enabled ?
-        fmt::format(" pass_setup_cpu_us(total={:.1f},bindings={:.1f},pipeline={:.1f})",
-                    setup.totalCPUUs, setup.bindingCPUUs, setup.pipelineCPUUs) :
-        " pass_setup_cpu_us=disabled";
+
+    text += fmt::format(" pipeline_cache(hits={},misses={},created={},failed={},evicted={})", pipelines.hits, pipelines.misses,
+                        pipelines.creations, pipelines.failures, pipelines.evictions);
+
+    text += setup.enabled ? fmt::format(" pipeline_cpu_us(key={:.1f},lookup={:.1f},create={:.1f})", pipelines.keyCPUUs,
+                                        pipelines.lookupCPUUs, pipelines.creationCPUUs)
+                          : " pipeline_cpu_us=disabled";
+
+    text += setup.enabled ? fmt::format(" pass_setup_cpu_us(total={:.1f},bindings={:.1f},pipeline={:.1f})", setup.totalCPUUs,
+                                        setup.bindingCPUUs, setup.pipelineCPUUs)
+                          : " pass_setup_cpu_us=disabled";
 
     for (size_t i = 0; i < sample.issues.size(); ++i)
     {
@@ -1470,35 +1613,34 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
     }
 
     const uint32_t broad     = sample.issues[size_t(RDGMetricIssue::eBroadTextureRange)];
+
     const uint32_t redundant = sample.issues[size_t(RDGMetricIssue::eRedundantBarrier)];
 
     if (broad || redundant)
     {
-        text += fmt::format(
-            " optimization_candidates(broad_texture_range={},redundant_barrier_candidate={})",
-            broad, redundant);
+        text +=
+            fmt::format(" optimization_candidates(broad_texture_range={},redundant_barrier_candidate={})", broad, redundant);
     }
 
     for (const RDGSubmissionMetrics& group : sample.submissions)
     {
-        text += fmt::format(
-            "\n  submission_group={} queue={} native_queue_id={} wait_stages=0x{:x}", group.id,
-            RHIQueueName(group.queue), group.queueEquivalenceId, group.waitStages);
+        text += fmt::format("\n  submission_group={} queue={} native_queue_id={} wait_stages=0x{:x}", group.id,
+                            RHIQueueName(group.queue), group.queueEquivalenceId, group.waitStages);
+
         for (const RDGSubmissionDependencyMetrics& dependency : group.dependencies)
         {
-            text +=
-                fmt::format("\n    producer_{}={} producer_queue={} synchronization={}",
-                            dependency.external ? "external" : "group", dependency.producer,
-                            dependency.producerQueue == RHICommandContextType::eMax ?
-                                "unknown" :
-                                RHIQueueName(dependency.producerQueue),
-                            dependency.semaphore ? "semaphore_boundary" : "queue_order/barrier");
+            text += fmt::format(
+                "\n    producer_{}={} producer_queue={} synchronization={}", dependency.external ? "external" : "group",
+                dependency.producer,
+                dependency.producerQueue == RHICommandContextType::eMax ? "unknown" : RHIQueueName(dependency.producerQueue),
+                dependency.semaphore ? "semaphore_boundary" : "queue_order/barrier");
         }
     }
+
     if (sample.omittedSubmissionDetails || sample.omittedDependencyDetails)
     {
-        text += fmt::format("\n  omitted(submissions={},dependencies={})",
-                            sample.omittedSubmissionDetails, sample.omittedDependencyDetails);
+        text += fmt::format("\n  omitted(submissions={},dependencies={})", sample.omittedSubmissionDetails,
+                            sample.omittedDependencyDetails);
     }
 
     for (const RDGNodeMetrics& node : sample.nodes)
@@ -1507,21 +1649,17 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
             "\n  node={} order={} name=\"{}\" type={} queue_preference={} async_eligibility={} planned_queue={} group={} read={} read_write={} "
             "barriers(calls={},buffer={},texture={},initial_resources={},internal_memory={},internal_texture={}) "
             "stages=0x{:x}->0x{:x} record_cpu_us={}",
-            node.id, node.order, Label(node.name), NodeTypeName(node.type),
-            QueuePreferenceName(node.queuePreference),
-            AsyncComputeEligibilityName(node.asyncComputeEligibility),
-            RHIQueueName(node.plannedQueue), node.submissionGroup, node.reads, node.writes,
-            node.barrierCalls, node.bufferTransitions, node.textureTransitions,
-            node.initialResources, node.internalMemoryTransitions, node.internalTextureTransitions,
-            node.srcStages, node.dstStages,
+            node.id, node.order, Label(node.name), NodeTypeName(node.type), QueuePreferenceName(node.queuePreference),
+            AsyncComputeEligibilityName(node.asyncComputeEligibility), RHIQueueName(node.plannedQueue), node.submissionGroup,
+            node.reads, node.writes, node.barrierCalls, node.bufferTransitions, node.textureTransitions, node.initialResources,
+            node.internalMemoryTransitions, node.internalTextureTransitions, node.srcStages, node.dstStages,
             sample.nodeTimingsEnabled ? fmt::format("{:.1f}", node.recordCPUUs) : "disabled");
 
         if (sample.gpuTimingsEnabled)
         {
             text += fmt::format(" gpu_status={} gpu_us={}", RHIGPUTimingStatusName(node.gpuStatus),
-                                node.gpuStatus == RHIGPUTimingStatus::eAvailable ?
-                                    fmt::format("{:.3f}", node.gpuUs) :
-                                    "unavailable");
+                                node.gpuStatus == RHIGPUTimingStatus::eAvailable ? fmt::format("{:.3f}", node.gpuUs)
+                                                                                 : "unavailable");
         }
     }
 
@@ -1529,15 +1667,13 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
     {
         text += fmt::format("\n  {}={} node={} name=\"{}\" previous_node={} "
                             "resource_stable_id={} resource=\"{}\"",
-                            IsOptimizationCandidate(issue.issue) ? "optimization" : "diagnostic",
-                            IssueName(issue.issue), issue.node, Label(issue.nodeName),
-                            issue.previousNode, issue.resource, Label(issue.resourceName));
+                            IsOptimizationCandidate(issue.issue) ? "optimization" : "diagnostic", IssueName(issue.issue),
+                            issue.node, Label(issue.nodeName), issue.previousNode, issue.resource, Label(issue.resourceName));
     }
 
     if (sample.omittedNodes || sample.omittedDiagnostics)
     {
-        text += fmt::format("\n  details_omitted(nodes={},diagnostics={})", sample.omittedNodes,
-                            sample.omittedDiagnostics);
+        text += fmt::format("\n  details_omitted(nodes={},diagnostics={})", sample.omittedNodes, sample.omittedDiagnostics);
     }
 
     return text;

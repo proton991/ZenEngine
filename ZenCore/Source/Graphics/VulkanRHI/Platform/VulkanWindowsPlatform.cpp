@@ -7,20 +7,21 @@
 
 namespace zen
 {
-void VulkanWindowsPlatform::AddInstanceExtensions(
-    HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions)
+void VulkanWindowsPlatform::AddInstanceExtensions(HeapVector<UniquePtr<VulkanInstanceExtension>>& extensions)
 {
     extensions.emplace_back(MakeUnique<VulkanInstanceExtension>("VK_KHR_win32_surface"));
-    extensions.emplace_back(
-        MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
+
+    extensions.emplace_back(MakeUnique<VulkanInstanceExtension>(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME));
 }
 
 VkSurfaceKHR VulkanWindowsPlatform::CreateSurface(VkInstance instance, void* data)
 {
     Win32WindowData* windowData = static_cast<Win32WindowData*>(data);
+
     VkSurfaceKHR surface{VK_NULL_HANDLE};
-    const VkResult result =
-        glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &surface);
+
+    const VkResult result = glfwCreateWindowSurface(instance, windowData->glfwWindow, nullptr, &surface);
+
     if (result != VK_SUCCESS)
     {
         LOG_ERROR_AND_THROW("glfwCreateWindowSurface failed: {}", int32_t(result));

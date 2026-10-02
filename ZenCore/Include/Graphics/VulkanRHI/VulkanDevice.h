@@ -17,21 +17,21 @@ class FVulkanCommandBuffer;
 
 struct DeviceExtensionFlags
 {
-    uint32_t hasBufferDeviceAddress : 1;
+    uint32_t hasBufferDeviceAddress   : 1;
     uint32_t hasAccelerationStructure : 1;
-    uint32_t hasRaytracingPipeline : 1;
-    uint32_t hasRayQuery : 1;
-    uint32_t hasDescriptorIndexing : 1;
-    uint32_t hasTimelineSemaphore : 1;
+    uint32_t hasRaytracingPipeline    : 1;
+    uint32_t hasRayQuery              : 1;
+    uint32_t hasDescriptorIndexing    : 1;
+    uint32_t hasTimelineSemaphore     : 1;
 
     uint32_t hasDeferredHostOperation : 1;
-    uint32_t hasSPIRV_14 : 1;
-    uint32_t hasDynamicRendering : 1;
+    uint32_t hasSPIRV_14              : 1;
+    uint32_t hasDynamicRendering      : 1;
     uint32_t hasSwapchainMaintenance1 : 1;
-    uint32_t hasCalibratedTimestamps : 1;
-    uint32_t hasMemoryBudget : 1;
-    uint32_t hasDeviceFault : 1;
-    uint32_t hasBufferMarker : 1;
+    uint32_t hasCalibratedTimestamps  : 1;
+    uint32_t hasMemoryBudget          : 1;
+    uint32_t hasDeviceFault           : 1;
+    uint32_t hasBufferMarker          : 1;
 };
 
 class VulkanDevice
@@ -171,13 +171,13 @@ private:
     VkPhysicalDeviceProperties m_gpuProps{};
 
     // logical device
-    VkDevice m_device{VK_NULL_HANDLE};
-    VkPipelineCache m_pipelineCache{VK_NULL_HANDLE};
-    Mutex m_timingPoolMutex;
-    HeapVector<VkQueryPool> m_timingPools;
-    HeapVector<VkQueryPool> m_freeTimingPools;
+    VkDevice                          m_device{VK_NULL_HANDLE};
+    VkPipelineCache                   m_pipelineCache{VK_NULL_HANDLE};
+    Mutex                             m_timingPoolMutex;
+    HeapVector<VkQueryPool>           m_timingPools;
+    HeapVector<VkQueryPool>           m_freeTimingPools;
     HeapVector<FVulkanCommandBuffer*> m_diagnosticBuffers;
-    bool m_faultReported{false};
+    bool                              m_faultReported{false};
 
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};
@@ -199,7 +199,7 @@ private:
     VulkanQueue* m_pComputeQueue{nullptr};
     VulkanQueue* m_pTransferQueue{nullptr};
 
-    VulkanFenceManager* m_pFenceManager{nullptr};
+    VulkanFenceManager*     m_pFenceManager{nullptr};
     VulkanSemaphoreManager* m_pSemaphoreManger{nullptr};
 };
 } // namespace zen

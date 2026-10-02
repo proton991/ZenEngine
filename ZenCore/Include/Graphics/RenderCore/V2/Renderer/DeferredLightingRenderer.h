@@ -33,11 +33,11 @@ public:
 
     void Init();
 
-    void BuildRenderGraph(VoxelGIRenderer* voxelGI     = nullptr,
-                          SceneShadowRenderer* shadows = nullptr);
+    void BuildRenderGraph(VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
+
     void BuildGBufferGraph();
-    void BuildCompositionGraph(VoxelGIRenderer* voxelGI     = nullptr,
-                               SceneShadowRenderer* shadows = nullptr);
+
+    void BuildCompositionGraph(VoxelGIRenderer* voxelGI = nullptr, SceneShadowRenderer* shadows = nullptr);
 
     void Destroy();
 
@@ -56,7 +56,7 @@ public:
     // Opt-in diagnostic buffers owned by the caller through GPU completion.
     void SetLightingCapture(RHIBuffer* output, RHIBuffer* readback)
     {
-        m_captureOutput = output;
+        m_captureOutput   = output;
 
         m_captureReadback = readback;
 
@@ -81,10 +81,11 @@ private:
     void BuildForwardGraph(VoxelGIRenderer* voxelGI, SceneShadowRenderer* shadows);
 
     void BuildLightMarkers();
+
     bool BuildLightingCaptureClear();
 
     float m_lightMarkerSize{0.02f};
-    bool m_lightMarkersEnabled{false};
+    bool  m_lightMarkersEnabled{false};
 
     RenderDevice* m_pRenderDevice{nullptr};
 
@@ -95,8 +96,8 @@ private:
     RHISampler* m_pColorSampler;
     RHISampler* m_pDepthSampler;
     RHISampler* m_pTransmissionSampler{nullptr};
-    RHIBuffer* m_captureOutput{nullptr};
-    RHIBuffer* m_captureReadback{nullptr};
-    bool m_captureRecorded{false};
+    RHIBuffer*  m_captureOutput{nullptr};
+    RHIBuffer*  m_captureReadback{nullptr};
+    bool        m_captureRecorded{false};
 };
 } // namespace zen::rc

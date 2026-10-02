@@ -25,9 +25,9 @@ struct ArenaDataCommand : RHICommand
     }
 
     const uint8_t* bytes;
-    uint32_t size;
-    uint8_t value;
-    uint32_t& destructions;
+    uint32_t       size;
+    uint8_t        value;
+    uint32_t&      destructions;
 };
 
 void RecordArenaData(RHICommandList& commands, uint8_t value, uint32_t& destructions)
@@ -47,6 +47,7 @@ public:
     {
         entered = m_entered.get_future();
     }
+
     ~RHISubmissionGate()
     {
         Open();
@@ -60,8 +61,7 @@ public:
             executionThread     = std::this_thread::get_id();
             executionFrameState = GRHIFrameState;
             m_entered.set_value();
-            releasedInTime =
-                m_release.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+            releasedInTime = m_release.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
         }
     }
 
@@ -74,16 +74,16 @@ public:
     }
 
     std::future<void> entered;
-    std::thread::id executionThread;
-    RHIFrameState executionFrameState;
+    std::thread::id   executionThread;
+    RHIFrameState     executionFrameState;
     std::atomic<bool> releasedInTime{false};
 
 private:
-    std::promise<void> m_entered;
-    std::promise<void> m_open;
+    std::promise<void>       m_entered;
+    std::promise<void>       m_open;
     std::shared_future<void> m_release;
-    std::atomic<bool> m_opened{false};
-    bool m_used{false};
+    std::atomic<bool>        m_opened{false};
+    bool                     m_used{false};
 };
 
 class RHIExecutorTest : public testing::Test
@@ -112,9 +112,9 @@ protected:
         rhi->beforeSubmission = std::bind_front(&RHISubmissionGate::OnSubmission, &gate);
     }
 
-    TestRHI* rhi{nullptr};
+    TestRHI*                rhi{nullptr};
     RHICommandListExecutor* executor{nullptr};
-    RHISubmissionGate gate;
+    RHISubmissionGate       gate;
 };
 
 class ThreadedRenderCoreTest : public RenderCoreTest
@@ -138,7 +138,7 @@ protected:
         rhi->beforeSubmission = std::bind_front(&RHISubmissionGate::OnSubmission, &gate);
     }
 
-    TestViewport viewport;
+    TestViewport      viewport;
     RHISubmissionGate gate;
 };
 } // namespace
@@ -159,12 +159,11 @@ TEST(RHIQueueCapabilitiesTest, ExecutorCachesNativeSharingWithoutBackendQueriesI
             {
                 const RHIQueueCapabilities capabilities = executor.GetQueueCapabilities();
                 EXPECT_TRUE(capabilities.SupportsAsyncCompute());
-                EXPECT_TRUE(capabilities.AreQueuesShared(RHICommandContextType::eAsyncCompute,
-                                                         RHICommandContextType::eTransfer));
-                EXPECT_FALSE(capabilities.AreQueuesShared(RHICommandContextType::eGraphics,
-                                                          RHICommandContextType::eAsyncCompute));
-                EXPECT_FALSE(capabilities.AreQueuesShared(RHICommandContextType::eMax,
-                                                          RHICommandContextType::eGraphics));
+                EXPECT_TRUE(
+                    capabilities.AreQueuesShared(RHICommandContextType::eAsyncCompute, RHICommandContextType::eTransfer));
+                EXPECT_FALSE(
+                    capabilities.AreQueuesShared(RHICommandContextType::eGraphics, RHICommandContextType::eAsyncCompute));
+                EXPECT_FALSE(capabilities.AreQueuesShared(RHICommandContextType::eMax, RHICommandContextType::eGraphics));
             }
             EXPECT_EQ(backend->queueCapabilityQueries, 1u);
             EXPECT_EQ(backend->contextCreations, 0u);
@@ -178,22 +177,15 @@ TEST(RHIQueueCapabilitiesTest, RenderDeviceResolvesStartupPolicyBeforeInitializa
 {
     struct Case
     {
-        AsyncComputeMode mode;
+        AsyncComputeMode     mode;
         RHIQueueCapabilities capabilities;
-        AsyncComputeStatus status;
+        AsyncComputeStatus   status;
     };
-    const Case cases[] = {
-        {AsyncComputeMode::eDisabled, {true, true, {0, 1, 2}}, AsyncComputeStatus::eDisabled},
-        {AsyncComputeMode::eAuto,
-         {false, true, {0, 1, 2}},
-         AsyncComputeStatus::eComputeUnavailable},
-        {AsyncComputeMode::eAuto,
-         {true, true, {0, 0, 0}},
-         AsyncComputeStatus::eSharedGraphicsQueue},
-        {AsyncComputeMode::eAuto,
-         {true, false, {0, 1, 1}},
-         AsyncComputeStatus::eDependenciesUnavailable},
-        {AsyncComputeMode::eAuto, {true, true, {0, 1, 1}}, AsyncComputeStatus::eAvailable}};
+    const Case cases[] = {{AsyncComputeMode::eDisabled, {true, true, {0, 1, 2}}, AsyncComputeStatus::eDisabled},
+                          {AsyncComputeMode::eAuto, {false, true, {0, 1, 2}}, AsyncComputeStatus::eComputeUnavailable},
+                          {AsyncComputeMode::eAuto, {true, true, {0, 0, 0}}, AsyncComputeStatus::eSharedGraphicsQueue},
+                          {AsyncComputeMode::eAuto, {true, false, {0, 1, 1}}, AsyncComputeStatus::eDependenciesUnavailable},
+                          {AsyncComputeMode::eAuto, {true, true, {0, 1, 1}}, AsyncComputeStatus::eAvailable}};
     for (RHIExecutionMode cpuMode : {RHIExecutionMode::eInline, RHIExecutionMode::eThreaded})
     {
         for (const Case& test : cases)
@@ -203,10 +195,8 @@ TEST(RHIQueueCapabilitiesTest, RenderDeviceResolvesStartupPolicyBeforeInitializa
             GDynamicRHI                          = backend;
             RenderDevice device(RHIAPIType::eVulkan, 2, cpuMode, test.mode);
             EXPECT_EQ(device.GetAsyncComputeStatus(), test.status);
-            const SmallVector<uint32_t, RHICompletionSet::kQueueCount>& queueIds =
-                device.GetQueueCapabilities().queueIds;
-            EXPECT_TRUE(std::equal(queueIds.begin(), queueIds.end(),
-                                   test.capabilities.queueIds.begin(),
+            const SmallVector<uint32_t, RHICompletionSet::kQueueCount>& queueIds = device.GetQueueCapabilities().queueIds;
+            EXPECT_TRUE(std::equal(queueIds.begin(), queueIds.end(), test.capabilities.queueIds.begin(),
                                    test.capabilities.queueIds.end()));
             EXPECT_EQ(backend->queueCapabilityQueries, 1u);
             device.Init(nullptr);
@@ -220,8 +210,8 @@ TEST(RHIQueueCapabilitiesTest, RenderDeviceResolvesStartupPolicyBeforeInitializa
 TEST(RHICommandListTest, PoolAllocatorReusesOverflowBlocksAfterReset)
 {
     PoolAllocator<LinearAllocator> allocator(256);
-    std::array<void*, 3> blocks{};
-    const std::array<size_t, 3> sizes{192, 384, 1536};
+    std::array<void*, 3>           blocks{};
+    const std::array<size_t, 3>    sizes{192, 384, 1536};
     for (size_t i = 0; i < sizes.size(); ++i)
     {
         blocks[i] = allocator.Alloc(sizes[i], 64);
@@ -244,8 +234,8 @@ TEST(RHICommandListTest, PoolAllocatorReusesOverflowBlocksAfterReset)
 
 TEST(RHICommandListTest, DetachedStorageReusesAllArenaBlocksWithoutAllocating)
 {
-    uint32_t destructions = 0;
-    RHICommandList commands;
+    uint32_t          destructions = 0;
+    RHICommandList    commands;
     RHICommandListPtr reusable;
     for (uint8_t frame = 0; frame < 2; ++frame)
     {
@@ -270,11 +260,10 @@ TEST(RHICommandListTest, DetachedStorageReusesAllArenaBlocksWithoutAllocating)
 
 TEST_F(RHIExecutorTest, DetachedListsKeepContextAliveUntilFinalReleaseOnRhi)
 {
-    RHICommandListPtr producer(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr   producer(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     IRHICommandContext* context = producer->GetContext();
-    RHICommandListPtr first     = producer->DetachCommands();
-    RHICommandListPtr second    = producer->DetachCommands();
+    RHICommandListPtr   first   = producer->DetachCommands();
+    RHICommandListPtr   second  = producer->DetachCommands();
     EXPECT_EQ(context->GetRefCount(), 3u);
     producer.reset();
     EXPECT_EQ(context->GetRefCount(), 2u);
@@ -290,17 +279,15 @@ TEST_F(RHIExecutorTest, DetachedListsKeepContextAliveUntilFinalReleaseOnRhi)
 
 TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
 {
-    TestViewport viewport;
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    TestViewport      viewport;
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     for (uint32_t frame = 0; frame < 16; ++frame)
     {
         commands->Draw(3, 1, 0, 0);
         const RHIBatchResult result = executor->SubmitFrame(*commands, &viewport).Wait();
         EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
-        EXPECT_TRUE(executor->WaitForCompletion(
-            RHICommandContextType::eGraphics,
-            result.requiredSerials.Get(RHICommandContextType::eGraphics)));
+        EXPECT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
+                                                result.requiredSerials.Get(RHICommandContextType::eGraphics)));
     }
     EXPECT_EQ(viewport.presents, 16u);
     EXPECT_EQ(rhi->contextCreations, 2u);
@@ -316,11 +303,10 @@ TEST_F(RHIExecutorTest, RecyclesPresentContextsAndReleasesProducerContextOnRhi)
 
 TEST_F(RHIExecutorTest, DelayedGpuCompletionRetainsListsAndBoundsTheRetiredCache)
 {
-    TestViewport viewport;
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    TestViewport       viewport;
+    RHICommandListPtr  commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     constexpr uint32_t frameCount = RHIFrameState::kMaxFramesInFlight + 3;
-    RHIBatchResult result;
+    RHIBatchResult     result;
     for (uint32_t frame = 0; frame < frameCount; ++frame)
     {
         commands->Draw(3, 1, 0, 0);
@@ -331,11 +317,9 @@ TEST_F(RHIExecutorTest, DelayedGpuCompletionRetainsListsAndBoundsTheRetiredCache
     executor->FlushRHIThread();
     EXPECT_EQ(rhi->contextCreations, frameCount + 1);
     EXPECT_EQ(rhi->graphics.proxyDestructions, 0u);
-    EXPECT_TRUE(
-        executor->WaitForCompletion(RHICommandContextType::eGraphics,
-                                    result.requiredSerials.Get(RHICommandContextType::eGraphics)));
-    EXPECT_EQ(rhi->contextCreations - rhi->graphics.proxyDestructions,
-              RHIFrameState::kMaxFramesInFlight);
+    EXPECT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
+                                            result.requiredSerials.Get(RHICommandContextType::eGraphics)));
+    EXPECT_EQ(rhi->contextCreations - rhi->graphics.proxyDestructions, RHIFrameState::kMaxFramesInFlight);
     executor->Destroy();
     EXPECT_EQ(rhi->graphics.proxyDestructions, rhi->contextCreations);
 }
@@ -352,8 +336,7 @@ TEST(RHIThreadTest, FifoNestedInvokeExceptionsAndDrain)
     const std::thread::id worker = thread.Invoke([] { return std::this_thread::get_id(); });
     EXPECT_NE(worker, std::this_thread::get_id());
     EXPECT_EQ(thread.Invoke([&thread] { return thread.Invoke([] { return 17; }); }), 17);
-    EXPECT_THROW(thread.Invoke([] { throw std::runtime_error("test RHI exception"); }),
-                 std::runtime_error);
+    EXPECT_THROW(thread.Invoke([] { throw std::runtime_error("test RHI exception"); }), std::runtime_error);
     thread.Stop();
     ASSERT_EQ(order.size(), 32u);
     for (uint32_t i = 0; i < 32; ++i)
@@ -378,8 +361,8 @@ class RHIMessageWindow
 public:
     RHIMessageWindow()
     {
-        handle = CreateWindowExW(0, L"STATIC", L"RHI message test", 0, 0, 0, 0, 0, HWND_MESSAGE,
-                                 nullptr, GetModuleHandleW(nullptr), nullptr);
+        handle = CreateWindowExW(0, L"STATIC", L"RHI message test", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
+                                 GetModuleHandleW(nullptr), nullptr);
     }
 
     ~RHIMessageWindow()
@@ -394,8 +377,7 @@ public:
     {
         DWORD_PTR reply = 0;
         SetLastError(ERROR_SUCCESS);
-        const LRESULT delivered =
-            SendMessageTimeoutW(handle, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &reply);
+        const LRESULT delivered = SendMessageTimeoutW(handle, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &reply);
         if (delivered != 0)
         {
             ++deliveredCount;
@@ -406,9 +388,9 @@ public:
         }
     }
 
-    HWND handle{nullptr};
+    HWND     handle{nullptr};
     uint32_t deliveredCount{0};
-    DWORD lastError{ERROR_SUCCESS};
+    DWORD    lastError{ERROR_SUCCESS};
 };
 
 class RHIGatedWindowMessage
@@ -445,12 +427,12 @@ public:
     std::future<void> entered;
 
 private:
-    RHIThread& m_thread;
-    RHIMessageWindow& m_window;
-    std::promise<void> m_entered;
-    std::promise<void> m_open;
+    RHIThread&               m_thread;
+    RHIMessageWindow&        m_window;
+    std::promise<void>       m_entered;
+    std::promise<void>       m_open;
     std::shared_future<void> m_release;
-    bool m_opened{false};
+    bool                     m_opened{false};
 };
 
 // Runs on RHI while the window thread waits, past the point where Windows ghosts hung windows.
@@ -474,8 +456,8 @@ uint64_t GetCurrentThreadCPUTime100ns()
     FILETIME kernel{};
     FILETIME user{};
     GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user);
-    return ((uint64_t(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
-        ((uint64_t(user.dwHighDateTime) << 32) | user.dwLowDateTime);
+    return ((uint64_t(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime)
+         + ((uint64_t(user.dwHighDateTime) << 32) | user.dwLowDateTime);
 }
 } // namespace
 
@@ -597,15 +579,13 @@ TEST_F(RHIExecutorTest, DetachedLayoutAndResourcesSurviveCpuAndGpuDelay)
     RHITextureCreateInfo info{};
     info.format = DataFormat::eR8G8B8A8UNORM;
     info.type   = RHITextureType::e2D;
-    info.width = info.height = 8;
-    RHITexture* texture      = executor->CreateTexture(info);
-    const uint64_t id        = texture->GetStableId();
+    info.width = info.height   = 8;
+    RHITexture*        texture = executor->CreateTexture(info);
+    const uint64_t     id      = texture->GetStableId();
     RHIRenderingLayout layout{};
     layout.SetRenderArea(0, 0, 8, 8);
-    layout.AddColorRenderTarget(info.format, texture, RHIRenderTargetLoadOp::eClear,
-                                RHIRenderTargetStoreOp::eStore);
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    layout.AddColorRenderTarget(info.format, texture, RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->BeginRendering(&layout);
     commands->EndRendering();
     ArmGate();
@@ -628,16 +608,14 @@ TEST_F(RHIExecutorTest, DetachedLayoutAndResourcesSurviveCpuAndGpuDelay)
     EXPECT_EQ(rhi->graphics.renderingLayouts[0].renderArea.maxX, 8);
     EXPECT_FALSE(destroyed.contains(id));
     EXPECT_EQ(executor->QueryLastCompletedSerial(RHICommandContextType::eGraphics), 0u);
-    EXPECT_TRUE(
-        executor->WaitForCompletion(RHICommandContextType::eGraphics,
-                                    result.requiredSerials.Get(RHICommandContextType::eGraphics)));
+    EXPECT_TRUE(executor->WaitForCompletion(RHICommandContextType::eGraphics,
+                                            result.requiredSerials.Get(RHICommandContextType::eGraphics)));
     EXPECT_TRUE(destroyed.contains(id));
 }
 
 TEST_F(RHIExecutorTest, RejectionStopsAlreadyQueuedDependentBatches)
 {
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     rhi->failSubmissionAt = 1;
     ArmGate();
     commands->Draw(3, 1, 0, 0);
@@ -657,11 +635,10 @@ TEST_F(RHIExecutorTest, RejectionStopsAlreadyQueuedDependentBatches)
 TEST_F(RHIExecutorTest, RollbackReleasesNewReferencesAndKeepsEarlierCommands)
 {
     RHIBufferCreateInfo info{};
-    info.size         = 64;
-    RHIBuffer* first  = executor->CreateBuffer(info);
-    RHIBuffer* second = executor->CreateBuffer(info);
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    info.size                = 64;
+    RHIBuffer*        first  = executor->CreateBuffer(info);
+    RHIBuffer*        second = executor->CreateBuffer(info);
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearBuffer(first, 0, 64);
     const RHICommandListBase::CommandCheckpoint checkpoint = commands->GetCommandCheckpoint();
     commands->CopyBuffer(first, second, RHIBufferCopyRegion{});
@@ -729,19 +706,17 @@ TEST_F(ThreadedRenderCoreTest, LateFailureDoesNotPublishExtractionOrSubmitNextFr
 TEST_F(ThreadedRenderCoreTest, NextFrameRecordsCommandsBeforeWaitingForPriorSubmission)
 {
     CreateTestShaderProgram(device, "intent");
-    RenderGraph* graph            = device->GetCurrentFrameRDG();
-    const RDGComputePassDesc pass = IntentPass();
+    RenderGraph*             graph = device->GetCurrentFrameRDG();
+    const RDGComputePassDesc pass  = IntentPass();
     // Warm the pipeline cache and producer command list before measuring overlap.
     ASSERT_TRUE(graph->Begin());
-    graph->AddComputePass(pass).RecordPassCommands(
-        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph->AddComputePass(pass).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     ASSERT_TRUE(graph->End());
     ASSERT_TRUE(device->ExecuteRenderGraph(*graph));
 
     const uint64_t completedBatches = device->GetRHIThreadMetrics().completedBatches;
     ASSERT_TRUE(graph->Begin());
-    graph->AddComputePass(pass).RecordPassCommands(
-        [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+    graph->AddComputePass(pass).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
     ASSERT_TRUE(graph->End());
     ArmGate();
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
@@ -749,12 +724,11 @@ TEST_F(ThreadedRenderCoreTest, NextFrameRecordsCommandsBeforeWaitingForPriorSubm
     device->NextFrame();
     std::thread::id recordingThread;
     ASSERT_TRUE(graph->Begin());
-    graph->AddComputePass(pass).RecordPassCommands(
-        [this, &recordingThread](RDGPassCmdEncoder& encoder) {
-            recordingThread = std::this_thread::get_id();
-            encoder.Dispatch(1, 1, 1);
-            gate.Open();
-        });
+    graph->AddComputePass(pass).RecordPassCommands([this, &recordingThread](RDGPassCmdEncoder& encoder) {
+        recordingThread = std::this_thread::get_id();
+        encoder.Dispatch(1, 1, 1);
+        gate.Open();
+    });
     ASSERT_TRUE(graph->End());
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     device->FlushRHIThread();
@@ -768,15 +742,14 @@ TEST_F(ThreadedRenderCoreTest, NextFrameRecordsCommandsBeforeWaitingForPriorSubm
 TEST_F(RHIExecutorTest, PartialFailureKeepsResourcesUntilDeviceDrain)
 {
     RHITextureCreateInfo info{};
-    RHITexture* texture = executor->CreateTexture(info);
-    const uint64_t id   = texture->GetStableId();
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHITexture*          texture = executor->CreateTexture(info);
+    const uint64_t       id      = texture->GetStableId();
+    RHICommandListPtr    commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearTexture(texture, Color(0.f), RHITextureSubResourceRange());
     rhi->failSubmissionAt       = 1;
     rhi->submitBeforeFailure    = true;
     rhi->submissionFailure      = RHISubmissionResult::eFatal;
-    RHISubmissionTicket ticket  = executor->SubmitFrame(*commands, nullptr);
+    RHISubmissionTicket  ticket = executor->SubmitFrame(*commands, nullptr);
     const RHIBatchResult result = ticket.Wait();
     EXPECT_EQ(result.submission, RHISubmissionResult::eFatal);
     EXPECT_GT(result.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
@@ -832,8 +805,7 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
     EXPECT_EQ(ToIndex(GRenderFrameState.GetFrameSlot()), 1u);
     gate.Open();
     device->FlushRHIThread();
-    const uint64_t firstSerial =
-        GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics);
+    const uint64_t firstSerial = GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics);
     ASSERT_GT(firstSerial, 0u);
     // Return to RenderCore slot 0 while the independent RHI timeline uses two slots.
     for (uint32_t i = 1; i < 3; ++i)
@@ -858,21 +830,20 @@ TEST_F(ThreadedRenderCoreTest, DelayedCompletionUsesOriginatingRenderFrameWithDi
 TEST_F(ThreadedRenderCoreTest, PooledResourcesWaitForPendingCPUAndGPUWork)
 {
     CreateTestShaderProgram(device, "intent");
-    RenderGraph* graph            = device->GetCurrentFrameRDG();
+    RenderGraph*        graph     = device->GetCurrentFrameRDG();
     RDGResourceManager* resources = graph->GetResourceManager();
-    uint64_t bufferId             = 0;
-    uint64_t textureId            = 0;
-    ResourceRetirement retirement;
+    uint64_t            bufferId  = 0;
+    uint64_t            textureId = 0;
+    ResourceRetirement  retirement;
     for (uint32_t phase = 0; phase < 3; ++phase)
     {
         ASSERT_TRUE(graph->Begin());
-        const RDGBuffer buffer   = resources->CreateBuffer(LogicalBuffer());
-        const RDGTexture texture = resources->CreateTexture(LogicalTexture());
-        RDGComputePassDesc pass  = IntentPass();
+        const RDGBuffer    buffer  = resources->CreateBuffer(LogicalBuffer());
+        const RDGTexture   texture = resources->CreateTexture(LogicalTexture());
+        RDGComputePassDesc pass    = IntentPass();
         pass.BindStorageBuffer("write_buffer", buffer, RDGContentGuarantee::eFullWrite);
         pass.BindStorageImage("write_image", texture, RDGContentGuarantee::eFullWrite);
-        graph->AddComputePass(pass).RecordPassCommands(
-            [](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
+        graph->AddComputePass(pass).RecordPassCommands([](RDGPassCmdEncoder& encoder) { encoder.Dispatch(1, 1, 1); });
         ASSERT_TRUE(graph->End());
         if (phase == 0)
         {
@@ -920,13 +891,12 @@ TEST_F(ThreadedRenderCoreTest, PooledResourcesWaitForPendingCPUAndGPUWork)
 TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKindsOfOwners)
 {
     RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
-    RHITextureCreateInfo info{};
-    RHITexture* batchOwned  = executor->CreateTexture(info);
-    RHITexture* deviceOwned = executor->CreateTexture(info);
-    const uint64_t batchId  = batchOwned->GetStableId();
-    const uint64_t deviceId = deviceOwned->GetStableId();
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHITextureCreateInfo    info{};
+    RHITexture*             batchOwned  = executor->CreateTexture(info);
+    RHITexture*             deviceOwned = executor->CreateTexture(info);
+    const uint64_t          batchId     = batchOwned->GetStableId();
+    const uint64_t          deviceId    = deviceOwned->GetStableId();
+    RHICommandListPtr       commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
     commands->ClearTexture(deviceOwned, Color(0.f), RHITextureSubResourceRange());
     const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
@@ -955,11 +925,11 @@ TEST_F(ThreadedRenderCoreTest, IdleCollectionRefreshesProgressAndRetiresBothKind
 
 TEST_F(ThreadedRenderCoreTest, FinalRhiReleaseRemovesBufferAndTextureHistory)
 {
-    RHITexture* texture      = Texture();
-    RHIBuffer* buffer        = Buffer();
+    RHITexture*    texture   = Texture();
+    RHIBuffer*     buffer    = Buffer();
     const uint64_t textureId = texture->GetStableId();
     const uint64_t bufferId  = buffer->GetStableId();
-    RenderGraph* graph       = device->GetCurrentFrameRDG();
+    RenderGraph*   graph     = device->GetCurrentFrameRDG();
     ASSERT_TRUE(graph->Begin());
     graph->GetResourceManager()->ImportHostWrittenBuffer(buffer);
     graph->AddTransferPass("retire-history")
@@ -1000,20 +970,19 @@ TEST_F(ThreadedRenderCoreTest, FinalRhiReleaseRemovesBufferAndTextureHistory)
 TEST_F(ThreadedRenderCoreTest, RetirementDuringRecordingCannotReappearFromPendingState)
 {
     CreateTestShaderProgram(device, "intent");
-    RHITexture* texture = Texture();
-    const uint64_t id   = texture->GetStableId();
+    RHITexture*    texture = Texture();
+    const uint64_t id      = texture->GetStableId();
     RDGSubmissionTestAccess::Tracker(*device).UpdateTextureState(
         texture, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
     RenderGraph* graph = device->GetCurrentFrameRDG();
     ASSERT_TRUE(graph->Begin());
-    graph->AddComputePass(IntentPass())
-        .RecordPassCommands([this, texture, id](RDGPassCmdEncoder& encoder) {
-            texture->ReleaseReference();
-            device->CollectCompletedResources();
-            EXPECT_TRUE(RDGSubmissionTestAccess::HasHistory(*device, id));
-            encoder.Dispatch(1, 1, 1);
-        });
+    graph->AddComputePass(IntentPass()).RecordPassCommands([this, texture, id](RDGPassCmdEncoder& encoder) {
+        texture->ReleaseReference();
+        device->CollectCompletedResources();
+        EXPECT_TRUE(RDGSubmissionTestAccess::HasHistory(*device, id));
+        encoder.Dispatch(1, 1, 1);
+    });
     ASSERT_TRUE(graph->End());
     ArmGate();
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
@@ -1029,12 +998,11 @@ TEST_F(ThreadedRenderCoreTest, RetirementDuringRecordingCannotReappearFromPendin
 
 TEST_F(RenderCoreTest, InlineFinalReleasePreservesLiveHistoryAndCleansDestroyedHistory)
 {
-    RHITexture* texture           = Texture();
-    const uint64_t id             = texture->GetStableId();
+    RHITexture*           texture = Texture();
+    const uint64_t        id      = texture->GetStableId();
     ResourceStateTracker& tracker = RDGSubmissionTestAccess::Tracker(*device);
-    tracker.UpdateTextureState(
-        texture, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
-        BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
+    tracker.UpdateTextureState(texture, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
+                               BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
     texture->AddReference();
     texture->ReleaseReference();
     const uint64_t liveRevision = tracker.GetRevision();
@@ -1056,19 +1024,18 @@ TEST_F(RenderCoreTest, InlineFinalReleasePreservesLiveHistoryAndCleansDestroyedH
 TEST_F(RenderCoreTest, RetirementDuringRollbackCannotReappearFromPrivateState)
 {
     CreateTestShaderProgram(device, "intent");
-    RHITexture* texture = Texture();
-    const uint64_t id   = texture->GetStableId();
+    RHITexture*    texture = Texture();
+    const uint64_t id      = texture->GetStableId();
     RDGSubmissionTestAccess::Tracker(*device).UpdateTextureState(
         texture, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
     RenderGraph graph("retirement_rollback");
     ASSERT_TRUE(graph.Begin());
-    graph.AddComputePass(IntentPass())
-        .RecordPassCommands([this, texture](RDGPassCmdEncoder& encoder) {
-            texture->ReleaseReference();
-            device->PollFrameSubmissions();
-            encoder.Fail(RDGErrorCode::eCallback, "cancel after unrelated retirement");
-        });
+    graph.AddComputePass(IntentPass()).RecordPassCommands([this, texture](RDGPassCmdEncoder& encoder) {
+        texture->ReleaseReference();
+        device->PollFrameSubmissions();
+        encoder.Fail(RDGErrorCode::eCallback, "cancel after unrelated retirement");
+    });
     ASSERT_TRUE(graph.End());
     EXPECT_FALSE(device->ExecuteRenderGraph(graph));
     EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eCallback);
@@ -1079,10 +1046,9 @@ TEST_F(RenderCoreTest, RetirementDuringRollbackCannotReappearFromPrivateState)
 TEST_F(RHIExecutorTest, FlushSamplesGpuProgressWithoutWaitingForGpuCompletion)
 {
     RHITextureCreateInfo info{};
-    RHITexture* texture = executor->CreateTexture(info);
-    const uint64_t id   = texture->GetStableId();
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHITexture*          texture = executor->CreateTexture(info);
+    const uint64_t       id      = texture->GetStableId();
+    RHICommandListPtr    commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearTexture(texture, Color(0.f), RHITextureSubResourceRange());
     const RHIBatchResult result = executor->SubmitFrame(*commands, nullptr).Wait();
     ASSERT_GT(result.requiredSerials.Get(RHICommandContextType::eGraphics), 0u);
@@ -1145,9 +1111,9 @@ TEST_F(RHIExecutorTest, ProgressPollRetriesAfterQueueSaturationWithoutBlocking)
 TEST_F(ThreadedRenderCoreTest, ProgressQueryFailureBlocksRetirementWithoutAPendingFrame)
 {
     RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
-    RHITextureCreateInfo info{};
-    RHITexture* texture = executor->CreateTexture(info);
-    const uint64_t id   = texture->GetStableId();
+    RHITextureCreateInfo    info{};
+    RHITexture*             texture = executor->CreateTexture(info);
+    const uint64_t          id      = texture->GetStableId();
     device->DeferReleaseResource(texture);
     GetRHIThread().Invoke([this] { rhi->failProgressQuery = true; });
     executor->PollGPUProgress();
@@ -1165,16 +1131,14 @@ TEST_F(ThreadedRenderCoreTest, ProgressQueryFailureBlocksRetirementWithoutAPendi
 TEST_F(ThreadedRenderCoreTest, BackendFailureRetainsBatchAndDeferredOwnersUntilShutdown)
 {
     RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
-    RHITextureCreateInfo info{};
-    RHITexture* batchOwned    = executor->CreateTexture(info);
-    RHITexture* deferred      = executor->CreateTexture(info);
-    const uint64_t batchId    = batchOwned->GetStableId();
-    const uint64_t deferredId = deferred->GetStableId();
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+    RHITextureCreateInfo    info{};
+    RHITexture*             batchOwned = executor->CreateTexture(info);
+    RHITexture*             deferred   = executor->CreateTexture(info);
+    const uint64_t          batchId    = batchOwned->GetStableId();
+    const uint64_t          deferredId = deferred->GetStableId();
+    RHICommandListPtr       commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
     commands->ClearTexture(batchOwned, Color(0.f), RHITextureSubResourceRange());
-    EXPECT_EQ(executor->SubmitFrame(*commands, nullptr).Wait().submission,
-              RHISubmissionResult::eSuccess);
+    EXPECT_EQ(executor->SubmitFrame(*commands, nullptr).Wait().submission, RHISubmissionResult::eSuccess);
     batchOwned->ReleaseReference();
     device->DeferReleaseResource(deferred);
     GetRHIThread().Invoke([this] { rhi->submissionsBlocked = true; });

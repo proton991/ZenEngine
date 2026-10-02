@@ -28,15 +28,15 @@ namespace zen
 {
 namespace
 {
-constexpr size_t MaxProfileFrames = 100000;
+constexpr size_t MaxProfileFrames    = 100000;
 
-constexpr size_t MaxProfileGraphs = 16384;
+constexpr size_t MaxProfileGraphs    = 16384;
 
-constexpr size_t MaxProfilePasses = 1000000;
+constexpr size_t MaxProfilePasses    = 1000000;
 
 constexpr size_t MaxPendingGPUFrames = 32;
 
-using ProfileFrameSamples = HashMap<std::string, HeapVector<double>>;
+using ProfileFrameSamples            = HashMap<std::string, HeapVector<double>>;
 
 struct ProfileFrameSummary
 {
@@ -131,17 +131,17 @@ void FingerprintFile(std::ostream& output, const std::filesystem::path& path)
 
     const bool opened = file.is_open();
 
-    uint64_t hash = UINT64_C(14695981039346656037);
+    uint64_t hash     = UINT64_C(14695981039346656037);
 
-    uint64_t bytes = 0;
+    uint64_t bytes    = 0;
 
     char block[65536];
 
     while (file.read(block, sizeof(block)) || file.gcount() > 0)
     {
-        const std::streamsize count = file.gcount();
+        const std::streamsize count  = file.gcount();
 
-        bytes += static_cast<uint64_t>(count);
+        bytes                       += static_cast<uint64_t>(count);
 
         for (std::streamsize i = 0; i < count; ++i)
         {
@@ -202,9 +202,8 @@ std::string FingerprintInputs(const DemoProfilingOptions& options)
 
     FingerprintFile(output, platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath());
 
-    output
-        << ",\"scene_hash_scope\":\"main asset document; external buffers and textures are not included\""
-           ",\"shader_scope\":\"all SPIR-V files in the configured shader directory\",\"shaders\":[";
+    output << ",\"scene_hash_scope\":\"main asset document; external buffers and textures are not included\""
+              ",\"shader_scope\":\"all SPIR-V files in the configured shader directory\",\"shaders\":[";
 
     HeapVector<std::filesystem::path> shaders;
 
@@ -255,14 +254,12 @@ void WriteStatistics(std::ostream& output, HeapVector<double>& samples)
 
         const size_t middle = samples.size() / 2;
 
-        const double median =
-            samples.size() % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
+        const double median = samples.size() % 2 ? samples[middle] : (samples[middle - 1] + samples[middle]) / 2;
 
-        const size_t p95 = (samples.size() * 95 + 99) / 100 - 1;
+        const size_t p95    = (samples.size() * 95 + 99) / 100 - 1;
 
-        output << ",\"min\":" << samples.front() << ",\"max\":" << samples.back()
-               << ",\"mean\":" << sum / samples.size() << ",\"median\":" << median
-               << ",\"p95\":" << samples[p95] << '}';
+        output << ",\"min\":" << samples.front() << ",\"max\":" << samples.back() << ",\"mean\":" << sum / samples.size()
+               << ",\"median\":" << median << ",\"p95\":" << samples[p95] << '}';
     }
 }
 
@@ -369,11 +366,11 @@ struct SceneRendererProfiling::State
 
     void WritePassesCSV(std::ostream& output, ProfilePassSummaries& summaries) const;
 
-    void WriteSummaryJSON(std::ostream& output,
-                          ProfileFrameSummary& frameSummary,
+    void WriteSummaryJSON(std::ostream&         output,
+                          ProfileFrameSummary&  frameSummary,
                           ProfilePassSummaries& summaries,
-                          bool runSucceeded,
-                          bool unchanged) const;
+                          bool                  runSucceeded,
+                          bool                  unchanged) const;
 
     void Capture(const rc::RDGMetricsSnapshot& snapshot)
     {
@@ -381,11 +378,10 @@ struct SceneRendererProfiling::State
         {
             const size_t graphIndex = graphs.size();
 
-            graphs.push_back({snapshot.graph, snapshot.execution, snapshot.frameIndex,
-                              snapshot.transferOnly, snapshot.compileCPUUs, snapshot.executeCPUUs,
-                              snapshot.submissionCPUUs, snapshot.assignedTransientBytes,
-                              snapshot.availableTransientBytes, snapshot.retiringTransientBytes,
-                              snapshot.nodeCount, snapshot.omittedNodes,
+            graphs.push_back({snapshot.graph, snapshot.execution, snapshot.frameIndex, snapshot.transferOnly,
+                              snapshot.compileCPUUs, snapshot.executeCPUUs, snapshot.submissionCPUUs,
+                              snapshot.assignedTransientBytes, snapshot.availableTransientBytes,
+                              snapshot.retiringTransientBytes, snapshot.nodeCount, snapshot.omittedNodes,
                               snapshot.omittedSubmissionDetails});
 
             for (const rc::RDGNodeMetrics& node : snapshot.nodes)
@@ -394,8 +390,7 @@ struct SceneRendererProfiling::State
                 {
                     const size_t logical = static_cast<size_t>(node.plannedQueue);
 
-                    uint32_t equivalent =
-                        logical < queues.queueIds.size() ? queues.queueIds[logical] : UINT32_MAX;
+                    uint32_t equivalent  = logical < queues.queueIds.size() ? queues.queueIds[logical] : UINT32_MAX;
 
                     for (const rc::RDGSubmissionMetrics& group : snapshot.submissions)
                     {
@@ -423,11 +418,10 @@ struct SceneRendererProfiling::State
 
     const char* Phase(uint64_t frame) const
     {
-        const char* phase = frame == UINT64_MAX ? "startup" : "unmatched";
+        const char* phase  = frame == UINT64_MAX ? "startup" : "unmatched";
 
-        const Frame* found = std::lower_bound(
-            frames.begin(), frames.end(), frame,
-            [](const Frame& entry, uint64_t number) { return entry.index < number; });
+        const Frame* found = std::lower_bound(frames.begin(), frames.end(), frame,
+                                              [](const Frame& entry, uint64_t number) { return entry.index < number; });
 
         if (found != frames.end() && found->index == frame)
         {
@@ -444,7 +438,7 @@ void SceneRendererProfiling::State::CollectGPUFrames(bool abandon)
 
     while (pending < pendingGPUFrames.size())
     {
-        Frame& frame = frames[pendingGPUFrames[pending]];
+        Frame& frame                    = frames[pendingGPUFrames[pending]];
 
         const RHIGPUTimingStatus status = frame.gpuTiming->GetStatus();
 
@@ -460,9 +454,9 @@ void SceneRendererProfiling::State::CollectGPUFrames(bool abandon)
             }
             else
             {
-                frame.gpuUs = frame.gpuTiming->GetMicroseconds();
+                frame.gpuUs                = frame.gpuTiming->GetMicroseconds();
 
-                frame.gpuIntervals = frame.gpuTiming->GetIntervalCount();
+                frame.gpuIntervals         = frame.gpuTiming->GetIntervalCount();
 
                 frame.gpuExcludedIntervals = frame.gpuTiming->GetExcludedIntervalCount();
             }
@@ -512,17 +506,16 @@ void SceneRendererProfiling::State::RetainCurrentFrame()
     CollectGPUFrames();
 }
 
-void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
-                                                   ProfileFrameSummary& summary) const
+void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output, ProfileFrameSummary& summary) const
 {
     output
         << "run_id,frame_index,phase,phase_frame,cpu_frame_ms,succeeded,width,height,requested_mode,resolved_mode,gi_method,gpu_status,gpu_frame_ms,gpu_intervals,gpu_excluded_intervals,frame_start_ms,frame_end_ms,rhi_execution_ms,draws,dispatches,submissions,descriptor_hits,descriptor_misses,descriptor_inserts,descriptor_retirements,bindless_captures\n";
 
     for (const State::Frame& frame : frames)
     {
-        output << runID << ',' << frame.index << ',' << frame.phase << ',' << frame.local << ','
-               << frame.cpuUs / 1000 << ',' << frame.succeeded << ',' << frame.width << ','
-               << frame.height << ',' << frame.requestedMode << ',' << frame.resolvedMode << ',';
+        output << runID << ',' << frame.index << ',' << frame.phase << ',' << frame.local << ',' << frame.cpuUs / 1000 << ','
+               << frame.succeeded << ',' << frame.width << ',' << frame.height << ',' << frame.requestedMode << ','
+               << frame.resolvedMode << ',';
 
         CSVString(output, frame.method);
 
@@ -542,13 +535,11 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
             ++summary.unavailable[frame.phase];
         }
 
-        output << ',' << frame.gpuIntervals << ',' << frame.gpuExcludedIntervals << ','
-               << frame.startUs / 1000 << ',' << frame.endUs / 1000 << ','
-               << frame.rhiCPUUs / 1000.0 << ',' << frame.counters.draws << ','
-               << frame.counters.dispatches << ',' << frame.counters.submissions << ','
-               << frame.counters.descriptorHits << ',' << frame.counters.descriptorMisses << ','
-               << frame.counters.descriptorInserts << ',' << frame.counters.descriptorRetirements
-               << ',' << frame.counters.bindlessCaptures;
+        output << ',' << frame.gpuIntervals << ',' << frame.gpuExcludedIntervals << ',' << frame.startUs / 1000 << ','
+               << frame.endUs / 1000 << ',' << frame.rhiCPUUs / 1000.0 << ',' << frame.counters.draws << ','
+               << frame.counters.dispatches << ',' << frame.counters.submissions << ',' << frame.counters.descriptorHits << ','
+               << frame.counters.descriptorMisses << ',' << frame.counters.descriptorInserts << ','
+               << frame.counters.descriptorRetirements << ',' << frame.counters.bindlessCaptures;
 
         output << '\n';
 
@@ -559,17 +550,16 @@ void SceneRendererProfiling::State::WriteFramesCSV(std::ostream& output,
     }
 }
 
-void SceneRendererProfiling::State::WritePassesCSV(std::ostream& output,
-                                                   ProfilePassSummaries& summaries) const
+void SceneRendererProfiling::State::WritePassesCSV(std::ostream& output, ProfilePassSummaries& summaries) const
 {
     output
         << "run_id,graph_record,frame_index,phase,graph,execution,transfer_only,node_id,node_order,pass,node_type,queue,queue_equivalence,submission_group,cpu_record_us,gpu_status,gpu_us\n";
 
     for (const State::Pass& pass : passes)
     {
-        const State::Graph& graph = graphs[pass.graph];
+        const State::Graph& graph      = graphs[pass.graph];
 
-        const char* phase = Phase(graph.frame);
+        const char* phase              = Phase(graph.frame);
 
         const rc::RDGNodeMetrics& node = pass.node;
 
@@ -584,13 +574,11 @@ void SceneRendererProfiling::State::WritePassesCSV(std::ostream& output,
 
         CSVString(output, graph.name.CStr());
 
-        output << ',' << graph.execution << ',' << graph.transfer << ',' << node.id << ','
-               << node.order << ',';
+        output << ',' << graph.execution << ',' << graph.transfer << ',' << node.id << ',' << node.order << ',';
 
         CSVString(output, node.name.CStr());
 
-        output << ',' << static_cast<uint32_t>(node.type) << ',' << QueueName(node.plannedQueue)
-               << ',';
+        output << ',' << static_cast<uint32_t>(node.type) << ',' << QueueName(node.plannedQueue) << ',';
 
         if (pass.queueEquivalence != UINT32_MAX)
         {
@@ -613,9 +601,8 @@ void SceneRendererProfiling::State::WritePassesCSV(std::ostream& output,
 
         output << ',' << RHIGPUTimingStatusName(node.gpuStatus) << ',';
 
-        ProfilePassSummary& summary =
-            summaries[{phase, graph.name.CStr(), node.name.CStr(),
-                       static_cast<uint32_t>(node.plannedQueue), pass.queueEquivalence}];
+        ProfilePassSummary& summary = summaries[{phase, graph.name.CStr(), node.name.CStr(),
+                                                 static_cast<uint32_t>(node.plannedQueue), pass.queueEquivalence}];
 
         if (node.gpuStatus == RHIGPUTimingStatus::eAvailable)
         {
@@ -637,11 +624,11 @@ void SceneRendererProfiling::State::WritePassesCSV(std::ostream& output,
     }
 }
 
-void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
-                                                     ProfileFrameSummary& frameSummary,
+void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream&         output,
+                                                     ProfileFrameSummary&  frameSummary,
                                                      ProfilePassSummaries& summaries,
-                                                     bool runSucceeded,
-                                                     bool unchanged) const
+                                                     bool                  runSucceeded,
+                                                     bool                  unchanged) const
 {
     output << "{\"schema_version\":4,\"run_id\":";
 
@@ -663,8 +650,7 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
     JSONString(output, gpu.deviceName.data());
 
     output << ",\"vendor_id\":" << gpu.vendorID << ",\"device_id\":" << gpu.deviceID
-           << ",\"api_version_raw\":" << gpu.apiVersion
-           << ",\"driver_version_raw\":" << gpu.driverVersionRaw << "}"
+           << ",\"api_version_raw\":" << gpu.apiVersion << ",\"driver_version_raw\":" << gpu.driverVersionRaw << "}"
            << ",\"build\":{\"compiler\":";
 #if defined(_MSC_VER)
     JSONString(output, "MSVC " + std::to_string(_MSC_VER));
@@ -679,8 +665,7 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
     output << ",\"ndebug\":false";
 #endif
     output
-        << "},\"requested_frames\":" << options.frames
-        << ",\"requested_warmup_frames\":" << options.warmup
+        << "},\"requested_frames\":" << options.frames << ",\"requested_warmup_frames\":" << options.warmup
         << ",\"gi_start_frame\":" << options.giStartFrame << ",\"fixed_step\":" << options.fixedStep
         << ",\"fixed_step_scope\":\"light and motion animation\""
         << ",\"phase_policy\":\"startup has no application frame; cold is the first rendered frame or explicit GI activation; warmup is excluded; measured is the requested measurement interval\""
@@ -691,10 +676,9 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
         << ",\"percentile_policy\":\"median averages the two central samples; p95 uses nearest rank\""
         << ",\"limits\":{\"frames\":" << MaxProfileFrames << ",\"graphs\":" << MaxProfileGraphs
         << ",\"passes\":" << MaxProfilePasses << ",\"pending_gpu_frames\":" << MaxPendingGPUFrames
-        << "},\"dropped\":{\"frames\":" << droppedFrames << ",\"graphs\":" << droppedGraphs
-        << ",\"passes\":" << droppedPasses << ",\"gpu_frames\":" << droppedGPUFrames
-        << "},\"frame_count\":" << frames.size() << ",\"pass_count\":" << passes.size()
-        << ",\"cpu_frame_ms\":{";
+        << "},\"dropped\":{\"frames\":" << droppedFrames << ",\"graphs\":" << droppedGraphs << ",\"passes\":" << droppedPasses
+        << ",\"gpu_frames\":" << droppedGPUFrames << "},\"frame_count\":" << frames.size()
+        << ",\"pass_count\":" << passes.size() << ",\"cpu_frame_ms\":{";
 
     bool separator = false;
 
@@ -768,16 +752,12 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
 
         JSONString(output, Phase(graph.frame));
 
-        output << ",\"transfer_only\":" << graph.transfer
-               << ",\"compile_cpu_us\":" << graph.compileUs
-               << ",\"execute_cpu_us\":" << graph.executeUs
-               << ",\"submission_cpu_us\":" << graph.submissionUs
+        output << ",\"transfer_only\":" << graph.transfer << ",\"compile_cpu_us\":" << graph.compileUs
+               << ",\"execute_cpu_us\":" << graph.executeUs << ",\"submission_cpu_us\":" << graph.submissionUs
                << ",\"assigned_transient_bytes\":" << graph.assignedBytes
                << ",\"available_transient_bytes\":" << graph.availableBytes
-               << ",\"retiring_transient_bytes\":" << graph.retiringBytes
-               << ",\"node_count\":" << graph.nodeCount
-               << ",\"omitted_nodes\":" << graph.omittedNodes
-               << ",\"omitted_submissions\":" << graph.omittedSubmissions << '}';
+               << ",\"retiring_transient_bytes\":" << graph.retiringBytes << ",\"node_count\":" << graph.nodeCount
+               << ",\"omitted_nodes\":" << graph.omittedNodes << ",\"omitted_submissions\":" << graph.omittedSubmissions << '}';
     }
 
     output << "],\"pass_statistics\":[";
@@ -788,7 +768,7 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
     {
         const ProfileSummaryKey& key = entry.first;
 
-        ProfilePassSummary& summary = entry.second;
+        ProfilePassSummary& summary  = entry.second;
 
         output << (separator ? "," : "") << "{\"phase\":";
 
@@ -833,52 +813,49 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream& output,
     output << "]}\n";
 }
 
-SceneRendererProfiling::SceneRendererProfiling(rc::RenderDevice& device,
-                                               const DemoProfilingOptions& options) :
+SceneRendererProfiling::SceneRendererProfiling(rc::RenderDevice& device, const DemoProfilingOptions& options) :
     m_state(MakeUnique<State>())
 {
-    State& state = *m_state;
+    State& state  = *m_state;
 
     state.options = options;
 
-    state.gpu = device.GetGPUInfo();
+    state.gpu     = device.GetGPUInfo();
 
-    state.queues = device.GetQueueCapabilities();
+    state.queues  = device.GetQueueCapabilities();
 
-    state.runID = std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(
-                                     std::chrono::system_clock::now().time_since_epoch())
-                                     .count());
+    state.runID   = std::to_string(
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
     state.inputIdentity = FingerprintInputs(options);
 
     std::ifstream config(ZEN_CONFIG_PATH, std::ios::binary);
 
-    state.configuration.assign(std::istreambuf_iterator<char>(config),
-                               std::istreambuf_iterator<char>());
+    state.configuration.assign(std::istreambuf_iterator<char>(config), std::istreambuf_iterator<char>());
 
-    rc::RDGMetrics& metrics = device.GetRDGMetrics();
+    rc::RDGMetrics& metrics        = device.GetRDGMetrics();
 
     rc::RDGMetricsOptions settings = metrics.GetOptions();
 
-    settings.logging.enabled = true;
+    settings.logging.enabled       = true;
 
-    settings.logging.sampleEvery = 1;
+    settings.logging.sampleEvery   = 1;
 
-    settings.logging.minInterval = std::chrono::milliseconds::zero();
+    settings.logging.minInterval   = std::chrono::milliseconds::zero();
 
-    settings.nodeTimings = true;
+    settings.nodeTimings           = true;
 
-    settings.preparationTimings = true;
+    settings.preparationTimings    = true;
 
-    settings.gpuTimings = true;
+    settings.gpuTimings            = true;
 
-    settings.includeTransferNodes = true;
+    settings.includeTransferNodes  = true;
 
-    settings.maxNodeDetails = 4096;
+    settings.maxNodeDetails        = 4096;
 
-    settings.maxSubmissionDetails = 4096;
+    settings.maxSubmissionDetails  = 4096;
 
-    settings.maxDependencyDetails = 4096;
+    settings.maxDependencyDetails  = 4096;
 
     settings.maxPendingGPUCaptures = 32;
 
@@ -888,8 +865,7 @@ SceneRendererProfiling::SceneRendererProfiling(rc::RenderDevice& device,
 
     metrics.SetSink({});
 
-    metrics.SetGPUSink(
-        [this](const rc::RDGMetricsSnapshot& snapshot) { m_state->Capture(snapshot); });
+    metrics.SetGPUSink([this](const rc::RDGMetricsSnapshot& snapshot) { m_state->Capture(snapshot); });
 }
 
 SceneRendererProfiling::~SceneRendererProfiling() = default;
@@ -909,13 +885,13 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         state.CollectGPUFrames();
 
-        state.current = {};
+        state.current                                   = {};
 
-        const RHIThreadMetrics metrics = device.GetRHIThreadMetrics();
+        const RHIThreadMetrics metrics                  = device.GetRHIThreadMetrics();
 
-        state.current.rhiStartUs = metrics.executionCPUUs;
+        state.current.rhiStartUs                        = metrics.executionCPUUs;
 
-        state.current.counterStart = metrics.native;
+        state.current.counterStart                      = metrics.native;
 
         const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
@@ -924,20 +900,19 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
             state.frameOrigin = now;
         }
 
-        state.current.startUs =
-            std::chrono::duration<double, std::micro>(now - state.frameOrigin).count();
+        state.current.startUs = std::chrono::duration<double, std::micro>(now - state.frameOrigin).count();
 
-        state.current.index = rc::ToValue(GRenderFrameState.GetFrameNumber());
+        state.current.index   = rc::ToValue(GRenderFrameState.GetFrameNumber());
 
-        state.current.local = localFrame;
+        state.current.local   = localFrame;
 
-        state.current.phase = warmup ? "warmup" : "measured";
+        state.current.phase   = warmup ? "warmup" : "measured";
 
         if (!warmup && state.options.giStartFrame != 0)
         {
-            state.current.phase = localFrame < state.options.giStartFrame ? "warmup" :
-                localFrame == state.options.giStartFrame                  ? "cold" :
-                                                                            "measured";
+            state.current.phase = localFrame < state.options.giStartFrame  ? "warmup"
+                                : localFrame == state.options.giStartFrame ? "cold"
+                                                                           : "measured";
         }
         else if (state.frames.empty() && state.droppedFrames == 0)
         {
@@ -948,71 +923,61 @@ void SceneRendererProfiling::BeginFrame(rc::RenderDevice& device, uint32_t local
 
         state.current.gpuTiming = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
-        state.frameOpen = true;
+        state.frameOpen         = true;
 
         GDynamicRHI->BeginGPUFrameTiming(state.current.gpuTiming);
     }
 }
 
-void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device,
-                                         RHIViewport& viewport,
-                                         double cpuUs,
-                                         bool succeeded)
+void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device, RHIViewport& viewport, double cpuUs, bool succeeded)
 {
     if (m_state->active && m_state->frameOpen)
     {
-        State& state = *m_state;
+        State& state               = *m_state;
 
         rc::RendererServer& server = *device.GetRendererServer();
 
-        State::Frame& frame = state.current;
+        State::Frame& frame        = state.current;
 
-        frame.cpuUs = cpuUs;
+        frame.cpuUs                = cpuUs;
 
-        frame.endUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() -
-                                                                state.frameOrigin)
-                          .count();
+        frame.endUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - state.frameOrigin).count();
 
-        const RHIThreadMetrics metrics = device.GetRHIThreadMetrics();
+        const RHIThreadMetrics metrics       = device.GetRHIThreadMetrics();
 
-        frame.rhiCPUUs = metrics.executionCPUUs - frame.rhiStartUs;
+        frame.rhiCPUUs                       = metrics.executionCPUUs - frame.rhiStartUs;
 
-        frame.counters.draws = metrics.native.draws - frame.counterStart.draws;
+        frame.counters.draws                 = metrics.native.draws - frame.counterStart.draws;
 
-        frame.counters.dispatches = metrics.native.dispatches - frame.counterStart.dispatches;
+        frame.counters.dispatches            = metrics.native.dispatches - frame.counterStart.dispatches;
 
-        frame.counters.submissions = metrics.native.submissions - frame.counterStart.submissions;
+        frame.counters.submissions           = metrics.native.submissions - frame.counterStart.submissions;
 
-        frame.counters.descriptorHits =
-            metrics.native.descriptorHits - frame.counterStart.descriptorHits;
+        frame.counters.descriptorHits        = metrics.native.descriptorHits - frame.counterStart.descriptorHits;
 
-        frame.counters.descriptorMisses =
-            metrics.native.descriptorMisses - frame.counterStart.descriptorMisses;
+        frame.counters.descriptorMisses      = metrics.native.descriptorMisses - frame.counterStart.descriptorMisses;
 
-        frame.counters.descriptorInserts =
-            metrics.native.descriptorInserts - frame.counterStart.descriptorInserts;
+        frame.counters.descriptorInserts     = metrics.native.descriptorInserts - frame.counterStart.descriptorInserts;
 
-        frame.counters.descriptorRetirements =
-            metrics.native.descriptorRetirements - frame.counterStart.descriptorRetirements;
+        frame.counters.descriptorRetirements = metrics.native.descriptorRetirements - frame.counterStart.descriptorRetirements;
 
-        frame.counters.bindlessCaptures =
-            metrics.native.bindlessCaptures - frame.counterStart.bindlessCaptures;
+        frame.counters.bindlessCaptures      = metrics.native.bindlessCaptures - frame.counterStart.bindlessCaptures;
 
-        frame.succeeded = succeeded && !device.AreSubmissionsBlocked();
+        frame.succeeded                      = succeeded && !device.AreSubmissionsBlocked();
 
         GDynamicRHI->EndGPUFrameTiming(frame.gpuTiming, frame.succeeded);
 
-        state.frameOpen = false;
+        state.frameOpen     = false;
 
-        frame.width = viewport.GetWidth();
+        frame.width         = viewport.GetWidth();
 
-        frame.height = viewport.GetHeight();
+        frame.height        = viewport.GetHeight();
 
         frame.requestedMode = static_cast<uint32_t>(server.GetRequestedRenderOption()) + 1;
 
-        frame.resolvedMode = static_cast<uint32_t>(server.GetRenderOption()) + 1;
+        frame.resolvedMode  = static_cast<uint32_t>(server.GetRenderOption()) + 1;
 
-        frame.method = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone" : "none";
+        frame.method        = server.GetRenderOption() == rc::RenderOption::eVoxelGI ? "cone" : "none";
 
         state.RetainCurrentFrame();
 
@@ -1020,9 +985,7 @@ void SceneRendererProfiling::RecordFrame(rc::RenderDevice& device,
     }
 }
 
-void SceneRendererProfiling::Stop(rc::RenderDevice& device,
-                                  const rc::RenderScene* scene,
-                                  RHIViewport& viewport)
+void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScene* scene, RHIViewport& viewport)
 {
     if (m_state->active)
     {
@@ -1033,34 +996,32 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device,
             RecordFrame(device, viewport, 0, false);
         }
 
-        state.active = false;
+        state.active                  = false;
 
         rc::RDGMetricsOptions metrics = device.GetRDGMetrics().GetOptions();
 
-        metrics.logging.enabled = false;
+        metrics.logging.enabled       = false;
 
-        metrics.gpuTimings = false;
+        metrics.gpuTimings            = false;
 
         device.GetRDGMetrics().Configure(metrics);
 
         const platform::ConfigLoader& config = platform::ConfigLoader::GetInstance();
 
-        const rc::RendererServer& server = *device.GetRendererServer();
+        const rc::RendererServer& server     = *device.GetRendererServer();
 
-        const rc::VoxelizerBase& voxels = *server.RequestVoxelizer();
+        const rc::VoxelizerBase& voxels      = *server.RequestVoxelizer();
 
-        const rc::VoxelGISettings& cone = server.RequestVoxelGI()->GetSettings();
+        const rc::VoxelGISettings& cone      = server.RequestVoxelGI()->GetSettings();
 
         std::ostringstream output;
 
         ConfigureStream(output);
 
-        output << "{\"viewport_width\":" << viewport.GetWidth()
-               << ",\"viewport_height\":" << viewport.GetHeight()
+        output << "{\"viewport_width\":" << viewport.GetWidth() << ",\"viewport_height\":" << viewport.GetHeight()
                << ",\"gbuffer_size\":" << rc::RenderConfig::GetInstance().offScreenFbSize
                << ",\"frames_in_flight\":" << rc::RenderConfig::GetInstance().numFrames
-               << ",\"rhi_threaded\":" << GetRHIThread().IsThreaded()
-               << ",\"async_compute_status\":";
+               << ",\"rhi_threaded\":" << GetRHIThread().IsThreaded() << ",\"async_compute_status\":";
 
         JSONString(output, rc::GetAsyncComputeStatusReason(device.GetAsyncComputeStatus()));
 
@@ -1069,40 +1030,31 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device,
             << ",\"vsync_note\":\"VSync chooses the existing platform present-mode policy; compositor behavior is not measured\""
             << ",\"validation_enabled\":" << RHIOptions::GetInstance().ValidationEnabled()
             << ",\"ray_tracing_enabled\":" << RHIOptions::GetInstance().RayTracingEnabled()
-            << ",\"gpu_markers\":" << RHIOptions::GetInstance().GPUProfilerMarkers()
-            << ",\"voxelizer\":";
+            << ",\"gpu_markers\":" << RHIOptions::GetInstance().GPUProfilerMarkers() << ",\"voxelizer\":";
 
-        JSONString(output,
-                   rc::ResolveVoxelizerMode(config.GetVoxelizerMode(), device.GetGPUInfo()) ==
-                           platform::VoxelizerMode::eGeometry ?
-                       "geom" :
-                       "comp");
+        JSONString(output, rc::ResolveVoxelizerMode(config.GetVoxelizerMode(), device.GetGPUInfo())
+                                   == platform::VoxelizerMode::eGeometry
+                               ? "geom"
+                               : "comp");
 
-        output << ",\"voxel_resolution\":" << voxels.GetVoxelTexResolution()
-               << ",\"reflectance_policy\":";
+        output << ",\"voxel_resolution\":" << voxels.GetVoxelTexResolution() << ",\"reflectance_policy\":";
 
         JSONString(output, voxels.UsesAveragedReflectance() ? "averaged" : "owner");
 
         output << ",\"gi_method\":\"cone\""
-               << ",\"analytic_lighting\":" << cone.analyticLighting
-               << ",\"environment_lighting\":" << cone.environmentLighting
-               << ",\"emissive_lighting\":" << cone.emissiveLighting
-               << ",\"indirect_intensity\":" << cone.indirectIntensity
+               << ",\"analytic_lighting\":" << cone.analyticLighting << ",\"environment_lighting\":" << cone.environmentLighting
+               << ",\"emissive_lighting\":" << cone.emissiveLighting << ",\"indirect_intensity\":" << cone.indirectIntensity
                << ",\"shadows\":" << cone.shadows << ",\"cone_count\":" << cone.coneCount
-               << ",\"cone_max_steps\":" << cone.maxSteps
-               << ",\"cone_angle_degrees\":" << cone.coneAngleDegrees
-               << ",\"cone_step_scale\":" << cone.stepScale
-               << ",\"cone_normal_bias_voxels\":" << cone.normalBiasVoxels
+               << ",\"cone_max_steps\":" << cone.maxSteps << ",\"cone_angle_degrees\":" << cone.coneAngleDegrees
+               << ",\"cone_step_scale\":" << cone.stepScale << ",\"cone_normal_bias_voxels\":" << cone.normalBiasVoxels
                << ",\"cone_max_distance_grid_lengths\":" << cone.maxDistanceGridLengths;
 
         if (scene != nullptr)
         {
-            const rc::SceneUniformData& data =
-                *reinterpret_cast<const rc::SceneUniformData*>(scene->GetSceneUniformData());
+            const rc::SceneUniformData& data = *reinterpret_cast<const rc::SceneUniformData*>(scene->GetSceneUniformData());
 
             output << ",\"scene_geometry_revision\":" << scene->GetGeometryRevision()
-                   << ",\"scene_surface_revision\":" << scene->GetSurfaceRevision()
-                   << ",\"final_camera_position\":";
+                   << ",\"scene_surface_revision\":" << scene->GetSurfaceRevision() << ",\"final_camera_position\":";
 
             WriteVec4(output, Vec4(data.viewPos));
 
@@ -1173,8 +1125,7 @@ bool SceneRendererProfiling::Export(rc::RDGMetrics& metrics, bool runSucceeded)
 
     ConfigureStream(passes);
 
-    config.write(state.configuration.data(),
-                 static_cast<std::streamsize>(state.configuration.size()));
+    config.write(state.configuration.data(), static_cast<std::streamsize>(state.configuration.size()));
 
     ProfileFrameSummary frameSummary;
 
@@ -1204,19 +1155,17 @@ bool SceneRendererProfiling::Export(rc::RDGMetrics& metrics, bool runSucceeded)
 
     if (state.droppedFrames || state.droppedGraphs || state.droppedPasses || state.droppedGPUFrames)
     {
-        LOGW("Profile capture limit reached: omitted frames={} graphs={} passes={} gpu_frames={}",
-             state.droppedFrames, state.droppedGraphs, state.droppedPasses, state.droppedGPUFrames);
+        LOGW("Profile capture limit reached: omitted frames={} graphs={} passes={} gpu_frames={}", state.droppedFrames,
+             state.droppedGraphs, state.droppedPasses, state.droppedGPUFrames);
     }
 
     if (!valid)
     {
-        LOGE("Profile export failed or input files changed during capture: {}",
-             state.options.prefix);
+        LOGE("Profile export failed or input files changed during capture: {}", state.options.prefix);
     }
     else
     {
-        LOGI("Profile exported: {} ({} frames, {} passes)", state.options.prefix,
-             state.frames.size(), state.passes.size());
+        LOGI("Profile exported: {} ({} frames, {} passes)", state.options.prefix, state.frames.size(), state.passes.size());
     }
 
     return valid;

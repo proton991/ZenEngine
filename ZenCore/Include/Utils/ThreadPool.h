@@ -59,9 +59,8 @@ public:
                 m_flags.resize(nThreads);
                 for (uint32_t i = oldSize; i < nThreads; ++i)
                 {
-                    m_flags[i] = StopFlag(new std::atomic<bool>(false));
-                    m_threads[i] =
-                        MakeUnique<std::thread>(&ThreadPool::RunThread, this, i, m_flags[i]);
+                    m_flags[i]   = StopFlag(new std::atomic<bool>(false));
+                    m_threads[i] = MakeUnique<std::thread>(&ThreadPool::RunThread, this, i, m_flags[i]);
                 }
             }
             else
@@ -91,7 +90,7 @@ public:
 
     TaskFunction Pop()
     {
-        TaskFunction result;
+        TaskFunction                       result;
         const std::optional<TaskFunction*> popped = m_q.TryPop();
         if (popped.has_value())
         {
@@ -137,13 +136,11 @@ public:
         }
     }
 
-    template <class F, class... Args>
-    std::future<std::invoke_result_t<F, Args...>> Push(F&& f, Args&&... args)
+    template <class F, class... Args> std::future<std::invoke_result_t<F, Args...>> Push(F&& f, Args&&... args)
     {
         using ReturnType = std::invoke_result_t<F, Args...>;
         SharedPtr<std::packaged_task<ReturnType()>, MultiThreadCounter> task(
-            new std::packaged_task<ReturnType()>(
-                std::bind(std::forward<F>(f), std::forward<Args>(args)...)));
+            new std::packaged_task<ReturnType()>(std::bind(std::forward<F>(f), std::forward<Args>(args)...)));
         std::future<ReturnType> result = task->get_future();
         Enqueue(new TaskFunction([task](FuncArgs...) { (*task)(); }));
         return result;
@@ -165,7 +162,7 @@ private:
     void Enqueue(TaskFunction* task)
     {
         UniquePtr<TaskFunction> pending(task);
-        LockAuto lock(&m_mutex);
+        LockAuto                lock(&m_mutex);
         if (m_stop || m_finished)
         {
             throw std::runtime_error("Cannot enqueue work after the thread pool has stopped");
@@ -197,28 +194,27 @@ private:
             {
                 LockAuto lock(&m_mutex);
                 ++m_nWaiting;
-                m_conVar.Wait(&m_mutex, [this, &nextTask, &flag] {
-                    return flag->load() || TryTakeTask(nextTask) || m_finished.load();
-                });
+                m_conVar.Wait(&m_mutex,
+                              [this, &nextTask, &flag] { return flag->load() || TryTakeTask(nextTask) || m_finished.load(); });
                 --m_nWaiting;
             }
             if (nextTask != nullptr)
             {
                 UniquePtr<TaskFunction> task(nextTask);
-                (*task)(index);
+                                        (*task)(index);
             }
             running = nextTask != nullptr && !flag->load();
         }
     }
 
     HeapVector<UniquePtr<std::thread>> m_threads;
-    ThreadSafeQueue<TaskFunction*> m_q;
-    HeapVector<StopFlag> m_flags;
-    std::atomic<bool> m_finished{false};
-    std::atomic<bool> m_stop{false};
-    std::atomic<uint32_t> m_nWaiting{0};
-    Mutex m_mutex;
-    ConditionVariable m_conVar;
+    ThreadSafeQueue<TaskFunction*>     m_q;
+    HeapVector<StopFlag>               m_flags;
+    std::atomic<bool>                  m_finished{false};
+    std::atomic<bool>                  m_stop{false};
+    std::atomic<uint32_t>              m_nWaiting{0};
+    Mutex                              m_mutex;
+    ConditionVariable                  m_conVar;
 };
 
 //class ThreadPool

@@ -29,26 +29,24 @@ public:
     {
         if (m_pElapsed != nullptr)
         {
-            *m_pElapsed += std::chrono::duration<double, std::micro>(
-                               std::chrono::steady_clock::now() - m_start)
-                               .count();
-            m_pElapsed = nullptr;
+            *m_pElapsed += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - m_start).count();
+            m_pElapsed   = nullptr;
         }
     }
 
-    ScopedMetricsTimer(const ScopedMetricsTimer&) = delete;
+    ScopedMetricsTimer(const ScopedMetricsTimer&)            = delete;
 
     ScopedMetricsTimer& operator=(const ScopedMetricsTimer&) = delete;
 
 private:
-    double* m_pElapsed;
+    double*                               m_pElapsed;
     std::chrono::steady_clock::time_point m_start{};
 };
 
 struct MetricsLogOptions
 {
-    bool enabled{true};
-    uint32_t sampleEvery{120};
+    bool                      enabled{true};
+    uint32_t                  sampleEvery{120};
     std::chrono::milliseconds minInterval{5000};
 };
 
@@ -135,7 +133,7 @@ private:
     {
         bool result{};
 
-        if (!(!m_requested && m_hasSample && now - m_lastSample < m_options.minInterval))
+        if (((m_requested) || (!m_hasSample)) || (!(now - m_lastSample < m_options.minInterval)))
         {
             m_lastSample = now;
             m_hasSample  = true;
@@ -148,10 +146,10 @@ private:
     }
 
     MetricsLogOptions m_options;
-    Sink m_sink;
+    Sink              m_sink;
     Clock::time_point m_lastSample{};
-    uint32_t m_remaining{0};
-    bool m_hasSample{false};
-    bool m_requested{false};
+    uint32_t          m_remaining{0};
+    bool              m_hasSample{false};
+    bool              m_requested{false};
 };
 } // namespace zen

@@ -1,36 +1,31 @@
 // Included after the shared RenderCore and RHI executor fixtures.
 namespace
 {
-class AsyncComputeLifetimeTest :
-    public RenderCoreTest,
-    public testing::WithParamInterface<RHIExecutionMode>
+class AsyncComputeLifetimeTest : public RenderCoreTest, public testing::WithParamInterface<RHIExecutionMode>
 {
 protected:
     void SetUp() override
     {
-        InitializeDevice(nullptr, 2, GetParam(), AsyncComputeMode::eDisabled,
-                         {false, true, {0, 1, 2}});
+        InitializeDevice(nullptr, 2, GetParam(), AsyncComputeMode::eDisabled, {false, true, {0, 1, 2}});
     }
 
     void CompleteGraphicsAndTransfer()
     {
-        ASSERT_TRUE(GDynamicRHI->WaitForCompletion(
-            RHICommandContextType::eGraphics,
-            GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics)));
-        ASSERT_TRUE(GDynamicRHI->WaitForCompletion(
-            RHICommandContextType::eTransfer,
-            GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer)));
+        ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eGraphics,
+                                                   GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eGraphics)));
+        ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eTransfer,
+                                                   GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer)));
         device->FlushRHIThread();
         device->CollectCompletedResources();
     }
 
     RHIBatchResult SubmitCompute(RHIResource* resource)
     {
-        RHICommandListPtr commands(RHICommandList::Create(
-            GDynamicRHI->GetCommandContext(RHICommandContextType::eAsyncCompute)));
+        RHICommandListPtr commands(
+            RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eAsyncCompute)));
         commands->RetainResource(resource);
         RHICommandListExecutor* executor = static_cast<RHICommandListExecutor*>(GDynamicRHI);
-        const RHIBatchResult result      = executor->SubmitFrame(*commands, nullptr).Wait();
+        const RHIBatchResult    result   = executor->SubmitFrame(*commands, nullptr).Wait();
         device->FlushRHIThread();
         EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
         EXPECT_GT(result.requiredSerials.Get(RHICommandContextType::eAsyncCompute), 0u);
@@ -65,8 +60,8 @@ TEST_P(AsyncComputeLifetimeTest, CachedProgressReadsNeverPollAndQueriesKeepTheir
     EXPECT_EQ(device->GetCachedCompletedSerials().Get(RHICommandContextType::eGraphics), 0u);
     EXPECT_EQ(rhi->progressQueries, queries);
 
-    const RHICompletionSet queried = executor->QueryCompletedSerials();
-    const bool inlineMode          = GetParam() == RHIExecutionMode::eInline;
+    const RHICompletionSet queried    = executor->QueryCompletedSerials();
+    const bool             inlineMode = GetParam() == RHIExecutionMode::eInline;
     EXPECT_EQ(queried.Get(RHICommandContextType::eGraphics), inlineMode ? 2u : 0u);
     EXPECT_EQ(rhi->progressQueries, queries + (inlineMode ? RHICompletionSet::kQueueCount : 0u));
 
@@ -82,7 +77,7 @@ TEST_P(AsyncComputeLifetimeTest, CachedProgressReadsNeverPollAndQueriesKeepTheir
 
 TEST_P(AsyncComputeLifetimeTest, ComputeWithoutGraphicsConsumerProtectsPoolAndRetiredBytes)
 {
-    RenderGraph graph("compute_pool_lifetime");
+    RenderGraph         graph("compute_pool_lifetime");
     RDGResourceManager* resources = graph.GetResourceManager();
     ASSERT_TRUE(graph.Begin());
     const RDGTexture texture = resources->CreateTexture(LogicalTexture());
@@ -105,9 +100,8 @@ TEST_P(AsyncComputeLifetimeTest, ComputeWithoutGraphicsConsumerProtectsPoolAndRe
     CompleteGraphicsAndTransfer();
     EXPECT_FALSE(destroyed.contains(id));
     EXPECT_GT(resources->GetPoolStats().retiringBytes, 0u);
-    ASSERT_TRUE(GDynamicRHI->WaitForCompletion(
-        RHICommandContextType::eAsyncCompute,
-        compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
+    ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eAsyncCompute,
+                                               compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
     GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(id));
@@ -116,8 +110,8 @@ TEST_P(AsyncComputeLifetimeTest, ComputeWithoutGraphicsConsumerProtectsPoolAndRe
 
 TEST_P(AsyncComputeLifetimeTest, FailedComputeWaitPreventsFrameSlotReuseAndOwnerRelease)
 {
-    RHIBuffer* buffer = Buffer();
-    const uint64_t id = buffer->GetStableId();
+    RHIBuffer*     buffer = Buffer();
+    const uint64_t id     = buffer->GetStableId();
     SubmitCompute(buffer);
     device->DestroyBuffer(buffer);
     CompleteGraphicsAndTransfer();
@@ -145,7 +139,7 @@ TEST_P(AsyncComputeLifetimeTest, FailedComputeWaitPreventsFrameSlotReuseAndOwner
 TEST_P(AsyncComputeLifetimeTest, StagingHonorsComputeUsersWithoutWaitingForUnrelatedWork)
 {
     StagingBufferManager staging(16, 16);
-    StagingAllocation allocation, reused;
+    StagingAllocation    allocation, reused;
     ASSERT_EQ(staging.Allocate(16, 4, &allocation), StagingFlushAction::eNone);
     const RHIBatchResult compute = SubmitCompute(allocation.pBuffer);
     staging.Release(allocation, compute.requiredSerials);
@@ -157,10 +151,10 @@ TEST_P(AsyncComputeLifetimeTest, StagingHonorsComputeUsersWithoutWaitingForUnrel
     staging.Release(reused, {});
     staging.Destroy();
 
-    StagingBufferManager uploadStaging(64, 64);
-    StagingUploadQueue uploads(device, &uploadStaging);
-    RHIBuffer* destination         = Buffer();
-    const RHIBatchResult unrelated = SubmitCompute(nullptr);
+    StagingBufferManager           uploadStaging(64, 64);
+    StagingUploadQueue             uploads(device, &uploadStaging);
+    RHIBuffer*                     destination = Buffer();
+    const RHIBatchResult           unrelated   = SubmitCompute(nullptr);
     const SmallVector<uint8_t, 64> bytes(64);
     uploads.EnqueueBuffer(destination, 0, bytes.size(), bytes.data());
     ASSERT_TRUE(uploads.Flush());
@@ -177,8 +171,8 @@ TEST_P(AsyncComputeLifetimeTest, StagingHonorsComputeUsersWithoutWaitingForUnrel
 
 TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDescriptorAndOwnership)
 {
-    TestBuffer* source = Buffer(128);
-    RenderGraph graph("service_materialization");
+    TestBuffer*         source = Buffer(128);
+    RenderGraph         graph("service_materialization");
     RDGResourceManager* resources = graph.GetResourceManager();
     ASSERT_TRUE(graph.Begin());
     RDGBufferDesc bufferDesc = LogicalBuffer();
@@ -191,16 +185,15 @@ TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDesc
     textureDesc.texFormat.width         = 16;
     textureDesc.texFormat.depth         = 4;
     textureDesc.texFormat.mutableFormat = true;
-    const RDGBuffer buffer              = resources->CreateBuffer(bufferDesc);
+    const RDGBuffer  buffer             = resources->CreateBuffer(bufferDesc);
     const RDGTexture texture            = resources->CreateTexture(textureDesc);
-    graph.AddTransferPass("copy").CopyBuffer(resources->ImportHostWrittenBuffer(source), buffer,
-                                             {0, 0, 128});
+    graph.AddTransferPass("copy").CopyBuffer(resources->ImportHostWrittenBuffer(source), buffer, {0, 0, 128});
     graph.AddTransferPass("clear").ClearTexture(texture, Color(0.f));
-    RDGExtractedBuffer outputBuffer   = resources->QueueBufferExtraction(buffer);
+    RDGExtractedBuffer  outputBuffer  = resources->QueueBufferExtraction(buffer);
     RDGExtractedTexture outputTexture = resources->QueueTextureExtraction(texture);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
-    bool prepared = false;
+    bool        prepared = false;
     {
         struct RestoreRHI
         {
@@ -239,8 +232,7 @@ TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDesc
     BitField<RHITextureUsageFlagBits> textureUsage = textureDesc.usageFlags;
     textureUsage.SetFlag(RHITextureUsageFlagBits::eTransferDst);
     EXPECT_EQ(info.usageFlags, textureUsage);
-    EXPECT_EQ(rhi->lastBufferCreationThread == std::this_thread::get_id(),
-              GetParam() == RHIExecutionMode::eInline);
+    EXPECT_EQ(rhi->lastBufferCreationThread == std::this_thread::get_id(), GetParam() == RHIExecutionMode::eInline);
     EXPECT_EQ(rhi->lastTextureCreationThread, rhi->lastBufferCreationThread);
     const uint64_t bufferId  = outputBuffer.Get()->GetStableId();
     const uint64_t textureId = outputTexture.Get()->GetStableId();
@@ -254,9 +246,8 @@ TEST_P(AsyncComputeLifetimeTest, ColdAllocationUsesDeviceServiceAndPreservesDesc
     CompleteGraphicsAndTransfer();
     EXPECT_FALSE(destroyed.contains(bufferId));
     EXPECT_FALSE(destroyed.contains(textureId));
-    ASSERT_TRUE(GDynamicRHI->WaitForCompletion(
-        RHICommandContextType::eAsyncCompute,
-        compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
+    ASSERT_TRUE(GDynamicRHI->WaitForCompletion(RHICommandContextType::eAsyncCompute,
+                                               compute.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     device->CollectCompletedResources();
     GetRHIThread().Flush();
     EXPECT_TRUE(destroyed.contains(bufferId));
@@ -270,17 +261,17 @@ TEST_P(AsyncComputeLifetimeTest, AllocationFailureRollsBackWithoutPublishingStat
     TestBuffer* source = Buffer();
     for (bool failBuffer : {false, true})
     {
-        RenderGraph graph("allocation_failure");
+        RenderGraph         graph("allocation_failure");
         RDGResourceManager* resources = graph.GetResourceManager();
         ASSERT_TRUE(graph.Begin());
         const RDGBuffer first = resources->CreateBuffer(LogicalBuffer());
         const RDGBuffer input = resources->ImportHostWrittenBuffer(source);
         graph.AddTransferPass("first").CopyBuffer(input, first, {0, 0, 64});
         RDGExtractedBuffer firstOutput = resources->QueueBufferExtraction(first);
-        const RDGBuffer second         = resources->CreateBuffer(LogicalBuffer());
+        const RDGBuffer    second      = resources->CreateBuffer(LogicalBuffer());
         graph.AddTransferPass("second").CopyBuffer(input, second, {0, 0, 64});
         RDGExtractedBuffer secondOutput = resources->QueueBufferExtraction(second);
-        const RDGTexture texture        = resources->CreateTexture(LogicalTexture());
+        const RDGTexture   texture      = resources->CreateTexture(LogicalTexture());
         graph.AddTransferPass("texture").ClearTexture(texture, Color(0.f));
         RDGExtractedTexture textureOutput = resources->QueueTextureExtraction(texture);
         ASSERT_TRUE(graph.End());
@@ -290,8 +281,7 @@ TEST_P(AsyncComputeLifetimeTest, AllocationFailureRollsBackWithoutPublishingStat
         EXPECT_FALSE(device->ExecuteRenderGraph(graph));
         EXPECT_EQ(graph.GetResult().code, RDGErrorCode::eAllocation);
         const RHICompletionSet after = device->GetSubmittedSerials();
-        EXPECT_TRUE(std::equal(after.serials.begin(), after.serials.end(), before.serials.begin(),
-                               before.serials.end()));
+        EXPECT_TRUE(std::equal(after.serials.begin(), after.serials.end(), before.serials.begin(), before.serials.end()));
         EXPECT_FALSE(firstOutput);
         EXPECT_FALSE(secondOutput);
         EXPECT_FALSE(textureOutput);
@@ -308,10 +298,9 @@ TEST_P(AsyncComputeLifetimeTest, AllocationFailureRollsBackWithoutPublishingStat
 
 TEST_P(AsyncComputeLifetimeTest, PooledPreparationAndRecordingOnlyReadPublishedProgress)
 {
-    RDGExecutor recorder(device);
-    RHICommandListPtr commands(
-        RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
-    RenderGraph graph("snapshot_only_recording");
+    RDGExecutor         recorder(device);
+    RHICommandListPtr   commands(RHICommandList::Create(GDynamicRHI->GetCommandContext(RHICommandContextType::eGraphics)));
+    RenderGraph         graph("snapshot_only_recording");
     RDGResourceManager* resources = graph.GetResourceManager();
     ASSERT_TRUE(graph.Begin());
     const RDGTexture initial = resources->CreateTexture(LogicalTexture());
@@ -345,15 +334,14 @@ class SingleFrameComputeLifetimeTest : public AsyncComputeLifetimeTest
 protected:
     void SetUp() override
     {
-        InitializeDevice(nullptr, 1, GetParam(), AsyncComputeMode::eDisabled,
-                         {false, true, {0, 1, 2}});
+        InitializeDevice(nullptr, 1, GetParam(), AsyncComputeMode::eDisabled, {false, true, {0, 1, 2}});
     }
 };
 
 TEST_P(SingleFrameComputeLifetimeTest, ComputeCompletionIsRequiredBeforeReusingTheOnlySlot)
 {
-    RHIBuffer* buffer = Buffer();
-    const uint64_t id = buffer->GetStableId();
+    RHIBuffer*     buffer = Buffer();
+    const uint64_t id     = buffer->GetStableId();
     SubmitCompute(buffer);
     device->DestroyBuffer(buffer);
     CompleteGraphicsAndTransfer();
@@ -378,11 +366,10 @@ INSTANTIATE_TEST_SUITE_P(ExecutionModes,
 TEST_F(RHIExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement)
 {
     RHIBufferCreateInfo info;
-    info.size         = 64;
-    RHIBuffer* buffer = executor->CreateBuffer(info);
-    const uint64_t id = buffer->GetStableId();
-    RHICommandListPtr commands(
-        RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eAsyncCompute)));
+    info.size                = 64;
+    RHIBuffer*        buffer = executor->CreateBuffer(info);
+    const uint64_t    id     = buffer->GetStableId();
+    RHICommandListPtr commands(RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eAsyncCompute)));
     commands->RetainResource(buffer);
     uint32_t destructions = 0;
     RecordArenaData(*commands, 37, destructions);
@@ -403,9 +390,8 @@ TEST_F(RHIExecutorTest, PendingComputeTicketBecomesAComputeCompletionRequirement
     EXPECT_FALSE(retirement.IsCompleteAt(RHICompletionSet{{1000, 0, 1000}}));
     EXPECT_EQ(destructions, 0u);
     EXPECT_FALSE(destroyed.contains(id));
-    ASSERT_TRUE(executor->WaitForCompletion(
-        RHICommandContextType::eAsyncCompute,
-        result.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
+    ASSERT_TRUE(executor->WaitForCompletion(RHICommandContextType::eAsyncCompute,
+                                            result.requiredSerials.Get(RHICommandContextType::eAsyncCompute)));
     EXPECT_TRUE(retirement.IsCompleteAt(executor->QueryCompletedSerials()));
     EXPECT_EQ(destructions, 3u);
     GetRHIThread().Flush();

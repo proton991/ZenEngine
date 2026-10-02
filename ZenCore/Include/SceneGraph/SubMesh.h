@@ -23,10 +23,7 @@ public:
     SubMesh(std::string name) : Component(std::move(name)) {}
 
     SubMesh(std::string name, uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount) :
-        Component(std::move(name)),
-        m_firstIndex(firstIndex),
-        m_indexCount(indexCount),
-        m_vertexCount(vertexCount)
+        Component(std::move(name)), m_firstIndex(firstIndex), m_indexCount(indexCount), m_vertexCount(vertexCount)
     {
         if (m_indexCount != 0)
         {
@@ -59,11 +56,13 @@ public:
     {
         m_firstIndex = firstIndex;
     }
+
     void SetIndexCount(uint32_t indexCount)
     {
         m_indexCount = indexCount;
         m_hasIndices = indexCount != 0;
     }
+
     void SetVertexCount(uint32_t vertexCount)
     {
         m_vertexCount = vertexCount;
@@ -78,10 +77,12 @@ public:
     {
         return m_indexCount;
     }
+
     uint32_t GetFirstIndex() const
     {
         return m_firstIndex;
     }
+
     Material* GetMaterial() const
     {
         return m_pMaterial;
@@ -125,7 +126,7 @@ private:
 
     AABB m_aabb;
 
-    uint32_t m_materialIndex{0};
+    uint32_t  m_materialIndex{0};
     Material* m_pMaterial{nullptr};
     Material* m_pDefaultMaterial{nullptr};
 
@@ -134,10 +135,10 @@ private:
 
 inline bool operator==(const SubMesh& lhs, const SubMesh& rhs)
 {
-    return lhs.GetAABB() == rhs.GetAABB() && lhs.GetFirstIndex() == rhs.GetFirstIndex() &&
-        lhs.GetIndexCount() == rhs.GetIndexCount() &&
-        lhs.GetVertexCount() == rhs.GetVertexCount() && lhs.GetMaterial() == rhs.GetMaterial() &&
-        lhs.GetMaterialIndex() == rhs.GetMaterialIndex() && lhs.HasIndices() == rhs.HasIndices();
+    return lhs.GetAABB() == rhs.GetAABB() && lhs.GetFirstIndex() == rhs.GetFirstIndex()
+        && lhs.GetIndexCount() == rhs.GetIndexCount() && lhs.GetVertexCount() == rhs.GetVertexCount()
+        && lhs.GetMaterial() == rhs.GetMaterial() && lhs.GetMaterialIndex() == rhs.GetMaterialIndex()
+        && lhs.HasIndices() == rhs.HasIndices();
 }
 
 inline bool operator!=(const SubMesh& lhs, const SubMesh& rhs)

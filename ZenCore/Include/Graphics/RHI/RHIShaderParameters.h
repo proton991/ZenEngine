@@ -16,10 +16,7 @@ struct RHIShaderValueParameter
 
     RHIShaderValueParameter() = default;
 
-    RHIShaderValueParameter(uint32_t inSet,
-                            uint32_t inBinding,
-                            uint32_t inByteOffset,
-                            uint32_t inByteSize) :
+    RHIShaderValueParameter(uint32_t inSet, uint32_t inBinding, uint32_t inByteOffset, uint32_t inByteSize) :
         set(inSet), binding(inBinding), byteOffset(inByteOffset), byteSize(inByteSize)
     {}
 };
@@ -33,19 +30,19 @@ struct RHIShaderResourceParameter
     uint32_t bufferOffset{0};
 
     // Combined resources use the texture/buffer as pResource and its sampler as pAuxResource.
-    RHIResource* pResource{nullptr};
-    RHIResource* pAuxResource{nullptr};
+    RHIResource*          pResource{nullptr};
+    RHIResource*          pAuxResource{nullptr};
     RHIShaderResourceType resourceType{RHIShaderResourceType::eMax};
 
     RHIShaderResourceParameter() = default;
 
-    RHIShaderResourceParameter(uint32_t inSet,
-                               uint32_t inBinding,
-                               uint32_t inArrayIndex,
-                               RHIResource* pInResource,
-                               RHIResource* pInAuxResource,
+    RHIShaderResourceParameter(uint32_t              inSet,
+                               uint32_t              inBinding,
+                               uint32_t              inArrayIndex,
+                               RHIResource*          pInResource,
+                               RHIResource*          pInAuxResource,
                                RHIShaderResourceType inResourceType,
-                               uint32_t inBufferOffset = 0) :
+                               uint32_t              inBufferOffset = 0) :
         set(inSet),
         binding(inBinding),
         arrayIndex(inArrayIndex),
@@ -59,8 +56,8 @@ struct RHIShaderResourceParameter
 // Borrowed parameter arrays; recorded commands copy them into their command arena.
 struct RHIShaderParameterView
 {
-    VectorView<const RHIShaderValueParameter> valueParameters;
-    VectorView<const uint8_t> valueBytes;
+    VectorView<const RHIShaderValueParameter>    valueParameters;
+    VectorView<const uint8_t>                    valueBytes;
     VectorView<const RHIShaderResourceParameter> resourceParameters;
     VectorView<const RHIShaderResourceParameter> bindlessParameters;
 
@@ -87,8 +84,7 @@ struct RHIShaderParameterView
 
         if (parameter.byteSize != 0 && end <= valueBytes.size())
         {
-            result =
-                MakeVecView(valueBytes.data() + parameter.byteOffset, size_t(parameter.byteSize));
+            result = MakeVecView(valueBytes.data() + parameter.byteOffset, size_t(parameter.byteSize));
         }
 
         return result;
@@ -110,11 +106,11 @@ public:
         return GetView();
     }
 
-    RHIBatchedShaderParameters(RHIBatchedShaderParameters&&) = default;
+    RHIBatchedShaderParameters(RHIBatchedShaderParameters&&)                 = default;
 
-    RHIBatchedShaderParameters& operator=(RHIBatchedShaderParameters&&) = default;
+    RHIBatchedShaderParameters& operator=(RHIBatchedShaderParameters&&)      = default;
 
-    RHIBatchedShaderParameters(const RHIBatchedShaderParameters&) = delete;
+    RHIBatchedShaderParameters(const RHIBatchedShaderParameters&)            = delete;
 
     RHIBatchedShaderParameters& operator=(const RHIBatchedShaderParameters&) = delete;
 
@@ -135,27 +131,26 @@ public:
     }
 
     void AddResourceParam(const RHIShaderResourceDescriptor& srd,
-                          RHIResource* pResource,
-                          RHIResource* pAuxResource,
-                          uint32_t arrayIndex,
-                          uint32_t bufferOffset = 0)
+                          RHIResource*                       pResource,
+                          RHIResource*                       pAuxResource,
+                          uint32_t                           arrayIndex,
+                          uint32_t                           bufferOffset = 0)
     {
         if (srd.bindless)
         {
-            m_bindlessParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource,
-                                              pAuxResource, srd.type, bufferOffset);
+            m_bindlessParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource, pAuxResource, srd.type,
+                                              bufferOffset);
         }
         else
         {
-            m_resourceParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource,
-                                              pAuxResource, srd.type, bufferOffset);
+            m_resourceParameters.emplace_back(srd.set, srd.binding, arrayIndex, pResource, pAuxResource, srd.type,
+                                              bufferOffset);
         }
     }
 
     bool HasAnyParameter() const
     {
-        return !m_valueParameters.empty() || !m_resourceParameters.empty() ||
-            !m_bindlessParameters.empty();
+        return !m_valueParameters.empty() || !m_resourceParameters.empty() || !m_bindlessParameters.empty();
     }
 
     void Reset()
@@ -180,10 +175,8 @@ public:
 
     size_t GetStorageBytes() const
     {
-        return m_valueData.capacity() +
-            m_valueParameters.capacity() * sizeof(RHIShaderValueParameter) +
-            (m_resourceParameters.capacity() + m_bindlessParameters.capacity()) *
-            sizeof(RHIShaderResourceParameter);
+        return m_valueData.capacity() + m_valueParameters.capacity() * sizeof(RHIShaderValueParameter)
+             + (m_resourceParameters.capacity() + m_bindlessParameters.capacity()) * sizeof(RHIShaderResourceParameter);
     }
 
     VectorView<const RHIShaderValueParameter> GetValueParams() const
@@ -203,8 +196,7 @@ public:
         }
         else
         {
-            result = MakeVecView(m_valueData.data() + param.byteOffset,
-                                 static_cast<size_t>(param.byteSize));
+            result = MakeVecView(m_valueData.data() + param.byteOffset, static_cast<size_t>(param.byteSize));
         }
 
         return result;
@@ -221,8 +213,7 @@ public:
     }
 
 private:
-    template <typename T>
-    static void CopyParameters(HeapVector<T>& destination, const HeapVector<T>& source)
+    template <typename T> static void CopyParameters(HeapVector<T>& destination, const HeapVector<T>& source)
     {
         static_assert(std::is_trivially_copyable_v<T>);
         destination.resize(source.size());
@@ -233,8 +224,8 @@ private:
         }
     }
 
-    HeapVector<uint8_t> m_valueData;
-    HeapVector<RHIShaderValueParameter> m_valueParameters;
+    HeapVector<uint8_t>                    m_valueData;
+    HeapVector<RHIShaderValueParameter>    m_valueParameters;
     HeapVector<RHIShaderResourceParameter> m_resourceParameters;
     HeapVector<RHIShaderResourceParameter> m_bindlessParameters;
 };

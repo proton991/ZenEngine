@@ -25,8 +25,7 @@ public:
     {
         const int64_t identifier = std::chrono::steady_clock::now().time_since_epoch().count();
 
-        m_root = std::filesystem::temp_directory_path() /
-            ("ZenGLTFModelCatalogTests_" + std::to_string(identifier));
+        m_root = std::filesystem::temp_directory_path() / ("ZenGLTFModelCatalogTests_" + std::to_string(identifier));
 
         if (!std::filesystem::create_directory(m_root))
         {
@@ -85,8 +84,7 @@ TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
 
     std::filesystem::create_directory(fixture.GetRoot() / "directory.gltf");
 
-    const HeapVector<asset::GLTFModelCatalogEntry> catalog =
-        asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot()));
+    const HeapVector<asset::GLTFModelCatalogEntry> catalog = asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot()));
 
     ASSERT_EQ(catalog.size(), 4u);
 
@@ -106,10 +104,7 @@ TEST(GLTFModelCatalog, FindsRecursiveVariantsAndSortsRelativeLabels)
 
         EXPECT_TRUE(std::filesystem::is_regular_file(path));
 
-        EXPECT_EQ(
-            entry.path,
-            CatalogTestUtf8(
-                (fixture.GetRoot() / std::filesystem::u8path(entry.label)).lexically_normal()));
+        EXPECT_EQ(entry.path, CatalogTestUtf8((fixture.GetRoot() / std::filesystem::u8path(entry.label)).lexically_normal()));
 
         EXPECT_EQ(entry.path.find('\\'), std::string::npos);
     }
@@ -119,7 +114,7 @@ TEST(GLTFModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
 {
     CatalogFixture fixture;
 
-    const std::filesystem::path root = fixture.GetRoot() / std::filesystem::path(u8"根目录❤");
+    const std::filesystem::path root     = fixture.GetRoot() / std::filesystem::path(u8"根目录❤");
 
     const std::filesystem::path relative = std::filesystem::path(u8"模型/示例❤.GLB");
 
@@ -127,10 +122,9 @@ TEST(GLTFModelCatalog, UnicodeRootsAndNamesReturnNormalizedUtf8LoadPaths)
 
     std::filesystem::create_directory(root / "unused");
 
-    const std::filesystem::path supplied = root / "unused" / "..";
+    const std::filesystem::path supplied                   = root / "unused" / "..";
 
-    const HeapVector<asset::GLTFModelCatalogEntry> catalog =
-        asset::DiscoverGLTFModels(CatalogTestUtf8(supplied));
+    const HeapVector<asset::GLTFModelCatalogEntry> catalog = asset::DiscoverGLTFModels(CatalogTestUtf8(supplied));
 
     ASSERT_EQ(catalog.size(), 1u);
 
@@ -151,8 +145,7 @@ TEST(GLTFModelCatalog, MissingEmptyAndFileRootsReturnEmptyCatalogs)
 
     EXPECT_TRUE(asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot() / "missing")).empty());
 
-    EXPECT_TRUE(
-        asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot() / "file.gltf")).empty());
+    EXPECT_TRUE(asset::DiscoverGLTFModels(CatalogTestUtf8(fixture.GetRoot() / "file.gltf")).empty());
 }
 
 TEST(GLTFModelCatalog, DirectorySymlinksDoNotDiscoverModelsOutsideTheRoot)
@@ -167,8 +160,7 @@ TEST(GLTFModelCatalog, DirectorySymlinksDoNotDiscoverModelsOutsideTheRoot)
 
     std::error_code error;
 
-    std::filesystem::create_directory_symlink(fixture.GetRoot() / "Elsewhere", root / "Shortcut",
-                                              error);
+    std::filesystem::create_directory_symlink(fixture.GetRoot() / "Elsewhere", root / "Shortcut", error);
 
     if (error)
     {

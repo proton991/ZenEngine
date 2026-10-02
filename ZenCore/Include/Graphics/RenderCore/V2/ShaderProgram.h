@@ -19,13 +19,13 @@ struct Attenuation
 struct Light
 {
     glm::vec3 position{0.0f};
-    float angleInnerCone{0.0f};
+    float     angleInnerCone{0.0f};
 
     glm::vec3 direction{0.0f};
-    float angleOuterCone{0.0f};
+    float     angleOuterCone{0.0f};
 
     glm::vec3 diffuse{0.0f};
-    uint32_t shadowingMethod{0};
+    uint32_t  shadowingMethod{0};
 
     Attenuation attenuation;
 };
@@ -101,9 +101,9 @@ protected:
     }
 
 private:
-    RenderDevice* m_pRenderDevice{nullptr};
-    NameID m_name;
-    std::string m_stageSources[ToUnderlying(RHIShaderStage::eMax)];
+    RenderDevice*                    m_pRenderDevice{nullptr};
+    NameID                           m_name;
+    std::string                      m_stageSources[ToUnderlying(RHIShaderStage::eMax)];
     BitField<RHIShaderStageFlagBits> m_stageFlags;
 
     RHIShader* m_pShader{nullptr};
@@ -122,11 +122,10 @@ private:
 class ComputeFileSP : public ShaderProgram
 {
 public:
-    ComputeFileSP(
-        RenderDevice* device,
-        NameID name,
-        const std::string& path,
-        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
+    ComputeFileSP(RenderDevice*                                          device,
+                  NameID                                                 name,
+                  const std::string&                                     path,
+                  const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
         ShaderProgram(device, name)
     {
         AddShaderStage(RHIShaderStage::eCompute, path);
@@ -159,8 +158,7 @@ public:
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       capture ? "SceneRenderer/deferred_capture.frag.spv" :
-                                 "SceneRenderer/deferred.frag.spv");
+                       capture ? "SceneRenderer/deferred_capture.frag.spv" : "SceneRenderer/deferred.frag.spv");
         Init();
     }
 };
@@ -173,8 +171,7 @@ public:
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       voxelGI ? "SceneRenderer/forward_material_voxel.frag.spv" :
-                                 "SceneRenderer/forward_material.frag.spv");
+                       voxelGI ? "SceneRenderer/forward_material_voxel.frag.spv" : "SceneRenderer/forward_material.frag.spv");
         Init();
     }
 };
@@ -187,8 +184,7 @@ public:
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       toneMap ? "SceneRenderer/forward_tonemap.frag.spv" :
-                                 "SceneRenderer/forward_background.frag.spv");
+                       toneMap ? "SceneRenderer/forward_tonemap.frag.spv" : "SceneRenderer/forward_background.frag.spv");
         Init();
     }
 };
@@ -201,8 +197,7 @@ public:
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/offscreen.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       voxelGI ? "SceneRenderer/forward_scatter_voxel.frag.spv" :
-                                 "SceneRenderer/forward_scatter.frag.spv");
+                       voxelGI ? "SceneRenderer/forward_scatter_voxel.frag.spv" : "SceneRenderer/forward_scatter.frag.spv");
         Init();
     }
 };
@@ -215,8 +210,7 @@ public:
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       capture ? "SceneRenderer/voxel_gi_capture.frag.spv" :
-                                 "SceneRenderer/voxel_gi.frag.spv");
+                       capture ? "SceneRenderer/voxel_gi_capture.frag.spv" : "SceneRenderer/voxel_gi.frag.spv");
         Init();
     }
 };
@@ -246,8 +240,7 @@ public:
 class EnvMapIrradianceSP : public ShaderProgram
 {
 public:
-    explicit EnvMapIrradianceSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "EnvMapIrradianceSP")
+    explicit EnvMapIrradianceSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "EnvMapIrradianceSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "Environment/filtercube.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "Environment/irradiancecube.frag.spv");
@@ -258,8 +251,7 @@ public:
 class EnvMapPrefilteredSP : public ShaderProgram
 {
 public:
-    explicit EnvMapPrefilteredSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "EnvMapPrefilteredSP")
+    explicit EnvMapPrefilteredSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "EnvMapPrefilteredSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "Environment/filtercube.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "Environment/prefilterenvmap.frag.spv");
@@ -270,8 +262,7 @@ public:
 class SkyboxRenderSP : public ShaderProgram
 {
 public:
-    explicit SkyboxRenderSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "SkyboxRenderSP")
+    explicit SkyboxRenderSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "SkyboxRenderSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "SceneRenderer/deferred.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "Environment/skybox.frag.spv");
@@ -282,8 +273,7 @@ public:
 class EnvMapBRDFLutGenSP : public ShaderProgram
 {
 public:
-    explicit EnvMapBRDFLutGenSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "EnvMapBRDFLutGenSP")
+    explicit EnvMapBRDFLutGenSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "EnvMapBRDFLutGenSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "Environment/genbrdflut.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "Environment/genbrdflut.frag.spv");
@@ -295,14 +285,12 @@ class VoxelizationSP : public ShaderProgram
 {
 public:
     explicit VoxelizationSP(RenderDevice* pRenderDevice, bool averagedReflectance = false) :
-        ShaderProgram(pRenderDevice,
-                      averagedReflectance ? "VoxelizationAveragedSP" : "VoxelizationSP")
+        ShaderProgram(pRenderDevice, averagedReflectance ? "VoxelizationAveragedSP" : "VoxelizationSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxelization.vert.spv");
         AddShaderStage(RHIShaderStage::eGeometry, "VoxelGI/voxelization.geom.spv");
         AddShaderStage(RHIShaderStage::eFragment,
-                       averagedReflectance ? "VoxelGI/voxelization_averaged.frag.spv" :
-                                             "VoxelGI/voxelization.frag.spv");
+                       averagedReflectance ? "VoxelGI/voxelization_averaged.frag.spv" : "VoxelGI/voxelization.frag.spv");
         Init();
     }
 
@@ -360,8 +348,7 @@ public:
 class VoxelizationCompSP : public ShaderProgram
 {
 public:
-    explicit VoxelizationCompSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "VoxelizationCompSP")
+    explicit VoxelizationCompSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "VoxelizationCompSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxelization.comp.spv");
         Init();
@@ -418,8 +405,7 @@ public:
 class ResetDrawIndirectSP : public ShaderProgram
 {
 public:
-    explicit ResetDrawIndirectSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "ResetDrawIndirectSP")
+    explicit ResetDrawIndirectSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "ResetDrawIndirectSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/reset_draw_indirect.comp.spv");
         Init();
@@ -429,8 +415,7 @@ public:
 class ResetComputeIndirectSP : public ShaderProgram
 {
 public:
-    explicit ResetComputeIndirectSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "ResetComputeIndirectSP")
+    explicit ResetComputeIndirectSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "ResetComputeIndirectSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/reset_compute_indirect.comp.spv");
         Init();
@@ -440,8 +425,7 @@ public:
 class ResetVoxelTextureSP : public ShaderProgram
 {
 public:
-    explicit ResetVoxelTextureSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "ResetVoxelTextureSP")
+    explicit ResetVoxelTextureSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "ResetVoxelTextureSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/reset_voxel_texture.comp.spv");
         Init();
@@ -451,9 +435,8 @@ public:
 class VoxelPreDrawSP : public ShaderProgram
 {
 public:
-    explicit VoxelPreDrawSP(
-        RenderDevice* pRenderDevice,
-        const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
+    explicit VoxelPreDrawSP(RenderDevice*                                          pRenderDevice,
+                            const HashMap<uint32_t, RHIShaderSpecializationValue>& specializationConstants = {}) :
         ShaderProgram(pRenderDevice, "VoxelPreDrawSP")
     {
         AddShaderStage(RHIShaderStage::eCompute, "VoxelGI/voxel_pre_draw.comp.spv");
@@ -475,8 +458,7 @@ public:
 class VoxelDrawSP2 : public ShaderProgram
 {
 public:
-    explicit VoxelDrawSP2(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "VoxelDrawSP2")
+    explicit VoxelDrawSP2(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "VoxelDrawSP2")
     {
         AddShaderStage(RHIShaderStage::eVertex, "VoxelGI/voxel_vis.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "VoxelGI/voxel_vis.frag.spv");
@@ -499,8 +481,7 @@ public:
 class ShadowMapRenderSP : public ShaderProgram
 {
 public:
-    explicit ShadowMapRenderSP(RenderDevice* pRenderDevice) :
-        ShaderProgram(pRenderDevice, "ShadowMapRenderSP")
+    explicit ShadowMapRenderSP(RenderDevice* pRenderDevice) : ShaderProgram(pRenderDevice, "ShadowMapRenderSP")
     {
         AddShaderStage(RHIShaderStage::eVertex, "ShadowMapping/evsm.vert.spv");
         AddShaderStage(RHIShaderStage::eFragment, "ShadowMapping/evsm.frag.spv");
@@ -514,10 +495,10 @@ public:
 
     struct PushConstantsData
     {
-        Vec2 exponents;
+        Vec2     exponents;
         uint32_t nodeIndex;
         uint32_t materialIndex;
-        float alphaCutoff;
+        float    alphaCutoff;
     } pushConstantsData;
 
     struct LightInfo

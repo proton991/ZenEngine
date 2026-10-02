@@ -80,8 +80,7 @@ public:
     VoxelGIRuntimeSettings GetVoxelGISettings() const;
 
     // Read-only preflight: no waits, settings changes or resource allocation.
-    GIResourceStatus ValidateVoxelGIResources(const VoxelGIRuntimeSettings& settings,
-                                              uint64_t& reflectanceBytes) const;
+    GIResourceStatus ValidateVoxelGIResources(const VoxelGIRuntimeSettings& settings, uint64_t& reflectanceBytes) const;
 
     // Main/render thread between frames. Invalid inputs leave the current settings intact.
     // Structural changes synchronously retire the old resources, then rebuild lazily.
@@ -94,18 +93,18 @@ private:
     VoxelizerBase* CreateVoxelizer(RHIViewport* viewport);
 
     platform::VoxelizerMode m_voxelizerMode{platform::VoxelizerMode::eCompute};
-    RHIViewport* m_pViewport{nullptr};
-    RenderDevice* m_pRenderDevice{nullptr};
-    RenderScene* m_pScene{nullptr};
+    RHIViewport*            m_pViewport{nullptr};
+    RenderDevice*           m_pRenderDevice{nullptr};
+    RenderScene*            m_pScene{nullptr};
 
     DeferredLightingRenderer* m_pDeferredLightingRenderer{nullptr};
-    SkyboxRenderer* m_pSkyboxRenderer{nullptr};
-    VoxelizerBase* m_pVoxelizer{nullptr};
-    VoxelGIRenderer* m_pVoxelGI{nullptr};
-    SceneShadowRenderer* m_pSceneShadows{nullptr};
+    SkyboxRenderer*           m_pSkyboxRenderer{nullptr};
+    VoxelizerBase*            m_pVoxelizer{nullptr};
+    VoxelGIRenderer*          m_pVoxelGI{nullptr};
+    SceneShadowRenderer*      m_pSceneShadows{nullptr};
 
-    RenderOption m_renderOption{RenderOption::eVoxelize};
-    RenderOption m_frameRenderOption{RenderOption::eVoxelize};
+    RenderOption           m_renderOption{RenderOption::eVoxelize};
+    RenderOption           m_frameRenderOption{RenderOption::eVoxelize};
     VoxelGIRuntimeSettings m_giSettings;
 };
 } // namespace zen::rc

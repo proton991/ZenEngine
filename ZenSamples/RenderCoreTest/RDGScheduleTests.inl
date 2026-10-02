@@ -3,10 +3,7 @@ namespace
 class RDGScheduleTest : public RDGQueuePreferenceTest
 {};
 
-void ConfigureScheduledBufferPass(RDGPassDescBase& pass,
-                                  NameID tag,
-                                  RDGBuffer input,
-                                  RDGBuffer output)
+void ConfigureScheduledBufferPass(RDGPassDescBase& pass, NameID tag, RDGBuffer input, RDGBuffer output)
 {
     pass.SetShaderProgramName("intent");
     pass.SetPassTag(tag);
@@ -20,11 +17,11 @@ void ConfigureScheduledBufferPass(RDGPassDescBase& pass,
     }
 }
 
-void AddScheduledBufferPass(RenderGraph& graph,
-                            NameID tag,
+void AddScheduledBufferPass(RenderGraph&          graph,
+                            NameID                tag,
                             RHICommandContextType queue,
-                            RDGBuffer input  = {},
-                            RDGBuffer output = {})
+                            RDGBuffer             input = {},
+                            RDGBuffer output            = {})
 {
     if (queue == RHICommandContextType::eGraphics)
     {
@@ -57,29 +54,21 @@ uint32_t ScheduledGroup(const RDGSchedule& schedule, RDG_ID node)
     return result;
 }
 
-bool HasScheduledDependency(const RDGSchedule& schedule,
-                            RDG_ID source,
-                            RDG_ID destination,
-                            RDGDependencyReason reason)
+bool HasScheduledDependency(const RDGSchedule& schedule, RDG_ID source, RDG_ID destination, RDGDependencyReason reason)
 {
     bool found = false;
     for (const RDGDependency& dependency : schedule.dependencies)
     {
-        found |= dependency.source == source && dependency.destination == destination &&
-            dependency.reason == reason;
+        found |= dependency.source == source && dependency.destination == destination && dependency.reason == reason;
     }
     return found;
 }
 
-void ExpectPredecessor(const RDGSchedule& schedule,
-                       uint32_t source,
-                       uint32_t destination,
-                       bool expected = true)
+void ExpectPredecessor(const RDGSchedule& schedule, uint32_t source, uint32_t destination, bool expected = true)
 {
     ASSERT_LT(destination, schedule.groups.size());
     const HeapVector<uint32_t>& predecessors = schedule.groups[destination].predecessors;
-    EXPECT_EQ(std::find(predecessors.begin(), predecessors.end(), source) != predecessors.end(),
-              expected);
+    EXPECT_EQ(std::find(predecessors.begin(), predecessors.end(), source) != predecessors.end(), expected);
 }
 
 TEST_P(RDGScheduleTest, GraphicsComputeGraphicsPreservesProducerDependencies)
@@ -87,13 +76,13 @@ TEST_P(RDGScheduleTest, GraphicsComputeGraphicsPreservesProducerDependencies)
     RenderGraph graph("graphics_compute_graphics");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer first         = resources->CreateBuffer(LogicalBuffer());
-    const RDGBuffer second        = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     first     = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     second    = resources->CreateBuffer(LogicalBuffer());
     AddScheduledBufferPass(graph, "graphics_producer", RHICommandContextType::eGraphics, {}, first);
     AddScheduledBufferPass(graph, "compute", RHICommandContextType::eAsyncCompute, first, second);
     AddScheduledBufferPass(graph, "graphics_consumer", RHICommandContextType::eGraphics, second);
     ASSERT_TRUE(graph.End());
-    RDGExecutor executor(device);
+    RDGExecutor                      executor(device);
     RDGExecutionPlanTestAccess::Plan plan;
     ASSERT_TRUE(RDGExecutionPlanTestAccess::Prepare(executor, graph, plan));
     ASSERT_EQ(plan.schedule.groups.size(), 3u);
@@ -113,12 +102,10 @@ TEST_P(RDGScheduleTest, ResetAndComputeCoalesceWithoutMakingIndependentGraphicsW
     RenderGraph graph("voxel_shape");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGTexture volume       = resources->CreateTexture(LogicalTexture());
-    const RDGBuffer data          = resources->CreateBuffer(LogicalBuffer());
+    const RDGTexture    volume    = resources->CreateTexture(LogicalTexture());
+    const RDGBuffer     data      = resources->CreateBuffer(LogicalBuffer());
     AddScheduledBufferPass(graph, "independent_skybox", RHICommandContextType::eGraphics);
-    graph.AddTransferPass("reset")
-        .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
-        .ClearTexture(volume, Color(0.f));
+    graph.AddTransferPass("reset").SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute).ClearTexture(volume, Color(0.f));
     RDGComputePassDesc compute = IntentPass("voxel_compute");
     compute.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     compute.BindStorageImage("image", volume);
@@ -159,10 +146,10 @@ TEST_P(RDGScheduleTest, IndependentReadyWorkCannotDelayAnEarlierProducerSignal)
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ASSERT_TRUE(executor.Prepare(&graph));
-    const RDGSchedule& schedule = graph.GetSchedule();
-    const uint32_t producer     = ScheduledGroup(schedule, 0);
-    const uint32_t consumer     = ScheduledGroup(schedule, 1);
-    const uint32_t independent  = ScheduledGroup(schedule, 2);
+    const RDGSchedule& schedule    = graph.GetSchedule();
+    const uint32_t     producer    = ScheduledGroup(schedule, 0);
+    const uint32_t     consumer    = ScheduledGroup(schedule, 1);
+    const uint32_t     independent = ScheduledGroup(schedule, 2);
     ASSERT_EQ(schedule.groups.size(), 3u);
     EXPECT_NE(producer, independent);
     ExpectPredecessor(schedule, producer, consumer);
@@ -179,7 +166,7 @@ TEST_P(RDGScheduleTest, MultiQueueMaterializationDisablesLinearBufferAndTextureR
             RenderGraph graph("allocation_gate");
             ASSERT_TRUE(graph.Begin());
             RDGResourceManager* resources = graph.GetResourceManager();
-            RDGResource first, second;
+            RDGResource         first, second;
             if (texture)
             {
                 const RDGTexture a = resources->CreateTexture(LogicalTexture());
@@ -188,13 +175,11 @@ TEST_P(RDGScheduleTest, MultiQueueMaterializationDisablesLinearBufferAndTextureR
                 second             = b;
                 graph.AddTransferPass("first")
                     .NeverCull()
-                    .SetQueuePreference(mode != 0 ? RDGQueuePreference::ePreferAsyncCompute :
-                                                    RDGQueuePreference::eDefault)
+                    .SetQueuePreference(mode != 0 ? RDGQueuePreference::ePreferAsyncCompute : RDGQueuePreference::eDefault)
                     .ClearTexture(a, Color(0.f));
                 graph.AddTransferPass("second")
                     .NeverCull()
-                    .SetQueuePreference(mode == 2 ? RDGQueuePreference::ePreferAsyncCompute :
-                                                    RDGQueuePreference::eDefault)
+                    .SetQueuePreference(mode == 2 ? RDGQueuePreference::ePreferAsyncCompute : RDGQueuePreference::eDefault)
                     .ClearTexture(b, Color(0.f));
             }
             else
@@ -203,14 +188,11 @@ TEST_P(RDGScheduleTest, MultiQueueMaterializationDisablesLinearBufferAndTextureR
                 const RDGBuffer b = resources->CreateBuffer(LogicalBuffer());
                 first             = a;
                 second            = b;
-                AddScheduledBufferPass(graph, "first",
-                                       mode != 0 ? RHICommandContextType::eAsyncCompute :
-                                                   RHICommandContextType::eGraphics,
-                                       {}, a);
+                AddScheduledBufferPass(
+                    graph, "first", mode != 0 ? RHICommandContextType::eAsyncCompute : RHICommandContextType::eGraphics, {}, a);
                 AddScheduledBufferPass(graph, "second",
-                                       mode == 2 ? RHICommandContextType::eAsyncCompute :
-                                                   RHICommandContextType::eGraphics,
-                                       {}, b);
+                                       mode == 2 ? RHICommandContextType::eAsyncCompute : RHICommandContextType::eGraphics, {},
+                                       b);
             }
             ASSERT_TRUE(graph.End());
             RDGExecutor executor(device);
@@ -218,8 +200,8 @@ TEST_P(RDGScheduleTest, MultiQueueMaterializationDisablesLinearBufferAndTextureR
             const bool multiple = mode == 1;
             EXPECT_EQ(graph.GetSchedule().usesMultipleQueues, multiple);
             EXPECT_EQ(graph.GetCompileStats().reusedAllocationCount, multiple ? 0u : 1u);
-            EXPECT_EQ(DescribeResource(resources, first).physicalStableId ==
-                          DescribeResource(resources, second).physicalStableId,
+            EXPECT_EQ(DescribeResource(resources, first).physicalStableId
+                          == DescribeResource(resources, second).physicalStableId,
                       !multiple);
         }
     }
@@ -255,13 +237,12 @@ TEST_P(RDGScheduleTest, LayoutChangeWaitsForEveryReaderAndEstablishesTheNextLayo
     RenderGraph graph("reader_layout_epochs");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGTexture texture      = resources->ImportTexture(physical, RDGImportContents::eDefined);
+    const RDGTexture    texture   = resources->ImportTexture(physical, RDGImportContents::eDefined);
     for (int reader = 0; reader < 2; ++reader)
     {
         RDGComputePassDesc pass = IntentPass();
         pass.BindSampledTexture("texture", nullptr, texture);
-        pass.SetQueuePreference(reader == 0 ? RDGQueuePreference::eDefault :
-                                              RDGQueuePreference::ePreferAsyncCompute);
+        pass.SetQueuePreference(reader == 0 ? RDGQueuePreference::eDefault : RDGQueuePreference::ePreferAsyncCompute);
         graph.AddComputePass(pass);
     }
     RHITextureCopyRegion copy{};
@@ -296,10 +277,8 @@ TEST_P(RDGScheduleTest, InitialLayoutOwnerAndPlanSnapshotRefreshWithExternalStat
     RHITexture* physical = Texture();
     RenderGraph graph("initial_layout_refresh");
     ASSERT_TRUE(graph.Begin());
-    const RDGTexture texture =
-        graph.GetResourceManager()->ImportTexture(physical, RDGImportContents::eDefined);
-    for (RDGQueuePreference preference :
-         {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
+    const RDGTexture texture = graph.GetResourceManager()->ImportTexture(physical, RDGImportContents::eDefined);
+    for (RDGQueuePreference preference : {RDGQueuePreference::eDefault, RDGQueuePreference::ePreferAsyncCompute})
     {
         RDGComputePassDesc pass = IntentPass();
         pass.SetQueuePreference(preference);
@@ -307,7 +286,7 @@ TEST_P(RDGScheduleTest, InitialLayoutOwnerAndPlanSnapshotRefreshWithExternalStat
         graph.AddComputePass(pass);
     }
     ASSERT_TRUE(graph.End());
-    RDGExecutor executor(device), other(device);
+    RDGExecutor  executor(device), other(device);
     Access::Plan plan;
     ASSERT_TRUE(Access::Prepare(executor, graph, plan));
     EXPECT_TRUE(HasScheduledDependency(plan.schedule, 0, 1, RDGDependencyReason::eLayoutChange));
@@ -315,8 +294,7 @@ TEST_P(RDGScheduleTest, InitialLayoutOwnerAndPlanSnapshotRefreshWithExternalStat
         physical, RHIAccessMode::eRead, RHITextureUsage::eSampled,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
     ASSERT_TRUE(other.Prepare(&graph));
-    EXPECT_FALSE(
-        HasScheduledDependency(graph.GetSchedule(), 0, 1, RDGDependencyReason::eLayoutChange));
+    EXPECT_FALSE(HasScheduledDependency(graph.GetSchedule(), 0, 1, RDGDependencyReason::eLayoutChange));
     EXPECT_TRUE(HasScheduledDependency(plan.schedule, 0, 1, RDGDependencyReason::eLayoutChange));
     ASSERT_TRUE(Access::Refresh(executor, plan));
     EXPECT_TRUE(HasScheduledDependency(plan.schedule, 0, 1, RDGDependencyReason::eLayoutChange));
@@ -332,9 +310,8 @@ TEST_P(RDGScheduleTest, IndirectAndExtractionAccessesSurviveGrouping)
     RenderGraph graph("indirect_and_extract");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer arguments     = resources->CreateBuffer(LogicalBuffer());
-    AddScheduledBufferPass(graph, "argument_producer", RHICommandContextType::eAsyncCompute, {},
-                           arguments);
+    const RDGBuffer     arguments = resources->CreateBuffer(LogicalBuffer());
+    AddScheduledBufferPass(graph, "argument_producer", RHICommandContextType::eAsyncCompute, {}, arguments);
     RDGGraphicsPassDesc draw;
     ConfigureScheduledBufferPass(draw, "draw", arguments, {});
     draw.UseIndirectBuffer(arguments);
@@ -345,7 +322,7 @@ TEST_P(RDGScheduleTest, IndirectAndExtractionAccessesSurviveGrouping)
     ASSERT_TRUE(executor.Prepare(&graph));
     EXPECT_FALSE(owner);
     const RDGSchedule& schedule = graph.GetSchedule();
-    const uint32_t consumer     = ScheduledGroup(schedule, 1);
+    const uint32_t     consumer = ScheduledGroup(schedule, 1);
     ASSERT_LT(consumer, schedule.groups.size());
     ExpectPredecessor(schedule, ScheduledGroup(schedule, 0), consumer);
     const RDGCompiledNode& drawNode = RDGExecutionPlanTestAccess::CompiledNode(graph, 1);
@@ -353,8 +330,7 @@ TEST_P(RDGScheduleTest, IndirectAndExtractionAccessesSurviveGrouping)
     BitField<RHIAccessFlagBits> destinationAccess;
     for (const RHIBufferTransition& transition : drawNode.prologueBufferTransitions)
     {
-        destinationAccess.SetFlag(
-            RHIBufferUsageToAccessFlagBits(transition.newUsage, transition.newAccessMode));
+        destinationAccess.SetFlag(RHIBufferUsageToAccessFlagBits(transition.newUsage, transition.newAccessMode));
     }
     EXPECT_TRUE(destinationAccess.HasFlag(RHIAccessFlagBits::eIndirectCommandRead));
     EXPECT_TRUE(destinationAccess.HasFlag(RHIAccessFlagBits::eShaderRead));
@@ -372,22 +348,20 @@ TEST_P(RDGScheduleTest, RebuildRestoresReuseAndTransferRefreshReplacesQueuePlace
         ASSERT_TRUE(graph.Begin());
         RDGResourceManager* resources = graph.GetResourceManager();
         AddScheduledBufferPass(graph, "first",
-                               multiple ? RHICommandContextType::eAsyncCompute :
-                                          RHICommandContextType::eGraphics,
-                               {}, resources->CreateBuffer(LogicalBuffer()));
-        AddScheduledBufferPass(graph, "second", RHICommandContextType::eGraphics, {},
+                               multiple ? RHICommandContextType::eAsyncCompute : RHICommandContextType::eGraphics, {},
                                resources->CreateBuffer(LogicalBuffer()));
+        AddScheduledBufferPass(graph, "second", RHICommandContextType::eGraphics, {}, resources->CreateBuffer(LogicalBuffer()));
         ASSERT_TRUE(graph.End());
         ASSERT_TRUE(executor.Prepare(&graph));
         EXPECT_EQ(graph.GetSchedule().allowsAllocationReuse, !multiple);
         EXPECT_EQ(graph.GetCompileStats().reusedAllocationCount, multiple ? 0u : 1u);
     }
     ASSERT_TRUE(graph.Begin());
-    TestBuffer* source            = Buffer();
-    TestBuffer* target            = Buffer();
+    TestBuffer*         source    = Buffer();
+    TestBuffer*         target    = Buffer();
     RDGResourceManager* resources = graph.GetResourceManager();
-    graph.AddTransferPass("upload").CopyBuffer(resources->ImportHostWrittenBuffer(source),
-                                               resources->ImportBuffer(target), {0, 0, 64});
+    graph.AddTransferPass("upload").CopyBuffer(resources->ImportHostWrittenBuffer(source), resources->ImportBuffer(target),
+                                               {0, 0, 64});
     ASSERT_TRUE(graph.End());
     Access::Plan plan;
     ASSERT_TRUE(Access::Prepare(executor, graph, plan));
@@ -395,8 +369,7 @@ TEST_P(RDGScheduleTest, RebuildRestoresReuseAndTransferRefreshReplacesQueuePlace
     ASSERT_EQ(plan.schedule.groups.size(), 1u);
     EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eTransfer);
     executor.GetResourceStateTracker().UpdateBufferState(
-        target, RHIAccessMode::eReadWrite,
-        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+        target, RHIAccessMode::eReadWrite, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
     ASSERT_TRUE(Access::Refresh(executor, plan));
     EXPECT_FALSE(plan.transfer);
@@ -410,8 +383,8 @@ TEST_P(RDGScheduleTest, FailureToAllocateSecondIndependentResourceDoesNotPublish
     RenderGraph graph("multi_queue_allocation_failure");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer a             = resources->CreateBuffer(LogicalBuffer());
-    const RDGBuffer b             = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     a         = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     b         = resources->CreateBuffer(LogicalBuffer());
     AddScheduledBufferPass(graph, "a", RHICommandContextType::eAsyncCompute, {}, a);
     AddScheduledBufferPass(graph, "b", RHICommandContextType::eGraphics, {}, b);
     RDGExtractedBuffer output = resources->QueueBufferExtraction(b);
@@ -432,34 +405,29 @@ INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
 
 TEST_P(RDGScheduleTest, PooledGraphicsStateRefreshCannotEnableUnsafeMultiQueueReuse)
 {
-    RenderGraph graph("pooled_state_refresh");
-    RDGExecutor executor(device);
-    RDGResourceManager* resources = graph.GetResourceManager();
-    RDGTextureDesc description    = LogicalTexture();
-    description.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc,
-                                    RHITextureUsageFlagBits::eTransferDst,
+    RenderGraph         graph("pooled_state_refresh");
+    RDGExecutor         executor(device);
+    RDGResourceManager* resources   = graph.GetResourceManager();
+    RDGTextureDesc      description = LogicalTexture();
+    description.usageFlags.SetFlags(RHITextureUsageFlagBits::eTransferSrc, RHITextureUsageFlagBits::eTransferDst,
                                     RHITextureUsageFlagBits::eColorAttachment);
     ASSERT_TRUE(graph.Begin());
-    graph.AddTransferPass("seed_pool")
-        .NeverCull()
-        .ClearTexture(resources->CreateTexture(description), Color(0.f));
+    graph.AddTransferPass("seed_pool").NeverCull().ClearTexture(resources->CreateTexture(description), Color(0.f));
     ASSERT_TRUE(graph.End());
     ASSERT_TRUE(executor.Prepare(&graph));
     executor.GetResourceStateTracker().UpdateTextureState(
         rhi->lastCreatedTexture, RHIAccessMode::eReadWrite, RHITextureUsage::eColorAttachment,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eColorAttachmentOutput));
     ASSERT_TRUE(graph.Begin());
-    RHITexture* physical    = Texture();
-    const RDGTexture source = resources->ImportTexture(physical, RDGImportContents::eDefined);
-    const RDGTexture first  = resources->CreateTexture(description);
-    const RDGTexture second = resources->CreateTexture(description);
+    RHITexture*          physical = Texture();
+    const RDGTexture     source   = resources->ImportTexture(physical, RDGImportContents::eDefined);
+    const RDGTexture     first    = resources->CreateTexture(description);
+    const RDGTexture     second   = resources->CreateTexture(description);
     RHITextureCopyRegion copy{};
     copy.size = {8, 8, 1};
     copy.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
     copy.dstSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
-    graph.AddTransferPass("default_copy")
-        .NeverCull()
-        .CopyTexture(source, first, MakeVecView(&copy, 1));
+    graph.AddTransferPass("default_copy").NeverCull().CopyTexture(source, first, MakeVecView(&copy, 1));
     graph.AddTransferPass("compute_copy")
         .NeverCull()
         .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
@@ -473,20 +441,17 @@ TEST_P(RDGScheduleTest, PooledGraphicsStateRefreshCannotEnableUnsafeMultiQueueRe
     EXPECT_EQ(plan.schedule.groups[1].queue, RHICommandContextType::eAsyncCompute);
     EXPECT_FALSE(plan.schedule.allowsAllocationReuse);
     EXPECT_EQ(graph.GetCompileStats().reusedAllocationCount, 0u);
-    EXPECT_NE(DescribeResource(resources, first).physicalStableId,
-              DescribeResource(resources, second).physicalStableId);
+    EXPECT_NE(DescribeResource(resources, first).physicalStableId, DescribeResource(resources, second).physicalStableId);
     device->DestroyTexture(physical);
 }
 
 TEST_P(RDGScheduleTest, BindlessSceneTextureReadsRetainProducerEdgesAndResourceSummaries)
 {
     HeapVector<RHITexture*> textures{Texture(), Texture()};
-    RHISampler* sampler = rhi->CreateSampler({});
-    RenderGraph graph("scene_texture_dependencies");
+    RHISampler*             sampler = rhi->CreateSampler({});
+    RenderGraph             graph("scene_texture_dependencies");
     ASSERT_TRUE(graph.Begin());
-    graph.AddTransferPass("upload_materials")
-        .ClearTexture(textures[0], Color(0.f))
-        .ClearTexture(textures[1], Color(1.f));
+    graph.AddTransferPass("upload_materials").ClearTexture(textures[0], Color(0.f)).ClearTexture(textures[1], Color(1.f));
     RDGComputePassDesc compute = IntentPass();
     compute.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     BindSceneTextureArray(compute, sampler, textures);
@@ -501,8 +466,8 @@ TEST_P(RDGScheduleTest, BindlessSceneTextureReadsRetainProducerEdgesAndResourceS
     uint32_t producers = 0;
     for (const RDGDependency& dependency : schedule.dependencies)
     {
-        producers += dependency.source == RDG_ID(0) && dependency.destination == RDG_ID(1) &&
-            dependency.reason == RDGDependencyReason::eVersionProducer;
+        producers += dependency.source == RDG_ID(0) && dependency.destination == RDG_ID(1)
+                  && dependency.reason == RDGDependencyReason::eVersionProducer;
     }
     EXPECT_EQ(producers, 2u);
     for (RHITexture* texture : textures)
@@ -517,13 +482,13 @@ class RDGScheduleCapabilityTest : public RDGQueuePreferenceCapabilityTest
 
 TEST_P(RDGScheduleCapabilityTest, FallbackChoosesReusePolicyBeforeAnyAllocation)
 {
-    const int scenario  = std::get<1>(GetParam());
-    const bool multiple = scenario == 0 || scenario == 5 || scenario == 6;
+    const int   scenario = std::get<1>(GetParam());
+    const bool  multiple = scenario == 0 || scenario == 5 || scenario == 6;
     RenderGraph graph("placement_fallback");
     ASSERT_TRUE(graph.Begin());
     RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer a             = resources->CreateBuffer(LogicalBuffer());
-    const RDGBuffer b             = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     a         = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     b         = resources->CreateBuffer(LogicalBuffer());
     AddScheduledBufferPass(graph, "preferred", RHICommandContextType::eAsyncCompute, {}, a);
     AddScheduledBufferPass(graph, "graphics", RHICommandContextType::eGraphics, {}, b);
     ASSERT_TRUE(graph.End());
@@ -532,15 +497,12 @@ TEST_P(RDGScheduleCapabilityTest, FallbackChoosesReusePolicyBeforeAnyAllocation)
     EXPECT_EQ(graph.GetSchedule().usesMultipleQueues, multiple);
     EXPECT_EQ(graph.GetSchedule().groups.size(), multiple ? 2u : 1u);
     EXPECT_EQ(graph.GetCompileStats().reusedAllocationCount, multiple ? 0u : 1u);
-    EXPECT_EQ(DescribeResource(resources, a).physicalStableId ==
-                  DescribeResource(resources, b).physicalStableId,
-              !multiple);
+    EXPECT_EQ(DescribeResource(resources, a).physicalStableId == DescribeResource(resources, b).physicalStableId, !multiple);
 }
 
 INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
                          RDGScheduleCapabilityTest,
-                         testing::Combine(testing::Values(RHIExecutionMode::eInline,
-                                                          RHIExecutionMode::eThreaded),
+                         testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Range(0, 8)));
 
 class RDGScheduleAliasedQueueTest : public RDGQueuePreferenceTest
@@ -558,11 +520,11 @@ TEST_P(RDGScheduleAliasedQueueTest, ComputeTransferAliasRetainsProducerOrder)
 {
     RenderGraph graph("compute_transfer_alias");
     ASSERT_TRUE(graph.Begin());
-    TestBuffer* physical          = Buffer();
-    RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer source        = resources->ImportHostWrittenBuffer(physical);
-    const RDGBuffer middle        = resources->CreateBuffer(LogicalBuffer());
-    const RDGBuffer destination   = resources->CreateBuffer(LogicalBuffer());
+    TestBuffer*         physical    = Buffer();
+    RDGResourceManager* resources   = graph.GetResourceManager();
+    const RDGBuffer     source      = resources->ImportHostWrittenBuffer(physical);
+    const RDGBuffer     middle      = resources->CreateBuffer(LogicalBuffer());
+    const RDGBuffer     destination = resources->CreateBuffer(LogicalBuffer());
     graph.AddTransferPass("transfer").CopyBuffer(source, middle, {0, 0, 64});
     graph.AddTransferPass("compute_copy")
         .NeverCull()

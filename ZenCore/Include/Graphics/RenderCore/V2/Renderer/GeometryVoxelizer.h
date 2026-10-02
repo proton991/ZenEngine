@@ -10,13 +10,12 @@ class RenderScene;
 class GeometryVoxelizer : public VoxelizerBase
 {
 public:
-    GeometryVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) :
-        VoxelizerBase(pRenderDevice, pViewport)
-    {}
+    GeometryVoxelizer(RenderDevice* pRenderDevice, RHIViewport* pViewport) : VoxelizerBase(pRenderDevice, pViewport) {}
 
     void Init() final;
 
     void BuildVoxelizationGraph() final;
+
     void BuildVisualizationGraph() final;
 
     void Destroy() final;

@@ -11,7 +11,7 @@ namespace zen
 {
 struct VulkanDescriptorPoolKey
 {
-    VulkanDescriptorPoolKey() = default;
+    VulkanDescriptorPoolKey()                                           = default;
 
     uint32_t descriptorCount[ToUnderlying(RHIShaderResourceType::eMax)] = {};
 
@@ -51,11 +51,9 @@ struct VulkanUniformBufferUsage
     uint32_t maxPerStageCount{0};
 };
 
-VulkanUniformBufferUsage CountUniformBufferDescriptors(
-    const RHIShaderResourceDescriptorTable& srdTable);
+VulkanUniformBufferUsage CountUniformBufferDescriptors(const RHIShaderResourceDescriptorTable& srdTable);
 
-bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage,
-                             const VkPhysicalDeviceLimits& limits);
+bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage, const VkPhysicalDeviceLimits& limits);
 
 class VulkanDevice;
 class VulkanShader : public RHIShader
@@ -150,22 +148,22 @@ private:
 
     struct VertexInputInfo
     {
-        SmallVector<VkVertexInputBindingDescription> vkBindings;
+        SmallVector<VkVertexInputBindingDescription>   vkBindings;
         SmallVector<VkVertexInputAttributeDescription> vkAttributes;
-        VkPipelineVertexInputStateCreateInfo stateCI;
+        VkPipelineVertexInputStateCreateInfo           stateCI;
     } m_vertexInputInfo;
-    HeapVector<VkSpecializationMapEntry> m_spcMapEntries{};
-    HeapVector<uint32_t> m_specializationData{};
-    VkSpecializationInfo m_specializationInfo{};
-    VkShaderStageFlags m_pushConstantsStageFlags;
+    HeapVector<VkSpecializationMapEntry>         m_spcMapEntries{};
+    HeapVector<uint32_t>                         m_specializationData{};
+    VkSpecializationInfo                         m_specializationInfo{};
+    VkShaderStageFlags                           m_pushConstantsStageFlags;
     SmallVector<VkPipelineShaderStageCreateInfo> m_stageCreateInfos;
 
     struct DescriptorSetInfo
     {
         VulkanDescriptorPoolKey poolKey{};
-        uint32_t layoutId{0};
-        uint32_t variableCount{0};
-        bool ownsLayout{false};
+        uint32_t                layoutId{0};
+        uint32_t                variableCount{0};
+        bool                    ownsLayout{false};
     };
 
     SmallVector<DescriptorSetInfo, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetInfos;
@@ -173,7 +171,7 @@ private:
     SmallVector<VkDescriptorSetLayout, MAX_NUM_DESCRIPTOR_SETS> m_descriptorSetLayouts;
 
     VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
-    bool m_hasGlobalBindlessSet{false};
+    bool             m_hasGlobalBindlessSet{false};
     // False when the reflected layout exceeds device descriptor limits; no native objects exist.
     bool m_fitsDeviceLimits{false};
 
@@ -226,9 +224,9 @@ private:
 
     void InitCompute();
 
-    VkPipeline m_vkPipeline{VK_NULL_HANDLE};
+    VkPipeline          m_vkPipeline{VK_NULL_HANDLE};
     VkPipelineBindPoint m_bindPoint{VK_PIPELINE_BIND_POINT_GRAPHICS};
-    VkShaderStageFlags m_pushConstantsStageFlags{0};
-    bool m_initialized{false};
+    VkShaderStageFlags  m_pushConstantsStageFlags{0};
+    bool                m_initialized{false};
 };
 } // namespace zen

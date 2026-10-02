@@ -16,20 +16,19 @@ void SceneRendererDemo::RefreshRuntimeModels()
     {
         m_modelState.basePath = platform::ConfigLoader::GetInstance().GetGLTFModelBasePath();
 
-        m_modelState.models = asset::DiscoverGLTFModels(m_modelState.basePath);
+        m_modelState.models   = asset::DiscoverGLTFModels(m_modelState.basePath);
 
         m_modelState.error.clear();
 
         std::error_code error;
 
-        const bool directory = !m_modelState.basePath.empty() &&
-            std::filesystem::is_directory(std::filesystem::u8path(m_modelState.basePath), error);
+        const bool directory = !m_modelState.basePath.empty()
+                            && std::filesystem::is_directory(std::filesystem::u8path(m_modelState.basePath), error);
 
         if (!directory)
         {
-            m_modelState.error = m_modelState.basePath.empty() ?
-                "No model directory is configured." :
-                "The configured model directory is unavailable.";
+            m_modelState.error = m_modelState.basePath.empty() ? "No model directory is configured."
+                                                               : "The configured model directory is unavailable.";
         }
     }
 }
@@ -59,8 +58,7 @@ bool SceneRendererDemo::RequestRuntimeModel(const std::string& path)
         }
         else
         {
-            m_modelState.error =
-                "The selected model is no longer in the catalog. Refresh the list.";
+            m_modelState.error = "The selected model is no longer in the catalog. Refresh the list.";
         }
     }
 
@@ -73,7 +71,7 @@ void SceneRendererDemo::ProcessPendingModel()
     {
         const std::string path = m_modelState.pendingPath;
 
-        const bool loaded = LoadModel(path, false);
+        const bool loaded      = LoadModel(path, false);
 
         m_modelState.pendingPath.clear();
 
@@ -87,8 +85,7 @@ void SceneRendererDemo::ProcessPendingModel()
         }
         else if (m_modelState.error.empty())
         {
-            m_modelState.error =
-                "The model could not be loaded. The previous model is still active.";
+            m_modelState.error = "The model could not be loaded. The previous model is still active.";
         }
 
         // Loading time does not advance the new scene's animation or camera.

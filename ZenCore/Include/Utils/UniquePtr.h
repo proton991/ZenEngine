@@ -15,10 +15,12 @@ public:
     UniquePtr() noexcept : // never throws
         m_pObj(nullptr)
     {}
+
     /// @brief Constructor with the provided pointer to manage
     explicit UniquePtr(T* p) noexcept : // never throws
         m_pObj(p)
     {}
+
     /**
      * @brief Copy constructor to convert from another pointer type
      */
@@ -52,16 +54,19 @@ public:
         Swap(other);
         return *this;
     }
+
     /// @brief the destructor releases its ownership and Destroy the object
     inline ~UniquePtr() noexcept // never throws
     {
         Destroy();
     }
+
     /// @brief this reset releases its ownership and Destroy the object
     inline void Reset() noexcept // never throws
     {
         Destroy();
     }
+
     /// @brief this reset Release its ownership and re-acquire another one
     void Reset(T* p) noexcept // never throws
     {
@@ -94,11 +99,13 @@ public:
         UNIQUE_ASSERT(nullptr != m_pObj);
         return *m_pObj;
     }
+
     inline T* operator->() const noexcept // never throws
     {
         UNIQUE_ASSERT(nullptr != m_pObj);
         return m_pObj;
     }
+
     inline T* Get() const noexcept // never throws
     {
         // no assert, can return nullptr
@@ -123,35 +130,33 @@ private:
     T* m_pObj; //!< Native pointer
 };
 
-
 // comparison operators
-template <class T, class U>
-inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+template <class T, class U> inline bool operator==(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() == r.Get());
 }
-template <class T, class U>
-inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+
+template <class T, class U> inline bool operator!=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() != r.Get());
 }
-template <class T, class U>
-inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+
+template <class T, class U> inline bool operator<=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() <= r.Get());
 }
-template <class T, class U>
-inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+
+template <class T, class U> inline bool operator<(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() < r.Get());
 }
-template <class T, class U>
-inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+
+template <class T, class U> inline bool operator>=(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() >= r.Get());
 }
-template <class T, class U>
-inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
+
+template <class T, class U> inline bool operator>(const UniquePtr<T>& l, const UniquePtr<U>& r) noexcept // never throws
 {
     return (l.Get() > r.Get());
 }

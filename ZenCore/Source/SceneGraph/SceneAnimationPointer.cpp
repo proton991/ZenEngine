@@ -13,36 +13,35 @@ namespace
 struct NumericProperty
 {
     const char* name;
-    float* values;
-    uint32_t dimensions;
+    float*      values;
+    uint32_t    dimensions;
 };
 
 struct TextureProperty
 {
-    const char* name;
+    const char*             name;
     MaterialTextureBinding* binding;
 };
 
 bool ParseIndex(const std::string& token, uint32_t& index)
 {
-    const std::from_chars_result parsed =
-        std::from_chars(token.data(), token.data() + token.size(), index);
+    const std::from_chars_result parsed = std::from_chars(token.data(), token.data() + token.size(), index);
 
-    const bool valid = !token.empty() && (token.size() == 1 || token.front() != '0') &&
-        parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size();
+    const bool valid = !token.empty() && (token.size() == 1 || token.front() != '0') && parsed.ec == std::errc{}
+                    && parsed.ptr == token.data() + token.size();
 
     return valid;
 }
 
 bool SplitPointer(const std::string& pointer, HeapVector<std::string>& tokens)
 {
-    bool valid = !pointer.empty() && pointer.front() == '/';
+    bool valid   = !pointer.empty() && pointer.front() == '/';
 
     size_t begin = 1;
 
     while (valid && begin <= pointer.size())
     {
-        const size_t end = pointer.find('/', begin);
+        const size_t end          = pointer.find('/', begin);
 
         const std::string encoded = pointer.substr(begin, end - begin);
 
@@ -52,8 +51,7 @@ bool SplitPointer(const std::string& pointer, HeapVector<std::string>& tokens)
         {
             if (encoded[index] == '~')
             {
-                valid = index + 1 < encoded.size() &&
-                    (encoded[index + 1] == '0' || encoded[index + 1] == '1');
+                valid = index + 1 < encoded.size() && (encoded[index + 1] == '0' || encoded[index + 1] == '1');
 
                 if (valid)
                 {
@@ -100,24 +98,24 @@ std::string RelativePath(const HeapVector<std::string>& tokens, size_t begin)
     return result;
 }
 
-bool NumericUpdate(const NumericProperty& property,
-                   const std::string& path,
+bool NumericUpdate(const NumericProperty&  property,
+                   const std::string&      path,
                    VectorView<const float> values,
-                   bool apply,
-                   float scale        = 1.0f,
-                   bool arrayElements = false)
+                   bool                    apply,
+                   float                   scale = 1.0f,
+                   bool arrayElements            = false)
 {
-    uint32_t first = 0;
+    uint32_t first                    = 0;
 
-    uint32_t dimensions = property.dimensions;
+    uint32_t dimensions               = property.dimensions;
 
-    bool valid = path == property.name;
+    bool valid                        = path == property.name;
 
     const std::string componentPrefix = std::string(property.name) + '/';
 
     if (!valid && arrayElements && path.starts_with(componentPrefix))
     {
-        valid = ParseIndex(path.substr(componentPrefix.size()), first) && first < dimensions;
+        valid      = ParseIndex(path.substr(componentPrefix.size()), first) && first < dimensions;
 
         dimensions = 1;
     }
@@ -156,8 +154,7 @@ bool SourceObjectExists(const Scene& scene, const char* collection, uint32_t ind
         {
             simdjson::dom::array objects;
 
-            exists = source.at_pointer(collection).get(objects) == simdjson::SUCCESS &&
-                index < objects.size();
+            exists = source.at_pointer(collection).get(objects) == simdjson::SUCCESS && index < objects.size();
         }
     }
 
@@ -189,26 +186,23 @@ bool SourcePropertyExists(const Scene& scene, const std::string& pointer)
 
 void RebuildTextureTransform(TextureTransform& transform)
 {
-    const float cosine = std::cos(transform.uvRotation);
+    const float cosine  = std::cos(transform.uvRotation);
 
-    const float sine = std::sin(transform.uvRotation);
+    const float sine    = std::sin(transform.uvRotation);
 
     const float sampler = transform.row0.w;
 
-    transform.row0 = Vec4(cosine * transform.uvScale.x, -sine * transform.uvScale.y,
-                          transform.uvOffset.x, sampler);
+    transform.row0      = Vec4(cosine * transform.uvScale.x, -sine * transform.uvScale.y, transform.uvOffset.x, sampler);
 
-    transform.row1 = Vec4(sine * transform.uvScale.x, cosine * transform.uvScale.y,
-                          transform.uvOffset.y, transform.row1.w);
+    transform.row1 = Vec4(sine * transform.uvScale.x, cosine * transform.uvScale.y, transform.uvOffset.y, transform.row1.w);
 }
 
 TextureTransform* FindTextureTransform(Material& material, const std::string& texture)
 {
     TextureTransform* result = nullptr;
 
-    const char* coreNames[] = {"pbrMetallicRoughness/baseColorTexture",
-                               "pbrMetallicRoughness/metallicRoughnessTexture", "normalTexture",
-                               "occlusionTexture", "emissiveTexture"};
+    const char* coreNames[]  = {"pbrMetallicRoughness/baseColorTexture", "pbrMetallicRoughness/metallicRoughnessTexture",
+                                "normalTexture", "occlusionTexture", "emissiveTexture"};
 
     for (uint32_t index = 0; index < 5; ++index)
     {
@@ -220,36 +214,25 @@ TextureTransform* FindTextureTransform(Material& material, const std::string& te
 
     const TextureProperty features[] = {
         {"extensions/KHR_materials_specular/specularTexture", &material.features.specularTexture},
-        {"extensions/KHR_materials_specular/specularColorTexture",
-         &material.features.specularColorTexture},
-        {"extensions/KHR_materials_pbrSpecularGlossiness/diffuseTexture",
-         &material.features.diffuseTexture},
+        {"extensions/KHR_materials_specular/specularColorTexture", &material.features.specularColorTexture},
+        {"extensions/KHR_materials_pbrSpecularGlossiness/diffuseTexture", &material.features.diffuseTexture},
         {"extensions/KHR_materials_pbrSpecularGlossiness/specularGlossinessTexture",
          &material.features.specularGlossinessTexture},
-        {"extensions/KHR_materials_clearcoat/clearcoatTexture",
-         &material.features.clearcoatTexture},
-        {"extensions/KHR_materials_clearcoat/clearcoatRoughnessTexture",
-         &material.features.clearcoatRoughnessTexture},
-        {"extensions/KHR_materials_clearcoat/clearcoatNormalTexture",
-         &material.features.clearcoatNormalTexture},
+        {"extensions/KHR_materials_clearcoat/clearcoatTexture", &material.features.clearcoatTexture},
+        {"extensions/KHR_materials_clearcoat/clearcoatRoughnessTexture", &material.features.clearcoatRoughnessTexture},
+        {"extensions/KHR_materials_clearcoat/clearcoatNormalTexture", &material.features.clearcoatNormalTexture},
         {"extensions/KHR_materials_sheen/sheenColorTexture", &material.features.sheenColorTexture},
-        {"extensions/KHR_materials_sheen/sheenRoughnessTexture",
-         &material.features.sheenRoughnessTexture},
-        {"extensions/KHR_materials_transmission/transmissionTexture",
-         &material.features.transmissionTexture},
+        {"extensions/KHR_materials_sheen/sheenRoughnessTexture", &material.features.sheenRoughnessTexture},
+        {"extensions/KHR_materials_transmission/transmissionTexture", &material.features.transmissionTexture},
         {"extensions/KHR_materials_volume/thicknessTexture", &material.features.thicknessTexture},
-        {"extensions/KHR_materials_iridescence/iridescenceTexture",
-         &material.features.iridescenceTexture},
-        {"extensions/KHR_materials_iridescence/iridescenceThicknessTexture",
-         &material.features.iridescenceThicknessTexture},
-        {"extensions/KHR_materials_anisotropy/anisotropyTexture",
-         &material.features.anisotropyTexture},
+        {"extensions/KHR_materials_iridescence/iridescenceTexture", &material.features.iridescenceTexture},
+        {"extensions/KHR_materials_iridescence/iridescenceThicknessTexture", &material.features.iridescenceThicknessTexture},
+        {"extensions/KHR_materials_anisotropy/anisotropyTexture", &material.features.anisotropyTexture},
         {"extensions/KHR_materials_diffuse_transmission/diffuseTransmissionTexture",
          &material.features.diffuseTransmissionTexture},
         {"extensions/KHR_materials_diffuse_transmission/diffuseTransmissionColorTexture",
          &material.features.diffuseTransmissionColorTexture},
-        {"extensions/KHR_materials_retroreflection/retroreflectionTexture",
-         &material.features.retroreflectionTexture}};
+        {"extensions/KHR_materials_retroreflection/retroreflectionTexture", &material.features.retroreflectionTexture}};
 
     for (const TextureProperty& feature : features)
     {
@@ -262,18 +245,14 @@ TextureTransform* FindTextureTransform(Material& material, const std::string& te
     return result;
 }
 
-bool UpdateMaterial(Material& material,
-                    const std::string& path,
-                    VectorView<const float> values,
-                    bool apply)
+bool UpdateMaterial(Material& material, const std::string& path, VectorView<const float> values, bool apply)
 {
     const bool iorProperty = path == "extensions/KHR_materials_ior/ior";
 
-    const bool iorValid =
-        !iorProperty || (values.size() == 1 && std::isfinite(values[0]) && values[0] >= 1.0f);
+    const bool iorValid    = !iorProperty || (values.size() == 1 && std::isfinite(values[0]) && values[0] >= 1.0f);
 
     // Authored zero permanently denotes infinite IOR; valid animation updates are ignored.
-    const bool ignoreIor = iorProperty && material.features.ior == 0.0f;
+    const bool ignoreIor               = iorProperty && material.features.ior == 0.0f;
 
     const NumericProperty properties[] = {
         {"pbrMetallicRoughness/baseColorFactor", &material.baseColorFactor[0], 4},
@@ -283,54 +262,34 @@ bool UpdateMaterial(Material& material,
         {"alphaCutoff", &material.alphaCutoff, 1},
         {"normalTexture/scale", &material.normalScale, 1},
         {"occlusionTexture/strength", &material.occlusionStrength, 1},
-        {"extensions/KHR_materials_emissive_strength/emissiveStrength", &material.emissiveStrength,
-         1},
+        {"extensions/KHR_materials_emissive_strength/emissiveStrength", &material.emissiveStrength, 1},
         {"extensions/KHR_materials_ior/ior", &material.features.ior, 1},
         {"extensions/KHR_materials_dispersion/dispersion", &material.features.dispersion, 1},
         {"extensions/KHR_materials_specular/specularFactor", &material.features.specular, 1},
-        {"extensions/KHR_materials_specular/specularColorFactor",
-         &material.features.specularColor[0], 3},
-        {"extensions/KHR_materials_pbrSpecularGlossiness/diffuseFactor",
-         &material.extension.diffuseFactor[0], 4},
-        {"extensions/KHR_materials_pbrSpecularGlossiness/specularFactor",
-         &material.extension.specularFactor[0], 3},
-        {"extensions/KHR_materials_pbrSpecularGlossiness/glossinessFactor",
-         &material.features.glossiness, 1},
+        {"extensions/KHR_materials_specular/specularColorFactor", &material.features.specularColor[0], 3},
+        {"extensions/KHR_materials_pbrSpecularGlossiness/diffuseFactor", &material.extension.diffuseFactor[0], 4},
+        {"extensions/KHR_materials_pbrSpecularGlossiness/specularFactor", &material.extension.specularFactor[0], 3},
+        {"extensions/KHR_materials_pbrSpecularGlossiness/glossinessFactor", &material.features.glossiness, 1},
         {"extensions/KHR_materials_clearcoat/clearcoatFactor", &material.features.clearcoat, 1},
-        {"extensions/KHR_materials_clearcoat/clearcoatRoughnessFactor",
-         &material.features.clearcoatRoughness, 1},
-        {"extensions/KHR_materials_clearcoat/clearcoatNormalTexture/scale",
-         &material.features.clearcoatNormalTexture.scale, 1},
+        {"extensions/KHR_materials_clearcoat/clearcoatRoughnessFactor", &material.features.clearcoatRoughness, 1},
+        {"extensions/KHR_materials_clearcoat/clearcoatNormalTexture/scale", &material.features.clearcoatNormalTexture.scale, 1},
         {"extensions/KHR_materials_sheen/sheenColorFactor", &material.features.sheenColor[0], 3},
-        {"extensions/KHR_materials_sheen/sheenRoughnessFactor", &material.features.sheenRoughness,
-         1},
-        {"extensions/KHR_materials_transmission/transmissionFactor",
-         &material.features.transmission, 1},
+        {"extensions/KHR_materials_sheen/sheenRoughnessFactor", &material.features.sheenRoughness, 1},
+        {"extensions/KHR_materials_transmission/transmissionFactor", &material.features.transmission, 1},
         {"extensions/KHR_materials_volume/thicknessFactor", &material.features.thickness, 1},
-        {"extensions/KHR_materials_volume/attenuationDistance",
-         &material.features.attenuationDistance, 1},
-        {"extensions/KHR_materials_volume/attenuationColor", &material.features.attenuationColor[0],
-         3},
-        {"extensions/KHR_materials_iridescence/iridescenceFactor", &material.features.iridescence,
-         1},
-        {"extensions/KHR_materials_iridescence/iridescenceIor", &material.features.iridescenceIor,
-         1},
-        {"extensions/KHR_materials_iridescence/iridescenceThicknessMinimum",
-         &material.features.iridescenceThicknessMin, 1},
-        {"extensions/KHR_materials_iridescence/iridescenceThicknessMaximum",
-         &material.features.iridescenceThicknessMax, 1},
-        {"extensions/KHR_materials_anisotropy/anisotropyStrength", &material.features.anisotropy,
-         1},
-        {"extensions/KHR_materials_anisotropy/anisotropyRotation",
-         &material.features.anisotropyRotation, 1},
-        {"extensions/KHR_materials_diffuse_transmission/diffuseTransmissionFactor",
-         &material.features.diffuseTransmission, 1},
+        {"extensions/KHR_materials_volume/attenuationDistance", &material.features.attenuationDistance, 1},
+        {"extensions/KHR_materials_volume/attenuationColor", &material.features.attenuationColor[0], 3},
+        {"extensions/KHR_materials_iridescence/iridescenceFactor", &material.features.iridescence, 1},
+        {"extensions/KHR_materials_iridescence/iridescenceIor", &material.features.iridescenceIor, 1},
+        {"extensions/KHR_materials_iridescence/iridescenceThicknessMinimum", &material.features.iridescenceThicknessMin, 1},
+        {"extensions/KHR_materials_iridescence/iridescenceThicknessMaximum", &material.features.iridescenceThicknessMax, 1},
+        {"extensions/KHR_materials_anisotropy/anisotropyStrength", &material.features.anisotropy, 1},
+        {"extensions/KHR_materials_anisotropy/anisotropyRotation", &material.features.anisotropyRotation, 1},
+        {"extensions/KHR_materials_diffuse_transmission/diffuseTransmissionFactor", &material.features.diffuseTransmission, 1},
         {"extensions/KHR_materials_diffuse_transmission/diffuseTransmissionColorFactor",
          &material.features.diffuseTransmissionColor[0], 3},
-        {"extensions/KHR_materials_volume_scatter/multiscatterColorFactor",
-         &material.features.multiscatterColor[0], 3},
-        {"extensions/KHR_materials_retroreflection/retroreflectionFactor",
-         &material.features.retroreflection, 1}};
+        {"extensions/KHR_materials_volume_scatter/multiscatterColorFactor", &material.features.multiscatterColor[0], 3},
+        {"extensions/KHR_materials_retroreflection/retroreflectionFactor", &material.features.retroreflection, 1}};
 
     bool valid = false;
 
@@ -346,7 +305,7 @@ bool UpdateMaterial(Material& material,
 
     const std::string transformMarker = "/extensions/KHR_texture_transform/";
 
-    const size_t marker = path.find(transformMarker);
+    const size_t marker               = path.find(transformMarker);
 
     if (!valid && marker != std::string::npos)
     {
@@ -354,7 +313,7 @@ bool UpdateMaterial(Material& material,
 
         if (transform != nullptr)
         {
-            const std::string propertyPath = path.substr(marker + transformMarker.size());
+            const std::string propertyPath              = path.substr(marker + transformMarker.size());
 
             const NumericProperty transformProperties[] = {{"offset", &transform->uvOffset[0], 2},
                                                            {"scale", &transform->uvScale[0], 2},
@@ -411,20 +370,15 @@ uint32_t MorphDimensions(const Scene& scene, const Node* node)
     return dimensions;
 }
 
-bool UpdateNode(Scene& scene,
-                uint32_t sourceIndex,
-                const std::string& path,
-                VectorView<const float> values,
-                bool apply)
+bool UpdateNode(Scene& scene, uint32_t sourceIndex, const std::string& path, VectorView<const float> values, bool apply)
 {
     Node* node = FindNode(scene, sourceIndex);
 
     bool valid = node != nullptr || SourceObjectExists(scene, "/nodes", sourceIndex);
 
-    if (valid &&
-        (path == "extensions/KHR_node_visibility/visible" ||
-         path == "extensions/KHR_node_selectability/selectable" ||
-         path == "extensions/KHR_node_hoverability/hoverable"))
+    if (valid
+        && (path == "extensions/KHR_node_visibility/visible" || path == "extensions/KHR_node_selectability/selectable"
+            || path == "extensions/KHR_node_hoverability/hoverable"))
     {
         valid = values.size() == 1 && std::isfinite(values[0]);
 
@@ -452,12 +406,10 @@ bool UpdateNode(Scene& scene,
 
         for (const DeformationPrimitiveAsset& deformation : scene.GetAssetData().deformations)
         {
-            if (deformation.node == sourceIndex && deformation.morphPrimitive >= 0 &&
-                static_cast<size_t>(deformation.morphPrimitive) <
-                    scene.GetAssetData().morphPrimitives.size())
+            if (deformation.node == sourceIndex && deformation.morphPrimitive >= 0
+                && static_cast<size_t>(deformation.morphPrimitive) < scene.GetAssetData().morphPrimitives.size())
             {
-                const HeapVector<float>& defaults =
-                    scene.GetAssetData().morphPrimitives[deformation.morphPrimitive].weights;
+                const HeapVector<float>& defaults = scene.GetAssetData().morphPrimitives[deformation.morphPrimitive].weights;
 
                 for (size_t index = 0; index < std::min(weights.size(), defaults.size()); ++index)
                 {
@@ -470,15 +422,13 @@ bool UpdateNode(Scene& scene,
 
         if (node != nullptr)
         {
-            for (size_t index = 0; index < std::min(weights.size(), node->morphWeights.size());
-                 ++index)
+            for (size_t index = 0; index < std::min(weights.size(), node->morphWeights.size()); ++index)
             {
                 weights[index] = node->morphWeights[index];
             }
         }
 
-        valid = node == nullptr ||
-            NumericUpdate({"weights", weights.data(), dimensions}, path, values, apply, 1.0f, true);
+        valid = node == nullptr || NumericUpdate({"weights", weights.data(), dimensions}, path, values, apply, 1.0f, true);
 
         if (valid && apply && node != nullptr)
         {
@@ -487,25 +437,20 @@ bool UpdateNode(Scene& scene,
     }
     else if (valid)
     {
-        Transform* transform = node != nullptr && node->HasComponent<Transform>() ?
-            node->GetComponent<Transform>() :
-            nullptr;
+        Transform* transform = node != nullptr && node->HasComponent<Transform>() ? node->GetComponent<Transform>() : nullptr;
 
-        const Vec3 baseTranslation =
-            transform != nullptr ? Vec3(transform->GetBaseMatrix()[3]) : Vec3(0);
+        const Vec3 baseTranslation = transform != nullptr ? Vec3(transform->GetBaseMatrix()[3]) : Vec3(0);
 
-        Vec3 translation =
-            transform != nullptr ? transform->GetTranslation() + baseTranslation : Vec3(0);
+        Vec3 translation           = transform != nullptr ? transform->GetTranslation() + baseTranslation : Vec3(0);
 
-        Vec3 scale = transform != nullptr ? transform->GetScale() : Vec3(1);
+        Vec3 scale                 = transform != nullptr ? transform->GetScale() : Vec3(1);
 
-        const Quat rotation = transform != nullptr ? transform->GetRotation() : Quat(1, 0, 0, 0);
+        const Quat rotation        = transform != nullptr ? transform->GetRotation() : Quat(1, 0, 0, 0);
 
         Vec4 quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
 
-        const NumericProperty properties[] = {{"translation", &translation[0], 3},
-                                              {"scale", &scale[0], 3},
-                                              {"rotation", &quaternion[0], 4}};
+        const NumericProperty properties[] = {
+            {"translation", &translation[0], 3}, {"scale", &scale[0], 3}, {"rotation", &quaternion[0], 4}};
 
         valid = false;
 
@@ -521,15 +466,14 @@ bool UpdateNode(Scene& scene,
 
         if (valid && (path == "rotation" || path == "scale"))
         {
-            valid =
-                !SourcePropertyExists(scene, "/nodes/" + std::to_string(sourceIndex) + "/matrix");
+            valid = !SourcePropertyExists(scene, "/nodes/" + std::to_string(sourceIndex) + "/matrix");
         }
 
         if (valid && path.starts_with("rotation"))
         {
             const float squared = glm::dot(quaternion, quaternion);
 
-            valid = std::isfinite(squared) && squared > 1e-20f;
+            valid               = std::isfinite(squared) && squared > 1e-20f;
         }
 
         if (valid && apply && transform != nullptr)
@@ -538,36 +482,27 @@ bool UpdateNode(Scene& scene,
 
             transform->SetScale(scale);
 
-            transform->SetRotation(
-                glm::normalize(Quat(quaternion.w, quaternion.x, quaternion.y, quaternion.z)));
+            transform->SetRotation(glm::normalize(Quat(quaternion.w, quaternion.x, quaternion.y, quaternion.z)));
         }
     }
 
     return valid;
 }
 
-bool UpdateCamera(SceneCamera& camera,
-                  const std::string& path,
-                  VectorView<const float> values,
-                  bool apply)
+bool UpdateCamera(SceneCamera& camera, const std::string& path, VectorView<const float> values, bool apply)
 {
-    const NumericProperty properties[] = {{"perspective/aspectRatio", &camera.aspect, 1},
-                                          {"perspective/yfov", &camera.verticalFov, 1},
-                                          {"perspective/znear", &camera.nearPlane, 1},
-                                          {"perspective/zfar", &camera.farPlane, 1},
-                                          {"orthographic/xmag", &camera.xmag, 1},
-                                          {"orthographic/ymag", &camera.ymag, 1},
-                                          {"orthographic/znear", &camera.nearPlane, 1},
-                                          {"orthographic/zfar", &camera.farPlane, 1}};
+    const NumericProperty properties[] = {
+        {"perspective/aspectRatio", &camera.aspect, 1}, {"perspective/yfov", &camera.verticalFov, 1},
+        {"perspective/znear", &camera.nearPlane, 1},    {"perspective/zfar", &camera.farPlane, 1},
+        {"orthographic/xmag", &camera.xmag, 1},         {"orthographic/ymag", &camera.ymag, 1},
+        {"orthographic/znear", &camera.nearPlane, 1},   {"orthographic/zfar", &camera.farPlane, 1}};
 
     bool valid = false;
 
     for (const NumericProperty& property : properties)
     {
-        const bool scaled = std::string(property.name).ends_with("znear") ||
-            std::string(property.name).ends_with("zfar") ||
-            std::string(property.name).ends_with("xmag") ||
-            std::string(property.name).ends_with("ymag");
+        const bool scaled = std::string(property.name).ends_with("znear") || std::string(property.name).ends_with("zfar")
+                         || std::string(property.name).ends_with("xmag") || std::string(property.name).ends_with("ymag");
 
         if (NumericUpdate(property, path, values, apply, scaled ? camera.unitScale : 1.0f))
         {
@@ -592,7 +527,7 @@ bool UpdateCamera(SceneCamera& camera,
 
 bool UpdateLight(Light& light, const std::string& path, VectorView<const float> values, bool apply)
 {
-    LightProperties properties = light.GetProperties();
+    LightProperties properties     = light.GetProperties();
 
     const NumericProperty fields[] = {{"color", &properties.color[0], 3},
                                       {"intensity", &properties.intensity, 1},
@@ -600,14 +535,13 @@ bool UpdateLight(Light& light, const std::string& path, VectorView<const float> 
                                       {"spot/innerConeAngle", &properties.innerConeAngle, 1},
                                       {"spot/outerConeAngle", &properties.outerConeAngle, 1}};
 
-    bool valid = false;
+    bool valid                     = false;
 
     for (const NumericProperty& field : fields)
     {
-        const float scale = path == "range" ? light.unitScale :
-            path == "intensity" && light.GetType() != Directional ?
-                                              light.unitScale * light.unitScale :
-                                              1.0f;
+        const float scale = path == "range"                                       ? light.unitScale
+                          : path == "intensity" && light.GetType() != Directional ? light.unitScale * light.unitScale
+                                                                                  : 1.0f;
 
         if (NumericUpdate(field, path, values, true, scale))
         {
@@ -625,10 +559,7 @@ bool UpdateLight(Light& light, const std::string& path, VectorView<const float> 
     return valid;
 }
 
-bool ResolveAnimationPointer(Scene& scene,
-                             const std::string& pointer,
-                             VectorView<const float> values,
-                             bool apply)
+bool ResolveAnimationPointer(Scene& scene, const std::string& pointer, VectorView<const float> values, bool apply)
 {
     HeapVector<std::string> tokens;
 
@@ -643,21 +574,18 @@ bool ResolveAnimationPointer(Scene& scene,
 
     if (valid && (tokens[0] == "materials" || tokens[0] == "nodes" || tokens[0] == "cameras"))
     {
-        valid = ParseIndex(tokens[1], sourceIndex);
+        valid                  = ParseIndex(tokens[1], sourceIndex);
 
         const std::string path = RelativePath(tokens, 2);
 
         if (valid && tokens[0] == "materials")
         {
-            const std::vector<Material*> materials = scene.GetComponents<Material>();
+            const zen::HeapVector<Material*> materials = scene.GetComponents<Material>();
 
             const size_t count =
-                !scene.GetAssetData().sourceDocument.empty() && !materials.empty() ?
-                materials.size() - 1 :
-                materials.size();
+                !scene.GetAssetData().sourceDocument.empty() && !materials.empty() ? materials.size() - 1 : materials.size();
 
-            valid =
-                sourceIndex < count && UpdateMaterial(*materials[sourceIndex], path, values, apply);
+            valid = sourceIndex < count && UpdateMaterial(*materials[sourceIndex], path, values, apply);
         }
         else if (valid && tokens[0] == "nodes")
         {
@@ -665,15 +593,15 @@ bool ResolveAnimationPointer(Scene& scene,
         }
         else if (valid)
         {
-            const std::vector<SceneCamera*> cameras = scene.GetComponents<SceneCamera>();
+            const zen::HeapVector<SceneCamera*> cameras = scene.GetComponents<SceneCamera>();
 
-            bool found = false;
+            bool found                                  = false;
 
             for (SceneCamera* camera : cameras)
             {
                 if (camera->sourceIndex == sourceIndex)
                 {
-                    found = true;
+                    found  = true;
 
                     valid &= UpdateCamera(*camera, path, values, apply);
                 }
@@ -683,16 +611,14 @@ bool ResolveAnimationPointer(Scene& scene,
             {
                 SceneCamera camera("InactiveCamera");
 
-                valid = SourceObjectExists(scene, "/cameras", sourceIndex) &&
-                    UpdateCamera(camera, path, values, false);
+                valid = SourceObjectExists(scene, "/cameras", sourceIndex) && UpdateCamera(camera, path, values, false);
             }
         }
     }
-    else if (valid && tokens.size() == 5 && tokens[0] == "extensions" &&
-             tokens[1] == "EXT_lights_image_based" && tokens[2] == "lights")
+    else if (valid && tokens.size() == 5 && tokens[0] == "extensions" && tokens[1] == "EXT_lights_image_based"
+             && tokens[2] == "lights")
     {
-        valid = ParseIndex(tokens[3], sourceIndex) &&
-            sourceIndex < scene.GetAssetData().imageBasedLights.size();
+        valid = ParseIndex(tokens[3], sourceIndex) && sourceIndex < scene.GetAssetData().imageBasedLights.size();
 
         if (valid)
         {
@@ -715,17 +641,16 @@ bool ResolveAnimationPointer(Scene& scene,
 
                 if (valid)
                 {
-                    quaternion = Vec4(values[0], values[1], values[2], values[3]);
+                    quaternion          = Vec4(values[0], values[1], values[2], values[3]);
 
                     const float squared = glm::dot(quaternion, quaternion);
 
-                    valid = std::isfinite(squared) && squared > 1e-20f;
+                    valid               = std::isfinite(squared) && squared > 1e-20f;
                 }
 
                 if (valid && apply)
                 {
-                    light.rotation = glm::normalize(
-                        Quat(quaternion.w, quaternion.x, quaternion.y, quaternion.z));
+                    light.rotation = glm::normalize(Quat(quaternion.w, quaternion.x, quaternion.y, quaternion.z));
                 }
             }
             else
@@ -734,22 +659,22 @@ bool ResolveAnimationPointer(Scene& scene,
             }
         }
     }
-    else if (valid && tokens.size() >= 5 && tokens[0] == "extensions" &&
-             tokens[1] == "KHR_lights_punctual" && tokens[2] == "lights")
+    else if (valid && tokens.size() >= 5 && tokens[0] == "extensions" && tokens[1] == "KHR_lights_punctual"
+             && tokens[2] == "lights")
     {
-        valid = ParseIndex(tokens[3], sourceIndex);
+        valid                                = ParseIndex(tokens[3], sourceIndex);
 
-        const std::string path = RelativePath(tokens, 4);
+        const std::string path               = RelativePath(tokens, 4);
 
-        const std::vector<Light*> lights = scene.GetComponents<Light>();
+        const zen::HeapVector<Light*> lights = scene.GetComponents<Light>();
 
-        bool found = false;
+        bool found                           = false;
 
         for (Light* light : lights)
         {
             if (valid && light->sourceIndex == sourceIndex)
             {
-                found = true;
+                found  = true;
 
                 valid &= UpdateLight(*light, path, values, apply);
             }
@@ -759,9 +684,8 @@ bool ResolveAnimationPointer(Scene& scene,
         {
             Light light("InactiveLight");
 
-            valid =
-                SourceObjectExists(scene, "/extensions/KHR_lights_punctual/lights", sourceIndex) &&
-                UpdateLight(light, path, values, false);
+            valid = SourceObjectExists(scene, "/extensions/KHR_lights_punctual/lights", sourceIndex)
+                 && UpdateLight(light, path, values, false);
         }
     }
     else
@@ -773,9 +697,7 @@ bool ResolveAnimationPointer(Scene& scene,
 }
 } // namespace
 
-bool ValidateAnimationPointer(Scene& scene,
-                              const std::string& pointer,
-                              VectorView<const float> values)
+bool ValidateAnimationPointer(Scene& scene, const std::string& pointer, VectorView<const float> values)
 {
     const bool valid = ResolveAnimationPointer(scene, pointer, values, false);
 

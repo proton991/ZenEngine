@@ -32,7 +32,7 @@ public:
 
     std::optional<T> TryPop()
     {
-        LockAuto lock(&m_mutex);
+        LockAuto         lock(&m_mutex);
         std::optional<T> value;
         if (!m_q.empty())
         {
@@ -50,7 +50,7 @@ public:
 
 private:
     std::queue<T> m_q;
-    Mutex m_mutex;
+    Mutex         m_mutex;
 };
 
 template <class T> class Queue
@@ -111,7 +111,7 @@ public:
 
     void Flush()
     {
-        for (auto it = m_deletors.rbegin(); it != m_deletors.rend(); ++it)
+        for (std::deque<std::function<void()>>::reverse_iterator it = m_deletors.rbegin(); it != m_deletors.rend(); ++it)
         {
             (*it)(); //call the function
         }

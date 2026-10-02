@@ -7,24 +7,32 @@ namespace zen::platform
 std::string FileSystem::LoadTextFile(const std::string& path, FileLoadError* pError)
 {
     std::ifstream file(path);
+
     std::string text;
+
     FileLoadError error = FileLoadError::eNone;
+
     if (!file.is_open())
     {
         LOGE("Failed to open text file: {}", path);
+
         error = FileLoadError::eOpenFailed;
     }
     else
     {
         char chunk[4096];
+
         while (file.read(chunk, sizeof(chunk)) || file.gcount() > 0)
         {
             text.append(chunk, static_cast<size_t>(file.gcount()));
         }
+
         if (file.bad() || !file.eof())
         {
             LOGE("Failed to read text file: {}", path);
+
             error = FileLoadError::eReadFailed;
+
             text.clear();
         }
     }
@@ -33,6 +41,7 @@ std::string FileSystem::LoadTextFile(const std::string& path, FileLoadError* pEr
     {
         *pError = error;
     }
+
     return text;
 }
 

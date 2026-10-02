@@ -6,8 +6,11 @@ TEST(VulkanVerificationTest, SuccessAndExpectedStatusesRemainNonfatal)
     int evaluations = 0;
 
     VKCHECK((++evaluations, VK_SUCCESS));
+
     VKCHECK(VK_NOT_READY);
+
     VKCHECK(VK_TIMEOUT);
+
     VKCHECK(VK_SUBOPTIMAL_KHR);
 
     EXPECT_EQ(evaluations, 1);

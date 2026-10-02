@@ -14,11 +14,9 @@ TEST(UIShaderReflectionTest, PackedVertexColorHasFourByteStrideAndLocalFontBindi
 {
     RHIShaderGroupSPIRVPtr spirv = MakeRefCountPtr<RHIShaderGroupSPIRV>();
 
-    spirv->SetStageSPIRV(RHIShaderStage::eVertex,
-                         platform::FileSystem::LoadSpvFile("UI/imgui.vert.spv"));
+    spirv->SetStageSPIRV(RHIShaderStage::eVertex, platform::FileSystem::LoadSpvFile("UI/imgui.vert.spv"));
 
-    spirv->SetStageSPIRV(RHIShaderStage::eFragment,
-                         platform::FileSystem::LoadSpvFile("UI/imgui.frag.spv"));
+    spirv->SetStageSPIRV(RHIShaderStage::eFragment, platform::FileSystem::LoadSpvFile("UI/imgui.frag.spv"));
 
     RHIShaderGroupInfo info;
 
@@ -48,23 +46,23 @@ class UIDrawPacketTest : public testing::Test
 protected:
     void SetUp() override
     {
-        context = ImGui::CreateContext();
+        context                    = ImGui::CreateContext();
 
         ImGui::GetIO().IniFilename = nullptr;
 
-        first = new ImDrawList(ImGui::GetDrawListSharedData());
+        first                      = new ImDrawList(ImGui::GetDrawListSharedData());
 
-        second = new ImDrawList(ImGui::GetDrawListSharedData());
+        second                     = new ImDrawList(ImGui::GetDrawListSharedData());
 
         FillList(*first);
 
         FillList(*second);
 
-        data.Valid = true;
+        data.Valid            = true;
 
-        data.DisplayPos = ImVec2(100, 50);
+        data.DisplayPos       = ImVec2(100, 50);
 
-        data.DisplaySize = ImVec2(100, 80);
+        data.DisplaySize      = ImVec2(100, 80);
 
         data.FramebufferScale = ImVec2(1.5f, 2.0f);
 
@@ -102,9 +100,9 @@ protected:
 
         ImDrawCmd command;
 
-        command.ClipRect = ImVec4(99, 55.25f, 180.5f, 140);
+        command.ClipRect  = ImVec4(99, 55.25f, 180.5f, 140);
 
-        command.TexRef = ImTextureRef(fontId);
+        command.TexRef    = ImTextureRef(fontId);
 
         command.ElemCount = 3;
 
@@ -112,10 +110,10 @@ protected:
     }
 
     static constexpr ImTextureID fontId = 7;
-    ImGuiContext* context{nullptr};
-    ImDrawList* first{nullptr};
-    ImDrawList* second{nullptr};
-    ImDrawData data;
+    ImGuiContext*                context{nullptr};
+    ImDrawList*                  first{nullptr};
+    ImDrawList*                  second{nullptr};
+    ImDrawData                   data;
 };
 
 TEST_F(UIDrawPacketTest, ScalesOffsetsAndClampsClipRectangle)
@@ -159,7 +157,7 @@ TEST_F(UIDrawPacketTest, SnapshotOwnsGeometryAfterSourceMutationAndPadsIndexUplo
 
     first->VtxBuffer[0].pos.x = 500;
 
-    first->IdxBuffer[0] = 2;
+    first->IdxBuffer[0]       = 2;
 
     ImDrawVert vertex;
 
@@ -174,7 +172,7 @@ TEST_F(UIDrawPacketTest, PreservesBaseVertexBeyondSixteenBitIndexRange)
 {
     first->VtxBuffer.resize(70003);
 
-    data.TotalVtxCount = 70006;
+    data.TotalVtxCount            = 70006;
 
     first->CmdBuffer[0].VtxOffset = 70000;
 
@@ -236,9 +234,9 @@ TEST_F(UIDrawPacketTest, EmptyMinimizedAndClippedFramesProduceNoDraws)
 
     data.Clear();
 
-    data.Valid = true;
+    data.Valid            = true;
 
-    data.DisplaySize = ImVec2(150, 160);
+    data.DisplaySize      = ImVec2(150, 160);
 
     data.FramebufferScale = ImVec2(1, 1);
 
@@ -255,7 +253,7 @@ TEST_F(UIDrawPacketTest, RejectsInvalidRangesAndNonFiniteClipping)
 
     EXPECT_FALSE(BuildUIDrawPacket(data, fontId, 150, 160, packet));
 
-    first->CmdBuffer[0].IdxOffset = 0;
+    first->CmdBuffer[0].IdxOffset  = 0;
 
     first->CmdBuffer[0].ClipRect.x = std::numeric_limits<float>::quiet_NaN();
 

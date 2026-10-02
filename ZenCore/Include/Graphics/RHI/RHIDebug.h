@@ -9,11 +9,11 @@ class RHIDebug
 public:
     static RHIDebug* Create();
 
-    virtual ~RHIDebug() = default;
+    virtual ~RHIDebug()                                                               = default;
 
     virtual void SetPipelineDebugName(RHIPipeline* pPipelineHandle, NameID debugName) = 0;
 
-    virtual void SetTextureDebugName(RHITexture* pTexture, NameID debugName) = 0;
+    virtual void SetTextureDebugName(RHITexture* pTexture, NameID debugName)          = 0;
 
 protected:
     RHIDebug() {}

@@ -22,8 +22,8 @@ public:
 
     template <typename... Flags> BitField<T>& SetFlags(Flags... flags)
     {
-        uint32_t values = (... | static_cast<int64_t>(flags));
-        m_value |= values;
+        uint32_t values  = (... | static_cast<int64_t>(flags));
+        m_value         |= values;
         return *this;
     }
 

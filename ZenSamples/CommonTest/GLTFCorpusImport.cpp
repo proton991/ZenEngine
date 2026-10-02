@@ -93,16 +93,14 @@ void CheckAssetData(const sg::SceneAssetData& data)
     {
         for (const sg::AnimationChannel& channel : animation.channels)
         {
-            Require(channel.sampler < animation.samplers.size(),
-                    "Animation channel references an absent sampler");
+            Require(channel.sampler < animation.samplers.size(), "Animation channel references an absent sampler");
         }
 
         for (const sg::AnimationSampler& sampler : animation.samplers)
         {
             for (size_t index = 0; index < sampler.times.size(); ++index)
             {
-                Require(std::isfinite(sampler.times[index]),
-                        "Animation timestamp contains a non-finite value");
+                Require(std::isfinite(sampler.times[index]), "Animation timestamp contains a non-finite value");
 
                 if (index != 0)
                 {
@@ -171,7 +169,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
 {
     const std::vector<asset::Vertex>& vertices = loader.GetVertices();
 
-    const std::vector<uint32_t>& indices = loader.GetIndices();
+    const std::vector<uint32_t>& indices       = loader.GetIndices();
 
     CheckVertices(vertices);
 
@@ -194,7 +192,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
         }
     }
 
-    const std::vector<sg::SubMesh*> subMeshes = scene.GetComponents<sg::SubMesh>();
+    const zen::HeapVector<sg::SubMesh*> subMeshes = scene.GetComponents<sg::SubMesh>();
 
     for (const sg::SubMesh* subMesh : subMeshes)
     {
@@ -203,8 +201,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
         Require(uint64_t(subMesh->GetFirstIndex()) + subMesh->GetIndexCount() <= indices.size(),
                 "Submesh index range exceeds the index buffer");
 
-        Require(subMesh->GetVertexCount() <= vertices.size(),
-                "Submesh vertex count exceeds the vertex buffer");
+        Require(subMesh->GetVertexCount() <= vertices.size(), "Submesh vertex count exceeds the vertex buffer");
 
         Require(subMesh->GetMaterial() != nullptr, "Submesh has no material");
 
@@ -214,16 +211,14 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
         }
     }
 
-    const std::vector<sg::Texture*> textures = scene.GetComponents<sg::Texture>();
+    const zen::HeapVector<sg::Texture*> textures = scene.GetComponents<sg::Texture>();
 
     for (const sg::Texture* texture : textures)
     {
-        Require(texture != nullptr && texture->width != 0 && texture->height != 0 &&
-                    !texture->bytesData.empty(),
+        Require(texture != nullptr && texture->width != 0 && texture->height != 0 && !texture->bytesData.empty(),
                 "Imported texture has no decoded image data");
 
-        Require(texture->format == asset::Format::R8G8B8A8_UNORM ||
-                    texture->format == asset::Format::R8G8B8A8_SRGB,
+        Require(texture->format == asset::Format::R8G8B8A8_UNORM || texture->format == asset::Format::R8G8B8A8_SRGB,
                 "Imported image has an unexpected decoded pixel format");
 
         Require(texture->bytesData.size() == uint64_t(texture->width) * texture->height * 4,
@@ -233,7 +228,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
         {
             Require(level < 32, "Imported image has too many mip levels");
 
-            const uint32_t width = std::max(1u, texture->width >> level);
+            const uint32_t width  = std::max(1u, texture->width >> level);
 
             const uint32_t height = std::max(1u, texture->height >> level);
 
@@ -243,8 +238,8 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
 
         if (!texture->mipBytes.empty())
         {
-            Require(std::equal(texture->bytesData.begin(), texture->bytesData.end(),
-                               texture->mipBytes[0].begin(), texture->mipBytes[0].end()),
+            Require(std::equal(texture->bytesData.begin(), texture->bytesData.end(), texture->mipBytes[0].begin(),
+                               texture->mipBytes[0].end()),
                     "Authored image level zero differs from the decoded image");
         }
     }
@@ -257,9 +252,7 @@ void CheckScene(const asset::FastGLTFLoader& loader, const sg::Scene& scene)
     CheckAssetData(scene.GetAssetData());
 }
 
-void CheckPosedBounds(const asset::FastGLTFLoader& loader,
-                      sg::Scene& scene,
-                      VectorView<const asset::Vertex> vertices)
+void CheckPosedBounds(const asset::FastGLTFLoader& loader, sg::Scene& scene, VectorView<const asset::Vertex> vertices)
 {
     CheckBounds(scene.GetAABB());
 
@@ -267,7 +260,7 @@ void CheckPosedBounds(const asset::FastGLTFLoader& loader,
 
     const Vec3 maximum = scene.GetAABB().GetMax();
 
-    float magnitude = 1.0f;
+    float magnitude    = 1.0f;
 
     for (uint32_t axis = 0; axis < 3; ++axis)
     {
@@ -294,8 +287,8 @@ void CheckPosedBounds(const asset::FastGLTFLoader& loader,
 
                     CheckVector(position, 3);
 
-                    Require(glm::all(glm::greaterThanEqual(position, minimum - tolerance)) &&
-                                glm::all(glm::lessThanEqual(position, maximum + tolerance)),
+                    Require(glm::all(glm::greaterThanEqual(position, minimum - tolerance))
+                                && glm::all(glm::lessThanEqual(position, maximum + tolerance)),
                             "Scene bounds do not contain its posed rendered geometry");
                 }
             }
@@ -305,18 +298,17 @@ void CheckPosedBounds(const asset::FastGLTFLoader& loader,
 
 uint32_t CheckMaterialVariants(sg::Scene& scene)
 {
-    const sg::SceneAssetData& data = scene.GetAssetData();
+    const sg::SceneAssetData& data                 = scene.GetAssetData();
 
-    const std::vector<sg::Material*> materials = scene.GetComponents<sg::Material>();
+    const zen::HeapVector<sg::Material*> materials = scene.GetComponents<sg::Material>();
 
-    const std::vector<sg::SubMesh*> primitives = scene.GetComponents<sg::SubMesh>();
+    const zen::HeapVector<sg::SubMesh*> primitives = scene.GetComponents<sg::SubMesh>();
 
     for (uint32_t variant = 0; variant < data.materialVariants.size(); ++variant)
     {
         std::cerr << "ZEN_GLTF_IMPORT_STAGE material_variant=" << variant << '\n';
 
-        Require(scene.SetMaterialVariant(static_cast<int32_t>(variant)),
-                "Imported material variant cannot be selected");
+        Require(scene.SetMaterialVariant(static_cast<int32_t>(variant)), "Imported material variant cannot be selected");
 
         for (const sg::SubMesh* primitive : primitives)
         {
@@ -324,9 +316,8 @@ uint32_t CheckMaterialVariants(sg::Scene& scene)
 
             for (const sg::MaterialVariantPrimitiveAsset& mapping : data.variantPrimitives)
             {
-                if (mapping.mesh == primitive->assetMesh &&
-                    mapping.primitive == primitive->assetPrimitive &&
-                    variant < mapping.materials.size() && mapping.materials[variant] >= 0)
+                if (mapping.mesh == primitive->assetMesh && mapping.primitive == primitive->assetPrimitive
+                    && variant < mapping.materials.size() && mapping.materials[variant] >= 0)
                 {
                     const uint32_t material = static_cast<uint32_t>(mapping.materials[variant]);
 
@@ -336,8 +327,8 @@ uint32_t CheckMaterialVariants(sg::Scene& scene)
                 }
             }
 
-            Require(expected != nullptr && primitive->GetMaterial() == expected &&
-                        primitive->GetMaterialIndex() == expected->index,
+            Require(expected != nullptr && primitive->GetMaterial() == expected
+                        && primitive->GetMaterialIndex() == expected->index,
                     "Material variant selected a different material from its source mapping");
         }
     }
@@ -356,8 +347,7 @@ uint32_t CheckMaterialVariants(sg::Scene& scene)
 
     for (size_t index = 0; index < primitives.size(); ++index)
     {
-        Require(primitives[index]->GetMaterial() == previous[index],
-                "Rejected material variant changed the selected material");
+        Require(primitives[index]->GetMaterial() == previous[index], "Rejected material variant changed the selected material");
     }
 
     Require(scene.SetMaterialVariant(-1), "Default material bindings cannot be restored");
@@ -375,11 +365,11 @@ uint32_t CheckMaterialVariants(sg::Scene& scene)
 
 uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
 {
-    const sg::SceneAssetData& data = scene.GetAssetData();
+    const sg::SceneAssetData& data                     = scene.GetAssetData();
 
-    const VectorView<const asset::Vertex> bindVertices = data.bindVertices.empty() ?
-        VectorView<const asset::Vertex>(loader.GetVertices()) :
-        VectorView<const asset::Vertex>(data.bindVertices);
+    const VectorView<const asset::Vertex> bindVertices = data.bindVertices.empty()
+                                                           ? VectorView<const asset::Vertex>(loader.GetVertices())
+                                                           : VectorView<const asset::Vertex>(data.bindVertices);
 
     HeapVector<asset::Vertex> deformed;
 
@@ -400,12 +390,10 @@ uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
 
     if (std::isfinite(extent) && extent > 1e-6f)
     {
-        Require(std::abs(scene.GetAABB().GetMaxExtent() - 1.0f) < 1e-4f,
-                "Scene normalization did not produce unit bounds");
+        Require(std::abs(scene.GetAABB().GetMaxExtent() - 1.0f) < 1e-4f, "Scene normalization did not produce unit bounds");
     }
 
-    Require(sg::ApplySceneDeformations(scene, bindVertices, deformed),
-            "Normalized skin or morph pose cannot be evaluated");
+    Require(sg::ApplySceneDeformations(scene, bindVertices, deformed), "Normalized skin or morph pose cannot be evaluated");
 
     CheckVertices(deformed);
 
@@ -417,9 +405,9 @@ uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
     {
         const sg::AnimationAsset& animation = data.animations[index];
 
-        const float duration = sg::GetAnimationDuration(animation);
+        const float duration                = sg::GetAnimationDuration(animation);
 
-        float firstTime = duration;
+        float firstTime                     = duration;
 
         for (const sg::AnimationSampler& sampler : animation.samplers)
         {
@@ -435,8 +423,7 @@ uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
         {
             std::cerr << "ZEN_GLTF_IMPORT_STAGE animation=" << index << " time=" << time << '\n';
 
-            Require(sg::EvaluateSceneAnimation(scene, index, time, false),
-                    "Imported animation cannot be sampled");
+            Require(sg::EvaluateSceneAnimation(scene, index, time, false), "Imported animation cannot be sampled");
 
             Require(sg::ApplySceneDeformations(scene, bindVertices, deformed),
                     "Imported animated skin or morph pose cannot be evaluated");
@@ -455,33 +442,29 @@ uint32_t CheckAnimations(const asset::FastGLTFLoader& loader, sg::Scene& scene)
 }
 
 void PrintResult(const asset::FastGLTFLoader& loader,
-                 const sg::Scene& scene,
-                 uint32_t samples,
-                 const char* marker,
-                 uint32_t variantSelections = 0)
+                 const sg::Scene&             scene,
+                 uint32_t                     samples,
+                 const char*                  marker,
+                 uint32_t                     variantSelections = 0)
 {
     const sg::SceneAssetData& data = scene.GetAssetData();
 
-    size_t channels = 0;
+    size_t channels                = 0;
 
     for (const sg::AnimationAsset& animation : data.animations)
     {
         channels += animation.channels.size();
     }
 
-    std::cout << marker << "{\"vertices\":" << loader.GetVertices().size()
-              << ",\"indices\":" << loader.GetIndices().size()
-              << ",\"nodes\":" << scene.GetNodes().size()
-              << ",\"renderable_nodes\":" << scene.GetRenderableCount()
+    std::cout << marker << "{\"vertices\":" << loader.GetVertices().size() << ",\"indices\":" << loader.GetIndices().size()
+              << ",\"nodes\":" << scene.GetNodes().size() << ",\"renderable_nodes\":" << scene.GetRenderableCount()
               << ",\"meshes\":" << scene.GetComponents<sg::Mesh>().size()
               << ",\"submeshes\":" << scene.GetComponents<sg::SubMesh>().size()
               << ",\"materials\":" << scene.GetComponents<sg::Material>().size()
-              << ",\"textures\":" << scene.GetComponents<sg::Texture>().size()
-              << ",\"skins\":" << data.skins.size() << ",\"animations\":" << data.animations.size()
-              << ",\"animation_channels\":" << channels << ",\"animation_samples\":" << samples
-              << ",\"material_variants\":" << data.materialVariants.size()
-              << ",\"variant_primitives\":" << data.variantPrimitives.size()
-              << ",\"variant_selections\":" << variantSelections
+              << ",\"textures\":" << scene.GetComponents<sg::Texture>().size() << ",\"skins\":" << data.skins.size()
+              << ",\"animations\":" << data.animations.size() << ",\"animation_channels\":" << channels
+              << ",\"animation_samples\":" << samples << ",\"material_variants\":" << data.materialVariants.size()
+              << ",\"variant_primitives\":" << data.variantPrimitives.size() << ",\"variant_selections\":" << variantSelections
               << ",\"morph_primitives\":" << data.morphPrimitives.size() << "}\n";
 
     std::cout.flush();
@@ -533,7 +516,7 @@ int main(int argc, char** argv)
 
             const uint32_t variants = CheckMaterialVariants(scene);
 
-            const uint32_t samples = CheckAnimations(loader, scene);
+            const uint32_t samples  = CheckAnimations(loader, scene);
 
             PrintResult(loader, scene, samples, "ZEN_GLTF_IMPORT_RESULT ", variants);
         }

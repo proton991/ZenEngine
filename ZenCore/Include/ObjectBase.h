@@ -28,16 +28,14 @@
 // CLANG ENABLE/DISABLE WARNING DEFINITION
 #    define ZEN_DISABLE_WARNINGS()                                                     \
         _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wall\"") \
-            _Pragma("clang diagnostic ignored \"-Wextra\"")                            \
-                _Pragma("clang diagnostic ignored \"-Wtautological-compare\"")
+            _Pragma("clang diagnostic ignored \"-Wextra\"") _Pragma("clang diagnostic ignored \"-Wtautological-compare\"")
 
 #    define ZEN_ENABLE_WARNINGS() _Pragma("clang diagnostic pop")
 #elif defined(__GNUC__) || defined(__GNUG__)
 // GCC ENABLE/DISABLE WARNING DEFINITION
 #    define ZEN_DISABLE_WARNINGS()                                                 \
         _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wall\"") \
-            _Pragma("clang diagnostic ignored \"-Wextra\"")                        \
-                _Pragma("clang diagnostic ignored \"-Wtautological-compare\"")
+            _Pragma("clang diagnostic ignored \"-Wextra\"") _Pragma("clang diagnostic ignored \"-Wtautological-compare\"")
 
 #    define ZEN_ENABLE_WARNINGS() _Pragma("GCC diagnostic pop")
 #elif defined(_MSC_VER)
@@ -66,7 +64,7 @@ public:
     }
 
 protected:
-    virtual ~ObjectBase() = default;
+    virtual ~ObjectBase()  = default;
 
     virtual void Destroy() = 0;
 

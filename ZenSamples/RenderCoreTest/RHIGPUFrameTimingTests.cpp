@@ -9,10 +9,10 @@ namespace
 using namespace zen;
 
 RHIGPUTimingPtr AddPublishedInterval(RHIGPUFrameTiming& frame,
-                                     uint64_t begin,
-                                     uint64_t end,
-                                     uint32_t validBits       = 64,
-                                     double periodNanoseconds = 1000)
+                                     uint64_t           begin,
+                                     uint64_t           end,
+                                     uint32_t           validBits = 64,
+                                     double periodNanoseconds     = 1000)
 {
     RHIGPUTimingPtr interval = frame.AddInterval();
 
@@ -26,9 +26,7 @@ RHIGPUTimingPtr AddPublishedInterval(RHIGPUFrameTiming& frame,
     return interval;
 }
 
-void PublishAfterRelease(RHIGPUTimingPtr interval,
-                         const std::atomic<bool>* released,
-                         std::atomic<bool>* completed)
+void PublishAfterRelease(RHIGPUTimingPtr interval, const std::atomic<bool>* released, std::atomic<bool>* completed)
 {
     while (!released->load(std::memory_order_acquire))
     {
@@ -496,7 +494,7 @@ TEST(RHIGPUFrameTiming, CompletionPublicationReleasesRawTimestampsToConcurrentRe
 {
     RHIGPUFrameTimingPtr frame = MakeShared<RHIGPUFrameTiming, MultiThreadCounter>();
 
-    RHIGPUTimingPtr interval = frame->AddInterval();
+    RHIGPUTimingPtr interval   = frame->AddInterval();
 
     EXPECT_TRUE(interval);
 
@@ -518,8 +516,7 @@ TEST(RHIGPUFrameTiming, CompletionPublicationReleasesRawTimestampsToConcurrentRe
         {
             const RHIGPUTimingStatus status = frame->GetStatus();
 
-            EXPECT_TRUE(status == RHIGPUTimingStatus::ePending ||
-                        status == RHIGPUTimingStatus::eAvailable);
+            EXPECT_TRUE(status == RHIGPUTimingStatus::ePending || status == RHIGPUTimingStatus::eAvailable);
 
             if (status == RHIGPUTimingStatus::eAvailable)
             {

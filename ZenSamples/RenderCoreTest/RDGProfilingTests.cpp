@@ -8,27 +8,27 @@ struct RDGProfilingTestAccess
 {
     static void Record(RDGMetrics& metrics, const RHIGPUTimingPtr& result, uint64_t frame)
     {
-        metrics.m_capture = true;
+        metrics.m_capture                    = true;
 
-        metrics.m_snapshot = {};
+        metrics.m_snapshot                   = {};
 
-        metrics.m_snapshot.graph = "deferred_graph";
+        metrics.m_snapshot.graph             = "deferred_graph";
 
-        metrics.m_snapshot.frameIndex = frame;
+        metrics.m_snapshot.frameIndex        = frame;
 
         metrics.m_snapshot.gpuTimingsEnabled = true;
 
         RDGNodeMetrics node;
 
-        node.id = 7;
+        node.id        = 7;
 
-        node.name = "retained_pass";
+        node.name      = "retained_pass";
 
         node.gpuStatus = RHIGPUTimingStatus::ePending;
 
         metrics.m_snapshot.nodes.push_back(node);
 
-        metrics.m_gpuTimings = {result};
+        metrics.m_gpuTimings   = {result};
 
         metrics.m_executeStart = std::chrono::steady_clock::now();
 
@@ -98,13 +98,13 @@ TEST_F(RDGProfiling, DeferredResultsRetainIdentityAndPublishOnce)
 
 TEST_F(RDGProfiling, OverflowDropsOldCaptureWithoutCancellingNativeOwnership)
 {
-    RDGMetricsOptions options = metrics.GetOptions();
+    RDGMetricsOptions options     = metrics.GetOptions();
 
     options.maxPendingGPUCaptures = 1;
 
     metrics.Configure(options);
 
-    RHIGPUTimingPtr old = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    RHIGPUTimingPtr old  = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
     RHIGPUTimingPtr next = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
@@ -139,11 +139,11 @@ TEST_F(RDGProfiling, OverflowDropsOldCaptureWithoutCancellingNativeOwnership)
 
 TEST_F(RDGProfiling, ReadyCapturesBypassPendingOnesAndFinalAbandonmentIsExplicit)
 {
-    RHIGPUTimingPtr pending = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    RHIGPUTimingPtr pending     = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
     RHIGPUTimingPtr unsupported = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
-    RHIGPUTimingPtr discarded = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
+    RHIGPUTimingPtr discarded   = MakeShared<RHIGPUTimingResult, MultiThreadCounter>();
 
     RDGProfilingTestAccess::Record(metrics, pending, 1);
 

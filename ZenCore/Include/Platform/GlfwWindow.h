@@ -1,5 +1,5 @@
 #pragma once
-#define GLFW_INCLUDE_VULKAN
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <functional>
 #include <thread>
@@ -13,13 +13,10 @@ class GlfwWindowImpl : public NativeWindow
 {
 public:
     GlfwWindowImpl(const WindowConfig& config);
+
     ~GlfwWindowImpl();
 
-    VkSurfaceKHR CreateSurface(VkInstance instance) const override;
-
     void CheckThreadOwnership() const;
-
-    HeapVector<const char*> GetInstanceExtensions() override;
 
     // UI applications route shortcuts after their UI frame has resolved capture.
     void Update(bool processInputShortcuts = true);
@@ -33,7 +30,7 @@ public:
 
     void HideCursor() const;
 
-    VkExtent2D GetExtent2D() const
+    WindowExtent GetExtent2D() const override
     {
         return {static_cast<uint32_t>(m_data.width), static_cast<uint32_t>(m_data.height)};
     }
@@ -55,11 +52,14 @@ public:
 
 private:
     static void OnWindowSize(GLFWwindow* handle, int width, int height);
+
     void SetupWindowCallbacks();
+
     bool CenterWindow();
+
     void Destroy();
 
-    GLFWwindow* m_pHandle;
+    GLFWwindow*           m_pHandle;
     const std::thread::id m_ownerThread{std::this_thread::get_id()};
     struct WindowData
     {

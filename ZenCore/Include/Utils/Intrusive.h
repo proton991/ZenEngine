@@ -7,20 +7,17 @@ namespace zen
 {
 template <class T> class IntrusivePtr;
 
-template <class T,
-          class Deleter        = std::default_delete<T>,
-          class RefCounterType = SingleThreadCounter>
-class IntrusivePtrEnabled
+template <class T, class Deleter = std::default_delete<T>, class RefCounterType = SingleThreadCounter> class IntrusivePtrEnabled
 {
 public:
     ZEN_NO_COPY(IntrusivePtrEnabled)
-    IntrusivePtrEnabled() = default;
+
+    IntrusivePtrEnabled()             = default;
 
     using IntrusivePtrType            = IntrusivePtr<T>;
     using EnabledBase                 = T;
     using EnabledDeleter              = Deleter;
     using EnabledReferenceCounterType = RefCounterType;
-
 
     void ReleaseReference()
     {
@@ -34,7 +31,6 @@ public:
     {
         m_counter.Add();
     }
-
 
 protected:
     IntrusivePtr<T> ReferenceFromThis()
@@ -107,8 +103,7 @@ public:
     void Reset()
     {
         using ReferenceBase =
-            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter,
-                                typename T::EnabledReferenceCounterType>;
+            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter, typename T::EnabledReferenceCounterType>;
         // Static up-cast here to avoid potential issues with multiple intrusive inheritance.
         // Also makes sure that the pointer type actually inherits from this type.
         if (m_pPtr)
@@ -120,12 +115,10 @@ public:
 
     template <typename U> IntrusivePtr& operator=(const IntrusivePtr<U>& other)
     {
-        static_assert(std::is_base_of<T, U>::value,
-                      "Cannot safely assign downcast intrusive pointers.");
+        static_assert(std::is_base_of<T, U>::value, "Cannot safely assign downcast intrusive pointers.");
 
         using ReferenceBase =
-            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter,
-                                typename T::EnabledReferenceCounterType>;
+            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter, typename T::EnabledReferenceCounterType>;
 
         Reset();
         m_pPtr = static_cast<T*>(other.m_pPtr);
@@ -142,8 +135,7 @@ public:
     IntrusivePtr& operator=(const IntrusivePtr& other)
     {
         using ReferenceBase =
-            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter,
-                                typename T::EnabledReferenceCounterType>;
+            IntrusivePtrEnabled<typename T::EnabledBase, typename T::EnabledDeleter, typename T::EnabledReferenceCounterType>;
 
         if (this != &other)
         {

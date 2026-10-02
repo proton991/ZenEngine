@@ -9,7 +9,7 @@ class TestA : public IntrusivePtrEnabled<TestA>
 public:
     virtual ~TestA() = default;
 
-    int a = 5;
+    int a            = 5;
 };
 
 class TestB : public TestA
@@ -25,13 +25,20 @@ public:
 TEST(IntrusivePtr, basic)
 {
     std::vector<IntrusivePtr<TestA>> as;
+
     {
-        auto b = MakeIntrusive<TestB>();
+        IntrusivePtr<TestB> b = MakeIntrusive<TestB>();
+
         IntrusivePtr<TestA> a;
+
         a = b;
+
         IntrusivePtr<TestA> c;
+
         c = a;
+
         as.push_back(a);
     }
+
     EXPECT_EQ(as[0]->a, 5);
 }

@@ -48,10 +48,10 @@ private:
     struct
     {
         DataFormat shadowMapFormat;
-        uint32_t shadowMapWidth;
-        uint32_t shadowMapHeight;
-        Vec2 exponents;
-        float alphaCutoff;
+        uint32_t   shadowMapWidth;
+        uint32_t   shadowMapHeight;
+        Vec2       exponents;
+        float      alphaCutoff;
     } m_config;
 
     struct

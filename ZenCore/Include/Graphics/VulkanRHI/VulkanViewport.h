@@ -17,10 +17,10 @@ struct FVulkanCommandListContext;
 class VulkanViewport : public RHIViewport
 {
 public:
-    static VulkanViewport* CreateObject(void* pWindow,
-                                        uint32_t width,
-                                        uint32_t height,
-                                        bool enableVSync,
+    static VulkanViewport* CreateObject(void*                        pWindow,
+                                        uint32_t                     width,
+                                        uint32_t                     height,
+                                        bool                         enableVSync,
                                         VulkanSwapchainRecreateInfo* surfaceInfo);
 
     ~VulkanViewport() {}
@@ -37,9 +37,7 @@ public:
 
     DataFormat GetSwapchainFormat() final
     {
-        return m_pSwapchain != nullptr ?
-            static_cast<DataFormat>(m_pSwapchain->GetBackBufferFormat()) :
-            DataFormat::eUndefined;
+        return m_pSwapchain != nullptr ? static_cast<DataFormat>(m_pSwapchain->GetBackBufferFormat()) : DataFormat::eUndefined;
     }
 
     DataFormat GetDepthStencilFormat() final
@@ -108,23 +106,23 @@ private:
     void FinishResize(VulkanSwapchainRecreateInfo* recreateInfo);
 
     void CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
-                                        VkImage dstImage,
-                                        uint32_t windowWidth,
-                                        uint32_t windowHeight);
+                                        VkImage         dstImage,
+                                        uint32_t        windowWidth,
+                                        uint32_t        windowHeight);
 
     VulkanDevice* m_pDevice{nullptr};
 
-    DataFormat m_depthFormat;
-    VulkanSwapchain* m_pSwapchain{nullptr};
-    int32_t m_acquiredImageIndex{-1};
-    VulkanSemaphore* m_pImageAcquiredSemaphore{nullptr};
+    DataFormat          m_depthFormat;
+    VulkanSwapchain*    m_pSwapchain{nullptr};
+    int32_t             m_acquiredImageIndex{-1};
+    VulkanSemaphore*    m_pImageAcquiredSemaphore{nullptr};
     HeapVector<VkImage> m_swapchainImages;
-    VulkanTexture* m_pColorBackBuffer{nullptr};
-    VulkanTexture* m_pDepthStencilBackBuffer{nullptr};
-    uint64_t m_presentCount{0};
+    VulkanTexture*      m_pColorBackBuffer{nullptr};
+    VulkanTexture*      m_pDepthStencilBackBuffer{nullptr};
+    uint64_t            m_presentCount{0};
 
     uint64_t m_presentSignalGeneration{0};
-    bool m_presentAcquiredFailed{false};
-    bool m_suspended{false};
+    bool     m_presentAcquiredFailed{false};
+    bool     m_suspended{false};
 };
 } // namespace zen

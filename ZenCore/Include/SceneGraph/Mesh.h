@@ -71,12 +71,10 @@ private:
 
 inline bool operator==(const Mesh& lhs, const Mesh& rhs)
 {
-    return lhs.GetName() == rhs.GetName() && lhs.GetAABB() == rhs.GetAABB() &&
-        std::equal(lhs.GetNodes().begin(), lhs.GetNodes().end(), rhs.GetNodes().begin(),
-                   rhs.GetNodes().end()) &&
-        std::equal(lhs.GetSubMeshes().begin(), lhs.GetSubMeshes().end(), rhs.GetSubMeshes().begin(),
-                   rhs.GetSubMeshes().end(),
-                   [](const SubMesh* left, const SubMesh* right) { return *left == *right; });
+    return lhs.GetName() == rhs.GetName() && lhs.GetAABB() == rhs.GetAABB()
+        && std::equal(lhs.GetNodes().begin(), lhs.GetNodes().end(), rhs.GetNodes().begin(), rhs.GetNodes().end())
+        && std::equal(lhs.GetSubMeshes().begin(), lhs.GetSubMeshes().end(), rhs.GetSubMeshes().begin(),
+                      rhs.GetSubMeshes().end(), [](const SubMesh* left, const SubMesh* right) { return *left == *right; });
 }
 
 inline bool operator!=(const Mesh& lhs, const Mesh& rhs)

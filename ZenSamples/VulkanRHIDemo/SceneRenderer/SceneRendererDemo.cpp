@@ -35,32 +35,32 @@
 namespace zen
 {
 SceneRendererDemo::SceneRendererDemo(const platform::WindowConfig& windowConfig,
-                                     sg::CameraType type,
-                                     const DemoProfilingOptions& profiling) :
+                                     sg::CameraType                type,
+                                     const DemoProfilingOptions&   profiling) :
     m_cameraType(type)
 {
-    m_pWindow = new platform::GlfwWindowImpl(windowConfig);
+    m_pWindow      = new platform::GlfwWindowImpl(windowConfig);
 
-    m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan,
-                                                  rc::RenderConfig::GetInstance().numFrames);
+    m_renderDevice = MakeUnique<rc::RenderDevice>(RHIAPIType::eVulkan, rc::RenderConfig::GetInstance().numFrames);
 
     if (!profiling.prefix.empty())
     {
         m_profiling = MakeUnique<SceneRendererProfiling>(*m_renderDevice, profiling);
     }
 
-    m_pViewport = m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height,
-                                                 profiling.vsync);
+    m_pViewport = m_renderDevice->CreateViewport(m_pWindow, windowConfig.width, windowConfig.height, profiling.vsync);
 
     rc::ShaderProgramManager::GetInstance().BuildShaderPrograms(m_renderDevice.Get());
 
     m_renderDevice->Init(m_pViewport);
 
     const float aspect = windowConfig.aspect != 0.0f ? windowConfig.aspect : m_pWindow->GetAspect();
+
     m_pWindow->SetOnResize([this](uint32_t width, uint32_t height) { OnResize(width, height); });
 
-    m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect,
-                                        type, sg::CameraProjectionType::ePerspective);
+    m_camera = sg::Camera::CreateUnique(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, 0.0f}, aspect, type,
+                                        sg::CameraProjectionType::ePerspective);
+
     m_camera->SetOnUpdate([&] {});
 
     m_timer = MakeUnique<platform::Timer>();
@@ -84,7 +84,7 @@ bool SceneRendererDemo::EnableRuntimeUI()
     {
         m_runtimeUI = MakeUnique<ui::RuntimeDebugUI>(*m_renderDevice, *m_pWindow, *this);
 
-        enabled = m_runtimeUI->Init();
+        enabled     = m_runtimeUI->Init();
 
         if (!enabled)
         {
@@ -108,6 +108,7 @@ void SceneRendererDemo::OnResize(uint32_t width, uint32_t height)
     if (width > 0 && height > 0)
     {
         m_camera->UpdateAspect(m_pWindow->GetAspect());
+
         m_renderDevice->ProcessViewportResize(width, height);
     }
 }
@@ -116,19 +117,17 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
 {
     const std::string path = platform::ConfigLoader::GetInstance().GetDefaultGLTFModelPath();
 
-    bool prepared = LoadModel(path, true);
+    bool prepared          = LoadModel(path, true);
 
 #if defined(ZEN_RUNTIME_UI)
     if (prepared)
     {
         RefreshRuntimeModels();
 
-        const std::u8string current = std::filesystem::absolute(std::filesystem::u8path(path))
-                                          .lexically_normal()
-                                          .generic_u8string();
+        const std::u8string current =
+            std::filesystem::absolute(std::filesystem::u8path(path)).lexically_normal().generic_u8string();
 
-        m_modelState.currentPath.assign(reinterpret_cast<const char*>(current.data()),
-                                        current.size());
+        m_modelState.currentPath.assign(reinterpret_cast<const char*>(current.data()), current.size());
 
         ++m_modelState.revision;
     }
@@ -138,10 +137,11 @@ bool SceneRendererDemo::Prepare(bool captureVoxels, uint32_t calibrationGridPerc
     {
         // Diagnostic only: normalization and camera setup above use the real bounds.
         // Inset by one voxel to cancel GetVoxelBounds' normal one-cell padding.
-        const uint32_t resolution =
-            m_renderDevice->GetRendererServer()->RequestVoxelizer()->GetVoxelTexResolution();
-        const float halfExtent = 0.005f * static_cast<float>(calibrationGridPercent) *
-            static_cast<float>(resolution - 2) / static_cast<float>(resolution);
+        const uint32_t resolution = m_renderDevice->GetRendererServer()->RequestVoxelizer()->GetVoxelTexResolution();
+
+        const float halfExtent    = 0.005f * static_cast<float>(calibrationGridPercent) * static_cast<float>(resolution - 2)
+                               / static_cast<float>(resolution);
+
         prepared = m_renderScene->SetVoxelBounds(sg::AABB(Vec3(-halfExtent), Vec3(halfExtent)));
     }
 
@@ -167,7 +167,7 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
     {
         const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
-        scene = MakeUnique<sg::Scene>();
+        scene                                             = MakeUnique<sg::Scene>();
 
         asset::FastGLTFLoader loader;
 
@@ -175,33 +175,31 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
 
         // A fresh camera prevents an authored orthographic/infinite projection from
         // carrying over when the next model relies on automatic framing.
-        camera =
-            sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
+        camera = sg::Camera::CreateUnique(Vec3(0, 0, 2), Vec3(0), m_pWindow->GetAspect(), m_cameraType);
 
         if (m_renderDevice->PrepareForResourceReconfiguration())
         {
             rc::SceneData data{};
 
-            data.pCamera = camera.Get();
+            data.pCamera        = camera.Get();
 
-            data.pScene = scene.Get();
+            data.pScene         = scene.Get();
 
-            data.pVertices = loader.GetVertices().data();
+            data.pVertices      = loader.GetVertices().data();
 
-            data.pIndices = loader.GetIndices().data();
+            data.pIndices       = loader.GetIndices().data();
 
-            data.numVertices = loader.GetVertices().size();
+            data.numVertices    = loader.GetVertices().size();
 
-            data.numIndices = loader.GetIndices().size();
+            data.numIndices     = loader.GetIndices().size();
 
-            data.envTextureName = platform::ConfigLoader::GetInstance().GetString(
-                "environment_texture", "papermill.ktx");
+            data.envTextureName = platform::ConfigLoader::GetInstance().GetString("environment_texture", "papermill.ktx");
 
-            renderScene = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
+            renderScene         = MakeUnique<rc::RenderScene>(m_renderDevice.Get(), data);
 
             renderScene->Init();
 
-            const std::vector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
+            const zen::HeapVector<sg::SceneCamera*> cameras = scene->GetComponents<sg::SceneCamera>();
 
             if (!cameras.empty())
             {
@@ -213,9 +211,8 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
 
                 Vec3 position = camera->GetPos();
 
-                if (configuredCameraPosition &&
-                    platform::ConfigLoader::GetInstance().ReadVec3("camera_position", position) &&
-                    glm::length(position - scene->GetAABB().GetCenter()) > 1e-4f)
+                if (configuredCameraPosition && platform::ConfigLoader::GetInstance().ReadVec3("camera_position", position)
+                    && glm::length(position - scene->GetAABB().GetCenter()) > 1e-4f)
                 {
                     camera->SetPosition(position);
                 }
@@ -235,8 +232,7 @@ bool SceneRendererDemo::LoadModel(const std::string& path, bool configuredCamera
 
                 PrepareLighting(platform::ConfigLoader::GetInstance());
 
-                const double seconds =
-                    std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
                 LOGI("Scene {} loaded in {} seconds", m_scene->GetName(), seconds);
             }
@@ -276,58 +272,69 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
 
     m_boundsPresetLights = false;
 
-    m_modelLightCount = 0;
+    m_modelLightCount    = 0;
 
-    m_orbitCenter = Vec3(0.0f, 1.0f, 0.0f);
+    m_orbitCenter        = Vec3(0.0f, 1.0f, 0.0f);
 
-    m_orbitRadius = 1.0f;
+    m_orbitRadius        = 1.0f;
 
-    m_orbitSpeedDegrees = 45.0f;
+    m_orbitSpeedDegrees  = 45.0f;
 
     // Inactive slots retain a useful point-light seed for the current model.
     const sg::AABB& bounds = m_scene->GetAABB();
 
-    const Vec3 center = bounds.GetCenter();
+    const Vec3 center      = bounds.GetCenter();
 
-    const float margin = std::max(bounds.GetMaxExtent() * 0.15f, 0.01f);
+    const float margin     = std::max(bounds.GetMaxExtent() * 0.15f, 0.01f);
 
     for (uint32_t index = 0; index < rc::MaxSceneLights; ++index)
     {
         rc::SceneLight light;
 
-        const uint32_t axis = (index / 2) % 3;
+        const uint32_t axis            = (index / 2) % 3;
 
-        light.position = center;
+        light.position                 = center;
 
-        light.position[axis] =
-            (index & 1) != 0 ? bounds.GetMax()[axis] + margin : bounds.GetMin()[axis] - margin;
+        light.position[axis]           = (index & 1) != 0 ? bounds.GetMax()[axis] + margin : bounds.GetMin()[axis] - margin;
 
-        light.direction = glm::normalize(center - light.position);
+        light.direction                = glm::normalize(center - light.position);
 
-        const float distance = glm::distance(center, light.position);
+        const float distance           = glm::distance(center, light.position);
 
-        light.intensity = distance * distance * 3.0f;
+        light.intensity                = distance * distance * 3.0f;
 
-        light.range = 0.0f;
+        light.range                    = 0.0f;
 
         m_editableLightDefaults[index] = light;
     }
 
-    m_lightAngle = 0;
+    m_lightAngle            = 0;
 
-    bool animate           = false;
-    uint32_t animatedIndex = 0;
-    bool valid             = config.ReadBool("dynamic_light.enabled", animate);
-    valid &= config.ReadNumber("dynamic_light.index", animatedIndex);
-    valid &= config.ReadVec3("dynamic_light.orbit_center", m_orbitCenter);
-    valid &= config.ReadNumber("dynamic_light.orbit_radius", m_orbitRadius);
-    valid &= config.ReadNumber("dynamic_light.angular_speed_degrees", m_orbitSpeedDegrees);
-    valid = valid && m_orbitRadius >= 0.0f && std::abs(m_orbitSpeedDegrees) <= 3600.0f;
-    bool overrideLights = false;
+    bool animate            = false;
+
+    uint32_t animatedIndex  = 0;
+
+    bool valid              = config.ReadBool("dynamic_light.enabled", animate);
+
+    valid                  &= config.ReadNumber("dynamic_light.index", animatedIndex);
+
+    valid                  &= config.ReadVec3("dynamic_light.orbit_center", m_orbitCenter);
+
+    valid                  &= config.ReadNumber("dynamic_light.orbit_radius", m_orbitRadius);
+
+    valid                  &= config.ReadNumber("dynamic_light.angular_speed_degrees", m_orbitSpeedDegrees);
+
+    valid                   = valid && m_orbitRadius >= 0.0f && std::abs(m_orbitSpeedDegrees) <= 3600.0f;
+
+    bool overrideLights     = false;
+
     config.ReadBool("scene_lighting_override", overrideLights);
+
     const bool useConfiguredLights = overrideLights && !m_scene->HasComponent(typeid(sg::Light));
+
     const HeapVector<rc::ConfiguredLight> lights =
         useConfiguredLights ? rc::LoadSceneLights(config) : HeapVector<rc::ConfiguredLight>();
+
     if (useConfiguredLights)
     {
         m_renderScene->GetLights() = rc::SceneLights();
@@ -337,26 +344,26 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
 
     m_editableLightCount = useConfiguredLights ? 4 : 0;
 
-    if (useConfiguredLights &&
-        (!config.ReadNumber("light_count", m_editableLightCount) ||
-         m_editableLightCount > rc::MaxSceneLights))
+    if (useConfiguredLights
+        && (!config.ReadNumber("light_count", m_editableLightCount) || m_editableLightCount > rc::MaxSceneLights))
     {
         m_editableLightCount = 0;
     }
 
     for (const rc::ConfiguredLight& light : lights)
     {
-        const rc::LightId id = m_renderScene->GetLights().Add(light.light);
+        const rc::LightId id                       = m_renderScene->GetLights().Add(light.light);
 
-        m_editableLightIds[light.configIndex] = id;
+        m_editableLightIds[light.configIndex]      = id;
 
         m_editableLightDefaults[light.configIndex] = light.light;
-        if (valid && animate && light.configIndex == animatedIndex &&
-            light.light.type != rc::SceneLightType::eDirectional)
+
+        if (valid && animate && light.configIndex == animatedIndex && light.light.type != rc::SceneLightType::eDirectional)
         {
             m_dynamicLight = id;
         }
     }
+
     if (useConfiguredLights && (!valid || (animate && m_dynamicLight == 0)))
     {
         LOGW("Invalid dynamic_light configuration or missing point/spot light; animation disabled");
@@ -370,7 +377,7 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
         // edits affect those lights rather than adding a second set.
         for (const rc::LightEntry& entry : m_renderScene->GetLights().GetEntries())
         {
-            m_editableLightIds[m_editableLightCount] = entry.id;
+            m_editableLightIds[m_editableLightCount]        = entry.id;
 
             m_editableLightDefaults[m_editableLightCount++] = entry.light;
         }
@@ -381,14 +388,22 @@ void SceneRendererDemo::PrepareLighting(const platform::ConfigLoader& config)
         m_modelLightCount = static_cast<uint32_t>(m_renderScene->GetLights().GetEntries().size());
     }
 
-    float intensity = 1.0f;
-    float rotation  = 0.0f;
-    bool enabled    = true;
-    bool visible    = true;
-    valid           = config.ReadNumber("environment_intensity", intensity);
-    valid &= config.ReadNumber("environment_rotation_degrees", rotation);
-    valid &= config.ReadBool("environment_lighting", enabled);
-    valid &= config.ReadBool("skybox_visible", visible);
+    float intensity  = 1.0f;
+
+    float rotation   = 0.0f;
+
+    bool enabled     = true;
+
+    bool visible     = true;
+
+    valid            = config.ReadNumber("environment_intensity", intensity);
+
+    valid           &= config.ReadNumber("environment_rotation_degrees", rotation);
+
+    valid           &= config.ReadBool("environment_lighting", enabled);
+
+    valid           &= config.ReadBool("skybox_visible", visible);
+
     if (!valid || !m_renderScene->SetEnvironmentLighting(intensity, rotation, enabled, visible))
     {
         LOGW("Invalid environment settings; using defaults");
@@ -401,18 +416,17 @@ bool SceneRendererDemo::GetGIMotionFixture(uint32_t& moving, Mat4& original) con
     // independent six-vertex meshes, with the moving receiver last. Reject other assets.
     const HeapVector<asset::Vertex>& vertices = m_renderScene->GetVertices();
 
-    bool valid = m_scene->GetRenderableNodes().size() == 4 && vertices.size() == 24;
+    bool valid                                = m_scene->GetRenderableNodes().size() == 4 && vertices.size() == 24;
 
     if (valid)
     {
-        const sg::Node* node = m_scene->GetRenderableNodes()[3];
+        const sg::Node* node                   = m_scene->GetRenderableNodes()[3];
 
         const HeapVector<sg::SubMesh*>& meshes = node->GetComponent<sg::Mesh>()->GetSubMeshes();
 
-        valid = meshes.size() == 1 && meshes[0]->GetFirstIndex() == 18 &&
-            meshes[0]->GetIndexCount() == 6;
+        valid    = meshes.size() == 1 && meshes[0]->GetFirstIndex() == 18 && meshes[0]->GetIndexCount() == 6;
 
-        moving = node->GetRenderableIndex();
+        moving   = node->GetRenderableIndex();
 
         original = node->GetData().modelMatrix;
     }
@@ -423,17 +437,20 @@ bool SceneRendererDemo::GetGIMotionFixture(uint32_t& moving, Mat4& original) con
 void SceneRendererDemo::UpdateDynamicLight(float frameTime)
 {
     const rc::SceneLight* current = m_renderScene->GetLights().Find(m_dynamicLight);
+
     if (current != nullptr && frameTime > 0.0f)
     {
-        m_lightAngle         = std::fmod(m_lightAngle +
-                                             glm::radians(static_cast<double>(m_orbitSpeedDegrees)) *
-                                                 static_cast<double>(frameTime),
-                                         glm::two_pi<double>());
+        m_lightAngle =
+            std::fmod(m_lightAngle + glm::radians(static_cast<double>(m_orbitSpeedDegrees)) * static_cast<double>(frameTime),
+                      glm::two_pi<double>());
+
         rc::SceneLight light = *current;
-        light.position       = m_orbitCenter +
-            m_orbitRadius *
-                Vec3(static_cast<float>(std::cos(m_lightAngle)), 0.0f,
-                     static_cast<float>(std::sin(m_lightAngle)));
+
+        light.position =
+            m_orbitCenter
+            + m_orbitRadius
+                  * Vec3(static_cast<float>(std::cos(m_lightAngle)), 0.0f, static_cast<float>(std::sin(m_lightAngle)));
+
         if (!m_renderScene->GetLights().Update(m_dynamicLight, light))
         {
             LOGE("Dynamic light update rejected");
@@ -445,84 +462,131 @@ void SceneRendererDemo::UpdateDynamicLight(float frameTime)
 bool SceneRendererDemo::CaptureFrame(const std::string& path)
 {
     m_renderDevice->FlushRHIThread();
+
     m_renderDevice->WaitForIdle();
+
     RHITexture* source    = m_pViewport->GetColorBackBuffer();
+
     const uint32_t width  = source->GetWidth();
+
     const uint32_t height = source->GetHeight();
+
     rc::TextureFormat format;
-    format.width  = width;
-    format.height = height;
-    format.depth  = 1;
-    format.format = source->GetFormat();
-    RHITexture* sampled =
-        m_renderDevice->CreateTextureSampled(format, {.copyUsage = true}, "capture_color");
+
+    format.width        = width;
+
+    format.height       = height;
+
+    format.depth        = 1;
+
+    format.format       = source->GetFormat();
+
+    RHITexture* sampled = m_renderDevice->CreateTextureSampled(format, {.copyUsage = true}, "capture_color");
+
     RHIBufferCreateInfo info;
+
     info.size         = width * height * 4;
+
     info.allocateType = RHIBufferAllocateType::eGPU;
-    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer,
-                             RHIBufferUsageFlagBits::eTransferSrcBuffer);
+
+    info.usageFlags.SetFlags(RHIBufferUsageFlagBits::eStorageBuffer, RHIBufferUsageFlagBits::eTransferSrcBuffer);
+
     info.tag          = "capture_packed";
+
     RHIBuffer* packed = m_renderDevice->CreateBuffer(info);
+
     info.allocateType = RHIBufferAllocateType::eCPURead;
+
     info.usageFlags   = 0;
+
     info.usageFlags.SetFlag(RHIBufferUsageFlagBits::eTransferDstBuffer);
+
     info.tag            = "capture_readback";
+
     RHIBuffer* readback = m_renderDevice->CreateBuffer(info);
+
     RHISampler* sampler = m_renderDevice->CreateSampler(RHISamplerCreateInfo::CreateLinearRepeat());
-    bool succeeded =
-        sampled != nullptr && packed != nullptr && readback != nullptr && sampler != nullptr;
+
+    bool succeeded      = sampled != nullptr && packed != nullptr && readback != nullptr && sampler != nullptr;
+
     if (succeeded)
     {
         rc::RenderGraph graph("CaptureFrame");
+
         succeeded = graph.Begin();
+
         RHITextureCopyRegion region{};
+
         region.size = Vec3i(width, height, 1);
+
         region.srcSubresources.aspect.SetFlag(RHITextureAspectFlagBits::eColor);
+
         region.dstSubresources = region.srcSubresources;
+
         graph.AddTransferPass("CopyCaptureColor").CopyTexture(source, sampled, {&region, 1});
+
         rc::RDGComputePassDesc pack;
+
         pack.SetShaderProgramName("CaptureFrameSP");
+
         pack.BindSampledTexture("sourceColor", sampler, sampled->GetDefaultView());
+
         pack.BindStorageBuffer("packedColor", packed, rc::RDGContentGuarantee::eFullWrite);
+
         pack.SetPassTag("PackCaptureColor");
-        graph.AddComputePass(std::move(pack))
-            .RecordPassCommands([width, height](rc::RDGPassCmdEncoder& encoder) {
-                encoder.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
-            });
-        graph.AddTransferPass("ReadCaptureColor")
-            .CopyBuffer(packed, readback, {0, 0, info.size})
-            .NeverCull();
+
+        graph.AddComputePass(std::move(pack)).RecordPassCommands([width, height](rc::RDGPassCmdEncoder& encoder) {
+            encoder.Dispatch((width + 7) / 8, (height + 7) / 8, 1);
+        });
+
+        graph.AddTransferPass("ReadCaptureColor").CopyBuffer(packed, readback, {0, 0, info.size}).NeverCull();
+
         succeeded = succeeded && graph.End() && m_renderDevice->ExecuteRenderGraph(graph);
+
         m_renderDevice->FlushRHIThread();
+
         m_renderDevice->WaitForIdle();
+
         if (succeeded)
         {
             const uint8_t* pixels = readback->Map();
+
             std::ofstream output(path, std::ios::binary);
+
             succeeded = pixels != nullptr && output.good();
+
             if (succeeded)
             {
                 output << "P6\n" << width << " " << height << "\n255\n";
+
                 for (uint32_t pixel = 0; pixel < width * height; ++pixel)
                 {
                     output.write(reinterpret_cast<const char*>(pixels + pixel * 4), 3);
                 }
+
                 output.flush();
+
                 succeeded = output.good();
             }
+
             if (pixels != nullptr)
             {
                 readback->Unmap();
             }
         }
     }
+
     m_renderDevice->DestroyTexture(sampled);
+
     m_renderDevice->DestroyBuffer(packed);
+
     m_renderDevice->DestroyBuffer(readback);
+
     if (!succeeded)
     {
         LOGE("Frame capture failed: {}", path);
     }
+
     return succeeded;
 }
 
@@ -582,81 +646,100 @@ void SceneRendererDemo::RunSmokeStep(uint32_t frame)
     else if (frame == 20)
     {
         glfwIconifyWindow(m_pWindow->GetHandle());
+
         glfwPollEvents();
+
         glfwRestoreWindow(m_pWindow->GetHandle());
     }
+
     if (frame == 16 || frame == 18)
     {
         const rc::SceneLight* current = m_renderScene->GetLights().Find(m_dynamicLight);
+
         if (current != nullptr)
         {
             rc::SceneLight light = *current;
+
             light.enabled        = frame == 18;
+
             m_renderScene->GetLights().Update(m_dynamicLight, light);
         }
     }
+
     if (frame == 34 && m_dynamicLight != 0)
     {
         m_renderScene->GetLights().Remove(m_dynamicLight);
+
         m_dynamicLight = 0;
     }
+
     // Consecutive updates exercise overwrite dependencies while previous draws are in flight.
     // Also update after returning from PBR and on both sides of resize/restore.
-    if (frame == 0 || frame == 2 || frame == 3 || frame == 8 || frame == 11 || frame == 12 ||
-        frame == 21 || frame == 28)
+    if (frame == 0 || frame == 2 || frame == 3 || frame == 8 || frame == 11 || frame == 12 || frame == 21 || frame == 28)
     {
         m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
+
         m_renderDevice->GetRDGMetrics().RequestCapture();
+
         LOGI("Smoke voxel update: frame={}", frame);
     }
 }
 
-bool SceneRendererDemo::Run(uint32_t frameLimit,
-                            bool smokeTest,
-                            uint32_t initialMode,
+bool SceneRendererDemo::Run(uint32_t           frameLimit,
+                            bool               smokeTest,
+                            uint32_t           initialMode,
                             const std::string& frameTimesPath,
-                            bool fixedStep,
-                            uint32_t giStartFrame,
-                            bool motionFixture,
-                            bool profileWarmup,
-                            uint32_t backgroundTestSeconds)
+                            bool               fixedStep,
+                            uint32_t           giStartFrame,
+                            bool               motionFixture,
+                            bool               profileWarmup,
+                            uint32_t           backgroundTestSeconds)
 {
     SceneRendererWindowTest windowTest(m_pWindow->GetHandle(), backgroundTestSeconds);
 
     HeapVector<double> frameTimes;
+
     if (!frameTimesPath.empty())
     {
         frameTimes.reserve(frameLimit);
     }
+
     if (smokeTest)
     {
         rc::RDGMetricsOptions options = m_renderDevice->GetRDGMetrics().GetOptions();
 
-        options.includeTransferNodes = true;
+        options.includeTransferNodes  = true;
 
-        options.maxNodeDetails = m_profiling ? options.maxNodeDetails : 64;
+        options.maxNodeDetails        = m_profiling ? options.maxNodeDetails : 64;
 
         m_renderDevice->GetRDGMetrics().Configure(options);
     }
-    m_renderDevice->GetRendererServer()->SetRenderOption(
-        giStartFrame != 0 ? rc::RenderOption::ePBR :
-                            static_cast<rc::RenderOption>(initialMode - 1));
+
+    m_renderDevice->GetRendererServer()->SetRenderOption(giStartFrame != 0 ? rc::RenderOption::ePBR
+                                                                           : static_cast<rc::RenderOption>(initialMode - 1));
+
     bool succeeded  = true;
+
     uint32_t moving = 0;
+
     Mat4 motionOriginal(1);
+
     if (motionFixture)
     {
-        succeeded = GetGIMotionFixture(moving, motionOriginal) &&
-            m_renderScene->SetInstanceClass(moving, GI_DYNAMIC);
+        succeeded = GetGIMotionFixture(moving, motionOriginal) && m_renderScene->SetInstanceClass(moving, GI_DYNAMIC);
+
         if (!succeeded)
         {
             LOGE("GI motion requires the four-mesh M4 lifecycle fixture");
         }
     }
+
     uint32_t frames       = 0;
+
     double renderThreadUs = 0;
-    while (succeeded && !m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit) &&
-           !m_renderDevice->AreSubmissionsBlocked() && !windowTest.Complete())
+
+    while (succeeded && !m_pWindow->ShouldClose() && (frameLimit == 0 || frames < frameLimit)
+           && !m_renderDevice->AreSubmissionsBlocked() && !windowTest.Complete())
     {
         const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 
@@ -670,13 +753,17 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
         if (giStartFrame != 0 && frames == giStartFrame)
         {
             LOGI("GI cold-start trigger: frame={}", frames);
+
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelGI);
         }
+
         if (smokeTest)
         {
             RunSmokeStep(frames);
         }
+
         float frameTime           = static_cast<float>(m_timer->Tick());
+
         bool routeWindowShortcuts = true;
 
 #if defined(ZEN_RUNTIME_UI)
@@ -690,7 +777,8 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             break;
         }
 
-        const VkExtent2D extent = m_pWindow->GetExtent2D();
+        const platform::WindowExtent extent = m_pWindow->GetExtent2D();
+
         if (extent.width == 0 || extent.height == 0)
         {
             // Wait for restore/close without submitting to an unavailable surface.
@@ -701,13 +789,16 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             else if (smokeTest)
             {
                 glfwRestoreWindow(m_pWindow->GetHandle());
+
                 glfwWaitEventsTimeout(0.05);
             }
             else
             {
                 glfwWaitEvents();
             }
+
             m_timer->Tick();
+
             continue;
         }
 
@@ -721,40 +812,43 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
 #endif
 
         m_camera->Update(frameTime);
-        succeeded &= m_renderScene->AdvanceAnimation(smokeTest     ? 1.0f / 30.0f :
-                                                         fixedStep ? 1.0f / 60.0f :
-                                                                     frameTime);
+
+        succeeded &= m_renderScene->AdvanceAnimation(smokeTest ? 1.0f / 30.0f : fixedStep ? 1.0f / 60.0f : frameTime);
+
         UpdateDynamicLight(smokeTest ? 1.0f / 30.0f : fixedStep ? 1.0f / 60.0f : frameTime);
+
         if (motionFixture)
         {
             const float seconds = static_cast<float>(m_motionFrame++) / 60.0f;
-            const Vec3 offset(-0.12f * std::sin(seconds), 0.03f * std::cos(seconds),
-                              0.025f * std::sin(seconds * 2));
-            succeeded = m_renderScene->SetInstanceTransform(
-                moving, glm::translate(Mat4(1), offset) * motionOriginal);
+
+            const Vec3 offset(-0.12f * std::sin(seconds), 0.03f * std::cos(seconds), 0.025f * std::sin(seconds * 2));
+
+            succeeded = m_renderScene->SetInstanceTransform(moving, glm::translate(Mat4(1), offset) * motionOriginal);
+
             if (!succeeded)
             {
                 break;
             }
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_1) |
-            platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_1))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_1)
+            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_1))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelGI);
         }
 
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_2) |
-            platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_2))
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_2)
+            | platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_KP_2))
         {
             m_renderDevice->GetRendererServer()->SetRenderOption(rc::RenderOption::eVoxelize);
         }
 
         // Always consume R; geometry updates are meaningful in both voxel modes.
-        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R) &&
-            m_renderDevice->GetRendererServer()->GetRenderOption() != rc::RenderOption::ePBR)
+        if (platform::KeyboardMouseInput::GetInstance().WasKeyPressedOnce(GLFW_KEY_R)
+            && m_renderDevice->GetRendererServer()->GetRenderOption() != rc::RenderOption::ePBR)
         {
             m_renderDevice->GetRendererServer()->RequestVoxelizer()->RequestVoxelization();
+
             m_renderDevice->GetRDGMetrics().RequestCapture();
         }
 
@@ -773,18 +867,20 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
 
         if (smokeTest)
         {
-            LOGI("Smoke lighting: frame={} mode={} geometry_revision={} lighting_revision={}",
-                 frames,
+            LOGI("Smoke lighting: frame={} mode={} geometry_revision={} lighting_revision={}", frames,
                  static_cast<uint32_t>(m_renderDevice->GetRendererServer()->GetRenderOption()) + 1,
                  m_renderDevice->GetRendererServer()->RequestVoxelizer()->GetGeometryRevision(),
                  m_renderScene->GetLights().GetRevision());
         }
+
         m_renderDevice->NextFrame();
+
         ++frames;
-        const double elapsed =
-            std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start)
-                .count();
-        renderThreadUs += elapsed;
+
+        const double elapsed  = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+
+        renderThreadUs       += elapsed;
+
         if (!frameTimesPath.empty())
         {
             frameTimes.push_back(elapsed);
@@ -795,7 +891,9 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
             m_profiling->RecordFrame(*m_renderDevice, *m_pViewport, elapsed, succeeded);
         }
     }
+
     m_renderDevice->FlushRHIThread();
+
     if (smokeTest)
     {
         LOGI("Smoke queue submissions: graphics={} compute={} transfer={}",
@@ -803,36 +901,41 @@ bool SceneRendererDemo::Run(uint32_t frameLimit,
              GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eAsyncCompute),
              GDynamicRHI->GetLastSubmittedSerial(RHICommandContextType::eTransfer));
     }
+
     const RHIThreadMetrics metrics = m_renderDevice->GetRHIThreadMetrics();
 
     LOGI(
         "RHI counters: draws={} dispatches={} submissions={} descriptor_hits={} descriptor_misses={} descriptor_inserts={} descriptor_retirements={} bindless_captures={}",
-        metrics.native.draws, metrics.native.dispatches, metrics.native.submissions,
-        metrics.native.descriptorHits, metrics.native.descriptorMisses,
-        metrics.native.descriptorInserts, metrics.native.descriptorRetirements,
+        metrics.native.draws, metrics.native.dispatches, metrics.native.submissions, metrics.native.descriptorHits,
+        metrics.native.descriptorMisses, metrics.native.descriptorInserts, metrics.native.descriptorRetirements,
         metrics.native.bindlessCaptures);
-    LOGI(
-        "Render threads: mode={} frames={} render_wall_us={} rhi_cpu_us={} queue_wait_us={} batches={} peak_pending={}",
-        GetRHIThread().IsThreaded() ? "threaded" : "inline", frames, renderThreadUs,
-        metrics.executionCPUUs, metrics.queueWaitUs, metrics.completedBatches,
-        metrics.peakPendingBatches);
+
+    LOGI("Render threads: mode={} frames={} render_wall_us={} rhi_cpu_us={} queue_wait_us={} batches={} peak_pending={}",
+         GetRHIThread().IsThreaded() ? "threaded" : "inline", frames, renderThreadUs, metrics.executionCPUUs,
+         metrics.queueWaitUs, metrics.completedBatches, metrics.peakPendingBatches);
+
     if (!frameTimesPath.empty())
     {
         std::ofstream output(frameTimesPath);
+
         output << "frame,cpu_frame_ms\n";
+
         for (size_t frame = 0; frame < frameTimes.size(); ++frame)
         {
             output << frame << ',' << frameTimes[frame] / 1000.0 << '\n';
         }
+
         output.flush();
+
         if (!output.good())
         {
             LOGE("Failed to write frame times: {}", frameTimesPath);
+
             succeeded = false;
         }
     }
-    return succeeded && !m_renderDevice->AreSubmissionsBlocked() &&
-        (!windowTest.Enabled() || windowTest.Succeeded());
+
+    return succeeded && !m_renderDevice->AreSubmissionsBlocked() && (!windowTest.Enabled() || windowTest.Succeeded());
 }
 
 } // namespace zen
@@ -841,20 +944,20 @@ namespace
 {
 struct DemoOptions
 {
-    int runtimeUI{-1}; // Interactive runs default on; diagnostic runs remain reproducible.
+    int      runtimeUI{-1}; // Interactive runs default on; diagnostic runs remain reproducible.
     uint32_t frames{0};
     uint32_t warmup{0};
     // Retain the diagnostic --mode IDs independently of interactive key bindings.
     uint32_t initialMode{3};
     uint32_t giStartFrame{0};
     uint32_t backgroundTestSeconds{0};
-    bool smokeTest{false};
-    bool disableRT{false};
-    bool disableValidation{false};
-    bool validationPrintf{false};
-    bool gpuMarkers{false};
-    bool gpuMemoryStats{false};
-    bool motionFixture{false};
+    bool     smokeTest{false};
+    bool     disableRT{false};
+    bool     disableValidation{false};
+    bool     validationPrintf{false};
+    bool     gpuMarkers{false};
+    bool     gpuMemoryStats{false};
+    bool     motionFixture{false};
 
     bool fixedStep{false};
 
@@ -869,21 +972,20 @@ struct DemoOptions
     std::string capturePath;
     std::string lightingCapturePath;
     std::string voxelCapturePath;
-    bool voxelReference{false};
-    bool voxelLifecycle{false};
-    bool voxelGBuffer{false};
-    uint32_t voxelGridPercent{0};
-    uint32_t width{1280};
-    uint32_t height{720};
+    bool        voxelReference{false};
+    bool        voxelLifecycle{false};
+    bool        voxelGBuffer{false};
+    uint32_t    voxelGridPercent{0};
+    uint32_t    width{1280};
+    uint32_t    height{720};
 };
 
 bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 {
     // The command line overrides the configured present mode.
-    const std::string configuredPresentMode =
-        zen::platform::ConfigLoader::GetInstance().GetString("present_mode", "default");
+    const std::string configuredPresentMode = zen::platform::ConfigLoader::GetInstance().GetString("present_mode", "default");
 
-    bool valid = zen::ParseRHIPresentMode(configuredPresentMode, options.presentMode);
+    bool valid                              = zen::ParseRHIPresentMode(configuredPresentMode, options.presentMode);
 
     if (!valid)
     {
@@ -893,20 +995,20 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
     for (int i = 1; i < argc && valid; ++i)
     {
         const std::string_view argument(arguments[i]);
+
         if (argument == "--rhi-thread=0" || argument == "--rhi-thread=1")
         {
-            zen::rc::RenderConfig::GetInstance().rhiExecutionMode = argument.back() == '1' ?
-                zen::RHIExecutionMode::eThreaded :
-                zen::RHIExecutionMode::eInline;
+            zen::rc::RenderConfig::GetInstance().rhiExecutionMode =
+                argument.back() == '1' ? zen::RHIExecutionMode::eThreaded : zen::RHIExecutionMode::eInline;
         }
         else if (argument.starts_with("--async-compute="))
         {
-            valid = zen::rc::ParseAsyncComputeOverride(
-                argument, zen::rc::RenderConfig::GetInstance().asyncComputeMode);
+            valid = zen::rc::ParseAsyncComputeOverride(argument, zen::rc::RenderConfig::GetInstance().asyncComputeMode);
         }
         else if (argument.starts_with("--mode="))
         {
             valid = argument == "--mode=1" || argument == "--mode=2" || argument == "--mode=3";
+
             if (valid)
             {
                 options.initialMode = static_cast<uint32_t>(argument.back() - '0');
@@ -919,19 +1021,20 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument.starts_with("--capture="))
         {
             options.capturePath = argument.substr(10);
+
             valid               = !options.capturePath.empty();
         }
         else if (argument.starts_with("--frame-times="))
         {
             options.frameTimesPath = argument.substr(14);
 
-            valid = !options.frameTimesPath.empty();
+            valid                  = !options.frameTimesPath.empty();
         }
         else if (argument.starts_with("--profile="))
         {
             options.profilePath = argument.substr(10);
 
-            valid = !options.profilePath.empty();
+            valid               = !options.profilePath.empty();
         }
         else if (argument == "--vsync=0" || argument == "--vsync=1")
         {
@@ -948,11 +1051,13 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument.starts_with("--capture-voxels="))
         {
             options.voxelCapturePath = argument.substr(17);
+
             valid                    = !options.voxelCapturePath.empty();
         }
         else if (argument.starts_with("--capture-lighting="))
         {
             options.lightingCapturePath = argument.substr(19);
+
             valid                       = !options.lightingCapturePath.empty();
         }
 
@@ -971,11 +1076,12 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         }
         else if (argument.starts_with("--voxel-grid-percent="))
         {
-            const std::string_view value        = argument.substr(21);
-            const std::from_chars_result parsed = std::from_chars(
-                value.data(), value.data() + value.size(), options.voxelGridPercent);
-            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() &&
-                options.voxelGridPercent != 0;
+            const std::string_view value = argument.substr(21);
+
+            const std::from_chars_result parsed =
+                std::from_chars(value.data(), value.data() + value.size(), options.voxelGridPercent);
+
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && options.voxelGridPercent != 0;
         }
         else if (argument == "--disable-rt")
         {
@@ -983,8 +1089,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         }
         else if (argument == "--rhi-counters=0" || argument == "--rhi-counters=1")
         {
-            zen::RHIOptions::GetInstance().SetExecutionCountersEnabled(argument ==
-                                                                       "--rhi-counters=1");
+            zen::RHIOptions::GetInstance().SetExecutionCountersEnabled(argument == "--rhi-counters=1");
         }
         else if (argument == "--validation-printf")
         {
@@ -1013,8 +1118,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument.starts_with("--gi-start-frame="))
         {
             const std::string_view value = argument.substr(17);
+
             const std::from_chars_result parsed =
                 std::from_chars(value.data(), value.data() + value.size(), options.giStartFrame);
+
             valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size();
         }
         else if (argument == "--smoke-test")
@@ -1025,22 +1132,25 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             const std::string_view value = argument.substr(26);
 
-            const std::from_chars_result parsed = std::from_chars(
-                value.data(), value.data() + value.size(), options.backgroundTestSeconds);
-
-            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() &&
-                options.backgroundTestSeconds > 0 && options.backgroundTestSeconds <= 600;
-        }
-        else if (argument.starts_with("--gbuffer-size=") || argument.starts_with("--width=") ||
-                 argument.starts_with("--height="))
-        {
-            const size_t offset          = argument.find('=') + 1;
-            const std::string_view value = argument.substr(offset);
-            uint32_t dimension           = 0;
             const std::from_chars_result parsed =
-                std::from_chars(value.data(), value.data() + value.size(), dimension);
-            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() &&
-                dimension > 0 && dimension <= 4096;
+                std::from_chars(value.data(), value.data() + value.size(), options.backgroundTestSeconds);
+
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && options.backgroundTestSeconds > 0
+                 && options.backgroundTestSeconds <= 600;
+        }
+        else if (argument.starts_with("--gbuffer-size=") || argument.starts_with("--width=")
+                 || argument.starts_with("--height="))
+        {
+            const size_t offset                 = argument.find('=') + 1;
+
+            const std::string_view value        = argument.substr(offset);
+
+            uint32_t dimension                  = 0;
+
+            const std::from_chars_result parsed = std::from_chars(value.data(), value.data() + value.size(), dimension);
+
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && dimension > 0 && dimension <= 4096;
+
             if (valid)
             {
                 if (argument.starts_with("--gbuffer-size="))
@@ -1059,32 +1169,33 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         }
         else if (argument.starts_with("--frames=") || argument.starts_with("--warmup="))
         {
-            const std::string_view value = argument.substr(9);
-            uint32_t& count = argument.starts_with("--frames=") ? options.frames : options.warmup;
-            const std::from_chars_result parsed =
-                std::from_chars(value.data(), value.data() + value.size(), count);
-            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size();
+            const std::string_view value        = argument.substr(9);
+
+            uint32_t& count                     = argument.starts_with("--frames=") ? options.frames : options.warmup;
+
+            const std::from_chars_result parsed = std::from_chars(value.data(), value.data() + value.size(), count);
+
+            valid                               = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size();
         }
         else
         {
             valid = false;
         }
     }
+
     if (options.smokeTest && options.frames == 0)
     {
         options.frames = 48;
     }
 
-    return valid && (options.frameTimesPath.empty() || options.frames != 0) &&
-        (options.profilePath.empty() || options.frames != 0) &&
-        (options.backgroundTestSeconds == 0 ||
-         (options.frames == 0 && options.warmup == 0 && !options.smokeTest)) &&
-        (options.giStartFrame == 0 ||
-         (options.initialMode == 3 && options.warmup == 0 && !options.smokeTest &&
-          (options.frames == 0 || options.giStartFrame < options.frames))) &&
-        (!(options.voxelReference || options.voxelLifecycle || options.voxelGBuffer ||
-           options.voxelGridPercent != 0) ||
-         !options.voxelCapturePath.empty());
+    return valid && (options.frameTimesPath.empty() || options.frames != 0)
+        && (options.profilePath.empty() || options.frames != 0)
+        && (options.backgroundTestSeconds == 0 || (options.frames == 0 && options.warmup == 0 && !options.smokeTest))
+        && (options.giStartFrame == 0
+            || (options.initialMode == 3 && options.warmup == 0 && !options.smokeTest
+                && (options.frames == 0 || options.giStartFrame < options.frames)))
+        && (!(options.voxelReference || options.voxelLifecycle || options.voxelGBuffer || options.voxelGridPercent != 0)
+            || !options.voxelCapturePath.empty());
 }
 } // namespace
 
@@ -1092,34 +1203,40 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 int main(int argc, char** pArgv)
 {
     using namespace zen;
+
     DemoOptions options;
+
     int result = 1;
+
     if (ParseDemoOptions(argc, pArgv, options))
     {
         RHIOptions::GetInstance().SetRayTracingEnabled(!options.disableRT);
+
         RHIOptions::GetInstance().SetValidationEnabled(!options.disableValidation);
 
         RHIOptions::GetInstance().SetDebugPrintfEnabled(options.validationPrintf);
+
         RHIOptions::GetInstance().SetGPUProfilerMarkers(options.gpuMarkers);
+
         RHIOptions::GetInstance().SetGPUMemoryStats(options.gpuMemoryStats);
 
         RHIOptions::GetInstance().SetPresentMode(options.presentMode);
-        platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width,
-                                            options.height};
+
+        platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width, options.height};
 
         DemoProfilingOptions profiling;
 
-        profiling.prefix = options.profilePath;
+        profiling.prefix       = options.profilePath;
 
-        profiling.frames = options.frames;
+        profiling.frames       = options.frames;
 
-        profiling.warmup = options.warmup;
+        profiling.warmup       = options.warmup;
 
         profiling.giStartFrame = options.giStartFrame;
 
-        profiling.fixedStep = options.fixedStep;
+        profiling.fixedStep    = options.fixedStep;
 
-        profiling.vsync = options.vsync;
+        profiling.vsync        = options.vsync;
 
         if (!profiling.prefix.empty())
         {
@@ -1129,35 +1246,34 @@ int main(int argc, char** pArgv)
             }
         }
 
-        SceneRendererDemo* pDemo =
-            new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling);
+        SceneRendererDemo* pDemo = new SceneRendererDemo(windowConfig, sg::CameraType::eFirstPerson, profiling);
 
-        bool prepared = pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
+        bool prepared            = pDemo->Prepare(!options.voxelCapturePath.empty(), options.voxelGridPercent);
 
-        bool enableUI = options.runtimeUI == 1;
+        bool enableUI            = options.runtimeUI == 1;
 
 #    if defined(ZEN_RUNTIME_UI)
-        enableUI = enableUI ||
-            (options.runtimeUI < 0 && options.frames == 0 && !options.smokeTest &&
-             options.profilePath.empty() && options.capturePath.empty() &&
-             options.voxelCapturePath.empty() && options.lightingCapturePath.empty());
+        enableUI = enableUI
+                || (options.runtimeUI < 0 && options.frames == 0 && !options.smokeTest && options.profilePath.empty()
+                    && options.capturePath.empty() && options.voxelCapturePath.empty() && options.lightingCapturePath.empty());
 #    endif
 
         if (prepared && enableUI)
         {
             prepared = pDemo->EnableRuntimeUI();
         }
-        const bool warmed = prepared &&
-            (options.warmup == 0 ||
-             pDemo->Run(options.warmup, false, options.initialMode, {}, options.fixedStep, 0,
-                        options.motionFixture, true));
 
-        result = warmed &&
-                pDemo->Run(options.frames, options.smokeTest, options.initialMode,
-                           options.frameTimesPath, options.fixedStep, options.giStartFrame,
-                           options.motionFixture, false, options.backgroundTestSeconds) ?
-            0 :
-            1;
+        const bool warmed = prepared
+                         && (options.warmup == 0
+                             || pDemo->Run(options.warmup, false, options.initialMode, {}, options.fixedStep, 0,
+                                           options.motionFixture, true));
+
+        result = warmed
+                      && pDemo->Run(options.frames, options.smokeTest, options.initialMode, options.frameTimesPath,
+                                    options.fixedStep, options.giStartFrame, options.motionFixture, false,
+                                    options.backgroundTestSeconds)
+                   ? 0
+                   : 1;
 
         // Extra diagnostic capture graphs are outside the requested profiling workload.
         pDemo->StopProfiling();
@@ -1171,14 +1287,17 @@ int main(int argc, char** pArgv)
         {
             result = pDemo->CaptureFrame(options.capturePath) ? 0 : 1;
         }
+
         if (result == 0 && !options.voxelCapturePath.empty())
         {
             result = pDemo->CaptureVoxelVolume(options.voxelCapturePath) ? 0 : 1;
         }
+
         if (result == 0 && options.voxelReference)
         {
             result = pDemo->CaptureVoxelReference(options.voxelCapturePath) ? 0 : 1;
         }
+
         if (result == 0 && options.voxelLifecycle)
         {
             result = pDemo->CaptureVoxelLifecycle(options.voxelCapturePath) ? 0 : 1;

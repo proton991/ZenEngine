@@ -4,7 +4,7 @@ using GroupAccess = RDGExecutionPlanTestAccess;
 
 struct RecordedGroupLists
 {
-    RenderDevice& device;
+    RenderDevice&               device;
     HeapVector<RHICommandList*> lists;
 
     RecordedGroupLists(RenderDevice& owner, const RDGSchedule& schedule) : device(owner)
@@ -57,8 +57,7 @@ TEST_P(RDGGroupRecordingTest, ForeignBufferWaitRetainsIndependentLocalHazards)
     const RDGBuffer buffer = graph.GetResourceManager()->ImportHostWrittenBuffer(physical);
     AddScheduledBufferPass(graph, "compute_read", RHICommandContextType::eAsyncCompute, buffer);
     AddScheduledBufferPass(graph, "graphics_read", RHICommandContextType::eGraphics, buffer);
-    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {},
-                           buffer);
+    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {}, buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
@@ -98,8 +97,7 @@ TEST_P(RDGGroupRecordingTest, GraphicsComputeGraphicsUsesExactGroupsAndQueuePool
     {
         RecordedGroupLists recorded(*device, plan.schedule);
         computeList = recorded.lists[1];
-        EXPECT_EQ(computeList->GetContext()->GetContextType(),
-                  RHICommandContextType::eAsyncCompute);
+        EXPECT_EQ(computeList->GetContext()->GetContextType(), RHICommandContextType::eAsyncCompute);
         EXPECT_NE(recorded.lists[0], recorded.lists[2]);
         const uint64_t progressQueries = rhi->progressQueries;
         ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists));
@@ -153,8 +151,7 @@ TEST_P(RDGGroupRecordingTest, LayoutTransitionHasOneOwnerAndNoForeignGraphicsSco
     {
         for (const RHITextureTransition& transition : context->textureTransitions)
         {
-            layoutChanges += RHITextureUsageToLayout(transition.oldUsage) !=
-                RHITextureUsageToLayout(transition.newUsage);
+            layoutChanges += RHITextureUsageToLayout(transition.oldUsage) != RHITextureUsageToLayout(transition.newUsage);
         }
     }
     EXPECT_EQ(layoutChanges, 3u); // Undefined -> clear -> storage -> sampled, once each.
@@ -171,11 +168,9 @@ TEST_P(RDGGroupRecordingTest, ClearStorageIndirectAndVertexScopesSurviveRecordin
 {
     RenderGraph graph("voxel_hazards");
     ASSERT_TRUE(graph.Begin());
-    const RDGTexture image = graph.GetResourceManager()->CreateTexture(LogicalTexture());
-    const RDGBuffer buffer = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
-    graph.AddTransferPass("clear")
-        .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
-        .ClearTexture(image, Color(0.f));
+    const RDGTexture image  = graph.GetResourceManager()->CreateTexture(LogicalTexture());
+    const RDGBuffer  buffer = graph.GetResourceManager()->CreateBuffer(LogicalBuffer());
+    graph.AddTransferPass("clear").SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute).ClearTexture(image, Color(0.f));
     RDGComputePassDesc producer = IntentPass("large_triangles");
     producer.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     producer.BindStorageImage("image", image);
@@ -207,15 +202,15 @@ TEST_P(RDGGroupRecordingTest, ClearStorageIndirectAndVertexScopesSurviveRecordin
     bool clearToStorage = false;
     for (const RHIBufferTransition& transition : rhi->compute.bufferTransitions)
     {
-        indirect |= transition.newUsage == RHIBufferUsage::eIndirectBuffer &&
-            transition.oldAccessMode == RHIAccessMode::eReadWrite;
+        indirect |=
+            transition.newUsage == RHIBufferUsage::eIndirectBuffer && transition.oldAccessMode == RHIAccessMode::eReadWrite;
         shader |= transition.newUsage == RHIBufferUsage::eStorageBuffer;
     }
     for (const RHITextureTransition& transition : rhi->compute.textureTransitions)
     {
-        clearToStorage |= transition.oldUsage == RHITextureUsage::eTransferDst &&
-            transition.newUsage == RHITextureUsage::eStorage &&
-            transition.GetSourceAccess().HasFlag(RHIAccessFlagBits::eTransferWrite);
+        clearToStorage |= transition.oldUsage == RHITextureUsage::eTransferDst
+                       && transition.newUsage == RHITextureUsage::eStorage
+                       && transition.GetSourceAccess().HasFlag(RHIAccessFlagBits::eTransferWrite);
     }
     EXPECT_TRUE(indirect);
     EXPECT_TRUE(shader);
@@ -230,42 +225,38 @@ TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateSt
     {
         RenderGraph graph("group_rollback");
         ASSERT_TRUE(graph.Begin());
-        TestBuffer* physical               = Buffer();
-        const RDGBuffer buffer             = graph.GetResourceManager()->ImportBuffer(physical);
-        uint32_t callbacks                 = 0;
+        TestBuffer*           physical     = Buffer();
+        const RDGBuffer       buffer       = graph.GetResourceManager()->ImportBuffer(physical);
+        uint32_t              callbacks    = 0;
         const std::thread::id renderThread = std::this_thread::get_id();
         for (uint32_t i = 0; i < 3; ++i)
         {
             RDGComputePassDesc pass = IntentPass();
-            pass.SetQueuePreference(i == 1 ? RDGQueuePreference::ePreferAsyncCompute :
-                                             RDGQueuePreference::eDefault);
+            pass.SetQueuePreference(i == 1 ? RDGQueuePreference::ePreferAsyncCompute : RDGQueuePreference::eDefault);
             pass.BindStorageBuffer("write_buffer", buffer, RDGContentGuarantee::eFullWrite);
-            graph.AddComputePass(pass).RecordPassCommands(
-                [i, failure, &callbacks, renderThread](RDGPassCmdEncoder& encoder) {
-                    EXPECT_EQ(std::this_thread::get_id(), renderThread);
-                    ++callbacks;
-                    encoder.Dispatch(1, 1, 1);
-                    if (i == failure)
-                    {
-                        encoder.Fail(RDGErrorCode::eCallback, "group failure");
-                    }
-                });
+            graph.AddComputePass(pass).RecordPassCommands([i, failure, &callbacks, renderThread](RDGPassCmdEncoder& encoder) {
+                EXPECT_EQ(std::this_thread::get_id(), renderThread);
+                ++callbacks;
+                encoder.Dispatch(1, 1, 1);
+                if (i == failure)
+                {
+                    encoder.Fail(RDGErrorCode::eCallback, "group failure");
+                }
+            });
         }
         RDGExtractedBuffer extraction = graph.GetResourceManager()->QueueBufferExtraction(buffer);
         ASSERT_TRUE(graph.End());
         RDGExecutor executor(device);
         ConfigureGroupMetrics(executor);
         executor.GetResourceStateTracker().UpdateBufferState(
-            physical, RHIAccessMode::eReadWrite,
-            BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+            physical, RHIAccessMode::eReadWrite, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
             BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
-        const RDGExternalQueueState external[] = {
-            {physical->GetStableId(), RHICommandContextType::eGraphics, 11}};
-        GroupAccess::Plan plan;
+        const RDGExternalQueueState external[] = {{physical->GetStableId(), RHICommandContextType::eGraphics, 11}};
+        GroupAccess::Plan           plan;
         ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-        const uint64_t revision = executor.GetResourceStateTracker().GetRevision();
-        RecordedGroupLists recorded(*device, plan.schedule);
-        TestBuffer* prefix = Buffer();
+        const uint64_t                                    revision = executor.GetResourceStateTracker().GetRevision();
+        RecordedGroupLists                                recorded(*device, plan.schedule);
+        TestBuffer*                                       prefix = Buffer();
         HeapVector<RHICommandListBase::CommandCheckpoint> before;
         for (RHICommandList* list : recorded.lists)
         {
@@ -280,8 +271,7 @@ TEST_P(RDGGroupRecordingTest, LaterCallbackFailureRollsBackEveryListAndPrivateSt
         EXPECT_EQ(rhi->submissionAttempts, 0u);
         for (size_t i = 0; i < recorded.lists.size(); ++i)
         {
-            const RHICommandListBase::CommandCheckpoint after =
-                recorded.lists[i]->GetCommandCheckpoint();
+            const RHICommandListBase::CommandCheckpoint after = recorded.lists[i]->GetCommandCheckpoint();
             EXPECT_EQ(after.count, before[i].count);
             EXPECT_EQ(after.resourceCount, before[i].resourceCount);
             EXPECT_EQ(after.dependencyCount, before[i].dependencyCount);
@@ -305,7 +295,7 @@ TEST_P(RDGGroupRecordingTest, WrongContextOrRepeatedListFailsBeforeCallbacks)
         ConfigureGroupMetrics(executor);
         GroupAccess::Plan plan;
         ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-        RecordedGroupLists recorded(*device, plan.schedule);
+        RecordedGroupLists          recorded(*device, plan.schedule);
         HeapVector<RHICommandList*> invalid = recorded.lists;
         if (duplicate)
         {
@@ -336,17 +326,15 @@ TEST_P(RDGGroupRecordingTest, MissingOrInvalidInitialProvenanceIsRejectedBeforeR
         RDGExecutor executor(device);
         ConfigureGroupMetrics(executor);
         executor.GetResourceStateTracker().UpdateBufferState(
-            physical, RHIAccessMode::eReadWrite,
-            BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+            physical, RHIAccessMode::eReadWrite, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
             BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
         GroupAccess::Plan plan;
         ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
-        RecordedGroupLists recorded(*device, plan.schedule);
+        RecordedGroupLists                recorded(*device, plan.schedule);
         HeapVector<RDGExternalQueueState> external;
         if (scenario != 0)
         {
-            external.push_back({physical->GetStableId(), RHICommandContextType::eAsyncCompute,
-                                scenario == 1 ? UINT32_MAX : 9});
+            external.push_back({physical->GetStableId(), RHICommandContextType::eAsyncCompute, scenario == 1 ? UINT32_MAX : 9});
         }
         // Scenario 2 supplies impossible local fragment stages on a compute-only queue.
         EXPECT_FALSE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, external));
@@ -387,20 +375,17 @@ TEST_P(RDGGroupRecordingTest, InitialQueueHistoryIsPreservedAcrossForeignOverwri
     RenderGraph graph("external_graphics_compute_graphics");
     ASSERT_TRUE(graph.Begin());
     const RDGBuffer buffer = graph.GetResourceManager()->ImportBuffer(physical);
-    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {},
-                           buffer);
+    AddScheduledBufferPass(graph, "compute_write", RHICommandContextType::eAsyncCompute, {}, buffer);
     AddScheduledBufferPass(graph, "graphics_read", RHICommandContextType::eGraphics, buffer);
     RDGExtractedBuffer extraction = graph.GetResourceManager()->QueueBufferExtraction(buffer);
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
     executor.GetResourceStateTracker().UpdateBufferState(
-        physical, RHIAccessMode::eReadWrite,
-        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+        physical, RHIAccessMode::eReadWrite, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
-    const RDGExternalQueueState external[] = {
-        {physical->GetStableId(), RHICommandContextType::eGraphics, 17}};
-    GroupAccess::Plan plan;
+    const RDGExternalQueueState external[] = {{physical->GetStableId(), RHICommandContextType::eGraphics, 17}};
+    GroupAccess::Plan           plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     RecordedGroupLists recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, external));
@@ -418,9 +403,8 @@ TEST_P(RDGGroupRecordingTest, RefreshAfterGraphicsHistoryReassignsTransferAndReb
     TestBuffer* target = Buffer();
     RenderGraph graph("refresh_group_barriers");
     ASSERT_TRUE(graph.Begin());
-    graph.AddTransferPass("copy").CopyBuffer(
-        graph.GetResourceManager()->ImportHostWrittenBuffer(source),
-        graph.GetResourceManager()->ImportBuffer(target), {0, 0, 64});
+    graph.AddTransferPass("copy").CopyBuffer(graph.GetResourceManager()->ImportHostWrittenBuffer(source),
+                                             graph.GetResourceManager()->ImportBuffer(target), {0, 0, 64});
     ASSERT_TRUE(graph.End());
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
@@ -428,22 +412,18 @@ TEST_P(RDGGroupRecordingTest, RefreshAfterGraphicsHistoryReassignsTransferAndReb
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eTransfer);
     executor.GetResourceStateTracker().UpdateBufferState(
-        target, RHIAccessMode::eRead,
-        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
+        target, RHIAccessMode::eRead, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eStorageBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eFragmentShader));
     ASSERT_TRUE(GroupAccess::Refresh(executor, plan));
     EXPECT_EQ(plan.schedule.groups[0].queue, RHICommandContextType::eGraphics);
-    const RDGExternalQueueState external[] = {
-        {target->GetStableId(), RHICommandContextType::eGraphics, 23}};
-    RecordedGroupLists recorded(*device, plan.schedule);
+    const RDGExternalQueueState external[] = {{target->GetStableId(), RHICommandContextType::eGraphics, 23}};
+    RecordedGroupLists          recorded(*device, plan.schedule);
     ASSERT_TRUE(GroupAccess::ExecuteGroups(executor, plan, recorded.lists, external));
     ExpectValidGroupMetrics(executor);
     recorded.Replay();
     ASSERT_FALSE(rhi->graphics.barrierBatches.empty());
-    EXPECT_TRUE(
-        rhi->graphics.barrierBatches[0].source.HasFlag(RHIPipelineStageFlagBits::eFragmentShader));
-    EXPECT_TRUE(
-        rhi->graphics.barrierBatches[0].destination.HasFlag(RHIPipelineStageFlagBits::eTransfer));
+    EXPECT_TRUE(rhi->graphics.barrierBatches[0].source.HasFlag(RHIPipelineStageFlagBits::eFragmentShader));
+    EXPECT_TRUE(rhi->graphics.barrierBatches[0].destination.HasFlag(RHIPipelineStageFlagBits::eTransfer));
     EXPECT_TRUE(rhi->transfer.barrierBatches.empty());
     device->DestroyBuffer(source);
     device->DestroyBuffer(target);
@@ -453,9 +433,7 @@ INSTANTIATE_TEST_SUITE_P(InlineAndThreaded,
                          RDGGroupRecordingTest,
                          testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
 
-class RDGGroupQueueTest :
-    public RenderCoreTest,
-    public testing::WithParamInterface<std::tuple<RHIExecutionMode, bool>>
+class RDGGroupQueueTest : public RenderCoreTest, public testing::WithParamInterface<std::tuple<RHIExecutionMode, bool>>
 {
 protected:
     TestViewport viewport;
@@ -471,16 +449,14 @@ protected:
 
 TEST_P(RDGGroupQueueTest, AcceptedUploadUsesLocalBarrierForAliasAndWaitForDistinctQueue)
 {
-    const bool alias     = std::get<1>(GetParam());
+    const bool  alias    = std::get<1>(GetParam());
     TestBuffer* physical = Buffer();
     RHITexture* image    = Texture();
     RenderGraph graph("accepted_upload_to_compute");
     ASSERT_TRUE(graph.Begin());
-    const RDGBuffer buffer =
-        graph.GetResourceManager()->ImportBuffer(physical, RDGImportContents::eDefined);
-    const RDGTexture texture =
-        graph.GetResourceManager()->ImportTexture(image, RDGImportContents::eDefined);
-    RDGComputePassDesc pass = IntentPass();
+    const RDGBuffer    buffer  = graph.GetResourceManager()->ImportBuffer(physical, RDGImportContents::eDefined);
+    const RDGTexture   texture = graph.GetResourceManager()->ImportTexture(image, RDGImportContents::eDefined);
+    RDGComputePassDesc pass    = IntentPass();
     pass.SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute);
     pass.BindStorageBuffer("read_buffer", buffer);
     pass.BindStorageImage("image", texture);
@@ -489,19 +465,17 @@ TEST_P(RDGGroupQueueTest, AcceptedUploadUsesLocalBarrierForAliasAndWaitForDistin
     RDGExecutor executor(device);
     ConfigureGroupMetrics(executor);
     executor.GetResourceStateTracker().UpdateBufferState(
-        physical, RHIAccessMode::eReadWrite,
-        BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
+        physical, RHIAccessMode::eReadWrite, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTransferDstBuffer),
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
     executor.GetResourceStateTracker().UpdateTextureState(
         image, RHIAccessMode::eReadWrite, RHITextureUsage::eTransferDst,
         BitField<RHIPipelineStageFlagBits>(RHIPipelineStageFlagBits::eTransfer));
-    const RDGExternalQueueState external[] = {
-        {physical->GetStableId(), RHICommandContextType::eTransfer, 12},
-        {image->GetStableId(), RHICommandContextType::eTransfer, 12}};
-    GroupAccess::Plan plan;
+    const RDGExternalQueueState external[] = {{physical->GetStableId(), RHICommandContextType::eTransfer, 12},
+                                              {image->GetStableId(), RHICommandContextType::eTransfer, 12}};
+    GroupAccess::Plan           plan;
     ASSERT_TRUE(GroupAccess::Prepare(executor, graph, plan));
     RecordedGroupLists recorded(*device, plan.schedule);
-    RDGSchedule recordedSchedule;
+    RDGSchedule        recordedSchedule;
     ASSERT_TRUE(executor.ExecuteGroups(&graph, recorded.lists, recordedSchedule, external));
     ASSERT_EQ(recordedSchedule.groups[0].externalPredecessors.size(), 1u);
     EXPECT_EQ(recordedSchedule.groups[0].externalPredecessors[0], 12u);
@@ -523,16 +497,16 @@ TEST_P(RDGGroupQueueTest, AcceptedUploadUsesLocalBarrierForAliasAndWaitForDistin
 
 TEST_P(RDGGroupQueueTest, ScheduledTransferComputeAliasesKeepSubmissionOrderAndBufferBarrier)
 {
-    const bool alias   = std::get<1>(GetParam());
+    const bool  alias  = std::get<1>(GetParam());
     TestBuffer* source = Buffer();
     TestBuffer* first  = Buffer();
     TestBuffer* second = Buffer();
     RenderGraph graph("scheduled_copy_groups");
     ASSERT_TRUE(graph.Begin());
-    RDGResourceManager* resources = graph.GetResourceManager();
-    const RDGBuffer input         = resources->ImportHostWrittenBuffer(source);
-    const RDGBuffer intermediate  = resources->ImportBuffer(first);
-    const RDGBuffer output        = resources->ImportBuffer(second);
+    RDGResourceManager* resources    = graph.GetResourceManager();
+    const RDGBuffer     input        = resources->ImportHostWrittenBuffer(source);
+    const RDGBuffer     intermediate = resources->ImportBuffer(first);
+    const RDGBuffer     output       = resources->ImportBuffer(second);
     graph.AddTransferPass("upload").CopyBuffer(input, intermediate, {0, 0, 64});
     graph.AddTransferPass("compute_copy")
         .SetQueuePreference(RDGQueuePreference::ePreferAsyncCompute)
@@ -564,7 +538,6 @@ TEST_P(RDGGroupQueueTest, ScheduledTransferComputeAliasesKeepSubmissionOrderAndB
 
 INSTANTIATE_TEST_SUITE_P(InlineThreadedAndQueueSharing,
                          RDGGroupQueueTest,
-                         testing::Combine(testing::Values(RHIExecutionMode::eInline,
-                                                          RHIExecutionMode::eThreaded),
+                         testing::Combine(testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded),
                                           testing::Bool()));
 } // namespace
