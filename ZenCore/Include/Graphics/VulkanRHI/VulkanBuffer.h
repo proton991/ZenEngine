@@ -19,7 +19,7 @@ public:
 
     void Unmap() override;
 
-    void SetTexelFormat(DataFormat format) override;
+    bool SetTexelFormat(DataFormat format) override;
 
     uint64_t GetOffset() const
     {
@@ -44,7 +44,7 @@ protected:
 private:
     explicit VulkanBuffer(const RHIBufferCreateInfo& createInfo) : RHIBuffer(createInfo) {}
 
-    void SetTexelFormatOnRHIThread(DataFormat format);
+    bool SetTexelFormatOnRHIThread(DataFormat format);
 
     VkBuffer m_vkBuffer{VK_NULL_HANDLE};
     VkBufferView m_bufferView{VK_NULL_HANDLE};

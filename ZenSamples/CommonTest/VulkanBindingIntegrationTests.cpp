@@ -411,12 +411,12 @@ TEST_F(VulkanBindingIntegrationTest, TexelViewsReuseIdenticalFormatsAndRejectRep
         const VkBufferView original = buffer->GetVkBufferView();
         for (uint32_t repeat = 0; repeat < 8; ++repeat)
         {
-            EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt));
+            EXPECT_TRUE(buffer->SetTexelFormat(DataFormat::eR32UInt));
             EXPECT_EQ(buffer->GetVkBufferView(), original);
         }
-        EXPECT_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat), std::runtime_error);
+        EXPECT_FALSE(buffer->SetTexelFormat(DataFormat::eR32SFloat));
         EXPECT_EQ(buffer->GetVkBufferView(), original);
-        EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt));
+        EXPECT_TRUE(buffer->SetTexelFormat(DataFormat::eR32UInt));
     }
     EXPECT_EQ(TexelViewObserver::creates, 2u);
     EXPECT_EQ(TexelViewObserver::destroys, 0u);
@@ -434,12 +434,12 @@ TEST_F(VulkanBindingIntegrationTest, TexelViewCreationFailureCanRetryWithAnother
     VulkanBuffer* buffer =
         TexelBuffer(4, BitField<RHIBufferUsageFlagBits>(RHIBufferUsageFlagBits::eTextureBuffer));
     TexelViewObserver::failCreation = true;
-    EXPECT_THROW(buffer->SetTexelFormat(DataFormat::eR32UInt), std::runtime_error);
+    EXPECT_FALSE(buffer->SetTexelFormat(DataFormat::eR32UInt));
     EXPECT_EQ(buffer->GetVkBufferView(), VK_NULL_HANDLE);
     TexelViewObserver::failCreation = false;
-    EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat));
+    EXPECT_TRUE(buffer->SetTexelFormat(DataFormat::eR32SFloat));
     EXPECT_NE(buffer->GetVkBufferView(), VK_NULL_HANDLE);
-    EXPECT_NO_THROW(buffer->SetTexelFormat(DataFormat::eR32SFloat));
+    EXPECT_TRUE(buffer->SetTexelFormat(DataFormat::eR32SFloat));
     EXPECT_EQ(TexelViewObserver::creates, 2u);
     Shutdown();
     EXPECT_EQ(TexelViewObserver::destroys, 1u);
@@ -478,8 +478,8 @@ TEST_F(VulkanBindingIntegrationTest, TexelViewsPreserveRecordedDescriptorsAndRea
     // requests nor rejected format changes may invalidate its descriptors.
     input->SetTexelFormat(DataFormat::eR32UInt);
     output->SetTexelFormat(DataFormat::eR32UInt);
-    EXPECT_THROW(input->SetTexelFormat(DataFormat::eR32SFloat), std::runtime_error);
-    EXPECT_THROW(output->SetTexelFormat(DataFormat::eR32SInt), std::runtime_error);
+    EXPECT_FALSE(input->SetTexelFormat(DataFormat::eR32SFloat));
+    EXPECT_FALSE(output->SetTexelFormat(DataFormat::eR32SInt));
     EXPECT_EQ(input->GetVkBufferView(), inputView);
     EXPECT_EQ(output->GetVkBufferView(), outputView);
     EXPECT_EQ(TexelViewObserver::creates, 2u);
@@ -700,7 +700,9 @@ TEST_F(VulkanBindingIntegrationTest, BindlessSlotsRejectReplacementAndInvalidReg
     RHIBatchedShaderParameters parameters;
     parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 2), replacement,
                                 nullptr, 0);
-    EXPECT_THROW(context->RHISetShaderParameters(parameters), std::runtime_error);
+    context->RHISetShaderParameters(parameters);
+    EXPECT_TRUE(context->GetRecordingError().IsFailure());
+    EXPECT_EQ(context->SubmitRecordedWorkloads(), RHISubmissionResult::eRejected);
 }
 
 TEST_F(VulkanBindingIntegrationTest, BindlessHeapExhaustionFailsWithoutReplacingPublishedSlots)

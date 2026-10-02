@@ -28,12 +28,23 @@ RHIBuffer* VulkanResourceFactory::CreateBuffer(const RHIBufferCreateInfo& create
 
 VulkanBuffer* VulkanBuffer::CreateObject(const RHIBufferCreateInfo& createInfo)
 {
-    VulkanBuffer* pBuffer =
-        VersatileResource::AllocMem<VulkanBuffer>(GVulkanRHI->GetResourceAllocator());
+    VulkanBuffer* pBuffer = nullptr;
 
-    new (pBuffer) VulkanBuffer(createInfo);
+    if (createInfo.size > 0 && !createInfo.usageFlags.IsEmpty())
+    {
+        pBuffer = VersatileResource::AllocMem<VulkanBuffer>(GVulkanRHI->GetResourceAllocator());
 
-    pBuffer->Init();
+        new (pBuffer) VulkanBuffer(createInfo);
+
+        pBuffer->Init();
+
+        if (pBuffer->m_vkBuffer == VK_NULL_HANDLE)
+        {
+            pBuffer->ReleaseReference();
+
+            pBuffer = nullptr;
+        }
+    }
 
     return pBuffer;
 }
@@ -69,7 +80,10 @@ void VulkanBuffer::Destroy()
         vkDestroyBufferView(GVulkanRHI->GetVkDevice(), m_bufferView, nullptr);
     }
 
-    GVkMemAllocator->FreeBuffer(m_vkBuffer, m_memAlloc);
+    if (m_vkBuffer != VK_NULL_HANDLE || m_memAlloc.handle != VK_NULL_HANDLE)
+    {
+        GVkMemAllocator->FreeBuffer(m_vkBuffer, m_memAlloc);
+    }
     this->~VulkanBuffer();
 
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
@@ -85,13 +99,15 @@ void VulkanBuffer::Unmap()
     // CPU allocations stay mapped until VMA destroys the buffer.
 }
 
-void VulkanBuffer::SetTexelFormat(DataFormat format)
+bool VulkanBuffer::SetTexelFormat(DataFormat format)
 {
-    GetRHIThread().Invoke(&VulkanBuffer::SetTexelFormatOnRHIThread, this, format);
+    return GetRHIThread().Invoke(&VulkanBuffer::SetTexelFormatOnRHIThread, this, format);
 }
 
-void VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
+bool VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
 {
+    bool ready = true;
+
     if (m_bufferView == VK_NULL_HANDLE)
     {
         VkBufferViewCreateInfo bufferViewCI;
@@ -106,19 +122,25 @@ void VulkanBuffer::SetTexelFormatOnRHIThread(DataFormat format)
             vkCreateBufferView(GVulkanRHI->GetVkDevice(), &bufferViewCI, nullptr, &bufferView);
         if (result != VK_SUCCESS)
         {
-            LOG_ERROR_AND_THROW(
-                fmt::format("vkCreateBufferView failed: {}", GetResultString(result)));
+            LOGE("vkCreateBufferView failed: {}", GetResultString(result));
+            ready = false;
         }
 
         // Descriptors can retain this handle from recording through GPU completion.
         // Publish one immutable view only after creation succeeds.
-        m_bufferView  = bufferView;
-        m_texelFormat = format;
+        if (ready)
+        {
+            m_bufferView  = bufferView;
+            m_texelFormat = format;
+        }
     }
     else if (format != m_texelFormat)
     {
-        LOG_ERROR_AND_THROW("Cannot change an existing buffer's texel format");
+        LOGE("Cannot change an existing buffer's texel format");
+        ready = false;
     }
+
+    return ready;
 }
 
 void VulkanUniformBufferAllocator::Init(uint32_t numSlots,

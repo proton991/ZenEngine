@@ -337,10 +337,13 @@ private:
     // Executes the frame RDG here, with native submission deferred to the RHI thread.
     bool ExecuteFrameGraph(RHIViewport* viewport);
 
+    // Without a pending frame, a viewport is presented synchronously and pPresented, when
+    // supplied, receives the outcome.
     RHISubmissionResult SubmitRecordedGraph(RenderGraph& graph,
                                             RHICommandList& commands,
                                             RHIViewport* viewport,
-                                            PendingFrame* pending);
+                                            PendingFrame* pending,
+                                            bool* pPresented);
     bool ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
                                RHIViewport* viewport = nullptr,
                                PendingFrame* pending = nullptr);
@@ -349,7 +352,8 @@ private:
                                              RenderSubmissionUpdate& update,
                                              VectorView<RHICommandList*> lists,
                                              RHIViewport* viewport,
-                                             PendingFrame* pending);
+                                             PendingFrame* pending,
+                                             bool* pPresented);
 
     bool PrepareGraphSubmission(const RenderGraph& graph,
                                 RHICommandList& commands,
@@ -380,12 +384,8 @@ private:
 
     void EndFrame();
 
-    void AcquireGraphicsCmdLists(size_t numCmdLists, HeapVector<RHICommandList*>& outCmdLists);
-
     void AcquireScheduledCmdLists(const RDGSchedule& schedule, HeapVector<RHICommandList*>& lists);
     void ReleaseScheduledCmdLists(VectorView<RHICommandList*> lists);
-
-    RHISubmissionResult SubmitCommandLists(VectorView<RHICommandList*> cmdLists);
 
     void ProcessPendingFreeResources(RenderFrameSlot frameSlot, bool ignoreCompletionGate = false);
 
@@ -393,9 +393,14 @@ private:
 
     bool IsViewportResource(const RHIResource* resource) const;
 
-    void InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data);
+    RHIBuffer* CreateInitializedBuffer(const RHIBufferCreateInfo& info,
+                                       uint32_t dataSize,
+                                       const uint8_t* data,
+                                       bool padData);
 
-    void UpdateBufferInternal(RHIBuffer* pBufferHandle,
+    bool InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data);
+
+    bool UpdateBufferInternal(RHIBuffer* pBufferHandle,
                               uint32_t offset,
                               uint32_t dataSize,
                               const uint8_t* pData);
@@ -440,6 +445,19 @@ private:
         }
     };
     using PipelineCache = LRUCache<PipelineKey, RHIPipeline*, PipelineKeyHasher>;
+
+    // Consecutive creation failures of one key. The first failure retries on the next request;
+    // later ones double a frame delay, so a persistent rejection is not recompiled every frame.
+    struct PipelineFailure
+    {
+        uint32_t consecutive{0};
+        uint64_t retryFrame{0};
+    };
+    using PipelineFailureCache = LRUCache<PipelineKey, PipelineFailure, PipelineKeyHasher>;
+
+    bool IsPipelineRetryDeferred(const PipelineKey& key);
+
+    void RecordPipelineFailure(const PipelineKey& key);
 
     static PipelineKey MakePipelineKey(
         RHIShader* shader,
@@ -512,6 +530,10 @@ private:
     static constexpr size_t kPipelineCacheCapacity = 256;
     PipelineCache m_pipelineCache;
     PipelineCacheMetrics m_pipelineMetrics;
+
+    static constexpr size_t kFailedPipelineCapacity  = 64;
+    static constexpr uint32_t kMaxPipelineRetryShift = 8;
+    PipelineFailureCache m_failedPipelines{kFailedPipelineCapacity};
 
     HashMap<size_t, RHISampler*> m_samplerCache;
 

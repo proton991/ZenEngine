@@ -1,4 +1,5 @@
 #include "Graphics/RHI/RHIFrameState.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanSwapchain.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
@@ -15,6 +16,8 @@ namespace
 {
 void CheckWSIResult(VkResult result, const char* operation)
 {
+    ReportVulkanDeviceLoss(result, operation);
+
     if (result != VK_SUCCESS)
     {
         if (result == VK_ERROR_DEVICE_LOST)
@@ -84,30 +87,57 @@ VkSurfaceFormatKHR ChooseSurfaceFormat(VkPhysicalDevice gpu, VkSurfaceKHR surfac
     return selected;
 }
 
-VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu, VkSurfaceKHR surface, bool vsync)
+VkPresentModeKHR ChoosePresentMode(VkPhysicalDevice gpu,
+                                   VkSurfaceKHR surface,
+                                   bool vsync,
+                                   RHIPresentMode request)
 {
     const HeapVector<VkPresentModeKHR> modes = EnumerateWSI<VkPresentModeKHR>(
         [=](uint32_t* count, VkPresentModeKHR* values) {
             return vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, count, values);
         },
         "vkGetPhysicalDeviceSurfacePresentModesKHR");
-    const VkPresentModeKHR priority[] = {vsync ? VK_PRESENT_MODE_MAILBOX_KHR :
-                                                 VK_PRESENT_MODE_IMMEDIATE_KHR,
-                                         VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR};
-    VkPresentModeKHR selected         = VK_PRESENT_MODE_FIFO_KHR;
-    bool found                        = false;
+
+    // Every request ends with FIFO, the only mode the specification guarantees.
+    VkPresentModeKHR priority[] = {VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_KHR,
+                                   VK_PRESENT_MODE_FIFO_KHR};
+
+    if (request == RHIPresentMode::eFifoRelaxed)
+    {
+        priority[0] = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    }
+    else if (request == RHIPresentMode::eMailbox)
+    {
+        priority[0] = VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+    else if (request == RHIPresentMode::eImmediate)
+    {
+        priority[0] = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
+    else if (request == RHIPresentMode::eDefault && !vsync)
+    {
+        priority[0] = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        priority[1] = VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+
+    VkPresentModeKHR selected = VK_PRESENT_MODE_FIFO_KHR;
+    bool found                = false;
     for (VkPresentModeKHR mode : priority)
     {
-        if (std::find(modes.begin(), modes.end(), mode) != modes.end())
+        if (!found && std::find(modes.begin(), modes.end(), mode) != modes.end())
         {
             selected = mode;
             found    = true;
-            break;
         }
     }
     if (!found)
     {
         LOG_ERROR_AND_THROW("Surface has no supported presentation mode");
+    }
+    if (request != RHIPresentMode::eDefault && selected != priority[0])
+    {
+        LOGW("Requested present mode {} is not supported by the surface; using FIFO",
+             static_cast<int32_t>(priority[0]));
     }
     return selected;
 }
@@ -228,7 +258,8 @@ VulkanSwapchain::VulkanSwapchain(uint32_t width,
             const VkSurfaceFormatKHR format = ChooseSurfaceFormat(gpu, m_surface);
             m_format                        = format.format;
             m_colorSpace                    = format.colorSpace;
-            m_presentMode                   = ChoosePresentMode(gpu, m_surface, enableVSync);
+            m_presentMode                   = ChoosePresentMode(gpu, m_surface, enableVSync,
+                                                                RHIOptions::GetInstance().PresentMode());
             VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
             info.surface          = m_surface;
             info.minImageCount    = imageCount;
@@ -450,6 +481,7 @@ void VulkanSwapchain::CompleteAcquire(AcquireSync& sync, bool wait)
         {
             GVulkanRHI->BlockSubmissions();
             sync.pending = false;
+            ReportVulkanDeviceLoss(result, "acquire fence");
         }
         else if (result != VK_NOT_READY)
         {
@@ -483,6 +515,7 @@ void VulkanSwapchain::WaitForPresent(PresentSync& sync)
         {
             GVulkanRHI->BlockSubmissions();
             sync.pending = false;
+            ReportVulkanDeviceLoss(result, "present fence");
         }
         else
         {

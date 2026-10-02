@@ -73,11 +73,21 @@ StagingFlushAction StagingBufferManager::Allocate(uint32_t size,
                 info.allocateType  = RHIBufferAllocateType::eCPUWrite;
                 info.tag           = "staging_upload";
                 RHIBuffer* pBuffer = GDynamicRHI->CreateBuffer(info);
-                VERIFY_EXPR_MSG(pBuffer != nullptr, "Failed to allocate a staging buffer");
-                m_blocks.push_back({pBuffer, capacity, size, 1, {}});
-                m_allocatedSize += capacity;
-                *pAllocation = {pBuffer, 0, size};
-                action       = StagingFlushAction::eNone;
+                if (pBuffer != nullptr)
+                {
+                    m_blocks.push_back({pBuffer, capacity, size, 1, {}});
+
+                    m_allocatedSize += capacity;
+
+                    *pAllocation = {pBuffer, 0, size};
+                    action       = StagingFlushAction::eNone;
+                }
+                else
+                {
+                    LOGE("Failed to allocate a staging buffer");
+
+                    action = StagingFlushAction::eFailed;
+                }
             }
         }
     }
@@ -213,7 +223,7 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
     {
         StagingFlushAction action = m_pStagingMgr->Allocate(size, alignment, pOutAlloc);
 
-        if (action != StagingFlushAction::eNone)
+        if (action == StagingFlushAction::eFlush)
         {
             // This queue may be used independently of the device's main upload queue.
             Flush();
@@ -256,38 +266,43 @@ bool StagingUploadQueue::StageBytes(uint32_t size,
     return valid;
 }
 
-void StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer,
+bool StagingUploadQueue::EnqueueBuffer(RHIBuffer* pDstBuffer,
                                        uint32_t dstOffset,
                                        uint32_t dataSize,
                                        const uint8_t* pData)
 {
-    if (dataSize == 0 || pData == nullptr)
+    bool stagedAll = true;
+
+    if (dataSize > 0 && pData != nullptr)
     {
-        return;
-    }
+        VERIFY_EXPR_MSG(pDstBuffer != nullptr, "Null upload destination buffer");
+        VERIFY_EXPR_MSG(uint64_t(dstOffset) + dataSize <= pDstBuffer->GetRequiredSize(),
+                        "Buffer upload is out of bounds");
 
-    VERIFY_EXPR_MSG(pDstBuffer != nullptr, "Null upload destination buffer");
-    VERIFY_EXPR_MSG(uint64_t(dstOffset) + dataSize <= pDstBuffer->GetRequiredSize(),
-                    "Buffer upload is out of bounds");
-
-    for (uint32_t copied = 0; copied < dataSize;)
-    {
-        const uint32_t size = std::min(dataSize - copied, m_pStagingMgr->GetBlockSize());
-        PendingUpload upload{};
-        const bool staged = StageBytes(size, 4, pData + copied, &upload.stagingAlloc);
-
-        if (!staged)
+        for (uint32_t copied = 0; copied < dataSize;)
         {
-            LOGE("Failed to stage buffer upload");
-            break;
-        }
+            const uint32_t size = std::min(dataSize - copied, m_pStagingMgr->GetBlockSize());
+            PendingUpload upload{};
+            const bool staged = StageBytes(size, 4, pData + copied, &upload.stagingAlloc);
 
-        upload.pDstBuffer       = pDstBuffer;
-        upload.bufferCopyRegion = {upload.stagingAlloc.offset, uint64_t(dstOffset) + copied, size};
-        pDstBuffer->AddReference();
-        m_pendingUploads.push_back(std::move(upload));
-        copied += size;
+            if (!staged)
+            {
+                stagedAll = false;
+
+                LOGE("Failed to stage buffer upload");
+                break;
+            }
+
+            upload.pDstBuffer       = pDstBuffer;
+            upload.bufferCopyRegion = {upload.stagingAlloc.offset, uint64_t(dstOffset) + copied,
+                                       size};
+            pDstBuffer->AddReference();
+            m_pendingUploads.push_back(std::move(upload));
+            copied += size;
+        }
     }
+
+    return stagedAll;
 }
 
 void StagingUploadQueue::EnqueueTexture(RHITexture* pTexture,

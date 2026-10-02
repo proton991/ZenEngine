@@ -13,9 +13,11 @@ class VulkanDescriptorSetState
 public:
     void SetPipeline(VulkanPipeline* pPipeline);
 
-    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters,
+                             uint64_t recordedEpoch = 0,
+                             uint64_t transaction   = 0);
 
-    void FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
+    bool FlushPendingDescriptorWrites(FVulkanCommandListContext* pContext,
                                       HeapVector<VkDescriptorSet>& outDescriptorSets,
                                       uint32_t& outFirstSet,
                                       HeapVector<uint32_t>& outDynamicOffsets);
@@ -66,7 +68,7 @@ private:
 
     void SyncCacheRevision(const VulkanDescriptorSetCache& cache);
 
-    void BuildDescriptorSetList(FVulkanCommandListContext* pContext,
+    bool BuildDescriptorSetList(FVulkanCommandListContext* pContext,
                                 HeapVector<VkDescriptorSet>& outDescriptorSets,
                                 uint32_t& outFirstSet,
                                 HeapVector<uint32_t>& outDynamicOffsets);
@@ -87,7 +89,7 @@ private:
                                  uint32_t byteSize,
                                  const uint8_t* pData);
 
-    void FlushPackedValueBuffers();
+    bool FlushPackedValueBuffers();
 
     PackedValueBufferState* FindOrAddPackedValueBuffer(uint32_t setIdx, uint32_t bindingIdx);
 
@@ -107,5 +109,7 @@ private:
     HeapVector<VkDescriptorSet> m_resolvedSets;
     HeapVector<uint32_t> m_resolvedOffsets;
     uint32_t m_resolvedFirstSet{0};
+
+    bool m_parametersValid{true};
 };
 } // namespace zen

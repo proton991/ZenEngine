@@ -3,6 +3,7 @@
 #include <atomic>
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIResource.h"
+#include "Graphics/RHI/RHIShaderParameters.h"
 #include "Templates/HeapVector.h"
 #include "Templates/SmallVector.h"
 #include "VulkanPipeline.h"
@@ -47,6 +48,11 @@ public:
     VkDescriptorSet Allocate(VkDescriptorSetLayout layout, uint32_t variableCount);
 
     void Reset();
+
+    bool IsValid() const
+    {
+        return m_vkHandle != VK_NULL_HANDLE;
+    }
 
 private:
     VulkanDevice* m_pDevice{nullptr};
@@ -311,6 +317,8 @@ inline constexpr uint32_t GetBindlessHeapCapacity(RHIBindlessHeapType heapType)
     return heapIdx < ToUnderlying(RHIBindlessHeapType::eMax) ? kBindlessHeapCapacity[heapIdx] : 0;
 }
 
+RHIBindlessHeapType GetBindlessHeapType(const RHIResource* resource);
+
 class VulkanBindlessDescriptorPoolManager
 {
 public:
@@ -325,7 +333,19 @@ public:
     bool RegisterBindlessResource(RHIResource* pResource,
                                   uint32_t slotIdx,
                                   RHIBindlessHandle* pOutHandle = nullptr,
-                                  uint64_t recordedEpoch        = 0);
+                                  uint64_t recordedEpoch        = 0,
+                                  uint64_t transaction          = 0);
+
+    uint64_t BeginTransaction();
+
+    // Validates a whole bindless parameter group under one lock before anything is published:
+    // each slot must accept its resource for this transaction, and no slot may receive two
+    // different resources.
+    bool CanRegisterBindlessResources(VectorView<const RHIShaderResourceParameter> parameters,
+                                      uint64_t recordedEpoch,
+                                      uint64_t transaction);
+
+    void ResolveTransaction(uint64_t transaction, bool commit);
     bool UnregisterBindlessResource(RHIBindlessHandle handle);
     bool IsRegistered(RHIBindlessHandle handle);
     void CollectRetiredResources();
@@ -364,10 +384,16 @@ private:
         RHITexture* pTextureOwner{nullptr};
         uint64_t generation{0};
         uint64_t retiredEpoch{0};
+        uint64_t transaction{0};
     };
 
     void CollectRetiredResourcesLocked();
     BindlessSlotState* FindRegistration(RHIBindlessHandle handle);
+
+    bool CanRegisterLocked(const RHIResource* resource,
+                           uint32_t slotIndex,
+                           uint64_t recordedEpoch,
+                           uint64_t transaction);
 
     void CreateGlobalBindlessDescriptorSet();
 
@@ -386,6 +412,8 @@ private:
     std::atomic<bool> m_hasPendingWrites{false};
     HeapVector<uint64_t> m_epochs;
     HeapVector<RHIBindlessHandle> m_retiredSlots;
+
+    FlatHashMap<uint64_t, HeapVector<RHIBindlessHandle>> m_journals;
 
     HeapVector<BindlessDSWrite> m_pendingWrites[ToUnderlying(RHIBindlessHeapType::eMax)];
     HeapVector<BindlessSlotState> m_slotStates[ToUnderlying(RHIBindlessHeapType::eMax)];

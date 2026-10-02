@@ -73,6 +73,20 @@ public:
         return m_q.front();
     }
 
+    std::optional<T> TryPop()
+    {
+        std::optional<T> value;
+
+        if (!m_q.empty())
+        {
+            value.emplace(std::move(m_q.front()));
+
+            m_q.pop();
+        }
+
+        return value;
+    }
+
     bool Empty()
     {
         return m_q.empty();

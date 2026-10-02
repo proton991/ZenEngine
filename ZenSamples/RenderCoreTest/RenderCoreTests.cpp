@@ -81,7 +81,10 @@ public:
 
     void Unmap() override {}
 
-    void SetTexelFormat(DataFormat) override {}
+    bool SetTexelFormat(DataFormat) override
+    {
+        return true;
+    }
 
     std::vector<uint8_t> bytes;
 
@@ -541,7 +544,7 @@ public:
 
     void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                         DataFormat indexFormat,
-                        uint32_t indexBufferOffset,
+                        uint64_t indexBufferOffset,
                         uint32_t indexCount,
                         uint32_t instanceCount,
                         uint32_t firstIndex,
@@ -554,7 +557,7 @@ public:
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
-                                uint32_t indexBufferOffset,
+                                uint64_t indexBufferOffset,
                                 uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override
@@ -755,7 +758,7 @@ public:
 
     void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                         DataFormat indexFormat,
-                        uint32_t indexBufferOffset,
+                        uint64_t indexBufferOffset,
                         uint32_t indexCount,
                         uint32_t instanceCount,
                         uint32_t firstIndex,
@@ -769,7 +772,7 @@ public:
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
-                                uint32_t indexBufferOffset,
+                                uint64_t indexBufferOffset,
                                 uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override
@@ -905,6 +908,7 @@ public:
     uint32_t deviceIdleWaits{0};
     mutable uint64_t progressQueries{0};
     uint32_t contextCreations{0};
+    bool failContextCreation{false};
     bool failSubmissionWait{false};
     bool failProgressQuery{false};
     bool submissionsBlocked{false};
@@ -945,11 +949,19 @@ public:
 
     IRHICommandContext* GetCommandContext(RHICommandContextType type) override
     {
+        IRHICommandContext* result = nullptr;
+
         ++contextCreations;
         TestContext& context = type == RHICommandContextType::eAsyncCompute ? compute :
             type == RHICommandContextType::eTransfer                        ? transfer :
                                                                               graphics;
-        return ZEN_NEW() TestContextProxy(context);
+
+        if (!failContextCreation)
+        {
+            result = ZEN_NEW() TestContextProxy(context);
+        }
+
+        return result;
     }
 
     IRHICommandContext* GetTransferCommandContext() override
@@ -1129,8 +1141,8 @@ public:
         buffer->ReleaseReference();
     }
 
-    void FinalizeCommandLists(VectorView<RHICommandList*> lists,
-                              HeapVector<RHIPlatformCommandList*>&) override
+    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*> lists,
+                                   HeapVector<RHIPlatformCommandList*>&) override
     {
         submissionsBlocked |= !PrepareCommandListDependencies(lists);
         for (RHICommandList* list : lists)
@@ -1142,6 +1154,10 @@ public:
                 pending[Index(list->GetContext()->GetContextType())] = true;
             }
         }
+
+        return submissionsBlocked ?
+            RHIStatus{{RHIErrorCode::eBackendFailure, 0, "FinalizeCommandLists"}} :
+            RHIStatus{};
     }
 
     void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*>) override {}
@@ -3879,7 +3895,7 @@ TEST_F(RenderCoreTest, StagingHandlesOversizeRequests)
     manager.Destroy();
 }
 
-TEST_F(RenderCoreTest, StagingReleaseLogsOnlyInvalidAllocationsAndPreservesReuse)
+TEST_F(RenderCoreTest, StagingReleaseStopsInvalidAllocationsAndPreservesReuse)
 {
     StagingBufferManager manager(16, 16);
     StagingBufferManager other(16, 16);
@@ -3894,18 +3910,13 @@ TEST_F(RenderCoreTest, StagingReleaseLogsOnlyInvalidAllocationsAndPreservesReuse
     spdlog::set_default_logger(logger);
     manager.Release(allocation, {{3, 0, 2}});
     const std::string validLog = output.str();
-    output.str("");
-    manager.Release(allocation, {});
-    const std::string duplicateLog = output.str();
-    output.str("");
-    manager.Release(foreign, {});
-    const std::string foreignLog = output.str();
+
+    EXPECT_DEATH(manager.Release(allocation, {}), "Staging allocation released twice");
+    EXPECT_DEATH(manager.Release(foreign, {}), "Staging allocation does not belong");
+
     spdlog::set_default_logger(previous);
 
     EXPECT_TRUE(validLog.empty()) << validLog;
-    EXPECT_NE(duplicateLog.find("Staging allocation released twice"), std::string::npos);
-    EXPECT_EQ(duplicateLog.find("does not belong"), std::string::npos);
-    EXPECT_NE(foreignLog.find("Staging allocation does not belong"), std::string::npos);
 
     StagingAllocation reused;
     EXPECT_EQ(manager.Allocate(16, 4, &reused), StagingFlushAction::eFlush);
@@ -3953,6 +3964,12 @@ TEST_F(RenderCoreTest, UploadsSnapshotInputAndFlushUnderPoolPressure)
 
 TEST_F(RenderCoreTest, RejectedUploadDestroyReleasesEveryChunkAndTextureOwner)
 {
+    rhi->submitted          = {7, 0, 5};
+    rhi->failSubmissionWait = true;
+
+    device->NextFrame();
+    device->NextFrame();
+
     StagingBufferManager manager(16, 80);
     StagingUploadQueue queue(device, &manager);
     RHITexture* texture              = Texture();
@@ -3965,9 +3982,13 @@ TEST_F(RenderCoreTest, RejectedUploadDestroyReleasesEveryChunkAndTextureOwner)
     std::array<uint8_t, 4> pixel{1, 2, 3, 4};
     queue.EnqueueTexture(texture, MakeVecView(&region, 1), pixel.size(), pixel.data());
     std::array<uint8_t, 64> bytes{};
-    // The final chunk exceeds the destination. Rejection must cancel the entire graph,
-    // including the valid texture upload and the earlier buffer chunks.
-    queue.EnqueueBuffer(buffer, 4, bytes.size(), bytes.data());
+
+    EXPECT_DEATH(queue.EnqueueBuffer(buffer, 4, bytes.size(), bytes.data()),
+                 "Buffer upload is out of bounds");
+
+    // Reject valid uploads at the frame completion gate. Cancellation must release
+    // the texture owner and every buffer chunk without violating enqueue invariants.
+    queue.EnqueueBuffer(buffer, 0, bytes.size(), bytes.data());
 
     EXPECT_EQ(buffer->GetRefCount(), 5u);
 
@@ -3985,6 +4006,9 @@ TEST_F(RenderCoreTest, RejectedUploadDestroyReleasesEveryChunkAndTextureOwner)
     queue.Destroy();
 
     EXPECT_FALSE(queue.HasPending());
+
+    // Graph imports also retain the older frame's completion requirements.
+    rhi->completed = rhi->submitted;
 
     device->CollectCompletedResources();
 
@@ -4008,6 +4032,10 @@ TEST_F(RenderCoreTest, RejectedUploadDestroyReleasesEveryChunkAndTextureOwner)
 
     manager.Destroy();
     device->DestroyTexture(texture);
+
+    rhi->failSubmissionWait = false;
+
+    device->NextFrame();
 }
 
 TEST_F(RenderCoreTest, CancelledUploadsPreserveSharedStagingUsersAndBothCompletionGates)
@@ -5239,7 +5267,7 @@ static void RecordPresentationGraph(RenderGraph* graph, RHIBuffer* source, RHIBu
     EXPECT_TRUE(graph->End());
 }
 
-TEST_F(RenderCoreTest, FrameAndPresentationSubmissionFailuresDoNotPresentUnsignaledWork)
+TEST_F(RenderCoreTest, FrameAndPresentationShareOneSubmissionAndRejectTogether)
 {
     TestViewport viewport;
     viewport.color     = Texture();
@@ -5247,28 +5275,31 @@ TEST_F(RenderCoreTest, FrameAndPresentationSubmissionFailuresDoNotPresentUnsigna
     TestBuffer* target = Buffer();
     RenderGraph* graph = device->GetCurrentFrameRDG();
 
+    // The presentation copy joins the frame's submission, so a rejection accepts neither.
     RecordPresentationGraph(graph, source, target);
     rhi->failSubmissionAt = rhi->submissionAttempts + 1;
 
-    EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
-    EXPECT_EQ(viewport.preparePresents, 0u);
-    EXPECT_EQ(viewport.presents, 0u);
-    EXPECT_EQ(rhi->submitted[0], 0u);
-
-    RecordPresentationGraph(graph, source, target);
-    rhi->failSubmissionAt = rhi->submissionAttempts + 2;
+    uint32_t attempts = rhi->submissionAttempts;
 
     EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_EQ(rhi->submissionAttempts, attempts + 1);
     EXPECT_EQ(viewport.preparePresents, 1u);
     EXPECT_EQ(viewport.presents, 0u);
+    EXPECT_EQ(rhi->submitted[0], 0u);
+    EXPECT_FALSE(device->AreSubmissionsBlocked());
+
+    // Rejection is retryable: the next frame is one accepted submission and presents.
+    RecordPresentationGraph(graph, source, target);
+
+    attempts = rhi->submissionAttempts;
+
+    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
+    EXPECT_EQ(rhi->submissionAttempts, attempts + 1);
+    EXPECT_EQ(viewport.preparePresents, 2u);
+    EXPECT_EQ(viewport.presents, 1u);
     EXPECT_EQ(rhi->submitted[0], 1u);
     EXPECT_EQ(RDGSubmissionTestAccess::Tracker(*device).GetContents(target).status,
               RDGContentStatus::eDefined);
-
-    RecordPresentationGraph(graph, source, target);
-
-    ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
-    EXPECT_EQ(viewport.presents, 1u);
 
     device->NextFrame();
     viewport.presentResult = false;
@@ -5276,6 +5307,11 @@ TEST_F(RenderCoreTest, FrameAndPresentationSubmissionFailuresDoNotPresentUnsigna
 
     EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
     EXPECT_EQ(viewport.presents, 2u);
+
+    // Frame batches retain their viewport until retirement; this one lives on the stack.
+    rhi->completed = rhi->submitted;
+    device->CollectCompletedResources();
+    device->FlushRHIThread();
 
     device->DestroyBuffer(source);
     device->DestroyBuffer(target);
@@ -9962,6 +9998,58 @@ TEST_F(RenderCoreTest, TexturePoolAccountsMipsLayersSamplesAndBoundsResizeFamili
               0u); // Active is never trimmed.
 }
 
+TEST_F(RenderCoreTest, IdlePoolTrimKeepsTheNewestBuildWorkingSet)
+{
+    RenderGraph graph("idle_pool_trim");
+
+    RDGResourceManager* resources = graph.GetResourceManager();
+
+    const uint32_t extents[] = {8, 16, 16};
+
+    for (uint32_t frame = 0; frame < 3; ++frame)
+    {
+        ASSERT_TRUE(graph.Begin());
+
+        RDGTextureDesc desc = LogicalTexture();
+
+        desc.texFormat.width = desc.texFormat.height = extents[frame];
+
+        const RDGTexture texture = resources->CreateTexture(desc);
+
+        graph.AddTransferPass("idle_trim_clear").NeverCull().ClearTexture(texture, Color(0.f));
+
+        ASSERT_TRUE(graph.End());
+
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+        ASSERT_TRUE(graph.Reset());
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+
+        if (frame == 1)
+        {
+            // The first extent is no longer used. Memory pressure retires only that entry.
+            EXPECT_EQ(resources->GetPoolStats().availableCount, 2u);
+
+            ASSERT_TRUE(resources->TrimIdlePoolEntries());
+
+            EXPECT_EQ(resources->GetPoolStats().availableCount, 1u);
+
+            // Sustained pressure keeps the working set instead of rebuilding it each frame.
+            ASSERT_TRUE(resources->TrimIdlePoolEntries());
+
+            EXPECT_EQ(resources->GetPoolStats().availableCount, 1u);
+        }
+    }
+
+    // The retained target serves the next frame without a new allocation.
+    EXPECT_EQ(resources->GetPoolStats().misses, 2u);
+
+    EXPECT_EQ(resources->GetPoolStats().hits, 1u);
+}
+
 TEST_F(RenderCoreTest, OverlapDescriptorMismatchAndExtractionPreventStorageReuse)
 {
     TestBuffer* input        = Buffer();
@@ -10789,6 +10877,11 @@ TEST_F(RenderCoreTest, DeviceExecutionPreparesOnceForFirstBuildReplayAndViewport
     ASSERT_TRUE(device->ExecuteRenderGraph(&viewport));
     EXPECT_EQ(device->GetRDGMetrics().GetLastSnapshot().preparationPasses, 1u);
     EXPECT_FALSE(device->GetRDGMetrics().GetLastSnapshot().precompiled);
+
+    // Frame batches retain their viewport until retirement; this one lives on the stack.
+    rhi->completed = rhi->submitted;
+    device->CollectCompletedResources();
+    device->FlushRHIThread();
 }
 
 TEST_F(RenderCoreTest, UploadFlushRefreshesPlanContentsBarriersAndQueueChoice)
@@ -11701,6 +11794,60 @@ TEST_F(RenderCoreTest, PipelineCacheTracksIdentityFailuresEvictionAndResize)
     EXPECT_EQ(device->GetOrCreateGfxPipeline(states, shader, &layout, {}), nullptr);
 }
 
+TEST_F(RenderCoreTest, ComputePipelineFailureIsNotCached)
+{
+    ShaderProgram* program             = CreateTestShaderProgram(device, "compute_pipeline_retry");
+    RHIShader* shader                  = program->GetShader();
+    const PipelineCacheMetrics initial = device->GetPipelineCacheMetrics();
+    rhi->failPipelineCreationAt        = rhi->pipelineCount + 1;
+
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), nullptr);
+
+    RHIPipeline* retry = device->GetOrCreateComputePipeline(shader);
+    ASSERT_NE(retry, nullptr);
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), retry);
+
+    const PipelineCacheMetrics measured = device->GetPipelineCacheMetrics().Since(initial);
+    EXPECT_EQ(measured.misses, 2u);
+    EXPECT_EQ(measured.failures, 1u);
+    EXPECT_EQ(measured.creations, 1u);
+    EXPECT_EQ(measured.hits, 1u);
+}
+
+TEST_F(RenderCoreTest, RepeatedPipelineFailureDefersRetriesAcrossFrames)
+{
+    ShaderProgram* program = CreateTestShaderProgram(device, "compute_pipeline_backoff");
+
+    RHIShader* shader = program->GetShader();
+
+    // The first failure retries at once; the second defers this key for two frames.
+    rhi->failPipelineCreationAt = rhi->pipelineCount + 1;
+
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), nullptr);
+
+    rhi->failPipelineCreationAt = rhi->pipelineCount + 1;
+
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), nullptr);
+
+    const uint32_t attempts = rhi->pipelineCount;
+
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), nullptr);
+
+    EXPECT_EQ(rhi->pipelineCount, attempts);
+
+    device->NextFrame();
+
+    device->NextFrame();
+
+    RHIPipeline* retry = device->GetOrCreateComputePipeline(shader);
+
+    ASSERT_NE(retry, nullptr);
+
+    EXPECT_EQ(rhi->pipelineCount, attempts + 1);
+
+    EXPECT_EQ(device->GetOrCreateComputePipeline(shader), retry);
+}
+
 static void RecordPipelineMetrics(RenderGraph& graph,
                                   RDGExecutor& executor,
                                   RHICommandList& commands)
@@ -11990,3 +12137,4 @@ TEST_F(RenderCoreTest, DISABLED_PassSetupBenchmark)
 #include "RDGScheduledSubmissionTests.inl"
 #include "RDGSubmissionFailureTests.inl"
 #include "VoxelAsyncComputeTests.inl"
+#include "RHIProductionTests.inl"

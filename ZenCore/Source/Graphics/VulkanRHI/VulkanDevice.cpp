@@ -16,6 +16,83 @@
 
 namespace zen
 {
+void ReportVulkanDeviceLoss(VkResult result, const char* operation)
+{
+    if (result == VK_ERROR_DEVICE_LOST && GVulkanRHI != nullptr)
+    {
+        GVulkanRHI->BlockSubmissions();
+
+        if (GVulkanRHI->GetDevice() != nullptr)
+        {
+            GVulkanRHI->GetDevice()->ReportDeviceLoss(operation);
+        }
+    }
+}
+
+void VulkanDevice::RegisterDiagnosticBuffer(FVulkanCommandBuffer* buffer)
+{
+    m_diagnosticBuffers.push_back(buffer);
+}
+
+void VulkanDevice::UnregisterDiagnosticBuffer(FVulkanCommandBuffer* buffer)
+{
+    m_diagnosticBuffers.erase(
+        std::remove(m_diagnosticBuffers.begin(), m_diagnosticBuffers.end(), buffer),
+        m_diagnosticBuffers.end());
+}
+
+void VulkanDevice::ReportDeviceLoss(const char* operation)
+{
+    if (!m_faultReported)
+    {
+        m_faultReported = true;
+        std::fprintf(stderr, "RHI device lost: operation=%s gpu=%s vendor=%u device=%u driver=%u\n",
+                     operation, m_gpuProps.deviceName, m_gpuProps.vendorID, m_gpuProps.deviceID,
+                     m_gpuProps.driverVersion);
+
+        for (const FVulkanCommandBuffer* buffer : m_diagnosticBuffers)
+        {
+            buffer->ReportBreadcrumbs();
+        }
+
+        if (m_extensionFlags.hasDeviceFault && vkGetDeviceFaultInfoEXT != nullptr &&
+            RHIOptions::GetInstance().DeviceLossDiagnostics())
+        {
+            // Fixed storage remains usable after allocation failure. VK_INCOMPLETE
+            // explicitly reports a truncated report rather than allocating during loss.
+            VkDeviceFaultAddressInfoEXT addresses[64]{};
+            VkDeviceFaultVendorInfoEXT vendors[16]{};
+            VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+            counts.addressInfoCount = 64;
+            counts.vendorInfoCount  = 16;
+            VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+            info.pAddressInfos    = addresses;
+            info.pVendorInfos     = vendors;
+            const VkResult result = vkGetDeviceFaultInfoEXT(m_device, &counts, &info);
+            std::fprintf(stderr, "RHI device fault result=%d description=%s\n", int(result),
+                         info.description);
+
+            for (uint32_t i = 0; i < std::min(counts.addressInfoCount, 64u); ++i)
+            {
+                std::fprintf(stderr, "fault address=%llu precision=%llu type=%u\n",
+                             static_cast<unsigned long long>(addresses[i].reportedAddress),
+                             static_cast<unsigned long long>(addresses[i].addressPrecision),
+                             uint32_t(addresses[i].addressType));
+            }
+
+            for (uint32_t i = 0; i < std::min(counts.vendorInfoCount, 16u); ++i)
+            {
+                std::fprintf(stderr, "vendor fault=%s code=%llu data=%llu\n",
+                             vendors[i].description,
+                             static_cast<unsigned long long>(vendors[i].vendorFaultCode),
+                             static_cast<unsigned long long>(vendors[i].vendorFaultData));
+            }
+        }
+
+        std::fflush(stderr);
+    }
+}
+
 VulkanDevice::VulkanDevice(VkPhysicalDevice gpu) : m_device(VK_NULL_HANDLE), m_gpu(gpu)
 {
     vkGetPhysicalDeviceProperties(m_gpu, &m_gpuProps);
@@ -494,28 +571,31 @@ void VulkanDevice::SetObjectName(VkObjectType type, uint64_t handle, NameID name
 
 void VulkanDevice::WaitForIdle()
 {
-    if (m_device == VK_NULL_HANDLE)
+    if (m_device != VK_NULL_HANDLE)
     {
-        return;
-    }
-    const VkResult result = vkDeviceWaitIdle(m_device);
+        const VkResult result = vkDeviceWaitIdle(m_device);
 
-    if (result != VK_SUCCESS)
-    {
-        // Device loss also ends the lifetime wait, but does not establish valid contents/serials.
-        LOGE("Vulkan device idle wait failed: {}", int32_t(result));
-        if (GVulkanRHI->GetDevice() == this)
+        ReportVulkanDeviceLoss(result, "vkDeviceWaitIdle");
+
+        if (result != VK_SUCCESS)
         {
-            GVulkanRHI->BlockSubmissions();
+            // Device loss ends the lifetime wait without establishing valid contents/serials.
+            LOGE("Vulkan device idle wait failed: {}", int32_t(result));
+
+            if (GVulkanRHI->GetDevice() == this)
+            {
+                GVulkanRHI->BlockSubmissions();
+            }
         }
-        return;
-    }
-
-    for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
-    {
-        if (VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i)))
+        else
         {
-            queue->ProcessPendingWorkloads(0);
+            for (uint32_t i = 0; i < ToUnderlying(RHICommandContextType::eMax); i++)
+            {
+                if (VulkanQueue* queue = GetQueue(static_cast<RHICommandContextType>(i)))
+                {
+                    queue->ProcessPendingWorkloads(0);
+                }
+            }
         }
     }
 }
@@ -564,11 +644,21 @@ void VulkanDevice::ReleaseGPUTimingPool(VkQueryPool pool)
     m_freeTimingPools.push_back(pool);
 }
 
-void VulkanDevice::Destroy()
+void VulkanDevice::DestroyQueues()
 {
     ZEN_DELETE(m_pGfxQueue);
+    m_pGfxQueue = nullptr;
+
     ZEN_DELETE(m_pComputeQueue);
+    m_pComputeQueue = nullptr;
+
     ZEN_DELETE(m_pTransferQueue);
+    m_pTransferQueue = nullptr;
+}
+
+void VulkanDevice::Destroy()
+{
+    DestroyQueues();
 
     if (m_pSemaphoreManger != nullptr)
     {

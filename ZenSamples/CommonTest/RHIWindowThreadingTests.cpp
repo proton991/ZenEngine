@@ -88,6 +88,8 @@ TEST(RHIWindowThreadingTest, SentResizesDeferAndCoalesceCallbacksUntilWindowUpda
 #endif
 
 #include "Graphics/RHI/RHICommandListExecutor.h"
+#include "ScopedVulkanCall.h"
+#include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanRHI.h"
 #include "Platform/GlfwWindow.h"
 #include <gtest/gtest.h>
@@ -97,7 +99,13 @@ namespace
 {
 using namespace zen;
 
-class RHIWindowSurfaceIntegrationTest : public testing::TestWithParam<RHIExecutionMode>
+struct SurfaceExecutionMode
+{
+    RHIExecutionMode execution;
+    bool forceFences;
+};
+
+class RHIWindowSurfaceIntegrationTest : public testing::TestWithParam<SurfaceExecutionMode>
 {
 protected:
     static VKAPI_ATTR VkResult VKAPI_CALL CreateSwapchain(VkDevice device,
@@ -117,6 +125,46 @@ protected:
         return VK_ERROR_SURFACE_LOST_KHR;
     }
 
+    static VKAPI_ATTR VkResult VKAPI_CALL CountSubmit(VkQueue queue,
+                                                      uint32_t count,
+                                                      const VkSubmitInfo* infos,
+                                                      VkFence fence)
+    {
+        ++submitCalls;
+
+        const VkResult result = submitCalls == failSubmitAt ?
+            VK_ERROR_OUT_OF_HOST_MEMORY :
+            originalSubmit(queue, count, infos, fence);
+
+        return result;
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL CountPresent(VkQueue queue, const VkPresentInfoKHR* info)
+    {
+        ++presentCalls;
+
+        return originalPresent(queue, info);
+    }
+
+    static VKAPI_ATTR VkResult VKAPI_CALL CountAcquire(VkDevice device,
+                                                       VkSwapchainKHR swapchain,
+                                                       uint64_t timeout,
+                                                       VkSemaphore semaphore,
+                                                       VkFence fence,
+                                                       uint32_t* image)
+    {
+        ++acquireCalls;
+
+        return originalAcquire(device, swapchain, timeout, semaphore, fence, image);
+    }
+
+    static inline PFN_vkQueueSubmit originalSubmit{};
+    static inline PFN_vkQueuePresentKHR originalPresent{};
+    static inline uint32_t submitCalls{0};
+    static inline uint32_t failSubmitAt{0};
+    static inline uint32_t presentCalls{0};
+    static inline uint32_t acquireCalls{0};
+
     void SetUp() override
     {
         ASSERT_TRUE(glfwInit());
@@ -127,11 +175,28 @@ protected:
         config.resizable = true;
         window           = std::make_unique<platform::GlfwWindowImpl>(config);
         backend          = static_cast<VulkanRHI*>(DynamicRHI::Create(RHIAPIType::eVulkan));
-        executor         = ZEN_NEW() RHICommandListExecutor(backend, GetParam());
-        GDynamicRHI      = executor;
+
+        // Switch while idle, before the executor snapshots capabilities or a viewport submits.
+        // The real queue and completion code now take the fence path on timeline-capable GPUs.
+        backend->WaitDeviceIdle();
+
+        if (GetParam().forceFences)
+        {
+            backend->GetDevice()->GetExtensionFlags().hasTimelineSemaphore = 0;
+        }
+
+        executor    = ZEN_NEW() RHICommandListExecutor(backend, GetParam().execution);
+        GDynamicRHI = executor;
         GetRHIThread().Invoke(&RHIFrameState::Init, &GRHIFrameState, 3);
-        originalCreate       = vkCreateSwapchainKHR;
-        originalAcquire      = vkAcquireNextImageKHR;
+        originalCreate  = vkCreateSwapchainKHR;
+        originalAcquire = vkAcquireNextImageKHR;
+
+        originalSubmit = vkQueueSubmit;
+
+        originalPresent = vkQueuePresentKHR;
+
+        submitCalls = failSubmitAt = presentCalls = acquireCalls = 0;
+
         creations            = 0;
         vkCreateSwapchainKHR = &CreateSwapchain;
         ownerThread          = std::this_thread::get_id();
@@ -160,13 +225,35 @@ protected:
     void CreateViewport(uint32_t width = 96, uint32_t height = 80)
     {
         viewport = executor->CreateViewport(window.get(), width, height, false);
+
+        // Publish the backbuffer initialization submission before snapshotting cached serials.
+        executor->WaitDeviceIdle();
+    }
+
+    RHICommandListPtr RecordFrame()
+    {
+        RHICommandListPtr commands(
+            RHICommandList::Create(executor->GetCommandContext(RHICommandContextType::eGraphics)));
+
+        RHIRenderingLayout layout{};
+
+        layout.SetRenderArea(0, 0, viewport->GetWidth(), viewport->GetHeight());
+
+        layout.AddColorRenderTarget(viewport->GetSwapchainFormat(), viewport->GetColorBackBuffer(),
+                                    RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
+
+        commands->BeginRendering(&layout);
+
+        commands->EndRendering();
+
+        return commands;
     }
 
     static inline PFN_vkCreateSwapchainKHR originalCreate{};
     static inline std::thread::id creationThread;
     static inline VkSwapchainKHR oldSwapchain{};
     static inline uint32_t creations{0};
-    PFN_vkAcquireNextImageKHR originalAcquire{};
+    static inline PFN_vkAcquireNextImageKHR originalAcquire{};
     std::thread::id ownerThread;
     std::thread::id rhiThread;
     std::unique_ptr<platform::GlfwWindowImpl> window;
@@ -178,7 +265,7 @@ protected:
 
 TEST_P(RHIWindowSurfaceIntegrationTest, CreatesSurfaceOnWindowThreadAndSwapchainOnRHI)
 {
-    if (GetParam() == RHIExecutionMode::eThreaded)
+    if (GetParam().execution == RHIExecutionMode::eThreaded)
     {
         EXPECT_NE(ownerThread, rhiThread);
     }
@@ -242,6 +329,169 @@ TEST_P(RHIWindowSurfaceIntegrationTest, BlockedResizeKeepsViewportWithoutThrowin
     EXPECT_TRUE(GetRHIThread().Invoke(&VulkanRHI::AreSubmissionsBlocked, backend));
 }
 
+TEST_P(RHIWindowSurfaceIntegrationTest, PresentationCopySharesTheLastGraphicsSubmission)
+{
+    CreateViewport();
+    ASSERT_NE(viewport, nullptr);
+
+    const RHICommandContextType graphics = RHICommandContextType::eGraphics;
+
+    RHICommandListPtr commands = RecordFrame();
+
+    const uint64_t before = executor->GetLastSubmittedSerial(graphics);
+
+    submitCalls = 0;
+
+    test::ScopedVulkanCall<PFN_vkQueueSubmit> counted(vkQueueSubmit, &CountSubmit);
+
+    const RHIBatchResult result = executor->SubmitFrame(*commands, viewport).Wait();
+
+    EXPECT_EQ(result.submission, RHISubmissionResult::eSuccess);
+    EXPECT_TRUE(result.presented);
+    ASSERT_EQ(result.groups.size(), 1u);
+    // The copy has its own submit info and serial; the group's accepted point stays exact.
+    EXPECT_GT(result.groups[0].accepted.serial, before);
+    EXPECT_EQ(result.requiredSerials.Get(graphics), result.groups[0].accepted.serial + 1);
+
+    // Without timeline semaphores, every workload is submitted with its own fence.
+    const bool timeline = backend->GetDevice()->SupportsTimelineSemaphore();
+
+    EXPECT_FALSE(GetParam().forceFences && timeline);
+
+    EXPECT_EQ(submitCalls, timeline ? 1u : 2u);
+}
+
+TEST_P(RHIWindowSurfaceIntegrationTest, RejectedCombinedGroupKeepsAcquisitionForRetry)
+{
+    CreateViewport();
+
+    ASSERT_NE(viewport, nullptr);
+
+    const RHICommandContextType graphics = RHICommandContextType::eGraphics;
+
+    const uint64_t before = executor->GetLastSubmittedSerial(graphics);
+
+    test::ScopedVulkanCall<PFN_vkQueueSubmit> counted(vkQueueSubmit, &CountSubmit);
+
+    test::ScopedVulkanCall<PFN_vkQueuePresentKHR> presented(vkQueuePresentKHR, &CountPresent);
+
+    test::ScopedVulkanCall<PFN_vkAcquireNextImageKHR> acquired(vkAcquireNextImageKHR,
+                                                               &CountAcquire);
+
+    failSubmitAt = 1;
+
+    RHICommandListPtr commands = RecordFrame();
+
+    RHISubmissionGroup group{commands.get(), {}};
+
+    const RHIBatchResult rejected = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+
+    EXPECT_EQ(rejected.submission, RHISubmissionResult::eRejected);
+
+    EXPECT_EQ(rejected.requiredSerials.Get(graphics), before);
+
+    EXPECT_FALSE(rejected.presented);
+
+    EXPECT_FALSE(executor->AreSubmissionsBlocked());
+
+    EXPECT_EQ(presentCalls, 0u);
+
+    EXPECT_EQ(acquireCalls, 1u);
+
+    commands = RecordFrame();
+
+    group.commands = commands.get();
+
+    const RHIBatchResult retried = executor->SubmitGroups(MakeVecView(&group, 1), {}, viewport);
+
+    EXPECT_EQ(retried.submission, RHISubmissionResult::eSuccess);
+
+    EXPECT_TRUE(retried.presented);
+
+    EXPECT_EQ(presentCalls, 1u);
+
+    EXPECT_EQ(acquireCalls, 1u);
+
+    ASSERT_EQ(retried.groups.size(), 1u);
+
+    EXPECT_EQ(retried.groups[0].accepted.serial, before + 1);
+
+    EXPECT_EQ(retried.requiredSerials.Get(graphics), before + 2);
+}
+
+TEST_P(RHIWindowSurfaceIntegrationTest, FailedCombinedFrameRetainsItsAcceptedPrefix)
+{
+    CreateViewport();
+
+    ASSERT_NE(viewport, nullptr);
+
+    const RHICommandContextType graphics = RHICommandContextType::eGraphics;
+
+    const bool timeline = backend->GetDevice()->SupportsTimelineSemaphore();
+
+    const uint64_t before = executor->GetLastSubmittedSerial(graphics);
+
+    RHITexture* color = viewport->GetColorBackBuffer();
+
+    const uint32_t references = color->GetRefCount();
+
+    test::ScopedVulkanCall<PFN_vkQueueSubmit> counted(vkQueueSubmit, &CountSubmit);
+
+    test::ScopedVulkanCall<PFN_vkQueuePresentKHR> presented(vkQueuePresentKHR, &CountPresent);
+
+    // Timeline submission rejects both infos atomically. Fence submission accepts rendering,
+    // then rejects the copy. Preserve that accepted serial and block subsequent work.
+    failSubmitAt = timeline ? 1 : 2;
+
+    RHICommandListPtr commands = RecordFrame();
+
+    const RHICommandContextType queues[] = {graphics};
+
+    RefCountPtr<RHISubmissionState> state =
+        MakeRefCountPtr<RHISubmissionState>(MakeVecView(queues, 1));
+
+    const RHIBatchResult result = executor->SubmitFrame(*commands, viewport, state).Wait();
+
+    EXPECT_EQ(result.submission,
+              timeline ? RHISubmissionResult::eRejected : RHISubmissionResult::eFatal);
+
+    EXPECT_FALSE(result.presented);
+
+    EXPECT_EQ(presentCalls, 0u);
+
+    EXPECT_EQ(submitCalls, failSubmitAt);
+
+    ASSERT_EQ(result.groups.size(), 1u);
+
+    const uint64_t accepted = before + (timeline ? 0 : 1);
+
+    EXPECT_EQ(result.groups[0].accepted.serial, accepted);
+
+    EXPECT_EQ(result.requiredSerials.Get(graphics), accepted);
+
+    EXPECT_EQ(executor->GetLastSubmittedSerial(graphics), accepted);
+
+    RHISubmissionDependency producer;
+
+    EXPECT_EQ(state->Resolve(0, producer), RHISubmissionPointStatus::eFailed);
+
+    EXPECT_TRUE(executor->AreSubmissionsBlocked());
+
+    executor->WaitDeviceIdle();
+
+    // Failed batches retain resources until teardown, even after accepted work has completed.
+    EXPECT_GT(color->GetRefCount(), references);
+
+    commands = RecordFrame();
+
+    EXPECT_FALSE(executor->SubmitFrame(*commands, viewport).IsValid());
+
+    EXPECT_EQ(submitCalls, failSubmitAt);
+}
+
 INSTANTIATE_TEST_SUITE_P(ExecutionModes,
                          RHIWindowSurfaceIntegrationTest,
-                         testing::Values(RHIExecutionMode::eInline, RHIExecutionMode::eThreaded));
+                         testing::Values(SurfaceExecutionMode{RHIExecutionMode::eInline, false},
+                                         SurfaceExecutionMode{RHIExecutionMode::eThreaded, false},
+                                         SurfaceExecutionMode{RHIExecutionMode::eInline, true},
+                                         SurfaceExecutionMode{RHIExecutionMode::eThreaded, true}));

@@ -11,6 +11,8 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <atomic>
+#include "Utils/Errors.h"
 
 namespace zen
 {
@@ -55,14 +57,25 @@ public:
     RHIThread& operator=(const RHIThread&) = delete;
 
     void Start(RHIExecutionMode mode, size_t capacity = 64);
-    void Stop();
-    void Dispatch(std::function<void()> task);
+    void Stop(std::function<void()> finalizer = {});
+
+    bool Dispatch(std::function<void()> task, std::function<void()> cancelled = {});
+
+    // Cleanup remains admitted during draining, up to the finalizer boundary.
+    bool DispatchCleanup(std::function<void()> task);
     // Optional maintenance work can retry later instead of waiting for queue capacity.
     bool TryDispatch(std::function<void()> task);
     void Flush();
     bool IsThreaded() const;
     bool IsCurrentThread() const;
     void CheckOwnership() const;
+
+    bool HasTaskFailure() const;
+
+    bool IsStopping() const
+    {
+        return m_stopping.load(std::memory_order_acquire);
+    }
 
     template <typename Function, typename... Args>
     std::invoke_result_t<Function, Args...> Invoke(Function&& function, Args&&... args)
@@ -82,25 +95,40 @@ private:
                 std::bind_front(std::forward<Function>(function), std::forward<Args>(args)...));
         std::future<Result> result             = task->get_future();
         RefCountPtr<RHIThreadEvent> completion = MakeRefCountPtr<RHIThreadEvent>();
-        Dispatch([task, completion] {
+        const bool accepted                    = DispatchCleanup([task, completion] {
             (*task)();
             completion->Signal();
         });
+        VERIFY_EXPR_MSG(accepted, "Synchronous RHI invocation after cleanup admission closed");
         completion->Wait();
         return result.get();
     }
 
     void Run();
+
+    struct Task
+    {
+        std::function<void()> execute;
+        std::function<void()> cancelled;
+        bool cleanup{false};
+    };
+
+    bool Enqueue(Task task, bool waitForSpace);
+
+    void ExecuteTask(Task& task) noexcept;
     static void Fence();
 
     std::thread m_worker;
     std::mutex m_mutex;
     std::condition_variable m_available;
     RHIThreadEvent m_space{true};
-    Queue<std::function<void()>> m_tasks;
+    Queue<Task> m_tasks;
+    std::function<void()> m_finalizer;
     size_t m_capacity{64};
-    bool m_stopping{false};
-    bool m_threaded{false};
+    std::atomic<bool> m_stopping{false};
+    std::atomic<bool> m_threaded{false};
+    std::atomic<bool> m_taskFailed{false};
+    bool m_cleanupClosed{false};
     static thread_local RHIThread* s_current;
 };
 

@@ -34,6 +34,10 @@ VulkanQueue::VulkanQueue(VulkanDevice* pDevice, uint32_t familyIndex, uint32_t q
 
 VulkanQueue::~VulkanQueue()
 {
+    VerifyTeardownOwnership(m_acquiredCommandBufferPools == 0,
+                            "All RHI command contexts must be released before queue teardown",
+                            __FILE__, __LINE__);
+
     while (!m_workloadsPendingSubmit.Empty())
     {
         VulkanWorkload* pWorkload = m_workloadsPendingSubmit.Peek();
@@ -95,14 +99,29 @@ FVulkanCommandBufferPool* VulkanQueue::AcquireCommandBufferPool(VulkanCommandBuf
         pResult = ZEN_NEW() FVulkanCommandBufferPool(this, type);
     }
 
+    ++m_acquiredCommandBufferPools;
+
     return pResult;
 }
 
 void VulkanQueue::RecycleCommandBufferPool(FVulkanCommandBufferPool* pCmdBufferPool)
 {
     VERIFY_EXPR(pCmdBufferPool->GetQueue() == this);
+
+    VERIFY_EXPR(m_acquiredCommandBufferPools != 0);
+
+    --m_acquiredCommandBufferPools;
+
     pCmdBufferPool->FreeUnusedCommandBuffers();
-    m_cmdBufferPools.emplace_back(pCmdBufferPool);
+
+    if (pCmdBufferPool->GetVkHandle() != VK_NULL_HANDLE)
+    {
+        m_cmdBufferPools.emplace_back(pCmdBufferPool);
+    }
+    else
+    {
+        ZEN_DELETE(pCmdBufferPool);
+    }
 }
 
 VulkanWorkload* VulkanQueue::AcquireWorkload()
@@ -149,6 +168,7 @@ void VulkanQueue::ReleaseWorkload(VulkanWorkload* pWorkload)
         pWorkload->m_commandBuffers.clear();
         GVulkanRHI->GetLifetimeTracker().ReleaseRecordings(pWorkload->m_lifetimeIds);
         pWorkload->m_lifetimeIds.clear();
+        pWorkload->m_resources.Reset();
         pWorkload->m_submissionSerial = 0;
         pWorkload->m_pMergedInto      = nullptr;
         pWorkload->m_waitSemaphoreInfos.clear();
@@ -203,6 +223,8 @@ bool VulkanQueue::CanMergeWorkloads(const VulkanWorkload* pPreviousWorkload,
 
 static RHISubmissionResult SubmissionFailure(VkResult result, bool submittedPrefix)
 {
+    ReportVulkanDeviceLoss(result, "vkQueueSubmit");
+
     LOGE("Vulkan queue submission failed: {} (submitted prefix: {})", int32_t(result),
          submittedPrefix);
     // Vulkan guarantees unchanged resource/semaphore state for these errors only.
@@ -251,6 +273,14 @@ RHISubmissionResult VulkanQueue::SubmitWorkloadsWithFences(uint64_t& lastSubmiss
         if (pWorkload->m_pFence == nullptr)
         {
             pWorkload->m_pFence = pFenceManager->CreateFence();
+
+            if (pWorkload->m_pFence == nullptr)
+            {
+                submissionResult = lastSubmissionSerial == 0 ? RHISubmissionResult::eRejected :
+                                                               RHISubmissionResult::eFatal;
+
+                break;
+            }
         }
 
         VkSubmitInfo submitInfo;
@@ -637,6 +667,7 @@ void VulkanQueue::ProcessPendingWorkloads(uint64_t timeToWaitNS, uint64_t maxSub
                 LOGE("Vulkan queue {} completion query/wait failed: {}", m_familyIndex,
                      int32_t(result));
                 GVulkanRHI->BlockSubmissions();
+                ReportVulkanDeviceLoss(result, "queue completion");
             }
             // Incomplete work and failures both retain ownership; only failures are terminal.
             break;

@@ -6,6 +6,7 @@ add_executable(VulkanRHITest
     CommonTest/VulkanSynchronizationTests.cpp
     CommonTest/VulkanLifetimeTrackerTests.cpp
     CommonTest/VulkanResourceCreationTests.cpp
+    CommonTest/VulkanVerificationTests.cpp
     CommonTest/VulkanQueueSelectionTests.cpp
 )
 target_link_libraries(VulkanRHITest PRIVATE ZenCore gtest_main)
@@ -19,6 +20,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanCommandBufferLifetimeTests.cpp
     CommonTest/VulkanGPUTimingIntegrationTests.cpp
     CommonTest/VulkanPipelineIntegrationTests.cpp
+    CommonTest/VulkanProductionFailureTests.cpp
     CommonTest/VulkanBindingIntegrationTests.cpp
     CommonTest/VulkanSwapchainIntegrationTests.cpp
     CommonTest/VulkanCapabilityIntegrationTests.cpp
@@ -34,7 +36,7 @@ set(RDG_REFLECTION_TEST_PATH "${CMAKE_CURRENT_BINARY_DIR}/rdg-reflection/")
 set(RDG_REFLECTION_TEST_BINARIES)
 foreach(SHADER rdg_access.comp rdg_shared.vert rdg_shared.frag
         descriptor_storage.comp descriptor_array.comp descriptor_bindings.comp
-        descriptor_uniform.comp descriptor_uniform_large.comp
+        descriptor_uniform.comp descriptor_uniform_large.comp descriptor_uniform_limit.comp
         pipeline_specialization.comp pipeline.vert pipeline.frag pipeline_depth.frag
         binding_sampler.comp binding_uniform_array.comp binding_bindless.comp binding_bindless.frag binding_push_constants.comp
         recording_uniform.frag recording_uniform.comp recording_vertex.vert async_resources.comp binding_texel.comp)
@@ -117,7 +119,9 @@ add_executable(CommonTest
     CommonTest/SceneAnimationPointerTests.cpp
     CommonTest/CleanupRegressionTests.cpp
     CommonTest/SmallVectorTests.cpp
+    CommonTest/NameIDTests.cpp
     CommonTest/MemoryTests.cpp
+    CommonTest/ErrorTests.cpp
     CommonTest/LockTests.cpp
     CommonTest/PagedAllocatorTest.h
     CommonTest/PagedAllocatorTest.cpp

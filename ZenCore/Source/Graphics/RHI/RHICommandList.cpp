@@ -66,7 +66,8 @@ void RHIResourceReferences::Swap(RHIResourceReferences& other)
 
 void IRHICommandContext::OnFinalRelease()
 {
-    GetRHIThread().Dispatch([this] { ZEN_DELETE(this); });
+    const bool accepted = GetRHIThread().DispatchCleanup([this] { ZEN_DELETE(this); });
+    VERIFY_EXPR_MSG(accepted, "Context released after RHI cleanup admission closed");
 }
 
 void RHICommandListDeleter::operator()(RHICommandList* commands) const
@@ -147,11 +148,16 @@ void RHICommandListBase::Execute()
     GetRHIThread().CheckOwnership();
     RHICommandBase* pCmd = m_pCmdHead;
 
+    const IRHICommandContext* context = GetContext();
+
     while (pCmd)
     {
         RHICommandBase* pNext = pCmd->pNextCmd; // Save next before freeing
 
-        static_cast<RHICommand*>(pCmd)->Execute(*this);
+        if (context == nullptr || !context->HasRecordingError())
+        {
+            static_cast<RHICommand*>(pCmd)->Execute(*this);
+        }
 
         pCmd = pNext;
     }
@@ -218,20 +224,25 @@ void RHICommandListBase::RollbackCommands(CommandCheckpoint checkpoint)
 
 RHICommandList* RHICommandList::Create(IRHICommandContext* pContext)
 {
-    RHICommandList* pCmdList          = ZEN_NEW() RHICommandList();
-    pCmdList->m_contextOwner          = RefCountPtr<IRHICommandContext>(pContext);
-    RHICommandContextType contextType = pContext->GetContextType();
+    RHICommandList* pCmdList = nullptr;
 
-    if (contextType == RHICommandContextType::eGraphics ||
-        contextType == RHICommandContextType::eTransfer)
+    if (pContext != nullptr)
     {
-        pCmdList->m_pGraphicsContext = pContext;
-        pCmdList->m_pComputeContext  = pContext;
-    }
-    else if (contextType == RHICommandContextType::eAsyncCompute)
-    {
-        pCmdList->m_pGraphicsContext = nullptr;
-        pCmdList->m_pComputeContext  = pContext;
+        pCmdList                          = ZEN_NEW() RHICommandList();
+        pCmdList->m_contextOwner          = RefCountPtr<IRHICommandContext>(pContext);
+        RHICommandContextType contextType = pContext->GetContextType();
+
+        if (contextType == RHICommandContextType::eGraphics ||
+            contextType == RHICommandContextType::eTransfer)
+        {
+            pCmdList->m_pGraphicsContext = pContext;
+            pCmdList->m_pComputeContext  = pContext;
+        }
+        else if (contextType == RHICommandContextType::eAsyncCompute)
+        {
+            pCmdList->m_pGraphicsContext = nullptr;
+            pCmdList->m_pComputeContext  = pContext;
+        }
     }
 
     return pCmdList;

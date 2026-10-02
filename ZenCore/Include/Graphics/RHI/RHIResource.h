@@ -65,7 +65,8 @@ public:
         if (newValue == 0)
         {
             std::atomic_thread_fence(std::memory_order_acquire);
-            GetRHIThread().Dispatch([this] { Destroy(); });
+            const bool accepted = GetRHIThread().DispatchCleanup([this] { Destroy(); });
+            VERIFY_EXPR_MSG(accepted, "Resource released after RHI cleanup admission closed");
         }
 
         return newValue;
@@ -281,7 +282,7 @@ public:
 
     // Creates an immutable view of the logical buffer. Repeating its format is a
     // no-op; changing a successfully created view's format is rejected.
-    virtual void SetTexelFormat(DataFormat format) = 0;
+    virtual bool SetTexelFormat(DataFormat format) = 0;
 
     BitField<RHIBufferUsageFlagBits> GetUsageFlags() const
     {
@@ -788,7 +789,7 @@ struct RHIGeometryBuffer
     HeapVector<RHIBuffer*> vertexBuffers;
     RHIBuffer* pIndexBuffer{nullptr};
     DataFormat indexBufferFormat{DataFormat::eR32UInt};
-    uint32_t indexBufferOffset{0};
+    uint64_t indexBufferOffset{0};
 };
 
 struct RHIGfxPipelineCreateInfo

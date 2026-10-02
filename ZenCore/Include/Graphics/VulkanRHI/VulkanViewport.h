@@ -37,8 +37,9 @@ public:
 
     DataFormat GetSwapchainFormat() final
     {
-        return m_pSwapchain != nullptr ? static_cast<DataFormat>(m_pSwapchain->GetFormat()) :
-                                         DataFormat::eUndefined;
+        return m_pSwapchain != nullptr ?
+            static_cast<DataFormat>(m_pSwapchain->GetBackBufferFormat()) :
+            DataFormat::eUndefined;
     }
 
     DataFormat GetDepthStencilFormat() final
@@ -96,7 +97,7 @@ protected:
 private:
     VulkanViewport(void* pWindowPtr, uint32_t width, uint32_t height, bool enableVSync);
 
-    void CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
+    bool CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
 
     void DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo);
 

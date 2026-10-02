@@ -793,23 +793,23 @@ TEST_P(VulkanUniformQueueTrimTest, RejectedSubmissionTransfersCountsOnlyOnSucces
 TEST_P(VulkanUniformQueueTrimTest, UncertainSubmissionRemainsProtectedAfterUnrelatedCompletion)
 {
     Fill(3);
-    auto allocation = allocator->Alloc(blockSize);
+    const VulkanUniformBufferBlock allocation = allocator->Alloc(blockSize);
     ASSERT_TRUE(allocation.IsValid());
     context->RecordUniformBufferBlock(allocation.blockId);
     context->GetCommandBuffer();
     Enqueue(context);
-    auto* queue     = context->GetQueue();
-    uint64_t serial = 0;
+    VulkanQueue* queue = context->GetQueue();
+    uint64_t serial    = 0;
     {
         test::ScopedVulkanCall<PFN_vkQueueSubmit> fail(
             vkQueueSubmit, +[](VkQueue, uint32_t, const VkSubmitInfo*, VkFence) -> VkResult {
-                return VK_ERROR_DEVICE_LOST;
+                return VK_ERROR_UNKNOWN;
             });
         EXPECT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eFatal);
     }
     queue->DiscardPendingWorkloads(true);
-    // The injected failure never reached the driver. Complete unrelated native work
-    // with the serial that the failed batch would have used, without unpinning it.
+    // This uncertain non-device-loss failure never reached the driver. Exercise the
+    // raw queue with a later serial without unpinning its abandoned recording.
     context->GetCommandBuffer();
     Enqueue(context);
     ASSERT_EQ(queue->SubmitPendingWorkloads(serial), RHISubmissionResult::eSuccess);
@@ -817,8 +817,7 @@ TEST_P(VulkanUniformQueueTrimTest, UncertainSubmissionRemainsProtectedAfterUnrel
     allocator->BeginFrame(0);
     LowDemand(allocator->kTrimDelay);
     EXPECT_EQ(allocator->GetAllocatedBlockCount(0), 4u);
-    // Uncertain recordings are retained until teardown, which also exercises cleanup
-    // after the allocator has been destroyed and the queue still has abandoned work.
+    // Teardown must destroy abandoned workloads before the uniform allocator.
 }
 
 INSTANTIATE_TEST_SUITE_P(TimelineAndFence, VulkanUniformQueueTrimTest, testing::Bool());

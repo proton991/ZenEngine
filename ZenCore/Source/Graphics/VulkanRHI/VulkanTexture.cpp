@@ -36,6 +36,13 @@ VulkanSampler* VulkanSampler::CreateObject(const RHISamplerCreateInfo& createInf
 
     pSampler->Init();
 
+    if (pSampler->m_vkSampler == VK_NULL_HANDLE)
+    {
+        pSampler->ReleaseReference();
+
+        pSampler = nullptr;
+    }
+
     return pSampler;
 }
 
@@ -62,7 +69,13 @@ void VulkanSampler::Init()
     samplerCI.borderColor             = ToVkBorderColor(m_baseInfo.borderColor);
     samplerCI.unnormalizedCoordinates = m_baseInfo.unnormalizedUVW;
 
-    VKCHECK(vkCreateSampler(GVulkanRHI->GetVkDevice(), &samplerCI, nullptr, &m_vkSampler));
+    const VkResult result =
+        vkCreateSampler(GVulkanRHI->GetVkDevice(), &samplerCI, nullptr, &m_vkSampler);
+
+    if (result != VK_SUCCESS)
+    {
+        LOGE("vkCreateSampler failed: {}", GetResultString(result));
+    }
 }
 
 void VulkanSampler::Destroy()
@@ -181,9 +194,9 @@ RHITextureView* VulkanTexture::GetAttachmentView()
 {
     if (m_baseInfo.type == RHITextureType::e3D)
     {
-        LOG_ERROR_AND_THROW("Rendering to 3D texture slices is not supported");
+        LOGE("Rendering to 3D texture slices is not supported");
     }
-    if (m_pAttachmentView == nullptr)
+    else if (m_pAttachmentView == nullptr)
     {
         if (m_baseInfo.mipmaps == 1 && m_baseInfo.type != RHITextureType::eCube)
         {

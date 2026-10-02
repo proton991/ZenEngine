@@ -17,6 +17,50 @@
 
 namespace zen
 {
+VulkanUniformBufferUsage CountUniformBufferDescriptors(
+    const RHIShaderResourceDescriptorTable& srdTable)
+{
+    VulkanUniformBufferUsage usage{};
+
+    uint32_t perStageCounts[ToUnderlying(RHIShaderStage::eMax)] = {};
+
+    for (const SmallVector<RHIShaderResourceDescriptor>& setSRDs : srdTable)
+    {
+        for (const RHIShaderResourceDescriptor& srd : setSRDs)
+        {
+            if (srd.type == RHIShaderResourceType::eUniformBuffer && !srd.bindless)
+            {
+                usage.dynamicCount += srd.arraySize;
+
+                for (uint32_t stage = 0; stage < ToUnderlying(RHIShaderStage::eMax); ++stage)
+                {
+                    if (srd.stageFlags.HasFlag(
+                            RHIShaderStageToFlagBits(static_cast<RHIShaderStage>(stage))))
+                    {
+                        perStageCounts[stage] += srd.arraySize;
+                    }
+                }
+            }
+        }
+    }
+
+    for (uint32_t count : perStageCounts)
+    {
+        usage.maxPerStageCount = std::max(usage.maxPerStageCount, count);
+    }
+
+    return usage;
+}
+
+bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage,
+                             const VkPhysicalDeviceLimits& limits)
+{
+    // Dynamic uniform buffers also count against the general uniform-buffer limits.
+    return usage.dynamicCount <= limits.maxDescriptorSetUniformBuffersDynamic &&
+        usage.dynamicCount <= limits.maxDescriptorSetUniformBuffers &&
+        usage.maxPerStageCount <= limits.maxPerStageDescriptorUniformBuffers;
+}
+
 RHIShader* VulkanResourceFactory::CreateShader(const RHIShaderCreateInfo& createInfo)
 {
     RHIShader* pShader = VulkanShader::CreateObject(createInfo);
@@ -70,13 +114,19 @@ VulkanShader* VulkanShader::CreateObject(const RHIShaderCreateInfo& createInfo)
 
     new (pShader) VulkanShader(createInfo);
 
-    if (pShader->LoadSpirvFiles())
+    bool created = pShader->LoadSpirvFiles();
+
+    if (created)
     {
         pShader->Init();
+
+        created = pShader->m_fitsDeviceLimits && pShader->m_pipelineLayout != VK_NULL_HANDLE;
     }
-    else
+
+    if (!created)
     {
-        pShader->Destroy();
+        pShader->ReleaseReference();
+
         pShader = nullptr;
     }
 
@@ -169,9 +219,37 @@ void VulkanShader::Init()
     m_specializationInfo.pData =
         m_specializationData.empty() ? nullptr : m_specializationData.data();
 
+    // Reject an over-limit layout before creating native objects. Drivers need not reject
+    // one; only the validation layer reports it.
+    const VulkanUniformBufferUsage uniformUsage = CountUniformBufferDescriptors(m_SRDTable);
+
+    const VkPhysicalDeviceLimits limits =
+        GVulkanRHI->GetDevice()->GetPhysicalDeviceProperties().limits;
+
+    m_fitsDeviceLimits = UniformBuffersFitLimits(uniformUsage, limits);
+
+    if (m_fitsDeviceLimits)
+    {
+        InitNativeObjects(sgInfo);
+    }
+    else
+    {
+        LOGE("Shader '{}' exceeds device uniform-buffer limits: {} dynamic descriptors per "
+             "layout (limit {}), {} in one stage (limit {})",
+             m_name.CStr(), uniformUsage.dynamicCount,
+             std::min(limits.maxDescriptorSetUniformBuffersDynamic,
+                      limits.maxDescriptorSetUniformBuffers),
+             uniformUsage.maxPerStageCount, limits.maxPerStageDescriptorUniformBuffers);
+    }
+}
+
+void VulkanShader::InitNativeObjects(const RHIShaderGroupInfo& sgInfo)
+{
+    bool ready = true;
+
     m_stageCreateInfos.reserve(m_shaderGroupSPIRV->GetStageCount());
 
-    for (uint32_t i = 0; i < ToUnderlying(RHIShaderStage::eMax); i++)
+    for (uint32_t i = 0; ready && i < ToUnderlying(RHIShaderStage::eMax); i++)
     {
         RHIShaderStage stage = static_cast<RHIShaderStage>(i);
 
@@ -184,8 +262,16 @@ void VulkanShader::Init()
             shaderModuleCI.codeSize = spirvCode.size();
             shaderModuleCI.pCode    = reinterpret_cast<const uint32_t*>(spirvCode.data());
             VkShaderModule module{VK_NULL_HANDLE};
-            VKCHECK(
-                vkCreateShaderModule(GVulkanRHI->GetVkDevice(), &shaderModuleCI, nullptr, &module));
+            const VkResult result =
+                vkCreateShaderModule(GVulkanRHI->GetVkDevice(), &shaderModuleCI, nullptr, &module);
+            ready = result == VK_SUCCESS && module != VK_NULL_HANDLE;
+
+            if (!ready)
+            {
+                LOGE("vkCreateShaderModule failed: {}", GetResultString(result));
+
+                break;
+            }
 
             VkPipelineShaderStageCreateInfo pipelineShaderStageCI;
             InitVkStruct(pipelineShaderStageCI,
@@ -204,14 +290,14 @@ void VulkanShader::Init()
     m_descriptorSetInfos.resize(setCount);
     m_descriptorSetLayouts.resize(setCount);
 
-    for (uint32_t i = 0; i < setCount; i++)
+    for (uint32_t i = 0; ready && i < setCount; i++)
     {
         // Set 0 is reserved for the same global heap in every pipeline layout.
         if (i == kGlobalBindlessHeapIndex)
         {
             const VkDescriptorSetLayout dsLayout =
                 GVulkanRHI->GetBindlessDescriptorPoolManager()->GetGlobalBindlessLayout();
-            VERIFY_EXPR(dsLayout != nullptr);
+            ready = dsLayout != VK_NULL_HANDLE;
 
             m_descriptorSetLayouts[i]             = dsLayout;
             m_descriptorSetInfos[i].layoutId      = 0;
@@ -277,8 +363,16 @@ void VulkanShader::Init()
         layoutCI.pNext = &bindingFlagsCreateInfo;
 
         VkDescriptorSetLayout dsLayout{VK_NULL_HANDLE};
-        VKCHECK(
-            vkCreateDescriptorSetLayout(GVulkanRHI->GetVkDevice(), &layoutCI, nullptr, &dsLayout));
+        const VkResult result =
+            vkCreateDescriptorSetLayout(GVulkanRHI->GetVkDevice(), &layoutCI, nullptr, &dsLayout);
+        ready = result == VK_SUCCESS && dsLayout != VK_NULL_HANDLE;
+
+        if (!ready)
+        {
+            LOGE("vkCreateDescriptorSetLayout failed: {}", GetResultString(result));
+
+            break;
+        }
 
         m_descriptorSetLayouts[i]             = dsLayout;
         m_descriptorSetInfos[i].poolKey       = setPoolKey;
@@ -348,15 +442,35 @@ void VulkanShader::Init()
         pipelineLayoutCI.pPushConstantRanges    = &prc;
     }
 
-    vkCreatePipelineLayout(GVulkanRHI->GetVkDevice(), &pipelineLayoutCI, nullptr,
-                           &m_pipelineLayout);
+    if (ready)
+    {
+        const VkResult result = vkCreatePipelineLayout(GVulkanRHI->GetVkDevice(), &pipelineLayoutCI,
+                                                       nullptr, &m_pipelineLayout);
+        ready                 = result == VK_SUCCESS;
+
+        if (!ready)
+        {
+            LOGE("vkCreatePipelineLayout failed: {}", GetResultString(result));
+
+            if (m_pipelineLayout != VK_NULL_HANDLE)
+            {
+                vkDestroyPipelineLayout(GVulkanRHI->GetVkDevice(), m_pipelineLayout, nullptr);
+
+                m_pipelineLayout = VK_NULL_HANDLE;
+            }
+        }
+    }
 
     m_pushConstantsStageFlags =
         ShaderStageFlagsBitsToVkShaderStageFlags(sgInfo.pushConstants.stageFlags);
 
     const NameID debugName(fmt::format("{}_PipelineLayout", sgInfo.name.CStr()));
-    GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
-                                           reinterpret_cast<uint64_t>(m_pipelineLayout), debugName);
+    if (ready)
+    {
+        GVulkanRHI->GetDevice()->SetObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                                               reinterpret_cast<uint64_t>(m_pipelineLayout),
+                                               debugName);
+    }
     for (uint32_t set = 0; set < m_SRDTable.size(); ++set)
     {
         SmallVector<DynamicOffsetSlot>& slots = m_dynamicOffsetSlots[set];
@@ -403,55 +517,104 @@ void VulkanShader::Destroy()
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
-VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& createInfo)
+static bool ValidateGraphicsPipeline(const RHIGfxPipelineCreateInfo& createInfo)
 {
     const RHIRenderingLayout* layout = createInfo.pRenderingLayout;
-    if (layout == nullptr || layout->numColorRenderTargets > MAX_NUM_COLOR_ATTACHMENTS)
+    bool valid                       = createInfo.pShader != nullptr &&
+        createInfo.pShader->GetResourceType() == RHIResourceType::eShader && layout != nullptr &&
+        layout->numColorRenderTargets <= MAX_NUM_COLOR_ATTACHMENTS;
+
+    if (valid)
     {
-        LOG_ERROR_AND_THROW("Graphics pipeline requires a valid rendering layout");
-    }
-    // Pipeline layouts may describe formats without owning concrete textures/views.
-    const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
-    for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
-    {
-        const RHIRenderTarget& target = layout->colorRenderTargets[i];
-        if (target.numSamples != samples || FormatIsDepthOnly(target.format) ||
-            FormatIsStencilOnly(target.format) || FormatIsDepthStencil(target.format))
+        // Layouts may describe formats without owning concrete textures/views.
+        const SampleCount samples = createInfo.states.multiSampleState.sampleCount;
+
+        for (uint32_t i = 0; i < layout->numColorRenderTargets; ++i)
         {
-            LOG_ERROR_AND_THROW("Pipeline color attachment format or sample count is incompatible");
+            const RHIRenderTarget& target = layout->colorRenderTargets[i];
+            valid &= target.format != DataFormat::eUndefined && target.numSamples == samples &&
+                !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
+                  FormatIsDepthStencil(target.format));
+        }
+
+        if (layout->hasDepthStencilRT)
+        {
+            const RHIRenderTarget& target = layout->depthStencilRenderTarget;
+            valid &= target.numSamples == samples &&
+                (FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
+                 FormatIsDepthStencil(target.format));
+        }
+
+        for (uint32_t index : createInfo.states.colorBlendState.attachmentsMask)
+        {
+            valid &= index < layout->numColorRenderTargets;
         }
     }
-    if (layout->hasDepthStencilRT)
+
+    if (!valid)
     {
-        const RHIRenderTarget& target = layout->depthStencilRenderTarget;
-        if (target.numSamples != samples ||
-            !(FormatIsDepthOnly(target.format) || FormatIsStencilOnly(target.format) ||
-              FormatIsDepthStencil(target.format)))
-        {
-            LOG_ERROR_AND_THROW(
-                "Pipeline depth/stencil attachment format or sample count is incompatible");
-        }
+        LOGE("Graphics pipeline requires a compatible shader and rendering layout");
     }
 
-    VulkanPipeline* pGfxPipeline =
-        VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
+    return valid;
+}
 
-    new (pGfxPipeline) VulkanPipeline(createInfo);
+VulkanPipeline* VulkanPipeline::CreateObject(const RHIGfxPipelineCreateInfo& createInfo)
+{
+    VulkanPipeline* pGfxPipeline = nullptr;
 
-    pGfxPipeline->InitGraphics(*createInfo.pRenderingLayout);
-    pGfxPipeline->m_bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    if (ValidateGraphicsPipeline(createInfo))
+    {
+        pGfxPipeline =
+            VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
+
+        new (pGfxPipeline) VulkanPipeline(createInfo);
+
+        pGfxPipeline->InitGraphics(*createInfo.pRenderingLayout);
+
+        if (!pGfxPipeline->m_initialized)
+        {
+            pGfxPipeline->ReleaseReference();
+
+            pGfxPipeline = nullptr;
+        }
+    }
 
     return pGfxPipeline;
 }
 
 VulkanPipeline* VulkanPipeline::CreateObject(const RHIComputePipelineCreateInfo& createInfo)
 {
-    VulkanPipeline* pCompPipeline =
-        VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
+    VulkanPipeline* pCompPipeline = nullptr;
 
-    new (pCompPipeline) VulkanPipeline(createInfo);
+    if (createInfo.pShader != nullptr &&
+        createInfo.pShader->GetResourceType() == RHIResourceType::eShader)
+    {
+        VulkanShader* shader = static_cast<VulkanShader*>(createInfo.pShader);
 
-    pCompPipeline->Init();
+        if (shader->GetNumShaderStages() == 1 &&
+            shader->GetStageCreateInfoData()[0].stage == VK_SHADER_STAGE_COMPUTE_BIT)
+        {
+            pCompPipeline =
+                VersatileResource::AllocMem<VulkanPipeline>(GVulkanRHI->GetResourceAllocator());
+
+            new (pCompPipeline) VulkanPipeline(createInfo);
+
+            pCompPipeline->Init();
+
+            if (!pCompPipeline->m_initialized)
+            {
+                pCompPipeline->ReleaseReference();
+
+                pCompPipeline = nullptr;
+            }
+        }
+    }
+
+    if (pCompPipeline == nullptr)
+    {
+        LOGE("Compute pipeline creation failed");
+    }
 
     return pCompPipeline;
 }
@@ -657,9 +820,16 @@ void VulkanPipeline::InitGraphics(const RHIRenderingLayout& layout)
 
     pipelineCI.pNext = &renderingCI;
 
-    VKCHECK(vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(),
-                                      GVulkanRHI->GetDevice()->GetPipelineCache(), 1, &pipelineCI,
-                                      nullptr, &m_vkPipeline));
+    const VkResult result = vkCreateGraphicsPipelines(GVulkanRHI->GetVkDevice(),
+                                                      GVulkanRHI->GetDevice()->GetPipelineCache(),
+                                                      1, &pipelineCI, nullptr, &m_vkPipeline);
+
+    m_initialized = result == VK_SUCCESS && m_vkPipeline != VK_NULL_HANDLE;
+
+    if (!m_initialized)
+    {
+        LOGE("vkCreateGraphicsPipelines failed: {}", GetResultString(result));
+    }
 
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
@@ -673,9 +843,16 @@ void VulkanPipeline::InitCompute()
     pipelineCI.stage  = pShader->GetStageCreateInfoData()[0];
     pipelineCI.layout = pShader->GetVkPipelineLayout();
 
-    VKCHECK(vkCreateComputePipelines(GVulkanRHI->GetVkDevice(),
-                                     GVulkanRHI->GetDevice()->GetPipelineCache(), 1, &pipelineCI,
-                                     nullptr, &m_vkPipeline));
+    const VkResult result = vkCreateComputePipelines(GVulkanRHI->GetVkDevice(),
+                                                     GVulkanRHI->GetDevice()->GetPipelineCache(), 1,
+                                                     &pipelineCI, nullptr, &m_vkPipeline);
+
+    m_initialized = result == VK_SUCCESS && m_vkPipeline != VK_NULL_HANDLE;
+
+    if (!m_initialized)
+    {
+        LOGE("vkCreateComputePipelines failed: {}", GetResultString(result));
+    }
     m_pushConstantsStageFlags = pShader->GetPushConstantsStageFlags();
 }
 

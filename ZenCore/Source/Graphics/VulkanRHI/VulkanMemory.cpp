@@ -6,36 +6,6 @@
 
 namespace zen
 {
-static constexpr uint32_t SMALL_VK_ALLOCATION_SIZE = 4096;
-
-// Tightly packed texels bound an image's native memory requirement from below.
-// Formats without a known texel size report zero.
-static uint64_t GetPackedImageBytes(const VkImageCreateInfo& imageCI)
-{
-    const uint64_t texelBytes = GetTextureFormatPixelSize(static_cast<DataFormat>(imageCI.format));
-
-    uint64_t texels = 0;
-
-    uint64_t width = imageCI.extent.width;
-
-    uint64_t height = imageCI.extent.height;
-
-    uint64_t depth = imageCI.extent.depth;
-
-    for (uint32_t mip = 0; mip < imageCI.mipLevels; ++mip)
-    {
-        texels += width * height * depth;
-
-        width = std::max<uint64_t>(1, width / 2);
-
-        height = std::max<uint64_t>(1, height / 2);
-
-        depth = std::max<uint64_t>(1, depth / 2);
-    }
-
-    return texels * texelBytes * imageCI.arrayLayers * uint64_t(imageCI.samples);
-}
-
 static void AddMemory(std::atomic<uint64_t>& live, std::atomic<uint64_t>& peak, uint64_t bytes)
 {
     const uint64_t current = live.fetch_add(bytes, std::memory_order_relaxed) + bytes;
@@ -95,12 +65,6 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
 
         LOGI("VMA Total device memory leaked: {} bytes.", stats.total.statistics.allocationBytes);
 
-        // destroy pools
-        for (std::pair<const uint32_t, VmaPool_T*>& kv : m_smallPools)
-        {
-            vmaDestroyPool(m_vmaAllocator, kv.second);
-        }
-
         vmaDestroyAllocator(m_vmaAllocator);
         if (m_logMemoryStats)
         {
@@ -114,7 +78,8 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
 void VulkanMemoryAllocator::Init(VkInstance instance,
                                  VkPhysicalDevice gpu,
                                  VkDevice device,
-                                 bool bufferDeviceAddress)
+                                 bool bufferDeviceAddress,
+                                 bool memoryBudget)
 {
     // pass dynamic function pointers to vma
     VmaVulkanFunctions vmaVkFunc{};
@@ -147,6 +112,13 @@ void VulkanMemoryAllocator::Init(VkInstance instance,
     {
         allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     }
+
+    m_memoryBudget = memoryBudget;
+
+    if (m_memoryBudget)
+    {
+        allocatorCI.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+    }
     allocatorCI.pVulkanFunctions = &vmaVkFunc;
     m_logMemoryStats             = RHIOptions::GetInstance().GPUMemoryStats();
 
@@ -156,11 +128,14 @@ void VulkanMemoryAllocator::Init(VkInstance instance,
 
     vkGetPhysicalDeviceMemoryProperties(gpu, &m_memoryProperties);
 
-    m_device = device;
-
     allocatorCI.pDeviceMemoryCallbacks = &memoryCallbacks;
 
     VKCHECK(vmaCreateAllocator(&allocatorCI, &m_vmaAllocator));
+}
+
+void VulkanMemoryAllocator::BeginFrame(uint32_t frame)
+{
+    vmaSetCurrentFrameIndex(m_vmaAllocator, frame);
 }
 
 RHIGPUMemoryStats VulkanMemoryAllocator::GetGPUMemoryStats() const
@@ -181,6 +156,21 @@ RHIGPUMemoryStats VulkanMemoryAllocator::GetGPUMemoryStats() const
     stats.peakDeviceLocalBytes =
         std::max(stats.deviceLocalBytes, m_peakDeviceBytes.load(std::memory_order_relaxed));
 
+    if (stats.available && m_memoryBudget)
+    {
+        VmaBudget budgets[VK_MAX_MEMORY_HEAPS]{};
+        vmaGetHeapBudgets(m_vmaAllocator, budgets);
+        stats.budgetAvailable = true;
+        stats.heapCount       = m_memoryProperties.memoryHeapCount;
+
+        for (uint32_t i = 0; i < stats.heapCount; ++i)
+        {
+            stats.heaps[i] = {
+                m_memoryProperties.memoryHeaps[i].size, budgets[i].usage, budgets[i].budget,
+                (m_memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0};
+        }
+    }
+
     return stats;
 }
 
@@ -194,43 +184,29 @@ bool VulkanMemoryAllocator::AllocImage(const VkImageCreateInfo* pImageCI,
                                        VkImage* pImage,
                                        VulkanMemoryAllocation* pAllocation)
 {
+    // VMA's default pools sub-allocate small images and buffers from shared blocks.
     VmaAllocationCreateInfo vmaAllocationCI{};
     vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     vmaAllocationCI.flags = cpuReadable ? VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT : 0;
-    *pImage               = VK_NULL_HANDLE;
-    *pAllocation          = {};
-    bool ready            = true;
-
-    // Small images share a pool, but a failed pool must never be published or used.
-    if (IsSmallImage(*pImageCI))
+    if (m_memoryBudget)
     {
-        uint32_t memTypeIndex = 0;
-        const VkResult result = vmaFindMemoryTypeIndexForImageInfo(m_vmaAllocator, pImageCI,
-                                                                   &vmaAllocationCI, &memTypeIndex);
-        ready                 = result == VK_SUCCESS;
-        if (ready)
-        {
-            vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
-            ready                = vmaAllocationCI.pool != VK_NULL_HANDLE;
-        }
-        else
-        {
-            LOGE("Image memory type selection failed: {}", GetResultString(result));
-        }
+        vmaAllocationCI.flags |= VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
+    }
+    *pImage      = VK_NULL_HANDLE;
+    *pAllocation = {};
+
+    const VkResult result = vmaCreateImage(m_vmaAllocator, pImageCI, &vmaAllocationCI, pImage,
+                                           &pAllocation->handle, &pAllocation->info);
+
+    const bool ready = result == VK_SUCCESS;
+
+    if (!ready)
+    {
+        LOGE("Image allocation failed: {}", GetResultString(result));
+        *pImage      = VK_NULL_HANDLE;
+        *pAllocation = {};
     }
 
-    if (ready)
-    {
-        const VkResult result = vmaCreateImage(m_vmaAllocator, pImageCI, &vmaAllocationCI, pImage,
-                                               &pAllocation->handle, &pAllocation->info);
-        ready                 = result == VK_SUCCESS;
-        if (!ready)
-        {
-            LOGE("Image allocation failed: {}", GetResultString(result));
-            *pImage      = VK_NULL_HANDLE;
-            *pAllocation = {};
-        }
-    }
     return ready;
 }
 
@@ -239,7 +215,7 @@ void VulkanMemoryAllocator::FreeImage(VkImage image, const VulkanMemoryAllocatio
     vmaDestroyImage(m_vmaAllocator, image, memAlloc.handle);
 }
 
-void VulkanMemoryAllocator::AllocBuffer(uint64_t size,
+bool VulkanMemoryAllocator::AllocBuffer(uint64_t size,
                                         const VkBufferCreateInfo* pBufferCI,
                                         RHIBufferAllocateType allocType,
                                         VkBuffer* pBuffer,
@@ -265,24 +241,52 @@ void VulkanMemoryAllocator::AllocBuffer(uint64_t size,
     else if (allocType == RHIBufferAllocateType::eGPU)
     {
         vmaAllocationCI.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-
-        if (size <= SMALL_VK_ALLOCATION_SIZE)
-        {
-            uint32_t memTypeIndex = 0;
-            vmaFindMemoryTypeIndexForBufferInfo(m_vmaAllocator, pBufferCI, &vmaAllocationCI,
-                                                &memTypeIndex);
-            vmaAllocationCI.pool = GetOrCreateSmallAllocPools(memTypeIndex);
-        }
     }
 
-    VKCHECK(vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer,
-                            &pAllocation->handle, &pAllocation->info));
+    if (m_memoryBudget)
+    {
+        vmaAllocationCI.flags |= VMA_ALLOCATION_CREATE_WITHIN_BUDGET_BIT;
+    }
+
+    *pBuffer     = VK_NULL_HANDLE;
+    *pAllocation = {};
+
+    const VkResult result = vmaCreateBuffer(m_vmaAllocator, pBufferCI, &vmaAllocationCI, pBuffer,
+                                            &pAllocation->handle, &pAllocation->info);
+    const bool mappedRequired = (vmaAllocationCI.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) != 0;
+    const bool ready          = result == VK_SUCCESS && *pBuffer != VK_NULL_HANDLE &&
+        pAllocation->handle != VK_NULL_HANDLE &&
+        (!mappedRequired || pAllocation->info.pMappedData != nullptr);
+
+    if (!ready)
+    {
+        LOGE("Buffer allocation or persistent mapping failed: {}", GetResultString(result));
+
+        if (*pBuffer != VK_NULL_HANDLE || pAllocation->handle != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(m_vmaAllocator, *pBuffer, pAllocation->handle);
+        }
+
+        *pBuffer     = VK_NULL_HANDLE;
+        *pAllocation = {};
+    }
+
+    return ready;
 }
 
 uint8_t* VulkanMemoryAllocator::MapBuffer(const VulkanMemoryAllocation& memAlloc)
 {
-    void* pDataPtr = nullptr;
-    VKCHECK(vmaMapMemory(m_vmaAllocator, memAlloc.handle, &pDataPtr));
+    void* pDataPtr        = nullptr;
+    const VkResult result = memAlloc.handle != VK_NULL_HANDLE ?
+        vmaMapMemory(m_vmaAllocator, memAlloc.handle, &pDataPtr) :
+        VK_ERROR_MEMORY_MAP_FAILED;
+
+    if (result != VK_SUCCESS)
+    {
+        LOGE("Buffer mapping failed: {}", GetResultString(result));
+
+        pDataPtr = nullptr;
+    }
 
     return static_cast<uint8_t*>(pDataPtr);
 }
@@ -295,66 +299,5 @@ void VulkanMemoryAllocator::UnmapBuffer(const VulkanMemoryAllocation& memAlloc)
 void VulkanMemoryAllocator::FreeBuffer(VkBuffer buffer, const VulkanMemoryAllocation& memAlloc)
 {
     vmaDestroyBuffer(m_vmaAllocator, buffer, memAlloc.handle);
-}
-
-VmaPool VulkanMemoryAllocator::GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex)
-{
-    VmaPool result{};
-
-    if (m_smallPools.contains(memTypeIndex))
-    {
-        result = m_smallPools[memTypeIndex];
-    }
-    else
-    {
-        // create a new one
-        VmaPoolCreateInfo poolCI{};
-        poolCI.memoryTypeIndex        = memTypeIndex;
-        poolCI.flags                  = 0;
-        poolCI.blockSize              = 0;
-        poolCI.minBlockCount          = 0;
-        poolCI.maxBlockCount          = SIZE_MAX;
-        poolCI.priority               = 0.5f;
-        poolCI.minAllocationAlignment = 0;
-        poolCI.pMemoryAllocateNext    = nullptr;
-        VmaPool pool{VK_NULL_HANDLE};
-        const VkResult status = vmaCreatePool(m_vmaAllocator, &poolCI, &pool);
-        if (status == VK_SUCCESS)
-        {
-            m_smallPools[memTypeIndex] = pool;
-            result                     = pool;
-        }
-        else
-        {
-            LOGE("Small allocation pool creation failed: {}", GetResultString(status));
-        }
-    }
-
-    return result;
-}
-
-// Only images whose packed texels fit the small pool pay for a probe of the native requirement.
-// A failed probe leaves placement to the default pools, where the real allocation reports it.
-bool VulkanMemoryAllocator::IsSmallImage(const VkImageCreateInfo& imageCI) const
-{
-    bool smallImage = false;
-
-    if (GetPackedImageBytes(imageCI) <= SMALL_VK_ALLOCATION_SIZE)
-    {
-        VkImage probe{VK_NULL_HANDLE};
-
-        if (vkCreateImage(m_device, &imageCI, nullptr, &probe) == VK_SUCCESS)
-        {
-            VkMemoryRequirements requirements{};
-
-            vkGetImageMemoryRequirements(m_device, probe, &requirements);
-
-            vkDestroyImage(m_device, probe, nullptr);
-
-            smallImage = requirements.size <= SMALL_VK_ALLOCATION_SIZE;
-        }
-    }
-
-    return smallImage;
 }
 } // namespace zen

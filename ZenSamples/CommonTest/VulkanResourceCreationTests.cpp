@@ -187,6 +187,70 @@ TEST(VulkanDescriptorLayoutTest, CanonicalLayoutIdentityIncludesBindingFlagsAndS
     manager.Destroy();
 }
 
+namespace
+{
+zen::RHIShaderResourceDescriptor UniformDescriptor(
+    zen::RHIShaderResourceType type,
+    uint32_t arraySize,
+    zen::BitField<zen::RHIShaderStageFlagBits> stages,
+    bool bindless = false)
+{
+    zen::RHIShaderResourceDescriptor descriptor{};
+    descriptor.type       = type;
+    descriptor.arraySize  = arraySize;
+    descriptor.stageFlags = stages;
+    descriptor.bindless   = bindless;
+
+    return descriptor;
+}
+} // namespace
+
+TEST(VulkanDescriptorLayoutTest, UniformBufferLimitsCountEveryDynamicElementPerLayoutAndStage)
+{
+    using namespace zen;
+
+    BitField<RHIShaderStageFlagBits> vertexFragment;
+    vertexFragment.SetFlag(RHIShaderStageFlagBits::eVertex);
+    vertexFragment.SetFlag(RHIShaderStageFlagBits::eFragment);
+
+    BitField<RHIShaderStageFlagBits> fragment;
+    fragment.SetFlag(RHIShaderStageFlagBits::eFragment);
+
+    RHIShaderResourceDescriptorTable table(3);
+    table[1].push_back(UniformDescriptor(RHIShaderResourceType::eUniformBuffer, 3, vertexFragment));
+    table[1].push_back(UniformDescriptor(RHIShaderResourceType::eStorageBuffer, 5, fragment));
+    table[2].push_back(UniformDescriptor(RHIShaderResourceType::eUniformBuffer, 1, fragment));
+    // Bindless descriptors are bounded by the update-after-bind limits instead.
+    table[2].push_back(
+        UniformDescriptor(RHIShaderResourceType::eUniformBuffer, 64, fragment, true));
+
+    const VulkanUniformBufferUsage usage = CountUniformBufferDescriptors(table);
+
+    EXPECT_EQ(usage.dynamicCount, 4u);
+    EXPECT_EQ(usage.maxPerStageCount, 4u);
+
+    VkPhysicalDeviceLimits limits{};
+    limits.maxDescriptorSetUniformBuffersDynamic = 4;
+    limits.maxDescriptorSetUniformBuffers        = 4;
+    limits.maxPerStageDescriptorUniformBuffers   = 4;
+
+    EXPECT_TRUE(UniformBuffersFitLimits(usage, limits));
+
+    limits.maxDescriptorSetUniformBuffersDynamic = 3;
+
+    EXPECT_FALSE(UniformBuffersFitLimits(usage, limits));
+
+    limits.maxDescriptorSetUniformBuffersDynamic = 4;
+    limits.maxDescriptorSetUniformBuffers        = 3;
+
+    EXPECT_FALSE(UniformBuffersFitLimits(usage, limits));
+
+    limits.maxDescriptorSetUniformBuffers      = 4;
+    limits.maxPerStageDescriptorUniformBuffers = 3;
+
+    EXPECT_FALSE(UniformBuffersFitLimits(usage, limits));
+}
+
 TEST(RHIFormatTests, AllDeclaredTexelFormatsHaveSizes)
 {
     const DataFormat formats[] = {DataFormat::eR8UNORM,

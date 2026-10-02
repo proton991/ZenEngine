@@ -145,8 +145,8 @@ public:
 
     void DestroyBuffer(RHIBuffer* pBuffer) final;
 
-    void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
-                              HeapVector<RHIPlatformCommandList*>& outCommandLists) final;
+    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
+                                   HeapVector<RHIPlatformCommandList*>& outCommandLists) final;
 
     void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) final;
 

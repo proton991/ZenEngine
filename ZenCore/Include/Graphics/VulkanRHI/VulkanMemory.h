@@ -1,7 +1,6 @@
 #pragma once
 #include <vk_mem_alloc.h>
 #include <atomic>
-#include "Templates/HashMap.h"
 #include "Graphics/RHI/RHICommon.h"
 #include "Graphics/RHI/RHIGPUMemoryStats.h"
 
@@ -13,8 +12,6 @@ struct VulkanMemoryAllocation
     VmaAllocationInfo info{};
 };
 
-using MemoryTypeIndex = uint32_t;
-
 class VulkanMemoryAllocator
 {
 public:
@@ -22,7 +19,13 @@ public:
 
     ~VulkanMemoryAllocator();
 
-    void Init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, bool bufferDeviceAddress);
+    void Init(VkInstance instance,
+              VkPhysicalDevice gpu,
+              VkDevice device,
+              bool bufferDeviceAddress,
+              bool memoryBudget = false);
+
+    void BeginFrame(uint32_t frame);
 
     RHIGPUMemoryStats GetGPUMemoryStats() const;
 
@@ -33,7 +36,7 @@ public:
 
     void FreeImage(VkImage image, const VulkanMemoryAllocation& memAlloc);
 
-    void AllocBuffer(uint64_t size,
+    bool AllocBuffer(uint64_t size,
                      const VkBufferCreateInfo* pBufferCI,
                      RHIBufferAllocateType allocType,
                      VkBuffer* pBuffer,
@@ -58,14 +61,7 @@ private:
                                       void* userData);
     void TrackMemory(uint32_t memoryType, VkDeviceSize size, bool allocated);
 
-    VmaPool GetOrCreateSmallAllocPools(MemoryTypeIndex memTypeIndex);
-
-    bool IsSmallImage(const VkImageCreateInfo& imageCI) const;
-
-    VkDevice m_device{VK_NULL_HANDLE};
-
     VmaAllocator m_vmaAllocator{VK_NULL_HANDLE};
-    HashMap<MemoryTypeIndex, VmaPool> m_smallPools;
     // VMA block commitments, including retained pools and resources awaiting retirement.
     // Driver-private and swapchain allocations are outside this allocator's scope.
     VkPhysicalDeviceMemoryProperties m_memoryProperties{};
@@ -74,5 +70,6 @@ private:
     std::atomic<uint64_t> m_liveDeviceBytes{0};
     std::atomic<uint64_t> m_peakDeviceBytes{0};
     bool m_logMemoryStats{false};
+    bool m_memoryBudget{false};
 };
 } // namespace zen

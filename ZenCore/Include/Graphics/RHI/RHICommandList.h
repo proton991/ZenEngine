@@ -1,4 +1,5 @@
 #pragma once
+#include "RHIError.h"
 #include "RHIResource.h"
 #include "RHIShaderParameters.h"
 #include "RHIGPUTiming.h"
@@ -199,7 +200,27 @@ public:
     // texture of a view). Recorded rendering layouts must survive command execution.
     virtual RHICommandContextType GetContextType() = 0;
 
+    // Serial of this context's most recent accepted native submission, or zero when unknown.
+    // It stays exact when other contexts' work joins the same native submission.
+    virtual uint64_t RHIGetLastSubmittedSerial() const
+    {
+        return 0;
+    }
+
     virtual ~IRHICommandContext() {}
+
+    virtual RHIError RHIGetRecordingError() const
+    {
+        return {};
+    }
+
+    // Non-virtual equivalent of RHIGetRecordingError().IsFailure() for per-command execution.
+    bool HasRecordingError() const
+    {
+        return m_pRecordingError != nullptr && m_pRecordingError->IsFailure();
+    }
+
+    virtual void RHIDiscardRecording() {}
 
     virtual void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) = 0;
 
@@ -249,7 +270,7 @@ public:
 
     virtual void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
-                                uint32_t indexBufferOffset,
+                                uint64_t indexBufferOffset,
                                 uint32_t indexCount,
                                 uint32_t instanceCount,
                                 uint32_t firstIndex,
@@ -259,7 +280,7 @@ public:
     virtual void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                         RHIBuffer* pIndexBuffer,
                                         DataFormat indexFormat,
-                                        uint32_t indexBufferOffset,
+                                        uint64_t indexBufferOffset,
                                         uint64_t offset,
                                         uint32_t drawCount,
                                         uint32_t stride) = 0;
@@ -314,8 +335,18 @@ public:
 
     virtual void RHIWaitUntilCompleted() = 0;
 
+protected:
+    // A context that latches recording errors binds its error record for HasRecordingError.
+    // The record must live as long as the context.
+    void BindRecordingError(const RHIError* error)
+    {
+        m_pRecordingError = error;
+    }
+
 private:
     void OnFinalRelease() override final;
+
+    const RHIError* m_pRecordingError{nullptr};
 };
 
 class RHICommandListBase
@@ -890,7 +921,7 @@ struct RHICommandDrawIndexed final : public RHICommandWithBindlessEpoch
     {
         RHIBuffer* pIndexBuffer;
         DataFormat indexFormat;
-        uint32_t indexBufferOffset;
+        uint64_t indexBufferOffset;
         uint32_t indexCount;
         uint32_t instanceCount;
         uint32_t firstIndex;
@@ -901,7 +932,7 @@ struct RHICommandDrawIndexed final : public RHICommandWithBindlessEpoch
     // note: For now index buffer format is UINT32 only
     RHIBuffer* pIndexBuffer;
     DataFormat indexFormat;
-    uint32_t indexBufferOffset;
+    uint64_t indexBufferOffset;
     uint32_t indexCount;
     uint32_t instanceCount;
     uint32_t firstIndex;
@@ -935,7 +966,7 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessEpoch
         RHIBuffer* pIndirectBuffer;
         RHIBuffer* pIndexBuffer;
         DataFormat indexFormat;
-        uint32_t indexBufferOffset;
+        uint64_t indexBufferOffset;
         uint64_t offset;
         uint32_t drawCount;
         uint32_t stride;
@@ -944,7 +975,7 @@ struct RHICommandDrawIndexedIndirect final : public RHICommandWithBindlessEpoch
     RHIBuffer* pIndirectBuffer;
     RHIBuffer* pIndexBuffer;
     DataFormat indexFormat;
-    uint32_t indexBufferOffset;
+    uint64_t indexBufferOffset;
     uint64_t offset;
     uint32_t drawCount;
     uint32_t stride;

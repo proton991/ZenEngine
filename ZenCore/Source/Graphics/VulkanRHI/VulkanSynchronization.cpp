@@ -11,7 +11,13 @@ VulkanFence::VulkanFence(VulkanFenceManager* pOwner, bool createSignaled) :
     VkFenceCreateInfo fenceCI;
     InitVkStruct(fenceCI, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
     fenceCI.flags = createSignaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0;
-    VKCHECK(vkCreateFence(m_pOwner->GetDevice()->GetVkHandle(), &fenceCI, nullptr, &m_fence));
+    const VkResult result =
+        vkCreateFence(m_pOwner->GetDevice()->GetVkHandle(), &fenceCI, nullptr, &m_fence);
+
+    if (result != VK_SUCCESS)
+    {
+        LOGE("vkCreateFence failed: {}", GetResultString(result));
+    }
 }
 
 void VulkanFenceManager::Destroy()
@@ -43,8 +49,16 @@ VulkanFence* VulkanFenceManager::CreateFence(bool createSignaled)
     else
     {
         VulkanFence* pNewFence = ZEN_NEW() VulkanFence(this, createSignaled);
-        m_usedFences.push_back(pNewFence);
-        result = pNewFence;
+        if (pNewFence->GetVkHandle() != VK_NULL_HANDLE)
+        {
+            m_usedFences.push_back(pNewFence);
+
+            result = pNewFence;
+        }
+        else
+        {
+            ZEN_DELETE(pNewFence);
+        }
     }
 
     return result;

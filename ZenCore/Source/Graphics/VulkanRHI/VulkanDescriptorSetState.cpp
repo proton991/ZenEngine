@@ -228,124 +228,176 @@ void VulkanDescriptorSetState::SetPipeline(VulkanPipeline* pPipeline)
     {
         ClearAllSetStates();
         m_packedValueBuffers.clear();
-        m_cacheRevision = 0;
-        m_pPipeline     = pPipeline;
+        m_cacheRevision   = 0;
+        m_pPipeline       = pPipeline;
+        m_parametersValid = true;
 
         m_lastWorkloadGeneration = 0;
     }
 }
 
-void VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parameters,
-                                                   uint64_t recordedEpoch)
+bool VulkanDescriptorSetState::SetShaderParameters(RHIShaderParameterView parameters,
+                                                   uint64_t recordedEpoch,
+                                                   uint64_t transaction)
 {
+    VulkanBindlessDescriptorPoolManager* manager = GVulkanRHI->GetBindlessDescriptorPoolManager();
+    bool valid                                   = m_parametersValid && m_pPipeline != nullptr;
+
     for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
     {
-        const VectorView<const uint8_t> bytes = parameters.GetValueBytes(parameter);
-
-        if (!bytes.empty())
-        {
-            SetPackedValueParameter(parameter.set, parameter.binding, parameter.byteSize,
-                                    bytes.data());
-        }
+        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS;
     }
 
     for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
     {
-        WriteResourceParameter(parameter);
+        valid &= parameter.set < MAX_NUM_DESCRIPTOR_SETS &&
+            (parameter.bufferOffset == 0 ||
+             parameter.resourceType == RHIShaderResourceType::eUniformBuffer);
     }
 
-    for (const RHIShaderResourceParameter& parameter : parameters.GetBindlessParams())
+    const VectorView<const RHIShaderResourceParameter> bindless = parameters.GetBindlessParams();
+
+    for (const RHIShaderResourceParameter& parameter : bindless)
     {
-        if (parameter.bufferOffset != 0 ||
-            !GVulkanRHI->GetBindlessDescriptorPoolManager()->RegisterBindlessResource(
-                parameter.pResource, parameter.arrayIndex, nullptr, recordedEpoch))
+        valid &= parameter.bufferOffset == 0;
+    }
+
+    if (valid && !bindless.empty())
+    {
+        valid = manager->CanRegisterBindlessResources(bindless, recordedEpoch, transaction);
+    }
+
+    if (valid)
+    {
+        for (const RHIShaderValueParameter& parameter : parameters.GetValueParams())
         {
-            LOG_ERROR_AND_THROW(
-                "Invalid bindless registration: slots cannot be replaced or exceed heap capacity");
+            const VectorView<const uint8_t> bytes = parameters.GetValueBytes(parameter);
+
+            if (!bytes.empty())
+            {
+                SetPackedValueParameter(parameter.set, parameter.binding, parameter.byteSize,
+                                        bytes.data());
+            }
+        }
+
+        for (const RHIShaderResourceParameter& parameter : parameters.GetResourceParams())
+        {
+            WriteResourceParameter(parameter);
+        }
+
+        for (const RHIShaderResourceParameter& parameter : bindless)
+        {
+            valid &= manager->RegisterBindlessResource(parameter.pResource, parameter.arrayIndex,
+                                                       nullptr, recordedEpoch, transaction);
         }
     }
+
+    m_parametersValid &= valid;
+
+    return m_parametersValid;
 }
 
-void VulkanDescriptorSetState::FlushPendingDescriptorWrites(
+
+
+bool VulkanDescriptorSetState::FlushPendingDescriptorWrites(
     FVulkanCommandListContext* pContext,
     HeapVector<VkDescriptorSet>& outDescriptorSets,
     uint32_t& outFirstSet,
     HeapVector<uint32_t>& outDynamicOffsets)
 {
-    VERIFY_EXPR(pContext != nullptr);
+    bool valid = m_parametersValid && pContext != nullptr && m_pPipeline != nullptr;
 
-    VERIFY_EXPR(m_pPipeline != nullptr);
-
-    VulkanShader* shader = TO_VK_SHADER(m_pPipeline->GetShader());
-
-    if (shader != nullptr && shader->HasGlobalBindlessSet())
+    if (valid)
     {
-        pContext->RecordCurrentBindlessEpoch();
 
-        GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
-    }
 
-    const VulkanDescriptorSetCache* cache =
-        GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+        VulkanShader* shader = TO_VK_SHADER(m_pPipeline->GetShader());
 
-    bool reuse = m_lastContext == pContext && m_lastWorkloadGeneration != 0 &&
-        m_lastWorkloadGeneration == pContext->GetWorkloadGeneration() &&
-        m_lastCacheRevision == cache->GetRevision();
-
-    const VulkanUniformBufferAllocator* allocator = GVulkanRHI->GetUniformBufferAllocator();
-
-    for (const SetState& set : m_setStates)
-    {
-        reuse &= !set.dirty;
-
-        for (const BindingState& binding : set.bindings)
+        if (shader != nullptr && shader->HasGlobalBindlessSet())
         {
-            reuse &= binding.uniformBlockId == 0 ||
-                allocator->GetBlockGeneration(binding.uniformBlockId) == binding.uniformGeneration;
+            pContext->RecordCurrentBindlessEpoch();
+
+            GVulkanRHI->GetBindlessDescriptorPoolManager()->Flush();
+        }
+
+        const VulkanDescriptorSetCache* cache =
+            GVulkanRHI->GetDescriptorPoolManager2()->GetContentCache();
+
+        bool reuse = m_lastContext == pContext && m_lastWorkloadGeneration != 0 &&
+            m_lastWorkloadGeneration == pContext->GetWorkloadGeneration() &&
+            m_lastCacheRevision == cache->GetRevision();
+
+        const VulkanUniformBufferAllocator* allocator = GVulkanRHI->GetUniformBufferAllocator();
+
+        for (const SetState& set : m_setStates)
+        {
+            reuse &= !set.dirty;
+
+            for (const BindingState& binding : set.bindings)
+            {
+                reuse &= binding.uniformBlockId == 0 ||
+                    allocator->GetBlockGeneration(binding.uniformBlockId) ==
+                        binding.uniformGeneration;
+            }
+        }
+
+        for (const PackedValueBufferState& value : m_packedValueBuffers)
+        {
+            reuse &= !value.dirty;
+        }
+
+        if (reuse)
+        {
+            outDescriptorSets = m_resolvedSets;
+
+            outDynamicOffsets = m_resolvedOffsets;
+
+            outFirstSet = m_resolvedFirstSet;
+        }
+        else
+        {
+            outDescriptorSets.clear();
+
+            outDynamicOffsets.clear();
+
+            outFirstSet = 0;
+
+            valid = FlushPackedValueBuffers();
+
+            if (valid)
+            {
+                valid = BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet,
+                                               outDynamicOffsets);
+            }
+
+            m_resolvedSets = outDescriptorSets;
+
+            m_resolvedOffsets = outDynamicOffsets;
+
+            m_resolvedFirstSet = outFirstSet;
+
+            m_lastContext = pContext;
+
+            m_lastWorkloadGeneration = pContext->GetWorkloadGeneration();
+
+            m_lastCacheRevision = cache->GetRevision();
         }
     }
 
-    for (const PackedValueBufferState& value : m_packedValueBuffers)
-    {
-        reuse &= !value.dirty;
-    }
-
-    if (reuse)
-    {
-        outDescriptorSets = m_resolvedSets;
-
-        outDynamicOffsets = m_resolvedOffsets;
-
-        outFirstSet = m_resolvedFirstSet;
-    }
-    else
+    if (!valid)
     {
         outDescriptorSets.clear();
-
         outDynamicOffsets.clear();
-
-        outFirstSet = 0;
-
-        FlushPackedValueBuffers();
-
-        BuildDescriptorSetList(pContext, outDescriptorSets, outFirstSet, outDynamicOffsets);
-
-        m_resolvedSets = outDescriptorSets;
-
-        m_resolvedOffsets = outDynamicOffsets;
-
-        m_resolvedFirstSet = outFirstSet;
-
-        m_lastContext = pContext;
-
-        m_lastWorkloadGeneration = pContext->GetWorkloadGeneration();
-
-        m_lastCacheRevision = cache->GetRevision();
+        outFirstSet              = 0;
+        m_lastWorkloadGeneration = 0;
     }
+
+    return valid;
 }
 
 void VulkanDescriptorSetState::Reset()
 {
+    m_parametersValid = true;
     ClearAllSetStates();
     m_packedValueBuffers.clear();
     m_updateSrbScratch.clear();
@@ -570,7 +622,8 @@ void VulkanDescriptorSetState::WriteResourceParameter(const RHIShaderResourcePar
     {
         if (param.bufferOffset != 0 && param.resourceType != RHIShaderResourceType::eUniformBuffer)
         {
-            LOG_ERROR_AND_THROW("Only uniform-buffer parameters accept a buffer offset");
+            m_parametersValid = false;
+            LOGE("Only uniform-buffer parameters accept a buffer offset");
         }
         SetState& setState         = m_setStates[param.set];
         BindingState& bindingState = FindOrAddBinding(setState, param.binding, param.resourceType);
@@ -706,7 +759,10 @@ bool VulkanDescriptorSetState::ValidateBindingState(const BindingState& bindingS
         }
     }
 
-    VERIFY_EXPR_MSG(valid, "Invalid Vulkan descriptor binding resources");
+    if (!valid)
+    {
+        LOGE("Invalid Vulkan descriptor binding resources");
+    }
 
     return valid;
 }
@@ -747,7 +803,10 @@ bool VulkanDescriptorSetState::ValidateSetState(uint32_t setIdx)
         }
     }
 
-    VERIFY_EXPR_MSG(valid, "Invalid Vulkan descriptor set bindings");
+    if (!valid)
+    {
+        LOGE("Invalid Vulkan descriptor set bindings");
+    }
 
     return valid;
 }
@@ -783,13 +842,15 @@ void VulkanDescriptorSetState::SyncCacheRevision(const VulkanDescriptorSetCache&
     }
 }
 
-void VulkanDescriptorSetState::BuildDescriptorSetList(
+bool VulkanDescriptorSetState::BuildDescriptorSetList(
     FVulkanCommandListContext* pContext,
     HeapVector<VkDescriptorSet>& outDescriptorSets,
     uint32_t& outFirstSet,
     HeapVector<uint32_t>& outDynamicOffsets)
 {
     VulkanShader* pShader = TO_VK_SHADER(m_pPipeline->GetShader());
+
+    bool allSetsResolved = pShader != nullptr;
 
     if (pShader != nullptr)
     {
@@ -826,7 +887,6 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
             const uint32_t descriptorSetCount = lastUsed - firstUsed + 1;
             outDescriptorSets.resize(descriptorSetCount);
 
-            bool allSetsResolved = true;
 
             for (uint32_t i = firstUsed; i <= lastUsed; i++)
             {
@@ -868,6 +928,7 @@ void VulkanDescriptorSetState::BuildDescriptorSetList(
             }
         }
     }
+    return allSetsResolved;
 }
 
 void VulkanDescriptorSetState::AppendDynamicOffsetsForSet(uint32_t setIdx,
@@ -926,10 +987,10 @@ void VulkanDescriptorSetState::SetPackedValueParameter(uint32_t setIdx,
     }
 }
 
-void VulkanDescriptorSetState::FlushPackedValueBuffers()
+bool VulkanDescriptorSetState::FlushPackedValueBuffers()
 {
     VulkanUniformBufferAllocator* pAllocator = GVulkanRHI->GetUniformBufferAllocator();
-    VERIFY_EXPR(pAllocator != nullptr);
+    bool valid                               = pAllocator != nullptr;
 
     if (pAllocator != nullptr)
     {
@@ -955,7 +1016,11 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
             if (bufferState.dirty && bufferState.blockSize > 0)
             {
                 VulkanUniformBufferBlock block = pAllocator->Alloc(bufferState.blockSize);
-                VERIFY_EXPR(block.IsValid());
+                if (!block.IsValid())
+                {
+                    valid = false;
+                    break;
+                }
 
                 if (block.IsValid())
                 {
@@ -978,6 +1043,7 @@ void VulkanDescriptorSetState::FlushPackedValueBuffers()
             }
         }
     }
+    return valid;
 }
 
 VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::
@@ -998,21 +1064,22 @@ VulkanDescriptorSetState::PackedValueBufferState* VulkanDescriptorSetState::
     {
         const RHIShaderResourceDescriptor* pSRD =
             m_pPipeline->GetShader()->GetSRDByLocation(setIdx, bindingIdx);
-        VERIFY_EXPR(pSRD != nullptr);
-
         if (pSRD == nullptr || pSRD->type != RHIShaderResourceType::eUniformBuffer ||
             pSRD->arraySize != 1 || pSRD->bindless)
         {
-            LOG_ERROR_AND_THROW("Packed uniform values require a single uniform-buffer descriptor");
+            m_parametersValid = false;
+            LOGE("Packed uniform values require a single uniform-buffer descriptor");
         }
+        else
+        {
+            PackedValueBufferState& bufferState = m_packedValueBuffers.emplace_back();
+            bufferState.setIdx                  = setIdx;
+            bufferState.bindingIdx              = bindingIdx;
+            bufferState.blockSize               = pSRD->blockSize;
+            bufferState.bytes.resize(pSRD->blockSize);
 
-        PackedValueBufferState& bufferState = m_packedValueBuffers.emplace_back();
-        bufferState.setIdx                  = setIdx;
-        bufferState.bindingIdx              = bindingIdx;
-        bufferState.blockSize               = pSRD->blockSize;
-        bufferState.bytes.resize(pSRD->blockSize);
-
-        pBufferState = &bufferState;
+            pBufferState = &bufferState;
+        }
     }
 
     return pBufferState;

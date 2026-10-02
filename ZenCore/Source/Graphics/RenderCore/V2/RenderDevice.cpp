@@ -268,57 +268,31 @@ bool RenderDevice::ExecuteRenderGraph(RHIViewport* viewport)
             }
             else
             {
-                HeapVector<RHICommandList*> lists;
-                AcquireGraphicsCmdLists(2, lists);
-                const bool executed = m_rdgExecutor.ExecutePrepared(
-                    plan, lists[0],
-                    std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                    std::ref(*lists[0]), nullptr, nullptr));
-                m_graphicsCmdListPool.Release(lists[0]);
+                // The executor submits the presentation copy with the graph, so a rejected
+                // submission accepts neither and keeps the acquired image for a retry.
+                RHICommandList* commands = m_graphicsCmdListPool.Acquire();
 
-                if (!executed)
+                bool presented = false;
+
+                const bool executed = commands != nullptr &&
+                    m_rdgExecutor.ExecutePrepared(
+                        plan, commands,
+                        std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
+                                        std::ref(*commands), viewport, nullptr, &presented));
+
+                m_graphicsCmdListPool.Release(commands);
+
+                if (executed)
                 {
-                    m_graphicsCmdListPool.Release(lists[1]);
-                    result = false;
-                }
-                else
-                {
-                    // Presentation records backend copy work into the dedicated graphics context.
-                    GetRHIThread().Invoke(&RHIViewport::PrepareForPresent, viewport, lists[1]);
-                    const RHISubmissionResult presentation =
-                        SubmitCommandLists(MakeVecView(lists.data() + 1, 1));
+                    m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
+                        viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
+                        RHITextureUsage::eColorAttachment,
+                        BitField<RHIPipelineStageFlagBits>(
+                            RHIPipelineStageFlagBits::eColorAttachmentOutput));
 
-                    if (presentation != RHISubmissionResult::eSuccess)
-                    {
-                        m_graphicsCmdListPool.Release(lists[1]);
+                    EndFrame();
 
-                        // The render graph was already accepted. Keep its committed state and retirement gates.
-                        if (presentation == RHISubmissionResult::eFatal)
-                        {
-                            RHITexture* backBuffer = viewport->GetColorBackBuffer();
-                            if (backBuffer != nullptr)
-                            {
-                                m_rdgExecutor.GetResourceStateTracker().RemoveResourceState(
-                                    backBuffer->GetStableId(), true);
-                            }
-                        }
-
-                        result = graph.Fail(RDGErrorCode::eSubmission,
-                                            "Presentation copy submission failed");
-                    }
-                    else
-                    {
-                        const bool presented =
-                            GetRHIThread().Invoke(&RHIViewport::Present, viewport);
-                        m_graphicsCmdListPool.Release(lists[1]);
-                        m_rdgExecutor.GetResourceStateTracker().UpdateTextureState(
-                            viewport->GetColorBackBuffer(), RHIAccessMode::eReadWrite,
-                            RHITextureUsage::eColorAttachment,
-                            BitField<RHIPipelineStageFlagBits>(
-                                RHIPipelineStageFlagBits::eColorAttachmentOutput));
-                        EndFrame();
-                        result = presented && !m_frameActive;
-                    }
+                    result = presented && !m_frameActive;
                 }
             }
         }
@@ -350,11 +324,12 @@ bool RenderDevice::ExecuteFrameGraph(RHIViewport* viewport)
             else
             {
                 RHICommandList* commands = m_graphicsCmdListPool.Acquire();
-                result                   = m_rdgExecutor.ExecutePrepared(
-                    plan, commands,
-                    std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                                      std::ref(*commands), viewport, &pending),
-                    true);
+                result                   = commands != nullptr &&
+                    m_rdgExecutor.ExecutePrepared(
+                        plan, commands,
+                        std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
+                                        std::ref(*commands), viewport, &pending, nullptr),
+                        true);
                 m_graphicsCmdListPool.Release(commands);
             }
             if (result)
@@ -617,7 +592,7 @@ bool RenderDevice::ExecuteRenderGraph(RenderGraph& graph)
                 const bool executed = m_rdgExecutor.ExecutePrepared(
                     plan, list,
                     std::bind_front(&RenderDevice::SubmitRecordedGraph, this, std::ref(graph),
-                                    std::ref(*list), nullptr, nullptr));
+                                    std::ref(*list), nullptr, nullptr, nullptr));
 
                 // Keep CPU command storage alive through rollback, then discard it on both paths.
                 if (transfer)
@@ -649,12 +624,13 @@ bool RenderDevice::ExecuteScheduledGraph(RDGExecutor::ExecutionPlan& plan,
         plan.schedule = std::move(update.schedule);
         HeapVector<RHICommandList*> lists;
         AcquireScheduledCmdLists(plan.schedule, lists);
-        result = m_rdgExecutor.ExecutePreparedGroups(
-            plan, lists, update.initialStates,
-            std::bind_front(&RenderDevice::SubmitRecordedGroups, this, std::ref(*plan.graph),
-                            std::cref(plan.schedule), std::ref(update),
-                            VectorView<RHICommandList*>(lists), viewport, pending),
-            pending != nullptr);
+        result = std::find(lists.begin(), lists.end(), nullptr) == lists.end() &&
+            m_rdgExecutor.ExecutePreparedGroups(
+                plan, lists, update.initialStates,
+                std::bind_front(&RenderDevice::SubmitRecordedGroups, this, std::ref(*plan.graph),
+                                std::cref(plan.schedule), std::ref(update),
+                                VectorView<RHICommandList*>(lists), viewport, pending, nullptr),
+                pending != nullptr);
         ReleaseScheduledCmdLists(lists);
     }
     return result;
@@ -665,7 +641,8 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph& graph,
                                                        RenderSubmissionUpdate& update,
                                                        VectorView<RHICommandList*> lists,
                                                        RHIViewport* viewport,
-                                                       PendingFrame* pending)
+                                                       PendingFrame* pending,
+                                                       bool* pPresented)
 {
     if (pending != nullptr)
     {
@@ -717,9 +694,14 @@ RHISubmissionResult RenderDevice::SubmitRecordedGroups(RenderGraph& graph,
     }
     else if (valid)
     {
-        const RHIBatchResult native = m_pRHIExecutor->SubmitGroups(submissions, update.state);
+        const RHIBatchResult native =
+            m_pRHIExecutor->SubmitGroups(submissions, update.state, viewport);
         StampOutgoingFrameSerials();
         result = native.submission;
+        if (pPresented != nullptr)
+        {
+            *pPresented = native.presented;
+        }
         if (result == RHISubmissionResult::eSuccess &&
             !m_queueCapabilities.asyncSubmissionDependencies &&
             !m_queueCapabilities.AreQueuesShared(RHICommandContextType::eTransfer,
@@ -853,7 +835,8 @@ bool RenderDevice::PrepareGraphSubmission(const RenderGraph& graph,
 RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph& graph,
                                                       RHICommandList& commands,
                                                       RHIViewport* viewport,
-                                                      PendingFrame* pending)
+                                                      PendingFrame* pending,
+                                                      bool* pPresented)
 {
     RenderSubmissionUpdate update;
     RHISubmissionResult result = RHISubmissionResult::eRejected;
@@ -861,7 +844,7 @@ RHISubmissionResult RenderDevice::SubmitRecordedGraph(RenderGraph& graph,
     {
         RHICommandList* list = &commands;
         result = SubmitRecordedGroups(graph, update.schedule, update, MakeVecView(&list, 1),
-                                      viewport, pending);
+                                      viewport, pending, pPresented);
     }
     else if (AreSubmissionsBlocked())
     {
@@ -943,7 +926,7 @@ bool RenderDevice::ResolveStagingFlushAction(StagingFlushAction action,
     {
         returnValue = true;
     }
-    else if (m_resolvingStagingFlush)
+    else if (action == StagingFlushAction::eFailed || m_resolvingStagingFlush)
     {
         returnValue = false;
     }
@@ -1110,44 +1093,95 @@ void RenderDevice::UpdateTexture(RHITexture* texture,
     m_pUploadQueue->EnqueueTexture(texture, regions, dataSize, data);
 }
 
-void RenderDevice::InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data)
+RHIBuffer* RenderDevice::CreateInitializedBuffer(const RHIBufferCreateInfo& info,
+                                                 uint32_t dataSize,
+                                                 const uint8_t* data,
+                                                 bool padData)
 {
-    if (data == nullptr || dataSize == 0)
+    RHIBuffer* buffer = CreateBuffer(info);
+
+    if (buffer != nullptr)
     {
-        return;
+        bool registered = false;
+
+        try
+        {
+            m_buffers.push_back(buffer);
+
+            registered = true;
+
+            const bool initialized = padData ? InitializeBufferData(buffer, dataSize, data) :
+                                               UpdateBufferInternal(buffer, 0, dataSize, data);
+
+            if (!initialized)
+            {
+                DestroyBuffer(buffer);
+
+                buffer = nullptr;
+            }
+        }
+        catch (...)
+        {
+            if (registered)
+            {
+                DestroyBuffer(buffer);
+            }
+            else
+            {
+                GDynamicRHI->DestroyBuffer(buffer);
+            }
+
+            throw;
+        }
     }
 
-    const uint32_t size = buffer->GetRequiredSize();
-    // Assemble only the final aligned word and padding, never read beyond caller data.
-    // Both copies have aligned offsets/sizes; large payloads retain chunked staging.
-    const uint32_t prefix = dataSize & ~uint32_t(3);
-
-    if (prefix != 0)
-    {
-        UpdateBufferInternal(buffer, 0, prefix, data);
-    }
-
-    if (prefix < size)
-    {
-        HeapVector<uint8_t> tail(size - prefix);
-        std::memcpy(tail.data(), data + prefix, dataSize - prefix);
-        UpdateBufferInternal(buffer, prefix, static_cast<uint32_t>(tail.size()), tail.data());
-    }
+    return buffer;
 }
 
-void RenderDevice::UpdateBufferInternal(RHIBuffer* buffer,
+bool RenderDevice::InitializeBufferData(RHIBuffer* buffer, uint32_t dataSize, const uint8_t* data)
+{
+    bool initialized = buffer != nullptr;
+
+    if (initialized && data != nullptr && dataSize > 0)
+    {
+        const uint32_t size = static_cast<uint32_t>(buffer->GetRequiredSize());
+        // Assemble only the final aligned word and padding, never read beyond caller data.
+        const uint32_t prefix = dataSize & ~uint32_t(3);
+
+        if (prefix != 0)
+        {
+            initialized = UpdateBufferInternal(buffer, 0, prefix, data);
+        }
+
+        if (initialized && prefix < size)
+        {
+            HeapVector<uint8_t> tail(size - prefix);
+            std::memcpy(tail.data(), data + prefix, dataSize - prefix);
+
+            initialized = UpdateBufferInternal(buffer, prefix, static_cast<uint32_t>(tail.size()),
+                                               tail.data());
+        }
+    }
+
+    return initialized;
+}
+
+bool RenderDevice::UpdateBufferInternal(RHIBuffer* buffer,
                                         uint32_t offset,
                                         uint32_t size,
                                         const uint8_t* data)
 {
-    if (data == nullptr || size == 0)
+    bool initialized = buffer != nullptr;
+
+    if (initialized && data != nullptr && size > 0)
     {
-        return;
+        VERIFY_EXPR_MSG(m_pUploadQueue != nullptr,
+                        "RenderDevice must be initialized before buffer uploads");
+
+        initialized = m_pUploadQueue->EnqueueBuffer(buffer, offset, size, data);
     }
 
-    VERIFY_EXPR_MSG(m_pUploadQueue != nullptr,
-                    "RenderDevice must be initialized before buffer uploads");
-    m_pUploadQueue->EnqueueBuffer(buffer, offset, size, data);
+    return initialized;
 }
 
 void RenderDevice::DestroyBuffer(RHIBuffer* buffer)
@@ -1236,6 +1270,11 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
                 ++m_pipelineMetrics.hits;
                 pipeline = it->second;
             }
+            else if (IsPipelineRetryDeferred(key))
+            {
+                ++m_pipelineMetrics.misses;
+                ++m_pipelineMetrics.failures;
+            }
             else
             {
                 ++m_pipelineMetrics.misses;
@@ -1281,6 +1320,7 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
                     {
                         ++m_pipelineMetrics.creations;
                         creationTimer.Stop();
+                        m_failedPipelines.erase(key);
                         m_pipelineCache.try_emplace(std::move(key), pipeline);
                     }
                 }
@@ -1288,6 +1328,8 @@ RHIPipeline* RenderDevice::GetOrCreateGfxPipeline(
                 if (pipeline == nullptr)
                 {
                     ++m_pipelineMetrics.failures;
+
+                    RecordPipelineFailure(key);
                 }
             }
         }
@@ -1323,6 +1365,11 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool ti
             ++m_pipelineMetrics.hits;
             result = it->second;
         }
+        else if (IsPipelineRetryDeferred(key))
+        {
+            ++m_pipelineMetrics.misses;
+            ++m_pipelineMetrics.failures;
+        }
         else
         {
             ++m_pipelineMetrics.misses;
@@ -1335,12 +1382,14 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool ti
             if (pipeline == nullptr)
             {
                 ++m_pipelineMetrics.failures;
+                RecordPipelineFailure(key);
                 result = nullptr;
             }
             else
             {
                 ++m_pipelineMetrics.creations;
                 creationTimer.Stop();
+                m_failedPipelines.erase(key);
                 m_pipelineCache.try_emplace(std::move(key), pipeline);
                 result = pipeline;
             }
@@ -1348,6 +1397,29 @@ RHIPipeline* RenderDevice::GetOrCreateComputePipeline(RHIShader* shader, bool ti
     }
 
     return result;
+}
+
+bool RenderDevice::IsPipelineRetryDeferred(const PipelineKey& key)
+{
+    PipelineFailureCache::iterator it = m_failedPipelines.find(key);
+
+    return it != m_failedPipelines.end() &&
+        ToValue(GRenderFrameState.GetFrameNumber()) < it->second.retryFrame;
+}
+
+void RenderDevice::RecordPipelineFailure(const PipelineKey& key)
+{
+    PipelineFailure& failure = m_failedPipelines[key];
+
+    // A first failure may be transient, so the next request retries at once. Each further
+    // failure doubles the frame delay, up to 2^kMaxPipelineRetryShift frames.
+    const uint64_t delay = failure.consecutive == 0 ?
+        0 :
+        uint64_t(1) << std::min(failure.consecutive, kMaxPipelineRetryShift);
+
+    ++failure.consecutive;
+
+    failure.retryFrame = ToValue(GRenderFrameState.GetFrameNumber()) + delay;
 }
 
 RHIViewport* RenderDevice::CreateViewport(void* window, uint32_t width, uint32_t height, bool vsync)
@@ -1572,6 +1644,16 @@ void RenderDevice::BeginFrame()
             }
             ProcessPendingFreeResources(slot);
             m_stagingBufferManager.Reclaim();
+
+            // Only evict cached graph resources at a frame boundary. In-flight,
+            // exported and active resources keep their existing serial protection.
+            // The last frame's working set stays pooled: evicting it would only rebuild
+            // the same targets next frame while the retired copies still await their serials.
+            if (m_frameRDG && GetGPUMemoryStats().IsUnderPressure())
+            {
+                m_frameRDG->GetResourceManager()->TrimIdlePoolEntries();
+            }
+
             GDynamicRHI->BeginFrame();
             m_frameActive     = true;
             m_frameWaitFailed = false;
@@ -1766,48 +1848,19 @@ void RenderDevice::ReleaseScheduledCmdLists(VectorView<RHICommandList*> lists)
 {
     for (RHICommandList* list : lists)
     {
-        switch (list->GetContext()->GetContextType())
+        if (list != nullptr)
         {
-            case RHICommandContextType::eGraphics: m_graphicsCmdListPool.Release(list); break;
-            case RHICommandContextType::eAsyncCompute: m_computeCmdListPool.Release(list); break;
-            case RHICommandContextType::eTransfer: m_transferCmdListPool.Release(list); break;
-            default: ASSERT(false); break;
+            switch (list->GetContext()->GetContextType())
+            {
+                case RHICommandContextType::eGraphics: m_graphicsCmdListPool.Release(list); break;
+                case RHICommandContextType::eAsyncCompute:
+                    m_computeCmdListPool.Release(list);
+                    break;
+                case RHICommandContextType::eTransfer: m_transferCmdListPool.Release(list); break;
+                default: ASSERT(false); break;
+            }
         }
     }
-}
-
-void RenderDevice::AcquireGraphicsCmdLists(size_t count, HeapVector<RHICommandList*>& lists)
-{
-    lists.reserve(lists.size() + count);
-
-    for (size_t i = 0; i < count; ++i)
-    {
-        lists.push_back(m_graphicsCmdListPool.Acquire());
-    }
-}
-
-RHISubmissionResult RenderDevice::SubmitCommandLists(VectorView<RHICommandList*> lists)
-{
-    RHISubmissionResult returnValue{};
-
-    if (m_submissionBlocked)
-    {
-        returnValue = RHISubmissionResult::eFatal;
-    }
-    else if (lists.empty())
-    {
-        returnValue = RHISubmissionResult::eSuccess;
-    }
-    else
-    {
-        const RHISubmissionResult result = m_pRHIExecutor->SubmitBatch(lists);
-        // Accepted prefixes must protect resources even if a later submission in this flush failed.
-        StampOutgoingFrameSerials();
-        m_submissionBlocked |= result == RHISubmissionResult::eFatal;
-        returnValue = result;
-    }
-
-    return returnValue;
 }
 
 void RenderDevice::PipelineKey::AddWord(uint32_t value)
@@ -1980,33 +2033,7 @@ RHIBuffer* RenderDevice::CreateVertexBuffer(uint32_t dataSize, const uint8_t* pD
     createInfo.usageFlags   = usages;
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    RHIBuffer* pVertexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-
-    bool registered = false;
-
-    try
-    {
-        m_buffers.push_back(pVertexBuffer);
-
-        registered = true;
-
-        UpdateBufferInternal(pVertexBuffer, 0, dataSize, pData);
-    }
-    catch (...)
-    {
-        if (registered)
-        {
-            DestroyBuffer(pVertexBuffer);
-        }
-        else if (pVertexBuffer != nullptr)
-        {
-            GDynamicRHI->DestroyBuffer(pVertexBuffer);
-        }
-
-        throw;
-    }
-
-    return pVertexBuffer;
+    return CreateInitializedBuffer(createInfo, dataSize, pData, false);
 }
 
 RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pData)
@@ -2021,33 +2048,7 @@ RHIBuffer* RenderDevice::CreateIndexBuffer(uint32_t dataSize, const uint8_t* pDa
     createInfo.usageFlags   = usages;
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
 
-    RHIBuffer* pIndexBuffer = GDynamicRHI->CreateBuffer(createInfo);
-
-    bool registered = false;
-
-    try
-    {
-        m_buffers.push_back(pIndexBuffer);
-
-        registered = true;
-
-        UpdateBufferInternal(pIndexBuffer, 0, dataSize, pData);
-    }
-    catch (...)
-    {
-        if (registered)
-        {
-            DestroyBuffer(pIndexBuffer);
-        }
-        else if (pIndexBuffer != nullptr)
-        {
-            GDynamicRHI->DestroyBuffer(pIndexBuffer);
-        }
-
-        throw;
-    }
-
-    return pIndexBuffer;
+    return CreateInitializedBuffer(createInfo, dataSize, pData, false);
 }
 
 RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
@@ -2066,16 +2067,7 @@ RHIBuffer* RenderDevice::CreateUniformBuffer(uint32_t dataSize,
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = bufferName;
 
-    RHIBuffer* pUniformBuffer = GDynamicRHI->CreateBuffer(createInfo);
-
-    if (pData != nullptr)
-    {
-        InitializeBufferData(pUniformBuffer, dataSize, pData);
-    }
-
-    m_buffers.push_back(pUniformBuffer);
-
-    return pUniformBuffer;
+    return CreateInitializedBuffer(createInfo, dataSize, pData, true);
 }
 
 RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
@@ -2094,36 +2086,7 @@ RHIBuffer* RenderDevice::CreateStorageBuffer(uint32_t dataSize,
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = bufferName;
 
-    RHIBuffer* pStorageBuffer = GDynamicRHI->CreateBuffer(createInfo);
-
-    bool registered = false;
-
-    try
-    {
-        m_buffers.push_back(pStorageBuffer);
-
-        registered = true;
-
-        if (pData != nullptr)
-        {
-            InitializeBufferData(pStorageBuffer, dataSize, pData);
-        }
-    }
-    catch (...)
-    {
-        if (registered)
-        {
-            DestroyBuffer(pStorageBuffer);
-        }
-        else if (pStorageBuffer != nullptr)
-        {
-            GDynamicRHI->DestroyBuffer(pStorageBuffer);
-        }
-
-        throw;
-    }
-
-    return pStorageBuffer;
+    return CreateInitializedBuffer(createInfo, dataSize, pData, true);
 }
 
 RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
@@ -2143,16 +2106,7 @@ RHIBuffer* RenderDevice::CreateIndirectBuffer(uint32_t dataSize,
     createInfo.allocateType = RHIBufferAllocateType::eGPU;
     createInfo.tag          = bufferName;
 
-    RHIBuffer* pIndirectBuffer = GDynamicRHI->CreateBuffer(createInfo);
-
-    if (pData != nullptr)
-    {
-        InitializeBufferData(pIndirectBuffer, dataSize, pData);
-    }
-
-    m_buffers.push_back(pIndirectBuffer);
-
-    return pIndirectBuffer;
+    return CreateInitializedBuffer(createInfo, dataSize, pData, true);
 }
 
 size_t RenderDevice::PadUniformBufferSize(size_t size)
@@ -2168,13 +2122,23 @@ size_t RenderDevice::PadStorageBufferSize(size_t size)
 RHISampler* RenderDevice::CreateSampler(const RHISamplerCreateInfo& samplerInfo)
 {
     const size_t samplerHash = CalcSamplerHash(samplerInfo);
+    RHISampler* sampler      = nullptr;
 
-    if (!m_samplerCache.contains(samplerHash))
+    if (m_samplerCache.contains(samplerHash))
     {
-        m_samplerCache[samplerHash] = GDynamicRHI->CreateSampler(samplerInfo);
+        sampler = m_samplerCache[samplerHash];
+    }
+    else
+    {
+        sampler = m_pRHIExecutor->CreateSampler(samplerInfo);
+
+        if (sampler != nullptr)
+        {
+            m_samplerCache.emplace(samplerHash, sampler);
+        }
     }
 
-    return m_samplerCache[samplerHash];
+    return sampler;
 }
 
 RHITexture* RenderDevice::LoadTexture2D(const std::string& file, bool requireMipmap)

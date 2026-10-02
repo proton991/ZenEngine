@@ -1,0 +1,78 @@
+name: RHI software-driver checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-software:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      VULKAN_SDK: C:\VulkanSDK\1.4.304.1
+      VK_LOADER_LAYERS_DISABLE: '~implicit~'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Vulkan SDK
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'VulkanSDK.exe'
+          Invoke-WebRequest 'https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/VulkanSDK-1.4.304.1-Installer.exe' -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList '--root C:\VulkanSDK\1.4.304.1 --accept-licenses --default-answer --confirm-command install' -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "SDK install failed: $($process.ExitCode)" }
+          "$env:VULKAN_SDK\Bin" >> $env:GITHUB_PATH
+      - name: Configure compiler
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Restore SwiftShader build
+        id: swiftshader-cache
+        uses: actions/cache@v4
+        with:
+          path: build/swiftshader
+          key: swiftshader-${{ runner.os }}-1e80438d2b93ef36a7c05f8d2b81233bac0e3d16-vs2022
+      - name: Build pinned SwiftShader
+        if: steps.swiftshader-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # Fetch only the pinned revision instead of the repository history.
+          git init build/swiftshader-src
+          git -C build/swiftshader-src remote add origin https://github.com/google/swiftshader.git
+          git -C build/swiftshader-src fetch --depth 1 origin 1e80438d2b93ef36a7c05f8d2b81233bac0e3d16
+          if ($LASTEXITCODE -ne 0) { throw 'SwiftShader fetch failed' }
+          git -C build/swiftshader-src checkout FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'SwiftShader checkout failed' }
+          cmake -S build/swiftshader-src -B build/swiftshader -G Ninja -DCMAKE_BUILD_TYPE=Release -DSWIFTSHADER_BUILD_TESTS=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'SwiftShader configure failed' }
+          cmake --build build/swiftshader --target vk_swiftshader -j 2
+          if ($LASTEXITCODE -ne 0) { throw 'SwiftShader build failed' }
+      - name: Select SwiftShader driver
+        shell: pwsh
+        run: |
+          $icd = Get-ChildItem build/swiftshader -Recurse -Filter vk_swiftshader_icd.json | Select-Object -First 1
+          if (!$icd) { throw 'SwiftShader ICD manifest missing' }
+          "VK_DRIVER_FILES=$($icd.FullName)" >> $env:GITHUB_ENV
+      - name: Confirm software driver
+        shell: pwsh
+        run: |
+          vulkaninfo --summary | Tee-Object -FilePath build/software-driver.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Software Vulkan driver unavailable' }
+          if (!(Select-String -Path build/software-driver.txt -Pattern 'SwiftShader')) { throw 'Unexpected Vulkan driver' }
+      - name: Build and test hardware-independent suites
+        shell: pwsh
+        run: |
+          cmake --preset x64-windows-msvc-release -DZEN_BUILD_RUNTIME_UI=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Engine configure failed' }
+          cmake --build --preset x64-windows-msvc-release --target CommonTest RenderCoreTest VulkanRHITest -j 2
+          if ($LASTEXITCODE -ne 0) { throw 'Engine build failed' }
+          python tools/verify_rhi_production.py --build-dir build/x64-windows-msvc-release --output build/software-results --unit-only
+          if ($LASTEXITCODE -ne 0) { throw 'Engine tests failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rhi-software-results
+          path: |
+            build/software-results
+            build/software-driver.txt

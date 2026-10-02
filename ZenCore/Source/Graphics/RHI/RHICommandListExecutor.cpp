@@ -187,8 +187,7 @@ RHICommandListExecutor::~RHICommandListExecutor()
     {
         Destroy();
     }
-    GetRHIThread().Invoke(&RHICommandListExecutor::DeleteBackend, this);
-    GetRHIThread().Stop();
+    DeleteBackend();
 }
 
 void RHICommandListExecutor::DeleteBackend()
@@ -215,7 +214,7 @@ void RHICommandListExecutor::Destroy()
 {
     if (!m_destroyed)
     {
-        GetRHIThread().Invoke(&RHICommandListExecutor::ExecuteDestroy, this);
+        GetRHIThread().Stop(std::bind_front(&RHICommandListExecutor::ExecuteDestroy, this));
         m_destroyed = true;
     }
 }
@@ -369,9 +368,20 @@ RHISubmissionResult RHICommandListExecutor::ExecuteBatch(VectorView<RHICommandLi
     if (!m_blocked.load(std::memory_order_acquire))
     {
         HeapVector<RHIPlatformCommandList*> platformLists;
-        m_backend->FinalizeCommandLists(lists, platformLists);
-        m_backend->SubmitPlatformCommandLists(platformLists);
-        result = m_backend->FlushAllGPUCommands();
+        const RHIStatus finalized = m_backend->FinalizeCommandLists(lists, platformLists);
+
+        if (finalized)
+        {
+            m_backend->SubmitPlatformCommandLists(platformLists);
+
+            result = m_backend->FlushAllGPUCommands();
+        }
+        else
+        {
+            result = finalized.error.code == RHIErrorCode::eDeviceLost ?
+                RHISubmissionResult::eFatal :
+                RHISubmissionResult::eRejected;
+        }
         if (result == RHISubmissionResult::eFatal)
         {
             m_blocked.store(true, std::memory_order_release);
@@ -424,9 +434,10 @@ RHISubmissionTicket RHICommandListExecutor::SubmitFrame(VectorView<const RHISubm
 }
 
 RHIBatchResult RHICommandListExecutor::SubmitGroups(VectorView<const RHISubmissionGroup> groups,
-                                                    RefCountPtr<RHISubmissionState> state)
+                                                    RefCountPtr<RHISubmissionState> state,
+                                                    RHIViewport* viewport)
 {
-    const RHISubmissionTicket ticket = QueueBatch(groups, nullptr, std::move(state), false);
+    const RHISubmissionTicket ticket = QueueBatch(groups, viewport, std::move(state), false);
     RHIBatchResult result;
     if (ticket.IsValid())
     {
@@ -510,8 +521,8 @@ RHISubmissionTicket RHICommandListExecutor::QueueBatch(VectorView<const RHISubmi
         ++m_submittedBatches;
         const uint64_t pendingCount = m_pendingBatches.fetch_add(1) + 1;
         m_peakPendingBatches.store(std::max(m_peakPendingBatches.load(), pendingCount));
-        GetRHIThread().Dispatch(
-            std::bind_front(&RHICommandListExecutor::ExecuteFrame, this, batch));
+        GetRHIThread().Dispatch(std::bind_front(&RHICommandListExecutor::ExecuteFrame, this, batch),
+                                std::bind_front(&RHICommandListExecutor::CancelBatch, this, batch));
     }
     return ticket;
 }
@@ -536,6 +547,20 @@ bool RHICommandListExecutor::ResolvePredecessors(RHICommandList& commands,
     return ready;
 }
 
+uint64_t RHICommandListExecutor::GetAcceptedSerial(const RHICommandList& commands,
+                                                   RHICommandContextType queue,
+                                                   uint64_t before) const
+{
+    // The group's own context stays exact when the presentation copy shares its native
+    // submission. A context without newly accepted work falls back to the queue's serial.
+    const uint64_t contextSerial = commands.GetContext()->RHIGetLastSubmittedSerial();
+
+    const uint64_t serial =
+        contextSerial > before ? contextSerial : m_backend->GetLastSubmittedSerial(queue);
+
+    return serial;
+}
+
 bool RHICommandListExecutor::ExecuteGroups(RHICommandBatch& batch)
 {
     batch.result.submission = RHISubmissionResult::eSuccess;
@@ -551,10 +576,39 @@ bool RHICommandListExecutor::ExecuteGroups(RHICommandBatch& batch)
         const RHICommandContextType queue = commands->GetContext()->GetContextType();
         const uint64_t before             = m_backend->GetLastSubmittedSerial(queue);
         // Submit only this ready group. A later consumer cannot preflight a future serial.
-        result.submission = ResolvePredecessors(*commands, group.predecessors) ?
-            ExecuteBatch(MakeVecView(&commands, 1)) :
-            RHISubmissionResult::eFatal;
-        result.accepted   = {queue, m_backend->GetLastSubmittedSerial(queue)};
+        bool ready = ResolvePredecessors(*commands, group.predecessors);
+
+        // An unresolved predecessor is fatal. Missing presentation storage submits nothing
+        // and stays retryable unless earlier work in this batch was already accepted.
+        RHISubmissionResult unsubmitted = RHISubmissionResult::eFatal;
+
+        RHICommandList* lists[] = {commands, nullptr};
+
+        size_t listCount = 1;
+
+        // The frame's last graphics group carries the presentation copy in the same native
+        // submission. The copy keeps its own command buffer, so only the copy waits for the
+        // acquired image.
+        if (ready && batch.viewport != nullptr && i + 1 == batch.groups.size() &&
+            queue == RHICommandContextType::eGraphics)
+        {
+            batch.presentCommands = AcquirePresentCommandList();
+            ready                 = batch.presentCommands != nullptr;
+
+            if (ready)
+            {
+                batch.viewport->PrepareForPresent(batch.presentCommands.get());
+                lists[1]  = batch.presentCommands.get();
+                listCount = 2;
+            }
+            else
+            {
+                unsubmitted = RHISubmissionResult::eRejected;
+            }
+        }
+
+        result.submission = ready ? ExecuteBatch(MakeVecView(lists, listCount)) : unsubmitted;
+        result.accepted   = {queue, GetAcceptedSerial(*commands, queue, before)};
         if (result.submission == RHISubmissionResult::eSuccess)
         {
             if (!batch.submissionState->Accept(uint32_t(i), result.accepted))
@@ -570,6 +624,22 @@ bool RHICommandListExecutor::ExecuteGroups(RHICommandBatch& batch)
         batch.result.submission = result.submission;
     }
     return acceptedWork;
+}
+
+void RHICommandListExecutor::CancelBatch(const RefCountPtr<RHICommandBatch>& batch)
+{
+    if (!batch->executionFinished)
+    {
+        m_blocked.store(true, std::memory_order_release);
+        batch->submissionState->Fail();
+        batch->result.submission = RHISubmissionResult::eFatal;
+        batch->result.error      = "RHI job cancelled after task failure or shutdown";
+        batch->executionFinished = true;
+        ++m_completedBatches;
+        --m_pendingBatches;
+        batch->completion.set_value(batch->result);
+        batch->completionEvent->Signal();
+    }
 }
 
 void RHICommandListExecutor::ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch)
@@ -591,17 +661,30 @@ void RHICommandListExecutor::ExecuteFrame(const RefCountPtr<RHICommandBatch>& ba
             const bool acceptedWork = ExecuteGroups(*batch);
             if (result.submission == RHISubmissionResult::eSuccess && batch->viewport != nullptr)
             {
-                batch->presentCommands = AcquirePresentCommandList();
-                batch->viewport->PrepareForPresent(batch->presentCommands.get());
-                RHICommandList* present = batch->presentCommands.get();
-                const uint64_t before =
-                    m_backend->GetLastSubmittedSerial(RHICommandContextType::eGraphics);
-                result.submission = ExecuteBatch(MakeVecView(&present, 1));
-                if (result.submission == RHISubmissionResult::eRejected &&
-                    (acceptedWork ||
-                     m_backend->GetLastSubmittedSerial(RHICommandContextType::eGraphics) > before))
+                // A frame whose last group is not graphics presents in its own submission.
+                if (batch->presentCommands == nullptr)
                 {
-                    result.submission = RHISubmissionResult::eFatal;
+                    batch->presentCommands = AcquirePresentCommandList();
+                    if (batch->presentCommands != nullptr)
+                    {
+                        batch->viewport->PrepareForPresent(batch->presentCommands.get());
+                        RHICommandList* present = batch->presentCommands.get();
+                        const uint64_t before =
+                            m_backend->GetLastSubmittedSerial(RHICommandContextType::eGraphics);
+                        result.submission = ExecuteBatch(MakeVecView(&present, 1));
+                        if (result.submission == RHISubmissionResult::eRejected &&
+                            (acceptedWork ||
+                             m_backend->GetLastSubmittedSerial(RHICommandContextType::eGraphics) >
+                                 before))
+                        {
+                            result.submission = RHISubmissionResult::eFatal;
+                        }
+                    }
+                    else
+                    {
+                        result.submission = acceptedWork ? RHISubmissionResult::eFatal :
+                                                           RHISubmissionResult::eRejected;
+                    }
                 }
                 if (result.submission == RHISubmissionResult::eSuccess)
                 {
@@ -719,13 +802,19 @@ void RHICommandListExecutor::EndFrame()
 
 void RHICommandListExecutor::BeginGPUFrameTiming(const RHIGPUFrameTimingPtr& timing)
 {
-    GetRHIThread().Dispatch(std::bind_front(&DynamicRHI::BeginGPUFrameTiming, m_backend, timing));
+    GetRHIThread().Dispatch(std::bind_front(&DynamicRHI::BeginGPUFrameTiming, m_backend, timing),
+                            [timing] {
+                                if (timing)
+                                {
+                                    timing->Seal(RHIGPUTimingStatus::eError);
+                                }
+                            });
 }
 
 void RHICommandListExecutor::EndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing, bool succeeded)
 {
-    GetRHIThread().Dispatch(std::bind_front(&RHICommandListExecutor::ExecuteEndGPUFrameTiming, this,
-                                            timing, succeeded));
+    GetRHIThread().DispatchCleanup(std::bind_front(
+        &RHICommandListExecutor::ExecuteEndGPUFrameTiming, this, timing, succeeded));
 }
 
 void RHICommandListExecutor::ExecuteEndGPUFrameTiming(const RHIGPUFrameTimingPtr& timing,
@@ -857,7 +946,7 @@ void RHICommandListExecutor::FlushRHIThread()
 
 bool RHICommandListExecutor::AreSubmissionsBlocked() const
 {
-    return m_blocked.load(std::memory_order_acquire);
+    return m_blocked.load(std::memory_order_acquire) || GetRHIThread().HasTaskFailure();
 }
 
 RHIThreadMetrics RHICommandListExecutor::GetThreadMetrics() const
@@ -1020,10 +1109,11 @@ IRHICommandContext* RHICommandListExecutor::GetTransferCommandContext()
     return GetCommandContext(RHICommandContextType::eTransfer);
 }
 
-void RHICommandListExecutor::FinalizeCommandLists(VectorView<RHICommandList*> lists,
-                                                  HeapVector<RHIPlatformCommandList*>& output)
+RHIStatus RHICommandListExecutor::FinalizeCommandLists(VectorView<RHICommandList*> lists,
+                                                       HeapVector<RHIPlatformCommandList*>& output)
 {
-    GetRHIThread().Invoke(&DynamicRHI::FinalizeCommandLists, m_backend, lists, std::ref(output));
+    return GetRHIThread().Invoke(&DynamicRHI::FinalizeCommandLists, m_backend, lists,
+                                 std::ref(output));
 }
 
 void RHICommandListExecutor::SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> lists)

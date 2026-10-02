@@ -32,26 +32,30 @@ public:
 
             LockAuto lock(&m_mutex);
 
-            std::unordered_map<uint32_t, uint32_t>::iterator it = m_lut.find(hash);
+            // Distinct names can share a 32-bit hash. Probe successive keys from the name's
+            // hash; entries are never removed, so every name keeps one stable probe position.
+            uint32_t key  = hash;
+            bool resolved = false;
 
-            if (it != m_lut.end())
+            while (!resolved)
             {
-                const uint8_t* pData = GetRecordRawData(it->second);
+                std::unordered_map<uint32_t, uint32_t>::iterator it = m_lut.find(key);
 
-                if (GetRecordLength(pData) == len &&
-                    std::memcmp(GetRecordChars(pData), pName, len) == 0)
+                if (it == m_lut.end())
                 {
-                    nameId = it->second;
+                    nameId     = WriteRecord(pName, len, hash);
+                    m_lut[key] = nameId;
+                    resolved   = true;
+                }
+                else if (IsRecordName(it->second, pName, len))
+                {
+                    nameId   = it->second;
+                    resolved = true;
                 }
                 else
                 {
-                    VERIFY_EXPR_MSG(false, "Name ID has collision detected");
+                    ++key;
                 }
-            }
-            else
-            {
-                nameId      = WriteRecord(pName, len, hash);
-                m_lut[hash] = nameId;
             }
         }
 
@@ -152,6 +156,13 @@ private:
         return reinterpret_cast<const char*>(pData + sizeof(RecordHeader));
     }
 
+    bool IsRecordName(uint32_t nameId, const char* pName, uint32_t len)
+    {
+        const uint8_t* pData = GetRecordRawData(nameId);
+
+        return GetRecordLength(pData) == len && std::memcmp(GetRecordChars(pData), pName, len) == 0;
+    }
+
     static uint32_t HashBytes(const char* pStr, uint32_t len)
     {
         uint32_t hash = 2166136261u;
@@ -203,7 +214,7 @@ private:
 
     mutable Mutex m_mutex;
     HeapVector<RecordBlock> m_blocks;
-    HashMap<uint32_t, uint32_t> m_lut; /// hash -> nameId look up table
+    HashMap<uint32_t, uint32_t> m_lut; /// probed hash -> nameId look up table
 };
 } // namespace detail
 

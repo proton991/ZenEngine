@@ -110,7 +110,13 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice* pDevice,
         poolCI.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolCI.pPoolSizes    = poolSizes.empty() ? nullptr : poolSizes.data();
 
-        VKCHECK(vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkHandle));
+        const VkResult result =
+            vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkHandle);
+
+        if (result != VK_SUCCESS)
+        {
+            LOGE("vkCreateDescriptorPool failed: {}", GetResultString(result));
+        }
     }
 
     // TODO: record pool create metrics somewhere
@@ -157,7 +163,9 @@ VkDescriptorSet VulkanDescriptorPool::Allocate(VkDescriptorSetLayout layout, uin
         }
         else if (result != VK_ERROR_OUT_OF_POOL_MEMORY && result != VK_ERROR_FRAGMENTED_POOL)
         {
-            VKCHECK(result);
+            LOGE("vkAllocateDescriptorSets failed: {}", GetResultString(result));
+
+            descriptorSet = VK_NULL_HANDLE;
         }
     }
 
@@ -168,9 +176,20 @@ void VulkanDescriptorPool::Reset()
 {
     if (m_vkHandle != VK_NULL_HANDLE && m_numAllocatedSets > 0)
     {
-        VKCHECK(vkResetDescriptorPool(m_pDevice->GetVkHandle(), m_vkHandle, 0));
+        const VkResult result = vkResetDescriptorPool(m_pDevice->GetVkHandle(), m_vkHandle, 0);
 
-        m_numAllocatedSets = 0;
+        if (result == VK_SUCCESS)
+        {
+            m_numAllocatedSets = 0;
+        }
+        else
+        {
+            LOGE("vkResetDescriptorPool failed: {}", GetResultString(result));
+
+            vkDestroyDescriptorPool(m_pDevice->GetVkHandle(), m_vkHandle, nullptr);
+
+            m_vkHandle = VK_NULL_HANDLE;
+        }
 
         // TODO: record pool reset metrics here
     }
@@ -337,9 +356,17 @@ void VulkanDescriptorPoolSetContainer::PushPoolToChain(PoolChain* pChain)
 
         VulkanDescriptorPool* pPool = ZEN_NEW() VulkanDescriptorPool(
             m_pVulkanDevice, pChain->poolKey, maxNumSets, pChain->updateAfterBind);
-        pChain->pools.push_back(pPool);
-        pChain->numPools      = static_cast<uint32_t>(pChain->pools.size());
-        pChain->activePoolIdx = pChain->numPools - 1;
+        if (pPool->IsValid())
+        {
+            pChain->pools.push_back(pPool);
+
+            pChain->numPools      = static_cast<uint32_t>(pChain->pools.size());
+            pChain->activePoolIdx = pChain->numPools - 1;
+        }
+        else
+        {
+            ZEN_DELETE(pPool);
+        }
     }
 }
 
@@ -1042,7 +1069,7 @@ bool VulkanBindlessDescriptorPoolManager::ResetRegistrations()
 {
     LockAuto lock(&m_mutex);
 
-    bool reset = true;
+    bool reset = m_journals.empty();
 
     if (m_vkSet != VK_NULL_HANDLE)
     {
@@ -1102,7 +1129,8 @@ bool VulkanBindlessDescriptorPoolManager::ResetRegistrations()
 bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* pResource,
                                                                    uint32_t slotIdx,
                                                                    RHIBindlessHandle* pOutHandle,
-                                                                   uint64_t recordedEpoch)
+                                                                   uint64_t recordedEpoch,
+                                                                   uint64_t transaction)
 {
     LockAuto lock(&m_mutex);
     if (pOutHandle != nullptr)
@@ -1146,11 +1174,19 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
                     std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch) &&
                     GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
                 registered = (slot.retiredEpoch == 0 || earlierRecording) &&
-                    slot.resourceId == pResource->GetStableId();
+                    slot.resourceId == pResource->GetStableId() &&
+                    (slot.transaction == 0 || slot.transaction == transaction);
             }
             else
             {
                 static std::atomic<uint64_t> nextGeneration{1};
+                // Reserve the journal and pending write before retaining or publishing.
+                if (transaction != 0)
+                {
+                    HeapVector<RHIBindlessHandle>& journal = m_journals[transaction];
+                    journal.reserve(journal.size() + 1);
+                }
+
                 m_pendingWrites[heapIdx].push_back({slotIdx, pResource});
 
                 m_hasPendingWrites.store(true, std::memory_order_release);
@@ -1163,7 +1199,13 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
                 }
                 slot.resourceId           = pResource->GetStableId();
                 slot.generation           = nextGeneration.fetch_add(1, std::memory_order_relaxed);
+                slot.transaction          = transaction;
                 m_heapAllocCount[heapIdx] = (slotIdx + 1) % capacity;
+
+                if (transaction != 0)
+                {
+                    m_journals[transaction].push_back({heapType, slotIdx, slot.generation});
+                }
             }
             if (registered && pOutHandle != nullptr)
             {
@@ -1172,6 +1214,146 @@ bool VulkanBindlessDescriptorPoolManager::RegisterBindlessResource(RHIResource* 
         }
     }
     return registered;
+}
+
+uint64_t VulkanBindlessDescriptorPoolManager::BeginTransaction()
+{
+    static std::atomic<uint64_t> nextTransaction{1};
+
+    return nextTransaction.fetch_add(1, std::memory_order_relaxed);
+}
+
+namespace
+{
+// One parameter's heap slot, encoded as heap << 32 | slot index.
+struct BindlessSlotClaim
+{
+    uint64_t slot{0};
+    const RHIResource* resource{nullptr};
+};
+
+bool IsEarlierSlot(const BindlessSlotClaim& lhs, const BindlessSlotClaim& rhs)
+{
+    return lhs.slot < rhs.slot;
+}
+} // namespace
+
+bool VulkanBindlessDescriptorPoolManager::CanRegisterBindlessResources(
+    VectorView<const RHIShaderResourceParameter> parameters,
+    uint64_t recordedEpoch,
+    uint64_t transaction)
+{
+    SmallVector<BindlessSlotClaim, 16> claims;
+
+    bool valid = true;
+
+    {
+        LockAuto lock(&m_mutex);
+
+        for (size_t i = 0; valid && i < parameters.size(); ++i)
+        {
+            const RHIShaderResourceParameter& parameter = parameters[i];
+
+            valid = CanRegisterLocked(parameter.pResource, parameter.arrayIndex, recordedEpoch,
+                                      transaction);
+
+            if (valid)
+            {
+                const uint64_t heap = ToUnderlying(GetBindlessHeapType(parameter.pResource));
+
+                claims.push_back({(heap << 32) | parameter.arrayIndex, parameter.pResource});
+            }
+        }
+    }
+
+    // Sorting places claims on one slot next to each other; they must name one resource.
+    std::sort(claims.begin(), claims.end(), IsEarlierSlot);
+
+    for (size_t i = 1; valid && i < claims.size(); ++i)
+    {
+        valid =
+            claims[i].slot != claims[i - 1].slot || claims[i].resource == claims[i - 1].resource;
+    }
+
+    return valid;
+}
+
+bool VulkanBindlessDescriptorPoolManager::CanRegisterLocked(const RHIResource* resource,
+                                                            uint32_t slotIndex,
+                                                            uint64_t recordedEpoch,
+                                                            uint64_t transaction)
+{
+    bool valid = resource != nullptr && m_vkSet != VK_NULL_HANDLE;
+
+    if (valid)
+    {
+        const RHIBindlessHeapType heap = GetBindlessHeapType(resource);
+        const uint32_t capacity        = GetBindlessHeapCapacity(heap);
+        valid = heap != RHIBindlessHeapType::eMax && IsValidBindlessResource(resource, heap) &&
+            slotIndex < capacity;
+
+        if (valid)
+        {
+            const BindlessSlotState& slot = m_slotStates[ToUnderlying(heap)][slotIndex];
+            const bool earlierRecording   = recordedEpoch != 0 &&
+                recordedEpoch <= slot.retiredEpoch &&
+                std::binary_search(m_epochs.begin(), m_epochs.end(), recordedEpoch) &&
+                GVulkanRHI->GetLifetimeTracker().HasRecordings(recordedEpoch);
+            valid = slot.pResource == nullptr ||
+                (slot.resourceId == resource->GetStableId() &&
+                 (slot.retiredEpoch == 0 || earlierRecording) &&
+                 (slot.transaction == 0 || slot.transaction == transaction));
+        }
+    }
+
+    return valid;
+}
+
+void VulkanBindlessDescriptorPoolManager::ResolveTransaction(uint64_t transaction, bool commit)
+{
+    LockAuto lock(&m_mutex);
+    const FlatHashMap<uint64_t, HeapVector<RHIBindlessHandle>>::iterator journal =
+        m_journals.find(transaction);
+
+    if (journal != m_journals.end())
+    {
+        for (RHIBindlessHandle handle : journal->second)
+        {
+            BindlessSlotState* slot = FindRegistration(handle);
+
+            if (slot != nullptr && slot->transaction == transaction)
+            {
+                if (commit)
+                {
+                    slot->transaction = 0;
+                }
+                else
+                {
+                    HeapVector<BindlessDSWrite>& writes =
+                        m_pendingWrites[ToUnderlying(handle.heapType)];
+                    writes.erase(std::remove_if(writes.begin(), writes.end(),
+                                                [handle](const BindlessDSWrite& write) {
+                                                    return write.slotIdx == handle.slotIndex;
+                                                }),
+                                 writes.end());
+
+                    RHIResource* resource                           = slot->pResource;
+                    RHITexture* texture                             = slot->pTextureOwner;
+                    *slot                                           = {};
+                    m_heapAllocCount[ToUnderlying(handle.heapType)] = handle.slotIndex;
+
+                    resource->ReleaseReference();
+
+                    if (texture != nullptr)
+                    {
+                        texture->ReleaseReference();
+                    }
+                }
+            }
+        }
+
+        m_journals.erase(journal);
+    }
 }
 
 VulkanBindlessDescriptorPoolManager::BindlessSlotState* VulkanBindlessDescriptorPoolManager::
@@ -1190,7 +1372,7 @@ bool VulkanBindlessDescriptorPoolManager::IsRegistered(RHIBindlessHandle handle)
 {
     LockAuto lock(&m_mutex);
     const BindlessSlotState* slot = FindRegistration(handle);
-    return slot != nullptr && slot->retiredEpoch == 0;
+    return slot != nullptr && slot->retiredEpoch == 0 && slot->transaction == 0;
 }
 
 bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindlessHandle handle)
@@ -1198,7 +1380,8 @@ bool VulkanBindlessDescriptorPoolManager::UnregisterBindlessResource(RHIBindless
     LockAuto lock(&m_mutex);
     BindlessSlotState* slot = FindRegistration(handle);
     bool retired            = false;
-    if (slot != nullptr && slot->retiredEpoch == 0 && m_epoch != UINT64_MAX)
+    if (slot != nullptr && slot->retiredEpoch == 0 && slot->transaction == 0 &&
+        m_epoch != UINT64_MAX)
     {
         // Reserve before changing publication state. A failed allocation leaves it active.
         m_retiredSlots.reserve(m_retiredSlots.size() + 1);
@@ -1353,7 +1536,10 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
 
     VkResult result =
         vkCreateDescriptorSetLayout(m_pDevice->GetVkHandle(), &layoutCI, nullptr, &m_vkLayout);
-    VKCHECK(result);
+    if (result != VK_SUCCESS)
+    {
+        LOGE("Global bindless layout creation failed: {}", GetResultString(result));
+    }
 
     if (result == VK_SUCCESS)
     {
@@ -1371,7 +1557,10 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
         poolCI.pPoolSizes    = poolSizes;
 
         result = vkCreateDescriptorPool(m_pDevice->GetVkHandle(), &poolCI, nullptr, &m_vkPool);
-        VKCHECK(result);
+        if (result != VK_SUCCESS)
+        {
+            LOGE("Global bindless pool creation failed: {}", GetResultString(result));
+        }
     }
 
     if (result == VK_SUCCESS)
@@ -1383,7 +1572,10 @@ void VulkanBindlessDescriptorPoolManager::CreateGlobalBindlessDescriptorSet()
         allocateInfo.pSetLayouts        = &m_vkLayout;
 
         result = vkAllocateDescriptorSets(m_pDevice->GetVkHandle(), &allocateInfo, &m_vkSet);
-        VKCHECK(result);
+        if (result != VK_SUCCESS)
+        {
+            LOGE("Global bindless set allocation failed: {}", GetResultString(result));
+        }
     }
 
     if (result != VK_SUCCESS)

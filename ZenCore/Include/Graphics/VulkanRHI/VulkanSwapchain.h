@@ -43,6 +43,23 @@ public:
         return m_format;
     }
 
+    // Rendering already encodes gamma. Copy the UNORM bytes to an sRGB surface unchanged.
+    VkFormat GetBackBufferFormat() const
+    {
+        VkFormat format = m_format;
+
+        if (format == VK_FORMAT_B8G8R8A8_SRGB)
+        {
+            format = VK_FORMAT_B8G8R8A8_UNORM;
+        }
+        else if (format == VK_FORMAT_R8G8B8A8_SRGB)
+        {
+            format = VK_FORMAT_R8G8B8A8_UNORM;
+        }
+
+        return format;
+    }
+
     const uint32_t& GetNumSwapchainImages() const
     {
         return m_numImages;

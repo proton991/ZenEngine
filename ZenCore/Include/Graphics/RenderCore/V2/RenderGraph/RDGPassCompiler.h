@@ -465,7 +465,7 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
     HeapVector<RDGBuffer> vertexBuffers;
     RDGBuffer indexBuffer;
     DataFormat indexBufferFormat{DataFormat::eR32UInt};
-    uint32_t indexBufferOffset{0};
+    uint64_t indexBufferOffset{0};
     RHIGfxPipelineStates pipelineStates;
 
     Rect2<int> renderArea;
@@ -502,17 +502,18 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
 
     void BindIndexBuffer(RDGBuffer buffer,
                          DataFormat format = DataFormat::eR32UInt,
-                         uint32_t offset   = 0)
+                         uint64_t offset   = 0)
     {
         if (!buffer)
         {
             Reject(RDGErrorCode::eBinding, "Empty index resource");
-            return;
         }
-
-        indexBuffer       = buffer;
-        indexBufferFormat = format;
-        indexBufferOffset = offset;
+        else
+        {
+            indexBuffer       = buffer;
+            indexBufferFormat = format;
+            indexBufferOffset = offset;
+        }
     }
 
     void BindVertexBuffer(RHIBuffer* pBuffer)
@@ -522,7 +523,7 @@ struct RDGGraphicsPassDesc : RDGPassDescBase
 
     void BindIndexBuffer(RHIBuffer* pBuffer,
                          DataFormat format = DataFormat::eR32UInt,
-                         uint32_t offset   = 0)
+                         uint64_t offset   = 0)
     {
         geometryBuffer.pIndexBuffer      = pBuffer;
         geometryBuffer.indexBufferFormat = format;

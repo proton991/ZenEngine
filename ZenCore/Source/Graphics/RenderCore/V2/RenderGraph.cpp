@@ -4622,7 +4622,8 @@ bool RenderGraph::Execute(VectorView<RHICommandList*> lists,
                 m_activeMetrics->BeginNode(*this, compiled);
             }
 
-            const bool markers = RHIOptions::GetInstance().GPUProfilerMarkers();
+            const bool markers = RHIOptions::GetInstance().GPUProfilerMarkers() ||
+                RHIOptions::GetInstance().DeviceLossDiagnostics();
 
             const RHIGPUTimingPtr gpuTiming =
                 m_activeMetrics != nullptr ? m_activeMetrics->m_nodeGPUTiming : RHIGPUTimingPtr{};

@@ -661,7 +661,17 @@ VkDevice VulkanRHI::GetVkDevice() const
 
 IRHICommandContext* VulkanRHI::GetCommandContext(RHICommandContextType contextType)
 {
-    return ZEN_NEW() FVulkanCommandListContext(contextType, m_pDevice);
+    FVulkanCommandListContext* context =
+        ZEN_NEW() FVulkanCommandListContext(contextType, m_pDevice);
+
+    if (!context->IsValid())
+    {
+        ZEN_DELETE(context);
+
+        context = nullptr;
+    }
+
+    return context;
 }
 
 IRHICommandContext* VulkanRHI::GetTransferCommandContext()
@@ -762,7 +772,8 @@ void VulkanRHI::Init()
 
         GVkMemAllocator->Init(m_instance, m_pDevice->GetPhysicalDeviceHandle(),
                               m_pDevice->GetVkHandle(),
-                              m_pDevice->GetExtensionFlags().hasBufferDeviceAddress != 0);
+                              m_pDevice->GetExtensionFlags().hasBufferDeviceAddress != 0,
+                              m_pDevice->GetExtensionFlags().hasMemoryBudget != 0);
 
         m_pDescriptorPoolManager2        = ZEN_NEW() VulkanDescriptorPoolManager2(m_pDevice);
         m_pBindlessDescriptorPoolManager = ZEN_NEW() VulkanBindlessDescriptorPoolManager();
@@ -826,6 +837,7 @@ void VulkanRHI::CollectRetiredBindlessResources()
 void VulkanRHI::BeginFrame()
 {
     GetRHIThread().CheckOwnership();
+    GVkMemAllocator->BeginFrame(static_cast<uint32_t>(ToValue(GRHIFrameState.GetFrameNumber())));
     CollectRetiredBindlessResources();
     VERIFY_EXPR(m_pDescriptorPoolManager2 != nullptr);
     VERIFY_EXPR(m_pUniformBufferAllocator != nullptr);
@@ -927,6 +939,11 @@ void VulkanRHI::Destroy()
     WaitDeviceIdle();
     DestroyPlatformCommandListPool();
 
+    if (m_pDevice != nullptr)
+    {
+        m_pDevice->DestroyQueues();
+    }
+
     if (m_pUniformBufferAllocator != nullptr)
     {
         m_pUniformBufferAllocator->Destroy();
@@ -949,6 +966,9 @@ void VulkanRHI::Destroy()
     }
 
     m_lifetimeTracker.Destroy();
+    VerifyTeardownOwnership(m_resourceAllocator.GetAllocationCount() == 0,
+                            "All RHI resources must be released before backend teardown", __FILE__,
+                            __LINE__);
     ZEN_DELETE(GVkMemAllocator);
     GVkMemAllocator = nullptr;
 

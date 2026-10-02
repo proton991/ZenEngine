@@ -225,8 +225,9 @@ TEST_P(AsyncUploadTest, FrameSubmissionKeepsUploadWaitAndOrdersLaterTransfer)
     ASSERT_EQ(rhi->gpuDependencies.size(), 2u);
     EXPECT_EQ(rhi->gpuDependencies[1].consumer, RHICommandContextType::eTransfer);
     EXPECT_EQ(rhi->gpuDependencies[1].producer.queue, RHICommandContextType::eGraphics);
-    // Both modes reference the exact resource producer, excluding the later presentation copy.
-    const uint64_t expected = graphicsSerial - 1;
+    // Both modes reference the frame's producer group. The presentation copy shares its native
+    // submission, which this backend counts as one serial; native tests cover the copy's own.
+    const uint64_t expected = graphicsSerial;
     EXPECT_EQ(rhi->gpuDependencies[1].producer.serial, expected);
     EXPECT_TRUE(rhi->submissionWaits.empty());
     device->DestroyBuffer(source);

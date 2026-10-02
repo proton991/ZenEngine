@@ -1,5 +1,7 @@
 #pragma once
 #include "Utils/Errors.h"
+#include "Graphics/RHI/RHIError.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include <string>
 #include "VulkanHeaders.h"
 
@@ -10,7 +12,40 @@
 
 namespace zen
 {
-static const char* GetResultString(VkResult result)
+void ReportVulkanDeviceLoss(VkResult result, const char* operation);
+
+inline RHIError MakeVulkanError(VkResult result,
+                                const char* operation,
+                                const char* source = nullptr,
+                                uint32_t line      = 0)
+{
+    RHIError error{};
+
+    ReportVulkanDeviceLoss(result, operation);
+
+    if (result < VK_SUCCESS)
+    {
+        error = {RHIErrorCode::eBackendFailure, static_cast<int64_t>(result), operation, source,
+                 line};
+
+        switch (result)
+        {
+            case VK_ERROR_OUT_OF_HOST_MEMORY: error.code = RHIErrorCode::eOutOfHostMemory; break;
+            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+                error.code = RHIErrorCode::eOutOfDeviceMemory;
+                break;
+            case VK_ERROR_DEVICE_LOST: error.code = RHIErrorCode::eDeviceLost; break;
+            case VK_ERROR_FEATURE_NOT_PRESENT:
+            case VK_ERROR_EXTENSION_NOT_PRESENT:
+            case VK_ERROR_FORMAT_NOT_SUPPORTED: error.code = RHIErrorCode::eUnsupported; break;
+            default: break;
+        }
+    }
+
+    return error;
+}
+
+inline const char* GetResultString(VkResult result)
 {
     const char* pResultString = "unknown";
 
@@ -71,22 +106,32 @@ static const char* GetResultString(VkResult result)
     return pResultString;
 }
 
-static bool CheckVkResult(VkResult result, const char* pFile, int32_t line)
+inline void CheckVkResult(VkResult result, const char* pFile, int32_t line)
 {
-    if (result == VK_SUCCESS)
-    {
-        return false;
-    }
+    ReportVulkanDeviceLoss(result, pFile);
 
     if (result < 0)
     {
-        LOGE("{}({}): \n Vulkan Error : {}", pFile, line, GetResultString(result));
-        ASSERT(!"Critical Vulkan Error");
-
-        return true;
+        VerificationFailureFormatted("Vulkan result >= VK_SUCCESS", pFile, line,
+                                     "Vulkan error: {} ({})", GetResultString(result),
+                                     static_cast<int32_t>(result));
     }
+}
 
-    return false;
+// Teardown ownership is fatal under RHIOptions::StrictTeardownChecks and logged otherwise.
+inline void VerifyTeardownOwnership(bool released, const char* message, const char* pFile, int line)
+{
+    if (!released)
+    {
+        if (RHIOptions::GetInstance().StrictTeardownChecks())
+        {
+            VerificationFailure("teardown ownership", pFile, line, message);
+        }
+        else
+        {
+            LOGE("{}", message);
+        }
+    }
 }
 
 template <typename T> inline std::string VkToString(T value)

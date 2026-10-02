@@ -1,4 +1,5 @@
 #include "Utils/UniquePtr.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommon.h"
 #include "Graphics/VulkanRHI/VulkanExtension.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
@@ -20,6 +21,38 @@ static void AddToPNext(ExistingChainType& Existing, NewStructType& Added)
     Added.pNext    = (void*)Existing.pNext;
     Existing.pNext = (void*)&Added;
 }
+
+class VulkanDeviceFaultExtension : public VulkanDeviceExtension
+{
+public:
+    explicit VulkanDeviceFaultExtension(VulkanDevice* device) :
+        VulkanDeviceExtension(device, VK_EXT_DEVICE_FAULT_EXTENSION_NAME)
+    {}
+
+    void BeforePhysicalDeviceFeatures(VkPhysicalDeviceFeatures2KHR& features) final
+    {
+        AddToPNext(features, m_features);
+    }
+
+    void AfterPhysicalDeviceFeatures() final
+    {
+        SetSupport(m_features.deviceFault == VK_TRUE);
+        m_features.deviceFaultVendorBinary            = VK_FALSE;
+        m_pDevice->GetExtensionFlags().hasDeviceFault = IsEnabledAndSupported();
+    }
+
+    void BeforeCreateDevice(VkDeviceCreateInfo& info) final
+    {
+        if (IsEnabledAndSupported())
+        {
+            AddToPNext(info, m_features);
+        }
+    }
+
+private:
+    VkPhysicalDeviceFaultFeaturesEXT m_features{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+};
 
 class VulkanSwapchainMaintenanceExtension : public VulkanDeviceExtension
 {
@@ -568,6 +601,12 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
 #endif
 
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    ADD_SIMPLE_DEVICE_EXTENSION(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+
+    if (RHIOptions::GetInstance().DeviceLossDiagnostics())
+    {
+        ADD_SIMPLE_DEVICE_EXTENSION(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
+    }
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
     ADD_SIMPLE_DEVICE_EXTENSION(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
 
@@ -582,6 +621,7 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanRayQueryExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanDynamicRenderingExtension)
     ADD_ADVANCED_DEVICE_EXTENSION(VulkanTimelineSemaphoreExtension)
+    ADD_ADVANCED_DEVICE_EXTENSION(VulkanDeviceFaultExtension)
 
     const HeapVector<VkExtensionProperties> supported =
         GetSupportedExtensions(pDevice->GetPhysicalDeviceHandle());
@@ -655,6 +695,16 @@ VulkanDeviceExtensionArray VulkanDeviceExtension::GetEnabledExtensions(VulkanDev
         {
             pDevice->GetExtensionFlags().hasCalibratedTimestamps =
                 extension->IsEnabledAndSupported();
+        }
+
+        if (name == NameID(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME))
+        {
+            pDevice->GetExtensionFlags().hasMemoryBudget = extension->IsEnabledAndSupported();
+        }
+
+        if (name == NameID(VK_AMD_BUFFER_MARKER_EXTENSION_NAME))
+        {
+            pDevice->GetExtensionFlags().hasBufferMarker = extension->IsEnabledAndSupported();
         }
     }
     pDevice->GetExtensionFlags().hasSPIRV_14 = 1;

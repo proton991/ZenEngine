@@ -129,7 +129,9 @@ TEST_P(RDGScheduledSubmissionTest, PartialFailureConsumesTicketAndKeepsAcceptedF
                                                      buffer->GetStableId()));
     EXPECT_FALSE(device->ExecuteRenderGraph(&viewport));
     EXPECT_EQ(rhi->submissionAttempts, 2u);
-    EXPECT_EQ(viewport.preparePresents, 0u);
+    // The failed graphics group carried the presentation copy; nothing was presented.
+    EXPECT_EQ(viewport.preparePresents, 1u);
+    EXPECT_EQ(viewport.presents, 0u);
     device->DestroyBuffer(buffer);
 }
 

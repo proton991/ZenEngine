@@ -42,6 +42,21 @@ template <> struct hash<zen::VulkanDescriptorPoolKey>
 
 namespace zen
 {
+// Uniform-buffer descriptors of one pipeline layout. Every reflected uniform buffer is a
+// dynamic descriptor; array elements count individually. Bindless descriptors are
+// excluded: they are checked against the update-after-bind limits instead.
+struct VulkanUniformBufferUsage
+{
+    uint32_t dynamicCount{0};
+    uint32_t maxPerStageCount{0};
+};
+
+VulkanUniformBufferUsage CountUniformBufferDescriptors(
+    const RHIShaderResourceDescriptorTable& srdTable);
+
+bool UniformBuffersFitLimits(const VulkanUniformBufferUsage& usage,
+                             const VkPhysicalDeviceLimits& limits);
+
 class VulkanDevice;
 class VulkanShader : public RHIShader
 {
@@ -131,6 +146,8 @@ private:
 
     bool LoadSpirvFiles();
 
+    void InitNativeObjects(const RHIShaderGroupInfo& sgInfo);
+
     struct VertexInputInfo
     {
         SmallVector<VkVertexInputBindingDescription> vkBindings;
@@ -157,6 +174,8 @@ private:
 
     VkPipelineLayout m_pipelineLayout{VK_NULL_HANDLE};
     bool m_hasGlobalBindlessSet{false};
+    // False when the reflected layout exceeds device descriptor limits; no native objects exist.
+    bool m_fitsDeviceLimits{false};
 
     SmallVector<DynamicOffsetSlot> m_dynamicOffsetSlots[MAX_NUM_DESCRIPTOR_SETS];
 };
@@ -208,7 +227,8 @@ private:
     void InitCompute();
 
     VkPipeline m_vkPipeline{VK_NULL_HANDLE};
-    VkPipelineBindPoint m_bindPoint;
-    VkShaderStageFlags m_pushConstantsStageFlags;
+    VkPipelineBindPoint m_bindPoint{VK_PIPELINE_BIND_POINT_GRAPHICS};
+    VkShaderStageFlags m_pushConstantsStageFlags{0};
+    bool m_initialized{false};
 };
 } // namespace zen

@@ -1209,6 +1209,16 @@ template <typename Pool> void RDGResourceManager::CompactPool(Pool& pool)
 
 bool RDGResourceManager::TrimPool(bool allAvailable)
 {
+    return RetirePoolEntries(allAvailable, false);
+}
+
+bool RDGResourceManager::TrimIdlePoolEntries()
+{
+    return RetirePoolEntries(false, true);
+}
+
+bool RDGResourceManager::RetirePoolEntries(bool allAvailable, bool unusedByNewestBuild)
+{
     bool result{};
 
     if (m_owner && m_owner->m_inExecution)
@@ -1236,12 +1246,18 @@ bool RDGResourceManager::TrimPool(bool allAvailable)
                          });
         uint64_t retained = 0;
 
+        // The newest pooled build is the current working set; the next build reuses it.
+        const uint64_t newestBuild = candidates.empty() ? 0 : candidates.front()->lastUsedBuild;
+
         for (PoolEntry* candidate : candidates)
         {
             PoolEntry& entry   = *candidate;
             const bool expired = m_generation - entry.lastUsedBuild > m_poolConfig.maxIdleBuilds;
 
-            if (allAvailable || expired || entry.bytes > m_poolConfig.budgetBytes - retained)
+            const bool idle = unusedByNewestBuild && entry.lastUsedBuild < newestBuild;
+
+            if (allAvailable || expired || idle ||
+                entry.bytes > m_poolConfig.budgetBytes - retained)
             {
                 RetirePoolEntry(entry);
                 entry.resource = nullptr;

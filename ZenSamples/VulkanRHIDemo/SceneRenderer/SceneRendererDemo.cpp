@@ -860,6 +860,8 @@ struct DemoOptions
 
     bool vsync{true};
 
+    zen::RHIPresentMode presentMode{zen::RHIPresentMode::eDefault};
+
     std::string profilePath;
 
     std::string frameTimesPath;
@@ -877,7 +879,17 @@ struct DemoOptions
 
 bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 {
-    bool valid = true;
+    // The command line overrides the configured present mode.
+    const std::string configuredPresentMode =
+        zen::platform::ConfigLoader::GetInstance().GetString("present_mode", "default");
+
+    bool valid = zen::ParseRHIPresentMode(configuredPresentMode, options.presentMode);
+
+    if (!valid)
+    {
+        LOGE("Invalid present_mode '{}' in the engine configuration", configuredPresentMode);
+    }
+
     for (int i = 1; i < argc && valid; ++i)
     {
         const std::string_view argument(arguments[i]);
@@ -924,6 +936,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument == "--vsync=0" || argument == "--vsync=1")
         {
             options.vsync = argument.back() == '1';
+        }
+        else if (argument.starts_with("--present-mode="))
+        {
+            valid = zen::ParseRHIPresentMode(argument.substr(15), options.presentMode);
         }
         else if (argument == "--fixed-step")
         {
@@ -985,6 +1001,10 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         else if (argument == "--gpu-memory-stats")
         {
             options.gpuMemoryStats = true;
+        }
+        else if (argument == "--device-loss-diagnostics")
+        {
+            zen::RHIOptions::GetInstance().SetDeviceLossDiagnostics(true);
         }
         else if (argument == "--gi-motion-fixture")
         {
@@ -1082,6 +1102,8 @@ int main(int argc, char** pArgv)
         RHIOptions::GetInstance().SetDebugPrintfEnabled(options.validationPrintf);
         RHIOptions::GetInstance().SetGPUProfilerMarkers(options.gpuMarkers);
         RHIOptions::GetInstance().SetGPUMemoryStats(options.gpuMemoryStats);
+
+        RHIOptions::GetInstance().SetPresentMode(options.presentMode);
         platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width,
                                             options.height};
 
@@ -1174,7 +1196,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
     }
 
     return result;

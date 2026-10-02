@@ -371,7 +371,7 @@ TEST_P(VulkanColorAttachmentTest, ClearsSelectedMipLayersAndAreaOnly)
 {
     const bool cube = GetParam();
     auto* texture   = Texture(DataFormat::eR8G8B8A8UNORM, 3, cube ? 6 : 4,
-                              cube ? RHITextureType::eCube : RHITextureType::e2D);
+                            cube ? RHITextureType::eCube : RHITextureType::e2D);
     auto* view      = View(texture, 1, 1, 2);
     RHIRenderingLayout layout{};
     layout.SetRenderArea(1, 1, 2, 2);
@@ -563,7 +563,7 @@ TEST_F(VulkanAttachmentIntegrationTest,
     EXPECT_EQ(layout.colorRenderTargets[0].numSamples, SampleCount::e4);
     EXPECT_EQ(layout.depthStencilRenderTarget.numSamples, SampleCount::e4);
     auto info = PipelineInfo(Shader(), layout, SampleCount::e1);
-    EXPECT_THROW(session->rhi.CreatePipeline(info), std::runtime_error);
+    EXPECT_EQ(session->rhi.CreatePipeline(info), nullptr);
     info.states.multiSampleState.sampleCount = SampleCount::e4;
     pipelines.push_back(session->rhi.CreatePipeline(info));
     Transition(color, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -618,7 +618,7 @@ class VulkanInvalidAttachmentTest :
 
 TEST_P(VulkanInvalidAttachmentTest, RejectsInvalidLayoutBeforeRecordingRendering)
 {
-    auto* texture = Texture();
+    VulkanTexture* texture = Texture();
     RHIRenderingLayout layout{};
     layout.SetRenderArea(0, 0, 4, 4);
     layout.AddColorRenderTarget(View(texture, 1, 1, 2), RHIRenderTargetLoadOp::eClear,
@@ -664,7 +664,9 @@ TEST_P(VulkanInvalidAttachmentTest, RejectsInvalidLayoutBeforeRecordingRendering
                                         RHIRenderTargetStoreOp::eStore);
             break;
     }
-    EXPECT_THROW(context->RHIBeginRendering(&layout), std::runtime_error);
+    context->RHIBeginRendering(&layout);
+    EXPECT_TRUE(context->GetRecordingError().IsFailure());
+    EXPECT_EQ(context->SubmitRecordedWorkloads(), RHISubmissionResult::eRejected);
     EXPECT_EQ(AttachmentObserver::begins, 0u);
 }
 

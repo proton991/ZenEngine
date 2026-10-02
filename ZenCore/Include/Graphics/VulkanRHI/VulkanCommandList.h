@@ -3,6 +3,7 @@
 #include "VulkanRHI.h"
 #include "Graphics/VulkanRHI/VulkanPlatformCommandList.h"
 #include "VulkanDescriptorPool.h"
+#include "VulkanMemory.h"
 #include "Templates/HeapVector.h"
 #include "Templates/VectorView.h"
 #include "Utils/Mutex.h"
@@ -43,9 +44,20 @@ public:
         eNeedReset,
     };
 
-    void Begin();
+    bool Begin();
 
-    void End();
+    bool End();
+
+    void BeginBreadcrumb(NameID name);
+
+    void EndBreadcrumb();
+
+    void ReportBreadcrumbs() const;
+
+    const RHIError& GetError() const
+    {
+        return m_error;
+    }
 
     void BeginRendering(const VkRenderingInfo* pRenderingInfo);
 
@@ -139,6 +151,8 @@ private:
 
     void FreeMemory();
 
+    void WriteBreadcrumb(uint32_t index, uint32_t value);
+
     RHIGPUTimingStatus PrepareGPUTimingPool();
 
     void ResolveGPUTimings();
@@ -152,6 +166,13 @@ private:
     FVulkanCommandBufferPool* m_pCmdBufferPool{nullptr};
 
     State m_state{State::eNotAllocated};
+
+    RHIError m_error{};
+    static constexpr uint32_t kMaxBreadcrumbs = 1024;
+    VkBuffer m_breadcrumbBuffer{VK_NULL_HANDLE};
+    VulkanMemoryAllocation m_breadcrumbAllocation;
+    HeapVector<NameID> m_breadcrumbNames;
+    HeapVector<uint32_t> m_openBreadcrumbs;
 
     double m_submitTime{0.0f};
 
@@ -290,6 +311,7 @@ private:
     VulkanWorkload* m_pMergedInto{nullptr};
     HeapVector<VulkanWorkload*> m_mergedWorkloads;
     HeapVector<uint64_t> m_lifetimeIds;
+    RHIResourceReferences m_resources;
 
     // DO NOT own the semaphores, only hold reference
     HeapVector<WaitSemaphoreInfo> m_waitSemaphoreInfos;
@@ -320,6 +342,28 @@ public:
 
         return pWorkload->GetLastCommandBuffer();
     }
+
+    bool IsValid() const
+    {
+        return m_pCmdBufferPool->GetVkHandle() != VK_NULL_HANDLE;
+    }
+
+    const RHIError& GetRecordingError() const
+    {
+        return m_recordingError;
+    }
+
+    void LatchError(RHIError error);
+
+    bool EnsureRecording();
+
+    virtual void DiscardRecording();
+
+    uint64_t GetRecordingTransaction();
+
+    uint64_t DetachRecordingTransaction();
+
+    void SetRecordingTransaction(uint64_t transaction);
 
     void AddWaitSemaphore(VkPipelineStageFlags waitFlags, VulkanSemaphore* pWaitSemaphore)
     {
@@ -391,6 +435,9 @@ public:
 
     void RecordLifetime(uint64_t id);
 
+    // Native callers declare every wrapper used by their external Vulkan commands.
+    void RecordResource(RHIResource* resource);
+
     uint64_t GetWorkloadGeneration() const
     {
         return m_pCurrentWorkload != nullptr ? m_workloadGeneration : 0;
@@ -457,6 +504,10 @@ private:
     uint64_t m_workloadGeneration{0};
     bool m_hasPendingFlushWorkload{false};
     uint64_t m_lastSubmittedSerial{0};
+
+    RHIError m_recordingError{};
+
+    uint64_t m_recordingTransaction{0};
 };
 
 class VulkanGfxState
@@ -484,9 +535,11 @@ public:
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters,
+                             uint64_t recordedEpoch = 0,
+                             uint64_t transaction   = 0);
 
-    void PreDraw(FVulkanCommandListContext* pContext);
+    bool PreDraw(FVulkanCommandListContext* pContext);
 
 private:
     HeapVector<VkViewport> m_viewports;
@@ -522,9 +575,11 @@ public:
 
     void SetPipelineState(RHIPipeline* pPipeline);
 
-    void SetShaderParameters(RHIShaderParameterView parameters, uint64_t recordedEpoch = 0);
+    bool SetShaderParameters(RHIShaderParameterView parameters,
+                             uint64_t recordedEpoch = 0,
+                             uint64_t transaction   = 0);
 
-    void PreDispatch(FVulkanCommandListContext* pContext);
+    bool PreDispatch(FVulkanCommandListContext* pContext);
 
 private:
     VulkanPipeline* m_pCurrentPipeline{nullptr};
@@ -542,6 +597,20 @@ public:
     virtual ~FVulkanCommandListContext();
 
     RHICommandContextType GetContextType() override;
+
+    RHIError RHIGetRecordingError() const override
+    {
+        return GetRecordingError();
+    }
+
+    void RHIDiscardRecording() override;
+
+    void DiscardRecording() override;
+
+    uint64_t RHIGetLastSubmittedSerial() const override
+    {
+        return GetLastSubmittedSerial();
+    }
 
     void RHIBeginRendering(const RHIRenderingLayout* pRenderingLayout) override;
 
@@ -592,7 +661,7 @@ public:
 
     void RHIDrawIndexed(RHIBuffer* pIndexBuffer,
                         DataFormat indexFormat,
-                        uint32_t indexBufferOffset,
+                        uint64_t indexBufferOffset,
                         uint32_t indexCount,
                         uint32_t instanceCount,
                         uint32_t firstIndex,
@@ -602,7 +671,7 @@ public:
     void RHIDrawIndexedIndirect(RHIBuffer* pIndirectBuffer,
                                 RHIBuffer* pIndexBuffer,
                                 DataFormat indexFormat,
-                                uint32_t indexBufferOffset,
+                                uint64_t indexBufferOffset,
                                 uint64_t offset,
                                 uint32_t drawCount,
                                 uint32_t stride) override;

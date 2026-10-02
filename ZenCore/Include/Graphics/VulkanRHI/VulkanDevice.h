@@ -13,6 +13,7 @@ class VulkanDeviceExtension;
 class VulkanQueue;
 class VulkanFenceManager;
 class VulkanSemaphoreManager;
+class FVulkanCommandBuffer;
 
 struct DeviceExtensionFlags
 {
@@ -28,6 +29,9 @@ struct DeviceExtensionFlags
     uint32_t hasDynamicRendering : 1;
     uint32_t hasSwapchainMaintenance1 : 1;
     uint32_t hasCalibratedTimestamps : 1;
+    uint32_t hasMemoryBudget : 1;
+    uint32_t hasDeviceFault : 1;
+    uint32_t hasBufferMarker : 1;
 };
 
 class VulkanDevice
@@ -41,6 +45,15 @@ public:
     void Init();
 
     void Destroy();
+
+    // Drain retained queue ownership while allocators and descriptor managers still exist.
+    void DestroyQueues();
+
+    void RegisterDiagnosticBuffer(FVulkanCommandBuffer* buffer);
+
+    void UnregisterDiagnosticBuffer(FVulkanCommandBuffer* buffer);
+
+    void ReportDeviceLoss(const char* operation);
 
     VkResult AcquireGPUTimingPool(VkQueryPool& pool);
 
@@ -163,6 +176,8 @@ private:
     Mutex m_timingPoolMutex;
     HeapVector<VkQueryPool> m_timingPools;
     HeapVector<VkQueryPool> m_freeTimingPools;
+    HeapVector<FVulkanCommandBuffer*> m_diagnosticBuffers;
+    bool m_faultReported{false};
 
     // basic features
     VkPhysicalDeviceFeatures m_physicalDeviceFeatures{};

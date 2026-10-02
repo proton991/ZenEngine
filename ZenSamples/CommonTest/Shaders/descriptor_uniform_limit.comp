@@ -1,0 +1,9 @@
+#version 450
+layout(local_size_x = 1) in;
+// 64 dynamic uniform-buffer descriptors exceed common per-layout limits (8 to 32).
+layout(set = 1, binding = 0, std140) uniform Values { uint value; } values[64];
+layout(set = 1, binding = 1, std430) buffer Result { uint value; } result;
+void main()
+{
+    result.value = values[0].value + values[63].value;
+}

@@ -164,9 +164,11 @@ public:
     RHISubmissionTicket SubmitFrame(VectorView<const RHISubmissionGroup> groups,
                                     RHIViewport* viewport,
                                     RefCountPtr<RHISubmissionState> state = {});
-    // Synchronous CPU handoff for standalone graphs; does not end the native frame.
+    // Synchronous CPU handoff for standalone graphs; does not end the native frame. A viewport
+    // is presented after the groups, as SubmitFrame does.
     RHIBatchResult SubmitGroups(VectorView<const RHISubmissionGroup> groups,
-                                RefCountPtr<RHISubmissionState> state);
+                                RefCountPtr<RHISubmissionState> state,
+                                RHIViewport* viewport = nullptr);
     RHISubmissionResult SubmitBatch(VectorView<RHICommandList*> lists);
     // Request one coalesced, nonblocking GPU progress/retirement sweep on RHI.
     // Cached getters do not refresh progress; poll again if work is still in flight.
@@ -233,8 +235,8 @@ public:
     void DestroyBuffer(RHIBuffer* buffer) override;
     IRHICommandContext* GetCommandContext(RHICommandContextType type) override;
     IRHICommandContext* GetTransferCommandContext() override;
-    void FinalizeCommandLists(VectorView<RHICommandList*> lists,
-                              HeapVector<RHIPlatformCommandList*>& output) override;
+    RHIStatus FinalizeCommandLists(VectorView<RHICommandList*> lists,
+                                   HeapVector<RHIPlatformCommandList*>& output) override;
     void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> lists) override;
     RHITextureCopyCapabilities GetTextureCopyCapabilities(DataFormat format) const override;
 
@@ -246,6 +248,11 @@ private:
     bool ValidateGroups(VectorView<const RHISubmissionGroup> groups,
                         const RHISubmissionState& state) const;
     bool ResolvePredecessors(RHICommandList& commands, VectorView<const RHISubmissionPoint> points);
+
+    uint64_t GetAcceptedSerial(const RHICommandList& commands,
+                               RHICommandContextType queue,
+                               uint64_t before) const;
+
     bool ExecuteGroups(RHICommandBatch& batch);
     struct QueueProgress
     {
@@ -254,6 +261,8 @@ private:
     };
 
     void ExecuteFrame(const RefCountPtr<RHICommandBatch>& batch);
+
+    void CancelBatch(const RefCountPtr<RHICommandBatch>& batch);
     RHISubmissionResult ExecuteBatch(VectorView<RHICommandList*> lists);
     void ExecuteBeginFrame();
 

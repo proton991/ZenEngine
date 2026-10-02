@@ -586,7 +586,8 @@ TEST_F(ThreadedRenderCoreTest, WindowsFrameTicketWaitServicesSentMessages)
     rhi->beforeSubmission = {};
     EXPECT_TRUE(queued);
     EXPECT_TRUE(completed);
-    EXPECT_EQ(window.deliveredCount, 2u) << "Win32 error " << window.lastError;
+    // One message per native flush; the frame and its presentation copy share one flush.
+    EXPECT_EQ(window.deliveredCount, 1u) << "Win32 error " << window.lastError;
     EXPECT_EQ(viewport.presents, 1u);
 }
 #endif

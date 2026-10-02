@@ -13,8 +13,9 @@ class RenderDevice;
 
 enum class StagingFlushAction : uint32_t
 {
-    eNone  = 0,
-    eFlush = 1
+    eNone   = 0,
+    eFlush  = 1,
+    eFailed = 2
 };
 
 struct StagingAllocation
@@ -86,7 +87,7 @@ public:
     // its completion gates; the device and staging manager must outlive this call.
     void Destroy();
 
-    void EnqueueBuffer(RHIBuffer* pDstBuffer,
+    bool EnqueueBuffer(RHIBuffer* pDstBuffer,
                        uint32_t dstOffset,
                        uint32_t dataSize,
                        const uint8_t* pData);

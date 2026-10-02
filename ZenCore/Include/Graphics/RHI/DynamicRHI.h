@@ -160,8 +160,9 @@ public:
         return result;
     }
 
-    virtual void FinalizeCommandLists(VectorView<RHICommandList*> cmdLists,
-                                      HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
+    virtual RHIStatus FinalizeCommandLists(
+        VectorView<RHICommandList*> cmdLists,
+        HeapVector<RHIPlatformCommandList*>& outCommandLists) = 0;
 
     virtual void SubmitPlatformCommandLists(VectorView<RHIPlatformCommandList*> commandLists) = 0;
 

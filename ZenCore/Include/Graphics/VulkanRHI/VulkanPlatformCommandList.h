@@ -17,6 +17,7 @@ public:
     {
         m_workloads.clear();
         m_contextWorkloadRanges.clear();
+        m_transactions.clear();
     }
 
 private:
@@ -29,5 +30,6 @@ private:
 
     HeapVector<VulkanWorkload*> m_workloads;
     HeapVector<ContextWorkloadRange> m_contextWorkloadRanges;
+    HeapVector<uint64_t> m_transactions;
 };
 } // namespace zen

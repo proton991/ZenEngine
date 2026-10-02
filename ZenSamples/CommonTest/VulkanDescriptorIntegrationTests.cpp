@@ -426,4 +426,52 @@ TEST_F(VulkanDescriptorIntegrationTest, PackedOffsetsAreBindTimeStateAndExternal
     EXPECT_EQ(Resolve(state, &nextOffset), first);
     EXPECT_GT(nextOffset, firstOffset);
 }
+
+struct PipelineLayoutCounter
+{
+    static inline PFN_vkCreatePipelineLayout create;
+    static inline uint32_t calls;
+
+    static VKAPI_ATTR VkResult VKAPI_CALL Create(VkDevice device,
+                                                 const VkPipelineLayoutCreateInfo* info,
+                                                 const VkAllocationCallbacks* allocator,
+                                                 VkPipelineLayout* layout)
+    {
+        ++calls;
+
+        return create(device, info, allocator, layout);
+    }
+};
+
+TEST_F(VulkanDescriptorIntegrationTest, ShaderOverUniformBufferLimitIsRejectedBeforeNativeCreation)
+{
+    const VkPhysicalDeviceLimits limits =
+        session->rhi.GetDevice()->GetPhysicalDeviceProperties().limits;
+
+    if (limits.maxDescriptorSetUniformBuffersDynamic >= 64)
+    {
+        GTEST_SKIP() << "Device allows " << limits.maxDescriptorSetUniformBuffersDynamic
+                     << " dynamic uniform buffers per pipeline layout";
+    }
+
+    PipelineLayoutCounter::create = vkCreatePipelineLayout;
+    PipelineLayoutCounter::calls  = 0;
+    test::ScopedVulkanCall<PFN_vkCreatePipelineLayout> counted(vkCreatePipelineLayout,
+                                                               PipelineLayoutCounter::Create);
+
+    RHIShaderCreateInfo info{};
+    info.stageFlags.SetFlag(RHIShaderStageFlagBits::eCompute);
+    info.spirvFileName[ToUnderlying(RHIShaderStage::eCompute)] =
+        std::filesystem::relative(std::filesystem::path(RDG_REFLECTION_TEST_PATH) /
+                                      "descriptor_uniform_limit.comp.spv",
+                                  SPV_SHADER_PATH)
+            .generic_string();
+
+    EXPECT_EQ(session->rhi.CreateShader(info), nullptr);
+    EXPECT_EQ(PipelineLayoutCounter::calls, 0u);
+
+    // Four uniform buffers fit every conforming device and still create a native layout.
+    EXPECT_NE(Pipeline("binding_uniform_array.comp.spv"), nullptr);
+    EXPECT_EQ(PipelineLayoutCounter::calls, 1u);
+}
 } // namespace

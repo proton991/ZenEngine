@@ -124,97 +124,159 @@ RHIThread::~RHIThread()
 
 void RHIThread::Start(RHIExecutionMode mode, size_t capacity)
 {
-    if (m_worker.joinable())
-    {
-        throw std::logic_error("The RHI thread is already running");
-    }
-    m_capacity = std::max(size_t(1), capacity);
-    m_stopping = false;
+    VERIFY_EXPR_MSG(!m_worker.joinable(), "The RHI thread is already running");
+
+    m_capacity      = std::max(size_t(1), capacity);
+    m_stopping      = false;
+    m_cleanupClosed = false;
+    m_taskFailed.store(false, std::memory_order_release);
     m_space.Signal();
-    m_threaded = mode == RHIExecutionMode::eThreaded;
-    if (m_threaded)
+    m_threaded.store(mode == RHIExecutionMode::eThreaded, std::memory_order_release);
+
+    if (m_threaded.load(std::memory_order_acquire))
     {
         m_worker = std::thread(&RHIThread::Run, this);
     }
 }
 
-void RHIThread::Stop()
+void RHIThread::Stop(std::function<void()> finalizer)
 {
     if (m_worker.joinable())
     {
         VERIFY_EXPR(s_current != this);
+
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_stopping = true;
+            m_stopping  = true;
+            m_finalizer = std::move(finalizer);
             m_space.Signal();
         }
+
         m_available.notify_all();
 #if defined(ZEN_WIN32)
         WaitForRHIObject(m_worker.native_handle());
 #endif
         m_worker.join();
     }
-    m_threaded = false;
+    else if (finalizer)
+    {
+        Task task{std::move(finalizer), {}, true};
+        ExecuteTask(task);
+    }
+
+    // Standalone inline backends remain supported after an executor lifetime.
+    // Its finalizer must destroy every native resource before returning.
+    m_threaded.store(false, std::memory_order_release);
 }
 
-void RHIThread::Dispatch(std::function<void()> task)
+bool RHIThread::Dispatch(std::function<void()> task, std::function<void()> cancelled)
 {
-    if (!m_threaded || s_current == this)
-    {
-        task();
-    }
-    else
-    {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        while (!m_stopping && m_tasks.Size() >= m_capacity)
-        {
-            // Servicing sent messages can enter a window procedure. Do not hold
-            // the queue mutex while waiting or running that procedure.
-            lock.unlock();
-            m_space.Wait();
-            lock.lock();
-        }
-        if (m_stopping)
-        {
-            throw std::runtime_error("Cannot dispatch work to a stopped RHI thread");
-        }
-        m_tasks.Push(task);
-        if (m_tasks.Size() >= m_capacity)
-        {
-            m_space.Reset();
-        }
-        lock.unlock();
-        m_available.notify_one();
-    }
+    return Enqueue({std::move(task), std::move(cancelled), false}, true);
+}
+
+bool RHIThread::DispatchCleanup(std::function<void()> task)
+{
+    return Enqueue({std::move(task), {}, true}, true);
 }
 
 bool RHIThread::TryDispatch(std::function<void()> task)
 {
+    return Enqueue({std::move(task), {}, false}, false);
+}
+
+bool RHIThread::Enqueue(Task task, bool waitForSpace)
+{
     bool accepted = false;
-    if (!m_threaded || s_current == this)
+
+    if (!m_threaded.load(std::memory_order_acquire) || s_current == this)
     {
-        task();
+        ExecuteTask(task);
         accepted = true;
     }
     else
     {
         std::unique_lock<std::mutex> lock(m_mutex);
-        if (!m_stopping && m_tasks.Size() < m_capacity)
+
+        while (waitForSpace && !task.cleanup && !m_stopping && m_tasks.Size() >= m_capacity)
+        {
+            lock.unlock();
+            m_space.Wait();
+            lock.lock();
+        }
+
+        // Cleanup bypasses capacity so final releases cannot deadlock a draining worker.
+        accepted = task.cleanup ? !m_cleanupClosed : !m_stopping && m_tasks.Size() < m_capacity;
+
+        if (accepted)
         {
             m_tasks.Push(task);
+
             if (m_tasks.Size() >= m_capacity)
             {
                 m_space.Reset();
             }
-            accepted = true;
         }
+
         lock.unlock();
+
         if (accepted)
         {
             m_available.notify_one();
         }
+        else if (task.cancelled)
+        {
+            // Admission rejection completes the caller's event without a queued job.
+            Task cancellation{std::move(task.cancelled), {}, true};
+            ExecuteTask(cancellation);
+        }
     }
+
     return accepted;
+}
+
+void RHIThread::ExecuteTask(Task& task) noexcept
+{
+    bool cancelling = false;
+
+    try
+    {
+        if (task.cleanup || !m_taskFailed.load(std::memory_order_acquire))
+        {
+            task.execute();
+        }
+        else if (task.cancelled)
+        {
+            cancelling = true;
+            task.cancelled();
+        }
+    }
+    catch (...)
+    {
+        m_taskFailed.store(true, std::memory_order_release);
+        std::fprintf(stderr, "ZenEngine: exception contained at RHI task boundary\n");
+
+        if (task.cleanup || cancelling)
+        {
+            VerificationFailure("RHI cleanup or cancellation", __FILE__, __LINE__);
+        }
+
+        if (task.cancelled)
+        {
+            try
+            {
+                task.cancelled();
+            }
+            catch (...)
+            {
+                VerificationFailure("RHI task cancellation", __FILE__, __LINE__);
+            }
+        }
+    }
+}
+
+bool RHIThread::HasTaskFailure() const
+{
+    return m_taskFailed.load(std::memory_order_acquire);
 }
 
 void RHIThread::Fence() {}
@@ -226,20 +288,17 @@ void RHIThread::Flush()
 
 bool RHIThread::IsThreaded() const
 {
-    return m_threaded;
+    return m_threaded.load(std::memory_order_acquire);
 }
 
 bool RHIThread::IsCurrentThread() const
 {
-    return !m_threaded || s_current == this;
+    return !m_threaded.load(std::memory_order_acquire) || s_current == this;
 }
 
 void RHIThread::CheckOwnership() const
 {
-    if (!IsCurrentThread())
-    {
-        throw std::logic_error("Native RHI work must run on the RHI thread");
-    }
+    VERIFY_EXPR_MSG(IsCurrentThread(), "Native RHI work must run on the RHI thread");
 }
 
 void RHIThread::Run()
@@ -251,7 +310,7 @@ void RHIThread::Run()
     bool finished = false;
     while (!finished)
     {
-        std::function<void()> task;
+        Task task;
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             while (m_tasks.Empty() && !m_stopping)
@@ -259,16 +318,29 @@ void RHIThread::Run()
                 m_available.wait(lock);
             }
             finished = m_stopping && m_tasks.Empty();
-            if (!finished)
+
+            if (finished)
             {
-                task = m_tasks.Peek();
-                m_tasks.Pop();
-                m_space.Signal();
+                m_cleanupClosed = true;
+                task            = {std::move(m_finalizer), {}, true};
+            }
+            else
+            {
+                std::optional<Task> pending = m_tasks.TryPop();
+
+                task = std::move(*pending);
+
+                // Cleanup can exceed capacity. Wake producers only once a slot exists, or a
+                // waiting Dispatch would spin on a signaled event while the queue is full.
+                if (m_tasks.Size() < m_capacity)
+                {
+                    m_space.Signal();
+                }
             }
         }
-        if (task)
+        if (task.execute)
         {
-            task();
+            ExecuteTask(task);
         }
     }
     s_current = nullptr;

@@ -117,6 +117,7 @@ private:
     uint32_t m_queueIndex;
 
     HeapVector<FVulkanCommandBufferPool*> m_cmdBufferPools;
+    uint32_t m_acquiredCommandBufferPools{0};
     HeapVector<VulkanWorkload*> m_workloadPool;
     HeapVector<VulkanWorkload*>
         m_abandonedWorkloads; // Uncertain submission; keep until device teardown.

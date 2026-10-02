@@ -112,6 +112,23 @@ public:
         }
     }
 
+    uint64_t GetAllocationCount()
+    {
+        if (m_threadSafe)
+        {
+            m_lock.Lock();
+        }
+
+        const uint64_t count = uint64_t(m_numPagesAllocated) * m_pageSize - m_allocsAvailable;
+
+        if (m_threadSafe)
+        {
+            m_lock.Unlock();
+        }
+
+        return count;
+    }
+
 private:
     void Reset()
     {

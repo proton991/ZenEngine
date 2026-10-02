@@ -1,6 +1,7 @@
 #include "VulkanIntegrationFixture.h"
 #include "ScopedVulkanCall.h"
 #include "Templates/HeapVector.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanDevice.h"
 #include "Graphics/VulkanRHI/VulkanQueue.h"
@@ -46,6 +47,7 @@ struct WSIDriver
     static inline VkResult acquireResult{VK_SUCCESS}, presentResult{VK_SUCCESS},
         createResult{VK_SUCCESS};
     static inline VkSurfaceCapabilitiesKHR caps{};
+    static inline VkFormat surfaceFormat{VK_FORMAT_B8G8R8A8_UNORM};
     static inline HeapVector<VkPresentModeKHR> presentModes;
     static inline uint32_t count{12}, acquireIndex{11}, acquiredCalls{}, presentedCalls{},
         createdCalls{}, destroyedCalls{};
@@ -59,6 +61,7 @@ struct WSIDriver
     {
         native = incomplete = false;
         canPresent          = true;
+        surfaceFormat       = VK_FORMAT_B8G8R8A8_UNORM;
         acquireResult = presentResult = createResult = VK_SUCCESS;
         count                                        = 12;
         acquireIndex                                 = 11;
@@ -122,7 +125,7 @@ struct WSIDriver
         *size = 1;
         if (output)
         {
-            *output = {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+            *output = {surfaceFormat, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
         }
         return VK_SUCCESS;
     }
@@ -525,6 +528,20 @@ TEST_F(VulkanSwapchainIntegrationTest, NegotiatesFixedExtentUnlimitedCountTransf
     EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_FIFO_KHR);
 }
 
+TEST_F(VulkanSwapchainIntegrationTest, SRGBOnlySurfaceUsesAnUnormRenderingBackbuffer)
+{
+    WSIDriver::surfaceFormat = VK_FORMAT_B8G8R8A8_SRGB;
+    Create();
+    EXPECT_EQ(WSIDriver::lastCreate.imageFormat, VK_FORMAT_B8G8R8A8_SRGB);
+    EXPECT_EQ(swapchain->GetBackBufferFormat(), VK_FORMAT_B8G8R8A8_UNORM);
+    swapchain->Destroy(nullptr);
+
+    WSIDriver::surfaceFormat = VK_FORMAT_R8G8B8A8_SRGB;
+    Create();
+    EXPECT_EQ(WSIDriver::lastCreate.imageFormat, VK_FORMAT_R8G8B8A8_SRGB);
+    EXPECT_EQ(swapchain->GetBackBufferFormat(), VK_FORMAT_R8G8B8A8_UNORM);
+}
+
 TEST_F(VulkanSwapchainIntegrationTest, VariableExtentAndFiniteImageLimitAreClamped)
 {
     WSIDriver::caps.currentExtent  = {UINT32_MAX, UINT32_MAX};
@@ -544,7 +561,56 @@ TEST_F(VulkanSwapchainIntegrationTest, VSyncChoicesUseOnlyAdvertisedModes)
     EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_IMMEDIATE_KHR);
     swapchain->Destroy(nullptr);
     Create(true);
+    EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_FIFO_KHR);
+    swapchain->Destroy(nullptr);
+    WSIDriver::presentModes = {VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_MAILBOX_KHR};
+    Create(false);
     EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_MAILBOX_KHR);
+}
+
+TEST_F(VulkanSwapchainIntegrationTest, ExplicitPresentModeOverridesVSyncAndFallsBackToFifo)
+{
+    struct PresentModeGuard
+    {
+        ~PresentModeGuard()
+        {
+            RHIOptions::GetInstance().SetPresentMode(RHIPresentMode::eDefault);
+        }
+    } guard;
+
+    WSIDriver::presentModes = {VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
+                               VK_PRESENT_MODE_IMMEDIATE_KHR};
+    RHIOptions::GetInstance().SetPresentMode(RHIPresentMode::eMailbox);
+    Create(true);
+    EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_MAILBOX_KHR);
+    swapchain->Destroy(nullptr);
+    RHIOptions::GetInstance().SetPresentMode(RHIPresentMode::eFifo);
+    Create(false);
+    EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_FIFO_KHR);
+    swapchain->Destroy(nullptr);
+    // FIFO_RELAXED is not advertised here.
+    RHIOptions::GetInstance().SetPresentMode(RHIPresentMode::eFifoRelaxed);
+    Create(false);
+    EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_FIFO_KHR);
+    swapchain->Destroy(nullptr);
+    WSIDriver::presentModes = {VK_PRESENT_MODE_FIFO_KHR};
+    RHIOptions::GetInstance().SetPresentMode(RHIPresentMode::eImmediate);
+    Create(false);
+    EXPECT_EQ(WSIDriver::lastCreate.presentMode, VK_PRESENT_MODE_FIFO_KHR);
+}
+
+TEST(RHIPresentModeTest, ParsesConfigurationNames)
+{
+    RHIPresentMode mode = RHIPresentMode::eDefault;
+
+    EXPECT_TRUE(ParseRHIPresentMode("fifo_relaxed", mode));
+    EXPECT_EQ(mode, RHIPresentMode::eFifoRelaxed);
+    EXPECT_TRUE(ParseRHIPresentMode("immediate", mode));
+    EXPECT_EQ(mode, RHIPresentMode::eImmediate);
+    EXPECT_TRUE(ParseRHIPresentMode("default", mode));
+    EXPECT_EQ(mode, RHIPresentMode::eDefault);
+    EXPECT_FALSE(ParseRHIPresentMode("vsync", mode));
+    EXPECT_EQ(mode, RHIPresentMode::eDefault);
 }
 
 TEST_F(VulkanSwapchainIntegrationTest, UnsupportedPresentationAndTransferUsageFailBeforeCreation)
@@ -1001,7 +1067,7 @@ TEST_F(VulkanSwapchainIntegrationTest, FailedViewportCreationCleansUpAndAllowsRe
 {
     WSIDriver::native       = true;
     WSIDriver::createResult = VK_ERROR_OUT_OF_HOST_MEMORY;
-    EXPECT_THROW(session->rhi.CreateViewport(window.get(), 64, 64, false), std::runtime_error);
+    EXPECT_EQ(session->rhi.CreateViewport(window.get(), 64, 64, false), nullptr);
     EXPECT_FALSE(session->rhi.AreSubmissionsBlocked());
     WSIDriver::createResult = VK_SUCCESS;
     CreateNativeViewport();

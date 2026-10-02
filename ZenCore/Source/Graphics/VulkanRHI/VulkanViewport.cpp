@@ -44,9 +44,24 @@ RHIViewport* VulkanRHI::CreateViewport(void* pWindow,
                                        bool enableVSync)
 {
     ScopedViewportSurface surface{GetInstance()};
-    surface.info.surface = CreateViewportSurface(pWindow, width, height);
-    return GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height, enableVSync,
-                                 &surface.info);
+    RHIViewport* viewport = nullptr;
+
+    try
+    {
+        surface.info.surface = CreateViewportSurface(pWindow, width, height);
+        viewport = GetRHIThread().Invoke(&VulkanViewport::CreateObject, pWindow, width, height,
+                                         enableVSync, &surface.info);
+    }
+    catch (const std::exception& error)
+    {
+        LOGE("Viewport creation failed: {}", error.what());
+    }
+    catch (...)
+    {
+        LOGE("Viewport creation failed");
+    }
+
+    return viewport;
 }
 
 void VulkanRHI::DestroyViewport(RHIViewport* pViewport)
@@ -69,12 +84,16 @@ VulkanViewport* VulkanViewport::CreateObject(void* pWindow,
     try
     {
         pViewport->Init();
-        pViewport->CreateSwapchain(surfaceInfo);
+        if (!pViewport->CreateSwapchain(surfaceInfo))
+        {
+            pViewport->ReleaseReference();
+            pViewport = nullptr;
+        }
     }
     catch (...)
     {
         pViewport->ReleaseReference();
-        throw;
+        pViewport = nullptr;
     }
 
     return pViewport;
@@ -106,71 +125,79 @@ void VulkanViewport::Destroy()
     VersatileResource::Free(GVulkanRHI->GetResourceAllocator(), this);
 }
 
-void VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
+bool VulkanViewport::CreateSwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
 {
+    bool ready  = true;
     m_suspended = m_width == 0 || m_height == 0;
-    if (m_suspended)
+
+    if (!m_suspended)
     {
-        return;
+
+        m_pSwapchain = ZEN_NEW() VulkanSwapchain(m_width, m_height, m_enableVSync, pRecreateInfo);
+        const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
+        const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
+        if (numImages == 0)
+        {
+            m_suspended = true;
+        }
+        else
+        {
+            const VkExtent2D extent = m_pSwapchain->GetExtent();
+            m_width                 = extent.width;
+            m_height                = extent.height;
+            m_swapchainImages.resize(numImages);
+
+            // Swapchain images belong to the presentation engine until acquired. Their first
+            // transition is recorded by PrepareForPresent after acquisition, with a semaphore
+            // wait before CopyBackBufferToSwapchainImage overwrites the entire image.
+            for (uint32_t i = 0; i < numImages; i++)
+            {
+                m_swapchainImages[i] = pImages[i];
+            }
+
+            RHITextureCreateInfo colorTexInfo{};
+            colorTexInfo.width  = m_width;
+            colorTexInfo.height = m_height;
+            colorTexInfo.format = GetSwapchainFormat();
+            colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
+            colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
+            colorTexInfo.type  = RHITextureType::e2D;
+            colorTexInfo.tag   = "color_back_buffer";
+            m_pColorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
+
+            RHITextureCreateInfo depthStencilTexInfo{};
+            depthStencilTexInfo.width  = m_width;
+            depthStencilTexInfo.height = m_height;
+            depthStencilTexInfo.format = GetDepthStencilFormat();
+            depthStencilTexInfo.usageFlags.SetFlag(
+                RHITextureUsageFlagBits::eDepthStencilAttachment);
+            depthStencilTexInfo.type  = RHITextureType::e2D;
+            depthStencilTexInfo.tag   = "depth_stencil_back_buffer";
+            m_pDepthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
+            FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
+            ready = m_pColorBackBuffer != nullptr && m_pDepthStencilBackBuffer != nullptr &&
+                context.IsValid() && context.EnsureRecording();
+
+            if (ready)
+            {
+                const VkCommandBuffer cmdBuffer = context.GetCommandBuffer()->GetVkHandle();
+                VulkanPipelineBarrier barrier;
+                barrier.AddImageBarrier(m_pColorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
+                                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                        m_pColorBackBuffer->GetVkSubresourceRange());
+                barrier.AddImageBarrier(m_pDepthStencilBackBuffer->GetVkImage(),
+                                        VK_IMAGE_LAYOUT_UNDEFINED,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                                        m_pDepthStencilBackBuffer->GetVkSubresourceRange());
+                barrier.ExecuteImageBarriersOnly(cmdBuffer);
+                ready = context.SubmitRecordedWorkloads() == RHISubmissionResult::eSuccess;
+            }
+
+            m_acquiredImageIndex = -1;
+        }
     }
 
-    m_pSwapchain = ZEN_NEW() VulkanSwapchain(m_width, m_height, m_enableVSync, pRecreateInfo);
-    const VkImage* pImages   = m_pSwapchain->GetSwapchainImages();
-    const uint32_t numImages = m_pSwapchain->GetNumSwapchainImages();
-    if (numImages == 0)
-    {
-        m_suspended = true;
-        return;
-    }
-    const VkExtent2D extent = m_pSwapchain->GetExtent();
-    m_width                 = extent.width;
-    m_height                = extent.height;
-    m_swapchainImages.resize(numImages);
-    FVulkanCommandListContext context(RHICommandContextType::eGraphics, m_pDevice);
-    FVulkanCommandBuffer* pCmdBuffer = context.GetCommandBuffer();
-    VkCommandBuffer cmdBuffer        = pCmdBuffer->GetVkHandle();
-
-    // Swapchain images belong to the presentation engine until acquired. Their first
-    // transition is recorded by PrepareForPresent after acquisition, with a semaphore
-    // wait before CopyBackBufferToSwapchainImage overwrites the entire image.
-    for (uint32_t i = 0; i < numImages; i++)
-    {
-        m_swapchainImages[i] = pImages[i];
-    }
-
-    RHITextureCreateInfo colorTexInfo{};
-    colorTexInfo.width  = m_width;
-    colorTexInfo.height = m_height;
-    colorTexInfo.format = GetSwapchainFormat();
-    colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eColorAttachment);
-    colorTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eTransferSrc);
-    colorTexInfo.type  = RHITextureType::e2D;
-    colorTexInfo.tag   = "color_back_buffer";
-    m_pColorBackBuffer = VulkanTexture::CreateObject(colorTexInfo);
-
-    RHITextureCreateInfo depthStencilTexInfo{};
-    depthStencilTexInfo.width  = m_width;
-    depthStencilTexInfo.height = m_height;
-    depthStencilTexInfo.format = GetDepthStencilFormat();
-    depthStencilTexInfo.usageFlags.SetFlag(RHITextureUsageFlagBits::eDepthStencilAttachment);
-    depthStencilTexInfo.type  = RHITextureType::e2D;
-    depthStencilTexInfo.tag   = "depth_stencil_back_buffer";
-    m_pDepthStencilBackBuffer = VulkanTexture::CreateObject(depthStencilTexInfo);
-    // add image barriers, transfer back buffer layout
-    VulkanPipelineBarrier barrier;
-    barrier.AddImageBarrier(m_pColorBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            m_pColorBackBuffer->GetVkSubresourceRange());
-    barrier.AddImageBarrier(m_pDepthStencilBackBuffer->GetVkImage(), VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                            m_pDepthStencilBackBuffer->GetVkSubresourceRange());
-    barrier.ExecuteImageBarriersOnly(cmdBuffer);
-    if (context.SubmitRecordedWorkloads() != RHISubmissionResult::eSuccess)
-    {
-        LOG_ERROR_AND_THROW("Failed to initialize viewport backbuffer layouts");
-    }
-
-    m_acquiredImageIndex = -1;
+    return ready;
 }
 
 void VulkanViewport::DestroySwapchain(VulkanSwapchainRecreateInfo* pRecreateInfo)
@@ -246,7 +273,14 @@ bool VulkanViewport::BeginResize(uint32_t width,
 void VulkanViewport::FinishResize(VulkanSwapchainRecreateInfo* recreateInfo)
 {
     ASSERT(GetRHIThread().IsCurrentThread());
-    CreateSwapchain(recreateInfo);
+    if (!CreateSwapchain(recreateInfo))
+    {
+        DestroySwapchain(nullptr);
+        m_suspended = true;
+        GVulkanRHI->BlockSubmissions();
+        LOGE("Viewport backbuffer recreation failed");
+    }
+
     VERIFY_EXPR(recreateInfo->surface == VK_NULL_HANDLE);
     VERIFY_EXPR(recreateInfo->swapchain == VK_NULL_HANDLE);
 }
@@ -294,6 +328,11 @@ void VulkanViewport::CopyBackBufferToSwapchainImage(VkCommandBuffer cmdBufferVk,
                             VK_PIPELINE_STAGE_TRANSFER_BIT,
                         VK_PIPELINE_STAGE_TRANSFER_BIT);
     }
+
+    // CreateSwapchain sizes the backbuffer to the negotiated extent. A blit to an
+    // sRGB image would encode gamma again, unlike the format-compatible byte copy.
+    VERIFY_EXPR(m_pSwapchain->GetFormat() == m_pSwapchain->GetBackBufferFormat() ||
+                (m_width == windowWidth && m_height == windowHeight));
 
     if (m_width != windowWidth || m_height != windowHeight)
     {
@@ -376,13 +415,19 @@ void VulkanViewport::PrepareForPresent(RHICommandList* pCommandList)
 
         const VkExtent2D extent = m_pSwapchain->GetExtent();
 
+        // The wait must precede the copy's command buffer to stay in the same workload.
         pContext->AddWaitSemaphore(VK_PIPELINE_STAGE_TRANSFER_BIT, m_pImageAcquiredSemaphore);
 
-        CopyBackBufferToSwapchainImage(pContext->GetCommandBuffer()->GetVkHandle(),
-                                       m_swapchainImages[m_acquiredImageIndex], extent.width,
-                                       extent.height);
+        // A failed recording rejects the whole batch, which discards the unsubmitted wait.
+        // Record nothing into its native buffer; the acquired image stays held for a retry.
+        if (pContext->EnsureRecording())
+        {
+            CopyBackBufferToSwapchainImage(pContext->GetCommandBuffer()->GetVkHandle(),
+                                           m_swapchainImages[m_acquiredImageIndex], extent.width,
+                                           extent.height);
 
-        pContext->AddSignalSemaphore(pRenderingCompleteSemaphore);
+            pContext->AddSignalSemaphore(pRenderingCompleteSemaphore);
+        }
     }
     else
     {

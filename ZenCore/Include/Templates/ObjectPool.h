@@ -76,10 +76,17 @@ public:
         else
         {
             pObject = Policy::Create();
-            m_allObjects.push_back(pObject);
+            if (pObject != nullptr)
+            {
+                m_allObjects.push_back(pObject);
+            }
         }
 
-        Policy::Reset(pObject);
+        if (pObject != nullptr)
+        {
+            Policy::Reset(pObject);
+        }
+
         return pObject;
     }
 

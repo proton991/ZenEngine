@@ -424,7 +424,10 @@ TEST_P(VulkanQueueWaitTest, DeviceLossDoesNotInventASubmissionSerial)
         EXPECT_EQ(queue.GetLastSubmittedSerial(), 3u);
         EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
         queue.DiscardPendingWorkloads(true);
-        EXPECT_TRUE(queue.WaitForCompletion(3, UINT64_MAX));
+        // Device loss is terminal even when the injection did not lose the real device.
+        EXPECT_FALSE(queue.WaitForCompletion(3, UINT64_MAX));
+        EXPECT_TRUE(GVulkanRHI->AreSubmissionsBlocked());
+        EXPECT_EQ(queue.GetLastCompletedSerial(), 0u);
     });
 }
 

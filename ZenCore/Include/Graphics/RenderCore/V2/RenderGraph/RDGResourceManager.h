@@ -254,6 +254,10 @@ public:
     // allAvailable also drops obsolete extent/descriptor families after resize.
     bool TrimPool(bool allAvailable = false);
 
+    // For memory pressure: also retires available entries that the newest pooled build did not
+    // use. That build's working set stays pooled, so repeated calls do not rebuild it.
+    bool TrimIdlePoolEntries();
+
     void Destroy(RenderDevice* pDevice);
 
 private:
@@ -466,6 +470,8 @@ private:
     RHIResource* AcquirePoolEntry(HeapVector<PoolEntry>& entries);
 
     void RetirePoolEntry(const PoolEntry& entry);
+
+    bool RetirePoolEntries(bool allAvailable, bool unusedByNewestBuild);
 
     RDGPoolConfig m_poolConfig;
     uint64_t m_poolHits{0}, m_poolMisses{0}, m_poolEvictions{0};
