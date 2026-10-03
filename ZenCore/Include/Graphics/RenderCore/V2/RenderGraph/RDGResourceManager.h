@@ -45,10 +45,16 @@ struct RDGBufferDesc
 
 // Payload estimates, excluding native allocation alignment/metadata. The budget limits idle
 // cache ownership, not live graph resources, extracted owners, or pending GPU retirement.
+// steadyBuilds keeps every available allocation used by the last N builds, including the
+// current one, regardless of the budget and of memory-pressure trims, so available bytes may
+// exceed the budget. A graph rebuilt once per frame slot sets N to the slot count: its
+// alternating per-slot working sets then stay pooled instead of being recreated every frame.
+// Older allocations follow the budget and idle-age rules; TrimPool(true) still releases all.
 struct RDGPoolConfig
 {
     uint64_t budgetBytes{256ull * 1024 * 1024};
     uint64_t maxIdleBuilds{120};
+    uint64_t steadyBuilds{0};
 };
 struct RDGPoolStats
 {
@@ -240,6 +246,11 @@ public:
 
     bool SetPoolConfig(const RDGPoolConfig& config);
 
+    const RDGPoolConfig& GetPoolConfig() const
+    {
+        return m_poolConfig;
+    }
+
     RDGPoolStats GetPoolStats() const;
 
     HeapVector<RDGPoolBucketStats> GetPoolBuckets() const;
@@ -248,7 +259,8 @@ public:
     bool TrimPool(bool allAvailable = false);
 
     // For memory pressure: also retires available entries that the newest pooled build did not
-    // use. That build's working set stays pooled, so repeated calls do not rebuild it.
+    // use, outside the steadyBuilds window. That working set stays pooled, so repeated calls do
+    // not rebuild it.
     bool TrimIdlePoolEntries();
 
     void Destroy(RenderDevice* pDevice);

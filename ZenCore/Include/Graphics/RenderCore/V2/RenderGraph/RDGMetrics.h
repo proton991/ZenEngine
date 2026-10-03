@@ -228,6 +228,9 @@ struct RDGMetricsSnapshot
     uint64_t                assignedTransientBytes{0};
     uint64_t                availableTransientBytes{0};
     uint64_t                retiringTransientBytes{0};
+    uint64_t                poolHits{0}; // Cumulative over the graph's lifetime, including this preparation.
+    uint64_t                poolMisses{0};
+    uint64_t                poolEvictions{0};
     uint32_t                dependencyHazards{0};
     uint32_t                reorderedNodes{0};
     uint32_t                nodeCount{0};

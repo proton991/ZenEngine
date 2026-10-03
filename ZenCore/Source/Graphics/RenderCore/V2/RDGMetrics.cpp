@@ -884,6 +884,12 @@ void RDGMetrics::Compiled(RenderGraph&                 graph,
 
         m_snapshot.retiringTransientBytes  = pool.retiringBytes;
 
+        m_snapshot.poolHits                = pool.hits;
+
+        m_snapshot.poolMisses              = pool.misses;
+
+        m_snapshot.poolEvictions           = pool.evictions;
+
         for (uint32_t i = 0; i < graph.m_resourceManager.m_resources.size(); ++i)
         {
             const RDGResourceManager::Allocation* resource = graph.m_resourceManager.FindResourceByIdx(i);
@@ -1580,9 +1586,11 @@ std::string RDGMetrics::Format(const RDGMetricsSnapshot& sample)
         sample.precompiled, sample.validated, sample.preparationPasses);
 
     text += fmt::format(" liveness(culled={},reused_allocations={}) "
-                        "pool_estimated_bytes(assigned={},available={},retiring={})",
+                        "pool_estimated_bytes(assigned={},available={},retiring={}) "
+                        "pool_total(hits={},misses={},evictions={})",
                         sample.culledPasses, sample.reusedAllocations, sample.assignedTransientBytes,
-                        sample.availableTransientBytes, sample.retiringTransientBytes);
+                        sample.availableTransientBytes, sample.retiringTransientBytes, sample.poolHits, sample.poolMisses,
+                        sample.poolEvictions);
 
     text += fmt::format(" schedule(groups={},multiple_queues={},allocation_reuse={})", sample.plannedGroups,
                         sample.plannedMultipleQueues, sample.allowsAllocationReuse);

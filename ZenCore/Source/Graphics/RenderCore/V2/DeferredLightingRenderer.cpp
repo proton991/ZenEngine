@@ -6,7 +6,7 @@
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RenderCore/V2/RenderConfig.h"
+#include "Platform/ConfigLoader.h"
 #include "Graphics/RenderCore/V2/RenderResource.h"
 #include "Graphics/RenderCore/V2/ShaderProgram.h"
 #include "Graphics/RenderCore/V2/ComputeDispatch.h"
@@ -228,10 +228,18 @@ void DeferredLightingRenderer::BuildGBufferGraph()
 
     VERIFY_EXPR(pRDG != nullptr && m_pScene != nullptr);
 
-    if (!UsesForwardMaterials())
-    {
-        const uint32_t offscreenSize = RenderConfig::GetInstance().offScreenFbSize;
+    const uint32_t width  = m_pViewport->GetWidth();
 
+    const uint32_t height = m_pViewport->GetHeight();
+
+    // One texel per screen pixel: the lighting pass reads the G-buffer at its own fragment
+    // coordinate. A suspended (zero-sized) viewport renders nothing and declares no G-buffer.
+    const bool declared = width != 0 && height != 0 && !UsesForwardMaterials();
+
+    m_gbufferExtent     = declared ? glm::uvec2(width, height) : glm::uvec2(0, 0);
+
+    if (declared)
+    {
         RHIGfxPipelineStates pso{};
 
         pso.rasterizationState          = {};
@@ -250,22 +258,22 @@ void DeferredLightingRenderer::BuildGBufferGraph()
 
         offscreen.SetShaderProgramName("GBufferSP");
 
-        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize, "offscreen_position");
+        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_position");
 
-        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize, "offscreen_normal");
+        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_normal");
 
-        offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, offscreenSize, offscreenSize, "offscreen_albedo");
+        offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, width, height, "offscreen_albedo");
 
-        offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, offscreenSize, offscreenSize, "offscreen_roughness");
+        offscreen.AddColorOutput(DataFormat::eR8G8B8A8UNORM, width, height, "offscreen_roughness");
 
-        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, offscreenSize, offscreenSize, "offscreen_emissive_occlusion");
+        offscreen.AddColorOutput(DataFormat::eR16G16B16A16SFloat, width, height, "offscreen_emissive_occlusion");
 
-        offscreen.AddDepthStencilOutput(m_pViewport->GetDepthStencilFormat(), offscreenSize, offscreenSize, "offscreen_depth",
+        offscreen.AddDepthStencilOutput(m_pViewport->GetDepthStencilFormat(), width, height, "offscreen_depth",
                                         RHIRenderTargetLoadOp::eClear, RHIRenderTargetStoreOp::eStore);
 
         offscreen.SetPipelineStates(pso);
 
-        offscreen.SetRenderArea(0, 0, offscreenSize, offscreenSize);
+        offscreen.SetRenderArea(0, 0, width, height);
 
         offscreen.SetPassTag("OffScreen");
 

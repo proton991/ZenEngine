@@ -40,10 +40,10 @@ The engine does not use exceptions. A broken invariant or a missing required eng
 | 5.3 | Gated | Synchronization2 | M | Improvement plan 9.2 | Render-graph Phase 4 |
 | 5.9 | Deferred | Global singletons | L | Improvement plan 9.2 | A concrete need |
 | 5.1 B, 5.2, 5.4 | Deferred | Presentation copy removal, one submit per frame, per-frame pools | — | Improvement plan 9.2 | Gates closed |
-| 5.5 | RenderCore | Per-frame descriptor miss | S–M | Improvement plan 9.2 | [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) |
+| 5.5 | RenderCore | Per-frame descriptor miss | S–M | Improvement plan 9.2 | Done 2026-10-03 ([verification](RenderCoreImprovementVerification.md)) |
 | H1 | Housekeeping | Ignored `FinalizeCommandLists` results in tests | S | Improvement plan 9.2 | Checked during error-handling migration |
 
-R17, R18, R21, R22, R23 and 5.10 are done. On the final tree, clean Debug and Release builds pass all four acceptance suites (CommonTest 112, RenderCoreTest 557, VulkanRHITest 48, VulkanRHIIntegrationTest 336 in Debug and 337 in Release, with 6 capability skips), every other test executable and all 24 smoke runs, with no validation errors. Captures for all three rendering modes are byte-identical to the R22 baseline. Hardware coverage remains limited to the RX 7900 XT; see the per-item verification records for results and capability skips.
+R17, R18, R21, R22, R23 and 5.10 are done; 5.5 was fixed in RenderCore afterwards ([verification](RenderCoreImprovementVerification.md)). On the final tree of the R-items, clean Debug and Release builds pass all four acceptance suites (CommonTest 112, RenderCoreTest 557, VulkanRHITest 48, VulkanRHIIntegrationTest 336 in Debug and 337 in Release, with 6 capability skips), every other test executable and all 24 smoke runs, with no validation errors. Captures for all three rendering modes are byte-identical to the R22 baseline. Hardware coverage remains limited to the RX 7900 XT; see the per-item verification records for results and capability skips.
 
 The RHI is ready for a shipped Windows desktop product when the remaining Blocker items (R19, R20, R7 and R8) are done and R24 is done or accepted with a recorded reason. The Gated and Deferred items decide whether the RHI can serve as a general-purpose engine RHI. They do not block a product whose content fits the current limits.
 
@@ -339,11 +339,11 @@ Revisit these items only if the workload changes, for example if steady frames s
 
 ### 5.5. Per-frame descriptor miss
 
-**Status.** Diagnosed; the fix belongs to RenderCore.
+**Status.** Done 2026-10-03 through Phases 0–2 of [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md); [verification](RenderCoreImprovementVerification.md). Steady-state frames record zero descriptor-cache misses and zero render-graph pool misses at 720p, 1440p and the former 4096² stress size.
 
-**Problem.** The deferred-lighting descriptor set misses the cache every frame. The render graph's 256 MiB transient-pool budget is smaller than two frame slots of the default 2048² G-buffer, so each trim evicts `offscreen_albedo` and `offscreen_roughness`.
+**Problem (original).** The deferred-lighting descriptor set missed the cache every frame. The render graph's 256 MiB transient-pool budget was smaller than two frame slots of the default 2048² G-buffer, so each trim evicted `offscreen_albedo` and `offscreen_roughness`.
 
-**Remaining work.** The fix is a larger budget and a screen-sized G-buffer, planned in [RenderCoreImprovementPlan.md](RenderCoreImprovementPlan.md) (proposed).
+**Fix.** The frame graph keeps every allocation used by its last `numFrames` builds pooled regardless of the budget (`RDGPoolConfig::steadyBuilds`), and the G-buffer now matches the viewport and is read with `texelFetch`. `--gbuffer-size` was removed.
 
 **Done when** steady-state frames record zero descriptor-cache misses.
 
@@ -359,4 +359,4 @@ Revisit these items only if the workload changes, for example if steady frames s
 2. **R17 and 5.10 are implemented.** Preserve their error/lifetime contracts when scheduling 5.9; do not interleave a singleton redesign with further executor changes.
 3. **R24.** R22 and R23 are done.
 4. **R7 and R8** whenever hardware is available. Repeat R8 after step 2.
-5. **Gated items** when their gates open: R10 (measure resize first), R11, R13, R14 and 5.3. 5.5 follows the RenderCore plan.
+5. **Gated items** when their gates open: R10 (measure resize first), R11, R13, R14 and 5.3. 5.5 is done.

@@ -55,7 +55,7 @@ def main():
         help='Use API timestamps for cold captures that exceed hardware-event storage')
     parser.add_argument('--thread', type=int, choices=(0, 1), default=0)
     parser.add_argument('--async-compute', type=int, choices=(0, 1), default=0)
-    parser.add_argument('--gbuffer', type=int, default=2048)
+    # The G-buffer matches the window; vary pixel load with the window size.
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
     args = parser.parse_args()
@@ -72,8 +72,8 @@ def main():
     demo_arguments = ['--mode=3', f'--frames={max(240, args.warmup+args.frames+80)}',
         '--disable-rt', '--disable-validation', '--gpu-markers', '--gpu-memory-stats', '--fixed-step',
         f'--gi-start-frame={args.gi_start_frame}', f'--rhi-thread={args.thread}',
-        f'--async-compute={args.async_compute}', f'--gbuffer-size={args.gbuffer}',
-        f'--width={args.width}', f'--height={args.height}', f'--frame-times={out / "cpu-frames.csv"}']
+        f'--async-compute={args.async_compute}', f'--width={args.width}', f'--height={args.height}',
+        f'--frame-times={out / "cpu-frames.csv"}']
     if args.motion_fixture:
         demo_arguments.append('--gi-motion-fixture')
     arguments = subprocess.list2cmdline(demo_arguments)

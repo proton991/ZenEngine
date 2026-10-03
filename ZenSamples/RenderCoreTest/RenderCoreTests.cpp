@@ -1669,8 +1669,7 @@ protected:
     void          AllocateRendererInputs(int                      epoch,
                                          TestViewport&            viewport,
                                          HeapVector<RHIBuffer*>&  ownedBuffers,
-                                         HeapVector<RHITexture*>& ownedTextures,
-                                         RenderConfig&            config);
+                                         HeapVector<RHITexture*>& ownedTextures);
     TestRHI*      rhi;
     RenderDevice* device;
 };
@@ -4129,8 +4128,7 @@ TEST_F(RenderCoreTest, VoxelOwnersResetBeforeFirstAndRequestedVoxelizations)
 void RenderCoreTest::AllocateRendererInputs(int                      epoch,
                                             TestViewport&            viewport,
                                             HeapVector<RHIBuffer*>&  ownedBuffers,
-                                            HeapVector<RHITexture*>& ownedTextures,
-                                            RenderConfig&            config)
+                                            HeapVector<RHITexture*>& ownedTextures)
 {
     sceneInputs.vertices  = Buffer();
 
@@ -4202,8 +4200,6 @@ void RenderCoreTest::AllocateRendererInputs(int                      epoch,
     ownedTextures.push_back(viewport.depth);
 
     viewport.Resize(8 + epoch * 8, 8 + epoch * 4);
-
-    config.offScreenFbSize = 4 + epoch * 4;
 }
 
 static bool IsResourceBound(const TestContext& context, RHIResource* resource)
@@ -4247,17 +4243,13 @@ TEST_F(RenderCoreTest, LightingCaptureRejectsInvalidTargetsAndRetriesWithoutCopy
 
     CreateTestShaderProgram(device, "ClearLightingCaptureSP");
 
-    RenderConfig& config          = RenderConfig::GetInstance();
-
-    const uint32_t previousExtent = config.offScreenFbSize;
-
     TestViewport viewport;
 
     HeapVector<RHIBuffer*> buffers;
 
     HeapVector<RHITexture*> textures;
 
-    AllocateRendererInputs(0, viewport, buffers, textures, config);
+    AllocateRendererInputs(0, viewport, buffers, textures);
 
     sg::Scene source;
 
@@ -4349,8 +4341,6 @@ TEST_F(RenderCoreTest, LightingCaptureRejectsInvalidTargetsAndRetriesWithoutCopy
 
     EXPECT_FALSE(lighting.WasLightingCaptureRecorded());
 
-    config.offScreenFbSize = previousExtent;
-
     for (RHIBuffer* buffer : buffers)
     {
         device->DestroyBuffer(buffer);
@@ -4401,27 +4391,13 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
     metrics.SetSink({});
 
-    RenderConfig& config                 = RenderConfig::GetInstance();
-
-    const uint32_t originalOffscreenSize = config.offScreenFbSize;
-
-    struct RestoreConfig
-    {
-        uint32_t size;
-
-        ~RestoreConfig()
-        {
-            RenderConfig::GetInstance().offScreenFbSize = size;
-        }
-    } restore{originalOffscreenSize};
-
     TestViewport viewport;
 
     HeapVector<RHIBuffer*> ownedBuffers;
 
     HeapVector<RHITexture*> ownedTextures;
 
-    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures, config);
+    AllocateRendererInputs(0, viewport, ownedBuffers, ownedTextures);
 
     sg::Scene source;
 
@@ -4467,7 +4443,7 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
     {
         if (frame == 1)
         {
-            AllocateRendererInputs(1, viewport, ownedBuffers, ownedTextures, config);
+            AllocateRendererInputs(1, viewport, ownedBuffers, ownedTextures);
 
             scene.PrepareBuffers();
 
@@ -4611,9 +4587,23 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
 
         EXPECT_EQ(offscreen.numColorRenderTargets, 5u);
 
-        EXPECT_EQ(offscreen.renderArea.maxX, config.offScreenFbSize);
+        // The G-buffer follows the viewport, including after the frame-1 resize.
+        EXPECT_EQ(lighting.GetGBufferExtent(), glm::uvec2(viewport.GetWidth(), viewport.GetHeight()));
 
-        EXPECT_EQ(offscreen.colorRenderTargets[0].pTexture->GetWidth(), config.offScreenFbSize);
+        EXPECT_EQ(offscreen.renderArea.maxX, viewport.GetWidth());
+
+        EXPECT_EQ(offscreen.renderArea.maxY, viewport.GetHeight());
+
+        for (uint32_t target = 0; target < offscreen.numColorRenderTargets; ++target)
+        {
+            EXPECT_EQ(offscreen.colorRenderTargets[target].pTexture->GetWidth(), viewport.GetWidth());
+
+            EXPECT_EQ(offscreen.colorRenderTargets[target].pTexture->GetHeight(), viewport.GetHeight());
+        }
+
+        EXPECT_EQ(offscreen.depthStencilRenderTarget.pTexture->GetWidth(), viewport.GetWidth());
+
+        EXPECT_EQ(offscreen.depthStencilRenderTarget.pTexture->GetHeight(), viewport.GetHeight());
 
         EXPECT_NE(std::find(context.vertexBuffers.begin(), context.vertexBuffers.end(), sceneInputs.vertices),
                   context.vertexBuffers.end());
@@ -4706,6 +4696,104 @@ TEST_F(RenderCoreTest, RenderersRebuildCurrentBindingsTargetsAndSnapshotDrawData
     {
         device->DestroyBuffer(buffer);
     }
+}
+
+TEST_F(RenderCoreTest, GBufferFollowsTheViewportAndIsNotDeclaredWhileSuspended)
+{
+    RHIShaderCreateInfo shader;
+
+    shader.stageFlags.SetFlags(RHIShaderStageFlagBits::eVertex, RHIShaderStageFlagBits::eFragment);
+
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eVertex)]   = "SceneRenderer/offscreen.vert.spv";
+
+    shader.spirvFileName[ToUnderlying(RHIShaderStage::eFragment)] = "SceneRenderer/offscreen.frag.spv";
+
+    reflectedShaderInfos["GBufferSP"]                             = shader;
+
+    CreateTestShaderProgram(device, "GBufferSP");
+
+    TestViewport viewport;
+
+    HeapVector<RHIBuffer*> buffers;
+
+    HeapVector<RHITexture*> textures;
+
+    AllocateRendererInputs(0, viewport, buffers, textures);
+
+    sg::Scene source;
+
+    SceneData data{};
+
+    data.pScene = &source;
+
+    RenderScene scene(device, data);
+
+    DeferredLightingRenderer lighting(device, &viewport);
+
+    lighting.Init();
+
+    lighting.SetRenderScene(&scene);
+
+    RenderGraph& graph = *device->GetCurrentFrameRDG();
+
+    // Odd and non-square extents, then minimized, then restored.
+    const glm::uvec2 extents[] = {{8, 8}, {13, 7}, {0, 0}, {13, 7}};
+
+    for (const glm::uvec2& extent : extents)
+    {
+        SCOPED_TRACE(testing::Message() << extent.x << "x" << extent.y);
+
+        viewport.Resize(extent.x, extent.y);
+
+        ASSERT_TRUE(graph.Begin());
+
+        lighting.BuildGBufferGraph();
+
+        EXPECT_EQ(lighting.GetGBufferExtent(), extent);
+
+        ASSERT_TRUE(graph.End());
+
+        rhi->graphics.renderingLayouts.clear();
+
+        ASSERT_TRUE(device->ExecuteRenderGraph(graph)) << graph.GetResult().message;
+
+        const bool suspended = extent.x == 0;
+
+        ASSERT_EQ(rhi->graphics.renderingLayouts.size(), suspended ? 0u : 1u);
+
+        if (!suspended)
+        {
+            const RHIRenderingLayout& layout = rhi->graphics.renderingLayouts[0];
+
+            EXPECT_EQ(layout.numColorRenderTargets, 5u);
+
+            EXPECT_EQ(layout.renderArea.maxX, extent.x);
+
+            EXPECT_EQ(layout.renderArea.maxY, extent.y);
+
+            EXPECT_EQ(layout.depthStencilRenderTarget.pTexture->GetWidth(), extent.x);
+
+            EXPECT_EQ(layout.depthStencilRenderTarget.pTexture->GetHeight(), extent.y);
+        }
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+    }
+
+    lighting.Destroy();
+
+    for (RHIBuffer* buffer : buffers)
+    {
+        device->DestroyBuffer(buffer);
+    }
+
+    for (RHITexture* texture : textures)
+    {
+        device->DestroyTexture(texture);
+    }
+
+    sceneInputs = {};
 }
 
 TEST_F(RenderCoreTest, VoxelRadianceResourcesAreAllocatedOnlyOnDemand)
@@ -13202,6 +13290,226 @@ TEST_F(RenderCoreTest, IdlePoolTrimKeepsTheNewestBuildWorkingSet)
     EXPECT_EQ(resources->GetPoolStats().misses, 2u);
 
     EXPECT_EQ(resources->GetPoolStats().hits, 1u);
+}
+
+TEST_F(RenderCoreTest, SteadyPoolKeepsEveryFrameSlotWorkingSetAboveTheBudget)
+{
+    // Two same-sized targets per frame, like the G-buffer's RGBA8 pair. The budget holds
+    // one slot's pair and half of another, as the default budget did for the 2048² G-buffer.
+    constexpr uint64_t slotBytes   = 2 * 8 * 8 * 4;
+
+    constexpr uint32_t frameCount  = 8;
+
+    constexpr uint64_t targetCount = 2;
+
+    struct Case
+    {
+        uint32_t slots;
+        uint64_t steadyBuilds;
+        bool     pressure; // Trim idle entries before every build, as RenderDevice does under memory pressure.
+    };
+
+    for (const Case& test : {Case{2, 0, false}, Case{2, 2, false}, Case{3, 0, true}, Case{3, 3, true}})
+    {
+        SCOPED_TRACE(testing::Message() << "slots=" << test.slots << " steady=" << test.steadyBuilds);
+
+        RenderGraph graph("steady_pool");
+
+        RDGResourceManager* resources = graph.GetResourceManager();
+
+        ASSERT_TRUE(resources->SetPoolConfig({slotBytes + slotBytes / 2, 120, test.steadyBuilds}));
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+
+        const std::array<uint64_t, 3> initial = rhi->submitted;
+
+        HeapVector<std::array<uint64_t, 3>> frames;
+
+        for (uint32_t frame = 0; frame < frameCount; ++frame)
+        {
+            if (test.pressure)
+            {
+                ASSERT_TRUE(resources->TrimIdlePoolEntries());
+            }
+
+            ASSERT_TRUE(graph.Begin());
+
+            RDGTextureDesc albedo    = LogicalTexture();
+
+            albedo.name              = "steady_albedo";
+
+            RDGTextureDesc roughness = LogicalTexture();
+
+            roughness.name           = "steady_roughness";
+
+            graph.AddTransferPass("fill_slot_targets")
+                .NeverCull()
+                .ClearTexture(resources->CreateTexture(albedo), Color(0.f))
+                .ClearTexture(resources->CreateTexture(roughness), Color(0.f));
+
+            ASSERT_TRUE(graph.End());
+
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+            frames.push_back(rhi->submitted);
+
+            // The newest slots - 1 frames stay in flight while the next frame is built.
+            rhi->completed = frame + 1 >= test.slots ? frames[frame + 1 - test.slots] : initial;
+
+            device->CollectCompletedResources();
+        }
+
+        const RDGPoolStats stats = resources->GetPoolStats();
+
+        if (test.steadyBuilds == 0)
+        {
+            // Today's budget-only policy recreates part of the working set every frame.
+            EXPECT_GT(stats.misses, test.slots * targetCount);
+
+            EXPECT_GT(stats.evictions, 0u);
+        }
+        else
+        {
+            // One set per slot during warm-up, then every frame reuses a pooled set.
+            EXPECT_EQ(stats.misses, test.slots * targetCount);
+
+            EXPECT_EQ(stats.hits, (frameCount - test.slots) * targetCount);
+
+            EXPECT_EQ(stats.evictions, 0u);
+
+            EXPECT_EQ(stats.allocatedBytes, test.slots * slotBytes);
+
+            EXPECT_GT(stats.allocatedBytes, resources->GetPoolConfig().budgetBytes);
+        }
+
+        rhi->completed = rhi->submitted;
+
+        device->CollectCompletedResources();
+    }
+}
+
+TEST_F(RenderCoreTest, SteadyPoolTrimsOlderAllocationsByBudgetAndIdleAge)
+{
+    // Build 0 also uses a 16 × 16 target (1024 bytes); later builds use only the 8 × 8 one.
+    for (const bool budgetLimited : {true, false})
+    {
+        SCOPED_TRACE(budgetLimited);
+
+        RenderGraph graph("steady_pool_ageing");
+
+        RDGResourceManager* resources = graph.GetResourceManager();
+
+        ASSERT_TRUE(resources->SetPoolConfig({budgetLimited ? 256u : 4096u, 3, 2}));
+
+        // Available entries after each Begin, which pools and trims the previous build.
+        const uint32_t expected[2][6] = {{0, 2, 2, 1, 1, 1}, {0, 2, 2, 2, 2, 1}};
+
+        for (uint32_t frame = 0; frame < 6; ++frame)
+        {
+            SCOPED_TRACE(frame);
+
+            ASSERT_TRUE(graph.Begin());
+
+            const RDGPoolStats stats = resources->GetPoolStats();
+
+            EXPECT_EQ(stats.availableCount, expected[budgetLimited ? 0 : 1][frame]);
+
+            if (frame == 1)
+            {
+                // Within the steady window the idle target is kept above the budget.
+                EXPECT_EQ(stats.availableBytes, 256u + 1024u);
+            }
+
+            const RDGTexture texture = resources->CreateTexture(LogicalTexture());
+
+            if (frame == 0)
+            {
+                RDGTextureDesc large  = LogicalTexture();
+
+                large.texFormat.width = large.texFormat.height = 16;
+
+                graph.AddTransferPass("fill_targets")
+                    .NeverCull()
+                    .ClearTexture(texture, Color(0.f))
+                    .ClearTexture(resources->CreateTexture(large), Color(0.f));
+            }
+            else
+            {
+                graph.AddTransferPass("fill_target").NeverCull().ClearTexture(texture, Color(0.f));
+            }
+
+            ASSERT_TRUE(graph.End());
+
+            ASSERT_TRUE(device->ExecuteRenderGraph(graph));
+
+            rhi->completed = rhi->submitted;
+
+            device->CollectCompletedResources();
+        }
+
+        // Budget-limited: evicted once it leaves the window. Otherwise: once it exceeds the idle age.
+        EXPECT_EQ(resources->GetPoolStats().evictions, 1u);
+
+        EXPECT_EQ(resources->GetPoolStats().misses, 2u);
+    }
+}
+
+TEST_F(RenderCoreTest, FullTrimAndResizeReleaseTheFrameGraphsSteadyWorkingSet)
+{
+    RenderGraph* graph            = device->GetCurrentFrameRDG();
+
+    RDGResourceManager* resources = graph->GetResourceManager();
+
+    // The frame graph keeps one build per frame slot; the fixture device has two slots.
+    EXPECT_EQ(resources->GetPoolConfig().steadyBuilds, 2u);
+
+    EXPECT_EQ(resources->GetPoolConfig().budgetBytes, RDGPoolConfig{}.budgetBytes);
+
+    EXPECT_EQ(resources->GetPoolConfig().maxIdleBuilds, RDGPoolConfig{}.maxIdleBuilds);
+
+    // Without a budget, everything still pooled is held only by the steady window.
+    ASSERT_TRUE(resources->SetPoolConfig({0, 120, 2}));
+
+    for (const bool resize : {false, true})
+    {
+        SCOPED_TRACE(resize);
+
+        for (uint32_t frame = 0; frame < 3; ++frame)
+        {
+            ASSERT_TRUE(graph->Begin());
+
+            graph->AddTransferPass("fill_target")
+                .NeverCull()
+                .ClearTexture(resources->CreateTexture(LogicalTexture()), Color(0.f));
+
+            ASSERT_TRUE(graph->End());
+
+            ASSERT_TRUE(device->ExecuteRenderGraph(*graph));
+
+            rhi->completed = rhi->submitted;
+
+            device->CollectCompletedResources();
+        }
+
+        ASSERT_TRUE(graph->Reset());
+
+        EXPECT_EQ(resources->GetPoolStats().availableCount, 1u);
+
+        if (resize)
+        {
+            device->InvalidateRDGPassCompilerForResize();
+        }
+        else
+        {
+            ASSERT_TRUE(resources->TrimPool(true));
+        }
+
+        EXPECT_EQ(resources->GetPoolStats().availableCount, 0u);
+
+        EXPECT_TRUE(resources->GetPoolBuckets().empty());
+    }
 }
 
 TEST_F(RenderCoreTest, OverlapDescriptorMismatchAndExtractionPreventStorageReuse)

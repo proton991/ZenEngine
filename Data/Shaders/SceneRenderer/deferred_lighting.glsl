@@ -11,7 +11,6 @@ layout (set = 1, binding = 6) uniform samplerCube envIrradianceMap;
 layout (set = 1, binding = 7) uniform samplerCube envPrefilteredMap;
 layout (set = 1, binding = 8) uniform sampler2D lutBRDFMap;
 
-layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outFragColor;
 #ifdef LIGHTING_CAPTURE
 #include "Graphics/Shared/LightingCapture.h"
@@ -60,7 +59,9 @@ vec3 SamplePrefiltered(vec3 R, float roughness) {
 
 // ---------- Main ----------
 void main() {
-#define SURFACE_SAMPLE(map) texture(map,inUV)
+// The G-buffer matches the viewport, so each fragment reads exactly its own texel.
+// Filtering would blend positions and normals across silhouettes.
+#define SURFACE_SAMPLE(map) texelFetch(map,ivec2(gl_FragCoord.xy),0)
 	float depth = SURFACE_SAMPLE(depthMap).r;
 	// Authored near/far ranges can place valid geometry arbitrarily close to
 	// depth one. Only the attachment's exact clear depth identifies background.

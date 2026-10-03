@@ -131,7 +131,15 @@ void RenderDevice::Init(RHIViewport* viewport)
 
     m_frameRDG                  = MakeUnique<RenderGraph>("frame_rdg");
 
-    m_pMainViewport             = viewport;
+    // Each frame slot alternates between its own transient set, so the working set spans
+    // every slot; keeping it pooled avoids recreating render targets and their descriptors.
+    RDGPoolConfig framePool;
+
+    framePool.steadyBuilds = m_numFrames;
+
+    VERIFY_EXPR_MSG(m_frameRDG->GetResourceManager()->SetPoolConfig(framePool), "Failed to configure the frame graph pool");
+
+    m_pMainViewport = viewport;
 
     BeginFrame();
 
@@ -1800,7 +1808,7 @@ void RenderDevice::BeginFrame()
 
             // Only evict cached graph resources at a frame boundary. In-flight,
             // exported and active resources keep their existing serial protection.
-            // The last frame's working set stays pooled: evicting it would only rebuild
+            // The working set of every frame slot stays pooled: evicting it would only rebuild
             // the same targets next frame while the retired copies still await their serials.
             if (m_frameRDG && GetGPUMemoryStats().IsUnderPressure())
             {

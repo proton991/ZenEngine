@@ -3,6 +3,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderFrameState.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
+#include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelizerBase.h"
 #include "Graphics/RenderCore/V2/Renderer/VoxelGIRenderer.h"
 #include "Graphics/RHI/RHIOptions.h"
@@ -318,6 +319,8 @@ struct SceneRendererProfiling::State
 
         uint64_t assignedBytes{0}, availableBytes{0}, retiringBytes{0};
 
+        uint64_t poolHits{0}, poolMisses{0}, poolEvictions{0};
+
         uint32_t nodeCount{0}, omittedNodes{0}, omittedSubmissions{0};
     };
 
@@ -381,8 +384,8 @@ struct SceneRendererProfiling::State
             graphs.push_back({snapshot.graph, snapshot.execution, snapshot.frameIndex, snapshot.transferOnly,
                               snapshot.compileCPUUs, snapshot.executeCPUUs, snapshot.submissionCPUUs,
                               snapshot.assignedTransientBytes, snapshot.availableTransientBytes,
-                              snapshot.retiringTransientBytes, snapshot.nodeCount, snapshot.omittedNodes,
-                              snapshot.omittedSubmissionDetails});
+                              snapshot.retiringTransientBytes, snapshot.poolHits, snapshot.poolMisses, snapshot.poolEvictions,
+                              snapshot.nodeCount, snapshot.omittedNodes, snapshot.omittedSubmissionDetails});
 
             for (const rc::RDGNodeMetrics& node : snapshot.nodes)
             {
@@ -756,8 +759,10 @@ void SceneRendererProfiling::State::WriteSummaryJSON(std::ostream&         outpu
                << ",\"execute_cpu_us\":" << graph.executeUs << ",\"submission_cpu_us\":" << graph.submissionUs
                << ",\"assigned_transient_bytes\":" << graph.assignedBytes
                << ",\"available_transient_bytes\":" << graph.availableBytes
-               << ",\"retiring_transient_bytes\":" << graph.retiringBytes << ",\"node_count\":" << graph.nodeCount
-               << ",\"omitted_nodes\":" << graph.omittedNodes << ",\"omitted_submissions\":" << graph.omittedSubmissions << '}';
+               << ",\"retiring_transient_bytes\":" << graph.retiringBytes << ",\"pool_hits\":" << graph.poolHits
+               << ",\"pool_misses\":" << graph.poolMisses << ",\"pool_evictions\":" << graph.poolEvictions
+               << ",\"node_count\":" << graph.nodeCount << ",\"omitted_nodes\":" << graph.omittedNodes
+               << ",\"omitted_submissions\":" << graph.omittedSubmissions << '}';
     }
 
     output << "],\"pass_statistics\":[";
@@ -1014,12 +1019,15 @@ void SceneRendererProfiling::Stop(rc::RenderDevice& device, const rc::RenderScen
 
         const rc::VoxelGISettings& cone      = server.RequestVoxelGI()->GetSettings();
 
+        // [0,0] when the last frame had no G-buffer (forward materials).
+        const glm::uvec2 gbuffer = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
+
         std::ostringstream output;
 
         ConfigureStream(output);
 
         output << "{\"viewport_width\":" << viewport.GetWidth() << ",\"viewport_height\":" << viewport.GetHeight()
-               << ",\"gbuffer_size\":" << rc::RenderConfig::GetInstance().offScreenFbSize
+               << ",\"gbuffer_size\":[" << gbuffer.x << ',' << gbuffer.y << ']'
                << ",\"frames_in_flight\":" << rc::RenderConfig::GetInstance().numFrames
                << ",\"rhi_threaded\":" << GetRHIThread().IsThreaded() << ",\"async_compute_status\":";
 

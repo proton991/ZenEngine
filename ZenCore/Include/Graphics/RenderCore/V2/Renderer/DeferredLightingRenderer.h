@@ -68,6 +68,13 @@ public:
         return m_captureRecorded;
     }
 
+    // The G-buffer is sized to the viewport. Zero when the last build declared none: forward
+    // materials or a suspended (zero-sized) viewport.
+    glm::uvec2 GetGBufferExtent() const
+    {
+        return m_gbufferExtent;
+    }
+
     void SetRenderScene(RenderScene* pRenderScene)
     {
         m_pScene = pRenderScene;
@@ -99,5 +106,6 @@ private:
     RHIBuffer*  m_captureOutput{nullptr};
     RHIBuffer*  m_captureReadback{nullptr};
     bool        m_captureRecorded{false};
+    glm::uvec2  m_gbufferExtent{0, 0};
 };
 } // namespace zen::rc

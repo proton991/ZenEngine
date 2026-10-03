@@ -1154,8 +1154,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
             valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && options.backgroundTestSeconds > 0
                  && options.backgroundTestSeconds <= 600;
         }
-        else if (argument.starts_with("--gbuffer-size=") || argument.starts_with("--width=")
-                 || argument.starts_with("--height="))
+        else if (argument.starts_with("--width=") || argument.starts_with("--height="))
         {
             const size_t offset                 = argument.find('=') + 1;
 
@@ -1169,11 +1168,7 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
 
             if (valid)
             {
-                if (argument.starts_with("--gbuffer-size="))
-                {
-                    zen::rc::RenderConfig::GetInstance().offScreenFbSize = dimension;
-                }
-                else if (argument.starts_with("--width="))
+                if (argument.starts_with("--width="))
                 {
                     options.width = dimension;
                 }
@@ -1362,7 +1357,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--width=N] [--height=N]");
     }
 
     return result;

@@ -20,9 +20,9 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--frames', type=int, default=1200)
     parser.add_argument('--warmup', type=int, default=120)
+    # The G-buffer matches the window; vary pixel load with the window size.
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
-    parser.add_argument('--gbuffer', type=int, default=2048)
     parser.add_argument('--thread', type=int, choices=(0, 1), default=1)
     parser.add_argument('--async-compute', type=int, choices=(0, 1), default=1)
     parser.add_argument('--validation', action='store_true')
@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--config', type=Path)
     parser.add_argument('--set', action='append', default=[], metavar='KEY=VALUE')
     args = parser.parse_args()
-    if min(args.frames, args.warmup, args.width, args.height, args.gbuffer) <= 0:
+    if min(args.frames, args.warmup, args.width, args.height) <= 0:
         parser.error('Frame counts and dimensions must be positive')
     assert all('=' in item and '\n' not in item for item in args.set)
     config = ROOT/'Data/engine.cfg'
@@ -57,8 +57,8 @@ def measure(args):
     (out/'engine.cfg').write_bytes(original)
     command = [str(executable), '--mode=3', '--fixed-step', '--disable-rt', '--gpu-memory-stats', f'--warmup={args.warmup}',
                f'--frames={args.frames}', f'--width={args.width}', f'--height={args.height}',
-               f'--gbuffer-size={args.gbuffer}', f'--rhi-thread={args.thread}',
-               f'--async-compute={args.async_compute}', f'--frame-times={out / "frames.csv"}']
+               f'--rhi-thread={args.thread}', f'--async-compute={args.async_compute}',
+               f'--frame-times={out / "frames.csv"}']
     if not args.validation:
         command.append('--disable-validation')
     if args.motion_fixture:

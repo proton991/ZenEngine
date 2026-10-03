@@ -89,7 +89,7 @@ For a recorded benchmark, use a fresh output directory:
 python tools/benchmark_voxel_gi.py --executable build/x64-windows-msvc-performance/bin/scene_renderer_demo.exe --output build/voxel-gi-new-benchmark
 ```
 
-The runner records 120 warmup frames followed by 1200 measured frames, at 1920×1080 with a 2048² G-buffer, threaded RHI and async compute enabled. It saves per-frame times, NVIDIA activity samples, configuration, exact command, GPU/driver details, executable/SPIR-V hashes, logs and a JSON summary. `--validation` enables Vulkan validation for a comparison. Overlay injection is disabled by the benchmark runner to control measurement conditions; the interactive launcher does not disable the user's overlay. Run GPU measurements serially and keep the camera unchanged.
+The runner records 120 warmup frames followed by 1200 measured frames, at 1920×1080, threaded RHI and async compute enabled. It saves per-frame times, NVIDIA activity samples, configuration, exact command, GPU/driver details, executable/SPIR-V hashes, logs and a JSON summary. `--validation` enables Vulkan validation for a comparison. Overlay injection is disabled by the benchmark runner to control measurement conditions; the interactive launcher does not disable the user's overlay. Run GPU measurements serially and keep the camera unchanged. The G-buffer matches the window; the results below predate that change and used a 2048² G-buffer, which the runner's removed `--gbuffer` option selected.
 
 ## Measured conditions
 

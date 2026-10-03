@@ -1,6 +1,5 @@
 #include "SceneRendererDemo.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
-#include "Graphics/RenderCore/V2/RenderConfig.h"
 #include "Graphics/RenderCore/V2/VoxelResourcePlanning.h"
 #include "Graphics/RenderCore/V2/Renderer/RendererServer.h"
 #include "Graphics/RenderCore/V2/Renderer/DeferredLightingRenderer.h"
@@ -91,6 +90,8 @@ bool WriteLightingMetadata(const std::string&        path,
 
     const rc::VoxelizerBase& voxelizer  = *server.RequestVoxelizer();
 
+    const glm::uvec2 gbuffer            = server.RequestDeferredLightingRenderer()->GetGBufferExtent();
+
     std::ofstream output(path + ".lighting.json");
 
     output
@@ -108,8 +109,8 @@ bool WriteLightingMetadata(const std::string&        path,
         << ",\"voxel_geometry_generation\":" << voxelizer.GetGeometryRevision()
         << ",\"scene_geometry_generation\":" << scene.GetGeometryRevision()
         << ",\"scene_surface_generation\":" << scene.GetSurfaceRevision()
-        << ",\"voxel_coverage_mask\":" << scene.GetVoxelCoverageMask(voxelizer.GetVoxelBounds())
-        << ",\"gbuffer_extent\":" << rc::RenderConfig::GetInstance().offScreenFbSize
+        << ",\"voxel_coverage_mask\":" << scene.GetVoxelCoverageMask(voxelizer.GetVoxelBounds()) << ",\"gbuffer_extent\":["
+        << gbuffer.x << ',' << gbuffer.y << ']'
         << ",\"indirect_intensity\":" << server.RequestVoxelGI()->GetSettings().indirectIntensity << ",\"camera_position\":";
 
     WriteFloatArray(output, &data.viewPos.x, 3);

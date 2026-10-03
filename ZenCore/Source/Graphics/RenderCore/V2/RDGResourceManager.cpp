@@ -1346,17 +1346,24 @@ bool RDGResourceManager::RetirePoolEntries(bool allAvailable, bool unusedByNewes
         {
             PoolEntry& entry   = *candidate;
 
-            const bool expired = m_generation - entry.lastUsedBuild > m_poolConfig.maxIdleBuilds;
+            const uint64_t age = m_generation - entry.lastUsedBuild;
 
-            const bool idle    = unusedByNewestBuild && entry.lastUsedBuild < newestBuild;
+            // The steady working set is not idle: it neither counts against nor yields to the budget.
+            const bool steady    = age < m_poolConfig.steadyBuilds;
 
-            if (allAvailable || expired || idle || entry.bytes > m_poolConfig.budgetBytes - retained)
+            const bool expired   = age > m_poolConfig.maxIdleBuilds;
+
+            const bool idle      = unusedByNewestBuild && entry.lastUsedBuild < newestBuild;
+
+            const bool oversized = entry.bytes > m_poolConfig.budgetBytes - retained;
+
+            if (allAvailable || (!steady && (expired || idle || oversized)))
             {
                 RetirePoolEntry(entry);
 
                 entry.resource = nullptr;
             }
-            else
+            else if (!steady)
             {
                 retained += entry.bytes;
             }

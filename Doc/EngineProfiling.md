@@ -23,8 +23,13 @@ presentation behavior still depend on the platform and selected present mode; tu
 off VSync does not guarantee immediate presentation on every implementation.
 
 For a correctness run, keep validation enabled by omitting `--disable-validation`.
-The existing `--rhi-thread=0|1`, `--async-compute=0|1`, `--width`, `--height`, and
-`--gbuffer-size` controls can be combined with profiling. Select the workload and GI
+The existing `--rhi-thread=0|1`, `--async-compute=0|1`, `--width` and `--height`
+controls can be combined with profiling. The deferred G-buffer always matches the
+window, so `--width` and `--height` also set the G-buffer pixel load; the profile reports
+it as `settings.gbuffer_size` (`[0,0]` when the frame used forward materials). Graph
+records include the frame graph's cumulative transient-pool `pool_hits`, `pool_misses`
+and `pool_evictions`; subtract the first measured record from the last for an interval.
+Select the workload and GI
 settings through the ordinary engine configuration. Match those settings, build type,
 validation state, scene, camera, and capture options between comparisons.
 
