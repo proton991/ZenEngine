@@ -1,5 +1,7 @@
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Graphics/RenderCore/V2/RenderDevice.h"
+#include "Graphics/RenderCore/V2/Renderer/RendererUtils.h"
+#include "SceneGraph/Texture.h"
 #include "Systems/SceneEditor.h"
 #include "SceneGraph/Camera.h"
 #include "SceneGraph/SceneAnimation.h"
@@ -16,6 +18,13 @@ RenderScene::RenderScene(RenderDevice* pRenderDevice, const SceneData& sceneData
     m_pCamera(sceneData.pCamera),
     m_envTextureName(sceneData.envTextureName.empty() ? "papermill.ktx" : sceneData.envTextureName)
 {
+    // Stop before changing the scene or allocating anything if the global heaps cannot bind it.
+    const std::string capacityError = GetSceneBindlessCapacityError(m_pRenderDevice->GetGPUInfo().bindlessHeapCapacities,
+                                                                    m_pScene->GetComponents<sg::Texture>().size(),
+                                                                    m_pScene->GetComponents<sg::Sampler>().size());
+
+    VERIFY_EXPR_MSG_F(capacityError.empty(), "{}", capacityError);
+
     try
     {
         sys::SceneEditor::CenterAndNormalizeScene(m_pScene);

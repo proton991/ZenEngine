@@ -825,7 +825,9 @@ void VulkanRHI::Init()
 
         m_pBindlessDescriptorPoolManager->Init();
 
-        m_pUniformBufferAllocator = ZEN_NEW() VulkanUniformBufferAllocator();
+        m_gpuInfo.bindlessHeapCapacities = m_pBindlessDescriptorPoolManager->GetCapacities();
+
+        m_pUniformBufferAllocator        = ZEN_NEW() VulkanUniformBufferAllocator();
 
         m_pUniformBufferAllocator->Init(RHIFrameState::kMaxFramesInFlight, 4 * 1024 * 1024, 8);
     }

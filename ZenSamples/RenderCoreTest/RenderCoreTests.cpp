@@ -8886,6 +8886,51 @@ TEST_F(RenderCoreTest, RendererTextureBindingsUseViewsAndCanBeRebuilt)
     device->DestroyTexture(second);
 }
 
+TEST(RenderCoreBindlessCapacityTest, SceneCheckFollowsTheTextureArraySlotLayout)
+{
+    RHIBindlessHeapCapacities capacities;
+
+    capacities.Set(RHIBindlessHeapType::eTexture2D, 4);
+
+    capacities.Set(RHIBindlessHeapType::eSampler, 3);
+
+    // Four textures fill slots 0-3; two scene samplers follow the fallback sampler in slot zero.
+    EXPECT_TRUE(GetSceneBindlessCapacityError(capacities, 4, 2).empty());
+
+    EXPECT_NE(GetSceneBindlessCapacityError(capacities, 5, 2).find("5 textures"), std::string::npos);
+
+    EXPECT_NE(GetSceneBindlessCapacityError(capacities, 4, 3).find("3 samplers"), std::string::npos);
+
+    // Without heaps, even an empty scene has no slot for the fallback sampler.
+    EXPECT_FALSE(GetSceneBindlessCapacityError(RHIBindlessHeapCapacities{{0, 0, 0}}, 0, 0).empty());
+}
+
+TEST(RenderCoreBindlessCapacityTest, OptionsRejectEmptyHeapsAndKeepTheEarlierRequest)
+{
+    RHIOptions& options                      = RHIOptions::GetInstance();
+
+    const RHIBindlessHeapCapacities previous = options.BindlessHeapCapacities();
+
+    RHIBindlessHeapCapacities empty          = previous;
+
+    empty.Set(RHIBindlessHeapType::eTextureCube, 0);
+
+    EXPECT_FALSE(options.SetBindlessHeapCapacities(empty));
+
+    EXPECT_EQ(options.BindlessHeapCapacities().slots, previous.slots);
+
+    RHIBindlessHeapCapacities larger = previous;
+
+    larger.Set(RHIBindlessHeapType::eTexture2D, previous.Get(RHIBindlessHeapType::eTexture2D) + 1);
+
+    EXPECT_TRUE(options.SetBindlessHeapCapacities(larger));
+
+    EXPECT_EQ(options.BindlessHeapCapacities().Get(RHIBindlessHeapType::eTexture2D),
+              previous.Get(RHIBindlessHeapType::eTexture2D) + 1);
+
+    EXPECT_TRUE(options.SetBindlessHeapCapacities(previous));
+}
+
 TEST_F(RenderCoreTest, MetricsCountActualTransitionsAndResetOnRebuild)
 {
     RDGMetrics& metrics = device->GetRDGMetrics();

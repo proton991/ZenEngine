@@ -302,17 +302,11 @@ private:
     uint32_t                                          m_nextLayoutId{1};
 };
 
-inline constexpr uint32_t kBindlessHeapCapacity[ToUnderlying(RHIBindlessHeapType::eMax)] = {
-    2048, // eTexture2D
-    64,   // eTextureCube
-    128   // eSampler: 108 distinct glTF filter/wrap combinations plus engine samplers.
-};
+inline constexpr RHIBindlessHeapCapacities kNoBindlessHeaps{{0, 0, 0}};
 
-inline constexpr uint32_t GetBindlessHeapCapacity(RHIBindlessHeapType heapType)
-{
-    const uint32_t heapIdx = ToUnderlying(heapType);
-    return heapIdx < ToUnderlying(RHIBindlessHeapType::eMax) ? kBindlessHeapCapacity[heapIdx] : 0;
-}
+// True when the update-after-bind descriptor-indexing limits can hold the global heaps.
+bool BindlessHeapsFitLimits(const VkPhysicalDeviceDescriptorIndexingProperties& limits,
+                            const RHIBindlessHeapCapacities&                    capacities);
 
 RHIBindlessHeapType GetBindlessHeapType(const RHIResource* resource);
 
@@ -372,6 +366,17 @@ public:
 
     VkDescriptorSet GetGlobalBindlessSet() const;
 
+    // Slot counts fixed at Init from RHIOptions; zero when the heaps are unavailable.
+    uint32_t GetCapacity(RHIBindlessHeapType heapType) const
+    {
+        return m_capacities.Get(heapType);
+    }
+
+    const RHIBindlessHeapCapacities& GetCapacities() const
+    {
+        return m_capacities;
+    }
+
 private:
     struct BindlessDSWrite
     {
@@ -404,6 +409,8 @@ private:
     VkDescriptorSet       m_vkSet{VK_NULL_HANDLE};
     VkDescriptorPool      m_vkPool{VK_NULL_HANDLE};
     VkDescriptorSetLayout m_vkLayout{VK_NULL_HANDLE};
+
+    RHIBindlessHeapCapacities m_capacities{kNoBindlessHeaps};
 
     uint32_t m_heapAllocCount[ToUnderlying(RHIBindlessHeapType::eMax)]{};
 

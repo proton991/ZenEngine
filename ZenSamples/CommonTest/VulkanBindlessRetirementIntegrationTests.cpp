@@ -344,7 +344,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, HandlesRejectStaleRetirementAfte
 
     RHIBindlessHandle invalid = next;
 
-    invalid.slotIndex         = GetBindlessHeapCapacity(next.heapType);
+    invalid.slotIndex         = session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(next.heapType);
 
     EXPECT_FALSE(session->rhi.UnregisterBindlessResource(invalid));
 
@@ -365,7 +365,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, AutomaticAllocationUsesHolesAndR
 {
     RHISampler* sampler     = Sampler();
 
-    const uint32_t capacity = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
+    const uint32_t capacity = session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(RHIBindlessHeapType::eSampler);
 
     HeapVector<RHIBindlessHandle> handles;
 
@@ -737,7 +737,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, RecordedParametersAndReplayRetai
 
 TEST_F(VulkanBindlessRetirementIntegrationTest, RepeatedTextureAndSamplerStreamingExceedsHeapCapacity)
 {
-    const uint32_t cycles = GetBindlessHeapCapacity(RHIBindlessHeapType::eTexture2D) + 32;
+    const uint32_t cycles = session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(RHIBindlessHeapType::eTexture2D) + 32;
 
     for (uint32_t i = 0; i < cycles; ++i)
     {
@@ -831,7 +831,7 @@ TEST_F(VulkanBindlessRetirementIntegrationTest, CubeRegistrationsReleaseTheirIma
 
     textures.push_back(texture);
 
-    for (uint32_t i = 0; i < GetBindlessHeapCapacity(RHIBindlessHeapType::eTextureCube) + 1; ++i)
+    for (uint32_t i = 0; i < session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(RHIBindlessHeapType::eTextureCube) + 1; ++i)
     {
         RHIBindlessHandle handle = session->rhi.RegisterBindlessResource(texture->GetDefaultView());
 

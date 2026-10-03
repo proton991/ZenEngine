@@ -3,6 +3,8 @@
 #include "Graphics/RenderCore/V2/RenderGraph/RDGPassCompiler.h"
 #include "Graphics/RenderCore/V2/RenderScene.h"
 #include "Templates/HeapVector.h"
+#include <algorithm>
+#include <string>
 
 namespace zen::rc
 {
@@ -86,6 +88,34 @@ inline void BindSceneTextureArray(RDGPassDescBase&               desc,
     {
         desc.BindSampler("uSamplerHeap", samplers[index], index + 1);
     }
+}
+
+// Checks the slot layout of BindSceneTextureArray against the backend's heaps. Returns an
+// empty message when the scene's textures and samplers fit.
+inline std::string GetSceneBindlessCapacityError(const RHIBindlessHeapCapacities& capacities,
+                                                 size_t                           textureCount,
+                                                 size_t                           samplerCount)
+{
+    std::string error;
+
+    const uint32_t textureSlots = capacities.Get(RHIBindlessHeapType::eTexture2D);
+
+    const uint32_t samplerSlots = capacities.Get(RHIBindlessHeapType::eSampler);
+
+    if (textureCount > textureSlots)
+    {
+        error = fmt::format("The scene has {} textures, but the bindless texture heap holds {}. "
+                            "Raise it with RHIOptions::SetBindlessHeapCapacities before initialization.",
+                            textureCount, textureSlots);
+    }
+    else if (samplerCount >= samplerSlots)
+    {
+        error = fmt::format("The scene has {} samplers, but the bindless sampler heap holds {} besides the fallback "
+                            "sampler. Raise it with RHIOptions::SetBindlessHeapCapacities before initialization.",
+                            samplerCount, std::max(samplerSlots, 1u) - 1);
+    }
+
+    return error;
 }
 
 } // namespace zen::rc

@@ -965,6 +965,8 @@ struct DemoOptions
 
     zen::RHIPresentMode presentMode{zen::RHIPresentMode::eDefault};
 
+    zen::RHIBindlessHeapCapacities bindlessHeaps;
+
     std::string profilePath;
 
     std::string frameTimesPath;
@@ -1111,6 +1113,20 @@ bool ParseDemoOptions(int argc, char** arguments, DemoOptions& options)
         {
             zen::RHIOptions::GetInstance().SetDeviceLossDiagnostics(true);
         }
+        else if (argument.starts_with("--bindless-textures=") || argument.starts_with("--bindless-samplers="))
+        {
+            const std::string_view value        = argument.substr(argument.find('=') + 1);
+
+            uint32_t count                      = 0;
+
+            const std::from_chars_result parsed = std::from_chars(value.data(), value.data() + value.size(), count);
+
+            valid = parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() && count != 0;
+
+            options.bindlessHeaps.Set(argument.starts_with("--bindless-textures=") ? zen::RHIBindlessHeapType::eTexture2D
+                                                                                   : zen::RHIBindlessHeapType::eSampler,
+                                      count);
+        }
         else if (argument == "--gi-motion-fixture")
         {
             options.motionFixture = true;
@@ -1222,6 +1238,9 @@ int main(int argc, char** pArgv)
 
         RHIOptions::GetInstance().SetPresentMode(options.presentMode);
 
+        // Parsing rejects zero counts, so the options always accept these capacities.
+        RHIOptions::GetInstance().SetBindlessHeapCapacities(options.bindlessHeaps);
+
         platform::WindowConfig windowConfig{"scene_renderer_demo", true, options.width, options.height};
 
         DemoProfilingOptions profiling;
@@ -1315,7 +1334,7 @@ int main(int argc, char** pArgv)
     else
     {
         LOGE(
-            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
+            "Usage: scene_renderer_demo [--ui|--no-ui] [--rhi-thread=0|1] [--async-compute=0|1] [--frames=N] [--warmup=N] [--frame-times=path.csv] [--profile=prefix] [--vsync=0|1] [--present-mode=default|fifo|fifo_relaxed|mailbox|immediate] [--fixed-step] [--mode=1|2|3] [--smoke-test] [--background-test-seconds=N] [--disable-rt] [--disable-validation] [--validation-printf] [--rhi-counters=0|1] [--gpu-markers] [--gpu-memory-stats] [--device-loss-diagnostics] [--bindless-textures=N] [--bindless-samplers=N] [--gi-start-frame=N] [--gi-motion-fixture] [--capture=frame.ppm] [--capture-lighting=prefix] [--capture-traversal=prefix] [--dynamic-gi-lifecycle] [--gi-method-switching] [--gi-contracts] [--capture-voxels=prefix] [--voxel-reference] [--voxel-lifecycle] [--voxel-classes] [--voxel-gbuffer] [--voxel-grid-percent=N] [--gbuffer-size=N] [--width=N] [--height=N]");
     }
 
     return result;

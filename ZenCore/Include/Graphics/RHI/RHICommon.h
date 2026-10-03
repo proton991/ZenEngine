@@ -31,6 +31,40 @@ enum class RHIAPIType
     eMax    = 1
 };
 
+template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
+{
+    return static_cast<std::underlying_type_t<E>>(e);
+}
+
+enum class RHIBindlessHeapType : uint8_t
+{
+    eTexture2D   = 0,
+    eTextureCube = 1,
+    eSampler     = 2,
+    eMax         = 3
+};
+
+// Slot counts of the global bindless heaps. Shaders declare the heaps as runtime-sized
+// arrays, so the backend can create them with any counts its descriptor limits allow.
+struct RHIBindlessHeapCapacities
+{
+    // 2D textures, cube textures, then samplers: 108 glTF filter/wrap combinations plus engine samplers.
+    std::array<uint32_t, ToUnderlying(RHIBindlessHeapType::eMax)> slots{2048, 64, 128};
+
+    uint32_t Get(RHIBindlessHeapType heapType) const
+    {
+        return heapType < RHIBindlessHeapType::eMax ? slots[ToUnderlying(heapType)] : 0;
+    }
+
+    void Set(RHIBindlessHeapType heapType, uint32_t count)
+    {
+        if (heapType < RHIBindlessHeapType::eMax)
+        {
+            slots[ToUnderlying(heapType)] = count;
+        }
+    }
+};
+
 struct RHIGPUInfo
 {
     // Backend-reported identity. Driver version encoding is vendor-specific.
@@ -68,6 +102,9 @@ struct RHIGPUInfo
     // Largest device-local memory heap; zero means the backend did not report it.
     uint64_t deviceLocalMemoryBytes{0};
 
+    // Slots in each global bindless heap the backend created; zero for an unavailable heap.
+    RHIBindlessHeapCapacities bindlessHeapCapacities;
+
     bool IsDispatchWithinLimits(uint32_t x, uint32_t y, uint32_t z) const
     {
         return x <= maxComputeWorkGroupCount[0] && y <= maxComputeWorkGroupCount[1] && z <= maxComputeWorkGroupCount[2];
@@ -100,11 +137,6 @@ struct RHIQueueCopyCapabilities
     // Texels, for the uncompressed formats exposed by the RHI. Zero means whole mips only.
     std::array<uint32_t, 3> minImageTransferGranularity{};
 };
-
-template <typename E> constexpr std::underlying_type_t<E> ToUnderlying(E e) noexcept
-{
-    return static_cast<std::underlying_type_t<E>>(e);
-}
 
 /*******************/
 /**** Shaders ****/
@@ -272,14 +304,6 @@ struct RHIShaderResourceBinding
     RHIShaderResourceType    type{RHIShaderResourceType::eMax};
     uint32_t                 binding{0};
     HeapVector<RHIResource*> resources;
-};
-
-enum class RHIBindlessHeapType : uint8_t
-{
-    eTexture2D   = 0,
-    eTextureCube = 1,
-    eSampler     = 2,
-    eMax         = 3
 };
 
 static_assert(ZEN_BINDLESS_HEAP_BINDING_TEXTURE2D == ToUnderlying(RHIBindlessHeapType::eTexture2D));

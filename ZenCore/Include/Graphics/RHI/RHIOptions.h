@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string_view>
+#include "RHICommon.h"
 
 namespace zen
 {
@@ -156,6 +157,30 @@ public:
         return m_presentMode;
     }
 
+    // Read when the backend initializes. Every heap needs at least one slot. Device selection
+    // rejects GPUs whose descriptor-indexing limits cannot hold the requested heaps.
+    bool SetBindlessHeapCapacities(const RHIBindlessHeapCapacities& capacities)
+    {
+        bool valid = true;
+
+        for (uint32_t count : capacities.slots)
+        {
+            valid = valid && count != 0;
+        }
+
+        if (valid)
+        {
+            m_bindlessHeapCapacities = capacities;
+        }
+
+        return valid;
+    }
+
+    const RHIBindlessHeapCapacities& BindlessHeapCapacities() const
+    {
+        return m_bindlessHeapCapacities;
+    }
+
     // RHI resources or command contexts that outlive backend teardown are ownership bugs.
     // Strict checks abort through the verification path; otherwise teardown logs and continues,
     // so a leak does not turn a shipping build's exit into a crash. Debug builds default to strict.
@@ -170,7 +195,8 @@ public:
     }
 
 private:
-    RHIPresentMode m_presentMode{RHIPresentMode::eDefault};
+    RHIPresentMode            m_presentMode{RHIPresentMode::eDefault};
+    RHIBindlessHeapCapacities m_bindlessHeapCapacities;
 #if defined(NDEBUG)
     bool m_strictTeardownChecks{false};
 #else

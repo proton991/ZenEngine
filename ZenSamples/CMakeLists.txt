@@ -29,6 +29,7 @@ add_executable(VulkanRHIIntegrationTest
     CommonTest/VulkanBindlessRetirementIntegrationTests.cpp
     CommonTest/VulkanAsyncComputeIntegrationTests.cpp
     CommonTest/VulkanUploadIntegrationTests.cpp
+    CommonTest/BindlessSceneCapacityIntegrationTests.cpp
 )
 target_link_libraries(VulkanRHIIntegrationTest PRIVATE ZenCore gtest_main)
 # Compile reflection fixtures as test inputs, without adding them to engine shader assets.

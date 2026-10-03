@@ -1,5 +1,6 @@
 #include "VulkanIntegrationFixture.h"
 #include "ScopedVulkanCall.h"
+#include "Graphics/RHI/RHIOptions.h"
 #include "Graphics/VulkanRHI/VulkanBuffer.h"
 #include "Graphics/VulkanRHI/VulkanCommandList.h"
 #include "Graphics/VulkanRHI/VulkanDescriptorState.h"
@@ -959,7 +960,8 @@ TEST_F(VulkanBindingIntegrationTest, BindlessSlotsRejectReplacementAndInvalidReg
 
     EXPECT_FALSE(manager->RegisterBindlessResource(Texture(RHITextureUsageFlagBits::eColorAttachment), 0));
 
-    EXPECT_FALSE(manager->RegisterBindlessResource(first, GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler)));
+    EXPECT_FALSE(manager->RegisterBindlessResource(
+        first, session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(RHIBindlessHeapType::eSampler)));
 
     EXPECT_TRUE(manager->RegisterBindlessResource(first, 0));
 
@@ -989,7 +991,7 @@ TEST_F(VulkanBindingIntegrationTest, BindlessHeapExhaustionFailsWithoutReplacing
 
     RHISampler* sampler     = Sampler();
 
-    const uint32_t capacity = GetBindlessHeapCapacity(RHIBindlessHeapType::eSampler);
+    const uint32_t capacity = session->rhi.QueryGPUInfo().bindlessHeapCapacities.Get(RHIBindlessHeapType::eSampler);
 
     for (uint32_t i = 0; i < capacity; ++i)
     {
@@ -1003,6 +1005,110 @@ TEST_F(VulkanBindingIntegrationTest, BindlessHeapExhaustionFailsWithoutReplacing
     EXPECT_EQ(sampler->GetRefCount(), capacity + 1);
 
     manager->Flush();
+}
+
+TEST_F(VulkanBindingIntegrationTest, DeviceSelectionRejectsBindlessHeapsBeyondDescriptorLimits)
+{
+    const RHIBindlessHeapCapacities created = session->rhi.QueryGPUInfo().bindlessHeapCapacities;
+
+    RHIBindlessHeapCapacities oversized     = created;
+
+    // The 64-bit sum with the cube heap must not wrap into a small, accepted count.
+    oversized.Set(RHIBindlessHeapType::eTexture2D, UINT32_MAX);
+
+    ASSERT_TRUE(RHIOptions::GetInstance().SetBindlessHeapCapacities(oversized));
+
+    const std::string rejected = VulkanDevice::GetUnsupportedReason(session->rhi.GetPhysicalDevice());
+
+    ASSERT_TRUE(RHIOptions::GetInstance().SetBindlessHeapCapacities(created));
+
+    EXPECT_NE(rejected.find("bindless heaps"), std::string::npos) << rejected;
+
+    EXPECT_TRUE(VulkanDevice::GetUnsupportedReason(session->rhi.GetPhysicalDevice()).empty());
+
+    // A live backend keeps the heaps it created.
+    EXPECT_EQ(session->rhi.QueryGPUInfo().bindlessHeapCapacities.slots, created.slots);
+}
+
+// Creates the backend with 2D texture and sampler heaps larger than the defaults.
+class VulkanBindlessCapacityIntegrationTest : public VulkanBindingIntegrationTest
+{
+protected:
+    static constexpr uint32_t kSlots = 2048 + 256;
+
+    void SetUp() override
+    {
+        m_previous                           = RHIOptions::GetInstance().BindlessHeapCapacities();
+
+        RHIBindlessHeapCapacities capacities = m_previous;
+
+        capacities.Set(RHIBindlessHeapType::eTexture2D, kSlots);
+
+        capacities.Set(RHIBindlessHeapType::eSampler, kSlots);
+
+        ASSERT_TRUE(RHIOptions::GetInstance().SetBindlessHeapCapacities(capacities));
+
+        VulkanBindingIntegrationTest::SetUp();
+    }
+
+    void TearDown() override
+    {
+        VulkanBindingIntegrationTest::TearDown();
+
+        RHIOptions::GetInstance().SetBindlessHeapCapacities(m_previous);
+    }
+
+    RHIBindlessHeapCapacities m_previous;
+};
+
+TEST_F(VulkanBindlessCapacityIntegrationTest, ConfiguredHeapsSampleSlotsBeyondTheDefaultCapacity)
+{
+    VulkanBindlessDescriptorPoolManager* manager = session->rhi.GetBindlessDescriptorPoolManager();
+
+    const uint32_t slot                          = kSlots - 1;
+
+    ASSERT_NE(manager->GetGlobalBindlessSet(), VK_NULL_HANDLE);
+
+    ASSERT_GE(slot, RHIBindlessHeapCapacities{}.Get(RHIBindlessHeapType::eTexture2D));
+
+    EXPECT_EQ(session->rhi.QueryGPUInfo().bindlessHeapCapacities.slots,
+              RHIOptions::GetInstance().BindlessHeapCapacities().slots);
+
+    EXPECT_EQ(manager->GetCapacity(RHIBindlessHeapType::eTexture2D), kSlots);
+
+    RHIPipeline* pipeline  = Compute("binding_bindless.comp.spv");
+
+    VulkanTexture* texture = Texture();
+
+    RHISampler* sampler    = Sampler();
+
+    VulkanBuffer* output   = Buffer();
+
+    InitializeRed(texture);
+
+    RHIBatchedShaderParameters parameters;
+
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 0), texture->GetDefaultView(), nullptr, slot);
+
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(0, 2), sampler, nullptr, slot);
+
+    parameters.AddResourceParam(*pipeline->GetShader()->GetSRDByLocation(2, 0), output, nullptr, 0);
+
+    context->RHISetShaderParameters(parameters);
+
+    ASSERT_FALSE(context->GetRecordingError().IsFailure());
+
+    PushIndex(pipeline, slot);
+
+    context->RHIDispatch(1, 1, 1);
+
+    SubmitAndWait();
+
+    EXPECT_EQ(*reinterpret_cast<uint32_t*>(output->Map()), 0xFF0000FFu);
+
+    output->Unmap();
+
+    EXPECT_FALSE(manager->RegisterBindlessResource(sampler, kSlots));
 }
 
 TEST_F(VulkanBindingIntegrationTest, RecordedPushConstantOffsetPreservesEarlierFields)
